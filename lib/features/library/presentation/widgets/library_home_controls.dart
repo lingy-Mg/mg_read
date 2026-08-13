@@ -66,7 +66,9 @@ class _SectionButton extends StatelessWidget {
         onPressed: () => onSelected(section),
         style: TextButton.styleFrom(
           minimumSize: const Size(0, AppSpacing.minimumTouchTarget),
-          foregroundColor: isSelected ? tokens.accent : tokens.mutedText,
+          foregroundColor: isSelected
+              ? theme.colorScheme.onSurface
+              : tokens.mutedText,
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.compact),
         ),
         child: Column(

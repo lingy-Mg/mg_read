@@ -32,10 +32,17 @@ class LibraryHomeShell extends StatefulWidget {
 }
 
 class _LibraryHomeShellState extends State<LibraryHomeShell> {
+  final ScrollController _scrollController = ScrollController();
   LibraryHomeSection _section = LibraryHomeSection.recentUpdates;
   LibraryStatusFilter _filter = LibraryStatusFilter.all;
   LibraryNavigationDestination _destination = LibraryNavigationDestination.home;
   String? _actionFeedback;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,8 +65,11 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                   child: RefreshIndicator(
                     onRefresh: widget.onRefresh,
                     child: Scrollbar(
+                      controller: _scrollController,
                       child: ListView(
                         key: const Key('library-home-content'),
+                        controller: _scrollController,
+                        primary: false,
                         padding: EdgeInsets.fromLTRB(
                           pagePadding,
                           AppSpacing.comfortable,
@@ -69,14 +79,12 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                         physics: const AlwaysScrollableScrollPhysics(),
                         children: <Widget>[
                           LibraryHomeTopBar(
+                            isPresentationFixture:
+                                widget.data.isPresentationFixture,
                             onSearch: _handleSearch,
                             onReadingHistory: _handleReadingHistory,
                             onManageSources: _handleManageSources,
                           ),
-                          if (widget.data.isPresentationFixture) ...<Widget>[
-                            const SizedBox(height: AppSpacing.regular),
-                            const _FixtureDisclosure(),
-                          ],
                           if (widget.isRefreshing) ...<Widget>[
                             const SizedBox(height: AppSpacing.regular),
                             Semantics(
@@ -337,12 +345,14 @@ class LibraryResponsiveContent extends StatelessWidget {
 class LibraryHomeTopBar extends StatelessWidget {
   /// Creates the top title, search action, and overflow menu.
   const LibraryHomeTopBar({
+    required this.isPresentationFixture,
     required this.onSearch,
     required this.onReadingHistory,
     required this.onManageSources,
     super.key,
   });
 
+  final bool isPresentationFixture;
   final VoidCallback onSearch;
   final VoidCallback onReadingHistory;
   final VoidCallback onManageSources;
@@ -361,6 +371,11 @@ class LibraryHomeTopBar extends StatelessWidget {
             ),
           ),
         ),
+        if (isPresentationFixture) ...<Widget>[
+          const SizedBox(width: AppSpacing.compact),
+          const _PreviewModeBadge(),
+        ],
+        const SizedBox(width: AppSpacing.compact),
         IconButton(
           tooltip: AppStrings.searchActionLabel,
           onPressed: onSearch,
@@ -397,37 +412,38 @@ class LibraryHomeTopBar extends StatelessWidget {
   }
 }
 
-class _FixtureDisclosure extends StatelessWidget {
-  const _FixtureDisclosure();
+class _PreviewModeBadge extends StatelessWidget {
+  const _PreviewModeBadge();
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    return Semantics(
-      liveRegion: true,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: tokens.mutedSurface,
-          border: Border.all(color: tokens.divider),
-          borderRadius: AppRadii.control,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.regular),
-          child: Row(
-            children: <Widget>[
-              Icon(Icons.info_outline_rounded, color: tokens.accent),
-              const SizedBox(width: AppSpacing.compact),
-              Expanded(
-                child: Text(
-                  '${AppStrings.previewModeLabel} · '
-                  '${AppStrings.previewModeDescription}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: tokens.mutedText,
-                  ),
+    final ThemeData theme = Theme.of(context);
+    return Tooltip(
+      message: AppStrings.previewModeDescription,
+      child: Semantics(
+        label:
+            '${AppStrings.previewModeLabel}，'
+            '${AppStrings.previewModeDescription}',
+        child: ExcludeSemantics(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: tokens.mutedSurface,
+              border: Border.all(color: tokens.divider),
+              borderRadius: AppRadii.pill,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.regular,
+                vertical: AppSpacing.unit,
+              ),
+              child: Text(
+                AppStrings.previewModeLabel,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: tokens.mutedText,
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),

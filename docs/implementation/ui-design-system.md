@@ -35,7 +35,7 @@
 
 ## 排版与图标
 
-`AppTheme` 负责全局 `TextTheme`：页面标题使用 `displaySmall`，区块标题使用 `titleLarge`，书名使用 `titleMedium`，正文和元信息分别使用 `bodyLarge`/`bodyMedium`/`bodySmall`。文字颜色从 `ColorScheme` 或 `mutedText` 获取，不在 Widget 中写颜色。
+`AppTheme` 负责全局 `TextTheme`：页面标题使用 `displaySmall`，区块标题使用 `titleLarge`，书名使用 `titleMedium`，正文和元信息分别使用 `bodyLarge`/`bodyMedium`/`bodySmall`。主应用文字统一使用 `novel_reader_ui` 包中声明的 `MiSans`；该资源与项目提供的 `MiSansVF.ttf` 校验一致，因此复用同一份字体物料而不把约 20 MB 字体重复打入应用包。文字颜色从 `ColorScheme` 或 `mutedText` 获取，不在 Widget 中写颜色。
 
 图标使用 Material Symbols：顶栏和列表操作为 24，导航目的地为 24，封面内的装饰图标为 28。图标按钮保持 48 的命中区，即使视觉图标较小。
 
@@ -50,7 +50,7 @@
 5. `LibrarySourceManagerCard`：书源管理的显式入口，不执行任何安装或网络操作。
 6. `LibraryBottomNavigation`：首页、搜索、发现、我的四个目的地；当前仅维护可替换的 presentation-state。
 
-`LibraryHomeViewData`、`LibraryBookUpdateViewData` 等类型以及 `LibraryHomeFixtures.preview` 仅属于展示层。fixture 带有 `isPresentationFixture` 标记，页面显示“界面预览”说明，不能被当作真实书架、阅读进度或可用书源数量。后续真实数据接入需用 application adapter 生成同样的 view-model，并移除该说明。
+`LibraryHomeViewData`、`LibraryBookUpdateViewData` 等类型以及 `LibraryHomeFixtures.preview` 仅属于展示层。fixture 带有 `isPresentationFixture` 标记，顶栏显示“界面预览”标记并提供完整说明，不能被当作真实书架、阅读进度或可用书源数量。后续真实数据接入需用 application adapter 生成同样的 view-model，并移除该说明。
 
 ## 状态与交互
 
@@ -74,5 +74,5 @@
 ## 验收要求
 
 - Widget 测试覆盖主要语义、继续阅读 CTA、底部导航、窄/宽布局、明亮/暗黑主题和代表性键盘焦点或触摸操作。
-- Golden 仅在字体和平台渲染稳定后再引入；本阶段不以 Golden 代替交互测试。
+- Golden 使用同一 MiSans 与 Material Icons 字体，在固定 `390×844` 紧凑亮/暗主题和 `1280×900` 宽屏暗主题下校验；本阶段不以 Golden 代替交互测试。
 - 自动化通过不代表桌面运行、macOS 平台或 Android 真机验收；交付报告必须分别说明已执行和未执行的证据。

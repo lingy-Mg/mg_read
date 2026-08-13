@@ -52,6 +52,37 @@ class LibraryBookCover extends StatelessWidget {
               borderRadius: AppRadii.control,
               child: Stack(
                 children: <Widget>[
+                  Positioned(
+                    top: -width * 0.14,
+                    right: -width * 0.08,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: tokens.featureSurface.withValues(alpha: 0.22),
+                        shape: BoxShape.circle,
+                      ),
+                      child: SizedBox(
+                        width: width * 0.58,
+                        height: width * 0.58,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: height * 0.22,
+                    left: width * 0.16,
+                    right: width * 0.16,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(
+                            color: tokens.featureSurface.withValues(
+                              alpha: 0.22,
+                            ),
+                          ),
+                        ),
+                      ),
+                      child: const SizedBox(height: AppSpacing.unit),
+                    ),
+                  ),
                   Align(
                     alignment: Alignment.center,
                     child: Icon(
@@ -60,22 +91,44 @@ class LibraryBookCover extends StatelessWidget {
                       size: AppSpacing.section + AppSpacing.compact,
                     ),
                   ),
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpacing.regular),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: AppRadii.pill,
-                          color: tokens.surface.withValues(alpha: 0.56),
+                  if (width >= AppSpacing.continueReadingCoverWidth)
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.regular),
+                        child: Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: tokens.featureSurface.withValues(
+                                  alpha: 0.92,
+                                ),
+                                fontWeight: FontWeight.w700,
+                                height: 1.2,
+                              ),
                         ),
-                        child: const SizedBox(
-                          height: AppSpacing.compact,
-                          width: AppSpacing.section,
+                      ),
+                    )
+                  else
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.regular),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: AppRadii.pill,
+                            color: tokens.surface.withValues(alpha: 0.56),
+                          ),
+                          child: const SizedBox(
+                            height: AppSpacing.compact,
+                            width: AppSpacing.section,
+                          ),
                         ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),

@@ -128,6 +128,12 @@ abstract final class AppTheme {
       highlightColor: tokens.accentSoft.withValues(alpha: 0.56),
       textTheme: textTheme,
       dividerTheme: DividerThemeData(color: tokens.divider, space: 1),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: tokens.surface,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: tokens.accentSoft,
+      ),
       appBarTheme: AppBarTheme(
         backgroundColor: tokens.pageBackground,
         foregroundColor: colorScheme.onSurface,
@@ -313,12 +319,12 @@ abstract final class AppSpacing {
   static const double contentMaxWidth = 1184;
   static const double mediumBreakpoint = 720;
   static const double wideBreakpoint = 980;
-  static const double continueReadingCoverWidth = 116;
-  static const double continueReadingCoverHeight = 160;
+  static const double continueReadingCoverWidth = 104;
+  static const double continueReadingCoverHeight = 148;
   static const double listCoverWidth = 80;
   static const double listCoverHeight = 112;
   static const double bottomNavigationHeight = 76;
-  static const double compactCardStackBreakpoint = 360;
+  static const double compactCardStackBreakpoint = 280;
 }
 
 /// Shared semantic corner radii for MgRead surfaces.

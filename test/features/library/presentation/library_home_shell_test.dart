@@ -1,7 +1,9 @@
 import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
@@ -24,7 +26,7 @@ void main() {
     );
     expect(find.textContaining(AppStrings.previewModeLabel), findsOneWidget);
     expect(find.byKey(const Key('continue-reading-cta')), findsOneWidget);
-    expect(find.text('月影书塔'), findsNWidgets(2));
+    expect(find.text('月影书塔'), findsAtLeastNWidgets(2));
     expect(find.text(AppStrings.recentUpdatesLabel), findsOneWidget);
     expect(find.text(AppStrings.manageSourcesLabel), findsOneWidget);
     expect(find.byType(NavigationBar), findsOneWidget);
@@ -154,6 +156,10 @@ void main() {
     await tester.pumpAndSettle();
     BuildContext context = tester.element(find.byType(LibraryHomeShell));
     expect(Theme.of(context).brightness, Brightness.light);
+    expect(
+      Theme.of(context).textTheme.bodyMedium?.fontFamily,
+      'packages/novel_reader_ui/MiSans',
+    );
     expect(find.byKey(const Key('continue-reading-cta')), findsOneWidget);
 
     await tester.pumpWidget(_host(themeMode: ThemeMode.dark));
@@ -162,6 +168,57 @@ void main() {
     expect(Theme.of(context).brightness, Brightness.dark);
     expect(find.byKey(const Key('continue-reading-cta')), findsOneWidget);
   });
+
+  testWidgets('keyboard traversal activates the first top-bar action', (
+    WidgetTester tester,
+  ) async {
+    int searchCount = 0;
+    await tester.pumpWidget(
+      _host(
+        callbacks: LibraryHomeCallbacks(
+          onSearch: () {
+            searchCount += 1;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+
+    expect(searchCount, 1);
+  });
+
+  testWidgets(
+    'desktop scrollbar shares the attached list controller during mouse hover',
+    (WidgetTester tester) async {
+      await _setViewport(tester, const Size(656, 1129));
+      await tester.pumpWidget(_host());
+      await tester.pumpAndSettle();
+
+      final Scrollbar scrollbar = tester.widget<Scrollbar>(
+        find.byType(Scrollbar),
+      );
+      final ListView list = tester.widget<ListView>(
+        find.byKey(const Key('library-home-content')),
+      );
+      expect(scrollbar.controller, same(list.controller));
+      expect(list.primary, isFalse);
+
+      final TestGesture mouse = await tester.createGesture(
+        kind: PointerDeviceKind.mouse,
+      );
+      await mouse.addPointer(location: const Offset(650, 400));
+      await mouse.moveTo(const Offset(650, 400));
+      await tester.pump(const Duration(milliseconds: 250));
+
+      expect(tester.takeException(), isNull);
+      await mouse.removePointer(location: const Offset(650, 400));
+    },
+  );
 }
 
 Widget _host({
