@@ -19,7 +19,7 @@ void main() {
   testWidgets('matches the compact light home visual baseline', (
     WidgetTester tester,
   ) async {
-    await _setViewport(tester, const Size(390, 844));
+    await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_host(themeMode: ThemeMode.light));
     await tester.pumpAndSettle();
 
@@ -32,7 +32,7 @@ void main() {
   testWidgets('matches the compact dark home visual baseline', (
     WidgetTester tester,
   ) async {
-    await _setViewport(tester, const Size(390, 844));
+    await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_host(themeMode: ThemeMode.dark));
     await tester.pumpAndSettle();
 
@@ -58,7 +58,7 @@ void main() {
   testWidgets(
     'matches the compact light source-manager baseline after scroll',
     (WidgetTester tester) async {
-      await _setViewport(tester, const Size(390, 844));
+      await _setViewport(tester, const Size(390, 900));
       await tester.pumpWidget(_host(themeMode: ThemeMode.light));
       await tester.pumpAndSettle();
 

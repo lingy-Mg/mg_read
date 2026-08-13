@@ -27,7 +27,7 @@ class LibrarySectionNavigation extends StatelessWidget {
           selected: selected,
           onSelected: onSelected,
         ),
-        const SizedBox(width: AppSpacing.comfortable),
+        const SizedBox(width: AppSpacing.regular),
         _SectionButton(
           label: AppStrings.shelfLabel,
           section: LibraryHomeSection.shelf,
@@ -65,7 +65,7 @@ class _SectionButton extends StatelessWidget {
       child: TextButton(
         onPressed: () => onSelected(section),
         style: TextButton.styleFrom(
-          minimumSize: const Size(0, AppSpacing.compactControlHeight),
+          minimumSize: const Size(0, AppSpacing.sectionControlHeight),
           foregroundColor: isSelected
               ? theme.colorScheme.onSurface
               : tokens.mutedText,
@@ -86,7 +86,7 @@ class _SectionButton extends StatelessWidget {
             const SizedBox(height: AppSpacing.unit),
             AnimatedContainer(
               duration: kThemeAnimationDuration,
-              height: 3,
+              height: 2,
               width: AppSpacing.section - AppSpacing.unit,
               decoration: BoxDecoration(
                 color: isSelected ? tokens.accent : Colors.transparent,
@@ -119,23 +119,39 @@ class LibraryStatusFilterBar extends StatelessWidget {
       label: AppStrings.statusFilterLabel,
       child: SizedBox(
         key: const Key('library-status-filter-bar'),
-        height: AppSpacing.compactControlHeight,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: LibraryStatusFilter.values
-                .map(
-                  (LibraryStatusFilter filter) => Padding(
-                    padding: const EdgeInsets.only(left: AppSpacing.compact),
-                    child: _FilterChip(
-                      filter: filter,
-                      selected: filter == selected,
-                      onSelected: onSelected,
+        height: AppSpacing.sectionControlHeight,
+        child: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) {
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List<Widget>.generate(
+                      LibraryStatusFilter.values.length,
+                      (int index) {
+                        final LibraryStatusFilter filter =
+                            LibraryStatusFilter.values[index];
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            left: index == 0 ? 0 : AppSpacing.compact,
+                          ),
+                          child: _FilterChip(
+                            filter: filter,
+                            selected: filter == selected,
+                            onSelected: onSelected,
+                          ),
+                        );
+                      },
                     ),
                   ),
-                )
-                .toList(growable: false),
-          ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -163,31 +179,38 @@ class _FilterChip extends StatelessWidget {
       button: true,
       selected: selected,
       label: label,
-      child: Center(
-        child: ChoiceChip(
-          label: Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontSize: 13,
-              color: selected ? tokens.warning : tokens.mutedText,
+      key: ValueKey<String>('library-filter-${filter.name}'),
+      child: Material(
+        color: Colors.transparent,
+        child: Ink(
+          height: AppSpacing.statusFilterHeight,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.compact - AppSpacing.unit / 2,
+          ),
+          decoration: ShapeDecoration(
+            color: selected ? tokens.surface : tokens.mutedSurface,
+            shape: StadiumBorder(
+              side: BorderSide(
+                color: selected ? tokens.accent : Colors.transparent,
+              ),
             ),
           ),
-          selected: selected,
-          onSelected: (_) => onSelected(filter),
-          showCheckmark: false,
-          selectedColor: tokens.surface,
-          backgroundColor: tokens.mutedSurface,
-          side: BorderSide(
-            color: selected ? tokens.accent : Colors.transparent,
+          child: InkWell(
+            onTap: () => onSelected(filter),
+            borderRadius: AppRadii.pill,
+            child: Center(
+              child: ExcludeSemantics(
+                child: Text(
+                  label,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontSize: 12,
+                    height: 1,
+                    color: selected ? tokens.warning : tokens.mutedText,
+                  ),
+                ),
+              ),
+            ),
           ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.compact,
-            vertical: AppSpacing.unit,
-          ),
-          labelPadding: EdgeInsets.zero,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          visualDensity: VisualDensity.compact,
-          shape: const StadiumBorder(),
         ),
       ),
     );

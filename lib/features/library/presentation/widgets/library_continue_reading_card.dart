@@ -60,7 +60,10 @@ class LibraryContinueReadingCard extends StatelessWidget {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.all(AppSpacing.regular),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.compactPagePadding,
+                  vertical: AppSpacing.comfortable,
+                ),
                 child: LayoutBuilder(
                   builder: (BuildContext context, BoxConstraints constraints) {
                     final bool stacked =
@@ -104,7 +107,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
                                 foregroundColor: tokens.warning,
                                 minimumSize: Size.zero,
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: AppSpacing.regular,
+                                  horizontal: AppSpacing.compact,
                                   vertical: AppSpacing.unit,
                                 ),
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -123,7 +126,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
                                   const SizedBox(width: AppSpacing.unit),
                                   const Icon(
                                     Icons.chevron_right_rounded,
-                                    size: 18,
+                                    size: 16,
                                   ),
                                 ],
                               ),
@@ -140,7 +143,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: <Widget>[
                               cover,
-                              const SizedBox(width: AppSpacing.regular),
+                              const SizedBox(width: AppSpacing.comfortable),
                               Expanded(child: details),
                             ],
                           ),
@@ -206,6 +209,8 @@ class _ContinueReadingDetails extends StatelessWidget {
               style: theme.textTheme.bodyLarge?.copyWith(
                 color: tokens.accent,
                 fontWeight: FontWeight.w600,
+                fontSize: 15,
+                height: 1.1,
               ),
             ),
           ],
@@ -217,7 +222,8 @@ class _ContinueReadingDetails extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodySmall?.copyWith(
             color: tokens.mutedText,
-            fontSize: 13,
+            fontSize: 12,
+            height: 1.2,
           ),
         ),
         const Spacer(),
@@ -238,7 +244,7 @@ class _ContinueReadingAction extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return SizedBox(
       width: AppSpacing.continueReadingActionWidth,
-      height: AppSpacing.minimumTouchTarget,
+      height: AppSpacing.continueReadingActionHeight,
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: AppRadii.control,
@@ -257,7 +263,8 @@ class _ContinueReadingAction extends StatelessWidget {
                 AppStrings.continueReadingLabel,
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: theme.colorScheme.onPrimary,
-                  fontSize: 17,
+                  fontSize: 16,
+                  height: 1.2,
                 ),
               ),
             ),
@@ -329,7 +336,7 @@ class ReadingProgressBar extends StatelessWidget {
         child: ClipRRect(
           borderRadius: AppRadii.pill,
           child: SizedBox(
-            height: AppSpacing.compact,
+            height: AppSpacing.readingProgressHeight,
             child: LinearProgressIndicator(
               value: progress,
               color: tokens.accent,

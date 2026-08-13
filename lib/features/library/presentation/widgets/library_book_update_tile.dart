@@ -92,7 +92,9 @@ class LibraryBookUpdateTile extends StatelessWidget {
           borderRadius: AppRadii.surface,
           onTap: onOpen,
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.unit),
+            padding: const EdgeInsets.symmetric(
+              vertical: AppSpacing.bookUpdateVerticalPadding,
+            ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
@@ -152,14 +154,14 @@ class _BookUpdateDetails extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.titleMedium?.copyWith(
-              fontSize: 17,
+              fontSize: 18,
               height: 1.12,
             ),
           ),
         ),
         if (data.chapter != null)
           Positioned(
-            top: AppSpacing.section - AppSpacing.unit,
+            top: AppSpacing.section,
             left: 0,
             right: 0,
             child: Text(
@@ -168,8 +170,8 @@ class _BookUpdateDetails extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: tokens.mutedText,
-                fontSize: 13,
-                height: 1.1,
+                fontSize: 14,
+                height: 1.15,
               ),
             ),
           ),

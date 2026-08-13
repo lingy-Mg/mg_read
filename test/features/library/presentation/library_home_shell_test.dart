@@ -109,9 +109,8 @@ void main() {
       await tester.pumpWidget(_host());
       await tester.pumpAndSettle();
 
-      final Finder completedFilter = find.widgetWithText(
-        ChoiceChip,
-        AppStrings.filterCompletedLabel,
+      final Finder completedFilter = find.byKey(
+        const Key('library-filter-completed'),
       );
       await tester.ensureVisible(completedFilter);
       await tester.tap(completedFilter);
@@ -215,7 +214,10 @@ void main() {
 
       expect(tag.height, AppSpacing.metadataTagHeight);
       expect((cover.bottom - tag.bottom).abs(), lessThanOrEqualTo(4));
-      expect(tile.height, closeTo(cover.height + AppSpacing.compact, 0.1));
+      expect(
+        tile.height,
+        closeTo(cover.height + AppSpacing.bookUpdateVerticalPadding * 2, 0.1),
+      );
       expect(updatedLabel.right, lessThan(moreAction.left));
       expect(moreAction.center.dx, closeTo(unreadDot.center.dx, 1));
       expect(unreadDot.top, greaterThan(moreAction.bottom));

@@ -38,10 +38,8 @@ class LibrarySourceManagerCard extends StatelessWidget {
               color: tokens.featureSurface,
               borderRadius: AppRadii.surface,
             ),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                minHeight: AppSpacing.minimumTouchTarget,
-              ),
+            child: SizedBox(
+              height: AppSpacing.sourceManagerHeight,
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: AppSpacing.comfortable,
@@ -49,13 +47,13 @@ class LibrarySourceManagerCard extends StatelessWidget {
                 ),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.hub_outlined, color: tokens.accent, size: 22),
+                    Icon(Icons.hub_outlined, color: tokens.accent, size: 20),
                     const SizedBox(width: AppSpacing.regular),
                     Expanded(
                       child: Text(
                         AppStrings.manageSourcesLabel,
                         style: theme.textTheme.titleMedium?.copyWith(
-                          fontSize: 17,
+                          fontSize: 16,
                           height: 1.2,
                         ),
                       ),
