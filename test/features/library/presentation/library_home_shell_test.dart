@@ -86,6 +86,33 @@ void main() {
     },
   );
 
+  testWidgets('places the temporary theme toggle beside search', (
+    WidgetTester tester,
+  ) async {
+    int toggleCount = 0;
+    await _setViewport(tester, const Size(390, 900));
+    await tester.pumpWidget(
+      _host(
+        onToggleTheme: () {
+          toggleCount += 1;
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final Finder search = find.byTooltip(AppStrings.searchActionLabel);
+    final Finder toggle = find.byKey(const Key('theme-mode-toggle'));
+    expect(toggle, findsOneWidget);
+    final double actionGap =
+        tester.getRect(toggle).left - tester.getRect(search).right;
+    expect(actionGap, greaterThanOrEqualTo(0));
+    expect(actionGap, lessThanOrEqualTo(AppSpacing.compact));
+    expect(find.byTooltip(AppStrings.switchToDarkThemeLabel), findsOneWidget);
+
+    await tester.tap(toggle);
+    expect(toggleCount, 1);
+  });
+
   testWidgets('unbound actions show and dismiss local presentation feedback', (
     WidgetTester tester,
   ) async {
@@ -300,6 +327,7 @@ void main() {
 Widget _host({
   ThemeMode themeMode = ThemeMode.light,
   LibraryHomeCallbacks callbacks = const LibraryHomeCallbacks(),
+  VoidCallback? onToggleTheme,
 }) {
   return MaterialApp(
     theme: AppTheme.light(),
@@ -310,6 +338,7 @@ Widget _host({
       callbacks: callbacks,
       isRefreshing: false,
       onRefresh: () async {},
+      onToggleTheme: onToggleTheme,
     ),
   );
 }

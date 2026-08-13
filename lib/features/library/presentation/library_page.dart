@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/application/library_page_state.dart';
@@ -29,6 +30,7 @@ class LibraryPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final AppThemeModeScope themeModeScope = AppThemeModeScope.of(context);
     final LibraryPageState state = ref.watch(libraryPageControllerProvider);
     final LibraryPageController controller = ref.read(
       libraryPageControllerProvider.notifier,
@@ -52,6 +54,9 @@ class LibraryPage extends ConsumerWidget {
       callbacks: callbacks,
       isRefreshing: state.status == LibraryPageStatus.refreshing,
       onRefresh: controller.refresh,
+      onToggleTheme: () {
+        themeModeScope.onToggleTheme(Theme.of(context).brightness);
+      },
       errorNotice: state.hasFailure
           ? _LibraryErrorCard(
               error: state.error!,

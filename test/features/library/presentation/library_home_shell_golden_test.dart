@@ -87,6 +87,7 @@ Widget _host({required ThemeMode themeMode}) {
       data: LibraryHomeFixtures.preview,
       isRefreshing: false,
       onRefresh: () async {},
+      onToggleTheme: () {},
     ),
   );
 }

@@ -17,6 +17,7 @@ class LibraryHomeShell extends StatefulWidget {
     required this.onRefresh,
     required this.isRefreshing,
     this.errorNotice,
+    this.onToggleTheme,
     this.callbacks = const LibraryHomeCallbacks(),
     super.key,
   });
@@ -25,6 +26,10 @@ class LibraryHomeShell extends StatefulWidget {
   final Future<void> Function() onRefresh;
   final bool isRefreshing;
   final Widget? errorNotice;
+
+  /// Temporarily switches the app's light/dark mode when provided.
+  final VoidCallback? onToggleTheme;
+
   final LibraryHomeCallbacks callbacks;
 
   @override
@@ -76,6 +81,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                         children: <Widget>[
                           LibraryHomeTopBar(
                             onSearch: _handleSearch,
+                            onToggleTheme: widget.onToggleTheme,
                             onReadingHistory: _handleReadingHistory,
                             onManageSources: _handleManageSources,
                           ),
@@ -298,10 +304,12 @@ class LibraryHomeTopBar extends StatelessWidget {
     required this.onSearch,
     required this.onReadingHistory,
     required this.onManageSources,
+    this.onToggleTheme,
     super.key,
   });
 
   final VoidCallback onSearch;
+  final VoidCallback? onToggleTheme;
   final VoidCallback onReadingHistory;
   final VoidCallback onManageSources;
 
@@ -329,6 +337,19 @@ class LibraryHomeTopBar extends StatelessWidget {
           onPressed: onSearch,
           icon: const Icon(Icons.search_rounded),
         ),
+        if (onToggleTheme != null)
+          IconButton(
+            key: const Key('theme-mode-toggle'),
+            tooltip: theme.brightness == Brightness.dark
+                ? AppStrings.switchToLightThemeLabel
+                : AppStrings.switchToDarkThemeLabel,
+            onPressed: onToggleTheme,
+            icon: Icon(
+              theme.brightness == Brightness.dark
+                  ? Icons.light_mode_outlined
+                  : Icons.dark_mode_outlined,
+            ),
+          ),
         MenuAnchor(
           menuChildren: <Widget>[
             MenuItemButton(

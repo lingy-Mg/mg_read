@@ -30,6 +30,8 @@ abstract final class AppStrings {
   static const String discoverNavigationLabel = '发现';
   static const String profileNavigationLabel = '我的';
   static const String searchActionLabel = '搜索书籍';
+  static const String switchToDarkThemeLabel = '切换至深色模式';
+  static const String switchToLightThemeLabel = '切换至浅色模式';
   static const String moreActionsLabel = '更多操作';
   static const String bookMoreActionsLabel = '书籍更多操作';
   static const String noReadingProgressTitle = '从书架开始阅读';

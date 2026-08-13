@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_router.dart';
@@ -103,6 +103,36 @@ void main() {
 
     expect(find.text(AppStrings.readerRouteTitle), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('temporarily switches the app theme from the home top bar', (
+    WidgetTester tester,
+  ) async {
+    final _ControlledLibraryOverviewLoader loader =
+        _ControlledLibraryOverviewLoader();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [libraryOverviewLoaderProvider.overrideWithValue(loader)],
+        child: const MgReadApp(themeMode: ThemeMode.light),
+      ),
+    );
+    await tester.pump();
+    loader.completeNext(_overview('主题切换测试书籍'));
+    await tester.pumpAndSettle();
+
+    final Finder toggle = find.byKey(const Key('theme-mode-toggle'));
+    expect(toggle, findsOneWidget);
+    expect(Theme.of(tester.element(toggle)).brightness, Brightness.light);
+    expect(find.byTooltip(AppStrings.switchToDarkThemeLabel), findsOneWidget);
+
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(Theme.of(tester.element(toggle)).brightness, Brightness.dark);
+    expect(find.byTooltip(AppStrings.switchToLightThemeLabel), findsOneWidget);
+
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(Theme.of(tester.element(toggle)).brightness, Brightness.light);
   });
 }
 
