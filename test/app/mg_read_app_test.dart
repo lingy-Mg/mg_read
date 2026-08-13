@@ -35,7 +35,7 @@ void main() {
 
       loader.completeNext(_overview('本地测试书籍'));
       await tester.pump();
-      expect(find.text('本地测试书籍'), findsOneWidget);
+      expect(find.text('本地测试书籍'), findsAtLeastNWidgets(1));
 
       final BuildContext context = tester.element(find.byType(LibraryPage));
       final ProviderContainer container = ProviderScope.containerOf(context);
@@ -52,7 +52,7 @@ void main() {
       await refresh;
       await tester.pump();
 
-      expect(find.text('本地测试书籍'), findsOneWidget);
+      expect(find.text('本地测试书籍'), findsAtLeastNWidgets(1));
       expect(
         find.text(AppStrings.libraryRetainedDataDescription),
         findsOneWidget,

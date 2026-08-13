@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_home_controls.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
 
 void main() {
@@ -24,9 +26,9 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.textContaining(AppStrings.previewModeLabel), findsOneWidget);
+    expect(find.textContaining(AppStrings.previewModeLabel), findsNothing);
     expect(find.byKey(const Key('continue-reading-cta')), findsOneWidget);
-    expect(find.text('月影书塔'), findsAtLeastNWidgets(2));
+    expect(find.text('诡秘之主'), findsAtLeastNWidgets(2));
     expect(find.text(AppStrings.recentUpdatesLabel), findsOneWidget);
     expect(find.text(AppStrings.manageSourcesLabel), findsOneWidget);
     expect(find.byType(NavigationBar), findsOneWidget);
@@ -44,9 +46,9 @@ void main() {
             widget is Semantics &&
             widget.properties.label ==
                 AppStrings.bookUpdateLabel(
-                  title: '月影书塔',
-                  chapter: '第 1268 章 月下的回信',
-                  updatedLabel: '1 小时前',
+                  title: '诡秘之主',
+                  chapter: '第1268章 不可名状的低语',
+                  updatedLabel: '1小时前',
                   hasUnreadUpdate: true,
                 ),
       ),
@@ -114,9 +116,9 @@ void main() {
       await tester.tap(completedFilter);
       await tester.pumpAndSettle();
 
-      expect(find.text('星海来信'), findsNothing);
-      expect(find.text('雨夜观测站'), findsOneWidget);
-      expect(find.text('炉火之环'), findsOneWidget);
+      expect(find.text('大道朝天'), findsNothing);
+      expect(find.text('我在精神病院学斩神'), findsAtLeastNWidgets(1));
+      expect(find.text('宿命之环'), findsAtLeastNWidgets(1));
       final SemanticsNode completedSemantics = tester.getSemantics(
         completedFilter,
       );
@@ -148,6 +150,36 @@ void main() {
       lessThanOrEqualTo(AppSpacing.contentMaxWidth),
     );
   });
+
+  testWidgets(
+    'keeps filters beside the section navigation and the reading action on the cover baseline',
+    (WidgetTester tester) async {
+      await _setViewport(tester, const Size(390, 844));
+      await tester.pumpWidget(_host());
+      await tester.pumpAndSettle();
+
+      final Rect headingRow = tester.getRect(
+        find.byKey(const Key('library-list-heading-row')),
+      );
+      final Rect filters = tester.getRect(
+        find.byKey(const Key('library-status-filter-bar')),
+      );
+      final Rect sectionNavigation = tester.getRect(
+        find.byType(LibrarySectionNavigation),
+      );
+      final Rect continueCover = tester.getRect(
+        find.byType(LibraryBookCover).first,
+      );
+      final Rect continueAction = tester.getRect(
+        find.byKey(const Key('continue-reading-cta')),
+      );
+
+      expect(filters.left, greaterThan(sectionNavigation.right));
+      expect(filters.center.dy, closeTo(headingRow.center.dy, 0.1));
+      expect(filters.right, closeTo(headingRow.right, 0.1));
+      expect(continueAction.bottom, closeTo(continueCover.bottom, 0.1));
+    },
+  );
 
   testWidgets('renders the same hierarchy in light and dark themes', (
     WidgetTester tester,

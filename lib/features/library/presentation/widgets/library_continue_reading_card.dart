@@ -29,75 +29,127 @@ class LibraryContinueReadingCard extends StatelessWidget {
       label: '${AppStrings.continueReadingTitle}，${data.title}，${data.chapter}',
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: tokens.featureSurface,
           borderRadius: AppRadii.card,
-          border: Border.all(color: tokens.divider),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: tokens.shadow,
-              blurRadius: AppSpacing.comfortable,
-              offset: const Offset(0, AppSpacing.compact),
-            ),
-          ],
+          border: Border.all(color: tokens.divider.withValues(alpha: 0.8)),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.comfortable),
-          child: LayoutBuilder(
-            builder: (BuildContext context, BoxConstraints constraints) {
-              final bool stacked =
-                  constraints.maxWidth < AppSpacing.compactCardStackBreakpoint;
-              final Widget cover = LibraryBookCover(
-                title: data.title,
-                variant: data.coverVariant,
-                width: AppSpacing.continueReadingCoverWidth,
-                height: AppSpacing.continueReadingCoverHeight,
-              );
-              final Widget details = _ContinueReadingDetails(
-                data: data,
-                onContinueReading: onContinueReading,
-              );
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: Text(
-                          AppStrings.continueReadingTitle,
-                          style: theme.textTheme.titleLarge,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: onReadingHistory,
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Text(AppStrings.readingHistoryLabel),
-                            SizedBox(width: AppSpacing.compact),
-                            Icon(Icons.chevron_right_rounded),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.comfortable),
-                  if (stacked) ...<Widget>[
-                    Center(child: cover),
-                    const SizedBox(height: AppSpacing.comfortable),
-                    details,
-                  ] else
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        cover,
-                        const SizedBox(width: AppSpacing.comfortable),
-                        Expanded(child: details),
+        child: ClipRRect(
+          borderRadius: AppRadii.card,
+          child: Stack(
+            children: <Widget>[
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: <Color>[
+                        tokens.featureSurface,
+                        tokens.surface.withValues(alpha: 0.94),
                       ],
                     ),
-                ],
-              );
-            },
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _ContinueReadingTexturePainter(
+                      color: tokens.accent.withValues(alpha: 0.07),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.regular),
+                child: LayoutBuilder(
+                  builder: (BuildContext context, BoxConstraints constraints) {
+                    final bool stacked =
+                        constraints.maxWidth <
+                        AppSpacing.compactCardStackBreakpoint;
+                    final Widget cover = LibraryBookCover(
+                      title: data.title,
+                      variant: data.coverVariant,
+                      width: AppSpacing.continueReadingCoverWidth,
+                      height: AppSpacing.continueReadingCoverHeight,
+                    );
+                    final Widget details = SizedBox(
+                      height: AppSpacing.continueReadingCoverHeight,
+                      child: _ContinueReadingDetails(
+                        data: data,
+                        onContinueReading: onContinueReading,
+                      ),
+                    );
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: Text(
+                                AppStrings.continueReadingTitle,
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontSize: 22,
+                                  height: 1.2,
+                                  letterSpacing: -0.2,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: onReadingHistory,
+                              style: TextButton.styleFrom(
+                                backgroundColor: tokens.surface.withValues(
+                                  alpha: 0.52,
+                                ),
+                                foregroundColor: tokens.warning,
+                                minimumSize: Size.zero,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.regular,
+                                  vertical: AppSpacing.unit,
+                                ),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                shape: const StadiumBorder(),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  Text(
+                                    AppStrings.readingHistoryLabel,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: tokens.warning,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: AppSpacing.unit),
+                                  const Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 18,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppSpacing.compact),
+                        if (stacked) ...<Widget>[
+                          Center(child: cover),
+                          const SizedBox(height: AppSpacing.regular),
+                          details,
+                        ] else
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              cover,
+                              const SizedBox(width: AppSpacing.regular),
+                              Expanded(child: details),
+                            ],
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -127,45 +179,133 @@ class _ContinueReadingDetails extends StatelessWidget {
           data.title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.titleLarge,
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontSize: 22,
+            height: 1.16,
+            letterSpacing: -0.2,
+          ),
         ),
-        const SizedBox(height: AppSpacing.compact),
+        const SizedBox(height: AppSpacing.unit / 2),
         Text(
           data.chapter,
-          maxLines: 2,
+          maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodyLarge?.copyWith(color: tokens.warning),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: tokens.warning,
+            fontSize: 15,
+            height: 1.2,
+          ),
         ),
-        const SizedBox(height: AppSpacing.section),
+        const Spacer(),
         Row(
           children: <Widget>[
             Expanded(child: ReadingProgressBar(progress: data.progress)),
-            const SizedBox(width: AppSpacing.regular),
+            const SizedBox(width: AppSpacing.compact),
             Text(
               '$percentage%',
-              style: theme.textTheme.titleMedium?.copyWith(
+              style: theme.textTheme.bodyLarge?.copyWith(
                 color: tokens.accent,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
         ),
-        const SizedBox(height: AppSpacing.regular),
+        const SizedBox(height: AppSpacing.unit),
         Text(
           data.lastReadLabel,
-          style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
-        ),
-        const SizedBox(height: AppSpacing.comfortable),
-        SizedBox(
-          width: double.infinity,
-          height: AppSpacing.minimumTouchTarget,
-          child: FilledButton(
-            key: const Key('continue-reading-cta'),
-            onPressed: onContinueReading,
-            child: const Text(AppStrings.continueReadingLabel),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: tokens.mutedText,
+            fontSize: 13,
           ),
         ),
+        const Spacer(),
+        _ContinueReadingAction(onPressed: onContinueReading),
       ],
     );
+  }
+}
+
+class _ContinueReadingAction extends StatelessWidget {
+  const _ContinueReadingAction({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final AppThemeTokens tokens = AppThemeTokens.of(context);
+    return SizedBox(
+      width: AppSpacing.continueReadingActionWidth,
+      height: AppSpacing.minimumTouchTarget,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: AppRadii.control,
+          gradient: LinearGradient(
+            colors: <Color>[tokens.accent, tokens.warning],
+          ),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            key: const Key('continue-reading-cta'),
+            onTap: onPressed,
+            borderRadius: AppRadii.control,
+            child: Center(
+              child: Text(
+                AppStrings.continueReadingLabel,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: theme.colorScheme.onPrimary,
+                  fontSize: 17,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ContinueReadingTexturePainter extends CustomPainter {
+  const _ContinueReadingTexturePainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint line = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    final Paint fill = Paint()
+      ..color = color.withValues(alpha: color.a * 0.36)
+      ..style = PaintingStyle.fill;
+
+    final Offset center = Offset(size.width * 0.83, size.height * 1.04);
+    final double baseRadius = size.height * 0.58;
+    canvas.drawCircle(center, baseRadius, line);
+    canvas.drawCircle(center, baseRadius * 0.72, line);
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: baseRadius * 1.22),
+      3.68,
+      1.82,
+      false,
+      line,
+    );
+
+    final Path lowerWash = Path()
+      ..moveTo(size.width * 0.34, size.height)
+      ..lineTo(size.width, size.height * 0.56)
+      ..lineTo(size.width, size.height)
+      ..close();
+    canvas.drawPath(lowerWash, fill);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ContinueReadingTexturePainter oldDelegate) {
+    return oldDelegate.color != color;
   }
 }
 
@@ -193,7 +333,7 @@ class ReadingProgressBar extends StatelessWidget {
             child: LinearProgressIndicator(
               value: progress,
               color: tokens.accent,
-              backgroundColor: tokens.divider,
+              backgroundColor: tokens.accent.withValues(alpha: 0.14),
             ),
           ),
         ),

@@ -27,7 +27,7 @@ class LibrarySectionNavigation extends StatelessWidget {
           selected: selected,
           onSelected: onSelected,
         ),
-        const SizedBox(width: AppSpacing.regular),
+        const SizedBox(width: AppSpacing.comfortable),
         _SectionButton(
           label: AppStrings.shelfLabel,
           section: LibraryHomeSection.shelf,
@@ -65,11 +65,12 @@ class _SectionButton extends StatelessWidget {
       child: TextButton(
         onPressed: () => onSelected(section),
         style: TextButton.styleFrom(
-          minimumSize: const Size(0, AppSpacing.minimumTouchTarget),
+          minimumSize: const Size(0, AppSpacing.compactControlHeight),
           foregroundColor: isSelected
               ? theme.colorScheme.onSurface
               : tokens.mutedText,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.compact),
+          padding: EdgeInsets.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -77,14 +78,16 @@ class _SectionButton extends StatelessWidget {
             Text(
               label,
               style: theme.textTheme.titleMedium?.copyWith(
+                fontSize: 18,
+                height: 1.15,
                 color: isSelected ? null : tokens.mutedText,
               ),
             ),
-            const SizedBox(height: AppSpacing.compact),
+            const SizedBox(height: AppSpacing.unit),
             AnimatedContainer(
               duration: kThemeAnimationDuration,
-              height: AppSpacing.unit,
-              width: AppSpacing.section,
+              height: 3,
+              width: AppSpacing.section - AppSpacing.unit,
               decoration: BoxDecoration(
                 color: isSelected ? tokens.accent : Colors.transparent,
                 borderRadius: AppRadii.pill,
@@ -114,21 +117,25 @@ class LibraryStatusFilterBar extends StatelessWidget {
     return Semantics(
       container: true,
       label: AppStrings.statusFilterLabel,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: LibraryStatusFilter.values
-              .map(
-                (LibraryStatusFilter filter) => Padding(
-                  padding: const EdgeInsets.only(right: AppSpacing.compact),
-                  child: _FilterChip(
-                    filter: filter,
-                    selected: filter == selected,
-                    onSelected: onSelected,
+      child: SizedBox(
+        key: const Key('library-status-filter-bar'),
+        height: AppSpacing.compactControlHeight,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: LibraryStatusFilter.values
+                .map(
+                  (LibraryStatusFilter filter) => Padding(
+                    padding: const EdgeInsets.only(left: AppSpacing.compact),
+                    child: _FilterChip(
+                      filter: filter,
+                      selected: filter == selected,
+                      onSelected: onSelected,
+                    ),
                   ),
-                ),
-              )
-              .toList(growable: false),
+                )
+                .toList(growable: false),
+          ),
         ),
       ),
     );
@@ -156,18 +163,31 @@ class _FilterChip extends StatelessWidget {
       button: true,
       selected: selected,
       label: label,
-      child: SizedBox(
-        height: AppSpacing.minimumTouchTarget,
-        child: Center(
-          child: ChoiceChip(
-            label: Text(label, style: theme.textTheme.bodyMedium),
-            selected: selected,
-            onSelected: (_) => onSelected(filter),
-            selectedColor: tokens.accentSoft,
-            backgroundColor: tokens.mutedSurface,
-            side: BorderSide(color: selected ? tokens.accent : tokens.divider),
-            shape: const StadiumBorder(),
+      child: Center(
+        child: ChoiceChip(
+          label: Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 13,
+              color: selected ? tokens.warning : tokens.mutedText,
+            ),
           ),
+          selected: selected,
+          onSelected: (_) => onSelected(filter),
+          showCheckmark: false,
+          selectedColor: tokens.surface,
+          backgroundColor: tokens.mutedSurface,
+          side: BorderSide(
+            color: selected ? tokens.accent : Colors.transparent,
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.compact,
+            vertical: AppSpacing.unit,
+          ),
+          labelPadding: EdgeInsets.zero,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          visualDensity: VisualDensity.compact,
+          shape: const StadiumBorder(),
         ),
       ),
     );

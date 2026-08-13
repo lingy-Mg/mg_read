@@ -79,8 +79,6 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                         physics: const AlwaysScrollableScrollPhysics(),
                         children: <Widget>[
                           LibraryHomeTopBar(
-                            isPresentationFixture:
-                                widget.data.isPresentationFixture,
                             onSearch: _handleSearch,
                             onReadingHistory: _handleReadingHistory,
                             onManageSources: _handleManageSources,
@@ -143,9 +141,9 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         _buildReadingSurface(context),
-        const SizedBox(height: AppSpacing.section),
+        const SizedBox(height: AppSpacing.comfortable),
         _buildLibraryList(context),
-        const SizedBox(height: AppSpacing.section),
+        const SizedBox(height: AppSpacing.comfortable),
         _buildSourceManager(),
       ],
     );
@@ -192,24 +190,31 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        LibrarySectionNavigation(
-          selected: _section,
-          onSelected: (LibraryHomeSection section) {
-            setState(() {
-              _section = section;
-            });
-          },
+        Row(
+          key: const Key('library-list-heading-row'),
+          children: <Widget>[
+            LibrarySectionNavigation(
+              selected: _section,
+              onSelected: (LibraryHomeSection section) {
+                setState(() {
+                  _section = section;
+                });
+              },
+            ),
+            const SizedBox(width: AppSpacing.compact),
+            Expanded(
+              child: LibraryStatusFilterBar(
+                selected: _filter,
+                onSelected: (LibraryStatusFilter filter) {
+                  setState(() {
+                    _filter = filter;
+                  });
+                },
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: AppSpacing.compact),
-        LibraryStatusFilterBar(
-          selected: _filter,
-          onSelected: (LibraryStatusFilter filter) {
-            setState(() {
-              _filter = filter;
-            });
-          },
-        ),
-        const SizedBox(height: AppSpacing.compact),
+        const SizedBox(height: AppSpacing.unit),
         if (books.isEmpty)
           _NoMatchingBooks(tokens: tokens)
         else
@@ -345,14 +350,12 @@ class LibraryResponsiveContent extends StatelessWidget {
 class LibraryHomeTopBar extends StatelessWidget {
   /// Creates the top title, search action, and overflow menu.
   const LibraryHomeTopBar({
-    required this.isPresentationFixture,
     required this.onSearch,
     required this.onReadingHistory,
     required this.onManageSources,
     super.key,
   });
 
-  final bool isPresentationFixture;
   final VoidCallback onSearch;
   final VoidCallback onReadingHistory;
   final VoidCallback onManageSources;
@@ -367,14 +370,14 @@ class LibraryHomeTopBar extends StatelessWidget {
             header: true,
             child: Text(
               AppStrings.libraryTitle,
-              style: theme.textTheme.displaySmall,
+              style: theme.textTheme.displaySmall?.copyWith(
+                fontSize: 30,
+                height: 1.1,
+                letterSpacing: -0.5,
+              ),
             ),
           ),
         ),
-        if (isPresentationFixture) ...<Widget>[
-          const SizedBox(width: AppSpacing.compact),
-          const _PreviewModeBadge(),
-        ],
         const SizedBox(width: AppSpacing.compact),
         IconButton(
           tooltip: AppStrings.searchActionLabel,
@@ -408,45 +411,6 @@ class LibraryHomeTopBar extends StatelessWidget {
               },
         ),
       ],
-    );
-  }
-}
-
-class _PreviewModeBadge extends StatelessWidget {
-  const _PreviewModeBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    final AppThemeTokens tokens = AppThemeTokens.of(context);
-    final ThemeData theme = Theme.of(context);
-    return Tooltip(
-      message: AppStrings.previewModeDescription,
-      child: Semantics(
-        label:
-            '${AppStrings.previewModeLabel}，'
-            '${AppStrings.previewModeDescription}',
-        child: ExcludeSemantics(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: tokens.mutedSurface,
-              border: Border.all(color: tokens.divider),
-              borderRadius: AppRadii.pill,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.regular,
-                vertical: AppSpacing.unit,
-              ),
-              child: Text(
-                AppStrings.previewModeLabel,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: tokens.mutedText,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

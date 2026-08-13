@@ -132,7 +132,10 @@ abstract final class AppTheme {
         backgroundColor: tokens.surface,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        indicatorColor: tokens.accentSoft,
+        // The compact navigation in the product reference uses color and the
+        // filled icon to indicate selection, rather than a large Material 3
+        // selection capsule.
+        indicatorColor: Colors.transparent,
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: tokens.pageBackground,
@@ -316,13 +319,15 @@ abstract final class AppSpacing {
   static const double compactPagePadding = unit * 5;
   static const double widePagePadding = unit * 8;
   static const double minimumTouchTarget = 48;
+  static const double compactControlHeight = unit * 10;
   static const double contentMaxWidth = 1184;
   static const double mediumBreakpoint = 720;
   static const double wideBreakpoint = 980;
-  static const double continueReadingCoverWidth = 104;
-  static const double continueReadingCoverHeight = 148;
-  static const double listCoverWidth = 80;
-  static const double listCoverHeight = 112;
+  static const double continueReadingCoverWidth = unit * 26;
+  static const double continueReadingCoverHeight = unit * 35;
+  static const double continueReadingActionWidth = unit * 36;
+  static const double listCoverWidth = unit * 13;
+  static const double listCoverHeight = unit * 17;
   static const double bottomNavigationHeight = 76;
   static const double compactCardStackBreakpoint = 280;
 }

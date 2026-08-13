@@ -35,12 +35,16 @@ class LibraryMetadataTag extends StatelessWidget {
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.regular,
-              vertical: AppSpacing.compact,
+              horizontal: AppSpacing.compact,
+              vertical: AppSpacing.unit / 2,
             ),
             child: Text(
               data.label,
-              style: theme.textTheme.bodySmall?.copyWith(color: foreground),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: foreground,
+                fontSize: 12,
+                height: 1.2,
+              ),
             ),
           ),
         ),
@@ -82,7 +86,7 @@ class LibraryBookUpdateTile extends StatelessWidget {
           borderRadius: AppRadii.surface,
           onTap: onOpen,
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.regular),
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.unit),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
@@ -103,43 +107,11 @@ class LibraryBookUpdateTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: AppSpacing.compact),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: <Widget>[
-                    IconButton(
-                      tooltip: AppStrings.bookMoreActionsLabel,
-                      onPressed: onMore,
-                      icon: const Icon(Icons.more_vert_rounded),
-                    ),
-                    if (data.updatedLabel != null) ...<Widget>[
-                      const SizedBox(height: AppSpacing.compact),
-                      Text(
-                        data.updatedLabel!,
-                        textAlign: TextAlign.end,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: tokens.mutedText,
-                        ),
-                      ),
-                    ],
-                    if (data.hasUnreadUpdate) ...<Widget>[
-                      const SizedBox(height: AppSpacing.regular),
-                      Semantics(
-                        label: AppStrings.unreadUpdateLabel,
-                        child: ExcludeSemantics(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: tokens.notification,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const SizedBox(
-                              width: AppSpacing.regular,
-                              height: AppSpacing.regular,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
+                _BookUpdateTrailing(
+                  data: data,
+                  onMore: onMore,
+                  theme: theme,
+                  tokens: tokens,
                 ),
               ],
             ),
@@ -167,26 +139,31 @@ class _BookUpdateDetails extends StatelessWidget {
         children: <Widget>[
           Text(
             data.title,
-            maxLines: 2,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleMedium,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontSize: 18,
+              height: 1.16,
+            ),
           ),
           if (data.chapter != null) ...<Widget>[
-            const SizedBox(height: AppSpacing.compact),
+            const SizedBox(height: AppSpacing.unit),
             Text(
               data.chapter!,
-              maxLines: 2,
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: tokens.mutedText,
+                fontSize: 14,
+                height: 1.2,
               ),
             ),
           ],
           if (data.tags.isNotEmpty) ...<Widget>[
-            const SizedBox(height: AppSpacing.regular),
+            const SizedBox(height: AppSpacing.unit),
             Wrap(
               spacing: AppSpacing.compact,
-              runSpacing: AppSpacing.compact,
+              runSpacing: AppSpacing.unit,
               children: data.tags
                   .map(
                     (LibraryMetadataTagViewData tag) =>
@@ -195,6 +172,81 @@ class _BookUpdateDetails extends StatelessWidget {
                   .toList(growable: false),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BookUpdateTrailing extends StatelessWidget {
+  const _BookUpdateTrailing({
+    required this.data,
+    required this.onMore,
+    required this.theme,
+    required this.tokens,
+  });
+
+  final LibraryBookUpdateViewData data;
+  final VoidCallback onMore;
+  final ThemeData theme;
+  final AppThemeTokens tokens;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: AppSpacing.section * 3,
+      height: AppSpacing.listCoverHeight,
+      child: Stack(
+        children: <Widget>[
+          Align(
+            alignment: Alignment.topRight,
+            child: SizedBox(
+              width: AppSpacing.section + AppSpacing.compact,
+              height: AppSpacing.section + AppSpacing.compact,
+              child: IconButton(
+                tooltip: AppStrings.bookMoreActionsLabel,
+                onPressed: onMore,
+                padding: EdgeInsets.zero,
+                iconSize: 20,
+                icon: const Icon(Icons.more_vert_rounded),
+              ),
+            ),
+          ),
+          if (data.updatedLabel != null)
+            Positioned(
+              top: AppSpacing.page,
+              right: 0,
+              child: Text(
+                data.updatedLabel!,
+                textAlign: TextAlign.end,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: tokens.mutedText,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          if (data.hasUnreadUpdate)
+            Positioned(
+              right: AppSpacing.unit,
+              bottom: AppSpacing.unit,
+              child: Semantics(
+                label: AppStrings.unreadUpdateLabel,
+                child: ExcludeSemantics(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: tokens.notification,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const SizedBox(
+                      width: AppSpacing.compact + AppSpacing.unit,
+                      height: AppSpacing.compact + AppSpacing.unit,
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
