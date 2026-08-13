@@ -1,0 +1,16 @@
+{
+  "VsCodeTaskButtons.showCounter": false,
+  "VsCodeTaskButtons.tasks": [
+    {
+      "label": "开发运行",
+      "task": "开发：启动 MgRead（自动选择设备）",
+      "tooltip": "在主应用根目录启动 Flutter 开发版本"
+    },
+    {
+      "label": "静态检查",
+      "task": "检查：静态检查",
+      "tooltip": "检查 Dart 格式与 Flutter 静态分析"
+    }
+  ],
+  "cmake.ignoreCMakeListsMissing": true
+}

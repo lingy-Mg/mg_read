@@ -1,0 +1,68 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "开发：启动 MgRead（自动选择设备）",
+      "type": "process",
+      "command": "flutter",
+      "args": [
+        "run"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "检查：Dart 格式",
+      "type": "process",
+      "command": "dart",
+      "args": [
+        "format",
+        "--output=none",
+        "--set-exit-if-changed",
+        "."
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "检查：Flutter 静态分析",
+      "type": "process",
+      "command": "flutter",
+      "args": [
+        "analyze"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "检查：静态检查",
+      "dependsOn": [
+        "检查：Dart 格式",
+        "检查：Flutter 静态分析"
+      ],
+      "dependsOrder": "sequence",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}
