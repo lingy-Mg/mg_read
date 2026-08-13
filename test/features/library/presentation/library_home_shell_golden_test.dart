@@ -42,7 +42,7 @@ void main() {
     );
   });
 
-  testWidgets('matches the wide dark home visual baseline', (
+  testWidgets('matches the mobile-first dark baseline on a wide viewport', (
     WidgetTester tester,
   ) async {
     await _setViewport(tester, const Size(1280, 900));

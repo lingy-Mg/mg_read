@@ -9,6 +9,7 @@ import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_book_update_tile.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_controls.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
 
@@ -131,24 +132,26 @@ void main() {
     },
   );
 
-  testWidgets('uses compact and wide layouts at the documented breakpoint', (
+  testWidgets('keeps the mobile layout centered on a wide viewport', (
     WidgetTester tester,
   ) async {
     await _setViewport(tester, const Size(390, 844));
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('library-compact-layout')), findsOneWidget);
-    expect(find.byKey(const Key('library-wide-layout')), findsNothing);
+    expect(find.byKey(const Key('library-mobile-layout')), findsOneWidget);
 
     await _setViewport(tester, const Size(1280, 900));
     await tester.pump();
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('library-wide-layout')), findsOneWidget);
-    expect(find.byKey(const Key('library-compact-layout')), findsNothing);
-    expect(
-      tester.getSize(find.byKey(const Key('library-wide-layout'))).width,
-      lessThanOrEqualTo(AppSpacing.contentMaxWidth),
+    expect(find.byKey(const Key('library-mobile-layout')), findsOneWidget);
+    final Rect mobileLayout = tester.getRect(
+      find.byKey(const Key('library-mobile-layout')),
     );
+    expect(
+      mobileLayout.width,
+      AppSpacing.mobileContentMaxWidth - AppSpacing.compactPagePadding * 2,
+    );
+    expect(mobileLayout.center.dx, closeTo(640, 0.1));
   });
 
   testWidgets(
@@ -178,6 +181,45 @@ void main() {
       expect(filters.center.dy, closeTo(headingRow.center.dy, 0.1));
       expect(filters.right, closeTo(headingRow.right, 0.1));
       expect(continueAction.bottom, closeTo(continueCover.bottom, 0.1));
+    },
+  );
+
+  testWidgets(
+    'aligns compact row metadata with the cover and stacks the trailing controls',
+    (WidgetTester tester) async {
+      await _setViewport(tester, const Size(390, 844));
+      await tester.pumpWidget(_host());
+      await tester.pumpAndSettle();
+
+      final Finder firstCover = find.byType(LibraryBookCover).at(1);
+      final Finder firstTile = find.byType(LibraryBookUpdateTile).first;
+      final Finder firstMetadataTag = find.byType(LibraryMetadataTag).first;
+      final Finder firstMoreAction = find
+          .byTooltip(AppStrings.bookMoreActionsLabel)
+          .first;
+      final Finder firstUnreadDot = find
+          .byWidgetPredicate(
+            (Widget widget) =>
+                widget is Semantics &&
+                widget.properties.label == AppStrings.unreadUpdateLabel,
+          )
+          .first;
+      final Finder firstUpdatedLabel = find.text('1小时前');
+
+      final Rect cover = tester.getRect(firstCover);
+      final Rect tile = tester.getRect(firstTile);
+      final Rect tag = tester.getRect(firstMetadataTag);
+      final Rect moreAction = tester.getRect(firstMoreAction);
+      final Rect unreadDot = tester.getRect(firstUnreadDot);
+      final Rect updatedLabel = tester.getRect(firstUpdatedLabel);
+
+      expect(tag.height, AppSpacing.metadataTagHeight);
+      expect((cover.bottom - tag.bottom).abs(), lessThanOrEqualTo(4));
+      expect(tile.height, closeTo(cover.height + AppSpacing.compact, 0.1));
+      expect(updatedLabel.right, lessThan(moreAction.left));
+      expect(moreAction.center.dx, closeTo(unreadDot.center.dx, 1));
+      expect(unreadDot.top, greaterThan(moreAction.bottom));
+      expect(updatedLabel.center.dy, closeTo(unreadDot.center.dy, 2));
     },
   );
 

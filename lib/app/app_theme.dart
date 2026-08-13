@@ -320,14 +320,15 @@ abstract final class AppSpacing {
   static const double widePagePadding = unit * 8;
   static const double minimumTouchTarget = 48;
   static const double compactControlHeight = unit * 10;
-  static const double contentMaxWidth = 1184;
-  static const double mediumBreakpoint = 720;
-  static const double wideBreakpoint = 980;
+  static const double mobileViewportWidth = 390;
+  static const double mobileContentMaxWidth = mobileViewportWidth;
   static const double continueReadingCoverWidth = unit * 26;
   static const double continueReadingCoverHeight = unit * 35;
   static const double continueReadingActionWidth = unit * 36;
-  static const double listCoverWidth = unit * 13;
-  static const double listCoverHeight = unit * 17;
+  static const double listCoverWidth = unit * 10;
+  static const double listCoverHeight = unit * 13;
+  static const double metadataTagHeight = unit * 4;
+  static const double bookUpdateTrailingWidth = unit * 22;
   static const double bottomNavigationHeight = 76;
   static const double compactCardStackBreakpoint = 280;
 }

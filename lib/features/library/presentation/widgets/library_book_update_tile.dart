@@ -33,17 +33,23 @@ class LibraryMetadataTag extends StatelessWidget {
             color: background,
             borderRadius: AppRadii.pill,
           ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.compact,
-              vertical: AppSpacing.unit / 2,
-            ),
-            child: Text(
-              data.label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: foreground,
-                fontSize: 12,
-                height: 1.2,
+          child: SizedBox(
+            height: AppSpacing.metadataTagHeight,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.compact,
+              ),
+              child: Align(
+                widthFactor: 1,
+                alignment: Alignment.center,
+                child: Text(
+                  data.label,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: foreground,
+                    fontSize: 10,
+                    height: 1,
+                  ),
+                ),
               ),
             ),
           ),
@@ -96,13 +102,16 @@ class LibraryBookUpdateTile extends StatelessWidget {
                   width: AppSpacing.listCoverWidth,
                   height: AppSpacing.listCoverHeight,
                 ),
-                const SizedBox(width: AppSpacing.regular),
+                const SizedBox(width: AppSpacing.compact + AppSpacing.unit),
                 Expanded(
-                  child: Semantics(
-                    button: true,
-                    label: semanticLabel,
-                    child: ExcludeSemantics(
-                      child: _BookUpdateDetails(data: data, theme: theme),
+                  child: SizedBox(
+                    height: AppSpacing.listCoverHeight,
+                    child: Semantics(
+                      button: true,
+                      label: semanticLabel,
+                      child: ExcludeSemantics(
+                        child: _BookUpdateDetails(data: data, theme: theme),
+                      ),
                     ),
                   ),
                 ),
@@ -131,37 +140,45 @@ class _BookUpdateDetails extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: AppSpacing.listCoverHeight),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: Text(
             data.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.titleMedium?.copyWith(
-              fontSize: 18,
-              height: 1.16,
+              fontSize: 17,
+              height: 1.12,
             ),
           ),
-          if (data.chapter != null) ...<Widget>[
-            const SizedBox(height: AppSpacing.unit),
-            Text(
+        ),
+        if (data.chapter != null)
+          Positioned(
+            top: AppSpacing.section - AppSpacing.unit,
+            left: 0,
+            right: 0,
+            child: Text(
               data.chapter!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: tokens.mutedText,
-                fontSize: 14,
-                height: 1.2,
+                fontSize: 13,
+                height: 1.1,
               ),
             ),
-          ],
-          if (data.tags.isNotEmpty) ...<Widget>[
-            const SizedBox(height: AppSpacing.unit),
-            Wrap(
+          ),
+        if (data.tags.isNotEmpty)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Wrap(
               spacing: AppSpacing.compact,
               runSpacing: AppSpacing.unit,
               children: data.tags
@@ -171,9 +188,8 @@ class _BookUpdateDetails extends StatelessWidget {
                   )
                   .toList(growable: false),
             ),
-          ],
-        ],
-      ),
+          ),
+      ],
     );
   }
 }
@@ -194,28 +210,15 @@ class _BookUpdateTrailing extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: AppSpacing.section * 3,
+      width: AppSpacing.bookUpdateTrailingWidth,
       height: AppSpacing.listCoverHeight,
       child: Stack(
         children: <Widget>[
-          Align(
-            alignment: Alignment.topRight,
-            child: SizedBox(
-              width: AppSpacing.section + AppSpacing.compact,
-              height: AppSpacing.section + AppSpacing.compact,
-              child: IconButton(
-                tooltip: AppStrings.bookMoreActionsLabel,
-                onPressed: onMore,
-                padding: EdgeInsets.zero,
-                iconSize: 20,
-                icon: const Icon(Icons.more_vert_rounded),
-              ),
-            ),
-          ),
           if (data.updatedLabel != null)
             Positioned(
-              top: AppSpacing.page,
-              right: 0,
+              top: AppSpacing.section,
+              left: 0,
+              right: AppSpacing.section + AppSpacing.unit,
               child: Text(
                 data.updatedLabel!,
                 textAlign: TextAlign.end,
@@ -223,14 +226,29 @@ class _BookUpdateTrailing extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: tokens.mutedText,
-                  fontSize: 13,
+                  fontSize: 12,
+                  height: 1.1,
                 ),
               ),
             ),
+          Align(
+            alignment: Alignment.topRight,
+            child: SizedBox(
+              width: AppSpacing.section,
+              height: AppSpacing.section,
+              child: IconButton(
+                tooltip: AppStrings.bookMoreActionsLabel,
+                onPressed: onMore,
+                padding: EdgeInsets.zero,
+                iconSize: 19,
+                icon: const Icon(Icons.more_vert_rounded),
+              ),
+            ),
+          ),
           if (data.hasUnreadUpdate)
             Positioned(
-              right: AppSpacing.unit,
-              bottom: AppSpacing.unit,
+              top: AppSpacing.section + AppSpacing.unit,
+              right: AppSpacing.compact,
               child: Semantics(
                 label: AppStrings.unreadUpdateLabel,
                 child: ExcludeSemantics(
@@ -240,8 +258,8 @@ class _BookUpdateTrailing extends StatelessWidget {
                       shape: BoxShape.circle,
                     ),
                     child: const SizedBox(
-                      width: AppSpacing.compact + AppSpacing.unit,
-                      height: AppSpacing.compact + AppSpacing.unit,
+                      width: AppSpacing.compact,
+                      height: AppSpacing.compact,
                     ),
                   ),
                 ),

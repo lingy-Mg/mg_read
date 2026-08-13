@@ -53,14 +53,10 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
           policy: OrderedTraversalPolicy(),
           child: LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
-              final double pagePadding =
-                  constraints.maxWidth >= AppSpacing.mediumBreakpoint
-                  ? AppSpacing.widePagePadding
-                  : AppSpacing.compactPagePadding;
               return Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(
-                    maxWidth: AppSpacing.contentMaxWidth,
+                    maxWidth: AppSpacing.mobileContentMaxWidth,
                   ),
                   child: RefreshIndicator(
                     onRefresh: widget.onRefresh,
@@ -71,9 +67,9 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                         controller: _scrollController,
                         primary: false,
                         padding: EdgeInsets.fromLTRB(
-                          pagePadding,
+                          AppSpacing.compactPagePadding,
                           AppSpacing.comfortable,
-                          pagePadding,
+                          AppSpacing.compactPagePadding,
                           AppSpacing.page,
                         ),
                         physics: const AlwaysScrollableScrollPhysics(),
@@ -106,15 +102,9 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                             ),
                           ],
                           const SizedBox(height: AppSpacing.section),
-                          LibraryResponsiveContent(
-                            compact: KeyedSubtree(
-                              key: const Key('library-compact-layout'),
-                              child: _buildCompactContent(context),
-                            ),
-                            wide: KeyedSubtree(
-                              key: const Key('library-wide-layout'),
-                              child: _buildWideContent(context),
-                            ),
+                          KeyedSubtree(
+                            key: const Key('library-mobile-layout'),
+                            child: _buildCompactContent(context),
                           ),
                         ],
                       ),
@@ -145,27 +135,6 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
         _buildLibraryList(context),
         const SizedBox(height: AppSpacing.comfortable),
         _buildSourceManager(),
-      ],
-    );
-  }
-
-  Widget _buildWideContent(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Expanded(
-          flex: 5,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              _buildReadingSurface(context),
-              const SizedBox(height: AppSpacing.section),
-              _buildSourceManager(),
-            ],
-          ),
-        ),
-        const SizedBox(width: AppSpacing.section),
-        Expanded(flex: 7, child: _buildLibraryList(context)),
       ],
     );
   }
@@ -319,30 +288,6 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     setState(() {
       _actionFeedback = AppStrings.actionUnavailableMessage;
     });
-  }
-}
-
-/// A narrow/wide layout switch with a semantic product breakpoint.
-class LibraryResponsiveContent extends StatelessWidget {
-  /// Creates a responsive container for [compact] and [wide] content.
-  const LibraryResponsiveContent({
-    required this.compact,
-    required this.wide,
-    this.breakpoint = AppSpacing.wideBreakpoint,
-    super.key,
-  });
-
-  final Widget compact;
-  final Widget wide;
-  final double breakpoint;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        return constraints.maxWidth >= breakpoint ? wide : compact;
-      },
-    );
   }
 }
 
