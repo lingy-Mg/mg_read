@@ -8,7 +8,9 @@
 
 仓库当前已有可运行的 Flutter 应用壳、Riverpod 组合根、类型化路由、语义主题、顶层导航、
 书架入口、“我的”页，以及仅提供安全本地交互的“关于我们”与“意见反馈”页面；小说阅读器
-继续只通过公开接入点集成。以下能力尚未实现：
+继续只通过公开接入点集成。主应用已具备后台 SQLite metadata persistence，以及启动前完成
+初始化、纯内存读取、分组合流写入和 CAS 恢复的全局 settings 门面；深色模式消费由独立 UI
+交付维护，本设置核心不包含任何真实 reader/download 设置。以下能力尚未实现：
 
 - Runtime Facade 的正式接入及由其驱动的插件中心、书架、发现、下载和诊断页面。
 - 更新检查、协议/隐私/许可/联系内容、截图选择和反馈提交等真实 capability；当前详情页不访问网络、文件或持久化。
@@ -22,8 +24,9 @@ Runtime 自行以 Job Object 纳管固定 Node 进程树、完成内部 ready/HT
 包或任何业务 capability 已可用。
 
 本仓库当前阶段仍只交付 UI 壳、架构、协议、开发规范、ADR 和路线图；不得为使用该 M1.2
-验证路径在这里引入 Node/Javet、WS/HTTP Client、数据库、文件、Cookie、callback 或其他
-运行时代码。Runtime 真实能力只在其仓库成熟后以版本化 Facade 发布并由本项目消费。
+验证路径在这里引入 Node/Javet、WS/HTTP Client、Runtime 数据库/文件、Cookie、callback 或
+其他运行时代码。主应用自己的 persistence/settings 不能向 Runtime 注入路径或连接。Runtime
+真实能力只在其仓库成熟后以版本化 Facade 发布并由本项目消费。
 
 ## 架构入口
 
@@ -40,9 +43,10 @@ Runtime 自行以 Job Object 纳管固定 Node 进程树、完成内部 ready/HT
 - [平台发布与未来 WebView/媒体边界](docs/architecture/09-platform-release-future-capabilities.md)
 - [主应用持久化设计](docs/architecture/10-app-persistence-design.md)
 - [主应用持久化独立验收规范](docs/architecture/11-app-persistence-acceptance.md)
+- [全局设置内存门面与异步持久化](docs/architecture/12-global-settings.md)
 - [已接受 ADR](docs/architecture/adr/README.md)
 
-核心决策是：每个应用进程只有一个可信 Node 24 VM；Android 由 Runtime 自有单个 Javet `NodeRuntime` 承载，Windows/macOS 使用 Runtime 自有的固定官方 Node 子进程；WS/HTTP 是 Runtime 内部实现；Runtime Store 是插件与内容数据权威，并使用稳定记录骨架与按作用域版本化 JSON；主项目只调用强类型 Runtime Facade，且不注入任何数据库、文件、Cookie、平台或 `host.*` 服务；插件更新在下次应用进程启动时冷激活。SQLite 元数据/正文分库目前只是等待三平台探针的提议，不表示 Drift 或其他存储依赖已经获准。
+核心决策是：每个应用进程只有一个可信 Node 24 VM；Android 由 Runtime 自有单个 Javet `NodeRuntime` 承载，Windows/macOS 使用 Runtime 自有的固定官方 Node 子进程；WS/HTTP 是 Runtime 内部实现；主应用 SQLite 是应用权威元数据来源，Runtime 不得获得其路径或连接；主项目只调用强类型 Runtime Facade，且不向 Runtime 注入数据库、文件、Cookie、平台或 `host.*` 服务；插件更新在下次应用进程启动时冷激活。
 
 ## 首版闭环
 
@@ -93,7 +97,7 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 ```text
 lib/
   app/                    # 应用入口、主题、路由和集中可见文案
-  core/                   # UI 错误映射、诊断投影和其他无 Runtime 职责的基础能力
+  core/                   # 应用 persistence、settings、错误映射及无 Runtime 职责的基础能力
   features/
     library/              # 当前已有：书架入口
     reader/               # 当前已有：阅读器用例、适配与宿主页

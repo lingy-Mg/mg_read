@@ -153,10 +153,12 @@ final class CatalogRepository {
         batch.clear();
       }
     }
-    if (batch.isNotEmpty)
+    if (batch.isNotEmpty) {
       await _library._persistence.metadataRecords.createBatch(batch);
-    if (ordinal == 0)
+    }
+    if (ordinal == 0) {
       throw ArgumentError('A catalog snapshot cannot be empty.');
+    }
     // Atomic visibility is a single CAS update of the item projection.
     final item = await _library._persistence.metadataRecords.read(
       id: itemId.value,
@@ -345,10 +347,11 @@ RecordDocumentRegistry get _registry => RecordDocumentRegistry([
     ),
 ]);
 void _validate(JsonObject value) {
-  if (jsonEncode(value).length > 256 * 1024)
+  if (jsonEncode(value).length > 256 * 1024) {
     throw const PersistenceValidationError(
       'Content library dynamic document exceeds 256 KiB.',
     );
+  }
 }
 
 Map<String, Object?> _plugin(ContentLibraryIngest v) => {
@@ -393,6 +396,7 @@ String _id() {
 }
 
 void _safeText(String text) {
-  if (text.isEmpty || text.length > 32768)
+  if (text.isEmpty || text.length > 32768) {
     throw ArgumentError.value(text, 'text');
+  }
 }

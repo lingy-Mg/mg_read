@@ -153,15 +153,18 @@ final class FileObjectStore {
     required String mimeType,
   }) async {
     _ensureOpen();
-    if (!RegExp(r'^[A-Za-z0-9_-]{16,128}$').hasMatch(assetId))
+    if (!RegExp(r'^[A-Za-z0-9_-]{16,128}$').hasMatch(assetId)) {
       throw ArgumentError.value(assetId, 'assetId');
+    }
     if (!RegExp(r'^[A-Za-z0-9_-]{16,128}$').hasMatch(mangaId)) {
       throw ArgumentError.value(mangaId, 'mangaId');
     }
     final folder = Directory('${_root.path}${Platform.pathSeparator}$mangaId');
     await folder.create(recursive: true);
     final temp = File('${folder.path}${Platform.pathSeparator}.$assetId.part');
-    final target = File('${folder.path}${Platform.pathSeparator}$assetId.asset');
+    final target = File(
+      '${folder.path}${Platform.pathSeparator}$assetId.asset',
+    );
     await temp.writeAsBytes(bytes, flush: true);
     if (await target.exists()) {
       await temp.delete();
@@ -183,6 +186,7 @@ final class FileObjectStore {
       await folder.delete(recursive: true);
     }
   }
+
   Future<void> close() async {
     _closed = true;
   }

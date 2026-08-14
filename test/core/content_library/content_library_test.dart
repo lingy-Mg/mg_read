@@ -25,51 +25,116 @@ void main() {
     await root.delete(recursive: true);
   });
 
-  test('persists a shelf item, catalog, and novel content across reopen', () async {
+  test(
+    'persists a shelf item, catalog, and novel content across reopen',
+    () async {
+      final item = await library.bookshelf.add(
+        title: '测试书',
+        kind: ContentKind.novel,
+        source: source,
+      );
+      await library.catalog.replaceSnapshot(
+        itemId: item.id,
+        bindingId: const SourceBindingId('binding-1'),
+        entries: [
+          IngestCatalogEntry(
+            remoteIdentity: 'chapter-1',
+            title: '第一章',
+            orderKey: '000001',
+            kindCode: 'novel',
+            source: source,
+          ),
+        ],
+      );
+      final entry = (await library.listCatalog(
+        item.id,
+        const CatalogQuery(),
+      )).items.single;
+      await library.content.putNovel(
+        entryId: entry.id,
+        text: '正文',
+        source: source,
+      );
+      await library.close();
+      library = await ContentLibrary.open(dataRoot: root);
+      expect(
+        (await library.listLibrary(const LibraryQuery())).items.single.title,
+        '测试书',
+      );
+      expect(
+        (await library.openContent(entry.id) as NovelChapterContent).text,
+        '正文',
+      );
+    },
+  );
+
+  test('session-only manga resource does not retain a URL', () async {
     final item = await library.bookshelf.add(
-      title: '测试书',
-      kind: ContentKind.novel,
+      title: '漫画',
+      kind: ContentKind.manga,
       source: source,
     );
     await library.catalog.replaceSnapshot(
       itemId: item.id,
-      bindingId: const SourceBindingId('binding-1'),
+      bindingId: const SourceBindingId('binding-3'),
       entries: [
         IngestCatalogEntry(
-          remoteIdentity: 'chapter-1',
-          title: '第一章',
-          orderKey: '000001',
-          kindCode: 'novel',
+          remoteIdentity: 'c',
+          title: 'c',
+          orderKey: '1',
+          kindCode: 'manga',
           source: source,
         ),
       ],
     );
-    final entry = (await library.listCatalog(item.id, const CatalogQuery()))
-        .items
-        .single;
-    await library.content.putNovel(entryId: entry.id, text: '正文', source: source);
-    await library.close();
-    library = await ContentLibrary.open(dataRoot: root);
-    expect((await library.listLibrary(const LibraryQuery())).items.single.title, '测试书');
-    expect((await library.openContent(entry.id) as NovelChapterContent).text, '正文');
-  });
-
-  test('session-only manga resource does not retain a URL', () async {
-    final item = await library.bookshelf.add(title: '漫画', kind: ContentKind.manga, source: source);
-    await library.catalog.replaceSnapshot(itemId: item.id, bindingId: const SourceBindingId('binding-3'), entries: [IngestCatalogEntry(remoteIdentity: 'c', title: 'c', orderKey: '1', kindCode: 'manga', source: source)]);
-    final entry = (await library.listCatalog(item.id, const CatalogQuery())).items.single;
-    await library.content.putManga(entryId: entry.id, pages: [IngestMangaPage(pageId: 'page-1', order: 0, resource: SourceResource.sessionOnly(), source: source)], source: source);
-    expect((await library.openContent(entry.id) as MangaChapterContent).pages.single.resource.url, isNull);
+    final entry = (await library.listCatalog(
+      item.id,
+      const CatalogQuery(),
+    )).items.single;
+    await library.content.putManga(
+      entryId: entry.id,
+      pages: [
+        IngestMangaPage(
+          pageId: 'page-1',
+          order: 0,
+          resource: SourceResource.sessionOnly(),
+          source: source,
+        ),
+      ],
+      source: source,
+    );
+    expect(
+      (await library.openContent(entry.id) as MangaChapterContent)
+          .pages
+          .single
+          .resource
+          .url,
+      isNull,
+    );
   });
 
   test('manga assets are grouped and removed with the manga item', () async {
-    final item = await library.bookshelf.add(title: '本地漫画', kind: ContentKind.manga, source: source);
+    final item = await library.bookshelf.add(
+      title: '本地漫画',
+      kind: ContentKind.manga,
+      source: source,
+    );
     final files = await FileObjectStore.open(root);
     addTearDown(files.close);
-    await files.commitBytes(mangaId: item.id.value, assetId: 'asset_identifier_0001', bytes: [1, 2, 3], mimeType: 'image/png');
-    final directory = Directory('${root.path}${Platform.pathSeparator}files${Platform.pathSeparator}content-assets${Platform.pathSeparator}${item.id.value}');
+    await files.commitBytes(
+      mangaId: item.id.value,
+      assetId: 'asset_identifier_0001',
+      bytes: [1, 2, 3],
+      mimeType: 'image/png',
+    );
+    final directory = Directory(
+      '${root.path}${Platform.pathSeparator}files${Platform.pathSeparator}content-assets${Platform.pathSeparator}${item.id.value}',
+    );
     expect(await directory.exists(), isTrue);
-    await library.bookshelf.remove(item.id, LibraryRemovalPolicy.removeFromShelfKeepContent);
+    await library.bookshelf.remove(
+      item.id,
+      LibraryRemovalPolicy.removeFromShelfKeepContent,
+    );
     expect(await directory.exists(), isFalse);
   });
 }

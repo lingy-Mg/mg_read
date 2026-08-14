@@ -10,4 +10,12 @@
 
 每次写入验证当前格式；读取对旧格式执行纯、确定性的逐版本升级并保留未知字段。未来格式返回只读错误，损坏 JSON 返回稳定损坏错误。CAS 以 revision 为唯一竞争依据；批处理在短 SQLite 事务中提交。正文、文件对象、Cookie、凭据、下载、备份恢复和容器迁移不是本交付包。
 
+已注册 ID 集合通过单条参数化 `IN` 查询批量读取；每行的 future-version/损坏结果独立返回，
+不能因一个坏文档让其他组丢失。document CAS 批写先在后台 worker 完成有界 JSON
+normalize/encode，再进入短 SQLite 事务；任一 revision 冲突回滚整个批次。通用动态文档固定
+encoded bytes、深度、key、node、数组和字符串上限，调用 isolate 不执行重 JSON encode/decode。
+
+全局设置如何在此端口上实现内存快照、分组 debounce、冲突 patch merge 与启动注入，见
+[12 全局设置内存门面与异步持久化](12-global-settings.md)。
+
 后续 feature 只应依赖自己的窄端口，例如 `LibraryStore`，由 data 层映射至本核心端口；不得把 Drift 或 JSON Map 透传到 domain/presentation。
