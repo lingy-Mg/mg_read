@@ -114,8 +114,11 @@ sequenceDiagram
 
 `mg_read_runtime` 当前已在 Windows x64 的源码 bundle 上实现最小路径：固定 Node child
 绑定 `127.0.0.1:0`，输出 ready，Runtime-owning Flutter Facade 再验证
-`/health/ready` 与 `runtime.hello` 后执行 `runtime.ping`。四个并发 Facade 调用会共享同一
-child process；主项目没有参与启动、端口或 WS 代码。实现与测试说明见
+`/health/ready` 与 `runtime.hello` 后执行 `runtime.ping`。Supervisor 在启动 child 前持有
+`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object，测试验证后代进程随 Job close 被内核终止；
+128 个并发 Facade 调用会在同一 child 和有界 WS 控制连接上复用。缺 Node、缺主脚本或 Node
+启动 fatal 以稳定错误与脱敏 diagnostics 返回；主项目没有参与启动、端口或 WS 代码。实现与
+测试说明见
 [Runtime M1.2 文档](../../../mg_read_runtime/docs/desktop-runtime-bridge.md)。
 
 该 M1.2 `ready` 只代表最小 Core、health 路由和 WS 路由已经准备，并**不**满足本节的

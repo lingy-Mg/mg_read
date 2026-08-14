@@ -14,8 +14,9 @@
 Runtime 仓库目前只实现 desktop bootstrap 所需的内部 `/health/live`、`/health/ready` 与
 `/v1/rpc`，以及 `runtime.hello`、`runtime.ping`、有幂等键的内部 `runtime.shutdown`。它
 验证协议版本、bootId、`c:` ID、trace、deadline、对象参数和 64 KiB text frame；Node 与
-Flutter 测试读取同一 fixture。它尚未实现事件、cancel、重连、snapshot、资源 HTTP、Range
-或任何插件业务方法，因此不能被主项目直接调用或视作本章完整协议已验收。详见
+Flutter 测试读取同一 fixture。当前也实现 Facade deadline 后的 best-effort `cancel`、256
+在途请求上限和 1 MiB 写侧背压队列；它尚未实现事件、重连、snapshot、资源 HTTP、Range 或
+任何插件业务方法，因此不能被主项目直接调用或视作本章完整协议已验收。详见
 [Runtime M1.2 文档](../../../mg_read_runtime/docs/desktop-runtime-bridge.md)。
 
 ## 版本与 Schema
