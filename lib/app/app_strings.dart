@@ -28,6 +28,65 @@ abstract final class AppStrings {
   static const String homeNavigationLabel = '首页';
   static const String searchNavigationLabel = '搜索';
   static const String discoverNavigationLabel = '发现';
+  static const String discoverySourceName = '起点中文网';
+  static const String discoverySourceSelectorLabel = '选择发现页书源';
+  static const String discoveryTabRecommendation = '推荐';
+  static const String discoveryTabMale = '男生';
+  static const String discoveryTabFemale = '女生';
+  static const String discoveryTabRanking = '排行';
+  static const String discoveryTabCompleted = '完本';
+  static const String discoveryTabFree = '免费';
+  static const String discoveryHeroTitle = '诡秘之主';
+  static const String discoveryHeroCategory = '玄幻 · 克苏鲁';
+  static const String discoveryHeroDescription =
+      '蒸汽与机械的浪潮中，谁能触及非凡？诡秘的序列，命运的齿轮，即将开始转动。';
+  static const String discoveryHeroMetadata = '爱潜水的乌贼 · 1268章';
+  static const String discoveryReadNowLabel = '立即阅读';
+  static const String discoveryCarouselLabel = '精选推荐轮播';
+  static const String discoveryCarouselPageLabel = '第 1 张，共 5 张';
+  static const String discoveryPopularTitle = '人气推荐';
+  static const String discoveryRefreshLabel = '换一换';
+  static const String discoveryBookHeavenlyPath = '大道朝天';
+  static const String discoveryAuthorMaoNi = '猫腻';
+  static const String discoveryBookDeepSpace = '深空彼岸';
+  static const String discoveryAuthorChenDong = '辰东';
+  static const String discoveryBookCircle = '宿命之环';
+  static const String discoveryAuthorCuttlefish = '爱潜水的乌贼';
+  static const String discoveryBookDrummer = '大奉打更人';
+  static const String discoveryAuthorNewsboy = '卖报小郎君';
+  static const String discoveryBookMentalHospital = '我在精神病院学斩神';
+  static const String discoveryAuthorSanJiu = '三九音域';
+  static const String discoveryRankingTitle = '排行榜';
+  static const String discoveryCategoriesTitle = '分类榜单';
+  static const String discoveryMoreLabel = '更多';
+  static const String discoveryHeatFirst = '562.3万';
+  static const String discoveryHeatSecond = '512.1万';
+  static const String discoveryHeatThird = '420.8万';
+  static const String discoveryHeatFourth = '388.6万';
+  static const String discoveryHeatFifth = '317.4万';
+  static const String discoveryCategoryFantasy = '玄幻';
+  static const String discoveryCategoryFantasyCount = '28万本';
+  static const String discoveryCategoryAdventure = '奇幻';
+  static const String discoveryCategoryAdventureCount = '12万本';
+  static const String discoveryCategoryMartialArts = '武侠';
+  static const String discoveryCategoryMartialArtsCount = '9.8万本';
+  static const String discoveryCategoryXianxia = '仙侠';
+  static const String discoveryCategoryXianxiaCount = '18万本';
+  static const String discoveryCategoryUrban = '都市';
+  static const String discoveryCategoryUrbanCount = '16万本';
+  static const String discoveryCategoryHistory = '历史';
+  static const String discoveryCategoryHistoryCount = '7.6万本';
+  static const String discoveryCategoryGame = '游戏';
+  static const String discoveryCategoryGameCount = '11万本';
+  static const String discoveryCategorySciFi = '科幻';
+  static const String discoveryCategorySciFiCount = '14万本';
+  static const String discoveryEditorsChoiceTitle = '编辑精选';
+  static const String discoveryEditorsChoiceBook = '剑来';
+  static const String discoveryEditorsChoiceCategory = '仙侠';
+  static const String discoveryEditorsChoiceDescription =
+      '大千世界，无奇不有。我陈平安，唯有一剑，可搬山、倒海、降妖、镇魔、救神、摘星、断江、摧城、开天！';
+  static const String discoveryEditorsChoiceMetadata = '烽火戏诸侯 · 1292章';
+  static const String discoveryOpenBookLabel = '打开书籍';
   static const String profileNavigationLabel = '我的';
   static const String profileDisplayName = '书海行者';
   static const String profileEditLabel = '编辑资料';
@@ -87,6 +146,14 @@ abstract final class AppStrings {
 
   /// Returns a label for a neutral, locally drawn cover representation.
   static String bookCoverLabel(String title) => '$title 的封面占位图';
+
+  /// Returns an accessible label for one discovery ranking entry.
+  static String discoveryRankingItemLabel({
+    required int rank,
+    required String title,
+    required String author,
+    required String heat,
+  }) => '第 $rank 名，$title，$author，热度 $heat';
 
   /// Returns a concise, accessible description for a shared book-list row.
   static String bookListItemLabel({

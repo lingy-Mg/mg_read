@@ -93,7 +93,7 @@ lib/
     library/              # 当前已有：书架入口
     reader/               # 当前已有：阅读器用例、适配与宿主页
     plugins/              # 计划：插件管理
-    discovery/            # 计划：发现与搜索
+    discovery/            # 当前已有：发现页 UI 预览；搜索与 Runtime 接入计划
     content_detail/       # 计划：详情与目录
     downloads/            # 计划：缓存与下载
     settings/             # 计划：设置与诊断入口
