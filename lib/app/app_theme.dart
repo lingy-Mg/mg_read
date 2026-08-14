@@ -353,6 +353,38 @@ abstract final class AppSpacing {
   static const double compactCardStackBreakpoint = 280;
 }
 
+/// Measured dimensions shared by the profile detail pages.
+///
+/// The values are mapped from the 390 x 900 mobile reference viewport and are
+/// kept separate from the broader home/profile rhythm so the detail pages do
+/// not fall back to Material component defaults.
+abstract final class AppDetailMetrics {
+  static const double viewportWidth = 390;
+  static const double horizontalPadding = 20;
+  static const double minimumTopInset = 24;
+  static const double topBarHeight = 64;
+  static const double backButtonExtent = 48;
+  static const double backButtonLeft = 8;
+  static const double bottomNavigationHeight = 76;
+  static const double bottomNavigationTopPadding = 6;
+
+  static const double aboutIconTopGap = 29;
+  static const double aboutIconExtent = 106;
+  static const double aboutCardTopGap = 36;
+  static const double aboutCardHeight = 320;
+  static const double aboutRowHeight = 64;
+
+  static const double feedbackBannerHeight = 108;
+  static const double feedbackCardTopGap = 15;
+  static const double feedbackCardHeight = 602;
+  static const double feedbackCardPadding = 14;
+  static const double feedbackTypeHeight = 31;
+  static const double feedbackEditorHeight = 141;
+  static const double feedbackUploadTileExtent = 96;
+  static const double feedbackContactHeight = 34;
+  static const double feedbackSubmitHeight = 39;
+}
+
 /// Shared semantic corner radii for MgRead surfaces.
 abstract final class AppRadii {
   static const BorderRadius card = BorderRadius.all(Radius.circular(20));
@@ -363,6 +395,13 @@ abstract final class AppRadii {
   );
   static const BorderRadius bookCover = BorderRadius.all(Radius.circular(6));
   static const BorderRadius profileList = BorderRadius.all(Radius.circular(16));
+  static const BorderRadius detailCard = BorderRadius.all(Radius.circular(14));
+  static const BorderRadius detailControl = BorderRadius.all(
+    Radius.circular(10),
+  );
+  static const BorderRadius detailAppIcon = BorderRadius.all(
+    Radius.circular(22),
+  );
   static const BorderRadius pill = BorderRadius.all(Radius.circular(999));
 }
 

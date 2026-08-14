@@ -10,11 +10,22 @@ class AppBottomNavigation extends StatelessWidget {
   const AppBottomNavigation({
     required this.selected,
     required this.onSelected,
+    this.showSelectionIndicator = true,
+    this.height = AppSpacing.bottomNavigationHeight,
+    this.topPadding = AppSpacing.compact + 2,
     super.key,
   });
 
   final AppNavigationDestination selected;
   final ValueChanged<AppNavigationDestination> onSelected;
+
+  /// Whether the selected icon uses the soft pill used by root destinations.
+  ///
+  /// Reference-matched detail pages retain the same navigation component and
+  /// semantics while using gold icon/text alone for their selected state.
+  final bool showSelectionIndicator;
+  final double height;
+  final double topPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -23,14 +34,14 @@ class AppBottomNavigation extends StatelessWidget {
 
     return SizedBox(
       key: const Key('app-bottom-navigation'),
-      height: AppSpacing.bottomNavigationHeight,
+      height: height,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: tokens.surface,
           border: Border(top: BorderSide(color: tokens.divider)),
         ),
         child: Padding(
-          padding: const EdgeInsets.only(top: AppSpacing.compact + 2),
+          padding: EdgeInsets.only(top: topPadding),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: AppNavigationDestination.values
@@ -40,6 +51,7 @@ class AppBottomNavigation extends StatelessWidget {
                       destination: destination,
                       selected: destination == selected,
                       onSelected: onSelected,
+                      showSelectionIndicator: showSelectionIndicator,
                       theme: theme,
                       tokens: tokens,
                     ),
@@ -58,6 +70,7 @@ class _AppNavigationItem extends StatelessWidget {
     required this.destination,
     required this.selected,
     required this.onSelected,
+    required this.showSelectionIndicator,
     required this.theme,
     required this.tokens,
   });
@@ -65,6 +78,7 @@ class _AppNavigationItem extends StatelessWidget {
   final AppNavigationDestination destination;
   final bool selected;
   final ValueChanged<AppNavigationDestination> onSelected;
+  final bool showSelectionIndicator;
   final ThemeData theme;
   final AppThemeTokens tokens;
 
@@ -110,7 +124,9 @@ class _AppNavigationItem extends StatelessWidget {
                   width: AppSpacing.bottomNavigationIndicatorWidth,
                   height: AppSpacing.bottomNavigationIndicatorHeight,
                   decoration: BoxDecoration(
-                    color: selected ? tokens.accentSoft : Colors.transparent,
+                    color: selected && showSelectionIndicator
+                        ? tokens.accentSoft
+                        : Colors.transparent,
                     borderRadius: AppRadii.pill,
                   ),
                   child: Center(
