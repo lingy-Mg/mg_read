@@ -7,6 +7,8 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
+import 'package:mg_read/features/profile/presentation/about_page.dart';
+import 'package:mg_read/features/profile/presentation/feedback_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 import 'package:mg_read/features/reader/presentation/reader_destination_page.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
@@ -133,7 +135,13 @@ class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
 }
 
 /// The visual profile/settings route reached from the shared mobile nav.
-@TypedGoRoute<ProfileRoute>(path: '/profile')
+@TypedGoRoute<ProfileRoute>(
+  path: '/profile',
+  routes: <TypedRoute<RouteData>>[
+    TypedGoRoute<AboutRoute>(path: 'about'),
+    TypedGoRoute<FeedbackRoute>(path: 'feedback'),
+  ],
+)
 class ProfileRoute extends GoRouteData with $ProfileRoute {
   /// Creates the local profile route.
   const ProfileRoute();
@@ -146,9 +154,53 @@ class ProfileRoute extends GoRouteData with $ProfileRoute {
         onDestinationRequested: (AppNavigationDestination destination) {
           _goToDestination(context, destination);
         },
+        onAboutRequested: () {
+          const AboutRoute().push(context);
+        },
+        onFeedbackRequested: () {
+          const FeedbackRoute().push(context);
+        },
       ),
     );
   }
+}
+
+/// The profile-owned about surface.
+class AboutRoute extends GoRouteData with $AboutRoute {
+  const AboutRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) {
+    return AboutPage(
+      onBackRequested: () => _returnToProfile(context),
+      onDestinationRequested: (AppNavigationDestination destination) {
+        _goToDestination(context, destination);
+      },
+    );
+  }
+}
+
+/// The profile-owned local-only feedback form.
+class FeedbackRoute extends GoRouteData with $FeedbackRoute {
+  const FeedbackRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) {
+    return FeedbackPage(
+      onBackRequested: () => _returnToProfile(context),
+      onDestinationRequested: (AppNavigationDestination destination) {
+        _goToDestination(context, destination);
+      },
+    );
+  }
+}
+
+void _returnToProfile(BuildContext context) {
+  if (context.canPop()) {
+    context.pop();
+    return;
+  }
+  const ProfileRoute().go(context);
 }
 
 /// A reader intent route carrying only the host-owned stable book identifier.

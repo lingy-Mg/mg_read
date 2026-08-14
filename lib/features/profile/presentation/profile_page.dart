@@ -19,6 +19,8 @@ class ProfilePage extends StatefulWidget {
   const ProfilePage({
     this.onDestinationRequested,
     this.onToggleTheme,
+    this.onAboutRequested,
+    this.onFeedbackRequested,
     super.key,
   });
 
@@ -26,6 +28,9 @@ class ProfilePage extends StatefulWidget {
 
   /// Test-friendly override for the app-level temporary theme action.
   final VoidCallback? onToggleTheme;
+
+  final VoidCallback? onAboutRequested;
+  final VoidCallback? onFeedbackRequested;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -101,7 +106,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   const SizedBox(height: AppSpacing.unit),
                   ProfileSettingsList(
                     items: ProfileFixtures.preview.about,
-                    onItemPressed: (_) => _showUnavailableMessage(),
+                    onItemPressed: _handleAboutItemPressed,
                   ),
                 ],
               ),
@@ -145,6 +150,19 @@ class _ProfilePageState extends State<ProfilePage> {
     setState(() {
       _actionFeedback = AppStrings.actionUnavailableMessage;
     });
+  }
+
+  void _handleAboutItemPressed(ProfileSettingsItemViewData item) {
+    final VoidCallback? callback = switch (item.id) {
+      'about' => widget.onAboutRequested,
+      'feedback' => widget.onFeedbackRequested,
+      _ => null,
+    };
+    if (callback != null) {
+      callback();
+      return;
+    }
+    _showUnavailableMessage();
   }
 }
 
