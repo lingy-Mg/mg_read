@@ -28,3 +28,10 @@ ADR 记录 MgRead 不得被普通实现修改隐式改变的决策。
 | [ADR-0006](0006-cold-plugin-activation.md) | 插件更新使用版本目录并在下次进程冷激活 | Accepted |
 | [ADR-0007](0007-direct-distribution.md) | 首版全平台站外分发 | Accepted |
 | [ADR-0008](0008-standalone-plugin-runtime-boundary.md) | 独立插件运行时、零主项目注入与 Runtime 自有持久化 | Accepted |
+| [ADR-0009](0009-scoped-versioned-json-records.md) | 稳定记录骨架与作用域化版本 JSON | Accepted |
+
+## 提议中决策
+
+| ADR | 决策 | 状态 |
+| --- | --- | --- |
+| [ADR-0010](0010-split-sqlite-content-store.md) | SQLite 元数据/正文分库与外部文件对象 | Proposed：等待 Runtime Store 跨平台探针 |

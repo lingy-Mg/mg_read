@@ -120,6 +120,8 @@ flowchart TB
 - TypeScript 类型检查、调度优先级、公平性、取消、deadline、插件清单/ESM、ZIP 校验、
   安装事务、冷激活、回滚、`ctx.http`、Cookie、资源流、背压、Range 和恢复。
 - Runtime Store 的迁移、事务、缓存/下载策略、原子文件提交、`.part` 恢复和数据损坏。
+- 作用域 JSON codec、未知字段保留、旧/未来文档版本、revision、内容 generation 和
+  跨元数据/正文/文件对象的崩溃切点。
 - Runtime Facade 的强类型调用、错误投影、资源对象、自动启动和“零主项目注入”断言。
 - shared schema/fixture 的 envelope、版本协商、错误码、Unicode、64 位数值、
   `ResourceHandle` 和插件清单边界。Runtime CI 定义生成、兼容检查和破坏性变更门禁。
@@ -128,9 +130,10 @@ flowchart TB
 
 `mg_read_runtime` 当前 Windows x64 自动化已运行 Node Core 单测和实际 Flutter↔Node
 集成测试：固定 Node child、stdout ready、loopback HTTP readiness、WS hello/ping、并发
-Facade 调用共享一个 child、受控 shutdown，以及与共享 fixture 的版本一致性。Android/Javet
-和任何移动端测试、macOS 运行/签名、最终应用包、Runtime Store、插件、资源 HTTP 和完整
-故障矩阵均未执行。主项目不得以此为由新增 wire client 或跳过未来 Runtime 平台验收。
+Facade 调用共享一个 child、Windows Job Object 进程树关闭、缺 Node/缺主脚本/结构化 Node fatal
+的诊断投影、受控 shutdown，以及与共享 fixture 的版本一致性。Android/Javet 和任何移动端
+测试、macOS 运行/签名、最终应用包、Runtime Store、插件、资源 HTTP 和完整故障矩阵均未执行。
+主项目不得以此为由新增 wire client 或跳过未来 Runtime 平台验收。
 
 ### 集成、故障与平台验收
 
@@ -148,6 +151,16 @@ Runtime 集成测试必须覆盖启动前失败、非法/重复 ready、readines
 | macOS x64 | 独立 x64 包同等冒烟；不以 Rosetta 结果代替原生 x64 包验证 |
 
 所有外部源站测试使用本地可控 fixture server，不依赖真实网站或真实凭据。
+
+### Runtime Store 独立验收
+
+Store 另有一套不启动主应用、Node/Javet、WS/HTTP、插件或网络的独立验收。它只通过
+Runtime 仓库内的测试专用 Store testkit 在全新临时数据根运行，覆盖 JSON/迁移、事务、
+revision、备份、磁盘满、真实子进程强杀、两库/文件恢复、隐私 canary、150,000 条目录
+规模和三个首发平台。完整用例与证据格式见
+[11 Runtime Store 独立验收规范](11-runtime-store-acceptance.md)。
+
+Store unit test、主应用 UI test、Node integration 或单平台冒烟都不能替代这套结果。
 
 ## 验收证据边界
 

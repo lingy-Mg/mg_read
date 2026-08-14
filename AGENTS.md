@@ -24,9 +24,15 @@
 - Android 的一个专用线程 Javet `NodeRuntime`、Windows/macOS 的固定 Node 24 子进程及其打包/生命周期全部由 `mg_read_runtime` 实现；本仓库不得创建任何 Javet/Node bridge、Supervisor 或平台 Runtime 适配。
 - WS 控制面和 loopback HTTP 数据面是 Runtime 内部实现；本仓库不得创建 Runtime Client、WebSocket/HTTP handler、端口/ready/bootId 管理或 raw protocol DTO，只能调用版本化 Runtime Facade。
 - 同级 Runtime 当前的 M1.2 desktop `RuntimePingInvocation` 仅是其仓库内的 Windows 通信
-  证据，不是本项目接入 Runtime 或复制 transport 的许可；在完整 capability 发布前继续用
-  Facade 替身进行 UI 测试，绝不把其 test helper、Node 路径或 wire fixture 带入本仓库。
+  证据（包括 Runtime-own Job Object、启动诊断和有界 WS 多路复用），不是本项目接入 Runtime
+  或复制 transport 的许可；在完整 capability 发布前继续用 Facade 替身进行 UI 测试，绝不把
+  其 test helper、Node 路径或 wire fixture 带入本仓库。
 - Runtime Store 是插件安装、书架、目录、进度、书签、下载、缓存、Cookie、文件和 Runtime 诊断的权威来源。本仓库不得注入数据库路径/连接、Cookie、文件服务、平台通道、回调或 `host.*` handler，也不得读取/写入 Runtime Store。
+- Runtime Store 的可变业务字段使用按 `recordKind + scopeKind + formatVersion` 约束的版本化
+  JSON；稳定 ID、关系、排序、主要状态、revision、大小/摘要等一致性字段保留为稳定骨架。
+  动态 JSON 不得作为任意 Map 暴露给主项目，也不得承载正文、二进制、明文凭据或绝对路径。
+- Runtime Store 的后端、迁移、崩溃恢复、规模和平台测试必须在 `mg_read_runtime` 以独立
+  Store testkit 验收；测试不得依赖本主应用、页面、Node/Javet、网络或真实用户数据。
 - 插件更新使用不可变版本目录并在下次应用进程启动时冷激活；不得在当前进程热替换插件或以重启 Runtime 绕过该限制。
 
 ## 目录与依赖方向

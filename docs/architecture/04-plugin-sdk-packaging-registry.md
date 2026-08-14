@@ -207,7 +207,9 @@ stateDiagram-v2
     disabled --> active: 下次允许加载
 ```
 
-- 版本目录不可变；`activeVersion`、`pendingVersion`、`previousVersion` 是 Runtime Store 中的显式字段。
+- 版本目录不可变；`activeVersion`、`pendingVersion`、`previousVersion` 是 Runtime Store
+  `PluginInstallation` 版本文档中的显式状态语义，由稳定 lifecycle/revision envelope 投影，
+  不要求每个值成为独立数据库列。
 - ESM 已加载后不在当前 VM 内热替换，避免模块缓存、闭包、Timer 和插件状态混用。
 - 新版本在下次应用进程启动时先做清单/入口校验，再变更激活指针。
 - 首次加载失败自动恢复到保留的 `previousVersion` 并记录诊断；回滚动作也必须幂等。

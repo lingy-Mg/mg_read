@@ -82,6 +82,9 @@ MgRead 是以插件为唯一在线数据来源的本地优先阅读应用。首�
 - 首版与延期边界可由测试或产品验收观察。
 - 所有架构硬约束都有已接受 ADR。
 - `mg_read_runtime` 独立运行、Runtime 自有持久化、零主项目注入的边界已由 ADR-0008 固定。
+- 可变持久字段采用作用域化版本 JSON，稳定 envelope 与公开强类型投影的边界已由
+  ADR-0009 固定；SQLite 分库仍明确标记为等待探针的 Proposed。
+- Runtime Store 的独立验收矩阵已定义，且不以主应用、Node、网络或真实书源为前置。
 - 不增加运行时代码和依赖。
 
 ### M1：独立 Runtime 可行性门禁
@@ -106,7 +109,13 @@ MgRead 是以插件为唯一在线数据来源的本地优先阅读应用。首�
 - Runtime Supervisor、平台承载与启动管道。
 - 内部 WS/HTTP、事件、取消、deadline、幂等与重连快照；对主项目只发布 Facade。
 - Runtime Store、文件布局、原子提交、Range、背压、健康探测和句柄生命周期。
+- 稳定记录 envelope、作用域 JSON codec/升级链、内容对象层，以及独立 Store
+  acceptance/crash/stress/security 套件。
 - 结构化日志、指标、故障注入入口和零主项目注入验收。
+
+SQLite 后端若被采用，必须先完成 Android、Windows、macOS 的绑定/包体/生命周期探针和
+两库分裂提交恢复测试，再将 ADR-0010 从 Proposed 转为 Accepted；旧规划中的 Drift 不是
+默认获准依赖。
 
 ### M4：插件生态
 

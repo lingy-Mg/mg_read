@@ -134,6 +134,9 @@ envelope，也不允许主项目拼接任意方法字符串。插件管理、发
 - 插件安装、ZIP 校验、官方仓库、不可变版本目录、冷激活、回滚与启停。
 - Runtime Store：插件版本、书架/来源绑定、目录快照、阅读进度、书签、下载任务、
   内容/缓存文件、Cookie、插件 KV、Runtime 设置和脱敏诊断。
+- Runtime Store 内部使用稳定记录 envelope 与按作用域/记录类型版本化的 JSON；正文、
+  二进制和明文敏感数据不进入普通 JSON。详细设计见
+  [10 Runtime Store 持久化设计](10-runtime-store-persistence.md)。
 - Runtime 自行解析受控应用数据根目录、执行迁移、文件原子提交和启动恢复；不等待或
   请求主项目提供这些能力。
 - 未来 WebView、文件选择、通知和媒体等能力的跨平台实现或明确 `unsupported`；不得
@@ -167,6 +170,8 @@ Runtime 修改任何插件数据。插件缺失或 Runtime 暂时不可用时，
 Android Runtime 线程、Javet 事件循环泵送、桌面子进程、签名包内 Node、WS/HTTP
 readiness、Runtime Store 恢复和插件执行均由 Runtime 仓库测试和验收。主项目只测试
 Facade 契约替身下的 UI/路由/错误呈现，以及最终集成包在真实应用中的消费结果。
+Runtime Store 还必须按[独立验收规范](11-runtime-store-acceptance.md)在临时数据根中运行，
+且不启动主应用、Node/Javet、网络或真实书源。
 
 ## 架构禁止项
 

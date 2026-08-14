@@ -3,13 +3,14 @@
 本目录是 MgRead 产品范围、系统架构、公开协议和已接受架构决策的唯一入口。当前状态为
 **契约基线加有限实现证据**：同级 `mg_read_runtime` 已在其仓库实现 M1.2 Windows desktop
 bootstrap（固定 Node、内部 ready/HTTP/WS、Flutter Facade 的 `RuntimePingInvocation`）并有
-自动化测试；它不表示 Node/Javet 全平台承载、Runtime Store、插件仓库、业务能力或主项目
-Runtime 接入已经实现。完整证据边界见
+自动化测试。该 Windows 实现由 Runtime 自己用 Job Object 清理 Node 进程树、投影启动诊断，
+并使用有界 WS 多路复用；它不表示 Node/Javet 全平台承载、Runtime Store、插件仓库、业务能力
+或主项目 Runtime 接入已经实现。完整证据边界见
 [Runtime M1.2 文档](../../../mg_read_runtime/docs/desktop-runtime-bridge.md)。
 
 ## 文档状态与优先级
 
-- 基线日期：2026-08-13。
+- 基线日期：2026-08-14。
 - 首版平台：Android、Windows、macOS，Android 优先。
 - 当前阶段：主项目只建立 UI/架构基础；Runtime 仓库独立推进 M1.2 desktop 通信验证。
 - 当前阶段禁止：在 `mg_read` 新增运行时代码、平台桥接、依赖、真实书源或半成品媒体播放器；
@@ -76,6 +77,8 @@ flowchart LR
 4. Runtime 是插件与内容来源相关数据、文件、缓存、下载、Cookie 和恢复的唯一所有者；Flutter 主项目不提供数据库、路径、Cookie、文件或 `host.*` 回调注入。
 5. 已加载插件不热替换；更新在下次应用进程启动时冷激活。
 6. 首版插件被视为完全可信，本地 loopback 通信也不鉴权；这些是明确接受的风险，不是安全保证。
+7. Runtime Store 使用稳定记录骨架与按作用域版本化 JSON；大正文/二进制不进入 JSON，
+   动态持久化格式也不穿透强类型 Runtime Facade。
 
 ## 文档导航
 
@@ -90,6 +93,8 @@ flowchart LR
 | [07 并发与性能](07-concurrency-performance.md) | 有界调度、背压、取消、主项目 UI/Runtime Store 性能规则 |
 | [08 可靠性、可观测性与测试](08-reliability-observability-testing.md) | 错误恢复、日志指标、诊断、分层测试与验收边界 |
 | [09 平台发布与未来能力](09-platform-release-future-capabilities.md) | Android/桌面发布、站外分发、WebView 与媒体扩展 |
+| [10 Runtime Store 持久化设计](10-runtime-store-persistence.md) | 作用域 JSON、记录骨架、内容对象、迁移与后端探针 |
+| [11 Runtime Store 独立验收](11-runtime-store-acceptance.md) | 零主项目/零 Node/零网络的 Store 验收与故障矩阵 |
 | [ADR 索引](adr/README.md) | 不得被隐式改变的架构决策 |
 
 ## 术语

@@ -20,24 +20,26 @@
 
 ## 核心领域模型
 
-以下字段是 Runtime 的逻辑契约。Runtime 可以按内部平台类型映射，但不能改变语义，
-主项目也不得复制为第二份权威模型。
+以下是 Runtime Facade 的逻辑契约，不是“一字段一列”的数据库设计。按
+[ADR-0009](adr/0009-scoped-versioned-json-records.md)，持久化使用少量稳定 envelope 和
+按 `recordKind + scopeKind + formatVersion` 解释的 JSON payload：
+
+- 稳定 ID、资料域、父子关系、唯一身份、排序、主要状态、revision、UTC 时间、大小与摘要
+  等正确性/查询字段位于稳定骨架。
+- 标题/作者/封面、manifest 快照、来源扩展、目录附加信息、语义锚点、下载 checkpoint、
+  设置、插件 KV 和诊断上下文等易变内容位于受限版本 JSON。
+- 未知 JSON 字段必须保留；正文、图片、ZIP、明文敏感数据和绝对路径不得进入普通 JSON。
+- 主项目只看到强类型投影，不看到 JSON envelope、表或动态 Map。
+
+完整 envelope、作用域、升级和内容对象设计见
+[10 Runtime Store 持久化设计](10-runtime-store-persistence.md)。
 
 ### `PluginInstallation`
 
-| 字段 | 含义 |
-| --- | --- |
-| `pluginId` | 清单中的全局稳定 ID |
-| `installedVersions` | 已完整提交的不可变版本集合 |
-| `activeVersion` | 本启动周期期望加载的版本 |
-| `pendingVersion` | 下次应用进程启动待激活版本 |
-| `previousVersion` | 可回滚版本 |
-| `enabled` | 是否允许接收新请求 |
-| `status` | `installed/active/disabled/pendingActivation/damaged/rollbackAvailable` |
-| `manifestSnapshot` | 已校验清单的规范快照 |
-| `packageSha256` | 完整性摘要，不表示发布者身份 |
-| `lastErrorCode` | 最近稳定错误码；不保存敏感详情 |
-| `revision` | Runtime Store 乐观并发修订号 |
+`pluginId` identity、安装/版本父子关系、主要 lifecycle state 和 revision 是稳定投影。
+`installedVersions`、active/pending/previous 细节、已校验 manifest 快照与脱敏错误扩展位于
+版本化插件作用域 JSON。不可变插件包的摘要、大小和相对对象 ID 属于完整性 envelope，
+不能藏在插件可修改的 JSON 中。
 
 ### `SourceBinding`、`LibraryItem` 与 `CatalogEntry`
 
@@ -48,12 +50,15 @@ SourceBinding = pluginId + opaqueRemoteId + optional sourceKey
 `opaqueRemoteId` 完全由插件解释。URL、标题或作者不能替代该绑定，也不能据此自动跨来源
 合并。Runtime 为书架项、目录项和下载任务生成稳定 ID；主项目只回传这些 ID。
 
-`LibraryItem` 保存内容类型、加入书架时的标题/作者/封面快照、主要来源绑定、明确添加的
-其他绑定、在线/离线/插件禁用/插件缺失等可行动状态，以及当前目录 revision。
+`LibraryItem` 的稳定 ID、内容类型、主要可用状态和 revision 是稳定投影；加入书架时的
+标题/作者/封面、来源显示和未来扩展位于 library 作用域 JSON。每个 `SourceBinding` 是
+独立子记录，使用 plugin-scoped identity hash 维持唯一性，opaque remote ID 保留在其
+版本化 JSON 中。
 
-`CatalogEntry` 保存稳定目录 ID、不透明远端章节/图片集 ID、可选层级、规范排序键、标题
-快照、远端版本、缓存状态和来源时间。目录刷新在 Runtime Store 事务中建立新 revision；
-删除或改名不得破坏阅读进度锚点。
+`CatalogEntry` 一章一条记录。稳定目录 ID、父 snapshot/item、规范排序键和 revision 位于
+envelope；不透明远端章节/图片集 ID、层级、标题、远端版本、来源时间和扩展元数据位于
+catalog JSON。不得把整本目录保存为一个巨型 JSON 数组。目录刷新在 Runtime Store 事务
+中建立新 revision；删除或改名不得破坏阅读进度锚点。
 
 ### `ResourceHandle`
 
@@ -63,45 +68,37 @@ Facade 将其封装为 Runtime 资源对象；主项目不构造 URL、头或句
 
 ### `DownloadJob`
 
-| 字段 | 含义 |
-| --- | --- |
-| `id` | Runtime 生成的稳定任务 ID |
-| `libraryItemId/catalogEntryId` | 可选业务归属 |
-| `pluginId` | 获取来源 |
-| `resourceKey` | 规范资源身份，不是临时 handle |
-| `priority` | 交互/用户下载/后台预取等规范级别 |
-| `state` | 见下载状态机 |
-| `transferredBytes/totalBytes` | 64 位语义；总量可未知 |
-| `etag/lastModified` | 恢复验证信息 |
-| `sha256` | 已知时用于最终完整性校验 |
-| `partFileId` | Runtime 数据根目录中的相对临时文件标识 |
-| `checkpoint` | Range offset、分块/资源游标等版本化结构 |
-| `attempt/nextRetryAt` | 有界重试状态 |
-| `revision` | 乐观并发与幂等提交 |
+稳定任务 ID、业务父记录、priority/order、主要 state 和 revision 位于 envelope。plugin/
+resource identity、64 位字节语义、ETag/Last-Modified、摘要、相对 `.part` ID、checkpoint、
+attempt 和 retry context 位于 download 作用域版本 JSON；可能超过 JavaScript 安全整数范围
+的值使用受校验十进制字符串。调度所需派生值由可信 codec 投影，插件不能提交任意索引。
 
 ### `ReaderState`
 
 - 小说保存阅读器公开 API 定义的章节 ID 和字符/段落语义锚点。
 - 漫画保存章节 ID、图片 ID/索引及公开 API 定义的语义位置。
 - 书签保存相同语义锚点、用户标签和上下文摘要策略；不保存整章正文。
+- 锚点和书签详情是各自独立版本 JSON 文档；稳定 item/entry 关系与 revision 位于 envelope。
 - 页码、滚动像素、窗口尺寸和排版结果只可作为短期 UI 状态，不能成为跨布局持久进度。
 - 同一本书的进度写入由 Runtime 串行合并，旧请求世代不能覆盖新位置。
 
 ## Runtime Store 与受控文件根
 
-具体引擎、表和迁移在 Runtime 仓库中设计，但逻辑分区至少包括：
+Store 的逻辑分区至少包括：container metadata、scoped records、record relations、idempotency
+receipts、maintenance journal、encrypted secret records、content references/content objects 和
+file objects。它们可以在探针通过后映射到稳定骨架表与作用域 JSON，而不要求每个领域类型
+拥有一套随字段增长的列。
 
-- `plugin_installations`、`plugin_versions`、`plugin_kv`、`cookies`。
-- `library_items`、`source_bindings`、`catalog_snapshots`、`catalog_entries`。
-- `reader_progress`、`bookmarks`。
-- `download_jobs`、`content_files`、`cache_entries`。
-- `runtime_settings`、`diagnostic_events`（只存脱敏聚合或稳定码）。
+[ADR-0010](adr/0010-split-sqlite-content-store.md) 提议 SQLite 通过探针后使用轻量
+`runtime.sqlite`、统一正文对象的 `content.sqlite` 和外部文件对象层。该 ADR 当前仍是
+Proposed：精确后端/绑定、WAL、包体和三平台生命周期未获验证，旧 Drift 规划不能视为依赖
+批准。
 
 Runtime 平台集成包自行解析一个受控应用数据根目录：
 
 ```text
 runtime-data/
-  database/
+  database/                         # 后端自有；SQLite 提议为 runtime.sqlite/content.sqlite
   plugins/{pluginId}/versions/{version}/
   content/objects/{prefix}/{contentHashOrOpaqueFileId}
   downloads/parts/{jobId}.part
@@ -122,20 +119,21 @@ runtime-data/
 ```mermaid
 sequenceDiagram
     participant N as Node Transfer
-    participant FS as Runtime File Store
-    participant DB as Runtime Store
+    participant O as Runtime Object Store
+    participant M as Runtime Metadata Store
 
-    N->>FS: stream transaction.part
+    N->>O: stream transaction.part
     N->>N: verify size/type/hash
-    N->>FS: atomic rename to object file
-    N->>DB: one local transaction commits metadata
-    DB-->>N: committed revision
+    N->>O: commit immutable object
+    N->>M: CAS commit reference/revision
+    M-->>N: committed revision
     N->>N: mark transfer complete
 ```
 
-文件和元数据由同一个 Runtime 事务协调：原子重命名后、元数据提交前崩溃时，启动扫描
-根据 sidecar/命名约定重试本地幂等提交或在安全期限后清理。若记录已存在但文件缺失，
-Runtime 标记 `damaged` 并给出重新获取能力，绝不伪造成功。
+对象和元数据由同一个 Runtime operation receipt/maintenance journal 协调，但不假定不同
+数据库文件与文件系统存在一个原子事务。对象提交后、元数据引用提交前崩溃时，启动恢复
+把它识别为有保留期的 orphan；引用已存在但对象缺失时，Runtime 标记 `missing/damaged`
+并给出重新获取能力，绝不伪造成功。替换时先提交新对象和新引用，再异步回收旧对象。
 
 恢复顺序：
 
@@ -156,7 +154,7 @@ Runtime 标记 `damaged` 并给出重新获取能力，绝不伪造成功。
 pluginId + opaqueRemoteId + catalogEntryRemoteId + resourceVariant + remoteVersion
 ```
 
-- 元数据/目录快照位于 Runtime Store，二进制/大文本位于 Runtime 内容文件区。
+- 元数据/目录快照位于记录层；正文位于统一内容对象层，图片及其他二进制位于文件对象层。
 - 缓存有全局和每插件字节预算；当前阅读、显式下载、书签依赖和合法 `.part` 为 pinned。
 - 同一资源请求在 Node/Runtime 层合并；Store 只记录完成对象或显式部分状态。
 - 清缓存只删除可再生缓存，不删除书架、进度、书签和用户显式下载。

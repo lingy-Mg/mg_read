@@ -14,9 +14,10 @@
 - Windows/macOS 的 UI 发布适配；Runtime 的 Node/Javet、签名和平台包由 Runtime 仓库验收。
 
 同级 `mg_read_runtime` 已独立完成 M1.2 的 Windows desktop bootstrap 通信测试：它只验证
-Runtime 自行启动固定 Node、内部 ready/HTTP/WS 门禁和诊断性 `RuntimePingInvocation`。这不
-是本主项目的依赖或 UI 功能接入，不表示插件、Runtime Store、阅读器数据、Android/Javet、
-macOS 包或任何业务 capability 已可用。
+Runtime 自行以 Job Object 纳管固定 Node 进程树、完成内部 ready/HTTP/WS 门禁、以有界多路
+复用控制连接调用诊断性 `RuntimePingInvocation`，并向 Facade 投影脱敏启动原因。这不是本
+主项目的依赖或 UI 功能接入，不表示插件、Runtime Store、阅读器数据、Android/Javet、macOS
+包或任何业务 capability 已可用。
 
 本仓库当前阶段仍只交付 UI 壳、架构、协议、开发规范、ADR 和路线图；不得为使用该 M1.2
 验证路径在这里引入 Node/Javet、WS/HTTP Client、数据库、文件、Cookie、callback 或其他
@@ -35,9 +36,11 @@ macOS 包或任何业务 capability 已可用。
 - [并发与性能规范](docs/architecture/07-concurrency-performance.md)
 - [可靠性、可观测性与测试](docs/architecture/08-reliability-observability-testing.md)
 - [平台发布与未来 WebView/媒体边界](docs/architecture/09-platform-release-future-capabilities.md)
+- [Runtime Store 持久化设计](docs/architecture/10-runtime-store-persistence.md)
+- [Runtime Store 独立验收规范](docs/architecture/11-runtime-store-acceptance.md)
 - [已接受 ADR](docs/architecture/adr/README.md)
 
-核心决策是：每个应用进程只有一个可信 Node 24 VM；Android 由 Runtime 自有单个 Javet `NodeRuntime` 承载，Windows/macOS 使用 Runtime 自有的固定官方 Node 子进程；WS/HTTP 是 Runtime 内部实现；Runtime Store 是插件与内容数据权威；主项目只调用强类型 Runtime Facade，且不注入任何数据库、文件、Cookie、平台或 `host.*` 服务；插件更新在下次应用进程启动时冷激活。
+核心决策是：每个应用进程只有一个可信 Node 24 VM；Android 由 Runtime 自有单个 Javet `NodeRuntime` 承载，Windows/macOS 使用 Runtime 自有的固定官方 Node 子进程；WS/HTTP 是 Runtime 内部实现；Runtime Store 是插件与内容数据权威，并使用稳定记录骨架与按作用域版本化 JSON；主项目只调用强类型 Runtime Facade，且不注入任何数据库、文件、Cookie、平台或 `host.*` 服务；插件更新在下次应用进程启动时冷激活。SQLite 元数据/正文分库目前只是等待三平台探针的提议，不表示 Drift 或其他存储依赖已经获准。
 
 ## 首版闭环
 
@@ -123,6 +126,6 @@ dart format --output=none --set-exit-if-changed .
 flutter analyze
 ```
 
-存在 Dart/Flutter 测试资产时还要执行 `flutter test`。本仓库后续实现补齐 UI 单元/Widget/Facade 消费测试；Node、共享协议、Runtime Store、集成测试和三个首发平台的 Runtime 冒烟由 `mg_read_runtime` 维护并分别报告。Golden 在视觉规范稳定后按需启用。
+存在 Dart/Flutter 测试资产时还要执行 `flutter test`。本仓库后续实现补齐 UI 单元/Widget/Facade 消费测试；Node、共享协议、Runtime Store、集成测试和三个首发平台的 Runtime 冒烟由 `mg_read_runtime` 维护并分别报告。Runtime Store 还必须通过不依赖主应用、Node、网络或真实用户数据的独立验收套件。Golden 在视觉规范稳定后按需启用。
 
 静态检查、自动化测试、应用运行、桌面平台验收、Android 真机原生验收与发布验收必须分别报告，不能互相替代。
