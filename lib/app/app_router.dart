@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
+import 'package:mg_read/features/profile/presentation/profile_page.dart';
 import 'package:mg_read/features/reader/presentation/reader_destination_page.dart';
 
 part 'app_router.g.dart';
@@ -28,7 +29,27 @@ class LibraryRoute extends GoRouteData with $LibraryRoute {
 
   @override
   Widget build(BuildContext context, GoRouterState state) {
-    return const LibraryPage();
+    return LibraryPage(
+      onProfileRequested: () {
+        const ProfileRoute().go(context);
+      },
+    );
+  }
+}
+
+/// The visual profile/settings route reached from the shared mobile nav.
+@TypedGoRoute<ProfileRoute>(path: '/profile')
+class ProfileRoute extends GoRouteData with $ProfileRoute {
+  /// Creates the local profile route.
+  const ProfileRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) {
+    return ProfilePage(
+      onHomeRequested: () {
+        const LibraryRoute().go(context);
+      },
+    );
   }
 }
 

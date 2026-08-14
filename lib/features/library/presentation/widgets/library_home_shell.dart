@@ -4,10 +4,11 @@ import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_update_tile.dart';
-import 'package:mg_read/features/library/presentation/widgets/library_bottom_navigation.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_continue_reading_card.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_controls.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_source_manager_card.dart';
+import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
+import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 
 /// The responsive, presentation-only app shell for the library landing page.
 class LibraryHomeShell extends StatefulWidget {
@@ -40,7 +41,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   final ScrollController _scrollController = ScrollController();
   LibraryHomeSection _section = LibraryHomeSection.recentUpdates;
   LibraryStatusFilter _filter = LibraryStatusFilter.all;
-  LibraryNavigationDestination _destination = LibraryNavigationDestination.home;
+  AppNavigationDestination _destination = AppNavigationDestination.home;
   String? _actionFeedback;
 
   @override
@@ -124,7 +125,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        child: LibraryBottomNavigation(
+        child: AppBottomNavigation(
           selected: _destination,
           onSelected: _handleDestinationSelected,
         ),
@@ -281,17 +282,25 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     _invoke(widget.callbacks.onManageSources);
   }
 
-  void _handleDestinationSelected(LibraryNavigationDestination destination) {
+  void _handleDestinationSelected(AppNavigationDestination destination) {
     setState(() {
       _destination = destination;
     });
-    final ValueChanged<LibraryNavigationDestination>? callback =
+    if (destination == AppNavigationDestination.profile) {
+      final VoidCallback? onProfileSelected =
+          widget.callbacks.onProfileSelected;
+      if (onProfileSelected != null) {
+        onProfileSelected();
+        return;
+      }
+    }
+    final ValueChanged<AppNavigationDestination>? callback =
         widget.callbacks.onNavigationSelected;
     if (callback != null) {
       callback(destination);
       return;
     }
-    if (destination != LibraryNavigationDestination.home) {
+    if (destination != AppNavigationDestination.home) {
       _showUnavailableMessage();
     }
   }

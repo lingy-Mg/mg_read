@@ -336,6 +336,17 @@ abstract final class AppSpacing {
   static const double bottomNavigationIconSize = unit * 6;
   static const double bottomNavigationLabelSize = 11;
   static const double unreadDotSize = unit + unit / 2;
+  static const double profileCardHeight = 203;
+  static const double profileSummaryHeight = 159;
+  static const double profileSyncRowHeight = 44;
+  static const double profileAvatarSize = unit * 16;
+  static const double profileNameTop = unit * 7;
+  static const double profileMottoTop = unit * 15 - 1;
+  static const double profileStatsTop = unit * 25 - 1;
+  static const double profileEditWidth = unit * 16;
+  static const double profileSettingsRowHeight = unit * 13 + 1;
+  static const double profileSettingsIconSize = unit * 6;
+  static const double profileSettingsLeadingWidth = unit * 10;
   static const double compactCardStackBreakpoint = 280;
 }
 
@@ -348,5 +359,6 @@ abstract final class AppRadii {
     Radius.circular(10),
   );
   static const BorderRadius bookCover = BorderRadius.all(Radius.circular(6));
+  static const BorderRadius profileList = BorderRadius.all(Radius.circular(16));
   static const BorderRadius pill = BorderRadius.all(Radius.circular(999));
 }

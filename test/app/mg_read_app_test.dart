@@ -13,6 +13,7 @@ import 'package:mg_read/features/library/application/library_page_controller.dar
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/library/domain/library_overview.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
+import 'package:mg_read/features/profile/presentation/profile_page.dart';
 
 void main() {
   testWidgets(
@@ -133,6 +134,34 @@ void main() {
     await tester.tap(toggle);
     await tester.pumpAndSettle();
     expect(Theme.of(tester.element(toggle)).brightness, Brightness.light);
+  });
+
+  testWidgets('opens the profile route from the shared mobile navigation', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const ProviderScope(child: MgReadApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('app-nav-profile')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfilePage), findsOneWidget);
+    expect(
+      find.text(AppStrings.profileSettingsManagementTitle),
+      findsOneWidget,
+    );
+
+    final Finder profileToggle = find.byKey(const Key('theme-mode-toggle'));
+    expect(
+      Theme.of(tester.element(profileToggle)).brightness,
+      Brightness.light,
+    );
+    await tester.tap(profileToggle);
+    await tester.pumpAndSettle();
+    expect(Theme.of(tester.element(profileToggle)).brightness, Brightness.dark);
+
+    await tester.tap(find.byKey(const Key('app-nav-home')));
+    await tester.pumpAndSettle();
+    expect(find.byType(LibraryPage), findsOneWidget);
   });
 }
 

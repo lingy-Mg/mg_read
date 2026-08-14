@@ -22,11 +22,15 @@ class LibraryPage extends ConsumerWidget {
   const LibraryPage({
     this.previewData,
     this.callbacks = const LibraryHomeCallbacks(),
+    this.onProfileRequested,
     super.key,
   });
 
   final LibraryHomeViewData? previewData;
   final LibraryHomeCallbacks callbacks;
+
+  /// Lets the app layer own navigation to the profile feature.
+  final VoidCallback? onProfileRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -49,9 +53,18 @@ class LibraryPage extends ConsumerWidget {
     final LibraryHomeViewData data = state.overview!.isEmpty
         ? previewData ?? LibraryHomeFixtures.preview
         : LibraryHomeViewData.fromLocalOverview(state.overview!);
+    final VoidCallback? profileRequested = onProfileRequested;
+    final LibraryHomeCallbacks resolvedCallbacks = profileRequested == null
+        ? callbacks
+        : callbacks.copyWith(
+            onProfileSelected: () {
+              callbacks.onProfileSelected?.call();
+              profileRequested();
+            },
+          );
     return LibraryHomeShell(
       data: data,
-      callbacks: callbacks,
+      callbacks: resolvedCallbacks,
       isRefreshing: state.status == LibraryPageStatus.refreshing,
       onRefresh: controller.refresh,
       onToggleTheme: () {

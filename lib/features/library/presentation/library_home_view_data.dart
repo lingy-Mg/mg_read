@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:mg_read/features/library/domain/library_overview.dart';
+import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
 /// Immutable, presentation-only data for the library home screen.
 ///
@@ -129,9 +130,6 @@ enum LibraryMetadataTone { neutral, accent, success }
 /// The two content sections available at the library landing page.
 enum LibraryHomeSection { recentUpdates, shelf }
 
-/// The local presentation selection for the bottom navigation bar.
-enum LibraryNavigationDestination { home, search, discover, profile }
-
 /// Explicit, replaceable callbacks for presentation-only user intentions.
 @immutable
 final class LibraryHomeCallbacks {
@@ -144,6 +142,7 @@ final class LibraryHomeCallbacks {
     this.onBookMore,
     this.onManageSources,
     this.onNavigationSelected,
+    this.onProfileSelected,
   });
 
   final VoidCallback? onSearch;
@@ -152,7 +151,33 @@ final class LibraryHomeCallbacks {
   final ValueChanged<LibraryBookUpdateViewData>? onOpenBook;
   final ValueChanged<LibraryBookUpdateViewData>? onBookMore;
   final VoidCallback? onManageSources;
-  final ValueChanged<LibraryNavigationDestination>? onNavigationSelected;
+  final ValueChanged<AppNavigationDestination>? onNavigationSelected;
+
+  /// Requests the profile route without making this feature own app routing.
+  final VoidCallback? onProfileSelected;
+
+  /// Copies this callback collection while replacing selected intentions.
+  LibraryHomeCallbacks copyWith({
+    VoidCallback? onSearch,
+    VoidCallback? onReadingHistory,
+    VoidCallback? onContinueReading,
+    ValueChanged<LibraryBookUpdateViewData>? onOpenBook,
+    ValueChanged<LibraryBookUpdateViewData>? onBookMore,
+    VoidCallback? onManageSources,
+    ValueChanged<AppNavigationDestination>? onNavigationSelected,
+    VoidCallback? onProfileSelected,
+  }) {
+    return LibraryHomeCallbacks(
+      onSearch: onSearch ?? this.onSearch,
+      onReadingHistory: onReadingHistory ?? this.onReadingHistory,
+      onContinueReading: onContinueReading ?? this.onContinueReading,
+      onOpenBook: onOpenBook ?? this.onOpenBook,
+      onBookMore: onBookMore ?? this.onBookMore,
+      onManageSources: onManageSources ?? this.onManageSources,
+      onNavigationSelected: onNavigationSelected ?? this.onNavigationSelected,
+      onProfileSelected: onProfileSelected ?? this.onProfileSelected,
+    );
+  }
 }
 
 /// Clearly disclosed fixture data used before a Runtime Facade projection exists.

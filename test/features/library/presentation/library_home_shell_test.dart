@@ -10,10 +10,11 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_update_tile.dart';
-import 'package:mg_read/features/library/presentation/widgets/library_bottom_navigation.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_continue_reading_card.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_controls.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
+import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
+import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 
 void main() {
   testWidgets('renders the home hierarchy with progress and book semantics', (
@@ -34,7 +35,7 @@ void main() {
     expect(find.text('诡秘之主'), findsAtLeastNWidgets(2));
     expect(find.text(AppStrings.recentUpdatesLabel), findsOneWidget);
     expect(find.text(AppStrings.manageSourcesLabel), findsOneWidget);
-    expect(find.byType(LibraryBottomNavigation), findsOneWidget);
+    expect(find.byType(AppBottomNavigation), findsOneWidget);
     expect(
       find.byWidgetPredicate(
         (Widget widget) =>
@@ -63,7 +64,7 @@ void main() {
     'continue reading and bottom navigation invoke replaceable callbacks',
     (WidgetTester tester) async {
       int continueReadingCount = 0;
-      LibraryNavigationDestination? selectedDestination;
+      AppNavigationDestination? selectedDestination;
 
       await tester.pumpWidget(
         _host(
@@ -71,7 +72,7 @@ void main() {
             onContinueReading: () {
               continueReadingCount += 1;
             },
-            onNavigationSelected: (LibraryNavigationDestination destination) {
+            onNavigationSelected: (AppNavigationDestination destination) {
               selectedDestination = destination;
             },
           ),
@@ -84,7 +85,7 @@ void main() {
 
       await tester.tap(find.text(AppStrings.searchNavigationLabel));
       await tester.pumpAndSettle();
-      expect(selectedDestination, LibraryNavigationDestination.search);
+      expect(selectedDestination, AppNavigationDestination.search);
     },
   );
 

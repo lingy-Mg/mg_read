@@ -2,19 +2,19 @@ import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
-import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
+import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
-/// Bottom destinations for the home UI's presentation-only navigation state.
-class LibraryBottomNavigation extends StatelessWidget {
-  /// Creates a navigation bar with a single selected destination.
-  const LibraryBottomNavigation({
+/// Bottom destinations for the mobile-first root feature surfaces.
+class AppBottomNavigation extends StatelessWidget {
+  /// Creates a navigation bar with one selected destination.
+  const AppBottomNavigation({
     required this.selected,
     required this.onSelected,
     super.key,
   });
 
-  final LibraryNavigationDestination selected;
-  final ValueChanged<LibraryNavigationDestination> onSelected;
+  final AppNavigationDestination selected;
+  final ValueChanged<AppNavigationDestination> onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +22,7 @@ class LibraryBottomNavigation extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
 
     return SizedBox(
-      key: const Key('library-bottom-navigation'),
+      key: const Key('app-bottom-navigation'),
       height: AppSpacing.bottomNavigationHeight,
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -33,10 +33,10 @@ class LibraryBottomNavigation extends StatelessWidget {
           padding: const EdgeInsets.only(top: AppSpacing.compact + 2),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: LibraryNavigationDestination.values
+            children: AppNavigationDestination.values
                 .map(
-                  (LibraryNavigationDestination destination) => Expanded(
-                    child: _LibraryNavigationItem(
+                  (AppNavigationDestination destination) => Expanded(
+                    child: _AppNavigationItem(
                       destination: destination,
                       selected: destination == selected,
                       onSelected: onSelected,
@@ -53,8 +53,8 @@ class LibraryBottomNavigation extends StatelessWidget {
   }
 }
 
-class _LibraryNavigationItem extends StatelessWidget {
-  const _LibraryNavigationItem({
+class _AppNavigationItem extends StatelessWidget {
+  const _AppNavigationItem({
     required this.destination,
     required this.selected,
     required this.onSelected,
@@ -62,15 +62,15 @@ class _LibraryNavigationItem extends StatelessWidget {
     required this.tokens,
   });
 
-  final LibraryNavigationDestination destination;
+  final AppNavigationDestination destination;
   final bool selected;
-  final ValueChanged<LibraryNavigationDestination> onSelected;
+  final ValueChanged<AppNavigationDestination> onSelected;
   final ThemeData theme;
   final AppThemeTokens tokens;
 
   @override
   Widget build(BuildContext context) {
-    final _LibraryNavigationItemData data = _dataFor(destination);
+    final _AppNavigationItemData data = _dataFor(destination);
     final Color foreground = selected
         ? tokens.accent
         : theme.colorScheme.onSurface.withValues(alpha: 0.82);
@@ -82,7 +82,7 @@ class _LibraryNavigationItem extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          key: ValueKey<String>('library-nav-${destination.name}'),
+          key: ValueKey<String>('app-nav-${destination.name}'),
           onTap: () => onSelected(destination),
           child: SizedBox(
             height: AppSpacing.section * 2 + AppSpacing.unit,
@@ -112,24 +112,24 @@ class _LibraryNavigationItem extends StatelessWidget {
     );
   }
 
-  _LibraryNavigationItemData _dataFor(LibraryNavigationDestination value) {
+  _AppNavigationItemData _dataFor(AppNavigationDestination value) {
     return switch (value) {
-      LibraryNavigationDestination.home => const _LibraryNavigationItemData(
+      AppNavigationDestination.home => const _AppNavigationItemData(
         label: AppStrings.homeNavigationLabel,
         icon: Icons.home_outlined,
         selectedIcon: Icons.home_rounded,
       ),
-      LibraryNavigationDestination.search => const _LibraryNavigationItemData(
+      AppNavigationDestination.search => const _AppNavigationItemData(
         label: AppStrings.searchNavigationLabel,
         icon: Icons.search_rounded,
         selectedIcon: Icons.search_rounded,
       ),
-      LibraryNavigationDestination.discover => const _LibraryNavigationItemData(
+      AppNavigationDestination.discover => const _AppNavigationItemData(
         label: AppStrings.discoverNavigationLabel,
         icon: Icons.explore_outlined,
         selectedIcon: Icons.explore_rounded,
       ),
-      LibraryNavigationDestination.profile => const _LibraryNavigationItemData(
+      AppNavigationDestination.profile => const _AppNavigationItemData(
         label: AppStrings.profileNavigationLabel,
         icon: Icons.person_outline_rounded,
         selectedIcon: Icons.person_rounded,
@@ -138,8 +138,8 @@ class _LibraryNavigationItem extends StatelessWidget {
   }
 }
 
-class _LibraryNavigationItemData {
-  const _LibraryNavigationItemData({
+class _AppNavigationItemData {
+  const _AppNavigationItemData({
     required this.label,
     required this.icon,
     required this.selectedIcon,
