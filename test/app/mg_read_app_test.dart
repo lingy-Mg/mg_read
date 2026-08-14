@@ -6,23 +6,33 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_router.dart';
 import 'package:mg_read/app/mg_read_app.dart';
+import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/library/application/library_overview_loader.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/library/domain/library_overview.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
+import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
+import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
+
+import 'mg_read_app_test_support.dart';
 
 void main() {
   testWidgets(
     'shows loading then retains successful content on refresh failure',
     (WidgetTester tester) async {
+      final settings = await createTestAppSettings();
+      addTearDown(settings.close);
       final _ControlledLibraryOverviewLoader loader =
           _ControlledLibraryOverviewLoader();
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [libraryOverviewLoaderProvider.overrideWithValue(loader)],
+          overrides: [
+            appSettingsProvider.overrideWithValue(settings),
+            libraryOverviewLoaderProvider.overrideWithValue(loader),
+          ],
           child: const MgReadApp(),
         ),
       );
@@ -56,7 +66,9 @@ void main() {
   testWidgets('uses the generated typed reader route with a stable ID only', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const ProviderScope(child: MgReadApp()));
+    final settings = await createTestAppSettings();
+    addTearDown(settings.close);
+    await tester.pumpWidget(testMgReadApp(settings));
     await tester.pumpAndSettle();
 
     final BuildContext context = tester.element(find.byType(LibraryPage));
@@ -73,11 +85,16 @@ void main() {
   testWidgets('ignores a pending library load after its route is disposed', (
     WidgetTester tester,
   ) async {
+    final settings = await createTestAppSettings();
+    addTearDown(settings.close);
     final _ControlledLibraryOverviewLoader loader =
         _ControlledLibraryOverviewLoader();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [libraryOverviewLoaderProvider.overrideWithValue(loader)],
+        overrides: [
+          appSettingsProvider.overrideWithValue(settings),
+          libraryOverviewLoaderProvider.overrideWithValue(loader),
+        ],
         child: const MgReadApp(),
       ),
     );
@@ -97,12 +114,17 @@ void main() {
   testWidgets('temporarily switches the app theme from the home top bar', (
     WidgetTester tester,
   ) async {
+    final settings = await createTestAppSettings(themeMode: 'light');
+    addTearDown(settings.close);
     final _ControlledLibraryOverviewLoader loader =
         _ControlledLibraryOverviewLoader();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [libraryOverviewLoaderProvider.overrideWithValue(loader)],
-        child: const MgReadApp(themeMode: ThemeMode.light),
+        overrides: [
+          appSettingsProvider.overrideWithValue(settings),
+          libraryOverviewLoaderProvider.overrideWithValue(loader),
+        ],
+        child: const MgReadApp(),
       ),
     );
     await tester.pump();
@@ -117,6 +139,7 @@ void main() {
     await tester.tap(toggle);
     await tester.pumpAndSettle();
     expect(Theme.of(tester.element(toggle)).brightness, Brightness.dark);
+    expect(settings.get(AppSettingKeys.themeMode), 'dark');
     expect(find.byTooltip('切换至浅色模式'), findsOneWidget);
 
     await tester.tap(toggle);
@@ -127,7 +150,9 @@ void main() {
   testWidgets('opens the profile route from the shared mobile navigation', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const ProviderScope(child: MgReadApp()));
+    final settings = await createTestAppSettings(themeMode: 'light');
+    addTearDown(settings.close);
+    await tester.pumpWidget(testMgReadApp(settings));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('app-nav-profile')));
@@ -148,6 +173,56 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(LibraryPage), findsOneWidget);
   });
+
+  testWidgets(
+    'uses the system brightness until the session theme toggle chooses an explicit mode',
+    (WidgetTester tester) async {
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+      final settings = await createTestAppSettings();
+      addTearDown(settings.close);
+
+      await tester.pumpWidget(testMgReadApp(settings));
+      await tester.pumpAndSettle();
+
+      _expectBrightnessForCurrentPage(tester, Brightness.dark);
+
+      await tester.tap(find.byKey(const Key('theme-mode-toggle')));
+      await tester.pumpAndSettle();
+      _expectBrightnessForCurrentPage(tester, Brightness.light);
+      expect(settings.get(AppSettingKeys.themeMode), 'light');
+
+      await tester.tap(find.byKey(const Key('app-nav-search')));
+      await tester.pumpAndSettle();
+      expect(find.byType(SearchPage), findsOneWidget);
+      _expectBrightnessForCurrentPage(tester, Brightness.light);
+
+      await tester.tap(find.byKey(const Key('app-nav-discover')));
+      await tester.pumpAndSettle();
+      expect(find.byType(DiscoveryPage), findsOneWidget);
+      _expectBrightnessForCurrentPage(tester, Brightness.light);
+
+      await tester.tap(find.byKey(const Key('app-nav-profile')));
+      await tester.pumpAndSettle();
+      expect(find.byType(ProfilePage), findsOneWidget);
+      _expectBrightnessForCurrentPage(tester, Brightness.light);
+    },
+  );
+}
+
+void _expectBrightnessForCurrentPage(
+  WidgetTester tester,
+  Brightness brightness,
+) {
+  final Finder page = find.byWidgetPredicate(
+    (Widget widget) =>
+        widget is LibraryPage ||
+        widget is SearchPage ||
+        widget is DiscoveryPage ||
+        widget is ProfilePage,
+  );
+  expect(page, findsOneWidget);
+  expect(Theme.of(tester.element(page)).brightness, brightness);
 }
 
 LibraryOverview _overview(String title) {

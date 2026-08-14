@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// Exposes the temporary, app-session theme control to routed UI.
+/// Exposes the app-root theme control to routed UI.
 ///
-/// This scope deliberately owns no persistence. A future settings delivery can
-/// replace the callback with a persisted preference without coupling feature
-/// widgets to a settings store.
+/// Persistence remains owned by the application settings manager at the root;
+/// routed widgets only request a change through this narrow UI scope.
 class AppThemeModeScope extends InheritedWidget {
   /// Creates an app-local theme control scope.
   const AppThemeModeScope({

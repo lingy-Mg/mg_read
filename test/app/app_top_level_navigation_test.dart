@@ -2,20 +2,22 @@ import 'dart:ui' show Tristate;
 
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mg_read/app/app.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
+import 'mg_read_app_test_support.dart';
+
 void main() {
   testWidgets(
     'switches each top-level destination through its route and preserves route-owned selection',
     (WidgetTester tester) async {
       final SemanticsHandle semantics = tester.ensureSemantics();
-      await tester.pumpWidget(const ProviderScope(child: MgReadApp()));
+      final settings = await createTestAppSettings();
+      addTearDown(settings.close);
+      await tester.pumpWidget(testMgReadApp(settings));
       await tester.pumpAndSettle();
 
       expect(find.byType(LibraryPage), findsOneWidget);

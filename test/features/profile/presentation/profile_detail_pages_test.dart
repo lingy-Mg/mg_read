@@ -3,19 +3,21 @@ import 'dart:ui' show Tristate;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mg_read/app/app.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/profile/presentation/about_page.dart';
 import 'package:mg_read/features/profile/presentation/feedback_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
+
+import '../../../app/mg_read_app_test_support.dart';
 
 void main() {
   testWidgets(
     'profile opens typed about and feedback routes and back returns',
     (WidgetTester tester) async {
       await _setViewport(tester, const Size(390, 900));
-      await tester.pumpWidget(const ProviderScope(child: MgReadApp()));
+      final settings = await createTestAppSettings();
+      addTearDown(settings.close);
+      await tester.pumpWidget(testMgReadApp(settings));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('app-nav-profile')));
@@ -196,9 +198,9 @@ void main() {
     'profile theme switch applies to details without header actions',
     (WidgetTester tester) async {
       await _setViewport(tester, const Size(390, 900));
-      await tester.pumpWidget(
-        const ProviderScope(child: MgReadApp(themeMode: ThemeMode.light)),
-      );
+      final settings = await createTestAppSettings(themeMode: 'light');
+      addTearDown(settings.close);
+      await tester.pumpWidget(testMgReadApp(settings));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('app-nav-profile')));
