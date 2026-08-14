@@ -1,6 +1,6 @@
 # MgRead
 
-`MgRead` 是以插件为全部在线数据来源的本地优先小说/漫画阅读应用的 Flutter UI 主项目。它拥有路由、主题、页面、用户交互和阅读器视图宿主；完整插件能力、书架/进度等插件数据、持久化、缓存、下载、平台承载与通信全部由独立的 `mg_read_runtime` 提供。独立的 `novel_reader_ui` Flutter 插件只负责阅读器体验。
+`MgRead` 是以插件为在线数据来源的本地优先小说/漫画阅读应用的 Flutter 主项目。它拥有路由、主题、页面、用户交互、阅读器视图宿主和应用权威持久化；`mg_read_runtime` 只负责插件执行与平台 Runtime。独立的 `novel_reader_ui` Flutter 插件只负责阅读器体验。
 
 首版承诺 Android、Windows 和 macOS，Android 优先。iOS、Linux 和 Web 暂不在支持范围。
 
@@ -38,8 +38,8 @@ Runtime 自行以 Job Object 纳管固定 Node 进程树、完成内部 ready/HT
 - [并发与性能规范](docs/architecture/07-concurrency-performance.md)
 - [可靠性、可观测性与测试](docs/architecture/08-reliability-observability-testing.md)
 - [平台发布与未来 WebView/媒体边界](docs/architecture/09-platform-release-future-capabilities.md)
-- [Runtime Store 持久化设计](docs/architecture/10-runtime-store-persistence.md)
-- [Runtime Store 独立验收规范](docs/architecture/11-runtime-store-acceptance.md)
+- [主应用持久化设计](docs/architecture/10-app-persistence-design.md)
+- [主应用持久化独立验收规范](docs/architecture/11-app-persistence-acceptance.md)
 - [已接受 ADR](docs/architecture/adr/README.md)
 
 核心决策是：每个应用进程只有一个可信 Node 24 VM；Android 由 Runtime 自有单个 Javet `NodeRuntime` 承载，Windows/macOS 使用 Runtime 自有的固定官方 Node 子进程；WS/HTTP 是 Runtime 内部实现；Runtime Store 是插件与内容数据权威，并使用稳定记录骨架与按作用域版本化 JSON；主项目只调用强类型 Runtime Facade，且不注入任何数据库、文件、Cookie、平台或 `host.*` 服务；插件更新在下次应用进程启动时冷激活。SQLite 元数据/正文分库目前只是等待三平台探针的提议，不表示 Drift 或其他存储依赖已经获准。

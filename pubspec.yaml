@@ -11,6 +11,7 @@ dependencies:
     sdk: flutter
   flutter_riverpod: 3.4.2
   go_router: 17.3.0
+  drift: 2.34.3
   novel_reader_ui:
     path: ../mg_read_reader_ui
 

@@ -13,7 +13,7 @@ bootstrap（固定 Node、内部 ready/HTTP/WS、Flutter Facade 的 `RuntimePing
 - 基线日期：2026-08-14。
 - 首版平台：Android、Windows、macOS，Android 优先。
 - 当前阶段：主项目只建立 UI/架构基础；Runtime 仓库独立推进 M1.2 desktop 通信验证。
-- 当前阶段禁止：在 `mg_read` 新增运行时代码、平台桥接、依赖、真实书源或半成品媒体播放器；
+- 当前阶段禁止：在 `mg_read` 新增运行时代码、平台桥接、真实书源或半成品媒体播放器；主应用核心持久化按 ADR-0011 单独演进。
   M1.2 不得被当作例外搬运到主项目。
 - 冲突处理顺序：已接受 ADR → 本目录中的协议/专题规范 → 根目录 `AGENTS.md` → README 与实现说明。
 - 已接受 ADR 不能被实现或普通文档修改隐式推翻；变更时必须新增替代 ADR，并标记旧 ADR 被取代。
@@ -74,7 +74,7 @@ flowchart LR
 1. 一个应用进程只有一个 Node Runtime、一个 V8 Isolate/Context；插件不得创建 Worker、子进程、第二个 VM 或加载原生 Addon。
 2. 单 VM 的目标是高并发异步 I/O，不承诺 CPU 密集脚本并行；同步死循环可以拖死整个插件系统。
 3. WS 是 Runtime 内部的全双工控制面，HTTP 是 Runtime 内部的资源数据面；二进制和超限文本不进入 JSON/Base64，主项目不直接连接任一端点。
-4. Runtime 是插件与内容来源相关数据、文件、缓存、下载、Cookie 和恢复的唯一所有者；Flutter 主项目不提供数据库、路径、Cookie、文件或 `host.*` 回调注入。
+4. Runtime 负责插件执行与平台运行时，不能打开主应用 SQLite 或获得其路径/连接；应用权威元数据由主项目 core persistence 持有。
 5. 已加载插件不热替换；更新在下次应用进程启动时冷激活。
 6. 首版插件被视为完全可信，本地 loopback 通信也不鉴权；这些是明确接受的风险，不是安全保证。
 7. Runtime Store 使用稳定记录骨架与按作用域版本化 JSON；大正文/二进制不进入 JSON，
@@ -93,8 +93,8 @@ flowchart LR
 | [07 并发与性能](07-concurrency-performance.md) | 有界调度、背压、取消、主项目 UI/Runtime Store 性能规则 |
 | [08 可靠性、可观测性与测试](08-reliability-observability-testing.md) | 错误恢复、日志指标、诊断、分层测试与验收边界 |
 | [09 平台发布与未来能力](09-platform-release-future-capabilities.md) | Android/桌面发布、站外分发、WebView 与媒体扩展 |
-| [10 Runtime Store 持久化设计](10-runtime-store-persistence.md) | 作用域 JSON、记录骨架、内容对象、迁移与后端探针 |
-| [11 Runtime Store 独立验收](11-runtime-store-acceptance.md) | 零主项目/零 Node/零网络的 Store 验收与故障矩阵 |
+| [10 主应用持久化设计](10-app-persistence-design.md) | 应用权威元数据、版本 JSON 与后台 executor |
+| [11 主应用持久化独立验收](11-app-persistence-acceptance.md) | 临时数据根、独立 Store 验收与故障矩阵 |
 | [ADR 索引](adr/README.md) | 不得被隐式改变的架构决策 |
 
 ## 术语

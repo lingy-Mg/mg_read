@@ -1,6 +1,6 @@
 # ADR-0008：独立插件运行时与零主项目注入
 
-- 状态：Accepted
+- 状态：Superseded by ADR-0011
 - 日期：2026-08-13
 - 决策者：MgRead 项目
 - 取代：[ADR-0005](0005-host-database-authority.md)

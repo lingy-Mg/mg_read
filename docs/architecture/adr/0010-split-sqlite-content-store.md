@@ -1,6 +1,6 @@
 # ADR-0010：SQLite 元数据/正文分库与外部文件对象
 
-- 状态：Proposed（等待 Runtime Store 跨平台探针）
+- 状态：Superseded by ADR-0011
 - 日期：2026-08-14
 - 决策者：MgRead 项目
 - 依赖：[ADR-0008](0008-standalone-plugin-runtime-boundary.md)、
