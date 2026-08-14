@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
@@ -16,15 +17,62 @@ part 'app_router.g.dart';
 
 /// Supplies the declarative application router and disposes it with the app.
 final appRouterProvider = Provider<GoRouter>((Ref ref) {
+  final diagnostics = ref.watch(diagnosticsManagerProvider);
   final GoRouter router = GoRouter(
     routes: $appRoutes,
     errorBuilder: (BuildContext context, GoRouterState state) {
       return const _UnknownRoutePage();
     },
   );
-  ref.onDispose(router.dispose);
+  String? previousRoute;
+  void reportRoute() {
+    final nextRoute = _stableRouteName(
+      router.routerDelegate.currentConfiguration.uri,
+    );
+    if (nextRoute == previousRoute) return;
+    try {
+      diagnostics.emit(
+        AppDiagnosticEvents.routeChanged,
+        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+          'fromRoute': previousRoute == null
+              ? DiagnosticValue.nullValue
+              : DiagnosticValue.string(previousRoute!),
+          'toRoute': DiagnosticValue.string(nextRoute),
+          'navigationType': DiagnosticValue.string(
+            previousRoute == null ? 'initial' : 'routeUpdate',
+          ),
+        }),
+      );
+    } catch (_) {
+      // Routing remains available if diagnostics is closing or unavailable.
+    }
+    previousRoute = nextRoute;
+  }
+
+  router.routerDelegate.addListener(reportRoute);
+  reportRoute();
+  ref.onDispose(() {
+    router.routerDelegate.removeListener(reportRoute);
+    router.dispose();
+  });
   return router;
 });
+
+String _stableRouteName(Uri uri) {
+  final segments = uri.pathSegments;
+  if (segments.isEmpty) return 'library';
+  return switch (segments.first) {
+    'search' => 'search',
+    'discover' => 'discovery',
+    'reader' => 'reader',
+    'profile' when segments.length > 1 && segments[1] == 'about' =>
+      'profile.about',
+    'profile' when segments.length > 1 && segments[1] == 'feedback' =>
+      'profile.feedback',
+    'profile' => 'profile',
+    _ => 'unknown',
+  };
+}
 
 void _goToDestination(
   BuildContext context,

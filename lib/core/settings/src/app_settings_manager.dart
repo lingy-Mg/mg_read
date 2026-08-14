@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:isolate';
 import 'dart:math' as math;
 
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
+
 import 'background_settings_client.dart';
 import 'setting_key.dart';
 import 'settings_registry.dart';
@@ -46,6 +48,7 @@ final class AppSettingsManager {
     Iterable<SettingKey<dynamic>>? keys,
     SettingsPersistencePolicy policy = const SettingsPersistencePolicy(),
     SettingsClock clock = _utcNow,
+    DiagnosticsManager? diagnostics,
   }) {
     if ((store == null) == (storeFactory == null)) {
       throw ArgumentError('Provide exactly one SettingsStore or storeFactory.');
@@ -61,6 +64,7 @@ final class AppSettingsManager {
       registry: effectiveRegistry,
       policy: policy,
       clock: clock,
+      diagnostics: diagnostics,
     );
   }
 
@@ -70,6 +74,7 @@ final class AppSettingsManager {
     required SettingsRegistry registry,
     required this._policy,
     required this._clock,
+    required this._diagnostics,
   }) : _registry = registry,
        _documents = {
          for (final definition in registry.documents.values)
@@ -86,6 +91,7 @@ final class AppSettingsManager {
   final SettingsRegistry _registry;
   final SettingsPersistencePolicy _policy;
   final SettingsClock _clock;
+  final DiagnosticsManager? _diagnostics;
   final Map<String, _RuntimeDocument> _documents;
   final ReceivePort _commandReceiver;
   final StreamController<SettingsSnapshot> _changes =
@@ -128,18 +134,34 @@ final class AppSettingsManager {
     if (_state != SettingsState.loading) {
       return;
     }
+    final span = _diagnostics?.startSpan(
+      AppDiagnosticEvents.settingsInitialize,
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'settingCount': DiagnosticValue.int64(_registry.keys.length),
+      }),
+    );
     SettingsStore? newlyOpenedStore;
     try {
       if (_store == null) {
         newlyOpenedStore = await _storeFactory!();
         if (_isClosingOrClosed) {
           await _closeLateStore(newlyOpenedStore);
+          span?.cancel(
+            attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+              'errorCode': DiagnosticValue.string('settings_closing'),
+            }),
+          );
           return;
         }
         _store = newlyOpenedStore;
       }
       final loaded = await _store!.loadAll(_registry.documents.values);
       if (_state != SettingsState.loading) {
+        span?.cancel(
+          attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+            'errorCode': DiagnosticValue.string('state_changed'),
+          }),
+        );
         return;
       }
       final seen = <String>{};
@@ -157,15 +179,30 @@ final class AppSettingsManager {
           });
       _state = SettingsState.ready;
       _recomputeOperationalState();
+      span?.complete(
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+          'settingCount': DiagnosticValue.int64(_registry.keys.length),
+        }),
+      );
     } catch (_) {
       if (_isClosingOrClosed) {
         if (newlyOpenedStore != null && !identical(newlyOpenedStore, _store)) {
           await _closeLateStore(newlyOpenedStore);
         }
+        span?.cancel(
+          attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+            'errorCode': DiagnosticValue.string('settings_closing'),
+          }),
+        );
         return;
       }
       _state = SettingsState.failed;
       _globalErrorCode = 'initialization_failed';
+      span?.fail(
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+          'errorCode': DiagnosticValue.string('initialization_failed'),
+        }),
+      );
     }
     _emitStatus(recomputeState: false);
   }
@@ -184,10 +221,54 @@ final class AppSettingsManager {
     SettingsChangeSource source = SettingsChangeSource.application,
   }) {
     try {
-      _ensureWritable();
-      final editor = SettingsTransaction._(_registry);
-      action(editor);
-      _applyMutations(editor._operations, source: source);
+      (int, int, String) apply() {
+        _ensureWritable();
+        final editor = SettingsTransaction._(_registry);
+        action(editor);
+        _applyMutations(editor._operations, source: source);
+        final operationKinds = editor._operations
+            .map(
+              (operation) => switch (operation) {
+                _SetMutation() => 'set',
+                _ResetMutation() => 'reset',
+                _ResetGroupMutation() => 'resetGroup',
+              },
+            )
+            .toSet();
+        return (
+          editor._operations.length,
+          editor._operations.map((item) => item.documentKind).toSet().length,
+          operationKinds.length == 1 ? operationKinds.single : 'mixed',
+        );
+      }
+
+      final diagnostics = _diagnostics;
+      if (diagnostics == null) {
+        apply();
+      } else {
+        diagnostics.runSpanSync<(int, int, String)>(
+          AppDiagnosticEvents.settingsMutation,
+          (_) => apply(),
+          startAttributes: () =>
+              DiagnosticObjectValue(<String, DiagnosticValue>{
+                'operation': DiagnosticValue.string('transaction'),
+                'source': DiagnosticValue.string(source.name),
+              }),
+          successAttributes: (result) =>
+              DiagnosticObjectValue(<String, DiagnosticValue>{
+                'operation': DiagnosticValue.string(result.$3),
+                'keyCount': DiagnosticValue.int64(result.$1),
+                'documentCount': DiagnosticValue.int64(result.$2),
+                'source': DiagnosticValue.string(source.name),
+              }),
+          errorAttributes: (_) =>
+              DiagnosticObjectValue(<String, DiagnosticValue>{
+                'operation': DiagnosticValue.string('transaction'),
+                'source': DiagnosticValue.string(source.name),
+                'errorCode': DiagnosticValue.string('mutation_rejected'),
+              }),
+        );
+      }
       return Future<void>.value();
     } catch (error, stack) {
       return Future<void>.error(error, stack);
@@ -407,6 +488,29 @@ final class AppSettingsManager {
     if (documents.isEmpty || _store == null) {
       return;
     }
+    final span = _diagnostics?.startSpan(
+      AppDiagnosticEvents.settingsWrite,
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'settingKey': DiagnosticValue.string('batch'),
+        'documentCount': DiagnosticValue.int64(documents.length),
+      }),
+    );
+    final stopwatch = Stopwatch()..start();
+    void report(DiagnosticOutcome outcome) {
+      final diagnostics = _diagnostics;
+      if (diagnostics == null || span == null) return;
+      stopwatch.stop();
+      reportSlowDiagnostic(
+        diagnostics,
+        subjectComponent: 'app.settings',
+        operation: 'writeBatch',
+        elapsed: stopwatch.elapsed,
+        threshold: AppDiagnosticThresholds.settingsWrite,
+        outcome: outcome,
+        traceContext: span.traceContext,
+      );
+    }
+
     for (final document in documents) {
       document.inFlight = true;
     }
@@ -439,17 +543,50 @@ final class AppSettingsManager {
           _applyWriteSuccess(capture, result);
         }
         _emitStatus();
+        final revisions = saved
+            .map((document) => document.revision ?? 0)
+            .toList(growable: false);
+        span?.complete(
+          attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+            'settingKey': DiagnosticValue.string('batch'),
+            'documentCount': DiagnosticValue.int64(captures.length),
+            'attempt': DiagnosticValue.int64(conflictAttempt + 1),
+            'revision': DiagnosticValue.int64(
+              revisions.isEmpty ? 0 : revisions.reduce(math.max),
+            ),
+          }),
+        );
+        report(DiagnosticOutcome.success);
         return;
       } on SettingsStoreConflict {
         if (conflictAttempt >= _policy.maxConflictRetries) {
           _markWriteFailure(documents, 'revision_conflict');
+          span?.fail(
+            attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+              'settingKey': DiagnosticValue.string('batch'),
+              'documentCount': DiagnosticValue.int64(documents.length),
+              'attempt': DiagnosticValue.int64(conflictAttempt + 1),
+              'errorCode': DiagnosticValue.string('revision_conflict'),
+            }),
+          );
+          report(DiagnosticOutcome.error);
           return;
         }
         conflictAttempt++;
         try {
           await _reloadAndMerge(documents);
         } catch (error) {
-          _markWriteFailure(documents, _safeWriteErrorCode(error));
+          final errorCode = _safeWriteErrorCode(error);
+          _markWriteFailure(documents, errorCode);
+          span?.fail(
+            attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+              'settingKey': DiagnosticValue.string('batch'),
+              'documentCount': DiagnosticValue.int64(documents.length),
+              'attempt': DiagnosticValue.int64(conflictAttempt + 1),
+              'errorCode': DiagnosticValue.string(errorCode),
+            }),
+          );
+          report(DiagnosticOutcome.error);
           return;
         }
         documents = [
@@ -457,7 +594,17 @@ final class AppSettingsManager {
             if (document.dirty && !document.readOnly) document,
         ];
       } catch (error) {
-        _markWriteFailure(documents, _safeWriteErrorCode(error));
+        final errorCode = _safeWriteErrorCode(error);
+        _markWriteFailure(documents, errorCode);
+        span?.fail(
+          attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+            'settingKey': DiagnosticValue.string('batch'),
+            'documentCount': DiagnosticValue.int64(documents.length),
+            'attempt': DiagnosticValue.int64(conflictAttempt + 1),
+            'errorCode': DiagnosticValue.string(errorCode),
+          }),
+        );
+        report(DiagnosticOutcome.error);
         return;
       }
     }
@@ -465,6 +612,14 @@ final class AppSettingsManager {
       document.inFlight = false;
     }
     _emitStatus();
+    span?.complete(
+      attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+        'settingKey': DiagnosticValue.string('batch'),
+        'documentCount': DiagnosticValue.int64(0),
+        'attempt': DiagnosticValue.int64(conflictAttempt + 1),
+      }),
+    );
+    report(DiagnosticOutcome.success);
   }
 
   _WriteCapture _capture(_RuntimeDocument document) => _WriteCapture(

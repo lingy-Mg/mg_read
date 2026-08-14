@@ -21,6 +21,7 @@ void main() {
       Widget? mounted;
       final boot = bootstrapMgReadApp(
         settingsManager: manager,
+        diagnosticsServiceFactory: null,
         appRunner: (app) => mounted = app,
         child: Consumer(
           builder: (context, ref, child) => Text(
@@ -58,6 +59,7 @@ void main() {
 
     await bootstrapMgReadApp(
       settingsManager: manager,
+      diagnosticsServiceFactory: null,
       appRunner: (app) => mounted = app,
       child: Consumer(
         builder: (context, ref, child) => Text(

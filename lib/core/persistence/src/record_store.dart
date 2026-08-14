@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 
 import 'json_codec.dart';
 import 'persistence_error.dart';
@@ -17,12 +18,14 @@ final class PersistenceRecordStore {
     this._registry,
     this._clock,
     this.databasePath,
+    this._diagnostics,
   );
 
   final _PersistenceDatabase _database;
   final RecordDocumentRegistry _registry;
   final UtcClock _clock;
   final String databasePath;
+  final DiagnosticsManager? _diagnostics;
   bool _closed = false;
   int? _lastCodecWorkerIsolateId;
   int _batchReadCount = 0;
@@ -40,13 +43,16 @@ final class PersistenceRecordStore {
     required Directory dataRoot,
     required RecordDocumentRegistry registry,
     UtcClock clock = _utcNow,
+    DiagnosticsManager? diagnostics,
   }) async {
-    await dataRoot.create(recursive: true);
-    final path = '${dataRoot.path}${Platform.pathSeparator}app_metadata.sqlite';
-    final database = _PersistenceDatabase(
-      NativeDatabase.createInBackground(File(path)),
-    );
-    await database.customStatement('''
+    Future<PersistenceRecordStore> openStore() async {
+      await dataRoot.create(recursive: true);
+      final path =
+          '${dataRoot.path}${Platform.pathSeparator}app_metadata.sqlite';
+      final database = _PersistenceDatabase(
+        NativeDatabase.createInBackground(File(path)),
+      );
+      await database.customStatement('''
       CREATE TABLE IF NOT EXISTS metadata_records (
         record_id TEXT PRIMARY KEY NOT NULL,
         record_kind TEXT NOT NULL,
@@ -63,25 +69,152 @@ final class PersistenceRecordStore {
         updated_at_utc INTEGER NOT NULL
       )
     ''');
-    await database.customStatement(
-      'CREATE INDEX IF NOT EXISTS metadata_records_scope ON metadata_records(scope_kind, scope_id)',
+      await database.customStatement(
+        'CREATE INDEX IF NOT EXISTS metadata_records_scope ON metadata_records(scope_kind, scope_id)',
+      );
+      await database.customStatement(
+        'CREATE INDEX IF NOT EXISTS metadata_records_kind_scope ON metadata_records(record_kind, scope_kind, scope_id)',
+      );
+      await database.customStatement(
+        'CREATE INDEX IF NOT EXISTS metadata_records_parent_order ON metadata_records(record_kind, scope_kind, scope_id, parent_id, order_key, record_id)',
+      );
+      await database.customStatement(
+        'CREATE INDEX IF NOT EXISTS metadata_records_identity ON metadata_records(record_kind, scope_kind, scope_id, identity_key)',
+      );
+      await database.customStatement(
+        'CREATE INDEX IF NOT EXISTS metadata_records_state_order ON metadata_records(record_kind, scope_kind, scope_id, state_key, order_key, record_id)',
+      );
+      return PersistenceRecordStore._(
+        database,
+        registry,
+        clock,
+        path,
+        diagnostics,
+      );
+    }
+
+    if (diagnostics == null) return openStore();
+    return diagnostics.runSpan<PersistenceRecordStore>(
+      AppDiagnosticEvents.persistenceOpen,
+      (_) => openStore(),
+      startAttributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'store': DiagnosticValue.string('metadata'),
+        'schemaVersion': DiagnosticValue.int64(1),
+      }),
+      successAttributes: (_) => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'store': DiagnosticValue.string('metadata'),
+        'schemaVersion': DiagnosticValue.int64(1),
+      }),
+      errorAttributes: (_) => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'store': DiagnosticValue.string('metadata'),
+        'schemaVersion': DiagnosticValue.int64(1),
+        'errorCode': DiagnosticValue.string('open_failed'),
+      }),
     );
-    await database.customStatement(
-      'CREATE INDEX IF NOT EXISTS metadata_records_kind_scope ON metadata_records(record_kind, scope_kind, scope_id)',
-    );
-    await database.customStatement(
-      'CREATE INDEX IF NOT EXISTS metadata_records_parent_order ON metadata_records(record_kind, scope_kind, scope_id, parent_id, order_key, record_id)',
-    );
-    await database.customStatement(
-      'CREATE INDEX IF NOT EXISTS metadata_records_identity ON metadata_records(record_kind, scope_kind, scope_id, identity_key)',
-    );
-    await database.customStatement(
-      'CREATE INDEX IF NOT EXISTS metadata_records_state_order ON metadata_records(record_kind, scope_kind, scope_id, state_key, order_key, record_id)',
-    );
-    return PersistenceRecordStore._(database, registry, clock, path);
   }
 
-  Future<RecordEnvelope> create(RecordDraft draft) async {
+  Future<RecordEnvelope> create(RecordDraft draft) => _instrument(
+    operation: 'create',
+    recordKind: draft.recordKind,
+    count: 1,
+    action: () => _create(draft),
+    revision: (result) => result.revision,
+  );
+
+  Future<RecordEnvelope?> read({required String id, required ScopeKey scope}) =>
+      _instrument(
+        operation: 'read',
+        action: () => _read(id: id, scope: scope),
+        resultCount: (result) => result == null ? 0 : 1,
+        revision: (result) => result?.revision,
+      );
+
+  Future<RecordReadBatchResult> readMany({
+    required Iterable<String> ids,
+    required ScopeKey scope,
+  }) {
+    final requested = List<String>.of(ids);
+    return _instrument(
+      operation: 'readMany',
+      count: requested.length,
+      action: () => _readMany(ids: requested, scope: scope),
+      resultCount: (result) => result.records.length,
+    );
+  }
+
+  Future<RecordPage> list(RecordQuery query) => _instrument(
+    operation: 'list',
+    recordKind: query.recordKind,
+    count: query.limit,
+    action: () => _list(query),
+    resultCount: (result) => result.records.length,
+  );
+
+  Future<RecordEnvelope> update({
+    required RecordEnvelope previous,
+    required JsonObject document,
+  }) => _instrument(
+    operation: 'update',
+    recordKind: previous.recordKind,
+    count: 1,
+    action: () => _update(previous: previous, document: document),
+    revision: (result) => result.revision,
+  );
+
+  Future<void> delete({required RecordEnvelope previous}) => _instrument(
+    operation: 'delete',
+    recordKind: previous.recordKind,
+    count: 1,
+    action: () => _delete(previous: previous),
+  );
+
+  Future<void> createBatch(List<RecordDraft> drafts) {
+    final copied = List<RecordDraft>.of(drafts);
+    return _instrument(
+      operation: 'createBatch',
+      recordKind: _singleRecordKind(copied.map((draft) => draft.recordKind)),
+      count: copied.length,
+      action: () => _createBatch(copied),
+    );
+  }
+
+  Future<List<RecordDocumentWriteResult>> writeDocumentsCas(
+    List<RecordDocumentWrite> writes,
+  ) {
+    final copied = List<RecordDocumentWrite>.of(writes);
+    return _instrument(
+      operation: 'writeDocumentsCas',
+      recordKind: _singleRecordKind(copied.map((write) => write.recordKind)),
+      count: copied.length,
+      action: () => _writeDocumentsCas(copied),
+      resultCount: (result) => result.length,
+    );
+  }
+
+  Future<T> transaction<T>(Future<T> Function() action) =>
+      _instrument(operation: 'transaction', action: () => _transaction(action));
+
+  Future<void> close() {
+    if (_closed) return Future<void>.value();
+    final diagnostics = _diagnostics;
+    if (diagnostics == null || diagnostics.isClosed) return _close();
+    return diagnostics.runSpan<void>(
+      AppDiagnosticEvents.persistenceClose,
+      (_) => _close(),
+      startAttributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'store': DiagnosticValue.string('metadata'),
+      }),
+      successAttributes: (_) => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'store': DiagnosticValue.string('metadata'),
+      }),
+      errorAttributes: (_) => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'store': DiagnosticValue.string('metadata'),
+        'errorCode': DiagnosticValue.string('close_failed'),
+      }),
+    );
+  }
+
+  Future<RecordEnvelope> _create(RecordDraft draft) async {
     _ensureOpen();
     final prepared = await _prepareDraft(draft);
     try {
@@ -94,7 +227,7 @@ final class PersistenceRecordStore {
     }
   }
 
-  Future<RecordEnvelope?> read({
+  Future<RecordEnvelope?> _read({
     required String id,
     required ScopeKey scope,
   }) async {
@@ -113,7 +246,7 @@ final class PersistenceRecordStore {
     return _rowToEnvelope(rows.single.data);
   }
 
-  Future<RecordReadBatchResult> readMany({
+  Future<RecordReadBatchResult> _readMany({
     required Iterable<String> ids,
     required ScopeKey scope,
   }) async {
@@ -153,7 +286,7 @@ final class PersistenceRecordStore {
     return RecordReadBatchResult(records: records, failures: failures);
   }
 
-  Future<RecordPage> list(RecordQuery query) async {
+  Future<RecordPage> _list(RecordQuery query) async {
     _ensureOpen();
     final where = <String>['record_kind = ?', 'scope_kind = ?', 'scope_id = ?'];
     final variables = <Variable<Object>>[
@@ -202,7 +335,7 @@ final class PersistenceRecordStore {
     );
   }
 
-  Future<RecordEnvelope> update({
+  Future<RecordEnvelope> _update({
     required RecordEnvelope previous,
     required JsonObject document,
   }) async {
@@ -236,7 +369,7 @@ final class PersistenceRecordStore {
     );
   }
 
-  Future<void> delete({required RecordEnvelope previous}) async {
+  Future<void> _delete({required RecordEnvelope previous}) async {
     _ensureOpen();
     final affected = await _database.customUpdate(
       'DELETE FROM metadata_records WHERE record_id = ? AND scope_kind = ? AND scope_id = ? AND revision = ?',
@@ -251,7 +384,7 @@ final class PersistenceRecordStore {
     if (affected != 1) throw const PersistenceConflictError();
   }
 
-  Future<void> createBatch(List<RecordDraft> drafts) async {
+  Future<void> _createBatch(List<RecordDraft> drafts) async {
     _ensureOpen();
     _validateWriteBatchSize(drafts.length);
     final prepared = <_PreparedDraft>[];
@@ -272,7 +405,7 @@ final class PersistenceRecordStore {
     }
   }
 
-  Future<List<RecordDocumentWriteResult>> writeDocumentsCas(
+  Future<List<RecordDocumentWriteResult>> _writeDocumentsCas(
     List<RecordDocumentWrite> writes,
   ) async {
     _ensureOpen();
@@ -375,6 +508,85 @@ final class PersistenceRecordStore {
     }
   }
 
+  Future<T> _instrument<T>({
+    required String operation,
+    String? recordKind,
+    int? count,
+    required Future<T> Function() action,
+    int? Function(T result)? resultCount,
+    int? Function(T result)? revision,
+  }) {
+    final diagnostics = _diagnostics;
+    if (diagnostics == null || diagnostics.isClosed) return action();
+    return diagnostics.runSpan<T>(
+      AppDiagnosticEvents.persistenceOperation,
+      (span) async {
+        final stopwatch = Stopwatch()..start();
+        try {
+          final result = await action();
+          stopwatch.stop();
+          reportSlowDiagnostic(
+            diagnostics,
+            subjectComponent: 'app.persistence',
+            operation: operation,
+            elapsed: stopwatch.elapsed,
+            threshold: AppDiagnosticThresholds.persistenceOperation,
+            outcome: DiagnosticOutcome.success,
+            traceContext: span.traceContext,
+          );
+          return result;
+        } catch (_) {
+          stopwatch.stop();
+          reportSlowDiagnostic(
+            diagnostics,
+            subjectComponent: 'app.persistence',
+            operation: operation,
+            elapsed: stopwatch.elapsed,
+            threshold: AppDiagnosticThresholds.persistenceOperation,
+            outcome: DiagnosticOutcome.error,
+            traceContext: span.traceContext,
+          );
+          rethrow;
+        }
+      },
+      startAttributes: () => _operationAttributes(
+        operation: operation,
+        recordKind: recordKind,
+        count: count,
+      ),
+      successAttributes: (result) => _operationAttributes(
+        operation: operation,
+        recordKind: recordKind,
+        count: resultCount?.call(result) ?? count,
+        revision: revision?.call(result),
+      ),
+      errorAttributes: (error) => _operationAttributes(
+        operation: operation,
+        recordKind: recordKind,
+        count: count,
+        errorCode: _persistenceErrorCode(error),
+      ),
+    );
+  }
+
+  DiagnosticObjectValue _operationAttributes({
+    required String operation,
+    String? recordKind,
+    int? count,
+    int? revision,
+    String? errorCode,
+  }) => DiagnosticObjectValue(<String, DiagnosticValue>{
+    'store': DiagnosticValue.string('metadata'),
+    'operation': DiagnosticValue.string(operation),
+    if (recordKind != null) 'recordKind': DiagnosticValue.string(recordKind),
+    if (count != null) 'count': DiagnosticValue.int64(count),
+    if (revision != null) 'revision': DiagnosticValue.int64(revision),
+    if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
+    'thresholdMicros': DiagnosticValue.int64(
+      AppDiagnosticThresholds.persistenceOperation.inMicroseconds,
+    ),
+  });
+
   void _validateWriteBatchSize(int length) {
     if (length > maxWriteBatchSize) {
       throw const PersistenceValidationError(
@@ -383,12 +595,12 @@ final class PersistenceRecordStore {
     }
   }
 
-  Future<T> transaction<T>(Future<T> Function() action) async {
+  Future<T> _transaction<T>(Future<T> Function() action) async {
     _ensureOpen();
     return _database.transaction(action);
   }
 
-  Future<void> close() async {
+  Future<void> _close() async {
     if (_closed) return;
     _closed = true;
     await _database.close();
@@ -547,6 +759,18 @@ final class PersistenceRecordStore {
     stateKey: previous.stateKey,
   );
 }
+
+String? _singleRecordKind(Iterable<String> kinds) {
+  final values = kinds.toSet();
+  if (values.isEmpty) return null;
+  return values.length == 1 ? values.single : 'mixed';
+}
+
+String _persistenceErrorCode(Object error) => switch (error) {
+  PersistenceError(:final code) => code,
+  FileSystemException() => 'file_io_failed',
+  _ => 'operation_failed',
+};
 
 final class _PersistenceDatabase extends GeneratedDatabase {
   _PersistenceDatabase(super.executor);

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/library/application/library_overview_loader.dart';
 import 'package:mg_read/features/library/application/library_page_state.dart';
@@ -25,12 +26,14 @@ final libraryPageControllerProvider =
 /// not been disposed by its page lifecycle.
 class LibraryPageController extends Notifier<LibraryPageState> {
   late LibraryOverviewLoader _loader;
+  late DiagnosticsManager _diagnostics;
   int _latestGeneration = 0;
   bool _disposed = false;
 
   @override
   LibraryPageState build() {
     _loader = ref.watch(libraryOverviewLoaderProvider);
+    _diagnostics = ref.watch(diagnosticsManagerProvider);
     ref.onDispose(() {
       _disposed = true;
     });
@@ -56,6 +59,29 @@ class LibraryPageController extends Notifier<LibraryPageState> {
       return;
     }
 
+    final span = _diagnostics.startSpan(
+      AppDiagnosticEvents.libraryLoad,
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'requestGeneration': DiagnosticValue.int64(generation),
+        'resultState': DiagnosticValue.string(
+          retainedOverview == null ? 'initialLoading' : 'refreshing',
+        ),
+      }),
+    );
+    final stopwatch = Stopwatch()..start();
+    void report(DiagnosticOutcome outcome) {
+      stopwatch.stop();
+      reportSlowDiagnostic(
+        _diagnostics,
+        subjectComponent: 'feature.library',
+        operation: retainedOverview == null ? 'initialLoad' : 'refresh',
+        elapsed: stopwatch.elapsed,
+        threshold: AppDiagnosticThresholds.libraryOverview,
+        outcome: outcome,
+        traceContext: span.traceContext,
+      );
+    }
+
     state = retainedOverview == null
         ? const LibraryPageState.initialLoading()
         : LibraryPageState.refreshing(retainedOverview);
@@ -63,17 +89,50 @@ class LibraryPageController extends Notifier<LibraryPageState> {
     try {
       final LibraryOverview overview = await _loader.load();
       if (!_isCurrent(generation)) {
+        span.cancel(
+          attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+            'requestGeneration': DiagnosticValue.int64(generation),
+            'resultState': DiagnosticValue.string('staleDiscarded'),
+          }),
+        );
+        report(DiagnosticOutcome.cancelled);
         return;
       }
       state = LibraryPageState.loaded(overview);
+      span.complete(
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+          'requestGeneration': DiagnosticValue.int64(generation),
+          'itemCount': DiagnosticValue.int64(overview.items.length),
+          'resultState': DiagnosticValue.string(
+            overview.isEmpty ? 'empty' : 'content',
+          ),
+        }),
+      );
+      report(DiagnosticOutcome.success);
     } on Object catch (error) {
       if (!_isCurrent(generation)) {
+        span.cancel(
+          attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+            'requestGeneration': DiagnosticValue.int64(generation),
+            'resultState': DiagnosticValue.string('staleErrorDiscarded'),
+          }),
+        );
+        report(DiagnosticOutcome.cancelled);
         return;
       }
+      final appError = AppError.fromUnknown(error);
       state = LibraryPageState.failure(
-        error: AppError.fromUnknown(error),
+        error: appError,
         retainedOverview: retainedOverview,
       );
+      span.fail(
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+          'requestGeneration': DiagnosticValue.int64(generation),
+          'resultState': DiagnosticValue.string('failure'),
+          'errorCode': DiagnosticValue.string(appError.code.wireValue),
+        }),
+      );
+      report(DiagnosticOutcome.error);
     }
   }
 

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
 
 import 'settings_registry.dart';
@@ -22,12 +23,14 @@ final class PersistentSettingsStore implements SettingsStore {
     required Directory dataRoot,
     required ScopeKey scope,
     required SettingsRegistry registry,
+    DiagnosticsManager? diagnostics,
   }) async {
     final records = await PersistenceRecordStore.open(
       dataRoot: dataRoot,
       registry: RecordDocumentRegistry(
         settingsRecordDocumentCodecs(registry, scopeKind: scope.kind),
       ),
+      diagnostics: diagnostics,
     );
     return PersistentSettingsStore(
       records: records,

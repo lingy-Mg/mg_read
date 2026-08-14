@@ -390,9 +390,26 @@ abstract final class AppDiagnosticEvents {
         name: 'settings.write',
         component: 'app.settings',
         summary: 'Application setting write.',
+        schemaVersion: 2,
         fields: <String, DiagnosticFieldDefinition>{
           'settingKey': _string,
+          'documentCount': _int64,
+          'attempt': _int64,
           'revision': _int64,
+          'errorCode': _string,
+        },
+      );
+
+  static final DiagnosticEventDefinition settingsMutation =
+      DiagnosticEventDefinition.span(
+        name: 'settings.mutation',
+        component: 'app.settings',
+        summary: 'In-memory application setting mutation.',
+        fields: <String, DiagnosticFieldDefinition>{
+          'operation': _string,
+          'keyCount': _int64,
+          'documentCount': _int64,
+          'source': _string,
           'errorCode': _string,
         },
       );
@@ -451,6 +468,22 @@ abstract final class AppDiagnosticEvents {
         },
       );
 
+  static final DiagnosticEventDefinition libraryOperation =
+      DiagnosticEventDefinition.span(
+        name: 'library.operation',
+        component: 'core.contentLibrary',
+        summary: 'Content library operation.',
+        fields: <String, DiagnosticFieldDefinition>{
+          'operation': _string,
+          'contentKind': _string,
+          'itemCount': _int64,
+          'bytes': _int64,
+          'resultState': _string,
+          'errorCode': _string,
+          'thresholdMicros': _int64,
+        },
+      );
+
   static final DiagnosticEventDefinition readerLaunch =
       DiagnosticEventDefinition.span(
         name: 'reader.launch',
@@ -477,6 +510,23 @@ abstract final class AppDiagnosticEvents {
           'batchSize': _int64,
           'commitMicros': _int64,
           'errorCode': _string,
+        },
+      );
+
+  static final DiagnosticEventDefinition performanceSlow =
+      DiagnosticEventDefinition.instant(
+        name: 'performance.slow',
+        component: 'app.performance',
+        summary: 'An operation exceeded its configured performance baseline.',
+        severity: DiagnosticSeverity.warn,
+        fields: <String, DiagnosticFieldDefinition>{
+          'subjectComponent': _requiredInstantString,
+          'operation': _requiredInstantString,
+          'durationMicros': _requiredInstantInt64,
+          'thresholdMicros': _requiredInstantInt64,
+          'outcome': _requiredInstantString,
+          'buildMode': _requiredInstantString,
+          'platform': _requiredInstantString,
         },
       );
 
@@ -508,6 +558,38 @@ abstract final class AppDiagnosticEvents {
         },
       );
 
+  static final DiagnosticEventDefinition capture =
+      DiagnosticEventDefinition.span(
+        name: 'diagnostics.capture',
+        component: 'app.diagnostics',
+        summary: 'Explicit diagnostic capture session.',
+        fields: <String, DiagnosticFieldDefinition>{
+          'payloadKind': _string,
+          'durationMicros': _int64,
+          'maxBytes': _int64,
+          'componentCount': _int64,
+          'originCount': _int64,
+          'sessionState': _string,
+          'errorCode': _string,
+        },
+      );
+
+  static final DiagnosticEventDefinition attachment =
+      DiagnosticEventDefinition.span(
+        name: 'diagnostics.attachment',
+        component: 'app.diagnostics',
+        summary: 'Diagnostic attachment capture.',
+        severity: DiagnosticSeverity.debug,
+        fields: <String, DiagnosticFieldDefinition>{
+          'kind': _string,
+          'privacyClass': _string,
+          'captureState': _string,
+          'rawBytes': _int64,
+          'storedBytes': _int64,
+          'errorCode': _string,
+        },
+      );
+
   static final DiagnosticEventDefinition export =
       DiagnosticEventDefinition.span(
         name: 'diagnostics.export',
@@ -530,15 +612,20 @@ abstract final class AppDiagnosticEvents {
         routeChanged,
         unhandledError,
         settingsInitialize,
+        settingsMutation,
         settingsWrite,
         persistenceOpen,
         persistenceOperation,
         persistenceClose,
         libraryLoad,
+        libraryOperation,
         readerLaunch,
+        performanceSlow,
         writerState,
         eventsDropped,
         retention,
+        capture,
+        attachment,
         export,
       ]);
 

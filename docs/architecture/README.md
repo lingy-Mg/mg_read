@@ -97,6 +97,7 @@ flowchart LR
 | [09 平台发布与未来能力](09-platform-release-future-capabilities.md) | Android/桌面发布、站外分发、WebView 与媒体扩展 |
 | [10 主应用持久化设计](10-app-persistence-design.md) | 应用权威元数据、版本 JSON 与后台 executor |
 | [11 主应用持久化独立验收](11-app-persistence-acceptance.md) | 临时数据根、独立 Store 验收与故障矩阵 |
+| [13 内容资料库](13-content-library.md) | 书架、目录、正文、漫画文件对象与跨库恢复边界 |
 | [14 全局日志与诊断数据](14-global-diagnostics-logging.md) | 事件/span、HTTP body、动态结构、附件对象、管理层与查看器边界 |
 | [ADR 索引](adr/README.md) | 不得被隐式改变的架构决策 |
 

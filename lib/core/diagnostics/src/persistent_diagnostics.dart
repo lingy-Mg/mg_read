@@ -374,6 +374,7 @@ final class AppDiagnosticsService
   final DiagnosticIdGenerator _idGenerator;
   final DiagnosticSpanHandle _runSpan;
   DiagnosticStoredCaptureSession? _activeCapture;
+  DiagnosticSpanHandle? _captureSpan;
   Timer? _captureExpiryTimer;
   Future<void> _attachmentWriteTail = Future<void>.value();
   bool _closing = false;
@@ -419,6 +420,8 @@ final class AppDiagnosticsService
       idGenerator: ids,
       clock: effectiveClock,
       sourceRunId: sourceRunId,
+      buildMode: buildMode,
+      platform: platform,
     );
     final runSpan = manager.startSpan(
       AppDiagnosticEvents.diagnosticsRun,
@@ -439,6 +442,14 @@ final class AppDiagnosticsService
     sink.activeSessionResolver = service._activeSessionForEvent;
     sink.captureEnabledResolver = service._isCaptureEnabledForComponent;
     sink.dropReporter = service._reportDrops;
+    manager.emit(
+      AppDiagnosticEvents.writerState,
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'state': DiagnosticValue.string('ready'),
+        'queueDepth': DiagnosticValue.int64(sink.statistics.queueDepth),
+        'queueBytes': DiagnosticValue.int64(sink.statistics.queueBytes),
+      }),
+    );
     return service;
   }
 
@@ -502,43 +513,86 @@ final class AppDiagnosticsService
   @override
   Future<DiagnosticSession> startCapture(DiagnosticCapturePolicy policy) async {
     _ensureOpen();
-    if (policy.payloadKind == DiagnosticPayloadKind.restrictedRaw) {
-      throw UnsupportedError(
-        'restrictedRaw requires the separately approved encrypted D5 store.',
-      );
-    }
-    if (_activeCapture != null) {
-      throw StateError('Only one explicit app capture session may be active.');
-    }
-    final sessionId = _idGenerator.nextId('capture');
-    if (policy.maxStoredBytes > configuration.retentionPolicy.captureBytes) {
-      throw RangeError.range(
-        policy.maxStoredBytes,
-        1,
-        configuration.retentionPolicy.captureBytes,
-        'policy.maxStoredBytes',
-      );
-    }
-    await _persistence.createCaptureSession(
-      sessionId: sessionId,
-      sourceRunId: sourceRunId,
-      policy: policy,
+    final span = manager.startSpan(
+      AppDiagnosticEvents.capture,
+      attributes: () => _captureAttributes(policy, sessionState: 'starting'),
     );
-    _activeCapture = await _persistence.getCaptureSession(sessionId);
-    _captureExpiryTimer = Timer(policy.duration, () {
-      unawaited(stopCapture(sessionId).catchError((_) {}));
-    });
-    return _activeCapture!.session;
+    try {
+      if (policy.payloadKind == DiagnosticPayloadKind.restrictedRaw) {
+        throw UnsupportedError(
+          'restrictedRaw requires the separately approved encrypted D5 store.',
+        );
+      }
+      if (_activeCapture != null) {
+        throw StateError(
+          'Only one explicit app capture session may be active.',
+        );
+      }
+      final sessionId = _idGenerator.nextId('capture');
+      if (policy.maxStoredBytes > configuration.retentionPolicy.captureBytes) {
+        throw RangeError.range(
+          policy.maxStoredBytes,
+          1,
+          configuration.retentionPolicy.captureBytes,
+          'policy.maxStoredBytes',
+        );
+      }
+      await _persistence.createCaptureSession(
+        sessionId: sessionId,
+        sourceRunId: sourceRunId,
+        policy: policy,
+      );
+      _activeCapture = await _persistence.getCaptureSession(sessionId);
+      _captureSpan = span;
+      _captureExpiryTimer = Timer(policy.duration, () {
+        unawaited(stopCapture(sessionId).catchError((_) {}));
+      });
+      return _activeCapture!.session;
+    } catch (error, stackTrace) {
+      span.fail(
+        attributes: _captureAttributes(
+          policy,
+          sessionState: 'failed',
+          errorCode: _captureErrorCode(error),
+        ),
+      );
+      Error.throwWithStackTrace(error, stackTrace);
+    }
   }
 
   @override
   Future<void> stopCapture(String sessionId) async {
     _ensureOpen();
-    await _persistence.stopCaptureSession(sessionId);
-    if (_activeCapture?.session.sessionId == sessionId) {
-      _captureExpiryTimer?.cancel();
-      _captureExpiryTimer = null;
-      _activeCapture = null;
+    final active = _activeCapture;
+    try {
+      await _persistence.stopCaptureSession(sessionId);
+      if (active?.session.sessionId == sessionId) {
+        _captureExpiryTimer?.cancel();
+        _captureExpiryTimer = null;
+        _activeCapture = null;
+        if (_captureSpan case final span? when !span.isEnded) {
+          span.complete(
+            attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+              'sessionState': DiagnosticValue.string('ended'),
+            }),
+          );
+        }
+        _captureSpan = null;
+      }
+    } catch (error, stackTrace) {
+      if (active?.session.sessionId == sessionId) {
+        final span = _captureSpan;
+        if (span != null && !span.isEnded) {
+          span.fail(
+            attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+              'sessionState': DiagnosticValue.string('stopFailed'),
+              'errorCode': DiagnosticValue.string('capture_stop_failed'),
+            }),
+          );
+          _captureSpan = null;
+        }
+      }
+      Error.throwWithStackTrace(error, stackTrace);
     }
   }
 
@@ -574,6 +628,66 @@ final class AppDiagnosticsService
   }
 
   Future<DiagnosticAttachmentDescriptor> _captureAttachment({
+    required String eventId,
+    required String kind,
+    required String mediaType,
+    required String formatId,
+    required int formatVersion,
+    required DiagnosticPrivacyClass privacyClass,
+    required Stream<List<int>> bytes,
+    String? charset,
+    String? schemaId,
+    int? schemaVersion,
+  }) async {
+    final span = manager.startSpan(
+      AppDiagnosticEvents.attachment,
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'kind': DiagnosticValue.string(kind),
+        'privacyClass': DiagnosticValue.string(privacyClass.name),
+      }),
+    );
+    try {
+      final result = await _captureAttachmentCore(
+        eventId: eventId,
+        kind: kind,
+        mediaType: mediaType,
+        formatId: formatId,
+        formatVersion: formatVersion,
+        privacyClass: privacyClass,
+        bytes: bytes,
+        charset: charset,
+        schemaId: schemaId,
+        schemaVersion: schemaVersion,
+      );
+      final attributes = DiagnosticObjectValue(<String, DiagnosticValue>{
+        'kind': DiagnosticValue.string(kind),
+        'privacyClass': DiagnosticValue.string(privacyClass.name),
+        'captureState': DiagnosticValue.string(result.captureState.name),
+        'rawBytes': DiagnosticValue.int64(result.rawByteLength),
+        'storedBytes': DiagnosticValue.int64(result.storedByteLength),
+        if (result.captureState == DiagnosticCaptureState.failed)
+          'errorCode': DiagnosticValue.string('attachment_failed'),
+      });
+      if (result.captureState == DiagnosticCaptureState.failed) {
+        span.fail(attributes: attributes);
+      } else {
+        span.complete(attributes: attributes);
+      }
+      return result;
+    } catch (error, stackTrace) {
+      span.fail(
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+          'kind': DiagnosticValue.string(kind),
+          'privacyClass': DiagnosticValue.string(privacyClass.name),
+          'captureState': DiagnosticValue.string('failed'),
+          'errorCode': DiagnosticValue.string('attachment_failed'),
+        }),
+      );
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  Future<DiagnosticAttachmentDescriptor> _captureAttachmentCore({
     required String eventId,
     required String kind,
     required String mediaType,
@@ -728,10 +842,22 @@ final class AppDiagnosticsService
   @override
   Future<DiagnosticMaintenanceResult> enforceRetention(
     DiagnosticRetentionPolicy policy,
-  ) async {
-    await _sink.flush(timeout: configuration.defaultFlushTimeout);
-    return _persistence.enforceRetention(policy);
-  }
+  ) => manager.runSpan<DiagnosticMaintenanceResult>(
+    AppDiagnosticEvents.retention,
+    (_) async {
+      await _sink.flush(timeout: configuration.defaultFlushTimeout);
+      return _persistence.enforceRetention(policy);
+    },
+    successAttributes: (result) =>
+        DiagnosticObjectValue(<String, DiagnosticValue>{
+          'sessionCount': DiagnosticValue.int64(result.deletedSessions),
+          'eventCount': DiagnosticValue.int64(result.deletedEvents),
+          'objectBytes': DiagnosticValue.int64(result.reclaimedBytes),
+        }),
+    errorAttributes: (_) => DiagnosticObjectValue(<String, DiagnosticValue>{
+      'errorCode': DiagnosticValue.string('retention_failed'),
+    }),
+  );
 
   @override
   Future<void> deleteSession(String sessionId) async {
@@ -759,8 +885,28 @@ final class AppDiagnosticsService
     _captureExpiryTimer?.cancel();
     if (_activeCapture case final capture?) {
       await _persistence.stopCaptureSession(capture.session.sessionId);
+      if (_captureSpan case final span? when !span.isEnded) {
+        span.complete(
+          attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+            'sessionState': DiagnosticValue.string('closed'),
+          }),
+        );
+      }
+      _captureSpan = null;
       _activeCapture = null;
     }
+    manager.emit(
+      AppDiagnosticEvents.writerState,
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'state': DiagnosticValue.string('stopping'),
+        'queueDepth': DiagnosticValue.int64(_sink.statistics.queueDepth),
+        'queueBytes': DiagnosticValue.int64(_sink.statistics.queueBytes),
+        'batchSize': DiagnosticValue.int64(_sink.statistics.lastBatchSize),
+        'commitMicros': DiagnosticValue.int64(
+          _sink.statistics.lastCommitMicros,
+        ),
+      }),
+    );
     try {
       await _attachmentWriteTail.timeout(
         configuration.attachmentWriteTimeout + const Duration(seconds: 1),
@@ -861,3 +1007,24 @@ final class AppDiagnosticsService
     }
   }
 }
+
+DiagnosticObjectValue _captureAttributes(
+  DiagnosticCapturePolicy policy, {
+  required String sessionState,
+  String? errorCode,
+}) => DiagnosticObjectValue(<String, DiagnosticValue>{
+  'payloadKind': DiagnosticValue.string(policy.payloadKind.name),
+  'durationMicros': DiagnosticValue.int64(policy.duration.inMicroseconds),
+  'maxBytes': DiagnosticValue.int64(policy.maxStoredBytes),
+  'componentCount': DiagnosticValue.int64(policy.components.length),
+  'originCount': DiagnosticValue.int64(policy.origins.length),
+  'sessionState': DiagnosticValue.string(sessionState),
+  if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
+});
+
+String _captureErrorCode(Object error) => switch (error) {
+  UnsupportedError() => 'capture_mode_unsupported',
+  RangeError() => 'capture_quota_invalid',
+  StateError() => 'capture_state_invalid',
+  _ => 'capture_start_failed',
+};

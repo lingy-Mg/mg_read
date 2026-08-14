@@ -2,13 +2,13 @@
 
 ## 状态和目的
 
-本文将 [ADR-0008](../architecture/adr/0008-standalone-plugin-runtime-boundary.md) 的主项目
-边界映射为可提交的 Flutter 目录骨架。它不替代 Runtime 的协议、SDK、存储或平台文档，
-也不授权在本仓库实现 Runtime、ZIP、真实书源、数据库、文件传输、下载或 Node/Javet。
+本文将 [ADR-0011](../architecture/adr/0011-app-owned-versioned-persistence.md) 的主项目
+边界映射为可提交的 Flutter 目录骨架。它不替代 Runtime 的协议、SDK 或平台文档，
+也不授权在本仓库实现 Runtime、ZIP、真实书源、文件传输、下载或 Node/Javet。
 
 `mg_read_runtime` 交付唯一的 Flutter-facing Runtime Facade、阅读器数据源/状态存储适配
-以及全部内部平台 Runtime。`mg_read` 不创建 `core/runtime/`、`core/persistence/`、
-`core/files/` 或 Runtime 用途的 `core/scheduling/`。
+以及全部内部平台 Runtime。`mg_read` 不创建 Runtime 用途的 `core/runtime/`、
+`core/files/` 或 `core/scheduling/`；`core/persistence/` 是主应用的独立权威基础设施。
 
 ## 目标目录树
 
@@ -23,6 +23,7 @@ lib/
   core/
     diagnostics/                   # Runtime 脱敏快照的 UI 投影
     errors/                        # 稳定错误与 UI 安全归一化
+    persistence/                   # 应用权威 metadata record store
   features/
     library/
       application/ domain/ data/ presentation/
@@ -70,12 +71,13 @@ flowchart LR
 | `presentation` | 渲染不可变状态、转发用户意图 | 在 `build()` 请求/写入，直接访问 Runtime Store、文件或 raw Runtime 协议 |
 | `application` | 编排 UI 用例、generation、取消、Facade 调用 | 管理 Runtime 生命周期、传输、平台适配或持久化 |
 | `domain` | UI 稳定类型、显示规则、窄端口 | Flutter、Runtime wire schema、Node、HTTP/WS/Store 实现依赖 |
-| `data` | Runtime Facade/阅读器公开 API 的 UI 映射 | Repository、SQLite、文件、Cookie、协议 client 或插件解析 |
-| `core` | 通用 UI 基础设施 | Runtime Supervisor、Store、书架/下载/插件权威数据 |
+| `data` | Runtime Facade/阅读器公开 API 与窄持久化端口的映射 | SQLite、Drift、文件、Cookie、协议 client 或插件解析 |
+| `core` | 通用基础设施与应用权威存储 | Runtime Supervisor、Runtime Store、书架/下载/插件 Runtime 数据 |
 | `shared` | 真正跨 feature 的无业务 UI/工具 | 演变成 Runtime Service Locator |
 
 UI Isolate 只做渲染、轻量状态映射、输入校验与 Runtime 结果展示。Runtime 自动启动、
-大解析、持久化、文件、下载、平台线程、WebSocket 和 HTTP 都在 `mg_read_runtime` 内。
+大解析、Runtime 文件/下载、平台线程、WebSocket 和 HTTP 都在 `mg_read_runtime` 内；主应用
+metadata SQL 在 core persistence 的后台 executor 中执行。
 
 ## 模块职责与开发入口
 

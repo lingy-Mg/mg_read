@@ -53,6 +53,29 @@ void main() {
       },
     );
 
+    test(
+      'propagates trace context through nested asynchronous spans',
+      () async {
+        await kit.manager.runSpan<void>(
+          AppDiagnosticEvents.bootstrap,
+          (_) => kit.manager.runSpan<void>(
+            AppDiagnosticEvents.settingsInitialize,
+            (_) async {},
+          ),
+        );
+
+        final parent = kit.sink.events.firstWhere(
+          (event) => event.eventName == 'app.bootstrap.start',
+        );
+        final child = kit.sink.events.firstWhere(
+          (event) => event.eventName == 'settings.initialize.start',
+        );
+        expect(child.traceId, parent.traceId);
+        expect(child.parentSpanId, parent.spanId);
+        expect(child.spanId, isNot(parent.spanId));
+      },
+    );
+
     test('does not evaluate attributes when filtered', () {
       final filteredKit = DiagnosticsTestkit(
         minimumSeverity: DiagnosticSeverity.error,

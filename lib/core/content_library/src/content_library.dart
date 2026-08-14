@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:mg_read/core/content_library/src/models.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
 
 const _scope = ScopeKey(kind: 'content_library', id: 'default');
@@ -11,15 +12,23 @@ const _bindingKind = 'content_source_binding';
 const _entryKind = 'content_catalog_entry';
 
 final class ContentLibrary {
-  ContentLibrary._(this._persistence);
+  ContentLibrary._(this._persistence, this._diagnostics);
   final AppPersistence _persistence;
+  final DiagnosticsManager? _diagnostics;
   late final BookshelfRepository bookshelf = BookshelfRepository._(this);
   late final CatalogRepository catalog = CatalogRepository._(this);
   late final ContentRepository content = ContentRepository._(this);
-  static Future<ContentLibrary> open({required Directory dataRoot}) async =>
-      ContentLibrary._(
-        await AppPersistence.open(dataRoot: dataRoot, registry: _registry),
-      );
+  static Future<ContentLibrary> open({
+    required Directory dataRoot,
+    DiagnosticsManager? diagnostics,
+  }) async => ContentLibrary._(
+    await AppPersistence.open(
+      dataRoot: dataRoot,
+      registry: _registry,
+      diagnostics: diagnostics,
+    ),
+    diagnostics,
+  );
   Future<void> close() => _persistence.close();
   Future<Page<LibraryItem>> listLibrary(LibraryQuery query) =>
       bookshelf.list(query);
@@ -28,12 +37,106 @@ final class ContentLibrary {
     CatalogQuery query,
   ) => catalog.list(itemId, query);
   Future<ReadableContent?> openContent(CatalogEntryId id) => content.open(id);
+
+  Future<T> _trace<T>({
+    required String operation,
+    String? contentKind,
+    int? itemCount,
+    int? bytes,
+    required Future<T> Function() action,
+    int? Function(T result)? resultCount,
+    String Function(T result)? resultState,
+  }) {
+    final diagnostics = _diagnostics;
+    if (diagnostics == null || diagnostics.isClosed) return action();
+    return diagnostics.runSpan<T>(
+      AppDiagnosticEvents.libraryOperation,
+      (span) async {
+        final stopwatch = Stopwatch()..start();
+        try {
+          final result = await action();
+          stopwatch.stop();
+          reportSlowDiagnostic(
+            diagnostics,
+            subjectComponent: 'core.contentLibrary',
+            operation: operation,
+            elapsed: stopwatch.elapsed,
+            threshold: AppDiagnosticThresholds.libraryOperation,
+            outcome: DiagnosticOutcome.success,
+            traceContext: span.traceContext,
+          );
+          return result;
+        } catch (_) {
+          stopwatch.stop();
+          reportSlowDiagnostic(
+            diagnostics,
+            subjectComponent: 'core.contentLibrary',
+            operation: operation,
+            elapsed: stopwatch.elapsed,
+            threshold: AppDiagnosticThresholds.libraryOperation,
+            outcome: DiagnosticOutcome.error,
+            traceContext: span.traceContext,
+          );
+          rethrow;
+        }
+      },
+      startAttributes: () => _libraryAttributes(
+        operation: operation,
+        contentKind: contentKind,
+        itemCount: itemCount,
+        bytes: bytes,
+      ),
+      successAttributes: (result) => _libraryAttributes(
+        operation: operation,
+        contentKind: contentKind,
+        itemCount: resultCount?.call(result) ?? itemCount,
+        bytes: bytes,
+        resultState: resultState?.call(result) ?? 'success',
+      ),
+      errorAttributes: (_) => _libraryAttributes(
+        operation: operation,
+        contentKind: contentKind,
+        itemCount: itemCount,
+        bytes: bytes,
+        resultState: 'failure',
+        errorCode: 'operation_failed',
+      ),
+    );
+  }
 }
 
 final class BookshelfRepository {
   BookshelfRepository._(this._library);
   final ContentLibrary _library;
   Future<LibraryItem> add({
+    required String title,
+    String? author,
+    required ContentKind kind,
+    required ContentLibraryIngest source,
+  }) => _library._trace(
+    operation: 'bookshelfAdd',
+    contentKind: kind.code,
+    itemCount: 1,
+    action: () =>
+        _add(title: title, author: author, kind: kind, source: source),
+  );
+
+  Future<Page<LibraryItem>> list(LibraryQuery query) => _library._trace(
+    operation: 'bookshelfList',
+    itemCount: query.limit,
+    action: () => _list(query),
+    resultCount: (result) => result.items.length,
+    resultState: (result) => result.items.isEmpty ? 'empty' : 'content',
+  );
+
+  Future<void> remove(LibraryItemId id, LibraryRemovalPolicy policy) =>
+      _library._trace(
+        operation: 'bookshelfRemove',
+        itemCount: 1,
+        action: () => _remove(id, policy),
+      );
+
+  Future<LibraryItem> _add({
     required String title,
     String? author,
     required ContentKind kind,
@@ -85,7 +188,7 @@ final class BookshelfRepository {
     return _item(record);
   }
 
-  Future<Page<LibraryItem>> list(LibraryQuery query) async {
+  Future<Page<LibraryItem>> _list(LibraryQuery query) async {
     final page = await _library._persistence.metadataRecords.list(
       RecordQuery(
         recordKind: _itemKind,
@@ -101,7 +204,7 @@ final class BookshelfRepository {
     );
   }
 
-  Future<void> remove(LibraryItemId id, LibraryRemovalPolicy policy) async {
+  Future<void> _remove(LibraryItemId id, LibraryRemovalPolicy policy) async {
     final record = await _library._persistence.metadataRecords.read(
       id: id.value,
       scope: _scope,
@@ -120,6 +223,32 @@ final class CatalogRepository {
   CatalogRepository._(this._library);
   final ContentLibrary _library;
   Future<void> replaceSnapshot({
+    required LibraryItemId itemId,
+    required SourceBindingId bindingId,
+    required Iterable<IngestCatalogEntry> entries,
+  }) {
+    final copied = List<IngestCatalogEntry>.of(entries);
+    return _library._trace(
+      operation: 'catalogReplaceSnapshot',
+      itemCount: copied.length,
+      action: () => _replaceSnapshot(
+        itemId: itemId,
+        bindingId: bindingId,
+        entries: copied,
+      ),
+    );
+  }
+
+  Future<Page<CatalogEntry>> list(LibraryItemId itemId, CatalogQuery query) =>
+      _library._trace(
+        operation: 'catalogList',
+        itemCount: query.limit,
+        action: () => _list(itemId, query),
+        resultCount: (result) => result.items.length,
+        resultState: (result) => result.items.isEmpty ? 'empty' : 'content',
+      );
+
+  Future<void> _replaceSnapshot({
     required LibraryItemId itemId,
     required SourceBindingId bindingId,
     required Iterable<IngestCatalogEntry> entries,
@@ -171,7 +300,7 @@ final class CatalogRepository {
     );
   }
 
-  Future<Page<CatalogEntry>> list(
+  Future<Page<CatalogEntry>> _list(
     LibraryItemId itemId,
     CatalogQuery query,
   ) async {
@@ -205,6 +334,36 @@ final class ContentRepository {
     required CatalogEntryId entryId,
     required String text,
     required ContentLibraryIngest source,
+  }) => _library._trace(
+    operation: 'contentPutNovel',
+    contentKind: 'novel',
+    itemCount: 1,
+    action: () => _putNovel(entryId: entryId, text: text, source: source),
+  );
+
+  Future<void> putManga({
+    required CatalogEntryId entryId,
+    required List<IngestMangaPage> pages,
+    required ContentLibraryIngest source,
+  }) => _library._trace(
+    operation: 'contentPutManga',
+    contentKind: 'manga',
+    itemCount: pages.length,
+    action: () => _putManga(entryId: entryId, pages: pages, source: source),
+  );
+
+  Future<ReadableContent?> open(CatalogEntryId id) => _library._trace(
+    operation: 'contentOpen',
+    itemCount: 1,
+    action: () => _open(id),
+    resultCount: (result) => result == null ? 0 : 1,
+    resultState: (result) => result == null ? 'notFound' : 'content',
+  );
+
+  Future<void> _putNovel({
+    required CatalogEntryId entryId,
+    required String text,
+    required ContentLibraryIngest source,
   }) async {
     final objectId = _id();
     await _library._persistence.contentObjects.put(
@@ -217,7 +376,7 @@ final class ContentRepository {
     await _attach(entryId, objectId, 'novel', source);
   }
 
-  Future<void> putManga({
+  Future<void> _putManga({
     required CatalogEntryId entryId,
     required List<IngestMangaPage> pages,
     required ContentLibraryIngest source,
@@ -260,7 +419,7 @@ final class ContentRepository {
     );
   }
 
-  Future<ReadableContent?> open(CatalogEntryId id) async {
+  Future<ReadableContent?> _open(CatalogEntryId id) async {
     final record = await _library._persistence.metadataRecords.read(
       id: id.value,
       scope: _scope,
@@ -336,6 +495,25 @@ final class IngestMangaPage {
     'plugin': _plugin(source),
   };
 }
+
+DiagnosticObjectValue _libraryAttributes({
+  required String operation,
+  String? contentKind,
+  int? itemCount,
+  int? bytes,
+  String? resultState,
+  String? errorCode,
+}) => DiagnosticObjectValue(<String, DiagnosticValue>{
+  'operation': DiagnosticValue.string(operation),
+  if (contentKind != null) 'contentKind': DiagnosticValue.string(contentKind),
+  if (itemCount != null) 'itemCount': DiagnosticValue.int64(itemCount),
+  if (bytes != null) 'bytes': DiagnosticValue.int64(bytes),
+  if (resultState != null) 'resultState': DiagnosticValue.string(resultState),
+  if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
+  'thresholdMicros': DiagnosticValue.int64(
+    AppDiagnosticThresholds.libraryOperation.inMicroseconds,
+  ),
+});
 
 RecordDocumentRegistry get _registry => RecordDocumentRegistry([
   for (final kind in [_itemKind, _bindingKind, _entryKind])

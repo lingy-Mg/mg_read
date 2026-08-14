@@ -4,7 +4,7 @@
 
 ## 项目定位
 
-`mg_read` 是 `novel_reader_ui` 的主 Flutter 应用，不是阅读器插件本体，也不是插件运行时。它拥有应用导航、主题、UI、用户交互、阅读器视图宿主和 UI-facing 用例；完整插件系统、书源适配、持久化、缓存、下载、平台 Runtime 与协议由同级 `../mg_read_runtime` 独立提供。阅读器体验由同级 `../mg_read_reader_ui` 插件提供。
+`mg_read` 是 `novel_reader_ui` 的主 Flutter 应用，不是阅读器插件本体，也不是插件运行时。它拥有应用导航、主题、UI、用户交互、阅读器视图宿主、UI-facing 用例和应用权威持久化；Runtime 继续独立提供插件执行与平台运行时。阅读器体验由同级 `../mg_read_reader_ui` 插件提供。
 
 - 首版承诺平台为 Android、Windows 和 macOS，优先级为 Android 第一、Windows/macOS 第二。
 - iOS、Linux 和 Web 不属于当前承诺支持范围；不得为它们破坏 Android、Windows 或 macOS 的实现边界。
@@ -27,12 +27,11 @@
   证据（包括 Runtime-own Job Object、启动诊断和有界 WS 多路复用），不是本项目接入 Runtime
   或复制 transport 的许可；在完整 capability 发布前继续用 Facade 替身进行 UI 测试，绝不把
   其 test helper、Node 路径或 wire fixture 带入本仓库。
-- Runtime Store 是插件安装、书架、目录、进度、书签、下载、缓存、Cookie、文件和 Runtime 诊断的权威来源。本仓库不得注入数据库路径/连接、Cookie、文件服务、平台通道、回调或 `host.*` handler，也不得读取/写入 Runtime Store。
+- 主应用 SQLite 是应用权威元数据来源，通用执行器、schema、容器迁移、备份恢复和生命周期只位于 `lib/core/persistence/`；feature 只能定义/消费窄端口并在 data 层映射。Runtime 不得打开主应用 SQLite 或获得路径/连接；未来需要持久化时只能经版本化强类型宿主能力提交，当前不实现 transport。
 - Runtime Store 的可变业务字段使用按 `recordKind + scopeKind + formatVersion` 约束的版本化
   JSON；稳定 ID、关系、排序、主要状态、revision、大小/摘要等一致性字段保留为稳定骨架。
   动态 JSON 不得作为任意 Map 暴露给主项目，也不得承载正文、二进制、明文凭据或绝对路径。
-- Runtime Store 的后端、迁移、崩溃恢复、规模和平台测试必须在 `mg_read_runtime` 以独立
-  Store testkit 验收；测试不得依赖本主应用、页面、Node/Javet、网络或真实用户数据。
+- 主应用持久化使用稳定 envelope 与按 recordKind/scopeKind/formatVersion 注册的 JSON 文档；未知字段保留、null 与缺失不同、未来版本只读。正文、二进制/Base64、明文凭据和绝对路径禁止进入文档。独立 Store testkit 必须使用临时数据根，且不依赖 Widget、Node/Javet、网络或真实用户数据。
 - 插件更新使用不可变版本目录并在下次应用进程启动时冷激活；不得在当前进程热替换插件或以重启 Runtime 绕过该限制。
 - Runtime 在自身数据根内持久化的有界诊断索引与附件只是可删除运行证据，不是主应用业务数据权威；这是日志架构的窄例外，不授权 Runtime 获得主应用数据库/路径、保存书架等业务记录或把诊断文件暴露给主项目。
 
@@ -43,7 +42,7 @@
 ```text
 lib/
   app/                        # 应用根、主题和路由
-  core/                       # 与业务 UI 无关的基础能力
+  core/persistence/           # 应用权威存储端口、容器与生命周期
   features/
     library/                  # 书架和书籍入口
     reader/
@@ -53,7 +52,7 @@ lib/
   shared/                     # 跨 feature 的组件和工具
 ```
 
-依赖方向为 `app -> features -> core/shared`，feature 通过版本化 Runtime Facade 消费插件能力。阅读器 feature 可以依赖阅读器和 Runtime 的公开 API；Runtime/插件不得反向依赖主应用。Widget 不直接访问网络、Runtime Store、文件系统、Runtime 内部协议或 Service Locator，也不能在 `build()` 发起请求或写持久化状态。
+依赖方向为 `app -> features -> core/shared`，feature 通过版本化 Runtime Facade 消费插件能力，并通过窄端口消费主应用持久化。阅读器 feature 可以依赖阅读器和 Runtime 的公开 API；Runtime/插件不得反向依赖主应用。Widget 不直接访问网络、SQLite、文件系统、Runtime 内部协议或 Service Locator，也不能在 `build()` 发起请求或写持久化状态。
 
 ## 阅读器集成规则
 

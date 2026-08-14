@@ -8,6 +8,8 @@ import 'diagnostic_value.dart';
 
 typedef DiagnosticAttributesBuilder = DiagnosticObjectValue Function();
 
+const Symbol _diagnosticTraceContextZoneKey = #mgReadDiagnosticTraceContext;
+
 abstract interface class DiagnosticEventSink {
   bool isEnabled({
     required String component,
@@ -77,6 +79,8 @@ final class DiagnosticsManager {
     DiagnosticIdGenerator? idGenerator,
     DiagnosticClock? clock,
     String? sourceRunId,
+    String buildMode = 'unknown',
+    String platform = 'unknown',
   }) {
     final effectiveIdGenerator = idGenerator ?? SecureDiagnosticIdGenerator();
     return DiagnosticsManager._(
@@ -87,6 +91,8 @@ final class DiagnosticsManager {
       idGenerator: effectiveIdGenerator,
       clock: clock ?? const SystemDiagnosticClock(),
       sourceRunId: sourceRunId ?? effectiveIdGenerator.nextId('run'),
+      buildMode: buildMode,
+      platform: platform,
     );
   }
 
@@ -98,6 +104,8 @@ final class DiagnosticsManager {
     required this.idGenerator,
     required this.clock,
     required this.sourceRunId,
+    required this.buildMode,
+    required this.platform,
   }) {
     validateDiagnosticOpaqueId(sourceRunId, 'sourceRunId');
     _monotonic.start();
@@ -110,10 +118,17 @@ final class DiagnosticsManager {
   final DiagnosticIdGenerator idGenerator;
   final DiagnosticClock clock;
   final String sourceRunId;
+  final String buildMode;
+  final String platform;
   final Stopwatch _monotonic = Stopwatch();
   final Set<DiagnosticSpanHandle> _openSpans = <DiagnosticSpanHandle>{};
   var _sourceSequence = 0;
   var _closed = false;
+
+  bool get isClosed => _closed;
+
+  DiagnosticTraceContext? get currentTraceContext =>
+      Zone.current[_diagnosticTraceContextZoneKey] as DiagnosticTraceContext?;
 
   bool isEnabled(
     DiagnosticEventDefinition definition, {
@@ -176,12 +191,13 @@ final class DiagnosticsManager {
       throw StateError('${registered.name} is not a span definition.');
     }
     final spanId = idGenerator.nextId('span');
-    final context = parentContext == null
+    final effectiveParent = parentContext ?? currentTraceContext;
+    final context = effectiveParent == null
         ? DiagnosticTraceContext(
             traceId: idGenerator.nextId('trace'),
             spanId: spanId,
           )
-        : parentContext.child(spanId);
+        : effectiveParent.child(spanId);
     final handle = DiagnosticSpanHandle._(
       manager: this,
       definition: registered,
@@ -224,7 +240,12 @@ final class DiagnosticsManager {
       parentContext: parentContext,
     );
     try {
-      final result = await operation(span);
+      final result = await runZoned(
+        () => operation(span),
+        zoneValues: <Object?, Object?>{
+          _diagnosticTraceContextZoneKey: span.traceContext,
+        },
+      );
       span.end(
         DiagnosticOutcome.success,
         attributes: successAttributes?.call(result),
@@ -233,6 +254,45 @@ final class DiagnosticsManager {
     } catch (error, stackTrace) {
       span.end(
         DiagnosticOutcome.error,
+        attributes:
+            errorAttributes?.call(error) ??
+            DiagnosticObjectValue(<String, DiagnosticValue>{
+              if (definition.fields.containsKey('errorCode'))
+                'errorCode': DiagnosticValue.string('unclassified'),
+              if (definition.fields.containsKey('stackFingerprint'))
+                'stackFingerprint': DiagnosticValue.string(
+                  privacyPolicy.stackFingerprint(stackTrace),
+                ),
+            }),
+      );
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  T runSpanSync<T>(
+    DiagnosticEventDefinition definition,
+    T Function(DiagnosticSpanHandle span) operation, {
+    DiagnosticAttributesBuilder? startAttributes,
+    DiagnosticObjectValue Function(T result)? successAttributes,
+    DiagnosticObjectValue Function(Object error)? errorAttributes,
+    DiagnosticTraceContext? parentContext,
+  }) {
+    final span = startSpan(
+      definition,
+      attributes: startAttributes,
+      parentContext: parentContext,
+    );
+    try {
+      final result = runZoned(
+        () => operation(span),
+        zoneValues: <Object?, Object?>{
+          _diagnosticTraceContextZoneKey: span.traceContext,
+        },
+      );
+      span.complete(attributes: successAttributes?.call(result));
+      return result;
+    } catch (error, stackTrace) {
+      span.fail(
         attributes:
             errorAttributes?.call(error) ??
             DiagnosticObjectValue(<String, DiagnosticValue>{
@@ -311,6 +371,7 @@ final class DiagnosticsManager {
     String? captureSessionId,
     Set<DiagnosticEventFlag> flags = const <DiagnosticEventFlag>{},
   }) {
+    final effectiveTraceContext = traceContext ?? currentTraceContext;
     final rawAttributes = attributes?.call() ?? DiagnosticObjectValue.empty;
     definition.validateAttributes(rawAttributes, phase);
     final sanitized = privacyPolicy.sanitizeAttributes(
@@ -335,9 +396,9 @@ final class DiagnosticsManager {
       severity: severity,
       eventName: definition.eventName(phase, outcome: outcome),
       eventSchemaVersion: definition.schemaVersion,
-      traceId: traceContext?.traceId,
-      spanId: traceContext?.spanId,
-      parentSpanId: traceContext?.parentSpanId,
+      traceId: effectiveTraceContext?.traceId,
+      spanId: effectiveTraceContext?.spanId,
+      parentSpanId: effectiveTraceContext?.parentSpanId,
       phase: phase,
       outcome: outcome,
       durationMicros: durationMicros,

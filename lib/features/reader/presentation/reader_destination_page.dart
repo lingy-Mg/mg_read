@@ -1,16 +1,45 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 
 /// Typed-route destination before M5 resolves a reader launch request.
 ///
 /// The stable [bookId] is intentionally not rendered or used to load content.
 /// This keeps M2.1 routing independent of any future source, database, or
 /// ReaderHostPage dependency.
-class ReaderDestinationPage extends StatelessWidget {
+class ReaderDestinationPage extends ConsumerStatefulWidget {
   /// Creates a destination for a stable host-owned [bookId].
   const ReaderDestinationPage({required this.bookId, super.key});
 
   /// Stable identifier to be resolved by a future application use case.
   final String bookId;
+
+  @override
+  ConsumerState<ReaderDestinationPage> createState() =>
+      _ReaderDestinationPageState();
+}
+
+class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
+  @override
+  void initState() {
+    super.initState();
+    final diagnostics = ref.read(diagnosticsManagerProvider);
+    final span = diagnostics.startSpan(
+      AppDiagnosticEvents.readerLaunch,
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'readerMode': DiagnosticValue.string('text'),
+        'sourceKind': DiagnosticValue.string('unresolved'),
+      }),
+    );
+    span.complete(
+      attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+        'readerMode': DiagnosticValue.string('text'),
+        'sourceKind': DiagnosticValue.string('unresolved'),
+        'resultState': DiagnosticValue.string('deferred'),
+      }),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -4,8 +4,8 @@
 
 MgRead 将 Flutter 主项目与插件运行时视为两个独立产品边界：主项目只负责 UI、路由、
 主题、用户意图和阅读器视图宿主；`mg_read_runtime` 独立完成插件执行、平台承载、
-内部通信、数据与文件管理。这个边界由 [ADR-0008](adr/0008-standalone-plugin-runtime-boundary.md)
-固定，优先于此前“主项目承载 Runtime Client/宿主数据库”的规划。
+内部通信与插件运行时管理。应用权威持久化由 [ADR-0011](adr/0011-app-owned-versioned-persistence.md)
+固定，取代此前 Runtime Store 拥有主应用数据的规划。
 
 ```mermaid
 flowchart TB
@@ -14,7 +14,8 @@ flowchart TB
         PRES["Feature Presentation"]
         USE["Feature Application"]
         DOMAIN["UI-facing Domain / View Model"]
-        READER["novel_reader_ui 视图宿主"]
+    READER["novel_reader_ui 视图宿主"]
+    STORE["core persistence：应用权威元数据"]
         ROOT --> PRES
         PRES --> USE
         USE --> DOMAIN
@@ -72,8 +73,8 @@ lib/
 ```
 
 这是一份目标布局；不存在的目录在对应里程碑才创建。主项目不预留
-`core/runtime/`、`core/persistence/`、`core/files/` 或 `core/scheduling/` 来承载插件
-Runtime 的实现。若 UI 自身将来需要短期展示缓存或纯 UI 工具，它必须不含插件数据、
+`core/runtime/`、`core/files/` 或 `core/scheduling/` 来承载插件 Runtime 的实现；
+`core/persistence/` 只承载应用权威元数据。若 UI 自身将来需要短期展示缓存或纯 UI 工具，它必须不含插件数据、
 协议或平台 Runtime 职责。
 
 ### 依赖规则
