@@ -2,10 +2,10 @@
 
 普通 feature 按 `presentation/`、`application/`、`domain/`、`data/` 四层展开：
 
-- `presentation/`：Widget、不可变 view state 的渲染和用户意图转发；不直接访问数据库、文件、Runtime 或网络。
-- `application/`：用例编排、取消、请求世代、事务边界和状态控制器。
-- `domain/`：稳定业务类型、规则和 Repository/服务端口；不依赖 Flutter、Drift 或传输实现。
-- `data/`：端口实现、Drift 映射、协议 DTO 映射和外部插件公开 API 适配。
+- `presentation/`：Widget、不可变 view state 的渲染和用户意图转发；不直接访问 Runtime Store、文件、Runtime 内部协议或网络。
+- `application/`：UI 用例编排、取消、请求世代和状态控制器；不管理 Runtime 生命周期或事务。
+- `domain/`：稳定的 UI-facing 类型、规则和窄端口；不依赖 Flutter、Runtime wire schema 或传输实现。
+- `data/`：Runtime Facade 与外部插件公开 API 的 UI 映射；不实现 Drift、文件、协议 DTO、Repository 或网络。
 
 `reader/` 依照已接受架构只含 `application/`、`data/`、`presentation/`，并且只能导入 `package:novel_reader_ui/novel_reader_ui.dart` 的公开 API。
 

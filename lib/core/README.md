@@ -1,12 +1,11 @@
-# Core 基础设施边界
+# Core UI 基础设施边界
 
-`core/` 不承载书架、插件、阅读或下载的业务规则。它只提供跨 feature 可复用的基础能力：
+`core/` 只承载跨 feature 的 UI 基础能力，不承载插件、书架、阅读、下载或 Runtime 的
+业务规则。完整插件运行时属于 `mg_read_runtime`，本仓库只能消费其版本化 Facade。
 
-- `diagnostics/`：脱敏的只读状态、指标和诊断投影。
-- `errors/`：稳定错误码及安全错误归一化。
-- `files/`：受控应用文件布局、原子提交和恢复策略。
-- `persistence/`：唯一 Drift/SQLite 执行器、Schema、迁移和通用持久化基础能力。
-- `runtime/`：Host 侧 Runtime Supervisor、WS/HTTP Client 和严格协议适配；这里不保存业务权威数据。
-- `scheduling/`：有界后台 Isolate 计算、队列、取消和 deadline 基础能力。
+- `diagnostics/`：Runtime 脱敏状态、指标和诊断投影的 UI 模型。
+- `errors/`：Runtime 稳定错误码及安全 UI 归一化。
 
-`runtime/` 只调用公开协议，不能打开 SQLite；`persistence/` 不发起 Node/网络业务调用；`files/` 不存放 Widget 或 feature 状态。
+不得在 `core/` 新增或恢复以下职责：Runtime Supervisor、Javet/Node 启动、WS/HTTP Client、
+raw protocol、Runtime Store/SQLite、文件布局/恢复、缓存/下载、Cookie、`host.*` handler
+或平台 Runtime 通道。若这些能力需要变更，应修改 `mg_read_runtime` 及其公开门面。
