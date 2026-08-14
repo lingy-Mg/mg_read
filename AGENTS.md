@@ -33,6 +33,14 @@
   动态 JSON 不得作为任意 Map 暴露给主项目，也不得承载正文、二进制、明文凭据或绝对路径。
 - 主应用持久化使用稳定 envelope 与按 recordKind/scopeKind/formatVersion 注册的 JSON 文档；未知字段保留、null 与缺失不同、未来版本只读。正文、二进制/Base64、明文凭据和绝对路径禁止进入文档。独立 Store testkit 必须使用临时数据根，且不依赖 Widget、Node/Javet、网络或真实用户数据。
 - 插件更新使用不可变版本目录并在下次应用进程启动时冷激活；不得在当前进程热替换插件或以重启 Runtime 绕过该限制。
+- 插件格式由 ADR-0015 固定为标准 Node.js 24 项目：`package.json.mgread` 是唯一 MgRead
+  元数据，`package-lock.json` v3 是唯一精确依赖图；禁止恢复 `manifest.json`、bundle、
+  `sharedDependencies`、`bundledDependencies` 或自定义 dependency lock。
+- Runtime 使用标准 Node 模块解析和普通 `node_modules`。共享依赖只能是 Runtime 内容仓的
+  hardlink/copy 存储优化，不能成为插件可见协议；插件不运行 install script，不支持 Git/native
+  addon，并且 `file:` 依赖只能指向 `.mgplugin` 内部。
+- 首版不创建插件 VM/Context、自定义 ESM Loader 或模块隔离。插件是可信代码，可直接使用
+  Node 的 `fs`、`process` 等标准能力；Worker/子进程仍不属于支持契约，可信模型也不构成沙箱。
 - Runtime 在自身数据根内持久化的有界诊断索引与附件只是可删除运行证据，不是主应用业务数据权威；这是日志架构的窄例外，不授权 Runtime 获得主应用数据库/路径、保存书架等业务记录或把诊断文件暴露给主项目。
 
 ## 目录与依赖方向
@@ -57,6 +65,8 @@ lib/
 ## 阅读器集成规则
 
 - Runtime 发布公开的小说/漫画数据源、状态存储和已实现 capability；主应用只把它们接入阅读器视图。阅读器插件不直接联网或内置数据库。
+- 数据来源插件的入口是 `package.json.main` 指向的普通 ESM/CommonJS 文件，并通过命名导出
+  `activate/search/getDetail/getChapters/getContent` 接入；TypeScript 只编译、不 bundle。
 - 进度和书签必须保留插件定义的语义锚点，不用页码或像素偏移替代。
 - 退出阅读器由 `ReaderObserver.onExitRequested` 通知主应用；由主应用决定 `Navigator`、确认弹窗或其他路由行为。
 - 真实书源、插件数据、进度、缓存与下载必须在 `mg_read_runtime` 中实现，不能塞入 `ReaderHostPage`、feature/data 或 core。
@@ -176,7 +186,7 @@ lib/
 - 创建 Codex 新任务时一律在本仓库当前原工作区直接修改，不得创建 Git worktree、隔离分支工作区或第二份检出；如需改变此约束，必须先由用户明确要求更新本文件。新任务仍须先核对并保护原工作区已有的并发改动。
 - 大型 UI 改动按“Runtime Facade 公开契约 → 纯 UI 逻辑与适配器 → UI → 静态检查”推进；平台 Runtime 改动必须转到 `mg_read_runtime`。
 - 自动化测试按风险分层建设：Dart UI 纯逻辑、错误投影和 Facade 替身使用单元测试；关键状态与交互使用 Widget 测试；Runtime Facade 契约由 `mg_read_runtime` 维护；通信、资源流、恢复、存储和平台运行时只在 Runtime 仓库做集成或冒烟测试。Golden 仅在视觉规范稳定后按需启用。
-- 新增或修改实现时必须同步补充并运行受影响层级的测试。Node Runtime、插件 SDK 和协议仓库执行各自的类型检查与自动化测试；不得以“当前没有测试目录”为理由长期跳过测试建设。
+- 新增或修改实现时必须同步补充并运行受影响层级的测试。Node Runtime、插件 API 与协议仓库执行各自的类型检查与自动化测试；不得以“当前没有测试目录”为理由长期跳过测试建设。
 - 每次修改至少执行以下静态检查：
 
 ```powershell

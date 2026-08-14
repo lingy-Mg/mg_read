@@ -7,6 +7,7 @@ import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
+import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
 import 'package:mg_read/features/profile/presentation/about_page.dart';
 import 'package:mg_read/features/profile/presentation/feedback_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
@@ -69,6 +70,8 @@ String _stableRouteName(Uri uri) {
       'profile.about',
     'profile' when segments.length > 1 && segments[1] == 'feedback' =>
       'profile.feedback',
+    'profile' when segments.length > 1 && segments[1] == 'plugins' =>
+      'profile.plugins',
     'profile' => 'profile',
     _ => 'unknown',
   };
@@ -187,6 +190,7 @@ class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
   routes: <TypedRoute<RouteData>>[
     TypedGoRoute<AboutRoute>(path: 'about'),
     TypedGoRoute<FeedbackRoute>(path: 'feedback'),
+    TypedGoRoute<PluginCenterRoute>(path: 'plugins'),
   ],
 )
 class ProfileRoute extends GoRouteData with $ProfileRoute {
@@ -206,6 +210,9 @@ class ProfileRoute extends GoRouteData with $ProfileRoute {
         },
         onFeedbackRequested: () {
           const FeedbackRoute().push(context);
+        },
+        onPluginCenterRequested: () {
+          const PluginCenterRoute().push(context);
         },
       ),
     );
@@ -234,6 +241,21 @@ class FeedbackRoute extends GoRouteData with $FeedbackRoute {
   @override
   Widget build(BuildContext context, GoRouterState state) {
     return FeedbackPage(
+      onBackRequested: () => _returnToProfile(context),
+      onDestinationRequested: (AppNavigationDestination destination) {
+        _goToDestination(context, destination);
+      },
+    );
+  }
+}
+
+/// Runtime-backed plugin status reached from source management.
+class PluginCenterRoute extends GoRouteData with $PluginCenterRoute {
+  const PluginCenterRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) {
+    return PluginRuntimeStatusPage(
       onBackRequested: () => _returnToProfile(context),
       onDestinationRequested: (AppNavigationDestination destination) {
         _goToDestination(context, destination);

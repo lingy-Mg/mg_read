@@ -1,230 +1,251 @@
-# 04 插件 SDK、ZIP 与官方仓库
+# 04 标准 Node 插件、依赖安装与仓库
 
-## 信任与执行模型
+## 已接受模型
 
-首版只安装用户主动选择的官方仓库插件或本地 ZIP，并把插件视为完全可信代码。不实现沙箱、权限强制、代码签名信任链或本地通信鉴权。
+MgRead 插件就是一个可信的标准 Node.js 24 项目。Runtime 复用 Node/npm 的项目、模块和
+lockfile 语义，只额外负责安装事务、依赖内容仓、平台 Runtime 生命周期、MgRead Plugin API
+以及 Flutter-facing Facade。决策由
+[ADR-0015](adr/0015-standard-node-plugin-projects.md) 固定。
 
-这不意味着插件安全：插件与 Runtime Core 共享单 VM，能够消耗事件循环、内存和网络资源；同步死循环可能拖死全部插件。能力声明只用于兼容性、UI 展示、诊断和未来治理。详见 [ADR-0002](adr/0002-trusted-plugins.md)。
+首版明确不提供插件沙箱、每插件 VM、Context 隔离、自定义 ESM Loader、模块实例隔离或代码
+签名信任链。所有插件共享一个 Node VM、事件循环和标准模块缓存，插件可以直接使用 Node
+内建模块和 `process`。这提供了最接近普通 Node 项目的行为，也意味着任意可信插件都可能阻塞
+或破坏整个插件系统；详见 [ADR-0002](adr/0002-trusted-plugins.md)。
 
-## 固定 ZIP 结构
+## 标准项目结构
 
 ```text
-plugin.zip
-  manifest.json
+my-plugin/
+  package.json
+  package-lock.json
   dist/
     index.mjs
+    source.mjs
+    utils.mjs
   assets/
+    icon.png
+    rules.json
+    dict.dat
+  packages/
+    optional-local-package/
+  tools/
+    mgread.mjs
   README.md
   LICENSE
 ```
 
-规则：
+TypeScript 只执行 `tsc`：`src/` 编译为普通多文件 `dist/`，不 bundle、不 tree-shaking，
+也不把第三方依赖合并进入口文件。发布包默认不包含 `src/`、`test/` 或 `node_modules/`。
 
-- `manifest.json` 与 `dist/index.mjs` 必须存在，入口固定在包根相对路径内。
-- 第三方纯 JavaScript 依赖必须打包进 `dist`。
-- 禁止 `node_modules`、安装脚本、可执行文件、动态下载代码、原生 Addon 和符号链接。
-- ZIP 条目必须使用规范化 `/` 相对路径；拒绝绝对路径、驱动器前缀、`..`、NUL、重复规范化路径及大小写碰撞。
-- 安装器在解压前检查条目数量、单项大小、总压缩/解压大小和压缩比上限；具体上限属于可版本化 Runtime 策略，不由插件覆盖。
-- `assets/`、`README.md`、`LICENSE` 可选，但清单引用的图标必须存在且满足 MIME/尺寸策略。
-- 包内所有文件参与 SHA-256 完整性校验；SHA-256 只检测损坏，不构成首版发布者身份认证。
+## `package.json.mgread` v1
 
-## Manifest v1
-
-示例：
+插件元数据只写一次：
 
 ```json
 {
-  "schemaVersion": 1,
-  "id": "org.example.library",
-  "name": "示例书源",
+  "name": "@mgread-plugin/example",
   "version": "1.2.3",
-  "entry": "dist/index.mjs",
-  "contentKinds": ["novel", "comic"],
-  "mgreadApi": ">=1.0.0 <2.0.0",
-  "nodeVersion": ">=24.0.0 <25.0.0",
-  "minimumAppVersion": "1.0.0",
-  "capabilities": ["network", "runtime.cookie"],
-  "author": {
-    "name": "Example Team",
-    "url": "https://example.invalid"
+  "type": "module",
+  "main": "dist/index.mjs",
+  "engines": { "node": ">=24 <25" },
+  "dependencies": {
+    "cheerio": "1.1.0",
+    "iconv-lite": "0.6.3",
+    "my-parser": "file:./packages/my-parser"
   },
-  "description": "用于展示协议的示例插件",
-  "icon": "assets/icon.png"
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.example.source",
+    "pluginApi": 1,
+    "contentKinds": ["novel"]
+  }
 }
 ```
 
-| 字段 | 规则 |
-| --- | --- |
-| `schemaVersion` | 正整数；未知主 Schema 版本拒绝安装 |
-| `id` | 全局稳定、小写、点分命名；升级不得改变 |
-| `name` | 非空展示名，有长度上限 |
-| `version` | 严格 SemVer，不接受可变标签作为安装版本 |
-| `entry` | v1 必须为 `dist/index.mjs` |
-| `contentKinds` | 去重数组；首版实现 `novel`、`comic`，`audio`、`video` 仅可保留声明 |
-| `mgreadApi` | 插件 SDK/API 的 SemVer 兼容区间 |
-| `nodeVersion` | Node SemVer 兼容区间；Runtime 仍使用平台统一的精确 Node 24 小版本 |
-| `minimumAppVersion` | 最低 MgRead 应用 SemVer |
-| `capabilities` | 已知字符串集合；未知必需能力导致不兼容，未知可选能力只展示 |
-| `author` | 展示元数据，不作为身份或信任证明 |
-| `description` | 纯文本，禁止当 HTML 渲染 |
-| `icon` | 包内相对资源路径，不允许外部 URL |
+Runtime 安装前必须验证：
 
-清单 JSON 必须由共享 Schema 校验。运行时读取后映射为内部不可变类型，不把任意附加字段透传进 UI。
+- npm `name` 与严格 SemVer `version`；版本目录以该 `version` 为准。
+- `main` 是包内规范化相对路径且文件存在；不接受绝对路径、驱动器前缀、`..` 或符号链接。
+- `engines.node` 明确兼容 Node 24；实际 Runtime 仍固定精确 Node 小版本。
+- `mgread.schemaVersion == 1`、`pluginApi == 1`、稳定小写点分 `id` 和已知
+  `contentKinds`。
+- `dependencies`、`optionalDependencies` 中每个直接版本与 lockfile 根记录一致，不接受
+  可变 tag 或缺失 lock 条目。
+- 旧格式在开发阶段直接返回 `plugin_package_legacy_unsupported`，不建立双格式兼容层。
 
-## 能力声明
+Runtime 把验证结果映射为内部不可变 descriptor，再经 Facade 返回窄投影；未知字段不会作为
+任意 Map 穿透到主项目。
 
-v1 预定义能力：
+## `package-lock.json` v3 是唯一精确依赖图
 
-| 能力 | 含义 | 首版状态 |
+插件作者在开发机使用固定 npm 生成 `package-lock.json`。Runtime 不运行 npm/pnpm、不解析
+SemVer，也不重新求解依赖，只恢复 lock 中已经确定的 `packages` 目录布局：
+
+```text
+package-lock.json
+  -> installPath + version + resolved + integrity
+  -> dependency object store
+  -> plugin/version/node_modules
+```
+
+不再存在 `sharedDependencies`、`bundledDependencies` 或自定义 dependency lock。两个插件
+使用相同完整性对象时自动复用物理文件，但共享不是插件协议，也不会改变各插件看见的普通
+`node_modules` 树。
+
+### 首版依赖范围
+
+| 类型 | 状态 | 规则 |
 | --- | --- | --- |
-| `network` | 使用 SDK 管理的 `ctx.http` | 支持 |
-| `runtime.storage` | 插件作用域的小型结构化状态 | 支持，由 Runtime Store 直接管理 |
-| `runtime.cookie` | 使用插件/源站作用域 Cookie jar | 支持基础 HTTP Cookie；禁止日志 |
-| `runtime.file.import` | Runtime 自己发起受控本地 ZIP 导入 | 由 Runtime Flutter 集成包实现；主项目不注入文件服务 |
-| `runtime.webview` | 交互登录或验证码 | 预留；首版统一 `unsupported` |
-| `runtime.notification` | 系统通知 | 预留；未实现时 `unsupported` |
-| `runtime.media` | 原生媒体会话 | 预留；首版统一 `unsupported` |
+| 纯 JS、ESM、CommonJS | 支持 | 使用 Node 24 标准解析和模块缓存 |
+| JSON、字典、模板、Wasm | 支持 | npm package 原样保留相对目录 |
+| npm Registry | 支持 | 必须有 HTTPS `resolved` 与 SHA-512 SRI `integrity` |
+| `file:./...` | 支持 | 只允许指向 `.mgplugin` 内的 `packages/` 子树 |
+| `optionalDependencies` | 简单支持 | 下载/校验/文件缺失时跳过并计数；非 optional 立即失败 |
+| `peerDependencies` | 支持 lock 结果 | 不求解，只恢复 lock 已确定布局 |
+| Git dependency | 不支持 | 安装阶段稳定拒绝 |
+| install script / node-gyp | 不执行 | 依赖其产物的 package 自然不兼容 |
+| `.node`、`.dll`、`.so` | 不支持 | 包扫描时稳定拒绝 |
 
-能力声明不授予安全权限，也不能绕过 SDK；未来若启用权限强制，必须新增 ADR 和兼容迁移。
+package 中声明 `postinstall` 本身不触发执行；Runtime 永远不执行任意安装脚本。
 
-## ESM 入口与 SDK
+## Runtime dependency store
 
-入口默认导出由 `definePlugin()` 创建的对象：
-
-```ts
-export default definePlugin({
-  async search(request, ctx) {},
-  async getItem(request, ctx) {},
-  async getCatalog(request, ctx) {},
-  async getTextChapter(request, ctx) {},
-  async getComicChapter(request, ctx) {},
-});
+```text
+runtime-data/
+  dependencies/objects/
+    sha512-<url-safe-digest>/package/...
+  plugins/<pluginId>/
+    versions/<version>/
+      package.json
+      package-lock.json
+      dist/
+      assets/
+      packages/
+      node_modules/
+    current
+    pending
+    previous
+    failed
+  plugin-data/<pluginId>/
+  plugin-cache/<pluginId>/
 ```
 
-此片段是目标 API 形状，不表示 SDK 已实现。
+Registry dependency 安装流程：
 
-### 核心方法
+1. 以 lock 的 `integrity` 计算稳定对象 ID；同一对象的并发下载合并为一项工作。
+2. 缺失时下载 `resolved` tarball，在使用前验证 SHA-512 SRI。
+3. 安全解压完整 npm package，拒绝路径穿越、符号链接、特殊文件和原生文件。
+4. 为目标 lock `installPath` 创建普通目录，并优先逐文件 hardlink 对象仓内容。
+5. hardlink 因文件系统或权限失败时逐文件 copy；两条路径得到相同 Node 可见布局。
+6. 插件版本树和 dependency object 默认只读；可变状态只能写 `ctx.dataDir` 或
+   `ctx.cacheDir`。
 
-| 方法 | 输入 | 输出 | 要求 |
-| --- | --- | --- | --- |
-| `search` | query、可选 source、opaque cursor、pageSize | `Page<ContentSummary>` | cursor 对宿主不透明；不得假设页码 |
-| `getItem` | `opaqueRemoteId`、可选版本提示 | `ContentDetail` | 返回稳定远端 ID 和内容类型 |
-| `getCatalog` | 内容引用、opaque cursor、pageSize | `Page<CatalogNode>` | 章节/图片集 ID 在来源内稳定 |
-| `getTextChapter` | 内容与章节引用、版本提示 | 内联正文或文本 `ResourceHandle` 描述 | 超过协商上限必须用 HTTP 资源 |
-| `getComicChapter` | 内容与章节引用 | 有序图片资源描述 | 不把图片 Base64 放入 JSON |
+本地 `file:` package 同样完整保留资源，并从包内源目录物化到标准 `node_modules` 位置。
+插件可继续使用 `new URL('./data/rules.json', import.meta.url)` 或 `fs.readFile()`，无需
+`ctx.assets` 包装。
 
-音频/视频方法不属于 v1 必须实现接口。即使清单声明保留类型，Runtime 也不能向首版 UI 宣称可播放。
+## `.mgplugin` 运输容器
 
-### `PluginContext`
+`.mgplugin` 是确定性 ZIP，不是新的模块或依赖格式。默认允许：
 
-- `ctx.signal`：当前请求的 `AbortSignal`，所有子操作必须传播。
-- `ctx.deadline`：绝对 deadline；插件不得自行延长。
-- `ctx.http`：唯一网络入口，负责连接复用、超时、重定向、Cookie、字符集、压缩、重试、响应上限和指标。
-- `ctx.resources`：把流或已安全落盘文件注册为 `ResourceHandle`。
-- `ctx.storage`：插件 ID 作用域的小型结构化 KV，由 Runtime Store 管理；禁止正文和大对象。
-- `ctx.platform`：Runtime 自有、版本化的平台能力入口；首版仅暴露已由 Runtime 实现的能力，绝不回调或注入主项目服务。
-- `ctx.log`：结构化脱敏日志，只接受允许字段。
+- 根文件：`package.json`、`package-lock.json`、README、LICENSE；
+- 根目录：`dist/`、`assets/`、`packages/`、`tools/`；
+- 禁止：`node_modules/`、符号链接、绝对路径、驱动器路径、`..`、NUL、重复规范化路径和
+  大小写碰撞。
 
-插件禁止直接创建未管理网络连接、访问 Runtime 未授权路径、调用同步文件/压缩 API、运行子进程或创建无界并发。SDK 构建和 lint 规则应尽早发现这些用法；可信模型不取消工程限制。
+安装器在落盘前限制条目数、单文件大小、总解压大小和压缩比，并只在同一数据根的 staging
+目录内解压。校验、依赖恢复和入口预检全部成功后，版本目录才原子改名进入
+`plugins/<id>/versions/<version>/`。默认包不携带依赖 tarball；离线 portable deps 需要单独
+ADR，首版不实现。
 
-## 标识与分页
+## 插件入口与 MgRead 上下文
 
-- `pluginId` 来自清单并跨版本稳定。
-- `opaqueRemoteId` 由插件定义，Runtime 只存储、比较和回传，不解析 URL 或内部结构。
-- `SourceBinding = pluginId + opaqueRemoteId`，URL 不能作为书籍业务主键。
-- 章节和资源远端 ID 也保持不透明；Runtime 为书架项和下载任务生成自己的稳定 ID。
-- 所有分页都使用插件返回的不透明 cursor；空 cursor 表示结束，cursor 只在对应方法、插件版本和查询上下文内有效。
-- 首版不自动把不同插件返回的相似作品合并为一本书。
+标准入口使用命名导出：
 
-## 官方空白项目
-
-独立的 `mg_read_plugin_template` 计划提供：
-
-- TypeScript 类型、`definePlugin` 和构建配置。
-- 不联网的假数据小说/漫画插件。
-- 清单 Schema 校验、lint、类型检查、打包和可重现 ZIP 命令。
-- 路径遍历、超限包、错误 cursor、取消、超时和大资源契约测试。
-- 与 Dart/Runtime 共用的协议 fixture。
-- README、LICENSE 和发布清单模板。
-
-模板必须让插件作者只依赖公开 SDK，不要求阅读 Runtime Core 或 Flutter 阅读器私有源码。
-
-## 唯一官方仓库
-
-v1 只有一个由应用配置固定的官方仓库，不提供自定义 URL。仓库索引是版本化 JSON，支持 ETag/条件请求。
-
-示例条目：
-
-```json
-{
-  "schemaVersion": 1,
-  "generatedAt": "2026-08-13T08:00:00Z",
-  "plugins": [
-    {
-      "id": "org.example.library",
-      "version": "1.2.3",
-      "packageUrl": "https://registry.example.invalid/packages/org.example.library/1.2.3.zip",
-      "sha256": "0123456789abcdef...",
-      "size": 123456,
-      "mgreadApi": ">=1.0.0 <2.0.0",
-      "nodeVersion": ">=24.0.0 <25.0.0",
-      "minimumAppVersion": "1.0.0"
-    }
-  ]
-}
+```js
+export async function activate(ctx) {}
+export async function search(keyword) {}
+export async function getDetail(reference) {}
+export async function getChapters(book) {}
+export async function getContent(chapter) {}
 ```
 
-应用下载索引并只展示兼容结果；Node Core 下载包、流式计算摘要并执行安装。仓库索引和包摘要提供版本/完整性判断，不提供首版加密身份信任。
+Runtime 当前已发布并验证 `activate` 与 `search`；其余方法必须随对应业务 capability、Facade
+类型、fixture 和测试一起交付，不能让主项目直接加载模块。开发期旧默认导出只作为读取旧包时
+拒绝迁移的对象，不是公开模板契约。
 
-## 安装事务
+`ctx` 只提供 MgRead 独有能力：
 
-无论官方下载还是本地 ZIP，最终都进入同一个 Node 安装器：
+- `dataDir`、`cacheDir`：插件专属可写目录；
+- `http`：Runtime 管理的请求入口，传播 capability 的取消和 deadline；
+- `log`：只接受稳定、受控、脱敏事件；插件自由文本不直接持久化；
+- `app`：Node、Runtime、Plugin API 的只读版本投影；
+- `plugin`：稳定插件 ID 与当前版本。
 
-1. UI 通过 Runtime Facade 调用带幂等键的安装 capability。官方仓库或本地 ZIP 选择均由 Runtime 自己完成；本地包以内部 HTTP 流交给 Node，不把整个包读入内存。
-2. Node 在插件临时区创建唯一 `.part` 文件，边接收边计算 SHA-256，并强制大小上限。
-3. 校验 ZIP 中央目录、路径、条目限制和清单 Schema；验证兼容性与入口存在。
-4. 解压到同一文件系统内的临时版本目录，重新校验实际文件清单和摘要。
-5. 原子重命名为 `plugins/{pluginId}/versions/{version}/`；绝不覆盖已存在版本。
-6. 在 Runtime Store 的事务中提交 `PluginInstallation` 记录。
-7. 若插件本启动周期尚未加载，可按安装策略激活；若已加载或是更新，则写入 `pendingVersion`，下次应用进程启动激活。
-8. 删除或保留临时文件按 Runtime 恢复策略处理，向 Facade 返回稳定结果。
+Node 已有的 `fs`、`crypto`、`buffer`、`stream`、`url`、`path` 等不再包装。插件不应创建
+Worker 或子进程；可信模型不把这些用法变成安全边界，Runtime 仍可能在启动/诊断阶段拒绝已知
+不兼容项。
 
-安装任何一步失败都不能改变当前激活版本。相同幂等键重试返回已知事务结果或安全继续，不重复生成多个安装记录。
+## 冷安装、激活与回滚
 
-## 更新、激活与回滚
+安装新版本不改变当前已加载模块：
 
 ```mermaid
 stateDiagram-v2
-    [*] --> installed
-    installed --> active: 启动时兼容且加载成功
-    active --> updateDownloaded: 新版本校验完成
-    updateDownloaded --> pendingActivation: 当前进程已加载
-    pendingActivation --> active: 下次进程加载新版本成功
-    pendingActivation --> rollbackAvailable: 新版本首次加载失败
-    rollbackAvailable --> active: 恢复 previousVersion
-    installed --> damaged: 文件缺失或摘要异常
+    [*] --> staged
+    staged --> pending: 包、lock、依赖与入口校验成功
+    pending --> active: 下次 Runtime 冷启动加载成功
+    pending --> failed: 下次 Runtime 冷启动加载失败
+    failed --> active: 保持或恢复 current
     active --> disabled: 用户禁用
-    disabled --> active: 下次允许加载
+    disabled --> active: 下次冷启动启用
+    active --> uninstallPending: 用户请求卸载
+    uninstallPending --> [*]: 下次冷启动删除
 ```
 
-- 版本目录不可变；`activeVersion`、`pendingVersion`、`previousVersion` 是 Runtime Store
-  `PluginInstallation` 版本文档中的显式状态语义，由稳定 lifecycle/revision envelope 投影，
-  不要求每个值成为独立数据库列。
-- ESM 已加载后不在当前 VM 内热替换，避免模块缓存、闭包、Timer 和插件状态混用。
-- 新版本在下次应用进程启动时先做清单/入口校验，再变更激活指针。
-- 首次加载失败自动恢复到保留的 `previousVersion` 并记录诊断；回滚动作也必须幂等。
-- 至少保留当前版本和一个可回滚版本；额外历史版本按磁盘策略清理。
-- 禁用是逻辑状态：停止向插件分派新请求，取消可取消任务；已加载模块直到进程退出才真正卸载。
-- 卸载已加载插件时，先逻辑禁用并标记下次启动清理；本地书架、进度、书签和已下载内容不级联删除。
+- 版本目录不可变且不覆盖；重复安装同一版本只重写 `pending` 指针。
+- 冷启动先尝试 `pending`；成功后把旧 `current` 写入 `previous`，原子切换 `current` 并清除
+  `pending`。
+- `pending` 加载失败时写 `failed`、清除 `pending`，继续加载旧 `current`；失败更新不能破坏
+  已工作的版本。
+- 禁用和卸载不尝试热卸载 ESM；当前模块直到进程退出才真正离开模块缓存。
+- GC 扫描所有保留版本的 `package-lock.json` 收集 registry integrity，再删除未标记对象；
+  不维护易漂移引用计数。
 
-## 诊断与错误
+## Facade 与主项目边界
 
-每个插件诊断快照可包含：
+公开集成面仍是 Runtime 包的 `PluginRuntime.invoke(PluginInvocation<T>)`。当前主项目接入：
 
-- 清单版本、激活/待激活/回滚版本和兼容结果。
-- 最近加载状态、稳定错误码、trace ID、时间和耗时。
-- 当前交互/预取/下载队列深度与限流状态。
-- 缓存字节、最近 HTTP 字节和错误计数的聚合值。
-- 被拒绝的能力或 `unsupported` 调用。
+- `RuntimePingInvocation`：Runtime/Node 健康与版本；
+- `InstalledPluginsInvocation`：已安装插件的只读状态投影；
+- `PluginSearchInvocation`：按稳定 plugin ID 执行 `search`，带 deadline/cancel 和强类型结果。
 
-禁止记录搜索原文、正文、章节内容、Cookie、凭据、用户标识、完整 URL 查询参数或插件任意日志对象。
+主项目的插件状态页只消费前两项，不持有 Runtime 路径、Node executable、PID、端口、ready、
+bootId、WS/HTTP DTO 或安装器对象。安装/更新 UI 后续必须等 Runtime 发布相应强类型 invocation，
+不得在 Flutter feature 内复制安装逻辑。
+
+## Registry 边界
+
+首版产品只接受应用固定的官方仓库和用户显式选择的本地 `.mgplugin`。官方索引最终需要提供
+稳定 plugin ID/version、包 URL、包 SHA-256/大小以及兼容投影；包内 npm 依赖仍由各自 lock 的
+SRI 验证。仓库下载、文件选择和流式导入都属于 Runtime capability，不是主项目路径注入。
+当前交付只实现本地标准包安装核心，官方索引/下载 invocation 尚未交付。
+
+## 诊断、隐私与验收
+
+| owner | 事件 | 级别/终态 | 允许字段 | 策略 |
+| --- | --- | --- | --- | --- |
+| Installer | `plugin_install_started/completed/failed` | info / success,error | 技术 plugin ID、耗时、hardlink/copy/optional 计数 | 每次安装一个 owner span |
+| Installer | `plugin_dependency_gc_completed` | info / success | 扫描/删除对象计数、耗时 | 每次 GC 一项摘要 |
+| Manager | `plugin_load_started/completed/failed` | info,error | 技术 plugin ID、版本投影、耗时、稳定错误码 | 每个冷加载一个 owner span |
+| Manager | `plugin_invocation_started/completed/failed` | info,error | capability、技术 plugin ID、耗时、结果数量、稳定错误码 | 每次调用一个 owner span |
+| Main Facade | `runtime.facade.call.start/complete/error` | info,error | capability、attempt、pluginCount、resultState、稳定错误码 | 不复制 wire/端口信息 |
+
+默认不记录搜索词、返回标题/作者、正文、URL、Cookie、Authorization、路径、异常文本或插件日志
+自由文本；本链路不创建 payload 附件。高频统计应按时间窗聚合，不能把 plugin ID、trace ID 或
+URL 作为指标 label。日志写入失败不能改变安装、加载或调用的业务终态。
+
+最小验收覆盖：标准 metadata/lock、确定性 archive 与 traversal、registry SRI、完整资源、
+`file:`、hardlink/copy fallback、optional 跳过、冷激活、失败更新回退、禁用/卸载、mark-sweep、
+调用 success/error/cancel/timeout、恰好一个终态及 secret canary。Android Javet、macOS 和最终
+应用包内运行必须在对应平台另行验收，Windows 源码闭环不能替代它们。

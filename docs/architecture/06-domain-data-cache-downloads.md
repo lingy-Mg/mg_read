@@ -26,7 +26,7 @@
 
 - 稳定 ID、资料域、父子关系、唯一身份、排序、主要状态、revision、UTC 时间、大小与摘要
   等正确性/查询字段位于稳定骨架。
-- 标题/作者/封面、manifest 快照、来源扩展、目录附加信息、语义锚点、下载 checkpoint、
+- 标题/作者/封面、插件 package 元数据快照、来源扩展、目录附加信息、语义锚点、下载 checkpoint、
   设置、插件 KV 和诊断上下文等易变内容位于受限版本 JSON。
 - 未知 JSON 字段必须保留；正文、图片、ZIP、明文敏感数据和绝对路径不得进入普通 JSON。
 - 主项目只看到强类型投影，不看到 JSON envelope、表或动态 Map。
@@ -37,7 +37,7 @@
 ### `PluginInstallation`
 
 `pluginId` identity、安装/版本父子关系、主要 lifecycle state 和 revision 是稳定投影。
-`installedVersions`、active/pending/previous 细节、已校验 manifest 快照与脱敏错误扩展位于
+`installedVersions`、active/pending/previous 细节、已校验 package 元数据快照与脱敏错误扩展位于
 版本化插件作用域 JSON。不可变插件包的摘要、大小和相对对象 ID 属于完整性 envelope，
 不能藏在插件可修改的 JSON 中。
 

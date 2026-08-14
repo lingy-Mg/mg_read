@@ -13,7 +13,7 @@ MgRead 在线安装并执行可信 Node 插件脚本。应用商店对下载代�
 - Android、Windows、macOS 首版全部站外分发。
 - Android 发布签名的 arm64 安装包；Windows 发布 x64 安装包；macOS 分别发布 arm64/x64 包。
 - macOS 使用 Developer ID、Hardened Runtime 和 Apple 公证/Stapling 流程。
-- 包内 Node/Runtime 由应用发布流程更新，插件由唯一官方仓库或用户本地 ZIP 更新；两条更新链路不可互相覆盖。
+- 包内 Node/Runtime 由应用发布流程更新，插件由唯一官方仓库或用户本地 `.mgplugin` 更新；两条更新链路不可互相覆盖。
 - Google Play 和 Mac App Store 不属于首版分发目标。
 - 改用任何应用商店必须新增 ADR，重新审查在线脚本、插件更新、内容、隐私、签名信任和审核政策。
 

@@ -5,19 +5,21 @@
 `mg_read_runtime` 的内部 wire 协议分成两个平面：
 
 - **WS 控制面**：双向 RPC、响应、错误、事件和取消，只传小型 UTF-8 JSON。
-- **HTTP 数据面**：图片、漫画、字体、插件 ZIP、下载文件、超限文本及未来音视频的字节流。
+- **HTTP 数据面**：图片、漫画、字体、`.mgplugin`、下载文件、超限文本及未来音视频的字节流。
 
 两者都只监听 Runtime 在当前启动周期绑定的 loopback 端点。首版不交换令牌、不做请求鉴权；`bootId` 和不可猜测句柄用于生命周期关联与降低误用，不是安全边界。它们由 Runtime 集成包完全封装，**不是** `mg_read` 的公开集成面；主项目只调用版本化、强类型的 `PluginRuntime.invoke(PluginInvocation)`。详见 [ADR-0004](adr/0004-ws-http-transport.md) 与 [ADR-0008](adr/0008-standalone-plugin-runtime-boundary.md)。
 
-### 当前 M1.2 实现子集
+### 当前 desktop 实现子集
 
 Runtime 仓库目前只实现 desktop bootstrap 所需的内部 `/health/live`、`/health/ready` 与
-`/v1/rpc`，以及 `runtime.hello`、`runtime.ping`、有幂等键的内部 `runtime.shutdown`。它
+`/v1/rpc`，以及 `runtime.hello`、`runtime.ping`、`plugins.list.v1`、
+`plugin.search.v1` 和有幂等键的内部 `runtime.shutdown`。它
 验证协议版本、bootId、`c:` ID、trace、deadline、对象参数和 64 KiB text frame；Node 与
 Flutter 测试读取同一 fixture。当前也实现 Facade deadline 后的 best-effort `cancel`、256
 在途请求上限和 1 MiB 写侧背压队列；它尚未实现事件、重连、snapshot、资源 HTTP、Range 或
-任何插件业务方法，因此不能被主项目直接调用或视作本章完整协议已验收。详见
-[Runtime M1.2 文档](../../../mg_read_runtime/docs/desktop-runtime-bridge.md)。
+完整内容业务方法，因此不能被主项目直接调用或视作本章
+完整协议已验收。详见
+[Runtime desktop 文档](../../../mg_read_runtime/docs/desktop-runtime-bridge.md)。
 
 ## 版本与 Schema
 
@@ -228,7 +230,7 @@ Runtime Store；它们不是 WS 回调，也不存在 `host.*` namespace。
 | `runtime.store.download.*` | 检查点、完成提交和恢复状态 | 支持 |
 | `runtime.store.kv.*` | 插件作用域小型结构化 KV | 支持；有大小/频率上限 |
 | `runtime.cookie.*` | 插件及源站作用域 Cookie jar | 支持基础 HTTP 场景；敏感且禁止日志 |
-| `runtime.file.import/reveal` | Runtime 自有的受控文件交互 | 首版仅本地 ZIP 导入；其余未实现时 `unsupported` |
+| `runtime.file.import/reveal` | Runtime 自有的受控文件交互 | 首版仅本地 `.mgplugin` 导入；其余未实现时 `unsupported` |
 | `runtime.webview.*` | 交互登录/验证码 | 预留；首版返回 `unsupported` |
 | `runtime.notification.*` | 系统通知 | 预留；未实现时 `unsupported` |
 | `runtime.media.*` | 原生播放会话与后台服务 | 预留；首版返回 `unsupported` |
@@ -253,7 +255,7 @@ Runtime Store；它们不是 WS 回调，也不存在 `host.*` namespace。
 | `method_not_found` | 否 | 未知方法；与已知但延期的能力不同 |
 | `unsupported` | 否 | 已知能力在当前平台/版本未实现 |
 | `invalid_request` | 否 | 参数不符合 Schema 或业务前置条件 |
-| `invalid_format` | 否 | 远端内容、ZIP 或响应格式错误 |
+| `invalid_format` | 否 | 远端内容、`.mgplugin` 或响应格式错误 |
 | `integrity_failed` | 视来源 | 摘要或文件校验失败 |
 | `not_found` | 否 | 内容或资源不存在 |
 | `interaction_required` | 否 | 需要登录、验证码或用户交互 |
@@ -296,7 +298,7 @@ Runtime Store；它们不是 WS 回调，也不存在 `host.*` namespace。
 | `GET /health/ready` | Core、路由、恢复扫描和版本状态 |
 | `GET /v1/resources/{handle}` | 获取资源全部或单段 Range |
 | `HEAD /v1/resources/{handle}` | 获取与 GET 相同的资源元数据，不返回 body |
-| `POST /v1/packages` | Runtime 自有本地导入服务将 ZIP 流上传到 Node 临时安装区 |
+| `POST /v1/packages` | Runtime 自有本地导入服务将 `.mgplugin` 流上传到 Node 临时安装区 |
 
 所有端点仅 loopback。请求带 `X-MgRead-Boot-Id` 用于拒绝跨启动周期请求，但该头不是鉴权凭据。
 
@@ -344,14 +346,14 @@ origin response
   -> Runtime Facade / reader adapter consumer
 ```
 
-- Node 不把完整图片、ZIP、下载文件或未来媒体读入内存。
+- Node 不把完整图片、`.mgplugin`、下载文件或未来媒体读入内存。
 - Writable 产生背压时暂停上游读取；消费者取消时中止 origin 请求和未共享传输。
 - 同一不可变资源的并发请求可合并到共享传输/文件，但各消费者取消互不误伤；最后一个消费者取消才终止共享源。
 - 上游不支持 Range 时，先流式写入临时文件、校验并原子提交，再从稳定本地文件提供 Range。
 - 如果请求需要立即随机访问而上游不支持 Range，返回明确准备中状态/错误，由调用方观察下载任务，不能伪造 Range。
 - 所有字节计数、队列等待和取消原因进入聚合指标，不记录内容。
 
-## 本地 ZIP 上传
+## 本地 `.mgplugin` 上传
 
 1. Runtime Flutter 集成包在用户触发 `plugin.importLocal` capability 后取得受控文件句柄；主项目不注入文件选择器。
 2. Runtime 以流式 body 调用内部 `POST /v1/packages`，不在 UI Isolate 读取整个文件。
@@ -378,5 +380,5 @@ origin response
 - 所有稳定错误码及 details 脱敏。
 - WS 断线、同 bootId 重连、不同 bootId 重建 snapshot。
 - HTTP 200/206/304/410/416、HEAD、慢消费者、取消、大文件和上游无 Range。
-- ZIP 流上传、超限、摘要不匹配和跨启动句柄失效。
+- `.mgplugin` 流上传、超限、摘要不匹配和跨启动句柄失效。
 - 内联文本边界前后各一个字节的行为。

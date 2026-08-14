@@ -9,24 +9,25 @@
 仓库当前已有可运行的 Flutter 应用壳、Riverpod 组合根、类型化路由、语义主题、顶层导航、
 书架入口、“我的”页，以及仅提供安全本地交互的“关于我们”与“意见反馈”页面；小说阅读器
 继续只通过公开接入点集成。主应用已具备后台 SQLite metadata persistence，以及启动前完成
-初始化、纯内存读取、分组合流写入和 CAS 恢复的全局 settings 门面；深色模式消费由独立 UI
-交付维护，本设置核心不包含任何真实 reader/download 设置。以下能力尚未实现：
+初始化、纯内存读取、分组合流写入和 CAS 恢复的全局 settings 门面。它现在通过同级
+`mg_read_runtime` 的版本化 Flutter Facade 显示 Runtime/Node 健康与已安装插件状态；主项目没有
+Node、端口、WS 或 data-root 代码。以下能力尚未实现：
 
-- Runtime Facade 的正式接入及由其驱动的插件中心、书架、发现、下载和诊断页面。
+- Runtime 安装/更新/仓库 UI，以及由 Runtime 驱动的书架、发现、下载和完整诊断页面。
 - 更新检查、协议/隐私/许可/联系内容、截图选择和反馈提交等真实 capability；当前详情页不访问网络、文件或持久化。
-- 由 `mg_read_runtime` 独立实现的插件 SDK、ZIP 安装、官方仓库、更新、回滚、存储、缓存、下载与跨平台承载。
+- 由 `mg_read_runtime` 独立实现的官方仓库、完整 Store、缓存、下载、内容 API 与跨平台承载。
 - Windows/macOS 的 UI 发布适配；Runtime 的 Node/Javet、签名和平台包由 Runtime 仓库验收。
 
-同级 `mg_read_runtime` 已独立完成 M1.2 的 Windows desktop bootstrap 通信测试：它只验证
-Runtime 自行以 Job Object 纳管固定 Node 进程树、完成内部 ready/HTTP/WS 门禁、以有界多路
-复用控制连接调用诊断性 `RuntimePingInvocation`，并向 Facade 投影脱敏启动原因。这不是本
-主项目的依赖或 UI 功能接入，不表示插件、Runtime Store、阅读器数据、Android/Javet、macOS
-包或任何业务 capability 已可用。
+同级 `mg_read_runtime` 已实现 Windows desktop bootstrap 与标准 Node 插件切片：Runtime 自行
+以 Job Object 纳管固定 Node 进程树，完成 ready/HTTP/WS 门禁，按 package/lock 安装依赖并在
+冷启动加载插件，通过 `RuntimePingInvocation`、`InstalledPluginsInvocation` 和
+`PluginSearchInvocation` 投影强类型结果。Node/Flutter 自动化已验证 list/search；这仍不表示
+完整 Runtime Store、阅读器数据、Android/Javet、macOS 包或最终应用包已验收。
 
-本仓库当前阶段仍只交付 UI 壳、架构、协议、开发规范、ADR 和路线图；不得为使用该 M1.2
-验证路径在这里引入 Node/Javet、WS/HTTP Client、Runtime 数据库/文件、Cookie、callback 或
-其他运行时代码。主应用自己的 persistence/settings 不能向 Runtime 注入路径或连接。Runtime
-真实能力只在其仓库成熟后以版本化 Facade 发布并由本项目消费。
+本仓库只消费这些已发布 Facade，并提供“我的 → 书源管理”的 Runtime 状态页；不得在这里引入
+Node/Javet、WS/HTTP Client、Runtime 数据库/文件、Cookie、callback 或其他运行时代码。主应用
+自己的 persistence/settings 不能向 Runtime 注入路径或连接。后续能力仍必须先在 Runtime
+仓库以版本化 Facade 发布，再由本项目增加 UI 消费。
 
 ## 架构入口
 
@@ -35,7 +36,7 @@ Runtime 自行以 Job Object 纳管固定 Node 进程树、完成内部 ready/HT
 - [产品范围与实施路线](docs/architecture/01-product-roadmap.md)
 - [系统分层与组件边界](docs/architecture/02-system-architecture.md)
 - [Runtime 生命周期与平台探针](docs/architecture/03-runtime-lifecycle.md)
-- [插件 SDK、ZIP 与官方仓库](docs/architecture/04-plugin-sdk-packaging-registry.md)
+- [标准 Node 插件、依赖安装与官方仓库](docs/architecture/04-plugin-sdk-packaging-registry.md)
 - [Runtime 内部 WS/HTTP 协议](docs/architecture/05-transport-protocol.md)
 - [数据、缓存与恢复下载](docs/architecture/06-domain-data-cache-downloads.md)
 - [并发与性能规范](docs/architecture/07-concurrency-performance.md)
@@ -50,7 +51,7 @@ Runtime 自行以 Job Object 纳管固定 Node 进程树、完成内部 ready/HT
 
 ## 首版闭环
 
-- 唯一官方插件仓库与本地 ZIP 安装。
+- 唯一官方插件仓库与本地 `.mgplugin` 安装。
 - 插件安装、更新、启停、诊断和失败回滚。
 - 发现、搜索、详情、目录和加入书架。
 - 小说/漫画阅读、语义进度、书签、缓存和可恢复下载。
@@ -80,14 +81,14 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 ## 目标仓库边界
 
-除前两个当前本地项目外，其余名称是计划，尚不表示仓库已经创建：
+当前本地已有主项目、阅读器插件、Runtime 和标准插件模板；registry 名称仍是计划：
 
 | 仓库 | 职责 |
 | --- | --- |
 | `mg_read` | Flutter UI、路由、主题、用户交互、阅读器视图宿主和 Runtime 结果的 UI 投影；不实现或注入 Runtime |
 | `mg_read_reader_ui` | 独立 Flutter 小说/漫画阅读器插件 |
-| `mg_read_runtime` | 完整独立插件运行时：Flutter-facing Facade、平台承载、Node Core、内部 WS/HTTP、Runtime Store、SDK、Schema 与 fixture |
-| `mg_read_plugin_template` | 空白项目、假数据插件、构建/校验/打包/契约测试 |
+| `mg_read_runtime` | 完整独立插件运行时：Flutter-facing Facade、平台承载、Node Core、内部 WS/HTTP、Runtime Store、Plugin API、Schema 与 fixture |
+| `mg_read_plugin_template` | 已创建的标准 Node 空白项目、多文件 TypeScript、本地 package、构建/校验/打包/契约测试 |
 | `mg_read_plugin_registry` | 唯一官方插件索引、包和发布自动化 |
 
 ## 当前与目标目录
@@ -101,7 +102,7 @@ lib/
   features/
     library/              # 当前已有：书架入口
     reader/               # 当前已有：阅读器用例、适配与宿主页
-    plugins/              # 计划：插件管理
+    plugins/              # 当前已有：Runtime 状态/插件列表 Facade 投影；安装管理后续接入
     discovery/            # 当前已有：发现页 UI 预览；搜索与 Runtime 接入计划
     content_detail/       # 计划：详情与目录
     downloads/            # 计划：缓存与下载

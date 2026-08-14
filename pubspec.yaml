@@ -13,6 +13,8 @@ dependencies:
   go_router: 17.3.0
   drift: 2.34.3
   path_provider: 2.1.6
+  mgread_plugin_runtime:
+    path: ../mg_read_runtime/packages/mgread_plugin_runtime
   novel_reader_ui:
     path: ../mg_read_reader_ui
 

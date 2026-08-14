@@ -9,6 +9,8 @@ abstract final class AppDiagnosticThresholds {
   static const Duration libraryOperation = Duration(milliseconds: 300);
   static const Duration libraryOverview = Duration(milliseconds: 300);
   static const Duration readerFirstFrame = Duration(milliseconds: 500);
+  // Windows source-tree cold inspect baseline is 163 ms; 2 s allows package I/O variance.
+  static const Duration runtimeFacade = Duration(seconds: 2);
   static const Duration bootstrap = Duration(seconds: 1);
 }
 

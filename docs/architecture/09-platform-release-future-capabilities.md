@@ -74,7 +74,7 @@ Node 和 Runtime Core 是 Runtime 产物的嵌套可执行内容，必须在签�
 
 - **主项目更新**更换 Flutter UI、路由和阅读器视图宿主，不实现或替换 Runtime 内部组件。
 - **Runtime 更新**更换 Runtime 集成包、平台适配、Runtime Core、Node/Javet、Store 迁移和协议实现，遵循 Runtime 的平台签名/公证与安装升级流程。
-- **插件更新**只下载可信 ESM ZIP 到应用数据目录，使用版本目录、完整性校验和下次应用进程冷激活。
+- **插件更新**只下载标准 Node `.mgplugin` 到应用数据目录，恢复 lock 依赖后使用不可变版本目录、完整性校验和下次应用进程冷激活。
 - 插件不能更新或覆盖包内 Node、Runtime Core、Flutter 代码或原生库。
 - Runtime/协议升级导致插件不兼容时，插件记录与离线内容保留；UI 显示兼容性动作，不自动删除。
 - 官方仓库不可用不阻止已安装插件和离线内容启动。
@@ -118,7 +118,7 @@ runtime.webview.openAuth({
 - `startUrl` 与跳转限制在清单/请求允许的 origin；外部 scheme 需用户确认。
 - Cookie 进入 `pluginId + origin + profileScope` 作用域的 Runtime 管理 jar，不通过日志或普通 RPC 返回全量值。
 - WebView 完成规则、验证码、下载/上传、弹窗、新窗口和证书错误必须单独威胁建模。
-- Android、Windows、macOS 使用 Runtime 内部各自受支持的 WebView 实现，但对插件暴露同一 Runtime SDK。
+- Android、Windows、macOS 使用 Runtime 内部各自受支持的 WebView 实现，但对插件暴露同一 Runtime Plugin API。
 - 登录资料域若未来出现，必须由 Runtime 自身显式建模；不能注入主项目服务或引入全局 current user。
 
 ## Cookie 边界

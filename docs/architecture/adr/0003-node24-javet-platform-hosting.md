@@ -25,7 +25,7 @@ Javet 当前支持 Android 和 Node 24，并允许 Java 与 Node Runtime 生命�
 
 正面：
 
-- 插件作者只面对一套 Node/ESM 能力和 SDK。
+- 插件作者只面对一套标准 Node 能力和 MgRead Plugin API。
 - 桌面发布可复现，不受用户 PATH、npm 和全局 Node 影响。
 - Flutter Runtime Client 在三平台共用 WS/HTTP 协议，Android 不发展私有业务桥接。
 - 分架构产物避免 macOS 一个包重复携带两套 Node。
@@ -41,7 +41,7 @@ Javet 当前支持 Android 和 Node 24，并允许 Java 与 Node Runtime 生命�
 ## 被拒绝的方案
 
 - **依赖用户电脑 Node**：版本、路径和安全不可复现。
-- **Android 使用不同 JavaScript 引擎/语义**：插件兼容分裂，无法保证 Node SDK。
+- **Android 使用不同 JavaScript 引擎/语义**：插件兼容分裂，无法保证标准 Node Plugin API。
 - **Android Engine Pool**：违反单 VM，并增加资源与状态一致性问题。
 - **macOS universal 包内放两套 Node**：体积和签名复杂度增加；首版选择分包。
 - **探针失败时静默换引擎或降级 Node**：破坏公开兼容承诺，必须先做替代 ADR。

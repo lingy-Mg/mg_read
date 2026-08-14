@@ -59,7 +59,7 @@ ID；payload 的格式与配额由作用域和记录类型共同决定。
 | 作用域 | 典型记录粒度 | 动态 JSON 内容 | 不应放入 payload 的内容 |
 | --- | --- | --- | --- |
 | `runtime` | 一项设置/诊断摘要一条记录 | 可选设置、脱敏上下文 | 数据根绝对路径、正文、凭据 |
-| `plugin` | 安装、版本、KV key 各自一条 | manifest 快照、扩展状态、插件 KV | ZIP 字节、任意 SQL、无限 KV |
+| `plugin` | 安装、版本、KV key 各自一条 | package 元数据快照、扩展状态、插件 KV | `.mgplugin` 字节、任意 SQL、无限 KV |
 | `library` | 书架项、来源绑定分别一条 | 标题/作者/封面快照、来源附加信息 | 整本目录、整章正文 |
 | `catalog` | snapshot 一条、entry 每章一条 | 章节标题、远端版本、层级扩展 | 一本书的巨型章节数组 |
 | `reader` | 每书进度一条、每书签一条 | 版本化语义锚点、标签、短摘要策略 | 页码、像素偏移、整章正文 |
@@ -109,7 +109,7 @@ Facade 领域类型保持强类型，持久化时按下表拆分。表中的“�
 
 | 领域记录 | 稳定投影 | 作用域 JSON |
 | --- | --- | --- |
-| `PluginInstallation` | plugin identity、parent/version relation、primary state、revision | manifest 快照、已安装/待激活/回滚详情、脱敏错误扩展 |
+| `PluginInstallation` | plugin identity、parent/version relation、primary state、revision | package 元数据快照、已安装/待激活/回滚详情、脱敏错误扩展 |
 | `LibraryItem` | stable item ID、content kind、primary availability、revision | 标题/作者/封面快照、来源展示、目录 revision 扩展 |
 | `SourceBinding` | parent item、plugin-scoped identity hash、revision | opaque remote ID、source key 和插件扩展 |
 | `CatalogSnapshot` | parent item、snapshot revision/state | 来源时间、刷新上下文、可选摘要 |

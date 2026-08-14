@@ -1,0 +1,240 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
+
+import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
+import 'package:mg_read/core/errors/app_error.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
+import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
+import 'package:mg_read/features/profile/presentation/profile_page.dart';
+
+import '../../../app/mg_read_app_test_support.dart';
+import '../../../core/diagnostics/diagnostics_testkit.dart';
+
+void main() {
+  test(
+    'application port projects success with exactly one span terminal',
+    () async {
+      final diagnostics = DiagnosticsTestkit();
+      addTearDown(diagnostics.dispose);
+      final gateway = _FakePluginRuntimeGateway(_connected);
+      final container = ProviderContainer(
+        overrides: [
+          diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+          pluginRuntimeGatewayProvider.overrideWithValue(gateway),
+        ],
+      );
+      addTearDown(container.dispose);
+      final subscription = container.listen(
+        pluginRuntimeConnectionProvider,
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+
+      final result = await container.read(
+        pluginRuntimeConnectionProvider.future,
+      );
+
+      expect(result.runtimeVersion, '0.2.0-standard.1');
+      expect(result.plugins.single.id, 'org.example.fixture');
+      expect(gateway.calls, 1);
+      expect(
+        diagnostics.sink.events
+            .where(
+              (event) => event.eventName.startsWith('runtime.facade.call.'),
+            )
+            .map((event) => event.eventName),
+        <String>['runtime.facade.call.start', 'runtime.facade.call.complete'],
+      );
+    },
+  );
+
+  test(
+    'application port normalizes failure and records one error terminal',
+    () async {
+      final diagnostics = DiagnosticsTestkit();
+      addTearDown(diagnostics.dispose);
+      final container = ProviderContainer(
+        overrides: [
+          diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+          pluginRuntimeGatewayProvider.overrideWithValue(
+            _FailingPluginRuntimeGateway(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final terminal = Completer<AsyncValue<PluginRuntimeConnection>>();
+      final subscription = container.listen(pluginRuntimeConnectionProvider, (
+        _,
+        next,
+      ) {
+        if (next.hasError && !terminal.isCompleted) terminal.complete(next);
+      }, fireImmediately: true);
+      addTearDown(subscription.close);
+
+      final state = await terminal.future;
+      expect(
+        state.error,
+        isA<AppError>().having(
+          (error) => error.code,
+          'code',
+          AppErrorCode.runtimeUnavailable,
+        ),
+      );
+      expect(
+        diagnostics.sink.events
+            .where(
+              (event) => event.eventName.startsWith('runtime.facade.call.'),
+            )
+            .map((event) => event.eventName),
+        <String>['runtime.facade.call.start', 'runtime.facade.call.error'],
+      );
+    },
+  );
+
+  test(
+    'Runtime startup detail is normalized without retaining its message',
+    () {
+      const secretCanary = 'Bearer RUNTIME-SECRET-CANARY';
+      final error = normalizePluginRuntimeError(
+        const PluginRuntimeException(
+          'runtime_node_executable_missing',
+          secretCanary,
+        ),
+      );
+
+      expect(error.code, AppErrorCode.runtimeStartFailed);
+      expect(error.toString(), isNot(contains(secretCanary)));
+    },
+  );
+
+  testWidgets('status page renders the Runtime-owned plugin projection', (
+    WidgetTester tester,
+  ) async {
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+          pluginRuntimeGatewayProvider.overrideWithValue(
+            _FakePluginRuntimeGateway(_connected),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: PluginRuntimeStatusPage(
+            onBackRequested: () {},
+            onDestinationRequested: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('运行时已就绪'), findsOneWidget);
+    expect(find.text('示例插件'), findsOneWidget);
+    expect(find.textContaining('0.2.0-standard.1'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('plugin-org.example.fixture')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('source management opens the typed Runtime status route', (
+    WidgetTester tester,
+  ) async {
+    await _setViewport(tester, const Size(390, 900));
+    final settings = await createTestAppSettings();
+    addTearDown(settings.close);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          pluginRuntimeGatewayProvider.overrideWithValue(
+            _FakePluginRuntimeGateway(_connected),
+          ),
+        ],
+        child: testMgReadApp(settings),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('app-nav-profile')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfilePage), findsOneWidget);
+    final profileContent = find.byKey(const Key('profile-page-content'));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('profile-setting-source-management')),
+      220,
+      scrollable: find.descendant(
+        of: profileContent,
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.tap(
+      find.byKey(const Key('profile-setting-source-management')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PluginRuntimeStatusPage), findsOneWidget);
+    expect(find.text('运行时已就绪'), findsOneWidget);
+    expect(find.text('示例插件'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('profile-detail-back')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfilePage), findsOneWidget);
+  });
+}
+
+Future<void> _setViewport(WidgetTester tester, Size size) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(() {
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
+  });
+  await tester.pump();
+}
+
+const _connected = PluginRuntimeConnection(
+  isHealthy: true,
+  nodeVersion: '24.16.0',
+  runtimeVersion: '0.2.0-standard.1',
+  plugins: <PluginRuntimePlugin>[
+    PluginRuntimePlugin(
+      activeVersion: '1.0.0',
+      contentKinds: <String>['novel'],
+      enabled: true,
+      id: 'org.example.fixture',
+      name: '示例插件',
+      pendingVersion: null,
+      status: 'active',
+    ),
+  ],
+);
+
+final class _FakePluginRuntimeGateway implements PluginRuntimeGateway {
+  _FakePluginRuntimeGateway(this.result);
+
+  final PluginRuntimeConnection result;
+  int calls = 0;
+
+  @override
+  Future<PluginRuntimeConnection> inspect() async {
+    calls += 1;
+    return result;
+  }
+}
+
+final class _FailingPluginRuntimeGateway implements PluginRuntimeGateway {
+  @override
+  Future<PluginRuntimeConnection> inspect() async {
+    await Future<void>.delayed(Duration.zero);
+    throw AppError.fromCode(AppErrorCode.runtimeUnavailable);
+  }
+}

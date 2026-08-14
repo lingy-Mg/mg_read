@@ -31,7 +31,7 @@ flowchart TB
         CORE["Node Runtime Core：单 VM"]
         WIRE["内部 WS 控制面 + HTTP 数据面"]
         STORE["Runtime Store/文件/恢复"]
-        SDK["Plugin SDK / Scheduler / ctx.http"]
+        SDK["Plugin API / Scheduler / ctx.http"]
         API --> SUP
         SUP --> CORE
         CORE --> WIRE
@@ -40,7 +40,7 @@ flowchart TB
     end
 
     FACADE --> API
-    SDK --> PLUGINS["可信 ESM 插件"]
+    SDK --> PLUGINS["可信标准 Node 插件"]
     PLUGINS --> SOURCES["小说、漫画及未来媒体站点"]
 ```
 
@@ -129,9 +129,9 @@ envelope，也不允许主项目拼接任意方法字符串。插件管理、发
 `mg_read_runtime` 必须独立拥有：
 
 - Android Javet Adapter、Windows/macOS Node 启动与打包集成，以及跨平台 Supervisor。
-- 单 Node VM、ESM 插件加载、SDK、`ctx.http`、有界调度、取消、限流和诊断。
+- 单 Node VM、标准 ESM/CommonJS 加载、Plugin API、`ctx.http`、有界调度、取消、限流和诊断。
 - 内部 WS 控制面、loopback HTTP 数据面、ready/hello、资源句柄、Range、背压与重连。
-- 插件安装、ZIP 校验、官方仓库、不可变版本目录、冷激活、回滚与启停。
+- 插件安装、`.mgplugin`/package/lock/SRI 校验、官方仓库、不可变版本目录、冷激活、回滚与启停。
 - Runtime Store：插件版本、书架/来源绑定、目录快照、阅读进度、书签、下载任务、
   内容/缓存文件、Cookie、插件 KV、Runtime 设置和脱敏诊断。
 - Runtime Store 内部使用稳定记录 envelope 与按作用域/记录类型版本化的 JSON；正文、

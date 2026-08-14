@@ -108,6 +108,11 @@ RouteBase get $profileRoute => GoRouteData.$route(
       hasOverriddenOnExit: false,
       factory: $FeedbackRoute._fromState,
     ),
+    GoRouteData.$route(
+      path: 'plugins',
+      hasOverriddenOnExit: false,
+      factory: $PluginCenterRoute._fromState,
+    ),
   ],
 );
 
@@ -156,6 +161,27 @@ mixin $FeedbackRoute on GoRouteData {
 
   @override
   String get location => GoRouteData.$location('/profile/feedback');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $PluginCenterRoute on GoRouteData {
+  static PluginCenterRoute _fromState(GoRouterState state) =>
+      const PluginCenterRoute();
+
+  @override
+  String get location => GoRouteData.$location('/profile/plugins');
 
   @override
   void go(BuildContext context) => context.go(location);

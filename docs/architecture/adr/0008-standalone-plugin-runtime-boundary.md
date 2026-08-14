@@ -20,7 +20,7 @@ Android、Windows、macOS 的行为难以保持一致。
 ## 决策
 
 - `mg_read_runtime` 是完整、可独立运行的插件运行时产品，而不是仅供主项目拼装的
-  Node Core。它拥有 Runtime Core、平台承载、生命周期、内部通信、插件 SDK、安装
+  Node Core。它拥有 Runtime Core、平台承载、生命周期、内部通信、Plugin API、安装
   更新、资源服务、缓存、下载、Cookie、诊断、恢复和其需要的持久化。
 - Android Javet Adapter、Windows/macOS Node 启动与打包集成、Runtime Supervisor、
   WS Client/Server、HTTP 数据面和所有协议 envelope 都由 Runtime 仓库中的内部组件

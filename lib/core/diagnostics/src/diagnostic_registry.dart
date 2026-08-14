@@ -497,6 +497,20 @@ abstract final class AppDiagnosticEvents {
         },
       );
 
+  static final DiagnosticEventDefinition runtimeFacadeCall =
+      DiagnosticEventDefinition.span(
+        name: 'runtime.facade.call',
+        component: 'feature.plugins',
+        summary: 'Versioned Runtime Facade capability call.',
+        fields: <String, DiagnosticFieldDefinition>{
+          'capability': _string,
+          'attempt': _int64,
+          'pluginCount': _int64,
+          'resultState': _string,
+          'errorCode': _string,
+        },
+      );
+
   static final DiagnosticEventDefinition writerState =
       DiagnosticEventDefinition.instant(
         name: 'diagnostics.writer.state',
@@ -620,6 +634,7 @@ abstract final class AppDiagnosticEvents {
         libraryLoad,
         libraryOperation,
         readerLaunch,
+        runtimeFacadeCall,
         performanceSlow,
         writerState,
         eventsDropped,

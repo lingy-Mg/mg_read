@@ -126,29 +126,31 @@ flowchart TB
 
 ### Runtime 自动化与契约测试
 
-- TypeScript 类型检查、调度优先级、公平性、取消、deadline、插件清单/ESM、ZIP 校验、
+- TypeScript 类型检查、调度优先级、公平性、取消、deadline、插件 package/lock/ESM、`.mgplugin` 校验、
   安装事务、冷激活、回滚、`ctx.http`、Cookie、资源流、背压、Range 和恢复。
 - Runtime Store 的迁移、事务、缓存/下载策略、原子文件提交、`.part` 恢复和数据损坏。
 - 作用域 JSON codec、未知字段保留、旧/未来文档版本、revision、内容 generation 和
   跨元数据/正文/文件对象的崩溃切点。
 - Runtime Facade 的强类型调用、错误投影、资源对象、自动启动和“零主项目注入”断言。
 - shared schema/fixture 的 envelope、版本协商、错误码、Unicode、64 位数值、
-  `ResourceHandle` 和插件清单边界。Runtime CI 定义生成、兼容检查和破坏性变更门禁。
+  `ResourceHandle` 和插件 package 元数据边界。Runtime CI 定义生成、兼容检查和破坏性变更门禁。
 
-### 当前 M1.2 已执行证据（不替代完整验收）
+### 当前 desktop 与标准插件已执行证据（不替代完整验收）
 
 `mg_read_runtime` 当前 Windows x64 自动化已运行 Node Core 单测和实际 Flutter↔Node
 集成测试：固定 Node child、stdout ready、loopback HTTP readiness、WS hello/ping、并发
 Facade 调用共享一个 child、Windows Job Object 进程树关闭、缺 Node/缺主脚本/结构化 Node fatal
-的诊断投影、受控 shutdown，以及与共享 fixture 的版本一致性。Android/Javet 和任何移动端
-测试、macOS 运行/签名、最终应用包、Runtime Store、插件、资源 HTTP 和完整故障矩阵均未执行。
-主项目不得以此为由新增 wire client 或跳过未来 Runtime 平台验收。
+的诊断投影、受控 shutdown，以及与共享 fixture 的版本一致性。标准插件测试另外覆盖
+package/lock 校验、确定性 archive、路径穿越、registry SRI、完整资源、`file:`、
+hardlink/copy fallback、冷激活、失败安装终态和 dependency GC；Flutter Facade 已覆盖真实
+Node 的 list/search。Android/Javet、macOS 运行/签名、最终应用包、完整 Runtime Store、资源
+HTTP 和完整故障矩阵仍未执行。主项目不得以此为由新增 wire client 或跳过平台验收。
 
 ### 集成、故障与平台验收
 
 Runtime 集成测试必须覆盖启动前失败、非法/重复 ready、readiness/hello 不兼容、内部
 断线、deadline/取消竞争、snapshot、HTTP 200/206/304/410/416、慢消费者、大文件、
-本地 ZIP 导入、安装中崩溃、Runtime Store 事务前后崩溃、下载恢复、磁盘满、插件缺失
+本地 `.mgplugin` 导入、安装中崩溃、Runtime Store 事务前后崩溃、下载恢复、磁盘满、插件缺失
 离线投影，以及明确断言没有数据库/文件/Cookie/平台 callback 从主项目注入。
 
 | 平台 | Runtime 必须验证 |

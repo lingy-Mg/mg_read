@@ -20,6 +20,7 @@ class ProfilePage extends StatefulWidget {
     this.onToggleTheme,
     this.onAboutRequested,
     this.onFeedbackRequested,
+    this.onPluginCenterRequested,
     super.key,
   });
 
@@ -30,6 +31,7 @@ class ProfilePage extends StatefulWidget {
 
   final VoidCallback? onAboutRequested;
   final VoidCallback? onFeedbackRequested;
+  final VoidCallback? onPluginCenterRequested;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -94,7 +96,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   const SizedBox(height: AppSpacing.unit / 2),
                   ProfileSettingsList(
                     items: ProfileFixtures.preview.settings,
-                    onItemPressed: (_) => _showUnavailableMessage(),
+                    onItemPressed: _handleSettingsItemPressed,
                   ),
                   const SizedBox(height: AppSpacing.compact),
                   _ProfileSectionTitle(title: '关于与其他'),
@@ -155,6 +157,15 @@ class _ProfilePageState extends State<ProfilePage> {
     };
     if (callback != null) {
       callback();
+      return;
+    }
+    _showUnavailableMessage();
+  }
+
+  void _handleSettingsItemPressed(ProfileSettingsItemViewData item) {
+    if (item.id == 'source-management' &&
+        widget.onPluginCenterRequested != null) {
+      widget.onPluginCenterRequested!();
       return;
     }
     _showUnavailableMessage();

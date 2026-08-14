@@ -63,7 +63,7 @@ stateDiagram-v2
 sequenceDiagram
     participant F as Runtime Facade
     participant S as Runtime Supervisor
-    participant P as Bundled Node Child
+    participant P as Packaged Node Child
     participant H as Internal Loopback HTTP
     participant W as Internal WebSocket
 
@@ -110,20 +110,23 @@ sequenceDiagram
 严格验证 JSON、PID、版本、端口和重复消息，但这些字段仅用于 Runtime 内部，Facade
 不会将它们作为主项目 API 暴露。
 
-### 当前 M1.2 desktop bootstrap 证据
+### 当前 desktop Runtime 与标准插件证据
 
-`mg_read_runtime` 当前已在 Windows x64 的源码 bundle 上实现最小路径：固定 Node child
-绑定 `127.0.0.1:0`，输出 ready，Runtime-owning Flutter Facade 再验证
-`/health/ready` 与 `runtime.hello` 后执行 `runtime.ping`。Supervisor 在启动 child 前持有
-`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object，测试验证后代进程随 Job close 被内核终止；
-128 个并发 Facade 调用会在同一 child 和有界 WS 控制连接上复用。缺 Node、缺主脚本或 Node
-启动 fatal 以稳定错误与脱敏 diagnostics 返回；主项目没有参与启动、端口或 WS 代码。实现与
-测试说明见
-[Runtime M1.2 文档](../../../mg_read_runtime/docs/desktop-runtime-bridge.md)。
+`mg_read_runtime` 当前已在 Windows x64 源码环境实现固定 Node child：绑定
+`127.0.0.1:0`、输出 ready，由 Runtime-owning Flutter Facade 验证 `/health/ready` 与
+`runtime.hello` 后调用 `runtime.ping`、`plugins.list.v1` 或 `plugin.search.v1`。Supervisor
+在启动 child 前持有 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object；测试验证后代进程随
+Job close 被内核终止，128 个并发 Facade 调用复用同一 child 和有界 WS 控制连接。
 
-该 M1.2 `ready` 只代表最小 Core、health 路由和 WS 路由已经准备，并**不**满足本节的
-产品级 Store/插件/恢复前置条件；Runtime Store 尚未实现，因此不得把此测试信号当作完整
-首版 ready 或让主项目据此接入。移动端/Javet 和 macOS 未在本轮测试。
+Core 在 ready 前用 Runtime 自有 data root 扫描不可变插件版本，冷激活 `pending`，按标准
+Node 模块解析加载命名导出，并在失败更新时保留旧 `current`。安装器、依赖对象仓、SRI、
+hardlink/copy、`.mgplugin` 和 mark-sweep 由 Runtime 仓库独立测试；主项目只接入版本化
+Facade，不参与路径、启动、端口、WS 或安装。实现与证据见
+[Runtime desktop 文档](../../../mg_read_runtime/docs/desktop-runtime-bridge.md)。
+
+当前 `ready` 证明 desktop Core 与插件目录冷启动扫描就绪，但完整 Runtime Store、官方仓库、
+HTTP 资源流、Android/Javet、macOS 和最终应用包路径仍未完成对应验收；不得把 Windows 源码
+测试扩张为全平台完成声明。
 
 ## Android 启动
 
