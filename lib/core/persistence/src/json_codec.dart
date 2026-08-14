@@ -122,4 +122,31 @@ Object? _copyJson(Object? value) {
   );
 }
 
-void _validateJsonShape(JsonObject document) => _copyObject(document);
+void _validateJsonShape(JsonObject document) {
+  var keys = 0;
+  void visit(Object? value, int depth) {
+    if (depth > 24) {
+      throw const PersistenceValidationError('JSON nesting exceeds 24 levels.');
+    }
+    if (value is String && value.length > 32768) {
+      throw const PersistenceValidationError('JSON string exceeds 32 KiB.');
+    }
+    if (value is Map) {
+      keys += value.length;
+      if (keys > 2048) {
+        throw const PersistenceValidationError('JSON key count exceeds 2048.');
+      }
+      for (final entry in value.entries) visit(entry.value, depth + 1);
+    } else if (value is List) {
+      if (value.length > 2048) {
+        throw const PersistenceValidationError(
+          'JSON array exceeds 2048 entries.',
+        );
+      }
+      for (final child in value) visit(child, depth + 1);
+    }
+  }
+
+  visit(document, 0);
+  _copyObject(document);
+}

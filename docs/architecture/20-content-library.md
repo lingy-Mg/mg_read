@@ -1,0 +1,16 @@
+# 20 内容资料库（Content Library）
+
+本专题落实 ADR-0100。`mg_read` 是书架、目录、正文与本地漫画资产的权威持有者；Runtime 只在未来经强类型 adapter 提交已验证的数据，绝不取得数据库路径、连接或文件绝对路径。
+
+```text
+AppPersistence
+  app_metadata.sqlite  LibraryItem / Binding / Snapshot / Entry / 引用
+  content.sqlite       不可变小说 UTF-8 正文、漫画章节 manifest
+  files/content-assets 不可猜测 ID 的漫画图片字节
+```
+
+三者没有跨库原子事务：先写入并校验 object/file，再以 metadata revision CAS 指向新对象；故障后已提交 metadata 为准。无引用对象留给有界 maintenance/GC；引用缺失投影为 damaged。目录刷新写 pending snapshot（每批 100–500 条），只通过一次 CAS 切换 active snapshot；查询采用 `(orderKey, recordId)` keyset cursor，不用 offset 或全量载入。
+
+验收基线为最多 100 本、每本 1,000–3,000 章，即 300,000 条，另用 350,000 合成余量；12GB 正文只允许样本和字节外推，不能伪称为实测。不得在交互路径 VACUUM；轻量备份只含 metadata，完整正文备份须采用未来流式/在线备份。
+
+`ContentLibrary` 向 feature/reader 提供异步强类型仓储；内部 PluginSourceData（pluginId、版本、dataVersion、opaque JSON）不从公开 barrel 导出。普通 JSON 禁止正文、Base64、二进制、Cookie、token、凭据与绝对路径。首版仅 novel/manga；未知类型只读。`sessionOnly` 不保存 URL，Cookie/Authorization/token 永不落盘。

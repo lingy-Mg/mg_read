@@ -57,6 +57,18 @@ final class PersistenceRecordStore {
     await database.customStatement(
       'CREATE INDEX IF NOT EXISTS metadata_records_scope ON metadata_records(scope_kind, scope_id)',
     );
+    await database.customStatement(
+      'CREATE INDEX IF NOT EXISTS metadata_records_kind_scope ON metadata_records(record_kind, scope_kind, scope_id)',
+    );
+    await database.customStatement(
+      'CREATE INDEX IF NOT EXISTS metadata_records_parent_order ON metadata_records(record_kind, scope_kind, scope_id, parent_id, order_key, record_id)',
+    );
+    await database.customStatement(
+      'CREATE INDEX IF NOT EXISTS metadata_records_identity ON metadata_records(record_kind, scope_kind, scope_id, identity_key)',
+    );
+    await database.customStatement(
+      'CREATE INDEX IF NOT EXISTS metadata_records_state_order ON metadata_records(record_kind, scope_kind, scope_id, state_key, order_key, record_id)',
+    );
     return PersistenceRecordStore._(database, registry, clock, path);
   }
 
@@ -121,6 +133,55 @@ final class PersistenceRecordStore {
         .get();
     if (rows.isEmpty) return null;
     return _rowToEnvelope(rows.single.data);
+  }
+
+  Future<RecordPage> list(RecordQuery query) async {
+    _ensureOpen();
+    final where = <String>['record_kind = ?', 'scope_kind = ?', 'scope_id = ?'];
+    final variables = <Variable<Object>>[
+      Variable.withString(query.recordKind),
+      Variable.withString(query.scope.kind),
+      Variable.withString(query.scope.id),
+    ];
+    void addNullable(String column, String? value) {
+      if (value == null) return;
+      where.add('$column = ?');
+      variables.add(Variable.withString(value));
+    }
+
+    addNullable('parent_id', query.parentId);
+    addNullable('state_key', query.stateKey);
+    addNullable('identity_key', query.identityKey);
+    if (query.after case final after?) {
+      where.add(
+        '(COALESCE(order_key, \'\') > ? OR (COALESCE(order_key, \'\') = ? AND record_id > ?))',
+      );
+      variables.addAll([
+        Variable.withString(after.orderKey),
+        Variable.withString(after.orderKey),
+        Variable.withString(after.id),
+      ]);
+    }
+    final rows = await _database
+        .customSelect(
+          'SELECT * FROM metadata_records WHERE ${where.join(' AND ')} '
+          'ORDER BY COALESCE(order_key, \'\') ASC, record_id ASC LIMIT ?',
+          variables: [...variables, Variable.withInt(query.limit + 1)],
+        )
+        .get();
+    final hasMore = rows.length > query.limit;
+    final pageRows = hasMore ? rows.take(query.limit).toList() : rows;
+    final records = <RecordEnvelope>[];
+    for (final row in pageRows) {
+      records.add(await _rowToEnvelope(row.data));
+    }
+    final tail = records.isEmpty ? null : records.last;
+    return RecordPage(
+      records: List.unmodifiable(records),
+      nextCursor: hasMore && tail != null
+          ? RecordCursor(orderKey: tail.orderKey ?? '', id: tail.id)
+          : null,
+    );
   }
 
   Future<RecordEnvelope> update({

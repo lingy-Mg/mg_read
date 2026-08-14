@@ -68,6 +68,40 @@ final class RecordEnvelope {
   final String? stateKey;
 }
 
+/// A stable, keyset-paginated query.  The cursor is the last returned
+/// `(orderKey, id)` pair, so inserts before a page never duplicate a row.
+final class RecordQuery {
+  const RecordQuery({
+    required this.recordKind,
+    required this.scope,
+    this.parentId,
+    this.stateKey,
+    this.identityKey,
+    this.after,
+    this.limit = 100,
+  }) : assert(limit > 0 && limit <= 1000);
+
+  final String recordKind;
+  final ScopeKey scope;
+  final String? parentId;
+  final String? stateKey;
+  final String? identityKey;
+  final RecordCursor? after;
+  final int limit;
+}
+
+final class RecordCursor {
+  const RecordCursor({required this.orderKey, required this.id});
+  final String orderKey;
+  final String id;
+}
+
+final class RecordPage {
+  const RecordPage({required this.records, this.nextCursor});
+  final List<RecordEnvelope> records;
+  final RecordCursor? nextCursor;
+}
+
 JsonObject freezeJsonObject(JsonObject value) => UnmodifiableMapView(
   value.map((key, child) => MapEntry(key, _freezeJson(child))),
 );
