@@ -377,6 +377,7 @@ final class AppDiagnosticsService
   DiagnosticSpanHandle? _captureSpan;
   Timer? _captureExpiryTimer;
   Future<void> _attachmentWriteTail = Future<void>.value();
+  Future<void>? _closeFuture;
   bool _closing = false;
   bool _closed = false;
 
@@ -879,12 +880,15 @@ final class AppDiagnosticsService
     return _persistence.getStatistics();
   }
 
-  Future<void> close() async {
-    if (_closed || _closing) return;
+  Future<void> close() => _closeFuture ??= _close();
+
+  Future<void> _close() async {
+    if (_closed) return;
     _closing = true;
     _captureExpiryTimer?.cancel();
     if (_activeCapture case final capture?) {
       await _persistence.stopCaptureSession(capture.session.sessionId);
+      _activeCapture = null;
       if (_captureSpan case final span? when !span.isEnded) {
         span.complete(
           attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
@@ -893,7 +897,6 @@ final class AppDiagnosticsService
         );
       }
       _captureSpan = null;
-      _activeCapture = null;
     }
     manager.emit(
       AppDiagnosticEvents.writerState,

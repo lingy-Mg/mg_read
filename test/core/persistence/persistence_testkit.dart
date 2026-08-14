@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
 
 final class PersistenceTestkit {
@@ -10,11 +11,13 @@ final class PersistenceTestkit {
 
   static Future<PersistenceTestkit> open({
     RecordDocumentRegistry? registry,
+    DiagnosticsManager? diagnostics,
   }) async {
     final root = await Directory.systemTemp.createTemp('mg-read-persistence-');
     final store = await PersistenceRecordStore.open(
       dataRoot: root,
       registry: registry ?? defaultRegistry,
+      diagnostics: diagnostics,
     );
     return PersistenceTestkit._(root, store);
   }

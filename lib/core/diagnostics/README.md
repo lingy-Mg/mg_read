@@ -21,6 +21,10 @@ Current implementation:
 - explicit capture sessions with component/origin allowlists, duration, session,
   attachment and global quotas;
 - age/byte retention, WAL checkpointing and stable cursor pagination.
+- composition-root wiring plus bootstrap, lifecycle, route, settings,
+  persistence, content-library, library-load and reader-launch instrumentation;
+- sink-failure isolation, concurrent-close coordination and secret-canary
+  assertions for existing application critical paths.
 
 The manager is injected from the app composition root. Features receive only the
 narrow manager/query port they need. Production code must never construct event
@@ -33,7 +37,8 @@ names dynamically, retain raw exceptions, or bypass the privacy policy with
 part of the public API. Encoding, SQLite work and file hashing stay off the UI
 isolate, while event admission remains synchronous, bounded and fail-open.
 
-D1 contracts and D2 app storage are implemented here. Runtime/HTTP instrumentation
-remains owned by `../mg_read_runtime` (D3). Structured-tree rendering, export and
-the dedicated debugger UI arrive in D4. `restrictedRaw` remains deliberately
-disabled until the separately reviewed encrypted D5 store exists.
+D1 contracts, D2 app storage and application-side critical-path instrumentation
+are implemented here. Runtime/HTTP instrumentation remains owned by
+`../mg_read_runtime` (D3). Structured-tree rendering, export and the dedicated
+debugger UI arrive in D4. `restrictedRaw` remains deliberately disabled until
+the separately reviewed encrypted D5 store exists.

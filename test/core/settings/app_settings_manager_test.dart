@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/settings/settings.dart';
 
+import '../diagnostics/diagnostics_testkit.dart';
 import 'settings_testkit.dart';
 
 void main() {
@@ -657,6 +660,48 @@ void main() {
       );
       expect(localManager.get(largeKey), isEmpty);
       expect(localManager.status.isDirty, isFalse);
+    },
+  );
+
+  test(
+    'diagnostics cover initialize, mutation, and write without values',
+    () async {
+      const secretCanary = 'SETTINGS-SECRET-CANARY';
+      await manager.close();
+      final diagnostics = DiagnosticsTestkit();
+      addTearDown(diagnostics.dispose);
+      manager = AppSettingsManager(
+        store: store,
+        registry: settingsTestRegistry,
+        diagnostics: diagnostics.manager,
+        policy: const SettingsPersistencePolicy(
+          debounce: Duration(hours: 1),
+          closeTimeout: Duration(seconds: 1),
+        ),
+      );
+
+      await manager.initialize();
+      await manager.set(nullableLabelKey, secretCanary);
+      final result = await manager.flush();
+
+      expect(result.persisted, isTrue);
+      expect(
+        diagnostics.sink.events.map((event) => event.eventName),
+        containsAll(<String>[
+          'settings.initialize.start',
+          'settings.initialize.complete',
+          'settings.mutation.start',
+          'settings.mutation.complete',
+          'settings.write.start',
+          'settings.write.complete',
+        ]),
+      );
+      final encoded = jsonEncode(
+        diagnostics.sink.events
+            .map(const DiagnosticEventCodec().encode)
+            .toList(growable: false),
+      );
+      expect(encoded, isNot(contains(secretCanary)));
     },
   );
 }

@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
 
+import '../diagnostics/diagnostics_testkit.dart';
 import 'persistence_testkit.dart';
 
 void main() {
@@ -27,6 +31,40 @@ void main() {
     await kit.store.delete(previous: updated);
     expect(await kit.store.read(id: 'theme', scope: localScope), isNull);
   });
+
+  test(
+    'operation diagnostics exclude record IDs and document content',
+    () async {
+      const secretCanary = 'Bearer PERSISTENCE-SECRET-CANARY';
+      const privateRecordId = 'private-record-identifier';
+      await kit.dispose();
+      final diagnostics = DiagnosticsTestkit();
+      addTearDown(diagnostics.dispose);
+      kit = await PersistenceTestkit.open(diagnostics: diagnostics.manager);
+
+      final created = await kit.store.create(
+        settingDraft(privateRecordId, value: secretCanary),
+      );
+      await kit.store.read(id: privateRecordId, scope: localScope);
+      await kit.store.update(
+        previous: created,
+        document: {'value': secretCanary, 'enabled': true},
+      );
+
+      final eventNames = diagnostics.sink.events.map(
+        (event) => event.eventName,
+      );
+      expect(eventNames, contains('persistence.open.complete'));
+      expect(eventNames, contains('persistence.operation.complete'));
+      final encoded = jsonEncode(
+        diagnostics.sink.events
+            .map(const DiagnosticEventCodec().encode)
+            .toList(growable: false),
+      );
+      expect(encoded, isNot(contains(privateRecordId)));
+      expect(encoded, isNot(contains(secretCanary)));
+    },
+  );
 
   test('persists across close and reopen', () async {
     await kit.store.create(settingDraft('theme', value: 'dark'));

@@ -26,20 +26,30 @@ typedef AppDiagnosticsServiceFactory =
 Future<void> bootstrapMgReadApp({
   AppSettingsManager? settingsManager,
   AppDiagnosticsService? diagnosticsService,
+  DiagnosticsManager? diagnosticsManager,
   AppDiagnosticsServiceFactory? diagnosticsServiceFactory =
       _openDefaultDiagnostics,
   SettingsDataRootResolver dataRootResolver = _defaultSettingsDataRoot,
   MgReadAppRunner appRunner = runApp,
   Widget child = const MgReadApp(),
 }) async {
+  if (diagnosticsService != null && diagnosticsManager != null) {
+    throw ArgumentError(
+      'Provide diagnosticsService or diagnosticsManager, not both.',
+    );
+  }
   WidgetsFlutterBinding.ensureInitialized();
   Directory? dataRoot;
   if (settingsManager == null ||
-      (diagnosticsService == null && diagnosticsServiceFactory != null)) {
+      (diagnosticsService == null &&
+          diagnosticsManager == null &&
+          diagnosticsServiceFactory != null)) {
     dataRoot = await dataRootResolver();
   }
   AppDiagnosticsService? persistentDiagnostics = diagnosticsService;
-  if (persistentDiagnostics == null && diagnosticsServiceFactory != null) {
+  if (persistentDiagnostics == null &&
+      diagnosticsManager == null &&
+      diagnosticsServiceFactory != null) {
     try {
       persistentDiagnostics = await diagnosticsServiceFactory(dataRoot!);
     } catch (_) {
@@ -50,6 +60,7 @@ Future<void> bootstrapMgReadApp({
   }
   final diagnostics =
       persistentDiagnostics?.manager ??
+      diagnosticsManager ??
       DiagnosticsManager(
         sink: const NoopDiagnosticEventSink(),
         registry: AppDiagnosticEvents.registry,

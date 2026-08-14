@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_router.dart';
 import 'package:mg_read/app/mg_read_app.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/library/application/library_overview_loader.dart';
@@ -17,6 +19,7 @@ import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 
+import '../core/diagnostics/diagnostics_testkit.dart';
 import 'mg_read_app_test_support.dart';
 
 void main() {
@@ -80,6 +83,41 @@ void main() {
       find.text('此路由只保存稳定书籍 ID。后续由应用用例解析数据源和状态存储后再打开阅读器。'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('route and reader diagnostics never persist route parameters', (
+    WidgetTester tester,
+  ) async {
+    const secretBookId = 'book-Bearer-ROUTE-SECRET-CANARY';
+    final settings = await createTestAppSettings();
+    addTearDown(settings.close);
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    await tester.pumpWidget(
+      testMgReadApp(settings, diagnostics: diagnostics.manager),
+    );
+    await tester.pumpAndSettle();
+
+    final context = tester.element(find.byType(LibraryPage));
+    const ReaderRoute(bookId: secretBookId).go(context);
+    await tester.pumpAndSettle();
+
+    expect(
+      diagnostics.sink.events
+          .where((event) => event.eventName == 'app.route.changed')
+          .map((event) => event.attributes.values['toRoute']),
+      contains(DiagnosticStringValue('reader')),
+    );
+    expect(
+      diagnostics.sink.events.map((event) => event.eventName),
+      containsAll(<String>['reader.launch.start', 'reader.launch.complete']),
+    );
+    final encoded = jsonEncode(
+      diagnostics.sink.events
+          .map(const DiagnosticEventCodec().encode)
+          .toList(growable: false),
+    );
+    expect(encoded, isNot(contains(secretBookId)));
   });
 
   testWidgets('ignores a pending library load after its route is disposed', (

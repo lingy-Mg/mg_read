@@ -471,7 +471,7 @@ abstract final class AppDiagnosticEvents {
   static final DiagnosticEventDefinition libraryOperation =
       DiagnosticEventDefinition.span(
         name: 'library.operation',
-        component: 'core.contentLibrary',
+        component: 'core.content-library',
         summary: 'Content library operation.',
         fields: <String, DiagnosticFieldDefinition>{
           'operation': _string,

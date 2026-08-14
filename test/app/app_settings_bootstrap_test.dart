@@ -5,8 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_settings_lifecycle.dart';
 import 'package:mg_read/app/bootstrap.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/settings/settings.dart';
 
+import '../core/diagnostics/diagnostics_testkit.dart';
 import '../core/settings/settings_testkit.dart';
 
 void main() {
@@ -101,5 +103,51 @@ void main() {
     expect(manager.status.isPersisted, isTrue);
     await tester.pumpWidget(const SizedBox.shrink());
     await manager.close();
+  });
+
+  test('bootstrap emits its span and injects diagnostics manager', () async {
+    final diagnostics = DiagnosticsTestkit();
+    final manager = AppSettingsManager(
+      store: FakeSettingsStore(),
+      registry: settingsTestRegistry,
+    );
+    Widget? mounted;
+
+    await bootstrapMgReadApp(
+      settingsManager: manager,
+      diagnosticsManager: diagnostics.manager,
+      diagnosticsServiceFactory: (_) async =>
+          throw StateError('factory must not run for an injected manager'),
+      appRunner: (app) => mounted = app,
+      child: Consumer(
+        builder: (context, ref, child) {
+          return Text(
+            '${identical(ref.watch(diagnosticsManagerProvider), diagnostics.manager)}',
+            textDirection: TextDirection.ltr,
+          );
+        },
+      ),
+    );
+
+    final scope = mounted! as ProviderScope;
+    final host = scope.child as AppSettingsLifecycleHost;
+    final container = ProviderContainer(overrides: scope.overrides);
+    expect(
+      identical(
+        container.read(diagnosticsManagerProvider),
+        diagnostics.manager,
+      ),
+      isTrue,
+    );
+    final bootstrapEvents = diagnostics.sink.events.where(
+      (event) => event.eventName.startsWith('app.bootstrap.'),
+    );
+    expect(bootstrapEvents, hasLength(2));
+    expect(bootstrapEvents.last.outcome, DiagnosticOutcome.success);
+
+    container.dispose();
+    host.disposeDiagnosticsBoundary?.call();
+    await manager.close();
+    await diagnostics.manager.close();
   });
 }

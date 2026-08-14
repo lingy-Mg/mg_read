@@ -139,6 +139,31 @@ void main() {
       expect(decoded.extensionFields['futureProjection'], 'retained');
       expect(codec.encode(decoded)['futureProjection'], 'retained');
     });
+
+    test('isolates sink admission, flush, and close failures', () async {
+      final manager = DiagnosticsManager(
+        sink: const _ThrowingDiagnosticEventSink(),
+        registry: AppDiagnosticEvents.registry,
+        source: DiagnosticSource.app,
+        idGenerator: SequentialDiagnosticIdGenerator(),
+        clock: FixedDiagnosticClock(),
+        sourceRunId: 'run_000000000000000000000999',
+      );
+
+      final result = manager.emit(
+        AppDiagnosticEvents.routeChanged,
+        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+          'toRoute': DiagnosticValue.string('library'),
+        }),
+      );
+
+      expect(result.accepted, isFalse);
+      await expectLater(manager.flush(), completes);
+      final firstClose = manager.close();
+      final secondClose = manager.close();
+      expect(identical(firstClose, secondClose), isTrue);
+      await expectLater(firstClose, completes);
+    });
   });
 
   group('Diagnostic contracts', () {
@@ -172,4 +197,26 @@ void main() {
       );
     });
   });
+}
+
+final class _ThrowingDiagnosticEventSink implements DiagnosticEventSink {
+  const _ThrowingDiagnosticEventSink();
+
+  @override
+  bool isEnabled({
+    required String component,
+    required DiagnosticSeverity severity,
+    required DiagnosticPayloadKind payloadKind,
+  }) => true;
+
+  @override
+  bool add(DiagnosticEvent event) => throw StateError('writer unavailable');
+
+  @override
+  Future<void> flush({required Duration timeout}) =>
+      Future<void>.error(StateError('writer unavailable'));
+
+  @override
+  Future<void> close({required Duration timeout}) =>
+      Future<void>.error(StateError('writer unavailable'));
 }

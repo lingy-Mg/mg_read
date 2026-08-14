@@ -122,6 +122,7 @@ final class DiagnosticsManager {
   final String platform;
   final Stopwatch _monotonic = Stopwatch();
   final Set<DiagnosticSpanHandle> _openSpans = <DiagnosticSpanHandle>{};
+  Future<void>? _closeFuture;
   var _sourceSequence = 0;
   var _closed = false;
 
@@ -137,7 +138,7 @@ final class DiagnosticsManager {
   }) {
     if (_closed) return false;
     final registered = registry.requireDefinition(definition);
-    return sink.isEnabled(
+    return _isSinkEnabled(
       component: registered.component,
       severity: severity ?? registered.defaultSeverity,
       payloadKind: payloadKind,
@@ -159,7 +160,7 @@ final class DiagnosticsManager {
       throw StateError('${registered.name} must be emitted as a span.');
     }
     final effectiveSeverity = severity ?? registered.defaultSeverity;
-    if (!sink.isEnabled(
+    if (!_isSinkEnabled(
       component: registered.component,
       severity: effectiveSeverity,
       payloadKind: privacyContext.payloadKind,
@@ -208,7 +209,7 @@ final class DiagnosticsManager {
     );
     _openSpans.add(handle);
     final severity = registered.defaultSeverity;
-    if (sink.isEnabled(
+    if (_isSinkEnabled(
       component: registered.component,
       severity: severity,
       payloadKind: privacyContext.payloadKind,
@@ -310,16 +311,28 @@ final class DiagnosticsManager {
 
   Future<void> flush({Duration timeout = const Duration(seconds: 2)}) async {
     if (_closed) return;
-    await sink.flush(timeout: timeout);
+    try {
+      await sink.flush(timeout: timeout);
+    } catch (_) {
+      // Sink failures are isolated from the business operation requesting a
+      // best-effort flush. The persistent sink accounts writer failures.
+    }
   }
 
-  Future<void> close({Duration timeout = const Duration(seconds: 2)}) async {
+  Future<void> close({Duration timeout = const Duration(seconds: 2)}) =>
+      _closeFuture ??= _close(timeout);
+
+  Future<void> _close(Duration timeout) async {
     if (_closed) return;
     for (final span in _openSpans.toList(growable: false)) {
       span.end(DiagnosticOutcome.incomplete);
     }
     _closed = true;
-    await sink.close(timeout: timeout);
+    try {
+      await sink.close(timeout: timeout);
+    } catch (_) {
+      // Diagnostics shutdown is best effort and never changes app shutdown.
+    }
     _monotonic.stop();
   }
 
@@ -336,7 +349,7 @@ final class DiagnosticsManager {
       throw StateError('${definition.name} does not allow ${outcome.name}.');
     }
     final severity = definition.severityFor(outcome: outcome);
-    if (!sink.isEnabled(
+    if (!_isSinkEnabled(
       component: definition.component,
       severity: severity,
       payloadKind: span.privacyContext.payloadKind,
@@ -407,7 +420,31 @@ final class DiagnosticsManager {
       captureSessionId: captureSessionId,
       flags: effectiveFlags,
     );
-    return DiagnosticEmitResult(accepted: sink.add(event), event: event);
+    return DiagnosticEmitResult(accepted: _addToSink(event), event: event);
+  }
+
+  bool _isSinkEnabled({
+    required String component,
+    required DiagnosticSeverity severity,
+    required DiagnosticPayloadKind payloadKind,
+  }) {
+    try {
+      return sink.isEnabled(
+        component: component,
+        severity: severity,
+        payloadKind: payloadKind,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _addToSink(DiagnosticEvent event) {
+    try {
+      return sink.add(event);
+    } catch (_) {
+      return false;
+    }
   }
 
   void _ensureOpen() {

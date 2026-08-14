@@ -51,14 +51,14 @@ final class _AppSettingsLifecycleHostState
     _flushTail = _flushTail.then((_) async {
       try {
         await widget.manager.flush().timeout(widget.flushTimeout);
-      } on TimeoutException {
+      } catch (_) {
         // The manager retains dirty state and its retry policy. Lifecycle
-        // callbacks must never block indefinitely.
+        // callbacks must never block indefinitely or surface storage failures.
       }
       try {
         await widget.diagnostics?.flush(timeout: widget.flushTimeout);
-      } on TimeoutException {
-        // Diagnostic flushing is bounded and never delays lifecycle handling.
+      } catch (_) {
+        // Diagnostic flushing is fail-open and never delays lifecycle handling.
       }
     });
   }
@@ -90,12 +90,20 @@ final class _AppSettingsLifecycleHostState
   }
 
   Future<void> _closeResources() async {
-    await widget.manager.close();
+    try {
+      await widget.manager.close();
+    } catch (_) {
+      // Shutdown cannot recover settings persistence here and must continue.
+    }
     widget.disposeDiagnosticsBoundary?.call();
-    if (widget.closeDiagnostics case final close?) {
-      await close();
-    } else {
-      await widget.diagnostics?.close();
+    try {
+      if (widget.closeDiagnostics case final close?) {
+        await close();
+      } else {
+        await widget.diagnostics?.close();
+      }
+    } catch (_) {
+      // Diagnostics failure must not escape an unawaited widget dispose path.
     }
   }
 

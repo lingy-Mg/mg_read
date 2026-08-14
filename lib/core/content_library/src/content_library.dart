@@ -58,7 +58,7 @@ final class ContentLibrary {
           stopwatch.stop();
           reportSlowDiagnostic(
             diagnostics,
-            subjectComponent: 'core.contentLibrary',
+            subjectComponent: 'core.content-library',
             operation: operation,
             elapsed: stopwatch.elapsed,
             threshold: AppDiagnosticThresholds.libraryOperation,
@@ -70,7 +70,7 @@ final class ContentLibrary {
           stopwatch.stop();
           reportSlowDiagnostic(
             diagnostics,
-            subjectComponent: 'core.contentLibrary',
+            subjectComponent: 'core.content-library',
             operation: operation,
             elapsed: stopwatch.elapsed,
             threshold: AppDiagnosticThresholds.libraryOperation,

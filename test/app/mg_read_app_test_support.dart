@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/app/mg_read_app.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/settings/settings.dart';
 
 import '../core/settings/settings_testkit.dart';
@@ -26,9 +27,16 @@ Future<AppSettingsManager> createTestAppSettings({
   return settings;
 }
 
-Widget testMgReadApp(AppSettingsManager settings) {
+Widget testMgReadApp(
+  AppSettingsManager settings, {
+  DiagnosticsManager? diagnostics,
+}) {
   return ProviderScope(
-    overrides: [appSettingsProvider.overrideWithValue(settings)],
+    overrides: [
+      appSettingsProvider.overrideWithValue(settings),
+      if (diagnostics != null)
+        diagnosticsManagerProvider.overrideWithValue(diagnostics),
+    ],
     child: const MgReadApp(),
   );
 }
