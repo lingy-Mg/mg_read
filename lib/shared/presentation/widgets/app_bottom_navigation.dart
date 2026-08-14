@@ -74,6 +74,13 @@ class _AppNavigationItem extends StatelessWidget {
     final Color foreground = selected
         ? tokens.accent
         : theme.colorScheme.onSurface.withValues(alpha: 0.82);
+    final TextStyle labelStyle =
+        (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
+          color: foreground,
+          fontSize: AppSpacing.bottomNavigationLabelSize,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+          height: 1.1,
+        );
 
     return Semantics(
       button: true,
@@ -81,28 +88,64 @@ class _AppNavigationItem extends StatelessWidget {
       label: data.label,
       child: Material(
         color: Colors.transparent,
-        child: InkWell(
+        child: InkResponse(
           key: ValueKey<String>('app-nav-${destination.name}'),
           onTap: () => onSelected(destination),
+          radius: AppSpacing.minimumTouchTarget / 2,
+          hoverColor: Colors.transparent,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          focusColor: tokens.focusRing.withValues(alpha: 0.16),
           child: SizedBox(
-            height: AppSpacing.section * 2 + AppSpacing.unit,
+            height: AppSpacing.bottomNavigationItemHeight,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Icon(
-                  selected ? data.selectedIcon : data.icon,
-                  size: AppSpacing.bottomNavigationIconSize,
-                  color: foreground,
+                AnimatedContainer(
+                  key: ValueKey<String>(
+                    'app-nav-indicator-${destination.name}',
+                  ),
+                  duration: AppMotion.navigationSelection,
+                  curve: AppMotion.navigationCurve,
+                  width: AppSpacing.bottomNavigationIndicatorWidth,
+                  height: AppSpacing.bottomNavigationIndicatorHeight,
+                  decoration: BoxDecoration(
+                    color: selected ? tokens.accentSoft : Colors.transparent,
+                    borderRadius: AppRadii.pill,
+                  ),
+                  child: Center(
+                    child: AnimatedSwitcher(
+                      duration: AppMotion.navigationSelection,
+                      switchInCurve: AppMotion.navigationCurve,
+                      switchOutCurve: AppMotion.navigationReverseCurve,
+                      transitionBuilder:
+                          (Widget child, Animation<double> animation) {
+                            return FadeTransition(
+                              opacity: animation,
+                              child: ScaleTransition(
+                                scale: Tween<double>(
+                                  begin: 0.88,
+                                  end: 1,
+                                ).animate(animation),
+                                child: child,
+                              ),
+                            );
+                          },
+                      child: Icon(
+                        key: ValueKey<bool>(selected),
+                        selected ? data.selectedIcon : data.icon,
+                        size: AppSpacing.bottomNavigationIconSize,
+                        color: foreground,
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.unit),
-                Text(
-                  data.label,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: foreground,
-                    fontSize: AppSpacing.bottomNavigationLabelSize,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                    height: 1.1,
-                  ),
+                AnimatedDefaultTextStyle(
+                  duration: AppMotion.navigationSelection,
+                  curve: AppMotion.navigationCurve,
+                  style: labelStyle,
+                  child: Text(data.label),
                 ),
               ],
             ),

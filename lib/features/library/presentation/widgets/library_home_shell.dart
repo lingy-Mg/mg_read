@@ -41,7 +41,6 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   final ScrollController _scrollController = ScrollController();
   LibraryHomeSection _section = LibraryHomeSection.recentUpdates;
   LibraryStatusFilter _filter = LibraryStatusFilter.all;
-  AppNavigationDestination _destination = AppNavigationDestination.home;
   String? _actionFeedback;
 
   @override
@@ -126,7 +125,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       bottomNavigationBar: SafeArea(
         top: false,
         child: AppBottomNavigation(
-          selected: _destination,
+          selected: AppNavigationDestination.home,
           onSelected: _handleDestinationSelected,
         ),
       ),
@@ -283,9 +282,15 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   }
 
   void _handleDestinationSelected(AppNavigationDestination destination) {
-    setState(() {
-      _destination = destination;
-    });
+    if (destination == AppNavigationDestination.home) {
+      return;
+    }
+    final ValueChanged<AppNavigationDestination>? callback =
+        widget.callbacks.onNavigationSelected;
+    if (callback != null) {
+      callback(destination);
+      return;
+    }
     if (destination == AppNavigationDestination.profile) {
       final VoidCallback? onProfileSelected =
           widget.callbacks.onProfileSelected;
@@ -293,12 +298,6 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
         onProfileSelected();
         return;
       }
-    }
-    final ValueChanged<AppNavigationDestination>? callback =
-        widget.callbacks.onNavigationSelected;
-    if (callback != null) {
-      callback(destination);
-      return;
     }
     if (destination != AppNavigationDestination.home) {
       _showUnavailableMessage();

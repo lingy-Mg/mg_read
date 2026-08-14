@@ -331,10 +331,13 @@ abstract final class AppSpacing {
   static const double sourceManagerHeight = unit * 10;
   static const double sourceManagerGap = unit + unit / 2;
   static const double bottomNavigationHeight = unit * 20;
+  static const double bottomNavigationItemHeight = unit * 13;
   static const double topBarActionSize = unit * 8;
   static const double topBarActionIconSize = unit * 6;
   static const double bottomNavigationIconSize = unit * 6;
   static const double bottomNavigationLabelSize = 11;
+  static const double bottomNavigationIndicatorWidth = unit * 11;
+  static const double bottomNavigationIndicatorHeight = unit * 7;
   static const double unreadDotSize = unit + unit / 2;
   static const double profileCardHeight = 203;
   static const double profileSummaryHeight = 159;
@@ -361,4 +364,12 @@ abstract final class AppRadii {
   static const BorderRadius bookCover = BorderRadius.all(Radius.circular(6));
   static const BorderRadius profileList = BorderRadius.all(Radius.circular(16));
   static const BorderRadius pill = BorderRadius.all(Radius.circular(999));
+}
+
+/// Shared motion timings for short, non-disruptive application feedback.
+abstract final class AppMotion {
+  static const Duration navigationSelection = Duration(milliseconds: 180);
+  static const Duration destinationTransition = Duration(milliseconds: 220);
+  static const Curve navigationCurve = Curves.easeOutCubic;
+  static const Curve navigationReverseCurve = Curves.easeInCubic;
 }

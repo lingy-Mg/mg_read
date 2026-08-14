@@ -8,6 +8,7 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_overview_card.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_settings_list.dart';
+import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 
 void main() {
@@ -106,21 +107,21 @@ void main() {
     expect(find.text(AppStrings.actionUnavailableMessage), findsOneWidget);
   });
 
-  testWidgets('delegates home selection to the app layer', (
+  testWidgets('delegates a destination selection to the app layer', (
     WidgetTester tester,
   ) async {
-    int homeCount = 0;
+    AppNavigationDestination? requestedDestination;
     await tester.pumpWidget(
       _host(
-        onHomeRequested: () {
-          homeCount += 1;
+        onDestinationRequested: (AppNavigationDestination destination) {
+          requestedDestination = destination;
         },
       ),
     );
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('app-nav-home')));
-    expect(homeCount, 1);
+    expect(requestedDestination, AppNavigationDestination.home);
   });
 
   testWidgets(
@@ -136,12 +137,15 @@ void main() {
   );
 }
 
-Widget _host({VoidCallback? onHomeRequested, VoidCallback? onToggleTheme}) {
+Widget _host({
+  ValueChanged<AppNavigationDestination>? onDestinationRequested,
+  VoidCallback? onToggleTheme,
+}) {
   return MaterialApp(
     theme: AppTheme.light(),
     darkTheme: AppTheme.dark(),
     home: ProfilePage(
-      onHomeRequested: onHomeRequested,
+      onDestinationRequested: onDestinationRequested,
       onToggleTheme: onToggleTheme,
     ),
   );

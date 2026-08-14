@@ -16,9 +16,13 @@ import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 /// Runtime capabilities and are not inferred by this UI.
 class ProfilePage extends StatefulWidget {
   /// Creates the profile page and delegates root navigation to the app layer.
-  const ProfilePage({this.onHomeRequested, this.onToggleTheme, super.key});
+  const ProfilePage({
+    this.onDestinationRequested,
+    this.onToggleTheme,
+    super.key,
+  });
 
-  final VoidCallback? onHomeRequested;
+  final ValueChanged<AppNavigationDestination>? onDestinationRequested;
 
   /// Test-friendly override for the app-level temporary theme action.
   final VoidCallback? onToggleTheme;
@@ -128,12 +132,11 @@ class _ProfilePageState extends State<ProfilePage> {
     if (destination == AppNavigationDestination.profile) {
       return;
     }
-    if (destination == AppNavigationDestination.home) {
-      final VoidCallback? homeRequested = widget.onHomeRequested;
-      if (homeRequested != null) {
-        homeRequested();
-        return;
-      }
+    final ValueChanged<AppNavigationDestination>? destinationRequested =
+        widget.onDestinationRequested;
+    if (destinationRequested != null) {
+      destinationRequested(destination);
+      return;
     }
     _showUnavailableMessage();
   }

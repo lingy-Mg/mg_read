@@ -11,6 +11,7 @@ import 'package:mg_read/features/library/application/library_page_controller.dar
 import 'package:mg_read/features/library/application/library_page_state.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
+import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
 /// The library landing page driven by immutable lifecycle and display state.
 class LibraryPage extends ConsumerWidget {
@@ -22,15 +23,15 @@ class LibraryPage extends ConsumerWidget {
   const LibraryPage({
     this.previewData,
     this.callbacks = const LibraryHomeCallbacks(),
-    this.onProfileRequested,
+    this.onDestinationRequested,
     super.key,
   });
 
   final LibraryHomeViewData? previewData;
   final LibraryHomeCallbacks callbacks;
 
-  /// Lets the app layer own navigation to the profile feature.
-  final VoidCallback? onProfileRequested;
+  /// Lets the app layer own switching among top-level destinations.
+  final ValueChanged<AppNavigationDestination>? onDestinationRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -53,13 +54,14 @@ class LibraryPage extends ConsumerWidget {
     final LibraryHomeViewData data = state.overview!.isEmpty
         ? previewData ?? LibraryHomeFixtures.preview
         : LibraryHomeViewData.fromLocalOverview(state.overview!);
-    final VoidCallback? profileRequested = onProfileRequested;
-    final LibraryHomeCallbacks resolvedCallbacks = profileRequested == null
+    final ValueChanged<AppNavigationDestination>? destinationRequested =
+        onDestinationRequested;
+    final LibraryHomeCallbacks resolvedCallbacks = destinationRequested == null
         ? callbacks
         : callbacks.copyWith(
-            onProfileSelected: () {
-              callbacks.onProfileSelected?.call();
-              profileRequested();
+            onNavigationSelected: (AppNavigationDestination destination) {
+              callbacks.onNavigationSelected?.call(destination);
+              destinationRequested(destination);
             },
           );
     return LibraryHomeShell(

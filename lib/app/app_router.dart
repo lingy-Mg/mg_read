@@ -3,9 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:mg_read/app/app_strings.dart';
+import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
+import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 import 'package:mg_read/features/reader/presentation/reader_destination_page.dart';
+import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
 part 'app_router.g.dart';
 
@@ -21,6 +25,56 @@ final appRouterProvider = Provider<GoRouter>((Ref ref) {
   return router;
 });
 
+void _goToDestination(
+  BuildContext context,
+  AppNavigationDestination destination,
+) {
+  switch (destination) {
+    case AppNavigationDestination.home:
+      const LibraryRoute().go(context);
+      return;
+    case AppNavigationDestination.search:
+      const SearchRoute().go(context);
+      return;
+    case AppNavigationDestination.discover:
+      const DiscoveryRoute().go(context);
+      return;
+    case AppNavigationDestination.profile:
+      const ProfileRoute().go(context);
+      return;
+  }
+}
+
+Page<void> _topLevelDestinationPage({
+  required GoRouterState state,
+  required Widget child,
+}) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    transitionDuration: AppMotion.destinationTransition,
+    reverseTransitionDuration: AppMotion.destinationTransition,
+    child: child,
+    transitionsBuilder:
+        (
+          BuildContext context,
+          Animation<double> animation,
+          Animation<double> secondaryAnimation,
+          Widget child,
+        ) {
+          final Animation<double> curvedAnimation = CurvedAnimation(
+            parent: animation,
+            curve: AppMotion.navigationCurve,
+            reverseCurve: AppMotion.navigationReverseCurve,
+          );
+          return FadeTransition(
+            key: const Key('top-level-destination-transition'),
+            opacity: curvedAnimation,
+            child: child,
+          );
+        },
+  );
+}
+
 /// The local-library landing route.
 @TypedGoRoute<LibraryRoute>(path: '/')
 class LibraryRoute extends GoRouteData with $LibraryRoute {
@@ -28,11 +82,52 @@ class LibraryRoute extends GoRouteData with $LibraryRoute {
   const LibraryRoute();
 
   @override
-  Widget build(BuildContext context, GoRouterState state) {
-    return LibraryPage(
-      onProfileRequested: () {
-        const ProfileRoute().go(context);
-      },
+  Page<void> buildPage(BuildContext context, GoRouterState state) {
+    return _topLevelDestinationPage(
+      state: state,
+      child: LibraryPage(
+        onDestinationRequested: (AppNavigationDestination destination) {
+          _goToDestination(context, destination);
+        },
+      ),
+    );
+  }
+}
+
+/// The reserved search route reached from the shared bottom navigation.
+@TypedGoRoute<SearchRoute>(path: '/search')
+class SearchRoute extends GoRouteData with $SearchRoute {
+  /// Creates the blank search destination.
+  const SearchRoute();
+
+  @override
+  Page<void> buildPage(BuildContext context, GoRouterState state) {
+    return _topLevelDestinationPage(
+      state: state,
+      child: SearchPage(
+        onDestinationRequested: (AppNavigationDestination destination) {
+          _goToDestination(context, destination);
+        },
+      ),
+    );
+  }
+}
+
+/// The reserved discovery route reached from the shared bottom navigation.
+@TypedGoRoute<DiscoveryRoute>(path: '/discover')
+class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
+  /// Creates the blank discovery destination.
+  const DiscoveryRoute();
+
+  @override
+  Page<void> buildPage(BuildContext context, GoRouterState state) {
+    return _topLevelDestinationPage(
+      state: state,
+      child: DiscoveryPage(
+        onDestinationRequested: (AppNavigationDestination destination) {
+          _goToDestination(context, destination);
+        },
+      ),
     );
   }
 }
@@ -44,11 +139,14 @@ class ProfileRoute extends GoRouteData with $ProfileRoute {
   const ProfileRoute();
 
   @override
-  Widget build(BuildContext context, GoRouterState state) {
-    return ProfilePage(
-      onHomeRequested: () {
-        const LibraryRoute().go(context);
-      },
+  Page<void> buildPage(BuildContext context, GoRouterState state) {
+    return _topLevelDestinationPage(
+      state: state,
+      child: ProfilePage(
+        onDestinationRequested: (AppNavigationDestination destination) {
+          _goToDestination(context, destination);
+        },
+      ),
     );
   }
 }
