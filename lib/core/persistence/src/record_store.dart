@@ -180,6 +180,11 @@ final class PersistenceRecordStore {
     });
   }
 
+  Future<T> transaction<T>(Future<T> Function() action) async {
+    _ensureOpen();
+    return _database.transaction(action);
+  }
+
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
