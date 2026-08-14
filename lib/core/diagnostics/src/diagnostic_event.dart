@@ -210,7 +210,7 @@ final class DiagnosticEvent {
   );
 }
 
-/// Stable codec used by SQLite rows, export manifests and Runtime fixtures.
+/// Stable codec used by TXT records, export manifests and Runtime fixtures.
 final class DiagnosticEventCodec {
   const DiagnosticEventCodec({this.valueCodec = const DiagnosticValueCodec()});
 

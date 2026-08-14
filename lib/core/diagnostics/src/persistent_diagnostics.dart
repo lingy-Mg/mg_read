@@ -25,6 +25,7 @@ final class PersistentDiagnosticsConfiguration {
     this.maxBatchDelay = const Duration(milliseconds: 50),
     this.defaultFlushTimeout = const Duration(seconds: 2),
     this.attachmentWriteTimeout = const Duration(seconds: 10),
+    this.detailMemoryBytes = 8 * 1024 * 1024,
     this.retentionPolicy = const DiagnosticRetentionPolicy(),
   });
 
@@ -38,6 +39,7 @@ final class PersistentDiagnosticsConfiguration {
   final Duration maxBatchDelay;
   final Duration defaultFlushTimeout;
   final Duration attachmentWriteTimeout;
+  final int detailMemoryBytes;
   final DiagnosticRetentionPolicy retentionPolicy;
 
   void validate() {
@@ -52,7 +54,8 @@ final class PersistentDiagnosticsConfiguration {
         batchSize > DiagnosticsPersistence.maxWriteBatchSize ||
         maxBatchDelay <= Duration.zero ||
         defaultFlushTimeout <= Duration.zero ||
-        attachmentWriteTimeout <= Duration.zero) {
+        attachmentWriteTimeout <= Duration.zero ||
+        detailMemoryBytes <= 0) {
       throw ArgumentError('Persistent diagnostics configuration is invalid.');
     }
   }
@@ -96,7 +99,7 @@ typedef DiagnosticCaptureEnabledResolver = bool Function(String component);
 typedef DiagnosticDropReporter =
     void Function(int droppedEvents, int windowMicros, String reason);
 
-/// Bounded, non-blocking queue between app call sites and background SQLite.
+/// Bounded, non-blocking queue between app call sites and segmented TXT.
 final class _PersistentDiagnosticEventSink implements DiagnosticEventSink {
   _PersistentDiagnosticEventSink({
     required this.persistence,
@@ -353,7 +356,7 @@ final class _QueuedDiagnosticEvent {
   final int estimatedBytes;
 }
 
-/// App-side facade combining manager, durable index, object storage and ports.
+/// App-side facade combining manager, segmented TXT, debug details and ports.
 final class AppDiagnosticsService
     implements DiagnosticsQuery, DiagnosticsCapture, DiagnosticsMaintenance {
   AppDiagnosticsService._({
@@ -401,6 +404,7 @@ final class AppDiagnosticsService
     final persistence = await DiagnosticsPersistence.open(
       dataRoot: dataRoot,
       clock: effectiveClock.nowUtc,
+      detailMemoryBytes: configuration.detailMemoryBytes,
     );
     await persistence.enforceRetention(configuration.retentionPolicy);
     await persistence.beginRun(
@@ -717,12 +721,15 @@ final class AppDiagnosticsService
       blockedReason = 'secretNeverPersisted';
     } else if (privacyClass == DiagnosticPrivacyClass.restricted) {
       blockedReason = 'restrictedRawUnsupported';
+    } else if (!_isTextDiagnosticMediaType(mediaType)) {
+      blockedReason = 'textDetailsOnly';
     } else if (privacyClass == DiagnosticPrivacyClass.content &&
         session.session.payloadKind == DiagnosticPayloadKind.metadataOnly) {
       blockedReason = 'payloadModeBlocked';
     } else if (privacyClass == DiagnosticPrivacyClass.content &&
-        session.session.payloadKind == DiagnosticPayloadKind.safeStructured) {
-      blockedReason = 'safeStructuredRedactorRequired';
+        session.session.payloadKind == DiagnosticPayloadKind.safeStructured &&
+        !_isStructuredDiagnosticMediaType(mediaType)) {
+      blockedReason = 'safeStructuredRequiresJson';
     } else if (session.remainingBytes <= 0) {
       blockedReason = 'captureSessionQuota';
     }
@@ -780,12 +787,14 @@ final class AppDiagnosticsService
         );
       }
       final effectiveMaxBytes = min(maxBytes, globalRemaining);
-      final commit = await _persistence.objectStore.write(
+      final commit = await _persistence.detailStore.write(
         attachmentId: attachmentId,
         privacyClass: privacyClass,
         bytes: bytes,
         maxStoredBytes: effectiveMaxBytes,
         maxDuration: configuration.attachmentWriteTimeout,
+        persistToText:
+            session.detailStorage == DiagnosticDetailStorage.persistToText,
       );
       final descriptor = _descriptor(
         attachmentId: attachmentId,
@@ -806,7 +815,8 @@ final class AppDiagnosticsService
       );
       final stored = await _persistence.commitAttachment(
         descriptor: descriptor,
-        objectKey: commit.objectKey,
+        objectKey: commit.detailKey.isEmpty ? null : commit.detailKey,
+        persisted: commit.persisted,
       );
       _activeCapture = await _persistence.getCaptureSession(
         session.session.sessionId,
@@ -827,7 +837,7 @@ final class AppDiagnosticsService
         captureState: DiagnosticCaptureState.failed,
         rawByteLength: 0,
         storedByteLength: 0,
-        truncationReason: 'objectWriteFailed',
+        truncationReason: 'detailTextWriteFailed',
       );
       try {
         return await _persistence.commitAttachment(
@@ -853,7 +863,7 @@ final class AppDiagnosticsService
         DiagnosticObjectValue(<String, DiagnosticValue>{
           'sessionCount': DiagnosticValue.int64(result.deletedSessions),
           'eventCount': DiagnosticValue.int64(result.deletedEvents),
-          'objectBytes': DiagnosticValue.int64(result.reclaimedBytes),
+          'reclaimedBytes': DiagnosticValue.int64(result.reclaimedBytes),
         }),
     errorAttributes: (_) => DiagnosticObjectValue(<String, DiagnosticValue>{
       'errorCode': DiagnosticValue.string('retention_failed'),
@@ -920,7 +930,7 @@ final class AppDiagnosticsService
     _runSpan.complete();
     await manager.close(timeout: configuration.defaultFlushTimeout);
     await _persistence.endRun(sourceRunId);
-    await _persistence.checkpointWal();
+    await _persistence.flushText();
     await _persistence.close();
     _closed = true;
   }
@@ -1019,6 +1029,7 @@ DiagnosticObjectValue _captureAttributes(
   'payloadKind': DiagnosticValue.string(policy.payloadKind.name),
   'durationMicros': DiagnosticValue.int64(policy.duration.inMicroseconds),
   'maxBytes': DiagnosticValue.int64(policy.maxStoredBytes),
+  'detailStorage': DiagnosticValue.string(policy.detailStorage.name),
   'componentCount': DiagnosticValue.int64(policy.components.length),
   'originCount': DiagnosticValue.int64(policy.origins.length),
   'sessionState': DiagnosticValue.string(sessionState),
@@ -1031,3 +1042,19 @@ String _captureErrorCode(Object error) => switch (error) {
   StateError() => 'capture_state_invalid',
   _ => 'capture_start_failed',
 };
+
+bool _isTextDiagnosticMediaType(String mediaType) {
+  final normalized = mediaType.split(';').first.trim().toLowerCase();
+  return normalized.startsWith('text/') ||
+      normalized == 'application/json' ||
+      normalized.endsWith('+json') ||
+      normalized == 'application/xml' ||
+      normalized.endsWith('+xml') ||
+      normalized == 'application/x-www-form-urlencoded' ||
+      normalized == 'application/javascript';
+}
+
+bool _isStructuredDiagnosticMediaType(String mediaType) {
+  final normalized = mediaType.split(';').first.trim().toLowerCase();
+  return normalized == 'application/json' || normalized.endsWith('+json');
+}

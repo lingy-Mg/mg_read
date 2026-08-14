@@ -11,9 +11,10 @@
 继续只通过公开接入点集成。主应用已具备后台 SQLite metadata persistence，以及启动前完成
 初始化、纯内存读取、分组合流写入和 CAS 恢复的全局 settings 门面。它现在通过同级
 `mg_read_runtime` 的版本化 Flutter Facade 显示 Runtime/Node 健康与已安装插件状态；主项目没有
-Node、端口、WS 或 data-root 代码。以下能力尚未实现：
+Node、端口、WS 或 data-root 代码。“我的 → 调试日志”提供应用/Runtime 分页关键日志、仅内存
+实时详情和显式详情 TXT 模式；默认不会读取或保存 HTTP/JSON/HTML/小说正文。以下能力尚未实现：
 
-- Runtime 安装/更新/仓库 UI，以及由 Runtime 驱动的书架、发现、下载和完整诊断页面。
+- Runtime 安装/更新/仓库 UI，以及由 Runtime 驱动的书架、发现和下载页面。
 - 更新检查、协议/隐私/许可/联系内容、截图选择和反馈提交等真实 capability；当前详情页不访问网络、文件或持久化。
 - 由 `mg_read_runtime` 独立实现的官方仓库、完整 Store、缓存、下载、内容 API 与跨平台承载。
 - Windows/macOS 的 UI 发布适配；Runtime 的 Node/Javet、签名和平台包由 Runtime 仓库验收。
@@ -103,6 +104,7 @@ lib/
     library/              # 当前已有：书架入口
     reader/               # 当前已有：阅读器用例、适配与宿主页
     plugins/              # 当前已有：Runtime 状态/插件列表 Facade 投影；安装管理后续接入
+    diagnostics/          # 当前已有：应用/Runtime 关键日志与限时详情查看器
     discovery/            # 当前已有：发现页 UI 预览；搜索与 Runtime 接入计划
     content_detail/       # 计划：详情与目录
     downloads/            # 计划：缓存与下载

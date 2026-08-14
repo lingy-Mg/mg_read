@@ -1,6 +1,6 @@
 # ADR-0014：分层诊断事件索引与附件对象存储
 
-- 状态：Accepted
+- 状态：Superseded by [ADR-0016](0016-segmented-text-diagnostics.md)
 - 日期：2026-08-14
 - 决策者：MgRead 项目
 - 依赖：[ADR-0004](0004-ws-http-transport.md)、

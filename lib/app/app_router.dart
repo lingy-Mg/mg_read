@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
+import 'package:mg_read/features/diagnostics/presentation/diagnostics_viewer_page.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
@@ -72,6 +73,8 @@ String _stableRouteName(Uri uri) {
       'profile.feedback',
     'profile' when segments.length > 1 && segments[1] == 'plugins' =>
       'profile.plugins',
+    'profile' when segments.length > 1 && segments[1] == 'diagnostics' =>
+      'profile.diagnostics',
     'profile' => 'profile',
     _ => 'unknown',
   };
@@ -191,6 +194,7 @@ class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
     TypedGoRoute<AboutRoute>(path: 'about'),
     TypedGoRoute<FeedbackRoute>(path: 'feedback'),
     TypedGoRoute<PluginCenterRoute>(path: 'plugins'),
+    TypedGoRoute<DiagnosticsRoute>(path: 'diagnostics'),
   ],
 )
 class ProfileRoute extends GoRouteData with $ProfileRoute {
@@ -213,6 +217,9 @@ class ProfileRoute extends GoRouteData with $ProfileRoute {
         },
         onPluginCenterRequested: () {
           const PluginCenterRoute().push(context);
+        },
+        onDiagnosticsRequested: () {
+          const DiagnosticsRoute().push(context);
         },
       ),
     );
@@ -256,6 +263,21 @@ class PluginCenterRoute extends GoRouteData with $PluginCenterRoute {
   @override
   Widget build(BuildContext context, GoRouterState state) {
     return PluginRuntimeStatusPage(
+      onBackRequested: () => _returnToProfile(context),
+      onDestinationRequested: (AppNavigationDestination destination) {
+        _goToDestination(context, destination);
+      },
+    );
+  }
+}
+
+/// Dedicated diagnostics viewer reached from profile tools.
+class DiagnosticsRoute extends GoRouteData with $DiagnosticsRoute {
+  const DiagnosticsRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) {
+    return DiagnosticsViewerPage(
       onBackRequested: () => _returnToProfile(context),
       onDestinationRequested: (AppNavigationDestination destination) {
         _goToDestination(context, destination);

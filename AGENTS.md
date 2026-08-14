@@ -41,7 +41,9 @@
   addon，并且 `file:` 依赖只能指向 `.mgplugin` 内部。
 - 首版不创建插件 VM/Context、自定义 ESM Loader 或模块隔离。插件是可信代码，可直接使用
   Node 的 `fs`、`process` 等标准能力；Worker/子进程仍不属于支持契约，可信模型也不构成沙箱。
-- Runtime 在自身数据根内持久化的有界诊断索引与附件只是可删除运行证据，不是主应用业务数据权威；这是日志架构的窄例外，不授权 Runtime 获得主应用数据库/路径、保存书架等业务记录或把诊断文件暴露给主项目。
+- Runtime 在自身数据根内持久化的有界分段事件 TXT 与调试详情 TXT 只是可删除运行证据，
+  不是主应用业务数据权威；日志不得使用 SQLite/WAL。这是日志架构的窄例外，不授权 Runtime
+  获得主应用数据库/路径、保存书架等业务记录或把诊断文件路径暴露给主项目。
 
 ## 目录与依赖方向
 
@@ -79,13 +81,19 @@ lib/
 - 可见中文文案直接定义在使用它的页面或局部组件内；当前不建立集中字符串层，也不考虑多语言资源。
 - 不用全局单例保存当前用户、书籍、阅读进度或主题。状态边界要显式并可释放。
 - 异步完成后更新页面前检查挂载状态；请求竞态使用请求世代或等价取消机制。
-- 常规日志不记录正文、HTTP body、用户标识、鉴权信息、Cookie、令牌或数据库内容。只有用户从专用调试器显式开启、受时限/磁盘配额/来源 allowlist 约束的本地诊断捕获会话，才可按日志架构把 HTTP payload 或复杂结构作为独立附件保存；不得内联进事件或业务 JSON，不得暴露绝对路径，Authorization/Cookie/token/credential 永不自动捕获，敏感附件默认不导出。错误应归一化为可行动的 UI 状态。
+- 常规日志不记录正文、HTTP body、用户标识、鉴权信息、Cookie、令牌或数据库内容。默认未开启
+  调试时，大型 JSON/HTML/小说正文和复杂对象不得被构造、复制、放入内存或写盘。只有用户从
+  专用调试器显式开启、受时限/内存/磁盘配额和来源 allowlist 约束的本地捕获会话，详情才可
+  先进入有界内存；只有会话选择保存详情时才异步写入独立 TXT。详情不得内联进事件或业务
+  JSON，不得暴露绝对路径，Authorization/Cookie/token/credential 永不自动捕获，敏感详情
+  默认不导出。错误应归一化为可行动的 UI 状态。
 - Controller、监听器、FocusNode、ScrollController、Timer 和平台资源必须成对释放。
 
 ## 日志、Trace 与性能埋点硬约束
 
 全局日志必须遵守 [14 全局日志与诊断数据系统](docs/architecture/14-global-diagnostics-logging.md)
-和 [ADR-0014](docs/architecture/adr/0014-tiered-diagnostics-storage.md)。日志系统仍处于设计阶段时，
+和 [ADR-0016](docs/architecture/adr/0016-segmented-text-diagnostics.md)。日志统一持久化只允许
+UTF-8 分段 `.txt`；不得创建日志 SQLite、WAL 或二进制索引。日志系统仍处于设计阶段时，
 后续功能必须同时定义事件/schema/埋点位置；统一 API 落地后，新增或修改关键链路必须在同一
 交付包补齐实现和测试。缺少所需日志能力时不得以 `print` 临时代替，也不得把功能声明为完整
 可诊断；交付报告必须明确标为待日志门禁。
@@ -127,8 +135,8 @@ lib/
 - **未捕获错误与崩溃边界**：Flutter error、PlatformDispatcher/isolate error、Node fatal、
   Javet fatal、桌面 child 非预期退出和平台能力失败，至少记录脱敏 stack fingerprint、当前阶段、
   最近 trace、稳定错误码和恢复结果；原始堆栈、参数、路径和正文不得直接持久化。
-- **日志系统自身**：writer 启停、队列高水位、批量大小/提交耗时、丢弃/采样聚合、附件截断、
-  retention、checkpoint、导出和故障必须可观测，但不得因记录自身故障形成递归日志风暴。
+- **日志系统自身**：writer 启停、队列高水位、批量大小/追加耗时、TXT 轮转/尾部恢复、丢弃/
+  采样聚合、详情截断、retention、导出和故障必须可观测，但不得因记录自身故障形成递归日志风暴。
 
 ### Event/span 规则
 
@@ -148,11 +156,12 @@ lib/
 
 ### 开发期默认与性能保护
 
-- Debug/Profile 默认启用 `metadataOnly`：`info` 以上、关键 `debug` span、所有稳定终态和性能
-  摘要都落入有界诊断存储；`trace` 按 component/捕获会话临时开启。Release 保留 warn/error/
-  fatal 和有界生命周期/健康摘要，不默认保存 body。
+- Debug/Profile 默认启用 `keyOnly/metadataOnly`：关键 `info`、所有稳定终态和性能摘要写入
+  有界分段事件 TXT；`debug/trace` 按 component/显式调试会话临时开启。Release 保留 warn/
+  error/fatal 和有界生命周期/健康摘要。任何默认模式都不得读取、缓存或保存 body。
 - 日志调用先做 `isEnabled`，禁用时不得插值长字符串、抓堆栈、遍历对象或编码 JSON。caller
-  只构造小 draft；SQL、文件、压缩、递归脱敏和大 JSON 处理进入有界后台 worker。
+  只构造小 draft；详情必须以惰性 supplier/流提供，`shouldCapture` 为 false 时 supplier 不得
+  执行。TXT 文件、递归脱敏和大 JSON 处理进入有界后台 worker。
 - 日志队列满、磁盘满、writer 故障或附件截断时，业务请求、UI isolate 和 Node 事件循环优先；
   日志降级为合并 drop/pressure 事件，绝不能让业务失败或把队列改成无界。
 - 新增生产代码不得直接使用 `print`、`debugPrint`、`developer.log`、`console.*` 或自行写日志
@@ -165,10 +174,12 @@ lib/
   采样/聚合方式和预期终态；新增事件进入 registry，不能临时拼自由文本名称。
 - 受影响测试至少验证 success、error 和适用的 cancel/timeout/overload 事件，验证 trace/span
   关联、恰好一个终态、未来 schema 只读、日志失败不改变业务结果。
-- HTTP、持久化、导出和动态附件测试必须放置 secret canary，并断言 index、附件、preview、
-  console 和默认导出均无 Authorization/Cookie/token/凭据/正文等禁止内容。
-- 性能关键改动同时报告日志关闭与默认开发日志开启两组基线，至少包含 p50/p95/p99、吞吐、
-  分配/峰值内存、队列高水位、drop 数和磁盘/WAL 增长；不能只证明“有日志”，还要证明日志
+- HTTP、持久化、导出和动态详情测试必须放置 secret canary，并断言默认内存、事件 TXT、
+  详情 TXT、preview、console 和默认导出均无 Authorization/Cookie/token/凭据/正文等禁止内容；
+  还必须断言默认模式不会执行详情 supplier/getter/serializer。
+- 性能关键改动同时报告日志关闭、默认 keyOnly 和显式详情捕获三组基线，至少包含 p50/p95/
+  p99、吞吐、分配/峰值内存、队列高水位、drop 数、事件 TXT 与详情 TXT 增长；不能只证明
+  “有日志”，还要证明日志
   开启后没有改变业务正确性或造成无界资源增长。
 - 交付报告必须单列：新增/变更事件、实际覆盖的关键路径、执行过的日志断言/secret canary/
   性能基线、尚未覆盖的路径及原因。静态分析或普通业务测试通过不能替代日志验收。

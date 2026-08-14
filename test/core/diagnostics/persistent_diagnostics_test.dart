@@ -112,7 +112,7 @@ void main() {
       },
     );
 
-    test('streams large content into a separate truncated object', () async {
+    test('streams large text into a separate truncated detail TXT', () async {
       kit = await PersistentDiagnosticsTestkit.open(
         configuration: const PersistentDiagnosticsConfiguration(
           minimumSeverity: DiagnosticSeverity.trace,
@@ -135,17 +135,13 @@ void main() {
           'toRoute': DiagnosticValue.string('library'),
         }),
       );
-      final payload = List<int>.generate(
-        500 * 1024,
-        (index) => index % 251,
-        growable: false,
-      );
+      final payload = List<int>.filled(500 * 1024, 0x61, growable: false);
 
       final descriptor = await kit.service.captureAttachment(
         eventId: emitted.event!.eventId,
         kind: 'http.response.body',
-        mediaType: 'application/octet-stream',
-        formatId: 'raw-bytes',
+        mediaType: 'text/html',
+        formatId: 'utf8-text',
         formatVersion: 1,
         privacyClass: DiagnosticPrivacyClass.content,
         bytes: Stream<List<int>>.fromIterable(<List<int>>[
@@ -166,17 +162,26 @@ void main() {
       expect(descriptor.storedByteLength, 128 * 1024);
       expect(descriptor.sha256, matches(RegExp(r'^[a-f0-9]{64}$')));
       expect(rangeBytes, payload.sublist(1024, 1024 + 4096));
-      final databaseText = utf8.decode(
-        await File(
-          '${kit.root.path}${Platform.pathSeparator}diagnostics'
-          '${Platform.pathSeparator}index.sqlite',
-        ).readAsBytes(),
-        allowMalformed: true,
+      final diagnostics = Directory(
+        '${kit.root.path}${Platform.pathSeparator}diagnostics',
       );
-      expect(
-        databaseText,
-        isNot(contains(base64Encode(payload.sublist(0, 64)))),
+      final eventFiles = await diagnostics
+          .list(recursive: true, followLinks: false)
+          .where((entity) => entity is File && entity.path.contains('events'))
+          .cast<File>()
+          .toList();
+      expect(eventFiles, isNotEmpty);
+      for (final file in eventFiles) {
+        expect(
+          await file.readAsString(),
+          isNot(contains(List<String>.filled(1024, 'a').join())),
+        );
+      }
+      final detailFile = File(
+        '${diagnostics.path}${Platform.pathSeparator}details'
+        '${Platform.pathSeparator}${descriptor.attachmentId}.txt',
       );
+      expect(await detailFile.exists(), isTrue);
     });
 
     test(
@@ -216,7 +221,119 @@ void main() {
       },
     );
 
-    test('secret canary never reaches SQLite, WAL, or object files', () async {
+    test('keeps live-debug details in bounded memory only', () async {
+      kit = await PersistentDiagnosticsTestkit.open(
+        configuration: const PersistentDiagnosticsConfiguration(
+          minimumSeverity: DiagnosticSeverity.trace,
+          detailMemoryBytes: 32 * 1024,
+        ),
+      );
+      final capture = await kit.service.startCapture(
+        DiagnosticCapturePolicy(
+          payloadKind: DiagnosticPayloadKind.contentPayload,
+          duration: const Duration(minutes: 5),
+          maxStoredBytes: 16 * 1024,
+          detailStorage: DiagnosticDetailStorage.memoryOnly,
+          components: <String>{'app.router'},
+        ),
+      );
+      final emitted = kit.service.manager.emit(
+        AppDiagnosticEvents.routeChanged,
+        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+          'toRoute': DiagnosticValue.string('library'),
+        }),
+      );
+      const detail = '<html><body>仅供实时调试</body></html>';
+      final descriptor = await kit.service.captureAttachment(
+        eventId: emitted.event!.eventId,
+        kind: 'http.response.body',
+        mediaType: 'text/html',
+        formatId: 'utf8-text',
+        formatVersion: 1,
+        privacyClass: DiagnosticPrivacyClass.content,
+        bytes: Stream<List<int>>.value(utf8.encode(detail)),
+      );
+
+      final beforeStop = await kit.service.getStatistics();
+      expect(descriptor.captureState, DiagnosticCaptureState.captured);
+      expect(beforeStop.memoryDetailBytes, greaterThan(0));
+      expect(beforeStop.detailTextBytes, 0);
+      expect(
+        utf8.decode(
+          await kit.service
+              .openAttachment(descriptor.attachmentId)
+              .expand((chunk) => chunk)
+              .toList(),
+        ),
+        detail,
+      );
+
+      await kit.service.stopCapture(capture.sessionId);
+      expect((await kit.service.getStatistics()).memoryDetailBytes, 0);
+      await expectLater(
+        kit.service.openAttachment(descriptor.attachmentId).drain<void>(),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('writes debug JSON only to a redacted detail TXT', () async {
+      kit = await PersistentDiagnosticsTestkit.open();
+      await kit.service.startCapture(
+        DiagnosticCapturePolicy(
+          payloadKind: DiagnosticPayloadKind.safeStructured,
+          duration: const Duration(minutes: 5),
+          maxStoredBytes: 64 * 1024,
+          components: <String>{'app.router'},
+        ),
+      );
+      final emitted = kit.service.manager.emit(
+        AppDiagnosticEvents.routeChanged,
+        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+          'toRoute': DiagnosticValue.string('library'),
+        }),
+      );
+      const secret = 'DETAIL_TOKEN_CANARY_28dd8f';
+      const body =
+          '{"token":"DETAIL_TOKEN_CANARY_28dd8f",'
+          '"chapter":"仅在调试详情中保存"}';
+      final descriptor = await kit.service.captureAttachment(
+        eventId: emitted.event!.eventId,
+        kind: 'http.response.json',
+        mediaType: 'application/json',
+        formatId: 'json-document',
+        formatVersion: 1,
+        privacyClass: DiagnosticPrivacyClass.content,
+        bytes: Stream<List<int>>.value(utf8.encode(body)),
+      );
+
+      final diagnostics = Directory(
+        '${kit.root.path}${Platform.pathSeparator}diagnostics',
+      );
+      final detail = File(
+        '${diagnostics.path}${Platform.pathSeparator}details'
+        '${Platform.pathSeparator}${descriptor.attachmentId}.txt',
+      );
+      expect(await detail.exists(), isTrue);
+      final detailText = await detail.readAsString();
+      expect(detailText, contains('<redacted>'));
+      expect(detailText, contains('仅在调试详情中保存'));
+      expect(detailText, isNot(contains(secret)));
+
+      await for (final entity in diagnostics.list(
+        recursive: true,
+        followLinks: false,
+      )) {
+        if (entity is! File) continue;
+        expect(entity.path.endsWith('.txt'), isTrue, reason: entity.path);
+        final text = await entity.readAsString();
+        expect(text, isNot(contains(secret)), reason: entity.path);
+        if (entity.path.contains('${Platform.pathSeparator}events')) {
+          expect(text, isNot(contains('仅在调试详情中保存')));
+        }
+      }
+    });
+
+    test('secret canary never reaches event or detail TXT files', () async {
       final canaryDefinition = DiagnosticEventDefinition.instant(
         name: 'test.secret.canary',
         component: 'test.security',
@@ -265,7 +382,7 @@ void main() {
     });
 
     test(
-      'deletes a stopped capture and reclaims its unleased object',
+      'deletes a stopped capture and reclaims its unleased detail',
       () async {
         kit = await PersistentDiagnosticsTestkit.open();
         final capture = await kit.service.startCapture(
@@ -296,7 +413,7 @@ void main() {
         await kit.service.deleteSession(capture.sessionId);
 
         expect(await kit.service.getEvent(emitted.event!.eventId), isNull);
-        expect((await kit.service.getStatistics()).objectCount, 0);
+        expect((await kit.service.getStatistics()).detailCount, 0);
         await expectLater(
           kit.service.openAttachment(descriptor.attachmentId).drain<void>(),
           throwsA(isA<StateError>()),
@@ -437,8 +554,8 @@ void main() {
         final descriptor = await kit.service.captureAttachment(
           eventId: emitted.event!.eventId,
           kind: 'http.response.body',
-          mediaType: 'application/octet-stream',
-          formatId: 'raw-bytes',
+          mediaType: 'text/plain',
+          formatId: 'utf8-text',
           formatVersion: 1,
           privacyClass: DiagnosticPrivacyClass.content,
           bytes: Stream<List<int>>.value(List<int>.filled(64 * 1024, 7)),
@@ -488,8 +605,8 @@ void main() {
             (index) => kit.service.captureAttachment(
               eventId: emitted.event!.eventId,
               kind: 'http.response.part$index',
-              mediaType: 'application/octet-stream',
-              formatId: 'raw-bytes',
+              mediaType: 'text/plain',
+              formatId: 'utf8-text',
               formatVersion: 1,
               privacyClass: DiagnosticPrivacyClass.content,
               bytes: Stream<List<int>>.value(
@@ -541,8 +658,8 @@ void main() {
       final descriptor = await kit.service.captureAttachment(
         eventId: emitted.event!.eventId,
         kind: 'http.response.body',
-        mediaType: 'application/octet-stream',
-        formatId: 'raw-bytes',
+        mediaType: 'text/plain',
+        formatId: 'utf8-text',
         formatVersion: 1,
         privacyClass: DiagnosticPrivacyClass.content,
         bytes: controller.stream,
@@ -553,7 +670,7 @@ void main() {
       expect(cancelled, isTrue);
     });
 
-    test('defers object deletion while a range reader holds a lease', () async {
+    test('defers detail deletion while a range reader holds a lease', () async {
       kit = await PersistentDiagnosticsTestkit.open();
       final capture = await kit.service.startCapture(
         DiagnosticCapturePolicy(
@@ -572,8 +689,8 @@ void main() {
       final descriptor = await kit.service.captureAttachment(
         eventId: emitted.event!.eventId,
         kind: 'http.response.body',
-        mediaType: 'application/octet-stream',
-        formatId: 'raw-bytes',
+        mediaType: 'text/plain',
+        formatId: 'utf8-text',
         formatVersion: 1,
         privacyClass: DiagnosticPrivacyClass.content,
         bytes: Stream<List<int>>.value(List<int>.filled(128 * 1024, 11)),
@@ -592,12 +709,12 @@ void main() {
       await firstChunk.future;
 
       await kit.service.deleteSession(capture.sessionId);
-      expect((await kit.service.getStatistics()).objectCount, 1);
+      expect((await kit.service.getStatistics()).detailCount, 1);
 
       subscription.resume();
       await subscription.asFuture<void>();
       await kit.service.enforceRetention(const DiagnosticRetentionPolicy());
-      expect((await kit.service.getStatistics()).objectCount, 0);
+      expect((await kit.service.getStatistics()).detailCount, 0);
     });
   });
 
@@ -654,7 +771,7 @@ void main() {
   );
 
   test(
-    'startup recovery ends interrupted runs and removes staging files',
+    'startup recovery truncates a partial TXT line and ends interrupted runs',
     () async {
       final root = await Directory.systemTemp.createTemp(
         'mg-read-diagnostics-recovery-',
@@ -672,10 +789,20 @@ void main() {
       );
       final staging = File(
         '${root.path}${Platform.pathSeparator}diagnostics'
-        '${Platform.pathSeparator}staging${Platform.pathSeparator}orphan.part',
+        '${Platform.pathSeparator}staging'
+        '${Platform.pathSeparator}orphan.partial.txt',
       );
       await staging.writeAsString('partial');
       await first.close();
+      final eventFiles = await Directory(
+        '${root.path}${Platform.pathSeparator}diagnostics'
+        '${Platform.pathSeparator}events',
+      ).list().where((entity) => entity is File).cast<File>().toList();
+      expect(eventFiles, hasLength(1));
+      await eventFiles.single.writeAsString(
+        '{"incomplete":true}',
+        mode: FileMode.append,
+      );
 
       final reopened = await DiagnosticsPersistence.open(dataRoot: root);
       addTearDown(reopened.close);
@@ -684,6 +811,61 @@ void main() {
       expect(sessions.items.single.sessionId, runId);
       expect(sessions.items.single.state, DiagnosticSessionState.ended);
       expect(await staging.exists(), isFalse);
+      final repaired = await eventFiles.single.readAsString();
+      expect(repaired, isNot(contains('incomplete')));
+      expect(repaired.endsWith('\n'), isTrue);
+    },
+  );
+
+  test(
+    'removes legacy diagnostics databases and creates only TXT files',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'mg-read-diagnostics-legacy-',
+      );
+      addTearDown(() async {
+        if (await root.exists()) await root.delete(recursive: true);
+      });
+      final diagnostics = Directory(
+        '${root.path}${Platform.pathSeparator}diagnostics',
+      );
+      await diagnostics.create(recursive: true);
+      final legacyFiles = <File>[
+        File('${diagnostics.path}${Platform.pathSeparator}index.sqlite'),
+        File('${diagnostics.path}${Platform.pathSeparator}index.sqlite-wal'),
+        File('${diagnostics.path}${Platform.pathSeparator}index.sqlite-shm'),
+      ];
+      for (final file in legacyFiles) {
+        await file.writeAsString('legacy');
+      }
+      final legacyObject = File(
+        '${diagnostics.path}${Platform.pathSeparator}objects'
+        '${Platform.pathSeparator}legacy.bin',
+      );
+      await legacyObject.parent.create(recursive: true);
+      await legacyObject.writeAsString('legacy');
+
+      final store = await DiagnosticsPersistence.open(dataRoot: root);
+      addTearDown(store.close);
+      await store.beginRun(
+        sourceRunId: 'run_000000000000000000000100',
+        source: DiagnosticSource.app,
+        regularSessionMaxBytes: 1024,
+        regularSessionAge: const Duration(days: 3),
+      );
+
+      for (final file in legacyFiles) {
+        expect(await file.exists(), isFalse);
+      }
+      expect(await legacyObject.parent.exists(), isFalse);
+      await for (final entity in diagnostics.list(
+        recursive: true,
+        followLinks: false,
+      )) {
+        if (entity is File) {
+          expect(entity.path.endsWith('.txt'), isTrue, reason: entity.path);
+        }
+      }
     },
   );
 }

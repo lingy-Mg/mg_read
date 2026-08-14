@@ -1,260 +1,156 @@
 # 14 全局日志与诊断数据系统
 
-## 状态与目标
+## 状态与不可变结论
 
-本文定义 MgRead 的目标日志架构，落实
-[ADR-0014](adr/0014-tiered-diagnostics-storage.md)。当前交付只完成设计，不表示主应用、
-`mg_read_runtime` 或调试 UI 已经实现这些接口、表、对象目录或性能基线。
+本文落实 [ADR-0016](adr/0016-segmented-text-diagnostics.md)，替代 ADR-0014 的日志 SQLite
+方案。日志实现必须同时满足以下结论：
 
-系统需要同时覆盖三类完全不同的负载：
+- 日志只持久化为 UTF-8 `.txt`，不创建日志 SQLite、WAL 或二进制索引。
+- 默认只记录关键、小型、脱敏事件；大型 JSON、HTML、HTTP body、小说正文和复杂对象不显示、
+  不构造、不进入内存，也不写盘。
+- 只有专用调试窗口可见或显式调试会话活动时，详情才可进入有界内存 spool；只有会话选择
+  `persistToText` 时才异步写入独立详情 TXT。
+- App 与 Runtime 使用同一语义但各自落盘。主应用只能经版本化 Runtime Facade 查询 Runtime，
+  不能读取其路径或共享文件。
+- 日志失败、队列满、磁盘满或详情截断不能让业务失败，也不能把队列改成无界。
 
-1. 高频、很小的底层日志，例如生命周期、路由、队列和稳定错误码。
-2. 可关联的高层事件和 span，例如一次搜索、插件调用、HTTP 请求与响应。
-3. 数百 KiB 甚至更大的 HTTP body、JSON、HTML、二进制片段和复杂动态对象。
-
-核心结论是：**日志事件只保存可查询的小型索引；大负载和复杂结构保存为独立附件；
-管理层用稳定 ID 关联两者。** 任何实现都不能把所有内容拼成日志正文、把大 JSON 放进
-SQLite 行，或为了查看器长期保留完整对象图在内存中。
-
-## 全局语义，分域落盘
-
-“全局”表示统一事件模型、trace、查询语义、捕获策略和查看体验，不表示 Flutter 与
-Runtime 共同打开同一个数据库。
+## 分层模型
 
 ```mermaid
 flowchart LR
-    APP["Flutter UI / application"] --> AM["App Diagnostics Manager"]
-    AM --> AI["App event index"]
-    AM --> AO["App attachment objects"]
+    CALLER["业务调用方"] --> GATE["isEnabled / shouldCapture"]
+    GATE -->|"关键小事件"| QUEUE["有界优先级队列"]
+    QUEUE --> WRITER["单写入者批量追加"]
+    WRITER --> EVENTS["events/*.txt"]
 
-    FACADE["Versioned Runtime Diagnostics Facade"] --> RM["Runtime Diagnostics Manager"]
-    RM --> RI["Runtime event index"]
-    RM --> RO["Runtime attachment objects"]
-    HTTP["ctx.http / plugin / Runtime Core"] --> RM
+    GATE -->|"调试会话允许详情"| SPOOL["有界内存 spool"]
+    SPOOL -->|"memoryOnly"| VIEW["专用调试查看器"]
+    SPOOL -->|"persistToText"| DETAIL["details/*.txt"]
 
-    VIEW["Future diagnostics viewer"] --> QUERY["Federated query manager"]
-    QUERY --> AI
-    QUERY --> FACADE
-    FACADE --> RI
-    FACADE --> RO
+    GATE -->|"默认/禁用"| SKIP["不读取 body / 不编码 JSON"]
 ```
 
-| 数据来源 | 写入与物理存储所有者 | 主应用如何查看 |
-| --- | --- | --- |
-| Flutter 启动、路由、UI 用例、主应用持久化 | `mg_read` | 通过 app diagnostics query port |
-| 插件、调度、`ctx.http`、Runtime Store、内部通信与平台承载 | `mg_read_runtime` | 通过版本化 Runtime Diagnostics Facade |
-| HTTP request/response body | 发起请求的 Runtime HTTP 层 | 通过 opaque attachment ID 分页/流式读取 |
-| 导出的联合诊断包 | 主应用的显式导出用例 | 从两个 query port 拉取并重新脱敏 |
+### 第一层：关键事件
 
-Runtime 诊断索引和附件是可删除的运行证据，不是书架、进度、下载或其他应用业务数据的
-权威来源。它们不改变 [ADR-0011](adr/0011-app-owned-versioned-persistence.md) 的应用数据
-所有权，也不授权 Runtime 打开 `app_metadata.sqlite`。主应用同样不得读取 Runtime 的
-诊断数据库、对象目录、loopback URL 或内部句柄；所有读取都经强类型门面完成。
+事件分段使用扩展名为 `.txt` 的 NDJSON，每行一个 `recordType=event` 的稳定 JSON envelope。
+它是可直接检查的文本，同时仍由强类型 schema 管理，不允许调用方拼自由文本协议。
 
-Runtime query 必须有降级读取路径：当前 Node/Javet Core 未 ready 或上一次运行已崩溃时，
-Runtime 集成包仍能读取自己已经提交的诊断会话。offline reader 只能在该 store writer 已
-停止后以只读方式打开，不能与存活 writer 双开同一数据库，也不能为了查看旧日志再创建或
-重启一个 Node VM。writer 的具体平台承载与 offline handoff 在 Runtime 交付包中验证。
-
-跨来源关联使用公开的 `traceId`、`spanId` 和父子关系。每个来源以自己的单调
-`sourceSeq` 保证局部顺序；跨进程时间线使用 UTC 时间近似合并，不能伪装成严格全序。
-Runtime 内部 `bootId`、端口和 wire request ID 不成为主应用查询键，只能按脱敏投影显示。
-
-## 三层记录模型
-
-### 第一层：小型日志事件
-
-底层日志 API 只接受短摘要、稳定枚举和小型属性。建议稳定 envelope 如下：
+每个事件至少包含：
 
 | 字段 | 规则 |
 | --- | --- |
-| `eventId` | 当前来源内唯一且不可复用 |
-| `source` / `component` | 低基数稳定枚举，例如 `app.router`、`runtime.http` |
-| `sourceRunId` / `sourceSeq` | 一次来源生命周期与其中的单调序号 |
-| `occurredAtUtcMicros` | UTC 墙钟时间，用于跨来源近似合并 |
-| `monotonicOffsetMicros` | 可选；用于本来源内可靠计算耗时 |
-| `severity` | `trace/debug/info/warn/error/fatal` |
-| `eventName` / `eventSchemaVersion` | 稳定名称和独立演进版本 |
-| `traceId` / `spanId` / `parentSpanId` | 可空；用于高层调用关联 |
-| `phase` / `outcome` / `durationMicros` | span 生命周期和稳定终态投影 |
-| `summary` | 已脱敏短摘要；不是任意异常或对象的 `toString()` |
-| `attributes` | 受限的小型 `DiagnosticValue` object |
-| `attachmentCount` / `capturedBytes` | 不读取附件即可显示的聚合投影 |
-| `flags` | `sampled/truncated/redacted/droppedPayload/incomplete` 等稳定位 |
+| `schemaVersion` / `eventName` | 独立版本、进入 registry，不临时拼名 |
+| `eventId` / `sourceRunId` | 不含路径或用户数据的稳定诊断 ID |
+| `occurredAtUtcMicros` / `monotonicMicros` | 跨来源近似排序与单进程耗时 |
+| `component` / `severity` / `outcome` | 受控枚举或 registry 值 |
+| `traceId` / `spanId` / `parentSpanId` | 跨层关联；不得成为指标 label |
+| `durationMicros` / `queueWaitMicros` | 终态和性能事件适用 |
+| `count` / `bytes` / `attempt` | 仅小型聚合投影 |
+| `errorCode` / `stackFingerprint` | 稳定码与脱敏摘要，不保存原始异常文本 |
+| `attributes` | `DiagnosticValue`，编码后有硬预算 |
+| `attachmentCount` / `capturedBytes` | 不读详情即可显示的投影 |
 
-事件行的目标是快速筛选、时间线和故障定位。需要经常筛选的字段必须提升为稳定列，不能
-依赖对任意 JSON 做全表 JSON-path 查询。
+默认不得出现在事件中的内容：HTTP body、HTML、JSON 文档、小说正文、书名/作者、搜索词、
+用户输入、完整 URL/query value、Authorization/Cookie/token/credential、SQL 参数、行内容、
+对象 dump、原始堆栈和绝对路径。
 
-### 第二层：高层事件与 span
+### 第二层：span
 
-高层日志不是一条很长的 message，而是一组可关联的结构化事件。一次 HTTP 交换至少可以
-产生：
+每个用户操作、跨边界调用或长任务只有一个 owner span。owner 写一个 start，并在
+`success/error/cancelled/timeout/overloaded` 中恰好写一个终态。阶段耗时使用 child span；
+错误由能决定恢复语义的 owner 记录一次，上层只有增加新语义时才补事件。
+
+### 第三层：调试详情
+
+详情包括 HTTP request/response body、大 JSON、HTML、长文本以及版本化复杂对象树。详情与
+日志级别是两个正交开关：开启 `debug` 级别不等于允许读取 body。
+
+只有同时满足以下条件，详情 supplier 才可被执行：
+
+1. 专用调试窗口处于可见/订阅状态，或用户显式启动了未过期 capture session。
+2. session 模式允许该 payload kind。
+3. component、脱敏 origin/route 与 payload kind 命中 allowlist。
+4. 单条、会话、内存和磁盘预算仍有余量。
+
+调用方必须以惰性 supplier、流或 chunk ticket 提供详情。禁用路径不得调用 supplier、
+`toJson()`、getter 或响应 `clone()`，不得先构造完整字符串再询问 manager 是否启用。
+
+详情捕获状态固定为：
 
 ```text
-http.request.start
-  -> http.response.headers
-  -> http.response.complete | http.request.error | http.request.cancelled
+captured | truncated | policyBlocked | pressureDropped | failed
 ```
 
-它们共享 `traceId/spanId`。队列等待、DNS/连接、首字节、下载、解码、解析和存储可成为
-子 span。开始与结束分开追加，避免必须原地更新一条长记录；应用或 Runtime 崩溃后，只有
-start 的 span 会被恢复为 `incomplete`，不会伪造成成功。
-
-事件名称必须有注册表和版本。例如 `http.response.complete@1`、
-`plugin.invoke.failed@1`。专用查看器可按名称选择 renderer；未知名称或未来版本仍可用
-通用字段/附件视图只读显示。
-
-### 第三层：附件对象
-
-下列内容不得内联到 `summary`、`attributes_json` 或业务 metadata JSON：
-
-- HTTP request/response body、HTML、超限文本与二进制片段。
-- 大型或深层 JSON。
-- 含循环、特殊数值、日期、引用或截断节点的内部动态对象图。
-- 脱敏后的 headers、堆栈、解析中间结果和专用调试快照超过小字段上限的部分。
-
-事件只保存 `attachmentId` 和聚合投影。附件 descriptor 至少包含：
-
-| 字段 | 说明 |
-| --- | --- |
-| `attachmentId` / `eventId` | 稳定关联，不暴露文件路径 |
-| `kind` | 例如 `http.response.body`、`structured.tree`、`stack` |
-| `mediaType` / `charset` | 原始声明与经验证的显示提示分开保存 |
-| `formatId` / `formatVersion` | `raw-bytes`、`json`、`mgread.diagnostic-tree` 等 |
-| `schemaId` / `schemaVersion` | 可选的业务/调试 schema，不等同存储格式版本 |
-| `privacyClass` | `public/internal/content/restricted/secret` |
-| `captureState` | `captured/truncated/policyBlocked/pressureDropped/failed` |
-| `rawByteLength` / `storedByteLength` | 未知长度可空；64 位值使用安全表示 |
-| `sha256` | 对实际持久化、已脱敏字节增量计算 |
-| `storageCodec` | `identity` 或经基准批准的压缩 codec |
-| `redactionVersion` | 记录经过的脱敏策略版本 |
-| `truncationReason` | 大小、深度、节点数、背压或策略拒绝 |
-
-公开 API 返回 descriptor 和 opaque attachment ID。对象 key、相对目录和数据库 row ID 都是
-实现细节；绝对路径永不进入事件、附件 descriptor 或 Runtime Facade。
+事件只保存 opaque `attachmentId`、kind、mediaType、capturedBytes、digest、captureState 与
+redaction profile。绝对路径永不进入事件、descriptor 或 Runtime Facade。
 
 ## 持久化布局
 
-### 事件索引
-
-主应用诊断使用独立的 `diagnostics/index.sqlite`，不复用高频写入不合适的
-`metadata_records` 表，也不让日志轮转膨胀应用权威 `app_metadata.sqlite`。其 executor、
-路径解析、schema 生命周期和关闭仍属于 `lib/core/persistence/`；process-scoped 管理、
-策略和查询 port 位于 `lib/core/diagnostics/`。Runtime 在自己的仓库和数据根实现等价契约。
-
-建议最小表集：
-
-- `diagnostic_runs`：来源生命周期、版本、平台和结束状态。
-- `diagnostic_capture_sessions`：捕获模式、开始/结束、配额、过期时间和显式用户选择。
-- `diagnostic_events`：稳定 event envelope 与小型属性。
-- `diagnostic_attachments`：逻辑附件 descriptor、对象引用和捕获状态。
-- `diagnostic_objects`：物理对象 key、摘要、codec、长度和引用状态。
-
-首版索引只服务明确查询：
-
-- `(source_run_id, source_seq)` 保证来源顺序。
-- `(capture_session_id, occurred_at_utc_micros, event_id)` 支持会话时间线。
-- `(trace_id, occurred_at_utc_micros, event_id)` 支持 trace 展开。
-- `(severity, occurred_at_utc_micros)` 和 `(component, event_name, occurred_at_utc_micros)`
-  支持常用筛选。
-
-默认不建立全文索引，也不索引任意 attributes 或附件正文。未来全文搜索只能作为可删除、
-可重建、按会话显式生成的派生索引，并单独计入磁盘配额。
-
-SQLite 使用单写入者、短事务和批量插入；采用 WAL 时必须监控 WAL 大小，并在空闲/阈值
-条件下显式 checkpoint。备份或移动数据库时必须把 WAL 状态作为一致性边界处理，不能只
-复制主数据库文件。
-
-### 附件对象层
-
-每个来源的数据根采用独立对象目录：
+App 与 Runtime 各自在自己拥有的数据根使用相同逻辑布局：
 
 ```text
 diagnostics/
-  index.sqlite
-  objects/aa/bb/<opaque-or-content-key>
+  events/
+    run-<opaque-run-id>-000001.txt
+    run-<opaque-run-id>-000002.txt
+  details/
+    <opaque-attachment-id>.txt
   staging/
-  exports/
+    <opaque-attachment-id>.partial.txt
 ```
 
-- 捕获先写 `staging`，边写边统计字节和摘要，完成校验后同卷原子提交。
-- 数据库只保存相对 object key；Facade 连相对 key 也不暴露。
-- 物理对象不可变。事件提交失败产生的孤儿由 mark-and-sweep 回收；不能只依赖易漂移的
-  内存 refcount。
-- 对象去重只能发生在相同来源和相同 privacy class 内，并以脱敏后的最终字节为准。
-- 读取中的对象持有短租约；清理先标记，再等待租约或有界超时，最后删除。
-- `staging` 残留在下次启动标记为 incomplete 并清理，不导入为成功附件。
-- 诊断目录默认排除普通业务备份和系统云备份；导出是单独、显式操作。
+不得在该目录创建 `.sqlite`、`.sqlite3`、`.db`、`-wal` 或 `-shm`。主应用诊断目录由
+`lib/core/persistence/` 的生命周期端口拥有，但不属于应用权威数据库；Runtime 目录完全由
+`mg_read_runtime` 拥有。
 
-压缩不在请求完成的关键路径同步执行。文本/JSON 是否压缩由后台策略和平台基准决定，
-descriptor 必须记录 codec；未知 codec 只读报错，不能猜测。图片、ZIP 等已压缩媒体默认
-不二次压缩。
+### 事件 TXT
 
-## 写入管线与背压
+- 单写入者把小事件先编码成一批完整行，再一次追加；禁止每事件 open/close/fsync。
+- 初始单分段上限 4 MiB。达到上限、运行结束或格式变更时关闭并创建下一段。
+- 每行必须以 `\n` 结束。恢复时只接受完整 UTF-8 行；尾部半行截断并产生一次合并恢复事件。
+- 会话 start/stop、run start/end、attachment descriptor 和 retention tombstone 也是有
+  `recordType` 的小型行，启动时按顺序 fold 重建当前目录。
+- 当前进程可维护有界稀疏目录（分段范围、每 N 行 offset、session/event locator），但目录
+  不持久化为第二种格式，关闭后可丢弃。
 
-### 调用方快路径
+### 详情 TXT
 
-`DiagnosticsManager` 是 app composition root 注入、可释放的 process-scoped 基础服务，
-不是保存当前用户或当前书籍的静态业务单例。调用路径必须：
+- 详情先进入按字节计费的有界内存 spool，不进入事件队列。
+- `memoryOnly` 只供当前调试窗口按 range 读取，窗口关闭/会话结束/TTL 到达即清空。
+- `persistToText` 在后台将已脱敏 chunk 写入 staging，完成摘要后同卷原子重命名为 `.txt`，
+  然后立即释放对应内存 chunk。
+- 不得用 StringBuffer/数组收集完整 HTTP body 后一次性写盘；业务字节流优先，诊断 tee 只能
+  投递固定大小 chunk。
+- staging 残留在启动时清理；没有成功 descriptor 的详情文件是孤儿，按保留任务删除。
+- 二进制默认不捕获。未来确需捕获时必须转成受控文本表示且经过单独预算，不得伪装 Base64
+  正文塞入普通事件。
 
-1. 先用 severity/component/session 策略做廉价 `isEnabled` 判断。
-2. 只构造小型 immutable draft；禁用时不插值长字符串、不抓堆栈、不序列化对象。
-3. 将编码、递归脱敏、JSON 解析、压缩、SQL 和文件 I/O 放到有界后台 worker。
-4. 入队立即返回；不得等待磁盘、Runtime Facade 或查看器。
+## 模式与级别
 
-小事件队列同时按条数和估算字节设硬上限。`trace/debug/info` 可按策略采样或丢弃；
-`warn/error/fatal` 使用预留槽，但也不能无限阻塞 UI/Node。发生丢弃后，writer 在恢复时写入
-合并事件 `diagnostics.eventsDropped`，包含级别、原因、数量和时间窗，不为每次丢弃再产生日志。
+### 运行模式
 
-后台 writer 按“最大批量或最大等待时间，先到者”为边界提交短事务。具体条数、时间和 WAL
-checkpoint 阈值必须由 Android arm64、Windows x64 与 macOS 基准决定，不写死为跨平台真理。
+| 模式 | 默认行为 | 详情行为 |
+| --- | --- | --- |
+| `off` | 除最早启动 fallback 外不持久化 | 不执行 supplier、不缓冲、不写盘 |
+| `keyOnly` | 默认；关键 info、终态、warn/error/fatal、性能摘要写事件 TXT | 不执行 supplier、不缓冲、不写盘 |
+| `memoryOnly` | 增加选定 component 的 debug/trace | allowlist 详情进入有界内存，不持久化 |
+| `persistToText` | 同上 | allowlist 详情异步写独立详情 TXT |
 
-### 大负载快路径
+Debug/Profile 构建默认是 `keyOnly`，不是“全量日志”。Release 默认至少保留 warn/error/fatal
+和有界生命周期/健康摘要，仍不得自动捕获详情。
 
-HTTP 或其他字节流使用固定大小 chunk 的非阻塞 tee：业务消费者优先，诊断分支只把 chunk
-ticket 放入有界 spool 队列。诊断写入变慢、磁盘满或队列满时：
+### 捕获模式
 
-1. 立即停止该附件后续捕获并标记 `truncated/pressureDropped`。
-2. 继续向真实业务消费者传输，不因日志导致请求失败或显著降速。
-3. 不把已捕获的前缀重新拼回内存；由 writer 完成或删除 staging 对象。
-4. 在 completion 事件中记录业务总字节（若已知）与实际 captured bytes。
-
-因此峰值内存由队列字节上限和固定 chunk 大小决定，而不是由 HTTP body 大小决定。几百 KiB
-页面、数 MiB JSON 或更大的响应都不会作为一个 Dart/JS 字符串长期驻留在日志管理层。
-
-## HTTP 专用诊断模型
-
-HTTP 日志只能在 `mg_read_runtime` 的统一 `ctx.http` 层产生；插件和主应用不能各自复制一套
-拦截器。默认记录：
-
-- 脱敏 origin/route 投影、method、重定向次数、响应状态、MIME 和声明长度。
-- queue、DNS/connect/TLS/TTFB/body/parse 等可取得的耗时。
-- retry/缓存/Range/取消结果、上传与下载聚合字节、稳定错误码。
-- header 名称及允许公开的值；`Authorization`、`Cookie`、`Set-Cookie`、token 和凭据值永不
-  自动进入普通事件或附件。
-
-body 捕获与日志级别是两个正交开关。`debug` 级别不自动等于“保存 body”。捕获模式为：
-
-| 模式 | 行为 |
+| payload 模式 | 行为 |
 | --- | --- |
-| `metadataOnly` | 默认；不保存 body，只记长度、类型、耗时和稳定结果 |
-| `safeStructured` | 显式会话；只保存成功解析并通过递归脱敏的 JSON/form 等结构 |
-| `contentPayload` | 显式会话；允许选定 component/origin 的 HTML、文本或内容负载，短期保留 |
-| `restrictedRaw` | 高风险二次确认；保存原始字节，必须使用版本化加密对象、平台保护的会话密钥和更短 TTL；首个实现包不得默认启用 |
+| `metadataOnly` | 不读取 body，只记录类型、声明长度、实际字节、耗时和稳定结果 |
+| `safeStructured` | 显式调试会话；只保留成功解析并递归脱敏的 JSON/form/对象树 |
+| `contentPayload` | 显式调试会话；允许选定来源的 HTML/文本内容，短 TTL |
+| `restrictedRaw` | 当前 unsupported；不得静默降级为原始捕获 |
 
-未知 content type、脱敏失败、超过配额或未被 allowlist 选中的响应只保留 metadata，并显示
-`policyBlocked`，不能静默回退为原始捕获。请求和响应 body 使用两个附件，raw wire bytes 与
-解压/解码后的逻辑 body 也必须是两个明确 kind，不能用一个字段含混表示。
+## 动态 JSON 与复杂对象
 
-常规导出不包含 `contentPayload/restrictedRaw`。用户显式选择包含它们时必须展示范围和预计
-大小，重新运行脱敏，并在 manifest 中列出仍属敏感的附件；这不是“日志已脱敏”的默认保证。
-
-## 动态结构化数据
-
-### 小型 `DiagnosticValue`
-
-事件 attributes 不直接接收跨层的 `Map<String, dynamic>`。生产者通过受控 builder 创建
-`DiagnosticValue` tagged union：
+小型 attributes 只能使用 `DiagnosticValue`：
 
 ```text
 null | bool | string | int64Decimal | finiteDouble
@@ -262,53 +158,50 @@ list<DiagnosticValue> | object<string, DiagnosticValue>
 redacted | truncated | attachmentRef
 ```
 
-builder 在入队前只做浅层类型/预算检查，完整递归验证在 worker 完成。`int64` 使用规范十进制
-字符串；非有限浮点、字节、DateTime、异常和任意 class 不能偷偷调用 `toString()`，必须由
-明确 adapter 转成稳定节点。缺失字段与显式 null 保持不同。
+建议初始预算为编码后 16 KiB、深度 8、object 128 key、array 256 项、单 string 4 KiB。
+超限产生 typed `truncated`，不能转成任意字符串绕过预算。
 
-小字段使用硬预算。建议实现起点为编码后 16 KiB、深度 8、每 object 128 个 key、每 array
-256 项、单 string 4 KiB；达到上限写入 typed `truncated` 节点并记录原始计数（若可得）。
-这些是首轮基准参数，可在不改变格式的前提下收紧；不得改成无界。
+大型合法 JSON 只有在调试详情门禁通过后才以 UTF-8 流进入 spool。查看器选择该附件后，才在
+后台执行增量解析、递归脱敏和节点分页；列表页永远不解析完整 JSON。
 
-### 大型 JSON
-
-合法 JSON 输入优先按原始 UTF-8 附件保存，不在捕获关键路径解析成 Dart/JS 对象。descriptor
-记录 `application/json`、schema 和版本。专用查看器选择附件后，后台 worker 才执行：
-
-- 增量验证和递归脱敏。
-- 按 JSON Pointer/节点 cursor 分页。
-- 大数组和 object 虚拟化。
-- 可删除的节点 offset/index 缓存。
-
-UI API 返回 `StructuredNodePage`，不返回整个 `Map<String, dynamic>`。关闭详情页即可释放
-解析缓存；日志列表永远不解析 body。
-
-### 非 JSON 动态对象图
-
-内部调试对象可能包含循环引用、DateTime、64 位整数、特殊浮点、类型名或对其他附件的
-引用。它们使用版本化 `application/vnd.mgread.diagnostic-tree+json`，显式节点类型至少包括：
+非 JSON 动态对象使用版本化 tagged tree：
 
 ```text
 scalar | object | list | ref | dateTime | int64 | nonFinite
 attachment | redacted | truncated | unsupported
 ```
 
-object/list 节点可有局部 `nodeId`，循环或共享引用使用 `ref`，从而不会递归爆栈或复制整个
-图。serializer 同时限制总节点数、深度、key 数、数组长度、字符串和总字节；无法适配的类型
-产生 `unsupported` 节点，不执行任意 getter、迭代器、代理或自定义 `toJson()`。schema registry
-决定专用 renderer；未知 schema 用通用树只读显示并保留原始附件。
+serializer 限制总节点、深度、key、数组长度、字符串和总字节；循环/共享引用使用 `ref`。
+不得执行未知 getter、iterator、Proxy hook、自定义 `toString()` 或 `toJson()`。未知 schema
+只读展示，不改写原始详情。
 
-## 管理层公开能力
+## HTTP 日志
 
-建议主应用内部 port：
+HTTP 事件只由 Runtime 的统一 `ctx.http` 层产生。默认 `keyOnly` 记录：
+
+- method、脱敏 origin/route 模板、redirect/retry/cache/Range 投影；
+- status、MIME、声明/实际上传下载字节；
+- 可取得的 queue/DNS/connect/TLS/TTFB/body/parse 分段耗时；
+- header 名称和明确允许的公开值；
+- cancel/timeout/overload/error 的稳定错误码。
+
+默认路径不得 clone response、调用 request body supplier、读取响应文本或解析 JSON。调试捕获
+路径仍永不自动保存 Authorization、Cookie、Set-Cookie、token、credential。request 与
+response 是两个 attachment；raw wire 与解码内容也不能混为一个 attachment。
+
+## 管理层 API
+
+主应用内部端口：
 
 ```text
 DiagnosticsManager
-  isEnabled(component, severity, payloadKind)
+  isEnabled(component, severity)
+  shouldCapture(component, payloadKind, originProjection)
   emit(eventDraft)
   startSpan(spanDraft) -> SpanHandle
-  startCapture(capturePolicy) -> CaptureSession
-  stopCapture(sessionId)
+  startDebugSession(policy) -> CaptureSession
+  stopDebugSession(sessionId)
+  attachLazy(eventId, descriptor, supplier)
   flush(deadline)
   dispose()
 
@@ -317,203 +210,123 @@ DiagnosticsQuery
   listEvents(filter, cursor, limit)
   getEvent(eventId)
   listAttachments(eventId)
-  openAttachment(attachmentId, range) -> byte stream
+  readAttachment(attachmentId, offset, length)
   listStructuredNodes(attachmentId, path, cursor, limit)
 
 DiagnosticsMaintenance
   enforceRetention()
   deleteSession(sessionId)
   exportBundle(selection, exportPolicy)
+  getStatistics()
 ```
 
-`SpanHandle` 只能结束一次，并有 deadline/dispose 兜底。`flush` 是有界 best effort，不承诺在
-进程强杀或磁盘故障时保存全部日志。生产代码不能通过 manager 执行任意 SQL、打开对象路径
-或绕过 privacy policy。
+Runtime Facade 发布等价的版本化强类型 query/capture capability。主应用联合查询只合并两个
+cursor page，不复制 Runtime 全量 TXT，不接受路径，不构造 loopback URL。
 
-Runtime Facade 发布等价的版本化强类型 query/capture capability；主应用的 federated query
-manager 维护 app cursor 与 Runtime cursor，再做有界 merge。它不得复制 wire envelope、构造
-loopback URL 或为了统一查询把 Runtime 全量日志搬进 app SQLite。
+### cursor 与查询
 
-## 强制埋点覆盖契约
+- cursor 是带版本的 opaque token，内部只含来源、segment ID、byte offset 和排序锚点。
+- 默认每页 100、硬上限 200；每次只打开需要的有限分段并按完整行读取。
+- 筛选可利用启动时后台重建的稀疏内存目录；目录未完成时返回有界部分结果/加载状态，不能在
+  UI isolate 扫描全部历史。
+- range 读取有单次字节上限并支持取消。查看器关闭页面必须释放 parse cache 与内存详情租约。
 
-日志系统不以“尽量多打日志”为验收，而以关键路径是否能从一个 trace 重建排队、执行、终态
-和资源代价为验收。任何新增或修改的关键路径必须在同一交付包定义 event schema、owner span、
-字段预算、privacy class、采样/聚合和测试；统一 logger 尚未实现时，功能交付必须明确标记日志
-门禁未满足，不能用散落 `print` 形成临时协议。
+## 性能、背压与轮转
 
-### 关键路径定义
+调用路径固定为：廉价 gate → 小 draft → 有界队列 → 后台编码/脱敏 → 批量 TXT append。
+禁用时不得插值长文本、抓堆栈、遍历对象或编码 JSON。
 
-满足任一条件即进入强制覆盖：用户等待或可见状态变化；进程/页面/Runtime/插件生命周期；
-跨 Facade、Node/Javet、HTTP、SQLite、文件对象边界；队列/锁/事务/并发槽等待；取消、deadline、
-重试、限流、背压或恢复；网络、数据库、文件、解析、序列化、校验、摘要、解压、分页、布局；
-缓存/持久化/导出；内存、磁盘、WAL、队列、句柄、worker 等资源压力。
+初始硬预算：
 
-### 必须可重建的链路
-
-| 链路 | 最低事件/span | 关键性能投影 |
+| 资源 | 初始值 | 到限额行为 |
 | --- | --- | --- |
-| App bootstrap/lifecycle | 每阶段 start/terminal、前后台、关闭/flush | 阶段与端到端耗时、超时、incomplete |
-| 页面与 application 用例 | 用户意图、loading/terminal、cancel、stale discard | 首个可用结果、请求世代、item count |
-| Runtime Facade | invoke start/terminal、deadline、cancel、retry | queue wait、bridge、Runtime、UI commit 分解 |
-| Runtime/插件/调度 | start/ready/fail/shutdown、load/invoke/parse、overload | queue depth/wait、slot、event-loop delay、attempt |
-| HTTP | start/headers/terminal 与受控附件 | DNS/connect/TLS/TTFB/body/parse、status、bytes、cache/Range |
-| SQLite/对象存储 | open/migrate/operation/transaction/commit/recovery | queue/SQL/codec、batch、WAL、bytes、revision/conflict |
-| 书架/目录/阅读器 | refresh/page/load/render/progress/exit | first content/page、parse/paginate/layout、frame summary |
-| 下载/缓存/文件 | state transition、checkpoint、verify/commit/cleanup | 时间窗吞吐、Range、retry、bytes、quota |
-| 未捕获错误/崩溃边界 | Flutter/PlatformDispatcher/isolate error、Node/Javet fatal、child exit | 当前阶段、stack fingerprint、last trace、恢复结果 |
-| Diagnostics 自身 | writer、batch、drop、truncate、retention/export | queue high-water、commit、WAL、object bytes、drop count |
+| 事件队列 | 4096 条且 4 MiB | 丢低优先级，预留终态槽，合并 drop 事件 |
+| 事件分段 | 4 MiB | 轮转到下一 TXT |
+| 常规事件 | 3 天或 32 MiB | 删除最旧已关闭分段 |
+| 详情内存 spool | 全局 8 MiB | 停止该详情，标记 `pressureDropped` |
+| 单详情 | 8 MiB | 截断并记录 captured/total bytes |
+| 调试持久化会话 | 24 小时或 128 MiB | 停止新详情，关键事件继续 |
+| 小 attributes | 16 KiB | typed `truncated` |
+| preview/range | 2 KiB / 256 KiB | 使用下一 range 继续 |
 
-每个用户操作、跨边界调用或长任务只能有一个 owner span；start 后必须出现且只出现一个
-`success/error/cancelled/timeout/overloaded` 终态。阶段分解使用 child span。错误由决定恢复
-语义的 owner 记录一次，上层只在增加新语义时记录，避免一条异常在多层重复刷屏。
+数值必须通过 Android arm64、Windows x64、macOS 基准校准，只能收紧或通过集中策略变更，
+不得在 feature 散落魔法数。高频 frame/scroll/chunk/item/loop 只做 counter、histogram 或时间窗
+摘要，禁止每帧、每像素、每条目、每 chunk 写事件。
 
-### 性能埋点规则
+超过基线阈值写版本化 `*.slow` 聚合事件，包含阈值、平台和构建模式。性能至少区分 queue
+wait、实际工作、first-byte/first-result 和端到端耗时。
 
-- 至少区分 enqueue、dequeue/start、first-byte/first-result 和 complete，分别得到 queue wait、
-  work、首结果与端到端耗时；不能只记录一个模糊 duration。
-- 高于基线阈值的操作产生版本化 `*.slow` 事件，带阈值、平台和构建模式。阈值来自固定环境
-  基线/配置，不成为散落在 feature 的常量。
-- build/layout/frame、滚动、进度、网络 chunk、目录项和循环体只写时间窗 counter/histogram/
-  summary。禁止每帧、每像素、每条目、每 chunk 一条持久化事件。
-- 每个性能优化必须比较 instrumentation disabled 与默认开发 `metadataOnly` 两组 p50/p95/p99、
-  吞吐、分配/峰值内存、队列高水位、drop 和磁盘/WAL；日志开销必须与业务瓶颈分开报告。
+## 隐私与导出
 
-### 开发构建策略
+- `secret` 永不持久化；`content` 只在选定来源的显式调试会话捕获。
+- URL 只保存 origin、route 模板、query key 名或不可逆受控摘要；不保存 query value。
+- 常规导出只含关键事件 TXT，不含详情。包含 content detail 必须由用户二次选择范围、显示
+  预计大小并再次脱敏。
+- HTML 只以文本/安全语法树显示，禁止 WebView 执行；JSON/tree renderer 不执行脚本、URL、
+  SQL 或对象 getter。
+- 事件/详情 TXT 均位于 app-private 数据根，不等于内容可免于分类或脱敏。
 
-Debug/Profile 默认开启 `metadataOnly`：保存 `info` 以上、关键 `debug` span、所有稳定终态和
-性能摘要；`trace` 只能按 component 或显式捕获会话临时开启。Release 默认保留
-`warn/error/fatal` 与有界生命周期/健康摘要。任何构建都不因日志级别自动保存 HTTP body；
-`safeStructured/contentPayload/restrictedRaw` 仍遵守捕获会话和隐私门禁。
+## 强制覆盖矩阵
 
-新增生产代码不得直接使用 `print`、`debugPrint`、`developer.log`、`console.*` 或自行写日志
-文件。统一 manager ready 前最早 bootstrap 只允许受控 fallback，ready 后必须接管并停止。
-调用方必须先 `isEnabled`，禁用时不得插值长文本、抓堆栈、遍历对象或 JSON encode。
-
-### 日志验收
-
-- unit/contract test 断言 success/error 及适用的 cancel/timeout/overload，trace/span 关系和恰好
-  一个终态；fault test 证明 queue/disk/writer 故障不改变业务结果。
-- HTTP、持久化、动态附件与导出使用 secret canary，扫描 index、object、preview、console 和
-  默认导出，禁止内容不得出现。
-- 每个交付报告列出事件/schema、覆盖路径、采样/附件策略、日志断言和性能基线；无法覆盖的
-  路径必须明确说明，不能用普通业务测试或静态分析代替。
-
-## 未来查看器约束
-
-- 会话、事件、trace、附件都使用 cursor 分页，单页有服务端硬上限。
-- 列表只读 event projection；选择一项后才加载附件 descriptor 和短 preview。
-- 文本用 range/chunk 读取；十六进制、图片、JSON tree 和 HTTP exchange 是独立 renderer。
-- JSON tree、长文本和 diff 在 worker 中解析；Widget 只持有当前虚拟化窗口。
-- live tail 按帧/时间窗合并更新，不能每个事件或网络 chunk 触发 rebuild。
-- 搜索默认只查索引列与短摘要。正文搜索必须由用户对选定会话显式建立派生索引。
-- renderer 只展示数据，不能执行脚本、HTML、SQL、URL、插件表达式或对象 getter。HTML 默认
-  以文本/安全语法视图展示，不在 WebView 中运行。
-- 删除、导出、包含敏感附件和延长 retention 都是显式用户动作，并展示影响范围。
-
-## 捕获策略、隐私与保留
-
-日志系统必须先分类再持久化：
-
-- `secret` 永不持久化，包括 Authorization/Cookie/token/credential/验证码和已知密钥字段。
-- `restricted` 只允许高风险显式捕获会话，默认不导出、不全文索引、最短 TTL。
-- `content` 只允许选定来源和事件类型的显式会话，常规日志与常规导出均不包含。
-- 未分类字段按更严格等级处理；加密或 app-private 目录不是绕过分类的理由。
-- URL 默认只保存 origin、route 模板、query key 名和哈希；搜索词、用户 ID、书名、作者及
-  完整 query value 不进入常规事件。
-- 堆栈先做路径、参数和自由文本清洗；原始 exception `toString()` 不直接落盘。
-
-建议首轮实现默认预算如下，最终数值要用首发平台基准校准：
-
-| 范围 | 初始默认 | 行为 |
+| 链路 | 必须记录的关键事件 | 关键性能投影 |
 | --- | --- | --- |
-| 常规事件保留 | 3 天或 32 MiB，先到者 | 只含小型事件，不含 body |
-| 显式捕获会话 | 24 小时或 256 MiB，先到者 | 到限额停止新附件，事件仍记截断状态 |
-| 单附件 | 16 MiB | 超限保存前缀或拒绝，明确 `truncated` |
-| 小型 attributes | 16 KiB | 超限转附件或截断 |
-| 列表查询 | 默认 100、硬上限 200 | 使用稳定 cursor |
-| preview | 最多 2 KiB | 单独派生，不等于完整附件 |
+| App bootstrap/lifecycle | 阶段 start/terminal、前后台、退出/flush | 阶段与端到端耗时 |
+| 页面与用例 | 稳定 route、关键意图、loading/terminal/cancel/stale | 首内容、generation、count |
+| Runtime Facade | queue/start/terminal/deadline/retry | queue/bridge/runtime/UI commit |
+| Runtime/插件 | start/ready/fail/shutdown、load/invoke/parse/overload | queue、slot、attempt、event-loop delay |
+| HTTP | start/headers/terminal；详情仅显式调试 | 阶段耗时、status、bytes、cache/Range |
+| SQLite 业务持久化 | open/migrate/query/write/transaction/recovery | queue/SQL/codec/WAL；无参数/行内容 |
+| TXT diagnostics | writer/batch/rotate/recover/drop/retention | queue high-water、append、segment/detail bytes |
+| 书架/目录/阅读器 | refresh/page/fetch/cache/launch/first-frame/commit/exit | first content、parse/paginate/layout |
+| 下载/缓存/文件 | 状态迁移、checkpoint/verify/commit/cleanup | 时间窗吞吐、Range、retry、quota |
+| 崩溃边界 | Flutter/isolate/Node/Javet/child fatal 与恢复 | 阶段、fingerprint、last trace |
 
-保留管理按 `expired -> deleting -> deleted` 两阶段执行。先删除最旧、未查看、未导出的已结束
-会话；活动会话不被回收，但达到硬配额后停止附件捕获。所谓“固定/保留”也必须受全局磁盘
-硬上限约束，不能产生永不清理的日志。
+日志系统记录自身故障时必须走非递归健康计数器，并在恢复后合并成单个事件，禁止失败日志再
+触发相同 writer 形成递归风暴。
 
-## 性能目标与测量
+## 专用查看器
 
-以下是设计门禁，不是当前已验证结果：
+- 日志列表始终只显示关键事件；进入专用调试页面即显式启动 `memoryOnly` 详情会话，
+  不显示不存在的“详情”占位。
+- 用户明确选择“保存详细日志”后才切换为 `persistToText`，界面持续显示剩余时间、
+  内存/磁盘预算、allowlist 与截断数。
+- 关闭窗口时自动停止当前详情会话；`memoryOnly` 内容同时清空，已成功写出的详情 TXT 继续
+  受 retention 管理。
+- 列表虚拟化，live tail 按帧/时间窗合并；选择事件后才请求 descriptor/preview/range。
+- HTTP exchange、JSON tree、HTML text、长文本和 diff 使用独立 renderer；解析在后台完成。
+- 删除、导出、包含内容详情和延长保留都是显式动作。
 
-- UI isolate/Node caller 只做等级判断和小 draft 入队；无同步 SQL、文件、压缩、大 JSON 解析。
-- 队列、chunk pool、并发附件 writer、解析 worker、查询页和 live tail 全部有界。
-- 小事件批量事务；禁止每个 HTTP chunk 写一行或每个事件立即 checkpoint。
-- 大负载流式落盘，峰值内存不随 body 大小线性增长。
-- 关闭/后台切换只做有 deadline 的 flush；超时保留 incomplete 状态，不无限阻塞生命周期。
-- viewer 打开 100,000 条事件的会话时只加载首个分页，不创建 100,000 个 Dart model/Widget。
+## 故障恢复
 
-每个平台基线至少记录：
+- 事件 TXT 尾部半行：截断到最后一个换行，保留此前完整记录。
+- staging 详情：启动时删除；成功详情无 descriptor 时作为孤儿回收。
+- 磁盘满：停止详情与低级事件写入，业务继续；恢复后合并 `diskFull`/drop 统计。
+- writer 故障：队列保持硬上限，调用方继续；关闭时 best-effort 有界 flush。
+- Runtime 未 ready：Runtime-owned offline reader 可读取已关闭分段；主应用不直接开 Runtime 文件，
+  也不为看日志启动第二个 VM。
+- 未知未来 record/schema：只读跳过或返回 unsupported，不改写文件。
 
-| 场景 | 必测数据 |
-| --- | --- |
-| disabled/filtered emit | caller p50/p95/p99、分配数 |
-| 高频小事件 | 1k/10k/100k events、吞吐、队列高水位、drop 数、WAL 大小 |
-| HTTP 附件 | 500 KiB、8 MiB、并发 1/8/16；业务吞吐差异与峰值 RSS |
-| 动态 JSON | 深度、节点数、脱敏、截断、解析/分页耗时与峰值内存 |
-| 查询 | 100k/1m 事件下按会话、trace、level、component 的分页分位数 |
-| retention | 配额到达、活动 reader、对象租约、孤儿和崩溃恢复 |
-| UI | live tail、展开 HTTP exchange、长文本滚动、JSON tree 虚拟化帧耗时 |
+## 测试与性能门禁
 
-所有报告固定设备、构建模式、版本、fixture、运行次数和分位数。若日志开启后成为业务网络
-或 UI 的主要耗时，优先降低捕获、采样、批量和派生工作，不允许把队列改成无界。
+必须包含：
 
-## 故障与恢复
+- span success/error/cancel/timeout/overload 与恰好一个终态；
+- 禁用/默认模式不执行详情 supplier/getter/serializer/response clone；
+- secret canary、HTML、JSON、小说正文不出现在默认内存、事件 TXT、详情 TXT、preview、控制台
+  和常规导出；
+- debug memory/persist、allowlist、TTL、配额、截断、背压和业务结果不受 writer 故障影响；
+- TXT 批量追加、4 MiB 轮转、尾部半行恢复、staging/原子提交、孤儿和 retention；
+- 100k 事件 cursor 分页只加载一页，长详情 range 读取不整文件驻留；
+- 数据根扫描确认没有 diagnostics `.sqlite/.db/-wal/-shm` 文件。
 
-- index 写成功但对象未提交：attachment 标记 `failed/incomplete`，不返回不存在的 body。
-- 对象提交但 index 事务失败：对象成为可回收孤儿，启动 mark-and-sweep 删除。
-- 磁盘满：停止附件，合并报告 `diskFull`，保留业务请求和已有日志可读性。
-- writer 崩溃：调用方继续运行；重启 writer 前按策略丢弃低优先级事件，不无限积压。
-- Runtime 崩溃：Runtime 自己恢复其 staging/index；主应用不扫描 Runtime 路径。
-- Runtime 无法 ready：Facade 使用 Runtime-owned offline reader 返回旧会话和启动失败投影，
-  不启动第二个 VM，也不让主应用直接开库。
-- viewer 中途关闭：取消 range/parse，释放对象租约和解析缓存。
-- 未来格式：descriptor 与原始对象保持只读；未知 renderer/codec 返回稳定 unsupported，不改写。
+每个性能关键改动比较 `off`、默认 `keyOnly`、显式详情捕获三组，报告 p50/p95/p99、吞吐、
+分配/峰值内存、队列高水位、drop、事件 TXT 与详情 TXT 增长。普通测试或静态分析不能替代
+日志验收。
 
-## 验收矩阵
+## 交付顺序
 
-### 纯单元与 Store testkit
-
-- event/attachment schema、稳定 cursor、trace/span 重建和未来版本只读。
-- privacy 分类、header/body 脱敏、未知字段、null/缺失和 typed dynamic tree。
-- 深度/节点/字节/队列上限，循环引用、特殊数值和恶意 `toJson()` 不被执行。
-- 批量事务、对象原子提交、孤儿清理、租约、配额、轮转和磁盘满故障注入。
-- 高低优先级丢弃策略只产生合并 drop event，不形成递归日志风暴。
-
-### Runtime 集成
-
-- `ctx.http` request/response/error/cancel 的 trace 与附件关联。
-- 慢诊断磁盘不拖慢业务消费者；附件截断后 HTTP 仍成功。
-- headers、Cookie、Authorization、query value 和 fixture secret canary 不出现在 index、对象、
-  preview 或默认导出。
-- Runtime Facade 分页、range、取消、未来版本和零路径/零 wire 泄露。
-
-### 主应用与 UI
-
-- app/Runtime 两个 cursor 的稳定 merge、来源断开和部分结果。
-- 100k 事件虚拟列表、live tail 合并、附件按需加载和页面 dispose 释放。
-- 明暗/窄宽/键鼠触摸视图最终在查看器交付包单独验收；本文不提前实现 UI。
-
-## 分步交付边界
-
-1. **D1 契约与 testkit**：事件、附件、动态值、策略、Store port、临时数据根和性能 fixture。
-2. **D2 主应用底层日志**：app manager、独立 index/object store、批量 writer、retention；无 UI。
-3. **D3 Runtime 诊断**：在 `mg_read_runtime` 实现相同公开契约、HTTP instrumentation 和 Facade。
-4. **D4 专用查看器**：联合查询、timeline、HTTP exchange、JSON tree、长文本/range 和导出。
-5. **D5 敏感原始捕获**：只有跨平台私有存储、显式确认、脱敏/导出测试和性能基准通过后，
-   并由单独安全决策固定流式加密格式、密钥生命周期和平台凭据存储后，才可启用
-   `restrictedRaw`。
-
-每次只完成一个交付包。D1/D2 不得顺手把 Runtime transport 或 HTTP 拦截器放进
-`mg_read`；D3 必须在 `mg_read_runtime` 完成；D4 不能用先加载全部数据的临时实现绕过分页。
-
-## 外部依据
-
-- [SQLite Write-Ahead Logging](https://www.sqlite.org/wal.html)
-- [Dart concurrency and isolates](https://dart.dev/language/concurrency)
-- [Drift isolate guidance](https://drift.simonbinder.eu/isolates/)
+1. 契约、registry、privacy、TXT store 与 testkit。
+2. 主应用 manager、关键路径接入、恢复/轮转/retention。
+3. Runtime manager、`ctx.http`、插件/生命周期接入和强类型 Facade。
+4. 专用查看器、联合分页、实时 memory session、详情 renderer 和显式导出。
+5. `restrictedRaw` 只有新安全 ADR 被接受后才能实现。

@@ -74,6 +74,7 @@ enum ProfileSettingsIcon {
   privacy,
   backup,
   clearCache,
+  diagnostics,
   about,
   feedback,
 }
@@ -139,6 +140,12 @@ abstract final class ProfileFixtures {
       ),
     ],
     about: <ProfileSettingsItemViewData>[
+      ProfileSettingsItemViewData(
+        id: 'diagnostics',
+        title: '调试日志',
+        description: '关键日志与限时详情捕获',
+        icon: ProfileSettingsIcon.diagnostics,
+      ),
       ProfileSettingsItemViewData(
         id: 'about',
         title: '关于我们',

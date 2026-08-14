@@ -1,13 +1,12 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 
-import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
 import 'package:mg_read/core/diagnostics/src/diagnostic_event.dart';
 import 'package:mg_read/core/diagnostics/src/diagnostic_ports.dart';
 
-import 'diagnostic_object_store.dart';
+import 'diagnostic_text_detail_store.dart';
 
 final class DiagnosticStoredCaptureSession {
   DiagnosticStoredCaptureSession({
@@ -16,6 +15,7 @@ final class DiagnosticStoredCaptureSession {
     required Set<String> components,
     required Set<String> origins,
     required this.isDefault,
+    required this.detailStorage,
   }) : components = Set<String>.unmodifiable(components),
        origins = Set<String>.unmodifiable(origins);
 
@@ -24,6 +24,7 @@ final class DiagnosticStoredCaptureSession {
   final Set<String> components;
   final Set<String> origins;
   final bool isDefault;
+  final DiagnosticDetailStorage detailStorage;
 
   int get remainingBytes {
     final remaining = maxStoredBytes - session.storedBytes;
@@ -38,27 +39,45 @@ final class DiagnosticCommittedAttachment {
   });
 
   final DiagnosticAttachmentDescriptor descriptor;
+
+  /// Opaque internal detail key. The legacy name remains private to this
+  /// package so callers cannot infer a filesystem path.
   final String? objectKey;
 }
 
-/// SQLite index and schema lifecycle for app-owned diagnostics.
+/// App-owned segmented TXT diagnostics store.
+///
+/// Event records are newline-delimited JSON in bounded `.txt` segments. The
+/// in-memory catalog is rebuilt in an isolate at startup and is never a second
+/// persistent index.
 final class DiagnosticsPersistence {
   DiagnosticsPersistence._(
-    this._database,
-    this.objectStore,
-    this.databasePath,
+    this.diagnosticsRoot,
+    this.eventsRoot,
+    this.detailStore,
     this._clock,
   );
 
-  static const int schemaVersion = 1;
+  static const int textFormatVersion = 1;
   static const int maxWriteBatchSize = 128;
   static const int maxQueryPageSize = 200;
+  static const int maxSegmentBytes = 4 * 1024 * 1024;
 
-  final _DiagnosticsDatabase _database;
-  final DiagnosticObjectStore objectStore;
-  final String databasePath;
+  final Directory diagnosticsRoot;
+  final Directory eventsRoot;
+  final DiagnosticTextDetailStore detailStore;
   final DateTime Function() _clock;
   final DiagnosticEventCodec _eventCodec = const DiagnosticEventCodec();
+  final Map<String, _RunRecord> _runs = <String, _RunRecord>{};
+  final Map<String, _SessionRecord> _sessions = <String, _SessionRecord>{};
+  final Map<String, DiagnosticEvent> _events = <String, DiagnosticEvent>{};
+  final Map<String, _AttachmentRecord> _attachments =
+      <String, _AttachmentRecord>{};
+  final Map<String, int> _segmentSequenceByRun = <String, int>{};
+  Future<void> _writeTail = Future<void>.value();
+  File? _activeSegment;
+  String? _activeSegmentRunId;
+  var _activeSegmentBytes = 0;
   bool _closed = false;
   int? _lastEncoderWorkerIsolateId;
 
@@ -69,161 +88,47 @@ final class DiagnosticsPersistence {
   static Future<DiagnosticsPersistence> open({
     required Directory dataRoot,
     DateTime Function() clock = _utcNow,
+    int detailMemoryBytes = DiagnosticTextDetailStore.defaultMaxMemoryBytes,
   }) async {
     final diagnosticsRoot = Directory(
       '${dataRoot.path}${Platform.pathSeparator}diagnostics',
     );
-    await diagnosticsRoot.create(recursive: true);
-    final objectStore = await DiagnosticObjectStore.open(diagnosticsRoot);
-    final path = '${diagnosticsRoot.path}${Platform.pathSeparator}index.sqlite';
-    final database = _DiagnosticsDatabase(
-      NativeDatabase.createInBackground(File(path)),
+    final eventsRoot = Directory(
+      '${diagnosticsRoot.path}${Platform.pathSeparator}events',
+    );
+    await Future.wait(<Future<void>>[
+      diagnosticsRoot.create(recursive: true),
+      eventsRoot.create(recursive: true),
+    ]);
+    await _removeLegacyDatabaseArtifacts(diagnosticsRoot);
+    final detailStore = await DiagnosticTextDetailStore.open(
+      diagnosticsRoot,
+      maxMemoryBytes: detailMemoryBytes,
+    );
+    final store = DiagnosticsPersistence._(
+      diagnosticsRoot,
+      eventsRoot,
+      detailStore,
+      clock,
     );
     try {
-      await database.customStatement('PRAGMA foreign_keys = ON');
-      await database.customStatement('PRAGMA journal_mode = WAL');
-      await database.customStatement('PRAGMA synchronous = NORMAL');
-      await database.customStatement('PRAGMA busy_timeout = 5000');
-      await _createSchema(database);
-      final store = DiagnosticsPersistence._(
-        database,
-        objectStore,
-        path,
-        clock,
+      final loaded = await Isolate.run(
+        _DiagnosticTextLoadTask(eventsRoot.path).call,
+        debugName: 'mg-read-diagnostics-text-rebuild',
       );
+      store._lastEncoderWorkerIsolateId = loaded.workerIsolateId;
+      for (final entry in loaded.segmentBytes.entries) {
+        store._updateSegmentSequence(entry.key);
+      }
+      for (final record in loaded.records) {
+        store._applyRecord(record, fromDisk: true);
+      }
       await store.recoverInterruptedState();
-      await store.reconcileObjects();
+      await store.reconcileDetails();
       return store;
     } catch (_) {
-      await database.close().catchError((_) {});
-      await objectStore.close();
+      await detailStore.close();
       rethrow;
-    }
-  }
-
-  static Future<void> _createSchema(_DiagnosticsDatabase database) async {
-    await database.customStatement('''
-      CREATE TABLE IF NOT EXISTS diagnostic_schema (
-        singleton INTEGER PRIMARY KEY NOT NULL CHECK (singleton = 1),
-        schema_version INTEGER NOT NULL
-      )
-    ''');
-    await database.customStatement(
-      'INSERT OR IGNORE INTO diagnostic_schema (singleton, schema_version) VALUES (1, ?)',
-      <Object?>[schemaVersion],
-    );
-    final versionRows = await database
-        .customSelect(
-          'SELECT schema_version FROM diagnostic_schema WHERE singleton = 1',
-        )
-        .get();
-    final storedVersion = versionRows.single.data['schema_version'] as int;
-    if (storedVersion > schemaVersion) {
-      throw StateError(
-        'Diagnostics schema $storedVersion is newer than $schemaVersion.',
-      );
-    }
-    if (storedVersion < schemaVersion) {
-      throw StateError('Diagnostics schema migration is incomplete.');
-    }
-    await database.customStatement('''
-      CREATE TABLE IF NOT EXISTS diagnostic_runs (
-        source_run_id TEXT PRIMARY KEY NOT NULL,
-        source TEXT NOT NULL,
-        started_at_utc_micros INTEGER NOT NULL,
-        ended_at_utc_micros INTEGER,
-        state TEXT NOT NULL,
-        event_count INTEGER NOT NULL DEFAULT 0,
-        attachment_count INTEGER NOT NULL DEFAULT 0,
-        stored_bytes INTEGER NOT NULL DEFAULT 0
-      )
-    ''');
-    await database.customStatement('''
-      CREATE TABLE IF NOT EXISTS diagnostic_capture_sessions (
-        session_id TEXT PRIMARY KEY NOT NULL,
-        source_run_id TEXT NOT NULL REFERENCES diagnostic_runs(source_run_id) ON DELETE CASCADE,
-        payload_kind TEXT NOT NULL,
-        state TEXT NOT NULL,
-        started_at_utc_micros INTEGER NOT NULL,
-        ended_at_utc_micros INTEGER,
-        expires_at_utc_micros INTEGER,
-        max_stored_bytes INTEGER NOT NULL,
-        stored_bytes INTEGER NOT NULL DEFAULT 0,
-        event_count INTEGER NOT NULL DEFAULT 0,
-        attachment_count INTEGER NOT NULL DEFAULT 0,
-        component_allowlist_json TEXT NOT NULL,
-        origin_allowlist_json TEXT NOT NULL,
-        is_default INTEGER NOT NULL DEFAULT 0
-      )
-    ''');
-    await database.customStatement('''
-      CREATE TABLE IF NOT EXISTS diagnostic_events (
-        event_id TEXT PRIMARY KEY NOT NULL,
-        source_run_id TEXT NOT NULL REFERENCES diagnostic_runs(source_run_id) ON DELETE CASCADE,
-        capture_session_id TEXT NOT NULL REFERENCES diagnostic_capture_sessions(session_id) ON DELETE CASCADE,
-        source_sequence INTEGER NOT NULL,
-        occurred_at_utc_micros INTEGER NOT NULL,
-        monotonic_offset_micros INTEGER NOT NULL,
-        severity INTEGER NOT NULL,
-        component TEXT NOT NULL,
-        event_name TEXT NOT NULL,
-        event_schema_version INTEGER NOT NULL,
-        trace_id TEXT,
-        span_id TEXT,
-        parent_span_id TEXT,
-        phase TEXT NOT NULL,
-        outcome TEXT,
-        duration_micros INTEGER,
-        summary TEXT NOT NULL,
-        attachment_count INTEGER NOT NULL DEFAULT 0,
-        captured_bytes INTEGER NOT NULL DEFAULT 0,
-        envelope_json TEXT NOT NULL,
-        UNIQUE(source_run_id, source_sequence)
-      )
-    ''');
-    await database.customStatement('''
-      CREATE TABLE IF NOT EXISTS diagnostic_objects (
-        object_key TEXT PRIMARY KEY NOT NULL,
-        sha256 TEXT NOT NULL,
-        privacy_class TEXT NOT NULL,
-        storage_codec TEXT NOT NULL,
-        stored_byte_length INTEGER NOT NULL,
-        reference_count INTEGER NOT NULL,
-        created_at_utc_micros INTEGER NOT NULL
-      )
-    ''');
-    await database.customStatement('''
-      CREATE TABLE IF NOT EXISTS diagnostic_attachments (
-        attachment_id TEXT PRIMARY KEY NOT NULL,
-        event_id TEXT NOT NULL REFERENCES diagnostic_events(event_id) ON DELETE CASCADE,
-        object_key TEXT REFERENCES diagnostic_objects(object_key),
-        kind TEXT NOT NULL,
-        media_type TEXT NOT NULL,
-        charset TEXT,
-        format_id TEXT NOT NULL,
-        format_version INTEGER NOT NULL,
-        schema_id TEXT,
-        schema_version INTEGER,
-        privacy_class TEXT NOT NULL,
-        capture_state TEXT NOT NULL,
-        raw_byte_length INTEGER NOT NULL,
-        stored_byte_length INTEGER NOT NULL,
-        sha256 TEXT,
-        storage_codec TEXT NOT NULL,
-        redaction_version INTEGER NOT NULL,
-        truncation_reason TEXT
-      )
-    ''');
-    for (final statement in <String>[
-      'CREATE INDEX IF NOT EXISTS diagnostic_sessions_time ON diagnostic_capture_sessions(started_at_utc_micros DESC, session_id DESC)',
-      'CREATE INDEX IF NOT EXISTS diagnostic_events_session_time ON diagnostic_events(capture_session_id, occurred_at_utc_micros DESC, event_id DESC)',
-      'CREATE INDEX IF NOT EXISTS diagnostic_events_trace_time ON diagnostic_events(trace_id, occurred_at_utc_micros, event_id)',
-      'CREATE INDEX IF NOT EXISTS diagnostic_events_severity_time ON diagnostic_events(severity, occurred_at_utc_micros DESC)',
-      'CREATE INDEX IF NOT EXISTS diagnostic_events_component_name_time ON diagnostic_events(component, event_name, occurred_at_utc_micros DESC)',
-      'CREATE INDEX IF NOT EXISTS diagnostic_attachments_event ON diagnostic_attachments(event_id, attachment_id)',
-      'CREATE INDEX IF NOT EXISTS diagnostic_attachments_object ON diagnostic_attachments(object_key)',
-    ]) {
-      await database.customStatement(statement);
     }
   }
 
@@ -236,54 +141,65 @@ final class DiagnosticsPersistence {
     _ensureOpen();
     validateDiagnosticOpaqueId(sourceRunId, 'sourceRunId');
     final now = _clock().toUtc().microsecondsSinceEpoch;
-    await _database.transaction(() async {
-      await _database.customStatement(
-        '''INSERT INTO diagnostic_runs (
-          source_run_id, source, started_at_utc_micros, state
-        ) VALUES (?, ?, ?, ?)''',
-        <Object?>[sourceRunId, source.name, now, 'active'],
-      );
-      await _database.customStatement(
-        '''INSERT INTO diagnostic_capture_sessions (
-          session_id, source_run_id, payload_kind, state,
-          started_at_utc_micros, expires_at_utc_micros, max_stored_bytes,
-          component_allowlist_json, origin_allowlist_json, is_default
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)''',
-        <Object?>[
-          sourceRunId,
-          sourceRunId,
-          DiagnosticPayloadKind.metadataOnly.name,
-          DiagnosticSessionState.active.name,
-          now,
-          now + regularSessionAge.inMicroseconds,
-          regularSessionMaxBytes,
-          '[]',
-          '[]',
-        ],
-      );
+    final run = _RunRecord(
+      sourceRunId: sourceRunId,
+      source: source,
+      startedAtUtcMicros: now,
+    );
+    final session = _SessionRecord(
+      sessionId: sourceRunId,
+      sourceRunId: sourceRunId,
+      source: source,
+      startedAtUtcMicros: now,
+      expiresAtUtcMicros: now + regularSessionAge.inMicroseconds,
+      payloadKind: DiagnosticPayloadKind.metadataOnly,
+      maxStoredBytes: regularSessionMaxBytes,
+      components: const <String>{},
+      origins: const <String>{},
+      isDefault: true,
+      detailStorage: DiagnosticDetailStorage.memoryOnly,
+    );
+    await _exclusive(() async {
+      if (_runs.containsKey(sourceRunId)) {
+        throw StateError('Diagnostic run already exists.');
+      }
+      await _appendRecords(sourceRunId, <Map<String, Object?>>[
+        _runStartRecord(run),
+        _sessionStartRecord(session),
+      ]);
+      _runs[sourceRunId] = run;
+      _sessions[sourceRunId] = session;
     });
   }
 
   Future<void> endRun(String sourceRunId) async {
     _ensureOpen();
     final now = _clock().toUtc().microsecondsSinceEpoch;
-    await _database.transaction(() async {
-      await _database.customStatement(
-        '''UPDATE diagnostic_capture_sessions
-           SET state = ?, ended_at_utc_micros = COALESCE(ended_at_utc_micros, ?)
-           WHERE source_run_id = ? AND state = ?''',
-        <Object?>[
-          DiagnosticSessionState.ended.name,
-          now,
-          sourceRunId,
-          DiagnosticSessionState.active.name,
-        ],
-      );
-      await _database.customStatement(
-        '''UPDATE diagnostic_runs SET state = ?, ended_at_utc_micros = ?
-           WHERE source_run_id = ? AND state = ?''',
-        <Object?>['ended', now, sourceRunId, 'active'],
-      );
+    await _exclusive(() async {
+      final run = _runs[sourceRunId];
+      if (run == null || run.endedAtUtcMicros != null) return;
+      final records = <Map<String, Object?>>[];
+      for (final session in _sessions.values.where(
+        (item) =>
+            item.sourceRunId == sourceRunId &&
+            item.state == DiagnosticSessionState.active,
+      )) {
+        records.add(_sessionEndRecord(session.sessionId, now, 'ended'));
+      }
+      records.add(_runEndRecord(sourceRunId, now, 'ended'));
+      await _appendRecords(sourceRunId, records);
+      for (final session in _sessions.values.where(
+        (item) => item.sourceRunId == sourceRunId,
+      )) {
+        if (session.state == DiagnosticSessionState.active) {
+          session
+            ..state = DiagnosticSessionState.ended
+            ..endedAtUtcMicros = now;
+        }
+      }
+      run
+        ..state = 'ended'
+        ..endedAtUtcMicros = now;
     });
   }
 
@@ -291,9 +207,7 @@ final class DiagnosticsPersistence {
     _ensureOpen();
     if (events.isEmpty) return;
     if (events.length > maxWriteBatchSize) {
-      throw ArgumentError(
-        'At most $maxWriteBatchSize events may be committed.',
-      );
+      throw ArgumentError('At most $maxWriteBatchSize events may be written.');
     }
     final storedEvents = events
         .map(
@@ -304,81 +218,33 @@ final class DiagnosticsPersistence {
         .toList(growable: false);
     final encoded = await Isolate.run(
       _DiagnosticEventEncodeTask(storedEvents).call,
-      debugName: 'mg-read-diagnostics-encode',
+      debugName: 'mg-read-diagnostics-text-encode',
     );
     _lastEncoderWorkerIsolateId = encoded.workerIsolateId;
-    final byRun = <String, int>{};
-    final byRunBytes = <String, int>{};
-    final bySession = <String, int>{};
-    final bySessionBytes = <String, int>{};
-    await _database.transaction(() async {
+    await _exclusive(() async {
+      for (final event in storedEvents) {
+        if (!_runs.containsKey(event.sourceRunId)) {
+          throw StateError('Diagnostic event run does not exist.');
+        }
+        if (_events.containsKey(event.eventId)) {
+          throw StateError('Diagnostic event already exists.');
+        }
+      }
+      await _appendEncodedLines(storedEvents.first.sourceRunId, encoded.lines);
       for (var index = 0; index < storedEvents.length; index += 1) {
         final event = storedEvents[index];
-        final sessionId = event.captureSessionId!;
-        await _database.customStatement(
-          '''INSERT INTO diagnostic_events (
-            event_id, source_run_id, capture_session_id, source_sequence,
-            occurred_at_utc_micros, monotonic_offset_micros, severity,
-            component, event_name, event_schema_version, trace_id, span_id,
-            parent_span_id, phase, outcome, duration_micros, summary,
-            attachment_count, captured_bytes, envelope_json
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-          <Object?>[
-            event.eventId,
-            event.sourceRunId,
-            sessionId,
-            event.sourceSequence,
-            event.occurredAtUtcMicros,
-            event.monotonicOffsetMicros,
-            event.severity.index,
-            event.component,
-            event.eventName,
-            event.eventSchemaVersion,
-            event.traceId,
-            event.spanId,
-            event.parentSpanId,
-            event.phase.name,
-            event.outcome?.name,
-            event.durationMicros,
-            event.summary,
-            event.attachmentCount,
-            event.capturedBytes,
-            encoded.payloads[index],
-          ],
-        );
-        byRun.update(
-          event.sourceRunId,
-          (value) => value + 1,
-          ifAbsent: () => 1,
-        );
-        final encodedBytes = utf8.encode(encoded.payloads[index]).length;
-        byRunBytes.update(
-          event.sourceRunId,
-          (value) => value + encodedBytes,
-          ifAbsent: () => encodedBytes,
-        );
-        bySession.update(sessionId, (value) => value + 1, ifAbsent: () => 1);
-        bySessionBytes.update(
-          sessionId,
-          (value) => value + encodedBytes,
-          ifAbsent: () => encodedBytes,
-        );
-      }
-      for (final entry in byRun.entries) {
-        await _database.customStatement(
-          '''UPDATE diagnostic_runs
-             SET event_count = event_count + ?, stored_bytes = stored_bytes + ?
-             WHERE source_run_id = ?''',
-          <Object?>[entry.value, byRunBytes[entry.key], entry.key],
-        );
-      }
-      for (final entry in bySession.entries) {
-        await _database.customStatement(
-          '''UPDATE diagnostic_capture_sessions
-             SET event_count = event_count + ?, stored_bytes = stored_bytes + ?
-             WHERE session_id = ?''',
-          <Object?>[entry.value, bySessionBytes[entry.key], entry.key],
-        );
+        _events[event.eventId] = event;
+        final lineBytes = utf8.encode('${encoded.lines[index]}\n').length;
+        final run = _runs[event.sourceRunId]!;
+        run
+          ..eventCount += 1
+          ..storedBytes += lineBytes;
+        final session = _sessions[event.captureSessionId!];
+        if (session != null) {
+          session
+            ..eventCount += 1
+            ..storedBytes += lineBytes;
+        }
       }
     });
   }
@@ -390,59 +256,26 @@ final class DiagnosticsPersistence {
   }) async {
     _ensureOpen();
     _validateLimit(limit);
-    final where = <String>[];
-    final variables = <Variable<Object>>[];
-    if (filter.sources.isNotEmpty) {
-      where.add('r.source IN (${_placeholders(filter.sources.length)})');
-      variables.addAll(
-        filter.sources.map((source) => Variable.withString(source.name)),
-      );
-    }
-    if (filter.states.isNotEmpty) {
-      where.add('s.state IN (${_placeholders(filter.states.length)})');
-      variables.addAll(
-        filter.states.map((state) => Variable.withString(state.name)),
-      );
-    }
-    if (filter.startedAfterUtcMicros case final value?) {
-      where.add('s.started_at_utc_micros >= ?');
-      variables.add(Variable.withInt(value));
-    }
-    if (filter.startedBeforeUtcMicros case final value?) {
-      where.add('s.started_at_utc_micros <= ?');
-      variables.add(Variable.withInt(value));
-    }
-    if (cursor case final value?) {
-      final decoded = _decodeCursor(value, 'sessions');
-      where.add(
-        '(s.started_at_utc_micros < ? OR '
-        '(s.started_at_utc_micros = ? AND s.session_id < ?))',
-      );
-      variables.addAll(<Variable<Object>>[
-        Variable.withInt(decoded.$1),
-        Variable.withInt(decoded.$1),
-        Variable.withString(decoded.$2),
-      ]);
-    }
-    final rows = await _database
-        .customSelect(
-          '''SELECT s.*, r.source FROM diagnostic_capture_sessions s
-             JOIN diagnostic_runs r ON r.source_run_id = s.source_run_id
-             ${where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}'}
-             ORDER BY s.started_at_utc_micros DESC, s.session_id DESC
-             LIMIT ?''',
-          variables: <Variable<Object>>[
-            ...variables,
-            Variable.withInt(limit + 1),
-          ],
-        )
-        .get();
-    final hasMore = rows.length > limit;
-    final selected = hasMore ? rows.take(limit) : rows;
-    final sessions = selected.map((row) => _sessionFromRow(row.data)).toList();
-    final tail = sessions.isEmpty ? null : sessions.last;
+    await _writeTail;
+    final anchor = cursor == null ? null : _decodeCursor(cursor, 'sessions');
+    final sessions =
+        _sessions.values
+            .where((session) => _matchesSession(session, filter))
+            .map((session) => session.toPublic())
+            .where(
+              (session) =>
+                  anchor == null ||
+                  session.startedAtUtcMicros < anchor.$1 ||
+                  (session.startedAtUtcMicros == anchor.$1 &&
+                      session.sessionId.compareTo(anchor.$2) < 0),
+            )
+            .toList(growable: false)
+          ..sort(_compareSessionsDescending);
+    final hasMore = sessions.length > limit;
+    final page = hasMore ? sessions.take(limit).toList() : sessions;
+    final tail = page.isEmpty ? null : page.last;
     return DiagnosticPage<DiagnosticSession>(
-      items: sessions,
+      items: page,
       nextCursor: hasMore && tail != null
           ? _encodeCursor('sessions', tail.startedAtUtcMicros, tail.sessionId)
           : null,
@@ -456,59 +289,25 @@ final class DiagnosticsPersistence {
   }) async {
     _ensureOpen();
     _validateLimit(limit);
-    final where = <String>[];
-    final variables = <Variable<Object>>[];
-    void addString(String column, String? value) {
-      if (value == null) return;
-      where.add('$column = ?');
-      variables.add(Variable.withString(value));
-    }
-
-    addString('capture_session_id', filter.sessionId);
-    addString('trace_id', filter.traceId);
-    if (filter.minimumSeverity case final severity?) {
-      where.add('severity >= ?');
-      variables.add(Variable.withInt(severity.index));
-    }
-    _addStringSetFilter(where, variables, 'component', filter.components);
-    _addStringSetFilter(where, variables, 'event_name', filter.eventNames);
-    if (filter.occurredAfterUtcMicros case final value?) {
-      where.add('occurred_at_utc_micros >= ?');
-      variables.add(Variable.withInt(value));
-    }
-    if (filter.occurredBeforeUtcMicros case final value?) {
-      where.add('occurred_at_utc_micros <= ?');
-      variables.add(Variable.withInt(value));
-    }
-    if (cursor case final value?) {
-      final decoded = _decodeCursor(value, 'events');
-      where.add(
-        '(occurred_at_utc_micros < ? OR '
-        '(occurred_at_utc_micros = ? AND event_id < ?))',
-      );
-      variables.addAll(<Variable<Object>>[
-        Variable.withInt(decoded.$1),
-        Variable.withInt(decoded.$1),
-        Variable.withString(decoded.$2),
-      ]);
-    }
-    final rows = await _database
-        .customSelect(
-          '''SELECT * FROM diagnostic_events
-             ${where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}'}
-             ORDER BY occurred_at_utc_micros DESC, event_id DESC LIMIT ?''',
-          variables: <Variable<Object>>[
-            ...variables,
-            Variable.withInt(limit + 1),
-          ],
-        )
-        .get();
-    final hasMore = rows.length > limit;
-    final selected = hasMore ? rows.take(limit) : rows;
-    final events = selected.map((row) => _eventFromRow(row.data)).toList();
-    final tail = events.isEmpty ? null : events.last;
+    await _writeTail;
+    final anchor = cursor == null ? null : _decodeCursor(cursor, 'events');
+    final events =
+        _events.values
+            .where((event) => _matchesEvent(event, filter))
+            .where(
+              (event) =>
+                  anchor == null ||
+                  event.occurredAtUtcMicros < anchor.$1 ||
+                  (event.occurredAtUtcMicros == anchor.$1 &&
+                      event.eventId.compareTo(anchor.$2) < 0),
+            )
+            .toList(growable: false)
+          ..sort(_compareEventsDescending);
+    final hasMore = events.length > limit;
+    final page = hasMore ? events.take(limit).toList() : events;
+    final tail = page.isEmpty ? null : page.last;
     return DiagnosticPage<DiagnosticEvent>(
-      items: events,
+      items: page,
       nextCursor: hasMore && tail != null
           ? _encodeCursor('events', tail.occurredAtUtcMicros, tail.eventId)
           : null,
@@ -518,13 +317,8 @@ final class DiagnosticsPersistence {
   Future<DiagnosticEvent?> getEvent(String eventId) async {
     _ensureOpen();
     validateDiagnosticOpaqueId(eventId, 'eventId');
-    final rows = await _database
-        .customSelect(
-          'SELECT * FROM diagnostic_events WHERE event_id = ?',
-          variables: <Variable<Object>>[Variable.withString(eventId)],
-        )
-        .get();
-    return rows.isEmpty ? null : _eventFromRow(rows.single.data);
+    await _writeTail;
+    return _events[eventId];
   }
 
   Future<DiagnosticStoredCaptureSession?> getCaptureSession(
@@ -532,23 +326,8 @@ final class DiagnosticsPersistence {
   ) async {
     _ensureOpen();
     validateDiagnosticOpaqueId(sessionId, 'sessionId');
-    final rows = await _database
-        .customSelect(
-          '''SELECT s.*, r.source FROM diagnostic_capture_sessions s
-             JOIN diagnostic_runs r ON r.source_run_id = s.source_run_id
-             WHERE s.session_id = ?''',
-          variables: <Variable<Object>>[Variable.withString(sessionId)],
-        )
-        .get();
-    if (rows.isEmpty) return null;
-    final row = rows.single.data;
-    return DiagnosticStoredCaptureSession(
-      session: _sessionFromRow(row),
-      maxStoredBytes: row['max_stored_bytes'] as int,
-      components: _decodeStringSet(row['component_allowlist_json'] as String),
-      origins: _decodeStringSet(row['origin_allowlist_json'] as String),
-      isDefault: (row['is_default'] as int) != 0,
-    );
+    await _writeTail;
+    return _sessions[sessionId]?.toStored();
   }
 
   Future<DiagnosticSession> createCaptureSession({
@@ -557,154 +336,97 @@ final class DiagnosticsPersistence {
     required DiagnosticCapturePolicy policy,
   }) async {
     _ensureOpen();
+    validateDiagnosticOpaqueId(sessionId, 'sessionId');
     final now = _clock().toUtc().microsecondsSinceEpoch;
-    await _database.customStatement(
-      '''INSERT INTO diagnostic_capture_sessions (
-        session_id, source_run_id, payload_kind, state, started_at_utc_micros,
-        expires_at_utc_micros, max_stored_bytes, component_allowlist_json,
-        origin_allowlist_json, is_default
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)''',
-      <Object?>[
-        sessionId,
-        sourceRunId,
-        policy.payloadKind.name,
-        DiagnosticSessionState.active.name,
-        now,
-        now + policy.duration.inMicroseconds,
-        policy.maxStoredBytes,
-        jsonEncode(policy.components.toList()..sort()),
-        jsonEncode(policy.origins.toList()..sort()),
-      ],
+    final run = _runs[sourceRunId];
+    if (run == null) throw StateError('Diagnostic run does not exist.');
+    final session = _SessionRecord(
+      sessionId: sessionId,
+      sourceRunId: sourceRunId,
+      source: run.source,
+      startedAtUtcMicros: now,
+      expiresAtUtcMicros: now + policy.duration.inMicroseconds,
+      payloadKind: policy.payloadKind,
+      maxStoredBytes: policy.maxStoredBytes,
+      components: policy.components,
+      origins: policy.origins,
+      isDefault: false,
+      detailStorage: policy.detailStorage,
     );
-    return (await getCaptureSession(sessionId))!.session;
+    await _exclusive(() async {
+      if (_sessions.containsKey(sessionId)) {
+        throw StateError('Diagnostic capture session already exists.');
+      }
+      await _appendRecords(sourceRunId, <Map<String, Object?>>[
+        _sessionStartRecord(session),
+      ]);
+      _sessions[sessionId] = session;
+    });
+    return session.toPublic();
   }
 
   Future<void> stopCaptureSession(String sessionId) async {
     _ensureOpen();
     final now = _clock().toUtc().microsecondsSinceEpoch;
-    await _database.customStatement(
-      '''UPDATE diagnostic_capture_sessions SET state = ?, ended_at_utc_micros = ?
-         WHERE session_id = ? AND state = ?''',
-      <Object?>[
-        DiagnosticSessionState.ended.name,
-        now,
-        sessionId,
-        DiagnosticSessionState.active.name,
-      ],
-    );
+    await _exclusive(() async {
+      final session = _sessions[sessionId];
+      if (session == null || session.state != DiagnosticSessionState.active) {
+        return;
+      }
+      await _appendRecords(session.sourceRunId, <Map<String, Object?>>[
+        _sessionEndRecord(sessionId, now, 'ended'),
+      ]);
+      session
+        ..state = DiagnosticSessionState.ended
+        ..endedAtUtcMicros = now;
+      if (session.detailStorage == DiagnosticDetailStorage.memoryOnly) {
+        final keys = _attachments.values
+            .where(
+              (item) =>
+                  _events[item.descriptor.eventId]?.captureSessionId ==
+                      sessionId &&
+                  !item.persisted,
+            )
+            .map((item) => item.detailKey)
+            .whereType<String>();
+        await detailStore.clearMemoryDetails(keys);
+      }
+    });
   }
 
   Future<DiagnosticAttachmentDescriptor> commitAttachment({
     required DiagnosticAttachmentDescriptor descriptor,
     required String? objectKey,
+    bool persisted = true,
   }) async {
     _ensureOpen();
-    final event = await getEvent(descriptor.eventId);
-    if (event == null) throw StateError('Attachment event does not exist.');
-    final updatedEvent = event.copyWith(
-      attachmentCount: event.attachmentCount + 1,
-      capturedBytes: event.capturedBytes + descriptor.storedByteLength,
-      flags: <DiagnosticEventFlag>{
-        ...event.flags,
-        if (descriptor.captureState == DiagnosticCaptureState.truncated)
-          DiagnosticEventFlag.truncated,
-        if (descriptor.captureState == DiagnosticCaptureState.policyBlocked ||
-            descriptor.captureState == DiagnosticCaptureState.pressureDropped)
-          DiagnosticEventFlag.droppedPayload,
-      },
-    );
-    await _database.transaction(() async {
-      if (objectKey != null) {
-        await _database.customStatement(
-          '''INSERT OR IGNORE INTO diagnostic_objects (
-            object_key, sha256, privacy_class, storage_codec,
-            stored_byte_length, reference_count, created_at_utc_micros
-          ) VALUES (?, ?, ?, ?, ?, 0, ?)''',
-          <Object?>[
-            objectKey,
-            descriptor.sha256,
-            descriptor.privacyClass.name,
-            descriptor.storageCodec.name,
-            descriptor.storedByteLength,
-            _clock().toUtc().microsecondsSinceEpoch,
-          ],
-        );
-        final rows = await _database
-            .customSelect(
-              '''SELECT sha256, privacy_class, storage_codec, stored_byte_length
-                 FROM diagnostic_objects WHERE object_key = ?''',
-              variables: <Variable<Object>>[Variable.withString(objectKey)],
-            )
-            .get();
-        final row = rows.single.data;
-        if (row['sha256'] != descriptor.sha256 ||
-            row['privacy_class'] != descriptor.privacyClass.name ||
-            row['storage_codec'] != descriptor.storageCodec.name ||
-            row['stored_byte_length'] != descriptor.storedByteLength) {
-          throw StateError('Diagnostic object metadata collision.');
-        }
+    return _exclusive(() async {
+      final event = _events[descriptor.eventId];
+      if (event == null) throw StateError('Attachment event does not exist.');
+      final session = _sessions[event.captureSessionId!];
+      final record = _AttachmentRecord(
+        descriptor: descriptor,
+        detailKey: objectKey,
+        persisted: objectKey != null && persisted,
+      );
+      await _appendRecords(event.sourceRunId, <Map<String, Object?>>[
+        _attachmentRecord(record),
+      ]);
+      _attachments[descriptor.attachmentId] = record;
+      _events[event.eventId] = _eventWithAttachment(event, descriptor);
+      final run = _runs[event.sourceRunId];
+      if (run != null) {
+        run
+          ..attachmentCount += 1
+          ..storedBytes += descriptor.storedByteLength;
       }
-      await _database.customStatement(
-        '''INSERT INTO diagnostic_attachments (
-          attachment_id, event_id, object_key, kind, media_type, charset,
-          format_id, format_version, schema_id, schema_version, privacy_class,
-          capture_state, raw_byte_length, stored_byte_length, sha256,
-          storage_codec, redaction_version, truncation_reason
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-        <Object?>[
-          descriptor.attachmentId,
-          descriptor.eventId,
-          objectKey,
-          descriptor.kind,
-          descriptor.mediaType,
-          descriptor.charset,
-          descriptor.formatId,
-          descriptor.formatVersion,
-          descriptor.schemaId,
-          descriptor.schemaVersion,
-          descriptor.privacyClass.name,
-          descriptor.captureState.name,
-          descriptor.rawByteLength,
-          descriptor.storedByteLength,
-          descriptor.sha256,
-          descriptor.storageCodec.name,
-          descriptor.redactionVersion,
-          descriptor.truncationReason,
-        ],
-      );
-      if (objectKey != null) {
-        await _database.customStatement(
-          'UPDATE diagnostic_objects SET reference_count = reference_count + 1 WHERE object_key = ?',
-          <Object?>[objectKey],
-        );
+      if (session != null) {
+        session
+          ..attachmentCount += 1
+          ..storedBytes += descriptor.storedByteLength;
       }
-      await _database.customStatement(
-        '''UPDATE diagnostic_events
-           SET attachment_count = ?, captured_bytes = ?, envelope_json = ?
-           WHERE event_id = ?''',
-        <Object?>[
-          updatedEvent.attachmentCount,
-          updatedEvent.capturedBytes,
-          jsonEncode(_eventCodec.encode(updatedEvent)),
-          descriptor.eventId,
-        ],
-      );
-      await _database.customStatement(
-        '''UPDATE diagnostic_capture_sessions
-           SET attachment_count = attachment_count + 1,
-               stored_bytes = stored_bytes + ?
-           WHERE session_id = ?''',
-        <Object?>[descriptor.storedByteLength, event.captureSessionId],
-      );
-      await _database.customStatement(
-        '''UPDATE diagnostic_runs
-           SET attachment_count = attachment_count + 1,
-               stored_bytes = stored_bytes + ?
-           WHERE source_run_id = ?''',
-        <Object?>[descriptor.storedByteLength, event.sourceRunId],
-      );
+      return descriptor;
     });
-    return descriptor;
   }
 
   Future<List<DiagnosticAttachmentDescriptor>> listAttachments(
@@ -712,14 +434,16 @@ final class DiagnosticsPersistence {
   ) async {
     _ensureOpen();
     validateDiagnosticOpaqueId(eventId, 'eventId');
-    final rows = await _database
-        .customSelect(
-          '''SELECT * FROM diagnostic_attachments WHERE event_id = ?
-             ORDER BY attachment_id ASC''',
-          variables: <Variable<Object>>[Variable.withString(eventId)],
-        )
-        .get();
-    return rows.map((row) => _attachmentFromRow(row.data)).toList();
+    await _writeTail;
+    final result =
+        _attachments.values
+            .where((item) => item.descriptor.eventId == eventId)
+            .map((item) => item.descriptor)
+            .toList(growable: false)
+          ..sort(
+            (left, right) => left.attachmentId.compareTo(right.attachmentId),
+          );
+    return result;
   }
 
   Stream<List<int>> openAttachment(
@@ -728,79 +452,69 @@ final class DiagnosticsPersistence {
   }) async* {
     _ensureOpen();
     validateDiagnosticOpaqueId(attachmentId, 'attachmentId');
-    final rows = await _database
-        .customSelect(
-          'SELECT object_key FROM diagnostic_attachments WHERE attachment_id = ?',
-          variables: <Variable<Object>>[Variable.withString(attachmentId)],
-        )
-        .get();
-    if (rows.isEmpty) throw StateError('Diagnostic attachment does not exist.');
-    final objectKey = rows.single.data['object_key'] as String?;
-    if (objectKey == null) {
+    await _writeTail;
+    final attachment = _attachments[attachmentId];
+    if (attachment == null) {
+      throw StateError('Diagnostic attachment does not exist.');
+    }
+    final detailKey = attachment.detailKey;
+    if (detailKey == null) {
       throw StateError('Diagnostic attachment payload was not captured.');
     }
-    yield* objectStore.openObject(objectKey, range: range);
+    yield* detailStore.openDetail(detailKey, range: range);
   }
 
   Future<void> recoverInterruptedState() async {
     _ensureOpen();
     final now = _clock().toUtc().microsecondsSinceEpoch;
-    await _database.transaction(() async {
-      await _database.customStatement(
-        '''UPDATE diagnostic_capture_sessions SET state = ?,
-           ended_at_utc_micros = COALESCE(ended_at_utc_micros, ?)
-           WHERE state = ?''',
-        <Object?>[
-          DiagnosticSessionState.ended.name,
-          now,
-          DiagnosticSessionState.active.name,
-        ],
-      );
-      await _database.customStatement(
-        '''UPDATE diagnostic_runs SET state = ?,
-           ended_at_utc_micros = COALESCE(ended_at_utc_micros, ?)
-           WHERE state = ?''',
-        <Object?>['incomplete', now, 'active'],
-      );
+    final activeSessions = _sessions.values
+        .where((item) => item.state == DiagnosticSessionState.active)
+        .toList(growable: false);
+    final activeRuns = _runs.values
+        .where((item) => item.state == 'active')
+        .toList(growable: false);
+    if (activeSessions.isEmpty && activeRuns.isEmpty) {
+      await detailStore.cleanStaging();
+      return;
+    }
+    await _exclusive(() async {
+      final byRun = <String, List<Map<String, Object?>>>{};
+      for (final session in activeSessions) {
+        byRun
+            .putIfAbsent(session.sourceRunId, () => <Map<String, Object?>>[])
+            .add(_sessionEndRecord(session.sessionId, now, 'ended'));
+      }
+      for (final run in activeRuns) {
+        byRun
+            .putIfAbsent(run.sourceRunId, () => <Map<String, Object?>>[])
+            .add(_runEndRecord(run.sourceRunId, now, 'incomplete'));
+      }
+      for (final entry in byRun.entries) {
+        await _appendRecords(entry.key, entry.value);
+      }
+      for (final session in activeSessions) {
+        session
+          ..state = DiagnosticSessionState.ended
+          ..endedAtUtcMicros = now;
+      }
+      for (final run in activeRuns) {
+        run
+          ..state = 'incomplete'
+          ..endedAtUtcMicros = now;
+      }
     });
-    await objectStore.cleanStaging();
+    await detailStore.cleanStaging();
   }
 
-  Future<void> reconcileObjects() async {
+  Future<void> reconcileDetails() async {
     _ensureOpen();
-    final references = await _database.customSelect(
-      '''SELECT object_key, COUNT(*) AS actual_count
-             FROM diagnostic_attachments WHERE object_key IS NOT NULL
-             GROUP BY object_key''',
-    ).get();
-    final referenced = <String>{};
-    for (final row in references) {
-      final objectKey = row.data['object_key'] as String;
-      referenced.add(objectKey);
-      await _database.customStatement(
-        'UPDATE diagnostic_objects SET reference_count = ? WHERE object_key = ?',
-        <Object?>[row.data['actual_count'] as int, objectKey],
-      );
-    }
-    final objectRows = await _database
-        .customSelect('SELECT object_key FROM diagnostic_objects')
-        .get();
-    for (final row in objectRows) {
-      final objectKey = row.data['object_key'] as String;
-      if (referenced.contains(objectKey)) continue;
-      if (await objectStore.delete(objectKey)) {
-        await _database.customStatement(
-          'DELETE FROM diagnostic_objects WHERE object_key = ?',
-          <Object?>[objectKey],
-        );
-      }
-    }
-    final files = await objectStore.listObjectKeys();
-    final indexed = objectRows
-        .map((row) => row.data['object_key'] as String)
+    final referenced = _attachments.values
+        .where((item) => item.persisted && item.detailKey != null)
+        .map((item) => item.detailKey!)
         .toSet();
-    for (final objectKey in files.difference(indexed)) {
-      await objectStore.delete(objectKey);
+    final stored = await detailStore.listDetailKeys();
+    for (final key in stored.difference(referenced)) {
+      await detailStore.delete(key);
     }
   }
 
@@ -809,97 +523,289 @@ final class DiagnosticsPersistence {
   ) async {
     _ensureOpen();
     policy.validate();
-    final now = _clock().toUtc().microsecondsSinceEpoch;
-    final candidates = await _database
-        .customSelect(
-          '''SELECT session_id FROM diagnostic_capture_sessions
-             WHERE state != ? AND (
-               (is_default = 1 AND started_at_utc_micros <= ?)
-               OR
-               (is_default = 0 AND COALESCE(ended_at_utc_micros,
-                 started_at_utc_micros) <= ?)
-             ) ORDER BY started_at_utc_micros ASC''',
-          variables: <Variable<Object>>[
-            Variable.withString(DiagnosticSessionState.active.name),
-            Variable.withInt(now - policy.regularEventAge.inMicroseconds),
-            Variable.withInt(now - policy.captureAge.inMicroseconds),
-          ],
-        )
-        .get();
-    var deletedSessions = 0;
-    var deletedEvents = 0;
-    var deletedObjects = 0;
-    var reclaimedBytes = 0;
-    for (final row in candidates) {
-      final result = await deleteSession(row.data['session_id'] as String);
-      deletedSessions += 1;
-      deletedEvents += result.deletedEvents;
-      deletedObjects += result.deletedObjects;
-      reclaimedBytes += result.reclaimedBytes;
-    }
-
-    Future<void> trimEndedSessions({
-      required String where,
-      required int byteLimit,
-    }) async {
-      while (true) {
-        final totalRows = await _database.customSelect(
-          '''SELECT COALESCE(SUM(stored_bytes), 0) AS total
-                 FROM diagnostic_capture_sessions WHERE $where''',
-        ).get();
-        if ((totalRows.single.data['total'] as int) <= byteLimit) return;
-        final oldest = await _database
-            .customSelect(
-              '''SELECT session_id FROM diagnostic_capture_sessions
-                 WHERE state != ? AND $where
-                 ORDER BY started_at_utc_micros ASC, session_id ASC LIMIT 1''',
-              variables: <Variable<Object>>[
-                Variable.withString(DiagnosticSessionState.active.name),
-              ],
-            )
-            .get();
-        if (oldest.isEmpty) return;
-        final result = await deleteSession(
-          oldest.single.data['session_id'] as String,
-        );
+    return _exclusive(() async {
+      final now = _clock().toUtc().microsecondsSinceEpoch;
+      final targets = <String>{};
+      for (final session in _sessions.values) {
+        if (session.state == DiagnosticSessionState.active) continue;
+        final anchor = session.isDefault
+            ? session.startedAtUtcMicros
+            : session.endedAtUtcMicros ?? session.startedAtUtcMicros;
+        final age = session.isDefault
+            ? policy.regularEventAge
+            : policy.captureAge;
+        if (anchor <= now - age.inMicroseconds) targets.add(session.sessionId);
+      }
+      _addByteTrimTargets(
+        targets,
+        sessions: _sessions.values.where((item) => item.isDefault),
+        byteLimit: policy.regularEventBytes,
+      );
+      _addByteTrimTargets(
+        targets,
+        sessions: _sessions.values.where((item) => !item.isDefault),
+        byteLimit: policy.captureBytes,
+      );
+      _addByteTrimTargets(
+        targets,
+        sessions: _sessions.values,
+        byteLimit: policy.globalHardBytes,
+      );
+      var deletedSessions = 0;
+      var deletedEvents = 0;
+      var deletedDetails = 0;
+      var reclaimedBytes = 0;
+      for (final sessionId in targets.toList(growable: false)) {
+        final result = await _deleteSessionInternal(sessionId);
         deletedSessions += result.deletedSessions;
         deletedEvents += result.deletedEvents;
-        deletedObjects += result.deletedObjects;
+        deletedDetails += result.deletedObjects;
         reclaimedBytes += result.reclaimedBytes;
       }
-    }
-
-    await trimEndedSessions(
-      where: 'is_default = 0',
-      byteLimit: policy.captureBytes,
-    );
-    await trimEndedSessions(
-      where: 'is_default = 1',
-      byteLimit: policy.regularEventBytes,
-    );
-    await trimEndedSessions(where: '1 = 1', byteLimit: policy.globalHardBytes);
-    await reconcileObjects();
-    await checkpointWal();
-    return DiagnosticMaintenanceResult(
-      deletedSessions: deletedSessions,
-      deletedEvents: deletedEvents,
-      deletedObjects: deletedObjects,
-      reclaimedBytes: reclaimedBytes,
-    );
+      if (targets.isNotEmpty) await _compactCatalog();
+      await reconcileDetails();
+      return DiagnosticMaintenanceResult(
+        deletedSessions: deletedSessions,
+        deletedEvents: deletedEvents,
+        deletedObjects: deletedDetails,
+        reclaimedBytes: reclaimedBytes,
+      );
+    });
   }
 
   Future<DiagnosticMaintenanceResult> deleteSession(String sessionId) async {
     _ensureOpen();
     validateDiagnosticOpaqueId(sessionId, 'sessionId');
-    final sessionRows = await _database
-        .customSelect(
-          '''SELECT source_run_id, is_default, state, event_count,
-             attachment_count, stored_bytes
-             FROM diagnostic_capture_sessions WHERE session_id = ?''',
-          variables: <Variable<Object>>[Variable.withString(sessionId)],
-        )
-        .get();
-    if (sessionRows.isEmpty) {
+    return _exclusive(() async {
+      final result = await _deleteSessionInternal(sessionId);
+      if (result.deletedSessions > 0) await _compactCatalog();
+      return result;
+    });
+  }
+
+  Future<DiagnosticStorageStatistics> getStatistics() async {
+    _ensureOpen();
+    await _writeTail;
+    var eventBytes = 0;
+    var segmentCount = 0;
+    if (await eventsRoot.exists()) {
+      await for (final entity in eventsRoot.list(followLinks: false)) {
+        if (entity is! File || !entity.path.endsWith('.txt')) continue;
+        segmentCount += 1;
+        eventBytes += await entity.length();
+      }
+    }
+    final details = await detailStore.getStatistics();
+    return DiagnosticStorageStatistics(
+      runCount: _runs.length,
+      sessionCount: _sessions.length,
+      eventCount: _events.length,
+      attachmentCount: _attachments.length,
+      segmentCount: segmentCount,
+      detailCount: details.detailCount,
+      eventTextBytes: eventBytes,
+      detailTextBytes: details.detailTextBytes,
+      memoryDetailBytes: details.memoryDetailBytes,
+      logicalStoredBytes:
+          eventBytes + details.detailTextBytes + details.memoryDetailBytes,
+    );
+  }
+
+  Future<void> flushText() async {
+    _ensureOpen();
+    await _writeTail;
+  }
+
+  Future<void> close() async {
+    if (_closed) return;
+    await _writeTail;
+    _closed = true;
+    await detailStore.close();
+  }
+
+  Future<T> _exclusive<T>(Future<T> Function() action) {
+    final previous = _writeTail;
+    final completer = Completer<T>();
+    _writeTail = () async {
+      try {
+        await previous;
+      } catch (_) {
+        // A previous diagnostics failure must not poison future maintenance.
+      }
+      try {
+        completer.complete(await action());
+      } catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      }
+    }();
+    return completer.future;
+  }
+
+  Future<void> _appendRecords(
+    String sourceRunId,
+    List<Map<String, Object?>> records,
+  ) => _appendEncodedLines(
+    sourceRunId,
+    records.map(jsonEncode).toList(growable: false),
+  );
+
+  Future<void> _appendEncodedLines(
+    String sourceRunId,
+    List<String> lines,
+  ) async {
+    File? bufferedFile;
+    var bufferedBytes = 0;
+    var buffer = StringBuffer();
+
+    Future<void> flushBuffer() async {
+      final file = bufferedFile;
+      if (file == null || bufferedBytes == 0) return;
+      await file.writeAsString(
+        buffer.toString(),
+        mode: FileMode.append,
+        flush: false,
+      );
+      buffer = StringBuffer();
+      bufferedBytes = 0;
+    }
+
+    for (final line in lines) {
+      final encodedBytes = utf8.encode('$line\n').length;
+      if (_activeSegment == null ||
+          _activeSegmentRunId != sourceRunId ||
+          _activeSegmentBytes + encodedBytes > maxSegmentBytes) {
+        await flushBuffer();
+        await _activateNextSegment(sourceRunId);
+      }
+      final segment = _activeSegment;
+      if (segment == null) {
+        throw StateError('Diagnostics TXT segment activation failed.');
+      }
+      if (bufferedFile case final current? when current.path != segment.path) {
+        await flushBuffer();
+      }
+      bufferedFile = segment;
+      buffer.write('$line\n');
+      bufferedBytes += encodedBytes;
+      _activeSegmentBytes += encodedBytes;
+    }
+    await flushBuffer();
+  }
+
+  Future<void> _activateNextSegment(String sourceRunId) async {
+    final next = (_segmentSequenceByRun[sourceRunId] ?? 0) + 1;
+    _segmentSequenceByRun[sourceRunId] = next;
+    final file = File(
+      '${eventsRoot.path}${Platform.pathSeparator}'
+      'run-$sourceRunId-${next.toString().padLeft(6, '0')}.txt',
+    );
+    await file.create(recursive: true);
+    _activeSegment = file;
+    _activeSegmentRunId = sourceRunId;
+    _activeSegmentBytes = await file.length();
+  }
+
+  void _updateSegmentSequence(String fileName) {
+    final match = RegExp(r'^run-(.+)-(\d{6})\.txt$').firstMatch(fileName);
+    if (match == null) return;
+    final runId = match.group(1)!;
+    final sequence = int.parse(match.group(2)!);
+    final current = _segmentSequenceByRun[runId] ?? 0;
+    if (sequence > current) _segmentSequenceByRun[runId] = sequence;
+  }
+
+  void _applyRecord(Map<String, Object?> record, {required bool fromDisk}) {
+    final version = record['textFormatVersion'];
+    if (version is! int || version > textFormatVersion || version <= 0) return;
+    switch (record['recordType']) {
+      case 'run.start':
+        final run = _runFromRecord(record);
+        _runs[run.sourceRunId] = run;
+      case 'run.end':
+        final run = _runs[record['sourceRunId']];
+        if (run != null) {
+          run
+            ..state = record['state'] as String? ?? 'ended'
+            ..endedAtUtcMicros = record['endedAtUtcMicros'] as int?;
+        }
+      case 'session.start':
+        final session = _sessionFromRecord(record);
+        _sessions[session.sessionId] = session;
+      case 'session.end':
+        final session = _sessions[record['sessionId']];
+        if (session != null) {
+          session
+            ..state = _enumByName(
+              DiagnosticSessionState.values,
+              record['state'] as String? ?? 'ended',
+              'session state',
+            )
+            ..endedAtUtcMicros = record['endedAtUtcMicros'] as int?;
+        }
+      case 'event':
+        final envelope = record['event'];
+        if (envelope is! Map) return;
+        final event = _eventCodec.decode(
+          envelope.map((key, value) => MapEntry(key.toString(), value)),
+        );
+        _events[event.eventId] = event;
+        final lineBytes = utf8.encode('${jsonEncode(record)}\n').length;
+        final run = _runs[event.sourceRunId];
+        if (run != null) {
+          run
+            ..eventCount += 1
+            ..storedBytes += lineBytes;
+        }
+        final session = _sessions[event.captureSessionId ?? event.sourceRunId];
+        if (session != null) {
+          session
+            ..eventCount += 1
+            ..storedBytes += lineBytes;
+        }
+      case 'attachment':
+        final value = record['descriptor'];
+        if (value is! Map) return;
+        var descriptor = _descriptorFromMap(
+          value.map((key, item) => MapEntry(key.toString(), item)),
+        );
+        final persisted = record['persisted'] == true;
+        if (fromDisk && !persisted && descriptor.storedByteLength > 0) {
+          descriptor = _descriptorWithFailure(
+            descriptor,
+            'memoryDetailExpired',
+          );
+        }
+        final attachment = _AttachmentRecord(
+          descriptor: descriptor,
+          detailKey: record['detailKey'] as String?,
+          persisted: persisted,
+        );
+        _attachments[descriptor.attachmentId] = attachment;
+        final event = _events[descriptor.eventId];
+        if (event != null) {
+          _events[event.eventId] = _eventWithAttachment(event, descriptor);
+          final run = _runs[event.sourceRunId];
+          if (run != null) {
+            run
+              ..attachmentCount += 1
+              ..storedBytes += descriptor.storedByteLength;
+          }
+          final session =
+              _sessions[event.captureSessionId ?? event.sourceRunId];
+          if (session != null) {
+            session
+              ..attachmentCount += 1
+              ..storedBytes += descriptor.storedByteLength;
+          }
+        }
+    }
+  }
+
+  Future<DiagnosticMaintenanceResult> _deleteSessionInternal(
+    String sessionId,
+  ) async {
+    final session = _sessions[sessionId];
+    if (session == null) {
       return const DiagnosticMaintenanceResult(
         deletedSessions: 0,
         deletedEvents: 0,
@@ -907,233 +813,190 @@ final class DiagnosticsPersistence {
         reclaimedBytes: 0,
       );
     }
-    final sessionRow = sessionRows.single.data;
-    if (sessionRow['state'] == DiagnosticSessionState.active.name) {
+    if (session.state == DiagnosticSessionState.active) {
       throw StateError('An active diagnostic session cannot be deleted.');
     }
-    final isDefault = (sessionRow['is_default'] as int) != 0;
-    final sourceRunId = sessionRow['source_run_id'] as String;
-    final deletedSessionRows = isDefault
-        ? await _database
-              .customSelect(
-                '''SELECT COUNT(*) AS count FROM diagnostic_capture_sessions
-                   WHERE source_run_id = ?''',
-                variables: <Variable<Object>>[Variable.withString(sourceRunId)],
-              )
-              .get()
-        : null;
-    final eventCountRows = await _database
-        .customSelect(
-          isDefault
-              ? 'SELECT COUNT(*) AS count FROM diagnostic_events WHERE source_run_id = ?'
-              : 'SELECT COUNT(*) AS count FROM diagnostic_events WHERE capture_session_id = ?',
-          variables: <Variable<Object>>[
-            Variable.withString(isDefault ? sourceRunId : sessionId),
-          ],
+    final sessionIds = session.isDefault
+        ? _sessions.values
+              .where((item) => item.sourceRunId == session.sourceRunId)
+              .map((item) => item.sessionId)
+              .toSet()
+        : <String>{sessionId};
+    final eventIds = _events.values
+        .where(
+          (event) => session.isDefault
+              ? event.sourceRunId == session.sourceRunId
+              : event.captureSessionId == sessionId,
         )
-        .get();
-    final eventCount = eventCountRows.single.data['count'] as int;
-    final objectRows = await _database
-        .customSelect(
-          isDefault
-              ? '''SELECT DISTINCT a.object_key FROM diagnostic_attachments a
-                   JOIN diagnostic_events e ON e.event_id = a.event_id
-                   WHERE e.source_run_id = ? AND a.object_key IS NOT NULL'''
-              : '''SELECT DISTINCT a.object_key FROM diagnostic_attachments a
-                   JOIN diagnostic_events e ON e.event_id = a.event_id
-                   WHERE e.capture_session_id = ? AND a.object_key IS NOT NULL''',
-          variables: <Variable<Object>>[
-            Variable.withString(isDefault ? sourceRunId : sessionId),
-          ],
-        )
-        .get();
-    final objectKeys = objectRows
-        .map((row) => row.data['object_key'] as String)
-        .toList();
-    await _database.transaction(() async {
-      await _database.customStatement(
-        'UPDATE diagnostic_capture_sessions SET state = ? WHERE session_id = ?',
-        <Object?>[DiagnosticSessionState.deleting.name, sessionId],
-      );
-      if (isDefault) {
-        await _database.customStatement(
-          'DELETE FROM diagnostic_runs WHERE source_run_id = ?',
-          <Object?>[sourceRunId],
-        );
-      } else {
-        await _database.customStatement(
-          'DELETE FROM diagnostic_capture_sessions WHERE session_id = ?',
-          <Object?>[sessionId],
-        );
-        await _database.customStatement(
-          '''UPDATE diagnostic_runs SET
-               event_count = MAX(0, event_count - ?),
-               attachment_count = MAX(0, attachment_count - ?),
-               stored_bytes = MAX(0, stored_bytes - ?)
-             WHERE source_run_id = ?''',
-          <Object?>[
-            sessionRow['event_count'] as int,
-            sessionRow['attachment_count'] as int,
-            sessionRow['stored_bytes'] as int,
-            sourceRunId,
-          ],
-        );
-      }
-      for (final objectKey in objectKeys) {
-        final countRows = await _database
-            .customSelect(
-              'SELECT COUNT(*) AS count FROM diagnostic_attachments WHERE object_key = ?',
-              variables: <Variable<Object>>[Variable.withString(objectKey)],
-            )
-            .get();
-        final count = countRows.single.data['count'] as int;
-        await _database.customStatement(
-          'UPDATE diagnostic_objects SET reference_count = ? WHERE object_key = ?',
-          <Object?>[count, objectKey],
-        );
-      }
-    });
-    var deletedObjects = 0;
+        .map((event) => event.eventId)
+        .toSet();
+    final attachmentIds = _attachments.values
+        .where((item) => eventIds.contains(item.descriptor.eventId))
+        .map((item) => item.descriptor.attachmentId)
+        .toList(growable: false);
+    var deletedDetails = 0;
     var reclaimedBytes = 0;
-    for (final objectKey in objectKeys) {
-      final rows = await _database
-          .customSelect(
-            '''SELECT stored_byte_length, reference_count FROM diagnostic_objects
-               WHERE object_key = ?''',
-            variables: <Variable<Object>>[Variable.withString(objectKey)],
-          )
-          .get();
-      if (rows.isEmpty || (rows.single.data['reference_count'] as int) > 0) {
-        continue;
-      }
-      if (await objectStore.delete(objectKey)) {
-        reclaimedBytes += rows.single.data['stored_byte_length'] as int;
-        deletedObjects += 1;
-        await _database.customStatement(
-          'DELETE FROM diagnostic_objects WHERE object_key = ?',
-          <Object?>[objectKey],
-        );
+    for (final attachmentId in attachmentIds) {
+      final attachment = _attachments.remove(attachmentId)!;
+      final key = attachment.detailKey;
+      if (key != null && await detailStore.delete(key)) {
+        deletedDetails += 1;
+        reclaimedBytes += attachment.descriptor.storedByteLength;
       }
     }
+    for (final eventId in eventIds) {
+      _events.remove(eventId);
+    }
+    for (final id in sessionIds) {
+      _sessions.remove(id);
+    }
+    if (session.isDefault) _runs.remove(session.sourceRunId);
     return DiagnosticMaintenanceResult(
-      deletedSessions: isDefault
-          ? deletedSessionRows!.single.data['count'] as int
-          : 1,
-      deletedEvents: eventCount,
-      deletedObjects: deletedObjects,
+      deletedSessions: sessionIds.length,
+      deletedEvents: eventIds.length,
+      deletedObjects: deletedDetails,
       reclaimedBytes: reclaimedBytes,
     );
   }
 
-  Future<DiagnosticStorageStatistics> getStatistics() async {
-    _ensureOpen();
-    Future<int> scalar(String sql) async {
-      final rows = await _database.customSelect(sql).get();
-      return rows.single.data.values.single as int;
+  void _addByteTrimTargets(
+    Set<String> targets, {
+    required Iterable<_SessionRecord> sessions,
+    required int byteLimit,
+  }) {
+    final ended =
+        sessions
+            .where((item) => item.state != DiagnosticSessionState.active)
+            .toList(growable: false)
+          ..sort(
+            (left, right) =>
+                left.startedAtUtcMicros.compareTo(right.startedAtUtcMicros),
+          );
+    var total = sessions.fold<int>(0, (sum, item) => sum + item.storedBytes);
+    for (final session in ended) {
+      if (total <= byteLimit) break;
+      if (targets.add(session.sessionId)) total -= session.storedBytes;
     }
+  }
 
-    final wal = File('$databasePath-wal');
-    final index = File(databasePath);
-    return DiagnosticStorageStatistics(
-      runCount: await scalar('SELECT COUNT(*) FROM diagnostic_runs'),
-      sessionCount: await scalar(
-        'SELECT COUNT(*) FROM diagnostic_capture_sessions',
-      ),
-      eventCount: await scalar('SELECT COUNT(*) FROM diagnostic_events'),
-      attachmentCount: await scalar(
-        'SELECT COUNT(*) FROM diagnostic_attachments',
-      ),
-      objectCount: await scalar('SELECT COUNT(*) FROM diagnostic_objects'),
-      objectBytes: await scalar(
-        'SELECT COALESCE(SUM(stored_byte_length), 0) FROM diagnostic_objects',
-      ),
-      logicalStoredBytes: await scalar(
-        'SELECT COALESCE(SUM(stored_bytes), 0) FROM diagnostic_runs',
-      ),
-      indexBytes: await index.exists() ? await index.length() : 0,
-      walBytes: await wal.exists() ? await wal.length() : 0,
+  Future<void> _compactCatalog() async {
+    final records = <Map<String, Object?>>[];
+    final runs = _runs.values.toList(growable: false)
+      ..sort(
+        (left, right) =>
+            left.startedAtUtcMicros.compareTo(right.startedAtUtcMicros),
+      );
+    for (final run in runs) {
+      records.add(_runStartRecord(run));
+      final sessions =
+          _sessions.values
+              .where((item) => item.sourceRunId == run.sourceRunId)
+              .toList(growable: false)
+            ..sort(
+              (left, right) =>
+                  left.startedAtUtcMicros.compareTo(right.startedAtUtcMicros),
+            );
+      for (final session in sessions) {
+        records.add(_sessionStartRecord(session));
+      }
+      final events =
+          _events.values
+              .where((item) => item.sourceRunId == run.sourceRunId)
+              .toList(growable: false)
+            ..sort(
+              (left, right) =>
+                  left.sourceSequence.compareTo(right.sourceSequence),
+            );
+      for (final event in events) {
+        records.add(_eventRecord(_withoutAttachmentProjection(event)));
+        final attachments = _attachments.values.where(
+          (item) => item.descriptor.eventId == event.eventId,
+        );
+        records.addAll(attachments.map(_attachmentRecord));
+      }
+      for (final session in sessions) {
+        if (session.endedAtUtcMicros != null) {
+          records.add(
+            _sessionEndRecord(
+              session.sessionId,
+              session.endedAtUtcMicros!,
+              session.state.name,
+            ),
+          );
+        }
+      }
+      if (run.endedAtUtcMicros != null) {
+        records.add(
+          _runEndRecord(run.sourceRunId, run.endedAtUtcMicros!, run.state),
+        );
+      }
+    }
+    final result = await Isolate.run(
+      _DiagnosticTextRewriteTask(
+        diagnosticsRoot.path,
+        records,
+        maxSegmentBytes,
+      ).call,
+      debugName: 'mg-read-diagnostics-text-compact',
     );
-  }
-
-  Future<void> checkpointWal() async {
-    _ensureOpen();
-    await _database.customSelect('PRAGMA wal_checkpoint(PASSIVE)').get();
-  }
-
-  Future<void> close() async {
-    if (_closed) return;
-    _closed = true;
-    await _database.close();
-    await objectStore.close();
-  }
-
-  DiagnosticEvent _eventFromRow(Map<String, Object?> row) {
-    final decoded = jsonDecode(row['envelope_json'] as String);
-    if (decoded is! Map<String, Object?>) {
-      throw const FormatException('Diagnostic event envelope is invalid.');
+    _lastEncoderWorkerIsolateId = result.workerIsolateId;
+    _activeSegment = null;
+    _activeSegmentRunId = null;
+    _activeSegmentBytes = 0;
+    _segmentSequenceByRun.clear();
+    for (final name in result.segmentNames) {
+      _updateSegmentSequence(name);
     }
-    return _eventCodec.decode(decoded);
   }
 
-  DiagnosticSession _sessionFromRow(Map<String, Object?> row) =>
-      DiagnosticSession(
-        sessionId: row['session_id'] as String,
-        source: _enumByName(
-          DiagnosticSource.values,
-          row['source'] as String,
-          'source',
-        ),
-        sourceRunId: row['source_run_id'] as String,
-        startedAtUtcMicros: row['started_at_utc_micros'] as int,
-        endedAtUtcMicros: row['ended_at_utc_micros'] as int?,
-        expiresAtUtcMicros: row['expires_at_utc_micros'] as int?,
-        state: _enumByName(
-          DiagnosticSessionState.values,
-          row['state'] as String,
-          'session state',
-        ),
-        payloadKind: _enumByName(
-          DiagnosticPayloadKind.values,
-          row['payload_kind'] as String,
-          'payload kind',
-        ),
-        eventCount: row['event_count'] as int,
-        attachmentCount: row['attachment_count'] as int,
-        storedBytes: row['stored_bytes'] as int,
-      );
+  bool _matchesSession(_SessionRecord session, DiagnosticSessionFilter filter) {
+    if (filter.sources.isNotEmpty && !filter.sources.contains(session.source)) {
+      return false;
+    }
+    if (filter.states.isNotEmpty && !filter.states.contains(session.state)) {
+      return false;
+    }
+    if (filter.startedAfterUtcMicros case final value?
+        when session.startedAtUtcMicros < value) {
+      return false;
+    }
+    if (filter.startedBeforeUtcMicros case final value?
+        when session.startedAtUtcMicros > value) {
+      return false;
+    }
+    return true;
+  }
 
-  DiagnosticAttachmentDescriptor _attachmentFromRow(Map<String, Object?> row) =>
-      DiagnosticAttachmentDescriptor(
-        attachmentId: row['attachment_id'] as String,
-        eventId: row['event_id'] as String,
-        kind: row['kind'] as String,
-        mediaType: row['media_type'] as String,
-        charset: row['charset'] as String?,
-        formatId: row['format_id'] as String,
-        formatVersion: row['format_version'] as int,
-        schemaId: row['schema_id'] as String?,
-        schemaVersion: row['schema_version'] as int?,
-        privacyClass: _enumByName(
-          DiagnosticPrivacyClass.values,
-          row['privacy_class'] as String,
-          'privacy class',
-        ),
-        captureState: _enumByName(
-          DiagnosticCaptureState.values,
-          row['capture_state'] as String,
-          'capture state',
-        ),
-        rawByteLength: row['raw_byte_length'] as int,
-        storedByteLength: row['stored_byte_length'] as int,
-        sha256: row['sha256'] as String?,
-        storageCodec: _enumByName(
-          DiagnosticStorageCodec.values,
-          row['storage_codec'] as String,
-          'storage codec',
-        ),
-        redactionVersion: row['redaction_version'] as int,
-        truncationReason: row['truncation_reason'] as String?,
-      );
+  bool _matchesEvent(DiagnosticEvent event, DiagnosticEventFilter filter) {
+    if (filter.sessionId case final value?
+        when event.captureSessionId != value) {
+      return false;
+    }
+    if (filter.traceId case final value? when event.traceId != value) {
+      return false;
+    }
+    if (filter.minimumSeverity case final value?
+        when event.severity.index < value.index) {
+      return false;
+    }
+    if (filter.components.isNotEmpty &&
+        !filter.components.contains(event.component)) {
+      return false;
+    }
+    if (filter.eventNames.isNotEmpty &&
+        !filter.eventNames.contains(event.eventName)) {
+      return false;
+    }
+    if (filter.occurredAfterUtcMicros case final value?
+        when event.occurredAtUtcMicros < value) {
+      return false;
+    }
+    if (filter.occurredBeforeUtcMicros case final value?
+        when event.occurredAtUtcMicros > value) {
+      return false;
+    }
+    return true;
+  }
 
   void _validateLimit(int limit) {
     if (limit <= 0 || limit > maxQueryPageSize) {
@@ -1146,20 +1009,96 @@ final class DiagnosticsPersistence {
   }
 }
 
-final class _DiagnosticsDatabase extends GeneratedDatabase {
-  _DiagnosticsDatabase(super.executor);
+final class _RunRecord {
+  _RunRecord({
+    required this.sourceRunId,
+    required this.source,
+    required this.startedAtUtcMicros,
+  });
 
-  @override
-  int get schemaVersion => DiagnosticsPersistence.schemaVersion;
-
-  @override
-  Iterable<TableInfo<Table, dynamic>> get allTables => const [];
+  final String sourceRunId;
+  final DiagnosticSource source;
+  final int startedAtUtcMicros;
+  int? endedAtUtcMicros;
+  String state = 'active';
+  int eventCount = 0;
+  int attachmentCount = 0;
+  int storedBytes = 0;
 }
 
-final class _EncodedDiagnosticEvents {
-  const _EncodedDiagnosticEvents(this.payloads, this.workerIsolateId);
+final class _SessionRecord {
+  _SessionRecord({
+    required this.sessionId,
+    required this.sourceRunId,
+    required this.source,
+    required this.startedAtUtcMicros,
+    required this.expiresAtUtcMicros,
+    required this.payloadKind,
+    required this.maxStoredBytes,
+    required Set<String> components,
+    required Set<String> origins,
+    required this.isDefault,
+    required this.detailStorage,
+  }) : components = Set<String>.unmodifiable(components),
+       origins = Set<String>.unmodifiable(origins);
 
-  final List<String> payloads;
+  final String sessionId;
+  final String sourceRunId;
+  final DiagnosticSource source;
+  final int startedAtUtcMicros;
+  final int? expiresAtUtcMicros;
+  final DiagnosticPayloadKind payloadKind;
+  final int maxStoredBytes;
+  final Set<String> components;
+  final Set<String> origins;
+  final bool isDefault;
+  final DiagnosticDetailStorage detailStorage;
+  int? endedAtUtcMicros;
+  DiagnosticSessionState state = DiagnosticSessionState.active;
+  int eventCount = 0;
+  int attachmentCount = 0;
+  int storedBytes = 0;
+
+  DiagnosticSession toPublic() => DiagnosticSession(
+    sessionId: sessionId,
+    source: source,
+    sourceRunId: sourceRunId,
+    startedAtUtcMicros: startedAtUtcMicros,
+    endedAtUtcMicros: endedAtUtcMicros,
+    expiresAtUtcMicros: expiresAtUtcMicros,
+    state: state,
+    payloadKind: payloadKind,
+    eventCount: eventCount,
+    attachmentCount: attachmentCount,
+    storedBytes: storedBytes,
+  );
+
+  DiagnosticStoredCaptureSession toStored() => DiagnosticStoredCaptureSession(
+    session: toPublic(),
+    maxStoredBytes: maxStoredBytes,
+    components: components,
+    origins: origins,
+    isDefault: isDefault,
+    detailStorage: detailStorage,
+  );
+}
+
+final class _AttachmentRecord {
+  const _AttachmentRecord({
+    required this.descriptor,
+    required this.detailKey,
+    required this.persisted,
+  });
+
+  final DiagnosticAttachmentDescriptor descriptor;
+  final String? detailKey;
+  final bool persisted;
+}
+
+final class _DiagnosticEncodedEvents {
+  const _DiagnosticEncodedEvents(this.lines, this.workerIsolateId);
+
+  final List<String> lines;
   final int workerIsolateId;
 }
 
@@ -1168,63 +1107,402 @@ final class _DiagnosticEventEncodeTask {
 
   final List<DiagnosticEvent> events;
 
-  _EncodedDiagnosticEvents call() {
+  _DiagnosticEncodedEvents call() {
     const codec = DiagnosticEventCodec();
-    return _EncodedDiagnosticEvents(
+    return _DiagnosticEncodedEvents(
       events
-          .map((event) => jsonEncode(codec.encode(event)))
+          .map(
+            (event) => jsonEncode(<String, Object?>{
+              'textFormatVersion': DiagnosticsPersistence.textFormatVersion,
+              'recordType': 'event',
+              'event': codec.encode(event),
+            }),
+          )
           .toList(growable: false),
       Isolate.current.hashCode,
     );
   }
 }
 
-void _addStringSetFilter(
-  List<String> where,
-  List<Variable<Object>> variables,
-  String column,
-  Set<String> values,
-) {
-  if (values.isEmpty) return;
-  where.add('$column IN (${_placeholders(values.length)})');
-  variables.addAll(values.map(Variable.withString));
+final class _DiagnosticTextLoadResult {
+  const _DiagnosticTextLoadResult({
+    required this.records,
+    required this.segmentBytes,
+    required this.workerIsolateId,
+  });
+
+  final List<Map<String, Object?>> records;
+  final Map<String, int> segmentBytes;
+  final int workerIsolateId;
 }
 
-String _placeholders(int count) => List<String>.filled(count, '?').join(', ');
+final class _DiagnosticTextLoadTask {
+  const _DiagnosticTextLoadTask(this.eventsPath);
+
+  final String eventsPath;
+
+  _DiagnosticTextLoadResult call() {
+    final root = Directory(eventsPath);
+    final files =
+        root
+            .listSync(followLinks: false)
+            .whereType<File>()
+            .where((file) => file.path.endsWith('.txt'))
+            .toList(growable: false)
+          ..sort((left, right) => left.path.compareTo(right.path));
+    final records = <Map<String, Object?>>[];
+    final segmentBytes = <String, int>{};
+    for (final file in files) {
+      var bytes = file.readAsBytesSync();
+      final lastNewline = bytes.lastIndexOf(0x0a);
+      final completeLength = lastNewline < 0 ? 0 : lastNewline + 1;
+      if (completeLength != bytes.length) {
+        final handle = file.openSync(mode: FileMode.writeOnlyAppend);
+        handle.truncateSync(completeLength);
+        handle.closeSync();
+        bytes = bytes.sublist(0, completeLength);
+      }
+      final name = file.uri.pathSegments.last;
+      segmentBytes[name] = completeLength;
+      if (bytes.isEmpty) continue;
+      final text = utf8.decode(bytes, allowMalformed: false);
+      for (final line in const LineSplitter().convert(text)) {
+        if (line.isEmpty) continue;
+        try {
+          final value = jsonDecode(line);
+          if (value is Map) {
+            records.add(
+              value.map((key, item) => MapEntry(key.toString(), item)),
+            );
+          }
+        } on FormatException {
+          // A malformed complete line is isolated; later records stay usable.
+        }
+      }
+    }
+    return _DiagnosticTextLoadResult(
+      records: records,
+      segmentBytes: segmentBytes,
+      workerIsolateId: Isolate.current.hashCode,
+    );
+  }
+}
+
+final class _DiagnosticTextRewriteResult {
+  const _DiagnosticTextRewriteResult(this.segmentNames, this.workerIsolateId);
+
+  final List<String> segmentNames;
+  final int workerIsolateId;
+}
+
+final class _DiagnosticTextRewriteTask {
+  const _DiagnosticTextRewriteTask(
+    this.diagnosticsPath,
+    this.records,
+    this.maxSegmentBytes,
+  );
+
+  final String diagnosticsPath;
+  final List<Map<String, Object?>> records;
+  final int maxSegmentBytes;
+
+  _DiagnosticTextRewriteResult call() {
+    final separator = Platform.pathSeparator;
+    final events = Directory('$diagnosticsPath${separator}events');
+    final staging = Directory('$diagnosticsPath${separator}staging');
+    staging.createSync(recursive: true);
+    final staged = <File>[];
+    var segment = 1;
+    var currentBytes = 0;
+    var current = File(
+      '${staging.path}${separator}rewrite-${segment.toString().padLeft(6, '0')}.partial.txt',
+    );
+    for (final record in records) {
+      final line = '${jsonEncode(record)}\n';
+      final bytes = utf8.encode(line).length;
+      if (currentBytes > 0 && currentBytes + bytes > maxSegmentBytes) {
+        staged.add(current);
+        segment += 1;
+        currentBytes = 0;
+        current = File(
+          '${staging.path}${separator}rewrite-${segment.toString().padLeft(6, '0')}.partial.txt',
+        );
+      }
+      current.writeAsStringSync(line, mode: FileMode.append, flush: false);
+      currentBytes += bytes;
+    }
+    if (current.existsSync()) staged.add(current);
+    for (final entity in events.listSync(followLinks: false)) {
+      if (entity is File && entity.path.endsWith('.txt')) entity.deleteSync();
+    }
+    final names = <String>[];
+    for (var index = 0; index < staged.length; index += 1) {
+      final name =
+          'run-compacted-${(index + 1).toString().padLeft(6, '0')}.txt';
+      staged[index].renameSync('${events.path}$separator$name');
+      names.add(name);
+    }
+    return _DiagnosticTextRewriteResult(names, Isolate.current.hashCode);
+  }
+}
+
+Map<String, Object?> _baseRecord(String recordType) => <String, Object?>{
+  'textFormatVersion': DiagnosticsPersistence.textFormatVersion,
+  'recordType': recordType,
+};
+
+Map<String, Object?> _runStartRecord(_RunRecord run) => <String, Object?>{
+  ..._baseRecord('run.start'),
+  'sourceRunId': run.sourceRunId,
+  'source': run.source.name,
+  'startedAtUtcMicros': run.startedAtUtcMicros,
+};
+
+Map<String, Object?> _runEndRecord(
+  String sourceRunId,
+  int endedAtUtcMicros,
+  String state,
+) => <String, Object?>{
+  ..._baseRecord('run.end'),
+  'sourceRunId': sourceRunId,
+  'endedAtUtcMicros': endedAtUtcMicros,
+  'state': state,
+};
+
+Map<String, Object?> _sessionStartRecord(_SessionRecord session) =>
+    <String, Object?>{
+      ..._baseRecord('session.start'),
+      'sessionId': session.sessionId,
+      'sourceRunId': session.sourceRunId,
+      'source': session.source.name,
+      'startedAtUtcMicros': session.startedAtUtcMicros,
+      'expiresAtUtcMicros': session.expiresAtUtcMicros,
+      'payloadKind': session.payloadKind.name,
+      'maxStoredBytes': session.maxStoredBytes,
+      'components': session.components.toList(growable: false)..sort(),
+      'origins': session.origins.toList(growable: false)..sort(),
+      'isDefault': session.isDefault,
+      'detailStorage': session.detailStorage.name,
+    };
+
+Map<String, Object?> _sessionEndRecord(
+  String sessionId,
+  int endedAtUtcMicros,
+  String state,
+) => <String, Object?>{
+  ..._baseRecord('session.end'),
+  'sessionId': sessionId,
+  'endedAtUtcMicros': endedAtUtcMicros,
+  'state': state,
+};
+
+Map<String, Object?> _eventRecord(DiagnosticEvent event) => <String, Object?>{
+  ..._baseRecord('event'),
+  'event': const DiagnosticEventCodec().encode(event),
+};
+
+Map<String, Object?> _attachmentRecord(_AttachmentRecord attachment) =>
+    <String, Object?>{
+      ..._baseRecord('attachment'),
+      'descriptor': _descriptorToMap(attachment.descriptor),
+      'detailKey': attachment.detailKey,
+      'persisted': attachment.persisted,
+    };
+
+_RunRecord _runFromRecord(Map<String, Object?> record) => _RunRecord(
+  sourceRunId: record['sourceRunId'] as String,
+  source: _enumByName(
+    DiagnosticSource.values,
+    record['source'] as String,
+    'source',
+  ),
+  startedAtUtcMicros: record['startedAtUtcMicros'] as int,
+);
+
+_SessionRecord _sessionFromRecord(Map<String, Object?> record) =>
+    _SessionRecord(
+      sessionId: record['sessionId'] as String,
+      sourceRunId: record['sourceRunId'] as String,
+      source: _enumByName(
+        DiagnosticSource.values,
+        record['source'] as String,
+        'source',
+      ),
+      startedAtUtcMicros: record['startedAtUtcMicros'] as int,
+      expiresAtUtcMicros: record['expiresAtUtcMicros'] as int?,
+      payloadKind: _enumByName(
+        DiagnosticPayloadKind.values,
+        record['payloadKind'] as String,
+        'payload kind',
+      ),
+      maxStoredBytes: record['maxStoredBytes'] as int,
+      components: _stringSet(record['components']),
+      origins: _stringSet(record['origins']),
+      isDefault: record['isDefault'] == true,
+      detailStorage: _enumByName(
+        DiagnosticDetailStorage.values,
+        record['detailStorage'] as String? ?? 'persistToText',
+        'detail storage',
+      ),
+    );
+
+Map<String, Object?> _descriptorToMap(
+  DiagnosticAttachmentDescriptor descriptor,
+) => <String, Object?>{
+  'attachmentId': descriptor.attachmentId,
+  'eventId': descriptor.eventId,
+  'kind': descriptor.kind,
+  'mediaType': descriptor.mediaType,
+  'charset': descriptor.charset,
+  'formatId': descriptor.formatId,
+  'formatVersion': descriptor.formatVersion,
+  'schemaId': descriptor.schemaId,
+  'schemaVersion': descriptor.schemaVersion,
+  'privacyClass': descriptor.privacyClass.name,
+  'captureState': descriptor.captureState.name,
+  'rawByteLength': descriptor.rawByteLength,
+  'storedByteLength': descriptor.storedByteLength,
+  'sha256': descriptor.sha256,
+  'storageCodec': descriptor.storageCodec.name,
+  'redactionVersion': descriptor.redactionVersion,
+  'truncationReason': descriptor.truncationReason,
+};
+
+DiagnosticAttachmentDescriptor _descriptorFromMap(Map<String, Object?> value) =>
+    DiagnosticAttachmentDescriptor(
+      attachmentId: value['attachmentId'] as String,
+      eventId: value['eventId'] as String,
+      kind: value['kind'] as String,
+      mediaType: value['mediaType'] as String,
+      charset: value['charset'] as String?,
+      formatId: value['formatId'] as String,
+      formatVersion: value['formatVersion'] as int,
+      schemaId: value['schemaId'] as String?,
+      schemaVersion: value['schemaVersion'] as int?,
+      privacyClass: _enumByName(
+        DiagnosticPrivacyClass.values,
+        value['privacyClass'] as String,
+        'privacy class',
+      ),
+      captureState: _enumByName(
+        DiagnosticCaptureState.values,
+        value['captureState'] as String,
+        'capture state',
+      ),
+      rawByteLength: value['rawByteLength'] as int,
+      storedByteLength: value['storedByteLength'] as int,
+      sha256: value['sha256'] as String?,
+      storageCodec: _enumByName(
+        DiagnosticStorageCodec.values,
+        value['storageCodec'] as String,
+        'storage codec',
+      ),
+      redactionVersion: value['redactionVersion'] as int,
+      truncationReason: value['truncationReason'] as String?,
+    );
+
+DiagnosticAttachmentDescriptor _descriptorWithFailure(
+  DiagnosticAttachmentDescriptor descriptor,
+  String reason,
+) => DiagnosticAttachmentDescriptor(
+  attachmentId: descriptor.attachmentId,
+  eventId: descriptor.eventId,
+  kind: descriptor.kind,
+  mediaType: descriptor.mediaType,
+  charset: descriptor.charset,
+  formatId: descriptor.formatId,
+  formatVersion: descriptor.formatVersion,
+  schemaId: descriptor.schemaId,
+  schemaVersion: descriptor.schemaVersion,
+  privacyClass: descriptor.privacyClass,
+  captureState: DiagnosticCaptureState.failed,
+  rawByteLength: descriptor.rawByteLength,
+  storedByteLength: 0,
+  storageCodec: descriptor.storageCodec,
+  redactionVersion: descriptor.redactionVersion,
+  truncationReason: reason,
+);
+
+DiagnosticEvent _eventWithAttachment(
+  DiagnosticEvent event,
+  DiagnosticAttachmentDescriptor descriptor,
+) => event.copyWith(
+  attachmentCount: event.attachmentCount + 1,
+  capturedBytes: event.capturedBytes + descriptor.storedByteLength,
+  flags: <DiagnosticEventFlag>{
+    ...event.flags,
+    if (descriptor.captureState == DiagnosticCaptureState.truncated)
+      DiagnosticEventFlag.truncated,
+    if (descriptor.captureState == DiagnosticCaptureState.policyBlocked ||
+        descriptor.captureState == DiagnosticCaptureState.pressureDropped)
+      DiagnosticEventFlag.droppedPayload,
+  },
+);
+
+DiagnosticEvent _withoutAttachmentProjection(DiagnosticEvent event) =>
+    event.copyWith(attachmentCount: 0, capturedBytes: 0);
+
+Set<String> _stringSet(Object? value) {
+  if (value is! List) return const <String>{};
+  return value.whereType<String>().toSet();
+}
+
+int _compareSessionsDescending(
+  DiagnosticSession left,
+  DiagnosticSession right,
+) {
+  final time = right.startedAtUtcMicros.compareTo(left.startedAtUtcMicros);
+  return time != 0 ? time : right.sessionId.compareTo(left.sessionId);
+}
+
+int _compareEventsDescending(DiagnosticEvent left, DiagnosticEvent right) {
+  final time = right.occurredAtUtcMicros.compareTo(left.occurredAtUtcMicros);
+  return time != 0 ? time : right.eventId.compareTo(left.eventId);
+}
 
 DiagnosticCursor _encodeCursor(String kind, int micros, String id) {
   final bytes = utf8.encode(jsonEncode(<Object?>[kind, micros, id]));
-  return DiagnosticCursor(base64Url.encode(bytes).replaceAll('=', ''));
+  return DiagnosticCursor(base64UrlEncode(bytes).replaceAll('=', ''));
 }
 
-(int, String) _decodeCursor(DiagnosticCursor cursor, String expectedKind) {
+(int, String) _decodeCursor(DiagnosticCursor cursor, String kind) {
   final padding = '=' * ((4 - cursor.value.length % 4) % 4);
-  final decoded = jsonDecode(
+  final value = jsonDecode(
     utf8.decode(base64Url.decode('${cursor.value}$padding')),
   );
-  if (decoded is! List<Object?> ||
-      decoded.length != 3 ||
-      decoded[0] != expectedKind ||
-      decoded[1] is! int ||
-      decoded[2] is! String) {
-    throw const FormatException('Diagnostic cursor does not match the query.');
+  if (value is! List ||
+      value.length != 3 ||
+      value[0] != kind ||
+      value[1] is! int ||
+      value[2] is! String) {
+    throw const FormatException('Diagnostic cursor is invalid.');
   }
-  return (decoded[1]! as int, decoded[2]! as String);
+  return (value[1] as int, value[2] as String);
 }
 
-Set<String> _decodeStringSet(String encoded) {
-  final value = jsonDecode(encoded);
-  if (value is! List<Object?> || value.any((item) => item is! String)) {
-    throw const FormatException('Diagnostic allowlist is invalid.');
-  }
-  return value.cast<String>().toSet();
-}
-
-T _enumByName<T extends Enum>(List<T> values, String name, String label) {
+T _enumByName<T extends Enum>(List<T> values, String name, String field) {
   for (final value in values) {
     if (value.name == name) return value;
   }
-  throw FormatException('Unknown diagnostic $label: $name.');
+  throw FormatException('Unknown diagnostic $field: $name.');
+}
+
+Future<void> _removeLegacyDatabaseArtifacts(Directory root) async {
+  for (final name in <String>[
+    'index.sqlite',
+    'index.sqlite-wal',
+    'index.sqlite-shm',
+    'index.db',
+    'index.db-wal',
+    'index.db-shm',
+  ]) {
+    final file = File('${root.path}${Platform.pathSeparator}$name');
+    if (await file.exists()) await file.delete();
+  }
+  for (final name in <String>['objects', 'exports']) {
+    final directory = Directory('${root.path}${Platform.pathSeparator}$name');
+    if (await directory.exists()) await directory.delete(recursive: true);
+  }
 }
 
 DateTime _utcNow() => DateTime.now().toUtc();

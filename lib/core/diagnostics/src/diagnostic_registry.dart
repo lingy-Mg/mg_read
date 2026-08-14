@@ -567,7 +567,7 @@ abstract final class AppDiagnosticEvents {
         fields: <String, DiagnosticFieldDefinition>{
           'sessionCount': _int64,
           'eventCount': _int64,
-          'objectBytes': _int64,
+          'reclaimedBytes': _int64,
           'errorCode': _string,
         },
       );
@@ -581,6 +581,7 @@ abstract final class AppDiagnosticEvents {
           'payloadKind': _string,
           'durationMicros': _int64,
           'maxBytes': _int64,
+          'detailStorage': _string,
           'componentCount': _int64,
           'originCount': _int64,
           'sessionState': _string,
@@ -600,6 +601,22 @@ abstract final class AppDiagnosticEvents {
           'captureState': _string,
           'rawBytes': _int64,
           'storedBytes': _int64,
+          'errorCode': _string,
+        },
+      );
+
+  static final DiagnosticEventDefinition viewerOperation =
+      DiagnosticEventDefinition.span(
+        name: 'diagnostics.viewer.operation',
+        component: 'app.diagnostics',
+        summary: 'Dedicated diagnostics viewer operation.',
+        severity: DiagnosticSeverity.debug,
+        fields: <String, DiagnosticFieldDefinition>{
+          'operation': _string,
+          'source': _string,
+          'resultCount': _int64,
+          'bytes': _int64,
+          'resultState': _string,
           'errorCode': _string,
         },
       );
@@ -641,6 +658,7 @@ abstract final class AppDiagnosticEvents {
         retention,
         capture,
         attachment,
+        viewerOperation,
         export,
       ]);
 

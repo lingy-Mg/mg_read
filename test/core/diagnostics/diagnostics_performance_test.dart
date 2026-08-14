@@ -103,9 +103,10 @@ void main() {
           },
           'storage': <String, Object?>{
             'events': storage.eventCount,
-            'indexBytes': storage.indexBytes,
-            'walBytes': storage.walBytes,
-            'objectBytes': storage.objectBytes,
+            'segments': storage.segmentCount,
+            'eventTextBytes': storage.eventTextBytes,
+            'detailTextBytes': storage.detailTextBytes,
+            'memoryDetailBytes': storage.memoryDetailBytes,
             'physicalBytes': storage.physicalStoredBytes,
           },
           'memory': <String, Object?>{

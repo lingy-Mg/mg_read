@@ -239,6 +239,7 @@ final class DiagnosticCapturePolicy {
     required this.payloadKind,
     required this.duration,
     required this.maxStoredBytes,
+    this.detailStorage = DiagnosticDetailStorage.persistToText,
     Set<String> components = const <String>{},
     Set<String> origins = const <String>{},
   }) : components = Set<String>.unmodifiable(components),
@@ -273,9 +274,17 @@ final class DiagnosticCapturePolicy {
   final DiagnosticPayloadKind payloadKind;
   final Duration duration;
   final int maxStoredBytes;
+  final DiagnosticDetailStorage detailStorage;
   final Set<String> components;
   final Set<String> origins;
 }
+
+/// Explicit detail handling for a bounded debug capture session.
+///
+/// The default key-only logger never reaches either mode. [memoryOnly] is for
+/// a visible live debugger and is cleared when its session ends; only
+/// [persistToText] may create detail `.txt` files.
+enum DiagnosticDetailStorage { memoryOnly, persistToText }
 
 abstract interface class DiagnosticsCapture {
   Future<DiagnosticSession> startCapture(DiagnosticCapturePolicy policy);
@@ -352,24 +361,38 @@ final class DiagnosticStorageStatistics {
     required this.sessionCount,
     required this.eventCount,
     required this.attachmentCount,
-    required this.objectCount,
-    required this.objectBytes,
+    required this.segmentCount,
+    required this.detailCount,
+    required this.eventTextBytes,
+    required this.detailTextBytes,
+    required this.memoryDetailBytes,
     required this.logicalStoredBytes,
-    required this.indexBytes,
-    required this.walBytes,
   });
 
   final int runCount;
   final int sessionCount;
   final int eventCount;
   final int attachmentCount;
-  final int objectCount;
-  final int objectBytes;
+  final int segmentCount;
+  final int detailCount;
+  final int eventTextBytes;
+  final int detailTextBytes;
+  final int memoryDetailBytes;
   final int logicalStoredBytes;
-  final int indexBytes;
-  final int walBytes;
 
-  int get physicalStoredBytes => objectBytes + indexBytes + walBytes;
+  int get physicalStoredBytes => eventTextBytes + detailTextBytes;
+
+  /// Compatibility projection for code written before ADR-0016.
+  int get objectCount => detailCount;
+
+  /// Compatibility projection for code written before ADR-0016.
+  int get objectBytes => detailTextBytes;
+
+  /// Compatibility projection; the former index is now event TXT segments.
+  int get indexBytes => eventTextBytes;
+
+  /// Diagnostics no longer creates a WAL.
+  int get walBytes => 0;
 }
 
 final class DiagnosticExportSelection {

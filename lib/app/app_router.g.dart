@@ -113,6 +113,11 @@ RouteBase get $profileRoute => GoRouteData.$route(
       hasOverriddenOnExit: false,
       factory: $PluginCenterRoute._fromState,
     ),
+    GoRouteData.$route(
+      path: 'diagnostics',
+      hasOverriddenOnExit: false,
+      factory: $DiagnosticsRoute._fromState,
+    ),
   ],
 );
 
@@ -182,6 +187,27 @@ mixin $PluginCenterRoute on GoRouteData {
 
   @override
   String get location => GoRouteData.$location('/profile/plugins');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $DiagnosticsRoute on GoRouteData {
+  static DiagnosticsRoute _fromState(GoRouterState state) =>
+      const DiagnosticsRoute();
+
+  @override
+  String get location => GoRouteData.$location('/profile/diagnostics');
 
   @override
   void go(BuildContext context) => context.go(location);

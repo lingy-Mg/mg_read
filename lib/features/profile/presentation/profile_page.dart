@@ -21,6 +21,7 @@ class ProfilePage extends StatefulWidget {
     this.onAboutRequested,
     this.onFeedbackRequested,
     this.onPluginCenterRequested,
+    this.onDiagnosticsRequested,
     super.key,
   });
 
@@ -32,6 +33,7 @@ class ProfilePage extends StatefulWidget {
   final VoidCallback? onAboutRequested;
   final VoidCallback? onFeedbackRequested;
   final VoidCallback? onPluginCenterRequested;
+  final VoidCallback? onDiagnosticsRequested;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -153,6 +155,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final VoidCallback? callback = switch (item.id) {
       'about' => widget.onAboutRequested,
       'feedback' => widget.onFeedbackRequested,
+      'diagnostics' => widget.onDiagnosticsRequested,
       _ => null,
     };
     if (callback != null) {
