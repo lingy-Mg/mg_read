@@ -28,10 +28,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
       container: true,
       label: '${AppStrings.continueReadingTitle}，${data.title}，${data.chapter}',
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: AppRadii.card,
-          border: Border.all(color: tokens.divider.withValues(alpha: 0.8)),
-        ),
+        decoration: BoxDecoration(borderRadius: AppRadii.card),
         child: ClipRRect(
           borderRadius: AppRadii.card,
           child: Stack(
@@ -62,7 +59,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: AppSpacing.compactPagePadding,
-                  vertical: AppSpacing.comfortable,
+                  vertical: AppSpacing.continueReadingVerticalPadding,
                 ),
                 child: LayoutBuilder(
                   builder: (BuildContext context, BoxConstraints constraints) {
@@ -86,52 +83,61 @@ class LibraryContinueReadingCard extends StatelessWidget {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: Text(
-                                AppStrings.continueReadingTitle,
-                                style: theme.textTheme.titleLarge?.copyWith(
-                                  fontSize: 22,
-                                  height: 1.2,
-                                  letterSpacing: -0.2,
+                        SizedBox(
+                          height: AppSpacing.section + AppSpacing.unit / 2,
+                          child: Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  AppStrings.continueReadingTitle,
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.2,
+                                    letterSpacing: -0.1,
+                                  ),
                                 ),
                               ),
-                            ),
-                            TextButton(
-                              onPressed: onReadingHistory,
-                              style: TextButton.styleFrom(
-                                backgroundColor: tokens.surface.withValues(
-                                  alpha: 0.52,
+                              TextButton(
+                                onPressed: onReadingHistory,
+                                style: TextButton.styleFrom(
+                                  backgroundColor: tokens.surface.withValues(
+                                    alpha: 0.52,
+                                  ),
+                                  foregroundColor: tokens.warning,
+                                  minimumSize: Size.zero,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal:
+                                        AppSpacing.unit + AppSpacing.unit / 2,
+                                    vertical: AppSpacing.unit,
+                                  ),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  shape: const StadiumBorder(),
                                 ),
-                                foregroundColor: tokens.warning,
-                                minimumSize: Size.zero,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: AppSpacing.compact,
-                                  vertical: AppSpacing.unit,
-                                ),
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                shape: const StadiumBorder(),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: <Widget>[
-                                  Text(
-                                    AppStrings.readingHistoryLabel,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: tokens.warning,
-                                      fontWeight: FontWeight.w600,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                    Text(
+                                      AppStrings.readingHistoryLabel,
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: tokens.warning,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w400,
+                                            height: 1,
+                                          ),
                                     ),
-                                  ),
-                                  const SizedBox(width: AppSpacing.unit),
-                                  const Icon(
-                                    Icons.chevron_right_rounded,
-                                    size: 16,
-                                  ),
-                                ],
+                                    const SizedBox(width: AppSpacing.unit / 2),
+                                    const Icon(
+                                      Icons.chevron_right_rounded,
+                                      size: 14,
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                         const SizedBox(height: AppSpacing.compact),
                         if (stacked) ...<Widget>[
@@ -183,46 +189,60 @@ class _ContinueReadingDetails extends StatelessWidget {
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.titleLarge?.copyWith(
-            fontSize: 22,
+            fontSize: 20,
+            fontWeight: FontWeight.w500,
             height: 1.16,
             letterSpacing: -0.2,
           ),
         ),
-        const SizedBox(height: AppSpacing.unit / 2),
+        const SizedBox(height: AppSpacing.unit),
         Text(
           data.chapter,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodyMedium?.copyWith(
             color: tokens.warning,
-            fontSize: 15,
+            fontSize: 13,
+            fontWeight: FontWeight.w400,
             height: 1.2,
           ),
         ),
         const Spacer(),
         Row(
           children: <Widget>[
-            Expanded(child: ReadingProgressBar(progress: data.progress)),
-            const SizedBox(width: AppSpacing.compact),
+            Flexible(
+              fit: FlexFit.loose,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: AppSpacing.continueReadingProgressWidth,
+                ),
+                child: SizedBox(
+                  width: AppSpacing.continueReadingProgressWidth,
+                  child: ReadingProgressBar(progress: data.progress),
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.continueReadingProgressValueGap),
             Text(
               '$percentage%',
               style: theme.textTheme.bodyLarge?.copyWith(
                 color: tokens.accent,
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
+                fontWeight: FontWeight.w400,
+                fontSize: 12,
                 height: 1.1,
               ),
             ),
           ],
         ),
-        const SizedBox(height: AppSpacing.unit),
+        const SizedBox(height: AppSpacing.compact),
         Text(
           data.lastReadLabel,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodySmall?.copyWith(
             color: tokens.mutedText,
-            fontSize: 12,
+            fontSize: 10,
+            fontWeight: FontWeight.w400,
             height: 1.2,
           ),
         ),
@@ -242,28 +262,33 @@ class _ContinueReadingAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
+    final Color actionStart = Color.lerp(
+      tokens.accent,
+      tokens.mutedText,
+      0.17,
+    )!;
+    final Color actionEnd = Color.lerp(tokens.accent, tokens.mutedText, 0.21)!;
     return SizedBox(
       width: AppSpacing.continueReadingActionWidth,
       height: AppSpacing.continueReadingActionHeight,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: AppRadii.control,
-          gradient: LinearGradient(
-            colors: <Color>[tokens.accent, tokens.warning],
-          ),
+          borderRadius: AppRadii.continueReadingAction,
+          gradient: LinearGradient(colors: <Color>[actionStart, actionEnd]),
         ),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
             key: const Key('continue-reading-cta'),
             onTap: onPressed,
-            borderRadius: AppRadii.control,
+            borderRadius: AppRadii.continueReadingAction,
             child: Center(
               child: Text(
                 AppStrings.continueReadingLabel,
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: theme.colorScheme.onPrimary,
-                  fontSize: 16,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
                   height: 1.2,
                 ),
               ),

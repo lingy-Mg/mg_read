@@ -28,7 +28,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // The current product UI is mobile-first. Keep the desktop runner close to
   // the compact phone canvas until a separately designed desktop layout ships.
   Win32Window::Point origin(80, 80);
-  Win32Window::Size size(430, 860);
+  // Win32Window::Create takes the outer frame size. At the standard Windows
+  // decoration size this yields a 390 x 900 Flutter client canvas, matching
+  // the compact mobile design viewport used by the home-screen Goldens.
+  Win32Window::Size size(406, 939);
   if (!window.Create(L"MgRead", origin, size)) {
     return EXIT_FAILURE;
   }

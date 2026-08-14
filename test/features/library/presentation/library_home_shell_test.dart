@@ -10,6 +10,8 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_update_tile.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_bottom_navigation.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_continue_reading_card.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_controls.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
 
@@ -32,7 +34,7 @@ void main() {
     expect(find.text('诡秘之主'), findsAtLeastNWidgets(2));
     expect(find.text(AppStrings.recentUpdatesLabel), findsOneWidget);
     expect(find.text(AppStrings.manageSourcesLabel), findsOneWidget);
-    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(LibraryBottomNavigation), findsOneWidget);
     expect(
       find.byWidgetPredicate(
         (Widget widget) =>
@@ -89,6 +91,7 @@ void main() {
   testWidgets('places the temporary theme toggle beside search', (
     WidgetTester tester,
   ) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
     int toggleCount = 0;
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(
@@ -108,9 +111,75 @@ void main() {
     expect(actionGap, greaterThanOrEqualTo(0));
     expect(actionGap, lessThanOrEqualTo(AppSpacing.compact));
     expect(find.byTooltip(AppStrings.switchToDarkThemeLabel), findsOneWidget);
+    final SemanticsNode toggleSemantics = tester.getSemantics(toggle);
+    expect(
+      toggleSemantics.getSemanticsData().label,
+      AppStrings.switchToDarkThemeLabel,
+    );
+    expect(
+      toggleSemantics.getSemanticsData().hasAction(SemanticsAction.tap),
+      isTrue,
+    );
 
     await tester.tap(toggle);
     expect(toggleCount, 1);
+    semantics.dispose();
+  });
+
+  testWidgets('uses the compact reference font-size and weight hierarchy', (
+    WidgetTester tester,
+  ) async {
+    await _setViewport(tester, const Size(390, 900));
+    await tester.pumpWidget(_host());
+    await tester.pumpAndSettle();
+
+    final Text pageTitle = tester.widget<Text>(
+      find.descendant(
+        of: find.byType(LibraryHomeTopBar),
+        matching: find.text(AppStrings.libraryTitle),
+      ),
+    );
+    final Text continueCardTitle = tester.widget<Text>(
+      find
+          .descendant(
+            of: find.byType(LibraryContinueReadingCard),
+            matching: find.text(AppStrings.continueReadingTitle),
+          )
+          .first,
+    );
+    final Text updateTitle = tester.widget<Text>(
+      find
+          .descendant(
+            of: find.byType(LibraryBookUpdateTile).first,
+            matching: find.text('诡秘之主'),
+          )
+          .last,
+    );
+    final Text selectedSection = tester.widget<Text>(
+      find.text(AppStrings.recentUpdatesLabel),
+    );
+    final Text unselectedSection = tester.widget<Text>(
+      find.text(AppStrings.shelfLabel),
+    );
+    final Text continueAction = tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(const Key('continue-reading-cta')),
+        matching: find.text(AppStrings.continueReadingLabel),
+      ),
+    );
+
+    expect(pageTitle.style?.fontSize, 26);
+    expect(pageTitle.style?.fontWeight, FontWeight.w600);
+    expect(continueCardTitle.style?.fontSize, 18);
+    expect(continueCardTitle.style?.fontWeight, FontWeight.w500);
+    expect(updateTitle.style?.fontSize, 16);
+    expect(updateTitle.style?.fontWeight, FontWeight.w600);
+    expect(selectedSection.style?.fontSize, 16);
+    expect(selectedSection.style?.fontWeight, FontWeight.w600);
+    expect(unselectedSection.style?.fontSize, 16);
+    expect(unselectedSection.style?.fontWeight, FontWeight.w400);
+    expect(continueAction.style?.fontSize, 14);
+    expect(continueAction.style?.fontWeight, FontWeight.w500);
   });
 
   testWidgets('unbound actions show and dismiss local presentation feedback', (

@@ -83,6 +83,16 @@ Widget _host({required ThemeMode themeMode}) {
     theme: AppTheme.light(),
     darkTheme: AppTheme.dark(),
     themeMode: themeMode,
+    builder: (BuildContext context, Widget? child) {
+      final MediaQueryData mediaQuery = MediaQuery.of(context);
+      return MediaQuery(
+        data: mediaQuery.copyWith(
+          padding: const EdgeInsets.only(top: 24),
+          viewPadding: const EdgeInsets.only(top: 24),
+        ),
+        child: child ?? const SizedBox.shrink(),
+      );
+    },
     home: LibraryHomeShell(
       data: LibraryHomeFixtures.preview,
       isRefreshing: false,

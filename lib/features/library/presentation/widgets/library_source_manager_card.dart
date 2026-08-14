@@ -19,6 +19,16 @@ class LibrarySourceManagerCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
+    final Color sourceSurface = Color.lerp(
+      tokens.featureSurface,
+      tokens.surface,
+      0.45,
+    )!;
+    final Color sourceTitleColor = Color.lerp(
+      theme.colorScheme.onSurface,
+      tokens.mutedText,
+      0.35,
+    )!;
     final String? sourceLabel = sourceCount == null
         ? null
         : AppStrings.availableSourcesLabel(sourceCount!);
@@ -35,7 +45,7 @@ class LibrarySourceManagerCard extends StatelessWidget {
           borderRadius: AppRadii.surface,
           child: Ink(
             decoration: BoxDecoration(
-              color: tokens.featureSurface,
+              color: sourceSurface,
               borderRadius: AppRadii.surface,
             ),
             child: SizedBox(
@@ -47,14 +57,16 @@ class LibrarySourceManagerCard extends StatelessWidget {
                 ),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.hub_outlined, color: tokens.accent, size: 20),
-                    const SizedBox(width: AppSpacing.regular),
+                    Icon(Icons.hub_outlined, color: tokens.mutedText, size: 16),
+                    const SizedBox(width: AppSpacing.comfortable),
                     Expanded(
                       child: Text(
                         AppStrings.manageSourcesLabel,
                         style: theme.textTheme.titleMedium?.copyWith(
-                          fontSize: 16,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w400,
                           height: 1.2,
+                          color: sourceTitleColor,
                         ),
                       ),
                     ),
@@ -62,12 +74,19 @@ class LibrarySourceManagerCard extends StatelessWidget {
                       Text(
                         sourceLabel,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: tokens.mutedText,
+                          color: tokens.mutedText.withValues(alpha: 0.78),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          height: 1.2,
                         ),
                       ),
                       const SizedBox(width: AppSpacing.compact),
                     ],
-                    const Icon(Icons.chevron_right_rounded),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 16,
+                      color: tokens.mutedText,
+                    ),
                   ],
                 ),
               ),

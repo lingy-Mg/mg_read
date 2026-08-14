@@ -18,7 +18,10 @@ class LibraryMetadataTag extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final (Color background, Color foreground) = switch (data.tone) {
       LibraryMetadataTone.neutral => (tokens.mutedSurface, tokens.mutedText),
-      LibraryMetadataTone.accent => (tokens.accentSoft, tokens.accent),
+      LibraryMetadataTone.accent => (
+        tokens.accentSoft,
+        Color.lerp(tokens.mutedText, tokens.accent, 0.45)!,
+      ),
       LibraryMetadataTone.success => (
         tokens.success.withValues(alpha: 0.16),
         tokens.success,
@@ -36,9 +39,7 @@ class LibraryMetadataTag extends StatelessWidget {
           child: SizedBox(
             height: AppSpacing.metadataTagHeight,
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.compact,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.unit),
               child: Align(
                 widthFactor: 1,
                 alignment: Alignment.center,
@@ -47,6 +48,7 @@ class LibraryMetadataTag extends StatelessWidget {
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: foreground,
                     fontSize: 10,
+                    fontWeight: FontWeight.w400,
                     height: 1,
                   ),
                 ),
@@ -154,8 +156,9 @@ class _BookUpdateDetails extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.titleMedium?.copyWith(
-              fontSize: 18,
-              height: 1.12,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              height: 1.18,
             ),
           ),
         ),
@@ -170,8 +173,9 @@ class _BookUpdateDetails extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: tokens.mutedText,
-                fontSize: 14,
-                height: 1.15,
+                fontSize: 12,
+                fontWeight: FontWeight.w400,
+                height: 1.2,
               ),
             ),
           ),
@@ -228,8 +232,9 @@ class _BookUpdateTrailing extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: tokens.mutedText,
-                  fontSize: 12,
-                  height: 1.1,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w400,
+                  height: 1.2,
                 ),
               ),
             ),
@@ -242,7 +247,7 @@ class _BookUpdateTrailing extends StatelessWidget {
                 tooltip: AppStrings.bookMoreActionsLabel,
                 onPressed: onMore,
                 padding: EdgeInsets.zero,
-                iconSize: 19,
+                iconSize: 16,
                 icon: const Icon(Icons.more_vert_rounded),
               ),
             ),
@@ -260,8 +265,8 @@ class _BookUpdateTrailing extends StatelessWidget {
                       shape: BoxShape.circle,
                     ),
                     child: const SizedBox(
-                      width: AppSpacing.compact,
-                      height: AppSpacing.compact,
+                      width: AppSpacing.unreadDotSize,
+                      height: AppSpacing.unreadDotSize,
                     ),
                   ),
                 ),

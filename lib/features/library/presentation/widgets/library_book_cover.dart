@@ -34,11 +34,11 @@ class LibraryBookCover extends StatelessWidget {
           height: height,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              borderRadius: AppRadii.control,
+              borderRadius: AppRadii.bookCover,
               boxShadow: <BoxShadow>[
                 BoxShadow(
                   color: tokens.shadow,
-                  blurRadius: AppSpacing.compact,
+                  blurRadius: AppSpacing.unit,
                   offset: const Offset(0, AppSpacing.unit / 2),
                 ),
               ],
@@ -49,7 +49,7 @@ class LibraryBookCover extends StatelessWidget {
               ),
             ),
             child: ClipRRect(
-              borderRadius: AppRadii.control,
+              borderRadius: AppRadii.bookCover,
               child: Stack(
                 children: <Widget>[
                   Positioned(
@@ -88,7 +88,7 @@ class LibraryBookCover extends StatelessWidget {
                     child: Icon(
                       _coverIcon,
                       color: tokens.featureSurface.withValues(alpha: 0.84),
-                      size: width * 0.42,
+                      size: width * 0.36,
                     ),
                   ),
                   Align(
@@ -121,8 +121,8 @@ class LibraryBookCover extends StatelessWidget {
                                 color: tokens.featureSurface.withValues(
                                   alpha: 0.96,
                                 ),
-                                fontSize: width * 0.18,
-                                fontWeight: FontWeight.w700,
+                                fontSize: width * 0.16,
+                                fontWeight: FontWeight.w600,
                                 height: 1.1,
                               ),
                         ),

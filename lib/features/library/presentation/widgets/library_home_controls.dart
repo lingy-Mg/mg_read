@@ -27,7 +27,7 @@ class LibrarySectionNavigation extends StatelessWidget {
           selected: selected,
           onSelected: onSelected,
         ),
-        const SizedBox(width: AppSpacing.regular),
+        const SizedBox(width: AppSpacing.section + AppSpacing.unit),
         _SectionButton(
           label: AppStrings.shelfLabel,
           section: LibraryHomeSection.shelf,
@@ -78,8 +78,9 @@ class _SectionButton extends StatelessWidget {
             Text(
               label,
               style: theme.textTheme.titleMedium?.copyWith(
-                fontSize: 18,
+                fontSize: 16,
                 height: 1.15,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                 color: isSelected ? null : tokens.mutedText,
               ),
             ),
@@ -87,7 +88,7 @@ class _SectionButton extends StatelessWidget {
             AnimatedContainer(
               duration: kThemeAnimationDuration,
               height: 2,
-              width: AppSpacing.section - AppSpacing.unit,
+              width: AppSpacing.section - AppSpacing.unit / 2,
               decoration: BoxDecoration(
                 color: isSelected ? tokens.accent : Colors.transparent,
                 borderRadius: AppRadii.pill,
@@ -203,7 +204,8 @@ class _FilterChip extends StatelessWidget {
                 child: Text(
                   label,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 12,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w400,
                     height: 1,
                     color: selected ? tokens.warning : tokens.mutedText,
                   ),

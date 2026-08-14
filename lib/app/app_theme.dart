@@ -4,14 +4,14 @@ import 'package:flutter/material.dart';
 abstract final class AppTheme {
   static ThemeData light() {
     const AppThemeTokens tokens = AppThemeTokens(
-      pageBackground: Color(0xFFFFFCF8),
-      surface: Color(0xFFFFFFFF),
-      featureSurface: Color(0xFFFFF4E4),
-      mutedSurface: Color(0xFFF8F3ED),
-      divider: Color(0xFFE9E1D8),
-      mutedText: Color(0xFF7D766E),
-      accent: Color(0xFFC98333),
-      accentSoft: Color(0xFFFFE7C5),
+      pageBackground: Color(0xFFFDFBFA),
+      surface: Color(0xFFFEFDFB),
+      featureSurface: Color(0xFFF9EBDC),
+      mutedSurface: Color(0xFFF7F4EF),
+      divider: Color(0xFFF1ECE5),
+      mutedText: Color(0xFF827D77),
+      accent: Color(0xFFCC8836),
+      accentSoft: Color(0xFFF9EFE2),
       notification: Color(0xFFE34835),
       success: Color(0xFF3D8A63),
       warning: Color(0xFFB56D24),
@@ -101,12 +101,12 @@ abstract final class AppTheme {
       ),
       titleLarge: base.textTheme.titleLarge?.copyWith(
         fontSize: 24,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w600,
         height: 1.25,
       ),
       titleMedium: base.textTheme.titleMedium?.copyWith(
         fontSize: 18,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w600,
         height: 1.3,
       ),
       bodyLarge: base.textTheme.bodyLarge?.copyWith(fontSize: 16, height: 1.5),
@@ -117,7 +117,7 @@ abstract final class AppTheme {
       bodySmall: base.textTheme.bodySmall?.copyWith(fontSize: 12, height: 1.4),
       labelLarge: base.textTheme.labelLarge?.copyWith(
         fontSize: 15,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w600,
       ),
     );
 
@@ -128,15 +128,6 @@ abstract final class AppTheme {
       highlightColor: tokens.accentSoft.withValues(alpha: 0.56),
       textTheme: textTheme,
       dividerTheme: DividerThemeData(color: tokens.divider, space: 1),
-      navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: tokens.surface,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        // The compact navigation in the product reference uses color and the
-        // filled icon to indicate selection, rather than a large Material 3
-        // selection capsule.
-        indicatorColor: Colors.transparent,
-      ),
       appBarTheme: AppBarTheme(
         backgroundColor: tokens.pageBackground,
         foregroundColor: colorScheme.onSurface,
@@ -318,6 +309,7 @@ abstract final class AppSpacing {
   static const double page = unit * 8;
   static const double compactPagePadding = unit * 5;
   static const double widePagePadding = unit * 8;
+  static const double homeContentTopPadding = 19;
   static const double minimumTouchTarget = 48;
   static const double sectionControlHeight = unit * 8;
   static const double statusFilterHeight = unit * 6;
@@ -325,23 +317,36 @@ abstract final class AppSpacing {
   static const double mobileContentMaxWidth = mobileViewportWidth;
   static const double continueReadingCoverWidth = unit * 26;
   static const double continueReadingCoverHeight = unit * 38;
+  static const double continueReadingVerticalPadding = 17;
   static const double continueReadingActionWidth = unit * 32;
   static const double continueReadingActionHeight = unit * 8;
+  static const double continueReadingProgressWidth = 146;
+  static const double continueReadingProgressValueGap = 14;
   static const double readingProgressHeight = unit;
   static const double listCoverWidth = unit * 13;
   static const double listCoverHeight = unit * 17;
-  static const double bookUpdateVerticalPadding = unit * 1.5;
+  static const double bookUpdateVerticalPadding = unit + unit / 4;
   static const double metadataTagHeight = unit * 4;
   static const double bookUpdateTrailingWidth = unit * 22;
   static const double sourceManagerHeight = unit * 10;
-  static const double bottomNavigationHeight = 76;
+  static const double sourceManagerGap = unit + unit / 2;
+  static const double bottomNavigationHeight = unit * 20;
+  static const double topBarActionSize = unit * 8;
+  static const double topBarActionIconSize = unit * 6;
+  static const double bottomNavigationIconSize = unit * 6;
+  static const double bottomNavigationLabelSize = 11;
+  static const double unreadDotSize = unit + unit / 2;
   static const double compactCardStackBreakpoint = 280;
 }
 
 /// Shared semantic corner radii for MgRead surfaces.
 abstract final class AppRadii {
-  static const BorderRadius card = BorderRadius.all(Radius.circular(24));
-  static const BorderRadius surface = BorderRadius.all(Radius.circular(16));
+  static const BorderRadius card = BorderRadius.all(Radius.circular(20));
+  static const BorderRadius surface = BorderRadius.all(Radius.circular(12));
   static const BorderRadius control = BorderRadius.all(Radius.circular(12));
+  static const BorderRadius continueReadingAction = BorderRadius.all(
+    Radius.circular(10),
+  );
+  static const BorderRadius bookCover = BorderRadius.all(Radius.circular(6));
   static const BorderRadius pill = BorderRadius.all(Radius.circular(999));
 }

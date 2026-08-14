@@ -73,7 +73,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                         primary: false,
                         padding: EdgeInsets.fromLTRB(
                           AppSpacing.compactPagePadding,
-                          AppSpacing.comfortable,
+                          AppSpacing.homeContentTopPadding,
                           AppSpacing.compactPagePadding,
                           AppSpacing.page,
                         ),
@@ -107,7 +107,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                               },
                             ),
                           ],
-                          const SizedBox(height: AppSpacing.section),
+                          const SizedBox(height: AppSpacing.regular),
                           KeyedSubtree(
                             key: const Key('library-mobile-layout'),
                             child: _buildCompactContent(context),
@@ -139,7 +139,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
         _buildReadingSurface(context),
         const SizedBox(height: AppSpacing.comfortable),
         _buildLibraryList(context),
-        const SizedBox(height: AppSpacing.comfortable),
+        const SizedBox(height: AppSpacing.sourceManagerGap),
         _buildSourceManager(),
       ],
     );
@@ -189,22 +189,36 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
             ),
           ],
         ),
-        const SizedBox(height: AppSpacing.unit),
+        const SizedBox(height: AppSpacing.compact),
         if (books.isEmpty)
           _NoMatchingBooks(tokens: tokens)
         else
-          ...books.map(
-            (LibraryBookUpdateViewData book) => DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: tokens.divider)),
-              ),
-              child: LibraryBookUpdateTile(
-                data: book,
-                onOpen: () => _handleOpenBook(book),
-                onMore: () => _handleBookMore(book),
-              ),
-            ),
-          ),
+          ...List<Widget>.generate(books.length, (int index) {
+            final LibraryBookUpdateViewData book = books[index];
+            return Column(
+              children: <Widget>[
+                LibraryBookUpdateTile(
+                  data: book,
+                  onOpen: () => _handleOpenBook(book),
+                  onMore: () => _handleBookMore(book),
+                ),
+                if (index < books.length - 1)
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      left:
+                          AppSpacing.listCoverWidth +
+                          AppSpacing.compact +
+                          AppSpacing.unit,
+                    ),
+                    child: Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: tokens.divider,
+                    ),
+                  ),
+              ],
+            );
+          }),
       ],
     );
   }
@@ -316,6 +330,7 @@ class LibraryHomeTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final VoidCallback? toggleTheme = onToggleTheme;
     return Row(
       children: <Widget>[
         Expanded(
@@ -324,32 +339,35 @@ class LibraryHomeTopBar extends StatelessWidget {
             child: Text(
               AppStrings.libraryTitle,
               style: theme.textTheme.displaySmall?.copyWith(
-                fontSize: 30,
-                height: 1.1,
-                letterSpacing: -0.5,
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                height: 1.15,
+                letterSpacing: -0.3,
               ),
             ),
           ),
         ),
         const SizedBox(width: AppSpacing.compact),
-        IconButton(
+        _LibraryTopBarAction(
           tooltip: AppStrings.searchActionLabel,
           onPressed: onSearch,
-          icon: const Icon(Icons.search_rounded),
+          icon: Icons.search_rounded,
         ),
-        if (onToggleTheme != null)
-          IconButton(
-            key: const Key('theme-mode-toggle'),
-            tooltip: theme.brightness == Brightness.dark
-                ? AppStrings.switchToLightThemeLabel
-                : AppStrings.switchToDarkThemeLabel,
-            onPressed: onToggleTheme,
-            icon: Icon(
-              theme.brightness == Brightness.dark
+        if (toggleTheme != null)
+          Padding(
+            padding: const EdgeInsets.only(left: AppSpacing.compact),
+            child: _LibraryTopBarAction(
+              key: const Key('theme-mode-toggle'),
+              tooltip: theme.brightness == Brightness.dark
+                  ? AppStrings.switchToLightThemeLabel
+                  : AppStrings.switchToDarkThemeLabel,
+              onPressed: toggleTheme,
+              icon: theme.brightness == Brightness.dark
                   ? Icons.light_mode_outlined
                   : Icons.dark_mode_outlined,
             ),
           ),
+        const SizedBox(width: AppSpacing.compact),
         MenuAnchor(
           menuChildren: <Widget>[
             MenuItemButton(
@@ -363,7 +381,7 @@ class LibraryHomeTopBar extends StatelessWidget {
           ],
           builder:
               (BuildContext context, MenuController controller, Widget? child) {
-                return IconButton(
+                return _LibraryTopBarAction(
                   tooltip: AppStrings.moreActionsLabel,
                   onPressed: () {
                     if (controller.isOpen) {
@@ -372,11 +390,56 @@ class LibraryHomeTopBar extends StatelessWidget {
                       controller.open();
                     }
                   },
-                  icon: const Icon(Icons.more_vert_rounded),
+                  icon: Icons.more_vert_rounded,
                 );
               },
         ),
       ],
+    );
+  }
+}
+
+class _LibraryTopBarAction extends StatelessWidget {
+  const _LibraryTopBarAction({
+    required this.tooltip,
+    required this.onPressed,
+    required this.icon,
+    super.key,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Semantics(
+      button: true,
+      label: tooltip,
+      onTap: onPressed,
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: Colors.transparent,
+          child: InkResponse(
+            onTap: onPressed,
+            excludeFromSemantics: true,
+            radius: AppSpacing.topBarActionSize / 2,
+            child: SizedBox(
+              width: AppSpacing.topBarActionSize,
+              height: AppSpacing.topBarActionSize,
+              child: Center(
+                child: Icon(
+                  icon,
+                  size: AppSpacing.topBarActionIconSize,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
