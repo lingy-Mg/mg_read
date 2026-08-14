@@ -61,17 +61,25 @@
 
 ## 结构化日志与指标
 
-日志采用稳定 JSON 事件模型。Runtime 负责插件、Store、通信和平台日志；主项目只记录
-UI/路由投影。允许字段包括 UTC 时间、固定 component/event、`bootId`、`traceId`、
-技术 request/job ID、plugin ID、capability、队列类别、耗时、聚合字节、稳定结果码、
-平台/Runtime/协议版本。
+日志采用 [ADR-0014](adr/0014-tiered-diagnostics-storage.md) 固定的三层模型：小型 event
+envelope、可关联 span/event、独立 attachment object。Runtime 负责插件、Store、通信、
+HTTP 和平台诊断；主项目记录 UI/路由/应用持久化诊断。两边不共享数据库或文件，由未来
+查看器通过强类型 query port、Runtime Facade 和 trace 联合展示。完整字段、附件、动态值、
+保留、故障和性能设计见[全局日志与诊断数据系统](14-global-diagnostics-logging.md)。
 
-禁止记录正文、漫画内容、搜索词、书名/作者、用户标识、Cookie、令牌、Authorization、
-凭据、验证码、Store 行内容、完整 URL/query、request/response body、任意插件对象、
-未脱敏堆栈和绝对用户路径。
+普通事件允许 UTC 时间、固定 component/event、脱敏来源生命周期、`traceId`、技术
+request/job ID、plugin ID、capability、队列类别、耗时、聚合字节、稳定结果码与版本投影。
+它禁止正文、漫画内容、搜索词、书名/作者、用户标识、Cookie、令牌、Authorization、凭据、
+验证码、Store 行内容、完整 URL/query、request/response body、任意插件对象、未脱敏堆栈
+和绝对用户路径。
 
-- 默认日志位于 Runtime 自有的有界环形文件/Store 摘要，按大小和时间轮转。
-- 诊断导出由用户显式触发，Runtime 导出前再次脱敏并声明包含范围。
+request/response body 与复杂动态结构不再被设计为“长日志正文”。只有用户显式开启、受
+来源 allowlist、时间与磁盘配额约束的本地捕获会话，才可把允许的 payload 存成独立附件；
+常规日志、常规导出和全文索引仍不包含它们。Authorization、Cookie、token、credential 和
+已知 secret 字段永不自动捕获；未知类型或脱敏失败只记录 `policyBlocked`，不回退为 raw。
+
+- 默认小事件位于各来源自有的有界诊断 index，按大小和时间轮转；附件使用独立对象目录。
+- 诊断导出由用户显式触发，联合导出前再次脱敏并声明附件范围；敏感附件需要二次确认。
 - 首版不默认上传远程遥测或崩溃数据。未来远程采集需要隐私说明、用户选择和单独决策。
 - release 构建不依赖 console 作为唯一诊断渠道；Runtime 结构化接收桌面 stdout 并有界保存。
 
@@ -88,10 +96,11 @@ UI/路由投影。允许字段包括 UTC 时间、固定 component/event、`boot
 - 性能诊断分解 queue wait、network、parse、Runtime Store 与 UI commit，避免把总耗时
   错误归因给协议。
 
-主项目诊断页面只读展示 Runtime Facade 投影：应用/平台/Runtime/Javet/Node/协议版本、
+普通诊断概览只读展示 Runtime Facade 投影：应用/平台/Runtime/Javet/Node/协议版本、
 Supervisor 稳定状态、bootId 的短显示、内部 readiness、队列/内存概要、插件版本/回滚
-状态、下载/缓存/恢复摘要、Runtime Store schema 版本、trace ID 和用户恢复动作。它不
-能执行任意脚本、SQL、URL 或文件路径，也不能直接查询 Runtime Store。
+状态、下载/缓存/恢复摘要、Runtime Store schema 版本、trace ID 和用户恢复动作。未来专用
+查看器还可按 cursor/range 打开事件与附件，但不能执行任意脚本、HTML、SQL、URL、对象
+getter 或文件路径，也不能直接查询 Runtime Store/诊断库或扫描对象目录。
 
 ## 自动化测试分层
 

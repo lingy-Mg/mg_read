@@ -79,6 +79,8 @@ flowchart LR
 6. 首版插件被视为完全可信，本地 loopback 通信也不鉴权；这些是明确接受的风险，不是安全保证。
 7. Runtime Store 使用稳定记录骨架与按作用域版本化 JSON；大正文/二进制不进入 JSON，
    动态持久化格式也不穿透强类型 Runtime Facade。
+8. 全局日志使用“小型事件索引 + 独立附件对象”；App 与 Runtime 分域落盘并以 trace/Facade
+   联合查询。HTTP body 和复杂动态结构只在显式、有界的调试捕获会话中保存。
 
 ## 文档导航
 
@@ -95,6 +97,7 @@ flowchart LR
 | [09 平台发布与未来能力](09-platform-release-future-capabilities.md) | Android/桌面发布、站外分发、WebView 与媒体扩展 |
 | [10 主应用持久化设计](10-app-persistence-design.md) | 应用权威元数据、版本 JSON 与后台 executor |
 | [11 主应用持久化独立验收](11-app-persistence-acceptance.md) | 临时数据根、独立 Store 验收与故障矩阵 |
+| [14 全局日志与诊断数据](14-global-diagnostics-logging.md) | 事件/span、HTTP body、动态结构、附件对象、管理层与查看器边界 |
 | [ADR 索引](adr/README.md) | 不得被隐式改变的架构决策 |
 
 ## 术语
