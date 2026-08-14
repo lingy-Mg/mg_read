@@ -351,6 +351,26 @@ abstract final class AppSpacing {
   static const double profileSettingsIconSize = unit * 6;
   static const double profileSettingsLeadingWidth = unit * 10;
   static const double compactCardStackBreakpoint = 280;
+  static const double discoveryPagePadding = unit * 4;
+  static const double discoveryHeaderInset = unit;
+  static const double discoveryHeaderHeight = unit * 8;
+  static const double discoveryTabsHeight = unit * 8;
+  static const double discoveryHeroHeight = unit * 46;
+  static const double discoveryHeroCoverWidth = unit * 27;
+  static const double discoveryHeroCoverHeight = unit * 41;
+  static const double discoveryReadButtonWidth = unit * 21;
+  static const double discoveryReadButtonHeight = 30;
+  static const double discoveryPopularCoverWidth = unit * 15;
+  static const double discoveryPopularCoverHeight = unit * 21;
+  static const double discoveryPopularItemWidth = unit * 15;
+  static const double discoveryBoardHeight = unit * 54;
+  static const double discoveryBoardGap = unit * 2;
+  static const double discoveryRankCoverWidth = unit * 5;
+  static const double discoveryRankCoverHeight = unit * 7;
+  static const double discoveryCategoryTileHeight = 35;
+  static const double discoveryEditorCardHeight = 86;
+  static const double discoveryEditorCoverWidth = unit * 21;
+  static const double discoveryEditorCoverHeight = 86;
 }
 
 /// Shared semantic corner radii for MgRead surfaces.
@@ -363,6 +383,21 @@ abstract final class AppRadii {
   );
   static const BorderRadius bookCover = BorderRadius.all(Radius.circular(6));
   static const BorderRadius profileList = BorderRadius.all(Radius.circular(16));
+  static const BorderRadius discoveryHero = BorderRadius.all(
+    Radius.circular(16),
+  );
+  static const BorderRadius discoveryPanel = BorderRadius.all(
+    Radius.circular(12),
+  );
+  static const BorderRadius discoveryCover = BorderRadius.all(
+    Radius.circular(6),
+  );
+  static const BorderRadius discoveryTile = BorderRadius.all(
+    Radius.circular(8),
+  );
+  static const BorderRadius discoveryButton = BorderRadius.all(
+    Radius.circular(9),
+  );
   static const BorderRadius pill = BorderRadius.all(Radius.circular(999));
 }
 

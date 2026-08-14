@@ -35,7 +35,7 @@ void main() {
       await tester.tap(find.byKey(const Key('app-nav-discover')));
       await tester.pumpAndSettle();
       expect(find.byType(DiscoveryPage), findsOneWidget);
-      expect(find.byKey(const Key('app-empty-discover-page')), findsOneWidget);
+      expect(find.byKey(const Key('discovery-hero-card')), findsOneWidget);
       _expectSelectedDestination(tester, AppNavigationDestination.discover);
 
       await tester.tap(find.byKey(const Key('app-nav-profile')));

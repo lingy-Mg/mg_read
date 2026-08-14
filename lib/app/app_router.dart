@@ -113,10 +113,10 @@ class SearchRoute extends GoRouteData with $SearchRoute {
   }
 }
 
-/// The reserved discovery route reached from the shared bottom navigation.
+/// The discovery preview route reached from the shared bottom navigation.
 @TypedGoRoute<DiscoveryRoute>(path: '/discover')
 class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
-  /// Creates the blank discovery destination.
+  /// Creates the mobile-first discovery destination.
   const DiscoveryRoute();
 
   @override
