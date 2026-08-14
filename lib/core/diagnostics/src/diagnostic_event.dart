@@ -176,6 +176,38 @@ final class DiagnosticEvent {
       parentSpanId: parentSpanId,
     );
   }
+
+  DiagnosticEvent copyWith({
+    String? captureSessionId,
+    int? attachmentCount,
+    int? capturedBytes,
+    Set<DiagnosticEventFlag>? flags,
+  }) => DiagnosticEvent(
+    envelopeVersion: envelopeVersion,
+    eventId: eventId,
+    source: source,
+    component: component,
+    sourceRunId: sourceRunId,
+    sourceSequence: sourceSequence,
+    occurredAtUtcMicros: occurredAtUtcMicros,
+    monotonicOffsetMicros: monotonicOffsetMicros,
+    severity: severity,
+    eventName: eventName,
+    eventSchemaVersion: eventSchemaVersion,
+    traceId: traceId,
+    spanId: spanId,
+    parentSpanId: parentSpanId,
+    phase: phase,
+    outcome: outcome,
+    durationMicros: durationMicros,
+    summary: summary,
+    attributes: attributes,
+    captureSessionId: captureSessionId ?? this.captureSessionId,
+    attachmentCount: attachmentCount ?? this.attachmentCount,
+    capturedBytes: capturedBytes ?? this.capturedBytes,
+    flags: flags ?? this.flags,
+    extensionFields: extensionFields,
+  );
 }
 
 /// Stable codec used by SQLite rows, export manifests and Runtime fixtures.

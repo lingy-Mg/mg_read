@@ -304,7 +304,12 @@ final class DiagnosticRetentionPolicy {
     this.captureBytes = 256 * 1024 * 1024,
     this.globalHardBytes = 512 * 1024 * 1024,
     this.singleAttachmentBytes = 16 * 1024 * 1024,
-  });
+  }) : assert(regularEventBytes > 0),
+       assert(captureBytes > 0),
+       assert(globalHardBytes > 0),
+       assert(singleAttachmentBytes > 0),
+       assert(singleAttachmentBytes <= captureBytes),
+       assert(captureBytes <= globalHardBytes);
 
   final Duration regularEventAge;
   final int regularEventBytes;
@@ -312,6 +317,19 @@ final class DiagnosticRetentionPolicy {
   final int captureBytes;
   final int globalHardBytes;
   final int singleAttachmentBytes;
+
+  void validate() {
+    if (regularEventAge <= Duration.zero ||
+        regularEventBytes <= 0 ||
+        captureAge <= Duration.zero ||
+        captureBytes <= 0 ||
+        globalHardBytes <= 0 ||
+        singleAttachmentBytes <= 0 ||
+        singleAttachmentBytes > captureBytes ||
+        captureBytes > globalHardBytes) {
+      throw ArgumentError('Diagnostic retention policy is invalid.');
+    }
+  }
 }
 
 final class DiagnosticMaintenanceResult {
@@ -326,6 +344,32 @@ final class DiagnosticMaintenanceResult {
   final int deletedEvents;
   final int deletedObjects;
   final int reclaimedBytes;
+}
+
+final class DiagnosticStorageStatistics {
+  const DiagnosticStorageStatistics({
+    required this.runCount,
+    required this.sessionCount,
+    required this.eventCount,
+    required this.attachmentCount,
+    required this.objectCount,
+    required this.objectBytes,
+    required this.logicalStoredBytes,
+    required this.indexBytes,
+    required this.walBytes,
+  });
+
+  final int runCount;
+  final int sessionCount;
+  final int eventCount;
+  final int attachmentCount;
+  final int objectCount;
+  final int objectBytes;
+  final int logicalStoredBytes;
+  final int indexBytes;
+  final int walBytes;
+
+  int get physicalStoredBytes => objectBytes + indexBytes + walBytes;
 }
 
 final class DiagnosticExportSelection {

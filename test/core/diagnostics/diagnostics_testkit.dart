@@ -48,7 +48,10 @@ final class RecordingDiagnosticEventSink implements DiagnosticEventSink {
 }
 
 final class SequentialDiagnosticIdGenerator implements DiagnosticIdGenerator {
-  var _next = 0;
+  SequentialDiagnosticIdGenerator({int initialValue = 0})
+    : _next = initialValue;
+
+  int _next;
 
   @override
   String nextId(String namespace) {
@@ -69,6 +72,19 @@ final class FixedDiagnosticClock implements DiagnosticClock {
     _micros += 1000;
     return value;
   }
+}
+
+final class MutableDiagnosticClock implements DiagnosticClock {
+  MutableDiagnosticClock(DateTime initial) : _now = initial.toUtc();
+
+  DateTime _now;
+
+  void advance(Duration duration) {
+    _now = _now.add(duration);
+  }
+
+  @override
+  DateTime nowUtc() => _now;
 }
 
 final class DiagnosticsTestkit {
