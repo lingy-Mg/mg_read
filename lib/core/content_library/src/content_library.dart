@@ -107,6 +107,9 @@ final class BookshelfRepository {
       scope: _scope,
     );
     if (record == null) return;
+    if (record.document['kind'] == ContentKind.manga.code) {
+      await _library._persistence.fileObjects.deleteMangaAssets(id.value);
+    }
     await _library._persistence.metadataRecords.delete(
       previous: record,
     ); /* objects remain unless a later bounded maintenance pass proves no references */
