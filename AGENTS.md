@@ -73,6 +73,97 @@ lib/
 - 常规日志不记录正文、HTTP body、用户标识、鉴权信息、Cookie、令牌或数据库内容。只有用户从专用调试器显式开启、受时限/磁盘配额/来源 allowlist 约束的本地诊断捕获会话，才可按日志架构把 HTTP payload 或复杂结构作为独立附件保存；不得内联进事件或业务 JSON，不得暴露绝对路径，Authorization/Cookie/token/credential 永不自动捕获，敏感附件默认不导出。错误应归一化为可行动的 UI 状态。
 - Controller、监听器、FocusNode、ScrollController、Timer 和平台资源必须成对释放。
 
+## 日志、Trace 与性能埋点硬约束
+
+全局日志必须遵守 [14 全局日志与诊断数据系统](docs/architecture/14-global-diagnostics-logging.md)
+和 [ADR-0014](docs/architecture/adr/0014-tiered-diagnostics-storage.md)。日志系统仍处于设计阶段时，
+后续功能必须同时定义事件/schema/埋点位置；统一 API 落地后，新增或修改关键链路必须在同一
+交付包补齐实现和测试。缺少所需日志能力时不得以 `print` 临时代替，也不得把功能声明为完整
+可诊断；交付报告必须明确标为待日志门禁。
+
+### “关键点”的判定
+
+代码路径满足以下任一项就是关键点，不依赖开发者主观判断：
+
+- 用户正在等待其结果，或失败会改变可见页面、可用数据、导航、阅读或恢复动作。
+- 发生初始化、ready、状态迁移、提交、回滚、激活、关闭、取消、重试、超时或故障恢复。
+- 跨越 Widget/application、Runtime Facade、Node/Javet、插件、HTTP、SQLite 或文件对象边界。
+- 进入有界队列、竞争并发槽、等待锁/事务、触发背压、采样、丢弃、限流或断路。
+- 执行网络、数据库、文件、解析、序列化、校验、摘要、解压、分页、渲染或其他可能成为
+  性能瓶颈的工作。
+- 分配/释放长生命周期资源，或出现内存、磁盘、WAL、队列、句柄、缓存和 worker 压力。
+- 结果会被缓存、持久化、导出或在应用重启后恢复。
+
+### 最低强制覆盖矩阵
+
+- **应用与页面**：bootstrap 每阶段、前后台/退出、稳定 route 名切换、关键用户意图、首次
+  可用内容、异步状态的 loading/success/empty/error/cancelled/stale-discarded；不记录路由
+  原始参数、搜索词或用户输入。
+- **Runtime Facade**：每次 capability 调用的排队、开始、完成、稳定错误、取消、deadline、
+  重试和结果规模投影；主项目只记录门面层 span，不复制 wire/bootId/端口细节。
+- **Runtime 与插件**：Node/Javet start/ready/failed/shutdown、插件加载/校验/调用/解析、调度器
+  queue wait、并发槽、overload、watchdog 和恢复必须在 `mg_read_runtime` 记录；不得为打日志把
+  Runtime 内部实现搬入本仓库。
+- **HTTP**：request start、response headers、complete/error/cancel、queue/DNS/connect/TLS/
+  TTFB/body/parse 可取得的阶段耗时、method、脱敏 origin/route、status、重定向、重试、缓存、
+  Range、上传/下载字节和稳定错误码。body 仍只按显式捕获策略进入附件。
+- **主应用持久化与内容对象**：open/close、schema/migration、query/write/batch/transaction、
+  revision conflict、WAL checkpoint、备份/恢复、staging/摘要/原子提交、孤儿清理、损坏、
+  磁盘满；只记录操作、数量、字节、耗时和结果，绝不记录 SQL 参数、行内容或路径。
+- **书架、目录与阅读器**：书架/目录分页和刷新、来源切换、章节/图片获取、缓存命中、解析、
+  reader launch、首屏、翻章、分页/布局、进度/书签提交和退出；只记录稳定技术 ID 的受控投影，
+  不记录书名、作者、正文、语义锚点原值或图片内容。
+- **下载、缓存与文件**：排队、开始/暂停/恢复/取消、Range 续传、进度时间窗、吞吐摘要、
+  checkpoint、校验、原子完成、清理、配额和失败恢复；禁止每个网络 chunk 写事件。
+- **未捕获错误与崩溃边界**：Flutter error、PlatformDispatcher/isolate error、Node fatal、
+  Javet fatal、桌面 child 非预期退出和平台能力失败，至少记录脱敏 stack fingerprint、当前阶段、
+  最近 trace、稳定错误码和恢复结果；原始堆栈、参数、路径和正文不得直接持久化。
+- **日志系统自身**：writer 启停、队列高水位、批量大小/提交耗时、丢弃/采样聚合、附件截断、
+  retention、checkpoint、导出和故障必须可观测，但不得因记录自身故障形成递归日志风暴。
+
+### Event/span 规则
+
+- 每个用户操作、跨边界调用和长任务只有一个 owner span；必须写 start，并在 success/error/
+  cancelled/timeout/overloaded 中恰好写一个终态。分阶段耗时使用 child span，不用多层重复记录
+  同一条自由文本错误。
+- event 名称使用稳定命名空间和独立版本；必须带 component、severity、trace/span 关系、
+  outcome、duration，适用时带 queue wait、attempt、count/bytes、cache/retry 投影和稳定错误码。
+- 错误由能够决定恢复语义的所有者记录一次；上层只在增加新语义时补充事件。取消、stale
+  result 和预期 not-found 不冒充 internal error。
+- 性能日志必须区分排队、实际执行、首结果/首字节和端到端耗时。超过可配置阈值时写
+  `*.slow` 聚合事件，并在事件中记录阈值与平台/构建模式；阈值必须来自基线，不能散落魔法数。
+- build/layout/frame、滚动、下载进度、网络 chunk、目录项和循环体等高频路径只做计数器、
+  histogram 或时间窗摘要；禁止每帧、每像素、每条目或每 chunk 持久化一条日志。
+- 指标标签必须低基数。traceId、URL、remote ID、书籍 ID、自由文本和异常文本不能成为指标
+  label；需要关联时留在受控 event 字段中。
+
+### 开发期默认与性能保护
+
+- Debug/Profile 默认启用 `metadataOnly`：`info` 以上、关键 `debug` span、所有稳定终态和性能
+  摘要都落入有界诊断存储；`trace` 按 component/捕获会话临时开启。Release 保留 warn/error/
+  fatal 和有界生命周期/健康摘要，不默认保存 body。
+- 日志调用先做 `isEnabled`，禁用时不得插值长字符串、抓堆栈、遍历对象或编码 JSON。caller
+  只构造小 draft；SQL、文件、压缩、递归脱敏和大 JSON 处理进入有界后台 worker。
+- 日志队列满、磁盘满、writer 故障或附件截断时，业务请求、UI isolate 和 Node 事件循环优先；
+  日志降级为合并 drop/pressure 事件，绝不能让业务失败或把队列改成无界。
+- 新增生产代码不得直接使用 `print`、`debugPrint`、`developer.log`、`console.*` 或自行写日志
+  文件。只有统一日志实现内部和统一 manager 建立前的最早 bootstrap fallback 可以使用受控
+  stderr/console，并必须在 manager ready 后接管、归一化和停止 fallback。
+
+### 测试与交付门禁
+
+- 新功能设计/实现必须列出关键操作、event 名、schema 版本、owner、级别、字段、附件策略、
+  采样/聚合方式和预期终态；新增事件进入 registry，不能临时拼自由文本名称。
+- 受影响测试至少验证 success、error 和适用的 cancel/timeout/overload 事件，验证 trace/span
+  关联、恰好一个终态、未来 schema 只读、日志失败不改变业务结果。
+- HTTP、持久化、导出和动态附件测试必须放置 secret canary，并断言 index、附件、preview、
+  console 和默认导出均无 Authorization/Cookie/token/凭据/正文等禁止内容。
+- 性能关键改动同时报告日志关闭与默认开发日志开启两组基线，至少包含 p50/p95/p99、吞吐、
+  分配/峰值内存、队列高水位、drop 数和磁盘/WAL 增长；不能只证明“有日志”，还要证明日志
+  开启后没有改变业务正确性或造成无界资源增长。
+- 交付报告必须单列：新增/变更事件、实际覆盖的关键路径、执行过的日志断言/secret canary/
+  性能基线、尚未覆盖的路径及原因。静态分析或普通业务测试通过不能替代日志验收。
+
 ## 平台与原生代码
 
 - Android 常亮、生命周期和系统返回等阅读器原生能力由插件实现；主应用不复制其平台通道。

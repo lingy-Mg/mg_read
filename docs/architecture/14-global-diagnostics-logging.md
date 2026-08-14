@@ -334,6 +334,70 @@ Runtime Facade 发布等价的版本化强类型 query/capture capability；主�
 manager 维护 app cursor 与 Runtime cursor，再做有界 merge。它不得复制 wire envelope、构造
 loopback URL 或为了统一查询把 Runtime 全量日志搬进 app SQLite。
 
+## 强制埋点覆盖契约
+
+日志系统不以“尽量多打日志”为验收，而以关键路径是否能从一个 trace 重建排队、执行、终态
+和资源代价为验收。任何新增或修改的关键路径必须在同一交付包定义 event schema、owner span、
+字段预算、privacy class、采样/聚合和测试；统一 logger 尚未实现时，功能交付必须明确标记日志
+门禁未满足，不能用散落 `print` 形成临时协议。
+
+### 关键路径定义
+
+满足任一条件即进入强制覆盖：用户等待或可见状态变化；进程/页面/Runtime/插件生命周期；
+跨 Facade、Node/Javet、HTTP、SQLite、文件对象边界；队列/锁/事务/并发槽等待；取消、deadline、
+重试、限流、背压或恢复；网络、数据库、文件、解析、序列化、校验、摘要、解压、分页、布局；
+缓存/持久化/导出；内存、磁盘、WAL、队列、句柄、worker 等资源压力。
+
+### 必须可重建的链路
+
+| 链路 | 最低事件/span | 关键性能投影 |
+| --- | --- | --- |
+| App bootstrap/lifecycle | 每阶段 start/terminal、前后台、关闭/flush | 阶段与端到端耗时、超时、incomplete |
+| 页面与 application 用例 | 用户意图、loading/terminal、cancel、stale discard | 首个可用结果、请求世代、item count |
+| Runtime Facade | invoke start/terminal、deadline、cancel、retry | queue wait、bridge、Runtime、UI commit 分解 |
+| Runtime/插件/调度 | start/ready/fail/shutdown、load/invoke/parse、overload | queue depth/wait、slot、event-loop delay、attempt |
+| HTTP | start/headers/terminal 与受控附件 | DNS/connect/TLS/TTFB/body/parse、status、bytes、cache/Range |
+| SQLite/对象存储 | open/migrate/operation/transaction/commit/recovery | queue/SQL/codec、batch、WAL、bytes、revision/conflict |
+| 书架/目录/阅读器 | refresh/page/load/render/progress/exit | first content/page、parse/paginate/layout、frame summary |
+| 下载/缓存/文件 | state transition、checkpoint、verify/commit/cleanup | 时间窗吞吐、Range、retry、bytes、quota |
+| 未捕获错误/崩溃边界 | Flutter/PlatformDispatcher/isolate error、Node/Javet fatal、child exit | 当前阶段、stack fingerprint、last trace、恢复结果 |
+| Diagnostics 自身 | writer、batch、drop、truncate、retention/export | queue high-water、commit、WAL、object bytes、drop count |
+
+每个用户操作、跨边界调用或长任务只能有一个 owner span；start 后必须出现且只出现一个
+`success/error/cancelled/timeout/overloaded` 终态。阶段分解使用 child span。错误由决定恢复
+语义的 owner 记录一次，上层只在增加新语义时记录，避免一条异常在多层重复刷屏。
+
+### 性能埋点规则
+
+- 至少区分 enqueue、dequeue/start、first-byte/first-result 和 complete，分别得到 queue wait、
+  work、首结果与端到端耗时；不能只记录一个模糊 duration。
+- 高于基线阈值的操作产生版本化 `*.slow` 事件，带阈值、平台和构建模式。阈值来自固定环境
+  基线/配置，不成为散落在 feature 的常量。
+- build/layout/frame、滚动、进度、网络 chunk、目录项和循环体只写时间窗 counter/histogram/
+  summary。禁止每帧、每像素、每条目、每 chunk 一条持久化事件。
+- 每个性能优化必须比较 instrumentation disabled 与默认开发 `metadataOnly` 两组 p50/p95/p99、
+  吞吐、分配/峰值内存、队列高水位、drop 和磁盘/WAL；日志开销必须与业务瓶颈分开报告。
+
+### 开发构建策略
+
+Debug/Profile 默认开启 `metadataOnly`：保存 `info` 以上、关键 `debug` span、所有稳定终态和
+性能摘要；`trace` 只能按 component 或显式捕获会话临时开启。Release 默认保留
+`warn/error/fatal` 与有界生命周期/健康摘要。任何构建都不因日志级别自动保存 HTTP body；
+`safeStructured/contentPayload/restrictedRaw` 仍遵守捕获会话和隐私门禁。
+
+新增生产代码不得直接使用 `print`、`debugPrint`、`developer.log`、`console.*` 或自行写日志
+文件。统一 manager ready 前最早 bootstrap 只允许受控 fallback，ready 后必须接管并停止。
+调用方必须先 `isEnabled`，禁用时不得插值长文本、抓堆栈、遍历对象或 JSON encode。
+
+### 日志验收
+
+- unit/contract test 断言 success/error 及适用的 cancel/timeout/overload，trace/span 关系和恰好
+  一个终态；fault test 证明 queue/disk/writer 故障不改变业务结果。
+- HTTP、持久化、动态附件与导出使用 secret canary，扫描 index、object、preview、console 和
+  默认导出，禁止内容不得出现。
+- 每个交付报告列出事件/schema、覆盖路径、采样/附件策略、日志断言和性能基线；无法覆盖的
+  路径必须明确说明，不能用普通业务测试或静态分析代替。
+
 ## 未来查看器约束
 
 - 会话、事件、trace、附件都使用 cursor 分页，单页有服务端硬上限。
