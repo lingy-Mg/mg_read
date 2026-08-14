@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:mg_read/app/app_strings.dart';
-
 /// Typed-route destination before M5 resolves a reader launch request.
 ///
 /// The stable [bookId] is intentionally not rendered or used to load content.
@@ -17,7 +15,7 @@ class ReaderDestinationPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text(AppStrings.readerRouteTitle)),
+      appBar: AppBar(title: const Text('阅读会话尚未就绪')),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -25,7 +23,7 @@ class ReaderDestinationPage extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.all(24),
               child: Text(
-                AppStrings.readerRouteDescription,
+                '此路由只保存稳定书籍 ID。后续由应用用例解析数据源和状态存储后再打开阅读器。',
                 textAlign: TextAlign.center,
               ),
             ),

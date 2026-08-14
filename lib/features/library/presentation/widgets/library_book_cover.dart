@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 
@@ -27,7 +26,7 @@ class LibraryBookCover extends StatelessWidget {
 
     return Semantics(
       image: true,
-      label: AppStrings.bookCoverLabel(title),
+      label: '$title 的封面占位图',
       child: ExcludeSemantics(
         child: SizedBox(
           width: width,

@@ -5,7 +5,6 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/app/app.dart';
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/profile/presentation/about_page.dart';
 import 'package:mg_read/features/profile/presentation/feedback_page.dart';
@@ -39,7 +38,7 @@ void main() {
       await tester.tap(aboutAction);
       await tester.pumpAndSettle();
       expect(find.byType(AboutPage), findsOneWidget);
-      expect(find.text(AppStrings.aboutApplicationName), findsOneWidget);
+      expect(find.text('统一阅读'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('profile-detail-back')));
       await tester.pumpAndSettle();
@@ -56,7 +55,7 @@ void main() {
       await tester.tap(feedbackAction);
       await tester.pumpAndSettle();
       expect(find.byType(FeedbackPage), findsOneWidget);
-      expect(find.text(AppStrings.feedbackThanksTitle), findsOneWidget);
+      expect(find.text('感谢您的反馈！'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('profile-detail-back')));
       await tester.pumpAndSettle();
@@ -162,11 +161,11 @@ void main() {
 
     await tester.tap(find.byKey(const Key('feedback-add-image')));
     await tester.pump();
-    expect(find.text(AppStrings.feedbackImageUnavailable), findsOneWidget);
+    expect(find.text('截图选择尚未接入，当前不会访问本地文件。'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('feedback-submit')));
     await tester.pump();
-    expect(find.text(AppStrings.feedbackContentRequired), findsOneWidget);
+    expect(find.text('请先填写反馈内容。'), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const Key('feedback-content-field')),
@@ -174,7 +173,7 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('feedback-submit')));
     await tester.pump();
-    expect(find.text(AppStrings.feedbackSubmitUnavailable), findsOneWidget);
+    expect(find.text('反馈已保留在当前页面，提交服务尚未接入。'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

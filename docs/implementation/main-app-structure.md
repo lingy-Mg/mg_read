@@ -20,7 +20,6 @@ lib/
     mg_read_app.dart               # MaterialApp.router 当前具体实现
     app_router.dart                # 声明式类型化路由
     app_theme.dart                 # 语义主题
-    app_strings.dart               # 集中可见文案
   core/
     diagnostics/                   # Runtime 脱敏快照的 UI 投影
     errors/                        # 稳定错误与 UI 安全归一化
@@ -67,7 +66,7 @@ flowchart LR
 
 | 层 | 可以做什么 | 不可以做什么 |
 | --- | --- | --- |
-| `app` | 组合 UI Provider、路由、主题、可见文案 | 保存插件业务权威状态、解析站点、启动 Node/Javet |
+| `app` | 组合 UI Provider、路由、主题 | 保存插件业务权威状态、解析站点、启动 Node/Javet |
 | `presentation` | 渲染不可变状态、转发用户意图 | 在 `build()` 请求/写入，直接访问 Runtime Store、文件或 raw Runtime 协议 |
 | `application` | 编排 UI 用例、generation、取消、Facade 调用 | 管理 Runtime 生命周期、传输、平台适配或持久化 |
 | `domain` | UI 稳定类型、显示规则、窄端口 | Flutter、Runtime wire schema、Node、HTTP/WS/Store 实现依赖 |
@@ -82,7 +81,7 @@ UI Isolate 只做渲染、轻量状态映射、输入校验与 Runtime 结果展
 
 | 模块 | 负责内容 | 首个可开发入口 |
 | --- | --- | --- |
-| `app` | 启动 UI 组合、全局主题、类型化路由、可见文案 | 按功能页面添加 route；仅传稳定 ID 或轻量值 |
+| `app` | 启动 UI 组合、全局主题、类型化路由 | 按功能页面添加 route；仅传稳定 ID 或轻量值 |
 | `core/errors` | Runtime 稳定错误码到 UI 的安全映射 | `AppError` 不保留原始异常或敏感 details |
 | `core/diagnostics` | 脱敏 Runtime 诊断的 UI 模型 | 只消费 Facade snapshot，不查询 Store |
 | `features/library` | 书架页面投影和用户动作 | 通过 Facade 读取/更新 Runtime 书架投影 |

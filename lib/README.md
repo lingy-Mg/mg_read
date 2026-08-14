@@ -11,7 +11,7 @@ app -> feature presentation -> feature application -> feature domain
 reader data -> package:novel_reader_ui/novel_reader_ui.dart
 ```
 
-- `app/`：唯一组合根、主题、路由、生命周期入口和集中可见文案。
+- `app/`：唯一组合根、主题、路由和生命周期入口；可见文案在页面或局部组件内就地定义。
 - `core/`：与具体业务无关的 UI 错误映射、诊断投影和小型 UI 基础能力；不含 Runtime、持久化、文件或调度实现。
 - `features/`：按产品能力划分的垂直切片；跨 feature 只能通过公开的 application/domain 端口交互。
 - `shared/`：真正跨 feature 的展示组件和小型无业务工具。

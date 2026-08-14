@@ -1,7 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:mg_read/app/app_strings.dart';
-
 /// Immutable, presentation-only data for the profile and settings screen.
 ///
 /// This projection intentionally contains no account identity, Runtime Store,
@@ -84,82 +82,73 @@ enum ProfileSettingsIcon {
 /// intentionally outside the current application milestone.
 abstract final class ProfileFixtures {
   static const ProfileViewData preview = ProfileViewData(
-    displayName: AppStrings.profileDisplayName,
-    motto: AppStrings.profileMotto,
+    displayName: '书海行者',
+    motto: '书山有路勤为径，阅读点亮生活。',
     stats: <ProfileStatViewData>[
-      ProfileStatViewData(
-        label: AppStrings.profileReadingDurationLabel,
-        value: AppStrings.profileReadingDurationValue,
-      ),
-      ProfileStatViewData(
-        label: AppStrings.profileReadBooksLabel,
-        value: AppStrings.profileReadBooksValue,
-      ),
-      ProfileStatViewData(
-        label: AppStrings.profileShelfCollectionLabel,
-        value: AppStrings.profileShelfCollectionValue,
-      ),
+      ProfileStatViewData(label: '阅读时长', value: '126 小时'),
+      ProfileStatViewData(label: '阅读书籍', value: '48 本'),
+      ProfileStatViewData(label: '书架收藏', value: '136 本'),
     ],
-    syncLabel: AppStrings.profileCloudSyncNormalLabel,
-    lastSyncLabel: AppStrings.profileLastSyncLabel,
+    syncLabel: '云端同步正常',
+    lastSyncLabel: '上次同步：刚刚',
     settings: <ProfileSettingsItemViewData>[
       ProfileSettingsItemViewData(
         id: 'reading-settings',
-        title: AppStrings.profileReadingSettingsTitle,
-        description: AppStrings.profileReadingSettingsDescription,
+        title: '阅读设置',
+        description: '字体、排版、翻页等',
         icon: ProfileSettingsIcon.reading,
       ),
       ProfileSettingsItemViewData(
         id: 'source-management',
-        title: AppStrings.profileSourceManagementTitle,
-        description: AppStrings.profileSourceManagementDescription,
+        title: '书源管理',
+        description: '管理书源、导入与排序',
         icon: ProfileSettingsIcon.sources,
       ),
       ProfileSettingsItemViewData(
         id: 'downloads-cache',
-        title: AppStrings.profileDownloadCacheTitle,
-        description: AppStrings.profileDownloadCacheDescription,
+        title: '下载与缓存',
+        description: '已用 512MB / 共 5GB',
         icon: ProfileSettingsIcon.download,
       ),
       ProfileSettingsItemViewData(
         id: 'theme-appearance',
-        title: AppStrings.profileThemeAppearanceTitle,
-        description: AppStrings.profileThemeAppearanceDescription,
+        title: '主题与外观',
+        description: '跟随系统 / 暖光主题',
         icon: ProfileSettingsIcon.appearance,
       ),
       ProfileSettingsItemViewData(
         id: 'privacy-permissions',
-        title: AppStrings.profilePrivacyPermissionsTitle,
-        description: AppStrings.profilePrivacyPermissionsDescription,
+        title: '隐私与权限',
+        description: '权限管理与隐私设置',
         icon: ProfileSettingsIcon.privacy,
       ),
       ProfileSettingsItemViewData(
         id: 'data-backup',
-        title: AppStrings.profileDataBackupTitle,
-        description: AppStrings.profileDataBackupDescription,
+        title: '数据备份与同步',
+        description: '云端备份，跨设备同步',
         icon: ProfileSettingsIcon.backup,
-        trailingLabel: AppStrings.profileDataBackupValue,
+        trailingLabel: '已开启',
         isAccentTrailingLabel: true,
       ),
       ProfileSettingsItemViewData(
         id: 'clear-cache',
-        title: AppStrings.profileClearCacheTitle,
-        description: AppStrings.profileClearCacheDescription,
+        title: '清理缓存',
+        description: '释放存储空间',
         icon: ProfileSettingsIcon.clearCache,
-        trailingLabel: AppStrings.profileClearCacheValue,
+        trailingLabel: '512MB',
       ),
     ],
     about: <ProfileSettingsItemViewData>[
       ProfileSettingsItemViewData(
         id: 'about',
-        title: AppStrings.profileAboutTitle,
-        description: AppStrings.profileAboutDescription,
+        title: '关于我们',
+        description: '版本 1.2.0',
         icon: ProfileSettingsIcon.about,
       ),
       ProfileSettingsItemViewData(
         id: 'feedback',
-        title: AppStrings.profileFeedbackTitle,
-        description: AppStrings.profileFeedbackDescription,
+        title: '意见反馈',
+        description: '告诉我们您的想法',
         icon: ProfileSettingsIcon.feedback,
       ),
     ],

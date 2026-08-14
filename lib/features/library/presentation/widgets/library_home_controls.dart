@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 
@@ -22,14 +21,14 @@ class LibrarySectionNavigation extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         _SectionButton(
-          label: AppStrings.recentUpdatesLabel,
+          label: '最近更新',
           section: LibraryHomeSection.recentUpdates,
           selected: selected,
           onSelected: onSelected,
         ),
         const SizedBox(width: AppSpacing.section + AppSpacing.unit),
         _SectionButton(
-          label: AppStrings.shelfLabel,
+          label: '书架',
           section: LibraryHomeSection.shelf,
           selected: selected,
           onSelected: onSelected,
@@ -117,7 +116,7 @@ class LibraryStatusFilterBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       container: true,
-      label: AppStrings.statusFilterLabel,
+      label: '书籍状态筛选',
       child: SizedBox(
         key: const Key('library-status-filter-bar'),
         height: AppSpacing.sectionControlHeight,
@@ -220,10 +219,10 @@ class _FilterChip extends StatelessWidget {
 
   String _labelFor(LibraryStatusFilter filter) {
     return switch (filter) {
-      LibraryStatusFilter.all => AppStrings.filterAllLabel,
-      LibraryStatusFilter.ongoing => AppStrings.filterOngoingLabel,
-      LibraryStatusFilter.completed => AppStrings.filterCompletedLabel,
-      LibraryStatusFilter.local => AppStrings.filterLocalLabel,
+      LibraryStatusFilter.all => '全部',
+      LibraryStatusFilter.ongoing => '连载',
+      LibraryStatusFilter.completed => '完结',
+      LibraryStatusFilter.local => '本地',
     };
   }
 }

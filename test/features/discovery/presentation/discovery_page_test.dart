@@ -3,7 +3,6 @@ import 'dart:ui' show Tristate;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
@@ -66,24 +65,20 @@ void main() {
       final Text title = tester.widget<Text>(
         find.descendant(
           of: find.byType(DiscoveryTopBar),
-          matching: find.text(AppStrings.discoverNavigationLabel),
+          matching: find.text('发现'),
         ),
       );
       final Text popularTitle = tester.widget<Text>(
         find.descendant(
           of: find.byType(DiscoverySectionHeader).first,
-          matching: find.text(AppStrings.discoveryPopularTitle),
+          matching: find.text('人气推荐'),
         ),
       );
       final SemanticsNode discoverNavigation = tester.getSemantics(
         find.byKey(const Key('app-nav-discover')),
       );
       final SemanticsNode recommendationTab = tester.getSemantics(
-        find.byKey(
-          const ValueKey<String>(
-            'discovery-tab-${AppStrings.discoveryTabRecommendation}',
-          ),
-        ),
+        find.byKey(const ValueKey<String>('discovery-tab-推荐')),
       );
 
       expect(title.style?.fontSize, 26);
@@ -119,12 +114,12 @@ void main() {
 
       await tester.tap(find.byKey(const Key('discovery-search-action')));
       await tester.pump();
-      expect(find.text(AppStrings.actionUnavailableMessage), findsOneWidget);
+      expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('app-nav-search')));
       await tester.pump();
       expect(requested, isEmpty);
-      expect(find.text(AppStrings.actionUnavailableMessage), findsOneWidget);
+      expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('app-nav-home')));
       await tester.tap(find.byKey(const Key('app-nav-profile')));

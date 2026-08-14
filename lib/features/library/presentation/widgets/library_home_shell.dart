@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
@@ -89,7 +88,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                           if (widget.isRefreshing) ...<Widget>[
                             const SizedBox(height: AppSpacing.regular),
                             Semantics(
-                              label: AppStrings.libraryRefreshingLabel,
+                              label: '正在刷新书架',
                               child: const LinearProgressIndicator(),
                             ),
                           ],
@@ -298,7 +297,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
 
   void _showUnavailableMessage() {
     setState(() {
-      _actionFeedback = AppStrings.actionUnavailableMessage;
+      _actionFeedback = '此操作尚未接入真实数据，可由后续功能替换。';
     });
   }
 }
@@ -329,7 +328,7 @@ class LibraryHomeTopBar extends StatelessWidget {
           child: Semantics(
             header: true,
             child: Text(
-              AppStrings.libraryTitle,
+              '首页',
               style: theme.textTheme.displaySmall?.copyWith(
                 fontSize: 26,
                 fontWeight: FontWeight.w600,
@@ -341,7 +340,7 @@ class LibraryHomeTopBar extends StatelessWidget {
         ),
         const SizedBox(width: AppSpacing.compact),
         _LibraryTopBarAction(
-          tooltip: AppStrings.searchActionLabel,
+          tooltip: '搜索书籍',
           onPressed: onSearch,
           icon: Icons.search_rounded,
         ),
@@ -351,8 +350,8 @@ class LibraryHomeTopBar extends StatelessWidget {
             child: _LibraryTopBarAction(
               key: const Key('theme-mode-toggle'),
               tooltip: theme.brightness == Brightness.dark
-                  ? AppStrings.switchToLightThemeLabel
-                  : AppStrings.switchToDarkThemeLabel,
+                  ? '切换至浅色模式'
+                  : '切换至深色模式',
               onPressed: toggleTheme,
               icon: theme.brightness == Brightness.dark
                   ? Icons.light_mode_outlined
@@ -364,17 +363,17 @@ class LibraryHomeTopBar extends StatelessWidget {
           menuChildren: <Widget>[
             MenuItemButton(
               onPressed: onReadingHistory,
-              child: const Text(AppStrings.readingHistoryLabel),
+              child: const Text('阅读记录'),
             ),
             MenuItemButton(
               onPressed: onManageSources,
-              child: const Text(AppStrings.manageSourcesActionLabel),
+              child: const Text('管理书源'),
             ),
           ],
           builder:
               (BuildContext context, MenuController controller, Widget? child) {
                 return _LibraryTopBarAction(
-                  tooltip: AppStrings.moreActionsLabel,
+                  tooltip: '更多操作',
                   onPressed: () {
                     if (controller.isOpen) {
                       controller.close();
@@ -474,7 +473,7 @@ class _ActionFeedbackBanner extends StatelessWidget {
                 ),
               ),
               IconButton(
-                tooltip: AppStrings.dismissLabel,
+                tooltip: '关闭提示',
                 onPressed: onDismiss,
                 icon: const Icon(Icons.close_rounded),
               ),
@@ -509,13 +508,10 @@ class _NoReadingProgressCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(
-                    AppStrings.noReadingProgressTitle,
-                    style: theme.textTheme.titleMedium,
-                  ),
+                  Text('从书架开始阅读', style: theme.textTheme.titleMedium),
                   const SizedBox(height: AppSpacing.compact),
                   Text(
-                    AppStrings.noReadingProgressDescription,
+                    '阅读进度接入本地资料后会显示在这里。',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: tokens.mutedText,
                     ),
@@ -543,7 +539,7 @@ class _NoMatchingBooks extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.section),
         child: Text(
-          AppStrings.noMatchingBooksLabel,
+          '没有符合当前筛选条件的书籍',
           style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText),
         ),
       ),

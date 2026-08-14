@@ -3,7 +3,6 @@ import 'dart:ui' show Tristate;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_overview_card.dart';
@@ -19,19 +18,13 @@ void main() {
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
 
-    expect(
-      find.text(AppStrings.profileNavigationLabel),
-      findsAtLeastNWidgets(2),
-    );
+    expect(find.text('我的'), findsAtLeastNWidgets(2));
     expect(find.byType(ProfileOverviewCard), findsOneWidget);
-    expect(find.text(AppStrings.profileDisplayName), findsOneWidget);
-    expect(find.text(AppStrings.profileVipLabel), findsOneWidget);
-    expect(
-      find.text(AppStrings.profileSettingsManagementTitle),
-      findsOneWidget,
-    );
-    expect(find.text(AppStrings.profileReadingSettingsTitle), findsOneWidget);
-    expect(find.text(AppStrings.profileAboutSectionTitle), findsOneWidget);
+    expect(find.text('书海行者'), findsOneWidget);
+    expect(find.text('VIP'), findsOneWidget);
+    expect(find.text('设置与管理'), findsOneWidget);
+    expect(find.text('阅读设置'), findsOneWidget);
+    expect(find.text('关于与其他'), findsOneWidget);
     expect(find.byType(AppBottomNavigation), findsOneWidget);
 
     final Rect card = tester.getRect(find.byType(ProfileOverviewCard));
@@ -55,15 +48,11 @@ void main() {
     final Text pageTitle = tester.widget<Text>(
       find.descendant(
         of: find.byType(ProfileTopBar),
-        matching: find.text(AppStrings.profileNavigationLabel),
+        matching: find.text('我的'),
       ),
     );
-    final Text settingTitle = tester.widget<Text>(
-      find.text(AppStrings.profileReadingSettingsTitle),
-    );
-    final Text settingDescription = tester.widget<Text>(
-      find.text(AppStrings.profileReadingSettingsDescription),
-    );
+    final Text settingTitle = tester.widget<Text>(find.text('阅读设置'));
+    final Text settingDescription = tester.widget<Text>(find.text('字体、排版、翻页等'));
     final Finder profileNavigation = find.byKey(const Key('app-nav-profile'));
     final SemanticsNode profileSemantics = tester.getSemantics(
       profileNavigation,
@@ -98,13 +87,13 @@ void main() {
 
     final Finder toggle = find.byKey(const Key('theme-mode-toggle'));
     expect(toggle, findsOneWidget);
-    expect(find.byTooltip(AppStrings.switchToDarkThemeLabel), findsOneWidget);
+    expect(find.byTooltip('切换至深色模式'), findsOneWidget);
     await tester.tap(toggle);
     expect(toggleCount, 1);
 
     await tester.tap(find.byKey(const Key('profile-setting-reading-settings')));
     await tester.pumpAndSettle();
-    expect(find.text(AppStrings.actionUnavailableMessage), findsOneWidget);
+    expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsOneWidget);
   });
 
   testWidgets('delegates a destination selection to the app layer', (

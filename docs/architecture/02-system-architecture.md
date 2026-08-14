@@ -55,7 +55,6 @@ lib/
   app/
     app.dart
     app_router.dart
-    app_strings.dart
     app_theme.dart
     bootstrap.dart
   core/
@@ -79,7 +78,7 @@ Runtime 的实现。若 UI 自身将来需要短期展示缓存或纯 UI 工具�
 
 ### 依赖规则
 
-- `app` 只负责组合、主题、路由、生命周期的 UI 通知和可见文案。
+- `app` 只负责组合、主题、路由和生命周期的 UI 通知。
 - `presentation` 依赖 application 状态和不可变 view state；Widget 不访问 Runtime
   内部端点、数据库、文件或平台脚本引擎。
 - `application` 只编排用户意图、取消 UI 请求和将 Runtime 结果映射为状态；不得管理

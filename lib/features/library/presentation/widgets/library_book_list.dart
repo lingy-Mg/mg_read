@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
@@ -124,7 +123,7 @@ class LibraryBookListItem extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final bool showAttentionIndicator =
         presentation.showAttentionIndicator && data.hasAttentionIndicator;
-    final String semanticLabel = AppStrings.bookListItemLabel(
+    final String semanticLabel = _bookListItemLabel(
       title: data.title,
       subtitle: data.subtitle,
       activityLabel: presentation.showActivityLabel ? data.activityLabel : null,
@@ -358,7 +357,7 @@ class _BookListTrailing extends StatelessWidget {
                 width: AppSpacing.section,
                 height: AppSpacing.section,
                 child: IconButton(
-                  tooltip: AppStrings.bookMoreActionsLabel,
+                  tooltip: '书籍更多操作',
                   onPressed: onMore,
                   padding: EdgeInsets.zero,
                   iconSize: 16,
@@ -371,7 +370,7 @@ class _BookListTrailing extends StatelessWidget {
               top: AppSpacing.section + AppSpacing.unit,
               right: AppSpacing.compact,
               child: Semantics(
-                label: AppStrings.unreadUpdateLabel,
+                label: '有更新',
                 child: ExcludeSemantics(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
@@ -390,4 +389,23 @@ class _BookListTrailing extends StatelessWidget {
       ),
     );
   }
+}
+
+String _bookListItemLabel({
+  required String title,
+  String? subtitle,
+  String? activityLabel,
+  bool hasAttentionIndicator = false,
+}) {
+  final List<String> parts = <String>[title];
+  if (subtitle != null && subtitle.isNotEmpty) {
+    parts.add(subtitle);
+  }
+  if (activityLabel != null && activityLabel.isNotEmpty) {
+    parts.add(activityLabel);
+  }
+  if (hasAttentionIndicator) {
+    parts.add('有更新');
+  }
+  return parts.join('，');
 }

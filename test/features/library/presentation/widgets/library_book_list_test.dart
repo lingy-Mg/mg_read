@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
@@ -44,8 +43,7 @@ void main() {
 
         final Finder attentionIndicator = find.byWidgetPredicate(
           (Widget widget) =>
-              widget is Semantics &&
-              widget.properties.label == AppStrings.unreadUpdateLabel,
+              widget is Semantics && widget.properties.label == '有更新',
         );
         expect(
           attentionIndicator,
@@ -71,12 +69,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('上次阅读 · 1小时前'), findsNothing);
-    expect(find.byTooltip(AppStrings.bookMoreActionsLabel), findsNothing);
+    expect(find.byTooltip('书籍更多操作'), findsNothing);
     expect(
       find.byWidgetPredicate(
         (Widget widget) =>
-            widget is Semantics &&
-            widget.properties.label == AppStrings.unreadUpdateLabel,
+            widget is Semantics && widget.properties.label == '有更新',
       ),
       findsOneWidget,
     );
@@ -103,7 +100,7 @@ void main() {
 
     await tester.tap(find.text('测试书籍').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip(AppStrings.bookMoreActionsLabel));
+    await tester.tap(find.byTooltip('书籍更多操作'));
     await tester.pumpAndSettle();
 
     expect(opened, same(_book));

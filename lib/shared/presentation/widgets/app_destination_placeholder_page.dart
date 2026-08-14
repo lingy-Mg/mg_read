@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 
@@ -46,10 +45,10 @@ class AppDestinationPlaceholderPage extends StatelessWidget {
 
   String _labelFor(AppNavigationDestination value) {
     return switch (value) {
-      AppNavigationDestination.home => AppStrings.homeNavigationLabel,
-      AppNavigationDestination.search => AppStrings.searchNavigationLabel,
-      AppNavigationDestination.discover => AppStrings.discoverNavigationLabel,
-      AppNavigationDestination.profile => AppStrings.profileNavigationLabel,
+      AppNavigationDestination.home => '首页',
+      AppNavigationDestination.search => '搜索',
+      AppNavigationDestination.discover => '发现',
+      AppNavigationDestination.profile => '我的',
     };
   }
 }

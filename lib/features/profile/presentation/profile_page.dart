@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/features/profile/presentation/profile_view_data.dart';
@@ -91,18 +90,14 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ],
                   const SizedBox(height: AppSpacing.comfortable + 5),
-                  _ProfileSectionTitle(
-                    title: AppStrings.profileSettingsManagementTitle,
-                  ),
+                  _ProfileSectionTitle(title: '设置与管理'),
                   const SizedBox(height: AppSpacing.unit / 2),
                   ProfileSettingsList(
                     items: ProfileFixtures.preview.settings,
                     onItemPressed: (_) => _showUnavailableMessage(),
                   ),
                   const SizedBox(height: AppSpacing.compact),
-                  _ProfileSectionTitle(
-                    title: AppStrings.profileAboutSectionTitle,
-                  ),
+                  _ProfileSectionTitle(title: '关于与其他'),
                   const SizedBox(height: AppSpacing.unit),
                   ProfileSettingsList(
                     items: ProfileFixtures.preview.about,
@@ -148,7 +143,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   void _showUnavailableMessage() {
     setState(() {
-      _actionFeedback = AppStrings.actionUnavailableMessage;
+      _actionFeedback = '此操作尚未接入真实数据，可由后续功能替换。';
     });
   }
 
@@ -187,7 +182,7 @@ class ProfileTopBar extends StatelessWidget {
           child: Semantics(
             header: true,
             child: Text(
-              AppStrings.profileNavigationLabel,
+              '我的',
               style: theme.textTheme.displaySmall?.copyWith(
                 fontSize: 26,
                 fontWeight: FontWeight.w600,
@@ -199,9 +194,7 @@ class ProfileTopBar extends StatelessWidget {
         ),
         _ProfileTopBarAction(
           key: const Key('theme-mode-toggle'),
-          tooltip: theme.brightness == Brightness.dark
-              ? AppStrings.switchToLightThemeLabel
-              : AppStrings.switchToDarkThemeLabel,
+          tooltip: theme.brightness == Brightness.dark ? '切换至浅色模式' : '切换至深色模式',
           onPressed: onToggleTheme,
           icon: theme.brightness == Brightness.dark
               ? Icons.light_mode_outlined
@@ -209,7 +202,7 @@ class ProfileTopBar extends StatelessWidget {
         ),
         const SizedBox(width: AppSpacing.compact),
         _ProfileTopBarAction(
-          tooltip: AppStrings.profileNotificationsLabel,
+          tooltip: '通知',
           onPressed: onNotifications,
           icon: Icons.notifications_none_rounded,
         ),
@@ -328,7 +321,7 @@ class _ProfileActionFeedback extends StatelessWidget {
                 ),
               ),
               IconButton(
-                tooltip: AppStrings.dismissLabel,
+                tooltip: '关闭提示',
                 onPressed: onDismiss,
                 icon: const Icon(Icons.close_rounded),
               ),

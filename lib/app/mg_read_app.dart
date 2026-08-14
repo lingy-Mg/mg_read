@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_router.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
@@ -46,7 +45,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: AppStrings.applicationName,
+      title: 'MgRead',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),

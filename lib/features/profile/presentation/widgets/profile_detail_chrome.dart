@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
@@ -49,7 +48,7 @@ class ProfileDetailTopBar extends StatelessWidget {
                 2,
             child: Semantics(
               button: true,
-              label: AppStrings.detailBackLabel,
+              label: '返回',
               child: Material(
                 color: Colors.transparent,
                 child: InkResponse(

@@ -3,7 +3,6 @@ import 'dart:ui' show PathMetric;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_detail_chrome.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
@@ -86,7 +85,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
                   padding: EdgeInsets.zero,
                   children: <Widget>[
                     ProfileDetailTopBar(
-                      title: AppStrings.feedbackPageTitle,
+                      title: '意见反馈',
                       onBack: widget.onBackRequested,
                     ),
                     const Padding(
@@ -113,8 +112,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
                             _selectedType = value;
                           });
                         },
-                        onAddImage: () =>
-                            _showMessage(AppStrings.feedbackImageUnavailable),
+                        onAddImage: () => _showMessage('截图选择尚未接入，当前不会访问本地文件。'),
                         onSubmit: _submit,
                       ),
                     ),
@@ -135,10 +133,10 @@ class _FeedbackPageState extends State<FeedbackPage> {
   void _submit() {
     FocusScope.of(context).unfocus();
     if (_contentController.text.trim().isEmpty) {
-      _showMessage(AppStrings.feedbackContentRequired);
+      _showMessage('请先填写反馈内容。');
       return;
     }
-    _showMessage(AppStrings.feedbackSubmitUnavailable);
+    _showMessage('反馈已保留在当前页面，提交服务尚未接入。');
   }
 
   void _showMessage(String message) {
@@ -197,7 +195,7 @@ class _FeedbackThanksBanner extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      AppStrings.feedbackThanksTitle,
+                      '感谢您的反馈！',
                       style: theme.textTheme.titleMedium?.copyWith(
                         color: theme.colorScheme.onSurface,
                         fontSize: 16,
@@ -208,7 +206,7 @@ class _FeedbackThanksBanner extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      AppStrings.feedbackThanksDescription,
+                      '您的每一条建议都对我们非常重要，\n将帮助我们持续改进产品体验。',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: tokens.mutedText,
                         fontSize: 12.5,
@@ -236,7 +234,7 @@ class _FeedbackIllustration extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Semantics(
       image: true,
-      label: AppStrings.feedbackBannerIllustrationLabel,
+      label: '反馈消息与爱心插画',
       child: ExcludeSemantics(
         child: CustomPaint(painter: _FeedbackIllustrationPainter(tokens)),
       ),
@@ -410,16 +408,14 @@ class _FeedbackFormCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const _FeedbackSectionLabel(title: AppStrings.feedbackTypeTitle),
+              const _FeedbackSectionLabel(title: '反馈类型'),
               const SizedBox(height: 8),
               _FeedbackTypeSelector(
                 selectedType: selectedType,
                 onSelected: onTypeSelected,
               ),
               const SizedBox(height: 22),
-              const _FeedbackSectionLabel(
-                title: AppStrings.feedbackContentTitle,
-              ),
+              const _FeedbackSectionLabel(title: '反馈内容'),
               const SizedBox(height: 6),
               _FeedbackContentEditor(
                 controller: contentController,
@@ -427,17 +423,11 @@ class _FeedbackFormCard extends StatelessWidget {
                 contentLength: contentLength,
               ),
               const SizedBox(height: 16),
-              const _FeedbackSectionLabel(
-                title: AppStrings.feedbackScreenshotTitle,
-                optional: true,
-              ),
+              const _FeedbackSectionLabel(title: '上传截图', optional: true),
               const SizedBox(height: 8),
               _FeedbackImageTile(onPressed: onAddImage),
               const SizedBox(height: 15),
-              const _FeedbackSectionLabel(
-                title: AppStrings.feedbackContactTitle,
-                optional: true,
-              ),
+              const _FeedbackSectionLabel(title: '联系方式', optional: true),
               const SizedBox(height: 8),
               _FeedbackContactField(
                 controller: contactController,
@@ -477,7 +467,7 @@ class _FeedbackTypeSelector extends StatelessWidget {
           Expanded(
             child: _FeedbackTypeButton(
               type: _FeedbackType.suggestion,
-              label: AppStrings.feedbackTypeSuggestion,
+              label: '功能建议',
               icon: Icons.rate_review_outlined,
               selected: selectedType == _FeedbackType.suggestion,
               onPressed: onSelected,
@@ -487,7 +477,7 @@ class _FeedbackTypeSelector extends StatelessWidget {
           Expanded(
             child: _FeedbackTypeButton(
               type: _FeedbackType.problem,
-              label: AppStrings.feedbackTypeProblem,
+              label: '问题反馈',
               icon: Icons.warning_amber_rounded,
               selected: selectedType == _FeedbackType.problem,
               onPressed: onSelected,
@@ -497,7 +487,7 @@ class _FeedbackTypeSelector extends StatelessWidget {
           Expanded(
             child: _FeedbackTypeButton(
               type: _FeedbackType.plugin,
-              label: AppStrings.feedbackTypePlugin,
+              label: '插件相关',
               icon: Icons.extension_outlined,
               selected: selectedType == _FeedbackType.plugin,
               onPressed: onSelected,
@@ -508,7 +498,7 @@ class _FeedbackTypeSelector extends StatelessWidget {
             width: 56,
             child: _FeedbackTypeButton(
               type: _FeedbackType.other,
-              label: AppStrings.feedbackTypeOther,
+              label: '其他',
               icon: Icons.grid_view_rounded,
               selected: selectedType == _FeedbackType.other,
               onPressed: onSelected,
@@ -619,7 +609,7 @@ class _FeedbackSectionLabel extends StatelessWidget {
               ),
               if (optional)
                 TextSpan(
-                  text: AppStrings.feedbackOptional,
+                  text: '（选填）',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: tokens.mutedText,
                     fontSize: 12.5,
@@ -695,7 +685,7 @@ class _FeedbackContentEditor extends StatelessWidget {
                     focusedBorder: InputBorder.none,
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
-                    hintText: AppStrings.feedbackContentHint,
+                    hintText: '请详细描述您的建议或遇到的问题…\n我们会认真阅读并尽快回复您。',
                     hintMaxLines: 2,
                     hintStyle: theme.textTheme.bodyMedium?.copyWith(
                       color: tokens.mutedText.withValues(alpha: 0.78),
@@ -763,7 +753,7 @@ class _FeedbackImageTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 7),
                 Text(
-                  AppStrings.feedbackAddImage,
+                  '添加图片',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: tokens.mutedText,
                     fontSize: 12,
@@ -774,7 +764,7 @@ class _FeedbackImageTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  AppStrings.feedbackImageLimit,
+                  '（最多5张）',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: tokens.mutedText,
                     fontSize: 10.5,
@@ -869,7 +859,7 @@ class _FeedbackContactField extends StatelessWidget {
               focusedBorder: InputBorder.none,
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(vertical: 8),
-              hintText: AppStrings.feedbackContactHint,
+              hintText: '请留下您的邮箱或手机号，方便我们联系您',
               hintStyle: theme.textTheme.bodyMedium?.copyWith(
                 color: tokens.mutedText.withValues(alpha: 0.72),
                 fontSize: 12.5,
@@ -897,7 +887,7 @@ class _FeedbackHelperText extends StatelessWidget {
       child: Align(
         alignment: Alignment.centerLeft,
         child: Text(
-          AppStrings.feedbackContactHelper,
+          '仅用于反馈回复，不会对外公开',
           style: theme.textTheme.bodySmall?.copyWith(
             color: tokens.mutedText,
             fontSize: 11.5,
@@ -944,7 +934,7 @@ class _FeedbackSubmitButton extends StatelessWidget {
             borderRadius: const BorderRadius.all(Radius.circular(8)),
             child: Center(
               child: Text(
-                AppStrings.feedbackSubmit,
+                '提交反馈',
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: theme.colorScheme.onPrimary,
                   fontSize: 16,
@@ -976,7 +966,7 @@ class _FeedbackPrivacyNotice extends StatelessWidget {
           Icon(Icons.security_rounded, color: tokens.mutedText, size: 14),
           const SizedBox(width: 7),
           Text(
-            AppStrings.feedbackPrivacyNotice,
+            '我们会严格保护您的隐私信息',
             style: theme.textTheme.bodySmall?.copyWith(
               color: tokens.mutedText,
               fontSize: 11.5,

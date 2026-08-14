@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
@@ -26,7 +25,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
 
     return Semantics(
       container: true,
-      label: '${AppStrings.continueReadingTitle}，${data.title}，${data.chapter}',
+      label: '继续阅读，${data.title}，${data.chapter}',
       child: DecoratedBox(
         decoration: BoxDecoration(borderRadius: AppRadii.card),
         child: ClipRRect(
@@ -89,7 +88,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
                             children: <Widget>[
                               Expanded(
                                 child: Text(
-                                  AppStrings.continueReadingTitle,
+                                  '继续阅读',
                                   style: theme.textTheme.titleLarge?.copyWith(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w500,
@@ -119,7 +118,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
                                   mainAxisSize: MainAxisSize.min,
                                   children: <Widget>[
                                     Text(
-                                      AppStrings.readingHistoryLabel,
+                                      '阅读记录',
                                       style: theme.textTheme.bodySmall
                                           ?.copyWith(
                                             color: tokens.warning,
@@ -284,7 +283,7 @@ class _ContinueReadingAction extends StatelessWidget {
             borderRadius: AppRadii.continueReadingAction,
             child: Center(
               child: Text(
-                AppStrings.continueReadingLabel,
+                '继续阅读',
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: theme.colorScheme.onPrimary,
                   fontSize: 14,
@@ -355,7 +354,7 @@ class ReadingProgressBar extends StatelessWidget {
     final int percentage = (progress * 100).round();
 
     return Semantics(
-      label: AppStrings.readingProgressLabel(percentage),
+      label: '阅读进度 $percentage%',
       value: '$percentage%',
       child: ExcludeSemantics(
         child: ClipRRect(

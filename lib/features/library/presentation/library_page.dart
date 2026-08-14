@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/core/errors/app_error.dart';
@@ -93,7 +92,7 @@ class _LibraryLoadingState extends StatelessWidget {
       body: SafeArea(
         child: Center(
           child: Semantics(
-            label: AppStrings.libraryLoadingLabel,
+            label: '正在加载书架',
             child: ExcludeSemantics(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -101,7 +100,7 @@ class _LibraryLoadingState extends StatelessWidget {
                   CircularProgressIndicator(color: tokens.accent),
                   const SizedBox(height: AppSpacing.regular),
                   Text(
-                    AppStrings.libraryLoadingLabel,
+                    '正在加载书架',
                     style: Theme.of(
                       context,
                     ).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
@@ -168,14 +167,14 @@ class _LibraryErrorCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(
-                AppStrings.errorTitle(error),
+                _errorTitle(error),
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: theme.colorScheme.onErrorContainer,
                 ),
               ),
               const SizedBox(height: AppSpacing.compact),
               Text(
-                AppStrings.errorDescription(error),
+                _errorDescription(error),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onErrorContainer,
                 ),
@@ -183,7 +182,7 @@ class _LibraryErrorCard extends StatelessWidget {
               if (hasRetainedData) ...<Widget>[
                 const SizedBox(height: AppSpacing.compact),
                 Text(
-                  AppStrings.libraryRetainedDataDescription,
+                  '已保留上次成功加载的数据。',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onErrorContainer,
                   ),
@@ -195,7 +194,7 @@ class _LibraryErrorCard extends StatelessWidget {
                   onPressed: () {
                     unawaited(onRetry());
                   },
-                  child: const Text(AppStrings.retryLabel),
+                  child: const Text('重试'),
                 ),
               ],
             ],
@@ -204,4 +203,32 @@ class _LibraryErrorCard extends StatelessWidget {
       ),
     );
   }
+}
+
+String _errorTitle(AppError error) {
+  return switch (error.category) {
+    AppErrorCategory.retryableTemporary => '暂时无法完成请求',
+    AppErrorCategory.runtimeUnavailable => '运行环境不可用',
+    AppErrorCategory.pluginUnavailable => '插件不可用',
+    AppErrorCategory.interactionRequired => '需要用户交互',
+    AppErrorCategory.contentUnavailable => '内容不可用',
+    AppErrorCategory.storagePressure => '存储空间不足',
+    AppErrorCategory.incompatible => '版本不兼容',
+    AppErrorCategory.cancelled => '操作已取消',
+    AppErrorCategory.unknownSafe => '无法安全完成请求',
+  };
+}
+
+String _errorDescription(AppError error) {
+  return switch (error.category) {
+    AppErrorCategory.retryableTemporary => '请稍后重试。',
+    AppErrorCategory.runtimeUnavailable => '请重启应用后重试；诊断入口将在后续交付包提供。',
+    AppErrorCategory.pluginUnavailable => '请在后续插件管理功能中检查插件状态。',
+    AppErrorCategory.interactionRequired => '当前版本尚未提供所需的交互能力。',
+    AppErrorCategory.contentUnavailable => '请返回上一层并选择其他可用内容。',
+    AppErrorCategory.storagePressure => '请释放可再生缓存或存储空间后重试。',
+    AppErrorCategory.incompatible => '请更新应用或恢复兼容的插件版本。',
+    AppErrorCategory.cancelled => '当前页面保持最近的稳定状态。',
+    AppErrorCategory.unknownSafe => '请稍后重试；如问题持续出现，请在诊断页面查看稳定错误码。',
+  };
 }

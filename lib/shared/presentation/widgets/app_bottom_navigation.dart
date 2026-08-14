@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
@@ -174,22 +173,22 @@ class _AppNavigationItem extends StatelessWidget {
   _AppNavigationItemData _dataFor(AppNavigationDestination value) {
     return switch (value) {
       AppNavigationDestination.home => const _AppNavigationItemData(
-        label: AppStrings.homeNavigationLabel,
+        label: '首页',
         icon: Icons.home_outlined,
         selectedIcon: Icons.home_rounded,
       ),
       AppNavigationDestination.search => const _AppNavigationItemData(
-        label: AppStrings.searchNavigationLabel,
+        label: '搜索',
         icon: Icons.search_rounded,
         selectedIcon: Icons.search_rounded,
       ),
       AppNavigationDestination.discover => const _AppNavigationItemData(
-        label: AppStrings.discoverNavigationLabel,
+        label: '发现',
         icon: Icons.explore_outlined,
         selectedIcon: Icons.explore_rounded,
       ),
       AppNavigationDestination.profile => const _AppNavigationItemData(
-        label: AppStrings.profileNavigationLabel,
+        label: '我的',
         icon: Icons.person_outline_rounded,
         selectedIcon: Icons.person_rounded,
       ),

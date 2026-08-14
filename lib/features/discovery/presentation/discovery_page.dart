@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
@@ -79,8 +78,8 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                     ),
                     const SizedBox(height: AppSpacing.regular),
                     DiscoverySectionHeader(
-                      title: AppStrings.discoveryPopularTitle,
-                      actionLabel: AppStrings.discoveryRefreshLabel,
+                      title: '人气推荐',
+                      actionLabel: '换一换',
                       actionIcon: Icons.refresh_rounded,
                       onAction: _showUnavailableMessage,
                     ),
@@ -113,8 +112,8 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                     ),
                     const SizedBox(height: AppSpacing.compact),
                     DiscoverySectionHeader(
-                      title: AppStrings.discoveryEditorsChoiceTitle,
-                      actionLabel: AppStrings.discoveryMoreLabel,
+                      title: '编辑精选',
+                      actionLabel: '更多',
                       actionIcon: Icons.chevron_right_rounded,
                       onAction: _showUnavailableMessage,
                     ),
@@ -164,9 +163,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(content: Text(AppStrings.actionUnavailableMessage)),
-      );
+      ..showSnackBar(const SnackBar(content: Text('此操作尚未接入真实数据，可由后续功能替换。')));
   }
 }
 
@@ -198,7 +195,7 @@ class DiscoveryTopBar extends StatelessWidget {
               child: Semantics(
                 header: true,
                 child: Text(
-                  AppStrings.discoverNavigationLabel,
+                  '发现',
                   style: TextStyle(
                     color: theme.colorScheme.onSurface,
                     fontSize: 26,
@@ -224,8 +221,8 @@ class DiscoveryTopBar extends StatelessWidget {
                 DiscoveryTopAction(
                   key: const Key('theme-mode-toggle'),
                   tooltip: theme.brightness == Brightness.dark
-                      ? AppStrings.switchToLightThemeLabel
-                      : AppStrings.switchToDarkThemeLabel,
+                      ? '切换至浅色模式'
+                      : '切换至深色模式',
                   icon: theme.brightness == Brightness.dark
                       ? Icons.light_mode_outlined
                       : Icons.dark_mode_outlined,
@@ -234,7 +231,7 @@ class DiscoveryTopBar extends StatelessWidget {
                 const SizedBox(width: AppSpacing.unit),
                 DiscoveryTopAction(
                   key: const Key('discovery-search-action'),
-                  tooltip: AppStrings.searchActionLabel,
+                  tooltip: '搜索书籍',
                   icon: Icons.search_rounded,
                   onPressed: onSearchPressed,
                 ),
@@ -258,9 +255,9 @@ class DiscoverySourceSelector extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Semantics(
       button: true,
-      label: AppStrings.discoverySourceSelectorLabel,
+      label: '选择发现页书源',
       child: Tooltip(
-        message: AppStrings.discoverySourceSelectorLabel,
+        message: '选择发现页书源',
         child: Material(
           color: Colors.transparent,
           child: InkWell(
@@ -280,7 +277,7 @@ class DiscoverySourceSelector extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
                   Text(
-                    AppStrings.discoverySourceName,
+                    '起点中文网',
                     style: TextStyle(
                       color: theme.colorScheme.onSurface,
                       fontSize: 12.5,
@@ -349,12 +346,12 @@ class DiscoveryTabs extends StatelessWidget {
   final VoidCallback onUnavailable;
 
   static const List<String> _labels = <String>[
-    AppStrings.discoveryTabRecommendation,
-    AppStrings.discoveryTabMale,
-    AppStrings.discoveryTabFemale,
-    AppStrings.discoveryTabRanking,
-    AppStrings.discoveryTabCompleted,
-    AppStrings.discoveryTabFree,
+    '推荐',
+    '男生',
+    '女生',
+    '排行',
+    '完本',
+    '免费',
   ];
 
   @override
@@ -452,7 +449,7 @@ class DiscoveryHeroCard extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Semantics(
       button: true,
-      label: '${AppStrings.discoveryOpenBookLabel}：${data.title}',
+      label: '打开书籍：${data.title}',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -564,7 +561,7 @@ class DiscoveryHeroCard extends StatelessWidget {
                             ),
                             child: const Center(
                               child: Text(
-                                AppStrings.discoveryReadNowLabel,
+                                '立即阅读',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 13,
@@ -643,8 +640,7 @@ class DiscoveryCarouselDots extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Semantics(
-      label:
-          '${AppStrings.discoveryCarouselLabel}，${AppStrings.discoveryCarouselPageLabel}',
+      label: '精选推荐轮播，第 1 张，共 5 张',
       child: ExcludeSemantics(
         child: Row(
           children: <Widget>[
@@ -782,8 +778,7 @@ class DiscoveryPopularBook extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Semantics(
       button: true,
-      label:
-          '${AppStrings.discoveryOpenBookLabel}：${data.title}，${data.author}',
+      label: '打开书籍：${data.title}，${data.author}',
       child: InkResponse(
         onTap: onPressed,
         radius: AppSpacing.minimumTouchTarget / 2,
@@ -848,10 +843,7 @@ class DiscoveryRankingBoard extends StatelessWidget {
       key: const Key('discovery-ranking-board'),
       child: Column(
         children: <Widget>[
-          DiscoveryBoardHeader(
-            title: AppStrings.discoveryRankingTitle,
-            onPressed: onPressed,
-          ),
+          DiscoveryBoardHeader(title: '排行榜', onPressed: onPressed),
           const SizedBox(height: 4),
           for (final DiscoveryRankedBookViewData book in books.take(5))
             Expanded(
@@ -884,12 +876,7 @@ class DiscoveryRankingRow extends StatelessWidget {
     };
     return Semantics(
       button: true,
-      label: AppStrings.discoveryRankingItemLabel(
-        rank: data.rank,
-        title: data.title,
-        author: data.author,
-        heat: data.heat,
-      ),
+      label: '第 ${data.rank} 名，${data.title}，${data.author}，热度 ${data.heat}',
       child: InkResponse(
         onTap: onPressed,
         radius: AppSpacing.minimumTouchTarget / 2,
@@ -993,10 +980,7 @@ class DiscoveryCategoryBoard extends StatelessWidget {
       key: const Key('discovery-category-board'),
       child: Column(
         children: <Widget>[
-          DiscoveryBoardHeader(
-            title: AppStrings.discoveryCategoriesTitle,
-            onPressed: onPressed,
-          ),
+          DiscoveryBoardHeader(title: '分类榜单', onPressed: onPressed),
           const SizedBox(height: 6),
           for (int row = 0; row < 4; row += 1) ...<Widget>[
             Row(
@@ -1202,7 +1186,7 @@ class DiscoveryBoardHeader extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Text(
-                  AppStrings.discoveryMoreLabel,
+                  '更多',
                   style: TextStyle(
                     color: tokens.mutedText,
                     fontSize: 10,
@@ -1241,7 +1225,7 @@ class DiscoveryEditorsChoiceCard extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Semantics(
       button: true,
-      label: '${AppStrings.discoveryOpenBookLabel}：${data.title}',
+      label: '打开书籍：${data.title}',
       child: Material(
         color: Colors.transparent,
         child: InkWell(

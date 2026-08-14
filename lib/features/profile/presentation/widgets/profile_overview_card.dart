@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/profile/presentation/profile_view_data.dart';
 
@@ -138,7 +137,7 @@ class _ProfileAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: AppStrings.profileAvatarLabel,
+      label: '书海行者的头像',
       image: true,
       child: ExcludeSemantics(
         child: ClipOval(
@@ -297,7 +296,7 @@ class _ProfileName extends StatelessWidget {
                 ),
                 const SizedBox(width: 2),
                 Text(
-                  AppStrings.profileVipLabel,
+                  'VIP',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onPrimary,
                     fontSize: 10,
@@ -325,7 +324,7 @@ class _ProfileEditButton extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Semantics(
       button: true,
-      label: AppStrings.profileEditLabel,
+      label: '编辑资料',
       child: Material(
         color: Colors.transparent,
         child: Ink(
@@ -343,7 +342,7 @@ class _ProfileEditButton extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
                   Text(
-                    AppStrings.profileEditLabel,
+                    '编辑资料',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: tokens.warning,
                       fontSize: 12,

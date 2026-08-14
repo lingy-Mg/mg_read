@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_detail_chrome.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
@@ -44,15 +43,12 @@ class AboutPage extends StatelessWidget {
                   key: const Key('about-page-content'),
                   padding: EdgeInsets.zero,
                   children: <Widget>[
-                    ProfileDetailTopBar(
-                      title: AppStrings.aboutPageTitle,
-                      onBack: onBackRequested,
-                    ),
+                    ProfileDetailTopBar(title: '关于我们', onBack: onBackRequested),
                     const SizedBox(height: AppDetailMetrics.aboutIconTopGap),
                     const Align(child: _AboutAppIcon()),
                     const SizedBox(height: 15),
                     Text(
-                      AppStrings.aboutApplicationName,
+                      '统一阅读',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.titleLarge?.copyWith(
                         color: theme.colorScheme.onSurface,
@@ -64,7 +60,7 @@ class AboutPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 7),
                     Text(
-                      AppStrings.aboutVersion,
+                      '版本 1.2.0',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyLarge?.copyWith(
                         color: tokens.mutedText,
@@ -76,7 +72,7 @@ class AboutPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      AppStrings.aboutTagline,
+                      '书山有路勤为径，阅读点亮生活。',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: tokens.mutedText,
@@ -97,7 +93,7 @@ class AboutPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 20),
                     Text(
-                      AppStrings.aboutCopyright,
+                      '© 2018–2024 统一阅读',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: tokens.mutedText,
@@ -109,7 +105,7 @@ class AboutPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      AppStrings.aboutRightsReserved,
+                      '保留所有权利',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: tokens.mutedText,
@@ -137,9 +133,7 @@ class AboutPage extends StatelessWidget {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(content: Text(AppStrings.aboutActionUnavailable)),
-      );
+      ..showSnackBar(const SnackBar(content: Text('相关内容尚未接入，当前不会打开网络或外部页面。')));
   }
 }
 
@@ -151,7 +145,7 @@ class _AboutAppIcon extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Semantics(
       image: true,
-      label: AppStrings.aboutLogoLabel,
+      label: '统一阅读开书图标',
       child: ExcludeSemantics(
         child: Container(
           key: const Key('about-app-icon'),
@@ -316,28 +310,24 @@ class _AboutSettingsCard extends StatelessWidget {
     final List<_AboutItem> items = <_AboutItem>[
       const _AboutItem(
         id: 'update',
-        title: AppStrings.aboutCheckUpdate,
+        title: '检查更新',
         icon: Icons.cloud_upload_outlined,
-        trailing: AppStrings.aboutCurrentVersion,
+        trailing: '当前版本 1.2.0',
       ),
       const _AboutItem(
         id: 'agreement',
-        title: AppStrings.aboutUserAgreement,
+        title: '用户协议',
         icon: Icons.description_outlined,
       ),
       const _AboutItem(
         id: 'privacy',
-        title: AppStrings.aboutPrivacyPolicy,
+        title: '隐私政策',
         icon: Icons.shield_outlined,
       ),
-      const _AboutItem(
-        id: 'licenses',
-        title: AppStrings.aboutOpenSourceLicenses,
-        icon: Icons.code_rounded,
-      ),
+      const _AboutItem(id: 'licenses', title: '开源许可', icon: Icons.code_rounded),
       const _AboutItem(
         id: 'contact',
-        title: AppStrings.aboutContactUs,
+        title: '联系我们',
         icon: Icons.headset_mic_outlined,
       ),
     ];

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 
 /// Entry card for the future source-management feature.
@@ -31,13 +30,11 @@ class LibrarySourceManagerCard extends StatelessWidget {
     )!;
     final String? sourceLabel = sourceCount == null
         ? null
-        : AppStrings.availableSourcesLabel(sourceCount!);
+        : '${sourceCount!} 个可用书源';
 
     return Semantics(
       button: true,
-      label: sourceLabel == null
-          ? AppStrings.manageSourcesLabel
-          : '${AppStrings.manageSourcesLabel}，$sourceLabel',
+      label: sourceLabel == null ? '管理我的书源' : '管理我的书源，$sourceLabel',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -61,7 +58,7 @@ class LibrarySourceManagerCard extends StatelessWidget {
                     const SizedBox(width: AppSpacing.comfortable),
                     Expanded(
                       child: Text(
-                        AppStrings.manageSourcesLabel,
+                        '管理我的书源',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontSize: 14,
                           fontWeight: FontWeight.w400,

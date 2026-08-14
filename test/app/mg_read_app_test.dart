@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_router.dart';
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/mg_read_app.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/library/application/library_overview_loader.dart';
@@ -29,10 +28,7 @@ void main() {
       );
 
       await tester.pump();
-      expect(
-        find.bySemanticsLabel(AppStrings.libraryLoadingLabel),
-        findsOneWidget,
-      );
+      expect(find.bySemanticsLabel('正在加载书架'), findsOneWidget);
 
       loader.completeNext(_overview('本地测试书籍'));
       await tester.pump();
@@ -44,27 +40,16 @@ void main() {
           .read(libraryPageControllerProvider.notifier)
           .refresh();
       await tester.pump();
-      expect(
-        find.bySemanticsLabel(AppStrings.libraryRefreshingLabel),
-        findsOneWidget,
-      );
+      expect(find.bySemanticsLabel('正在刷新书架'), findsOneWidget);
 
       loader.completeNextError(AppError.fromCode(AppErrorCode.rateLimited));
       await refresh;
       await tester.pump();
 
       expect(find.text('本地测试书籍'), findsAtLeastNWidgets(1));
-      expect(
-        find.text(AppStrings.libraryRetainedDataDescription),
-        findsOneWidget,
-      );
-      expect(
-        find.text(
-          AppStrings.errorTitle(AppError.fromCode(AppErrorCode.rateLimited)),
-        ),
-        findsOneWidget,
-      );
-      expect(find.text(AppStrings.retryLabel), findsOneWidget);
+      expect(find.text('已保留上次成功加载的数据。'), findsOneWidget);
+      expect(find.text('暂时无法完成请求'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
     },
   );
 
@@ -78,8 +63,11 @@ void main() {
     const ReaderRoute(bookId: 'book-local-42').go(context);
     await tester.pumpAndSettle();
 
-    expect(find.text(AppStrings.readerRouteTitle), findsOneWidget);
-    expect(find.text(AppStrings.readerRouteDescription), findsOneWidget);
+    expect(find.text('阅读会话尚未就绪'), findsOneWidget);
+    expect(
+      find.text('此路由只保存稳定书籍 ID。后续由应用用例解析数据源和状态存储后再打开阅读器。'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('ignores a pending library load after its route is disposed', (
@@ -102,7 +90,7 @@ void main() {
     loader.completeNext(_overview('stale result'));
     await tester.pump();
 
-    expect(find.text(AppStrings.readerRouteTitle), findsOneWidget);
+    expect(find.text('阅读会话尚未就绪'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -124,12 +112,12 @@ void main() {
     final Finder toggle = find.byKey(const Key('theme-mode-toggle'));
     expect(toggle, findsOneWidget);
     expect(Theme.of(tester.element(toggle)).brightness, Brightness.light);
-    expect(find.byTooltip(AppStrings.switchToDarkThemeLabel), findsOneWidget);
+    expect(find.byTooltip('切换至深色模式'), findsOneWidget);
 
     await tester.tap(toggle);
     await tester.pumpAndSettle();
     expect(Theme.of(tester.element(toggle)).brightness, Brightness.dark);
-    expect(find.byTooltip(AppStrings.switchToLightThemeLabel), findsOneWidget);
+    expect(find.byTooltip('切换至浅色模式'), findsOneWidget);
 
     await tester.tap(toggle);
     await tester.pumpAndSettle();
@@ -145,10 +133,7 @@ void main() {
     await tester.tap(find.byKey(const Key('app-nav-profile')));
     await tester.pumpAndSettle();
     expect(find.byType(ProfilePage), findsOneWidget);
-    expect(
-      find.text(AppStrings.profileSettingsManagementTitle),
-      findsOneWidget,
-    );
+    expect(find.text('设置与管理'), findsOneWidget);
 
     final Finder profileToggle = find.byKey(const Key('theme-mode-toggle'));
     expect(

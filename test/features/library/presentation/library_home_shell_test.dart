@@ -5,7 +5,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
@@ -26,21 +25,20 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(LibraryHomeTopBar),
-        matching: find.text(AppStrings.libraryTitle),
+        matching: find.text('首页'),
       ),
       findsOneWidget,
     );
-    expect(find.textContaining(AppStrings.previewModeLabel), findsNothing);
+    expect(find.textContaining('界面预览'), findsNothing);
     expect(find.byKey(const Key('continue-reading-cta')), findsOneWidget);
     expect(find.text('诡秘之主'), findsAtLeastNWidgets(2));
-    expect(find.text(AppStrings.recentUpdatesLabel), findsOneWidget);
-    expect(find.text(AppStrings.manageSourcesLabel), findsOneWidget);
+    expect(find.text('最近更新'), findsOneWidget);
+    expect(find.text('管理我的书源'), findsOneWidget);
     expect(find.byType(AppBottomNavigation), findsOneWidget);
     expect(
       find.byWidgetPredicate(
         (Widget widget) =>
-            widget is Semantics &&
-            widget.properties.label == AppStrings.readingProgressLabel(72),
+            widget is Semantics && widget.properties.label == '阅读进度 72%',
       ),
       findsOneWidget,
     );
@@ -48,13 +46,7 @@ void main() {
       find.byWidgetPredicate(
         (Widget widget) =>
             widget is Semantics &&
-            widget.properties.label ==
-                AppStrings.bookListItemLabel(
-                  title: '诡秘之主',
-                  subtitle: '第1268章 不可名状的低语',
-                  activityLabel: '1小时前',
-                  hasAttentionIndicator: true,
-                ),
+            widget.properties.label == '诡秘之主，第1268章 不可名状的低语，1小时前，有更新',
       ),
       findsOneWidget,
     );
@@ -83,7 +75,7 @@ void main() {
       await tester.tap(find.byKey(const Key('continue-reading-cta')));
       expect(continueReadingCount, 1);
 
-      await tester.tap(find.text(AppStrings.searchNavigationLabel));
+      await tester.tap(find.text('搜索'));
       await tester.pumpAndSettle();
       expect(selectedDestination, AppNavigationDestination.search);
     },
@@ -104,19 +96,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final Finder search = find.byTooltip(AppStrings.searchActionLabel);
+    final Finder search = find.byTooltip('搜索书籍');
     final Finder toggle = find.byKey(const Key('theme-mode-toggle'));
     expect(toggle, findsOneWidget);
     final double actionGap =
         tester.getRect(toggle).left - tester.getRect(search).right;
     expect(actionGap, greaterThanOrEqualTo(0));
     expect(actionGap, lessThanOrEqualTo(AppSpacing.compact));
-    expect(find.byTooltip(AppStrings.switchToDarkThemeLabel), findsOneWidget);
+    expect(find.byTooltip('切换至深色模式'), findsOneWidget);
     final SemanticsNode toggleSemantics = tester.getSemantics(toggle);
-    expect(
-      toggleSemantics.getSemanticsData().label,
-      AppStrings.switchToDarkThemeLabel,
-    );
+    expect(toggleSemantics.getSemanticsData().label, '切换至深色模式');
     expect(
       toggleSemantics.getSemanticsData().hasAction(SemanticsAction.tap),
       isTrue,
@@ -137,14 +126,14 @@ void main() {
     final Text pageTitle = tester.widget<Text>(
       find.descendant(
         of: find.byType(LibraryHomeTopBar),
-        matching: find.text(AppStrings.libraryTitle),
+        matching: find.text('首页'),
       ),
     );
     final Text continueCardTitle = tester.widget<Text>(
       find
           .descendant(
             of: find.byType(LibraryContinueReadingCard),
-            matching: find.text(AppStrings.continueReadingTitle),
+            matching: find.text('继续阅读'),
           )
           .first,
     );
@@ -156,16 +145,12 @@ void main() {
           )
           .last,
     );
-    final Text selectedSection = tester.widget<Text>(
-      find.text(AppStrings.recentUpdatesLabel),
-    );
-    final Text unselectedSection = tester.widget<Text>(
-      find.text(AppStrings.shelfLabel),
-    );
+    final Text selectedSection = tester.widget<Text>(find.text('最近更新'));
+    final Text unselectedSection = tester.widget<Text>(find.text('书架'));
     final Text continueAction = tester.widget<Text>(
       find.descendant(
         of: find.byKey(const Key('continue-reading-cta')),
-        matching: find.text(AppStrings.continueReadingLabel),
+        matching: find.text('继续阅读'),
       ),
     );
 
@@ -191,11 +176,11 @@ void main() {
 
     await tester.tap(find.byKey(const Key('continue-reading-cta')));
     await tester.pumpAndSettle();
-    expect(find.text(AppStrings.actionUnavailableMessage), findsOneWidget);
+    expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsOneWidget);
 
-    await tester.tap(find.byTooltip(AppStrings.dismissLabel));
+    await tester.tap(find.byTooltip('关闭提示'));
     await tester.pumpAndSettle();
-    expect(find.text(AppStrings.actionUnavailableMessage), findsNothing);
+    expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsNothing);
   });
 
   testWidgets(
@@ -243,13 +228,12 @@ void main() {
     expect(
       find.byWidgetPredicate(
         (Widget widget) =>
-            widget is Semantics &&
-            widget.properties.label == AppStrings.unreadUpdateLabel,
+            widget is Semantics && widget.properties.label == '有更新',
       ),
       findsAtLeastNWidgets(1),
     );
 
-    await tester.tap(find.text(AppStrings.shelfLabel));
+    await tester.tap(find.text('书架'));
     await tester.pumpAndSettle();
 
     expect(
@@ -259,8 +243,7 @@ void main() {
     expect(
       find.byWidgetPredicate(
         (Widget widget) =>
-            widget is Semantics &&
-            widget.properties.label == AppStrings.unreadUpdateLabel,
+            widget is Semantics && widget.properties.label == '有更新',
       ),
       findsNothing,
     );
@@ -329,14 +312,11 @@ void main() {
       final Finder firstCover = find.byType(LibraryBookCover).at(1);
       final Finder firstTile = find.byType(LibraryBookListItem).first;
       final Finder firstMetadataTag = find.byType(LibraryMetadataTag).first;
-      final Finder firstMoreAction = find
-          .byTooltip(AppStrings.bookMoreActionsLabel)
-          .first;
+      final Finder firstMoreAction = find.byTooltip('书籍更多操作').first;
       final Finder firstUnreadDot = find
           .byWidgetPredicate(
             (Widget widget) =>
-                widget is Semantics &&
-                widget.properties.label == AppStrings.unreadUpdateLabel,
+                widget is Semantics && widget.properties.label == '有更新',
           )
           .first;
       final Finder firstUpdatedLabel = find.text('1小时前');

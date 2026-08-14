@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
@@ -228,15 +227,12 @@ class _UnknownRoutePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text(AppStrings.routeNotFoundTitle)),
+      appBar: AppBar(title: const Text('页面不存在')),
       body: const SafeArea(
         child: Center(
           child: Padding(
             padding: EdgeInsets.all(24),
-            child: Text(
-              AppStrings.routeNotFoundDescription,
-              textAlign: TextAlign.center,
-            ),
+            child: Text('请求的页面无法打开，请返回书架后重试。', textAlign: TextAlign.center),
           ),
         ),
       ),
