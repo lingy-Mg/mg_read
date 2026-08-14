@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
-import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
+import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 
 /// A neutral, locally drawn book-cover representation with no remote assets.
 class LibraryBookCover extends StatelessWidget {

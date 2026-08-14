@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
-import 'package:mg_read/features/library/presentation/widgets/library_book_update_tile.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_continue_reading_card.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_controls.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_source_manager_card.dart';
@@ -159,7 +160,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   }
 
   Widget _buildLibraryList(BuildContext context) {
-    final List<LibraryBookUpdateViewData> books = _visibleBooks;
+    final List<LibraryBookListItemViewData> books = _visibleBooks;
     final AppThemeTokens tokens = AppThemeTokens.of(context);
 
     return Column(
@@ -193,32 +194,14 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
         if (books.isEmpty)
           _NoMatchingBooks(tokens: tokens)
         else
-          ...List<Widget>.generate(books.length, (int index) {
-            final LibraryBookUpdateViewData book = books[index];
-            return Column(
-              children: <Widget>[
-                LibraryBookUpdateTile(
-                  data: book,
-                  onOpen: () => _handleOpenBook(book),
-                  onMore: () => _handleBookMore(book),
-                ),
-                if (index < books.length - 1)
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      left:
-                          AppSpacing.listCoverWidth +
-                          AppSpacing.compact +
-                          AppSpacing.unit,
-                    ),
-                    child: Divider(
-                      height: 1,
-                      thickness: 1,
-                      color: tokens.divider,
-                    ),
-                  ),
-              ],
-            );
-          }),
+          LibraryBookList(
+            books: books,
+            onOpenBook: _handleOpenBook,
+            onBookMore: _handleBookMore,
+            presentation: _section == LibraryHomeSection.recentUpdates
+                ? LibraryBookListPresentation.recentUpdates
+                : LibraryBookListPresentation.shelf,
+          ),
       ],
     );
   }
@@ -230,12 +213,13 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     );
   }
 
-  List<LibraryBookUpdateViewData> get _visibleBooks {
-    final Iterable<LibraryBookUpdateViewData> sectionBooks = widget.data.books;
+  List<LibraryBookListItemViewData> get _visibleBooks {
+    final Iterable<LibraryBookListItemViewData> sectionBooks =
+        widget.data.books;
     return sectionBooks.where(_matchesFilter).toList(growable: false);
   }
 
-  bool _matchesFilter(LibraryBookUpdateViewData book) {
+  bool _matchesFilter(LibraryBookListItemViewData book) {
     return switch (_filter) {
       LibraryStatusFilter.all => true,
       LibraryStatusFilter.ongoing => book.status == LibraryBookStatus.ongoing,
@@ -257,8 +241,8 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     _invoke(widget.callbacks.onContinueReading);
   }
 
-  void _handleOpenBook(LibraryBookUpdateViewData book) {
-    final ValueChanged<LibraryBookUpdateViewData>? callback =
+  void _handleOpenBook(LibraryBookListItemViewData book) {
+    final ValueChanged<LibraryBookListItemViewData>? callback =
         widget.callbacks.onOpenBook;
     if (callback != null) {
       callback(book);
@@ -267,8 +251,8 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     _showUnavailableMessage();
   }
 
-  void _handleBookMore(LibraryBookUpdateViewData book) {
-    final ValueChanged<LibraryBookUpdateViewData>? callback =
+  void _handleBookMore(LibraryBookListItemViewData book) {
+    final ValueChanged<LibraryBookListItemViewData>? callback =
         widget.callbacks.onBookMore;
     if (callback != null) {
       callback(book);

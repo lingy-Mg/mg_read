@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:mg_read/features/library/domain/library_overview.dart';
+import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
 /// Immutable, presentation-only data for the library home screen.
@@ -15,9 +16,9 @@ final class LibraryHomeViewData {
   LibraryHomeViewData({
     required this.isPresentationFixture,
     required this.continueReading,
-    required Iterable<LibraryBookUpdateViewData> books,
+    required Iterable<LibraryBookListItemViewData> books,
     this.availableSourceCount,
-  }) : books = List<LibraryBookUpdateViewData>.unmodifiable(books);
+  }) : books = List<LibraryBookListItemViewData>.unmodifiable(books);
 
   /// Maps the currently narrow local overview contract without inventing
   /// reading progress, chapter metadata, source availability, or timestamps.
@@ -26,7 +27,7 @@ final class LibraryHomeViewData {
       isPresentationFixture: false,
       continueReading: null,
       books: overview.items.asMap().entries.map(
-        (entry) => LibraryBookUpdateViewData(
+        (entry) => LibraryBookListItemViewData(
           id: entry.value.id,
           title: entry.value.title,
           coverVariant: LibraryCoverVariant
@@ -43,8 +44,8 @@ final class LibraryHomeViewData {
   /// Current reading information, when a future local projection provides it.
   final LibraryContinueReadingViewData? continueReading;
 
-  /// The display-ready book rows for both update and shelf presentation.
-  final List<LibraryBookUpdateViewData> books;
+  /// The display-ready book rows for each library-list presentation.
+  final List<LibraryBookListItemViewData> books;
 
   /// Optional source count; a fixture may provide it, a local projection may
   /// leave it unknown until the source-management feature exists.
@@ -76,56 +77,8 @@ final class LibraryContinueReadingViewData {
   final LibraryCoverVariant coverVariant;
 }
 
-/// Immutable presentation model for one update or shelf row.
-@immutable
-final class LibraryBookUpdateViewData {
-  /// Creates one display-ready book row.
-  LibraryBookUpdateViewData({
-    required this.id,
-    required this.title,
-    required this.coverVariant,
-    required this.status,
-    this.chapter,
-    this.updatedLabel,
-    this.hasUnreadUpdate = false,
-    Iterable<LibraryMetadataTagViewData> tags =
-        const <LibraryMetadataTagViewData>[],
-  }) : assert(id != ''),
-       assert(title != ''),
-       tags = List<LibraryMetadataTagViewData>.unmodifiable(tags);
-
-  final String id;
-  final String title;
-  final String? chapter;
-  final String? updatedLabel;
-  final LibraryCoverVariant coverVariant;
-  final LibraryBookStatus status;
-  final bool hasUnreadUpdate;
-  final List<LibraryMetadataTagViewData> tags;
-}
-
-/// A small source or availability tag attached to a book row.
-@immutable
-final class LibraryMetadataTagViewData {
-  /// Creates one immutable source or availability tag.
-  const LibraryMetadataTagViewData({required this.label, required this.tone})
-    : assert(label != '');
-
-  final String label;
-  final LibraryMetadataTone tone;
-}
-
-/// Neutral visual variants for locally drawn cover placeholders.
-enum LibraryCoverVariant { dusk, dawn, ocean, indigo, ember }
-
-/// The display category used by the local filter controls.
-enum LibraryBookStatus { ongoing, completed, local }
-
 /// The currently active non-persistent update-list filter.
 enum LibraryStatusFilter { all, ongoing, completed, local }
-
-/// Color treatment for a metadata tag, resolved by the active theme.
-enum LibraryMetadataTone { neutral, accent, success }
 
 /// The two content sections available at the library landing page.
 enum LibraryHomeSection { recentUpdates, shelf }
@@ -148,8 +101,8 @@ final class LibraryHomeCallbacks {
   final VoidCallback? onSearch;
   final VoidCallback? onReadingHistory;
   final VoidCallback? onContinueReading;
-  final ValueChanged<LibraryBookUpdateViewData>? onOpenBook;
-  final ValueChanged<LibraryBookUpdateViewData>? onBookMore;
+  final ValueChanged<LibraryBookListItemViewData>? onOpenBook;
+  final ValueChanged<LibraryBookListItemViewData>? onBookMore;
   final VoidCallback? onManageSources;
   final ValueChanged<AppNavigationDestination>? onNavigationSelected;
 
@@ -161,8 +114,8 @@ final class LibraryHomeCallbacks {
     VoidCallback? onSearch,
     VoidCallback? onReadingHistory,
     VoidCallback? onContinueReading,
-    ValueChanged<LibraryBookUpdateViewData>? onOpenBook,
-    ValueChanged<LibraryBookUpdateViewData>? onBookMore,
+    ValueChanged<LibraryBookListItemViewData>? onOpenBook,
+    ValueChanged<LibraryBookListItemViewData>? onBookMore,
     VoidCallback? onManageSources,
     ValueChanged<AppNavigationDestination>? onNavigationSelected,
     VoidCallback? onProfileSelected,
@@ -193,15 +146,15 @@ abstract final class LibraryHomeFixtures {
       lastReadLabel: '继续阅读 · 1小时10分钟前',
       coverVariant: LibraryCoverVariant.dusk,
     ),
-    books: <LibraryBookUpdateViewData>[
-      LibraryBookUpdateViewData(
+    books: <LibraryBookListItemViewData>[
+      LibraryBookListItemViewData(
         id: 'fixture-lord-of-mysteries',
         title: '诡秘之主',
-        chapter: '第1268章 不可名状的低语',
-        updatedLabel: '1小时前',
+        subtitle: '第1268章 不可名状的低语',
+        activityLabel: '1小时前',
         coverVariant: LibraryCoverVariant.dusk,
         status: LibraryBookStatus.ongoing,
-        hasUnreadUpdate: true,
+        hasAttentionIndicator: true,
         tags: const <LibraryMetadataTagViewData>[
           LibraryMetadataTagViewData(
             label: '起点中文网',
@@ -217,14 +170,14 @@ abstract final class LibraryHomeFixtures {
           ),
         ],
       ),
-      LibraryBookUpdateViewData(
+      LibraryBookListItemViewData(
         id: 'fixture-heavenly-path',
         title: '大道朝天',
-        chapter: '第980章 天道酬勤',
-        updatedLabel: '3小时前',
+        subtitle: '第980章 天道酬勤',
+        activityLabel: '3小时前',
         coverVariant: LibraryCoverVariant.dawn,
         status: LibraryBookStatus.ongoing,
-        hasUnreadUpdate: true,
+        hasAttentionIndicator: true,
         tags: const <LibraryMetadataTagViewData>[
           LibraryMetadataTagViewData(
             label: '纵横中文网',
@@ -236,14 +189,14 @@ abstract final class LibraryHomeFixtures {
           ),
         ],
       ),
-      LibraryBookUpdateViewData(
+      LibraryBookListItemViewData(
         id: 'fixture-i-am-in-a-mental-hospital',
         title: '我在精神病院学斩神',
-        chapter: '第465章 神明的丝线',
-        updatedLabel: '昨天更新',
+        subtitle: '第465章 神明的丝线',
+        activityLabel: '昨天更新',
         coverVariant: LibraryCoverVariant.indigo,
         status: LibraryBookStatus.completed,
-        hasUnreadUpdate: true,
+        hasAttentionIndicator: true,
         tags: const <LibraryMetadataTagViewData>[
           LibraryMetadataTagViewData(
             label: '17K小说网',
@@ -255,11 +208,11 @@ abstract final class LibraryHomeFixtures {
           ),
         ],
       ),
-      LibraryBookUpdateViewData(
+      LibraryBookListItemViewData(
         id: 'fixture-beyond-the-deep-sky',
         title: '深空彼岸',
-        chapter: '第1723章 启航',
-        updatedLabel: '2天前更新',
+        subtitle: '第1723章 启航',
+        activityLabel: '2天前更新',
         coverVariant: LibraryCoverVariant.ocean,
         status: LibraryBookStatus.local,
         tags: const <LibraryMetadataTagViewData>[
@@ -273,11 +226,11 @@ abstract final class LibraryHomeFixtures {
           ),
         ],
       ),
-      LibraryBookUpdateViewData(
+      LibraryBookListItemViewData(
         id: 'fixture-circle-of-inevitability',
         title: '宿命之环',
-        chapter: '第312章 新的契约',
-        updatedLabel: '3天前更新',
+        subtitle: '第312章 新的契约',
+        activityLabel: '3天前更新',
         coverVariant: LibraryCoverVariant.ember,
         status: LibraryBookStatus.completed,
         tags: const <LibraryMetadataTagViewData>[

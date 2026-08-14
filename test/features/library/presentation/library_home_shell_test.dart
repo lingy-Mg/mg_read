@@ -9,7 +9,7 @@ import 'package:mg_read/app/app_strings.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
-import 'package:mg_read/features/library/presentation/widgets/library_book_update_tile.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_continue_reading_card.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_controls.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
@@ -49,11 +49,11 @@ void main() {
         (Widget widget) =>
             widget is Semantics &&
             widget.properties.label ==
-                AppStrings.bookUpdateLabel(
+                AppStrings.bookListItemLabel(
                   title: '诡秘之主',
-                  chapter: '第1268章 不可名状的低语',
-                  updatedLabel: '1小时前',
-                  hasUnreadUpdate: true,
+                  subtitle: '第1268章 不可名状的低语',
+                  activityLabel: '1小时前',
+                  hasAttentionIndicator: true,
                 ),
       ),
       findsOneWidget,
@@ -151,7 +151,7 @@ void main() {
     final Text updateTitle = tester.widget<Text>(
       find
           .descendant(
-            of: find.byType(LibraryBookUpdateTile).first,
+            of: find.byType(LibraryBookListItem).first,
             matching: find.text('诡秘之主'),
           )
           .last,
@@ -228,6 +228,45 @@ void main() {
     },
   );
 
+  testWidgets('uses the shared book list for both home sections', (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    await _setViewport(tester, const Size(390, 844));
+    await tester.pumpWidget(_host());
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<LibraryBookList>(find.byType(LibraryBookList)).presentation,
+      same(LibraryBookListPresentation.recentUpdates),
+    );
+    expect(
+      find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is Semantics &&
+            widget.properties.label == AppStrings.unreadUpdateLabel,
+      ),
+      findsAtLeastNWidgets(1),
+    );
+
+    await tester.tap(find.text(AppStrings.shelfLabel));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<LibraryBookList>(find.byType(LibraryBookList)).presentation,
+      same(LibraryBookListPresentation.shelf),
+    );
+    expect(
+      find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is Semantics &&
+            widget.properties.label == AppStrings.unreadUpdateLabel,
+      ),
+      findsNothing,
+    );
+    semantics.dispose();
+  });
+
   testWidgets('keeps the mobile layout centered on a wide viewport', (
     WidgetTester tester,
   ) async {
@@ -288,7 +327,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final Finder firstCover = find.byType(LibraryBookCover).at(1);
-      final Finder firstTile = find.byType(LibraryBookUpdateTile).first;
+      final Finder firstTile = find.byType(LibraryBookListItem).first;
       final Finder firstMetadataTag = find.byType(LibraryMetadataTag).first;
       final Finder firstMoreAction = find
           .byTooltip(AppStrings.bookMoreActionsLabel)
@@ -313,7 +352,7 @@ void main() {
       expect((cover.bottom - tag.bottom).abs(), lessThanOrEqualTo(4));
       expect(
         tile.height,
-        closeTo(cover.height + AppSpacing.bookUpdateVerticalPadding * 2, 0.1),
+        closeTo(cover.height + AppSpacing.bookListVerticalPadding * 2, 0.1),
       );
       expect(updatedLabel.right, lessThan(moreAction.left));
       expect(moreAction.center.dx, closeTo(unreadDot.center.dx, 1));

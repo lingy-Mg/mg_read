@@ -325,9 +325,9 @@ abstract final class AppSpacing {
   static const double readingProgressHeight = unit;
   static const double listCoverWidth = unit * 13;
   static const double listCoverHeight = unit * 17;
-  static const double bookUpdateVerticalPadding = unit + unit / 4;
+  static const double bookListVerticalPadding = unit + unit / 4;
   static const double metadataTagHeight = unit * 4;
-  static const double bookUpdateTrailingWidth = unit * 22;
+  static const double bookListTrailingWidth = unit * 22;
   static const double sourceManagerHeight = unit * 10;
   static const double sourceManagerGap = unit + unit / 2;
   static const double bottomNavigationHeight = unit * 20;

@@ -88,21 +88,21 @@ abstract final class AppStrings {
   /// Returns a label for a neutral, locally drawn cover representation.
   static String bookCoverLabel(String title) => '$title 的封面占位图';
 
-  /// Returns a concise, accessible description for a book update row.
-  static String bookUpdateLabel({
+  /// Returns a concise, accessible description for a shared book-list row.
+  static String bookListItemLabel({
     required String title,
-    String? chapter,
-    String? updatedLabel,
-    bool hasUnreadUpdate = false,
+    String? subtitle,
+    String? activityLabel,
+    bool hasAttentionIndicator = false,
   }) {
     final List<String> parts = <String>[title];
-    if (chapter != null && chapter.isNotEmpty) {
-      parts.add(chapter);
+    if (subtitle != null && subtitle.isNotEmpty) {
+      parts.add(subtitle);
     }
-    if (updatedLabel != null && updatedLabel.isNotEmpty) {
-      parts.add(updatedLabel);
+    if (activityLabel != null && activityLabel.isNotEmpty) {
+      parts.add(activityLabel);
     }
-    if (hasUnreadUpdate) {
+    if (hasAttentionIndicator) {
       parts.add(unreadUpdateLabel);
     }
     return parts.join('，');
