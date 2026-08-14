@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+coverage/
+*.log
+.DS_Store
+/packages/mgread_plugin_runtime/assets/runtime/windows-x64/node/
+/packages/mgread_plugin_runtime/assets/runtime/windows-x64/dist/

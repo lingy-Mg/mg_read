@@ -1,0 +1,416 @@
+import { access, readFile } from "node:fs/promises";
+import { isAbsolute, resolve, sep } from "node:path";
+
+import { expectedNodeVersion } from "./runtime-version.js";
+
+/** MgRead metadata schema supported by this Runtime release. */
+export const pluginPackageSchemaVersion = 1;
+
+/** MgRead plugin API major supported by this Runtime release. */
+export const pluginApiVersion = 1;
+
+/** Content kinds accepted in package.json.mgread v1. */
+export type PluginContentKind = "comic" | "novel";
+
+/** Stable failure raised while validating a standard Node plugin project. */
+export class PluginPackageError extends Error {
+  constructor(
+    readonly code:
+      | "plugin_entry_missing"
+      | "plugin_lock_invalid"
+      | "plugin_native_dependency_unsupported"
+      | "plugin_package_invalid"
+      | "plugin_package_legacy_unsupported"
+      | "plugin_package_unsupported_dependency",
+  ) {
+    super("The MgRead plugin package is invalid or unsupported.");
+    this.name = "PluginPackageError";
+  }
+}
+
+/** Validated public metadata read only from package.json. */
+export interface PluginPackageDescriptor {
+  readonly contentKinds: readonly PluginContentKind[];
+  readonly entry: string;
+  readonly id: string;
+  readonly name: string;
+  readonly pluginApi: typeof pluginApiVersion;
+  readonly projectRoot: string;
+  readonly version: string;
+}
+
+/** One production package location already solved by npm lockfile v3. */
+export interface LockedPluginDependency {
+  readonly installPath: string;
+  readonly integrity?: string;
+  readonly kind: "local" | "registry";
+  readonly optional: boolean;
+  readonly resolved: string;
+  readonly sourcePath?: string;
+  readonly version: string;
+}
+
+/** Complete validated input required to restore a plugin's node_modules. */
+export interface ValidatedPluginProject {
+  readonly dependencies: readonly LockedPluginDependency[];
+  readonly descriptor: PluginPackageDescriptor;
+  readonly lock: Readonly<Record<string, unknown>>;
+  readonly packageJson: Readonly<Record<string, unknown>>;
+}
+
+/** Reads package.json/package-lock.json and rejects every legacy/custom format. */
+export async function readPluginProject(
+  projectRoot: string,
+): Promise<ValidatedPluginProject> {
+  const normalizedRoot = resolve(projectRoot);
+  const packagePath = resolve(normalizedRoot, "package.json");
+  try {
+    await access(packagePath);
+  } catch {
+    try {
+      await access(resolve(normalizedRoot, "manifest.json"));
+      throw new PluginPackageError("plugin_package_legacy_unsupported");
+    } catch (error) {
+      if (error instanceof PluginPackageError) {
+        throw error;
+      }
+      throw new PluginPackageError("plugin_package_invalid");
+    }
+  }
+
+  const packageJson = await readJsonObject(
+    packagePath,
+    "plugin_package_invalid",
+  );
+  const descriptor = parsePackageJson(packageJson, normalizedRoot);
+  try {
+    await access(resolve(normalizedRoot, ...descriptor.entry.split("/")));
+  } catch {
+    throw new PluginPackageError("plugin_entry_missing");
+  }
+
+  const lock = await readJsonObject(
+    resolve(normalizedRoot, "package-lock.json"),
+    "plugin_lock_invalid",
+  );
+  const dependencies = parseLockfile(lock, descriptor, packageJson);
+  return Object.freeze({
+    dependencies: Object.freeze(dependencies),
+    descriptor,
+    lock: Object.freeze(lock),
+    packageJson: Object.freeze(packageJson),
+  });
+}
+
+/** Converts an integrity string to a stable filesystem-safe object identity. */
+export function dependencyObjectName(integrity: string): string {
+  const digest = parseSha512Integrity(integrity);
+  return `sha512-${digest.toString("base64url")}`;
+}
+
+/** Parses the only integrity algorithm accepted by the v1 dependency store. */
+export function parseSha512Integrity(integrity: string): Buffer {
+  const match = /^sha512-([A-Za-z0-9+/]+={0,2})$/.exec(integrity);
+  if (match === null) {
+    throw new PluginPackageError("plugin_lock_invalid");
+  }
+  const digest = Buffer.from(match[1]!, "base64");
+  if (digest.length !== 64) {
+    throw new PluginPackageError("plugin_lock_invalid");
+  }
+  return digest;
+}
+
+/** Validates one archive/lock relative path and returns normalized `/` form. */
+export function normalizePluginRelativePath(value: string): string {
+  if (
+    value.length === 0 ||
+    value.includes("\\") ||
+    value.includes("\0") ||
+    value.startsWith("/") ||
+    /^[A-Za-z]:/.test(value) ||
+    isAbsolute(value)
+  ) {
+    throw new PluginPackageError("plugin_package_invalid");
+  }
+  const parts = value.split("/");
+  if (parts.some((part) => part.length === 0 || part === "." || part === "..")) {
+    throw new PluginPackageError("plugin_package_invalid");
+  }
+  return parts.join("/");
+}
+
+/** Resolves a previously validated relative path and proves containment. */
+export function resolveInside(root: string, relativePath: string): string {
+  const normalized = normalizePluginRelativePath(relativePath);
+  const absolute = resolve(root, ...normalized.split("/"));
+  const prefix = `${resolve(root)}${sep}`;
+  if (!absolute.startsWith(prefix)) {
+    throw new PluginPackageError("plugin_package_invalid");
+  }
+  return absolute;
+}
+
+async function readJsonObject(
+  path: string,
+  code: PluginPackageError["code"],
+): Promise<Record<string, unknown>> {
+  try {
+    const value = JSON.parse(await readFile(path, "utf8")) as unknown;
+    if (!isRecord(value)) {
+      throw new Error("JSON root must be an object.");
+    }
+    return value;
+  } catch (error) {
+    if (error instanceof PluginPackageError) {
+      throw error;
+    }
+    throw new PluginPackageError(code);
+  }
+}
+
+function parsePackageJson(
+  packageJson: Record<string, unknown>,
+  projectRoot: string,
+): PluginPackageDescriptor {
+  const name = packageJson.name;
+  const version = packageJson.version;
+  const entry = packageJson.main;
+  const engines = packageJson.engines;
+  const mgread = packageJson.mgread;
+  if (
+    typeof name !== "string" ||
+    !isNpmPackageName(name) ||
+    typeof version !== "string" ||
+    !isExactSemver(version) ||
+    typeof entry !== "string" ||
+    !isRecord(engines) ||
+    !isSupportedNodeRange(engines.node) ||
+    !isRecord(mgread)
+  ) {
+    throw new PluginPackageError("plugin_package_invalid");
+  }
+  const id = mgread.id;
+  const schemaVersion = mgread.schemaVersion;
+  const api = mgread.pluginApi;
+  const contentKinds = mgread.contentKinds;
+  if (
+    schemaVersion !== pluginPackageSchemaVersion ||
+    api !== pluginApiVersion ||
+    typeof id !== "string" ||
+    !/^[a-z0-9]+(?:[.-][a-z0-9]+)+$/.test(id) ||
+    !Array.isArray(contentKinds) ||
+    contentKinds.length === 0 ||
+    contentKinds.some((kind) => kind !== "novel" && kind !== "comic") ||
+    new Set(contentKinds).size !== contentKinds.length
+  ) {
+    throw new PluginPackageError("plugin_package_invalid");
+  }
+
+  const normalizedEntry = normalizePluginRelativePath(entry);
+  if (
+    !normalizedEntry.startsWith("dist/") ||
+    !/\.(?:cjs|js|mjs)$/.test(normalizedEntry)
+  ) {
+    throw new PluginPackageError("plugin_package_invalid");
+  }
+  validateDeclaredDependencies(packageJson.dependencies);
+  validateDeclaredDependencies(packageJson.optionalDependencies);
+
+  return Object.freeze({
+    contentKinds: Object.freeze([...contentKinds] as PluginContentKind[]),
+    entry: normalizedEntry,
+    id,
+    name,
+    pluginApi: pluginApiVersion,
+    projectRoot,
+    version,
+  });
+}
+
+function parseLockfile(
+  lock: Record<string, unknown>,
+  descriptor: PluginPackageDescriptor,
+  packageJson: Record<string, unknown>,
+): LockedPluginDependency[] {
+  if (lock.lockfileVersion !== 3 || !isRecord(lock.packages)) {
+    throw new PluginPackageError("plugin_lock_invalid");
+  }
+  const root = lock.packages[""];
+  if (
+    !isRecord(root) ||
+    root.name !== descriptor.name ||
+    root.version !== descriptor.version
+  ) {
+    throw new PluginPackageError("plugin_lock_invalid");
+  }
+  assertDependencyProjectionMatches(packageJson.dependencies, root.dependencies);
+  assertDependencyProjectionMatches(
+    packageJson.optionalDependencies,
+    root.optionalDependencies,
+  );
+
+  const dependencies: LockedPluginDependency[] = [];
+  for (const [lockPath, rawPackage] of Object.entries(lock.packages)) {
+    if (lockPath === "" || !lockPath.includes("node_modules/")) {
+      continue;
+    }
+    if (!isRecord(rawPackage)) {
+      throw new PluginPackageError("plugin_lock_invalid");
+    }
+    if (rawPackage.dev === true && rawPackage.optional !== true) {
+      continue;
+    }
+    const installPath = normalizeLockInstallPath(lockPath);
+    const optional = rawPackage.optional === true;
+    const resolved = rawPackage.resolved;
+    if (typeof resolved !== "string") {
+      throw new PluginPackageError("plugin_lock_invalid");
+    }
+
+    if (rawPackage.link === true) {
+      const sourcePath = normalizeLocalDependencyPath(resolved);
+      const sourceRecord = lock.packages[sourcePath];
+      const sourceVersion = isRecord(sourceRecord) ? sourceRecord.version : undefined;
+      if (typeof sourceVersion !== "string") {
+        throw new PluginPackageError("plugin_lock_invalid");
+      }
+      dependencies.push(
+        Object.freeze({
+          installPath,
+          kind: "local",
+          optional,
+          resolved,
+          sourcePath,
+          version: sourceVersion,
+        }),
+      );
+      continue;
+    }
+
+    const version = rawPackage.version;
+    const integrity = rawPackage.integrity;
+    if (
+      typeof version !== "string" ||
+      typeof integrity !== "string" ||
+      !isRegistryTarballUrl(resolved)
+    ) {
+      throw new PluginPackageError("plugin_package_unsupported_dependency");
+    }
+    parseSha512Integrity(integrity);
+    dependencies.push(
+      Object.freeze({
+        installPath,
+        integrity,
+        kind: "registry",
+        optional,
+        resolved,
+        version,
+      }),
+    );
+  }
+  dependencies.sort((left, right) => left.installPath.localeCompare(right.installPath));
+  return dependencies;
+}
+
+function normalizeLockInstallPath(value: string): string {
+  const normalized = normalizePluginRelativePath(value);
+  const parts = normalized.split("/");
+  const nodeModulesIndexes = parts
+    .map((part, index) => (part === "node_modules" ? index : -1))
+    .filter((index) => index >= 0);
+  if (
+    nodeModulesIndexes.length === 0 ||
+    parts.at(-1) === "node_modules" ||
+    parts.some((part, index) => part.startsWith("@") && parts[index - 1] !== "node_modules")
+  ) {
+    throw new PluginPackageError("plugin_lock_invalid");
+  }
+  return normalized;
+}
+
+function normalizeLocalDependencyPath(value: string): string {
+  const withoutPrefix = value.startsWith("file:") ? value.slice(5) : value;
+  const normalized = normalizePluginRelativePath(withoutPrefix.replace(/^\.\//, ""));
+  if (!normalized.startsWith("packages/")) {
+    throw new PluginPackageError("plugin_package_unsupported_dependency");
+  }
+  return normalized;
+}
+
+function validateDeclaredDependencies(value: unknown): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!isRecord(value)) {
+    throw new PluginPackageError("plugin_package_invalid");
+  }
+  for (const [name, specifier] of Object.entries(value)) {
+    if (
+      !isNpmPackageName(name) ||
+      typeof specifier !== "string" ||
+      (!isExactSemver(specifier) && !isSupportedLocalSpecifier(specifier))
+    ) {
+      throw new PluginPackageError("plugin_package_unsupported_dependency");
+    }
+  }
+}
+
+function assertDependencyProjectionMatches(
+  packageValue: unknown,
+  lockValue: unknown,
+): void {
+  const left = packageValue === undefined ? {} : packageValue;
+  const right = lockValue === undefined ? {} : lockValue;
+  if (!isRecord(left) || !isRecord(right)) {
+    throw new PluginPackageError("plugin_lock_invalid");
+  }
+  if (JSON.stringify(sortedRecord(left)) !== JSON.stringify(sortedRecord(right))) {
+    throw new PluginPackageError("plugin_lock_invalid");
+  }
+}
+
+function sortedRecord(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function isSupportedLocalSpecifier(value: string): boolean {
+  if (!value.startsWith("file:")) {
+    return false;
+  }
+  try {
+    normalizeLocalDependencyPath(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isRegistryTarballUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.username === "" && url.password === "";
+  } catch {
+    return false;
+  }
+}
+
+function isSupportedNodeRange(value: unknown): boolean {
+  return (
+    value === expectedNodeVersion ||
+    value === ">=24 <25" ||
+    value === ">=24.0.0 <25.0.0"
+  );
+}
+
+function isExactSemver(value: string): boolean {
+  return /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(value);
+}
+
+function isNpmPackageName(value: string): boolean {
+  return /^(?:@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*|[a-z0-9][a-z0-9._-]*)$/.test(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
