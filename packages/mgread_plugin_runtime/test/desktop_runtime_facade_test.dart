@@ -56,29 +56,59 @@ void main() {
 
       final plugins = await runtime.invoke(const InstalledPluginsInvocation());
       final result = await runtime.invoke(
-        const PluginSearchInvocation(
+        const SourceSearchInvocation(
           pluginId: 'org.mgread.flutter.fixture',
-          keyword: 'Flutter',
+          query: 'Flutter',
         ),
       );
-      await _waitForDiagnosticCodes(
-        diagnostics,
-        const <String>[
-          'plugin_load_started',
-          'plugin_log_emitted',
-          'plugin_load_completed',
-          'plugin_runtime_initialized',
-          'plugin_invocation_started',
-          'plugin_invocation_completed',
-        ],
+      final discovery = await runtime.invoke(
+        const SourceDiscoverInvocation(pluginId: 'org.mgread.flutter.fixture'),
       );
+      final detail = await runtime.invoke(
+        SourceDetailInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
+          id: result.items.single.id,
+        ),
+      );
+      final chapters = await runtime.invoke(
+        SourceChaptersInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
+          id: result.items.single.id,
+        ),
+      );
+      final content = await runtime.invoke(
+        SourceContentInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
+          id: result.items.single.id,
+          chapterId: chapters.items.single.id,
+        ),
+      );
+      await _waitForDiagnosticCodes(diagnostics, const <String>[
+        'plugin_load_started',
+        'plugin_log_emitted',
+        'plugin_load_completed',
+        'plugin_runtime_initialized',
+        'plugin_invocation_started',
+        'plugin_invocation_completed',
+      ]);
 
       expect(plugins, hasLength(1));
       expect(plugins.single.id, 'org.mgread.flutter.fixture');
+      expect(plugins.single.displayName, 'Flutter 标准测试书源');
       expect(plugins.single.activeVersion, '1.0.0');
       expect(result.pluginId, 'org.mgread.flutter.fixture');
       expect(result.items.single.id, 'flutter:Flutter');
       expect(result.items.single.title, '标准 Node：Flutter');
+      expect(result.items.single.author, 'org.mgread.flutter.fixture');
+      expect(result.items.single.wordCount, 123456);
+      expect(result.items.single.coverUrl, isNull);
+      expect(result.items.single.tags, isEmpty);
+      expect(result.totalCount, 1);
+      expect(discovery.sections.first.layout, PluginDiscoveryLayout.featured);
+      expect(detail.catalogUrl, isNull);
+      expect(chapters.items.single.order, 0);
+      expect(content.contentKind, PluginContentKind.novel);
+      expect(content.text, 'Flutter 标准正文。');
     },
   );
 
@@ -262,11 +292,7 @@ Future<Directory> _stageInstalledStandardPlugin() async {
     ].join(Platform.pathSeparator),
   );
   final versionRoot = Directory(
-    <String>[
-      pluginRoot.path,
-      'versions',
-      '1.0.0',
-    ].join(Platform.pathSeparator),
+    <String>[pluginRoot.path, 'versions', '1.0.0'].join(Platform.pathSeparator),
   );
   final dist = Directory(
     <String>[versionRoot.path, 'dist'].join(Platform.pathSeparator),
@@ -284,15 +310,17 @@ Future<Directory> _stageInstalledStandardPlugin() async {
   "mgread": {
     "schemaVersion": 1,
     "id": "org.mgread.flutter.fixture",
+    "displayName": "Flutter 标准测试书源",
     "pluginApi": 1,
     "contentKinds": ["novel"]
   }
 }
 ''');
   await File(
-    <String>[versionRoot.path, 'package-lock.json'].join(
-      Platform.pathSeparator,
-    ),
+    <String>[
+      versionRoot.path,
+      'package-lock.json',
+    ].join(Platform.pathSeparator),
   ).writeAsString('''
 {
   "name": "@mgread-plugin/flutter-fixture",
@@ -315,12 +343,91 @@ export async function activate(nextContext) {
   context = nextContext;
   context.log.info('flutter_fixture_activated');
 }
-export async function search(keyword) {
-  return [{
-    id: `flutter:\${keyword}`,
-    title: `标准 Node：\${keyword}`,
+function summary(query) {
+  const id = `flutter:\${query}`;
+  return {
+    id,
+    title: `标准 Node：\${query}`,
+    contentKind: 'novel',
     author: context.plugin.id,
-  }];
+    url: null,
+    coverUrl: null,
+    description: null,
+    language: 'zh-CN',
+    status: 'ongoing',
+    access: 'free',
+    wordCount: 123456,
+    chapterCount: 1,
+    publishedAt: null,
+    updatedAt: '2026-08-15T00:00:00Z',
+    latestChapter: {
+      id: `\${id}:chapter-1`,
+      title: '第一章',
+      url: null,
+      updatedAt: '2026-08-15T00:00:00Z',
+    },
+    categories: [],
+    tags: [],
+    attributes: [],
+  };
+}
+export async function discover() {
+  return {
+    tabs: [],
+    selectedTabId: null,
+    sections: [{
+      id: 'featured',
+      title: '精选',
+      subtitle: null,
+      layout: 'featured',
+      items: [{
+        content: summary('发现'),
+        rank: null,
+        metric: null,
+        recommendation: null,
+      }],
+      categories: [],
+    }],
+    nextCursor: null,
+  };
+}
+export async function search(request) {
+  return { items: [summary(request.query)], nextCursor: null, totalCount: 1 };
+}
+export async function getDetail(request) {
+  return {
+    ...summary(request.id),
+    id: request.id,
+    aliases: [],
+    catalogUrl: null,
+  };
+}
+export async function getChapters(request) {
+  return {
+    items: [{
+      id: `\${request.id}:chapter-1`,
+      title: '第一章',
+      order: 0,
+      url: null,
+      volumeTitle: null,
+      wordCount: 12,
+      updatedAt: null,
+      isLocked: false,
+      attributes: [],
+    }],
+    nextCursor: null,
+    totalCount: 1,
+  };
+}
+export async function getContent(request) {
+  return {
+    contentKind: 'novel',
+    chapterId: request.chapterId,
+    title: '第一章',
+    updatedAt: null,
+    text: 'Flutter 标准正文。',
+    pages: [],
+  };
 }
 ''');
   await File(

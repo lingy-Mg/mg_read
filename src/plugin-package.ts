@@ -10,7 +10,7 @@ export const pluginPackageSchemaVersion = 1;
 export const pluginApiVersion = 1;
 
 /** Content kinds accepted in package.json.mgread v1. */
-export type PluginContentKind = "comic" | "novel";
+export type PluginContentKind = "manga" | "novel";
 
 /** Stable failure raised while validating a standard Node plugin project. */
 export class PluginPackageError extends Error {
@@ -31,6 +31,7 @@ export class PluginPackageError extends Error {
 /** Validated public metadata read only from package.json. */
 export interface PluginPackageDescriptor {
   readonly contentKinds: readonly PluginContentKind[];
+  readonly displayName: string;
   readonly entry: string;
   readonly id: string;
   readonly name: string;
@@ -191,6 +192,7 @@ function parsePackageJson(
     throw new PluginPackageError("plugin_package_invalid");
   }
   const id = mgread.id;
+  const displayName = mgread.displayName;
   const schemaVersion = mgread.schemaVersion;
   const api = mgread.pluginApi;
   const contentKinds = mgread.contentKinds;
@@ -199,9 +201,12 @@ function parsePackageJson(
     api !== pluginApiVersion ||
     typeof id !== "string" ||
     !/^[a-z0-9]+(?:[.-][a-z0-9]+)+$/.test(id) ||
+    typeof displayName !== "string" ||
+    displayName.trim().length === 0 ||
+    displayName.length > 128 ||
     !Array.isArray(contentKinds) ||
     contentKinds.length === 0 ||
-    contentKinds.some((kind) => kind !== "novel" && kind !== "comic") ||
+    contentKinds.some((kind) => kind !== "novel" && kind !== "manga") ||
     new Set(contentKinds).size !== contentKinds.length
   ) {
     throw new PluginPackageError("plugin_package_invalid");
@@ -219,6 +224,7 @@ function parsePackageJson(
 
   return Object.freeze({
     contentKinds: Object.freeze([...contentKinds] as PluginContentKind[]),
+    displayName,
     entry: normalizedEntry,
     id,
     name,

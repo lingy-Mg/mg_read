@@ -20,10 +20,25 @@ import {
 } from "./plugin-package.js";
 import { pluginApiVersion } from "./plugin-package.js";
 import { runtimeVersion } from "./runtime-version.js";
-
-const MAX_SEARCH_KEYWORD_CHARACTERS = 4_096;
-const MAX_SEARCH_ITEMS = 200;
-const MAX_RESULT_STRING_CHARACTERS = 8_192;
+import {
+  type PluginChapterContent,
+  type PluginChaptersRequest,
+  type PluginChaptersResult,
+  type PluginContentDetail,
+  type PluginContentOperation,
+  type PluginContentReferenceRequest,
+  type PluginContentRequest,
+  type PluginDiscoverRequest,
+  type PluginDiscoverResult,
+  type PluginSearchRequest,
+  type PluginSearchResult,
+  PluginContentValidationError,
+  validateChaptersResult,
+  validateContentResult,
+  validateDetailResult,
+  validateDiscoverResult,
+  validateSearchResult,
+} from "./plugin-content.js";
 
 export type PluginManagerEventCode =
   | "plugin_invocation_completed"
@@ -38,6 +53,7 @@ export type PluginManagerEventCode =
 export interface PluginManagerEvent {
   readonly code: PluginManagerEventCode;
   readonly durationMs?: number;
+  readonly operation?: PluginContentOperation;
   readonly outcome: "error" | "started" | "success";
   readonly pluginId?: string;
 }
@@ -64,22 +80,12 @@ export class PluginManagerError extends Error {
 export interface InstalledPluginSnapshot extends JsonObject {
   readonly activeVersion: string | null;
   readonly contentKinds: readonly string[];
+  readonly displayName: string;
   readonly enabled: boolean;
   readonly id: string;
   readonly name: string;
   readonly pendingVersion: string | null;
   readonly status: "active" | "damaged" | "disabled" | "pending";
-}
-
-export interface PluginSearchItem extends JsonObject {
-  readonly author?: string;
-  readonly id: string;
-  readonly title: string;
-}
-
-export interface PluginSearchResult extends JsonObject {
-  readonly items: readonly PluginSearchItem[];
-  readonly pluginId: string;
 }
 
 interface MgReadPluginContext {
@@ -105,9 +111,17 @@ interface MgReadPluginContext {
   };
 }
 
+type PluginContentFunction = (
+  request: JsonObject,
+) => Promise<unknown> | unknown;
+
 interface LoadedPluginModule {
-  activate?: (context: MgReadPluginContext) => Promise<void> | void;
-  search?: (keyword: string) => Promise<unknown> | unknown;
+  activate: (context: MgReadPluginContext) => Promise<void> | void;
+  discover: PluginContentFunction;
+  getChapters: PluginContentFunction;
+  getContent: PluginContentFunction;
+  getDetail: PluginContentFunction;
+  search: PluginContentFunction;
 }
 
 interface LoadedPlugin {
@@ -168,23 +182,117 @@ export class PluginManager {
     return this.#snapshots;
   }
 
-  /** Invokes a production `search(keyword)` named export with bounded projection. */
+  async discover(
+    pluginId: string,
+    request: PluginDiscoverRequest,
+    signal: AbortSignal,
+    deadlineUnixMs: string,
+    trace?: PluginRuntimeTraceContext,
+  ): Promise<PluginDiscoverResult> {
+    return this.#invokeContent(
+      pluginId,
+      "discover",
+      request,
+      signal,
+      deadlineUnixMs,
+      validateDiscoverResult,
+      trace,
+    );
+  }
+
   async search(
     pluginId: string,
-    keyword: string,
+    request: PluginSearchRequest,
     signal: AbortSignal,
     deadlineUnixMs: string,
     trace?: PluginRuntimeTraceContext,
   ): Promise<PluginSearchResult> {
+    return this.#invokeContent(
+      pluginId,
+      "search",
+      request,
+      signal,
+      deadlineUnixMs,
+      validateSearchResult,
+      trace,
+    );
+  }
+
+  async getDetail(
+    pluginId: string,
+    request: PluginContentReferenceRequest,
+    signal: AbortSignal,
+    deadlineUnixMs: string,
+    trace?: PluginRuntimeTraceContext,
+  ): Promise<
+    PluginContentDetail & {
+      readonly pluginId: string;
+      readonly sourceName: string;
+    }
+  > {
+    return this.#invokeContent(
+      pluginId,
+      "getDetail",
+      request,
+      signal,
+      deadlineUnixMs,
+      validateDetailResult,
+      trace,
+      (result) => result.id === request.id,
+    );
+  }
+
+  async getChapters(
+    pluginId: string,
+    request: PluginChaptersRequest,
+    signal: AbortSignal,
+    deadlineUnixMs: string,
+    trace?: PluginRuntimeTraceContext,
+  ): Promise<PluginChaptersResult> {
+    return this.#invokeContent(
+      pluginId,
+      "getChapters",
+      request,
+      signal,
+      deadlineUnixMs,
+      validateChaptersResult,
+      trace,
+    );
+  }
+
+  async getContent(
+    pluginId: string,
+    request: PluginContentRequest,
+    signal: AbortSignal,
+    deadlineUnixMs: string,
+    trace?: PluginRuntimeTraceContext,
+  ): Promise<PluginChapterContent> {
+    return this.#invokeContent(
+      pluginId,
+      "getContent",
+      request,
+      signal,
+      deadlineUnixMs,
+      validateContentResult,
+      trace,
+      (result) => result.chapterId === request.chapterId,
+    );
+  }
+
+  async #invokeContent<TResult extends JsonObject>(
+    pluginId: string,
+    operation: PluginContentOperation,
+    request: JsonObject,
+    signal: AbortSignal,
+    deadlineUnixMs: string,
+    validate: (pluginId: string, sourceName: string, value: unknown) => TResult,
+    trace?: PluginRuntimeTraceContext,
+    validateCorrelation?: (result: TResult) => boolean,
+  ): Promise<TResult> {
     await this.initialize();
-    if (
-      !isPluginId(pluginId) ||
-      keyword.length === 0 ||
-      keyword.length > MAX_SEARCH_KEYWORD_CHARACTERS
-    ) {
+    if (!isPluginId(pluginId)) {
       throw new PluginManagerError("invalid_request");
     }
-    this.#throwIfCancelled(signal, deadlineUnixMs);
     const plugin = this.#loaded.get(pluginId);
     if (plugin === undefined) {
       const snapshot = this.#snapshots.find((item) => item.id === pluginId);
@@ -192,30 +300,37 @@ export class PluginManager {
         snapshot?.status === "disabled" ? "plugin_disabled" : "plugin_not_found",
       );
     }
-    if (typeof plugin.module.search !== "function") {
-      throw new PluginManagerError("plugin_load_failed");
-    }
 
     const startedAt = performance.now();
     this.#events({
       code: "plugin_invocation_started",
+      operation,
       outcome: "started",
       pluginId,
     });
     try {
+      this.#throwIfCancelled(signal, deadlineUnixMs);
       const value = await this.#invocationScope.run(
         Object.freeze({
           deadlineUnixMs,
           signal,
           ...(trace === undefined ? {} : { trace }),
         }),
-        () => plugin.module.search!(keyword),
+        () => plugin.module[operation](request),
       );
       this.#throwIfCancelled(signal, deadlineUnixMs);
-      const result = validateSearchResult(pluginId, value);
+      const result = validate(
+        pluginId,
+        plugin.descriptor.displayName,
+        value,
+      );
+      if (validateCorrelation !== undefined && !validateCorrelation(result)) {
+        throw new PluginContentValidationError();
+      }
       this.#events({
         code: "plugin_invocation_completed",
         durationMs: performance.now() - startedAt,
+        operation,
         outcome: "success",
         pluginId,
       });
@@ -224,11 +339,15 @@ export class PluginManager {
       this.#events({
         code: "plugin_invocation_failed",
         durationMs: performance.now() - startedAt,
+        operation,
         outcome: "error",
         pluginId,
       });
       if (error instanceof PluginManagerError) throw error;
       this.#throwIfCancelled(signal, deadlineUnixMs);
+      if (error instanceof PluginContentValidationError) {
+        throw new PluginManagerError("plugin_invalid_response");
+      }
       throw new PluginManagerError("plugin_invalid_response");
     }
   }
@@ -419,55 +538,30 @@ export class PluginManager {
 }
 
 function normalizePluginModule(imported: Record<string, unknown>): LoadedPluginModule | undefined {
-  const defaultExport = isRecord(imported.default) ? imported.default : undefined;
-  const activate = imported.activate ?? defaultExport?.activate;
-  const search = imported.search ?? defaultExport?.search;
+  const activate = imported.activate;
+  const discover = imported.discover;
+  const search = imported.search;
+  const getDetail = imported.getDetail;
+  const getChapters = imported.getChapters;
+  const getContent = imported.getContent;
   if (
-    (activate !== undefined && typeof activate !== "function") ||
-    (search !== undefined && typeof search !== "function") ||
-    typeof search !== "function"
+    typeof activate !== "function" ||
+    typeof discover !== "function" ||
+    typeof search !== "function" ||
+    typeof getDetail !== "function" ||
+    typeof getChapters !== "function" ||
+    typeof getContent !== "function"
   ) {
     return undefined;
   }
-  const searchFunction = search as NonNullable<LoadedPluginModule["search"]>;
-  if (typeof activate === "function") {
-    return Object.freeze({
-      activate: activate as NonNullable<LoadedPluginModule["activate"]>,
-      search: searchFunction,
-    });
-  }
-  return Object.freeze({ search: searchFunction });
-}
-
-function validateSearchResult(pluginId: string, value: unknown): PluginSearchResult {
-  const rawItems = Array.isArray(value)
-    ? value
-    : isRecord(value) && Array.isArray(value.items)
-      ? value.items
-      : undefined;
-  if (rawItems === undefined || rawItems.length > MAX_SEARCH_ITEMS) {
-    throw new PluginManagerError("plugin_invalid_response");
-  }
-  const items: PluginSearchItem[] = rawItems.map((raw): PluginSearchItem => {
-    if (!isRecord(raw)) throw new PluginManagerError("plugin_invalid_response");
-    const id = raw.id;
-    const title = raw.title;
-    const author = raw.author;
-    if (
-      typeof id !== "string" ||
-      id.length === 0 ||
-      id.length > MAX_RESULT_STRING_CHARACTERS ||
-      typeof title !== "string" ||
-      title.length === 0 ||
-      title.length > MAX_RESULT_STRING_CHARACTERS ||
-      (author !== undefined &&
-        (typeof author !== "string" || author.length > MAX_RESULT_STRING_CHARACTERS))
-    ) {
-      throw new PluginManagerError("plugin_invalid_response");
-    }
-    return Object.freeze({ ...(author === undefined ? {} : { author }), id, title });
+  return Object.freeze({
+    activate: activate as LoadedPluginModule["activate"],
+    discover: discover as PluginContentFunction,
+    getChapters: getChapters as PluginContentFunction,
+    getContent: getContent as PluginContentFunction,
+    getDetail: getDetail as PluginContentFunction,
+    search: search as PluginContentFunction,
   });
-  return Object.freeze({ items: Object.freeze(items), pluginId });
 }
 
 function snapshotFrom(
@@ -481,6 +575,7 @@ function snapshotFrom(
   return Object.freeze({
     activeVersion,
     contentKinds: Object.freeze(descriptor?.contentKinds ?? []),
+    displayName: descriptor?.displayName ?? pluginId,
     enabled,
     id: pluginId,
     name: descriptor?.name ?? pluginId,
@@ -522,8 +617,4 @@ async function exists(path: string): Promise<boolean> {
 
 function isPluginId(value: string): boolean {
   return /^[a-z0-9]+(?:[.-][a-z0-9]+)+$/.test(value);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

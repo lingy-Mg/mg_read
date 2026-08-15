@@ -44,8 +44,33 @@ export type {
   PluginInstallResult,
 } from "./plugin-installer.js";
 export { PluginManager, PluginManagerError } from "./plugin-manager.js";
+export type { InstalledPluginSnapshot } from "./plugin-manager.js";
+export { PluginContentValidationError } from "./plugin-content.js";
 export type {
-  InstalledPluginSnapshot,
-  PluginSearchItem,
+  ParsedPluginRequest,
+  PluginAccessKind,
+  PluginChapterContent,
+  PluginChapterSummary,
+  PluginChaptersRequest,
+  PluginChaptersResult,
+  PluginContentAttribute,
+  PluginContentDetail,
+  PluginContentKind,
+  PluginContentOperation,
+  PluginContentReferenceRequest,
+  PluginContentRequest,
+  PluginContentStatus,
+  PluginContentSummary,
+  PluginDiscoverRequest,
+  PluginDiscoverResult,
+  PluginDiscoveryCategory,
+  PluginDiscoveryContentItem,
+  PluginDiscoveryLayout,
+  PluginDiscoveryMetric,
+  PluginDiscoverySection,
+  PluginDiscoveryTab,
+  PluginLatestChapter,
+  PluginMangaPage,
+  PluginSearchRequest,
   PluginSearchResult,
-} from "./plugin-manager.js";
+} from "./plugin-content.js";

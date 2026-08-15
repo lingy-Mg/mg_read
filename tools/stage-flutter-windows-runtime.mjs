@@ -1,6 +1,6 @@
 // @ts-check
 
-import { access, cp, mkdir, rm } from "node:fs/promises";
+import { access, copyFile, cp, mkdir, rm } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,6 +12,7 @@ const sourceNodeDirectory = resolve(
   "node-v24.16.0-win-x64",
 );
 const sourceNodeExecutable = resolve(sourceNodeDirectory, "node.exe");
+const sourceNodeLicense = resolve(sourceNodeDirectory, "LICENSE");
 const sourceDist = resolve(repositoryRoot, "dist");
 const sourceEntrypoint = resolve(sourceDist, "cli.js");
 const assetsRoot = resolve(
@@ -23,6 +24,8 @@ const assetsRoot = resolve(
   "windows-x64",
 );
 const stagedNodeDirectory = resolve(assetsRoot, "node");
+const stagedNodeExecutable = resolve(stagedNodeDirectory, "node.exe");
+const stagedNodeLicense = resolve(stagedNodeDirectory, "LICENSE");
 const stagedDist = resolve(assetsRoot, "dist");
 
 /**
@@ -56,13 +59,17 @@ async function requireReadable(candidatePath, label) {
 
 assertInsideRepository(sourceNodeDirectory);
 assertInsideRepository(sourceNodeExecutable);
+assertInsideRepository(sourceNodeLicense);
 assertInsideRepository(sourceDist);
 assertInsideRepository(sourceEntrypoint);
 assertInsideRepository(assetsRoot);
 assertInsideRepository(stagedNodeDirectory);
+assertInsideRepository(stagedNodeExecutable);
+assertInsideRepository(stagedNodeLicense);
 assertInsideRepository(stagedDist);
 await requireReadable(sourceNodeDirectory, "the exact bundled Node distribution");
 await requireReadable(sourceNodeExecutable, "the exact bundled Node executable");
+await requireReadable(sourceNodeLicense, "the bundled Node license");
 await requireReadable(sourceDist, "the compiled Runtime entrypoint");
 await requireReadable(sourceEntrypoint, "the compiled Runtime main script");
 
@@ -72,7 +79,9 @@ await requireReadable(sourceEntrypoint, "the compiled Runtime main script");
 await rm(stagedNodeDirectory, { force: true, recursive: true });
 await rm(stagedDist, { force: true, recursive: true });
 await mkdir(assetsRoot, { recursive: true });
-await cp(sourceNodeDirectory, stagedNodeDirectory, { recursive: true });
+await mkdir(stagedNodeDirectory, { recursive: true });
+await copyFile(sourceNodeExecutable, stagedNodeExecutable);
+await copyFile(sourceNodeLicense, stagedNodeLicense);
 await cp(sourceDist, stagedDist, { recursive: true });
 
 process.stdout.write("Staged the pinned Windows Runtime asset bundle.\n");

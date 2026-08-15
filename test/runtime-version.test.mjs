@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -26,4 +26,30 @@ test("loads Runtime metadata through Node 24 ESM", () => {
     "arm64-v8a",
     "x86_64",
   ]);
+});
+
+test("Flutter package declares every nested Windows Runtime asset directory", async () => {
+  const pubspec = await readFile(
+    new URL(
+      "../packages/mgread_plugin_runtime/pubspec.yaml",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const assetEntries = [...pubspec.matchAll(/^\s+- (assets\/runtime\/[^\r\n]+)$/gm)]
+    .map((match) => match[1]);
+
+  assert.deepEqual(assetEntries, [
+    "assets/runtime/windows-x64/node/",
+    "assets/runtime/windows-x64/dist/",
+    "assets/runtime/windows-x64/dist/diagnostics/",
+  ]);
+  assert.ok(!assetEntries.includes("assets/runtime/windows-x64/"));
+});
+
+test("clean build excludes the deleted legacy template fixture", async () => {
+  await assert.rejects(
+    access(new URL("../dist/template-plugin-fixture.js", import.meta.url)),
+    (error) => error?.code === "ENOENT",
+  );
 });

@@ -71,7 +71,7 @@ final class _WireConnection {
   }
 
   ///
-  /// Negotiates the fixed M1.2/M1.3 control-plane limits before a capability call.
+  /// Negotiates the fixed control-plane limits before a capability call.
   ///
   /// This verifies that the ready record, connected Core, and Flutter package
   /// agree on boot identity, Node/protocol versions, frame limits, concurrency,

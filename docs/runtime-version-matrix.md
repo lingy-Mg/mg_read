@@ -1,12 +1,13 @@
 # Runtime version matrix
 
-## M1.1 selection, M1.2 desktop spine, and M1.3 template fixture
+## Locked selection and current standard-plugin desktop slice
 
-Selection snapshot: 2026-08-14. This is a locked compatibility baseline. M1.2
-implements a narrow Windows-x64 desktop Node/Flutter communication path; M1.3
-adds a fixed blank-template Runtime round-trip verification. Neither is a claim
-that the Android lifecycle, Runtime Store, macOS package integration or product
-capability set exists.
+Selection snapshot: 2026-08-14. This is a locked compatibility baseline. The
+current implementation combines the Windows-x64 Node/Flutter communication path
+with standard package/lock installation, cold plugin loading and typed
+list/discover/search/detail/chapters/content.
+It is not a claim that Android lifecycle, the complete Runtime Store, macOS package
+integration or the full product capability set exists.
 
 | Concern | Exact selection | Decision |
 | --- | --- | --- |
@@ -16,30 +17,31 @@ capability set exists.
 | Bundled npm | 11.13.0 | The official Node 24.16.0 source includes this npm version. |
 | TypeScript | 5.9.3 | Exact JavaScript-only compiler package selected to preserve the no-native-addon dependency boundary. |
 | Node declarations | @types/node 24.13.3 | Exact Node 24 declaration package; development-only and pure type metadata. |
-| Protocol marker | 1.0 | M1.3 fixes a minimal desktop bootstrap fixture plus a test-only fixed-template contract; no business envelope schema exists. |
+| Protocol marker | 1.0 | The current fixture fixes desktop bootstrap plus the typed standard-plugin list and five `source.*.v1` content capabilities; later schemas remain capability-scoped. |
 
-## M1.2 desktop communication and M1.3 template evidence
+## Desktop communication and standard-plugin evidence
 
 On the current Windows x64 host, `packages/mgread_plugin_runtime` starts the
 checked-in `tools/node-v24.16.0-win-x64/node.exe` with an allowlisted environment,
 after creating a Runtime-owned Windows Job Object configured with
 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`. It validates stdout ready,
 `GET /health/ready`, WS `runtime.hello` and `runtime.ping`; the Flutter test also
-proves a child and a post-assignment descendant terminate on Job close. M1.3
-then explicitly enables a checked-in template through a boolean test flag and
-proves Flutter -> Runtime -> plugin -> Runtime -> Flutter, including the
-template's single Runtime-owned context call and fixed redacted logs. The Node
-tests and Flutter integration test share `protocol/fixtures/desktop-runtime-m1.3.json`;
-128 concurrent Facade calls share one child process while the control protocol fixes a
-256 in-flight cap and 1 MiB outbound queue cap. Run `npm run test:flutter-desktop`
-after the Node build. The fixture does not permit arbitrary plugin locations,
-ZIPs, host callbacks, or production template loading.
+proves a child and a post-assignment descendant terminate on Job close. The Node
+Core scans a Runtime-owned data root, cold-loads a standard package/lock project,
+and serves the typed plugin list plus discovery, search, detail, chapters and
+bounded content. Node and Flutter integration tests share
+`protocol/fixtures/standard-node-plugin-v1.json`; 128 concurrent Facade calls
+share one child process while the control protocol fixes a 256 in-flight cap and
+1 MiB outbound queue cap. The production Facade does not permit arbitrary plugin
+locations, data-root injection, host callbacks or raw wire access.
 
 This evidence deliberately excludes Android/Javet and all mobile tests, as well
 as macOS execution/signing and final application-bundle startup.
 `npm run stage:flutter-windows` now prepares the Runtime package asset layout from the
-pinned Node distribution and compiled Core, but the Facade's production locator
-is not evidence that a released Windows or macOS package has been tested.
+pinned `node.exe`, Node license, and compiled Core. A Windows Debug main-app build
+has verified recursive Flutter asset inclusion and packaged ready/hello/shutdown
+responses, but this is not evidence that a released Windows or macOS package has
+been tested.
 
 ## Independent Runtime ownership boundary
 
@@ -90,7 +92,7 @@ resolved dependency graph.
 | --- | --- | --- | --- |
 | Android | Runtime-owned Javet Node AAR 5.0.8 on one dedicated background thread | minSdk 24; arm64-v8a production; x86_64 emulator and CI | The tagged Node workflow produces arm64-v8a and x86_64 only. |
 | Android armeabi-v7a | Not selected | No | The official 5.0.8 Android Node workflow has no armeabi-v7a Node build. Do not infer support from Javet's broader Android feature table. |
-| Windows | Runtime-owned bundled official Node 24.16.0 child process | x64 | Current host passes the M1.2/M1.3 source-bundle Node, Flutter communication, and fixed-template tests; it does not prove hidden-window or final-package integration. |
+| Windows | Runtime-owned packaged official Node 24.16.0 child process | x64 | Current host passes source-tree Node/Flutter communication and standard-plugin tests; it does not prove hidden-window or final-package integration. |
 | macOS | Runtime-owned bundled official Node 24.16.0 child process | arm64 and x64 as separate app packages | Official Node release provides both architectures. No macOS runtime or signing validation has run on this Windows host. |
 
 Android's canonical 64-bit ABI spelling is arm64-v8a. It is not interchangeable
@@ -175,11 +177,12 @@ mentions it. M1.1 therefore does not call or rely on that method.
 
 ## Current-host validation boundary
 
-This repository's M1.2/M1.3 automated validation covers the exact Node/npm
-TypeScript Core, root/template npm dependency trees, desktop loopback Core
-tests, the independent blank-template test, and the Flutter↔Node desktop
-communication/template test on the current Windows host. It does not claim
-Android Javet execution, any mobile testing, Android ABI packaging, macOS
-execution, final app-bundle integration, generic plugin installation, Runtime
-Store behavior, or macOS signing/notarization until those probes are run on the
-relevant platform.
+This repository's current automated validation covers the exact Node/npm
+TypeScript Core, root npm dependency tree, desktop loopback Core, standard
+package/lock/archive/installer/manager tests, and Flutter↔Node plugin list plus
+the five content capabilities on the
+current Windows host. The independent sibling template is verified separately
+and its artifact is installed through the same Runtime path. This does not claim
+Android Javet execution, mobile testing, Android ABI packaging, macOS execution,
+final app-bundle integration, complete Runtime Store behavior, or macOS
+signing/notarization until those probes run on the relevant platform.

@@ -104,7 +104,7 @@ const severityOrder = Object.freeze([
 ] satisfies readonly RuntimeDiagnosticSeverity[]);
 
 /**
- * Fast, bounded Runtime event manager. SQL and JSON encoding happen only from
+ * Fast, bounded Runtime event manager. TXT encoding and append happen only from
  * scheduled writer drains; emit never waits for persistence.
  */
 export class RuntimeDiagnosticsManager {

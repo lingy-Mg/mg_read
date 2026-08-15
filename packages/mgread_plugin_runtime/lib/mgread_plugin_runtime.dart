@@ -15,7 +15,9 @@ import 'package:flutter/foundation.dart';
 import 'src/windows_job_object.dart';
 
 part 'src/desktop_supervisor.dart';
+part 'src/plugin_content_invocation.dart';
 part 'src/plugin_invocation.dart';
 part 'src/plugin_runtime.dart';
+part 'src/runtime_diagnostics_invocation.dart';
 part 'src/runtime_error.dart';
 part 'src/wire_connection.dart';

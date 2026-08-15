@@ -13,7 +13,7 @@ template fixture and its special CLI/RPC switch are obsolete and must not return
 The current implementation may use a Runtime-owned temporary data root in tests.
 Production data-root resolution remains inside this package/platform adapter;
 `mg_read` must never provide a path, database, Cookie, callback, HostPort or raw
-transport object. Windows source-bundle evidence does not claim Android/Javet,
+transport object. Windows source-tree evidence does not claim Android/Javet,
 macOS signing/package integration or final application packaging acceptance.
 
 The cross-repository architecture contract is maintained with the sibling MgRead
@@ -40,6 +40,14 @@ This repository may not silently change an accepted MgRead ADR.
   library/metadata, reader state, bookmarks, downloads, cache, files, Cookie,
   plugin KV, settings and diagnostics. It must resolve and manage its own data
   root and Store; it must never receive a Flutter database path or connection.
+- Runtime diagnostics follow sibling ADR-0016: only bounded UTF-8 `.txt`
+  segments may be persisted. Default/key-only logging must never read, clone,
+  serialize, buffer, or write HTTP bodies, HTML, JSON documents, novel content,
+  or arbitrary object dumps. Those details are eligible only while an explicit,
+  time/byte/allowlist-bounded debug session is active; they first enter a
+  bounded memory spool, and only `persistToText` may create a detail TXT.
+  Diagnostics must not create SQLite/WAL/binary indexes, and pressure or writer
+  failure must never fail plugin/HTTP business work.
 - The main application may only call the versioned Runtime Facade. Do not add a
   HostPort, host.* RPC, callback, database/path, Cookie/file service or platform
   channel injection point as a shortcut. Implement required capabilities here
@@ -77,9 +85,10 @@ This repository may not silently change an accepted MgRead ADR.
 ## Repository layout
 
 - src/ contains only Runtime Core code that is in scope for the current milestone.
-- protocol/ contains version metadata, the M1.3 desktop fixture, and the
-  explicit template-fixture contract; business schemas and broader
-  cross-platform fixtures arrive later.
+- protocol/ contains compatibility metadata and the current standard-plugin
+  desktop fixture, including the versioned rich content schema exercised by
+  discover/search/detail/chapters/content. Broader cross-platform fixtures
+  arrive with their platform capabilities.
 - probes/ contains executable dependency audits and documented future platform
   probes. It is not production platform code.
 - test/ contains small Node ESM tests. Do not make build output the source of

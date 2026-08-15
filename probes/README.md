@@ -1,13 +1,13 @@
 # Probe plan
 
-M1.2/M1.3 已在当前 Windows x64 主机执行 desktop Node Core 与 Flutter Facade 的最小通信
-探针：固定 Node 子进程、`127.0.0.1:0`、stdout ready、HTTP readiness、WS hello/ping、并发
-Facade 调用共享一个子进程和有序关闭，以及固定空白模板的 Runtime -> plugin -> Runtime
-往返、反向内部服务与脱敏日志。证据命令是 `npm test`、`npm run check:no-native-addons` 与
-`npm run test:flutter-desktop`；具体范围见
+当前 Windows x64 主机已执行 desktop Node Core、标准插件和 Flutter Facade 探针：固定 Node
+子进程、`127.0.0.1:0`、stdout ready、HTTP readiness、WS hello/ping/list/search、并发 Facade
+调用共享一个子进程、有序关闭，以及标准 package/lock 安装、冷激活与依赖复用。证据命令是
+`npm test`、`npm run check:no-native-addons`、`npm run test:flutter-desktop` 与
+`npm run benchmark:plugin`；具体范围见
 [`docs/desktop-runtime-bridge.md`](../docs/desktop-runtime-bridge.md)。
 
-这不是 Android/Javet、macOS bundle、通用插件系统、Runtime Store、资源流或业务协议验收。
+这不是 Android/Javet、macOS package、完整 Runtime Store、资源流或全部业务协议验收。
 移动端在本轮明确不测试。以下剩余探针仍全部由本仓库拥有；`mg_read` 不得实现替代 bridge
 或提供 callback 让它们工作。
 

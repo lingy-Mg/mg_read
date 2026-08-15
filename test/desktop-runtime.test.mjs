@@ -23,14 +23,18 @@ const desktopFixture = JSON.parse(
 
 async function createRuntime(t, { installFixture = false } = {}) {
   const dataRoot = await mkdtemp(join(tmpdir(), "mgread-runtime-node-test-"));
-  t.after(() => rm(dataRoot, { force: true, recursive: true }));
   if (installFixture) {
     const installer = new PluginInstaller(dataRoot);
     await installer.installProject(
       fileURLToPath(new URL("./fixtures/standard-plugin/", import.meta.url)),
     );
   }
-  return new DesktopRuntime({ dataRoot });
+  const runtime = new DesktopRuntime({ dataRoot });
+  t.after(async () => {
+    await runtime.stop();
+    await rm(dataRoot, { force: true, recursive: true });
+  });
+  return runtime;
 }
 
 /** Builds a fresh, deadline-bounded client-direction request for one test. */
@@ -259,6 +263,7 @@ test("desktop Runtime loads and searches an installed standard Node plugin", asy
   assert.equal(plugins.type, "response");
   assert.equal(plugins.result.length, 1);
   assert.equal(plugins.result[0].id, desktopFixture.plugin.id);
+  assert.equal(plugins.result[0].displayName, desktopFixture.plugin.displayName);
   assert.equal(plugins.result[0].activeVersion, desktopFixture.plugin.version);
 
   const response = await sendRequest(
@@ -266,10 +271,12 @@ test("desktop Runtime loads and searches an installed standard Node plugin", asy
     makeRequest(
       ready,
       "c:plugin-search",
-      "plugin.search.v1",
+      "source.search.v1",
       {
         params: {
-          keyword: desktopFixture.plugin.searchKeyword,
+          query: desktopFixture.plugin.searchKeyword,
+          cursor: null,
+          pageSize: 20,
           pluginId: desktopFixture.plugin.id,
         },
       },
@@ -278,6 +285,66 @@ test("desktop Runtime loads and searches an installed standard Node plugin", asy
   assert.equal(response.type, "response");
   assert.equal(response.result.pluginId, desktopFixture.plugin.id);
   assert.equal(response.result.items[0].title, desktopFixture.plugin.searchTitle);
+  assert.equal(response.result.items[0].wordCount, desktopFixture.plugin.wordCount);
+  assert.equal(response.result.items[0].coverUrl, null);
+  assert.equal(
+    response.result.items[0].latestChapter.title,
+    desktopFixture.plugin.latestChapterTitle,
+  );
+
+  const discovery = await sendRequest(
+    socket,
+    makeRequest(ready, "c:plugin-discover", "source.discover.v1", {
+      params: {
+        pluginId: desktopFixture.plugin.id,
+        target: null,
+        cursor: null,
+        pageSize: 20,
+      },
+    }),
+  );
+  assert.equal(discovery.type, "response");
+  assert.equal(discovery.result.sections[0].layout, "featured");
+
+  const detail = await sendRequest(
+    socket,
+    makeRequest(ready, "c:plugin-detail", "source.getDetail.v1", {
+      params: {
+        pluginId: desktopFixture.plugin.id,
+        id: response.result.items[0].id,
+      },
+    }),
+  );
+  assert.equal(detail.type, "response");
+  assert.equal(detail.result.catalogUrl, null);
+
+  const chapters = await sendRequest(
+    socket,
+    makeRequest(ready, "c:plugin-chapters", "source.getChapters.v1", {
+      params: {
+        pluginId: desktopFixture.plugin.id,
+        id: response.result.items[0].id,
+        cursor: null,
+        pageSize: 20,
+      },
+    }),
+  );
+  assert.equal(chapters.type, "response");
+  assert.equal(chapters.result.items[0].order, 0);
+
+  const content = await sendRequest(
+    socket,
+    makeRequest(ready, "c:plugin-content", "source.getContent.v1", {
+      params: {
+        pluginId: desktopFixture.plugin.id,
+        id: response.result.items[0].id,
+        chapterId: chapters.result.items[0].id,
+      },
+    }),
+  );
+  assert.equal(content.type, "response");
+  assert.equal(content.result.contentKind, "novel");
+  assert.deepEqual(content.result.pages, []);
 });
 
 test("desktop Runtime multiplexes bounded concurrent control requests on one socket", async (t) => {

@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -10,6 +18,7 @@ import {
   validateRuntimeDiagnosticCapturePolicy,
 } from "../dist/diagnostics/contracts.js";
 import { RuntimeDiagnosticsManager } from "../dist/diagnostics/manager.js";
+import { RuntimeDiagnosticsHttpClient } from "../dist/diagnostics/http.js";
 import {
   containsForbiddenRuntimeDiagnosticText,
   serializeRuntimeDiagnosticTree,
@@ -104,7 +113,7 @@ test("attachment spool applies fixed pressure without blocking its producer", as
   assert.equal(spool.queueHighWater, 40);
 });
 
-test("Runtime service persists paged events and safe structured attachments", async (t) => {
+test("Runtime service persists paged events and safe structured detail TXT", async (t) => {
   const dataRoot = await mkdtemp(join(tmpdir(), "mgread-runtime-diagnostics-"));
   const service = await RuntimeDiagnosticsService.open({
     dataRoot,
@@ -162,8 +171,221 @@ test("Runtime service persists paged events and safe structured attachments", as
   await service.close();
   const files = await listFiles(dataRoot);
   for (const file of files) {
+    assert.equal(file.endsWith(".txt"), true, `non-TXT diagnostics file: ${file}`);
+    assert.equal(/(?:sqlite|\.db|-wal|-shm)/i.test(file), false, file);
     const bytes = await readFile(file);
     assert.equal(bytes.includes(Buffer.from(canary)), false, `canary leaked into ${file}`);
+  }
+});
+
+test("memory-only debug details never create a detail file", async (t) => {
+  const dataRoot = await mkdtemp(join(tmpdir(), "mgread-runtime-memory-details-"));
+  const service = await RuntimeDiagnosticsService.open({
+    dataRoot,
+    manager: { maxBatchDelayMillis: 10_000 },
+  });
+  t.after(async () => {
+    await service.close();
+    await rm(dataRoot, { force: true, recursive: true });
+  });
+  const session = await service.startCapture({
+    components: new Set(["runtime.http"]),
+    detailStorage: "memoryOnly",
+    durationMillis: 60_000,
+    maxStoredBytes: 64 * 1024,
+    origins: new Set(),
+    payloadKind: "contentPayload",
+  });
+  const event = service.manager.emit({ definition: runtimeDiagnosticEvents.http });
+  assert.ok(event);
+  const capture = service.beginTextAttachment({
+    eventId: event.eventId,
+    formatId: "text",
+    kind: "http.response.body",
+    mediaType: "text/html",
+    privacyClass: "content",
+  });
+  assert.ok(capture);
+  const body = Buffer.from("<html>only-live-debug</html>");
+  assert.equal(capture.offer(body), true);
+  capture.finish();
+  const descriptor = await capture.result;
+  const statistics = await service.getStorageStatistics();
+  assert.equal(statistics.detailTextBytes, 0);
+  assert.ok(statistics.memoryDetailBytes > 0);
+  const chunk = await service.readAttachment(descriptor.attachmentId, {
+    length: 64 * 1024,
+    offset: 0,
+  });
+  assert.equal(Buffer.from(chunk.bytesBase64, "base64").toString("utf8"), body.toString("utf8"));
+
+  await service.stopCapture(session.sessionId);
+  assert.equal((await service.getStorageStatistics()).memoryDetailBytes, 0);
+  await assert.rejects(
+    service.readAttachment(descriptor.attachmentId, { length: 1024, offset: 0 }),
+    /does not exist/,
+  );
+  const files = await listFiles(dataRoot);
+  assert.equal(files.some((file) => file.includes(`${join("diagnostics", "details")}`)), false);
+});
+
+test("explicit debug capture preserves and redacts large minified JSON", async (t) => {
+  const dataRoot = await mkdtemp(join(tmpdir(), "mgread-runtime-large-json-"));
+  const service = await RuntimeDiagnosticsService.open({
+    dataRoot,
+    manager: { maxBatchDelayMillis: 10_000 },
+  });
+  t.after(async () => {
+    await service.close();
+    await rm(dataRoot, { force: true, recursive: true });
+  });
+  const session = await service.startCapture({
+    components: new Set(["runtime.http"]),
+    detailStorage: "persistToText",
+    durationMillis: 60_000,
+    maxStoredBytes: 1024 * 1024,
+    origins: new Set(),
+    payloadKind: "contentPayload",
+  });
+  const event = service.manager.emit({ definition: runtimeDiagnosticEvents.http });
+  assert.ok(event);
+  const capture = service.beginTextAttachment(
+    {
+      charset: "utf-8",
+      eventId: event.eventId,
+      formatId: "json",
+      kind: "http.response.body",
+      mediaType: "application/json",
+      privacyClass: "content",
+    },
+    512 * 1024,
+  );
+  assert.ok(capture);
+  const canary = "MGREAD_LARGE_JSON_SECRET_2f97";
+  const body = JSON.stringify({
+    password: canary,
+    payload: "x".repeat(256 * 1024),
+    tail: "large-json-kept",
+  });
+  assert.equal(capture.offer(Buffer.from(body)), true);
+  capture.finish();
+  const descriptor = await capture.result;
+  assert.equal(descriptor.captureState, "captured");
+
+  const chunks = [];
+  for (let offset = 0; offset < descriptor.storedByteLength; offset += 64 * 1024) {
+    const chunk = await service.readAttachment(descriptor.attachmentId, {
+      length: 64 * 1024,
+      offset,
+    });
+    chunks.push(Buffer.from(chunk.bytesBase64, "base64"));
+  }
+  const decoded = Buffer.concat(chunks).toString("utf8");
+  assert.equal(decoded.includes(canary), false);
+  assert.equal(decoded.includes("large-json-kept"), true);
+  assert.equal(decoded.includes("<redacted-long-line>"), false);
+  await service.stopCapture(session.sessionId);
+});
+
+test("default HTTP diagnostics never clones or persists a response body", async (t) => {
+  const dataRoot = await mkdtemp(join(tmpdir(), "mgread-runtime-metadata-http-"));
+  const service = await RuntimeDiagnosticsService.open({
+    dataRoot,
+    manager: { maxBatchDelayMillis: 10_000 },
+  });
+  const originalFetch = globalThis.fetch;
+  let cloneCalls = 0;
+  const response = new Response("DEFAULT_BODY_CANARY_c247", {
+    headers: { "content-type": "text/html" },
+    status: 200,
+  });
+  Object.defineProperty(response, "clone", {
+    value() {
+      cloneCalls += 1;
+      return new Response("DEFAULT_BODY_CANARY_c247", {
+        headers: { "content-type": "text/html" },
+        status: 200,
+      });
+    },
+  });
+  globalThis.fetch = async () => response;
+  t.after(async () => {
+    globalThis.fetch = originalFetch;
+    await service.close();
+    await rm(dataRoot, { force: true, recursive: true });
+  });
+
+  const client = new RuntimeDiagnosticsHttpClient(service);
+  const result = await client.fetch("https://example.test/chapter?id=secret", {});
+  assert.equal(result, response);
+  assert.equal(cloneCalls, 0);
+  await service.manager.flush();
+  for (const file of await listFiles(dataRoot)) {
+    const text = await readFile(file, "utf8");
+    assert.equal(text.includes("DEFAULT_BODY_CANARY_c247"), false, file);
+  }
+});
+
+test("startup truncates a partial TXT line and recovers the interrupted run", async (t) => {
+  const dataRoot = await mkdtemp(join(tmpdir(), "mgread-runtime-tail-recovery-"));
+  const first = await RuntimeDiagnosticsService.open({
+    dataRoot,
+    manager: { maxBatchDelayMillis: 10_000 },
+  });
+  first.manager.emit({ definition: runtimeDiagnosticEvents.lifecycle });
+  await first.manager.flush();
+  const priorSession = (await first.listSessions()).items[0];
+  assert.ok(priorSession);
+  const eventFiles = (await listFiles(join(dataRoot, "diagnostics", "events")))
+    .filter((file) => file.endsWith(".txt"));
+  assert.ok(eventFiles.length > 0);
+  const tail = eventFiles.at(-1);
+  assert.ok(tail);
+  await appendFile(tail, '{"partial":true}', "utf8");
+
+  const second = await RuntimeDiagnosticsService.open({
+    dataRoot,
+    manager: { maxBatchDelayMillis: 10_000 },
+  });
+  t.after(async () => {
+    await second.close();
+    await first.close();
+    await rm(dataRoot, { force: true, recursive: true });
+  });
+  const sessions = await second.listSessions();
+  const recovered = sessions.items.find(
+    (session) => session.sessionId === priorSession.sessionId,
+  );
+  assert.equal(recovered?.state, "ended");
+  for (const file of eventFiles) {
+    const text = await readFile(file, "utf8");
+    assert.equal(text.includes('"partial":true'), false);
+    assert.equal(text.endsWith("\n"), true);
+  }
+});
+
+test("legacy diagnostics databases are removed before TXT startup", async (t) => {
+  const dataRoot = await mkdtemp(join(tmpdir(), "mgread-runtime-legacy-"));
+  const diagnosticsRoot = join(dataRoot, "diagnostics");
+  const objectsRoot = join(diagnosticsRoot, "objects");
+  await mkdir(objectsRoot, { recursive: true });
+  const legacy = [
+    join(diagnosticsRoot, "index.sqlite"),
+    join(diagnosticsRoot, "index.sqlite-wal"),
+    join(diagnosticsRoot, "index.sqlite-shm"),
+    join(objectsRoot, "legacy.bin"),
+  ];
+  await Promise.all(legacy.map((file) => writeFile(file, "legacy")));
+  const service = await RuntimeDiagnosticsService.open({ dataRoot });
+  t.after(async () => {
+    await service.close();
+    await rm(dataRoot, { force: true, recursive: true });
+  });
+  for (const file of legacy) {
+    await assert.rejects(readFile(file));
+  }
+  for (const file of await listFiles(diagnosticsRoot)) {
+    assert.equal(file.endsWith(".txt"), true, file);
   }
 });
 

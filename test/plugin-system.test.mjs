@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
-  copyFile,
   cp,
   mkdtemp,
   mkdir,
@@ -23,8 +22,17 @@ import {
   PluginArchiveError,
   PluginInstaller,
   PluginManager,
+  PluginPackageError,
   readPluginProject,
 } from "../dist/index.js";
+import {
+  PluginContentValidationError,
+  validateChaptersResult,
+  validateContentResult,
+  validateDetailResult,
+  validateDiscoverResult,
+  validateSearchResult,
+} from "../dist/plugin-content.js";
 
 const fixtureRoot = fileURLToPath(
   new URL("./fixtures/standard-plugin/", import.meta.url),
@@ -51,6 +59,20 @@ test("standard project uses package.json metadata and npm lockfile only", async 
       version: "1.0.0",
     },
   ]);
+});
+
+test("legacy manifest-only projects are rejected without a compatibility path", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-legacy-plugin-");
+  await writeFile(
+    join(root, "manifest.json"),
+    '{"id":"org.example.legacy","entry":"dist/index.mjs"}\n',
+  );
+  await assert.rejects(
+    readPluginProject(root),
+    (error) =>
+      error instanceof PluginPackageError &&
+      error.code === "plugin_package_legacy_unsupported",
+  );
 });
 
 test("mgplugin is deterministic, excludes node_modules and rejects traversal", async (t) => {
@@ -127,12 +149,45 @@ test("installer hardlinks local packages and manager cold-activates named export
 
   const search = await manager.search(
     "org.mgread.runtime.fixture",
-    "测试",
+    { query: "测试", cursor: null, pageSize: 20 },
     new AbortController().signal,
     String(Date.now() + 5_000),
   );
   assert.equal(search.items[0].title, "标准插件：测试");
   assert.equal(search.items[0].author, "org.mgread.runtime.fixture");
+  assert.equal(search.items[0].wordCount, 123456);
+  assert.equal(search.items[0].coverUrl, null);
+  assert.deepEqual(search.items[0].tags, []);
+  assert.equal(search.nextCursor, null);
+  assert.equal(search.sourceName, "Runtime 标准测试书源");
+  const discovery = await manager.discover(
+    "org.mgread.runtime.fixture",
+    { target: null, cursor: null, pageSize: 20 },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
+  );
+  const detail = await manager.getDetail(
+    "org.mgread.runtime.fixture",
+    { id: search.items[0].id },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
+  );
+  const chapters = await manager.getChapters(
+    "org.mgread.runtime.fixture",
+    { id: search.items[0].id, cursor: null, pageSize: 20 },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
+  );
+  const content = await manager.getContent(
+    "org.mgread.runtime.fixture",
+    { id: search.items[0].id, chapterId: chapters.items[0].id },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
+  );
+  assert.equal(discovery.sections[0].items[0].content.title, "标准插件：发现");
+  assert.equal(detail.catalogUrl, null);
+  assert.equal(chapters.items[0].order, 0);
+  assert.equal(content.text, "标准插件正文。");
   assert.deepEqual(
     JSON.parse(
       await readFile(
@@ -152,7 +207,187 @@ test("installer hardlinks local packages and manager cold-activates named export
   );
   assert.equal(
     managerEvents.filter((event) => event.code === "plugin_invocation_completed").length,
-    1,
+    5,
+  );
+});
+
+test("content v1 requires explicit null keys and preserves zero and empty arrays", () => {
+  const summary = {
+    id: "book:null-semantics",
+    title: "空值语义",
+    contentKind: "novel",
+    author: null,
+    url: null,
+    coverUrl: null,
+    description: null,
+    language: null,
+    status: "unknown",
+    access: "unknown",
+    wordCount: 0,
+    chapterCount: 0,
+    publishedAt: null,
+    updatedAt: null,
+    latestChapter: null,
+    categories: [],
+    tags: [],
+    attributes: [],
+  };
+  const result = validateSearchResult("org.example.nulls", "空值书源", {
+    items: [summary],
+    nextCursor: null,
+    totalCount: 0,
+  });
+  assert.equal(result.items[0].author, null);
+  assert.equal(result.items[0].wordCount, 0);
+  assert.deepEqual(result.items[0].categories, []);
+
+  const { author: _author, ...missingAuthor } = summary;
+  assert.throws(
+    () =>
+      validateSearchResult("org.example.nulls", "空值书源", {
+        items: [missingAuthor],
+        nextCursor: null,
+        totalCount: 0,
+      }),
+    PluginContentValidationError,
+  );
+  assert.throws(
+    () =>
+      validateSearchResult("org.example.nulls", "空值书源", {
+        items: [{ ...summary, author: "" }],
+        nextCursor: null,
+        totalCount: 0,
+      }),
+    PluginContentValidationError,
+  );
+  assert.throws(
+    () =>
+      validateSearchResult("org.example.nulls", "空值书源", {
+        items: [{ ...summary, tags: null }],
+        nextCursor: null,
+        totalCount: 0,
+      }),
+    PluginContentValidationError,
+  );
+
+  const discovery = validateDiscoverResult("org.example.nulls", "空值书源", {
+    tabs: [],
+    selectedTabId: null,
+    sections: [],
+    nextCursor: null,
+  });
+  assert.deepEqual(discovery.tabs, []);
+  assert.equal(discovery.selectedTabId, null);
+
+  const detail = validateDetailResult("org.example.nulls", "空值书源", {
+    ...summary,
+    aliases: [],
+    catalogUrl: null,
+  });
+  assert.deepEqual(detail.aliases, []);
+  assert.equal(detail.catalogUrl, null);
+
+  const chapters = validateChaptersResult("org.example.nulls", "空值书源", {
+    items: [
+      {
+        id: "chapter:zero",
+        title: "零字章节",
+        order: 0,
+        url: null,
+        volumeTitle: null,
+        wordCount: 0,
+        updatedAt: null,
+        isLocked: null,
+        attributes: [],
+      },
+    ],
+    nextCursor: null,
+    totalCount: 0,
+  });
+  assert.equal(chapters.items[0].wordCount, 0);
+  assert.equal(chapters.items[0].isLocked, null);
+  assert.deepEqual(chapters.items[0].attributes, []);
+
+  const novelContent = validateContentResult("org.example.nulls", "空值书源", {
+    contentKind: "novel",
+    chapterId: "chapter:zero",
+    title: null,
+    updatedAt: null,
+    text: "",
+    pages: [],
+  });
+  assert.equal(novelContent.title, null);
+  assert.equal(novelContent.text, "");
+  assert.deepEqual(novelContent.pages, []);
+
+  const mangaContent = validateContentResult("org.example.nulls", "空值书源", {
+    contentKind: "manga",
+    chapterId: "chapter:manga",
+    title: null,
+    updatedAt: null,
+    text: null,
+    pages: [
+      {
+        id: "page:0",
+        index: 0,
+        url: "https://example.invalid/page/0",
+        mimeType: null,
+        width: null,
+        height: null,
+      },
+    ],
+  });
+  assert.equal(mangaContent.text, null);
+  assert.equal(mangaContent.pages[0].mimeType, null);
+  assert.equal(mangaContent.pages[0].width, null);
+
+  assert.throws(
+    () =>
+      validateSearchResult("org.example.nulls", "空值书源", {
+        items: [
+          {
+            ...summary,
+            latestChapter: {
+              title: "缺少固定 nullable 键",
+              url: null,
+              updatedAt: null,
+            },
+          },
+        ],
+        nextCursor: null,
+        totalCount: 0,
+      }),
+    PluginContentValidationError,
+  );
+  assert.throws(
+    () =>
+      validateSearchResult("org.example.nulls", "空值书源", {
+        items: [summary, summary],
+        nextCursor: null,
+        totalCount: 2,
+      }),
+    PluginContentValidationError,
+  );
+  assert.throws(
+    () =>
+      validateContentResult("org.example.nulls", "空值书源", {
+        contentKind: "manga",
+        chapterId: "chapter:manga",
+        title: null,
+        updatedAt: null,
+        text: null,
+        pages: [
+          {
+            id: "page:wrong-index",
+            index: 1,
+            url: "https://example.invalid/page/1",
+            mimeType: null,
+            width: null,
+            height: null,
+          },
+        ],
+      }),
+    PluginContentValidationError,
   );
 });
 
@@ -205,6 +440,39 @@ test("registry dependencies are verified, shared once, copied on hardlink failur
   assert.equal(downloads, 1);
   assert.ok(first.hardlinkedFiles >= 4);
   assert.ok(second.hardlinkedFiles >= 4);
+  assert.equal(
+    await readFile(
+      join(
+        dataRoot,
+        "plugins",
+        "org.example.registry.a",
+        "versions",
+        "1.0.0",
+        "node_modules",
+        "fixture-dependency",
+        "data",
+        "rules.json",
+      ),
+      "utf8",
+    ),
+    '{"enabled":true}\n',
+  );
+  assert.deepEqual(
+    await readFile(
+      join(
+        dataRoot,
+        "plugins",
+        "org.example.registry.a",
+        "versions",
+        "1.0.0",
+        "node_modules",
+        "fixture-dependency",
+        "wasm",
+        "parser.wasm",
+      ),
+    ),
+    Buffer.from([0, 97, 115, 109]),
+  );
   assert.equal((await installer.collectUnusedDependencies()).removedObjects, 0);
 
   await installer.scheduleUninstall("org.example.registry.a");
@@ -275,18 +543,150 @@ test("integrity failure produces one install terminal and leaves no version", as
   );
 });
 
-async function createRegistryPlugin(root, id, name, integrity) {
+test("a legacy default-export pending update fails and keeps current active", async (t) => {
+  const dataRoot = await temporaryDirectory(t, "mgread-plugin-rollback-");
+  const installer = new PluginInstaller(dataRoot);
+  await installer.installProject(fixtureRoot);
+  await new PluginManager(dataRoot).initialize();
+
+  const updateRoot = join(dataRoot, "update-project");
+  await cp(fixtureRoot, updateRoot, { recursive: true });
+  const packageJson = JSON.parse(
+    await readFile(join(updateRoot, "package.json"), "utf8"),
+  );
+  const lockfile = JSON.parse(
+    await readFile(join(updateRoot, "package-lock.json"), "utf8"),
+  );
+  packageJson.version = "2.0.0";
+  lockfile.version = "2.0.0";
+  lockfile.packages[""].version = "2.0.0";
+  await Promise.all([
+    writeFile(
+      join(updateRoot, "package.json"),
+      `${JSON.stringify(packageJson, null, 2)}\n`,
+    ),
+    writeFile(
+      join(updateRoot, "package-lock.json"),
+      `${JSON.stringify(lockfile, null, 2)}\n`,
+    ),
+    writeFile(
+      join(updateRoot, "dist", "index.mjs"),
+      "export default { async search(keyword) { return [{ id: keyword, title: keyword }]; } };\n",
+    ),
+  ]);
+  await installer.installProject(updateRoot);
+
+  const events = [];
+  const manager = new PluginManager(dataRoot, {
+    events: (event) => events.push(event),
+  });
+  await manager.initialize();
+  const plugin = (await manager.listInstalled())[0];
+  assert.equal(plugin.status, "active");
+  assert.equal(plugin.activeVersion, "1.0.0");
+  assert.equal(plugin.pendingVersion, null);
+  const pluginRoot = join(dataRoot, "plugins", "org.mgread.runtime.fixture");
+  assert.equal((await readFile(join(pluginRoot, "current"), "utf8")).trim(), "1.0.0");
+  assert.equal((await readFile(join(pluginRoot, "failed"), "utf8")).trim(), "2.0.0");
+  assert.equal(
+    events.filter((event) => event.code === "plugin_load_failed").length,
+    1,
+  );
+  assert.equal(
+    events.filter((event) => event.code === "plugin_load_completed").length,
+    1,
+  );
+});
+
+test("plugin calls give cancel and timeout exactly one terminal event", async (t) => {
+  const dataRoot = await temporaryDirectory(t, "mgread-plugin-cancel-");
+  const project = await createDelayedPlugin(join(dataRoot, "project"));
+  await new PluginInstaller(dataRoot).installProject(project);
+  const events = [];
+  const manager = new PluginManager(dataRoot, {
+    events: (event) => events.push(event),
+  });
+  await manager.initialize();
+
+  const controller = new AbortController();
+  const cancelled = manager.search(
+    "org.example.delayed",
+    { query: "cancel", cursor: null, pageSize: 20 },
+    controller.signal,
+    String(Date.now() + 5_000),
+  );
+  setTimeout(() => controller.abort(), 5);
+  await assert.rejects(cancelled, (error) => error?.code === "cancelled");
+
+  await assert.rejects(
+    manager.search(
+      "org.example.delayed",
+      { query: "timeout", cursor: null, pageSize: 20 },
+      new AbortController().signal,
+      String(Date.now() - 1),
+    ),
+    (error) => error?.code === "timeout",
+  );
+  assert.equal(
+    events.filter((event) => event.code === "plugin_invocation_started").length,
+    2,
+  );
+  assert.equal(
+    events.filter((event) => event.code === "plugin_invocation_failed").length,
+    2,
+  );
+  assert.equal(
+    events.filter((event) => event.code === "plugin_invocation_completed").length,
+    0,
+  );
+});
+
+test("an unavailable optional dependency is skipped without changing install success", async (t) => {
+  const dataRoot = await temporaryDirectory(t, "mgread-plugin-optional-");
+  const integrity = `sha512-${Buffer.alloc(64).toString("base64")}`;
+  const project = await createRegistryPlugin(
+    join(dataRoot, "project"),
+    "org.example.optional",
+    "@mgread-plugin/optional",
+    integrity,
+    { optional: true },
+  );
+  const store = new DependencyStore(dataRoot, {
+    fetchPackage: async () => ({
+      ok: false,
+      status: 503,
+      async arrayBuffer() {
+        return new ArrayBuffer(0);
+      },
+    }),
+  });
+  const result = await new PluginInstaller(dataRoot, {
+    dependencyStore: store,
+  }).installProject(project);
+  assert.equal(result.skippedOptionalDependencies, 1);
+  assert.equal(result.pendingActivation, true);
+});
+
+async function createRegistryPlugin(
+  root,
+  id,
+  name,
+  integrity,
+  { optional = false } = {},
+) {
   await mkdir(join(root, "dist"), { recursive: true });
+  const dependencyField = optional ? "optionalDependencies" : "dependencies";
   const packageJson = {
     name,
     version: "1.0.0",
     type: "module",
     main: "dist/index.mjs",
     engines: { node: ">=24 <25" },
-    dependencies: { "fixture-dependency": "1.0.0" },
+    [dependencyField]: { "fixture-dependency": "1.0.0" },
     mgread: {
       schemaVersion: 1,
       id,
+      displayName: `Fixture ${id}`,
       pluginApi: 1,
       contentKinds: ["novel"],
     },
@@ -300,13 +700,14 @@ async function createRegistryPlugin(root, id, name, integrity) {
       "": {
         name,
         version: "1.0.0",
-        dependencies: { "fixture-dependency": "1.0.0" },
+        [dependencyField]: { "fixture-dependency": "1.0.0" },
       },
       "node_modules/fixture-dependency": {
         version: "1.0.0",
         resolved:
           "https://registry.npmjs.org/fixture-dependency/-/fixture-dependency-1.0.0.tgz",
         integrity,
+        ...(optional ? { optional: true } : {}),
       },
     },
   };
@@ -316,6 +717,57 @@ async function createRegistryPlugin(root, id, name, integrity) {
     writeFile(
       join(root, "dist", "index.mjs"),
       "export async function search(keyword) { return [{ id: keyword, title: keyword }]; }\n",
+    ),
+  ]);
+  return root;
+}
+
+async function createDelayedPlugin(root) {
+  await mkdir(join(root, "dist"), { recursive: true });
+  const packageJson = {
+    name: "@mgread-plugin/delayed",
+    version: "1.0.0",
+    type: "module",
+    main: "dist/index.mjs",
+    engines: { node: ">=24 <25" },
+    mgread: {
+      schemaVersion: 1,
+      id: "org.example.delayed",
+      displayName: "Delayed fixture",
+      pluginApi: 1,
+      contentKinds: ["novel"],
+    },
+  };
+  const lock = {
+    name: packageJson.name,
+    version: packageJson.version,
+    lockfileVersion: 3,
+    requires: true,
+    packages: {
+      "": {
+        name: packageJson.name,
+        version: packageJson.version,
+      },
+    },
+  };
+  await Promise.all([
+    writeFile(
+      join(root, "package.json"),
+      `${JSON.stringify(packageJson, null, 2)}\n`,
+    ),
+    writeFile(
+      join(root, "package-lock.json"),
+      `${JSON.stringify(lock, null, 2)}\n`,
+    ),
+    writeFile(
+      join(root, "dist", "index.mjs"),
+      `export function activate() {}
+export function discover() { return { tabs: [], selectedTabId: null, sections: [], nextCursor: null }; }
+export async function search() { await new Promise((resolve) => setTimeout(resolve, 40)); return { items: [], nextCursor: null, totalCount: 0 }; }
+export function getDetail() { throw new Error("unused"); }
+export function getChapters() { throw new Error("unused"); }
+export function getContent() { throw new Error("unused"); }
+`,
     ),
   ]);
   return root;

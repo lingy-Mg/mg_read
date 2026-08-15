@@ -34,6 +34,8 @@ export type RuntimeDiagnosticPayloadKind =
   | "contentPayload"
   | "restrictedRaw";
 
+export type RuntimeDiagnosticDetailStorage = "memoryOnly" | "persistToText";
+
 export type RuntimeDiagnosticPrivacyClass =
   | "public"
   | "internal"
@@ -278,6 +280,7 @@ export interface RuntimeDiagnosticAttachmentDescriptor {
 
 export interface RuntimeDiagnosticCapturePolicy {
   readonly components: ReadonlySet<string>;
+  readonly detailStorage?: RuntimeDiagnosticDetailStorage;
   readonly durationMillis: number;
   readonly maxStoredBytes: number;
   readonly origins: ReadonlySet<string>;
@@ -400,6 +403,13 @@ export function validateRuntimeDiagnosticCapturePolicy(
   }
   if (policy.payloadKind === "restrictedRaw") {
     throw new Error("restrictedRaw capture is unsupported until the D5 security decision.");
+  }
+  if (
+    policy.detailStorage !== undefined &&
+    policy.detailStorage !== "memoryOnly" &&
+    policy.detailStorage !== "persistToText"
+  ) {
+    throw new TypeError("Unknown Runtime diagnostic detail storage mode.");
   }
   if (
     policy.payloadKind !== "metadataOnly" &&

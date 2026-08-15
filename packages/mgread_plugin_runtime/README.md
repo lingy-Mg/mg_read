@@ -1,33 +1,69 @@
 # mgread_plugin_runtime
 
-`mgread_plugin_runtime` 是由本仓库交付的 Flutter-facing Runtime Facade，不是主应用的
-Runtime client 实现。应用只调用：
+`mgread_plugin_runtime` 是 MgRead 唯一 Flutter-facing Runtime Facade。应用调用强类型
+invocation，不会获得 Node executable、PID、端口、ready、bootId、HTTP URL、WebSocket 或
+wire envelope。
 
 ```dart
-await runtime.invoke(const RuntimePingInvocation());
+final runtime = PluginRuntime();
+final ping = await runtime.invoke(const RuntimePingInvocation());
+final plugins = await runtime.invoke(const InstalledPluginsInvocation());
+final results = await runtime.invoke(
+  const SourceSearchInvocation(
+    pluginId: 'org.example.source',
+    query: '示例',
+  ),
+);
+final discovery = await runtime.invoke(
+  const SourceDiscoverInvocation(pluginId: 'org.example.source'),
+);
+final detail = await runtime.invoke(
+  const SourceDetailInvocation(
+    pluginId: 'org.example.source',
+    id: 'book-1',
+  ),
+);
+
+final events = await runtime.invoke(
+  const RuntimeDiagnosticsEventsInvocation(),
+);
+final capture = await runtime.invoke(
+  RuntimeDiagnosticsCaptureStartInvocation(
+    payloadKind: RuntimeDiagnosticPayloadKind.contentPayload,
+    detailStorage: RuntimeDiagnosticDetailStorage.memoryOnly,
+    duration: const Duration(minutes: 15),
+    maxStoredBytes: 8 * 1024 * 1024,
+    components: const <String>{'runtime.http', 'runtime.plugin'},
+  ),
+);
+await runtime.invoke(RuntimeDiagnosticsCaptureStopInvocation(capture.sessionId));
 ```
 
-首次调用由包内 Supervisor 自动启动并验证 Runtime；应用不会获得 Node executable、PID、
-端口、ready、bootId、HTTP URL、WebSocket 或 wire envelope。
+内容类型不猜默认值：协议中每个 nullable 键都必须存在并编码为具体值或 JSON `null`，集合固定
+为数组且无值时返回 `[]`，非负计数中的 `0` 保留为真实零值。缺键、`undefined`、空白字符串、
+错误枚举或把数组写成 `null` 都会被 Runtime/Facade 拒绝为稳定格式错误。
 
-Windows 上，Supervisor 自己创建带 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 的 Job Object 后
-才纳管 Node child。应用退出或 Runtime 关闭会由 Windows 内核清理已加入 Job 的 Node 进程树。
-Facade 通过 `PluginRuntimeException.code`、异常的 `diagnostics` 和 `runtime.diagnostics` 投影
-有界、脱敏的启动/生命周期原因；它们不是 raw stderr、进程控制或 wire API。
+诊断 Facade 只返回稳定 ID、cursor、受控字段和最大 32 KiB 的 range chunk。默认 Runtime 日志
+仅写关键元数据 TXT；上述显式 capture 才允许详情进入有界内存，只有
+`persistToText` 会创建独立详情 TXT。
 
-生产 `PluginRuntime()` 当前只交付 M1.2 的桌面通信验证 capability
-`RuntimePingInvocation`。M1.3 额外有标记为 test-only 的
-`TemplatePluginRoundTripInvocation`：它仅在本仓库
-`desktopForTesting(enableTemplatePluginFixture: true)` 测试中加载固定空白模板，并验证
-插件到 Runtime 的内部服务往返和脱敏日志。它不是通用插件入口，不能注入路径、package、
-callback、数据库、Cookie、文件或平台服务。仍没有通用插件系统、书源、Runtime Store、
-阅读器数据源、资源流或 Android/Javet 实现。`desktopForTesting` 和 `debug*` 成员仅供本仓库
-测试使用，绝不能作为主项目依赖注入接口。
+首次调用由 package 内 Supervisor 自动启动固定 Runtime；生产构造器不接受数据根、Node 路径
+或主项目 callback。Windows Supervisor 先创建带
+`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 的 Runtime-owned Job Object，再启动并纳管 Node child。
+Facade 将失败投影为稳定 `PluginRuntimeException.code` 和有界诊断，不转发 raw stderr、路径、
+插件文本或进程控制。
 
-发布 Windows Flutter 包前只由本仓库执行 `npm run stage:flutter-windows`。它把固定 Node
-distribution 和编译 Core 放到本 package 的 `assets/runtime/windows-x64/`，生产 Facade 从最终
-Flutter 资产目录解析它们；主项目不传入任何路径。
+`PluginRuntime.desktopForTesting` 与 `debug*` 成员只用于本仓库 testkit。测试专用临时 data
+root 用来预置标准插件版本，不是生产依赖注入接口，也不能由主项目调用。
 
-完整边界、测试命令和未验证平台见
-[桌面 Runtime 通信闭环](../../docs/desktop-runtime-bridge.md) 和
-[空白插件模板](../../docs/plugin-template.md)。
+发布 Windows package 前由 Runtime 仓库执行 `npm run stage:flutter-windows`，把固定
+`node.exe`、Node LICENSE 和编译 Core 放入本 package 的递归资产布局。Android Javet、macOS 和最终应用包内
+运行需要各自验收，desktop 源码测试不替代这些门禁。
+
+源码环境的 Facade 冷启动/热调用基线可从本目录运行：
+
+```powershell
+flutter test test/facade_performance_test.dart --reporter expanded
+```
+
+完整边界见[桌面 Runtime 与标准插件闭环](../../docs/desktop-runtime-bridge.md)。

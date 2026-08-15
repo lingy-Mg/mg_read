@@ -4,6 +4,7 @@ dist/
 .flutter-plugins
 .flutter-plugins-dependencies
 coverage/
+/packages/mgread_plugin_runtime/build/
 *.log
 .DS_Store
 /packages/mgread_plugin_runtime/assets/runtime/windows-x64/node/

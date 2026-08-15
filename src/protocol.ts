@@ -18,6 +18,8 @@ export interface JsonObject {
  */
 export type RuntimeErrorCode =
   | "cancelled"
+  | "capture_mode_unsupported"
+  | "diagnostics_unavailable"
   | "internal"
   | "invalid_request"
   | "method_not_found"

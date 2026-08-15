@@ -12,6 +12,7 @@
   "mgread": {
     "schemaVersion": 1,
     "id": "org.mgread.runtime.fixture",
+    "displayName": "Runtime 标准测试书源",
     "pluginApi": 1,
     "contentKinds": [
       "novel"

@@ -11,7 +11,8 @@
   },
   "scripts": {
     "check:toolchain": "node probes/assert-toolchain.mjs",
-    "build": "npm run check:toolchain && tsc -p tsconfig.json",
+    "build": "npm run check:toolchain && node tools/clean-dist.mjs && tsc -p tsconfig.json",
+    "benchmark:plugin": "npm run build && node --expose-gc probes/plugin-performance.mjs",
     "stage:flutter-windows": "npm run build && node tools/stage-flutter-windows-runtime.mjs",
     "typecheck": "npm run check:toolchain && tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",

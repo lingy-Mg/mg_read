@@ -10,7 +10,11 @@ import type { RuntimeDiagnosticsService } from "./service.js";
 
 /** Runtime-owned `ctx.http` implementation with metadata-first diagnostics. */
 export class RuntimeDiagnosticsHttpClient implements PluginRuntimeHttpClient {
-  constructor(readonly #diagnostics: RuntimeDiagnosticsService) {}
+  readonly #diagnostics: RuntimeDiagnosticsService;
+
+  constructor(diagnostics: RuntimeDiagnosticsService) {
+    this.#diagnostics = diagnostics;
+  }
 
   async fetch(
     input: string | URL,
@@ -44,6 +48,7 @@ export class RuntimeDiagnosticsHttpClient implements PluginRuntimeHttpClient {
       const mimeType = projectMimeType(contentType);
       const declaredBytes = parseContentLength(response.headers.get("content-length"));
       const responseHeaderNames = safeHeaderNames(response.headers);
+      const charset = projectCharset(contentType);
       this.#diagnostics.manager.emit({
         attributes: () => runtimeDiagnosticValue.object({
           ...(declaredBytes === undefined
@@ -66,7 +71,7 @@ export class RuntimeDiagnosticsHttpClient implements PluginRuntimeHttpClient {
           ? undefined
           : this.#diagnostics.beginTextAttachment({
               captureOrigin: projection.origin,
-              charset: projectCharset(contentType),
+              ...(charset === undefined ? {} : { charset }),
               eventId: span.startEventId,
               formatId: mimeType === "application/json" ? "json" : "text",
               kind: "http.response.body",
@@ -78,7 +83,7 @@ export class RuntimeDiagnosticsHttpClient implements PluginRuntimeHttpClient {
         span.end("success", {
           attributes: () => httpTerminalAttributes({
             bodyMicros: 0,
-            declaredBytes,
+            ...(declaredBytes === undefined ? {} : { declaredBytes }),
             downloadBytes: 0,
             method,
             origin: projection.origin,
@@ -100,7 +105,7 @@ export class RuntimeDiagnosticsHttpClient implements PluginRuntimeHttpClient {
         span.end("success", {
           attributes: () => httpTerminalAttributes({
             bodyMicros: 0,
-            declaredBytes,
+            ...(declaredBytes === undefined ? {} : { declaredBytes }),
             downloadBytes: 0,
             method,
             origin: projection.origin,
@@ -117,7 +122,7 @@ export class RuntimeDiagnosticsHttpClient implements PluginRuntimeHttpClient {
         capture,
         span,
         {
-          declaredBytes,
+          ...(declaredBytes === undefined ? {} : { declaredBytes }),
           headersAt,
           method,
           origin: projection.origin,
@@ -164,7 +169,9 @@ export class RuntimeDiagnosticsHttpClient implements PluginRuntimeHttpClient {
     if (!isTextualMediaType(mimeType)) return;
     const capture = this.#diagnostics.beginTextAttachment({
       captureOrigin: origin,
-      charset: projectCharset(contentType),
+      ...(projectCharset(contentType) === undefined
+        ? {}
+        : { charset: projectCharset(contentType)! }),
       eventId: span.startEventId,
       formatId: mimeType === "application/json" ? "json" : "text",
       kind: "http.request.body",
@@ -271,7 +278,9 @@ function safeProjection(input: string | URL): { readonly origin: string; readonl
   }
 }
 
-function safeHeaderNames(headers: HeadersInit | Headers | undefined): readonly string[] {
+function safeHeaderNames(
+  headers: RequestInit["headers"] | Headers | undefined,
+): readonly string[] {
   if (headers === undefined) return Object.freeze([]);
   try {
     const names = [...new Headers(headers).keys()]

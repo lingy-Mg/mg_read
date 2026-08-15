@@ -30,7 +30,7 @@ import {
   type RuntimeDiagnosticsMaintenanceResult,
   type RuntimeDiagnosticsRetentionPolicy,
   type RuntimeDiagnosticsStorageStatistics,
-} from "./sqlite-store.js";
+} from "./text-store.js";
 
 export type RuntimeDiagnosticsErrorCode =
   | "attachment_capture_failed"
@@ -85,7 +85,7 @@ export const defaultRuntimeDiagnosticsRetentionPolicy = Object.freeze({
   regularEventMaxAgeMicros: 3 * 24 * 60 * 60 * 1_000_000,
 } satisfies RuntimeDiagnosticsRetentionPolicy);
 
-/** Process-scoped owner of the Runtime diagnostic manager, index and objects. */
+/** Process-scoped owner of Runtime event TXT and explicit debug details. */
 export class RuntimeDiagnosticsService {
   readonly #clock: () => Date;
   readonly #manager: RuntimeDiagnosticsManager;
@@ -326,6 +326,34 @@ export class RuntimeDiagnosticsService {
     }
   }
 
+  async deleteSession(
+    sessionId: string,
+  ): Promise<RuntimeDiagnosticsMaintenanceResult> {
+    this.#ensureOpen();
+    const span = this.#manager.startSpan({ definition: runtimeDiagnosticEvents.retention });
+    try {
+      await this.#manager.flush();
+      const result = await this.#store.deleteSession(sessionId);
+      span.end("success", {
+        attributes: () => runtimeDiagnosticValue.object({
+          deletedEvents: runtimeDiagnosticValue.int64(BigInt(result.deletedEvents)),
+          deletedObjects: runtimeDiagnosticValue.int64(BigInt(result.deletedObjects)),
+          deletedSessions: runtimeDiagnosticValue.int64(BigInt(result.deletedSessions)),
+          reclaimedBytes: runtimeDiagnosticValue.int64(BigInt(result.reclaimedBytes)),
+        }),
+      });
+      return result;
+    } catch (error) {
+      span.end("error", {
+        attributes: () => runtimeDiagnosticValue.object({
+          errorCode: runtimeDiagnosticValue.string("session_delete_failed"),
+        }),
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   async getStorageStatistics(): Promise<RuntimeDiagnosticsStorageStatistics> {
     this.#ensureOpen();
     await this.#manager.flush();
@@ -442,7 +470,7 @@ export class RuntimeDiagnosticsService {
     this.#ensureOpen();
     const span = this.#manager.startSpan({ definition: runtimeDiagnosticEvents.diagnosticsQuery });
     try {
-      await yieldToEventLoop();
+      await this.#manager.flush();
       const page = query();
       span.end("success", {
         attributes: () => runtimeDiagnosticValue.object({
@@ -470,7 +498,7 @@ export class RuntimeDiagnosticsService {
   }
 }
 
-/** Producer-facing handle; offer never waits on filesystem or SQLite. */
+/** Producer-facing handle; offer never waits on filesystem persistence. */
 export class RuntimeDiagnosticAttachmentCapture {
   readonly #spool: RuntimeDiagnosticAttachmentSpool;
   readonly result: Promise<RuntimeDiagnosticAttachmentDescriptor>;

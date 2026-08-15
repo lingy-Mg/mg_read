@@ -4,6 +4,7 @@ export type RuntimeDiagnosticLevel = "error" | "info" | "warning";
 /** Fixed lifecycle diagnostic identifiers emitted by the desktop executable. */
 export type RuntimeLifecycleDiagnosticCode =
   | "runtime_loopback_bind_failed"
+  | "runtime_diagnostics_store_failed"
   | "runtime_node_version_incompatible"
   | "runtime_shutdown_failed"
   | "runtime_start_failed"
