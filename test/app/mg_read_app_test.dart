@@ -15,7 +15,7 @@ import 'package:mg_read/features/library/application/library_page_controller.dar
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/library/domain/library_overview.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
-import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
+import 'package:mg_read/features/discovery/presentation/discovery_destination_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 
@@ -237,7 +237,7 @@ void main() {
 
       await tester.tap(find.byKey(const Key('app-nav-discover')));
       await tester.pumpAndSettle();
-      expect(find.byType(DiscoveryPage), findsOneWidget);
+      expect(find.byType(DiscoveryDestinationPage), findsOneWidget);
       _expectBrightnessForCurrentPage(tester, Brightness.light);
 
       await tester.tap(find.byKey(const Key('app-nav-profile')));
@@ -256,7 +256,7 @@ void _expectBrightnessForCurrentPage(
     (Widget widget) =>
         widget is LibraryPage ||
         widget is SearchPage ||
-        widget is DiscoveryPage ||
+        widget is DiscoveryDestinationPage ||
         widget is ProfilePage,
   );
   expect(page, findsOneWidget);

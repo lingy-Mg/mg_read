@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/diagnostics/presentation/diagnostics_viewer_page.dart';
-import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
+import 'package:mg_read/features/discovery/presentation/discovery_destination_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
@@ -149,10 +149,10 @@ class LibraryRoute extends GoRouteData with $LibraryRoute {
   }
 }
 
-/// The reserved search route reached from the shared bottom navigation.
+/// Runtime-backed source search reached from the shared bottom navigation.
 @TypedGoRoute<SearchRoute>(path: '/search')
 class SearchRoute extends GoRouteData with $SearchRoute {
-  /// Creates the blank search destination.
+  /// Creates the source search destination.
   const SearchRoute();
 
   @override
@@ -168,7 +168,7 @@ class SearchRoute extends GoRouteData with $SearchRoute {
   }
 }
 
-/// The discovery preview route reached from the shared bottom navigation.
+/// Runtime-backed discovery route reached from the shared bottom navigation.
 @TypedGoRoute<DiscoveryRoute>(path: '/discover')
 class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
   /// Creates the mobile-first discovery destination.
@@ -178,7 +178,7 @@ class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
   Page<void> buildPage(BuildContext context, GoRouterState state) {
     return _topLevelDestinationPage(
       state: state,
-      child: DiscoveryPage(
+      child: DiscoveryDestinationPage(
         onDestinationRequested: (AppNavigationDestination destination) {
           _goToDestination(context, destination);
         },

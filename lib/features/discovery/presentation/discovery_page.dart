@@ -7,21 +7,29 @@ import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_c
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 
-/// Mobile-first discovery preview owned by the host presentation layer.
+/// Mobile-first discovery presentation owned by the host UI layer.
 ///
-/// Its fixture is deliberately not a real source projection. Future Runtime
-/// results can replace [data] without giving this widget storage or transport
-/// responsibilities.
+/// This fixed composition is retained only for presentation and golden tests.
+/// Production plugin sections use `RuntimeDiscoveryPage`, which renders every
+/// returned section without mapping them into these preview-only slots.
 class DiscoveryPage extends StatefulWidget {
   const DiscoveryPage({
     required this.onDestinationRequested,
     this.data,
+    this.onSourcePressed,
+    this.onTabSelected,
+    this.onCategorySelected,
+    this.onRefreshRequested,
     this.onToggleTheme,
     super.key,
   });
 
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
   final DiscoveryPageViewData? data;
+  final VoidCallback? onSourcePressed;
+  final ValueChanged<String>? onTabSelected;
+  final ValueChanged<String>? onCategorySelected;
+  final VoidCallback? onRefreshRequested;
   final VoidCallback? onToggleTheme;
 
   @override
@@ -65,12 +73,20 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                   ),
                   children: <Widget>[
                     DiscoveryTopBar(
-                      onSourcePressed: _showUnavailableMessage,
-                      onSearchPressed: _showUnavailableMessage,
+                      sourceName: _data.sourceName,
+                      onSourcePressed:
+                          widget.onSourcePressed ?? _showUnavailableMessage,
+                      onSearchPressed: () => _handleDestinationSelected(
+                        AppNavigationDestination.search,
+                      ),
                       onToggleTheme: () => _handleToggleTheme(context),
                     ),
                     const SizedBox(height: 10),
-                    DiscoveryTabs(onUnavailable: _showUnavailableMessage),
+                    DiscoveryTabs(
+                      tabs: _data.tabs,
+                      selectedTabId: _data.selectedTabId,
+                      onSelected: _handleTabSelected,
+                    ),
                     const SizedBox(height: 10),
                     DiscoveryHeroCard(
                       data: _data.hero,
@@ -78,15 +94,16 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                     ),
                     const SizedBox(height: AppSpacing.regular),
                     DiscoverySectionHeader(
-                      title: '人气推荐',
+                      title: _data.popularTitle,
                       actionLabel: '换一换',
                       actionIcon: Icons.refresh_rounded,
-                      onAction: _showUnavailableMessage,
+                      onAction:
+                          widget.onRefreshRequested ?? _showUnavailableMessage,
                     ),
                     const SizedBox(height: 7),
                     DiscoveryPopularBooks(
                       books: _data.popularBooks,
-                      onBookPressed: _showUnavailableMessage,
+                      onBookPressed: (_) => _showUnavailableMessage(),
                     ),
                     const SizedBox(height: AppSpacing.regular),
                     SizedBox(
@@ -96,15 +113,19 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                         children: <Widget>[
                           Expanded(
                             child: DiscoveryRankingBoard(
+                              title: _data.rankingTitle,
                               books: _data.rankedBooks,
-                              onPressed: _showUnavailableMessage,
+                              onPressed: (_) => _showUnavailableMessage(),
+                              onMorePressed: _showUnavailableMessage,
                             ),
                           ),
                           const SizedBox(width: AppSpacing.discoveryBoardGap),
                           Expanded(
                             child: DiscoveryCategoryBoard(
+                              title: _data.categoryTitle,
                               categories: _data.categories,
                               onPressed: _showUnavailableMessage,
+                              onCategoryPressed: _handleCategorySelected,
                             ),
                           ),
                         ],
@@ -112,7 +133,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                     ),
                     const SizedBox(height: AppSpacing.compact),
                     DiscoverySectionHeader(
-                      title: '编辑精选',
+                      title: _data.editorsChoiceTitle,
                       actionLabel: '更多',
                       actionIcon: Icons.chevron_right_rounded,
                       onAction: _showUnavailableMessage,
@@ -152,11 +173,26 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
     if (destination == AppNavigationDestination.discover) {
       return;
     }
-    if (destination == AppNavigationDestination.search) {
+    widget.onDestinationRequested(destination);
+  }
+
+  void _handleTabSelected(DiscoveryTabViewData tab) {
+    final callback = widget.onTabSelected;
+    if (callback == null) {
       _showUnavailableMessage();
       return;
     }
-    widget.onDestinationRequested(destination);
+    callback(tab.target);
+  }
+
+  void _handleCategorySelected(DiscoveryCategoryViewData category) {
+    final callback = widget.onCategorySelected;
+    final target = category.target;
+    if (callback == null || target == null) {
+      _showUnavailableMessage();
+      return;
+    }
+    callback(target);
   }
 
   void _showUnavailableMessage() {
@@ -169,12 +205,14 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
 
 class DiscoveryTopBar extends StatelessWidget {
   const DiscoveryTopBar({
+    required this.sourceName,
     required this.onSourcePressed,
     required this.onSearchPressed,
     required this.onToggleTheme,
     super.key,
   });
 
+  final String sourceName;
   final VoidCallback onSourcePressed;
   final VoidCallback onSearchPressed;
   final VoidCallback onToggleTheme;
@@ -209,7 +247,10 @@ class DiscoveryTopBar extends StatelessWidget {
           ),
           Align(
             alignment: const Alignment(0.08, 0),
-            child: DiscoverySourceSelector(onPressed: onSourcePressed),
+            child: DiscoverySourceSelector(
+              sourceName: sourceName,
+              onPressed: onSourcePressed,
+            ),
           ),
           Positioned(
             right: 0,
@@ -245,8 +286,13 @@ class DiscoveryTopBar extends StatelessWidget {
 }
 
 class DiscoverySourceSelector extends StatelessWidget {
-  const DiscoverySourceSelector({required this.onPressed, super.key});
+  const DiscoverySourceSelector({
+    required this.sourceName,
+    required this.onPressed,
+    super.key,
+  });
 
+  final String sourceName;
   final VoidCallback onPressed;
 
   @override
@@ -277,7 +323,9 @@ class DiscoverySourceSelector extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
                   Text(
-                    '起点中文网',
+                    sourceName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: theme.colorScheme.onSurface,
                       fontSize: 12.5,
@@ -341,18 +389,16 @@ class DiscoveryTopAction extends StatelessWidget {
 }
 
 class DiscoveryTabs extends StatelessWidget {
-  const DiscoveryTabs({required this.onUnavailable, super.key});
+  const DiscoveryTabs({
+    required this.tabs,
+    required this.selectedTabId,
+    required this.onSelected,
+    super.key,
+  });
 
-  final VoidCallback onUnavailable;
-
-  static const List<String> _labels = <String>[
-    '推荐',
-    '男生',
-    '女生',
-    '排行',
-    '完本',
-    '免费',
-  ];
+  final List<DiscoveryTabViewData> tabs;
+  final String? selectedTabId;
+  final ValueChanged<DiscoveryTabViewData> onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -361,12 +407,12 @@ class DiscoveryTabs extends StatelessWidget {
       height: AppSpacing.discoveryTabsHeight,
       child: Row(
         children: <Widget>[
-          for (int index = 0; index < _labels.length; index += 1)
+          for (final tab in tabs.take(6))
             Expanded(
               child: DiscoveryTab(
-                label: _labels[index],
-                selected: index == 0,
-                onPressed: index == 0 ? () {} : onUnavailable,
+                label: tab.label,
+                selected: tab.id == selectedTabId,
+                onPressed: () => onSelected(tab),
               ),
             ),
         ],
@@ -511,38 +557,44 @@ class DiscoveryHeroCard extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            DiscoveryTag(label: data.category),
+                            if (data.category != null) ...<Widget>[
+                              const SizedBox(width: 8),
+                              DiscoveryTag(label: data.category!),
+                            ],
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          data.description,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: theme.colorScheme.onSurface.withValues(
-                              alpha: 0.78,
+                        if (data.description != null) ...<Widget>[
+                          const SizedBox(height: 12),
+                          Text(
+                            data.description!,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: theme.colorScheme.onSurface.withValues(
+                                alpha: 0.78,
+                              ),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w400,
+                              height: 1.48,
+                              letterSpacing: 0,
                             ),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w400,
-                            height: 1.48,
-                            letterSpacing: 0,
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          data.metadata,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: tokens.mutedText,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w400,
-                            height: 1.2,
-                            letterSpacing: 0,
+                        ],
+                        if (data.metadata != null) ...<Widget>[
+                          const SizedBox(height: 8),
+                          Text(
+                            data.metadata!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: tokens.mutedText,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w400,
+                              height: 1.2,
+                              letterSpacing: 0,
+                            ),
                           ),
-                        ),
+                        ],
                         const SizedBox(height: 12),
                         SizedBox(
                           width: AppSpacing.discoveryReadButtonWidth,
@@ -740,7 +792,7 @@ class DiscoveryPopularBooks extends StatelessWidget {
   });
 
   final List<DiscoveryBookViewData> books;
-  final VoidCallback onBookPressed;
+  final ValueChanged<DiscoveryBookViewData> onBookPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -753,8 +805,10 @@ class DiscoveryPopularBooks extends StatelessWidget {
         children: books
             .take(5)
             .map(
-              (DiscoveryBookViewData book) =>
-                  DiscoveryPopularBook(data: book, onPressed: onBookPressed),
+              (DiscoveryBookViewData book) => DiscoveryPopularBook(
+                data: book,
+                onPressed: () => onBookPressed(book),
+              ),
             )
             .toList(growable: false),
       ),
@@ -778,7 +832,9 @@ class DiscoveryPopularBook extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Semantics(
       button: true,
-      label: '打开书籍：${data.title}，${data.author}',
+      label: data.author == null
+          ? '打开书籍：${data.title}'
+          : '打开书籍：${data.title}，${data.author}',
       child: InkResponse(
         onTap: onPressed,
         radius: AppSpacing.minimumTouchTarget / 2,
@@ -806,19 +862,21 @@ class DiscoveryPopularBook extends StatelessWidget {
                   letterSpacing: 0,
                 ),
               ),
-              const SizedBox(height: 1),
-              Text(
-                data.author,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: tokens.mutedText,
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w400,
-                  height: 1.2,
-                  letterSpacing: 0,
+              if (data.author != null) ...<Widget>[
+                const SizedBox(height: 1),
+                Text(
+                  data.author!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.mutedText,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w400,
+                    height: 1.2,
+                    letterSpacing: 0,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -829,13 +887,17 @@ class DiscoveryPopularBook extends StatelessWidget {
 
 class DiscoveryRankingBoard extends StatelessWidget {
   const DiscoveryRankingBoard({
+    required this.title,
     required this.books,
     required this.onPressed,
+    required this.onMorePressed,
     super.key,
   });
 
+  final String title;
   final List<DiscoveryRankedBookViewData> books;
-  final VoidCallback onPressed;
+  final ValueChanged<DiscoveryRankedBookViewData> onPressed;
+  final VoidCallback onMorePressed;
 
   @override
   Widget build(BuildContext context) {
@@ -843,11 +905,14 @@ class DiscoveryRankingBoard extends StatelessWidget {
       key: const Key('discovery-ranking-board'),
       child: Column(
         children: <Widget>[
-          DiscoveryBoardHeader(title: '排行榜', onPressed: onPressed),
+          DiscoveryBoardHeader(title: title, onPressed: onMorePressed),
           const SizedBox(height: 4),
           for (final DiscoveryRankedBookViewData book in books.take(5))
             Expanded(
-              child: DiscoveryRankingRow(data: book, onPressed: onPressed),
+              child: DiscoveryRankingRow(
+                data: book,
+                onPressed: () => onPressed(book),
+              ),
             ),
         ],
       ),
@@ -876,7 +941,12 @@ class DiscoveryRankingRow extends StatelessWidget {
     };
     return Semantics(
       button: true,
-      label: '第 ${data.rank} 名，${data.title}，${data.author}，热度 ${data.heat}',
+      label: <String>[
+        if (data.rank != null) '第 ${data.rank} 名',
+        data.title,
+        if (data.author != null) data.author!,
+        if (data.heat != null) data.heat!,
+      ].join('，'),
       child: InkResponse(
         onTap: onPressed,
         radius: AppSpacing.minimumTouchTarget / 2,
@@ -889,21 +959,23 @@ class DiscoveryRankingRow extends StatelessWidget {
               height: AppSpacing.discoveryRankCoverHeight,
             ),
             const SizedBox(width: 6),
-            SizedBox(
-              width: 12,
-              child: Text(
-                '${data.rank}',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: rankColor,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  height: 1.1,
-                  letterSpacing: 0,
+            if (data.rank != null) ...<Widget>[
+              SizedBox(
+                width: 12,
+                child: Text(
+                  '${data.rank}',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: rankColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    height: 1.1,
+                    letterSpacing: 0,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 3),
+              const SizedBox(width: 3),
+            ],
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -921,39 +993,43 @@ class DiscoveryRankingRow extends StatelessWidget {
                       letterSpacing: 0,
                     ),
                   ),
-                  const SizedBox(height: 1),
-                  Text(
-                    data.author,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: tokens.mutedText,
-                      fontSize: 8.5,
-                      fontWeight: FontWeight.w400,
-                      height: 1.1,
-                      letterSpacing: 0,
+                  if (data.author != null) ...<Widget>[
+                    const SizedBox(height: 1),
+                    Text(
+                      data.author!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: tokens.mutedText,
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.w400,
+                        height: 1.1,
+                        letterSpacing: 0,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
-            const SizedBox(width: 2),
-            Icon(
-              Icons.local_fire_department_rounded,
-              size: 10,
-              color: tokens.notification,
-            ),
-            const SizedBox(width: 1),
-            Text(
-              data.heat,
-              style: TextStyle(
-                color: tokens.mutedText,
-                fontSize: 8.5,
-                fontWeight: FontWeight.w400,
-                height: 1.1,
-                letterSpacing: 0,
+            if (data.heat != null) ...<Widget>[
+              const SizedBox(width: 2),
+              Icon(
+                Icons.local_fire_department_rounded,
+                size: 10,
+                color: tokens.notification,
               ),
-            ),
+              const SizedBox(width: 1),
+              Text(
+                data.heat!,
+                style: TextStyle(
+                  color: tokens.mutedText,
+                  fontSize: 8.5,
+                  fontWeight: FontWeight.w400,
+                  height: 1.1,
+                  letterSpacing: 0,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -963,13 +1039,17 @@ class DiscoveryRankingRow extends StatelessWidget {
 
 class DiscoveryCategoryBoard extends StatelessWidget {
   const DiscoveryCategoryBoard({
+    required this.title,
     required this.categories,
     required this.onPressed,
+    this.onCategoryPressed,
     super.key,
   });
 
+  final String title;
   final List<DiscoveryCategoryViewData> categories;
   final VoidCallback onPressed;
+  final ValueChanged<DiscoveryCategoryViewData>? onCategoryPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -980,31 +1060,46 @@ class DiscoveryCategoryBoard extends StatelessWidget {
       key: const Key('discovery-category-board'),
       child: Column(
         children: <Widget>[
-          DiscoveryBoardHeader(title: '分类榜单', onPressed: onPressed),
+          DiscoveryBoardHeader(title: title, onPressed: onPressed),
           const SizedBox(height: 6),
-          for (int row = 0; row < 4; row += 1) ...<Widget>[
+          for (
+            int row = 0;
+            row < (visible.length + 1) ~/ 2;
+            row += 1
+          ) ...<Widget>[
             Row(
               children: <Widget>[
                 Expanded(
                   child: DiscoveryCategoryTile(
                     data: visible[row * 2],
-                    onPressed: onPressed,
+                    onPressed: () => _handleCategory(visible[row * 2]),
                   ),
                 ),
                 const SizedBox(width: 5),
-                Expanded(
-                  child: DiscoveryCategoryTile(
-                    data: visible[row * 2 + 1],
-                    onPressed: onPressed,
+                if (row * 2 + 1 < visible.length)
+                  Expanded(
+                    child: DiscoveryCategoryTile(
+                      data: visible[row * 2 + 1],
+                      onPressed: () => _handleCategory(visible[row * 2 + 1]),
+                    ),
                   ),
-                ),
+                if (row * 2 + 1 >= visible.length) const Spacer(),
               ],
             ),
-            if (row != 3) const SizedBox(height: 5),
+            if (row != (visible.length - 1) ~/ 2) const SizedBox(height: 5),
           ],
         ],
       ),
     );
+  }
+
+  void _handleCategory(DiscoveryCategoryViewData category) {
+    final callback = onCategoryPressed;
+    if (callback == null) {
+      onPressed();
+      return;
+    }
+    callback(category);
   }
 }
 
@@ -1025,7 +1120,7 @@ class DiscoveryCategoryTile extends StatelessWidget {
     final Color iconColor = _categoryColor(data.icon, tokens);
     return Semantics(
       button: true,
-      label: '${data.title}，${data.count}',
+      label: data.count == null ? data.title : '${data.title}，${data.count}',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -1073,19 +1168,21 @@ class DiscoveryCategoryTile extends StatelessWidget {
                           letterSpacing: 0,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        data.count,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: tokens.mutedText,
-                          fontSize: 8.5,
-                          fontWeight: FontWeight.w400,
-                          height: 1,
-                          letterSpacing: 0,
+                      if (data.count != null) ...<Widget>[
+                        const SizedBox(height: 2),
+                        Text(
+                          data.count!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: tokens.mutedText,
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w400,
+                            height: 1,
+                            letterSpacing: 0,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -1270,38 +1367,43 @@ class DiscoveryEditorsChoiceCard extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 7),
-                              DiscoveryTag(label: data.category),
+                              if (data.category != null) ...<Widget>[
+                                const SizedBox(width: 7),
+                                DiscoveryTag(label: data.category!),
+                              ],
                             ],
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            data.description,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: theme.colorScheme.onSurface.withValues(
-                                alpha: 0.76,
+                          if (data.description != null) ...<Widget>[
+                            const SizedBox(height: 4),
+                            Text(
+                              data.description!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: theme.colorScheme.onSurface.withValues(
+                                  alpha: 0.76,
+                                ),
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w400,
+                                height: 1.28,
+                                letterSpacing: 0,
                               ),
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w400,
-                              height: 1.28,
-                              letterSpacing: 0,
                             ),
-                          ),
+                          ],
                           const Spacer(),
-                          Text(
-                            data.metadata,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: tokens.mutedText,
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w400,
-                              height: 1.1,
-                              letterSpacing: 0,
+                          if (data.metadata != null)
+                            Text(
+                              data.metadata!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: tokens.mutedText,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w400,
+                                height: 1.1,
+                                letterSpacing: 0,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),

@@ -3,7 +3,8 @@
 本目录是 MgRead 产品范围、系统架构、公开协议和已接受架构决策的唯一入口。当前状态为
 **契约基线加有限实现证据**：同级 `mg_read_runtime` 已实现 Windows desktop Core、
 Runtime-owned Flutter Facade、标准 Node 插件项目解析、`.mgplugin` 安装、lockfile 恢复、依赖
-对象仓、冷激活以及 `plugins.list.v1` / `plugin.search.v1`。主项目已通过版本化 Facade 接入
+对象仓、冷激活以及 `plugins.list.v1`。此前的极简 `plugin.search.v1` 已由 ADR-0017 判定为
+不可用的开发期切片，正在替换为完整 `source.*.v1` 内容能力。主项目已通过版本化 Facade 接入
 Runtime 健康和插件状态页。Windows 实现由 Runtime 自己用 Job Object 清理 Node 进程树并
 使用有界 WS 多路复用；它不表示 Android/Javet、macOS、完整 Runtime Store、官方仓库或最终
 应用包已验收。完整证据边界见
@@ -100,6 +101,7 @@ flowchart LR
 | [11 主应用持久化独立验收](11-app-persistence-acceptance.md) | 临时数据根、独立 Store 验收与故障矩阵 |
 | [13 内容资料库](13-content-library.md) | 书架、目录、正文、漫画文件对象与跨库恢复边界 |
 | [14 全局日志与诊断数据](14-global-diagnostics-logging.md) | 关键事件 TXT、调试详情、动态结构、管理层与查看器边界 |
+| [15 插件内容 API v1](15-plugin-content-contract.md) | 搜索/发现/详情/目录/正文、富字段与显式 null 语义 |
 | [ADR 索引](adr/README.md) | 不得被隐式改变的架构决策 |
 
 ## 术语

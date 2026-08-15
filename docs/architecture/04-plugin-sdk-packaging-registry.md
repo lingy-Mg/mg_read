@@ -56,6 +56,7 @@ TypeScript 只执行 `tsc`：`src/` 编译为普通多文件 `dist/`，不 bundl
   "mgread": {
     "schemaVersion": 1,
     "id": "org.example.source",
+    "displayName": "示例书源",
     "pluginApi": 1,
     "contentKinds": ["novel"]
   }
@@ -67,8 +68,8 @@ Runtime 安装前必须验证：
 - npm `name` 与严格 SemVer `version`；版本目录以该 `version` 为准。
 - `main` 是包内规范化相对路径且文件存在；不接受绝对路径、驱动器前缀、`..` 或符号链接。
 - `engines.node` 明确兼容 Node 24；实际 Runtime 仍固定精确 Node 小版本。
-- `mgread.schemaVersion == 1`、`pluginApi == 1`、稳定小写点分 `id` 和已知
-  `contentKinds`。
+- `mgread.schemaVersion == 1`、`pluginApi == 1`、稳定小写点分 `id`、非空
+  `displayName` 和已知 `contentKinds`（仅 `novel` / `manga`）。
 - `dependencies`、`optionalDependencies` 中每个直接版本与 lockfile 根记录一致，不接受
   可变 tag 或缺失 lock 条目。
 - 旧格式在开发阶段直接返回 `plugin_package_legacy_unsupported`，不建立双格式兼容层。
@@ -164,15 +165,18 @@ ADR，首版不实现。
 
 ```js
 export async function activate(ctx) {}
-export async function search(keyword) {}
-export async function getDetail(reference) {}
-export async function getChapters(book) {}
-export async function getContent(chapter) {}
+export async function discover(request) {}
+export async function search(request) {}
+export async function getDetail(request) {}
+export async function getChapters(request) {}
+export async function getContent(request) {}
 ```
 
-Runtime 当前已发布并验证 `activate` 与 `search`；其余方法必须随对应业务 capability、Facade
-类型、fixture 和测试一起交付，不能让主项目直接加载模块。开发期旧默认导出只作为读取旧包时
-拒绝迁移的对象，不是公开模板契约。
+六个命名导出和全部内容对象遵循
+[插件内容 API v1](15-plugin-content-contract.md)。此前仅返回 `id/title/author` 的
+`search(keyword)` 是未发布开发证据，不能继续作为公开契约；Runtime、Facade、fixture 与模板
+必须同时切换，不能让主项目直接加载模块。开发期旧默认导出只作为读取旧包时拒绝迁移的对象，
+不是公开模板契约。
 
 `ctx` 只提供 MgRead 独有能力：
 
@@ -218,11 +222,18 @@ stateDiagram-v2
 
 - `RuntimePingInvocation`：Runtime/Node 健康与版本；
 - `InstalledPluginsInvocation`：已安装插件的只读状态投影；
-- `PluginSearchInvocation`：按稳定 plugin ID 执行 `search`，带 deadline/cancel 和强类型结果。
+- `SourceDiscoverInvocation`、`SourceSearchInvocation`、`SourceDetailInvocation`、
+  `SourceChaptersInvocation` 和 `SourceContentInvocation`：按稳定 plugin ID 执行完整内容链路。
 
-主项目的插件状态页只消费前两项，不持有 Runtime 路径、Node executable、PID、端口、ready、
-bootId、WS/HTTP DTO 或安装器对象。安装/更新 UI 后续必须等 Runtime 发布相应强类型 invocation，
-不得在 Flutter feature 内复制安装逻辑。
+旧 `PluginSearchInvocation` 随极简 `plugin.search.v1` 一起删除。新内容能力
+`SourceDiscoverInvocation`、`SourceSearchInvocation`、`SourceDetailInvocation`、
+`SourceChaptersInvocation` 和 `SourceContentInvocation`；它们只返回 ADR-0017 的强类型字段，
+不会把任意插件 Map 暴露给主项目。
+
+主项目的插件状态页消费前两项，搜索/发现 application adapter 消费五个内容 invocation；它们
+都不持有 Runtime 路径、Node executable、PID、端口、ready、bootId、WS/HTTP DTO 或安装器
+对象。安装/更新 UI 后续必须等 Runtime 发布相应强类型 invocation，不得在 Flutter feature 内
+复制安装逻辑。
 
 ## Registry 边界
 
@@ -239,7 +250,7 @@ SRI 验证。仓库下载、文件选择和流式导入都属于 Runtime capabil
 | Installer | `plugin_dependency_gc_completed` | info / success | 扫描/删除对象计数、耗时 | 每次 GC 一项摘要 |
 | Manager | `plugin_load_started/completed/failed` | info,error | 技术 plugin ID、版本投影、耗时、稳定错误码 | 每个冷加载一个 owner span |
 | Manager | `plugin_invocation_started/completed/failed` | info,error | capability、技术 plugin ID、耗时、结果数量、稳定错误码 | 每次调用一个 owner span |
-| Main Facade | `runtime.facade.call.start/complete/error` | info,error | capability、attempt、pluginCount、resultState、稳定错误码 | 不复制 wire/端口信息 |
+| Main Facade | `runtime.facade.call.start/complete/error` | info,error | capability、attempt、pluginCount/resultCount、resultState、稳定错误码 | 不复制 wire/端口信息 |
 
 默认不记录搜索词、返回标题/作者、正文、URL、Cookie、Authorization、路径、异常文本或插件日志
 自由文本；本链路不创建 payload 附件。高频统计应按时间窗聚合，不能把 plugin ID、trace ID 或

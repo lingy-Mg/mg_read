@@ -13,12 +13,14 @@
 
 Runtime 仓库目前只实现 desktop bootstrap 所需的内部 `/health/live`、`/health/ready` 与
 `/v1/rpc`，以及 `runtime.hello`、`runtime.ping`、`plugins.list.v1`、
-`plugin.search.v1` 和有幂等键的内部 `runtime.shutdown`。它
-验证协议版本、bootId、`c:` ID、trace、deadline、对象参数和 64 KiB text frame；Node 与
-Flutter 测试读取同一 fixture。当前也实现 Facade deadline 后的 best-effort `cancel`、256
-在途请求上限和 1 MiB 写侧背压队列；它尚未实现事件、重连、snapshot、资源 HTTP、Range 或
-完整内容业务方法，因此不能被主项目直接调用或视作本章
-完整协议已验收。详见
+`source.discover.v1`、`source.search.v1`、`source.getDetail.v1`、
+`source.getChapters.v1`、`source.getContent.v1` 和有幂等键的内部 `runtime.shutdown`。此前极简
+`plugin.search.v1` 不构成可用产品契约；它由 ADR-0017 的 `source.discover.v1`、
+`source.search.v1`、`source.getDetail.v1`、`source.getChapters.v1`、
+`source.getContent.v1` 直接替换。当前实现验证协议版本、bootId、`c:` ID、trace、deadline、
+对象参数和 64 KiB text frame；Node 与 Flutter 测试读取同一 fixture。它也实现 Facade deadline
+后的 best-effort `cancel`、256 在途请求上限、1 MiB 写侧背压队列和五个内容方法的强类型结果。
+事件、重连、snapshot、资源 HTTP 与 Range 尚未实现，因此这仍不是本章完整协议验收。详见
 [Runtime desktop 文档](../../../mg_read_runtime/docs/desktop-runtime-bridge.md)。
 
 ## 版本与 Schema
@@ -206,10 +208,9 @@ sequenceDiagram
 | `plugin.rollback` | 切换到保留版本 | 写；必须有幂等键 |
 | `plugin.diagnose` | 获取脱敏诊断 | 是 |
 | `registry.refresh` / `registry.list` | 条件刷新与查询官方仓库 | 是 |
-| `source.discover` / `source.search` | 发现和搜索，不透明 cursor 分页 | 是 |
-| `source.getItem` / `source.getCatalog` | 详情和目录 | 是 |
-| `source.getTextChapter` | 小说正文或文本资源句柄 | 是 |
-| `source.getComicChapter` | 有序漫画图片资源描述 | 是 |
+| `source.discover.v1` / `source.search.v1` | 发现分区和富搜索结果，不透明 cursor 分页 | 是 |
+| `source.getDetail.v1` / `source.getChapters.v1` | 富详情和目录分页 | 是 |
+| `source.getContent.v1` | 有界小说正文或有序漫画页描述；超限数据转资源句柄 | 是 |
 | `resource.release` | 提前释放临时句柄 | 写但天然幂等 |
 | `download.start` | 创建/绑定传输 | 写；必须有幂等键 |
 | `download.pause` / `download.resume` | 改变传输状态 | 写；必须有幂等键 |

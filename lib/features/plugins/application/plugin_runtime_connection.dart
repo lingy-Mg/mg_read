@@ -35,6 +35,7 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway {
             (plugin) => PluginRuntimePlugin(
               activeVersion: plugin.activeVersion,
               contentKinds: plugin.contentKinds,
+              displayName: plugin.displayName,
               enabled: plugin.enabled,
               id: plugin.id,
               name: plugin.name,
@@ -65,7 +66,9 @@ AppError normalizePluginRuntimeError(PluginRuntimeException error) {
     'runtime_http_readiness_failed' ||
     'runtime_invalid_ready_signal' ||
     'runtime_ready_timeout' => AppErrorCode.runtimeNotReady,
-    'invalid_response' => AppErrorCode.invalidFormat,
+    'invalid_response' ||
+    'plugin_invalid_response' => AppErrorCode.invalidFormat,
+    'plugin_load_failed' => AppErrorCode.pluginDamaged,
     final value when value.startsWith('windows_job_object_') =>
       AppErrorCode.runtimeStartFailed,
     _ => AppErrorCode.fromWireValue(error.code),
@@ -73,8 +76,15 @@ AppError normalizePluginRuntimeError(PluginRuntimeException error) {
   return AppError.fromCode(code);
 }
 
+/// Process-scoped public Facade shared by every main-application capability.
+final pluginRuntimeFacadeProvider = Provider<PluginRuntime>(
+  (Ref ref) => PluginRuntime(),
+);
+
 final pluginRuntimeGatewayProvider = Provider<PluginRuntimeGateway>(
-  (Ref ref) => MgReadPluginRuntimeGateway(),
+  (Ref ref) => MgReadPluginRuntimeGateway(
+    runtime: ref.watch(pluginRuntimeFacadeProvider),
+  ),
 );
 
 /// Lazily starts Runtime only when a UI capability reads this provider.
@@ -158,6 +168,7 @@ final class PluginRuntimePlugin {
   const PluginRuntimePlugin({
     required this.activeVersion,
     required this.contentKinds,
+    required this.displayName,
     required this.enabled,
     required this.id,
     required this.name,
@@ -167,6 +178,7 @@ final class PluginRuntimePlugin {
 
   final String? activeVersion;
   final List<String> contentKinds;
+  final String displayName;
   final bool enabled;
   final String id;
   final String name;

@@ -113,6 +113,18 @@ void main() {
     },
   );
 
+  test('plugin response failures use the stable invalid-format UI code', () {
+    final error = normalizePluginRuntimeError(
+      const PluginRuntimeException(
+        'plugin_invalid_response',
+        'Plugin payload details must not escape.',
+      ),
+    );
+
+    expect(error.code, AppErrorCode.invalidFormat);
+    expect(error.toString(), isNot(contains('payload details')));
+  });
+
   testWidgets('status page renders the Runtime-owned plugin projection', (
     WidgetTester tester,
   ) async {
@@ -209,6 +221,7 @@ const _connected = PluginRuntimeConnection(
     PluginRuntimePlugin(
       activeVersion: '1.0.0',
       contentKinds: <String>['novel'],
+      displayName: '示例插件',
       enabled: true,
       id: 'org.example.fixture',
       name: '示例插件',

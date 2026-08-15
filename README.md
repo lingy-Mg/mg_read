@@ -14,21 +14,23 @@
 Node、端口、WS 或 data-root 代码。“我的 → 调试日志”提供应用/Runtime 分页关键日志、仅内存
 实时详情和显式详情 TXT 模式；默认不会读取或保存 HTTP/JSON/HTML/小说正文。以下能力尚未实现：
 
-- Runtime 安装/更新/仓库 UI，以及由 Runtime 驱动的书架、发现和下载页面。
+- Runtime 安装/更新/仓库 UI，以及由 Runtime 驱动的书架和下载页面。
 - 更新检查、协议/隐私/许可/联系内容、截图选择和反馈提交等真实 capability；当前详情页不访问网络、文件或持久化。
-- 由 `mg_read_runtime` 独立实现的官方仓库、完整 Store、缓存、下载、内容 API 与跨平台承载。
+- 由 `mg_read_runtime` 独立实现的官方仓库、完整 Store、缓存、下载、大资源 HTTP 与跨平台承载。
 - Windows/macOS 的 UI 发布适配；Runtime 的 Node/Javet、签名和平台包由 Runtime 仓库验收。
 
 同级 `mg_read_runtime` 已实现 Windows desktop bootstrap 与标准 Node 插件切片：Runtime 自行
 以 Job Object 纳管固定 Node 进程树，完成 ready/HTTP/WS 门禁，按 package/lock 安装依赖并在
 冷启动加载插件，通过 `RuntimePingInvocation`、`InstalledPluginsInvocation` 和
-`PluginSearchInvocation` 投影强类型结果。Node/Flutter 自动化已验证 list/search；这仍不表示
-完整 Runtime Store、阅读器数据、Android/Javet、macOS 包或最终应用包已验收。
+`SourceDiscoverInvocation`、`SourceSearchInvocation`、`SourceDetailInvocation`、
+`SourceChaptersInvocation`、`SourceContentInvocation` 投影强类型结果。主项目的搜索和发现页
+已经消费这套 Facade；Node/Flutter 自动化已验证列表与五个内容能力。这仍不表示完整 Runtime
+Store、大资源数据面、阅读器数据、Android/Javet、macOS 包或最终应用包已验收。
 
-本仓库只消费这些已发布 Facade，并提供“我的 → 书源管理”的 Runtime 状态页；不得在这里引入
-Node/Javet、WS/HTTP Client、Runtime 数据库/文件、Cookie、callback 或其他运行时代码。主应用
-自己的 persistence/settings 不能向 Runtime 注入路径或连接。后续能力仍必须先在 Runtime
-仓库以版本化 Facade 发布，再由本项目增加 UI 消费。
+本仓库只消费这些已发布 Facade，并提供“我的 → 书源管理”的 Runtime 状态页以及真实搜索/发现
+投影；不得在这里引入 Node/Javet、WS/HTTP Client、Runtime 数据库/文件、Cookie、callback 或
+其他运行时代码。主应用自己的 persistence/settings 不能向 Runtime 注入路径或连接。后续能力
+仍必须先在 Runtime 仓库以版本化 Facade 发布，再由本项目增加 UI 消费。
 
 ## 架构入口
 
@@ -46,6 +48,7 @@ Node/Javet、WS/HTTP Client、Runtime 数据库/文件、Cookie、callback 或�
 - [主应用持久化设计](docs/architecture/10-app-persistence-design.md)
 - [主应用持久化独立验收规范](docs/architecture/11-app-persistence-acceptance.md)
 - [全局设置内存门面与异步持久化](docs/architecture/12-global-settings.md)
+- [插件内容 API v1 与空值语义](docs/architecture/15-plugin-content-contract.md)
 - [已接受 ADR](docs/architecture/adr/README.md)
 
 核心决策是：每个应用进程只有一个可信 Node 24 VM；Android 由 Runtime 自有单个 Javet `NodeRuntime` 承载，Windows/macOS 使用 Runtime 自有的固定官方 Node 子进程；WS/HTTP 是 Runtime 内部实现；主应用 SQLite 是应用权威元数据来源，Runtime 不得获得其路径或连接；主项目只调用强类型 Runtime Facade，且不向 Runtime 注入数据库、文件、Cookie、平台或 `host.*` 服务；插件更新在下次应用进程启动时冷激活。
@@ -105,7 +108,7 @@ lib/
     reader/               # 当前已有：阅读器用例、适配与宿主页
     plugins/              # 当前已有：Runtime 状态/插件列表 Facade 投影；安装管理后续接入
     diagnostics/          # 当前已有：应用/Runtime 关键日志与限时详情查看器
-    discovery/            # 当前已有：发现页 UI 预览；搜索与 Runtime 接入计划
+    discovery/            # 当前已有：Runtime Facade 搜索/发现状态、适配器和 UI 投影
     content_detail/       # 计划：详情与目录
     downloads/            # 计划：缓存与下载
     settings/             # 计划：设置与诊断入口

@@ -68,7 +68,8 @@ lib/
 
 - Runtime 发布公开的小说/漫画数据源、状态存储和已实现 capability；主应用只把它们接入阅读器视图。阅读器插件不直接联网或内置数据库。
 - 数据来源插件的入口是 `package.json.main` 指向的普通 ESM/CommonJS 文件，并通过命名导出
-  `activate/search/getDetail/getChapters/getContent` 接入；TypeScript 只编译、不 bundle。
+  `activate/discover/search/getDetail/getChapters/getContent` 接入；所有业务方法使用 ADR-0017
+  的完整请求/结果对象和显式 null 语义，TypeScript 只编译、不 bundle。
 - 进度和书签必须保留插件定义的语义锚点，不用页码或像素偏移替代。
 - 退出阅读器由 `ReaderObserver.onExitRequested` 通知主应用；由主应用决定 `Navigator`、确认弹窗或其他路由行为。
 - 真实书源、插件数据、进度、缓存与下载必须在 `mg_read_runtime` 中实现，不能塞入 `ReaderHostPage`、feature/data 或 core。

@@ -1,30 +1,55 @@
 import 'package:flutter/foundation.dart';
 
 /// Immutable, display-ready data for the discovery presentation.
-///
-/// The current fixture is intentionally local and does not represent a
-/// Runtime Facade result, a real source, persisted content, or network data.
 @immutable
 final class DiscoveryPageViewData {
   DiscoveryPageViewData({
     required this.isPresentationFixture,
+    required this.sourceName,
+    required Iterable<DiscoveryTabViewData> tabs,
+    required this.selectedTabId,
+    required this.popularTitle,
+    required this.rankingTitle,
+    required this.categoryTitle,
+    required this.editorsChoiceTitle,
     required this.hero,
     required Iterable<DiscoveryBookViewData> popularBooks,
     required Iterable<DiscoveryRankedBookViewData> rankedBooks,
     required Iterable<DiscoveryCategoryViewData> categories,
     required this.editorsChoice,
-  }) : popularBooks = List<DiscoveryBookViewData>.unmodifiable(popularBooks),
+  }) : tabs = List<DiscoveryTabViewData>.unmodifiable(tabs),
+       popularBooks = List<DiscoveryBookViewData>.unmodifiable(popularBooks),
        rankedBooks = List<DiscoveryRankedBookViewData>.unmodifiable(
          rankedBooks,
        ),
        categories = List<DiscoveryCategoryViewData>.unmodifiable(categories);
 
   final bool isPresentationFixture;
+  final String sourceName;
+  final List<DiscoveryTabViewData> tabs;
+  final String? selectedTabId;
+  final String popularTitle;
+  final String rankingTitle;
+  final String categoryTitle;
+  final String editorsChoiceTitle;
   final DiscoveryHeroViewData hero;
   final List<DiscoveryBookViewData> popularBooks;
   final List<DiscoveryRankedBookViewData> rankedBooks;
   final List<DiscoveryCategoryViewData> categories;
   final DiscoveryEditorsChoiceViewData editorsChoice;
+}
+
+@immutable
+final class DiscoveryTabViewData {
+  const DiscoveryTabViewData({
+    required this.id,
+    required this.label,
+    required this.target,
+  });
+
+  final String id;
+  final String label;
+  final String target;
 }
 
 @immutable
@@ -38,9 +63,9 @@ final class DiscoveryHeroViewData {
   });
 
   final String title;
-  final String category;
-  final String description;
-  final String metadata;
+  final String? category;
+  final String? description;
+  final String? metadata;
   final DiscoveryCoverVariant coverVariant;
 }
 
@@ -53,7 +78,7 @@ final class DiscoveryBookViewData {
   });
 
   final String title;
-  final String author;
+  final String? author;
   final DiscoveryCoverVariant coverVariant;
 }
 
@@ -67,10 +92,10 @@ final class DiscoveryRankedBookViewData {
     required this.coverVariant,
   });
 
-  final int rank;
+  final int? rank;
   final String title;
-  final String author;
-  final String heat;
+  final String? author;
+  final String? heat;
   final DiscoveryCoverVariant coverVariant;
 }
 
@@ -80,11 +105,13 @@ final class DiscoveryCategoryViewData {
     required this.title,
     required this.count,
     required this.icon,
+    this.target,
   });
 
   final String title;
-  final String count;
+  final String? count;
   final DiscoveryCategoryIcon icon;
+  final String? target;
 }
 
 @immutable
@@ -98,9 +125,9 @@ final class DiscoveryEditorsChoiceViewData {
   });
 
   final String title;
-  final String category;
-  final String description;
-  final String metadata;
+  final String? category;
+  final String? description;
+  final String? metadata;
   final DiscoveryCoverVariant coverVariant;
 }
 
@@ -117,11 +144,24 @@ enum DiscoveryCategoryIcon {
   sciFi,
 }
 
-/// Explicit preview content used only while the discovery Facade projection is
-/// unavailable.
+/// Explicit local preview used only by presentation and golden tests.
 abstract final class DiscoveryFixtures {
   static final DiscoveryPageViewData preview = DiscoveryPageViewData(
     isPresentationFixture: true,
+    sourceName: '起点中文网',
+    tabs: const <DiscoveryTabViewData>[
+      DiscoveryTabViewData(id: 'recommend', label: '推荐', target: 'recommend'),
+      DiscoveryTabViewData(id: 'male', label: '男生', target: 'male'),
+      DiscoveryTabViewData(id: 'female', label: '女生', target: 'female'),
+      DiscoveryTabViewData(id: 'ranking', label: '排行', target: 'ranking'),
+      DiscoveryTabViewData(id: 'complete', label: '完本', target: 'complete'),
+      DiscoveryTabViewData(id: 'free', label: '免费', target: 'free'),
+    ],
+    selectedTabId: 'recommend',
+    popularTitle: '人气推荐',
+    rankingTitle: '排行榜',
+    categoryTitle: '分类榜单',
+    editorsChoiceTitle: '编辑精选',
     hero: const DiscoveryHeroViewData(
       title: '诡秘之主',
       category: '玄幻 · 克苏鲁',

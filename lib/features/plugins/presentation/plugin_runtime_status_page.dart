@@ -118,8 +118,10 @@ class _RuntimeContent extends StatelessWidget {
               key: ValueKey<String>('plugin-${plugin.id}'),
               margin: const EdgeInsets.only(bottom: AppSpacing.compact),
               child: ListTile(
-                title: Text(plugin.name),
-                subtitle: Text('${plugin.id}\n${_pluginVersionLabel(plugin)}'),
+                title: Text(plugin.displayName),
+                subtitle: Text(
+                  '${plugin.name} · ${plugin.id}\n${_pluginVersionLabel(plugin)}',
+                ),
                 isThreeLine: true,
                 trailing: Text(_pluginStatusLabel(plugin.status)),
               ),

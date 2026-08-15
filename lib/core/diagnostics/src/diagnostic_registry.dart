@@ -506,6 +506,7 @@ abstract final class AppDiagnosticEvents {
           'capability': _string,
           'attempt': _int64,
           'pluginCount': _int64,
+          'resultCount': _int64,
           'resultState': _string,
           'errorCode': _string,
         },

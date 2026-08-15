@@ -34,6 +34,7 @@ ADR 记录 MgRead 不得被普通实现修改隐式改变的决策。
 | [ADR-0014](0014-tiered-diagnostics-storage.md) | 分域事件索引、span 与独立诊断附件对象 | Superseded by ADR-0016 |
 | [ADR-0015](0015-standard-node-plugin-projects.md) | 标准 Node 插件、npm lockfile 恢复与依赖对象仓 | Accepted |
 | [ADR-0016](0016-segmented-text-diagnostics.md) | 分段 TXT 日志与显式调试详情捕获 | Accepted |
+| [ADR-0017](0017-versioned-plugin-content-contract.md) | 富内容投影、发现分区与显式 null 语义 | Accepted |
 
 ## 提议中决策
 

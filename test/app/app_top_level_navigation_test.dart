@@ -2,7 +2,7 @@ import 'dart:ui' show Tristate;
 
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
+import 'package:mg_read/features/discovery/presentation/discovery_destination_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
@@ -36,8 +36,8 @@ void main() {
 
       await tester.tap(find.byKey(const Key('app-nav-discover')));
       await tester.pumpAndSettle();
-      expect(find.byType(DiscoveryPage), findsOneWidget);
-      expect(find.byKey(const Key('discovery-hero-card')), findsOneWidget);
+      expect(find.byType(DiscoveryDestinationPage), findsOneWidget);
+      expect(find.byKey(const Key('discovery-no-sources')), findsOneWidget);
       _expectSelectedDestination(tester, AppNavigationDestination.discover);
 
       await tester.tap(find.byKey(const Key('app-nav-profile')));

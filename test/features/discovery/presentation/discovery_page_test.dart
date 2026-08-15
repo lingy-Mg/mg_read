@@ -114,16 +114,24 @@ void main() {
 
       await tester.tap(find.byKey(const Key('discovery-search-action')));
       await tester.pump();
-      expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsOneWidget);
+      expect(requested, <AppNavigationDestination>[
+        AppNavigationDestination.search,
+      ]);
 
       await tester.tap(find.byKey(const Key('app-nav-search')));
       await tester.pump();
-      expect(requested, isEmpty);
+      expect(requested, <AppNavigationDestination>[
+        AppNavigationDestination.search,
+        AppNavigationDestination.search,
+      ]);
+
+      await tester.tap(find.byKey(const Key('discovery-source-selector')));
+      await tester.pump();
       expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('app-nav-home')));
       await tester.tap(find.byKey(const Key('app-nav-profile')));
-      expect(requested, <AppNavigationDestination>[
+      expect(requested.skip(2), <AppNavigationDestination>[
         AppNavigationDestination.home,
         AppNavigationDestination.profile,
       ]);

@@ -114,7 +114,8 @@ sequenceDiagram
 
 `mg_read_runtime` 当前已在 Windows x64 源码环境实现固定 Node child：绑定
 `127.0.0.1:0`、输出 ready，由 Runtime-owning Flutter Facade 验证 `/health/ready` 与
-`runtime.hello` 后调用 `runtime.ping`、`plugins.list.v1` 或 `plugin.search.v1`。Supervisor
+`runtime.hello` 后调用 `runtime.ping` 或 `plugins.list.v1`。旧的极简 `plugin.search.v1`
+正在按 ADR-0017 替换为完整 `source.*.v1` 内容能力。Supervisor
 在启动 child 前持有 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object；测试验证后代进程随
 Job close 被内核终止，128 个并发 Facade 调用复用同一 child 和有界 WS 控制连接。
 
