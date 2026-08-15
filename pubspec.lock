@@ -419,7 +419,7 @@ packages:
   mgread_plugin_runtime:
     dependency: "direct main"
     description:
-      path: "../mg_read_runtime/packages/mgread_plugin_runtime"
+      path: "packages/mg_read_runtime/packages/mgread_plugin_runtime"
       relative: true
     source: path
     version: "0.2.0-standard.1"
@@ -450,7 +450,7 @@ packages:
   novel_reader_ui:
     dependency: "direct main"
     description:
-      path: "../mg_read_reader_ui"
+      path: "packages/mg_read_reader_ui"
       relative: true
     source: path
     version: "0.4.0"

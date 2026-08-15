@@ -1,14 +1,14 @@
 # MgRead 架构文档
 
 本目录是 MgRead 产品范围、系统架构、公开协议和已接受架构决策的唯一入口。当前状态为
-**契约基线加有限实现证据**：同级 `mg_read_runtime` 已实现 Windows desktop Core、
+**契约基线加有限实现证据**：`packages/mg_read_runtime` 已实现 Windows desktop Core、
 Runtime-owned Flutter Facade、标准 Node 插件项目解析、`.mgplugin` 安装、lockfile 恢复、依赖
 对象仓、冷激活以及 `plugins.list.v1`。此前的极简 `plugin.search.v1` 已由 ADR-0017 判定为
 不可用的开发期切片，正在替换为完整 `source.*.v1` 内容能力。主项目已通过版本化 Facade 接入
 Runtime 健康和插件状态页。Windows 实现由 Runtime 自己用 Job Object 清理 Node 进程树并
 使用有界 WS 多路复用；它不表示 Android/Javet、macOS、完整 Runtime Store、官方仓库或最终
 应用包已验收。完整证据边界见
-[Runtime desktop 文档](../../../mg_read_runtime/docs/desktop-runtime-bridge.md)。
+[Runtime desktop 文档](../../packages/mg_read_runtime/docs/desktop-runtime-bridge.md)。
 
 ## 文档状态与优先级
 
@@ -112,26 +112,26 @@ flowchart LR
 | Runtime | `mg_read_runtime` 交付的独立插件运行时，含平台承载、Core、通信、存储和 Flutter-facing 门面 |
 | Runtime Facade | 主项目唯一可见的高层调用面；以版本化 `PluginInvocation` 调用能力，不泄露内部协议 |
 | Plugin / 插件 | 带 `package.json.mgread` 和 npm lockfile、由 Runtime 加载的可信标准 Node 项目 |
-| Reader plugin / 阅读器插件 | 同级 `mg_read_reader_ui` Flutter 插件，与数据来源插件不是同一概念 |
+| Reader plugin / 阅读器插件 | `packages/mg_read_reader_ui` Flutter 插件，与数据来源插件不是同一概念 |
 | Source / 来源 | 某个插件暴露的内容站点或逻辑数据源 |
 | Control plane / 控制面 | WS 上的小型 JSON RPC、事件与取消消息 |
 | Data plane / 数据面 | loopback HTTP 上的图片、`.mgplugin`、文件、字体、漫画及未来媒体字节流 |
 | Semantic anchor / 语义锚点 | 阅读器公开 API 定义的章节、字符或图片位置，不是页码或像素偏移 |
 | App process / 应用进程 | 一次前台应用进程生命周期；冷激活边界以此为准 |
 
-## 计划中的仓库边界
+## Monorepo 子项目边界
 
-以下是目标拆分，不代表这些仓库现已创建：
+以下子项目均位于当前 monorepo；它们的产品与依赖边界不因共享 Git 仓库而改变：
 
 | 仓库 | 职责 |
 | --- | --- |
-| `mg_read` | Flutter UI、路由、主题、用户交互、阅读器视图宿主和本文档；不实现或注入 Runtime |
-| `mg_read_reader_ui` | 已存在的独立 Flutter 阅读器插件，只暴露公开小说/漫画契约 |
-| `mg_read_runtime` | 完整独立插件运行时：平台承载、Runtime Core、内部 WS/HTTP、Runtime 存储、Plugin API、Schema、fixture 与 Flutter-facing 门面 |
-| `mg_read_plugin_template` | 官方空白插件、假数据插件、构建、校验、打包和契约测试 |
+| 根目录 `mg_read` | Flutter UI、路由、主题、用户交互、阅读器视图宿主和本文档；不实现或注入 Runtime |
+| `packages/mg_read_reader_ui` | 独立 Flutter 阅读器插件，只暴露公开小说/漫画契约 |
+| `packages/mg_read_runtime` | 完整独立插件运行时：平台承载、Runtime Core、内部 WS/HTTP、Runtime 存储、Plugin API、Schema、fixture 与 Flutter-facing 门面 |
+| `templates/mg_read_plugin_template` | 官方空白插件、假数据插件、构建、校验、打包和契约测试 |
 | `mg_read_plugin_registry` | 唯一官方仓库索引、插件包及发布自动化 |
 
-跨仓库类型不能靠复制后手工维护。规范 Schema、fixture 与 Runtime Facade 的公开类型由 `mg_read_runtime` 维护；主项目只消费其版本化发布物。职责边界由 [ADR-0008](adr/0008-standalone-plugin-runtime-boundary.md) 固定，标准 Node 插件格式由 [ADR-0015](adr/0015-standard-node-plugin-projects.md) 固定。
+跨子项目类型不能靠复制后手工维护。规范 Schema、fixture 与 Runtime Facade 的公开类型由 `packages/mg_read_runtime` 维护；主项目只消费其版本化发布物。职责边界由 [ADR-0008](adr/0008-standalone-plugin-runtime-boundary.md) 固定，标准 Node 插件格式由 [ADR-0015](adr/0015-standard-node-plugin-projects.md) 固定。
 
 ## 外部依据
 

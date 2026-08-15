@@ -123,7 +123,7 @@ Core 在 ready 前用 Runtime 自有 data root 扫描不可变插件版本，冷
 Node 模块解析加载命名导出，并在失败更新时保留旧 `current`。安装器、依赖对象仓、SRI、
 hardlink/copy、`.mgplugin` 和 mark-sweep 由 Runtime 仓库独立测试；主项目只接入版本化
 Facade，不参与路径、启动、端口、WS 或安装。实现与证据见
-[Runtime desktop 文档](../../../mg_read_runtime/docs/desktop-runtime-bridge.md)。
+[Runtime desktop 文档](../../packages/mg_read_runtime/docs/desktop-runtime-bridge.md)。
 
 当前 `ready` 证明 desktop Core 与插件目录冷启动扫描就绪，但完整 Runtime Store、官方仓库、
 HTTP 资源流、Android/Javet、macOS 和最终应用包路径仍未完成对应验收；不得把 Windows 源码

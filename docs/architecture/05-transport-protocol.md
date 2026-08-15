@@ -21,7 +21,7 @@ Runtime 仓库目前只实现 desktop bootstrap 所需的内部 `/health/live`�
 对象参数和 64 KiB text frame；Node 与 Flutter 测试读取同一 fixture。它也实现 Facade deadline
 后的 best-effort `cancel`、256 在途请求上限、1 MiB 写侧背压队列和五个内容方法的强类型结果。
 事件、重连、snapshot、资源 HTTP 与 Range 尚未实现，因此这仍不是本章完整协议验收。详见
-[Runtime desktop 文档](../../../mg_read_runtime/docs/desktop-runtime-bridge.md)。
+[Runtime desktop 文档](../../packages/mg_read_runtime/docs/desktop-runtime-bridge.md)。
 
 ## 版本与 Schema
 

@@ -10,7 +10,7 @@ Runtime Store、Android Javet、macOS
 包集成或最终 Flutter 产品包已经验收，也不授权把 Runtime 代码放进主项目。
 
 运行时边界与主项目的对应决策是
-[MgRead ADR-0008](../../mg_read/docs/architecture/adr/0008-standalone-plugin-runtime-boundary.md)。
+[MgRead ADR-0008](../../../docs/architecture/adr/0008-standalone-plugin-runtime-boundary.md)。
 若两个仓库的说明冲突，以该 ADR 与本文为准；变更已接受边界必须先新增替代 ADR。
 
 ## 产品定位

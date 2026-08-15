@@ -86,7 +86,7 @@ Runtime 测试独立覆盖 `.mgplugin` 安装器：
 | Package/installer/manager | `node --test test/plugin-system.test.mjs` | package/lock、archive、依赖资源、SRI、hardlink/copy、optional、冷激活/回退、取消/超时、GC |
 | Desktop Core | `node --test test/desktop-runtime.test.mjs` | ready、health、hello/ping/list、五个 source capability、shutdown、并发、背压、稳定错误 |
 | Flutter ↔ Node | `npm run test:flutter-desktop` | singleton、真实 Process.start、Job Object、128 并发、完整内容链路、错误投影 |
-| 独立官方模板 | `../mg_read_plugin_template/npm run verify` | tsc、多文件模块、本地 package/资源、命名 API、确定性 `.mgplugin` |
+| 官方模板 | `cd ../../../templates/mg_read_plugin_template && npm run verify` | tsc、多文件模块、本地 package/资源、命名 API、确定性 `.mgplugin` |
 | 性能 | `npm run benchmark:plugin` | diagnostics off/on 的 p50/p95/p99、吞吐、heap、磁盘、queue/drop |
 
 测试根均为临时目录，不读取真实用户数据。诊断只保留稳定 lifecycle code、component、outcome、

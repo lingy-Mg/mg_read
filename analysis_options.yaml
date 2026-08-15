@@ -1,1 +1,9 @@
 include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  # Each nested package owns its own analyzer configuration and verification
+  # command. Keeping them out of the app analysis avoids mixing package-local
+  # lint baselines with the Flutter host's acceptance gate.
+  exclude:
+    - packages/**
+    - templates/**

@@ -4,11 +4,12 @@
 
 ## 项目定位
 
-`mg_read` 是 `novel_reader_ui` 的主 Flutter 应用，不是阅读器插件本体，也不是插件运行时。它拥有应用导航、主题、UI、用户交互、阅读器视图宿主、UI-facing 用例和应用权威持久化；Runtime 继续独立提供插件执行与平台运行时。阅读器体验由同级 `../mg_read_reader_ui` 插件提供。
+`mg_read` 是单一 MgRead monorepo 的根目录。根目录仍是 `novel_reader_ui` 的主 Flutter 应用，不是阅读器插件本体，也不是插件运行时。它拥有应用导航、主题、UI、用户交互、阅读器视图宿主、UI-facing 用例和应用权威持久化；Runtime 继续独立提供插件执行与平台运行时。阅读器体验由 `packages/mg_read_reader_ui` 插件提供。
 
 - 首版承诺平台为 Android、Windows 和 macOS，优先级为 Android 第一、Windows/macOS 第二。
 - iOS、Linux 和 Web 不属于当前承诺支持范围；不得为它们破坏 Android、Windows 或 macOS 的实现边界。
 - 本仓库根目录是唯一主应用，不再创建嵌套 `example/` 或第二个 Flutter App。
+- Monorepo 的固定布局为 `packages/mg_read_reader_ui`（阅读器插件）、`packages/mg_read_runtime`（完整独立 Runtime）与 `templates/mg_read_plugin_template`（官方空白 Node 插件模板）。子项目共享 Git 历史和根仓库 CI，但各自的产品边界、验证命令与发布物保持独立。
 - 插件通过 `pubspec.yaml` 的本地 path 依赖接入。主应用只能导入 `package:novel_reader_ui/novel_reader_ui.dart`，严禁深层导入插件的 `lib/src/`。
 - 系统架构、公开协议和已接受决策以 `docs/architecture/` 为唯一入口；改变已接受 ADR 必须新增替代 ADR，不能只改实现。
 
@@ -21,9 +22,9 @@
 ## Runtime、通信与数据硬约束
 
 - 每个应用进程只能有一个 Node Runtime 和一个 V8 VM；插件不得创建 Worker、子进程、第二个 VM 或原生 Addon。
-- Android 的一个专用线程 Javet `NodeRuntime`、Windows/macOS 的固定 Node 24 子进程及其打包/生命周期全部由 `mg_read_runtime` 实现；本仓库不得创建任何 Javet/Node bridge、Supervisor 或平台 Runtime 适配。
+- Android 的一个专用线程 Javet `NodeRuntime`、Windows/macOS 的固定 Node 24 子进程及其打包/生命周期全部由 `packages/mg_read_runtime` 实现；主应用代码不得创建任何 Javet/Node bridge、Supervisor 或平台 Runtime 适配。
 - WS 控制面和 loopback HTTP 数据面是 Runtime 内部实现；本仓库不得创建 Runtime Client、WebSocket/HTTP handler、端口/ready/bootId 管理或 raw protocol DTO，只能调用版本化 Runtime Facade。
-- 同级 Runtime 当前的 M1.2 desktop `RuntimePingInvocation` 仅是其仓库内的 Windows 通信
+- `packages/mg_read_runtime` 当前的 M1.2 desktop `RuntimePingInvocation` 仅是其子项目内的 Windows 通信
   证据（包括 Runtime-own Job Object、启动诊断和有界 WS 多路复用），不是本项目接入 Runtime
   或复制 transport 的许可；在完整 capability 发布前继续用 Facade 替身进行 UI 测试，绝不把
   其 test helper、Node 路径或 wire fixture 带入本仓库。
@@ -60,6 +61,11 @@ lib/
       data/                   # 消费 Runtime 发布的 DataSource / StateStore 公开适配器
       presentation/           # ReaderHostPage 等主应用页面
   shared/                     # 跨 feature 的组件和工具
+packages/
+  mg_read_reader_ui/          # 独立 Flutter 阅读器插件
+  mg_read_runtime/            # 独立 Runtime 与 Flutter Facade
+templates/
+  mg_read_plugin_template/    # 官方标准 Node 插件模板
 ```
 
 依赖方向为 `app -> features -> core/shared`，feature 通过版本化 Runtime Facade 消费插件能力，并通过窄端口消费主应用持久化。阅读器 feature 可以依赖阅读器和 Runtime 的公开 API；Runtime/插件不得反向依赖主应用。Widget 不直接访问网络、SQLite、文件系统、Runtime 内部协议或 Service Locator，也不能在 `build()` 发起请求或写持久化状态。
@@ -195,10 +201,10 @@ UTF-8 分段 `.txt`；不得创建日志 SQLite、WAL 或二进制索引。日�
 
 - 修改前检查 `git status --short`、相关实现和本文件；保留不属于当前任务的脏改动，绝不 reset、restore 或覆盖它们。
 - 修改前同时确认当前分支、未提交修改和任务相关文件；并发任务产生的文件或 hunks 不属于当前任务，必须保留原状。
-- 创建 Codex 新任务时一律在本仓库当前原工作区直接修改，不得创建 Git worktree、隔离分支工作区或第二份检出；如需改变此约束，必须先由用户明确要求更新本文件。新任务仍须先核对并保护原工作区已有的并发改动。
-- 大型 UI 改动按“Runtime Facade 公开契约 → 纯 UI 逻辑与适配器 → UI → 静态检查”推进；平台 Runtime 改动必须转到 `mg_read_runtime`。
-- 自动化测试按风险分层建设：Dart UI 纯逻辑、错误投影和 Facade 替身使用单元测试；关键状态与交互使用 Widget 测试；Runtime Facade 契约由 `mg_read_runtime` 维护；通信、资源流、恢复、存储和平台运行时只在 Runtime 仓库做集成或冒烟测试。Golden 仅在视觉规范稳定后按需启用。
-- 新增或修改实现时必须同步补充并运行受影响层级的测试。Node Runtime、插件 API 与协议仓库执行各自的类型检查与自动化测试；不得以“当前没有测试目录”为理由长期跳过测试建设。
+- 创建 Codex 新任务时一律在本 monorepo 当前原工作区直接修改，不得创建 Git worktree、隔离分支工作区或第二份检出；如需改变此约束，必须先由用户明确要求更新本文件。新任务仍须先核对并保护原工作区已有的并发改动。
+- 大型 UI 改动按“Runtime Facade 公开契约 → 纯 UI 逻辑与适配器 → UI → 静态检查”推进；平台 Runtime 改动必须转到 `packages/mg_read_runtime`。
+- 自动化测试按风险分层建设：Dart UI 纯逻辑、错误投影和 Facade 替身使用单元测试；关键状态与交互使用 Widget 测试；Runtime Facade 契约由 `packages/mg_read_runtime` 维护；通信、资源流、恢复、存储和平台运行时只在该子项目做集成或冒烟测试。Golden 仅在视觉规范稳定后按需启用。
+- 新增或修改实现时必须同步补充并运行受影响层级的测试。根 Flutter 主应用、阅读器插件、Node Runtime 与插件模板各自在自己的子目录执行类型检查和自动化测试；不得以“当前没有测试目录”为理由长期跳过测试建设。
 - 每次修改至少执行以下静态检查：
 
 ```powershell

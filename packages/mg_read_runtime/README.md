@@ -13,7 +13,7 @@ mg_read UI
 ```
 
 正式边界见[独立插件运行时契约](docs/standalone-runtime-contract.md)，插件格式由主项目
-[ADR-0015](../mg_read/docs/architecture/adr/0015-standard-node-plugin-projects.md) 固定。
+[ADR-0015](../../docs/architecture/adr/0015-standard-node-plugin-projects.md) 固定。
 
 ## 当前实现
 
@@ -93,5 +93,5 @@ npm.cmd run stage:flutter-windows
 | `test/fixtures/standard-plugin/` | Runtime 自有无网络标准项目测试件 |
 | `probes/` | 工具链、原生依赖和性能探针 |
 
-独立官方模板位于同级 `../mg_read_plugin_template`，不再嵌入 Runtime 仓库。模板只依赖公开
+官方模板位于 monorepo 的 `../../templates/mg_read_plugin_template`，不嵌入 Runtime 包。模板只依赖公开
 Node/MgRead 契约，Runtime 测试不通过任意模板路径注入生产启动流程。

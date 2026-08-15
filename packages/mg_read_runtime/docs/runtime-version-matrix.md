@@ -181,7 +181,7 @@ This repository's current automated validation covers the exact Node/npm
 TypeScript Core, root npm dependency tree, desktop loopback Core, standard
 package/lock/archive/installer/manager tests, and Flutter↔Node plugin list plus
 the five content capabilities on the
-current Windows host. The independent sibling template is verified separately
+current Windows host. The monorepo template is verified separately
 and its artifact is installed through the same Runtime path. This does not claim
 Android Javet execution, mobile testing, Android ABI packaging, macOS execution,
 final app-bundle integration, complete Runtime Store behavior, or macOS

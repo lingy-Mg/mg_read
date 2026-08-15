@@ -5,7 +5,7 @@
 This repository owns the complete MgRead standalone Plugin Runtime: the Node
 Runtime Core, platform adapters, Flutter-facing Runtime Facade, shared schema,
 fixtures, Runtime Store and all plugin capabilities. The accepted replacement
-architecture is ADR-0015 in the sibling application repository. Plugins are
+architecture is ADR-0015 in this monorepo root. Plugins are
 standard Node.js projects with `package.json.mgread`, npm lockfile v3, ordinary
 multi-file output and ordinary `node_modules`; the former manifest/default-export
 template fixture and its special CLI/RPC switch are obsolete and must not return.
@@ -16,11 +16,11 @@ Production data-root resolution remains inside this package/platform adapter;
 transport object. Windows source-tree evidence does not claim Android/Javet,
 macOS signing/package integration or final application packaging acceptance.
 
-The cross-repository architecture contract is maintained with the sibling MgRead
-application repository at ../mg_read/docs/architecture/. The Runtime-specific
-entrypoint is docs/standalone-runtime-contract.md and the ownership decision is
-../mg_read/docs/architecture/adr/0008-standalone-plugin-runtime-boundary.md.
-Before changing Runtime contracts, read those files plus the sibling architecture
+The cross-package architecture contract is maintained in the monorepo root at
+../../docs/architecture/. The Runtime-specific entrypoint is
+docs/standalone-runtime-contract.md and the ownership decision is
+../../docs/architecture/adr/0008-standalone-plugin-runtime-boundary.md.
+Before changing Runtime contracts, read those files plus the root architecture
 README, 03-runtime-lifecycle.md, 05-transport-protocol.md and relevant ADRs.
 This repository may not silently change an accepted MgRead ADR.
 
@@ -40,7 +40,7 @@ This repository may not silently change an accepted MgRead ADR.
   library/metadata, reader state, bookmarks, downloads, cache, files, Cookie,
   plugin KV, settings and diagnostics. It must resolve and manage its own data
   root and Store; it must never receive a Flutter database path or connection.
-- Runtime diagnostics follow sibling ADR-0016: only bounded UTF-8 `.txt`
+- Runtime diagnostics follow root ADR-0016: only bounded UTF-8 `.txt`
   segments may be persisted. Default/key-only logging must never read, clone,
   serialize, buffer, or write HTTP bodies, HTML, JSON documents, novel content,
   or arbitrary object dumps. Those details are eligible only while an explicit,
@@ -54,7 +54,7 @@ This repository may not silently change an accepted MgRead ADR.
   or return a stable unsupported result until this repository owns them.
 - Android Javet Adapter, desktop launcher, Runtime Supervisor, WS/HTTP client
   and server, resource handling and Flutter-facing integration are Runtime
-  internals. They must not be implemented in ../mg_read.
+  internals. They must not be implemented in the root application code.
 - A loaded plugin is cold-activated only on the next application process start.
 - Plugins use Node's standard module loader and share the one module cache. Do
   not create plugin VMs/Contexts, custom ESM loaders, dependency resolvers or
@@ -102,8 +102,8 @@ This repository may not silently change an accepted MgRead ADR.
   platform-channel injection surface.
 - Runtime tests use standard-project fixtures under `test/fixtures`; they must
   exercise the same package/lock validation, install and cold-load path as
-  production. The official author template is the independent sibling
-  `../mg_read_plugin_template`, not a special Runtime module.
+  production. The official author template is
+  `../../templates/mg_read_plugin_template`, not a special Runtime module.
 
 ## Required verification
 
@@ -130,8 +130,8 @@ acceptance.
 
 ## Git and scope discipline
 
-- Keep this repository independent from ../mg_read and do not edit the sibling
-  repository for a Runtime-only task without explicit approval.
+- Keep this package independent from root application code. A Runtime-only task
+  must not edit root app, reader-plugin or template code without explicit approval.
 - Inspect git status before editing. Preserve unrelated changes.
 - Do not commit unless explicitly asked. When asked to commit, stage only
   task-owned files.

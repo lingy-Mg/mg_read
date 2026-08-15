@@ -9,8 +9,8 @@
 仓库当前已有可运行的 Flutter 应用壳、Riverpod 组合根、类型化路由、语义主题、顶层导航、
 书架入口、“我的”页，以及仅提供安全本地交互的“关于我们”与“意见反馈”页面；小说阅读器
 继续只通过公开接入点集成。主应用已具备后台 SQLite metadata persistence，以及启动前完成
-初始化、纯内存读取、分组合流写入和 CAS 恢复的全局 settings 门面。它现在通过同级
-`mg_read_runtime` 的版本化 Flutter Facade 显示 Runtime/Node 健康与已安装插件状态；主项目没有
+初始化、纯内存读取、分组合流写入和 CAS 恢复的全局 settings 门面。它现在通过
+`packages/mg_read_runtime` 的版本化 Flutter Facade 显示 Runtime/Node 健康与已安装插件状态；主项目没有
 Node、端口、WS 或 data-root 代码。“我的 → 调试日志”提供应用/Runtime 分页关键日志、仅内存
 实时详情和显式详情 TXT 模式；默认不会读取或保存 HTTP/JSON/HTML/小说正文。以下能力尚未实现：
 
@@ -19,7 +19,7 @@ Node、端口、WS 或 data-root 代码。“我的 → 调试日志”提供应
 - 由 `mg_read_runtime` 独立实现的官方仓库、完整 Store、缓存、下载、大资源 HTTP 与跨平台承载。
 - Windows/macOS 的 UI 发布适配；Runtime 的 Node/Javet、签名和平台包由 Runtime 仓库验收。
 
-同级 `mg_read_runtime` 已实现 Windows desktop bootstrap 与标准 Node 插件切片：Runtime 自行
+`packages/mg_read_runtime` 已实现 Windows desktop bootstrap 与标准 Node 插件切片：Runtime 自行
 以 Job Object 纳管固定 Node 进程树，完成 ready/HTTP/WS 门禁，按 package/lock 安装依赖并在
 冷启动加载插件，通过 `RuntimePingInvocation`、`InstalledPluginsInvocation` 和
 `SourceDiscoverInvocation`、`SourceSearchInvocation`、`SourceDetailInvocation`、
@@ -65,12 +65,15 @@ Store、大资源数据面、阅读器数据、Android/Javet、macOS 包或最�
 
 ## 与阅读器插件的关系
 
-开发时通过同级目录的本地 path 依赖接入阅读器：
+开发时通过 monorepo 内的本地 path 依赖接入阅读器和 Runtime：
 
 ```text
-Desktop/
-  mg_read/                # 本项目：Flutter 主应用
-  mg_read_reader_ui/      # 已存在：novel_reader_ui Flutter plugin
+mg_read/                  # monorepo 根与 Flutter 主应用
+  packages/
+    mg_read_reader_ui/    # novel_reader_ui Flutter plugin
+    mg_read_runtime/      # Runtime 与 Flutter Facade
+  templates/
+    mg_read_plugin_template/ # 官方标准 Node 插件模板
 ```
 
 主应用只能导入：
@@ -83,17 +86,17 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 当前的 `lib/features/reader/application/reader_launch_request.dart` 与 `lib/features/reader/presentation/reader_host_page.dart` 是已建立的小说阅读器视图宿主边界。真实数据、缓存、状态适配和插件能力必须位于 `mg_read_runtime`，不能塞入页面、feature data/application 或 core。
 
-## 目标仓库边界
+## Monorepo 子项目边界
 
-当前本地已有主项目、阅读器插件、Runtime 和标准插件模板；registry 名称仍是计划：
+当前 monorepo 已包含主项目、阅读器插件、Runtime 和标准插件模板；registry 子项目仍是计划：
 
-| 仓库 | 职责 |
+| 子项目 | 职责 |
 | --- | --- |
-| `mg_read` | Flutter UI、路由、主题、用户交互、阅读器视图宿主和 Runtime 结果的 UI 投影；不实现或注入 Runtime |
-| `mg_read_reader_ui` | 独立 Flutter 小说/漫画阅读器插件 |
-| `mg_read_runtime` | 完整独立插件运行时：Flutter-facing Facade、平台承载、Node Core、内部 WS/HTTP、Runtime Store、Plugin API、Schema 与 fixture |
-| `mg_read_plugin_template` | 已创建的标准 Node 空白项目、多文件 TypeScript、本地 package、构建/校验/打包/契约测试 |
-| `mg_read_plugin_registry` | 唯一官方插件索引、包和发布自动化 |
+| 根目录 `mg_read` | Flutter UI、路由、主题、用户交互、阅读器视图宿主和 Runtime 结果的 UI 投影；不实现或注入 Runtime |
+| `packages/mg_read_reader_ui` | 独立 Flutter 小说/漫画阅读器插件 |
+| `packages/mg_read_runtime` | 完整独立插件运行时：Flutter-facing Facade、平台承载、Node Core、内部 WS/HTTP、Runtime Store、Plugin API、Schema 与 fixture |
+| `templates/mg_read_plugin_template` | 标准 Node 空白项目、多文件 TypeScript、本地 package、构建/校验/打包/契约测试 |
+| 计划中的 `mg_read_plugin_registry` | 唯一官方插件索引、包和发布自动化 |
 
 ## 当前与目标目录
 
@@ -138,6 +141,8 @@ dart format --output=none --set-exit-if-changed .
 flutter analyze
 ```
 
-存在 Dart/Flutter 测试资产时还要执行 `flutter test`。本仓库后续实现补齐 UI 单元/Widget/Facade 消费测试；Node、共享协议、Runtime Store、集成测试和三个首发平台的 Runtime 冒烟由 `mg_read_runtime` 维护并分别报告。Runtime Store 还必须通过不依赖主应用、Node、网络或真实用户数据的独立验收套件。Golden 在视觉规范稳定后按需启用。
+存在 Dart/Flutter 测试资产时还要执行 `flutter test`。主应用后续实现补齐 UI 单元/Widget/Facade 消费测试；Node、共享协议、Runtime Store、集成测试和三个首发平台的 Runtime 冒烟由 `packages/mg_read_runtime` 维护并分别报告。Runtime Store 还必须通过不依赖主应用、Node、网络或真实用户数据的独立验收套件。Golden 在视觉规范稳定后按需启用。
+
+子项目不随根 `flutter analyze` 递归分析；涉及它们时进入各自目录执行其所有者命令：阅读器插件执行根包与 `example/` 的 `flutter analyze`，Runtime 使用其固定 Node 24.16.0 后执行 `npm run verify:desktop`，插件模板执行 `npm run verify`。这保持单一 Git 工作流，同时不混合各子项目独立的 lint 与平台验收边界。
 
 静态检查、自动化测试、应用运行、桌面平台验收、Android 真机原生验收与发布验收必须分别报告，不能互相替代。

@@ -59,7 +59,7 @@ M2.2 在 M2.1 验收后才开始，负责：
 
 本包不得传入数据库、Cookie、文件、平台通道、callback 或 `host.*` handler；Facade 首次调用的自动启动完全由 Runtime 负责。
 
-同级 Runtime 的 M1.2 `RuntimePingInvocation` 只是其内部 desktop communication proof，
+`packages/mg_read_runtime` 的 M1.2 `RuntimePingInvocation` 只是其内部 desktop communication proof，
 尚不是本项目要接入的书架/阅读 capability。M2.2 仍须等待 Runtime 发布完整、版本化的公开
 能力与阅读器适配；不得为了提前展示状态而复用其 test-only Desktop launcher、Node 路径、
 HTTP endpoint 或 WS fixture。
