@@ -1,0 +1,6 @@
+{
+  "name": "@mgread-plugin/example-parser",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js"
+}
