@@ -129,6 +129,7 @@ flowchart LR
 | `packages/mg_read_reader_ui` | 独立 Flutter 阅读器插件，只暴露公开小说/漫画契约 |
 | `packages/mg_read_runtime` | 完整独立插件运行时：平台承载、Runtime Core、内部 WS/HTTP、Runtime 存储、Plugin API、Schema、fixture 与 Flutter-facing 门面 |
 | `templates/mg_read_plugin_template` | 官方空白插件、假数据插件、构建、校验、打包和契约测试 |
+| `plugins/sources/<source-id>` | 实际标准 Node 书源；每个来源独立实现、测试、打包和发布 |
 | `mg_read_plugin_registry` | 唯一官方仓库索引、插件包及发布自动化 |
 
 跨子项目类型不能靠复制后手工维护。规范 Schema、fixture 与 Runtime Facade 的公开类型由 `packages/mg_read_runtime` 维护；主项目只消费其版本化发布物。职责边界由 [ADR-0008](adr/0008-standalone-plugin-runtime-boundary.md) 固定，标准 Node 插件格式由 [ADR-0015](adr/0015-standard-node-plugin-projects.md) 固定。

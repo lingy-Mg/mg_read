@@ -9,7 +9,7 @@
 - 首版承诺平台为 Android、Windows 和 macOS，优先级为 Android 第一、Windows/macOS 第二。
 - iOS、Linux 和 Web 不属于当前承诺支持范围；不得为它们破坏 Android、Windows 或 macOS 的实现边界。
 - 本仓库根目录是唯一主应用，不再创建嵌套 `example/` 或第二个 Flutter App。
-- Monorepo 的固定布局为 `packages/mg_read_reader_ui`（阅读器插件）、`packages/mg_read_runtime`（完整独立 Runtime）与 `templates/mg_read_plugin_template`（官方空白 Node 插件模板）。子项目共享 Git 历史和根仓库 CI，但各自的产品边界、验证命令与发布物保持独立。
+- Monorepo 的固定布局为 `packages/mg_read_reader_ui`（阅读器插件）、`packages/mg_read_runtime`（完整独立 Runtime）、`templates/mg_read_plugin_template`（官方空白 Node 插件模板）与 `plugins/sources/<source-id>`（实际标准 Node 书源）。子项目共享 Git 历史和根仓库 CI，但各自的产品边界、验证命令与发布物保持独立。
 - 插件通过 `pubspec.yaml` 的本地 path 依赖接入。主应用只能导入 `package:novel_reader_ui/novel_reader_ui.dart`，严禁深层导入插件的 `lib/src/`。
 - 系统架构、公开协议和已接受决策以 `docs/architecture/` 为唯一入口；改变已接受 ADR 必须新增替代 ADR，不能只改实现。
 
@@ -66,6 +66,8 @@ packages/
   mg_read_runtime/            # 独立 Runtime 与 Flutter Facade
 templates/
   mg_read_plugin_template/    # 官方标准 Node 插件模板
+plugins/
+  sources/<source-id>/        # 实际标准 Node 书源；每个来源独立打包、测试和发布
 ```
 
 依赖方向为 `app -> features -> core/shared`，feature 通过版本化 Runtime Facade 消费插件能力，并通过窄端口消费主应用持久化。阅读器 feature 可以依赖阅读器和 Runtime 的公开 API；Runtime/插件不得反向依赖主应用。Widget 不直接访问网络、SQLite、文件系统、Runtime 内部协议或 Service Locator，也不能在 `build()` 发起请求或写持久化状态。

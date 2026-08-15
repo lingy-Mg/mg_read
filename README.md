@@ -96,6 +96,7 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 | `packages/mg_read_reader_ui` | 独立 Flutter 小说/漫画阅读器插件 |
 | `packages/mg_read_runtime` | 完整独立插件运行时：Flutter-facing Facade、平台承载、Node Core、内部 WS/HTTP、Runtime Store、Plugin API、Schema 与 fixture |
 | `templates/mg_read_plugin_template` | 标准 Node 空白项目、多文件 TypeScript、本地 package、构建/校验/打包/契约测试 |
+| `plugins/sources/aisishuwu` | 爱丽丝书屋的实际标准 Node 书源；独立源码、在线 smoke 测试与 `.mgplugin` 发布物 |
 | 计划中的 `mg_read_plugin_registry` | 唯一官方插件索引、包和发布自动化 |
 
 ## 当前与目标目录
