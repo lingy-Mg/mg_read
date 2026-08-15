@@ -1,0 +1,36 @@
+abstract final class ComicReaderStrings {
+  static const back = '返回';
+  static const catalog = '目录';
+  static const bookmarks = '书签';
+  static const settings = '设置';
+  static const retry = '重试';
+  static const loading = '加载中…';
+  static const loadingImage = '正在加载图片';
+  static const imageFailed = '图片加载失败';
+  static const chapterFailed = '章节加载失败';
+  static const noChapters = '暂无章节';
+  static const noBookmarks = '暂无书签';
+  static const addBookmark = '添加书签';
+  static const removeBookmark = '删除书签';
+  static const brightness = '亮度';
+  static const spacing = '图片间距';
+  static const keepAwake = '屏幕常亮';
+  static const immersive = '沉浸阅读';
+  static const previousChapter = '上一章';
+  static const nextChapter = '下一章';
+  static const endOfBook = '已经是最后一章';
+  static const readerProblem = '漫画阅读遇到问题';
+  static const loadMore = '加载更多';
+  static const cached = '已缓存';
+  static const notCached = '未缓存';
+  static const read = '已读';
+  static const unread = '未读';
+  static const loadingStatus = '加载中';
+  static const failedStatus = '加载失败';
+  static const imageCommentLoading = '漫画图片评论正在加载';
+  static const imageCommentFailed = '漫画图片评论加载失败，点击重试';
+  static String imageCount(int count) => '$count 张';
+  static String imageSemantics(int number) => '漫画图片 $number';
+  static String imageProgress(String id, int percent) => '图片 $id · $percent%';
+  static String imageCommentCount(int count) => '漫画图片评论，$count条评论';
+}

@@ -1,0 +1,33 @@
+name: novel_reader_ui
+description: An embeddable Flutter text and vertical comic reader with Android and Windows screen-awake support.
+version: 0.4.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+  flutter: ">=3.44.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  plugin_platform_interface: ^2.1.8
+  url_launcher: ^6.3.2
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/backgrounds/
+  fonts:
+    - family: MiSans
+      fonts:
+        - asset: assets/fonts/MiSansVF.ttf
+  plugin:
+    platforms:
+      android:
+        package: com.example.novel_reader_ui
+        pluginClass: NovelReaderUiPlugin
+      windows:
+        pluginClass: NovelReaderUiPluginCApi

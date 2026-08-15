@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Example（选择设备）",
+            "request": "launch",
+            "type": "dart",
+            "cwd": "${workspaceFolder}/example",
+            "program": "lib/main.dart"
+        },
+        {
+            "name": "Example（Windows）",
+            "request": "launch",
+            "type": "dart",
+            "deviceId": "windows",
+            "cwd": "${workspaceFolder}/example",
+            "program": "lib/main.dart"
+        }
+    ]
+}

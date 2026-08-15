@@ -1,0 +1,21 @@
+{
+    "configurations": [
+        {
+            "name": "Mac",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/example/windows/flutter/ephemeral",
+                "${workspaceFolder}/example/windows/flutter/ephemeral/cpp_client_wrapper/include",
+                "${config:dart.flutterSdkPath}/engine/src/flutter/shell/platform/common/client_wrapper/include",
+                "${config:dart.flutterSdkPath}/engine/src/flutter/shell/platform/windows/client_wrapper/include",
+                "${config:dart.flutterSdkPath}/engine/src/flutter/shell/platform/windows/public"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "macos-clang-arm64"
+        }
+    ],
+    "version": 4
+}

@@ -1,0 +1,21 @@
+{
+    "VsCodeTaskButtons.showCounter": false,
+    "VsCodeTaskButtons.tasks": [
+        {
+            "label": "开发运行",
+            "task": "开发：启动示例（自动选择设备）",
+            "tooltip": "在 example 中启动 Flutter 开发版本，并由 Flutter 选择设备"
+        },
+        {
+            "label": "发布 APK",
+            "task": "发布：打包 APK（Release）",
+            "tooltip": "构建 Android Release APK"
+        },
+        {
+            "label": "发布 Windows EXE",
+            "task": "发布：打包 Windows EXE（Release）",
+            "tooltip": "构建 Windows Release 应用目录"
+        }
+    ],
+    "cmake.ignoreCMakeListsMissing": true
+}
