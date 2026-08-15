@@ -11,6 +11,7 @@ import 'package:mg_read/features/discovery/application/discovery_page_state.dart
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
+import 'package:mg_read/features/discovery/presentation/source_picker_sheet.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 
@@ -18,10 +19,12 @@ import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 class DiscoveryDestinationPage extends ConsumerWidget {
   const DiscoveryDestinationPage({
     required this.onDestinationRequested,
+    this.onSourceManagementRequested,
     super.key,
   });
 
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
+  final VoidCallback? onSourceManagementRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -142,33 +145,19 @@ class DiscoveryDestinationPage extends ConsumerWidget {
     DiscoveryPageState state,
     DiscoveryPageController controller,
   ) async {
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 420),
-          child: ListView(
-            shrinkWrap: true,
-            children: <Widget>[
-              const ListTile(title: Text('选择书源')),
-              for (final source in state.sources)
-                ListTile(
-                  selected: source.id == state.selectedSourceId,
-                  leading: const Icon(Icons.extension_rounded),
-                  title: Text(source.displayName),
-                  subtitle: Text(_sourceKindLabel(source)),
-                  trailing: source.id == state.selectedSourceId
-                      ? const Icon(Icons.check_rounded)
-                      : null,
-                  onTap: () => Navigator.of(context).pop(source.id),
-                ),
-            ],
-          ),
-        ),
-      ),
+    final selected = await showDiscoverySourcePicker(
+      context,
+      sources: state.sources,
+      selectedSourceId: state.selectedSourceId!,
     );
-    if (selected != null) await controller.selectSource(selected);
+    switch (selected) {
+      case DiscoverySourceSelected(:final sourceId):
+        await controller.selectSource(sourceId);
+      case DiscoverySourceManagementRequested():
+        onSourceManagementRequested?.call();
+      case null:
+        return;
+    }
   }
 }
 
@@ -221,12 +210,6 @@ class _DiscoveryStateContent extends StatelessWidget {
       ),
     );
   }
-}
-
-String _sourceKindLabel(PluginSourceDescriptor source) {
-  return source.contentKinds
-      .map((kind) => kind.code == 'novel' ? '小说' : '漫画')
-      .join(' · ');
 }
 
 String _sourceErrorTitle(AppError error) => switch (error.category) {

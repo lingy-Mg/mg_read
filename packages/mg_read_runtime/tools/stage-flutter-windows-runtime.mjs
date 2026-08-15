@@ -1,6 +1,6 @@
 // @ts-check
 
-import { access, copyFile, cp, mkdir, rm } from "node:fs/promises";
+import { access, chmod, copyFile, cp, mkdir, rm } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,6 +15,16 @@ const sourceNodeExecutable = resolve(sourceNodeDirectory, "node.exe");
 const sourceNodeLicense = resolve(sourceNodeDirectory, "LICENSE");
 const sourceDist = resolve(repositoryRoot, "dist");
 const sourceEntrypoint = resolve(sourceDist, "cli.js");
+const sourceDefaultPluginArchive = resolve(
+  repositoryRoot,
+  "..",
+  "..",
+  "plugins",
+  "sources",
+  "aisishuwu",
+  "artifacts",
+  "org.mgread.aisishuwu-0.1.0.mgplugin",
+);
 const assetsRoot = resolve(
   repositoryRoot,
   "packages",
@@ -27,6 +37,11 @@ const stagedNodeDirectory = resolve(assetsRoot, "node");
 const stagedNodeExecutable = resolve(stagedNodeDirectory, "node.exe");
 const stagedNodeLicense = resolve(stagedNodeDirectory, "LICENSE");
 const stagedDist = resolve(assetsRoot, "dist");
+const stagedDefaultPluginsDirectory = resolve(assetsRoot, "default-plugins");
+const stagedDefaultPluginArchive = resolve(
+  stagedDefaultPluginsDirectory,
+  "org.mgread.aisishuwu-0.1.0.mgplugin",
+);
 
 /**
  * Refuses any destructive staging target outside this checked-out Runtime tree.
@@ -67,21 +82,31 @@ assertInsideRepository(stagedNodeDirectory);
 assertInsideRepository(stagedNodeExecutable);
 assertInsideRepository(stagedNodeLicense);
 assertInsideRepository(stagedDist);
+assertInsideRepository(stagedDefaultPluginsDirectory);
+assertInsideRepository(stagedDefaultPluginArchive);
 await requireReadable(sourceNodeDirectory, "the exact bundled Node distribution");
 await requireReadable(sourceNodeExecutable, "the exact bundled Node executable");
 await requireReadable(sourceNodeLicense, "the bundled Node license");
 await requireReadable(sourceDist, "the compiled Runtime entrypoint");
 await requireReadable(sourceEntrypoint, "the compiled Runtime main script");
+await requireReadable(sourceDefaultPluginArchive, "the verified bundled source archive");
 
 // These three paths are deterministic output of the pinned toolchain and are
 // ignored by Git. The asset-root marker is intentionally preserved so an empty
 // source checkout still passes Flutter asset discovery before staging.
 await rm(stagedNodeDirectory, { force: true, recursive: true });
 await rm(stagedDist, { force: true, recursive: true });
+await rm(stagedDefaultPluginsDirectory, { force: true, recursive: true });
 await mkdir(assetsRoot, { recursive: true });
 await mkdir(stagedNodeDirectory, { recursive: true });
+await mkdir(stagedDefaultPluginsDirectory, { recursive: true });
 await copyFile(sourceNodeExecutable, stagedNodeExecutable);
 await copyFile(sourceNodeLicense, stagedNodeLicense);
 await cp(sourceDist, stagedDist, { recursive: true });
+await copyFile(sourceDefaultPluginArchive, stagedDefaultPluginArchive);
+// The source artifact can be read-only (for example, when produced from an
+// immutable package cache). Flutter must be able to refresh its generated
+// asset copy on later builds, so the staged package asset is always writable.
+await chmod(stagedDefaultPluginArchive, 0o644);
 
-process.stdout.write("Staged the pinned Windows Runtime asset bundle.\n");
+process.stdout.write("Staged the pinned Windows Runtime asset bundle and default source.\n");

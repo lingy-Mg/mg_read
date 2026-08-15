@@ -127,10 +127,17 @@ docs/
 
 开始任何修改前，完整阅读 [AGENTS.md](AGENTS.md) 和相关架构专题，检查 `git status --short` 并保留无关脏改动。大型实现按“公开契约/领域 → 纯逻辑与适配器 → UI → 原生 → 验证”推进。
 
-本地运行当前应用壳：
+本地运行 Windows 发现链路（先构建书源包并由 Runtime 自己阶段化；主应用不传递书源路径）：
 
 ```powershell
 cd C:\Users\q3499\Desktop\mg_read
+cd plugins\sources\aisishuwu
+npm ci --ignore-scripts
+npm run verify
+cd ..\..\..
+cd packages\mg_read_runtime
+npm run stage:flutter-windows
+cd ..\..
 flutter pub get
 flutter run
 ```

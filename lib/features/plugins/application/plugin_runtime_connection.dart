@@ -57,6 +57,7 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway {
 AppError normalizePluginRuntimeError(PluginRuntimeException error) {
   final code = switch (error.code) {
     'runtime_data_root_unavailable' ||
+    'runtime_bundled_plugin_assets_missing' ||
     'runtime_entrypoint_missing' ||
     'runtime_exited_before_ready' ||
     'runtime_node_executable_missing' ||

@@ -27,19 +27,36 @@ function emitDiagnostic(record: RuntimeDiagnosticRecord): void {
 /**
  * Parses the CLI's intentionally tiny Runtime-owned launch contract.
  *
- * The only value is the data root resolved by this Runtime's platform adapter.
- * It is not a plugin path, host callback, database, Cookie, file service or
- * application-provided setting.
+ * Values are resolved only by this Runtime's platform adapter: its writable
+ * data root and optional immutable bundled-plugin asset directory. They are
+ * not host callbacks, databases, Cookies, file services or app settings.
  */
 function parseLaunchOptions(arguments_: readonly string[]): DesktopRuntimeOptions {
-  if (arguments_.length !== 1 || !arguments_[0]?.startsWith("--data-root=")) {
+  const values = new Map<string, string>();
+  for (const argument of arguments_) {
+    const separator = argument.indexOf("=");
+    if (separator <= 2) {
+      throw new Error("The desktop Runtime received invalid launch options.");
+    }
+    const name = argument.slice(0, separator);
+    const value = argument.slice(separator + 1);
+    if (values.has(name) || value.length === 0 || value.includes("\0")) {
+      throw new Error("The desktop Runtime received invalid launch options.");
+    }
+    values.set(name, value);
+  }
+  const dataRoot = values.get("--data-root");
+  const bundledPluginRoot = values.get("--bundled-plugin-root");
+  if (
+    dataRoot === undefined ||
+    values.size !== (bundledPluginRoot === undefined ? 1 : 2)
+  ) {
     throw new Error("The desktop Runtime requires its platform-owned data root.");
   }
-  const dataRoot = arguments_[0].slice("--data-root=".length);
-  if (dataRoot.length === 0 || dataRoot.includes("\0")) {
-    throw new Error("The desktop Runtime received an invalid data root.");
-  }
-  return { dataRoot };
+  return {
+    dataRoot,
+    ...(bundledPluginRoot === undefined ? {} : { bundledPluginRoot }),
+  };
 }
 
 /** Idempotently stops the one Core owned by this executable process. */

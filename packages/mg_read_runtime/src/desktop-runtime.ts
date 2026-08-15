@@ -5,6 +5,7 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
+import { mkdir, readdir, stat } from "node:fs/promises";
 import type { Duplex } from "node:stream";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -36,6 +37,7 @@ import {
   PluginManagerError,
   type PluginManagerEvent,
 } from "./plugin-manager.js";
+import { PluginInstaller } from "./plugin-installer.js";
 import { emitRuntimeDiagnostic } from "./runtime-diagnostics.js";
 import {
   runtimeDiagnosticValue,
@@ -212,6 +214,15 @@ export interface DesktopRuntimeOptions {
 
   /** Runtime-owned data root; production resolves it in the platform adapter. */
   readonly dataRoot?: string;
+
+  /**
+   * Runtime-package-owned directory of first-run `.mgplugin` seed archives.
+   *
+   * The desktop platform adapter supplies this from its immutable Flutter
+   * package assets. It is deliberately not exposed through the main app or
+   * the Flutter Facade, and is only consumed while this Runtime is cold.
+   */
+  readonly bundledPluginRoot?: string;
 }
 
 /**
@@ -231,6 +242,9 @@ export class DesktopRuntime {
   /** Runtime-owned plugin/dependency/data root, never exposed through Facade. */
   readonly #dataRoot: string;
 
+  /** Immutable platform-package seed directory, if this launch supplies one. */
+  readonly #bundledPluginRoot: string | undefined;
+
   /** All currently open RPC sessions, closed before server shutdown. */
   readonly #sessions = new Set<ServerWebSocketSession>();
 
@@ -249,6 +263,7 @@ export class DesktopRuntime {
     this.#dataRoot =
       options.dataRoot ??
       resolve(tmpdir(), "mgread-runtime-tests", process.pid.toString());
+    this.#bundledPluginRoot = options.bundledPluginRoot;
   }
 
   /**
@@ -307,6 +322,20 @@ export class DesktopRuntime {
       }),
       definition: runtimeDiagnosticEvents.lifecycle,
     });
+
+    try {
+      await this.#seedBundledPlugins();
+    } catch (error) {
+      lifecycleSpan?.end("error", {
+        attributes: () => runtimeDiagnosticValue.object({
+          errorCode: runtimeDiagnosticValue.string("bundled_plugin_seed_failed"),
+          stage: runtimeDiagnosticValue.string("bundledPluginSeed"),
+        }),
+        severity: "error",
+      });
+      await this.#diagnostics?.manager.flush();
+      throw error;
+    }
 
     const pluginLoadSpan = this.#diagnostics?.manager.startSpan({
       attributes: () => runtimeDiagnosticValue.object({
@@ -424,6 +453,67 @@ export class DesktopRuntime {
       }),
     });
     return ready;
+  }
+
+  /**
+   * Seeds Runtime-owned default packages only for a brand-new plugin root.
+   *
+   * Existing installations, including a deliberate user uninstall, always win:
+   * no archive is re-installed and no version pointer is touched. The installer
+   * still performs the normal archive, lockfile, dependency and cold-activation
+   * path before the manager scans the root below.
+   */
+  async #seedBundledPlugins(): Promise<void> {
+    const bundledPluginRoot = this.#bundledPluginRoot;
+    if (bundledPluginRoot === undefined) return;
+
+    const pluginsRoot = resolve(this.#dataRoot, "plugins");
+    await mkdir(pluginsRoot, { recursive: true });
+    const installedEntries = await readdir(pluginsRoot, { withFileTypes: true });
+    if (installedEntries.some((entry) => entry.isDirectory())) return;
+
+    const archives = (await readdir(bundledPluginRoot, { withFileTypes: true }))
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".mgplugin"))
+      .map((entry) => resolve(bundledPluginRoot, entry.name))
+      .sort((left, right) => left.localeCompare(right));
+    if (archives.length === 0) {
+      throw new Error("Runtime bundled plugin assets are unavailable.");
+    }
+
+    const installer = new PluginInstaller(this.#dataRoot);
+    for (const archive of archives) {
+      const archiveBytes = (await stat(archive)).size;
+      const installSpan = this.#diagnostics?.manager.startSpan({
+        attributes: () => runtimeDiagnosticValue.object({
+          operation: runtimeDiagnosticValue.string("bundledSeed"),
+        }),
+        definition: runtimeDiagnosticEvents.pluginInstall,
+      });
+      try {
+        const result = await installer.installArchive(archive);
+        installSpan?.end("success", {
+          attributes: () => runtimeDiagnosticValue.object({
+            archiveBytes: runtimeDiagnosticValue.int64(BigInt(archiveBytes)),
+            fileCount: runtimeDiagnosticValue.int64(
+              BigInt(result.copiedFiles + result.hardlinkedFiles),
+            ),
+            operation: runtimeDiagnosticValue.string("bundledSeed"),
+            pendingActivation: runtimeDiagnosticValue.boolean(
+              result.pendingActivation,
+            ),
+          }),
+        });
+      } catch (error) {
+        installSpan?.end("error", {
+          attributes: () => runtimeDiagnosticValue.object({
+            errorCode: runtimeDiagnosticValue.string("bundled_plugin_seed_failed"),
+            operation: runtimeDiagnosticValue.string("bundledSeed"),
+          }),
+          severity: "error",
+        });
+        throw error;
+      }
+    }
   }
 
   /** Performs ordered shutdown so handlers cannot outlive their transport. */

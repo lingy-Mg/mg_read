@@ -43,6 +43,7 @@ test("Flutter package declares every nested Windows Runtime asset directory", as
     "assets/runtime/windows-x64/node/",
     "assets/runtime/windows-x64/dist/",
     "assets/runtime/windows-x64/dist/diagnostics/",
+    "assets/runtime/windows-x64/default-plugins/",
   ]);
   assert.ok(!assetEntries.includes("assets/runtime/windows-x64/"));
 });

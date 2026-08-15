@@ -19,3 +19,4 @@ flutter:
     - assets/runtime/windows-x64/node/
     - assets/runtime/windows-x64/dist/
     - assets/runtime/windows-x64/dist/diagnostics/
+    - assets/runtime/windows-x64/default-plugins/

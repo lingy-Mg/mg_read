@@ -36,6 +36,11 @@ CLI 要求 Runtime-owned `--data-root`，Core 在发送 ready 前：
 5. 调用命名 `activate(ctx)`，随后把插件加入可分派集合；
 6. 完成全部扫描后才绑定业务 ready 投影。
 
+Windows Flutter 包还可带 Runtime 自有的 `default-plugins/` 种子归档。仅当 data root 中从未
+出现过插件目录时，Runtime 在 cold initialize 前按标准 `.mgplugin` 安装路径导入这些归档；
+随后在同一次启动中冷激活。已有安装或用户卸载决策绝不被种子覆盖，主应用也不知道归档或
+安装路径。
+
 `ctx` 当前包含 Runtime-owned `dataDir`、`cacheDir`、传播 signal/deadline 的 `http.fetch`、
 丢弃自由文本的结构化 `log`、只读 `app` 和 `plugin`。插件安装树视为只读。
 

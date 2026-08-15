@@ -32,6 +32,7 @@ typedef _RuntimeStartupFailureFactory =
 final class _DesktopRuntimeBundle {
   const _DesktopRuntimeBundle({
     required this.dataRoot,
+    required this.bundledPluginDirectory,
     required this.entrypoint,
     required this.nodeExecutable,
     required this.workingDirectory,
@@ -39,6 +40,9 @@ final class _DesktopRuntimeBundle {
 
   /// Runtime-owned writable root; never returned through the public Facade.
   final Directory dataRoot;
+
+  /// Packaged first-run source archives, never visible to the main app.
+  final Directory? bundledPluginDirectory;
 
   /// Compiled Node executable entrypoint that emits ready/diagnostic records.
   final File entrypoint;
@@ -82,6 +86,9 @@ final class _DesktopRuntimeBundle {
       dataRoot: Directory(
         _joinPath(<String>[localAppData, 'MgRead', 'runtime']),
       ),
+      bundledPluginDirectory: Directory(
+        _joinPath(<String>[bundleRoot.path, 'default-plugins']),
+      ),
       entrypoint: File(_joinPath(<String>[bundleRoot.path, 'dist', 'cli.js'])),
       nodeExecutable: File(
         _joinPath(<String>[bundleRoot.path, 'node', 'node.exe']),
@@ -110,6 +117,7 @@ final class _DesktopRuntimeBundle {
               DateTime.now().microsecondsSinceEpoch.toString(),
             ]),
           ),
+      bundledPluginDirectory: null,
       entrypoint:
           entrypointOverride ??
           File(
@@ -124,7 +132,7 @@ final class _DesktopRuntimeBundle {
               'node-v24.16.0-win-x64',
               'node.exe',
             ]),
-      ),
+          ),
       workingDirectory: runtimeRepositoryRoot,
     );
   }
@@ -265,6 +273,8 @@ final class _DesktopRuntimeSupervisor {
         <String>[
           _bundle.entrypoint.path,
           '--data-root=${_bundle.dataRoot.path}',
+          if (_bundle.bundledPluginDirectory != null)
+            '--bundled-plugin-root=${_bundle.bundledPluginDirectory!.path}',
         ],
         environment: _allowlistedEnvironment(),
         includeParentEnvironment: false,
@@ -365,6 +375,21 @@ final class _DesktopRuntimeSupervisor {
       throw _failure(
         'runtime_entrypoint_missing',
         'The packaged desktop Runtime main script is unavailable.',
+      );
+    }
+    final bundledPluginDirectory = _bundle.bundledPluginDirectory;
+    if (bundledPluginDirectory != null &&
+        !await bundledPluginDirectory.exists()) {
+      _recordDiagnostic(
+        const RuntimeDiagnostic(
+          code: 'runtime_bundled_plugin_assets_missing',
+          level: RuntimeDiagnosticLevel.error,
+          message: 'The packaged default source assets are missing.',
+        ),
+      );
+      throw _failure(
+        'runtime_bundled_plugin_assets_missing',
+        'The packaged default source assets are unavailable.',
       );
     }
   }

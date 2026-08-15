@@ -182,6 +182,9 @@ class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
         onDestinationRequested: (AppNavigationDestination destination) {
           _goToDestination(context, destination);
         },
+        onSourceManagementRequested: () {
+          const PluginCenterRoute().push(context);
+        },
       ),
     );
   }

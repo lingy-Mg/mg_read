@@ -211,6 +211,42 @@ void main() {
 
     expect(gateway.discoverTargets, <String?>[null, 'category:empty']);
   });
+
+  testWidgets('discovery picker opens the Runtime-owned source manager', (
+    tester,
+  ) async {
+    final gateway = _FixedSourceGateway(
+      searchResult: PluginSearchResult(
+        pluginId: 'org.example.source',
+        sourceName: '示例书源',
+        items: const <PluginContentSummary>[],
+        nextCursor: null,
+        totalCount: 0,
+      ),
+      discoveryResult: _discoveryResult(),
+    );
+    var managementRequested = false;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [sourceContentGatewayProvider.overrideWithValue(gateway)],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: DiscoveryDestinationPage(
+            onDestinationRequested: (_) {},
+            onSourceManagementRequested: () => managementRequested = true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('discovery-source-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('discovery-source-picker-manage')));
+    await tester.pumpAndSettle();
+
+    expect(managementRequested, isTrue);
+  });
 }
 
 PluginDiscoverResult _discoveryResult() {

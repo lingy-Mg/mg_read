@@ -13,3 +13,4 @@ coverage/
 .DS_Store
 /packages/mgread_plugin_runtime/assets/runtime/windows-x64/node/
 /packages/mgread_plugin_runtime/assets/runtime/windows-x64/dist/
+/packages/mgread_plugin_runtime/assets/runtime/windows-x64/default-plugins/

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,7 @@ import test from "node:test";
 
 import {
   DesktopRuntime,
+  createPluginArchive,
   PluginInstaller,
   protocolVersion,
   runtimeVersion,
@@ -20,14 +21,15 @@ const desktopFixture = JSON.parse(
     "utf8",
   ),
 );
+const fixtureRoot = fileURLToPath(
+  new URL("./fixtures/standard-plugin/", import.meta.url),
+);
 
 async function createRuntime(t, { installFixture = false } = {}) {
   const dataRoot = await mkdtemp(join(tmpdir(), "mgread-runtime-node-test-"));
   if (installFixture) {
     const installer = new PluginInstaller(dataRoot);
-    await installer.installProject(
-      fileURLToPath(new URL("./fixtures/standard-plugin/", import.meta.url)),
-    );
+    await installer.installProject(fixtureRoot);
   }
   const runtime = new DesktopRuntime({ dataRoot });
   t.after(async () => {
@@ -345,6 +347,46 @@ test("desktop Runtime loads and searches an installed standard Node plugin", asy
   assert.equal(content.type, "response");
   assert.equal(content.result.contentKind, "novel");
   assert.deepEqual(content.result.pages, []);
+});
+
+test("desktop Runtime seeds a bundled source only into a new Runtime data root", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "mgread-runtime-bundled-seed-"));
+  const dataRoot = join(root, "runtime-data");
+  const bundledPluginRoot = join(root, "bundled-plugins");
+  await mkdir(bundledPluginRoot, { recursive: true });
+  await createPluginArchive(fixtureRoot, join(bundledPluginRoot, "fixture.mgplugin"));
+  const runtime = new DesktopRuntime({ dataRoot, bundledPluginRoot });
+  t.after(async () => {
+    await runtime.stop();
+    await rm(root, { force: true, recursive: true });
+  });
+
+  const ready = await runtime.start();
+  const socket = await openRuntimeSocket(ready);
+  t.after(() => socket.close());
+  const firstList = await sendRequest(
+    socket,
+    makeRequest(ready, "c:bundled-seed-first", "plugins.list.v1"),
+  );
+  assert.equal(firstList.type, "response");
+  assert.equal(firstList.result.length, 1);
+  assert.equal(firstList.result[0].id, desktopFixture.plugin.id);
+
+  socket.close();
+  await runtime.stop();
+  await rm(bundledPluginRoot, { force: true, recursive: true });
+
+  const restarted = new DesktopRuntime({ dataRoot, bundledPluginRoot });
+  t.after(() => restarted.stop());
+  const restartedReady = await restarted.start();
+  const restartedSocket = await openRuntimeSocket(restartedReady);
+  t.after(() => restartedSocket.close());
+  const secondList = await sendRequest(
+    restartedSocket,
+    makeRequest(restartedReady, "c:bundled-seed-second", "plugins.list.v1"),
+  );
+  assert.equal(secondList.type, "response");
+  assert.equal(secondList.result.length, 1);
 });
 
 test("desktop Runtime multiplexes bounded concurrent control requests on one socket", async (t) => {

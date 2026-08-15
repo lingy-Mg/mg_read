@@ -1,0 +1,103 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
+
+import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/discovery/presentation/source_picker_sheet.dart';
+
+void main() {
+  final sources = <PluginSourceDescriptor>[
+    PluginSourceDescriptor(
+      id: 'org.mgread.aisishuwu',
+      displayName: '爱丽丝书屋',
+      contentKinds: const <PluginContentKind>[PluginContentKind.novel],
+    ),
+    PluginSourceDescriptor(
+      id: 'org.example.manga',
+      displayName: '示例漫画源',
+      contentKinds: const <PluginContentKind>[PluginContentKind.manga],
+    ),
+  ];
+
+  testWidgets('picker searches, selects and marks the current source', (
+    tester,
+  ) async {
+    DiscoverySourcePickerResult? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: FilledButton(
+                onPressed: () async {
+                  result = await showDiscoverySourcePicker(
+                    context,
+                    sources: sources,
+                    selectedSourceId: 'org.mgread.aisishuwu',
+                  );
+                },
+                child: const Text('打开'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('选择数据来源'), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('discovery-source-picker-search')),
+      '漫画',
+    );
+    await tester.pump();
+
+    expect(find.text('爱丽丝书屋'), findsNothing);
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('discovery-source-picker-org.example.manga'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(result, isA<DiscoverySourceSelected>());
+    expect((result! as DiscoverySourceSelected).sourceId, 'org.example.manga');
+  });
+
+  testWidgets('picker exposes the Runtime-owned management entry point', (
+    tester,
+  ) async {
+    DiscoverySourcePickerResult? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                result = await showDiscoverySourcePicker(
+                  context,
+                  sources: sources,
+                  selectedSourceId: 'org.mgread.aisishuwu',
+                );
+              },
+              child: const Text('打开'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('discovery-source-picker-manage')));
+    await tester.pumpAndSettle();
+
+    expect(result, isA<DiscoverySourceManagementRequested>());
+  });
+}
