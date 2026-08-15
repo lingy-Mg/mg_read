@@ -1,0 +1,49 @@
+{
+  "fixtureVersion": 1,
+  "scope": "standard-node-plugin-v1",
+  "host": "127.0.0.1",
+  "http": {
+    "livePath": "/health/live",
+    "readyPath": "/health/ready"
+  },
+  "nodeVersion": "24.16.0",
+  "protocolVersion": "1.0",
+  "runtimeVersion": "0.2.0-standard.1",
+  "webSocket": {
+    "maxControlFrameBytes": 65536,
+    "maxInFlightRequests": 256,
+    "maxOutboundQueueBytes": 1048576,
+    "path": "/v1/rpc",
+    "supportsCancellation": true,
+    "runtimeMethods": [
+      "runtime.hello",
+      "diagnostics.sessions.list.v1",
+      "diagnostics.events.list.v1",
+      "diagnostics.event.get.v1",
+      "diagnostics.attachments.list.v1",
+      "diagnostics.attachment.read.v1",
+      "diagnostics.capture.start.v1",
+      "diagnostics.capture.stop.v1",
+      "diagnostics.session.delete.v1",
+      "diagnostics.retention.enforce.v1",
+      "diagnostics.statistics.get.v1",
+      "runtime.ping",
+      "plugins.list.v1",
+      "source.discover.v1",
+      "source.search.v1",
+      "source.getDetail.v1",
+      "source.getChapters.v1",
+      "source.getContent.v1",
+      "runtime.shutdown"
+    ]
+  },
+  "plugin": {
+    "id": "org.mgread.runtime.fixture",
+    "displayName": "Runtime 标准测试书源",
+    "version": "1.0.0",
+    "searchKeyword": "测试",
+    "searchTitle": "标准插件：测试",
+    "wordCount": 123456,
+    "latestChapterTitle": "第一章"
+  }
+}

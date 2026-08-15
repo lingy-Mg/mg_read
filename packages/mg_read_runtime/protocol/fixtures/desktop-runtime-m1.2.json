@@ -1,0 +1,24 @@
+{
+  "fixtureVersion": 1,
+  "scope": "desktop-runtime-m1.2",
+  "host": "127.0.0.1",
+  "http": {
+    "livePath": "/health/live",
+    "readyPath": "/health/ready"
+  },
+  "nodeVersion": "24.16.0",
+  "protocolVersion": "1.0",
+  "runtimeVersion": "0.1.0-m1.2",
+  "webSocket": {
+    "maxControlFrameBytes": 65536,
+    "maxInFlightRequests": 256,
+    "maxOutboundQueueBytes": 1048576,
+    "path": "/v1/rpc",
+    "supportsCancellation": true,
+    "runtimeMethods": [
+      "runtime.hello",
+      "runtime.ping",
+      "runtime.shutdown"
+    ]
+  }
+}

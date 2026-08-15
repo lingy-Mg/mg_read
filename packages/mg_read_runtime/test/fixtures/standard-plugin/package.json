@@ -1,0 +1,21 @@
+{
+  "name": "@mgread-plugin/runtime-fixture",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "dependencies": {
+    "local-helper": "file:./packages/local-helper"
+  },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.runtime.fixture",
+    "displayName": "Runtime 标准测试书源",
+    "pluginApi": 1,
+    "contentKinds": [
+      "novel"
+    ]
+  }
+}
