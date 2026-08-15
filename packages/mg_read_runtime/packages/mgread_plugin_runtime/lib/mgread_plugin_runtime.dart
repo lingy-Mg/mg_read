@@ -7,6 +7,7 @@ library mgread_plugin_runtime;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:math';
 
@@ -21,3 +22,4 @@ part 'src/plugin_runtime.dart';
 part 'src/runtime_diagnostics_invocation.dart';
 part 'src/runtime_error.dart';
 part 'src/wire_connection.dart';
+part 'src/windows_system_proxy.dart';

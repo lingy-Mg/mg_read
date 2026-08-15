@@ -34,6 +34,11 @@ This repository may not silently change an accepted MgRead ADR.
 - Windows and macOS will launch the exact Node version recorded in
   docs/runtime-version-matrix.md. They must not depend on a user's PATH or
   global Node installation.
+- Desktop Node starts with `--use-env-proxy`: only `HTTP_PROXY`, `HTTPS_PROXY`,
+  and `NO_PROXY` may cross the explicit environment allowlist. On Windows, the
+  Runtime also reads the user's manual Internet Settings proxy without spawning
+  a helper process; PAC/WPAD requires a future target-URL resolver and must not
+  be flattened into a false global proxy value.
 - Runtime business traffic is WS control plane plus loopback HTTP data plane.
   stdio is limited to lifecycle, structured logging, and ready messages.
 - Runtime owns all plugin/content persistence: installation/version state,

@@ -6,8 +6,15 @@ const _expectedNodeVersion = '24.16.0';
 /// Version of the internal Runtime control protocol negotiated during hello.
 const _protocolVersion = '1.0';
 
-/// Shared upper bound for child startup, readiness probes, and control calls.
-const _startupTimeout = Duration(seconds: 5);
+/// Upper bound for child startup and readiness probes.
+// A new Runtime data root installs the packaged default source before emitting
+// ready. Materialising its verified dependency tree can take roughly 14
+// seconds on Windows, so the first launch needs a bounded but realistic
+// budget. Later starts normally complete much sooner.
+const _startupTimeout = Duration(seconds: 20);
+
+/// Upper bound for a single already-connected control request.
+const _controlTimeout = Duration(seconds: 5);
 
 /// Bounded count of safe diagnostics retained for Flutter error presentation.
 const _maxDiagnosticEntries = 32;
@@ -271,6 +278,7 @@ final class _DesktopRuntimeSupervisor {
       final process = await Process.start(
         _bundle.nodeExecutable.path,
         <String>[
+          '--use-env-proxy',
           _bundle.entrypoint.path,
           '--data-root=${_bundle.dataRoot.path}',
           if (_bundle.bundledPluginDirectory != null)
@@ -835,8 +843,9 @@ final RegExp _diagnosticCodePattern = RegExp(r'^[a-z0-9_]{1,64}$');
 
 ///
 /// Returns the minimal Windows environment required to start the staged Node
-/// binary. Parent environment inheritance stays disabled to prevent ambient
-/// PATH, Node options, or application secrets from changing Runtime behavior.
+/// binary. Parent environment inheritance stays disabled so PATH, Node options
+/// and application secrets cannot change Runtime behavior. System proxy values
+/// are the narrow exception required by Node's `--use-env-proxy` mode.
 Map<String, String> _allowlistedEnvironment() {
   const allowedNames = <String>[
     'ComSpec',
@@ -846,10 +855,30 @@ Map<String, String> _allowlistedEnvironment() {
     'WINDIR',
   ];
   final inherited = Platform.environment;
-  return <String, String>{
+  final environment = <String, String>{
     for (final name in allowedNames)
       if (inherited[name] case final value?) name: value,
   };
+  for (final name in const <String>[
+    'HTTP_PROXY',
+    'HTTPS_PROXY',
+    'NO_PROXY',
+  ]) {
+    final value = _environmentValueIgnoringCase(inherited, name);
+    if (value != null && value.isNotEmpty) environment[name] = value;
+  }
+  for (final entry in _WindowsSystemProxy.environment().entries) {
+    environment.putIfAbsent(entry.key, () => entry.value);
+  }
+  return environment;
+}
+
+/// Windows environment names are case-insensitive even when Dart's map is not.
+String? _environmentValueIgnoringCase(Map<String, String> environment, String name) {
+  for (final entry in environment.entries) {
+    if (entry.key.toUpperCase() == name) return entry.value;
+  }
+  return null;
 }
 
 /// Joins package-owned path segments without relying on the host application's CWD.

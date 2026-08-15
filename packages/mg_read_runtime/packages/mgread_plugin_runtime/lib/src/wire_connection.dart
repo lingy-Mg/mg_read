@@ -66,7 +66,7 @@ final class _WireConnection {
         path: '/v1/rpc',
       ).toString(),
       compression: CompressionOptions.compressionOff,
-    ).timeout(_startupTimeout);
+    ).timeout(_controlTimeout);
     return _WireConnection._(ready, socket);
   }
 
@@ -125,7 +125,7 @@ final class _WireConnection {
     final id = _nextId();
     final traceId = 'trace:$id';
     final completer = Completer<Object?>();
-    final deadline = DateTime.now().add(_startupTimeout).millisecondsSinceEpoch;
+    final deadline = DateTime.now().add(_controlTimeout).millisecondsSinceEpoch;
     final encoded = jsonEncode(<String, Object?>{
       'v': _protocolVersion,
       'type': 'request',
@@ -156,7 +156,7 @@ final class _WireConnection {
     try {
       _socket.add(encoded);
       return await completer.future.timeout(
-        _startupTimeout,
+        _controlTimeout,
         onTimeout: () {
           _sendCancellation(id, traceId);
           throw const PluginRuntimeException(
@@ -188,7 +188,7 @@ final class _WireConnection {
     try {
       await _socket
           .close(WebSocketStatus.goingAway, 'Runtime is stopping.')
-          .timeout(_startupTimeout);
+          .timeout(_controlTimeout);
     } on Object {
       // Process-tree cleanup remains the owning supervisor's responsibility.
     }

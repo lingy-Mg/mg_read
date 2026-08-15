@@ -22,7 +22,7 @@
 ## Runtime、通信与数据硬约束
 
 - 每个应用进程只能有一个 Node Runtime 和一个 V8 VM；插件不得创建 Worker、子进程、第二个 VM 或原生 Addon。
-- Android 的一个专用线程 Javet `NodeRuntime`、Windows/macOS 的固定 Node 24 子进程及其打包/生命周期全部由 `packages/mg_read_runtime` 实现；主应用代码不得创建任何 Javet/Node bridge、Supervisor 或平台 Runtime 适配。
+- Android 的一个专用线程 Javet `NodeRuntime`、Windows/macOS 的固定 Node 24 子进程及其打包/生命周期全部由 `packages/mg_read_runtime` 实现；主应用代码不得创建任何 Javet/Node bridge、Supervisor 或平台 Runtime 适配。桌面 Node 的全局 HTTP 默认使用 Runtime 允许的显式代理环境变量，Windows 还读取用户 Internet Settings 的手工代理；PAC/WPAD 必须按目标 URL 由 Runtime 专项能力解析，不能伪装成固定全局代理。
 - WS 控制面和 loopback HTTP 数据面是 Runtime 内部实现；本仓库不得创建 Runtime Client、WebSocket/HTTP handler、端口/ready/bootId 管理或 raw protocol DTO，只能调用版本化 Runtime Facade。
 - `packages/mg_read_runtime` 当前的 M1.2 desktop `RuntimePingInvocation` 仅是其子项目内的 Windows 通信
   证据（包括 Runtime-own Job Object、启动诊断和有界 WS 多路复用），不是本项目接入 Runtime

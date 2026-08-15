@@ -95,6 +95,10 @@ M1.1 尚未选择 Runtime Store 的具体持久化引擎。未来选型必须遵
 Android Javet/Windows/macOS 一致性、迁移、原子文件恢复、包体和真实平台探针约束；不得
 因为主项目曾规划 Drift/SQLite 就将 Flutter 数据库或未经审查的 native SQLite 包带入 Runtime。
 
+桌面 Node 通过 `--use-env-proxy` 采用 Runtime 显式允许的 `HTTP_PROXY`、`HTTPS_PROXY` 和
+`NO_PROXY`；Windows 还读取用户 Internet Settings 的手工代理，不启动额外 helper 进程。PAC/
+WPAD 必须按每个目标 URL 解析，尚未实现该 resolver 前不得将其错误降级成固定全局代理。
+
 Runtime 诊断是上述业务 Store 选型之外的有界运行证据，并固定遵守主项目 ADR-0016：关键
 事件只批量追加到 UTF-8 分段 `.txt`；不创建日志 SQLite/WAL/二进制索引。默认路径只记录
 脱敏元数据，绝不读取或复制 HTTP body。只有显式调试会话命中 component/origin allowlist

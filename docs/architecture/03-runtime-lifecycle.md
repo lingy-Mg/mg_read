@@ -87,8 +87,10 @@ sequenceDiagram
 - stdin/stdout 或匿名管道只允许 Runtime 内部传启动参数、结构化日志、失败原因和单条
   `ready`；不承载 plugin capability 或 UI 业务数据。
 - Windows 使用隐藏窗口方式启动。macOS 以 Runtime 包内已签名的固定路径启动。
-- 子进程环境采用 Runtime 定义的显式允许列表；不继承可能改变模块解析、代理或调试
-  行为的任意 Node 环境变量。
+- 子进程环境采用 Runtime 定义的显式允许列表；不继承可能改变模块解析或调试行为的任意
+  Node 环境变量。HTTP 例外仅为 `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`，并以 Node
+  `--use-env-proxy` 启用；Windows 还可读取用户 Internet Settings 的手工代理。PAC/WPAD
+  是按目标 URL 的决策，必须由 Runtime 的专门解析能力处理，不能转写为固定全局代理值。
 
 ### `ready` 消息
 
