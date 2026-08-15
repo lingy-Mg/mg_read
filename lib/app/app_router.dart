@@ -22,10 +22,16 @@ import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
 part 'app_router.g.dart';
 
+/// Owns imperative overlays that cannot use a route-builder [BuildContext].
+final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(
+  debugLabel: 'mgReadRootNavigator',
+);
+
 /// Supplies the declarative application router and disposes it with the app.
 final appRouterProvider = Provider<GoRouter>((Ref ref) {
   final diagnostics = ref.watch(diagnosticsManagerProvider);
   final GoRouter router = GoRouter(
+    navigatorKey: _rootNavigatorKey,
     routes: $appRoutes,
     errorBuilder: (BuildContext context, GoRouterState state) {
       return const _UnknownRoutePage();
@@ -211,7 +217,10 @@ Future<void> _openTransientSourceTextReader(
   required PluginChaptersResult firstCatalogPage,
   required PluginChapterSummary chapter,
 }) async {
-  final navigator = Navigator.of(context);
+  final navigator = _rootNavigatorKey.currentState;
+  if (navigator == null) {
+    throw StateError('The application navigator is not ready.');
+  }
   final gateway = ProviderScope.containerOf(
     context,
   ).read(sourceContentGatewayProvider);
