@@ -115,7 +115,6 @@ void main() {
       find.byKey(const Key('source-chapter-content-sheet')),
       findsOneWidget,
     );
-    expect(find.text('这是插件返回的正文。'), findsOneWidget);
     expect(gateway.contentCalls, 1);
   });
 
@@ -149,6 +148,84 @@ void main() {
     expect(find.text('真实发现书籍'), findsAtLeastNWidgets(1));
     expect(find.text('第二分区书籍'), findsAtLeastNWidgets(1));
     expect(find.textContaining('null'), findsNothing);
+  });
+
+  testWidgets('discovery delegates a novel chapter to the host reader intent', (
+    tester,
+  ) async {
+    final gateway = _FixedSourceGateway(
+      searchResult: PluginSearchResult(
+        pluginId: 'org.example.source',
+        sourceName: '示例书源',
+        items: const <PluginContentSummary>[],
+        nextCursor: null,
+        totalCount: 0,
+      ),
+      discoveryResult: _discoveryResult(),
+      detailResult: PluginContentDetail(
+        pluginId: 'org.example.source',
+        sourceName: '示例书源',
+        summary: _summary(
+          id: 'discover-1',
+          title: '真实发现书籍',
+          author: null,
+          wordCount: null,
+          url: null,
+        ),
+        aliases: const <String>[],
+        catalogUrl: null,
+      ),
+      chaptersResult: PluginChaptersResult(
+        pluginId: 'org.example.source',
+        sourceName: '示例书源',
+        items: <PluginChapterSummary>[
+          PluginChapterSummary(
+            id: 'chapter-1',
+            title: '第一章',
+            order: 0,
+            url: null,
+            volumeTitle: null,
+            wordCount: null,
+            updatedAt: null,
+            isLocked: false,
+            attributes: const <PluginContentAttribute>[],
+          ),
+        ],
+        nextCursor: null,
+        totalCount: 1,
+      ),
+    );
+    String? requestedChapterId;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [sourceContentGatewayProvider.overrideWithValue(gateway)],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: DiscoveryDestinationPage(
+            onDestinationRequested: (_) {},
+            onTextChapterRequested:
+                ({
+                  required detail,
+                  required firstCatalogPage,
+                  required chapter,
+                }) async {
+                  requestedChapterId = chapter.id;
+                },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('runtime-discovery-item-discover-1')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('source-chapter-chapter-1')));
+    await tester.pumpAndSettle();
+
+    expect(requestedChapterId, 'chapter-1');
+    expect(find.byKey(const Key('source-content-detail-sheet')), findsNothing);
   });
 
   testWidgets('category-only discovery is content and preserves zero counts', (

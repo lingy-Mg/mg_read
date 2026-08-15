@@ -14,3 +14,8 @@ AppPersistence
 本交付只做功能验证，不包含目录或正文压力/容量测试。不得在交互路径 VACUUM；轻量备份只含 metadata，完整正文备份须采用未来流式/在线备份。
 
 `ContentLibrary` 向 feature/reader 提供异步强类型仓储；内部 PluginSourceData（pluginId、版本、dataVersion、opaque JSON）不从公开 barrel 导出。普通 JSON 禁止正文、Base64、二进制与绝对路径。首版仅 novel/manga；未知类型只读。漫画文件按漫画 LibraryItemId 分目录，移除漫画时删除整个目录。
+
+发现页的开发期阅读器联调可在未创建 `LibraryItem` 的前提下，用 Runtime Facade 的详情、目录和正文
+构造一次 route-lifetime 的临时阅读会话。该会话的目录、正文、进度、书签和阅读设置只存在内存，
+退出阅读器即丢弃；它不得写入任何 app SQLite、文件对象、Runtime 缓存或书架记录，也不能替代本
+专题定义的正式入库流程。

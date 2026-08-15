@@ -7,12 +7,21 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 
+/// Host-owned intent to open a selected source text chapter in a reader.
+typedef SourceTextChapterRequested =
+    Future<void> Function({
+      required PluginContentDetail detail,
+      required PluginChaptersResult firstCatalogPage,
+      required PluginChapterSummary chapter,
+    });
+
 /// Opens a host-owned detail/catalog surface backed by typed Runtime calls.
 Future<void> showSourceContentDetailSheet(
   BuildContext context, {
   required SourceContentGateway gateway,
   required String pluginId,
   required String id,
+  SourceTextChapterRequested? onTextChapterRequested,
 }) {
   final detailFuture = _loadDetail(gateway, pluginId, id);
   return showModalBottomSheet<void>(
@@ -42,6 +51,7 @@ Future<void> showSourceContentDetailSheet(
             return _SourceDetailView(
               bundle: snapshot.requireData,
               gateway: gateway,
+              onTextChapterRequested: onTextChapterRequested,
             );
           },
         ),
@@ -73,10 +83,15 @@ final class _SourceDetailBundle {
 }
 
 class _SourceDetailView extends StatelessWidget {
-  const _SourceDetailView({required this.bundle, required this.gateway});
+  const _SourceDetailView({
+    required this.bundle,
+    required this.gateway,
+    required this.onTextChapterRequested,
+  });
 
   final _SourceDetailBundle bundle;
   final SourceContentGateway gateway;
+  final SourceTextChapterRequested? onTextChapterRequested;
 
   @override
   Widget build(BuildContext context) {
@@ -213,20 +228,61 @@ class _SourceDetailView extends StatelessWidget {
               ),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () {
-                unawaited(
-                  _showChapterContent(
-                    context,
-                    gateway: gateway,
-                    pluginId: detail.pluginId,
-                    id: content.id,
-                    chapter: chapter,
-                  ),
-                );
+                if (content.contentKind == PluginContentKind.novel) {
+                  unawaited(
+                    _openTextChapter(
+                      context,
+                      gateway: gateway,
+                      detail: detail,
+                      firstCatalogPage: bundle.chapters,
+                      chapter: chapter,
+                      onTextChapterRequested: onTextChapterRequested,
+                    ),
+                  );
+                } else {
+                  unawaited(
+                    _showChapterContent(
+                      context,
+                      gateway: gateway,
+                      pluginId: detail.pluginId,
+                      id: content.id,
+                      chapter: chapter,
+                    ),
+                  );
+                }
               },
             ),
       ],
     );
   }
+}
+
+/// Closes the detail sheet before asking the host application to open a reader.
+Future<void> _openTextChapter(
+  BuildContext context, {
+  required SourceContentGateway gateway,
+  required PluginContentDetail detail,
+  required PluginChaptersResult firstCatalogPage,
+  required PluginChapterSummary chapter,
+  required SourceTextChapterRequested? onTextChapterRequested,
+}) async {
+  final callback = onTextChapterRequested;
+  if (callback == null) {
+    await _showChapterContent(
+      context,
+      gateway: gateway,
+      pluginId: detail.pluginId,
+      id: detail.summary.id,
+      chapter: chapter,
+    );
+    return;
+  }
+  Navigator.of(context).pop();
+  await callback(
+    detail: detail,
+    firstCatalogPage: firstCatalogPage,
+    chapter: chapter,
+  );
 }
 
 Future<void> _showChapterContent(

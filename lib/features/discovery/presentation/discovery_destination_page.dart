@@ -20,11 +20,13 @@ class DiscoveryDestinationPage extends ConsumerWidget {
   const DiscoveryDestinationPage({
     required this.onDestinationRequested,
     this.onSourceManagementRequested,
+    this.onTextChapterRequested,
     super.key,
   });
 
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
   final VoidCallback? onSourceManagementRequested;
+  final SourceTextChapterRequested? onTextChapterRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -46,6 +48,7 @@ class DiscoveryDestinationPage extends ConsumerWidget {
               gateway: ref.read(sourceContentGatewayProvider),
               pluginId: state.selectedSourceId!,
               id: content.id,
+              onTextChapterRequested: onTextChapterRequested,
             ),
           );
         },

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
+import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/diagnostics/presentation/diagnostics_viewer_page.dart';
+import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_destination_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
@@ -13,6 +16,8 @@ import 'package:mg_read/features/profile/presentation/about_page.dart';
 import 'package:mg_read/features/profile/presentation/feedback_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 import 'package:mg_read/features/reader/presentation/reader_destination_page.dart';
+import 'package:mg_read/features/reader/data/transient_source_text_reader.dart';
+import 'package:mg_read/features/reader/presentation/reader_host_page.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
 part 'app_router.g.dart';
@@ -185,8 +190,70 @@ class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
         onSourceManagementRequested: () {
           const PluginCenterRoute().push(context);
         },
+        onTextChapterRequested:
+            ({required detail, required firstCatalogPage, required chapter}) {
+              return _openTransientSourceTextReader(
+                context,
+                detail: detail,
+                firstCatalogPage: firstCatalogPage,
+                chapter: chapter,
+              );
+            },
       ),
     );
+  }
+}
+
+/// Opens a route-lifetime reader session without writing source data or state.
+Future<void> _openTransientSourceTextReader(
+  BuildContext context, {
+  required PluginContentDetail detail,
+  required PluginChaptersResult firstCatalogPage,
+  required PluginChapterSummary chapter,
+}) async {
+  final navigator = Navigator.of(context);
+  final gateway = ProviderScope.containerOf(
+    context,
+  ).read(sourceContentGatewayProvider);
+  final session = TransientSourceTextReader(
+    detail: detail,
+    firstCatalogPage: firstCatalogPage,
+    loadChapterPage: ({String? cursor, int pageSize = 100}) {
+      return gateway.getChapters(
+        pluginId: detail.pluginId,
+        id: detail.summary.id,
+        cursor: cursor,
+        pageSize: pageSize,
+      );
+    },
+    loadChapterContent: (String chapterId) {
+      return gateway.getContent(
+        pluginId: detail.pluginId,
+        id: detail.summary.id,
+        chapterId: chapterId,
+      );
+    },
+  );
+  await navigator.push<void>(
+    MaterialPageRoute<void>(
+      builder: (BuildContext routeContext) => ReaderHostPage(
+        request: session.createLaunchRequest(
+          initialChapterId: chapter.id,
+          observer: _DismissReaderObserver(navigator),
+        ),
+      ),
+    ),
+  );
+}
+
+final class _DismissReaderObserver extends ReaderObserver {
+  const _DismissReaderObserver(this._navigator);
+
+  final NavigatorState _navigator;
+
+  @override
+  Future<void> onExitRequested(ReaderProgress? progress) async {
+    await _navigator.maybePop();
   }
 }
 
