@@ -163,6 +163,30 @@ UTF-8 分段 `.txt`；不得创建日志 SQLite、WAL 或二进制索引。日�
 - 指标标签必须低基数。traceId、URL、remote ID、书籍 ID、自由文本和异常文本不能成为指标
   label；需要关联时留在受控 event 字段中。
 
+### 插件端到端日志门禁
+
+插件链路的日志是开发期定位问题的必需交付物。任何新增或修改的插件 capability 都必须能从
+Flutter 发起、Runtime 接收/调度、插件包装器、插件脚本内部和 Runtime HTTP 层按同一条受控
+trace 关联起来；缺少任一层日志不得宣称该 capability 可诊断。
+
+- **Flutter / 应用**：Facade capability 调用拥有唯一 owner span，记录 capability、受控来源
+  technical ID、attempt、deadline、结果数量投影和稳定终态；只记录 Facade 语义，绝不复制
+  bootId、端口、URL、搜索词、书名、正文或 wire payload。
+- **Runtime 接收与处理**：控制面必须记录请求接收、排队/并发槽、参数校验、取消/deadline、
+  dispatch、插件调用返回和错误归一化。每个入口 request 与 plugin invocation 都必须恰好一个
+  success/error/cancelled/timeout/overloaded 终态，并保留 queue wait 与执行时长。
+- **插件脚本**：`activate` 及 `discover/search/getDetail/getChapters/getContent` 的每次业务调用
+  必须通过公共 `ctx.log` 记录小型结构化阶段事件：开始、输入合法性/分支、远程获取开始、
+  解析/规范化、结果规模投影和终态。插件不得使用 `console.*`、自行写文件或伪造 Runtime
+  事件；必须继承 Runtime 提供的调用关联，不能自行生成不相干 trace。
+- **网络与解析**：所有远程请求只能走 `ctx.http`，由 Runtime 自动记录 HTTP 生命周期。插件
+  脚本只记录 operation、解析器版本、条目/章节/字节计数等低基数投影；绝不记录 URL、query
+  value、HTML、正文、标题、作者、用户输入、Cookie、token、credential 或异常原文。
+- **测试与验收**：每条受影响 capability 至少断言 Flutter/Facade、Runtime control、Runtime
+  plugin invocation 与脚本阶段事件均存在且 trace/span 可关联，并覆盖 success 与适用的
+  timeout/cancel/error。测试同时放置 secret/content canary，断言上述禁止字段不进入 app TXT、
+  Runtime TXT、详情、console 或导出。
+
 ### 开发期默认与性能保护
 
 - Debug/Profile 默认启用 `keyOnly/metadataOnly`：关键 `info`、所有稳定终态和性能摘要写入

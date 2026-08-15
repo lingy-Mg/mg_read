@@ -48,6 +48,19 @@ This repository may not silently change an accepted MgRead ADR.
   bounded memory spool, and only `persistToText` may create a detail TXT.
   Diagnostics must not create SQLite/WAL/binary indexes, and pressure or writer
   failure must never fail plugin/HTTP business work.
+- Plugin diagnostics are mandatory end-to-end evidence, not optional console
+  output. For every capability, Runtime must record control receipt/admission,
+  queue wait, validation, dispatch, plugin invocation, cancellation/deadline
+  handling and one terminal outcome. The plugin wrapper must preserve the
+  Runtime trace relationship, and the script must use public `ctx.log` for
+  small structured start/branch/fetch/parse/result/terminal phase events.
+  `ctx.http` remains the only network path and owns HTTP lifecycle telemetry.
+  Never log URLs, query values, request/response bodies, HTML, content, user
+  input, credentials, Cookies, tokens or raw exceptions; use low-cardinality
+  operation/count/byte/duration/error-code projections only. Capability work
+  is incomplete unless tests cover correlated success plus applicable
+  timeout/cancel/error events and secret/content canaries across Facade,
+  Runtime and plugin layers.
 - The main application may only call the versioned Runtime Facade. Do not add a
   HostPort, host.* RPC, callback, database/path, Cookie/file service or platform
   channel injection point as a shortcut. Implement required capabilities here

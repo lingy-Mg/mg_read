@@ -15,6 +15,17 @@ application feature.
 - Do not log URLs, search terms, titles, HTML, or chapter text. Never add
   credentials, cookie exports, login automation, anti-bot bypasses, Workers,
   child processes, native addons, Git dependencies, or install scripts.
+- Logging is required for every `activate`, `discover`, `search`, `getDetail`,
+  `getChapters` and `getContent` execution. Use only structured `ctx.log`
+  phase events for start, validation/branch, remote-fetch handoff, parsing,
+  result count/byte projection and exactly one terminal outcome. Runtime owns
+  the trace/span relationship and `ctx.http` owns HTTP lifecycle telemetry;
+  do not use `console.*`, custom files, URLs/query values, user input, titles,
+  HTML/content, credentials, Cookies, tokens or raw exceptions in logs.
+- Source changes must extend tests to assert script-stage events can be
+  correlated with the Runtime invocation and HTTP terminal event for success,
+  plus the applicable timeout/cancel/error case. Include a secret/content
+  canary proving prohibited values are absent from default diagnostics.
 - `npm run test:live` is an explicit online smoke test required for a source
   change: it calls the target's category, search, detail, catalog, and content
   URLs without saving returned HTML or chapter content. Do not turn it into a
