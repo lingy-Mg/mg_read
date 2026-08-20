@@ -142,19 +142,10 @@ docs/
 [开发文档路由](docs/development/README.md)选择最窄专题集；检查 `git status --short` 并保留无关
 脏改动。大型实现按“公开契约/领域 → 纯逻辑与适配器 → UI → 原生 → 验证”推进。
 
-本地运行 Windows 发现链路（先构建书源包并由 Runtime 自己阶段化；主应用不传递书源路径）：
+Android Integration Test（模拟器必须已由用户启动；不会启动或操作模拟器）：
 
 ```powershell
-cd C:\Users\q3499\Desktop\mg_read
-cd plugins\sources\aisishuwu
-npm ci --ignore-scripts
-npm run verify
-cd ..\..\..
-cd packages\mg_read_runtime
-npm run stage:flutter-windows
-cd ..\..
-flutter pub get
-flutter run
+.\tools\run_android_integration_tests.ps1 -DeviceId emulator-5554 -All
 ```
 
 每次修改至少执行：
@@ -164,10 +155,10 @@ dart format --output=none --set-exit-if-changed .
 flutter analyze
 ```
 
-代码改动还要执行 `flutter test`。主应用维护 persistence、Content Library、reader adapter、UI
-单元/Widget/Facade 消费测试；Node、共享协议、插件执行、Runtime 操作数据、集成测试和三个首发
-平台的 Runtime 冒烟由 `packages/mg_read_runtime` 维护并分别报告。Golden 在视觉规范稳定后按需
-启用。
+页面、路由和跨层实际测试全部以 Android Integration Test 运行和取证；测试只用 Finder/Key 驱动，
+不操作桌面鼠标或键盘。Golden 只用于非常小、隔离组件的像素回归，不能替代实际测试。Node、共享
+协议、插件执行、Runtime 操作数据和三个首发平台的 Runtime 冒烟由
+`packages/mg_read_runtime` 维护并分别报告。
 
 子项目不随根 `flutter analyze` 递归分析；涉及它们时进入各自目录执行其所有者命令：阅读器插件执行根包与 `example/` 的 `flutter analyze`，Runtime 使用其固定 Node 24.16.0 后执行 `npm run verify:desktop`，插件模板执行 `npm run verify`。这保持单一 Git 工作流，同时不混合各子项目独立的 lint 与平台验收边界。
 

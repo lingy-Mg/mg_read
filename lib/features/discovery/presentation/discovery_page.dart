@@ -259,17 +259,19 @@ class DiscoveryTopBar extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                DiscoveryTopAction(
-                  key: const Key('theme-mode-toggle'),
-                  tooltip: theme.brightness == Brightness.dark
-                      ? '切换至浅色模式'
-                      : '切换至深色模式',
-                  icon: theme.brightness == Brightness.dark
-                      ? Icons.light_mode_outlined
-                      : Icons.dark_mode_outlined,
-                  onPressed: onToggleTheme,
-                ),
-                const SizedBox(width: AppSpacing.unit),
+                if (AppTheme.darkModeEnabled) ...<Widget>[
+                  DiscoveryTopAction(
+                    key: const Key('theme-mode-toggle'),
+                    tooltip: theme.brightness == Brightness.dark
+                        ? '切换至浅色模式'
+                        : '切换至深色模式',
+                    icon: theme.brightness == Brightness.dark
+                        ? Icons.light_mode_outlined
+                        : Icons.dark_mode_outlined,
+                    onPressed: onToggleTheme,
+                  ),
+                  const SizedBox(width: AppSpacing.unit),
+                ],
                 DiscoveryTopAction(
                   key: const Key('discovery-search-action'),
                   tooltip: '搜索书籍',

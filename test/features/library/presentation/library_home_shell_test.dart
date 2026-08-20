@@ -81,38 +81,17 @@ void main() {
     },
   );
 
-  testWidgets('places the temporary theme toggle beside search', (
+  testWidgets('hides the temporary theme toggle beside search', (
     WidgetTester tester,
   ) async {
     final SemanticsHandle semantics = tester.ensureSemantics();
-    int toggleCount = 0;
     await _setViewport(tester, const Size(390, 900));
-    await tester.pumpWidget(
-      _host(
-        onToggleTheme: () {
-          toggleCount += 1;
-        },
-      ),
-    );
+    await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
 
     final Finder search = find.byTooltip('搜索书籍');
-    final Finder toggle = find.byKey(const Key('theme-mode-toggle'));
-    expect(toggle, findsOneWidget);
-    final double actionGap =
-        tester.getRect(toggle).left - tester.getRect(search).right;
-    expect(actionGap, greaterThanOrEqualTo(0));
-    expect(actionGap, lessThanOrEqualTo(AppSpacing.compact));
-    expect(find.byTooltip('切换至深色模式'), findsOneWidget);
-    final SemanticsNode toggleSemantics = tester.getSemantics(toggle);
-    expect(toggleSemantics.getSemanticsData().label, '切换至深色模式');
-    expect(
-      toggleSemantics.getSemanticsData().hasAction(SemanticsAction.tap),
-      isTrue,
-    );
-
-    await tester.tap(toggle);
-    expect(toggleCount, 1);
+    expect(search, findsOneWidget);
+    expect(find.byKey(const Key('theme-mode-toggle')), findsNothing);
     semantics.dispose();
   });
 
@@ -341,7 +320,7 @@ void main() {
     },
   );
 
-  testWidgets('renders the same hierarchy in light and dark themes', (
+  testWidgets('renders the hierarchy in the temporary light-only mode', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(_host(themeMode: ThemeMode.light));
@@ -352,12 +331,6 @@ void main() {
       Theme.of(context).textTheme.bodyMedium?.fontFamily,
       'packages/novel_reader_ui/MiSans',
     );
-    expect(find.byKey(const Key('continue-reading-cta')), findsOneWidget);
-
-    await tester.pumpWidget(_host(themeMode: ThemeMode.dark));
-    await tester.pumpAndSettle();
-    context = tester.element(find.byType(LibraryHomeShell));
-    expect(Theme.of(context).brightness, Brightness.dark);
     expect(find.byKey(const Key('continue-reading-cta')), findsOneWidget);
   });
 

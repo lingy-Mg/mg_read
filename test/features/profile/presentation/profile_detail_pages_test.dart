@@ -194,40 +194,36 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets(
-    'profile theme switch applies to details without header actions',
-    (WidgetTester tester) async {
-      await _setViewport(tester, const Size(390, 900));
-      final settings = await createTestAppSettings(themeMode: 'light');
-      addTearDown(settings.close);
-      await tester.pumpWidget(testMgReadApp(settings));
-      await tester.pumpAndSettle();
+  testWidgets('profile details stay light-only without header theme actions', (
+    WidgetTester tester,
+  ) async {
+    await _setViewport(tester, const Size(390, 900));
+    final settings = await createTestAppSettings(themeMode: 'light');
+    addTearDown(settings.close);
+    await tester.pumpWidget(testMgReadApp(settings));
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('app-nav-profile')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('theme-mode-toggle')));
-      await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('app-nav-profile')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('theme-mode-toggle')), findsNothing);
 
-      final Finder profileScroll = find.byKey(
-        const Key('profile-page-content'),
-      );
-      await tester.scrollUntilVisible(
-        find.byKey(const Key('profile-setting-about')),
-        220,
-        scrollable: find.descendant(
-          of: profileScroll,
-          matching: find.byType(Scrollable),
-        ),
-      );
-      await tester.tap(find.byKey(const Key('profile-setting-about')));
-      await tester.pumpAndSettle();
+    final Finder profileScroll = find.byKey(const Key('profile-page-content'));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('profile-setting-about')),
+      220,
+      scrollable: find.descendant(
+        of: profileScroll,
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('profile-setting-about')));
+    await tester.pumpAndSettle();
 
-      final Finder aboutPage = find.byType(AboutPage);
-      expect(aboutPage, findsOneWidget);
-      expect(Theme.of(tester.element(aboutPage)).brightness, Brightness.dark);
-      expect(find.byKey(const Key('theme-mode-toggle')), findsNothing);
-    },
-  );
+    final Finder aboutPage = find.byType(AboutPage);
+    expect(aboutPage, findsOneWidget);
+    expect(Theme.of(tester.element(aboutPage)).brightness, Brightness.light);
+    expect(find.byKey(const Key('theme-mode-toggle')), findsNothing);
+  });
 }
 
 Widget _aboutHost() {

@@ -31,21 +31,6 @@ void main() {
     );
   });
 
-  testWidgets('matches the compact dark about reference baseline', (
-    WidgetTester tester,
-  ) async {
-    await _setViewport(tester);
-    await tester.pumpWidget(
-      _host(themeMode: ThemeMode.dark, child: _aboutPage()),
-    );
-    await tester.pumpAndSettle();
-
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/about_compact_dark.png'),
-    );
-  });
-
   testWidgets('matches the compact light feedback reference baseline', (
     WidgetTester tester,
   ) async {
@@ -58,23 +43,6 @@ void main() {
     await expectLater(
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/feedback_compact_light.png'),
-    );
-  });
-
-  testWidgets('matches dark feedback with an alternate selected type', (
-    WidgetTester tester,
-  ) async {
-    await _setViewport(tester);
-    await tester.pumpWidget(
-      _host(themeMode: ThemeMode.dark, child: _feedbackPage()),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('feedback-type-problem')));
-    await tester.pumpAndSettle();
-
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/feedback_compact_dark_problem.png'),
     );
   });
 }

@@ -29,32 +29,6 @@ void main() {
     );
   });
 
-  testWidgets('matches the compact dark home visual baseline', (
-    WidgetTester tester,
-  ) async {
-    await _setViewport(tester, const Size(390, 900));
-    await tester.pumpWidget(_host(themeMode: ThemeMode.dark));
-    await tester.pumpAndSettle();
-
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/library_home_compact_dark.png'),
-    );
-  });
-
-  testWidgets('matches the mobile-first dark baseline on a wide viewport', (
-    WidgetTester tester,
-  ) async {
-    await _setViewport(tester, const Size(1280, 900));
-    await tester.pumpWidget(_host(themeMode: ThemeMode.dark));
-    await tester.pumpAndSettle();
-
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/library_home_wide_dark.png'),
-    );
-  });
-
   testWidgets(
     'matches the compact light source-manager baseline after scroll',
     (WidgetTester tester) async {

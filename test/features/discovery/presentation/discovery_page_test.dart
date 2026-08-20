@@ -93,24 +93,17 @@ void main() {
   );
 
   testWidgets(
-    'toggles theme, delegates real routes, and keeps pending actions local',
+    'delegates real routes and keeps pending actions local in light-only mode',
     (WidgetTester tester) async {
-      int toggleCount = 0;
       final List<AppNavigationDestination> requested =
           <AppNavigationDestination>[];
       await _setViewport(tester, const Size(390, 900));
       await tester.pumpWidget(
-        _host(
-          onToggleTheme: () {
-            toggleCount += 1;
-          },
-          onDestinationRequested: requested.add,
-        ),
+        _host(onToggleTheme: () {}, onDestinationRequested: requested.add),
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('theme-mode-toggle')));
-      expect(toggleCount, 1);
+      expect(find.byKey(const Key('theme-mode-toggle')), findsNothing);
 
       await tester.tap(find.byKey(const Key('discovery-search-action')));
       await tester.pump();

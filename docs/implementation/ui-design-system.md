@@ -6,6 +6,8 @@
 
 它不授权实现 Runtime、WS/HTTP、插件安装、真实书源、Runtime Store/SQLite、文件恢复、账号、下载或阅读器数据适配。首页的展示数据是明确标注的不可变 presentation fixture；后续只可在 application/data 层把 `mg_read_runtime` Facade 返回的真实投影映射为同一 view-model，不能让 Widget 直接读取 Runtime 内部基础设施。
 
+当前阶段只开发和验收浅色模式。下文保留的暗黑 token 仅作为既有主题定义参考：不得在当前任务中完善、修改或验收暗黑/系统深色模式，也不得新增暗黑截图或 Golden；已有实现保持原样，直到用户单独恢复该范围。
+
 ## 视觉目标
 
 - 以暖白背景和低饱和琥珀色建立安静、专注的阅读入口；主操作集中在“继续阅读”。
@@ -50,6 +52,13 @@
 5. `LibrarySourceManagerCard`：书源管理的显式入口，不执行任何安装或网络操作。
 6. `LibraryBottomNavigation`：首页、搜索、发现、我的四个目的地；当前仅维护可替换的 presentation-state。
 
+开发新 UI 前先检索现有 feature 组件与 `shared/`。页面只组合组件和绑定 feature 状态，不复制既有
+视觉/交互结构；同一 feature 内重复时抽为该 feature 的 `widgets/` 组件，两个以上 feature 共同
+使用才抽为无业务依赖的 `shared/` 组件。组件接口使用不可变 view data 和显式 callback，避免由
+大量可选样式参数拼出的万能组件。颜色、排版、间距、圆角、阴影、按钮和图标规格统一从全局主题
+token、`TextTheme`、`AppSpacing`、`AppRadii` 与已有共享组件取得；新规则先进入全局语义层，再
+应用到所有受影响页面，避免各页面各自实现一套风格。
+
 `LibraryHomeViewData`、`LibraryBookUpdateViewData` 等类型以及 `LibraryHomeFixtures.preview` 仅属于展示层。fixture 带有 `isPresentationFixture` 标记，顶栏显示“界面预览”标记并提供完整说明，不能被当作真实书架、阅读进度或可用书源数量。后续真实数据接入需用 application adapter 生成同样的 view-model，并移除该说明。
 
 ## 状态与交互
@@ -73,6 +82,6 @@
 
 ## 验收要求
 
-- Widget 测试覆盖主要语义、继续阅读 CTA、底部导航、窄/宽布局、明亮/暗黑主题和代表性键盘焦点或触摸操作。
-- Golden 使用同一 MiSans 与 Material Icons 字体，在固定 `390×844` 紧凑亮/暗主题和 `1280×900` 宽屏暗主题下校验；本阶段不以 Golden 代替交互测试。
+- Android Integration Test 覆盖主要语义、继续阅读 CTA、底部导航、窄/宽布局和代表性键盘焦点或触摸操作，并显式使用浅色主题。
+- Golden 仅可用于非常小、隔离组件，并使用同一 MiSans 与 Material Icons 字体的固定浅色基线；不得为页面或深色模式新增 Golden，本阶段不以 Golden 代替交互测试。
 - 自动化通过不代表桌面运行、macOS 平台或 Android 真机验收；交付报告必须分别说明已执行和未执行的证据。

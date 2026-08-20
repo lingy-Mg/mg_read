@@ -72,29 +72,21 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('exposes the temporary theme control and local action feedback', (
-    WidgetTester tester,
-  ) async {
-    int toggleCount = 0;
-    await tester.pumpWidget(
-      _host(
-        onToggleTheme: () {
-          toggleCount += 1;
-        },
-      ),
-    );
-    await tester.pumpAndSettle();
+  testWidgets(
+    'hides the temporary theme control and keeps local action feedback',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(_host());
+      await tester.pumpAndSettle();
 
-    final Finder toggle = find.byKey(const Key('theme-mode-toggle'));
-    expect(toggle, findsOneWidget);
-    expect(find.byTooltip('切换至深色模式'), findsOneWidget);
-    await tester.tap(toggle);
-    expect(toggleCount, 1);
+      expect(find.byKey(const Key('theme-mode-toggle')), findsNothing);
 
-    await tester.tap(find.byKey(const Key('profile-setting-reading-settings')));
-    await tester.pumpAndSettle();
-    expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsOneWidget);
-  });
+      await tester.tap(
+        find.byKey(const Key('profile-setting-reading-settings')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsOneWidget);
+    },
+  );
 
   testWidgets('delegates a destination selection to the app layer', (
     WidgetTester tester,

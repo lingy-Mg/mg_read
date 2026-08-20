@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 /// Defines the application-wide visual defaults and semantic UI tokens.
 abstract final class AppTheme {
+  /// Temporary product switch while the source-picker visual baseline is light-only.
+  static const bool darkModeEnabled = false;
+
   static ThemeData light() {
     const AppThemeTokens tokens = AppThemeTokens(
       pageBackground: Color(0xFFFDFBFA),

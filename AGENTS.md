@@ -80,6 +80,13 @@ plugins/sources/<source-id>/      实际标准 Node 书源
 - `ReaderObserver.onExitRequested` 只通知主应用，由主应用决定路由或确认。
 - 可见中文文案就地放在页面/局部组件；不建立集中多语言层。复用 `app/app_theme.dart` 的语义
   token，不在页面散落魔法颜色和尺寸。
+- UI 开发先检索同 feature 的现有组件，再检索 `shared/`；页面只负责布局组合、状态接线与 feature
+  私有语义，不复制已有卡片、列表项、筛选栏、操作、空/错/加载态或交互模式。相同的视觉和交互
+  模式一旦会在两个以上 feature 使用，就抽为无业务依赖的 `shared/` 组件；只在单一 feature 内复用
+  的组件留在该 feature。组件接收不可变数据与显式回调，禁止用一堆可选参数造“万能组件”。
+- 全局风格只能由 `AppTheme`、`AppThemeTokens`、`TextTheme`、`AppSpacing`、`AppRadii` 和既有
+  Material/共享组件表达；新增页面不得自行定义平行的颜色、字号、间距、圆角、阴影、按钮或图标
+  规格。需要新视觉规则时先扩展全局语义 token/共享组件，并同步受影响页面保持一致。
 - 异步提交前检查 mounted/请求世代或取消状态；Controller、监听器、FocusNode、
   ScrollController、Timer 和平台资源必须成对释放。
 
@@ -109,18 +116,34 @@ plugins/sources/<source-id>/      实际标准 Node 书源
 - 保留所有无关脏改动。禁止 `reset --hard`、restore/checkout 覆盖、`git add -A`、
   `git commit -a`；只处理和暂存任务拥有的文件或 hunk。
 - 每次任务只完成用户指定交付包，不顺手进入后续里程碑或实现 WebView、账号、音视频等延期能力。
-- 代码改动必须补充受影响层级测试。根项目至少执行：
+- 真实应用/页面/跨层流程的自动化验收一律使用 Android `integration_test`；测试交互只能通过
+  `WidgetTester` 的 Finder、语义和稳定 `Key` 驱动。禁止用鼠标坐标、键盘注入、`adb input`、
+  `adb screencap`、Computer Use、桌面自动化或人工点击来操作或取证。
+- Android 模拟器必须由用户事先自行启动并明确提供 `emulator-*` device id。Agent 不得启动、
+  创建、选择、唤醒、关闭或重置模拟器；未提供或未连接时停止 Android 真实验收并如实报告。真实
+  验收不得使用 Windows 版本、`flutter run`、Windows 设备或桌面截图替代。
+- 从 `tools/run_android_integration_tests.ps1` 启动真实验收。它只接受已连接的
+  `emulator-*`，通过 `flutter drive` 运行 Integration Test，并在忽略的
+  `artifacts/integration-tests/` 保存机器可读结果和由 `IntegrationTestWidgetsFlutterBinding`
+  请求的截图。截图必须由测试中的 `takeScreenshot` 触发，禁止从操作系统截屏。
+- `test/` 中的 Golden 仅可用于非常小、隔离、确定性的展示组件；它不是页面、路由、完整交互或
+  Android 实际行为的验收，也不能代替 Integration Test。
+- 当前 UI 阶段只开发、修复和验收浅色模式。深色/系统深色模式暂不完善、暂不验收，也不新增
+  深色截图或 Golden；保留已有深色实现，不因浅色任务顺手修改它。所有当前 UI 的 Android
+  Integration Test、截图和 Golden 基线均显式使用浅色主题。
+- 代码改动至少执行下列静态检查；真实应用改动还必须在用户提供 Android 模拟器后执行对应的
+  Integration Test：
 
 ```powershell
 dart format --output=none --set-exit-if-changed .
 flutter analyze
-flutter test
 ```
 
 - 只改文档时不需要运行 Flutter/Node 业务测试，但必须执行链接、格式、引用和 diff 检查。
 - 子项目命令按开发路由和其最近 `AGENTS.md` 执行；Runtime 的 Windows Node 命令必须使用项目内
   `tools/node-v24.16.0-win-x64`，不得回退到全局 Node。
-- 只有用户明确授权视觉/运行验收时才启动应用或模拟器。Android 原生行为以真机为最终证据；
-  Windows/macOS 只能在对应主机或 CI 声明完成。
+- 只有用户明确授权视觉/运行验收时才运行 Integration Test；Android 实际测试以用户提供的
+  模拟器为当前唯一允许目标。Windows/macOS 的运行验收只能在用户另行授权时由对应主机或 CI
+  声明完成，绝不作为 Android 实际测试的替代。
 - 交付报告分开列出：完成内容、静态检查、自动化测试、真实运行、平台/真机、发布证据、日志
   断言与未执行项。任何一层都不能替代另一层。

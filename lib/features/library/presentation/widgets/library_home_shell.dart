@@ -344,7 +344,7 @@ class LibraryHomeTopBar extends StatelessWidget {
           onPressed: onSearch,
           icon: Icons.search_rounded,
         ),
-        if (toggleTheme != null)
+        if (AppTheme.darkModeEnabled && toggleTheme != null)
           Padding(
             padding: const EdgeInsets.only(left: AppSpacing.compact),
             child: _LibraryTopBarAction(

@@ -50,7 +50,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('选择数据来源'), findsOneWidget);
-    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('discovery-source-picker-search')),
       '漫画',
@@ -99,5 +99,33 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(result, isA<DiscoverySourceManagementRequested>());
+  });
+
+  testWidgets('picker keeps the selected source in the recent-use filter', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showDiscoverySourcePicker(
+              context,
+              sources: sources,
+              selectedSourceId: 'org.mgread.aisishuwu',
+            ),
+            child: const Text('打开'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('最近使用'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('爱丽丝书屋'), findsOneWidget);
+    expect(find.text('示例漫画源'), findsNothing);
   });
 }

@@ -149,7 +149,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('temporarily switches the app theme from the home top bar', (
+  testWidgets('temporarily keeps the app in light-only mode', (
     WidgetTester tester,
   ) async {
     final settings = await createTestAppSettings(themeMode: 'light');
@@ -169,20 +169,9 @@ void main() {
     loader.completeNext(_overview('主题切换测试书籍'));
     await tester.pumpAndSettle();
 
-    final Finder toggle = find.byKey(const Key('theme-mode-toggle'));
-    expect(toggle, findsOneWidget);
-    expect(Theme.of(tester.element(toggle)).brightness, Brightness.light);
-    expect(find.byTooltip('切换至深色模式'), findsOneWidget);
-
-    await tester.tap(toggle);
-    await tester.pumpAndSettle();
-    expect(Theme.of(tester.element(toggle)).brightness, Brightness.dark);
-    expect(settings.get(AppSettingKeys.themeMode), 'dark');
-    expect(find.byTooltip('切换至浅色模式'), findsOneWidget);
-
-    await tester.tap(toggle);
-    await tester.pumpAndSettle();
-    expect(Theme.of(tester.element(toggle)).brightness, Brightness.light);
+    _expectBrightnessForCurrentPage(tester, Brightness.light);
+    expect(find.byKey(const Key('theme-mode-toggle')), findsNothing);
+    expect(settings.get(AppSettingKeys.themeMode), 'light');
   });
 
   testWidgets('opens the profile route from the shared mobile navigation', (
@@ -198,54 +187,43 @@ void main() {
     expect(find.byType(ProfilePage), findsOneWidget);
     expect(find.text('设置与管理'), findsOneWidget);
 
-    final Finder profileToggle = find.byKey(const Key('theme-mode-toggle'));
-    expect(
-      Theme.of(tester.element(profileToggle)).brightness,
-      Brightness.light,
-    );
-    await tester.tap(profileToggle);
-    await tester.pumpAndSettle();
-    expect(Theme.of(tester.element(profileToggle)).brightness, Brightness.dark);
+    _expectBrightnessForCurrentPage(tester, Brightness.light);
+    expect(find.byKey(const Key('theme-mode-toggle')), findsNothing);
 
     await tester.tap(find.byKey(const Key('app-nav-home')));
     await tester.pumpAndSettle();
     expect(find.byType(LibraryPage), findsOneWidget);
   });
 
-  testWidgets(
-    'uses the system brightness until the session theme toggle chooses an explicit mode',
-    (WidgetTester tester) async {
-      tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
-      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
-      final settings = await createTestAppSettings();
-      addTearDown(settings.close);
+  testWidgets('keeps light mode when the operating system prefers dark mode', (
+    WidgetTester tester,
+  ) async {
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+    final settings = await createTestAppSettings();
+    addTearDown(settings.close);
 
-      await tester.pumpWidget(testMgReadApp(settings));
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(testMgReadApp(settings));
+    await tester.pumpAndSettle();
 
-      _expectBrightnessForCurrentPage(tester, Brightness.dark);
+    _expectBrightnessForCurrentPage(tester, Brightness.light);
+    expect(find.byKey(const Key('theme-mode-toggle')), findsNothing);
 
-      await tester.tap(find.byKey(const Key('theme-mode-toggle')));
-      await tester.pumpAndSettle();
-      _expectBrightnessForCurrentPage(tester, Brightness.light);
-      expect(settings.get(AppSettingKeys.themeMode), 'light');
+    await tester.tap(find.byKey(const Key('app-nav-search')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SearchPage), findsOneWidget);
+    _expectBrightnessForCurrentPage(tester, Brightness.light);
 
-      await tester.tap(find.byKey(const Key('app-nav-search')));
-      await tester.pumpAndSettle();
-      expect(find.byType(SearchPage), findsOneWidget);
-      _expectBrightnessForCurrentPage(tester, Brightness.light);
+    await tester.tap(find.byKey(const Key('app-nav-discover')));
+    await tester.pumpAndSettle();
+    expect(find.byType(DiscoveryDestinationPage), findsOneWidget);
+    _expectBrightnessForCurrentPage(tester, Brightness.light);
 
-      await tester.tap(find.byKey(const Key('app-nav-discover')));
-      await tester.pumpAndSettle();
-      expect(find.byType(DiscoveryDestinationPage), findsOneWidget);
-      _expectBrightnessForCurrentPage(tester, Brightness.light);
-
-      await tester.tap(find.byKey(const Key('app-nav-profile')));
-      await tester.pumpAndSettle();
-      expect(find.byType(ProfilePage), findsOneWidget);
-      _expectBrightnessForCurrentPage(tester, Brightness.light);
-    },
-  );
+    await tester.tap(find.byKey(const Key('app-nav-profile')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfilePage), findsOneWidget);
+    _expectBrightnessForCurrentPage(tester, Brightness.light);
+  });
 }
 
 void _expectBrightnessForCurrentPage(

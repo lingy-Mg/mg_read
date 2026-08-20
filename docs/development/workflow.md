@@ -14,28 +14,43 @@
 - 异步、取消、过期结果、关闭、错误、空态和资源释放与成功路径同时设计。
 - 关键链路的事件/span/schema、隐私和性能门禁与实现同包完成；日志能力缺失时明确阻塞项，
   不用 `print` 临时代替。
+- 页面、路由、跨 Feature 或 Runtime 消费的真实自动化测试只能写在 `integration_test/`，用
+  `WidgetTester` Finder 和稳定 `Key` 驱动。禁止坐标点击、鼠标/键盘自动化、`adb input`、系统
+  截图或 Computer Use。Android 截图测试先调用 `convertFlutterSurfaceToImage()` 并 pump 一帧，
+  再由 `IntegrationTestWidgetsFlutterBinding.takeScreenshot` 请求，最后由
+  `test_driver/android_integration_test.dart` 收集。
+- Android 模拟器由用户在测试前启动并提供准确的 `emulator-*` id；Agent 只能验证该 id 已连接，
+  不得创建、启动、选择、唤醒、关闭或重置模拟器。真实测试不得以 Windows App/设备代替。
+- 当前 UI 交付范围只包含浅色模式：Integration Test、测试截图和小组件 Golden 必须显式固定
+  浅色主题。深色/系统深色模式的完善、截图、Golden 和验收均延期；保留既有实现但不在浅色任务
+  中顺手修改。
 
 ## 验证分层
 
 | 层级 | 证明什么 | 不能证明什么 |
 | --- | --- | --- |
 | 格式/静态分析 | 语法、类型、lint、格式 | 交互和平台运行 |
-| 单元/Widget/契约测试 | 受控输入下的逻辑和 UI 状态 | 真实 Runtime、设备或发布包 |
-| 集成/冒烟 | 实际组件连接与故障边界 | 未运行的平台 |
-| 应用人工运行 | 当前主机上的真实路由和交互 | Android 真机原生或其他 OS |
+| Golden（仅浅色小组件） | 很小且隔离组件的确定性浅色像素输出 | 页面、路由、完整交互、深色模式、真实 Runtime 或设备 |
+| Android Integration Test（仅浅色） | 用户提供模拟器上的真实浅色 Flutter 交互、组件连接与故障边界 | 未运行的平台、深色模式、原生系统 UI 或发布包 |
 | 平台/真机 | 对应平台原生行为 | 其他 ABI/主机或发布安装 |
 | 发布验收 | 最终安装、升级、签名和包内资产 | 未覆盖的商店/渠道 |
 
-根 Flutter 代码默认执行：
+根 Flutter 代码默认执行静态检查：
 
 ```powershell
 dart format --output=none --set-exit-if-changed .
 flutter analyze
-flutter test
 ```
 
-只改文档时执行 Markdown 相对链接检查、`git diff --check` 和任务文件 diff；不把未运行的业务
-测试写成通过。Runtime、阅读器、模板和真实书源使用各自 `AGENTS.md`/README 规定的命令。
+实际应用改动在用户提供 Android 模拟器后，再执行（不会启动模拟器）：
+
+```powershell
+.\tools\run_android_integration_tests.ps1 -DeviceId emulator-5554 -All
+```
+
+小型孤立展示组件才可按需执行其 Golden 测试；不得把它列为实际流程验收。只改文档时执行
+Markdown 相对链接检查、`git diff --check` 和任务文件 diff；不把未运行的业务测试写成通过。
+Runtime、阅读器、模板和真实书源使用各自 `AGENTS.md`/README 规定的命令。
 
 ## 交付
 

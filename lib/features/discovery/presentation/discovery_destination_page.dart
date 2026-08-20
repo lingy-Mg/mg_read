@@ -100,22 +100,23 @@ class DiscoveryDestinationPage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('发现'),
         actions: <Widget>[
-          IconButton(
-            key: const Key('theme-mode-toggle'),
-            tooltip: Theme.of(context).brightness == Brightness.dark
-                ? '切换至浅色模式'
-                : '切换至深色模式',
-            onPressed: () {
-              AppThemeModeScope.of(
-                context,
-              ).onToggleTheme(Theme.of(context).brightness);
-            },
-            icon: Icon(
-              Theme.of(context).brightness == Brightness.dark
-                  ? Icons.light_mode_outlined
-                  : Icons.dark_mode_outlined,
+          if (AppTheme.darkModeEnabled)
+            IconButton(
+              key: const Key('theme-mode-toggle'),
+              tooltip: Theme.of(context).brightness == Brightness.dark
+                  ? '切换至浅色模式'
+                  : '切换至深色模式',
+              onPressed: () {
+                AppThemeModeScope.of(
+                  context,
+                ).onToggleTheme(Theme.of(context).brightness);
+              },
+              icon: Icon(
+                Theme.of(context).brightness == Brightness.dark
+                    ? Icons.light_mode_outlined
+                    : Icons.dark_mode_outlined,
+              ),
             ),
-          ),
         ],
       ),
       body: SafeArea(

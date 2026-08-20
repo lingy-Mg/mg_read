@@ -206,15 +206,19 @@ class ProfileTopBar extends StatelessWidget {
             ),
           ),
         ),
-        _ProfileTopBarAction(
-          key: const Key('theme-mode-toggle'),
-          tooltip: theme.brightness == Brightness.dark ? '切换至浅色模式' : '切换至深色模式',
-          onPressed: onToggleTheme,
-          icon: theme.brightness == Brightness.dark
-              ? Icons.light_mode_outlined
-              : Icons.dark_mode_outlined,
-        ),
-        const SizedBox(width: AppSpacing.compact),
+        if (AppTheme.darkModeEnabled) ...<Widget>[
+          _ProfileTopBarAction(
+            key: const Key('theme-mode-toggle'),
+            tooltip: theme.brightness == Brightness.dark
+                ? '切换至浅色模式'
+                : '切换至深色模式',
+            onPressed: onToggleTheme,
+            icon: theme.brightness == Brightness.dark
+                ? Icons.light_mode_outlined
+                : Icons.dark_mode_outlined,
+          ),
+          const SizedBox(width: AppSpacing.compact),
+        ],
         _ProfileTopBarAction(
           tooltip: '通知',
           onPressed: onNotifications,
