@@ -1,5 +1,9 @@
 # AGENTS.md
 
+The monorepo root `../../../AGENTS.md` applies. For this source task, read only
+this file, the root plugin content contract, and this package README/tests; do
+not preload unrelated app or Runtime internals.
+
 This package is one real MgRead content-source plugin, not a Runtime or an
 application feature.
 
@@ -32,5 +36,5 @@ application feature.
   routine CI dependency.
 
 Before delivery use the Node 24.16.0 toolchain from
-`../mg_read_runtime/tools/node-v24.16.0-win-x64`, then run `npm ci` and
+`../../../packages/mg_read_runtime/tools/node-v24.16.0-win-x64`, then run `npm ci` and
 `npm run verify`.

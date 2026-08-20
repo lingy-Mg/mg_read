@@ -1,155 +1,85 @@
-# AGENTS.md
+# mg_read_runtime Agent 增量规则
 
-## Current standard-Node plugin architecture scope
+monorepo 根 [AGENTS.md](../../AGENTS.md) 始终适用。本文件只补充 Runtime package 的所有权、
+工具链和验证规则。
 
-This repository owns the complete MgRead standalone Plugin Runtime: the Node
-Runtime Core, platform adapters, Flutter-facing Runtime Facade, shared schema,
-fixtures, Runtime Store and all plugin capabilities. The accepted replacement
-architecture is ADR-0015 in this monorepo root. Plugins are
-standard Node.js projects with `package.json.mgread`, npm lockfile v3, ordinary
-multi-file output and ordinary `node_modules`; the former manifest/default-export
-template fixture and its special CLI/RPC switch are obsolete and must not return.
+## 渐进式读取
 
-The current implementation may use a Runtime-owned temporary data root in tests.
-Production data-root resolution remains inside this package/platform adapter;
-`mg_read` must never provide a path, database, Cookie, callback, HostPort or raw
-transport object. Windows source-tree evidence does not claim Android/Javet,
-macOS signing/package integration or final application packaging acceptance.
+- Facade/边界：读 [Runtime 契约](docs/standalone-runtime-contract.md)。
+- desktop Supervisor、ready、Job Object、WS/HTTP：再读
+  [desktop 证据](docs/desktop-runtime-bridge.md) 与根
+  [Runtime 生命周期](../../docs/architecture/03-runtime-lifecycle.md)/
+  [内部传输](../../docs/architecture/05-transport-protocol.md)中相关章节。
+- Node/Javet/ABI/升级：读 [版本矩阵](docs/runtime-version-matrix.md) 和 [probes](probes/README.md)。
+- package/lock/安装/冷激活：读根
+  [标准插件专题](../../docs/architecture/04-plugin-sdk-packaging-registry.md) 与相关 ADR。
+- Flutter Facade：读 [package README](packages/mgread_plugin_runtime/README.md)。
+- 性能或诊断：读 [性能快照](docs/standard-plugin-performance-baseline.md)、根日志专题和受影响测试。
 
-The cross-package architecture contract is maintained in the monorepo root at
-../../docs/architecture/. The Runtime-specific entrypoint is
-docs/standalone-runtime-contract.md and the ownership decision is
-../../docs/architecture/adr/0008-standalone-plugin-runtime-boundary.md.
-Before changing Runtime contracts, read those files plus the root architecture
-README, 03-runtime-lifecycle.md, 05-transport-protocol.md and relevant ADRs.
-This repository may not silently change an accepted MgRead ADR.
+不要同时预加载这些文件。旧 `agent.md` 仅是兼容跳转，不是第二份规则。
 
-## Non-negotiable runtime rules
+## Runtime 所有权
 
-- One application process owns one Node Runtime and one V8 VM only.
-- Android will use one Javet NodeRuntime on its dedicated background thread.
-  The Android implementation must not introduce an engine pool, Worker, child
-  process, second VM, or native Node addon. Windows/macOS use the separately
-  specified single bundled Node child process owned by this Runtime.
-- Windows and macOS will launch the exact Node version recorded in
-  docs/runtime-version-matrix.md. They must not depend on a user's PATH or
-  global Node installation.
-- Desktop Node starts with `--use-env-proxy`: only `HTTP_PROXY`, `HTTPS_PROXY`,
-  and `NO_PROXY` may cross the explicit environment allowlist. On Windows, the
-  Runtime also reads the user's manual Internet Settings proxy without spawning
-  a helper process; PAC/WPAD requires a future target-URL resolver and must not
-  be flattened into a false global proxy value.
-- Runtime business traffic is WS control plane plus loopback HTTP data plane.
-  stdio is limited to lifecycle, structured logging, and ready messages.
-- Runtime owns all plugin/content persistence: installation/version state,
-  library/metadata, reader state, bookmarks, downloads, cache, files, Cookie,
-  plugin KV, settings and diagnostics. It must resolve and manage its own data
-  root and Store; it must never receive a Flutter database path or connection.
-- Runtime diagnostics follow root ADR-0016: only bounded UTF-8 `.txt`
-  segments may be persisted. Default/key-only logging must never read, clone,
-  serialize, buffer, or write HTTP bodies, HTML, JSON documents, novel content,
-  or arbitrary object dumps. Those details are eligible only while an explicit,
-  time/byte/allowlist-bounded debug session is active; they first enter a
-  bounded memory spool, and only `persistToText` may create a detail TXT.
-  Diagnostics must not create SQLite/WAL/binary indexes, and pressure or writer
-  failure must never fail plugin/HTTP business work.
-- Plugin diagnostics are mandatory end-to-end evidence, not optional console
-  output. For every capability, Runtime must record control receipt/admission,
-  queue wait, validation, dispatch, plugin invocation, cancellation/deadline
-  handling and one terminal outcome. The plugin wrapper must preserve the
-  Runtime trace relationship, and the script must use public `ctx.log` for
-  small structured start/branch/fetch/parse/result/terminal phase events.
-  `ctx.http` remains the only network path and owns HTTP lifecycle telemetry.
-  Never log URLs, query values, request/response bodies, HTML, content, user
-  input, credentials, Cookies, tokens or raw exceptions; use low-cardinality
-  operation/count/byte/duration/error-code projections only. Capability work
-  is incomplete unless tests cover correlated success plus applicable
-  timeout/cancel/error events and secret/content canaries across Facade,
-  Runtime and plugin layers.
-- The main application may only call the versioned Runtime Facade. Do not add a
-  HostPort, host.* RPC, callback, database/path, Cookie/file service or platform
-  channel injection point as a shortcut. Implement required capabilities here
-  or return a stable unsupported result until this repository owns them.
-- Android Javet Adapter, desktop launcher, Runtime Supervisor, WS/HTTP client
-  and server, resource handling and Flutter-facing integration are Runtime
-  internals. They must not be implemented in the root application code.
-- A loaded plugin is cold-activated only on the next application process start.
-- Plugins use Node's standard module loader and share the one module cache. Do
-  not create plugin VMs/Contexts, custom ESM loaders, dependency resolvers or
-  module-instance isolation.
+- 本 package 拥有 Node Runtime Core、Android Javet Adapter、Windows/macOS Node launcher、
+  Supervisor、内部 WS/HTTP、Plugin API、标准插件安装执行、Schema/fixture、诊断和唯一
+  Flutter-facing Facade。
+- 每个应用进程只有一个 Node Runtime/VM。禁止 Worker、子进程、第二 VM、Engine Pool、插件
+  native addon 或自定义 ESM Loader/VM 隔离。
+- 生产 Facade 不接受 main-app 数据库/路径、Cookie、文件服务、callback、HostPort、平台通道或
+  raw transport 注入；不暴露 executable、PID、端口、ready、bootId、WS/HTTP URL 或 envelope。
+- Runtime 自有数据根可以保存插件不可变版本、插件私有 data/cache、Cookie、临时资源、运行
+  状态和 Runtime diagnostics。它不得保存主应用书架、目录、正文、阅读进度或书签的业务权威，
+  也不得打开主应用 SQLite/文件对象。
+- 下载 checkpoint、缓存和跨边界文件提交没有新 Accepted ADR/强类型契约前保持未实现或稳定
+  `unsupported`；不得恢复旧 Runtime Store 全权方案，也不得临时增加 `host.*` 回调。
 
-## Version and dependency policy
+## 插件与平台规则
 
-- Keep every version exact: Javet, Node, npm, TypeScript, and every npm
-  dependency. Do not introduce range operators.
-- Treat the Javet Android version and the desktop Node binary as an atomic
-  compatibility unit. Do not update Node independently of Javet.
-- Only pure JavaScript/TypeScript npm packages are allowed. A dependency that
-  contains or builds a native addon requires explicit architecture approval.
-- `package.json` plus npm `package-lock.json` v3 are the only plugin dependency
-  contract. Do not add manifests, bundles, shared dependency declarations or a
-  custom lock. Runtime restores the lock layout, stores registry packages by
-  integrity, and uses hardlink with copy fallback to create normal node_modules.
-- Runtime never executes install scripts or npm/pnpm. Git dependencies, native
-  addons and package-external `file:` dependencies are unsupported. Full package
-  resources, JSON, Wasm, templates and in-archive `file:` packages are retained.
-- The Runtime Store backend is not selected in M1.1. Do not add a SQLite/native
-  storage dependency merely to replace the old Flutter database; first record
-  the cross-platform, no-native-addon and lifecycle probe evidence in the
-  Runtime contract and version/probe documentation.
-- Preserve the selected version evidence and pending probe boundaries in
-  docs/runtime-version-matrix.md whenever the matrix changes.
+- 标准插件只使用 `package.json.mgread`、lockfile v3、普通多文件输出和普通 `node_modules`。
+  不恢复 manifest、bundle、shared dependency、自定义 lock 或旧模板 RPC。
+- Runtime 不执行 npm/pnpm/install scripts，不求解 SemVer；拒绝 Git dependency、包外 `file:`、
+  native addon 和原生文件。依赖对象仓的 hardlink/copy 只是内部存储优化。
+- 插件版本不可变，只在下次应用进程冷启动激活；当前进程不热替换或热重启 Runtime。
+- Android 一个专用线程持有一个 Javet `NodeRuntime`；desktop 只从 package 固定路径启动精确
+  Node。Windows Job Object、macOS 签名/公证和 Android ABI 都由本 package 验收。
+- desktop 代理只允许显式 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` 与 Windows 手工 Internet
+  Settings。PAC/WPAD 需要按目标 URL 的专用 resolver，不能展平成固定代理。
 
-## Repository layout
+## 日志与插件调用
 
-- src/ contains only Runtime Core code that is in scope for the current milestone.
-- protocol/ contains compatibility metadata and the current standard-plugin
-  desktop fixture, including the versioned rich content schema exercised by
-  discover/search/detail/chapters/content. Broader cross-platform fixtures
-  arrive with their platform capabilities.
-- probes/ contains executable dependency audits and documented future platform
-  probes. It is not production platform code.
-- test/ contains small Node ESM tests. Do not make build output the source of
-  truth.
-- Future platform adapters, Runtime Store and Flutter integration packages belong
-  in this repository and must remain behind the versioned Facade; do not create
-  their implementation in the main application repository.
-- `packages/mgread_plugin_runtime` is the Runtime-owned Flutter integration
-  package. Its `desktopForTesting` and `debug*` APIs are test-only helpers, not
-  permission to add a HostPort, main-app callback, path, database, Cookie or
-  platform-channel injection surface.
-- Runtime tests use standard-project fixtures under `test/fixtures`; they must
-  exercise the same package/lock validation, install and cold-load path as
-  production. The official author template is
-  `../../templates/mg_read_plugin_template`, not a special Runtime module.
+- Runtime diagnostics 只持久化有界分段 TXT。默认不读取/复制 body、HTML、JSON、正文、URL
+  query、用户输入、凭据、Cookie、token、路径或 raw exception。
+- 每个 control request 与 plugin invocation 有唯一 owner span、queue wait、执行时长和恰好一个
+  终态。插件脚本使用 `ctx.log` 记录小型阶段事件，网络只走 `ctx.http`。
+- capability 修改必须验证 Facade、control、plugin invocation、script 和 HTTP 的 trace 关联，
+  覆盖 success 与适用的 timeout/cancel/error，并放置 secret/content canary。
 
-## Required verification
+## Windows 固定工具链
 
-Use the exact Node and npm versions pinned by .node-version and package.json.
-For an implementation change, run:
+Windows 所有 Node/npm/Corepack/脚本必须使用：
 
-~~~
-npm ci
-npm run typecheck
-npm test
-npm run check:no-native-addons
-~~~
+```text
+tools/node-v24.16.0-win-x64/node.exe
+tools/node-v24.16.0-win-x64/npm.cmd
+```
 
-For desktop communication changes also run `npm run test:flutter-desktop`.
-Node tests must cover package/lock validation, archive safety, integrity,
-hardlink/copy fallback, cold activation/rollback, GC and plugin invocation. The
-Flutter command must exercise a typed Facade call through the same installed
-standard plugin path. They cover the current Windows desktop host only. Do not
-report Android/Javet or macOS acceptance from them.
+先把该目录放到 `PATH` 最前，禁止裸用全局 `node/npm/npx/corepack`，也禁止缺失时回退。固定
+Node `24.16.0`、npm `11.13.0` 必须与 `.node-version`、package/lock、compatibility fixture 和
+版本矩阵一致。
 
-Report separately which checks ran on the current host and which Android or
-macOS probes remain unrun. Do not call static checks a platform lifecycle
-acceptance.
+## 验证
 
-## Git and scope discipline
+实现变更使用项目内工具链运行：
 
-- Keep this package independent from root application code. A Runtime-only task
-  must not edit root app, reader-plugin or template code without explicit approval.
-- Inspect git status before editing. Preserve unrelated changes.
-- Do not commit unless explicitly asked. When asked to commit, stage only
-  task-owned files.
+```powershell
+npm.cmd ci
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run check:no-native-addons
+```
+
+- 触及 desktop Facade/transport：加 `npm.cmd run test:flutter-desktop`。
+- 触及性能关键路径：按任务运行 benchmark 并报告 off/default/explicit capture 边界。
+- 触及 Windows 打包：运行 `stage:flutter-windows`，但它不替代最终应用包验收。
+- Android/Javet、Windows 发布包、macOS 签名/公证分别报告；当前主机未运行的项明确写未执行。
+- Runtime-only 任务不修改根 UI、reader、模板或真实书源，除非用户明确把它们纳入同一交付包。

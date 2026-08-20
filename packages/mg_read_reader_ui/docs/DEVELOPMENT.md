@@ -1,7 +1,7 @@
 # 0.4.0 开发指南
 
-本文说明 `novel_reader_ui` 0.4.0 的开发流程、公共契约与宿主集成边界。根目录
-`AGENTS.md` 是长期最高优先级契约；本文用于把 0.4.0 的实现约束整理为可执行的开发清单，
+本文说明 `novel_reader_ui` 0.4.0 的开发流程、公共契约与宿主集成边界。monorepo 根
+`../../AGENTS.md` 与本 package `../AGENTS.md` 是长期契约；本文用于把 0.4.0 的实现约束整理为可执行的开发清单，
 不得据此扩大插件的产品职责。
 
 ## 1. 产品边界
@@ -70,7 +70,7 @@ UI 不访问网络、文件系统、数据库或宿主 Service Locator；分页�
 5. 为新增公共类型和成员补充 DartDoc，并同步 README、示例和版本记录。
 6. 复核 loading、empty、error、retry、后台、退出和 dispose 路径。
 7. 检查请求过期屏蔽、资源释放、缓存上限和语义位置恢复。
-8. 只执行仓库允许的格式与静态分析；不新增或运行自动化测试、Golden 或平台构建。
+8. 执行格式、静态分析和受影响自动化测试；Golden、平台构建与人工运行按任务和授权执行。
 
 仓库规定的最终检查为：
 
@@ -79,6 +79,7 @@ git diff --check
 dart format --output=none --set-exit-if-changed .
 flutter analyze
 cd example && flutter analyze
+cd .. && flutter test
 ```
 
 不得通过降低 lint、排除源码或吞掉异常制造通过结果。静态分析通过不等于功能测试通过。
@@ -295,4 +296,4 @@ Windows 真机/CI 验证。交付报告必须逐项列出未执行的平台构�
 - loading、empty、error、retry、后台、退出和 dispose 均有明确路径。
 - Android 与 Windows 平台语义实现一致，环境未覆盖项被准确披露。
 - README、示例、版本记录与实际导出的 0.4.0 契约一致。
-- 格式、根包与示例静态分析通过；没有新增测试目录、测试依赖或无关改动。
+- 格式、根包与示例静态分析、受影响自动化测试通过；没有无关改动。

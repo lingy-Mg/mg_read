@@ -1,5 +1,9 @@
 # 09 平台发布与未来能力
 
+> **规划提示**：平台承载与发布门禁仍有效。文中把内容、阅读进度、下载队列或媒体状态直接
+> 归为 Runtime Store 的段落是旧目标，不覆盖 ADR-0011/ADR-0100；未来媒体/下载持久化必须由
+> 新的 Accepted ADR 明确跨边界所有权。
+
 ## 首发平台矩阵
 
 | 项目 | Android | Windows | macOS |
@@ -36,7 +40,8 @@ Android 与桌面使用同一 Node 小版本和 Runtime Core 构建。升级 Nod
 - Javet AAR 的最低 API 要求纳入应用 `minSdk`，正式固定前通过依赖/Manifest 合并结果验证，而不是只抄文档。
 - Node Runtime 只能由 Runtime 自有专用后台线程持有，Flutter UI Isolate 和主项目原生代码不执行脚本。
 - 安装包使用项目发行密钥签名；密钥、密码和签名材料不进入仓库或日志。
-- 升级必须保留 Runtime Store、插件版本目录、下载 `.part` 和内容文件；卸载语义由 Android 系统决定并在 UI 明确告知。
+- 升级必须保留 Runtime 自有运行数据和插件版本目录；下载 `.part` 与内容文件按未来 Accepted
+  ADR 的所有权处理。卸载语义由 Android 系统决定并在 UI 明确告知。
 - Android arm64 真机验证启动、系统返回、前后台、系统杀进程、磁盘不足和下载恢复。
 - 普通阅读和缓存任务不依赖后台 Service 常驻。未来媒体必须使用符合系统规则的前台媒体服务。
 
@@ -47,7 +52,8 @@ Android 与桌面使用同一 Node 小版本和 Runtime Core 构建。升级 Nod
 - 仅发布 x64。
 - Runtime 集成包负责在应用包内携带固定路径的官方 Node 24 x64 和 Runtime Core，不读取用户 PATH、npm 或全局 Node。
 - Node 子进程默认隐藏窗口，显式环境 allowlist，loopback 原子端口绑定。
-- 安装/升级逻辑不得覆盖 Runtime Store、插件和内容目录；程序文件与 Runtime 自有用户数据目录分离。
+- 安装/升级逻辑不得覆盖 Runtime 自有运行数据和插件目录；内容目录按主应用权威边界处理，
+  程序文件与各自所有者的用户数据目录分离。
 - 建议发行产物使用代码签名并通过常见安全软件/SmartScreen 场景验证；是否启用和证书流程在平台发布里程碑记录。
 - 运行验证覆盖非 ASCII 用户名、带空格/长路径、只读安装目录、磁盘不足、子进程被终止和防火墙/安全软件干预。
 - 打包测试必须从最终安装位置启动，不能只用开发目录中的 Node 得出结论。
@@ -73,7 +79,8 @@ Node 和 Runtime Core 是 Runtime 产物的嵌套可执行内容，必须在签�
 ## 插件与应用更新的分离
 
 - **主项目更新**更换 Flutter UI、路由和阅读器视图宿主，不实现或替换 Runtime 内部组件。
-- **Runtime 更新**更换 Runtime 集成包、平台适配、Runtime Core、Node/Javet、Store 迁移和协议实现，遵循 Runtime 的平台签名/公证与安装升级流程。
+- **Runtime 更新**更换 Runtime 集成包、平台适配、Runtime Core、Node/Javet、Runtime 自有运行
+  数据迁移和协议实现，遵循 Runtime 的平台签名/公证与安装升级流程。
 - **插件更新**只下载标准 Node `.mgplugin` 到应用数据目录，恢复 lock 依赖后使用不可变版本目录、完整性校验和下次应用进程冷激活。
 - 插件不能更新或覆盖包内 Node、Runtime Core、Flutter 代码或原生库。
 - Runtime/协议升级导致插件不兼容时，插件记录与离线内容保留；UI 显示兼容性动作，不自动删除。

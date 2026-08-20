@@ -7,7 +7,7 @@
 `npm run benchmark:plugin`；具体范围见
 [`docs/desktop-runtime-bridge.md`](../docs/desktop-runtime-bridge.md)。
 
-这不是 Android/Javet、macOS package、完整 Runtime Store、资源流或全部业务协议验收。
+这不是 Android/Javet、macOS package、未来资源/下载能力或全部业务协议验收。
 移动端在本轮明确不测试。以下剩余探针仍全部由本仓库拥有；`mg_read` 不得实现替代 bridge
 或提供 callback 让它们工作。
 

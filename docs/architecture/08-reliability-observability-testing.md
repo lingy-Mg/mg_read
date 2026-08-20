@@ -1,13 +1,17 @@
 # 08 可靠性、可观测性与测试
 
+> **适用范围提示**：通用故障、日志和证据分层仍有效；将 Runtime Store 视为书架、目录、
+> 进度、书签或正文权威的旧测试段落已被 ADR-0011/ADR-0100 取代。当前测试所有者按
+> [开发路由](../development/README.md)选择，不再建设历史 Runtime 业务 Store 套件。
+
 ## 可靠性原则
 
 1. 每个 Runtime capability 只有一个明确终态：成功、失败、超时或取消；内部断线不能留下
    永远等待的 Future/Promise。
-2. Runtime Store 的持久状态优先于易失运行状态；Facade 重连和应用重启都从 Runtime
-   Store 与 snapshot 重建，主项目不维护影子权威数据。
-3. 写操作以幂等键、Runtime Store 事务、临时文件和原子提交保证可重试；读取只有声明
-   幂等时自动重试。
+2. Runtime 自有运行数据与主应用权威业务数据分别由各自所有者恢复；Facade 重连不改变
+   `AppPersistence` / `ContentLibrary` 的业务权威，也不创建跨边界影子副本。
+3. 写操作由其所有者使用幂等键、事务或临时文件加原子提交保证可重试；读取只有声明幂等时
+   自动重试。
 4. 所有队列、重试、缓存、日志和恢复扫描都有界。
 5. 错误先归一化为稳定码，再由主项目映射为用户可行动状态；插件原始异常不能直接显示
    或持久化。
@@ -20,7 +24,8 @@
 | --- | --- | --- |
 | Flutter 页面 | 页面销毁、旧请求回调、路由中断 | request generation/取消；从 Facade 投影重建 |
 | Runtime Facade | 调用取消、版本不兼容、受控连接错误 | 稳定错误、诊断投影；不向主项目泄露 wire 状态 |
-| Runtime Store | 迁移失败、事务冲突、磁盘满 | Runtime 事务/恢复、只读诊断和明确 `disk_full` |
+| Runtime 自有运行数据 | 迁移失败、文件损坏、磁盘满 | Runtime 恢复、只读诊断和明确 `disk_full` |
+| 主应用持久化 | schema/事务失败、revision 冲突、磁盘满 | AppPersistence 恢复、稳定错误和可行动 UI |
 | 内部 WS 控制面 | 断线、非法 frame、重复 ID | Runtime 结束在途调用；同 bootId 有界重连并 snapshot |
 | 内部 HTTP 数据面 | 上游中断、消费者取消、Range 不一致 | 背压/取消传播；检查点和 ETag 验证后恢复 |
 | Node Runtime | 启动失败、崩溃、事件循环卡死 | Runtime Supervisor `failed`；首版要求重启应用，不起第二 VM |
@@ -163,15 +168,17 @@ Runtime 集成测试必须覆盖启动前失败、非法/重复 ready、readines
 
 所有外部源站测试使用本地可控 fixture server，不依赖真实网站或真实凭据。
 
-### Runtime Store 独立验收
+### 历史 Runtime Store 独立验收（不再作为当前门禁）
 
-Store 另有一套不启动主应用、Node/Javet、WS/HTTP、插件或网络的独立验收。它只通过
+以下段落保留旧方案的验收思路，不再定义当前业务数据所有权或必跑测试。旧 Store 曾规划一套
+不启动主应用、Node/Javet、WS/HTTP、插件或网络的独立验收。它只通过
 Runtime 仓库内的测试专用 Store testkit 在全新临时数据根运行，覆盖 JSON/迁移、事务、
 revision、备份、磁盘满、真实子进程强杀、两库/文件恢复、隐私 canary、150,000 条目录
 规模和三个首发平台。完整用例与证据格式见
 [11 Runtime Store 独立验收规范](11-runtime-store-acceptance.md)。
 
-Store unit test、主应用 UI test、Node integration 或单平台冒烟都不能替代这套结果。
+若未来 Accepted ADR 恢复等价能力，应重新定义所有者和门禁；现有 Store unit test、主应用
+UI test、Node integration 或单平台冒烟不能自动视为该未来门禁的替代证据。
 
 ## 验收证据边界
 

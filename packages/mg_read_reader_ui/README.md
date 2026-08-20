@@ -220,9 +220,14 @@ dart format --output=none --set-exit-if-changed .
 flutter analyze
 cd example
 flutter analyze
+cd ..
+flutter test
 ```
 
-项目不保留或运行自动化测试与 Golden 截图。重大视觉改造经用户明确授权时，可在 Android 模拟器运行 `example/` 做人工点击、拖动和截图检查，但这不等同于自动化测试，也不能替代 Android 真机的常亮、生命周期和系统返回验收。Windows 运行时和可变窗口交互只能在 Windows 主机或对应 CI 环境人工检查。
+新增或修改行为需要在 package 或 monorepo 的合适层级补充自动化测试。Golden、平台构建和人工
+运行按任务风险与用户授权执行；它们不能相互替代。Android 模拟器人工检查不能替代 Android
+真机的常亮、生命周期和系统返回验收，Windows 运行时和可变窗口交互只能在 Windows 主机或
+对应 CI 环境检查。
 
 建议人工检查：
 

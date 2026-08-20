@@ -9,16 +9,17 @@ Runtime-owned Flutter Facade、标准 package/lock 安装、依赖对象仓、�
 Runtime Store、Android Javet、macOS
 包集成或最终 Flutter 产品包已经验收，也不授权把 Runtime 代码放进主项目。
 
-运行时边界与主项目的对应决策是
-[MgRead ADR-0008](../../../docs/architecture/adr/0008-standalone-plugin-runtime-boundary.md)。
-若两个仓库的说明冲突，以该 ADR 与本文为准；变更已接受边界必须先新增替代 ADR。
+Runtime 平台/transport 边界由根 AGENTS、ADR-0001/0003/0004 与本文维护；业务数据所有权以
+[ADR-0011](../../../docs/architecture/adr/0011-app-owned-versioned-persistence.md) 和
+[ADR-0100](../../../docs/architecture/adr/0100-app-owned-content-library.md) 为准。ADR-0008 的
+Runtime 业务 Store 结论已被取代；变更当前边界必须先新增替代 ADR。
 
 ## 产品定位
 
 `mg_read_runtime` 是一个可独立运行的、完整的多平台插件运行时产品，不是要求
 `mg_read` 主项目拼装的 Node Core。它必须能够在没有主项目数据库、路径、Cookie、文件
 服务、平台通道、callback 或 `host.*` handler 注入的情况下，启动、恢复、加载并执行
-插件的全部首版能力。
+插件执行和 Runtime 管理能力。
 
 主项目只负责 UI、路由、主题、用户交互和阅读器视图宿主。它不应知道 Node/Javet、
 子进程、端口、ready、bootId、WebSocket、HTTP、Runtime Store 或插件内部协议。
@@ -32,10 +33,11 @@ PluginRuntime.invoke<T>(PluginInvocation<T>) -> Future<T>
 ```
 
 `PluginInvocation` 包含稳定的插件 ID、版本化 capability、强类型参数、取消语义和结果
-类型。它可以表达插件管理、发现、搜索、详情、目录、书架、阅读状态、下载、诊断和
-资源访问；主项目不得拼接 raw method 字符串或直接使用 wire envelope。
+类型。它可以表达插件管理、发现、搜索、详情、目录、诊断和资源访问；主应用书架、阅读状态
+和 Content Library 经自身强类型端口持久化。下载跨边界能力需等待新 Accepted ADR。主项目
+不得拼接 raw method 字符串或直接使用 wire envelope。
 
-- 第一次 `invoke()` 自动完成启动、兼容检查、Runtime Store 恢复、内部 HTTP readiness
+- 第一次 `invoke()` 自动完成启动、兼容检查、Runtime 自有操作数据恢复、内部 HTTP readiness
   和 WS hello。
 - 资源结果以 Runtime 管理的强类型资源对象返回；主项目不构造/猜测 loopback URL、请求
   头、`bootId`、handle TTL 或 Range。
@@ -58,7 +60,7 @@ flowchart TB
     DESKTOP --> CORE["Single Node VM Runtime Core"]
     ANDROID --> CORE
     CORE --> WIRE["Internal WS control + loopback HTTP data plane"]
-    CORE --> STORE["Runtime Store + file lifecycle"]
+    CORE --> STORE["Runtime operational data + resources"]
     CORE --> SDK["Plugin API / scheduler / ctx.http"]
     SDK --> PLUGIN["Trusted standard Node plugins"]
 ```
@@ -73,27 +75,28 @@ Runtime 仓库必须拥有并测试：
   和协议 fixture。它们是实现，不是主项目 API。
 - `.mgplugin` 本地导入/官方仓库、package/lock/依赖校验、不可变版本目录和插件启停。需要用户交互的文件选择
   必须由 Runtime 的集成包实现，不由主项目提供服务。
-- Runtime Store、受控数据根、迁移、原子文件提交、缓存、下载、Cookie、插件 KV、恢复、
-  诊断和所有插件/内容来源相关持久化。
+- Runtime 自有受控数据根：插件安装版本、插件私有 data/cache、Cookie、临时资源、运行状态和
+  诊断。主应用业务数据与 Content Library 不在此数据根。
+- 下载 checkpoint、内容缓存和跨边界原子提交在新 Accepted ADR/Facade 契约完成前保持未实现
+  或 `unsupported`，不能从旧 Runtime Store 规划直接恢复。
 - 未来 WebView、通知、媒体和其他平台能力的 Runtime 自有实现，或明确、稳定的
   `unsupported`。未实现能力绝不反向要求主项目实现 callback。
 
-## Runtime Store 的数据所有权
+## Runtime 自有数据与主应用业务数据
 
-Runtime Store 是以下数据的唯一权威：
+Runtime 是以下操作数据的唯一权威：
 
-- 插件安装、版本、启用、待激活、回滚和诊断。
-- 书架、来源绑定、目录快照、阅读进度、书签和离线状态。
-- 下载任务、内容/缓存文件、临时 `.part`、恢复检查点和完整性元数据。
-- 插件作用域 KV、Cookie、Runtime 设置和脱敏运行诊断。
+- 插件安装、版本、启用、待激活、回滚和诊断；
+- 插件作用域 data/cache/KV、Cookie、临时资源和脱敏运行诊断；
+- Node/Javet/desktop 生命周期、内部连接和当前启动周期状态。
 
-Runtime 自己解析应用数据根目录，自己管理持久层、事务和文件路径；主项目既不传入这些
-能力，也不打开 Store 或扫描 Runtime 文件。插件缺失时，Runtime 仍负责返回本地投影和
-可行动错误，而不是把离线恢复交还给主项目。
+主应用是书架、来源绑定、目录快照、正文/漫画对象、阅读进度和书签的唯一业务权威。Runtime
+通过 Facade 返回强类型在线结果，主应用 adapter 决定提交；Runtime 不打开主应用数据库或
+文件对象，主应用也不扫描 Runtime 数据根。Runtime/插件缺失时，主应用从自己的 Content
+Library 提供已提交离线数据。
 
-M1.1 尚未选择 Runtime Store 的具体持久化引擎。未来选型必须遵守“无原生 Node addon”、
-Android Javet/Windows/macOS 一致性、迁移、原子文件恢复、包体和真实平台探针约束；不得
-因为主项目曾规划 Drift/SQLite 就将 Flutter 数据库或未经审查的 native SQLite 包带入 Runtime。
+Runtime 操作数据后端不得使用 Node native addon，也不得复用主应用 Drift/SQLite。若未来
+需要新的持久 Runtime capability，先记录数据所有权、跨平台、迁移、包体和恢复决策。
 
 桌面 Node 通过 `--use-env-proxy` 采用 Runtime 显式允许的 `HTTP_PROXY`、`HTTPS_PROXY` 和
 `NO_PROXY`；Windows 还读取用户 Internet Settings 的手工代理，不启动额外 helper 进程。PAC/
@@ -124,7 +127,7 @@ Runtime 诊断是上述业务 Store 选型之外的有界运行证据，并固�
 1. 在本仓库为 capability、参数、结果、错误和资源语义定义版本化公开类型。
 2. 将所需平台实现、存储、隐私、生命周期和失败恢复放入 Runtime 内部设计与测试。
 3. 用 Runtime Facade 发布该 capability 和脱敏投影；主项目只增加 UI 消费。
-4. 若改变单 VM、平台承载、数据所有权、冷激活或传输边界，先在 `mg_read` 架构集新增
+4. 若改变单 VM、平台承载、数据所有权、冷激活或传输边界，先在根架构集新增
    替代 ADR，并同步本文件、Schema、fixture 和两个 README。
 
 禁止以“主项目已有 Flutter/原生能力”为由添加 callback、`HostPort`、`host.*`、数据库
@@ -154,7 +157,7 @@ wire metadata。详见[桌面 Runtime 与标准插件闭环](desktop-runtime-bri
 - Android Javet 或任意移动端路径；本轮明确不测试移动端。
 - macOS 执行、签名/公证，或最终 Windows/macOS 应用包内的 bundle locator/隐藏窗口；Windows
   asset staging 已实现，但最终应用包内启动尚未作为验收运行。
-- 完整 Runtime Store、官方仓库下载/本地选择 invocation、大资源流、下载、阅读器适配和恢复。
+- 官方仓库下载/本地选择 invocation、大资源流、下载跨边界契约和正式阅读器入库适配。
 - Android ABI 打包、macOS 签名/公证、最终应用集成或主项目 UI 行为。
 
 后续实现每次都必须先运行固定 Node/npm 的 `npm ci`、`npm run typecheck`、`npm test` 与

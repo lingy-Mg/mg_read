@@ -37,4 +37,6 @@ flutter run -d windows
 
 旧的 `ReaderExtensions.comments` / `ReaderCommentsCapability` 已弃用，示例不再使用它们。
 
-本仓库不提供自动化测试或 Golden。Android 模拟器运行只能作为当次人工交互检查；常亮、生命周期和系统返回仍需 Android 真机验收，Windows 可变窗口与输入行为需在 Windows 主机验收。
+自动化测试、Golden（如启用）和人工运行分别报告。Android 模拟器运行只能作为当次人工交互
+检查；常亮、生命周期和系统返回仍需 Android 真机验收，Windows 可变窗口与输入行为需在
+Windows 主机验收。

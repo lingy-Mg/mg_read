@@ -1,5 +1,10 @@
 # 03 Runtime 生命周期
 
+> **数据边界**：本文中的 Runtime 持久化只指插件目录、Cookie、缓存、诊断事件等 Runtime
+> 自有运行数据。书架、目录、阅读进度、书签和内容库的权威属于主应用
+> `AppPersistence` / `ContentLibrary`，见 ADR-0011 与 ADR-0100；旧的统一 Runtime Store
+> 业务方案不得据此恢复。
+
 ## 所有权与不变量
 
 本章描述 `mg_read_runtime` 的内部生命周期。它不是 Flutter 主项目需要实现或调用的
@@ -15,8 +20,8 @@
   插件；异步超时无法抢占任意同步 JavaScript。
 - Runtime 按需懒启动。Facade 的首个调用触发启动，同一进程内并发调用共享启动任务；
   主项目不管理启动 Future、端口或状态机。
-- Runtime Store、插件目录、Cookie、缓存与恢复全部由 Runtime 自行打开和维护。没有
-  Flutter 数据库、路径或 `host.*` 服务注入。
+- 插件目录、Cookie、缓存、诊断事件与恢复等 Runtime 自有运行数据由 Runtime 自行打开和
+  维护。Runtime 不打开主应用数据库，也不接受其路径或 `host.*` 服务注入。
 
 ## 平台承载
 
@@ -69,7 +74,7 @@ sequenceDiagram
 
     F->>S: first invoke()
     S->>P: Process.start(fixed executable, allowlisted environment)
-    P->>P: load Runtime Core and Runtime Store
+    P->>P: load Runtime Core and operational data
     P->>H: atomically bind 127.0.0.1:0
     P-->>S: ready(JSON line / internal pipe)
     S->>H: GET /health/ready
@@ -108,7 +113,7 @@ sequenceDiagram
 }
 ```
 
-`ready` 只能在 Core、Runtime Store、HTTP 路由与内部 WS 路由都准备后发送。Supervisor
+`ready` 只能在 Core、所需 Runtime 运行数据、HTTP 路由与内部 WS 路由都准备后发送。Supervisor
 严格验证 JSON、PID、版本、端口和重复消息，但这些字段仅用于 Runtime 内部，Facade
 不会将它们作为主项目 API 暴露。
 
@@ -127,13 +132,13 @@ hardlink/copy、`.mgplugin` 和 mark-sweep 由 Runtime 仓库独立测试；主�
 Facade，不参与路径、启动、端口、WS 或安装。实现与证据见
 [Runtime desktop 文档](../../packages/mg_read_runtime/docs/desktop-runtime-bridge.md)。
 
-当前 `ready` 证明 desktop Core 与插件目录冷启动扫描就绪，但完整 Runtime Store、官方仓库、
+当前 `ready` 证明 desktop Core 与插件目录冷启动扫描就绪，但下载/缓存、官方仓库、
 HTTP 资源流、Android/Javet、macOS 和最终应用包路径仍未完成对应验收；不得把 Windows 源码
 测试扩张为全平台完成声明。
 
 ## Android 启动
 
-Android 复用相同的 Core、Runtime Store、HTTP、WS 和协议验证，区别仅在承载：
+Android 复用相同的 Core、Runtime 自有运行数据、HTTP、WS 和协议验证，区别仅在承载：
 
 1. Runtime 自有 Android Adapter 在专用后台线程创建唯一 `NodeRuntime`。
 2. Adapter 注入只包含 Runtime 自己的路径、版本、日志回调和启动配置；不接受主项目
@@ -150,7 +155,7 @@ Flutter UI Isolate 不创建、泵送或销毁 Javet，也不接收原始插件�
 `GET /health/ready` 仅在以下条件满足时返回成功：
 
 - Core 已完成初始化。
-- Runtime Store、插件目录、缓存和下载目录已完成最低限度恢复扫描。
+- Runtime 自有运行数据、插件目录、缓存和下载目录已完成已实现能力所需的最低限度恢复扫描。
 - 内部 WS 和资源 HTTP 路由已注册。
 - 没有版本、路径、迁移或平台适配的致命配置错误。
 
@@ -164,14 +169,15 @@ Flutter UI Isolate 不创建、泵送或销毁 Javet，也不接收原始插件�
 | --- | --- | --- |
 | 创建前 | executable/AAR 不存在、架构不匹配 | `runtime_start_failed`，带可行动诊断 |
 | 创建中 | Node/Javet 异常、线程初始化失败 | `runtime_start_failed` |
-| 监听前 | Core、Store、ESM、路径或端口绑定失败 | 结构化启动失败，禁止静默退出 |
+| 监听前 | Core、运行数据、ESM、路径或端口绑定失败 | 结构化启动失败，禁止静默退出 |
 | ready 后 | HTTP 不可达、bootId 不一致 | `runtime_not_ready` |
 | hello | 协议/Node/Runtime 版本不兼容 | `version_incompatible` |
 | ready 运行中 | Runtime 退出或内部 WS/HTTP 同时失效 | 在途 capability 显式失败，Supervisor 进入 `failed` |
 
 断线或 Runtime 失败时，所有在途 capability 以 `transport_disconnected` 或
 `runtime_unavailable` 完成，不能悬挂。与旧 `bootId` 绑定的临时资源失效；Runtime
-Store 中已提交内容、进度、书签和下载检查点保留并由下次 Runtime 启动恢复。
+Runtime 已提交的自有运行数据由下次 Runtime 启动恢复；主应用内容、进度和书签由
+`AppPersistence` / `ContentLibrary` 独立恢复。下载检查点的最终跨边界所有权仍需 Accepted ADR。
 
 ## 后台、关闭与恢复
 
@@ -181,7 +187,7 @@ Store 中已提交内容、进度、书签和下载检查点保留并由下次 R
 - 系统终止进程是正常恢复路径，Runtime 在下次启动扫描 `.part`、事务记录和缓存。
 - 首版不使用普通 Android 后台 Service 维持 Node 常驻。
 - 有序关闭依次拒绝新 capability、取消可取消任务、关闭 WS/HTTP、清理 Runtime 自有
-  Timer/句柄、关闭 Store，并在桌面等待精确子进程或在 Android 所属线程销毁 Runtime。
+  Timer/句柄、关闭 Runtime 自有运行数据，并在桌面等待精确子进程或在 Android 所属线程销毁 Runtime。
 - 未提交文件留给下次 Runtime 启动恢复，不在关闭临界路径做无界清理。
 
 ## M1 可行性探针
@@ -194,7 +200,7 @@ Store 中已提交内容、进度、书签和下载检查点保留并由下次 R
 | Node 模式与 ESM | 必须 | 必须 | 必须 | 同一 ESM fixture 加载成功/失败用例 |
 | 内部 HTTP/WS loopback | 必须 | 必须 | 必须 | ready + hello + capability 调用 |
 | `127.0.0.1:0` | 必须 | 必须 | 必须 | 实际绑定端点与 bootId |
-| Runtime Store | 必须 | 必须 | 必须 | 受控根目录、迁移、原子写入与恢复 |
+| Runtime 自有运行数据 | 必须 | 必须 | 必须 | 受控根目录、迁移、原子写入与恢复；不含主应用业务数据 |
 | HTTP Range/背压 | 必须 | 必须 | 必须 | 206/416、取消、慢消费者、大文件 |
 | 控制台与异常 | 必须 | 必须 | 必须 | 脱敏日志、未捕获异常、拒绝 Promise |
 | 零主项目注入 | 必须 | 必须 | 必须 | 不传 callback/path/DB/Cookie 的独立启动测试 |

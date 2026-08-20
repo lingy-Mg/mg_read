@@ -9,7 +9,9 @@ MgRead 是以插件为唯一在线数据来源的本地优先阅读应用。首�
 ## 产品原则
 
 1. **插件优先**：真实内容全部来自插件；宿主不内置真实书源。
-2. **本地数据优先**：书架、目录快照、进度、书签、下载和 Runtime 设置以 Runtime Store 为准；主项目只保留 UI 短期状态。
+2. **本地数据优先**：书架、目录快照、正文对象、进度和书签以主应用
+   `AppPersistence`/`ContentLibrary` 为权威；Runtime 负责插件执行、在线获取与自己的运行数据，
+   不打开主应用数据库。
 3. **离线不失效**：插件禁用、损坏或丢失时，本地元数据、进度和已下载内容仍可查看。
 4. **首版闭环优先**：音频、视频、账号、同步和 WebView 登录只留下可扩展边界，不交付半成品。
 5. **平台行为明确**：Android 优先，Windows/macOS 同属首发承诺；每个平台分别验收和发布。
@@ -57,7 +59,9 @@ MgRead 是以插件为唯一在线数据来源的本地优先阅读应用。首�
 | 下载 | 优先级、进度、暂停、恢复、失败 | 排队、准备、传输、暂停、完成、可重试失败 |
 | 设置/诊断 | Runtime、协议、插件、缓存与指标 | 未启动、就绪、降级、不可用 |
 
-页面不得直接访问网络、Runtime Store、文件系统或 Runtime 内部协议；全部通过 feature application 调用版本化 Runtime Facade。
+页面不得直接访问网络、SQLite、文件系统或 Runtime 内部协议。在线来源通过 feature
+application 调用版本化 Runtime Facade，本地业务数据通过 feature 窄端口访问主应用
+`ContentLibrary`。
 
 ## 明确延期
 
@@ -85,7 +89,7 @@ MgRead 是以插件为唯一在线数据来源的本地优先阅读应用。首�
 - `mg_read_runtime` 独立运行、Runtime 自有持久化、零主项目注入的边界已由 ADR-0008 固定。
 - 可变持久字段采用作用域化版本 JSON，稳定 envelope 与公开强类型投影的边界已由
   ADR-0009 固定；SQLite 分库仍明确标记为等待探针的 Proposed。
-- Runtime Store 的独立验收矩阵已定义，且不以主应用、Node、网络或真实书源为前置。
+- 主应用 persistence/Content Library 的独立验收矩阵已定义，且不依赖 Node、网络或真实书源。
 - 不增加运行时代码和依赖。
 
 ### M1：独立 Runtime 可行性门禁
@@ -109,14 +113,14 @@ MgRead 是以插件为唯一在线数据来源的本地优先阅读应用。首�
 
 - Runtime Supervisor、平台承载与启动管道。
 - 内部 WS/HTTP、事件、取消、deadline、幂等与重连快照；对主项目只发布 Facade。
-- Runtime Store、文件布局、原子提交、Range、背压、健康探测和句柄生命周期。
-- 稳定记录 envelope、作用域 JSON codec/升级链、内容对象层，以及独立 Store
-  acceptance/crash/stress/security 套件。
+- Runtime 自有插件安装树、插件私有 data/cache、Cookie、临时资源与诊断；Range、背压、
+  健康探测和句柄生命周期。
+- 不在 Runtime 建立书架、目录、进度、书签或正文业务权威；主应用提交/下载跨边界能力需先有
+  新的 Accepted ADR 和强类型契约。
 - 结构化日志、指标、故障注入入口和零主项目注入验收。
 
-SQLite 后端若被采用，必须先完成 Android、Windows、macOS 的绑定/包体/生命周期探针和
-两库分裂提交恢复测试，再将 ADR-0010 从 Proposed 转为 Accepted；旧规划中的 Drift 不是
-默认获准依赖。
+主应用 SQLite/Content Library 的实现与验收由 ADR-0011、ADR-0100 约束。ADR-0010 的 Runtime
+SQLite 方案已被取代，不再是后续 Runtime 门禁。
 
 ### M4：插件生态
 
@@ -126,8 +130,11 @@ SQLite 后端若被采用，必须先完成 Android、Windows、macOS 的绑定/
 
 ### M5：小说/漫画闭环
 
-- Runtime 的发现、搜索、详情、目录、书架、语义进度、书签、缓存、下载、恢复和离线投影。
-- 主项目以 Facade 投影实现页面与 `novel_reader_ui` 视图宿主，不自行保存或传输插件数据。
+- Runtime 的发现、搜索、详情、目录与受控资源获取；主应用 adapter 将已验证结果提交到
+  `ContentLibrary`。
+- 主应用完成书架、目录、正文对象、语义进度、书签和离线投影；网络传输、下载 checkpoint 与
+  文件提交的跨边界所有权先由新 ADR/契约固定。
+- 页面与 `novel_reader_ui` 只消费强类型应用端口和 Runtime Facade，不接触 raw transport。
 
 ### M6：首发平台发布
 

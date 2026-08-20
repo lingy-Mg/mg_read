@@ -1,5 +1,9 @@
 # M2：Flutter 主项目 UI 基础设施
 
+> **历史交付说明**：本文记录 M2.1 时的阶段边界，`M2.2–M2.4 未开始` 等状态不再代表当前
+> 仓库。当前 tracked evidence 与下一缺口见 [规划快照](../planning/README.md)；当前数据权威按
+> ADR-0011/ADR-0100，而不是本文早期的 Runtime Store 目标。
+
 ## 状态与范围
 
 M2 只建立 `mg_read` 的 UI 基础设施。自 [ADR-0008](../architecture/adr/0008-standalone-plugin-runtime-boundary.md)

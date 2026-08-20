@@ -38,8 +38,9 @@ mg_read UI
 旧 manifest、单文件 bundle、`sharedDependencies`、自定义 dependency lock、旧模板夹具和
 测试专用模板 RPC 已删除且不提供兼容读取。
 
-当前不应扩张为已完成的范围：Android Javet、macOS 包内 Node、完整 Runtime Store、官方
-registry 下载/导入 capability、大资源 HTTP、正文缓存/下载和最终应用包验收仍待后续交付。
+当前不应扩张为已完成的范围：Android Javet、macOS 包内 Node、官方 registry 下载/导入
+capability、大资源 HTTP、下载跨边界契约和最终应用包验收仍待后续交付。主应用业务
+Persistence/Content Library 不属于 Runtime 待办。
 
 ## 固定工具链
 

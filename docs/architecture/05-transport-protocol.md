@@ -1,5 +1,10 @@
 # 05 Runtime 内部 WS/HTTP 协议
 
+> **数据所有权提示**：本文的 wire/资源/取消/Range 规则仍是 Runtime 内部协议基线；其中
+> `runtime.store.library.*`、Runtime Store 作为书架/目录/进度权威等旧描述已被 ADR-0011 和
+> ADR-0100 取代。未有新 Accepted ADR 前，不得从这些旧方法表恢复 Runtime 业务权威或
+> `host.*` 回调。主应用只消费版本化 Facade。
+
 ## 协议目标
 
 `mg_read_runtime` 的内部 wire 协议分成两个平面：

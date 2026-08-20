@@ -1,5 +1,10 @@
 # 06 Runtime 数据、缓存与下载
 
+> **历史设计（默认不读）**：本文基于 ADR-0008/0009/0010，其中 Runtime Store 拥有书架、
+> 目录、进度、书签和正文的结论已被 ADR-0011 与 ADR-0100 取代。当前主应用
+> `AppPersistence`/`ContentLibrary` 才是业务数据权威。本文仅保留旧方案的缓存、文件提交和
+> 恢复思路；不得据此实现 Runtime 业务 Store。当前入口见 [架构首页](README.md)。
+
 ## 所有权原则
 
 插件和内容来源产生的所有持久状态都属于 `mg_read_runtime`。主项目只消费 Facade 返回

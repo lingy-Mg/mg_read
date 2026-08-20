@@ -1,5 +1,9 @@
 # AGENTS.md
 
+The monorepo root `../../AGENTS.md` applies. For template work, read only this
+file, this package README, and the root standard-plugin/content-contract docs
+that the change affects.
+
 This repository is the official blank MgRead plugin project template.
 
 - A plugin is a standard Node.js 24 project. `package.json.mgread` is the only

@@ -1,5 +1,10 @@
 # 10 Runtime Store 持久化设计
 
+> **历史设计（默认不读）**：本文的数据所有权和物理 Store 目标已被 ADR-0011 与 ADR-0100
+> 取代。Runtime 仍可保存插件安装树、插件私有 data/cache、Cookie、临时运行状态和诊断，但
+> 不再拥有主应用书架、目录、阅读进度、书签或 Content Library。当前持久化设计见
+> [10 主应用持久化](10-app-persistence-design.md) 与 [20 Content Library](20-content-library.md)。
+
 ## 状态与范围
 
 本文是 Runtime Store 的设计基线，不是 `mg_read` 主应用数据库设计。持久化仍由

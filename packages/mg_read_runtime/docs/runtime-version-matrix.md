@@ -6,7 +6,7 @@ Selection snapshot: 2026-08-14. This is a locked compatibility baseline. The
 current implementation combines the Windows-x64 Node/Flutter communication path
 with standard package/lock installation, cold plugin loading and typed
 list/discover/search/detail/chapters/content.
-It is not a claim that Android lifecycle, the complete Runtime Store, macOS package
+It is not a claim that Android lifecycle, future resource/download capabilities, macOS package
 integration or the full product capability set exists.
 
 | Concern | Exact selection | Decision |
@@ -51,9 +51,10 @@ Flutter application consumes only the future Runtime Facade; it must not launch
 Node, own Javet, pass a database/path/Cookie/file callback, or perform ready/WS
 negotiation itself.
 
-M1.1 has not selected the Runtime Store backend. Any later selection must remain
-compatible with the no-native-Node-addon policy and be proven on Android Javet,
-Windows and macOS before it is treated as part of this version matrix.
+Runtime operational persistence must remain independent from the main application's
+SQLite/Content Library and compatible with the no-native-Node-addon policy. Any
+new persisted Runtime capability requires separate cross-platform evidence before
+it enters this version matrix.
 
 ### Official basis
 
@@ -184,5 +185,5 @@ the five content capabilities on the
 current Windows host. The monorepo template is verified separately
 and its artifact is installed through the same Runtime path. This does not claim
 Android Javet execution, mobile testing, Android ABI packaging, macOS execution,
-final app-bundle integration, complete Runtime Store behavior, or macOS
+final app-bundle integration, future resource/download behavior, or macOS
 signing/notarization until those probes run on the relevant platform.
