@@ -259,9 +259,13 @@ export class PluginInstaller {
       }
     }
 
-    await makeVersionTreeReadOnly(stagingRoot);
     await mkdir(versionsRoot, { recursive: true });
     await rename(stagingRoot, finalVersionRoot);
+    // Android's app sandbox can reject renaming a directory whose root was
+    // chmod-ed read-only while it still lives under the staging tree. Commit
+    // the atomic directory move first, then enforce immutability at its final
+    // location before publishing the pending pointer.
+    await makeVersionTreeReadOnly(finalVersionRoot);
     await atomicWrite(resolve(pluginRoot, "pending"), `${descriptor.version}\n`);
     return Object.freeze({
       copiedFiles,

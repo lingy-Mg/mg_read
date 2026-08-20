@@ -223,7 +223,15 @@ export interface DesktopRuntimeOptions {
    * the Flutter Facade, and is only consumed while this Runtime is cold.
    */
   readonly bundledPluginRoot?: string;
+
+  /** Runtime-owned in-process adapter mode; skips the desktop loopback listener. */
+  readonly embedded?: boolean;
 }
+
+/** Result returned by the Runtime-owned Android Javet adapter. */
+export type EmbeddedRuntimeResult =
+  | { readonly ok: true; readonly result: JsonValue }
+  | { readonly error: RuntimeProtocolError; readonly ok: false };
 
 /**
  * A single desktop Node Runtime Core. Its HTTP and WebSocket endpoints are
@@ -244,6 +252,7 @@ export class DesktopRuntime {
 
   /** Immutable platform-package seed directory, if this launch supplies one. */
   readonly #bundledPluginRoot: string | undefined;
+  readonly #embedded: boolean;
 
   /** All currently open RPC sessions, closed before server shutdown. */
   readonly #sessions = new Set<ServerWebSocketSession>();
@@ -264,6 +273,7 @@ export class DesktopRuntime {
       options.dataRoot ??
       resolve(tmpdir(), "mgread-runtime-tests", process.pid.toString());
     this.#bundledPluginRoot = options.bundledPluginRoot;
+    this.#embedded = options.embedded ?? false;
   }
 
   /**
@@ -281,6 +291,40 @@ export class DesktopRuntime {
     }
 
     return this.#startPromise;
+  }
+
+  /**
+   * Dispatches one capability for the Runtime-owned Android Javet adapter.
+   *
+   * The adapter is inside the Runtime package and calls the same Core dispatch
+   * path as the loopback WebSocket server. It does not expose a host callback,
+   * a second VM, or an alternate plugin protocol to the main Flutter app.
+   */
+  async invokeEmbedded(
+    method: string,
+    params: JsonObject,
+    deadlineUnixMs = Date.now() + 5_000,
+  ): Promise<EmbeddedRuntimeResult> {
+    const request: RuntimeRequest = {
+      bootId: this.#bootId,
+      deadlineUnixMs: String(deadlineUnixMs),
+      id: "android-embedded",
+      idempotencyKey: method === RUNTIME_CONTROL_METHOD.shutdown
+        ? "android-embedded-shutdown"
+        : null,
+      method,
+      params,
+      traceId: "trace:android-embedded",
+      v: protocolVersion,
+    };
+    const dispatched = await this.#dispatch(
+      request,
+      new AbortController().signal,
+      undefined,
+    );
+    return "error" in dispatched
+      ? { error: dispatched.error, ok: false }
+      : { ok: true, result: dispatched.result };
   }
 
   /**
@@ -385,6 +429,28 @@ export class DesktopRuntime {
       type: "diagnostic",
     });
 
+    if (this.#embedded) {
+      const ready: DesktopRuntimeReady = Object.freeze({
+        bootId: this.#bootId,
+        host: LOOPBACK_HOST,
+        nodeVersion: process.versions.node,
+        pid: process.pid,
+        port: 0,
+        protocolVersion,
+        runtimeVersion,
+        startedAt: this.#startedAt,
+        type: "ready",
+      });
+      this.#ready = ready;
+      lifecycleSpan?.end("success", {
+        attributes: () => runtimeDiagnosticValue.object({
+          platform: runtimeDiagnosticValue.string(process.platform),
+          stage: runtimeDiagnosticValue.string("ready"),
+        }),
+      });
+      return ready;
+    }
+
     const server = createServer((request, response) => {
       this.#handleHttp(request, response);
     });
@@ -470,7 +536,25 @@ export class DesktopRuntime {
     const pluginsRoot = resolve(this.#dataRoot, "plugins");
     await mkdir(pluginsRoot, { recursive: true });
     const installedEntries = await readdir(pluginsRoot, { withFileTypes: true });
-    if (installedEntries.some((entry) => entry.isDirectory())) return;
+    for (const entry of installedEntries) {
+      if (!entry.isDirectory()) continue;
+      const markers = await readdir(resolve(pluginsRoot, entry.name), {
+        withFileTypes: true,
+      });
+      // A prior failed install may leave an empty plugin directory behind;
+      // retry that seed. A current/pending/disabled/uninstall marker is an
+      // intentional existing installation and must win over bundled assets.
+      if (
+        markers.some((marker) =>
+          marker.name === "current" ||
+          marker.name === "pending" ||
+          marker.name === "disabled" ||
+          marker.name === "uninstall-pending",
+        )
+      ) {
+        return;
+      }
+    }
 
     const archives = (await readdir(bundledPluginRoot, { withFileTypes: true }))
       .filter((entry) => entry.isFile() && entry.name.endsWith(".mgplugin"))

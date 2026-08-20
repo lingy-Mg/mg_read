@@ -262,7 +262,12 @@ final class _DismissReaderObserver extends ReaderObserver {
 
   @override
   Future<void> onExitRequested(ReaderProgress? progress) async {
-    await _navigator.maybePop();
+    // TextReaderView uses PopScope(canPop: false) to funnel system back
+    // gestures through its async progress flush. Once that callback reaches
+    // the host, maybePop() would be intercepted by the same PopScope again.
+    // This is now an explicit, already-guarded exit request, so pop the route
+    // programmatically instead of re-entering the interception path.
+    if (_navigator.mounted) _navigator.pop();
   }
 }
 

@@ -7,10 +7,25 @@ part of mgread_plugin_runtime;
 /// database, port, callback or raw transport client. A production instance is
 /// process-scoped: it keeps the same owned Runtime for the Flutter process
 /// lifetime and does not silently relaunch it after a terminal failure.
+abstract interface class _RuntimeSupervisor {
+  Future<T> invoke<T>(PluginInvocation<T> invocation);
+
+  Stream<RuntimeDiagnostic> get diagnostics;
+
+  Stream<RuntimeInitializationProgress> get initialization;
+
+  List<RuntimeDiagnostic> get latestDiagnostics;
+
+  int get debugProcessStartCount;
+
+  Future<void> dispose();
+}
+
 final class PluginRuntime {
   PluginRuntime._(this._supervisor);
 
   static PluginRuntime? _bundledInstance;
+  static PluginRuntime? _androidInstance;
 
   /// Creates or returns the process-scoped production Facade.
   ///
@@ -18,12 +33,21 @@ final class PluginRuntime {
   /// package-native launchers are future Runtime implementations, not Flutter
   /// application responsibilities.
   factory PluginRuntime() {
+    if (Platform.isAndroid) {
+      return _androidInstance ??= PluginRuntime._(_AndroidRuntimeSupervisor());
+    }
+    if (!Platform.isWindows) {
+      throw const PluginRuntimeException(
+        'unsupported',
+        'This Runtime package currently has no launcher for this platform.',
+      );
+    }
     return _bundledInstance ??= PluginRuntime._(
       _DesktopRuntimeSupervisor(_DesktopRuntimeBundle.fromApplicationPackage()),
     );
   }
 
-  final _DesktopRuntimeSupervisor _supervisor;
+  final _RuntimeSupervisor _supervisor;
 
   /// Invokes a typed Runtime capability.
   ///
@@ -72,6 +96,10 @@ final class PluginRuntime {
   /// broadcast stream does not replay earlier records; use [latestDiagnostics]
   /// to obtain the current bounded snapshot before subscribing.
   Stream<RuntimeDiagnostic> get diagnostics => _supervisor.diagnostics;
+
+  /// Reports bounded Runtime-owned initialization progress when available.
+  Stream<RuntimeInitializationProgress> get initialization =>
+      _supervisor.initialization;
 
   /// Returns an immutable, oldest-to-newest snapshot of bounded diagnostics.
   List<RuntimeDiagnostic> get latestDiagnostics =>

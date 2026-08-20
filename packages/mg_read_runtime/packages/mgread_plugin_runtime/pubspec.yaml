@@ -15,7 +15,16 @@ dev_dependencies:
     sdk: flutter
 
 flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.mgread.mgread_plugin_runtime
+        pluginClass: MgReadPluginRuntimePlugin
   assets:
+    - assets/runtime/android/runtime-version.txt
+    - assets/runtime/android/dist/
+    - assets/runtime/android/dist/diagnostics/
+    - assets/runtime/android/default-plugins/
     - assets/runtime/windows-x64/node/
     - assets/runtime/windows-x64/dist/
     - assets/runtime/windows-x64/dist/diagnostics/

@@ -1,6 +1,6 @@
-import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createRequire } from "node:module";
 import {
   access,
   mkdir,
@@ -428,9 +428,11 @@ export class PluginManager {
       if (project.descriptor.id !== pluginId || project.descriptor.version !== version) {
         throw new PluginManagerError("plugin_load_failed");
       }
-      const imported = (await import(
-        pathToFileURL(resolveInside(versionRoot, project.descriptor.entry)).href
-      )) as Record<string, unknown>;
+      // Node 24 synchronously loads standard ESM projects without top-level
+      // await through require(). This preserves ordinary Node resolution while
+      // avoiding the Javet dynamic-import callback path on Android.
+      const entryPath = resolveInside(versionRoot, project.descriptor.entry);
+      const imported = createRequire(entryPath)(entryPath) as Record<string, unknown>;
       const candidate = normalizePluginModule(imported);
       if (candidate === undefined) {
         throw new PluginManagerError("plugin_load_failed");

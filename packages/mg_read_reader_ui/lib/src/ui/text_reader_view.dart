@@ -3466,7 +3466,7 @@ class _TextReaderViewState extends State<TextReaderView> {
               color: chapterUri == null
                   ? _palette.secondaryText
                   : _palette.text,
-              fontSize: 12,
+              fontSize: 11,
               decoration: chapterUri == null ? null : TextDecoration.underline,
               decorationColor: _palette.accent,
             ),
@@ -3502,19 +3502,18 @@ class _TextReaderViewState extends State<TextReaderView> {
         padding: const EdgeInsets.symmetric(horizontal: 14),
         child: Row(
           children: <Widget>[
-            Expanded(
-              flex: 2,
+            Flexible(
+              fit: FlexFit.loose,
               child: Text(
-                '${ReaderStrings.source}: $sourceName',
+                sourceName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: _palette.secondaryText, fontSize: 12),
+                style: TextStyle(color: _palette.secondaryText, fontSize: 11),
               ),
             ),
             Container(width: 1, height: 16, color: _palette.divider),
             const SizedBox(width: 9),
             Expanded(
-              flex: 3,
               child: Semantics(
                 label: ReaderStrings.chapterUrl,
                 child: chapterUrlAction,

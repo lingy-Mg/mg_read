@@ -145,13 +145,12 @@ class _AboutAppIcon extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Semantics(
       image: true,
-      label: '统一阅读开书图标',
+      label: '统一阅读应用图标',
       child: ExcludeSemantics(
         child: Container(
           key: const Key('about-app-icon'),
           width: AppDetailMetrics.aboutIconExtent,
           height: AppDetailMetrics.aboutIconExtent,
-          padding: const EdgeInsets.all(11),
           decoration: BoxDecoration(
             borderRadius: AppRadii.detailAppIcon,
             border: Border.all(
@@ -177,125 +176,14 @@ class _AboutAppIcon extends StatelessWidget {
               ),
             ],
           ),
-          child: CustomPaint(painter: _OpenBookLogoPainter(tokens)),
+          clipBehavior: Clip.antiAlias,
+          child: Image.asset(
+            'assets/branding/mg_read_logo.png',
+            fit: BoxFit.cover,
+          ),
         ),
       ),
     );
-  }
-}
-
-class _OpenBookLogoPainter extends CustomPainter {
-  const _OpenBookLogoPainter(this.tokens);
-
-  final AppThemeTokens tokens;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final Color gold = tokens.warning;
-    final Color warmGold = tokens.accent;
-    final double centerX = size.width / 2;
-
-    final Paint shadowPaint = Paint()
-      ..color = tokens.shadow.withValues(alpha: 0.2)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
-    final Path shadow = Path()
-      ..moveTo(5, size.height * 0.31)
-      ..quadraticBezierTo(
-        size.width * 0.28,
-        size.height * 0.25,
-        centerX,
-        size.height * 0.45,
-      )
-      ..quadraticBezierTo(
-        size.width * 0.72,
-        size.height * 0.25,
-        size.width - 5,
-        size.height * 0.31,
-      )
-      ..lineTo(size.width - 5, size.height * 0.82)
-      ..quadraticBezierTo(
-        size.width * 0.72,
-        size.height * 0.78,
-        centerX,
-        size.height * 0.92,
-      )
-      ..quadraticBezierTo(
-        size.width * 0.28,
-        size.height * 0.78,
-        5,
-        size.height * 0.82,
-      )
-      ..close();
-    canvas.drawPath(shadow.shift(const Offset(0, 3)), shadowPaint);
-
-    final Paint backingPaint = Paint()..color = gold;
-    canvas.drawPath(shadow, backingPaint);
-
-    final Paint pagePaint = Paint()..color = tokens.surface;
-    final Paint pageOutline = Paint()
-      ..color = warmGold.withValues(alpha: 0.7)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.1;
-
-    final Path leftPage = Path()
-      ..moveTo(8, size.height * 0.12)
-      ..quadraticBezierTo(
-        size.width * 0.27,
-        size.height * 0.08,
-        centerX - 1,
-        size.height * 0.4,
-      )
-      ..lineTo(centerX - 1, size.height * 0.83)
-      ..quadraticBezierTo(
-        size.width * 0.28,
-        size.height * 0.67,
-        8,
-        size.height * 0.72,
-      )
-      ..close();
-    final Path rightPage = Path()
-      ..moveTo(centerX + 1, size.height * 0.4)
-      ..quadraticBezierTo(
-        size.width * 0.73,
-        size.height * 0.08,
-        size.width - 8,
-        size.height * 0.12,
-      )
-      ..lineTo(size.width - 8, size.height * 0.72)
-      ..quadraticBezierTo(
-        size.width * 0.72,
-        size.height * 0.67,
-        centerX + 1,
-        size.height * 0.83,
-      )
-      ..close();
-    canvas
-      ..drawPath(leftPage, pagePaint)
-      ..drawPath(rightPage, pagePaint)
-      ..drawPath(leftPage, pageOutline)
-      ..drawPath(rightPage, pageOutline);
-
-    final Path bookmark = Path()
-      ..moveTo(size.width * 0.66, size.height * 0.12)
-      ..lineTo(size.width * 0.78, size.height * 0.12)
-      ..lineTo(size.width * 0.78, size.height * 0.49)
-      ..lineTo(size.width * 0.72, size.height * 0.42)
-      ..lineTo(size.width * 0.66, size.height * 0.49)
-      ..close();
-    canvas.drawPath(bookmark, Paint()..color = warmGold);
-
-    canvas.drawLine(
-      Offset(centerX, size.height * 0.42),
-      Offset(centerX, size.height * 0.83),
-      Paint()
-        ..color = gold.withValues(alpha: 0.55)
-        ..strokeWidth = 1,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _OpenBookLogoPainter oldDelegate) {
-    return oldDelegate.tokens != tokens;
   }
 }
 

@@ -82,9 +82,11 @@ final class _WindowsSystemProxy {
     if (value == null || value.trim().isEmpty) return null;
     final values = <String>[
       for (final item in value.split(';'))
-        if (item.trim().toLowerCase() == '<local>')
-          ...<String>['localhost', '127.0.0.1', '::1']
-        else if (item.trim().isNotEmpty)
+        if (item.trim().toLowerCase() == '<local>') ...<String>[
+          'localhost',
+          '127.0.0.1',
+          '::1',
+        ] else if (item.trim().isNotEmpty)
           item.trim(),
     ];
     return values.isEmpty ? null : values.join(',');
@@ -112,12 +114,15 @@ final class _WinHttpCurrentUserIeProxyConfig extends Struct {
 
 final class _WinHttp {
   _WinHttp._(DynamicLibrary library)
-    : _getCurrentUserIeProxyConfig = library.lookupFunction<
-        _WinHttpGetIeProxyConfigNative,
-        _WinHttpGetIeProxyConfigDart
-      >('WinHttpGetIEProxyConfigForCurrentUser');
+    : _getCurrentUserIeProxyConfig = library
+          .lookupFunction<
+            _WinHttpGetIeProxyConfigNative,
+            _WinHttpGetIeProxyConfigDart
+          >('WinHttpGetIEProxyConfigForCurrentUser');
 
-  static final _WinHttp instance = _WinHttp._(DynamicLibrary.open('winhttp.dll'));
+  static final _WinHttp instance = _WinHttp._(
+    DynamicLibrary.open('winhttp.dll'),
+  );
 
   final _WinHttpGetIeProxyConfigDart _getCurrentUserIeProxyConfig;
 
@@ -128,22 +133,26 @@ final class _WinHttp {
 
 final class _WindowsProxyKernel32 {
   _WindowsProxyKernel32._(DynamicLibrary library)
-    : _getProcessHeap = library.lookupFunction<
-        _WindowsProxyGetProcessHeapNative,
-        _WindowsProxyGetProcessHeapDart
-      >('GetProcessHeap'),
-      _heapAlloc = library.lookupFunction<
-        _WindowsProxyHeapAllocNative,
-        _WindowsProxyHeapAllocDart
-      >('HeapAlloc'),
-      _heapFree = library.lookupFunction<
-        _WindowsProxyHeapFreeNative,
-        _WindowsProxyHeapFreeDart
-      >('HeapFree'),
-      _globalFree = library.lookupFunction<
-        _WindowsProxyGlobalFreeNative,
-        _WindowsProxyGlobalFreeDart
-      >('GlobalFree');
+    : _getProcessHeap = library
+          .lookupFunction<
+            _WindowsProxyGetProcessHeapNative,
+            _WindowsProxyGetProcessHeapDart
+          >('GetProcessHeap'),
+      _heapAlloc = library
+          .lookupFunction<
+            _WindowsProxyHeapAllocNative,
+            _WindowsProxyHeapAllocDart
+          >('HeapAlloc'),
+      _heapFree = library
+          .lookupFunction<
+            _WindowsProxyHeapFreeNative,
+            _WindowsProxyHeapFreeDart
+          >('HeapFree'),
+      _globalFree = library
+          .lookupFunction<
+            _WindowsProxyGlobalFreeNative,
+            _WindowsProxyGlobalFreeDart
+          >('GlobalFree');
 
   static const _heapZeroMemory = 0x00000008;
   static final _WindowsProxyKernel32 instance = _WindowsProxyKernel32._(
@@ -179,9 +188,11 @@ typedef _WinHttpGetIeProxyConfigDart =
     int Function(Pointer<_WinHttpCurrentUserIeProxyConfig>);
 typedef _WindowsProxyGetProcessHeapNative = IntPtr Function();
 typedef _WindowsProxyGetProcessHeapDart = int Function();
-typedef _WindowsProxyHeapAllocNative = Pointer<Void> Function(IntPtr, Uint32, IntPtr);
+typedef _WindowsProxyHeapAllocNative =
+    Pointer<Void> Function(IntPtr, Uint32, IntPtr);
 typedef _WindowsProxyHeapAllocDart = Pointer<Void> Function(int, int, int);
-typedef _WindowsProxyHeapFreeNative = Int32 Function(IntPtr, Uint32, Pointer<Void>);
+typedef _WindowsProxyHeapFreeNative =
+    Int32 Function(IntPtr, Uint32, Pointer<Void>);
 typedef _WindowsProxyHeapFreeDart = int Function(int, int, Pointer<Void>);
 typedef _WindowsProxyGlobalFreeNative = IntPtr Function(Pointer<Void>);
 typedef _WindowsProxyGlobalFreeDart = int Function(Pointer<Void>);

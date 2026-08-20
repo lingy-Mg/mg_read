@@ -1,4 +1,4 @@
-import * as cheerio from 'cheerio';
+import type * as cheerio from 'cheerio';
 import type { Element } from 'domhandler';
 
 import type {
@@ -21,6 +21,12 @@ import { nonBlank } from './utils.js';
 export interface SourceRules {
   readonly origin: string;
   readonly categories: readonly { readonly id: string; readonly title: string }[];
+}
+
+let cheerioModule: Promise<typeof import('cheerio')> | undefined;
+
+function loadCheerio(): Promise<typeof import('cheerio')> {
+  return (cheerioModule ??= import('cheerio'));
 }
 
 /**
@@ -83,7 +89,7 @@ export class AliceBookHouseSource {
     const page = decodePageCursor(request.cursor, 'category-page');
     const pageUrl = new URL(`/lists/${category.id}.html`, this.#baseUrl);
     pageUrl.searchParams.set('page', String(page));
-    const items = this.#parseList(await this.#getHtml(pageUrl), pageUrl);
+    const items = await this.#parseList(await this.#getHtml(pageUrl), pageUrl);
     const visible = items.slice(0, request.pageSize);
 
     return Object.freeze({
@@ -121,7 +127,7 @@ export class AliceBookHouseSource {
     searchUrl.searchParams.set('q', request.query);
     searchUrl.searchParams.set('f', '_all');
     searchUrl.searchParams.set('p', String(page));
-    const items = this.#parseList(await this.#getHtml(searchUrl), searchUrl);
+    const items = await this.#parseList(await this.#getHtml(searchUrl), searchUrl);
 
     return Object.freeze({
       items: Object.freeze(items.slice(0, request.pageSize)),
@@ -136,6 +142,7 @@ export class AliceBookHouseSource {
   async getDetail(request: ContentReferenceRequest): Promise<ContentDetail> {
     const novelId = decodeNovelId(request.id);
     const detailUrl = new URL(`/novel/${novelId}.html`, this.#baseUrl);
+    const cheerio = await loadCheerio();
     const $ = cheerio.load(await this.#getHtml(detailUrl, detailUrl));
     const title = requiredText($('.novel_title').first().text());
     const author = textOrNull($('.novel_info a[href*="f=author"]').first().text());
@@ -174,6 +181,7 @@ export class AliceBookHouseSource {
     const novelId = decodeNovelId(request.id);
     const offset = decodePageCursor(request.cursor, 'chapter-offset') - 1;
     const catalogUrl = new URL(`/other/chapters/id/${novelId}.html`, this.#baseUrl);
+    const cheerio = await loadCheerio();
     const $ = cheerio.load(await this.#getHtml(catalogUrl, catalogUrl));
     const seen = new Set<string>();
     const chapters = $('.mulu_list a[href*="/book/"], a[href*="/book/"]')
@@ -217,6 +225,7 @@ export class AliceBookHouseSource {
   async getContent(request: ContentRequest): Promise<ChapterContent> {
     decodeNovelId(request.id);
     const chapterUrl = this.#decodeChapterId(request.chapterId);
+    const cheerio = await loadCheerio();
     const $ = cheerio.load(await this.#getHtml(chapterUrl, chapterUrl));
     const content = $('.read-content, .j_readContent, #j_chapterBox').first();
     if (content.length === 0) {
@@ -261,7 +270,8 @@ export class AliceBookHouseSource {
     return response.text();
   }
 
-  #parseList(html: string, pageUrl: URL): readonly ContentSummary[] {
+  async #parseList(html: string, pageUrl: URL): Promise<readonly ContentSummary[]> {
+    const cheerio = await loadCheerio();
     const $ = cheerio.load(html);
     const roots = $('.list-group-item, .rec_rullist > ul').toArray();
     const seen = new Set<string>();

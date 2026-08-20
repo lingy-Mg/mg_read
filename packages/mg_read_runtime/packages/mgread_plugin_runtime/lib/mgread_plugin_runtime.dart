@@ -12,11 +12,14 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import 'src/windows_job_object.dart';
 
 part 'src/desktop_supervisor.dart';
+part 'src/android_supervisor.dart';
 part 'src/plugin_content_invocation.dart';
+part 'src/runtime_initialization.dart';
 part 'src/plugin_invocation.dart';
 part 'src/plugin_runtime.dart';
 part 'src/runtime_diagnostics_invocation.dart';

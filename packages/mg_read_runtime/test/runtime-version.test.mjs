@@ -28,7 +28,7 @@ test("loads Runtime metadata through Node 24 ESM", () => {
   ]);
 });
 
-test("Flutter package declares every nested Windows Runtime asset directory", async () => {
+test("Flutter package declares every nested platform Runtime asset directory", async () => {
   const pubspec = await readFile(
     new URL(
       "../packages/mgread_plugin_runtime/pubspec.yaml",
@@ -40,11 +40,15 @@ test("Flutter package declares every nested Windows Runtime asset directory", as
     .map((match) => match[1]);
 
   assert.deepEqual(assetEntries, [
+    "assets/runtime/android/dist/",
+    "assets/runtime/android/dist/diagnostics/",
+    "assets/runtime/android/default-plugins/",
     "assets/runtime/windows-x64/node/",
     "assets/runtime/windows-x64/dist/",
     "assets/runtime/windows-x64/dist/diagnostics/",
     "assets/runtime/windows-x64/default-plugins/",
   ]);
+  assert.ok(!assetEntries.includes("assets/runtime/android/"));
   assert.ok(!assetEntries.includes("assets/runtime/windows-x64/"));
 });
 

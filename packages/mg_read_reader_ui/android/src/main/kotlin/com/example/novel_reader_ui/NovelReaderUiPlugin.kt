@@ -59,7 +59,9 @@ class NovelReaderUiPlugin :
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activity = binding.activity
-        updateReaderSystemUi(activity, keepScreenOn, immersiveMode)
+        if (keepScreenOn || immersiveMode) {
+            updateReaderSystemUi(activity, keepScreenOn, immersiveMode)
+        }
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
@@ -69,7 +71,9 @@ class NovelReaderUiPlugin :
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
         activity = binding.activity
-        updateReaderSystemUi(activity, keepScreenOn, immersiveMode)
+        if (keepScreenOn || immersiveMode) {
+            updateReaderSystemUi(activity, keepScreenOn, immersiveMode)
+        }
     }
 
     override fun onDetachedFromActivity() {

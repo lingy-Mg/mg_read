@@ -150,7 +150,7 @@ final class _DesktopRuntimeBundle {
 /// This is the sole location where process launch, ready parsing, HTTP health,
 /// WebSocket setup, structured diagnostics, and hard-stop cleanup are joined.
 /// The public Facade intentionally exposes only typed capability invocations.
-final class _DesktopRuntimeSupervisor {
+final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   _DesktopRuntimeSupervisor(this._bundle);
 
   /// Immutable package-owned inputs used for the only allowed child launch.
@@ -189,6 +189,10 @@ final class _DesktopRuntimeSupervisor {
 
   /// Stream of safe lifecycle diagnostics emitted after subscription.
   Stream<RuntimeDiagnostic> get diagnostics => _diagnosticController.stream;
+
+  @override
+  Stream<RuntimeInitializationProgress> get initialization =>
+      const Stream<RuntimeInitializationProgress>.empty();
 
   /// Immutable copy of all currently retained diagnostics, oldest first.
   List<RuntimeDiagnostic> get latestDiagnostics =>
@@ -859,11 +863,7 @@ Map<String, String> _allowlistedEnvironment() {
     for (final name in allowedNames)
       if (inherited[name] case final value?) name: value,
   };
-  for (final name in const <String>[
-    'HTTP_PROXY',
-    'HTTPS_PROXY',
-    'NO_PROXY',
-  ]) {
+  for (final name in const <String>['HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY']) {
     final value = _environmentValueIgnoringCase(inherited, name);
     if (value != null && value.isNotEmpty) environment[name] = value;
   }
@@ -874,7 +874,10 @@ Map<String, String> _allowlistedEnvironment() {
 }
 
 /// Windows environment names are case-insensitive even when Dart's map is not.
-String? _environmentValueIgnoringCase(Map<String, String> environment, String name) {
+String? _environmentValueIgnoringCase(
+  Map<String, String> environment,
+  String name,
+) {
   for (final entry in environment.entries) {
     if (entry.key.toUpperCase() == name) return entry.value;
   }

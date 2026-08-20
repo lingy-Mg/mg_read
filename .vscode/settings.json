@@ -10,6 +10,16 @@
       "label": "静态检查",
       "task": "检查：静态检查",
       "tooltip": "检查 Dart 格式与 Flutter 静态分析"
+    },
+    {
+      "label": "发布 APK",
+      "task": "发布：打包 APK（Release）",
+      "tooltip": "构建 Android arm64 Release APK 并复制到根目录 build"
+    },
+    {
+      "label": "发布 Windows EXE",
+      "task": "发布：打包 Windows EXE（Release）",
+      "tooltip": "构建 Windows x64 Release 应用并复制到根目录 build"
     }
   ],
   "cmake.ignoreCMakeListsMissing": true
