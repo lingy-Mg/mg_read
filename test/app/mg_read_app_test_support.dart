@@ -5,6 +5,7 @@ import 'package:mg_read/app/mg_read_app.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 
 import '../core/settings/settings_testkit.dart';
 
@@ -33,16 +34,32 @@ Widget testMgReadApp(
   AppSettingsManager settings, {
   DiagnosticsManager? diagnostics,
   SourceContentGateway sourceGateway = const _EmptySourceContentGateway(),
+  PluginRuntimeGateway runtimeGateway = const TestReadyPluginRuntimeGateway(),
 }) {
   return ProviderScope(
     overrides: [
       appSettingsProvider.overrideWithValue(settings),
       sourceContentGatewayProvider.overrideWithValue(sourceGateway),
+      pluginRuntimeGatewayProvider.overrideWithValue(runtimeGateway),
       if (diagnostics != null)
         diagnosticsManagerProvider.overrideWithValue(diagnostics),
     ],
     child: const MgReadApp(),
   );
+}
+
+/// Keeps host-widget tests independent from a platform Runtime process.
+final class TestReadyPluginRuntimeGateway implements PluginRuntimeGateway {
+  const TestReadyPluginRuntimeGateway();
+
+  @override
+  Future<PluginRuntimeConnection> inspect() async =>
+      const PluginRuntimeConnection(
+        isHealthy: true,
+        nodeVersion: '24.16.0',
+        runtimeVersion: 'test-runtime',
+        plugins: <PluginRuntimePlugin>[],
+      );
 }
 
 final class _EmptySourceContentGateway implements SourceContentGateway {

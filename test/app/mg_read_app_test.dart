@@ -17,6 +17,7 @@ import 'package:mg_read/features/library/domain/library_overview.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_destination_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 
 import '../core/diagnostics/diagnostics_testkit.dart';
@@ -35,6 +36,9 @@ void main() {
           overrides: [
             appSettingsProvider.overrideWithValue(settings),
             libraryOverviewLoaderProvider.overrideWithValue(loader),
+            pluginRuntimeGatewayProvider.overrideWithValue(
+              const TestReadyPluginRuntimeGateway(),
+            ),
           ],
           child: const MgReadApp(),
         ),
@@ -132,6 +136,9 @@ void main() {
         overrides: [
           appSettingsProvider.overrideWithValue(settings),
           libraryOverviewLoaderProvider.overrideWithValue(loader),
+          pluginRuntimeGatewayProvider.overrideWithValue(
+            const TestReadyPluginRuntimeGateway(),
+          ),
         ],
         child: const MgReadApp(),
       ),
@@ -161,6 +168,9 @@ void main() {
         overrides: [
           appSettingsProvider.overrideWithValue(settings),
           libraryOverviewLoaderProvider.overrideWithValue(loader),
+          pluginRuntimeGatewayProvider.overrideWithValue(
+            const TestReadyPluginRuntimeGateway(),
+          ),
         ],
         child: const MgReadApp(),
       ),

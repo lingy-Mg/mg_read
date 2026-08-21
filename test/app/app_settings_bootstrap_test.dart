@@ -24,6 +24,7 @@ void main() {
       final boot = bootstrapMgReadApp(
         settingsManager: manager,
         diagnosticsServiceFactory: null,
+        contentLibraryFactory: null,
         appRunner: (app) => mounted = app,
         child: Consumer(
           builder: (context, ref, child) => Text(
@@ -62,6 +63,7 @@ void main() {
     await bootstrapMgReadApp(
       settingsManager: manager,
       diagnosticsServiceFactory: null,
+      contentLibraryFactory: null,
       appRunner: (app) => mounted = app,
       child: Consumer(
         builder: (context, ref, child) => Text(
@@ -118,6 +120,7 @@ void main() {
       diagnosticsManager: diagnostics.manager,
       diagnosticsServiceFactory: (_) async =>
           throw StateError('factory must not run for an injected manager'),
+      contentLibraryFactory: null,
       appRunner: (app) => mounted = app,
       child: Consumer(
         builder: (context, ref, child) {

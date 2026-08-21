@@ -19,8 +19,9 @@
   截图或 Computer Use。Android 截图测试先调用 `convertFlutterSurfaceToImage()` 并 pump 一帧，
   再由 `IntegrationTestWidgetsFlutterBinding.takeScreenshot` 请求，最后由
   `test_driver/android_integration_test.dart` 收集。
-- Android 模拟器由用户在测试前启动并提供准确的 `emulator-*` id；Agent 只能验证该 id 已连接，
-  不得创建、启动、选择、唤醒、关闭或重置模拟器。真实测试不得以 Windows App/设备代替。
+- Android 测试目标由用户在测试前启动并明确批准；当前仅允许 `127.0.0.1:7555` 与
+  `emulator-5556`。Agent 只能验证批准目标已连接，不得创建、启动、选择、唤醒、关闭或重置，
+  也不得改用其他设备。真实测试不得以 Windows App/设备代替。
 - 当前 UI 交付范围只包含浅色模式：Integration Test、测试截图和小组件 Golden 必须显式固定
   浅色主题。深色/系统深色模式的完善、截图、Golden 和验收均延期；保留既有实现但不在浅色任务
   中顺手修改。
@@ -42,10 +43,10 @@ dart format --output=none --set-exit-if-changed .
 flutter analyze
 ```
 
-实际应用改动在用户提供 Android 模拟器后，再执行（不会启动模拟器）：
+实际应用改动在用户提供并批准的 Android 测试目标已连接后，再执行（不会启动模拟器）：
 
 ```powershell
-.\tools\run_android_integration_tests.ps1 -DeviceId emulator-5554 -All
+.\tools\run_android_integration_tests.ps1 -DeviceId emulator-5556 -All
 ```
 
 小型孤立展示组件才可按需执行其 Golden 测试；不得把它列为实际流程验收。只改文档时执行

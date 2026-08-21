@@ -119,11 +119,12 @@ plugins/sources/<source-id>/      实际标准 Node 书源
 - 真实应用/页面/跨层流程的自动化验收一律使用 Android `integration_test`；测试交互只能通过
   `WidgetTester` 的 Finder、语义和稳定 `Key` 驱动。禁止用鼠标坐标、键盘注入、`adb input`、
   `adb screencap`、Computer Use、桌面自动化或人工点击来操作或取证。
-- Android 模拟器必须由用户事先自行启动并明确提供 `emulator-*` device id。Agent 不得启动、
-  创建、选择、唤醒、关闭或重置模拟器；未提供或未连接时停止 Android 真实验收并如实报告。真实
-  验收不得使用 Windows 版本、`flutter run`、Windows 设备或桌面截图替代。
-- 从 `tools/run_android_integration_tests.ps1` 启动真实验收。它只接受已连接的
-  `emulator-*`，通过 `flutter drive` 运行 Integration Test，并在忽略的
+- Android 测试目标必须由用户事先自行启动并明确批准。当前批准且仅批准
+  `127.0.0.1:7555` 与 `emulator-5556`；Agent 不得启动、创建、选择、唤醒、关闭或重置它们，
+  也不得改用其他设备。未连接时停止 Android 真实验收并如实报告。真实验收不得使用 Windows
+  版本、`flutter run`、Windows 设备或桌面截图替代。
+- 从 `tools/run_android_integration_tests.ps1` 启动真实验收。它只接受上述已连接的用户批准目标，
+  通过 `flutter drive` 运行 Integration Test，并在忽略的
   `artifacts/integration-tests/` 保存机器可读结果和由 `IntegrationTestWidgetsFlutterBinding`
   请求的截图。截图必须由测试中的 `takeScreenshot` 触发，禁止从操作系统截屏。
 - `test/` 中的 Golden 仅可用于非常小、隔离、确定性的展示组件；它不是页面、路由、完整交互或
@@ -142,8 +143,8 @@ flutter analyze
 - 只改文档时不需要运行 Flutter/Node 业务测试，但必须执行链接、格式、引用和 diff 检查。
 - 子项目命令按开发路由和其最近 `AGENTS.md` 执行；Runtime 的 Windows Node 命令必须使用项目内
   `tools/node-v24.16.0-win-x64`，不得回退到全局 Node。
-- 只有用户明确授权视觉/运行验收时才运行 Integration Test；Android 实际测试以用户提供的
-  模拟器为当前唯一允许目标。Windows/macOS 的运行验收只能在用户另行授权时由对应主机或 CI
+- 只有用户明确授权视觉/运行验收时才运行 Integration Test；Android 实际测试以当前已批准的
+  `127.0.0.1:7555` 或 `emulator-5556` 为唯一允许目标。Windows/macOS 的运行验收只能在用户另行授权时由对应主机或 CI
   声明完成，绝不作为 Android 实际测试的替代。
 - 交付报告分开列出：完成内容、静态检查、自动化测试、真实运行、平台/真机、发布证据、日志
   断言与未执行项。任何一层都不能替代另一层。

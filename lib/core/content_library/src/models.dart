@@ -57,6 +57,32 @@ final class LibraryItem {
   final int revision;
 }
 
+/// Narrow, host-owned request for adding a typed source item to the shelf.
+///
+/// It intentionally keeps only stable source identity and display metadata.
+/// Runtime payloads, URLs, cookies, and dynamic data never cross into a
+/// feature or widget through this type.
+final class BookshelfAddRequest {
+  const BookshelfAddRequest({
+    required this.title,
+    required this.author,
+    required this.kind,
+    required this.pluginId,
+    required this.pluginVersion,
+    required this.remoteContentId,
+  }) : assert(title != ''),
+       assert(pluginId != ''),
+       assert(pluginVersion != ''),
+       assert(remoteContentId != '');
+
+  final String title;
+  final String? author;
+  final ContentKind kind;
+  final String pluginId;
+  final String pluginVersion;
+  final String remoteContentId;
+}
+
 final class SourceBinding {
   const SourceBinding({
     required this.id,

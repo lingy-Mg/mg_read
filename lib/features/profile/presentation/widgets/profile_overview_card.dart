@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -42,6 +40,7 @@ class ProfileOverviewCard extends StatelessWidget {
                 tokens.surface.withValues(alpha: 0.95),
               ],
             ),
+            border: Border.all(color: tokens.divider),
           ),
           child: ClipRRect(
             borderRadius: AppRadii.card,
@@ -54,7 +53,7 @@ class ProfileOverviewCard extends StatelessWidget {
                       Positioned(
                         top: AppSpacing.comfortable - 1,
                         left: AppSpacing.compactPagePadding,
-                        child: _ProfileAvatar(tokens: tokens),
+                        child: const _ProfileAvatar(),
                       ),
                       Positioned(
                         top: AppSpacing.profileNameTop,
@@ -130,9 +129,7 @@ class ProfileOverviewCard extends StatelessWidget {
 }
 
 class _ProfileAvatar extends StatelessWidget {
-  const _ProfileAvatar({required this.tokens});
-
-  final AppThemeTokens tokens;
+  const _ProfileAvatar();
 
   @override
   Widget build(BuildContext context) {
@@ -141,103 +138,21 @@ class _ProfileAvatar extends StatelessWidget {
       image: true,
       child: ExcludeSemantics(
         child: ClipOval(
-          child: SizedBox(
+          child: Image.asset(
+            'assets/profile/profile-traveler-avatar.png',
             width: AppSpacing.profileAvatarSize,
             height: AppSpacing.profileAvatarSize,
-            child: CustomPaint(painter: _ProfileAvatarPainter(tokens: tokens)),
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.medium,
+            semanticLabel: '书海行者的头像',
+            errorBuilder:
+                (BuildContext context, Object error, StackTrace? stackTrace) {
+                  return const ColoredBox(color: Color(0xFFEDE7DE));
+                },
           ),
         ),
       ),
     );
-  }
-}
-
-class _ProfileAvatarPainter extends CustomPainter {
-  const _ProfileAvatarPainter({required this.tokens});
-
-  final AppThemeTokens tokens;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final Rect bounds = Offset.zero & size;
-    canvas.drawRect(
-      bounds,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[
-            tokens.mutedSurface,
-            tokens.surface.withValues(alpha: 0.82),
-          ],
-        ).createShader(bounds),
-    );
-
-    final Paint moon = Paint()..color = tokens.surface.withValues(alpha: 0.65);
-    canvas.drawCircle(
-      Offset(size.width * .31, size.height * .25),
-      size.width * .2,
-      moon,
-    );
-
-    final Paint farMountain = Paint()
-      ..color = tokens.mutedText.withValues(alpha: 0.35);
-    final Path far = Path()
-      ..moveTo(0, size.height * .74)
-      ..lineTo(size.width * .22, size.height * .45)
-      ..lineTo(size.width * .42, size.height * .67)
-      ..lineTo(size.width * .67, size.height * .34)
-      ..lineTo(size.width, size.height * .62)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-    canvas.drawPath(far, farMountain);
-
-    final Paint foreground = Paint()
-      ..color = tokens.mutedText.withValues(alpha: 0.6);
-    final Path near = Path()
-      ..moveTo(0, size.height * .85)
-      ..lineTo(size.width * .25, size.height * .6)
-      ..lineTo(size.width * .5, size.height * .78)
-      ..lineTo(size.width * .78, size.height * .53)
-      ..lineTo(size.width, size.height * .72)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-    canvas.drawPath(near, foreground);
-
-    final Paint figure = Paint()..color = const Color(0xFF161615);
-    final double center = size.width * .58;
-    canvas.drawCircle(
-      Offset(center, size.height * .35),
-      size.width * .07,
-      figure,
-    );
-    final Path hat = Path()
-      ..moveTo(center - size.width * .17, size.height * .33)
-      ..lineTo(center, size.height * .23)
-      ..lineTo(center + size.width * .17, size.height * .33)
-      ..close();
-    canvas.drawPath(hat, figure);
-    final Path robe = Path()
-      ..moveTo(center - size.width * .09, size.height * .42)
-      ..lineTo(center + size.width * .08, size.height * .42)
-      ..lineTo(center + size.width * .17, size.height * .8)
-      ..lineTo(center - size.width * .17, size.height * .8)
-      ..close();
-    canvas.drawPath(robe, figure);
-    canvas.drawLine(
-      Offset(center + size.width * .12, size.height * .48),
-      Offset(center + size.width * .22, size.height * .76),
-      Paint()
-        ..color = tokens.accent.withValues(alpha: .8)
-        ..strokeWidth = math.max(1, size.width * .025),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _ProfileAvatarPainter oldDelegate) {
-    return oldDelegate.tokens != tokens;
   }
 }
 

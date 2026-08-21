@@ -101,8 +101,8 @@ abstract final class ProfileFixtures {
       ),
       ProfileSettingsItemViewData(
         id: 'source-management',
-        title: '书源管理',
-        description: '管理书源、导入与排序',
+        title: '数据源管理',
+        description: '管理数据源与启用状态',
         icon: ProfileSettingsIcon.sources,
       ),
       ProfileSettingsItemViewData(
@@ -140,12 +140,6 @@ abstract final class ProfileFixtures {
       ),
     ],
     about: <ProfileSettingsItemViewData>[
-      ProfileSettingsItemViewData(
-        id: 'diagnostics',
-        title: '调试日志',
-        description: '关键日志与限时详情捕获',
-        icon: ProfileSettingsIcon.diagnostics,
-      ),
       ProfileSettingsItemViewData(
         id: 'about',
         title: '关于我们',

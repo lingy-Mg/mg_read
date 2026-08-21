@@ -38,6 +38,13 @@ final class LibraryHomeViewData {
     );
   }
 
+  /// Creates the first-run state from a successfully read, empty bookshelf.
+  factory LibraryHomeViewData.empty() => LibraryHomeViewData(
+    isPresentationFixture: false,
+    continueReading: null,
+    books: const <LibraryBookListItemViewData>[],
+  );
+
   /// Whether the projection is an explicit UI fixture rather than user data.
   final bool isPresentationFixture;
 
@@ -94,6 +101,8 @@ final class LibraryHomeCallbacks {
     this.onOpenBook,
     this.onBookMore,
     this.onManageSources,
+    this.onDiscover,
+    this.onImportLocal,
     this.onNavigationSelected,
     this.onProfileSelected,
   });
@@ -104,6 +113,8 @@ final class LibraryHomeCallbacks {
   final ValueChanged<LibraryBookListItemViewData>? onOpenBook;
   final ValueChanged<LibraryBookListItemViewData>? onBookMore;
   final VoidCallback? onManageSources;
+  final VoidCallback? onDiscover;
+  final VoidCallback? onImportLocal;
   final ValueChanged<AppNavigationDestination>? onNavigationSelected;
 
   /// Requests the profile route without making this feature own app routing.
@@ -117,6 +128,8 @@ final class LibraryHomeCallbacks {
     ValueChanged<LibraryBookListItemViewData>? onOpenBook,
     ValueChanged<LibraryBookListItemViewData>? onBookMore,
     VoidCallback? onManageSources,
+    VoidCallback? onDiscover,
+    VoidCallback? onImportLocal,
     ValueChanged<AppNavigationDestination>? onNavigationSelected,
     VoidCallback? onProfileSelected,
   }) {
@@ -127,6 +140,8 @@ final class LibraryHomeCallbacks {
       onOpenBook: onOpenBook ?? this.onOpenBook,
       onBookMore: onBookMore ?? this.onBookMore,
       onManageSources: onManageSources ?? this.onManageSources,
+      onDiscover: onDiscover ?? this.onDiscover,
+      onImportLocal: onImportLocal ?? this.onImportLocal,
       onNavigationSelected: onNavigationSelected ?? this.onNavigationSelected,
       onProfileSelected: onProfileSelected ?? this.onProfileSelected,
     );

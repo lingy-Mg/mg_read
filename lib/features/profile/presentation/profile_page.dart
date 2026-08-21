@@ -118,6 +118,7 @@ class _ProfilePageState extends State<ProfilePage> {
         child: AppBottomNavigation(
           selected: AppNavigationDestination.profile,
           onSelected: _handleDestinationSelected,
+          showSelectionIndicator: false,
         ),
       ),
     );
@@ -198,7 +199,7 @@ class ProfileTopBar extends StatelessWidget {
             child: Text(
               '我的',
               style: theme.textTheme.displaySmall?.copyWith(
-                fontSize: 26,
+                fontSize: 30,
                 fontWeight: FontWeight.w600,
                 height: 1.15,
                 letterSpacing: -0.3,
@@ -206,19 +207,15 @@ class ProfileTopBar extends StatelessWidget {
             ),
           ),
         ),
-        if (AppTheme.darkModeEnabled) ...<Widget>[
-          _ProfileTopBarAction(
-            key: const Key('theme-mode-toggle'),
-            tooltip: theme.brightness == Brightness.dark
-                ? '切换至浅色模式'
-                : '切换至深色模式',
-            onPressed: onToggleTheme,
-            icon: theme.brightness == Brightness.dark
-                ? Icons.light_mode_outlined
-                : Icons.dark_mode_outlined,
-          ),
-          const SizedBox(width: AppSpacing.compact),
-        ],
+        _ProfileTopBarAction(
+          key: const Key('theme-mode-toggle'),
+          tooltip: theme.brightness == Brightness.dark ? '切换至浅色模式' : '切换至深色模式',
+          onPressed: onToggleTheme,
+          icon: theme.brightness == Brightness.dark
+              ? Icons.light_mode_outlined
+              : Icons.dark_mode_outlined,
+        ),
+        const SizedBox(width: AppSpacing.compact),
         _ProfileTopBarAction(
           tooltip: '通知',
           onPressed: onNotifications,

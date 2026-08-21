@@ -13,10 +13,12 @@ final class PluginSourceDescriptor {
     required this.id,
     required this.displayName,
     required Iterable<PluginContentKind> contentKinds,
+    this.pluginVersion = 'unknown',
   }) : contentKinds = List<PluginContentKind>.unmodifiable(contentKinds);
 
   final String id;
   final String displayName;
+  final String pluginVersion;
   final List<PluginContentKind> contentKinds;
 }
 
@@ -63,10 +65,15 @@ abstract interface class SourceContentGateway {
 /// Production adapter. Runtime owns execution and transport; this adapter owns
 /// only application error normalization and the main-app Facade span.
 final class MgReadSourceContentGateway implements SourceContentGateway {
-  const MgReadSourceContentGateway(this._runtime, this._diagnostics);
+  const MgReadSourceContentGateway(
+    this._runtime,
+    this._diagnostics,
+    this._loadRuntimeConnection,
+  );
 
   final PluginRuntime _runtime;
   final DiagnosticsManager _diagnostics;
+  final Future<PluginRuntimeConnection> Function() _loadRuntimeConnection;
 
   @override
   Future<List<PluginSourceDescriptor>> listSources() {
@@ -74,16 +81,15 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
       capability: 'plugins.list.v1',
       countField: 'pluginCount',
       action: () async {
-        final plugins = await _runtime.invoke(
-          const InstalledPluginsInvocation(),
-        );
+        final connection = await _loadRuntimeConnection();
         return List<PluginSourceDescriptor>.unmodifiable(
-          plugins
+          connection.plugins
               .where(_isUsableSource)
               .map(
                 (plugin) => PluginSourceDescriptor(
                   id: plugin.id,
                   displayName: plugin.displayName,
+                  pluginVersion: plugin.activeVersion!,
                   contentKinds: plugin.contentKinds.map(_contentKind),
                 ),
               ),
@@ -261,13 +267,15 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
 }
 
 final sourceContentGatewayProvider = Provider<SourceContentGateway>((Ref ref) {
+  final runtimeConnection = ref.watch(pluginRuntimeConnectionProvider.future);
   return MgReadSourceContentGateway(
     ref.watch(pluginRuntimeFacadeProvider),
     ref.watch(diagnosticsManagerProvider),
+    () => runtimeConnection,
   );
 });
 
-bool _isUsableSource(InstalledPlugin plugin) {
+bool _isUsableSource(PluginRuntimePlugin plugin) {
   return plugin.enabled &&
       plugin.activeVersion != null &&
       plugin.contentKinds.any((kind) => kind == 'novel' || kind == 'manga');

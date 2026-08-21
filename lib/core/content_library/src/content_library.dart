@@ -121,6 +121,22 @@ final class BookshelfRepository {
         _add(title: title, author: author, kind: kind, source: source),
   );
 
+  /// Adds or returns the item identified by a typed source reference.
+  ///
+  /// Feature adapters use this public operation instead of seeing the
+  /// Runtime-facing ingest payload used by the persistence implementation.
+  Future<LibraryItem> addFromSource(BookshelfAddRequest request) => add(
+    title: request.title,
+    author: request.author,
+    kind: request.kind,
+    source: ContentLibraryIngest(
+      pluginId: request.pluginId,
+      producerPluginVersion: request.pluginVersion,
+      dataVersion: 1,
+      opaqueData: <String, Object?>{'remoteBookId': request.remoteContentId},
+    ),
+  );
+
   Future<Page<LibraryItem>> list(LibraryQuery query) => _library._trace(
     operation: 'bookshelfList',
     itemCount: query.limit,

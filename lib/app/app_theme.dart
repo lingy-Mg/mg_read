@@ -14,6 +14,9 @@ abstract final class AppTheme {
       divider: Color(0xFFF1ECE5),
       mutedText: Color(0xFF827D77),
       accent: Color(0xFFCC8836),
+      dataSourceAccent: Color(0xFFE96A0A),
+      dataSourceCat: Color(0xFFFFC300),
+      dataSourceCommunity: Color(0xFF509B30),
       accentSoft: Color(0xFFF9EFE2),
       notification: Color(0xFFE34835),
       success: Color(0xFF3D8A63),
@@ -56,6 +59,9 @@ abstract final class AppTheme {
       divider: Color(0xFF4A4037),
       mutedText: Color(0xFFC8BEB2),
       accent: Color(0xFFE1A657),
+      dataSourceAccent: Color(0xFFE1A657),
+      dataSourceCat: Color(0xFFE1A657),
+      dataSourceCommunity: Color(0xFF81C99E),
       accentSoft: Color(0xFF5D421C),
       notification: Color(0xFFFF7666),
       success: Color(0xFF81C99E),
@@ -162,6 +168,9 @@ class AppThemeTokens extends ThemeExtension<AppThemeTokens> {
     required this.divider,
     required this.mutedText,
     required this.accent,
+    required this.dataSourceAccent,
+    required this.dataSourceCat,
+    required this.dataSourceCommunity,
     required this.accentSoft,
     required this.notification,
     required this.success,
@@ -192,6 +201,9 @@ class AppThemeTokens extends ThemeExtension<AppThemeTokens> {
   final Color divider;
   final Color mutedText;
   final Color accent;
+  final Color dataSourceAccent;
+  final Color dataSourceCat;
+  final Color dataSourceCommunity;
   final Color accentSoft;
   final Color notification;
   final Color success;
@@ -218,6 +230,9 @@ class AppThemeTokens extends ThemeExtension<AppThemeTokens> {
     Color? divider,
     Color? mutedText,
     Color? accent,
+    Color? dataSourceAccent,
+    Color? dataSourceCat,
+    Color? dataSourceCommunity,
     Color? accentSoft,
     Color? notification,
     Color? success,
@@ -243,6 +258,9 @@ class AppThemeTokens extends ThemeExtension<AppThemeTokens> {
       divider: divider ?? this.divider,
       mutedText: mutedText ?? this.mutedText,
       accent: accent ?? this.accent,
+      dataSourceAccent: dataSourceAccent ?? this.dataSourceAccent,
+      dataSourceCat: dataSourceCat ?? this.dataSourceCat,
+      dataSourceCommunity: dataSourceCommunity ?? this.dataSourceCommunity,
       accentSoft: accentSoft ?? this.accentSoft,
       notification: notification ?? this.notification,
       success: success ?? this.success,
@@ -278,6 +296,17 @@ class AppThemeTokens extends ThemeExtension<AppThemeTokens> {
       divider: Color.lerp(divider, other.divider, t)!,
       mutedText: Color.lerp(mutedText, other.mutedText, t)!,
       accent: Color.lerp(accent, other.accent, t)!,
+      dataSourceAccent: Color.lerp(
+        dataSourceAccent,
+        other.dataSourceAccent,
+        t,
+      )!,
+      dataSourceCat: Color.lerp(dataSourceCat, other.dataSourceCat, t)!,
+      dataSourceCommunity: Color.lerp(
+        dataSourceCommunity,
+        other.dataSourceCommunity,
+        t,
+      )!,
       accentSoft: Color.lerp(accentSoft, other.accentSoft, t)!,
       notification: Color.lerp(notification, other.notification, t)!,
       success: Color.lerp(success, other.success, t)!,
@@ -374,6 +403,26 @@ abstract final class AppSpacing {
   static const double discoveryEditorCardHeight = 86;
   static const double discoveryEditorCoverWidth = unit * 21;
   static const double discoveryEditorCoverHeight = 86;
+  static const double dataSourceTopBarHeight = unit * 19;
+  static const double dataSourcePageTitleSize = 24;
+  static const double dataSourceHeaderIconSize = 24;
+  static const double dataSourceSectionTitleSize = 22;
+  static const double dataSourceRowHeight = unit * 15;
+  static const double dataSourceMarkExtent = unit * 9;
+  static const double dataSourceNameSize = 18;
+  static const double dataSourceMetadataSize = 14;
+  static const double dataSourceAddIconSize = 27;
+  static const double dataSourceAddButtonHeight = unit * 12;
+  static const double dataSourceNavigationHeight = unit * 15;
+  static const double searchPageContentMaxWidth = 640;
+  static const double searchPageHorizontalPadding = unit * 5;
+  static const double searchTopBarHeight = unit * 16;
+  static const double searchQueryHeight = unit * 12;
+  static const double searchHistoryChipHeight = unit * 9;
+  static const double searchResultCoverWidth = unit * 21;
+  static const double searchResultCoverHeight = unit * 30;
+  static const double searchResultVerticalPadding = unit * 3;
+  static const double searchResultMetadataGap = unit + 2;
 }
 
 /// Measured dimensions shared by the profile detail pages.

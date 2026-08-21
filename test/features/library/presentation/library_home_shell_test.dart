@@ -95,6 +95,30 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('renders the first-run empty bookshelf without preview data', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: LibraryHomeShell(
+          data: LibraryHomeViewData.empty(),
+          isRefreshing: false,
+          onRefresh: () async {},
+          callbacks: const LibraryHomeCallbacks(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('开始你的阅读旅程'), findsOneWidget);
+    expect(find.text('当前还没有阅读记录'), findsOneWidget);
+    expect(find.text('暂无更新内容'), findsOneWidget);
+    expect(find.text('去发现好书'), findsOneWidget);
+    expect(find.textContaining('界面预览'), findsNothing);
+    expect(find.text('管理我的书源'), findsNothing);
+  });
+
   testWidgets('uses the compact reference font-size and weight hierarchy', (
     WidgetTester tester,
   ) async {

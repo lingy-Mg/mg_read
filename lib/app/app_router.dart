@@ -340,7 +340,7 @@ class FeedbackRoute extends GoRouteData with $FeedbackRoute {
   }
 }
 
-/// Runtime-backed plugin status reached from source management.
+/// Runtime-backed data-source management reached from profile settings.
 class PluginCenterRoute extends GoRouteData with $PluginCenterRoute {
   const PluginCenterRoute();
 

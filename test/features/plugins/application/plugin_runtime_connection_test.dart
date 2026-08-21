@@ -125,7 +125,7 @@ void main() {
     expect(error.toString(), isNot(contains('payload details')));
   });
 
-  testWidgets('status page renders the Runtime-owned plugin projection', (
+  testWidgets('data-source page renders the reference management composition', (
     WidgetTester tester,
   ) async {
     final diagnostics = DiagnosticsTestkit();
@@ -149,13 +149,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('运行时已就绪'), findsOneWidget);
-    expect(find.text('示例插件'), findsOneWidget);
-    expect(find.textContaining('0.2.0-standard.1'), findsOneWidget);
+    expect(find.text('管理数据来源'), findsOneWidget);
+    expect(find.text('我的数据来源'), findsOneWidget);
+    expect(find.text('已启用 6/12'), findsOneWidget);
+    expect(find.text('起点中文网'), findsOneWidget);
+    expect(find.text('番茄小说'), findsOneWidget);
+    expect(find.text('七猫中文网'), findsOneWidget);
+    expect(find.text('纵横中文网'), findsOneWidget);
+    expect(find.text('晋江文学城'), findsOneWidget);
+    expect(find.text('17K小说网'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('plugin-org.example.fixture')),
+      find.byKey(const ValueKey<String>('data-source-qidian')),
       findsOneWidget,
     );
+    expect(find.byKey(const Key('data-source-add')), findsOneWidget);
   });
 
   testWidgets('source management opens the typed Runtime status route', (
@@ -194,12 +201,25 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(PluginRuntimeStatusPage), findsOneWidget);
-    expect(find.text('运行时已就绪'), findsOneWidget);
-    expect(find.text('示例插件'), findsOneWidget);
+    expect(find.text('管理数据来源'), findsOneWidget);
+    expect(find.text('起点中文网'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('profile-detail-back')));
     await tester.pumpAndSettle();
     expect(find.byType(ProfilePage), findsOneWidget);
+  });
+
+  testWidgets('app warms the shared plugin Runtime after its first frame', (
+    WidgetTester tester,
+  ) async {
+    final settings = await createTestAppSettings();
+    addTearDown(settings.close);
+    final gateway = _FakePluginRuntimeGateway(_connected);
+
+    await tester.pumpWidget(testMgReadApp(settings, runtimeGateway: gateway));
+    await tester.pumpAndSettle();
+
+    expect(gateway.calls, 1);
   });
 }
 

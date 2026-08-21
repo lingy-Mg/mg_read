@@ -28,6 +28,7 @@ test('live source completes category, search, detail, catalog, and content flow'
   assert.ok(discovery.sections[0].items.length > 0);
   const book = discovery.sections[0].items[0].content;
   assert.match(book.id, /^novel:\d+$/u);
+  assert.match(book.coverUrl ?? '', /^https?:\/\//u);
 
   const search = await plugin.search({ query: '修仙', cursor: null, pageSize: 5 });
   assert.ok(search.items.length > 0);

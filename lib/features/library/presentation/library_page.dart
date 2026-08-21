@@ -16,9 +16,8 @@ import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 class LibraryPage extends ConsumerWidget {
   /// Creates the library landing page.
   ///
-  /// [previewData] is used only while the current M2 loader deliberately
-  /// returns an empty local projection. The default fixture is visibly
-  /// disclosed and is never passed to a repository or reader route.
+  /// [previewData] is a test-only display override. Production empty states
+  /// always render the first-run bookshelf experience.
   const LibraryPage({
     this.previewData,
     this.callbacks = const LibraryHomeCallbacks(),
@@ -51,7 +50,7 @@ class LibraryPage extends ConsumerWidget {
     }
 
     final LibraryHomeViewData data = state.overview!.isEmpty
-        ? previewData ?? LibraryHomeFixtures.preview
+        ? previewData ?? LibraryHomeViewData.empty()
         : LibraryHomeViewData.fromLocalOverview(state.overview!);
     final ValueChanged<AppNavigationDestination>? destinationRequested =
         onDestinationRequested;
@@ -61,6 +60,10 @@ class LibraryPage extends ConsumerWidget {
             onNavigationSelected: (AppNavigationDestination destination) {
               callbacks.onNavigationSelected?.call(destination);
               destinationRequested(destination);
+            },
+            onDiscover: () {
+              callbacks.onDiscover?.call();
+              destinationRequested(AppNavigationDestination.discover);
             },
           );
     return LibraryHomeShell(

@@ -2,12 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/discovery_page_controller.dart';
 import 'package:mg_read/features/discovery/application/discovery_page_state.dart';
+import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
@@ -52,6 +54,16 @@ class DiscoveryDestinationPage extends ConsumerWidget {
             ),
           );
         },
+        onAddToShelf: (content) => unawaited(
+          _addToShelf(
+            context,
+            saver: ref.read(discoveryBookshelfSaverProvider),
+            source: state.sources.singleWhere(
+              (source) => source.id == state.selectedSourceId,
+            ),
+            content: content,
+          ),
+        ),
         onRefreshRequested: () => unawaited(controller.refresh()),
       );
     }
@@ -142,6 +154,26 @@ class DiscoveryDestinationPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _addToShelf(
+    BuildContext context, {
+    required DiscoveryBookshelfSaver saver,
+    required PluginSourceDescriptor source,
+    required PluginContentSummary content,
+  }) async {
+    try {
+      await saver.save(source: source, content: content);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已加入书架。')));
+    } on Object {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('暂时无法加入书架，请稍后重试。')));
+    }
   }
 
   Future<void> _selectSource(

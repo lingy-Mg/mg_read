@@ -10,6 +10,7 @@ final class AppSettingsLifecycleHost extends StatefulWidget {
     required this.child,
     this.diagnostics,
     this.closeDiagnostics,
+    this.closeContentLibrary,
     this.disposeDiagnosticsBoundary,
     this.flushTimeout = const Duration(seconds: 1),
     super.key,
@@ -19,6 +20,7 @@ final class AppSettingsLifecycleHost extends StatefulWidget {
   final Widget child;
   final DiagnosticsManager? diagnostics;
   final Future<void> Function()? closeDiagnostics;
+  final Future<void> Function()? closeContentLibrary;
   final VoidCallback? disposeDiagnosticsBoundary;
   final Duration flushTimeout;
 
@@ -90,6 +92,11 @@ final class _AppSettingsLifecycleHostState
   }
 
   Future<void> _closeResources() async {
+    try {
+      await widget.closeContentLibrary?.call();
+    } catch (_) {
+      // Closing the local library must not prevent the remaining shutdown.
+    }
     try {
       await widget.manager.close();
     } catch (_) {

@@ -133,6 +133,9 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   }
 
   Widget _buildCompactContent(BuildContext context) {
+    if (_isFirstRunEmpty) {
+      return _buildFirstRunContent(context);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -141,6 +144,25 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
         _buildLibraryList(context),
         const SizedBox(height: AppSpacing.sourceManagerGap),
         _buildSourceManager(),
+      ],
+    );
+  }
+
+  bool get _isFirstRunEmpty =>
+      !widget.data.isPresentationFixture &&
+      widget.data.continueReading == null &&
+      widget.data.books.isEmpty;
+
+  Widget _buildFirstRunContent(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        _LibraryFirstRunCard(
+          onDiscover: _handleDiscover,
+          onImportLocal: _handleImportLocal,
+        ),
+        const SizedBox(height: AppSpacing.section),
+        _buildLibraryList(context),
       ],
     );
   }
@@ -191,7 +213,9 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
         ),
         const SizedBox(height: AppSpacing.compact),
         if (books.isEmpty)
-          _NoMatchingBooks(tokens: tokens)
+          _section == LibraryHomeSection.recentUpdates && _isFirstRunEmpty
+              ? _NoRecentUpdatesCard(onDiscover: _handleDiscover)
+              : _NoMatchingBooks(tokens: tokens)
         else
           LibraryBookList(
             books: books,
@@ -262,6 +286,19 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
 
   void _handleManageSources() {
     _invoke(widget.callbacks.onManageSources);
+  }
+
+  void _handleDiscover() {
+    final callback = widget.callbacks.onDiscover;
+    if (callback != null) {
+      callback();
+      return;
+    }
+    _handleDestinationSelected(AppNavigationDestination.discover);
+  }
+
+  void _handleImportLocal() {
+    _invoke(widget.callbacks.onImportLocal);
   }
 
   void _handleDestinationSelected(AppNavigationDestination destination) {
@@ -520,6 +557,170 @@ class _NoReadingProgressCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LibraryFirstRunCard extends StatelessWidget {
+  const _LibraryFirstRunCard({
+    required this.onDiscover,
+    required this.onImportLocal,
+  });
+
+  final VoidCallback onDiscover;
+  final VoidCallback onImportLocal;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = AppThemeTokens.of(context);
+    return Semantics(
+      container: true,
+      label: '开始你的阅读旅程，当前还没有阅读记录',
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: tokens.featureSurface,
+          border: Border.all(color: tokens.divider),
+          borderRadius: AppRadii.card,
+        ),
+        child: ClipRRect(
+          borderRadius: AppRadii.card,
+          child: SizedBox(
+            height: 278,
+            child: Stack(
+              children: <Widget>[
+                Positioned(
+                  top: AppSpacing.page,
+                  right: -AppSpacing.compact,
+                  width: 340,
+                  child: ExcludeSemantics(
+                    child: Image.asset(
+                      'assets/illustrations/library_first_run_books_v3.png',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(AppSpacing.section),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        '开始你的阅读旅程',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontSize: 23,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.compact),
+                      Text(
+                        '当前还没有阅读记录',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: tokens.mutedText,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.regular),
+                      SizedBox(
+                        width: 34,
+                        child: Divider(color: tokens.accent, thickness: 2),
+                      ),
+                      const SizedBox(height: AppSpacing.regular),
+                      SizedBox(
+                        width: 190,
+                        child: Text(
+                          '添加书源、导入本地书籍，或去发现页挑选你喜欢的内容',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: tokens.mutedText,
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      Wrap(
+                        spacing: AppSpacing.compact,
+                        runSpacing: AppSpacing.compact,
+                        children: <Widget>[
+                          FilledButton(
+                            onPressed: onDiscover,
+                            child: const Text('去发现'),
+                          ),
+                          OutlinedButton(
+                            onPressed: onImportLocal,
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: tokens.featureSurface,
+                            ),
+                            child: const Text('导入本地'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NoRecentUpdatesCard extends StatelessWidget {
+  const _NoRecentUpdatesCard({required this.onDiscover});
+
+  final VoidCallback onDiscover;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = AppThemeTokens.of(context);
+    return Semantics(
+      liveRegion: true,
+      label: '暂无更新内容',
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: tokens.surface,
+          border: Border.all(color: tokens.divider),
+          borderRadius: AppRadii.surface,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.section,
+            vertical: AppSpacing.page,
+          ),
+          child: Column(
+            children: <Widget>[
+              SizedBox(
+                width: 144,
+                height: 116,
+                child: ExcludeSemantics(
+                  child: Image.asset(
+                    'assets/illustrations/library_empty_updates.png',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.compact),
+              Text(
+                '暂无更新内容',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.compact),
+              Text(
+                '添加书源后，你关注的作品会显示在这里',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: tokens.mutedText,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.comfortable),
+              OutlinedButton(onPressed: onDiscover, child: const Text('去发现好书')),
+            ],
+          ),
         ),
       ),
     );

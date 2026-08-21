@@ -166,7 +166,7 @@ class ProfileSettingsRow extends StatelessWidget {
   IconData _iconFor(ProfileSettingsIcon icon) {
     return switch (icon) {
       ProfileSettingsIcon.reading => Icons.calendar_month_outlined,
-      ProfileSettingsIcon.sources => Icons.hub_outlined,
+      ProfileSettingsIcon.sources => Icons.account_tree_outlined,
       ProfileSettingsIcon.download => Icons.file_download_outlined,
       ProfileSettingsIcon.appearance => Icons.palette_outlined,
       ProfileSettingsIcon.privacy => Icons.shield_outlined,

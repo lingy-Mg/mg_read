@@ -15,7 +15,7 @@ final libraryOverviewLoaderProvider = Provider<LibraryOverviewLoader>(
 
 /// Owns the library page lifecycle and has no mutable view model state.
 final libraryPageControllerProvider =
-    NotifierProvider.autoDispose<LibraryPageController, LibraryPageState>(
+    NotifierProvider<LibraryPageController, LibraryPageState>(
       LibraryPageController.new,
     );
 
@@ -23,7 +23,9 @@ final libraryPageControllerProvider =
 ///
 /// Every new load gets a monotonically increasing generation. A completed
 /// request can update state only when it is still latest and the provider has
-/// not been disposed by its page lifecycle.
+/// not been disposed by its container. The provider intentionally remains
+/// alive across destination changes so returning to the bookshelf reuses the
+/// last local projection instead of issuing another initial load.
 class LibraryPageController extends Notifier<LibraryPageState> {
   late LibraryOverviewLoader _loader;
   late DiagnosticsManager _diagnostics;

@@ -88,66 +88,71 @@ final pluginRuntimeGatewayProvider = Provider<PluginRuntimeGateway>(
   ),
 );
 
-/// Lazily starts Runtime only when a UI capability reads this provider.
-final pluginRuntimeConnectionProvider =
-    FutureProvider.autoDispose<PluginRuntimeConnection>((Ref ref) async {
-      final gateway = ref.watch(pluginRuntimeGatewayProvider);
-      final diagnostics = ref.watch(diagnosticsManagerProvider);
-      final span = diagnostics.startSpan(
-        AppDiagnosticEvents.runtimeFacadeCall,
-        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+/// Process-wide Runtime readiness shared by app startup and every feature.
+///
+/// The app warms this after its first frame. Keeping the result alive avoids
+/// restarting inspection when a feature is opened later, while concurrent
+/// consumers still share the Runtime Facade's one startup operation.
+final pluginRuntimeConnectionProvider = FutureProvider<PluginRuntimeConnection>(
+  (Ref ref) async {
+    final gateway = ref.watch(pluginRuntimeGatewayProvider);
+    final diagnostics = ref.watch(diagnosticsManagerProvider);
+    final span = diagnostics.startSpan(
+      AppDiagnosticEvents.runtimeFacadeCall,
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'capability': DiagnosticValue.string('runtime.inspect.v1'),
+        'attempt': DiagnosticValue.int64(1),
+        'resultState': DiagnosticValue.string('loading'),
+      }),
+    );
+    final stopwatch = Stopwatch()..start();
+    try {
+      final result = await gateway.inspect();
+      span.complete(
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
           'capability': DiagnosticValue.string('runtime.inspect.v1'),
           'attempt': DiagnosticValue.int64(1),
-          'resultState': DiagnosticValue.string('loading'),
+          'pluginCount': DiagnosticValue.int64(result.plugins.length),
+          'resultState': DiagnosticValue.string(
+            result.plugins.isEmpty ? 'empty' : 'content',
+          ),
         }),
       );
-      final stopwatch = Stopwatch()..start();
-      try {
-        final result = await gateway.inspect();
-        span.complete(
-          attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-            'capability': DiagnosticValue.string('runtime.inspect.v1'),
-            'attempt': DiagnosticValue.int64(1),
-            'pluginCount': DiagnosticValue.int64(result.plugins.length),
-            'resultState': DiagnosticValue.string(
-              result.plugins.isEmpty ? 'empty' : 'content',
-            ),
-          }),
-        );
-        stopwatch.stop();
-        reportSlowDiagnostic(
-          diagnostics,
-          subjectComponent: 'feature.plugins',
-          operation: 'runtime.inspect.v1',
-          elapsed: stopwatch.elapsed,
-          threshold: AppDiagnosticThresholds.runtimeFacade,
-          outcome: DiagnosticOutcome.success,
-          traceContext: span.traceContext,
-        );
-        return result;
-      } on Object catch (error, stackTrace) {
-        final appError = AppError.fromUnknown(error);
-        span.fail(
-          attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-            'capability': DiagnosticValue.string('runtime.inspect.v1'),
-            'attempt': DiagnosticValue.int64(1),
-            'resultState': DiagnosticValue.string('failure'),
-            'errorCode': DiagnosticValue.string(appError.code.wireValue),
-          }),
-        );
-        stopwatch.stop();
-        reportSlowDiagnostic(
-          diagnostics,
-          subjectComponent: 'feature.plugins',
-          operation: 'runtime.inspect.v1',
-          elapsed: stopwatch.elapsed,
-          threshold: AppDiagnosticThresholds.runtimeFacade,
-          outcome: DiagnosticOutcome.error,
-          traceContext: span.traceContext,
-        );
-        Error.throwWithStackTrace(appError, stackTrace);
-      }
-    });
+      stopwatch.stop();
+      reportSlowDiagnostic(
+        diagnostics,
+        subjectComponent: 'feature.plugins',
+        operation: 'runtime.inspect.v1',
+        elapsed: stopwatch.elapsed,
+        threshold: AppDiagnosticThresholds.runtimeFacade,
+        outcome: DiagnosticOutcome.success,
+        traceContext: span.traceContext,
+      );
+      return result;
+    } on Object catch (error, stackTrace) {
+      final appError = AppError.fromUnknown(error);
+      span.fail(
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+          'capability': DiagnosticValue.string('runtime.inspect.v1'),
+          'attempt': DiagnosticValue.int64(1),
+          'resultState': DiagnosticValue.string('failure'),
+          'errorCode': DiagnosticValue.string(appError.code.wireValue),
+        }),
+      );
+      stopwatch.stop();
+      reportSlowDiagnostic(
+        diagnostics,
+        subjectComponent: 'feature.plugins',
+        operation: 'runtime.inspect.v1',
+        elapsed: stopwatch.elapsed,
+        threshold: AppDiagnosticThresholds.runtimeFacade,
+        outcome: DiagnosticOutcome.error,
+        traceContext: span.traceContext,
+      );
+      Error.throwWithStackTrace(appError, stackTrace);
+    }
+  },
+);
 
 @immutable
 final class PluginRuntimeConnection {

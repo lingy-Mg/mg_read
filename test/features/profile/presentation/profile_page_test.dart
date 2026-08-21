@@ -24,6 +24,7 @@ void main() {
     expect(find.text('VIP'), findsOneWidget);
     expect(find.text('设置与管理'), findsOneWidget);
     expect(find.text('阅读设置'), findsOneWidget);
+    expect(find.text('数据源管理'), findsOneWidget);
     expect(find.text('关于与其他'), findsOneWidget);
     expect(find.byType(AppBottomNavigation), findsOneWidget);
 
@@ -58,7 +59,7 @@ void main() {
       profileNavigation,
     );
 
-    expect(pageTitle.style?.fontSize, 26);
+    expect(pageTitle.style?.fontSize, 30);
     expect(pageTitle.style?.fontWeight, FontWeight.w600);
     expect(settingTitle.style?.fontSize, 18);
     expect(settingTitle.style?.fontWeight, FontWeight.w500);
@@ -72,21 +73,18 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets(
-    'hides the temporary theme control and keeps local action feedback',
-    (WidgetTester tester) async {
-      await tester.pumpWidget(_host());
-      await tester.pumpAndSettle();
+  testWidgets('keeps the top appearance action and local action feedback', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(_host());
+    await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('theme-mode-toggle')), findsNothing);
+    expect(find.byKey(const Key('theme-mode-toggle')), findsOneWidget);
 
-      await tester.tap(
-        find.byKey(const Key('profile-setting-reading-settings')),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsOneWidget);
-    },
-  );
+    await tester.tap(find.byKey(const Key('profile-setting-reading-settings')));
+    await tester.pumpAndSettle();
+    expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsOneWidget);
+  });
 
   testWidgets('delegates a destination selection to the app layer', (
     WidgetTester tester,

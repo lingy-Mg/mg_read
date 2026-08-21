@@ -9,13 +9,22 @@ import 'package:mg_read/app/app.dart';
 import 'package:mg_read/app/app_diagnostics_boundary.dart';
 import 'package:mg_read/app/app_settings_lifecycle.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
 import 'package:mg_read/core/settings/settings.dart';
+import 'package:mg_read/features/library/application/library_page_controller.dart';
+import 'package:mg_read/features/library/data/content_library_overview_loader.dart';
+import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 
 typedef SettingsDataRootResolver = Future<Directory> Function();
 typedef MgReadAppRunner = void Function(Widget app);
 typedef AppDiagnosticsServiceFactory =
     Future<AppDiagnosticsService> Function(Directory dataRoot);
+typedef ContentLibraryFactory =
+    Future<ContentLibrary> Function(
+      Directory dataRoot,
+      DiagnosticsManager diagnostics,
+    );
 
 /// Starts the Flutter host composition root.
 ///
@@ -29,6 +38,8 @@ Future<void> bootstrapMgReadApp({
   DiagnosticsManager? diagnosticsManager,
   AppDiagnosticsServiceFactory? diagnosticsServiceFactory =
       _openDefaultDiagnostics,
+  ContentLibrary? contentLibrary,
+  ContentLibraryFactory? contentLibraryFactory = _openDefaultContentLibrary,
   SettingsDataRootResolver dataRootResolver = _defaultSettingsDataRoot,
   MgReadAppRunner appRunner = runApp,
   Widget child = const MgReadApp(),
@@ -40,7 +51,8 @@ Future<void> bootstrapMgReadApp({
   }
   WidgetsFlutterBinding.ensureInitialized();
   Directory? dataRoot;
-  if (settingsManager == null ||
+  if ((contentLibrary == null && contentLibraryFactory != null) ||
+      settingsManager == null ||
       (diagnosticsService == null &&
           diagnosticsManager == null &&
           diagnosticsServiceFactory != null)) {
@@ -67,6 +79,7 @@ Future<void> bootstrapMgReadApp({
         source: DiagnosticSource.app,
       );
   final errorBoundary = AppDiagnosticsErrorBoundary.install(diagnostics);
+  ContentLibrary? persistentContentLibrary = contentLibrary;
   final bootstrapStopwatch = Stopwatch()..start();
   final bootstrapSpan = diagnostics.startSpan(
     AppDiagnosticEvents.bootstrap,
@@ -87,6 +100,12 @@ Future<void> bootstrapMgReadApp({
         ),
       );
   try {
+    if (persistentContentLibrary == null && contentLibraryFactory != null) {
+      persistentContentLibrary = await contentLibraryFactory(
+        dataRoot!,
+        diagnostics,
+      );
+    }
     await manager.initialize();
     appRunner(
       ProviderScope(
@@ -98,12 +117,21 @@ Future<void> bootstrapMgReadApp({
           diagnosticsMaintenanceProvider.overrideWithValue(
             persistentDiagnostics,
           ),
+          if (persistentContentLibrary != null)
+            libraryOverviewLoaderProvider.overrideWithValue(
+              ContentLibraryOverviewLoader(persistentContentLibrary),
+            ),
+          if (persistentContentLibrary != null)
+            discoveryBookshelfSaverProvider.overrideWithValue(
+              ContentLibraryDiscoveryBookshelfSaver(persistentContentLibrary),
+            ),
         ],
         child: AppSettingsLifecycleHost(
           manager: manager,
           diagnostics: diagnostics,
           closeDiagnostics: persistentDiagnostics?.close ?? diagnostics.close,
           disposeDiagnosticsBoundary: errorBoundary.dispose,
+          closeContentLibrary: persistentContentLibrary?.close,
           child: child,
         ),
       ),
@@ -141,6 +169,7 @@ Future<void> bootstrapMgReadApp({
       traceContext: bootstrapSpan.traceContext,
     );
     errorBoundary.dispose();
+    await persistentContentLibrary?.close();
     await manager.close();
     await (persistentDiagnostics?.close() ?? diagnostics.close());
     Error.throwWithStackTrace(error, stackTrace);
@@ -167,3 +196,8 @@ Future<AppDiagnosticsService> _openDefaultDiagnostics(Directory dataRoot) =>
           : 'debug',
       platform: Platform.operatingSystem,
     );
+
+Future<ContentLibrary> _openDefaultContentLibrary(
+  Directory dataRoot,
+  DiagnosticsManager diagnostics,
+) => ContentLibrary.open(dataRoot: dataRoot, diagnostics: diagnostics);

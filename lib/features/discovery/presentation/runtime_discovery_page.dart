@@ -22,6 +22,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     required this.onTabSelected,
     required this.onCategorySelected,
     required this.onContentPressed,
+    required this.onAddToShelf,
     required this.onRefreshRequested,
     super.key,
   });
@@ -32,6 +33,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
   final ValueChanged<String> onTabSelected;
   final ValueChanged<String> onCategorySelected;
   final ValueChanged<PluginContentSummary> onContentPressed;
+  final ValueChanged<PluginContentSummary> onAddToShelf;
   final VoidCallback onRefreshRequested;
 
   @override
@@ -85,6 +87,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                     section: section,
                     onCategorySelected: onCategorySelected,
                     onContentPressed: onContentPressed,
+                    onAddToShelf: onAddToShelf,
                   ),
                   const SizedBox(height: AppSpacing.section),
                 ],
@@ -147,11 +150,13 @@ class _RuntimeDiscoverySection extends StatelessWidget {
     required this.section,
     required this.onCategorySelected,
     required this.onContentPressed,
+    required this.onAddToShelf,
   });
 
   final PluginDiscoverySection section;
   final ValueChanged<String> onCategorySelected;
   final ValueChanged<PluginContentSummary> onContentPressed;
+  final ValueChanged<PluginContentSummary> onAddToShelf;
 
   @override
   Widget build(BuildContext context) {
@@ -195,11 +200,13 @@ class _RuntimeDiscoverySection extends StatelessWidget {
         items: section.items,
         ranked: true,
         onPressed: onContentPressed,
+        onAddToShelf: onAddToShelf,
       ),
       PluginDiscoveryLayout.list => _RuntimeListSection(
         items: section.items,
         ranked: false,
         onPressed: onContentPressed,
+        onAddToShelf: onAddToShelf,
       ),
       PluginDiscoveryLayout.categories => _RuntimeCategorySection(
         categories: section.categories,
@@ -268,11 +275,13 @@ class _RuntimeListSection extends StatelessWidget {
     required this.items,
     required this.ranked,
     required this.onPressed,
+    required this.onAddToShelf,
   });
 
   final List<PluginDiscoveryContentItem> items;
   final bool ranked;
   final ValueChanged<PluginContentSummary> onPressed;
+  final ValueChanged<PluginContentSummary> onAddToShelf;
 
   @override
   Widget build(BuildContext context) {
@@ -280,15 +289,226 @@ class _RuntimeListSection extends StatelessWidget {
     return Column(
       children: <Widget>[
         for (var index = 0; index < items.length; index += 1) ...<Widget>[
-          _RuntimeDiscoveryCard(
+          _RuntimeBookListTile(
             item: items[index],
             showRank: ranked,
             onPressed: () => onPressed(items[index].content),
+            onAddToShelf: () => onAddToShelf(items[index].content),
           ),
           if (index != items.length - 1)
-            const SizedBox(height: AppSpacing.compact),
+            Divider(height: 1, color: AppThemeTokens.of(context).divider),
         ],
       ],
+    );
+  }
+}
+
+/// Compact, information-first source result row matching the mobile book list.
+class _RuntimeBookListTile extends StatelessWidget {
+  const _RuntimeBookListTile({
+    required this.item,
+    required this.showRank,
+    required this.onPressed,
+    required this.onAddToShelf,
+  });
+
+  final PluginDiscoveryContentItem item;
+  final bool showRank;
+  final VoidCallback onPressed;
+  final VoidCallback onAddToShelf;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = item.content;
+    final tokens = AppThemeTokens.of(context);
+    final labels = <String>{
+      ...content.categories,
+      ...content.tags,
+    }.take(3).toList(growable: false);
+    final String byline = <String>[
+      if (content.author != null) content.author!,
+      if (content.categories.isNotEmpty) content.categories.first,
+    ].join(' · ');
+    final String? update = switch ((content.latestChapter, content.updatedAt)) {
+      (final chapter?, final updatedAt?) =>
+        '${chapter.title} · ${_formatDateTime(updatedAt)}',
+      (final chapter?, null) => chapter.title,
+      (null, final updatedAt?) => _formatDateTime(updatedAt),
+      (null, null) =>
+        content.wordCount == null ? null : '${content.wordCount} 字',
+    };
+
+    return Material(
+      color: tokens.surface,
+      child: InkWell(
+        key: ValueKey<String>('runtime-discovery-item-${content.id}'),
+        onTap: onPressed,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            vertical: AppSpacing.bookListVerticalPadding,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (showRank && item.rank != null) ...<Widget>[
+                SizedBox(
+                  width: AppSpacing.regular,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.compact),
+                    child: Text(
+                      '${item.rank}',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.labelLarge?.copyWith(color: tokens.accent),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.compact),
+              ],
+              DiscoveryBookCover(
+                key: ValueKey<String>('runtime-discovery-cover-${content.id}'),
+                title: content.title,
+                coverUrl: content.coverUrl,
+                variant: _coverVariant(content.id),
+                width: AppSpacing.listCoverWidth,
+                height: AppSpacing.listCoverHeight,
+              ),
+              const SizedBox(width: AppSpacing.regular),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            content.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.compact),
+                        SizedBox(
+                          height: 30,
+                          child: OutlinedButton.icon(
+                            key: ValueKey<String>(
+                              'runtime-discovery-add-shelf-${content.id}',
+                            ),
+                            onPressed: onAddToShelf,
+                            icon: const Icon(Icons.add_rounded, size: 17),
+                            label: const Text('加入书架'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: tokens.accent,
+                              side: BorderSide(color: tokens.accent),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.compact,
+                              ),
+                              textStyle: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (byline.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 2),
+                      Text(
+                        byline,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: tokens.mutedText,
+                        ),
+                      ),
+                    ],
+                    if (labels.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: AppSpacing.unit),
+                      Wrap(
+                        spacing: AppSpacing.unit,
+                        runSpacing: AppSpacing.unit,
+                        children: labels
+                            .map((label) => _RuntimeMetadataTag(label: label))
+                            .toList(growable: false),
+                      ),
+                    ],
+                    if (content.description != null) ...<Widget>[
+                      const SizedBox(height: AppSpacing.unit),
+                      Text(
+                        content.description!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                    if (update != null || item.metric != null) ...<Widget>[
+                      const SizedBox(height: AppSpacing.unit),
+                      Row(
+                        children: <Widget>[
+                          if (update != null)
+                            Expanded(
+                              child: Text(
+                                update,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: tokens.mutedText),
+                              ),
+                            ),
+                          if (item.metric != null) ...<Widget>[
+                            if (update != null)
+                              const SizedBox(width: AppSpacing.compact),
+                            Icon(
+                              Icons.local_fire_department_rounded,
+                              size: 14,
+                              color: tokens.notification,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              '${item.metric!.value}${item.metric!.label}',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: tokens.mutedText),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RuntimeMetadataTag extends StatelessWidget {
+  const _RuntimeMetadataTag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppThemeTokens.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tokens.mutedSurface,
+        borderRadius: AppRadii.pill,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.unit),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: tokens.mutedText,
+            fontSize: 10,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -299,14 +519,12 @@ class _RuntimeDiscoveryCard extends StatelessWidget {
     required this.onPressed,
     this.compact = false,
     this.featured = false,
-    this.showRank = false,
   });
 
   final PluginDiscoveryContentItem item;
   final VoidCallback onPressed;
   final bool compact;
   final bool featured;
-  final bool showRank;
 
   @override
   Widget build(BuildContext context) {
@@ -332,16 +550,9 @@ class _RuntimeDiscoveryCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              if (showRank && item.rank != null) ...<Widget>[
-                CircleAvatar(
-                  radius: 17,
-                  backgroundColor: tokens.accentSoft,
-                  child: Text('${item.rank}'),
-                ),
-                const SizedBox(width: AppSpacing.compact),
-              ],
               DiscoveryBookCover(
                 title: content.title,
+                coverUrl: content.coverUrl,
                 variant: _coverVariant(content.id),
                 width: compact ? 54 : 66,
                 height: compact ? 76 : 94,

@@ -1,7 +1,7 @@
 [CmdletBinding(DefaultParameterSetName = 'Single')]
 param(
     [Parameter(Mandatory)]
-    [ValidatePattern('^emulator-\d+$')]
+    [ValidateSet('127.0.0.1:7555', 'emulator-5556')]
     [string]$DeviceId,
 
     [Parameter(ParameterSetName = 'Single')]
@@ -24,9 +24,14 @@ if ($LASTEXITCODE -ne 0 -or $deviceState -ne 'device') {
     throw "Android emulator '$DeviceId' is not connected and ready. Start it yourself, then rerun this command."
 }
 
-$avdName = (& $adb.Source -s $DeviceId emu avd name 2>&1 | Out-String).Trim()
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($avdName) -or $avdName -match 'unknown command') {
-    throw "'$DeviceId' is not a running Android emulator supplied by the user. No test was started."
+$avdName = if ($DeviceId -eq '127.0.0.1:7555') {
+    'user-approved-local-android-target'
+}
+else {
+    (& $adb.Source -s $DeviceId emu avd name 2>&1 | Out-String).Trim()
+}
+if ([string]::IsNullOrWhiteSpace($avdName) -or $avdName -match 'unknown command') {
+    throw "'$DeviceId' is not a connected user-approved Android test target. No test was started."
 }
 
 if ($All) {

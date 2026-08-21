@@ -14,6 +14,44 @@ import 'package:mg_read/features/library/domain/library_overview.dart';
 import '../../../core/diagnostics/diagnostics_testkit.dart';
 
 void main() {
+  test('keeps the successful overview when the page listener is replaced', () async {
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    final loader = _ControlledLibraryOverviewLoader();
+    final container = ProviderContainer(
+      overrides: [
+        libraryOverviewLoaderProvider.overrideWithValue(loader),
+        diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final firstSubscription = container.listen(
+      libraryPageControllerProvider,
+      (_, _) {},
+      fireImmediately: true,
+    );
+    await _flush();
+    expect(loader.loadCount, 1);
+    loader.completeNext(_overview('cached'));
+    await _flush();
+    firstSubscription.close();
+
+    final secondSubscription = container.listen(
+      libraryPageControllerProvider,
+      (_, _) {},
+      fireImmediately: true,
+    );
+    addTearDown(secondSubscription.close);
+    await _flush();
+
+    expect(loader.loadCount, 1);
+    expect(
+      container.read(libraryPageControllerProvider).overview!.items.single.title,
+      'cached',
+    );
+  });
+
   test('latest request generation wins when refreshes overlap', () async {
     final diagnostics = DiagnosticsTestkit();
     addTearDown(diagnostics.dispose);
@@ -131,8 +169,11 @@ final class _ControlledLibraryOverviewLoader implements LibraryOverviewLoader {
   final Queue<Completer<LibraryOverview>> _pending =
       Queue<Completer<LibraryOverview>>();
 
+  int loadCount = 0;
+
   @override
   Future<LibraryOverview> load() {
+    loadCount++;
     final Completer<LibraryOverview> completer = Completer<LibraryOverview>();
     _pending.add(completer);
     return completer.future;
