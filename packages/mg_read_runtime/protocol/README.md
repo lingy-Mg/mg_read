@@ -10,6 +10,7 @@
 - loopback live/ready 与 `/v1/rpc`；
 - 64 KiB 控制帧、256 个在途请求、1 MiB 写队列和 best-effort cancel；
 - `runtime.hello`、版本化 diagnostics 查询/捕获能力、`runtime.ping`、`plugins.list.v1`、
+  `plugins.setEnabled.v1`、
   `source.discover/search/getDetail/getChapters/getContent.v1`、`runtime.shutdown`；
 - 一个按标准 package/lock 安装、冷激活并执行完整内容链路的无网络插件投影。
 

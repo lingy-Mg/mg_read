@@ -162,7 +162,7 @@ test("installer hardlinks local packages and manager cold-activates named export
   assert.equal(search.sourceName, "Runtime 标准测试书源");
   const discovery = await manager.discover(
     "org.mgread.runtime.fixture",
-    { target: null, cursor: null, pageSize: 20 },
+    { target: null, cursor: null, collectionId: null, pageSize: 20 },
     new AbortController().signal,
     String(Date.now() + 5_000),
   );
@@ -184,10 +184,44 @@ test("installer hardlinks local packages and manager cold-activates named export
     new AbortController().signal,
     String(Date.now() + 5_000),
   );
-  assert.equal(discovery.sections[0].items[0].content.title, "标准插件：发现");
+  assert.equal(
+    discovery.document.components[1].children[0].items[0].content.title,
+    "标准插件：发现",
+  );
   assert.equal(detail.catalogUrl, null);
   assert.equal(chapters.items[0].order, 0);
   assert.equal(content.text, "标准插件正文。");
+
+  const disabled = await manager.setEnabled(
+    "org.mgread.runtime.fixture",
+    false,
+  );
+  assert.equal(disabled.enabled, false);
+  assert.equal(disabled.status, "disabled");
+  await assert.rejects(
+    manager.search(
+      "org.mgread.runtime.fixture",
+      { query: "测试", cursor: null, pageSize: 20 },
+      new AbortController().signal,
+      String(Date.now() + 5_000),
+    ),
+    (error) => error?.code === "plugin_disabled",
+  );
+  const enabled = await manager.setEnabled(
+    "org.mgread.runtime.fixture",
+    true,
+  );
+  assert.equal(enabled.enabled, true);
+  assert.equal(enabled.status, "active");
+  assert.equal(
+    (await manager.search(
+      "org.mgread.runtime.fixture",
+      { query: "恢复", cursor: null, pageSize: 20 },
+      new AbortController().signal,
+      String(Date.now() + 5_000),
+    )).items[0].title,
+    "标准插件：恢复",
+  );
   assert.deepEqual(
     JSON.parse(
       await readFile(
@@ -207,7 +241,7 @@ test("installer hardlinks local packages and manager cold-activates named export
   );
   assert.equal(
     managerEvents.filter((event) => event.code === "plugin_invocation_completed").length,
-    5,
+    6,
   );
 });
 
@@ -271,13 +305,11 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
   );
 
   const discovery = validateDiscoverResult("org.example.nulls", "空值书源", {
-    tabs: [],
-    selectedTabId: null,
-    sections: [],
-    nextCursor: null,
+    kind: "document",
+    document: { components: [] },
   });
-  assert.deepEqual(discovery.tabs, []);
-  assert.equal(discovery.selectedTabId, null);
+  assert.equal(discovery.kind, "document");
+  assert.deepEqual(discovery.document.components, []);
 
   const detail = validateDetailResult("org.example.nulls", "空值书源", {
     ...summary,
@@ -762,7 +794,7 @@ async function createDelayedPlugin(root) {
     writeFile(
       join(root, "dist", "index.mjs"),
       `export function activate() {}
-export function discover() { return { tabs: [], selectedTabId: null, sections: [], nextCursor: null }; }
+export function discover() { return { kind: "document", document: { components: [] } }; }
 export async function search() { await new Promise((resolve) => setTimeout(resolve, 40)); return { items: [], nextCursor: null, totalCount: 0 }; }
 export function getDetail() { throw new Error("unused"); }
 export function getChapters() { throw new Error("unused"); }

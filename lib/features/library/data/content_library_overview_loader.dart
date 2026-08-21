@@ -15,10 +15,20 @@ final class ContentLibraryOverviewLoader implements LibraryOverviewLoader {
   @override
   Future<LibraryOverview> load() async {
     final page = await _library.listLibrary(const LibraryQuery(limit: 100));
+    final items = await Future.wait(
+      page.items.map((item) async {
+        final progress = await _library.readingProgress.load(item.id);
+        return LibraryItemSummary(
+          id: item.id.value,
+          title: item.title,
+          readingProgress: progress?.bookFraction,
+          readingChapterIndex: progress?.chapterIndex,
+          lastReadAtUtc: progress?.updatedAtUtc,
+        );
+      }),
+    );
     return LibraryOverview(
-      items: page.items.map(
-        (item) => LibraryItemSummary(id: item.id.value, title: item.title),
-      ),
+      items: items,
     );
   }
 }

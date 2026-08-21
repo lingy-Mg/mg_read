@@ -15,16 +15,13 @@ const sourceNodeExecutable = resolve(sourceNodeDirectory, "node.exe");
 const sourceNodeLicense = resolve(sourceNodeDirectory, "LICENSE");
 const sourceDist = resolve(repositoryRoot, "dist");
 const sourceEntrypoint = resolve(sourceDist, "cli.js");
-const sourceDefaultPluginArchive = resolve(
-  repositoryRoot,
-  "..",
-  "..",
-  "plugins",
-  "sources",
-  "aisishuwu",
-  "artifacts",
-  "org.mgread.aisishuwu-0.1.0.mgplugin",
-);
+const sourceDefaultPluginArchives = [
+  ["aisishuwu", "org.mgread.aisishuwu-0.1.0.mgplugin"],
+  ["mgread-discovery-demo", "org.mgread.discovery-demo-0.1.0.mgplugin"],
+].map(([sourceId, artifactName]) => ({
+  artifactName,
+  source: resolve(repositoryRoot, "..", "..", "plugins", "sources", sourceId, "artifacts", artifactName),
+}));
 const assetsRoot = resolve(
   repositoryRoot,
   "packages",
@@ -38,9 +35,8 @@ const stagedNodeExecutable = resolve(stagedNodeDirectory, "node.exe");
 const stagedNodeLicense = resolve(stagedNodeDirectory, "LICENSE");
 const stagedDist = resolve(assetsRoot, "dist");
 const stagedDefaultPluginsDirectory = resolve(assetsRoot, "default-plugins");
-const stagedDefaultPluginArchive = resolve(
-  stagedDefaultPluginsDirectory,
-  "org.mgread.aisishuwu-0.1.0.mgplugin",
+const stagedDefaultPluginArchives = sourceDefaultPluginArchives.map(({ artifactName }) =>
+  resolve(stagedDefaultPluginsDirectory, artifactName),
 );
 
 /**
@@ -83,13 +79,15 @@ assertInsideRepository(stagedNodeExecutable);
 assertInsideRepository(stagedNodeLicense);
 assertInsideRepository(stagedDist);
 assertInsideRepository(stagedDefaultPluginsDirectory);
-assertInsideRepository(stagedDefaultPluginArchive);
+for (const archive of stagedDefaultPluginArchives) assertInsideRepository(archive);
 await requireReadable(sourceNodeDirectory, "the exact bundled Node distribution");
 await requireReadable(sourceNodeExecutable, "the exact bundled Node executable");
 await requireReadable(sourceNodeLicense, "the bundled Node license");
 await requireReadable(sourceDist, "the compiled Runtime entrypoint");
 await requireReadable(sourceEntrypoint, "the compiled Runtime main script");
-await requireReadable(sourceDefaultPluginArchive, "the verified bundled source archive");
+for (const archive of sourceDefaultPluginArchives) {
+  await requireReadable(archive.source, `the verified bundled ${archive.artifactName} archive`);
+}
 
 // These three paths are deterministic output of the pinned toolchain and are
 // ignored by Git. The asset-root marker is intentionally preserved so an empty
@@ -103,10 +101,12 @@ await mkdir(stagedDefaultPluginsDirectory, { recursive: true });
 await copyFile(sourceNodeExecutable, stagedNodeExecutable);
 await copyFile(sourceNodeLicense, stagedNodeLicense);
 await cp(sourceDist, stagedDist, { recursive: true });
-await copyFile(sourceDefaultPluginArchive, stagedDefaultPluginArchive);
+for (let index = 0; index < sourceDefaultPluginArchives.length; index += 1) {
+  await copyFile(sourceDefaultPluginArchives[index].source, stagedDefaultPluginArchives[index]);
+}
 // The source artifact can be read-only (for example, when produced from an
 // immutable package cache). Flutter must be able to refresh its generated
 // asset copy on later builds, so the staged package asset is always writable.
-await chmod(stagedDefaultPluginArchive, 0o644);
+for (const archive of stagedDefaultPluginArchives) await chmod(archive, 0o644);
 
-process.stdout.write("Staged the pinned Windows Runtime asset bundle and default source.\n");
+process.stdout.write("Staged the pinned Windows Runtime asset bundle and default sources.\n");

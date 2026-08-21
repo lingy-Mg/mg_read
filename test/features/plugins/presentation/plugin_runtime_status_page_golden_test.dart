@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
+
+import 'plugin_runtime_status_page_fixture.dart';
 
 void main() {
   setUpAll(() async {
@@ -31,25 +35,34 @@ void main() {
 }
 
 Widget _host() {
-  return MaterialApp(
-    debugShowCheckedModeBanner: false,
-    theme: AppTheme.light(),
-    themeMode: ThemeMode.light,
-    builder: (BuildContext context, Widget? child) {
-      final MediaQueryData mediaQuery = MediaQuery.of(context);
-      return MediaQuery(
-        data: mediaQuery.copyWith(
-          padding: const EdgeInsets.only(top: AppDetailMetrics.minimumTopInset),
-          viewPadding: const EdgeInsets.only(
-            top: AppDetailMetrics.minimumTopInset,
+  return ProviderScope(
+    overrides: [
+      pluginRuntimeConnectionProvider.overrideWith(
+        (Ref ref) async => dataSourceManagementFixture,
+      ),
+    ],
+    child: MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light(),
+      themeMode: ThemeMode.light,
+      builder: (BuildContext context, Widget? child) {
+        final MediaQueryData mediaQuery = MediaQuery.of(context);
+        return MediaQuery(
+          data: mediaQuery.copyWith(
+            padding: const EdgeInsets.only(
+              top: AppDetailMetrics.minimumTopInset,
+            ),
+            viewPadding: const EdgeInsets.only(
+              top: AppDetailMetrics.minimumTopInset,
+            ),
           ),
-        ),
-        child: child ?? const SizedBox.shrink(),
-      );
-    },
-    home: PluginRuntimeStatusPage(
-      onBackRequested: () {},
-      onDestinationRequested: (_) {},
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+      home: PluginRuntimeStatusPage(
+        onBackRequested: () {},
+        onDestinationRequested: (_) {},
+      ),
     ),
   );
 }

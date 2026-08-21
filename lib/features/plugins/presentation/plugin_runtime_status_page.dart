@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
-/// Reference-matched data-source management presentation.
-///
-/// Runtime-side installation, import, and enable writes are intentionally not
-/// inferred here. This surface is the fixed management composition requested
-/// for the current product UI and only exposes a local unavailable notice for
-/// the future add action.
-class PluginRuntimeStatusPage extends StatelessWidget {
+/// Runtime-backed data-source management presentation.
+class PluginRuntimeStatusPage extends ConsumerWidget {
   const PluginRuntimeStatusPage({
     required this.onBackRequested,
     required this.onDestinationRequested,
@@ -20,7 +17,10 @@ class PluginRuntimeStatusPage extends StatelessWidget {
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AsyncValue<PluginRuntimeConnection> connection = ref.watch(
+      pluginRuntimeConnectionProvider,
+    );
     return Scaffold(
       body: Center(
         child: ConstrainedBox(
@@ -33,7 +33,18 @@ class PluginRuntimeStatusPage extends StatelessWidget {
                 onBack: onBackRequested,
                 onHelp: () => _showHelp(context),
               ),
-              const Expanded(child: _DataSourceContent()),
+              Expanded(
+                child: connection.when(
+                  loading: () => const _DataSourceLoading(),
+                  error: (Object _, StackTrace _) => _DataSourceFailure(
+                    onRetry: () =>
+                        ref.invalidate(pluginRuntimeConnectionProvider),
+                  ),
+                  data: (PluginRuntimeConnection value) => _DataSourceContent(
+                    sources: _sourcesFromConnection(value),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -46,7 +57,7 @@ class PluginRuntimeStatusPage extends StatelessWidget {
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
         title: const Text('数据来源说明'),
-        content: const Text('在这里查看和管理已添加的数据来源。'),
+        content: const Text('在这里查看已添加的数据来源，并直接启用或停用它们。'),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
@@ -154,12 +165,71 @@ class _HeaderButton extends StatelessWidget {
   }
 }
 
-class _DataSourceContent extends StatelessWidget {
-  const _DataSourceContent();
+class _DataSourceLoading extends StatelessWidget {
+  const _DataSourceLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: CircularProgressIndicator(
+        key: Key('data-source-management-loading'),
+      ),
+    );
+  }
+}
+
+class _DataSourceFailure extends StatelessWidget {
+  const _DataSourceFailure({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: TextButton(
+        key: const Key('data-source-management-retry'),
+        onPressed: onRetry,
+        child: const Text('数据来源暂不可用，点击重试'),
+      ),
+    );
+  }
+}
+
+class _DataSourceContent extends ConsumerStatefulWidget {
+  const _DataSourceContent({required this.sources});
+
+  final List<_DataSourceViewData> sources;
+
+  @override
+  ConsumerState<_DataSourceContent> createState() => _DataSourceContentState();
+}
+
+class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
+  Future<void> _setSourceEnabled(
+    _DataSourceViewData source,
+    bool enabled,
+  ) async {
+    try {
+      await ref
+          .read(pluginRuntimeSourceActionProvider.notifier)
+          .setEnabled(pluginId: source.id, enabled: enabled);
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('数据来源状态更新失败，请稍后重试。')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
+    final Set<String> pendingSourceIds = ref.watch(
+      pluginRuntimeSourceActionProvider,
+    );
+    final int enabledCount = widget.sources
+        .where((_DataSourceViewData source) => source.enabled)
+        .length;
     return ListView(
       key: const Key('data-source-management-content'),
       padding: const EdgeInsets.fromLTRB(
@@ -192,29 +262,38 @@ class _DataSourceContent extends StatelessWidget {
             ),
             child: Column(
               children: <Widget>[
-                const _DataSourceSectionHeader(),
-                const SizedBox(height: AppSpacing.compact),
-                ...List<Widget>.generate(_referenceSources.length, (int index) {
-                  final _DataSourceViewData source = _referenceSources[index];
-                  return Column(
-                    children: <Widget>[
-                      _DataSourceRow(source: source),
-                      if (index < _referenceSources.length - 1)
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            left:
-                                AppSpacing.dataSourceMarkExtent +
-                                AppSpacing.regular,
-                          ),
-                          child: Divider(height: 1, color: tokens.divider),
-                        ),
-                    ],
-                  );
-                }),
-                const SizedBox(height: AppSpacing.comfortable),
-                _AddDataSourceButton(
-                  onPressed: () => _showAddUnavailableMessage(context),
+                _DataSourceSectionHeader(
+                  enabledCount: enabledCount,
+                  sourceCount: widget.sources.length,
                 ),
+                const SizedBox(height: AppSpacing.compact),
+                if (widget.sources.isEmpty)
+                  const _DataSourceEmptyState()
+                else
+                  ...List<Widget>.generate(widget.sources.length, (int index) {
+                    final _DataSourceViewData source = widget.sources[index];
+                    return Column(
+                      children: <Widget>[
+                        _DataSourceRow(
+                          source: source,
+                          isPending: pendingSourceIds.contains(source.id),
+                          onChanged: (bool enabled) =>
+                              _setSourceEnabled(source, enabled),
+                        ),
+                        if (index < widget.sources.length - 1)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              left:
+                                  AppSpacing.dataSourceMarkExtent +
+                                  AppSpacing.regular,
+                            ),
+                            child: Divider(height: 1, color: tokens.divider),
+                          ),
+                      ],
+                    );
+                  }),
+                const SizedBox(height: AppSpacing.comfortable),
+                const _AddDataSourceButton(),
               ],
             ),
           ),
@@ -225,7 +304,13 @@ class _DataSourceContent extends StatelessWidget {
 }
 
 class _DataSourceSectionHeader extends StatelessWidget {
-  const _DataSourceSectionHeader();
+  const _DataSourceSectionHeader({
+    required this.enabledCount,
+    required this.sourceCount,
+  });
+
+  final int enabledCount;
+  final int sourceCount;
 
   @override
   Widget build(BuildContext context) {
@@ -245,7 +330,7 @@ class _DataSourceSectionHeader extends StatelessWidget {
           ),
         ),
         Text(
-          '已启用 6/12',
+          '已启用 $enabledCount/$sourceCount',
           key: const Key('data-source-enabled-count'),
           style: theme.textTheme.bodyMedium?.copyWith(
             color: tokens.mutedText,
@@ -257,10 +342,38 @@ class _DataSourceSectionHeader extends StatelessWidget {
   }
 }
 
+class _DataSourceEmptyState extends StatelessWidget {
+  const _DataSourceEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final AppThemeTokens tokens = AppThemeTokens.of(context);
+    return SizedBox(
+      height: AppSpacing.dataSourceRowHeight,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          '暂无已安装的数据来源',
+          key: const Key('data-source-management-empty'),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
+        ),
+      ),
+    );
+  }
+}
+
 class _DataSourceRow extends StatelessWidget {
-  const _DataSourceRow({required this.source});
+  const _DataSourceRow({
+    required this.source,
+    required this.isPending,
+    required this.onChanged,
+  });
 
   final _DataSourceViewData source;
+  final bool isPending;
+  final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -268,7 +381,7 @@ class _DataSourceRow extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Semantics(
       label:
-          '${source.name}，小说，${source.origin}，${source.enabled ? '已启用' : '未启用'}',
+          '${source.name}，${source.kindLabel}，${source.enabled ? '已启用' : '未启用'}',
       child: SizedBox(
         key: ValueKey<String>('data-source-${source.id}'),
         height: AppSpacing.dataSourceRowHeight,
@@ -293,7 +406,7 @@ class _DataSourceRow extends StatelessWidget {
                   ),
                   const SizedBox(height: AppSpacing.unit),
                   Text(
-                    '小说 · ${source.origin}',
+                    source.kindLabel,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: tokens.mutedText,
                       fontSize: AppSpacing.dataSourceMetadataSize,
@@ -306,19 +419,18 @@ class _DataSourceRow extends StatelessWidget {
             SizedBox(
               width: AppSpacing.minimumTouchTarget,
               height: AppSpacing.minimumTouchTarget,
-              child: IgnorePointer(
-                child: Transform.scale(
-                  scale: 0.70,
-                  child: Switch(
-                    key: ValueKey<String>('data-source-toggle-${source.id}'),
-                    value: source.enabled,
-                    onChanged: (_) {},
-                    activeTrackColor: tokens.dataSourceAccent,
-                    activeThumbColor: theme.colorScheme.onPrimary,
-                    inactiveTrackColor: tokens.mutedSurface,
-                    inactiveThumbColor: tokens.surface,
-                    trackOutlineColor:
-                        const WidgetStatePropertyAll<Color>(Colors.transparent),
+              child: Transform.scale(
+                scale: 0.70,
+                child: Switch(
+                  key: ValueKey<String>('data-source-toggle-${source.id}'),
+                  value: source.enabled,
+                  onChanged: isPending ? null : onChanged,
+                  activeTrackColor: tokens.dataSourceAccent,
+                  activeThumbColor: theme.colorScheme.onPrimary,
+                  inactiveTrackColor: tokens.mutedSurface,
+                  inactiveThumbColor: tokens.surface,
+                  trackOutlineColor: const WidgetStatePropertyAll<Color>(
+                    Colors.transparent,
                   ),
                 ),
               ),
@@ -339,19 +451,18 @@ class _DataSourceBrandMark extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final ThemeData theme = Theme.of(context);
-    final Color foreground = brand == _DataSourceBrand.qimao
-        ? theme.colorScheme.onSurface
-        : theme.colorScheme.onPrimary;
+    final Color foreground = switch (brand) {
+      _DataSourceBrand.qimao => theme.colorScheme.onSurface,
+      _DataSourceBrand.generic => tokens.dataSourceAccent,
+      _ => theme.colorScheme.onPrimary,
+    };
     final _BrandColors colors = switch (brand) {
       _DataSourceBrand.qidian => _BrandColors(tokens.notification, foreground),
       _DataSourceBrand.tomato => _BrandColors(
         tokens.dataSourceAccent,
         foreground,
       ),
-      _DataSourceBrand.qimao => _BrandColors(
-        tokens.dataSourceCat,
-        foreground,
-      ),
+      _DataSourceBrand.qimao => _BrandColors(tokens.dataSourceCat, foreground),
       _DataSourceBrand.zongheng => _BrandColors(
         tokens.notification,
         foreground,
@@ -364,6 +475,7 @@ class _DataSourceBrandMark extends StatelessWidget {
         tokens.dataSourceAccent,
         foreground,
       ),
+      _DataSourceBrand.generic => _BrandColors(tokens.accentSoft, foreground),
     };
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -410,6 +522,11 @@ class _BrandGlyph extends StatelessWidget {
       _DataSourceBrand.seventeenK => Text(
         '17K',
         style: _glyphTextStyle(context, color, 15),
+      ),
+      _DataSourceBrand.generic => Icon(
+        Icons.extension_rounded,
+        color: color,
+        size: AppSpacing.dataSourceAddIconSize,
       ),
     };
   }
@@ -471,14 +588,6 @@ class _TomatoMarkPainter extends CustomPainter {
       ..lineTo(22 * unit, 8 * unit)
       ..close();
     canvas.drawPath(stem, paint);
-
-    final Path fruit = Path()
-      ..moveTo(6 * unit, 21 * unit)
-      ..quadraticBezierTo(18 * unit, 8 * unit, 30 * unit, 21 * unit)
-      ..lineTo(30 * unit, 26 * unit)
-      ..quadraticBezierTo(18 * unit, 35 * unit, 6 * unit, 26 * unit)
-      ..close();
-    canvas.drawPath(fruit, paint);
 
     for (final Offset center in <Offset>[
       Offset(12 * unit, 23 * unit),
@@ -580,9 +689,7 @@ class _JinjiangMarkPainter extends CustomPainter {
 }
 
 class _AddDataSourceButton extends StatelessWidget {
-  const _AddDataSourceButton({required this.onPressed});
-
-  final VoidCallback onPressed;
+  const _AddDataSourceButton();
 
   @override
   Widget build(BuildContext context) {
@@ -594,7 +701,7 @@ class _AddDataSourceButton extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           key: const Key('data-source-add'),
-          onTap: onPressed,
+          onTap: null,
           borderRadius: AppRadii.discoveryTile,
           child: SizedBox(
             width: double.infinity,
@@ -638,14 +745,14 @@ class _DataSourceViewData {
   const _DataSourceViewData({
     required this.id,
     required this.name,
-    required this.origin,
+    required this.kindLabel,
     required this.enabled,
     required this.brand,
   });
 
   final String id;
   final String name;
-  final String origin;
+  final String kindLabel;
   final bool enabled;
   final _DataSourceBrand brand;
 }
@@ -657,55 +764,63 @@ class _BrandColors {
   final Color foreground;
 }
 
-enum _DataSourceBrand { qidian, tomato, qimao, zongheng, jinjiang, seventeenK }
+enum _DataSourceBrand {
+  qidian,
+  tomato,
+  qimao,
+  zongheng,
+  jinjiang,
+  seventeenK,
+  generic,
+}
 
-const List<_DataSourceViewData> _referenceSources = <_DataSourceViewData>[
-  _DataSourceViewData(
-    id: 'qidian',
-    name: '起点中文网',
-    origin: '官方源',
-    enabled: true,
-    brand: _DataSourceBrand.qidian,
-  ),
-  _DataSourceViewData(
-    id: 'tomato',
-    name: '番茄小说',
-    origin: '官方源',
-    enabled: true,
-    brand: _DataSourceBrand.tomato,
-  ),
-  _DataSourceViewData(
-    id: 'qimao',
-    name: '七猫中文网',
-    origin: '官方源',
-    enabled: true,
-    brand: _DataSourceBrand.qimao,
-  ),
-  _DataSourceViewData(
-    id: 'zongheng',
-    name: '纵横中文网',
-    origin: '官方源',
-    enabled: true,
-    brand: _DataSourceBrand.zongheng,
-  ),
-  _DataSourceViewData(
-    id: 'jinjiang',
-    name: '晋江文学城',
-    origin: '社区源',
-    enabled: false,
-    brand: _DataSourceBrand.jinjiang,
-  ),
-  _DataSourceViewData(
-    id: '17k',
-    name: '17K小说网',
-    origin: '社区源',
-    enabled: false,
-    brand: _DataSourceBrand.seventeenK,
-  ),
-];
+List<_DataSourceViewData> _sourcesFromConnection(
+  PluginRuntimeConnection connection,
+) {
+  return connection.plugins
+      .where(
+        (PluginRuntimePlugin plugin) =>
+            plugin.contentKinds.contains('novel') ||
+            plugin.contentKinds.contains('manga'),
+      )
+      .map(
+        (PluginRuntimePlugin plugin) => _DataSourceViewData(
+          id: plugin.id,
+          name: plugin.displayName,
+          kindLabel: _sourceMetadataLabel(plugin),
+          enabled: plugin.enabled,
+          brand: _brandForPlugin(plugin),
+        ),
+      )
+      .toList(growable: false);
+}
 
-void _showAddUnavailableMessage(BuildContext context) {
-  ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(const SnackBar(content: Text('添加数据来源将在导入能力接入后开放。')));
+String _contentKindLabel(List<String> contentKinds) {
+  final List<String> labels = <String>[
+    if (contentKinds.contains('novel')) '小说',
+    if (contentKinds.contains('manga')) '漫画',
+  ];
+  return labels.isEmpty ? '数据源' : labels.join(' · ');
+}
+
+String _sourceMetadataLabel(PluginRuntimePlugin plugin) {
+  final String kindLabel = _contentKindLabel(plugin.contentKinds);
+  final String? origin = switch (plugin.displayName) {
+    '起点中文网' || '番茄小说' || '七猫中文网' || '纵横中文网' => '官方源',
+    '晋江文学城' || '17K小说网' || '17K 小说网' => '社区源',
+    _ => null,
+  };
+  return origin == null ? kindLabel : '$kindLabel · $origin';
+}
+
+_DataSourceBrand _brandForPlugin(PluginRuntimePlugin plugin) {
+  return switch (plugin.displayName) {
+    '起点中文网' => _DataSourceBrand.qidian,
+    '番茄小说' => _DataSourceBrand.tomato,
+    '七猫中文网' => _DataSourceBrand.qimao,
+    '纵横中文网' => _DataSourceBrand.zongheng,
+    '晋江文学城' => _DataSourceBrand.jinjiang,
+    '17K小说网' || '17K 小说网' => _DataSourceBrand.seventeenK,
+    _ => _DataSourceBrand.generic,
+  };
 }

@@ -148,7 +148,7 @@ SRI、完整 package 资源、包内 `file:`、optional、dependency object stor
 root 扫描插件；生产 Facade 不接受插件路径、package bytes、callback、host.*、主项目数据库/
 路径/Cookie/文件/平台通道。Node 与 Flutter 测试共用
 `protocol/fixtures/standard-node-plugin-v1.json`；公开 Flutter 面提供
-`RuntimePingInvocation`、`InstalledPluginsInvocation` 与
+`RuntimePingInvocation`、`InstalledPluginsInvocation`、`SetPluginEnabledInvocation` 与
 `SourceDiscover/Search/Detail/Chapters/ContentInvocation`，不泄露
 wire metadata。详见[桌面 Runtime 与标准插件闭环](desktop-runtime-bridge.md)。
 

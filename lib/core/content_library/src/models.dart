@@ -48,6 +48,7 @@ final class LibraryItem {
     required this.kind,
     required this.state,
     required this.revision,
+    this.source,
   });
   final LibraryItemId id;
   final String title;
@@ -55,6 +56,54 @@ final class LibraryItem {
   final ContentKind kind;
   final String state;
   final int revision;
+
+  /// Stable source identity needed to resolve a shelf item for reading.
+  ///
+  /// This intentionally excludes URLs, cookies, and untyped plugin payloads.
+  final LibraryItemSource? source;
+}
+
+/// Typed source identity retained by a bookshelf item.
+final class LibraryItemSource {
+  const LibraryItemSource({
+    required this.pluginId,
+    required this.pluginVersion,
+    required this.remoteContentId,
+  }) : assert(pluginId != ''),
+       assert(pluginVersion != ''),
+       assert(remoteContentId != '');
+
+  final String pluginId;
+  final String pluginVersion;
+  final String remoteContentId;
+}
+
+/// A durable, layout-independent text-reading position for one shelf item.
+///
+/// It uses the reader package's semantic anchors rather than a page number or
+/// pixel offset, so it remains valid after layout and font changes.
+final class LibraryReadingProgress {
+  const LibraryReadingProgress({
+    required this.itemId,
+    required this.chapterId,
+    required this.paragraphId,
+    required this.characterOffset,
+    required this.chapterIndex,
+    required this.chapterFraction,
+    required this.bookFraction,
+    required this.updatedAtUtc,
+  }) : assert(characterOffset >= 0),
+       assert(chapterFraction >= 0 && chapterFraction <= 1),
+       assert(bookFraction >= 0 && bookFraction <= 1);
+
+  final LibraryItemId itemId;
+  final String chapterId;
+  final String paragraphId;
+  final int characterOffset;
+  final int chapterIndex;
+  final double chapterFraction;
+  final double bookFraction;
+  final DateTime updatedAtUtc;
 }
 
 /// Narrow, host-owned request for adding a typed source item to the shelf.

@@ -22,7 +22,9 @@ export interface MgReadPluginContext {
 export type ContentKind = 'novel' | 'manga';
 export type ContentStatus = 'ongoing' | 'completed' | 'hiatus' | 'unknown';
 export type AccessKind = 'free' | 'paid' | 'mixed' | 'unknown';
-export type DiscoveryLayout = 'featured' | 'carousel' | 'ranking' | 'list' | 'categories';
+export type DiscoveryContentLayout = 'featured' | 'carousel' | 'ranking' | 'list';
+export type DiscoveryCategoryLayout = 'grid' | 'list';
+export type DiscoveryGroupLayout = 'vertical' | 'horizontal' | 'grid';
 
 export interface ContentAttribute {
   readonly key: string;
@@ -60,11 +62,20 @@ export interface ContentSummary {
 
 export interface SearchRequest { readonly query: string; readonly cursor: string | null; readonly pageSize: number; }
 export interface SearchResult { readonly items: readonly ContentSummary[]; readonly nextCursor: string | null; readonly totalCount: number | null; }
-export interface DiscoverRequest { readonly target: string | null; readonly cursor: string | null; readonly pageSize: number; }
+export interface DiscoverRequest { readonly target: string | null; readonly cursor: string | null; readonly collectionId: string | null; readonly pageSize: number; }
 export interface DiscoveryCategory { readonly id: string; readonly title: string; readonly target: string; readonly count: number | null; readonly url: string | null; }
 export interface DiscoveryContentItem { readonly content: ContentSummary; readonly rank: number | null; readonly metric: { readonly label: string; readonly value: string } | null; readonly recommendation: string | null; }
-export interface DiscoverySection { readonly id: string; readonly title: string; readonly subtitle: string | null; readonly layout: DiscoveryLayout; readonly items: readonly DiscoveryContentItem[]; readonly categories: readonly DiscoveryCategory[]; }
-export interface DiscoverResult { readonly tabs: readonly { readonly id: string; readonly label: string; readonly target: string }[]; readonly selectedTabId: string | null; readonly sections: readonly DiscoverySection[]; readonly nextCursor: string | null; }
+export interface DiscoveryContinuation { readonly target: string; readonly cursor: string; }
+export interface DiscoveryTabs { readonly type: 'tabs'; readonly id: string; readonly tabs: readonly { readonly id: string; readonly label: string; readonly target: string }[]; readonly selectedTabId: string | null; }
+export interface DiscoverySection { readonly type: 'section'; readonly id: string; readonly title: string; readonly subtitle: string | null; readonly children: readonly DiscoveryComponent[]; }
+export interface DiscoveryGroup { readonly type: 'group'; readonly id: string; readonly layout: DiscoveryGroupLayout; readonly children: readonly DiscoveryComponent[]; }
+export interface DiscoveryContentCollection { readonly type: 'contentCollection'; readonly id: string; readonly layout: DiscoveryContentLayout; readonly items: readonly DiscoveryContentItem[]; readonly continuation: DiscoveryContinuation | null; }
+export interface DiscoveryCategoryCollection { readonly type: 'categoryCollection'; readonly id: string; readonly layout: DiscoveryCategoryLayout; readonly categories: readonly DiscoveryCategory[]; }
+export interface DiscoveryText { readonly type: 'text'; readonly id: string; readonly text: string; }
+export interface DiscoveryDivider { readonly type: 'divider'; readonly id: string; }
+export type DiscoveryComponent = DiscoveryTabs | DiscoverySection | DiscoveryGroup | DiscoveryContentCollection | DiscoveryCategoryCollection | DiscoveryText | DiscoveryDivider;
+export interface DiscoveryDocument { readonly components: readonly DiscoveryComponent[]; }
+export type DiscoverResult = { readonly kind: 'document'; readonly document: DiscoveryDocument } | { readonly kind: 'append'; readonly collectionId: string; readonly items: readonly DiscoveryContentItem[]; readonly continuation: DiscoveryContinuation | null; };
 export interface ContentReferenceRequest { readonly id: string; }
 export interface ContentDetail extends ContentSummary { readonly aliases: readonly string[]; readonly catalogUrl: string | null; }
 export interface ChaptersRequest { readonly id: string; readonly cursor: string | null; readonly pageSize: number; }

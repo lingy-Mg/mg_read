@@ -1,6 +1,6 @@
 # 15 插件内容 API v1
 
-本专题落实 [ADR-0017](adr/0017-versioned-plugin-content-contract.md)。规范类型、运行时校验与
+本专题落实 [ADR-0018](adr/0018-recursive-discovery-document.md)。规范类型、运行时校验与
 跨语言 fixture 由 `mg_read_runtime` 维护；本文件固定产品语义，主项目只消费 Runtime Facade
 发布的 Dart 强类型。
 
@@ -109,23 +109,19 @@ search({ query, cursor, pageSize }) -> {
 ## 发现
 
 ```ts
-discover({ target, cursor, pageSize }) -> {
-  tabs: DiscoveryTab[],
-  selectedTabId: string | null,
-  sections: DiscoverySection[],
-  nextCursor: string | null
-}
+discover({ target, cursor, collectionId, pageSize }) -> DiscoveryDocumentResult | DiscoveryAppendResult
 ```
 
-- tab 由 `{id,label,target}` 构成，`target` 只回传给同一插件。
-- section layout 限定为 `featured/carousel/ranking/list/categories`。
-- 内容分区项包含同一个 `ContentSummary`，以及 nullable `rank/metric/recommendation`。
-- 分类分区项包含稳定 `id/title/target`、nullable `count/url`。
-- 主项目按插件返回顺序逐个渲染所有 tab、section、内容项和分类项；`layout` 只改变展示方式，
-  不得把多个分区压入固定槽位、截断为演示数量、复制首项或丢弃后续分区。只有分类项的结果也
-  是有效发现内容，不能误判为空页面。
-- 非分类分区的 `categories` 必须是 `[]`；分类分区的 `items` 必须是 `[]`。
-- Flutter 只把 layout 当受控展示提示；主题、颜色、间距、可访问性与降级仍由宿主决定。
+- document 返回 `{kind:'document', document:{components}}`；component 是唯一 ID 的递归联合：
+  `tabs/section/group/contentCollection/categoryCollection/text/divider`。tabs 至多一个且只能置于根首。
+- `section/group` 的 children 可递归；group 为 vertical/horizontal/grid，内容集合为
+  featured/carousel/ranking/list，分类集合为 grid/list。插件不能控制主题、样式或执行代码。
+- content collection 承载内容项和 nullable continuation `{target,cursor}`；分类集合承载
+  `id/title/target/count/url`。所有 target/cursor 均不透明且只回传同一插件。
+- 续页请求同时提供 cursor 与 collectionId，返回 `{kind:'append',collectionId,items,continuation}`；
+  collectionId 必须命中当前树的内容集合，宿主仅追加该集合。聚合页没有 continuation 时不展示加载更多。
+- 主项目按节点与数组顺序无损渲染；分类集合本身也是有效发现内容。Flutter 只把枚举视作受控展示
+  提示，主题、间距、无障碍与降级仍由宿主决定。
 
 ## 详情、目录和正文
 

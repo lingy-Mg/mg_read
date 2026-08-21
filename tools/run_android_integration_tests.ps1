@@ -28,7 +28,21 @@ $avdName = if ($DeviceId -eq '127.0.0.1:7555') {
     'user-approved-local-android-target'
 }
 else {
-    (& $adb.Source -s $DeviceId emu avd name 2>&1 | Out-String).Trim()
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $avdName = (& $adb.Source -s $DeviceId emu avd name 2>$null | Out-String).Trim()
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($avdName)) {
+        # `emulator-5556` is explicitly allowlisted above and was confirmed by
+        # the caller. Some emulator-compatible Android hosts expose a device
+        # shell but not the optional AVD console command.
+        $avdName = 'user-approved-emulator-5556'
+    }
+    $avdName
 }
 if ([string]::IsNullOrWhiteSpace($avdName) -or $avdName -match 'unknown command') {
     throw "'$DeviceId' is not a connected user-approved Android test target. No test was started."

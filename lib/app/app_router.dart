@@ -155,6 +155,9 @@ class LibraryRoute extends GoRouteData with $LibraryRoute {
         onDestinationRequested: (AppNavigationDestination destination) {
           _goToDestination(context, destination);
         },
+        onReaderRequested: (String bookId) {
+          ReaderRoute(bookId: bookId).push(context);
+        },
       ),
     );
   }
@@ -380,9 +383,8 @@ void _returnToProfile(BuildContext context) {
 
 /// A reader intent route carrying only the host-owned stable book identifier.
 ///
-/// M2.1 deliberately does not carry a data source, state store, body, or other
-/// mutable object through a route. M5 will resolve [bookId] through an
-/// application use case before constructing the existing ReaderHostPage.
+/// The destination resolves [bookId] through the app-owned reader launcher;
+/// source data, content, and state-store dependencies never travel in a route.
 @TypedGoRoute<ReaderRoute>(path: '/reader/:bookId')
 class ReaderRoute extends GoRouteData with $ReaderRoute {
   /// Creates an intent to open a reader session for [bookId].

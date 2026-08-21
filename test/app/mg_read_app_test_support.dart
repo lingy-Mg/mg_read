@@ -60,6 +60,12 @@ final class TestReadyPluginRuntimeGateway implements PluginRuntimeGateway {
         runtimeVersion: 'test-runtime',
         plugins: <PluginRuntimePlugin>[],
       );
+
+  @override
+  Future<void> setEnabled({
+    required String pluginId,
+    required bool enabled,
+  }) async {}
 }
 
 final class _EmptySourceContentGateway implements SourceContentGateway {
@@ -83,6 +89,7 @@ final class _EmptySourceContentGateway implements SourceContentGateway {
     required String pluginId,
     String? target,
     String? cursor,
+    String? collectionId,
     int pageSize = 20,
   }) async => throw StateError('No source is installed in the app testkit.');
 

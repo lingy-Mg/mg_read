@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/discovery_page_state.dart';
@@ -11,9 +12,9 @@ final discoveryPageControllerProvider =
       DiscoveryPageController.new,
     );
 
-/// Loads plugin-defined discovery sections without exposing Runtime transport.
 class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   late SourceContentGateway _gateway;
+  final List<_DiscoveryNavigationEntry> _stack = <_DiscoveryNavigationEntry>[];
   int _latestGeneration = 0;
   bool _disposed = false;
 
@@ -28,40 +29,82 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
 
   Future<void> retry() {
     if (state.sources.isEmpty) {
-      final generation = ++_latestGeneration;
-      return _initialize(generation);
+      return _initialize(++_latestGeneration);
     }
-    final pluginId = state.selectedSourceId ?? state.sources.first.id;
-    return _load(pluginId: pluginId);
+    final selected = state.selectedSourceId ?? state.sources.first.id;
+    return _loadDocument(pluginId: selected, target: _stack.lastOrNull?.target);
   }
 
   Future<void> refresh() {
+    final entry = _stack.lastOrNull;
     final pluginId = state.selectedSourceId;
-    if (pluginId == null) return retry();
-    final selectedTabId = state.result?.selectedTabId;
-    String? target;
-    if (selectedTabId != null) {
-      for (final tab in state.result!.tabs) {
-        if (tab.id == selectedTabId) {
-          target = tab.target;
-          break;
-        }
-      }
-    }
-    return _load(pluginId: pluginId, target: target);
+    if (entry == null || pluginId == null) return retry();
+    return _loadDocument(
+      pluginId: pluginId,
+      target: entry.target,
+      replaceCurrent: true,
+    );
   }
 
-  Future<void> selectSource(String pluginId) {
-    if (!state.sources.any((source) => source.id == pluginId)) {
-      return Future<void>.value();
-    }
-    return _load(pluginId: pluginId);
+  Future<void> selectSource(String pluginId) async {
+    if (!state.sources.any((source) => source.id == pluginId)) return;
+    _stack.clear();
+    await _loadDocument(pluginId: pluginId, target: null, resetStack: true);
   }
 
-  Future<void> selectTarget(String target) {
+  Future<void> selectTab(String target) {
     final pluginId = state.selectedSourceId;
     if (pluginId == null) return Future<void>.value();
-    return _load(pluginId: pluginId, target: target);
+    return _loadDocument(
+      pluginId: pluginId,
+      target: target,
+      replaceCurrent: true,
+    );
+  }
+
+  Future<void> openCategory(String target) {
+    final pluginId = state.selectedSourceId;
+    if (pluginId == null) return Future<void>.value();
+    return _loadDocument(pluginId: pluginId, target: target, push: true);
+  }
+
+  void goBack() {
+    if (_stack.length < 2) return;
+    _stack.removeLast();
+    _publish(_stack.last.document);
+  }
+
+  Future<void> loadMore(
+    PluginDiscoveryContentCollectionComponent collection,
+  ) async {
+    final continuation = collection.continuation;
+    final pluginId = state.selectedSourceId;
+    final entry = _stack.lastOrNull;
+    if (continuation == null || pluginId == null || entry == null) return;
+    final generation = ++_latestGeneration;
+    _publish(entry.document, loadingCollectionId: collection.id);
+    try {
+      final result = await _gateway.discover(
+        pluginId: pluginId,
+        target: continuation.target,
+        cursor: continuation.cursor,
+        collectionId: collection.id,
+      );
+      if (!_isCurrent(generation) || result is! PluginDiscoveryAppendResult) {
+        return;
+      }
+      if (result.collectionId != collection.id) {
+        throw StateError('Source appended a different discovery collection.');
+      }
+      final updated = _appendCollection(entry.document, result);
+      _stack[_stack.length - 1] = entry.copyWith(document: updated);
+      _publish(updated);
+    } on Object catch (_) {
+      if (!_isCurrent(generation)) {
+        return;
+      }
+      _publish(entry.document);
+    }
   }
 
   Future<void> _initialize(int generation) async {
@@ -73,10 +116,12 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
         state = DiscoveryPageState.noSources();
         return;
       }
-      await _load(
+      await _loadDocument(
         pluginId: sources.first.id,
+        target: null,
         sources: sources,
         generation: generation,
+        resetStack: true,
       );
     } on Object catch (error) {
       if (!_isCurrent(generation)) return;
@@ -88,11 +133,14 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     }
   }
 
-  Future<void> _load({
+  Future<void> _loadDocument({
     required String pluginId,
-    String? target,
+    required String? target,
     List<PluginSourceDescriptor>? sources,
     int? generation,
+    bool push = false,
+    bool replaceCurrent = false,
+    bool resetStack = false,
   }) async {
     final requestGeneration = generation ?? ++_latestGeneration;
     final availableSources = sources ?? state.sources;
@@ -105,20 +153,34 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
         pluginId: pluginId,
         target: target,
       );
-      if (!_isCurrent(requestGeneration)) return;
-      final itemCount = result.sections.fold<int>(
-        0,
-        (count, section) =>
-            count + section.items.length + section.categories.length,
-      );
-      state = DiscoveryPageState.resolved(
-        sources: availableSources,
-        selectedSourceId: pluginId,
-        result: result,
-        isEmpty: itemCount == 0,
-      );
+      if (!_isCurrent(requestGeneration) ||
+          result is! PluginDiscoveryDocumentResult) {
+        return;
+      }
+      final entry = _DiscoveryNavigationEntry(target: target, document: result);
+      if (resetStack || _stack.isEmpty) {
+        _stack
+          ..clear()
+          ..add(entry);
+      } else if (push) {
+        _stack.add(entry);
+      } else if (replaceCurrent) {
+        _stack[_stack.length - 1] = entry;
+      } else {
+        _stack
+          ..clear()
+          ..add(entry);
+      }
+      _publish(result, sources: availableSources, selectedSourceId: pluginId);
     } on Object catch (error) {
-      if (!_isCurrent(requestGeneration)) return;
+      if (!_isCurrent(requestGeneration)) {
+        return;
+      }
+      final current = _stack.lastOrNull;
+      if (current != null && state.selectedSourceId == pluginId) {
+        _publish(current.document);
+        return;
+      }
       state = DiscoveryPageState.failure(
         sources: availableSources,
         selectedSourceId: pluginId,
@@ -127,7 +189,99 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     }
   }
 
-  bool _isCurrent(int generation) {
-    return !_disposed && generation == _latestGeneration;
+  void _publish(
+    PluginDiscoveryDocumentResult result, {
+    List<PluginSourceDescriptor>? sources,
+    String? selectedSourceId,
+    String? loadingCollectionId,
+  }) {
+    state = DiscoveryPageState.resolved(
+      sources: sources ?? state.sources,
+      selectedSourceId: selectedSourceId ?? state.selectedSourceId!,
+      result: result,
+      isEmpty: _documentItemCount(result.document) == 0,
+      canNavigateBack: _stack.length > 1,
+      loadingCollectionId: loadingCollectionId,
+    );
   }
+
+  bool _isCurrent(int generation) =>
+      !_disposed && generation == _latestGeneration;
 }
+
+final class _DiscoveryNavigationEntry {
+  const _DiscoveryNavigationEntry({
+    required this.target,
+    required this.document,
+  });
+
+  final String? target;
+  final PluginDiscoveryDocumentResult document;
+
+  _DiscoveryNavigationEntry copyWith({
+    required PluginDiscoveryDocumentResult document,
+  }) => _DiscoveryNavigationEntry(target: target, document: document);
+}
+
+extension on List<_DiscoveryNavigationEntry> {
+  _DiscoveryNavigationEntry? get lastOrNull => isEmpty ? null : last;
+}
+
+int _documentItemCount(PluginDiscoveryDocument document) => document.components
+    .fold<int>(0, (count, component) => count + _componentItemCount(component));
+
+int _componentItemCount(PluginDiscoveryComponent component) =>
+    switch (component) {
+      PluginDiscoveryContentCollectionComponent(:final items) => items.length,
+      PluginDiscoveryCategoryCollectionComponent(:final categories) =>
+        categories.length,
+      PluginDiscoverySectionComponent(:final children) ||
+      PluginDiscoveryGroupComponent(:final children) => children.fold<int>(
+        0,
+        (count, child) => count + _componentItemCount(child),
+      ),
+      _ => 0,
+    };
+
+PluginDiscoveryDocumentResult _appendCollection(
+  PluginDiscoveryDocumentResult result,
+  PluginDiscoveryAppendResult append,
+) => PluginDiscoveryDocumentResult(
+  pluginId: result.pluginId,
+  sourceName: result.sourceName,
+  document: PluginDiscoveryDocument(
+    components: result.document.components
+        .map((component) => _replaceComponent(component, append))
+        .toList(growable: false),
+  ),
+);
+
+PluginDiscoveryComponent _replaceComponent(
+  PluginDiscoveryComponent component,
+  PluginDiscoveryAppendResult append,
+) => switch (component) {
+  PluginDiscoveryContentCollectionComponent()
+      when component.id == append.collectionId =>
+    PluginDiscoveryContentCollectionComponent(
+      id: component.id,
+      layout: component.layout,
+      items: <PluginDiscoveryContentItem>[...component.items, ...append.items],
+      continuation: append.continuation,
+    ),
+  PluginDiscoverySectionComponent() => PluginDiscoverySectionComponent(
+    id: component.id,
+    title: component.title,
+    subtitle: component.subtitle,
+    children: component.children
+        .map((child) => _replaceComponent(child, append))
+        .toList(growable: false),
+  ),
+  PluginDiscoveryGroupComponent() => PluginDiscoveryGroupComponent(
+    id: component.id,
+    layout: component.layout,
+    children: component.children
+        .map((child) => _replaceComponent(child, append))
+        .toList(growable: false),
+  ),
+  _ => component,
+};

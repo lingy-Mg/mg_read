@@ -40,6 +40,7 @@ test("Flutter package declares every nested platform Runtime asset directory", a
     .map((match) => match[1]);
 
   assert.deepEqual(assetEntries, [
+    "assets/runtime/android/runtime-version.txt",
     "assets/runtime/android/dist/",
     "assets/runtime/android/dist/diagnostics/",
     "assets/runtime/android/default-plugins/",

@@ -20,13 +20,13 @@ test('live source completes category, search, detail, catalog, and content flow'
     plugin: { id: 'org.mgread.aisishuwu', version: '0.1.0' },
   });
 
-  const categories = await plugin.discover({ target: null, cursor: null, pageSize: 20 });
-  assert.equal(categories.sections[0].layout, 'categories');
-  const target = categories.sections[0].categories[0].target;
+  const categories = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });
+  assert.equal(categories.kind, 'document');
+  const target = categories.document.components[0].children[1].categories[0].target;
 
-  const discovery = await plugin.discover({ target, cursor: null, pageSize: 5 });
-  assert.ok(discovery.sections[0].items.length > 0);
-  const book = discovery.sections[0].items[0].content;
+  const discovery = await plugin.discover({ target, cursor: null, collectionId: null, pageSize: 5 });
+  assert.equal(discovery.kind, 'document');
+  const book = discovery.document.components[0].children[0].items[0].content;
   assert.match(book.id, /^novel:\d+$/u);
   assert.match(book.coverUrl ?? '', /^https?:\/\//u);
 
@@ -36,9 +36,21 @@ test('live source completes category, search, detail, catalog, and content flow'
   const detail = await plugin.getDetail({ id: book.id });
   assert.equal(detail.id, book.id);
   assert.ok(detail.title.length > 0);
+  assert.notEqual(detail.wordCount, null);
+  assert.notEqual(detail.chapterCount, null);
+  assert.notEqual(detail.status, 'unknown');
+
+  const fixtureDetail = await plugin.getDetail({ id: 'novel:52801' });
+  assert.equal(fixtureDetail.author, '喜欢老虎');
+  assert.deepEqual(fixtureDetail.categories, ['科幻']);
+  assert.equal(fixtureDetail.wordCount, 1859600);
+  assert.equal(fixtureDetail.chapterCount, 733);
+  assert.equal(fixtureDetail.status, 'ongoing');
+  assert.ok(fixtureDetail.tags.length >= 5);
 
   const chapters = await plugin.getChapters({ id: book.id, cursor: null, pageSize: 5 });
-  assert.ok(chapters.items.length > 0);
+  assert.equal(chapters.items.length, 5);
+  assert.notEqual(chapters.nextCursor, null);
   const content = await plugin.getContent({ id: book.id, chapterId: chapters.items[0].id });
   assert.equal(content.chapterId, chapters.items[0].id);
   assert.equal(content.contentKind, 'novel');

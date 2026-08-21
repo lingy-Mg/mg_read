@@ -125,7 +125,40 @@ void main() {
     expect(error.toString(), isNot(contains('payload details')));
   });
 
-  testWidgets('data-source page renders the reference management composition', (
+  test('source enable action persists then refreshes the Runtime projection', () async {
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    final gateway = _MutablePluginRuntimeGateway();
+    final container = ProviderContainer(
+      overrides: [
+        diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+        pluginRuntimeGatewayProvider.overrideWithValue(gateway),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(pluginRuntimeConnectionProvider.future);
+    await container
+        .read(pluginRuntimeSourceActionProvider.notifier)
+        .setEnabled(pluginId: 'org.example.mutable', enabled: false);
+
+    final result = await container.read(pluginRuntimeConnectionProvider.future);
+    expect(gateway.setEnabledCalls, 1);
+    expect(result.plugins.single.enabled, isFalse);
+    expect(
+      diagnostics.sink.events
+          .where(
+            (event) => event.eventName.startsWith('runtime.facade.call.'),
+          )
+          .map((event) => event.eventName),
+      containsAllInOrder(<String>[
+        'runtime.facade.call.start',
+        'runtime.facade.call.complete',
+      ]),
+    );
+  });
+
+  testWidgets('data-source page renders the Runtime source projection', (
     WidgetTester tester,
   ) async {
     final diagnostics = DiagnosticsTestkit();
@@ -151,15 +184,10 @@ void main() {
 
     expect(find.text('管理数据来源'), findsOneWidget);
     expect(find.text('我的数据来源'), findsOneWidget);
-    expect(find.text('已启用 6/12'), findsOneWidget);
-    expect(find.text('起点中文网'), findsOneWidget);
-    expect(find.text('番茄小说'), findsOneWidget);
-    expect(find.text('七猫中文网'), findsOneWidget);
-    expect(find.text('纵横中文网'), findsOneWidget);
-    expect(find.text('晋江文学城'), findsOneWidget);
-    expect(find.text('17K小说网'), findsOneWidget);
+    expect(find.text('已启用 1/1'), findsOneWidget);
+    expect(find.text('示例插件'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('data-source-qidian')),
+      find.byKey(const ValueKey<String>('data-source-org.example.fixture')),
       findsOneWidget,
     );
     expect(find.byKey(const Key('data-source-add')), findsOneWidget);
@@ -202,7 +230,7 @@ void main() {
 
     expect(find.byType(PluginRuntimeStatusPage), findsOneWidget);
     expect(find.text('管理数据来源'), findsOneWidget);
-    expect(find.text('起点中文网'), findsOneWidget);
+    expect(find.text('示例插件'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('profile-detail-back')));
     await tester.pumpAndSettle();
@@ -262,6 +290,12 @@ final class _FakePluginRuntimeGateway implements PluginRuntimeGateway {
     calls += 1;
     return result;
   }
+
+  @override
+  Future<void> setEnabled({
+    required String pluginId,
+    required bool enabled,
+  }) async {}
 }
 
 final class _FailingPluginRuntimeGateway implements PluginRuntimeGateway {
@@ -269,5 +303,58 @@ final class _FailingPluginRuntimeGateway implements PluginRuntimeGateway {
   Future<PluginRuntimeConnection> inspect() async {
     await Future<void>.delayed(Duration.zero);
     throw AppError.fromCode(AppErrorCode.runtimeUnavailable);
+  }
+
+  @override
+  Future<void> setEnabled({required String pluginId, required bool enabled}) {
+    throw AppError.fromCode(AppErrorCode.runtimeUnavailable);
+  }
+}
+
+final class _MutablePluginRuntimeGateway implements PluginRuntimeGateway {
+  PluginRuntimeConnection _connection = const PluginRuntimeConnection(
+    isHealthy: true,
+    nodeVersion: '24.16.0',
+    runtimeVersion: 'test-runtime',
+    plugins: <PluginRuntimePlugin>[
+      PluginRuntimePlugin(
+        activeVersion: '1.0.0',
+        contentKinds: <String>['novel'],
+        displayName: '可切换数据源',
+        enabled: true,
+        id: 'org.example.mutable',
+        name: 'mutable',
+        pendingVersion: null,
+        status: 'active',
+      ),
+    ],
+  );
+
+  int setEnabledCalls = 0;
+
+  @override
+  Future<PluginRuntimeConnection> inspect() async => _connection;
+
+  @override
+  Future<void> setEnabled({required String pluginId, required bool enabled}) async {
+    setEnabledCalls += 1;
+    final PluginRuntimePlugin plugin = _connection.plugins.single;
+    _connection = PluginRuntimeConnection(
+      isHealthy: _connection.isHealthy,
+      nodeVersion: _connection.nodeVersion,
+      runtimeVersion: _connection.runtimeVersion,
+      plugins: <PluginRuntimePlugin>[
+        PluginRuntimePlugin(
+          activeVersion: plugin.activeVersion,
+          contentKinds: plugin.contentKinds,
+          displayName: plugin.displayName,
+          enabled: enabled,
+          id: plugin.id,
+          name: plugin.name,
+          pendingVersion: plugin.pendingVersion,
+          status: enabled ? 'active' : 'disabled',
+        ),
+      ],
+    );
   }
 }

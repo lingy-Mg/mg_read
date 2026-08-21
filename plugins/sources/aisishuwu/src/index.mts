@@ -59,34 +59,10 @@ export async function discover(request: DiscoverRequest): Promise<DiscoverResult
   activeContext.log.info('source_discover_started');
   if (request.target === null) {
     activeContext.log.info('source_discover_category_branch');
-    activeContext.log.info('source_discover_completed');
-    return Object.freeze({
-      tabs: Object.freeze([]),
-      selectedTabId: null,
-      nextCursor: null,
-      sections: Object.freeze([
-        Object.freeze({
-          id: 'source-categories',
-          title: '分类',
-          subtitle: null,
-          layout: 'categories' as const,
-          items: Object.freeze([]),
-          categories: Object.freeze(
-            categoryRules.map((category) =>
-              Object.freeze({
-                id: `category:${category.id}`,
-                title: category.title,
-                target: `category:${category.id}`,
-                count: null,
-                url: null,
-              }),
-            ),
-          ),
-        }),
-      ]),
-    });
   }
-  return (await loadSource(activeContext)).discover(request);
+  const result = await loadSource(activeContext).then((source) => source.discover(request));
+  activeContext.log.info('source_discover_completed');
+  return result;
 }
 
 /** Maps a user query to this source's search endpoint. */

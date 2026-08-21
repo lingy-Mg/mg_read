@@ -14,4 +14,16 @@ final class LibraryOverview {
 
   /// Whether this successful result has no items.
   bool get isEmpty => items.isEmpty;
+
+  /// Most recently saved reading position among the available shelf items.
+  LibraryItemSummary? get continueReading {
+    LibraryItemSummary? latest;
+    for (final item in items) {
+      if (item.lastReadAtUtc == null || item.readingProgress == null) continue;
+      if (latest == null || item.lastReadAtUtc!.isAfter(latest.lastReadAtUtc!)) {
+        latest = item;
+      }
+    }
+    return latest;
+  }
 }

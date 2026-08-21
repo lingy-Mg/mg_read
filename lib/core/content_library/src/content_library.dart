@@ -10,6 +10,7 @@ const _scope = ScopeKey(kind: 'content_library', id: 'default');
 const _itemKind = 'content_library_item';
 const _bindingKind = 'content_source_binding';
 const _entryKind = 'content_catalog_entry';
+const _readingProgressKind = 'content_library_reading_progress';
 
 final class ContentLibrary {
   ContentLibrary._(this._persistence, this._diagnostics);
@@ -18,6 +19,8 @@ final class ContentLibrary {
   late final BookshelfRepository bookshelf = BookshelfRepository._(this);
   late final CatalogRepository catalog = CatalogRepository._(this);
   late final ContentRepository content = ContentRepository._(this);
+  late final ReadingProgressRepository readingProgress =
+      ReadingProgressRepository._(this);
   static Future<ContentLibrary> open({
     required Directory dataRoot,
     DiagnosticsManager? diagnostics,
@@ -32,6 +35,7 @@ final class ContentLibrary {
   Future<void> close() => _persistence.close();
   Future<Page<LibraryItem>> listLibrary(LibraryQuery query) =>
       bookshelf.list(query);
+  Future<LibraryItem?> getLibraryItem(LibraryItemId id) => bookshelf.get(id);
   Future<Page<CatalogEntry>> listCatalog(
     LibraryItemId itemId,
     CatalogQuery query,
@@ -145,6 +149,23 @@ final class BookshelfRepository {
     resultState: (result) => result.items.isEmpty ? 'empty' : 'content',
   );
 
+  /// Reads one shelf item by its app-owned stable identifier.
+  Future<LibraryItem?> get(LibraryItemId id) => _library._trace(
+    operation: 'bookshelfGet',
+    itemCount: 1,
+    action: () async {
+      final record = await _library._persistence.metadataRecords.read(
+        id: id.value,
+        scope: _scope,
+      );
+      return record == null || record.recordKind != _itemKind
+          ? null
+          : _item(record);
+    },
+    resultCount: (result) => result == null ? 0 : 1,
+    resultState: (result) => result == null ? 'empty' : 'content',
+  );
+
   Future<void> remove(LibraryItemId id, LibraryRemovalPolicy policy) =>
       _library._trace(
         operation: 'bookshelfRemove',
@@ -232,6 +253,72 @@ final class BookshelfRepository {
     await _library._persistence.metadataRecords.delete(
       previous: record,
     ); /* objects remain unless a later bounded maintenance pass proves no references */
+  }
+}
+
+/// Stores the user-owned semantic position reported by the text reader.
+final class ReadingProgressRepository {
+  ReadingProgressRepository._(this._library);
+
+  final ContentLibrary _library;
+
+  /// Returns the latest saved position, if the item has been opened before.
+  Future<LibraryReadingProgress?> load(LibraryItemId itemId) => _library._trace(
+    operation: 'readingProgressLoad',
+    itemCount: 1,
+    action: () => _load(itemId),
+    resultCount: (result) => result == null ? 0 : 1,
+    resultState: (result) => result == null ? 'empty' : 'content',
+  );
+
+  /// Persists a layout-independent reading position for [progress.itemId].
+  Future<void> save(LibraryReadingProgress progress) => _library._trace(
+    operation: 'readingProgressSave',
+    itemCount: 1,
+    action: () => _save(progress),
+  );
+
+  Future<LibraryReadingProgress?> _load(LibraryItemId itemId) async {
+    final page = await _library._persistence.metadataRecords.list(
+      RecordQuery(
+        recordKind: _readingProgressKind,
+        scope: _scope,
+        identityKey: itemId.value,
+        limit: 1,
+      ),
+    );
+    return page.records.isEmpty ? null : _readingProgress(page.records.single);
+  }
+
+  Future<void> _save(LibraryReadingProgress progress) async {
+    final existing = await _library._persistence.metadataRecords.list(
+      RecordQuery(
+        recordKind: _readingProgressKind,
+        scope: _scope,
+        identityKey: progress.itemId.value,
+        limit: 1,
+      ),
+    );
+    final document = _readingProgressDocument(progress);
+    if (existing.records.isNotEmpty) {
+      await _library._persistence.metadataRecords.update(
+        previous: existing.records.single,
+        document: document,
+      );
+      return;
+    }
+    await _library._persistence.metadataRecords.create(
+      RecordDraft(
+        id: _id(),
+        recordKind: _readingProgressKind,
+        scope: _scope,
+        parentId: progress.itemId.value,
+        identityKey: progress.itemId.value,
+        orderKey: _timestampOrderKey(progress.updatedAtUtc),
+        stateKey: 'active',
+        document: document,
+      ),
+    );
   }
 }
 
@@ -532,7 +619,7 @@ DiagnosticObjectValue _libraryAttributes({
 });
 
 RecordDocumentRegistry get _registry => RecordDocumentRegistry([
-  for (final kind in [_itemKind, _bindingKind, _entryKind])
+  for (final kind in [_itemKind, _bindingKind, _entryKind, _readingProgressKind])
     RecordDocumentCodec(
       recordKind: kind,
       scopeKind: _scope.kind,
@@ -561,7 +648,68 @@ LibraryItem _item(RecordEnvelope r) => LibraryItem(
   kind: ContentKind.fromCode(r.document['kind'] as String) ?? ContentKind.novel,
   state: r.stateKey ?? 'unknown',
   revision: r.revision,
+  source: _itemSource(r.document['plugin']),
 );
+
+LibraryItemSource? _itemSource(Object? rawPlugin) {
+  if (rawPlugin is! Map<String, Object?>) return null;
+  final Object? rawData = rawPlugin['data'];
+  if (rawData is! Map<String, Object?>) return null;
+  final pluginId = rawPlugin['pluginId'];
+  final pluginVersion = rawPlugin['producerPluginVersion'];
+  final remoteContentId = rawData['remoteBookId'];
+  if (pluginId is! String ||
+      pluginVersion is! String ||
+      remoteContentId is! String ||
+      pluginId.isEmpty ||
+      pluginVersion.isEmpty ||
+      remoteContentId.isEmpty) {
+    return null;
+  }
+  return LibraryItemSource(
+    pluginId: pluginId,
+    pluginVersion: pluginVersion,
+    remoteContentId: remoteContentId,
+  );
+}
+
+Map<String, Object?> _readingProgressDocument(LibraryReadingProgress progress) =>
+    <String, Object?>{
+      'chapterId': progress.chapterId,
+      'paragraphId': progress.paragraphId,
+      'characterOffset': progress.characterOffset,
+      'chapterIndex': progress.chapterIndex,
+      'chapterFraction': progress.chapterFraction,
+      'bookFraction': progress.bookFraction,
+      'updatedAtUtc': progress.updatedAtUtc.toUtc().toIso8601String(),
+    };
+
+LibraryReadingProgress _readingProgress(RecordEnvelope record) {
+  final document = record.document;
+  final updatedAt = DateTime.tryParse(document['updatedAtUtc'] as String? ?? '');
+  if (updatedAt == null ||
+      document['chapterId'] is! String ||
+      document['paragraphId'] is! String ||
+      document['characterOffset'] is! int ||
+      document['chapterIndex'] is! int ||
+      document['chapterFraction'] is! num ||
+      document['bookFraction'] is! num) {
+    throw const PersistenceCorruptionError();
+  }
+  return LibraryReadingProgress(
+    itemId: LibraryItemId(record.parentId ?? record.identityKey ?? ''),
+    chapterId: document['chapterId']! as String,
+    paragraphId: document['paragraphId']! as String,
+    characterOffset: document['characterOffset']! as int,
+    chapterIndex: document['chapterIndex']! as int,
+    chapterFraction: (document['chapterFraction']! as num).toDouble(),
+    bookFraction: (document['bookFraction']! as num).toDouble(),
+    updatedAtUtc: updatedAt.toUtc(),
+  );
+}
+
+String _timestampOrderKey(DateTime value) =>
+    value.toUtc().microsecondsSinceEpoch.toString().padLeft(20, '0');
 CatalogEntry _entry(RecordEnvelope r) => CatalogEntry(
   id: CatalogEntryId(r.id),
   itemId: LibraryItemId(r.parentId!),

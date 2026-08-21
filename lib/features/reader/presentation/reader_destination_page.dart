@@ -1,18 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:novel_reader_ui/novel_reader_ui.dart';
 
-import 'package:mg_read/core/diagnostics/diagnostics.dart';
+import 'package:mg_read/features/library/application/library_page_controller.dart';
+import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
+import 'package:mg_read/features/reader/application/reader_launch_request.dart';
+import 'package:mg_read/features/reader/presentation/reader_host_page.dart';
 
-/// Typed-route destination before M5 resolves a reader launch request.
-///
-/// The stable [bookId] is intentionally not rendered or used to load content.
-/// This keeps M2.1 routing independent of any future source, database, or
-/// ReaderHostPage dependency.
+/// Resolves a stable shelf ID into the reader's data source and state store.
 class ReaderDestinationPage extends ConsumerStatefulWidget {
-  /// Creates a destination for a stable host-owned [bookId].
   const ReaderDestinationPage({required this.bookId, super.key});
 
-  /// Stable identifier to be resolved by a future application use case.
+  /// Stable, app-owned bookshelf identifier carried by the route.
   final String bookId;
 
   @override
@@ -21,44 +22,84 @@ class ReaderDestinationPage extends ConsumerStatefulWidget {
 }
 
 class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
+  ReaderLaunchRequest? _request;
+  Object? _error;
+  var _generation = 0;
+
   @override
   void initState() {
     super.initState();
-    final diagnostics = ref.read(diagnosticsManagerProvider);
-    final span = diagnostics.startSpan(
-      AppDiagnosticEvents.readerLaunch,
-      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-        'readerMode': DiagnosticValue.string('text'),
-        'sourceKind': DiagnosticValue.string('unresolved'),
-      }),
-    );
-    span.complete(
-      attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-        'readerMode': DiagnosticValue.string('text'),
-        'sourceKind': DiagnosticValue.string('unresolved'),
-        'resultState': DiagnosticValue.string('deferred'),
-      }),
-    );
+    unawaited(_resolve());
+  }
+
+  Future<void> _resolve() async {
+    final generation = ++_generation;
+    setState(() {
+      _request = null;
+      _error = null;
+    });
+    try {
+      final request = await ref
+          .read(libraryReaderLauncherProvider)
+          .launch(widget.bookId, observer: _ReaderExitObserver(_leaveReader));
+      if (!mounted || generation != _generation) return;
+      setState(() => _request = request);
+    } on Object catch (error) {
+      if (!mounted || generation != _generation) return;
+      setState(() => _error = error);
+    }
+  }
+
+  Future<void> _leaveReader(ReaderProgress? progress) async {
+    await ref.read(libraryPageControllerProvider.notifier).refresh();
+    if (mounted) Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('阅读会话尚未就绪')),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 560),
+    final request = _request;
+    if (request != null) return ReaderHostPage(request: request);
+    final error = _error;
+    if (error != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('暂时无法开始阅读')),
+        body: SafeArea(
+          child: Center(
             child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                '此路由只保存稳定书籍 ID。后续由应用用例解析数据源和状态存储后再打开阅读器。',
-                textAlign: TextAlign.center,
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const Text('未能获取这本书的可读内容，请稍后重试。'),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: () => unawaited(_resolve()),
+                    child: const Text('重试'),
+                  ),
+                ],
               ),
             ),
           ),
         ),
+      );
+    }
+    return Scaffold(
+      body: Center(
+        child: Semantics(
+          label: '正在准备阅读内容',
+          child: CircularProgressIndicator(),
+        ),
       ),
     );
   }
+}
+
+final class _ReaderExitObserver extends ReaderObserver {
+  const _ReaderExitObserver(this._onExitRequested);
+
+  final Future<void> Function(ReaderProgress? progress) _onExitRequested;
+
+  @override
+  Future<void> onExitRequested(ReaderProgress? progress) =>
+      _onExitRequested(progress);
 }

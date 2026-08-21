@@ -8,6 +8,8 @@ import 'package:mg_read/core/errors/app_error.dart';
 /// Narrow application port; main-project code never sees Runtime transport.
 abstract interface class PluginRuntimeGateway {
   Future<PluginRuntimeConnection> inspect();
+
+  Future<void> setEnabled({required String pluginId, required bool enabled});
 }
 
 /// Production adapter over the Runtime-owned, versioned Flutter Facade.
@@ -44,6 +46,22 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway {
             ),
           ),
         ),
+      );
+    } on PluginRuntimeException catch (error) {
+      throw normalizePluginRuntimeError(error);
+    } on Object catch (error) {
+      throw AppError.fromUnknown(error);
+    }
+  }
+
+  @override
+  Future<void> setEnabled({
+    required String pluginId,
+    required bool enabled,
+  }) async {
+    try {
+      await _runtime.invoke(
+        SetPluginEnabledInvocation(pluginId: pluginId, enabled: enabled),
       );
     } on PluginRuntimeException catch (error) {
       throw normalizePluginRuntimeError(error);
@@ -153,6 +171,61 @@ final pluginRuntimeConnectionProvider = FutureProvider<PluginRuntimeConnection>(
     }
   },
 );
+
+/// Serializes real source enable/disable requests and refreshes the shared
+/// Runtime projection only after the Runtime acknowledges the persisted state.
+final pluginRuntimeSourceActionProvider =
+    NotifierProvider<PluginRuntimeSourceActionController, Set<String>>(
+      PluginRuntimeSourceActionController.new,
+    );
+
+final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => const <String>{};
+
+  Future<void> setEnabled({
+    required String pluginId,
+    required bool enabled,
+  }) async {
+    if (state.contains(pluginId)) return;
+    state = Set<String>.unmodifiable(<String>{...state, pluginId});
+    final diagnostics = ref.read(diagnosticsManagerProvider);
+    final span = diagnostics.startSpan(
+      AppDiagnosticEvents.runtimeFacadeCall,
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'capability': DiagnosticValue.string('runtime.plugins.setEnabled.v1'),
+        'resultState': DiagnosticValue.string('loading'),
+      }),
+    );
+    try {
+      await ref
+          .read(pluginRuntimeGatewayProvider)
+          .setEnabled(pluginId: pluginId, enabled: enabled);
+      ref.invalidate(pluginRuntimeConnectionProvider);
+      await ref.read(pluginRuntimeConnectionProvider.future);
+      span.complete(
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+          'capability': DiagnosticValue.string('runtime.plugins.setEnabled.v1'),
+          'resultState': DiagnosticValue.string('success'),
+        }),
+      );
+    } on Object catch (error, stackTrace) {
+      final appError = AppError.fromUnknown(error);
+      span.fail(
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+          'capability': DiagnosticValue.string('runtime.plugins.setEnabled.v1'),
+          'resultState': DiagnosticValue.string('failure'),
+          'errorCode': DiagnosticValue.string(appError.code.wireValue),
+        }),
+      );
+      Error.throwWithStackTrace(appError, stackTrace);
+    } finally {
+      state = Set<String>.unmodifiable(
+        state.where((String value) => value != pluginId),
+      );
+    }
+  }
+}
 
 @immutable
 final class PluginRuntimeConnection {

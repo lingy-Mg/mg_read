@@ -51,8 +51,9 @@ Windows Flutter 包还可带 Runtime 自有的 `default-plugins/` 种子归档�
 - `runtime.hello`：版本和控制面上限协商；
 - `diagnostics.*.v1`：Runtime-owned 有界查询、捕获、清理与统计；
 - `runtime.ping`：诊断健康投影；
-- `plugins.list.v1`：不可变插件状态列表；
-- `source.discover.v1`：插件定义 tab/section/layout 与显式空数组；
+- `plugins.list.v1`：当前插件状态列表；
+- `plugins.setEnabled.v1`：持久化启用状态，并在当前进程立即门禁内容调用；
+- `source.discover.v1`：插件定义受限递归组件 document，或对指定内容集合的 append；
 - `source.search.v1`：稳定 plugin ID、受限 query、分页和富内容摘要；
 - `source.getDetail.v1`：富内容详情、别名和目录 URL；
 - `source.getChapters.v1`：有序、分页的强类型目录；

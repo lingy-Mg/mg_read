@@ -40,9 +40,9 @@ class DiscoveryDestinationPage extends ConsumerWidget {
         result: state.result!,
         onDestinationRequested: onDestinationRequested,
         onSourcePressed: () => _selectSource(context, state, controller),
-        onTabSelected: (target) => unawaited(controller.selectTarget(target)),
+        onTabSelected: (target) => unawaited(controller.selectTab(target)),
         onCategorySelected: (target) =>
-            unawaited(controller.selectTarget(target)),
+            unawaited(controller.openCategory(target)),
         onContentPressed: (content) {
           unawaited(
             showSourceContentDetailSheet(
@@ -65,6 +65,10 @@ class DiscoveryDestinationPage extends ConsumerWidget {
           ),
         ),
         onRefreshRequested: () => unawaited(controller.refresh()),
+        onLoadMore: (collection) => unawaited(controller.loadMore(collection)),
+        canNavigateBack: state.canNavigateBack,
+        onBackRequested: controller.goBack,
+        loadingCollectionId: state.loadingCollectionId,
       );
     }
 

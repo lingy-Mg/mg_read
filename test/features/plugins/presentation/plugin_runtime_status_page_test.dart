@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
+
+import 'plugin_runtime_status_page_fixture.dart';
 
 void main() {
   testWidgets('matches the compact six-source management reference layout', (
@@ -10,11 +14,18 @@ void main() {
   ) async {
     await _setViewport(tester, const Size(390, 690));
     await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light(),
-        home: PluginRuntimeStatusPage(
-          onBackRequested: () {},
-          onDestinationRequested: (_) {},
+      ProviderScope(
+        overrides: [
+          pluginRuntimeConnectionProvider.overrideWith(
+            (Ref ref) async => dataSourceManagementFixture,
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: PluginRuntimeStatusPage(
+            onBackRequested: () {},
+            onDestinationRequested: (_) {},
+          ),
         ),
       ),
     );
@@ -22,15 +33,21 @@ void main() {
 
     expect(find.text('管理数据来源'), findsOneWidget);
     expect(find.text('我的数据来源'), findsOneWidget);
-    expect(find.text('已启用 6/12'), findsOneWidget);
+    expect(find.text('已启用 4/6'), findsOneWidget);
     expect(find.text('数据来源分组'), findsNothing);
     expect(
       find.byKey(const Key('data-source-management-card')),
       findsOneWidget,
     );
     expect(find.byKey(const Key('data-source-add')), findsOneWidget);
-    expect(find.byKey(const Key('data-source-toggle-qidian')), findsOneWidget);
-    expect(find.byKey(const Key('data-source-toggle-17k')), findsOneWidget);
+    expect(
+      find.byKey(const Key('data-source-toggle-org.mgread.qidian')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('data-source-toggle-org.mgread.17k')),
+      findsOneWidget,
+    );
     expect(find.text('首页'), findsNothing);
     expect(find.text('发现'), findsNothing);
     expect(find.text('书架'), findsNothing);
@@ -56,10 +73,10 @@ void main() {
     );
 
     final Rect firstSource = tester.getRect(
-      find.byKey(const Key('data-source-qidian')),
+      find.byKey(const Key('data-source-org.mgread.qidian')),
     );
     final Rect lastSource = tester.getRect(
-      find.byKey(const Key('data-source-17k')),
+      find.byKey(const Key('data-source-org.mgread.17k')),
     );
     expect(firstSource.height, AppSpacing.dataSourceRowHeight);
     expect(lastSource.bottom, greaterThan(firstSource.bottom));

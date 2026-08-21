@@ -20,7 +20,8 @@ mg_read UI
 - Windows x64 desktop Supervisor 使用固定 Node 24.16.0、loopback ready/HTTP/WS、单进程
   多路复用和 Runtime-owned Job Object；关闭 owner 时由内核清理 Node 进程树。
 - `packages/mgread_plugin_runtime` 公开 `RuntimePingInvocation`、
-  `InstalledPluginsInvocation` 与 `SourceDiscover/Search/Detail/Chapters/ContentInvocation`；生产
+  `InstalledPluginsInvocation`、`SetPluginEnabledInvocation` 与
+  `SourceDiscover/Search/Detail/Chapters/ContentInvocation`；生产
   构造器不接受 Runtime 路径。
 - 插件是 `package.json.mgread` + `package-lock.json` v3 的标准 Node 项目，入口为普通多文件
   ESM/CommonJS；Runtime 不创建插件 VM 或自定义 Loader。
@@ -29,11 +30,13 @@ mg_read UI
 - 相同 registry 对象进入 `dependencies/objects`；插件目录优先 hardlink，失败逐文件 copy。
 - 版本不可变；安装写 `pending`，下次 Runtime 冷启动切换。失败更新保留旧 `current`；卸载和
   dependency mark-sweep 也只由 Runtime 执行。
-- Runtime Core 在 ready 前扫描插件，并公开内部 `plugins.list.v1` 与五个 `source.*.v1`
-  内容能力；Flutter Facade 对书名、作者、字数、更新时间、最新章节、URL、分区、目录和正文
+- Runtime Core 在 ready 前扫描插件，并公开内部 `plugins.list.v1`、`plugins.setEnabled.v1` 与五个 `source.*.v1`
+  内容能力；Flutter Facade 对书名、作者、字数、更新时间、最新章节、URL、递归发现组件、目录和正文
   等字段做强类型投影与显式 null 校验。
 - Runtime 关键事件使用 4 MiB 分段 UTF-8 TXT；HTTP/JSON/HTML 详情默认完全不读取，仅在
   显式调试会话中经过有界内存 spool，并按 `memoryOnly/persistToText` 策略保留。
+- 默认内置爱丽丝书屋与纯离线的“发现组件演示书源”；后者覆盖全部受控节点、嵌套分类、返回栈与
+  集合定向分页，不把模拟内容伪装为真实站点数据。
 
 旧 manifest、单文件 bundle、`sharedDependencies`、自定义 dependency lock、旧模板夹具和
 测试专用模板 RPC 已删除且不提供兼容读取。

@@ -32,11 +32,12 @@ test('list results retain an HTTP(S) cover from the source card', async () => {
   const result = await source.discover({
     target: 'category:62',
     cursor: null,
+    collectionId: null,
     pageSize: 20,
   });
 
   assert.equal(
-    result.sections[0].items[0].content.coverUrl,
+    result.document.components[0].children[0].items[0].content.coverUrl,
     'https://cdn.example.com/covers/42.jpg',
   );
 });

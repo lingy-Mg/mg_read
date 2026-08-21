@@ -22,6 +22,7 @@ class LibraryPage extends ConsumerWidget {
     this.previewData,
     this.callbacks = const LibraryHomeCallbacks(),
     this.onDestinationRequested,
+    this.onReaderRequested,
     super.key,
   });
 
@@ -30,6 +31,9 @@ class LibraryPage extends ConsumerWidget {
 
   /// Lets the app layer own switching among top-level destinations.
   final ValueChanged<AppNavigationDestination>? onDestinationRequested;
+
+  /// Lets the app layer resolve a persisted shelf item for reading.
+  final ValueChanged<String>? onReaderRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -54,18 +58,33 @@ class LibraryPage extends ConsumerWidget {
         : LibraryHomeViewData.fromLocalOverview(state.overview!);
     final ValueChanged<AppNavigationDestination>? destinationRequested =
         onDestinationRequested;
-    final LibraryHomeCallbacks resolvedCallbacks = destinationRequested == null
-        ? callbacks
-        : callbacks.copyWith(
-            onNavigationSelected: (AppNavigationDestination destination) {
+    final ValueChanged<String>? readerRequested = onReaderRequested;
+    final LibraryHomeCallbacks resolvedCallbacks = callbacks.copyWith(
+      onNavigationSelected: destinationRequested == null
+          ? callbacks.onNavigationSelected
+          : (AppNavigationDestination destination) {
               callbacks.onNavigationSelected?.call(destination);
               destinationRequested(destination);
             },
-            onDiscover: () {
+      onDiscover: destinationRequested == null
+          ? callbacks.onDiscover
+          : () {
               callbacks.onDiscover?.call();
               destinationRequested(AppNavigationDestination.discover);
             },
-          );
+      onOpenBook: readerRequested == null
+          ? callbacks.onOpenBook
+          : (book) {
+              callbacks.onOpenBook?.call(book);
+              readerRequested(book.id);
+            },
+      onContinueReading: readerRequested == null || data.continueReading == null
+          ? callbacks.onContinueReading
+          : () {
+              callbacks.onContinueReading?.call();
+              readerRequested(data.continueReading!.bookId);
+            },
+    );
     return LibraryHomeShell(
       data: data,
       callbacks: resolvedCallbacks,

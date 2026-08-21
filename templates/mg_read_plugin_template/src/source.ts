@@ -23,49 +23,75 @@ export function createLocalExampleSource(prefix: string) {
     discover(_request: DiscoverRequest): DiscoverResult {
       const featured = createSummary(prefix, '发现示例');
       return Object.freeze({
-        tabs: Object.freeze([
-          Object.freeze({ id: 'recommend', label: '推荐', target: 'recommend' }),
-          Object.freeze({ id: 'completed', label: '完本', target: 'completed' }),
-        ]),
-        selectedTabId: 'recommend',
-        sections: Object.freeze([
+        kind: 'document' as const,
+        document: Object.freeze({ components: Object.freeze([
           Object.freeze({
-            id: 'featured',
+            type: 'tabs' as const,
+            id: 'tabs',
+            tabs: Object.freeze([
+              Object.freeze({ id: 'recommend', label: '推荐', target: 'recommend' }),
+              Object.freeze({ id: 'completed', label: '完本', target: 'completed' }),
+            ]),
+            selectedTabId: 'recommend',
+          }),
+          Object.freeze({
+            type: 'section' as const,
+            id: 'featured-section',
             title: '编辑精选',
             subtitle: null,
-            layout: 'featured',
-            items: Object.freeze([
+            children: Object.freeze([Object.freeze({
+              type: 'contentCollection' as const,
+              id: 'featured',
+              layout: 'featured' as const,
+              continuation: null,
+              items: Object.freeze([
               Object.freeze({
                 content: featured,
                 rank: null,
                 metric: null,
                 recommendation: '模板离线推荐语',
               }),
-            ]),
-            categories: Object.freeze([]),
+              ]),
+            })]),
           }),
           Object.freeze({
-            id: 'ranking',
+            type: 'group' as const,
+            id: 'recommendation-group',
+            layout: 'vertical' as const,
+            children: Object.freeze([
+              Object.freeze({ type: 'text' as const, id: 'recommendation-note', text: '多组数据可以按组件树组合。' }),
+              Object.freeze({
+            type: 'section' as const,
+            id: 'ranking-section',
             title: '排行榜',
             subtitle: null,
-            layout: 'ranking',
-            items: Object.freeze([
+            children: Object.freeze([Object.freeze({
+              type: 'contentCollection' as const,
+              id: 'ranking',
+              layout: 'ranking' as const,
+              continuation: null,
+              items: Object.freeze([
               Object.freeze({
                 content: createSummary(prefix, '排行示例'),
                 rank: 1,
                 metric: Object.freeze({ label: '热度', value: '12345' }),
                 recommendation: null,
               }),
+              ]),
+            })]),
+              }),
             ]),
-            categories: Object.freeze([]),
           }),
           Object.freeze({
-            id: 'categories',
+            type: 'section' as const,
+            id: 'categories-section',
             title: '分类榜单',
             subtitle: null,
-            layout: 'categories',
-            items: Object.freeze([]),
-            categories: Object.freeze([
+            children: Object.freeze([Object.freeze({
+              type: 'categoryCollection' as const,
+              id: 'categories',
+              layout: 'grid' as const,
+              categories: Object.freeze([
               Object.freeze({
                 id: 'template',
                 title: '模板分类',
@@ -73,10 +99,10 @@ export function createLocalExampleSource(prefix: string) {
                 count: 1,
                 url: null,
               }),
-            ]),
+              ]),
+            })]),
           }),
-        ]),
-        nextCursor: null,
+        ]) }),
       });
     },
 

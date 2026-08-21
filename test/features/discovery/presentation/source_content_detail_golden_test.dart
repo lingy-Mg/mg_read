@@ -29,6 +29,14 @@ void main() {
     await tester.pumpWidget(const _DetailGoldenHost());
     await tester.pumpAndSettle();
 
+    expect(
+      tester.state<ScrollableState>(find.byType(Scrollable)).position.pixels,
+      0,
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const Key('source-detail-cover'))).dy,
+      88,
+    );
     expect(find.text('喜欢老虎'), findsOneWidget);
     expect(find.text('185.96万'), findsOneWidget);
     expect(find.text('733'), findsOneWidget);
@@ -162,6 +170,7 @@ class _GoldenDetailGateway implements SourceContentGateway {
     required String pluginId,
     String? target,
     String? cursor,
+    String? collectionId,
     int pageSize = 20,
   }) async => throw UnimplementedError();
 

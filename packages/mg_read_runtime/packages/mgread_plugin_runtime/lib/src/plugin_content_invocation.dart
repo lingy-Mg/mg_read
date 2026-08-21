@@ -28,14 +28,30 @@ enum PluginAccessKind {
   final String code;
 }
 
-enum PluginDiscoveryLayout {
+enum PluginDiscoveryContentLayout {
   featured('featured'),
   carousel('carousel'),
   ranking('ranking'),
-  list('list'),
-  categories('categories');
+  list('list');
 
-  const PluginDiscoveryLayout(this.code);
+  const PluginDiscoveryContentLayout(this.code);
+  final String code;
+}
+
+enum PluginDiscoveryCategoryLayout {
+  grid('grid'),
+  list('list');
+
+  const PluginDiscoveryCategoryLayout(this.code);
+  final String code;
+}
+
+enum PluginDiscoveryGroupLayout {
+  vertical('vertical'),
+  horizontal('horizontal'),
+  grid('grid');
+
+  const PluginDiscoveryGroupLayout(this.code);
   final String code;
 }
 
@@ -189,12 +205,14 @@ final class SourceDiscoverInvocation
     required this.pluginId,
     this.target,
     this.cursor,
+    this.collectionId,
     this.pageSize = 20,
   });
 
   final String pluginId;
   final String? target;
   final String? cursor;
+  final String? collectionId;
   final int pageSize;
 
   @override
@@ -205,6 +223,7 @@ final class SourceDiscoverInvocation
     'pluginId': pluginId,
     'target': target,
     'cursor': cursor,
+    'collectionId': collectionId,
     'pageSize': pageSize,
   };
 
@@ -212,66 +231,78 @@ final class SourceDiscoverInvocation
   PluginDiscoverResult _decodeResult(Object? value) {
     final result = _contentObject(value, 'Source discovery result');
     _requireMatchingPlugin(result, pluginId, 'Source discovery result');
-    final tabs = _contentList(
+    final sourceName = _contentString(
       result,
-      'tabs',
-      'Source discovery result',
-    ).map(_decodeDiscoveryTab).toList(growable: false);
-    _requireUnique(tabs.map((tab) => tab.id), 'Source discovery tabs');
-    final selectedTabId = _contentNullableString(
-      result,
-      'selectedTabId',
+      'sourceName',
       'Source discovery result',
     );
-    if (selectedTabId != null && !tabs.any((tab) => tab.id == selectedTabId)) {
-      _contentInvalid('Source discovery result has an unknown selected tab.');
-    }
-    final sections = _contentList(
-      result,
-      'sections',
-      'Source discovery result',
-    ).map(_decodeDiscoverySection).toList(growable: false);
-    _requireUnique(
-      sections.map((section) => section.id),
-      'Source discovery sections',
-    );
-    return PluginDiscoverResult(
-      pluginId: pluginId,
-      sourceName: _contentString(
-        result,
-        'sourceName',
-        'Source discovery result',
+    return switch (_contentString(result, 'kind', 'Source discovery result')) {
+      'document' => PluginDiscoveryDocumentResult(
+        pluginId: pluginId,
+        sourceName: sourceName,
+        document: _decodeDiscoveryDocument(
+          _contentField(result, 'document', 'Source discovery result'),
+        ),
       ),
-      tabs: tabs,
-      selectedTabId: selectedTabId,
-      sections: sections,
-      nextCursor: _contentNullableString(
-        result,
-        'nextCursor',
-        'Source discovery result',
+      'append' => PluginDiscoveryAppendResult(
+        pluginId: pluginId,
+        sourceName: sourceName,
+        collectionId: _contentString(
+          result,
+          'collectionId',
+          'Source discovery result',
+        ),
+        items: _contentList(
+          result,
+          'items',
+          'Source discovery result',
+        ).map(_decodeDiscoveryContentItem).toList(growable: false),
+        continuation: _decodeDiscoveryContinuation(
+          _contentField(result, 'continuation', 'Source discovery result'),
+        ),
       ),
-    );
+      _ => _contentInvalid(
+        'Source discovery result has an unknown result kind.',
+      ),
+    };
   }
 }
 
 @immutable
-final class PluginDiscoverResult {
-  PluginDiscoverResult({
+sealed class PluginDiscoverResult {
+  const PluginDiscoverResult({
     required this.pluginId,
     required this.sourceName,
-    required List<PluginDiscoveryTab> tabs,
-    required this.selectedTabId,
-    required List<PluginDiscoverySection> sections,
-    required this.nextCursor,
-  }) : tabs = List<PluginDiscoveryTab>.unmodifiable(tabs),
-       sections = List<PluginDiscoverySection>.unmodifiable(sections);
+  });
 
   final String pluginId;
   final String sourceName;
-  final List<PluginDiscoveryTab> tabs;
-  final String? selectedTabId;
-  final List<PluginDiscoverySection> sections;
-  final String? nextCursor;
+}
+
+@immutable
+final class PluginDiscoveryDocumentResult extends PluginDiscoverResult {
+  const PluginDiscoveryDocumentResult({
+    required super.pluginId,
+    required super.sourceName,
+    required this.document,
+  });
+
+  final PluginDiscoveryDocument document;
+}
+
+@immutable
+final class PluginDiscoveryAppendResult extends PluginDiscoverResult {
+  PluginDiscoveryAppendResult({
+    required super.pluginId,
+    required super.sourceName,
+    required this.collectionId,
+    required List<PluginDiscoveryContentItem> items,
+    required this.continuation,
+  }) : items = List<PluginDiscoveryContentItem>.unmodifiable(items);
+
+  final String collectionId;
+  final List<PluginDiscoveryContentItem> items;
+  final PluginDiscoveryContinuation? continuation;
 }
 
 @immutable
@@ -328,23 +359,100 @@ final class PluginDiscoveryCategory {
 }
 
 @immutable
-final class PluginDiscoverySection {
-  PluginDiscoverySection({
-    required this.id,
-    required this.title,
-    required this.subtitle,
-    required this.layout,
-    required List<PluginDiscoveryContentItem> items,
-    required List<PluginDiscoveryCategory> categories,
-  }) : items = List<PluginDiscoveryContentItem>.unmodifiable(items),
-       categories = List<PluginDiscoveryCategory>.unmodifiable(categories);
+final class PluginDiscoveryContinuation {
+  const PluginDiscoveryContinuation({
+    required this.target,
+    required this.cursor,
+  });
+
+  final String target;
+  final String cursor;
+}
+
+@immutable
+final class PluginDiscoveryDocument {
+  PluginDiscoveryDocument({required List<PluginDiscoveryComponent> components})
+    : components = List<PluginDiscoveryComponent>.unmodifiable(components);
+
+  final List<PluginDiscoveryComponent> components;
+}
+
+@immutable
+sealed class PluginDiscoveryComponent {
+  const PluginDiscoveryComponent({required this.id});
 
   final String id;
+}
+
+final class PluginDiscoveryTabsComponent extends PluginDiscoveryComponent {
+  PluginDiscoveryTabsComponent({
+    required super.id,
+    required List<PluginDiscoveryTab> tabs,
+    required this.selectedTabId,
+  }) : tabs = List<PluginDiscoveryTab>.unmodifiable(tabs);
+
+  final List<PluginDiscoveryTab> tabs;
+  final String? selectedTabId;
+}
+
+final class PluginDiscoverySectionComponent extends PluginDiscoveryComponent {
+  PluginDiscoverySectionComponent({
+    required super.id,
+    required this.title,
+    required this.subtitle,
+    required List<PluginDiscoveryComponent> children,
+  }) : children = List<PluginDiscoveryComponent>.unmodifiable(children);
+
   final String title;
   final String? subtitle;
-  final PluginDiscoveryLayout layout;
+  final List<PluginDiscoveryComponent> children;
+}
+
+final class PluginDiscoveryGroupComponent extends PluginDiscoveryComponent {
+  PluginDiscoveryGroupComponent({
+    required super.id,
+    required this.layout,
+    required List<PluginDiscoveryComponent> children,
+  }) : children = List<PluginDiscoveryComponent>.unmodifiable(children);
+
+  final PluginDiscoveryGroupLayout layout;
+  final List<PluginDiscoveryComponent> children;
+}
+
+final class PluginDiscoveryContentCollectionComponent
+    extends PluginDiscoveryComponent {
+  PluginDiscoveryContentCollectionComponent({
+    required super.id,
+    required this.layout,
+    required List<PluginDiscoveryContentItem> items,
+    required this.continuation,
+  }) : items = List<PluginDiscoveryContentItem>.unmodifiable(items);
+
+  final PluginDiscoveryContentLayout layout;
   final List<PluginDiscoveryContentItem> items;
+  final PluginDiscoveryContinuation? continuation;
+}
+
+final class PluginDiscoveryCategoryCollectionComponent
+    extends PluginDiscoveryComponent {
+  PluginDiscoveryCategoryCollectionComponent({
+    required super.id,
+    required this.layout,
+    required List<PluginDiscoveryCategory> categories,
+  }) : categories = List<PluginDiscoveryCategory>.unmodifiable(categories);
+
+  final PluginDiscoveryCategoryLayout layout;
   final List<PluginDiscoveryCategory> categories;
+}
+
+final class PluginDiscoveryTextComponent extends PluginDiscoveryComponent {
+  const PluginDiscoveryTextComponent({required super.id, required this.text});
+
+  final String text;
+}
+
+final class PluginDiscoveryDividerComponent extends PluginDiscoveryComponent {
+  const PluginDiscoveryDividerComponent({required super.id});
 }
 
 @immutable
@@ -677,6 +785,158 @@ PluginContentAttribute _decodeAttribute(Object? value, String context) {
   );
 }
 
+PluginDiscoveryDocument _decodeDiscoveryDocument(Object? value) {
+  const context = 'Source discovery document';
+  final document = _contentObject(value, context);
+  final state = _DiscoveryDecodeState();
+  final components = _contentList(document, 'components', context)
+      .asMap()
+      .entries
+      .map(
+        (entry) => _decodeDiscoveryComponent(
+          entry.value,
+          state,
+          depth: 1,
+          isFirstRootComponent: entry.key == 0,
+        ),
+      )
+      .toList(growable: false);
+  final tabCount = components.whereType<PluginDiscoveryTabsComponent>().length;
+  if (tabCount > 1 ||
+      (tabCount == 1 && components.first is! PluginDiscoveryTabsComponent)) {
+    _contentInvalid('$context has an invalid tabs placement.');
+  }
+  return PluginDiscoveryDocument(components: components);
+}
+
+PluginDiscoveryComponent _decodeDiscoveryComponent(
+  Object? value,
+  _DiscoveryDecodeState state, {
+  required int depth,
+  required bool isFirstRootComponent,
+}) {
+  const context = 'Source discovery component';
+  if (depth > 8 || ++state.count > 128) {
+    _contentInvalid('$context exceeds its bounded nesting budget.');
+  }
+  final item = _contentObject(value, context);
+  final id = _contentString(item, 'id', context);
+  if (!state.ids.add(id)) _contentInvalid('$context has a duplicate id.');
+  final type = _contentString(item, 'type', context);
+  List<PluginDiscoveryComponent> children() =>
+      _contentList(item, 'children', context)
+          .map(
+            (child) => _decodeDiscoveryComponent(
+              child,
+              state,
+              depth: depth + 1,
+              isFirstRootComponent: false,
+            ),
+          )
+          .toList(growable: false);
+  return switch (type) {
+    'tabs' when depth == 1 && isFirstRootComponent => _decodeDiscoveryTabs(
+      item,
+      id,
+    ),
+    'section' => PluginDiscoverySectionComponent(
+      id: id,
+      title: _contentString(item, 'title', context),
+      subtitle: _contentNullableString(item, 'subtitle', context),
+      children: children(),
+    ),
+    'group' => PluginDiscoveryGroupComponent(
+      id: id,
+      layout: _discoveryGroupLayout(
+        _contentString(item, 'layout', context),
+        context,
+      ),
+      children: children(),
+    ),
+    'contentCollection' => _decodeDiscoveryContentCollection(item, id),
+    'categoryCollection' => _decodeDiscoveryCategoryCollection(item, id),
+    'text' => PluginDiscoveryTextComponent(
+      id: id,
+      text: _contentString(item, 'text', context),
+    ),
+    'divider' => PluginDiscoveryDividerComponent(id: id),
+    _ => _contentInvalid('$context has an unknown or misplaced type.'),
+  };
+}
+
+final class _DiscoveryDecodeState {
+  final Set<String> ids = <String>{};
+  int count = 0;
+}
+
+PluginDiscoveryTabsComponent _decodeDiscoveryTabs(
+  Map<String, Object?> item,
+  String id,
+) {
+  const context = 'Source discovery tabs';
+  final tabs = _contentList(
+    item,
+    'tabs',
+    context,
+  ).map(_decodeDiscoveryTab).toList(growable: false);
+  _requireUnique(tabs.map((tab) => tab.id), context);
+  final selectedTabId = _contentNullableString(item, 'selectedTabId', context);
+  if ((tabs.isEmpty && selectedTabId != null) ||
+      (selectedTabId != null && !tabs.any((tab) => tab.id == selectedTabId))) {
+    _contentInvalid('$context contains an invalid selected tab.');
+  }
+  return PluginDiscoveryTabsComponent(
+    id: id,
+    tabs: tabs,
+    selectedTabId: selectedTabId,
+  );
+}
+
+PluginDiscoveryContentCollectionComponent _decodeDiscoveryContentCollection(
+  Map<String, Object?> item,
+  String id,
+) {
+  const context = 'Source discovery content collection';
+  final items = _contentList(
+    item,
+    'items',
+    context,
+  ).map(_decodeDiscoveryContentItem).toList(growable: false);
+  _requireUnique(items.map((entry) => entry.content.id), context);
+  return PluginDiscoveryContentCollectionComponent(
+    id: id,
+    layout: _discoveryContentLayout(
+      _contentString(item, 'layout', context),
+      context,
+    ),
+    items: items,
+    continuation: _decodeDiscoveryContinuation(
+      _contentField(item, 'continuation', context),
+    ),
+  );
+}
+
+PluginDiscoveryCategoryCollectionComponent _decodeDiscoveryCategoryCollection(
+  Map<String, Object?> item,
+  String id,
+) {
+  const context = 'Source discovery category collection';
+  final categories = _contentList(
+    item,
+    'categories',
+    context,
+  ).map(_decodeDiscoveryCategory).toList(growable: false);
+  _requireUnique(categories.map((category) => category.id), context);
+  return PluginDiscoveryCategoryCollectionComponent(
+    id: id,
+    layout: _discoveryCategoryLayout(
+      _contentString(item, 'layout', context),
+      context,
+    ),
+    categories: categories,
+  );
+}
+
 PluginDiscoveryTab _decodeDiscoveryTab(Object? value) {
   const context = 'Source discovery tab';
   final item = _contentObject(value, context);
@@ -687,42 +947,13 @@ PluginDiscoveryTab _decodeDiscoveryTab(Object? value) {
   );
 }
 
-PluginDiscoverySection _decodeDiscoverySection(Object? value) {
-  const context = 'Source discovery section';
+PluginDiscoveryContinuation? _decodeDiscoveryContinuation(Object? value) {
+  if (value == null) return null;
+  const context = 'Source discovery continuation';
   final item = _contentObject(value, context);
-  final layout = _discoveryLayout(
-    _contentString(item, 'layout', context),
-    context,
-  );
-  final items = _contentList(
-    item,
-    'items',
-    context,
-  ).map(_decodeDiscoveryContentItem).toList(growable: false);
-  final categories = _contentList(
-    item,
-    'categories',
-    context,
-  ).map(_decodeDiscoveryCategory).toList(growable: false);
-  _requireUnique(
-    items.map((item) => item.content.id),
-    'Source discovery section items',
-  );
-  _requireUnique(
-    categories.map((category) => category.id),
-    'Source discovery section categories',
-  );
-  if ((layout == PluginDiscoveryLayout.categories && items.isNotEmpty) ||
-      (layout != PluginDiscoveryLayout.categories && categories.isNotEmpty)) {
-    _contentInvalid('$context has inconsistent layout data.');
-  }
-  return PluginDiscoverySection(
-    id: _contentString(item, 'id', context),
-    title: _contentString(item, 'title', context),
-    subtitle: _contentNullableString(item, 'subtitle', context),
-    layout: layout,
-    items: items,
-    categories: categories,
+  return PluginDiscoveryContinuation(
+    target: _contentString(item, 'target', context),
+    cursor: _contentString(item, 'cursor', context),
   );
 }
 
@@ -960,15 +1191,35 @@ PluginAccessKind _contentAccess(String value, String context) =>
       _ => _contentInvalid('$context contains an unknown access kind.'),
     };
 
-PluginDiscoveryLayout _discoveryLayout(String value, String context) =>
-    switch (value) {
-      'featured' => PluginDiscoveryLayout.featured,
-      'carousel' => PluginDiscoveryLayout.carousel,
-      'ranking' => PluginDiscoveryLayout.ranking,
-      'list' => PluginDiscoveryLayout.list,
-      'categories' => PluginDiscoveryLayout.categories,
-      _ => _contentInvalid('$context contains an unknown discovery layout.'),
-    };
+PluginDiscoveryContentLayout _discoveryContentLayout(
+  String value,
+  String context,
+) => switch (value) {
+  'featured' => PluginDiscoveryContentLayout.featured,
+  'carousel' => PluginDiscoveryContentLayout.carousel,
+  'ranking' => PluginDiscoveryContentLayout.ranking,
+  'list' => PluginDiscoveryContentLayout.list,
+  _ => _contentInvalid('$context contains an unknown discovery layout.'),
+};
+
+PluginDiscoveryCategoryLayout _discoveryCategoryLayout(
+  String value,
+  String context,
+) => switch (value) {
+  'grid' => PluginDiscoveryCategoryLayout.grid,
+  'list' => PluginDiscoveryCategoryLayout.list,
+  _ => _contentInvalid('$context contains an unknown category layout.'),
+};
+
+PluginDiscoveryGroupLayout _discoveryGroupLayout(
+  String value,
+  String context,
+) => switch (value) {
+  'vertical' => PluginDiscoveryGroupLayout.vertical,
+  'horizontal' => PluginDiscoveryGroupLayout.horizontal,
+  'grid' => PluginDiscoveryGroupLayout.grid,
+  _ => _contentInvalid('$context contains an unknown group layout.'),
+};
 
 void _requireMatchingPlugin(
   Map<String, Object?> result,

@@ -79,6 +79,7 @@ class _GoldenSourceGateway implements SourceContentGateway {
     required String pluginId,
     String? target,
     String? cursor,
+    String? collectionId,
     int pageSize = 20,
   }) => throw UnimplementedError();
 

@@ -76,42 +76,71 @@ final class InstalledPluginsInvocation
     }
     return List<InstalledPlugin>.unmodifiable(
       value.map((Object? raw) {
-        final item = _jsonObject(raw, 'Installed plugin');
-        final id = item['id'];
-        final name = item['name'];
-        final displayName = item['displayName'];
-        final activeVersion = item['activeVersion'];
-        final pendingVersion = item['pendingVersion'];
-        final enabled = item['enabled'];
-        final status = item['status'];
-        final kinds = item['contentKinds'];
-        if (id is! String ||
-            name is! String ||
-            displayName is! String ||
-            (activeVersion != null && activeVersion is! String) ||
-            (pendingVersion != null && pendingVersion is! String) ||
-            enabled is! bool ||
-            status is! String ||
-            kinds is! List<Object?> ||
-            kinds.any((Object? kind) => kind is! String)) {
-          throw const PluginRuntimeException(
-            'invalid_response',
-            'The Runtime returned an invalid installed-plugin projection.',
-          );
-        }
-        return InstalledPlugin(
-          activeVersion: activeVersion as String?,
-          contentKinds: List<String>.unmodifiable(kinds.cast<String>()),
-          displayName: displayName,
-          enabled: enabled,
-          id: id,
-          name: name,
-          pendingVersion: pendingVersion as String?,
-          status: status,
-        );
+        return _decodeInstalledPlugin(raw);
       }),
     );
   }
+}
+
+/// Persists a source's desired enabled state in the Runtime-owned plugin store.
+@immutable
+final class SetPluginEnabledInvocation
+    extends PluginInvocation<InstalledPlugin> {
+  const SetPluginEnabledInvocation({
+    required this.pluginId,
+    required this.enabled,
+  });
+
+  final String pluginId;
+  final bool enabled;
+
+  @override
+  String get _wireMethod => 'plugins.setEnabled.v1';
+
+  @override
+  Map<String, Object?> get _wireParams => <String, Object?>{
+    'pluginId': pluginId,
+    'enabled': enabled,
+  };
+
+  @override
+  InstalledPlugin _decodeResult(Object? value) => _decodeInstalledPlugin(value);
+}
+
+InstalledPlugin _decodeInstalledPlugin(Object? value) {
+  final item = _jsonObject(value, 'Installed plugin');
+  final id = item['id'];
+  final name = item['name'];
+  final displayName = item['displayName'];
+  final activeVersion = item['activeVersion'];
+  final pendingVersion = item['pendingVersion'];
+  final enabled = item['enabled'];
+  final status = item['status'];
+  final kinds = item['contentKinds'];
+  if (id is! String ||
+      name is! String ||
+      displayName is! String ||
+      (activeVersion != null && activeVersion is! String) ||
+      (pendingVersion != null && pendingVersion is! String) ||
+      enabled is! bool ||
+      status is! String ||
+      kinds is! List<Object?> ||
+      kinds.any((Object? kind) => kind is! String)) {
+    throw const PluginRuntimeException(
+      'invalid_response',
+      'The Runtime returned an invalid installed-plugin projection.',
+    );
+  }
+  return InstalledPlugin(
+    activeVersion: activeVersion as String?,
+    contentKinds: List<String>.unmodifiable(kinds.cast<String>()),
+    displayName: displayName,
+    enabled: enabled,
+    id: id,
+    name: name,
+    pendingVersion: pendingVersion as String?,
+    status: status,
+  );
 }
 
 /// Strong Flutter projection of one Runtime-owned plugin installation.

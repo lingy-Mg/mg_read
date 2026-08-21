@@ -23,9 +23,22 @@ final class LibraryHomeViewData {
   /// Maps the currently narrow local overview contract without inventing
   /// reading progress, chapter metadata, source availability, or timestamps.
   factory LibraryHomeViewData.fromLocalOverview(LibraryOverview overview) {
+    final current = overview.continueReading;
+    final currentIndex = current == null ? -1 : overview.items.indexOf(current);
     return LibraryHomeViewData(
       isPresentationFixture: false,
-      continueReading: null,
+      continueReading: current == null
+          ? null
+          : LibraryContinueReadingViewData(
+              bookId: current.id,
+              title: current.title,
+              chapter: '第${(current.readingChapterIndex ?? 0) + 1}章',
+              progress: current.readingProgress!,
+              lastReadLabel: '上次阅读',
+              coverVariant: LibraryCoverVariant.values[
+                currentIndex % LibraryCoverVariant.values.length
+              ],
+            ),
       books: overview.items.asMap().entries.map(
         (entry) => LibraryBookListItemViewData(
           id: entry.value.id,

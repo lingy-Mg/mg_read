@@ -1073,6 +1073,9 @@ class DiscoveryCategoryBoard extends StatelessWidget {
               children: <Widget>[
                 Expanded(
                   child: DiscoveryCategoryTile(
+                    key: ValueKey<String>(
+                      'discovery-category-${visible[row * 2].target ?? visible[row * 2].title}',
+                    ),
                     data: visible[row * 2],
                     onPressed: () => _handleCategory(visible[row * 2]),
                   ),
@@ -1081,6 +1084,9 @@ class DiscoveryCategoryBoard extends StatelessWidget {
                 if (row * 2 + 1 < visible.length)
                   Expanded(
                     child: DiscoveryCategoryTile(
+                      key: ValueKey<String>(
+                        'discovery-category-${visible[row * 2 + 1].target ?? visible[row * 2 + 1].title}',
+                      ),
                       data: visible[row * 2 + 1],
                       onPressed: () => _handleCategory(visible[row * 2 + 1]),
                     ),

@@ -55,6 +55,33 @@ void main() {
       });
 
       final plugins = await runtime.invoke(const InstalledPluginsInvocation());
+      final disabled = await runtime.invoke(
+        const SetPluginEnabledInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
+          enabled: false,
+        ),
+      );
+      await expectLater(
+        runtime.invoke(
+          const SourceSearchInvocation(
+            pluginId: 'org.mgread.flutter.fixture',
+            query: 'Flutter',
+          ),
+        ),
+        throwsA(
+          isA<PluginRuntimeException>().having(
+            (error) => error.code,
+            'code',
+            'plugin_disabled',
+          ),
+        ),
+      );
+      final enabled = await runtime.invoke(
+        const SetPluginEnabledInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
+          enabled: true,
+        ),
+      );
       final result = await runtime.invoke(
         const SourceSearchInvocation(
           pluginId: 'org.mgread.flutter.fixture',
@@ -96,6 +123,10 @@ void main() {
       expect(plugins.single.id, 'org.mgread.flutter.fixture');
       expect(plugins.single.displayName, 'Flutter 标准测试书源');
       expect(plugins.single.activeVersion, '1.0.0');
+      expect(disabled.enabled, isFalse);
+      expect(disabled.status, 'disabled');
+      expect(enabled.enabled, isTrue);
+      expect(enabled.status, 'active');
       expect(result.pluginId, 'org.mgread.flutter.fixture');
       expect(result.items.single.id, 'flutter:Flutter');
       expect(result.items.single.title, '标准 Node：Flutter');
@@ -104,7 +135,13 @@ void main() {
       expect(result.items.single.coverUrl, isNull);
       expect(result.items.single.tags, isEmpty);
       expect(result.totalCount, 1);
-      expect(discovery.sections.first.layout, PluginDiscoveryLayout.featured);
+      expect(discovery, isA<PluginDiscoveryDocumentResult>());
+      final document = discovery as PluginDiscoveryDocumentResult;
+      expect(
+        document.document.components
+            .whereType<PluginDiscoverySectionComponent>(),
+        isNotEmpty,
+      );
       expect(detail.catalogUrl, isNull);
       expect(chapters.items.single.order, 0);
       expect(content.contentKind, PluginContentKind.novel);
@@ -373,22 +410,25 @@ function summary(query) {
 }
 export async function discover() {
   return {
-    tabs: [],
-    selectedTabId: null,
-    sections: [{
-      id: 'featured',
+    kind: 'document',
+    document: { components: [{
+      type: 'section',
+      id: 'featured-section',
       title: '精选',
       subtitle: null,
-      layout: 'featured',
-      items: [{
-        content: summary('发现'),
-        rank: null,
-        metric: null,
-        recommendation: null,
+      children: [{
+        type: 'contentCollection',
+        id: 'featured',
+        layout: 'featured',
+        continuation: null,
+        items: [{
+          content: summary('发现'),
+          rank: null,
+          metric: null,
+          recommendation: null,
+        }],
       }],
-      categories: [],
-    }],
-    nextCursor: null,
+    }] },
   };
 }
 export async function search(request) {

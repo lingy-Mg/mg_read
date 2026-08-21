@@ -1,6 +1,6 @@
 # ADR-0017：版本化插件内容契约与显式空值语义
 
-- 状态：Accepted
+- 状态：Superseded（由 ADR-0018 替代）
 - 日期：2026-08-15
 - 决策者：MgRead 项目
 - 依赖：[ADR-0008](0008-standalone-plugin-runtime-boundary.md)、[ADR-0015](0015-standard-node-plugin-projects.md)

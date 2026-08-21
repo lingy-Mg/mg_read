@@ -40,6 +40,7 @@ abstract interface class SourceContentGateway {
     required String pluginId,
     String? target,
     String? cursor,
+    String? collectionId,
     int pageSize = 20,
   });
 
@@ -125,6 +126,7 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
     required String pluginId,
     String? target,
     String? cursor,
+    String? collectionId,
     int pageSize = 20,
   }) {
     return _invoke(
@@ -134,14 +136,15 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
           pluginId: pluginId,
           target: target,
           cursor: cursor,
+          collectionId: collectionId,
           pageSize: pageSize,
         ),
       ),
-      resultCount: (result) => result.sections.fold<int>(
-        0,
-        (count, section) =>
-            count + section.items.length + section.categories.length,
-      ),
+      resultCount: (result) => switch (result) {
+        PluginDiscoveryDocumentResult(:final document) =>
+          _discoveryDocumentItemCount(document),
+        PluginDiscoveryAppendResult(:final items) => items.length,
+      },
     );
   }
 
@@ -265,6 +268,23 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
     );
   }
 }
+
+int _discoveryDocumentItemCount(PluginDiscoveryDocument document) => document
+    .components
+    .fold<int>(0, (count, component) => count + _componentItemCount(component));
+
+int _componentItemCount(PluginDiscoveryComponent component) =>
+    switch (component) {
+      PluginDiscoveryContentCollectionComponent(:final items) => items.length,
+      PluginDiscoveryCategoryCollectionComponent(:final categories) =>
+        categories.length,
+      PluginDiscoverySectionComponent(:final children) ||
+      PluginDiscoveryGroupComponent(:final children) => children.fold<int>(
+        0,
+        (count, child) => count + _componentItemCount(child),
+      ),
+      _ => 0,
+    };
 
 final sourceContentGatewayProvider = Provider<SourceContentGateway>((Ref ref) {
   final runtimeConnection = ref.watch(pluginRuntimeConnectionProvider.future);

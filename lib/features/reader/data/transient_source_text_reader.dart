@@ -22,11 +22,13 @@ final class TransientSourceTextReader {
     required PluginChaptersResult firstCatalogPage,
     required SourceChapterPageLoader loadChapterPage,
     required SourceChapterContentLoader loadChapterContent,
+    String? bookId,
   }) : _dataSource = _TransientSourceTextReaderDataSource(
          detail: detail,
          firstCatalogPage: firstCatalogPage,
          loadChapterPage: loadChapterPage,
          loadChapterContent: loadChapterContent,
+         bookId: bookId ?? 'source:${detail.pluginId}:${detail.summary.id}',
        );
 
   /// Typed source metadata returned by the Runtime Facade.
@@ -38,6 +40,7 @@ final class TransientSourceTextReader {
   ReaderLaunchRequest createLaunchRequest({
     required String initialChapterId,
     ReaderObserver? observer,
+    TextReaderStateStore? stateStore,
   }) {
     final initialIndex = _dataSource.indexOf(initialChapterId);
     if (initialIndex == null) {
@@ -48,16 +51,17 @@ final class TransientSourceTextReader {
       );
     }
     return ReaderLaunchRequest(
-      // This is only a session key. It is never written to app persistence.
-      bookId: 'source:${detail.pluginId}:${detail.summary.id}',
+      bookId: _dataSource.bookId,
       dataSource: _dataSource,
-      stateStore: _EphemeralTextReaderStateStore(
-        ReaderProgress(
-          chapterId: initialChapterId,
-          paragraphId: '',
-          chapterIndex: initialIndex,
-        ),
-      ),
+      stateStore:
+          stateStore ??
+          _EphemeralTextReaderStateStore(
+            ReaderProgress(
+              chapterId: initialChapterId,
+              paragraphId: '',
+              chapterIndex: initialIndex,
+            ),
+          ),
       observer: observer,
     );
   }
@@ -70,11 +74,13 @@ final class _TransientSourceTextReaderDataSource
     required PluginChaptersResult firstCatalogPage,
     required this._loadChapterPage,
     required this._loadChapterContent,
+    required this.bookId,
   }) {
     _cachePage(null, firstCatalogPage, offset: 0);
   }
 
   final PluginContentDetail detail;
+  final String bookId;
   final SourceChapterPageLoader _loadChapterPage;
   final SourceChapterContentLoader _loadChapterContent;
   final Map<String?, PluginChaptersResult> _catalogPages =
@@ -207,7 +213,7 @@ final class _TransientSourceTextReaderDataSource
   }
 
   void _requireBook(String bookId) {
-    if (bookId != 'source:${detail.pluginId}:${detail.summary.id}') {
+    if (bookId != this.bookId) {
       throw ArgumentError.value(bookId, 'bookId');
     }
   }

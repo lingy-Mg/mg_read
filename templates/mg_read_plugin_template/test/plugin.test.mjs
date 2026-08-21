@@ -61,7 +61,9 @@ test('standard named exports activate and use multi-file/local-package resources
     assert.equal(Array.isArray(summary[key]), true, `${key} must always be an array`);
   }
   assert.equal(search.nextCursor, null);
-  assert.equal(discovery.sections[0].layout, 'featured');
+  assert.equal(discovery.kind, 'document');
+  assert.equal(discovery.document.components[0].type, 'tabs');
+  assert.equal(discovery.document.components[1].children[0].layout, 'featured');
   assert.equal(detail.catalogUrl, null);
   assert.equal(chapters.items[0].order, 0);
   assert.equal(content.chapterId, chapters.items[0].id);

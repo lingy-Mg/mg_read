@@ -282,20 +282,20 @@ class _SourceDetailBody extends StatelessWidget {
                           .toList(growable: false),
                     ),
                   ],
+                  const SizedBox(height: AppSpacing.regular),
+                  Divider(color: tokens.divider),
+                  _DetailStats(content: content),
+                  Divider(color: tokens.divider),
+                  _ExternalRow(
+                    key: const Key('source-detail-source-url'),
+                    label: '来源频道：${detail.sourceName}',
+                    url: content.url,
+                    onOpenUrl: _openUrl,
+                  ),
                 ],
               ),
             ),
           ],
-        ),
-        const SizedBox(height: AppSpacing.section),
-        Divider(color: tokens.divider),
-        _DetailStats(content: content),
-        Divider(color: tokens.divider),
-        _ExternalRow(
-          key: const Key('source-detail-source-url'),
-          label: '来源频道：${detail.sourceName}',
-          url: content.url,
-          onOpenUrl: _openUrl,
         ),
         const SizedBox(height: AppSpacing.regular),
         Row(
@@ -490,7 +490,7 @@ class _DetailStats extends StatelessWidget {
       child: Row(
         children: <Widget>[
           _Stat(
-            value: heat ?? _wordCount(content.wordCount),
+            value: heat ?? _legacyWordCount(content.wordCount),
             label: heat == null
                 ? '字数'
                 : favorites == null
@@ -747,6 +747,8 @@ String _wordCount(int? value) {
   final digits = value % 10000 == 0 ? 0 : 2;
   return '${count.toStringAsFixed(digits)}万';
 }
+
+String _legacyWordCount(int? value) => value == null ? '—' : '字数：$value';
 
 String _chapterCount(int? value) => value == null ? '—' : '$value';
 String _statusLabel(PluginContentStatus value) => switch (value) {

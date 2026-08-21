@@ -182,6 +182,7 @@ final class _ReferenceDetailGateway implements SourceContentGateway {
     required String pluginId,
     String? target,
     String? cursor,
+    String? collectionId,
     int pageSize = 20,
   }) async => throw UnimplementedError();
 

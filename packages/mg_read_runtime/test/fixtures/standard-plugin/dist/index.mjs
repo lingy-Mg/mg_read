@@ -50,31 +50,39 @@ function contentSummary(query) {
 
 export async function discover(_request) {
   return {
-    tabs: [{ id: "recommend", label: "推荐", target: "recommend" }],
-    selectedTabId: "recommend",
-    sections: [
+    kind: "document",
+    document: { components: [
+      { type: "tabs", id: "tabs", tabs: [{ id: "recommend", label: "推荐", target: "recommend" }], selectedTabId: "recommend" },
       {
-        id: "featured",
+        type: "section",
+        id: "featured-section",
         title: "编辑精选",
         subtitle: null,
-        layout: "featured",
-        items: [
+        children: [{
+          type: "contentCollection",
+          id: "featured",
+          layout: "featured",
+          continuation: null,
+          items: [
           {
             content: contentSummary("发现"),
             rank: null,
             metric: null,
             recommendation: "离线固定推荐",
           },
-        ],
-        categories: [],
+          ],
+        }],
       },
       {
-        id: "categories",
+        type: "section",
+        id: "categories-section",
         title: "分类",
         subtitle: null,
-        layout: "categories",
-        items: [],
-        categories: [
+        children: [{
+          type: "categoryCollection",
+          id: "categories",
+          layout: "grid",
+          categories: [
           {
             id: "test",
             title: "测试",
@@ -82,10 +90,10 @@ export async function discover(_request) {
             count: 1,
             url: null,
           },
-        ],
+          ],
+        }],
       },
-    ],
-    nextCursor: null,
+    ]},
   };
 }
 

@@ -301,12 +301,14 @@ test("desktop Runtime loads and searches an installed standard Node plugin", asy
         pluginId: desktopFixture.plugin.id,
         target: null,
         cursor: null,
+        collectionId: null,
         pageSize: 20,
       },
     }),
   );
   assert.equal(discovery.type, "response");
-  assert.equal(discovery.result.sections[0].layout, "featured");
+  assert.equal(discovery.result.kind, "document");
+  assert.equal(discovery.result.document.components[0].type, "tabs");
 
   const detail = await sendRequest(
     socket,

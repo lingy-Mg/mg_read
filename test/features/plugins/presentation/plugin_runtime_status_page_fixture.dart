@@ -1,0 +1,71 @@
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
+
+/// Static Runtime projection for deterministic data-source presentation tests.
+const PluginRuntimeConnection dataSourceManagementFixture =
+    PluginRuntimeConnection(
+      isHealthy: true,
+      nodeVersion: '24.16.0',
+      runtimeVersion: '0.2.0-standard.1',
+      plugins: <PluginRuntimePlugin>[
+        PluginRuntimePlugin(
+          activeVersion: '1.0.0',
+          contentKinds: <String>['novel'],
+          displayName: '起点中文网',
+          enabled: true,
+          id: 'org.mgread.qidian',
+          name: 'qidian',
+          pendingVersion: null,
+          status: 'active',
+        ),
+        PluginRuntimePlugin(
+          activeVersion: '1.0.0',
+          contentKinds: <String>['novel'],
+          displayName: '番茄小说',
+          enabled: true,
+          id: 'org.mgread.fanqie',
+          name: 'fanqie',
+          pendingVersion: null,
+          status: 'active',
+        ),
+        PluginRuntimePlugin(
+          activeVersion: '1.0.0',
+          contentKinds: <String>['novel'],
+          displayName: '七猫中文网',
+          enabled: true,
+          id: 'org.mgread.qimao',
+          name: 'qimao',
+          pendingVersion: null,
+          status: 'active',
+        ),
+        PluginRuntimePlugin(
+          activeVersion: '1.0.0',
+          contentKinds: <String>['novel'],
+          displayName: '纵横中文网',
+          enabled: true,
+          id: 'org.mgread.zongheng',
+          name: 'zongheng',
+          pendingVersion: null,
+          status: 'active',
+        ),
+        PluginRuntimePlugin(
+          activeVersion: '1.0.0',
+          contentKinds: <String>['novel'],
+          displayName: '晋江文学城',
+          enabled: false,
+          id: 'org.mgread.jinjiang',
+          name: 'jinjiang',
+          pendingVersion: null,
+          status: 'disabled',
+        ),
+        PluginRuntimePlugin(
+          activeVersion: '1.0.0',
+          contentKinds: <String>['novel'],
+          displayName: '17K小说网',
+          enabled: false,
+          id: 'org.mgread.17k',
+          name: '17k',
+          pendingVersion: null,
+          status: 'disabled',
+        ),
+      ],
+    );

@@ -29,6 +29,7 @@
       "diagnostics.statistics.get.v1",
       "runtime.ping",
       "plugins.list.v1",
+      "plugins.setEnabled.v1",
       "source.discover.v1",
       "source.search.v1",
       "source.getDetail.v1",

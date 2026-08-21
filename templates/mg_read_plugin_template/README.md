@@ -39,8 +39,9 @@ export async function getContent(request) {}
 - `activate(ctx)`：生命周期初始化点。只在此保存 Runtime 提供的上下文、读取只读资源和建立
   可复用的轻量状态；不要在模块顶层做依赖 `ctx` 的工作，也不要在这里启动 Worker、子进程或
   长期阻塞任务。
-- `discover(request)`：返回 tab、受控布局分区、排行/分类入口和富内容摘要；tab/category 的
-  `target` 只回传给当前插件。
+- `discover(request)`：返回递归受控组件 document，或对指定内容集合的 append；支持 tabs、
+  section/group、内容/分类集合、文本和分隔线。target、cursor、collectionId 都只回传给当前插件；
+  不能下发任意样式、Flutter 组件或脚本。
 - `search({query,cursor,pageSize})`：返回 `items/nextCursor/totalCount`。每个 item 都包含书名、
   内容类型，以及显式 nullable 的作者、URL、封面、简介、字数、章节数、更新时间、最新章节等
   字段；`id` 必须是后续 `getDetail`、`getChapters` 能识别的稳定来源 ID。

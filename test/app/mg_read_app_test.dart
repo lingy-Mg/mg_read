@@ -82,11 +82,8 @@ void main() {
     const ReaderRoute(bookId: 'book-local-42').go(context);
     await tester.pumpAndSettle();
 
-    expect(find.text('阅读会话尚未就绪'), findsOneWidget);
-    expect(
-      find.text('此路由只保存稳定书籍 ID。后续由应用用例解析数据源和状态存储后再打开阅读器。'),
-      findsOneWidget,
-    );
+    expect(find.text('暂时无法开始阅读'), findsOneWidget);
+    expect(find.text('未能获取这本书的可读内容，请稍后重试。'), findsOneWidget);
   });
 
   testWidgets('route and reader diagnostics never persist route parameters', (
@@ -111,10 +108,6 @@ void main() {
           .where((event) => event.eventName == 'app.route.changed')
           .map((event) => event.attributes.values['toRoute']),
       contains(DiagnosticStringValue('reader')),
-    );
-    expect(
-      diagnostics.sink.events.map((event) => event.eventName),
-      containsAll(<String>['reader.launch.start', 'reader.launch.complete']),
     );
     final encoded = jsonEncode(
       diagnostics.sink.events
@@ -152,7 +145,7 @@ void main() {
     loader.completeNext(_overview('stale result'));
     await tester.pump();
 
-    expect(find.text('阅读会话尚未就绪'), findsOneWidget);
+    expect(find.text('暂时无法开始阅读'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

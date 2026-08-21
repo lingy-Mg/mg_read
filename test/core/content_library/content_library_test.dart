@@ -68,6 +68,38 @@ void main() {
     },
   );
 
+  test('persists semantic reading progress and typed source identity', () async {
+    final item = await library.bookshelf.add(
+      title: '进度测试书',
+      kind: ContentKind.novel,
+      source: source,
+    );
+    await library.readingProgress.save(
+      LibraryReadingProgress(
+        itemId: item.id,
+        chapterId: 'chapter-6',
+        paragraphId: 'chapter-6:paragraph:3',
+        characterOffset: 18,
+        chapterIndex: 5,
+        chapterFraction: 0.5,
+        bookFraction: 0.25,
+        updatedAtUtc: DateTime.utc(2026, 8, 21, 12),
+      ),
+    );
+    await library.close();
+    library = await ContentLibrary.open(dataRoot: root);
+
+    final restored = await library.getLibraryItem(item.id);
+    final progress = await library.readingProgress.load(item.id);
+
+    expect(restored?.source?.pluginId, 'fixture');
+    expect(restored?.source?.remoteContentId, 'book-1');
+    expect(progress?.chapterId, 'chapter-6');
+    expect(progress?.paragraphId, 'chapter-6:paragraph:3');
+    expect(progress?.characterOffset, 18);
+    expect(progress?.bookFraction, 0.25);
+  });
+
   test('session-only manga resource does not retain a URL', () async {
     final item = await library.bookshelf.add(
       title: '漫画',

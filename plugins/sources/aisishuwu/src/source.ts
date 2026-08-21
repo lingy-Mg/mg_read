@@ -75,18 +75,20 @@ export class AliceBookHouseSource {
   async discover(request: DiscoverRequest): Promise<DiscoverResult> {
     if (request.target === null) {
       return Object.freeze({
-        tabs: Object.freeze([]),
-        selectedTabId: null,
-        nextCursor: null,
-        sections: Object.freeze([
+        kind: 'document' as const,
+        document: Object.freeze({ components: Object.freeze([
           Object.freeze({
-            id: 'source-categories',
+            type: 'section' as const,
+            id: 'source-categories-section',
             title: '分类',
             subtitle: null,
-            layout: 'categories' as const,
-            items: Object.freeze([]),
-            categories: Object.freeze(
-              this.#categories.map((category) =>
+            children: Object.freeze([
+              Object.freeze({ type: 'text' as const, id: 'source-categories-hint', text: '选择分类后查看书籍。' }),
+              Object.freeze({
+                type: 'categoryCollection' as const,
+                id: 'source-categories',
+                layout: 'grid' as const,
+                categories: Object.freeze(this.#categories.map((category) =>
                 Object.freeze({
                   id: `category:${category.id}`,
                   title: category.title,
@@ -94,10 +96,11 @@ export class AliceBookHouseSource {
                   count: null,
                   url: null,
                 }),
-              ),
-            ),
+                )),
+              }),
+            ]),
           }),
-        ]),
+        ]) }),
       });
     }
 
@@ -108,32 +111,46 @@ export class AliceBookHouseSource {
     const items = await this.#parseList(await this.#getHtml(pageUrl), pageUrl);
     const visible = await this.#withCovers(items.slice(0, request.pageSize));
 
+    const continuation = items.length >= request.pageSize
+        ? Object.freeze({ target: request.target, cursor: encodePageCursor('category-page', page + 1) })
+        : null;
+    const collectionId = `category-books:${category.id}`;
+    const discoveryItems = Object.freeze(
+      visible.map((content) => Object.freeze({
+        content,
+        rank: null,
+        metric: null,
+        recommendation: null,
+      })),
+    );
+    if (request.collectionId !== null) {
+      if (request.collectionId !== collectionId || request.cursor === null) {
+        throw new Error('Discovery continuation is invalid.');
+      }
+      return Object.freeze({
+        kind: 'append' as const,
+        collectionId,
+        items: discoveryItems,
+        continuation,
+      });
+    }
     return Object.freeze({
-      tabs: Object.freeze([]),
-      selectedTabId: null,
-      nextCursor:
-        items.length >= request.pageSize
-          ? encodePageCursor('category-page', page + 1)
-          : null,
-      sections: Object.freeze([
+      kind: 'document' as const,
+      document: Object.freeze({ components: Object.freeze([
         Object.freeze({
-          id: `category-results:${category.id}:${page}`,
+          type: 'section' as const,
+          id: `category-results-section:${category.id}`,
           title: category.title,
           subtitle: null,
-          layout: 'list' as const,
-          categories: Object.freeze([]),
-          items: Object.freeze(
-            visible.map((content) =>
-              Object.freeze({
-                content,
-                rank: null,
-                metric: null,
-                recommendation: null,
-              }),
-            ),
-          ),
+          children: Object.freeze([Object.freeze({
+            type: 'contentCollection' as const,
+            id: collectionId,
+            layout: 'list' as const,
+            items: discoveryItems,
+            continuation,
+          })]),
         }),
-      ]),
+      ]) }),
     });
   }
 

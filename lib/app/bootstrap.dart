@@ -15,6 +15,9 @@ import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/data/content_library_overview_loader.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
+import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
+import 'package:mg_read/features/reader/data/content_library_source_text_reader.dart';
 
 typedef SettingsDataRootResolver = Future<Directory> Function();
 typedef MgReadAppRunner = void Function(Widget app);
@@ -124,6 +127,13 @@ Future<void> bootstrapMgReadApp({
           if (persistentContentLibrary != null)
             discoveryBookshelfSaverProvider.overrideWithValue(
               ContentLibraryDiscoveryBookshelfSaver(persistentContentLibrary),
+            ),
+          if (persistentContentLibrary != null)
+            libraryReaderLauncherProvider.overrideWith(
+              (ref) => ContentLibrarySourceTextReader(
+                persistentContentLibrary!,
+                ref.read(sourceContentGatewayProvider),
+              ),
             ),
         ],
         child: AppSettingsLifecycleHost(

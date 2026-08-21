@@ -29,6 +29,10 @@ void main() {
       (plugin) => plugin.id == 'org.mgread.aisishuwu',
     );
     expect(aisishuwu.status, 'active');
+    final demo = plugins.singleWhere(
+      (plugin) => plugin.id == 'org.mgread.discovery-demo',
+    );
+    expect(demo.status, 'active');
 
     final discovery = await runtime.invoke(
       const SourceDiscoverInvocation(
@@ -36,9 +40,33 @@ void main() {
         pageSize: 20,
       ),
     );
-    expect(discovery.sections, isNotEmpty);
-    expect(discovery.sections.first.layout, PluginDiscoveryLayout.categories);
-    expect(discovery.sections.first.categories, isNotEmpty);
+    expect(discovery, isA<PluginDiscoveryDocumentResult>());
+    final document = discovery as PluginDiscoveryDocumentResult;
+    expect(document.document.components, isNotEmpty);
+    expect(
+      document.document.components.whereType<PluginDiscoverySectionComponent>(),
+      isNotEmpty,
+    );
+    final demoDiscovery = await runtime.invoke(
+      const SourceDiscoverInvocation(
+        pluginId: 'org.mgread.discovery-demo',
+        pageSize: 20,
+      ),
+    );
+    expect(demoDiscovery, isA<PluginDiscoveryDocumentResult>());
+    final demoDocument =
+        (demoDiscovery as PluginDiscoveryDocumentResult).document;
+    expect(
+      demoDocument.components.whereType<PluginDiscoveryTabsComponent>(),
+      hasLength(1),
+    );
+    expect(
+      _containsDemoGroupLayout(
+        demoDocument.components,
+        PluginDiscoveryGroupLayout.horizontal,
+      ),
+      isTrue,
+    );
     expect(
       facadeDiagnostics
           .where(
@@ -138,3 +166,19 @@ void main() {
     await binding.takeScreenshot('discovery_detail_light');
   });
 }
+
+bool _containsDemoGroupLayout(
+  Iterable<PluginDiscoveryComponent> components,
+  PluginDiscoveryGroupLayout layout,
+) => components.any(
+  (component) => switch (component) {
+    PluginDiscoveryGroupComponent() =>
+      component.layout == layout ||
+          _containsDemoGroupLayout(component.children, layout),
+    PluginDiscoverySectionComponent() => _containsDemoGroupLayout(
+      component.children,
+      layout,
+    ),
+    _ => false,
+  },
+);

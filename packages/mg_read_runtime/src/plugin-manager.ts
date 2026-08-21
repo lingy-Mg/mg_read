@@ -18,6 +18,7 @@ import {
   readPluginProject,
   resolveInside,
 } from "./plugin-package.js";
+import { PluginInstaller } from "./plugin-installer.js";
 import { pluginApiVersion } from "./plugin-package.js";
 import { runtimeVersion } from "./runtime-version.js";
 import {
@@ -41,6 +42,8 @@ import {
 } from "./plugin-content.js";
 
 export type PluginManagerEventCode =
+  | "plugin_disabled"
+  | "plugin_enabled"
   | "plugin_invocation_completed"
   | "plugin_invocation_failed"
   | "plugin_invocation_started"
@@ -182,6 +185,44 @@ export class PluginManager {
     return this.#snapshots;
   }
 
+  /**
+   * Persists one source's enabled state and immediately gates dispatch in this
+   * Runtime process without unloading or recreating the shared Node VM.
+   */
+  async setEnabled(
+    pluginId: string,
+    enabled: boolean,
+  ): Promise<InstalledPluginSnapshot> {
+    await this.initialize();
+    if (!isPluginId(pluginId)) throw new PluginManagerError("invalid_request");
+    const index = this.#snapshots.findIndex((item) => item.id === pluginId);
+    if (index < 0) throw new PluginManagerError("plugin_not_found");
+
+    await new PluginInstaller(this.#dataRoot).setEnabled(pluginId, enabled);
+    const current = this.#snapshots[index]!;
+    const updated = Object.freeze({
+      activeVersion: current.activeVersion,
+      contentKinds: current.contentKinds,
+      displayName: current.displayName,
+      enabled,
+      id: current.id,
+      name: current.name,
+      pendingVersion: current.pendingVersion,
+      status: enabled ? enabledStatus(current) : "disabled",
+    } satisfies InstalledPluginSnapshot);
+    this.#snapshots = Object.freeze([
+      ...this.#snapshots.slice(0, index),
+      updated,
+      ...this.#snapshots.slice(index + 1),
+    ]);
+    this.#events({
+      code: enabled ? "plugin_enabled" : "plugin_disabled",
+      outcome: "success",
+      pluginId,
+    });
+    return updated;
+  }
+
   async discover(
     pluginId: string,
     request: PluginDiscoverRequest,
@@ -197,6 +238,9 @@ export class PluginManager {
       deadlineUnixMs,
       validateDiscoverResult,
       trace,
+      (result) => request.collectionId === null
+        ? result.kind === "document"
+        : result.kind === "append" && result.collectionId === request.collectionId,
     );
   }
 
@@ -293,9 +337,14 @@ export class PluginManager {
     if (!isPluginId(pluginId)) {
       throw new PluginManagerError("invalid_request");
     }
+    const snapshot = this.#snapshots.find((item) => item.id === pluginId);
+    if (snapshot?.enabled != true) {
+      throw new PluginManagerError(
+        snapshot === undefined ? "plugin_not_found" : "plugin_disabled",
+      );
+    }
     const plugin = this.#loaded.get(pluginId);
     if (plugin === undefined) {
-      const snapshot = this.#snapshots.find((item) => item.id === pluginId);
       throw new PluginManagerError(
         snapshot?.status === "disabled" ? "plugin_disabled" : "plugin_not_found",
       );
@@ -584,6 +633,14 @@ function snapshotFrom(
     pendingVersion,
     status,
   });
+}
+
+function enabledStatus(
+  snapshot: InstalledPluginSnapshot,
+): InstalledPluginSnapshot["status"] {
+  if (snapshot.activeVersion !== null) return "active";
+  if (snapshot.pendingVersion !== null) return "pending";
+  return "damaged";
 }
 
 async function readVersionPointer(path: string): Promise<string | null> {

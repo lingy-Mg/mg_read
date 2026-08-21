@@ -30,12 +30,13 @@ export interface MgReadPluginContext {
 export type ContentKind = 'novel' | 'manga';
 export type ContentStatus = 'ongoing' | 'completed' | 'hiatus' | 'unknown';
 export type AccessKind = 'free' | 'paid' | 'mixed' | 'unknown';
-export type DiscoveryLayout =
+export type DiscoveryContentLayout =
   | 'featured'
   | 'carousel'
   | 'ranking'
-  | 'list'
-  | 'categories';
+  | 'list';
+export type DiscoveryCategoryLayout = 'grid' | 'list';
+export type DiscoveryGroupLayout = 'vertical' | 'horizontal' | 'grid';
 
 export interface ContentAttribute {
   readonly key: string;
@@ -98,6 +99,8 @@ export interface DiscoverRequest {
   /** 首次发现为 null；tab/分类返回的 target 只回传给当前插件。 */
   readonly target: string | null;
   readonly cursor: string | null;
+  /** 仅 continuation 请求填写，定位需要追加的内容集合。 */
+  readonly collectionId: string | null;
   readonly pageSize: number;
 }
 
@@ -127,23 +130,61 @@ export interface DiscoveryCategory {
   readonly url: string | null;
 }
 
+export interface DiscoveryContinuation {
+  readonly target: string;
+  readonly cursor: string;
+}
+
+export interface DiscoveryTabs {
+  readonly type: 'tabs';
+  readonly id: string;
+  readonly tabs: readonly DiscoveryTab[];
+  readonly selectedTabId: string | null;
+}
+
 export interface DiscoverySection {
+  readonly type: 'section';
   readonly id: string;
   readonly title: string;
   readonly subtitle: string | null;
-  readonly layout: DiscoveryLayout;
-  /** categories layout 必须为空数组，其他 layout 承载内容项。 */
+  readonly children: readonly DiscoveryComponent[];
+}
+
+export interface DiscoveryGroup {
+  readonly type: 'group';
+  readonly id: string;
+  readonly layout: DiscoveryGroupLayout;
+  readonly children: readonly DiscoveryComponent[];
+}
+
+export interface DiscoveryContentCollection {
+  readonly type: 'contentCollection';
+  readonly id: string;
+  readonly layout: DiscoveryContentLayout;
   readonly items: readonly DiscoveryContentItem[];
-  /** 非 categories layout 必须为空数组。 */
+  readonly continuation: DiscoveryContinuation | null;
+}
+
+export interface DiscoveryCategoryCollection {
+  readonly type: 'categoryCollection';
+  readonly id: string;
+  readonly layout: DiscoveryCategoryLayout;
   readonly categories: readonly DiscoveryCategory[];
 }
 
-export interface DiscoverResult {
-  readonly tabs: readonly DiscoveryTab[];
-  readonly selectedTabId: string | null;
-  readonly sections: readonly DiscoverySection[];
-  readonly nextCursor: string | null;
-}
+export interface DiscoveryText { readonly type: 'text'; readonly id: string; readonly text: string; }
+export interface DiscoveryDivider { readonly type: 'divider'; readonly id: string; }
+export type DiscoveryComponent = DiscoveryTabs | DiscoverySection | DiscoveryGroup | DiscoveryContentCollection | DiscoveryCategoryCollection | DiscoveryText | DiscoveryDivider;
+export interface DiscoveryDocument { readonly components: readonly DiscoveryComponent[]; }
+
+export type DiscoverResult =
+  | { readonly kind: 'document'; readonly document: DiscoveryDocument }
+  | {
+      readonly kind: 'append';
+      readonly collectionId: string;
+      readonly items: readonly DiscoveryContentItem[];
+      readonly continuation: DiscoveryContinuation | null;
+    };
 
 export interface ContentReferenceRequest {
   readonly id: string;

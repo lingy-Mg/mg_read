@@ -86,6 +86,7 @@ const RUNTIME_CONTROL_METHOD = Object.freeze({
   hello: "runtime.hello",
   ping: "runtime.ping",
   pluginsList: "plugins.list.v1",
+  pluginsSetEnabled: "plugins.setEnabled.v1",
   sourceDiscover: "source.discover.v1",
   sourceSearch: "source.search.v1",
   sourceGetDetail: "source.getDetail.v1",
@@ -106,6 +107,7 @@ const RUNTIME_CONTROL_CAPABILITIES = Object.freeze([
   RUNTIME_CONTROL_METHOD.diagnosticsStatisticsGet,
   RUNTIME_CONTROL_METHOD.ping,
   RUNTIME_CONTROL_METHOD.pluginsList,
+  RUNTIME_CONTROL_METHOD.pluginsSetEnabled,
   RUNTIME_CONTROL_METHOD.sourceDiscover,
   RUNTIME_CONTROL_METHOD.sourceSearch,
   RUNTIME_CONTROL_METHOD.sourceGetDetail,
@@ -1052,6 +1054,8 @@ export class DesktopRuntime {
         const plugins = await this.#pluginManager?.listInstalled();
         return { result: plugins ?? [] };
       }
+      case RUNTIME_CONTROL_METHOD.pluginsSetEnabled:
+        return this.#dispatchPluginEnabled(request);
       case RUNTIME_CONTROL_METHOD.sourceDiscover:
         return this.#dispatchPluginContent(
           request,
@@ -1127,6 +1131,49 @@ export class DesktopRuntime {
             "The Runtime method is not implemented.",
           ),
         };
+    }
+  }
+
+  /** Persists a desired enabled state without exposing Runtime storage. */
+  async #dispatchPluginEnabled(
+    request: RuntimeRequest,
+  ): Promise<RuntimeDispatchResult> {
+    const pluginId = request.params.pluginId;
+    const enabled = request.params.enabled;
+    if (
+      Object.keys(request.params).length !== 2 ||
+      typeof pluginId !== "string" ||
+      typeof enabled !== "boolean"
+    ) {
+      return {
+        error: this.#requestError(
+          request,
+          "invalid_request",
+          "The source enable request is invalid.",
+        ),
+      };
+    }
+    try {
+      const manager = this.#pluginManager;
+      if (manager === undefined) throw new PluginManagerError("plugin_load_failed");
+      return { result: await manager.setEnabled(pluginId, enabled) };
+    } catch (error) {
+      if (!(error instanceof PluginManagerError)) {
+        return {
+          error: this.#requestError(
+            request,
+            "internal",
+            "The source enable request could not be completed.",
+          ),
+        };
+      }
+      return {
+        error: this.#requestError(
+          request,
+          error.code,
+          pluginManagerErrorMessage(error.code),
+        ),
+      };
     }
   }
 
@@ -1877,6 +1924,8 @@ function toJsonValue(value: unknown): JsonValue {
 /** Emits only stable plugin lifecycle codes; plugin log text is discarded. */
 function emitPluginManagerDiagnostic(event: PluginManagerEvent): void {
   const messages: Record<PluginManagerEvent["code"], string> = {
+    plugin_disabled: "A plugin source was disabled.",
+    plugin_enabled: "A plugin source was enabled.",
     plugin_invocation_completed: "A plugin capability completed successfully.",
     plugin_invocation_failed: "A plugin capability failed.",
     plugin_invocation_started: "A plugin capability started.",
