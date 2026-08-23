@@ -1,18 +1,14 @@
 # MgRead Agent 开发契约
 
-<!-- AGENTS_VERSION: 0.0.2 -->
-
 本文件只保留所有任务都必须知道的硬约束。不要在开工时预加载全部架构、ADR、协议和子项目
 文档；按下面的渐进式读取流程选择当前任务真正需要的材料。
 
-## AGENTS.md 指令版本
+## Flutter 应用版本
 
-- 版本号只表示本文件的 Agent 指令版本，不表示应用、插件或依赖版本。
-- 修改本文件后必须更新版本号：小修改递增 patch（`0.0.x`，例如 `0.0.1` -> `0.0.2`），大修改
-  递增 minor 并将 patch 归零（`0.x.0`，例如 `0.0.2` -> `0.1.0`），大版本固定为 `0`。
-- 完成修改后执行一次 `pwsh -File tools/update_agents_version.ps1 -ChangeType small`；大修改将
-  `small` 换成 `large`。脚本是版本号的唯一修改入口，不要手工递增标记。
-- 没有修改本文件的任务不需要更新该版本号；只读对话也不触发版本变化。
+- 版本维护在 `pubspec.yaml` 的 `version` 字段，不写入 `AGENTS.md`。
+- 每次修改后执行一次 `pwsh -File tools/update_flutter_version.ps1 -ChangeType small`；大修改使用
+  `large`。小修改递增 patch，大修改递增 minor 并将 patch 归零，build number 自动递增。
+- 只读检查不升级版本，禁止手工改版本号。
 
 ## 指令优先级
 
@@ -113,6 +109,12 @@ plugins/sources/<source-id>/      实际标准 Node 书源
   serializer 不得执行。日志失败或压力不得改变业务结果。
 - 每个用户操作、跨边界调用和长任务只有一个 owner span：一个 start，恰好一个 success/error/
   cancelled/timeout/overloaded 终态。高频帧、滚动、chunk、条目只做有界聚合。
+- 新增或修改用户操作、异步加载、缓存、持久化、Runtime Facade 或后台任务时，必须同步接入或更新
+  全局诊断：先复用/注册版本化 schema，再仅通过注入的窄 `DiagnosticsManager` 记录。非 Release 的
+  VS Code Debug Console 只能由中心镜像自动输出人可读摘要，完整 envelope 仅在 TXT/查看器中保留，
+  feature/Widget 不得自行写控制台。
+  交付前必须有受影响链路的 span/终态、隐私 canary 和失败不影响业务的测试证据；完整步骤见
+  [诊断接入规范](docs/development/diagnostics-instrumentation.md)。
 - 修改插件 capability 时，Flutter Facade、Runtime control、插件 invocation、插件 `ctx.log` 和
   `ctx.http` 必须保持同 trace 的可诊断链，并有 success 与适用的 timeout/cancel/error、secret/
   content canary 测试。插件禁止 `console.*` 或自行写日志文件。

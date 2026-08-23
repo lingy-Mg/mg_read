@@ -86,6 +86,9 @@ class _DetailContent extends ConsumerWidget {
     final dataUsage = isDevelopment
         ? null
         : ref.watch(pluginRuntimeSourceDataSizeProvider(source.id));
+    final archiveUsage = isDevelopment
+        ? null
+        : ref.watch(pluginRuntimeSourceArchiveSizeProvider(source.id));
     final npmUsage = isDevelopment
         ? null
         : ref.watch(pluginRuntimeSourceNpmSizeProvider(source.id));
@@ -169,7 +172,11 @@ class _DetailContent extends ConsumerWidget {
         ),
         const SizedBox(height: AppSpacing.comfortable),
         if (!isDevelopment)
-          _InstallationSizeCard(dataUsage: dataUsage!, npmUsage: npmUsage!),
+          _InstallationSizeCard(
+            archiveUsage: archiveUsage!,
+            dataUsage: dataUsage!,
+            npmUsage: npmUsage!,
+          ),
         if (!isDevelopment) const SizedBox(height: AppSpacing.comfortable),
         if (isWindows)
           _OpenDirectoryButton(
@@ -220,25 +227,30 @@ class _DetailContent extends ConsumerWidget {
 
 class _InstallationSizeCard extends StatelessWidget {
   const _InstallationSizeCard({
+    required this.archiveUsage,
     required this.dataUsage,
     required this.npmUsage,
   });
 
+  final AsyncValue<PluginInstallationSize> archiveUsage;
   final AsyncValue<PluginInstallationSize> dataUsage;
   final AsyncValue<PluginInstallationSize> npmUsage;
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
+    final archiveResult = archiveUsage is AsyncData<PluginInstallationSize>
+        ? (archiveUsage as AsyncData<PluginInstallationSize>).value
+        : null;
     final dataResult = dataUsage is AsyncData<PluginInstallationSize>
         ? (dataUsage as AsyncData<PluginInstallationSize>).value
         : null;
     final npmResult = npmUsage is AsyncData<PluginInstallationSize>
         ? (npmUsage as AsyncData<PluginInstallationSize>).value
         : null;
-    final total = dataResult == null || npmResult == null
+    final total = archiveResult == null || dataResult == null || npmResult == null
         ? null
-        : dataResult.bytes + npmResult.bytes;
+        : archiveResult.bytes + dataResult.bytes + npmResult.bytes;
     return DecoratedBox(
       key: const Key('data-source-installation-size-card'),
       decoration: BoxDecoration(
@@ -263,6 +275,7 @@ class _InstallationSizeCard extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
+            _InstallationSizeRow(label: '原始安装包', usage: archiveUsage),
             _InstallationSizeRow(label: '数据文件', usage: dataUsage),
             _InstallationSizeRow(
               label: 'npm 包',

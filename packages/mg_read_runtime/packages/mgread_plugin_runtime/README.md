@@ -13,6 +13,7 @@ final sourceDirectoryKind = await runtime.invoke(
     pluginId: 'org.example.source',
   ),
 );
+await runtime.invoke(const OpenRuntimePrivateDirectoryInvocation());
 final cacheUsage = await runtime.invoke(const PluginCacheUsageInvocation());
 final cleared = await runtime.invoke(
   const ClearAllPluginCachesInvocation(),
@@ -86,6 +87,10 @@ Windows Debug 由本 package 在仓库内解析 `plugins/sources` 并把该内�
 `OpenPluginCodeDirectoryInvocation` 仅在 Windows 桌面端由 Runtime 打开目录：development 结果
 打开工作区项目，安装来源打开当前 immutable version 副本。Facade 只返回这两种类型，绝不返回
 绝对路径；安装副本不是即时开发加载入口。
+
+`OpenRuntimePrivateDirectoryInvocation` 仅在 Windows 由 Flutter desktop Supervisor 打开 Runtime
+私有数据根，不让受 Job Object 管理的 Node child 创建 Explorer；Facade 不返回路径；Android 返回稳定的
+`unsupported` 错误。
 
 源码环境的 Facade 冷启动/热调用基线可从本目录运行：
 

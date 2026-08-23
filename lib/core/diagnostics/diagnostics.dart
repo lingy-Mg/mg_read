@@ -2,6 +2,7 @@
 library;
 
 export 'src/diagnostic_event.dart';
+export 'src/diagnostic_console_formatter.dart';
 export 'src/diagnostic_ports.dart';
 export 'src/diagnostic_performance.dart';
 export 'src/diagnostic_privacy.dart';

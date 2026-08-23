@@ -38,13 +38,14 @@ final class DiscoveryPageState {
   factory DiscoveryPageState.loadingContent({
     required Iterable<PluginSourceDescriptor> sources,
     required String selectedSourceId,
+    required bool canNavigateBack,
   }) => DiscoveryPageState._(
     status: DiscoveryPageStatus.loadingContent,
     sources: sources,
     selectedSourceId: selectedSourceId,
     result: null,
     error: null,
-    canNavigateBack: false,
+    canNavigateBack: canNavigateBack,
     loadingCollectionId: null,
   );
 

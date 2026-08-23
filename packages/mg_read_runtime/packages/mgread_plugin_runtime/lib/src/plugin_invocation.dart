@@ -257,8 +257,35 @@ final class OpenPluginCodeDirectoryInvocation
 
 enum PluginCodeDirectoryKind { development, installed }
 
+/// Opens the Runtime-private data root through the Flutter Windows shell action.
+///
+/// The result is deliberately path-free; Android and other unsupported
+/// platforms return a stable `unsupported` Runtime error.
+@immutable
+final class OpenRuntimePrivateDirectoryInvocation
+    extends PluginInvocation<void> {
+  const OpenRuntimePrivateDirectoryInvocation();
+
+  @override
+  String get _wireMethod => 'runtime.openPrivateDirectory.v1';
+
+  @override
+  Map<String, Object?> get _wireParams => const <String, Object?>{};
+
+  @override
+  void _decodeResult(Object? value) {
+    final result = _jsonObject(value, 'Runtime private directory result');
+    if (result['opened'] != true) {
+      throw const PluginRuntimeException(
+        'invalid_response',
+        'The Runtime returned an invalid private directory result.',
+      );
+    }
+  }
+}
+
 /// Selects which part of an installed source version should be measured.
-enum PluginInstallationSizeScope { data, npm }
+enum PluginInstallationSizeScope { archive, data, npm }
 
 /// Returns path-free byte totals for one installed source subtree.
 @immutable
@@ -281,7 +308,11 @@ final class PluginInstallationSizeInvocation
   @override
   Map<String, Object?> get _wireParams => <String, Object?>{
     'pluginId': pluginId,
-    'scope': scope == PluginInstallationSizeScope.data ? 'data' : 'npm',
+    'scope': switch (scope) {
+      PluginInstallationSizeScope.archive => 'archive',
+      PluginInstallationSizeScope.data => 'data',
+      PluginInstallationSizeScope.npm => 'npm',
+    },
   };
 
   @override
@@ -304,6 +335,7 @@ final class PluginInstallationSizeInvocation
       );
     }
     final parsedScope = switch (scope) {
+      'archive' => PluginInstallationSizeScope.archive,
       'data' => PluginInstallationSizeScope.data,
       'npm' => PluginInstallationSizeScope.npm,
       _ => null,

@@ -72,6 +72,50 @@ void main() {
       },
     );
 
+    test('mirrors sanitized events without changing event admission', () async {
+      final mirrored = <DiagnosticEvent>[];
+      kit = await PersistentDiagnosticsTestkit.open(
+        configuration: PersistentDiagnosticsConfiguration(
+          minimumSeverity: DiagnosticSeverity.trace,
+          eventMirror: mirrored.add,
+        ),
+      );
+      mirrored.clear();
+
+      final emitted = kit.service.manager.emit(
+        AppDiagnosticEvents.routeChanged,
+        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+          'toRoute': DiagnosticValue.string('library'),
+        }),
+      );
+
+      expect(emitted.accepted, isTrue);
+      expect(mirrored, hasLength(1));
+      expect(mirrored.single.eventName, 'app.route.changed');
+      expect(
+        mirrored.single.attributes.values['toRoute'],
+        DiagnosticValue.string('library'),
+      );
+    });
+
+    test('isolates live mirror failures from event admission', () async {
+      kit = await PersistentDiagnosticsTestkit.open(
+        configuration: PersistentDiagnosticsConfiguration(
+          minimumSeverity: DiagnosticSeverity.trace,
+          eventMirror: (_) => throw StateError('console unavailable'),
+        ),
+      );
+
+      final emitted = kit.service.manager.emit(
+        AppDiagnosticEvents.routeChanged,
+        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+          'toRoute': DiagnosticValue.string('library'),
+        }),
+      );
+
+      expect(emitted.accepted, isTrue);
+    });
+
     test(
       'keeps the caller bounded and reports queue drops after recovery',
       () async {
@@ -350,7 +394,15 @@ void main() {
         ...AppDiagnosticEvents.registry.definitions,
         canaryDefinition,
       ]);
-      kit = await PersistentDiagnosticsTestkit.open(registry: registry);
+      final mirrored = <DiagnosticEvent>[];
+      kit = await PersistentDiagnosticsTestkit.open(
+        registry: registry,
+        configuration: PersistentDiagnosticsConfiguration(
+          minimumSeverity: DiagnosticSeverity.trace,
+          eventMirror: mirrored.add,
+        ),
+      );
+      mirrored.clear();
       kit.service.manager.emit(
         canaryDefinition,
         attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
@@ -358,6 +410,10 @@ void main() {
         }),
       );
       await kit.service.manager.flush(timeout: const Duration(seconds: 2));
+      final consoleRecords = jsonEncode(
+        mirrored.map(const DiagnosticEventCodec().encode).toList(),
+      );
+      expect(consoleRecords, isNot(contains(_secretCanary)));
 
       final events = await kit.service.listEvents(
         filter: DiagnosticEventFilter(

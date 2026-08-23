@@ -71,6 +71,9 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
 
   void goBack() {
     if (_stack.length < 2) return;
+    // A pending category request must not repopulate a page after the user
+    // has already returned to its parent document.
+    ++_latestGeneration;
     _stack.removeLast();
     _publish(_stack.last.document);
   }
@@ -148,6 +151,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     state = DiscoveryPageState.loadingContent(
       sources: availableSources,
       selectedSourceId: pluginId,
+      canNavigateBack: _stack.length > 1 || push,
     );
     try {
       final result = await _gateway.discover(

@@ -2559,11 +2559,11 @@ class _TextReaderViewState extends State<TextReaderView> {
     _commitPreferencePreview();
     final ReaderObserver observer = _observer;
     final ReaderProgress? progress = _progress;
-    final int session = _sessionGeneration;
-    await (_preferenceWritesByStore[widget.stateStore] ?? Future<void>.value());
-    await _flushProgress();
-    if (!_isSessionCurrent(session)) return;
-    await _notify(() => observer.onExitRequested(progress));
+    // Queue the final semantic state before notifying the host, but do not
+    // make route navigation wait for storage I/O.  dispose() retains its own
+    // final-save path for exits that happen immediately after this callback.
+    unawaited(_flushProgress());
+    unawaited(_notify(() => observer.onExitRequested(progress)));
   }
 
   @override
@@ -3638,6 +3638,7 @@ class _TextReaderViewState extends State<TextReaderView> {
                     Icons.tune_rounded,
                     ReaderStrings.settings,
                     _showSettingsSheet,
+                    key: const Key('reader-toolbar-settings'),
                   ),
                   _barAction(
                     Icons.bookmarks_outlined,
@@ -3653,27 +3654,33 @@ class _TextReaderViewState extends State<TextReaderView> {
     );
   }
 
-  Widget _barAction(IconData icon, String label, VoidCallback action) {
+  Widget _barAction(
+    IconData icon,
+    String label,
+    VoidCallback action, {
+    Key? key,
+  }) {
     return Expanded(
       child: Semantics(
+        key: key,
         button: true,
         label: label,
-        child: Tooltip(
-          message: label,
-          excludeFromSemantics: true,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: action,
-            child: SizedBox(
-              height: 50,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  Icon(icon, size: 21),
-                  const SizedBox(height: 2),
-                  Text(label, style: const TextStyle(fontSize: 10.5)),
-                ],
-              ),
+        excludeSemantics: true,
+        // These actions already show their labels. Avoid a Tooltip here: it
+        // creates an OverlayPortal while the modal settings route is pushed or
+        // popped, which can leave a stale semantics child in Flutter 3.44.
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: action,
+          child: SizedBox(
+            height: 50,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Icon(icon, size: 21),
+                const SizedBox(height: 2),
+                Text(label, style: const TextStyle(fontSize: 10.5)),
+              ],
             ),
           ),
         ),

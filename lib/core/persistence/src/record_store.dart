@@ -359,10 +359,9 @@ final class PersistenceRecordStore {
         .get();
     final hasMore = rows.length > query.limit;
     final pageRows = hasMore ? rows.take(query.limit).toList() : rows;
-    final records = <RecordEnvelope>[];
-    for (final row in pageRows) {
-      records.add(await _rowToEnvelope(row.data));
-    }
+    final records = await _rowsToEnvelopes(
+      pageRows.map((row) => row.data).toList(growable: false),
+    );
     final tail = records.isEmpty ? null : records.last;
     return RecordPage(
       records: List.unmodifiable(records),
@@ -399,11 +398,7 @@ final class PersistenceRecordStore {
           ],
         )
         .get();
-    final records = <RecordEnvelope>[];
-    for (final row in rows) {
-      records.add(await _rowToEnvelope(row.data));
-    }
-    return List<RecordEnvelope>.unmodifiable(records);
+    return _rowsToEnvelopes(rows.map((row) => row.data));
   }
 
   Future<RecordEnvelope> _update({
@@ -695,8 +690,7 @@ final class PersistenceRecordStore {
 
   void _ensureOpen() {
     if (_closed ||
-        (_closing &&
-            !identical(Zone.current[#persistenceRecordStore], this))) {
+        (_closing && !identical(Zone.current[#persistenceRecordStore], this))) {
       throw const PersistenceClosedError();
     }
   }
@@ -743,27 +737,73 @@ final class PersistenceRecordStore {
       payloadJson: row['payload_json'] as String,
     );
     _lastCodecWorkerIsolateId = prepared.workerIsolateId;
-    return RecordEnvelope(
-      id: row['record_id'] as String,
-      recordKind: kind,
-      scope: scope,
-      parentId: row['parent_id'] as String?,
-      identityKey: row['identity_key'] as String?,
-      orderKey: row['order_key'] as String?,
-      stateKey: row['state_key'] as String?,
-      formatVersion: codec.currentVersion,
-      revision: row['revision'] as int,
-      document: prepared.document,
-      createdAtUtc: DateTime.fromMillisecondsSinceEpoch(
-        row['created_at_utc'] as int,
-        isUtc: true,
-      ),
-      updatedAtUtc: DateTime.fromMillisecondsSinceEpoch(
-        row['updated_at_utc'] as int,
-        isUtc: true,
+    return _preparedRowToEnvelope(row, codec, prepared);
+  }
+
+  Future<List<RecordEnvelope>> _rowsToEnvelopes(
+    Iterable<Map<String, dynamic>> rows,
+  ) async {
+    final copied = List<Map<String, dynamic>>.of(rows);
+    if (copied.isEmpty) return const <RecordEnvelope>[];
+    final first = copied.first;
+    final recordKind = first['record_kind'] as String;
+    final scopeKind = first['scope_kind'] as String;
+    if (copied.any(
+      (row) =>
+          row['record_kind'] != recordKind || row['scope_kind'] != scopeKind,
+    )) {
+      return Future.wait(copied.map(_rowToEnvelope));
+    }
+    final codec = _registry.require(recordKind, scopeKind);
+    final prepared = await codec.decodeAndUpgradeMany(
+      documents: copied
+          .map(
+            (row) => (
+              version: row['format_version'] as int,
+              payloadJson: row['payload_json'] as String,
+            ),
+          )
+          .toList(growable: false),
+    );
+    if (prepared.isNotEmpty) {
+      _lastCodecWorkerIsolateId = prepared.last.workerIsolateId;
+    }
+    return List<RecordEnvelope>.unmodifiable(
+      List<RecordEnvelope>.generate(
+        copied.length,
+        (index) =>
+            _preparedRowToEnvelope(copied[index], codec, prepared[index]),
       ),
     );
   }
+
+  RecordEnvelope _preparedRowToEnvelope(
+    Map<String, dynamic> row,
+    RecordDocumentCodec codec,
+    PreparedJsonDocument prepared,
+  ) => RecordEnvelope(
+    id: row['record_id'] as String,
+    recordKind: row['record_kind'] as String,
+    scope: ScopeKey(
+      kind: row['scope_kind'] as String,
+      id: row['scope_id'] as String,
+    ),
+    parentId: row['parent_id'] as String?,
+    identityKey: row['identity_key'] as String?,
+    orderKey: row['order_key'] as String?,
+    stateKey: row['state_key'] as String?,
+    formatVersion: codec.currentVersion,
+    revision: row['revision'] as int,
+    document: prepared.document,
+    createdAtUtc: DateTime.fromMillisecondsSinceEpoch(
+      row['created_at_utc'] as int,
+      isUtc: true,
+    ),
+    updatedAtUtc: DateTime.fromMillisecondsSinceEpoch(
+      row['updated_at_utc'] as int,
+      isUtc: true,
+    ),
+  );
 
   Future<_PreparedDraft> _prepareDraft(RecordDraft draft) async {
     _validateDraft(draft);

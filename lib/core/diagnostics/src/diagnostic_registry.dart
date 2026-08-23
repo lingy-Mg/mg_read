@@ -497,6 +497,18 @@ abstract final class AppDiagnosticEvents {
         },
       );
 
+  static final DiagnosticEventDefinition readerLaunchStage =
+      DiagnosticEventDefinition.span(
+        name: 'reader.launch.stage',
+        component: 'feature.reader',
+        summary: 'Reader launch stage timing.',
+        fields: <String, DiagnosticFieldDefinition>{
+          'stage': _string,
+          'resultState': _string,
+          'errorCode': _string,
+        },
+      );
+
   static final DiagnosticEventDefinition runtimeFacadeCall =
       DiagnosticEventDefinition.span(
         name: 'runtime.facade.call',
@@ -652,6 +664,7 @@ abstract final class AppDiagnosticEvents {
         libraryLoad,
         libraryOperation,
         readerLaunch,
+        readerLaunchStage,
         runtimeFacadeCall,
         performanceSlow,
         writerState,

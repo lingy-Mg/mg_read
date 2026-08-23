@@ -23,6 +23,8 @@ Current implementation:
 - age/byte retention, TXT rotation/tail recovery and stable cursor pagination;
 - composition-root wiring plus bootstrap, lifecycle, route, settings,
   persistence, content-library, library-load and reader-launch instrumentation;
+- a non-release VS Code/process debug-console mirror for the same
+  schema-validated, privacy-sanitized event envelopes persisted to TXT;
 - a dedicated app/Runtime viewer with separate paged feeds, lazy 32 KiB plain
   text previews, bounded `memoryOnly` capture while open and explicit
   `persistToText` mode;

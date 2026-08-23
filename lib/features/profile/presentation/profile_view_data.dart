@@ -174,6 +174,12 @@ abstract final class ProfileFixtures {
     ],
     about: <ProfileSettingsItemViewData>[
       ProfileSettingsItemViewData(
+        id: 'diagnostics',
+        title: '调试日志',
+        description: '查看应用与书源运行日志',
+        icon: ProfileSettingsIcon.diagnostics,
+      ),
+      ProfileSettingsItemViewData(
         id: 'about',
         title: '关于我们',
         description: '版本 1.2.0',

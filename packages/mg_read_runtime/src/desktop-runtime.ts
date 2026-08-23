@@ -1475,7 +1475,7 @@ export class DesktopRuntime {
     }
   }
 
-  /** Returns installed source data and materialized npm byte totals. */
+  /** Returns retained archive, source data and materialized npm byte totals. */
   async #dispatchPluginInstallationUsage(
     request: RuntimeRequest,
   ): Promise<RuntimeDispatchResult> {
@@ -1484,7 +1484,7 @@ export class DesktopRuntime {
     if (
       Object.keys(request.params).length !== 2 ||
       typeof pluginId !== "string" ||
-      (scope !== "data" && scope !== "npm")
+      (scope !== "archive" && scope !== "data" && scope !== "npm")
     ) {
       return {
         error: this.#requestError(

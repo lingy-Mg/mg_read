@@ -103,7 +103,7 @@ export interface PluginInstallationUsage extends JsonObject {
   readonly bytes: number;
   readonly fileCount: number;
   readonly pluginId: string;
-  readonly scope: "data" | "npm";
+  readonly scope: "archive" | "data" | "npm";
   readonly version: string;
 }
 
@@ -286,14 +286,18 @@ export class PluginManager {
    * Measures one installed source subtree asynchronously.
    *
    * Data excludes every `node_modules` directory; npm includes the complete
-   * materialized dependency tree. Only byte/file totals cross the Facade.
+   * materialized dependency tree; archive reports the retained original
+   * `.mgplugin`. Only byte/file totals cross the Facade.
    */
   async measureInstallationUsage(
     pluginId: string,
-    scope: "data" | "npm",
+    scope: "archive" | "data" | "npm",
   ): Promise<PluginInstallationUsage> {
     await this.initialize();
-    if (!isPluginId(pluginId) || (scope !== "data" && scope !== "npm")) {
+    if (
+      !isPluginId(pluginId) ||
+      (scope !== "archive" && scope !== "data" && scope !== "npm")
+    ) {
       throw new PluginManagerError("invalid_request");
     }
     await this.#refreshDevelopmentPlugins();
@@ -308,9 +312,16 @@ export class PluginManager {
       "versions",
       version,
     );
-    const root = scope === "npm"
-      ? resolve(versionRoot, "node_modules")
-      : versionRoot;
+    const root = scope === "archive"
+      ? resolve(
+        this.#dataRoot,
+        "plugin-archives",
+        pluginId,
+        `${version}.mgplugin`,
+      )
+      : scope === "npm"
+        ? resolve(versionRoot, "node_modules")
+        : versionRoot;
     const result = await this.#installationBytesAt(root, scope);
     return Object.freeze({
       bytes: result.bytes,
@@ -837,7 +848,7 @@ export class PluginManager {
 
   async #installationBytesAt(
     path: string,
-    scope: "data" | "npm",
+    scope: "archive" | "data" | "npm",
   ): Promise<{ readonly bytes: number; readonly fileCount: number }> {
     let metadata;
     try {

@@ -82,14 +82,53 @@ final class RecordDocumentCodec {
   Future<PreparedJsonDocument> decodeAndUpgrade({
     required int version,
     required String payloadJson,
+  }) async => (await decodeAndUpgradeMany(
+    documents: <({int version, String payloadJson})>[
+      (version: version, payloadJson: payloadJson),
+    ],
+  )).single;
+
+  /// Decodes records with this codec in one background isolate invocation.
+  ///
+  /// List and catalog queries commonly return many small metadata documents.
+  /// Starting one isolate per row makes their latency cumulative even though
+  /// no document is individually expensive. Version upgrades and validation
+  /// retain the same per-document behavior as [decodeAndUpgrade].
+  Future<List<PreparedJsonDocument>> decodeAndUpgradeMany({
+    required Iterable<({int version, String payloadJson})> documents,
   }) async {
-    if (version > currentVersion) {
-      throw const PersistenceFutureVersionError();
+    final requested = List<({int version, String payloadJson})>.of(documents);
+    for (final document in requested) {
+      if (document.version > currentVersion) {
+        throw const PersistenceFutureVersionError();
+      }
     }
-    var normalized = await Isolate.run(
-      () => _decodeAndNormalize(payloadJson, limits),
-      debugName: 'mg-read-json-decode',
+    if (requested.isEmpty) return const <PreparedJsonDocument>[];
+    final normalizedDocuments = await Isolate.run(
+      () => _decodeAndNormalizeMany(
+        requested
+            .map((document) => document.payloadJson)
+            .toList(growable: false),
+        limits,
+      ),
+      debugName: 'mg-read-json-decode-batch',
     );
+    final prepared = <PreparedJsonDocument>[];
+    for (var index = 0; index < requested.length; index++) {
+      prepared.add(
+        await _upgradeNormalized(
+          version: requested[index].version,
+          normalized: normalizedDocuments[index],
+        ),
+      );
+    }
+    return List<PreparedJsonDocument>.unmodifiable(prepared);
+  }
+
+  Future<PreparedJsonDocument> _upgradeNormalized({
+    required int version,
+    required _NormalizedJson normalized,
+  }) async {
     var working = normalized.document;
     var cursor = version;
     while (cursor < currentVersion) {
@@ -106,10 +145,11 @@ final class RecordDocumentCodec {
       working = normalized.document;
       cursor++;
     }
-    final prepared = await prepareCurrent(working);
+    final frozen = freezeJsonObject(working);
+    _validators[currentVersion]!(frozen);
     return PreparedJsonDocument(
-      document: prepared.document,
-      payloadJson: prepared.payloadJson,
+      document: frozen,
+      payloadJson: normalized.payloadJson,
       workerIsolateId: normalized.workerIsolateId,
     );
   }
@@ -174,6 +214,13 @@ _NormalizedJson _decodeAndNormalize(
     workerIsolateId: Isolate.current.hashCode,
   );
 }
+
+List<_NormalizedJson> _decodeAndNormalizeMany(
+  List<String> payloads,
+  JsonDocumentLimits limits,
+) => payloads
+    .map((payloadJson) => _decodeAndNormalize(payloadJson, limits))
+    .toList(growable: false);
 
 _NormalizedJson _normalizeAndEncode(
   JsonObject document,

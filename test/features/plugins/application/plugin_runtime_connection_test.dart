@@ -360,6 +360,9 @@ final class _FakePluginRuntimeGateway implements PluginRuntimeGateway {
   }) async => PluginCodeDirectoryKind.installed;
 
   @override
+  Future<void> openRuntimePrivateDirectory() async {}
+
+  @override
   Future<PluginRuntimeConnection> inspect() async {
     calls += 1;
     return result;
@@ -403,6 +406,11 @@ final class _FailingPluginRuntimeGateway implements PluginRuntimeGateway {
   Future<PluginCodeDirectoryKind> openCodeDirectory({
     required String pluginId,
   }) {
+    throw AppError.fromCode(AppErrorCode.runtimeUnavailable);
+  }
+
+  @override
+  Future<void> openRuntimePrivateDirectory() {
     throw AppError.fromCode(AppErrorCode.runtimeUnavailable);
   }
 
@@ -469,6 +477,9 @@ final class _MutablePluginRuntimeGateway implements PluginRuntimeGateway {
   Future<PluginCodeDirectoryKind> openCodeDirectory({
     required String pluginId,
   }) async => PluginCodeDirectoryKind.installed;
+
+  @override
+  Future<void> openRuntimePrivateDirectory() async {}
 
   @override
   Future<PluginRuntimeConnection> inspect() async => _connection;

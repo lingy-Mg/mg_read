@@ -59,8 +59,9 @@ void main() {
       final firstRequest = await reader.launch(item.id.value);
       expect(firstRequest.bookId, item.id.value);
       expect(gateway.requestedChapterPageSizes, <int>[20]);
-      expect(firstRequest.extensions.chapterStateCapability, isNull);
-      expect(await library.listAllCatalog(item.id), isEmpty);
+      expect(gateway.requestedDetailCount, 0);
+      expect(firstRequest.extensions.chapterStateCapability, isNotNull);
+      expect(await library.listAllCatalog(item.id), hasLength(2));
       expect(
         (await firstRequest.dataSource.loadChapterContent(
           item.id.value,
@@ -69,8 +70,12 @@ void main() {
         '第一段。',
       );
       expect(gateway.requestedContentChapterIds, <String>['chapter-1']);
+      expect(
+        (await library.listAllCatalog(item.id)).first.contentStatus,
+        'ready',
+      );
       final hydrated = await library.getLibraryItem(item.id);
-      expect(hydrated?.revision, item.revision);
+      expect(hydrated?.revision, greaterThan(item.revision));
       expect(await firstRequest.stateStore.loadProgress(item.id.value), isNull);
       await firstRequest.stateStore.saveProgress(
         item.id.value,
@@ -83,7 +88,6 @@ void main() {
           bookFraction: 0.7,
         ),
       );
-
       final secondRequest = await reader.launch(item.id.value);
       final restored = await secondRequest.stateStore.loadProgress(
         item.id.value,
@@ -98,11 +102,9 @@ void main() {
         )).paragraphs.single.text,
         '第一段。',
       );
-      expect(gateway.requestedChapterPageSizes, <int>[20, 20]);
-      expect(gateway.requestedContentChapterIds, <String>[
-        'chapter-1',
-        'chapter-1',
-      ]);
+      expect(gateway.requestedChapterPageSizes, <int>[20]);
+      expect(gateway.requestedDetailCount, 0);
+      expect(gateway.requestedContentChapterIds, <String>['chapter-1']);
     },
   );
 
@@ -164,6 +166,7 @@ final class _CatalogFailureGateway extends _FakeGateway {
 final class _FakeGateway implements SourceContentGateway {
   final requestedChapterPageSizes = <int>[];
   final requestedContentChapterIds = <String>[];
+  var requestedDetailCount = 0;
 
   @override
   Future<PluginChaptersResult> getChapters({
@@ -208,32 +211,35 @@ final class _FakeGateway implements SourceContentGateway {
   Future<PluginContentDetail> getDetail({
     required String pluginId,
     required String id,
-  }) async => PluginContentDetail(
-    pluginId: pluginId,
-    sourceName: '示例书源',
-    summary: PluginContentSummary(
-      id: id,
-      title: '测试书',
-      contentKind: PluginContentKind.novel,
-      author: '测试作者',
-      url: null,
-      coverUrl: Uri.parse('https://cdn.example.com/book.jpg'),
-      description: '测试简介',
-      language: 'zh-CN',
-      status: PluginContentStatus.ongoing,
-      access: PluginAccessKind.free,
-      wordCount: null,
-      chapterCount: 2,
-      publishedAt: null,
-      updatedAt: null,
-      latestChapter: null,
-      categories: const <String>[],
-      tags: const <String>[],
-      attributes: const <PluginContentAttribute>[],
-    ),
-    aliases: const <String>[],
-    catalogUrl: null,
-  );
+  }) async {
+    requestedDetailCount += 1;
+    return PluginContentDetail(
+      pluginId: pluginId,
+      sourceName: '示例书源',
+      summary: PluginContentSummary(
+        id: id,
+        title: '测试书',
+        contentKind: PluginContentKind.novel,
+        author: '测试作者',
+        url: null,
+        coverUrl: Uri.parse('https://cdn.example.com/book.jpg'),
+        description: '测试简介',
+        language: 'zh-CN',
+        status: PluginContentStatus.ongoing,
+        access: PluginAccessKind.free,
+        wordCount: null,
+        chapterCount: 2,
+        publishedAt: null,
+        updatedAt: null,
+        latestChapter: null,
+        categories: const <String>[],
+        tags: const <String>[],
+        attributes: const <PluginContentAttribute>[],
+      ),
+      aliases: const <String>[],
+      catalogUrl: null,
+    );
+  }
 
   @override
   Future<PluginDiscoverResult> discover({

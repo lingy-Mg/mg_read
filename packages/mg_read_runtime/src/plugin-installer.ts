@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import {
   access,
   chmod,
+  copyFile,
+  constants as fsConstants,
   mkdir,
   readFile,
   readdir,
@@ -87,6 +89,41 @@ export class PluginInstaller {
 
   readonly #onProgress: DesktopRuntimeProgressSink;
 
+  async #preserveOriginalArchive(
+    archiveFile: string,
+    descriptor: PluginPackageDescriptor,
+  ): Promise<void> {
+    const archiveRoot = resolve(
+      this.#dataRoot,
+      "plugin-archives",
+      descriptor.id,
+    );
+    const target = resolve(archiveRoot, `${descriptor.version}.mgplugin`);
+    try {
+      await access(target);
+      return;
+    } catch (error) {
+      if (!isNodeError(error, "ENOENT")) throw error;
+    }
+
+    await mkdir(archiveRoot, { recursive: true });
+    const temporary = resolve(
+      archiveRoot,
+      `.${descriptor.version}-${randomUUID()}.mgplugin.part`,
+    );
+    try {
+      await copyFile(archiveFile, temporary, fsConstants.COPYFILE_EXCL);
+      try {
+        await rename(temporary, target);
+      } catch (error) {
+        if (!isNodeError(error, "EEXIST")) throw error;
+        // Another serialized install already preserved this immutable version.
+      }
+    } finally {
+      await rm(temporary, { force: true }).catch(() => {});
+    }
+  }
+
   /** Installs a `.mgplugin` as an immutable version and writes `pending`. */
   async installArchive(archiveFile: string): Promise<PluginInstallResult> {
     const startedAt = performance.now();
@@ -112,6 +149,10 @@ export class PluginInstaller {
         stage: "plugin_installing",
         totalBytes: Math.max(project.dependencies.length, 1),
       });
+      // The platform inbox is only a hand-off queue and is deleted after the
+      // install completes. Keep the validated input archive in Runtime-owned
+      // storage for later recovery/export without crossing the Facade.
+      await this.#preserveOriginalArchive(archiveFile, project.descriptor);
       const result = await this.#commitProject(stagingRoot, project.descriptor, project.dependencies);
       this.#events({
         code: "plugin_install_completed",

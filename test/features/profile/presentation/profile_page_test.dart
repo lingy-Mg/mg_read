@@ -26,6 +26,7 @@ void main() {
     expect(find.text('阅读设置'), findsOneWidget);
     expect(find.text('数据源管理'), findsOneWidget);
     expect(find.text('关于与其他'), findsOneWidget);
+    expect(find.text('调试日志'), findsOneWidget);
     expect(find.byType(AppBottomNavigation), findsOneWidget);
 
     final Rect card = tester.getRect(find.byType(ProfileOverviewCard));
@@ -103,6 +104,26 @@ void main() {
     expect(requestedDestination, AppNavigationDestination.home);
   });
 
+  testWidgets('delegates the diagnostics entry to the app layer', (
+    WidgetTester tester,
+  ) async {
+    var diagnosticsRequested = false;
+    await tester.pumpWidget(
+      _host(onDiagnosticsRequested: () => diagnosticsRequested = true),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.drag(
+      find.byKey(const Key('profile-page-content')),
+      const Offset(0, -600),
+    );
+    await tester.pumpAndSettle();
+    final diagnostics = find.byKey(const Key('profile-setting-diagnostics'));
+    await tester.tap(diagnostics);
+
+    expect(diagnosticsRequested, isTrue);
+  });
+
   testWidgets(
     'keeps the phone-width profile content centered on wide windows',
     (WidgetTester tester) async {
@@ -119,6 +140,7 @@ void main() {
 Widget _host({
   ValueChanged<AppNavigationDestination>? onDestinationRequested,
   VoidCallback? onToggleTheme,
+  VoidCallback? onDiagnosticsRequested,
 }) {
   return MaterialApp(
     theme: AppTheme.light(),
@@ -126,6 +148,7 @@ Widget _host({
     home: ProfilePage(
       onDestinationRequested: onDestinationRequested,
       onToggleTheme: onToggleTheme,
+      onDiagnosticsRequested: onDiagnosticsRequested,
     ),
   );
 }

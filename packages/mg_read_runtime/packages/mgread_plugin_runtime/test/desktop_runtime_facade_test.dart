@@ -59,6 +59,64 @@ void main() {
   });
 
   test(
+    'Flutter desktop Supervisor opens the private Runtime directory outside Node',
+    () async {
+      final repositoryRoot = Directory.current.parent.parent;
+      final runtimeDataRoot = await Directory.systemTemp.createTemp(
+        'mgread-runtime-private-directory-',
+      );
+      final openedDirectories = <String>[];
+      final runtime = PluginRuntime.desktopForTesting(
+        runtimeRepositoryRoot: repositoryRoot,
+        runtimeDataRoot: runtimeDataRoot,
+        directoryLauncher: (Directory directory) async {
+          openedDirectories.add(directory.path);
+        },
+      );
+      addTearDown(() async {
+        await runtime.debugDispose();
+        await runtimeDataRoot.delete(recursive: true);
+      });
+
+      await runtime.invoke(const OpenRuntimePrivateDirectoryInvocation());
+
+      expect(openedDirectories, <String>[runtimeDataRoot.path]);
+      expect(runtime.debugDesktopProcessStartCount, 0);
+    },
+  );
+
+  test(
+    'private Runtime directory shell failures stay safe and diagnosable',
+    () async {
+      final runtime = PluginRuntime.desktopForTesting(
+        runtimeRepositoryRoot: Directory.current.parent.parent,
+        directoryLauncher: (Directory _) async {
+          throw StateError('test-only shell failure');
+        },
+      );
+      addTearDown(runtime.debugDispose);
+
+      final error = await _captureRuntimeFailure(
+        runtime.invoke(const OpenRuntimePrivateDirectoryInvocation()),
+      );
+
+      expect(error.code, 'runtime_private_directory_open_failed');
+      expect(
+        error.diagnostics.map(
+          (RuntimeDiagnostic diagnostic) => diagnostic.code,
+        ),
+        contains('runtime_private_directory_open_failed'),
+      );
+      expect(
+        error.diagnostics.map(
+          (RuntimeDiagnostic diagnostic) => diagnostic.message,
+        ),
+        isNot(contains('test-only shell failure')),
+      );
+    },
+  );
+
+  test(
     'Flutter Facade lists and searches an installed standard Node plugin',
     () async {
       final repositoryRoot = Directory.current.parent.parent;

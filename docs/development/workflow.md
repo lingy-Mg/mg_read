@@ -14,6 +14,9 @@
 - 异步、取消、过期结果、关闭、错误、空态和资源释放与成功路径同时设计。
 - 关键链路的事件/span/schema、隐私和性能门禁与实现同包完成；日志能力缺失时明确阻塞项，
   不用 `print` 临时代替。
+- 凡新增或修改用户操作、异步加载、缓存、持久化、Runtime Facade 或后台任务，实施者都必须按
+  [诊断接入规范](diagnostics-instrumentation.md)接入全局诊断，并在交付中报告对应的 canary 与
+  span 终态证据；不得由 feature/Widget 自行向 VS Code、终端或文件输出日志。
 - 页面、路由、跨 Feature 或 Runtime 消费的真实自动化测试只能写在 `integration_test/`，用
   `WidgetTester` Finder 和稳定 `Key` 驱动。禁止坐标点击、鼠标/键盘自动化、`adb input`、系统
   截图或 Computer Use。Android 截图测试先调用 `convertFlutterSurfaceToImage()` 并 pump 一帧，

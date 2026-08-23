@@ -57,11 +57,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> {
       routerConfig: router,
       builder: (BuildContext context, Widget? child) {
         return AppBackNavigationScope(
-          onBackRequested: () async {
-            if (!router.canPop()) return false;
-            router.pop();
-            return true;
-          },
+          onBackRequested: popApplicationRoute,
           child: AppThemeModeScope(
             themeMode: ThemeMode.light,
             onToggleTheme: _toggleTheme,

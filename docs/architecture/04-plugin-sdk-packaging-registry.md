@@ -115,6 +115,8 @@ package 中声明 `postinstall` 本身不触发执行；Runtime 永远不执行�
 runtime-data/
   dependencies/objects/
     sha512-<url-safe-digest>/package/...
+  plugin-archives/
+    <pluginId>/<version>.mgplugin
   plugins/<pluginId>/
     versions/<version>/
       package.json
@@ -157,7 +159,9 @@ Registry dependency 安装流程：
 安装器在落盘前限制条目数、单文件大小、总解压大小和压缩比，并只在同一数据根的 staging
 目录内解压。校验、依赖恢复和入口预检全部成功后，版本目录才原子改名进入
 `plugins/<id>/versions/<version>/`。默认包不携带依赖 tarball；离线 portable deps 需要单独
-ADR，首版不实现。
+ADR，首版不实现。通过本地 inbox 或内置归档安装的原始 `.mgplugin` 会在校验通过后复制到
+Runtime 私有的 `plugin-archives/<pluginId>/<version>.mgplugin`；平台 inbox 仍是一次性移交区，
+安装完成后可以清理，而原始备份不经过主应用 Facade。
 
 ## 插件入口与 MgRead 上下文
 

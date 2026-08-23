@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,6 +42,12 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const Key('data-source-add')), findsOneWidget);
+    if (Platform.isWindows) {
+      expect(
+        find.byKey(const Key('data-source-open-runtime-directory')),
+        findsOneWidget,
+      );
+    }
     expect(
       find.byKey(const Key('data-source-toggle-org.mgread.qidian')),
       findsOneWidget,

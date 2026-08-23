@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
@@ -89,6 +90,35 @@ void main() {
 
     await tester.tap(find.byKey(const Key('discovery-refresh-action')));
     expect(refreshPressed, isTrue);
+  });
+
+  testWidgets('Escape returns one retained discovery category level', (
+    tester,
+  ) async {
+    var backPressed = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: RuntimeDiscoveryPage(
+          result: _documentResult(),
+          onDestinationRequested: (_) {},
+          onSourcePressed: () {},
+          onTabSelected: (_) {},
+          onCategorySelected: (_) {},
+          onContentPressed: (_) {},
+          onRefreshRequested: () {},
+          onLoadMore: (_) {},
+          canNavigateBack: true,
+          onBackRequested: () => backPressed = true,
+          loadingCollectionId: null,
+        ),
+      ),
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+
+    expect(backPressed, isTrue);
   });
 }
 

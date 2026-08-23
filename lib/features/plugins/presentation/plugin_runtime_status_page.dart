@@ -212,6 +212,23 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
     }
   }
 
+  Future<void> _openRuntimePrivateDirectory() async {
+    try {
+      await ref
+          .read(pluginRuntimePrivateDirectoryProvider.notifier)
+          .open();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已打开 Runtime 私有目录。')));
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Runtime 私有目录打开失败，请稍后重试。')));
+    }
+  }
+
   Future<void> _showImportError(BuildContext context, AppError error) {
     return showDialog<void>(
       context: context,
@@ -337,6 +354,13 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
                   isImporting: importState.isImporting,
                   onPressed: importState.isImporting ? null : _importDataSource,
                 ),
+                if (Platform.isWindows) ...<Widget>[
+                  const SizedBox(height: AppSpacing.regular),
+                  _RuntimePrivateDirectoryButton(
+                    isOpening: ref.watch(pluginRuntimePrivateDirectoryProvider),
+                    onPressed: _openRuntimePrivateDirectory,
+                  ),
+                ],
               ],
             ),
           ),
@@ -433,6 +457,30 @@ class _DataSourceImportLog extends StatelessWidget {
       ),
     );
   }
+}
+
+class _RuntimePrivateDirectoryButton extends StatelessWidget {
+  const _RuntimePrivateDirectoryButton({
+    required this.isOpening,
+    required this.onPressed,
+  });
+
+  final bool isOpening;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton.icon(
+    key: const Key('data-source-open-runtime-directory'),
+    onPressed: isOpening ? null : onPressed,
+    icon: isOpening
+        ? const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        : const Icon(Icons.folder_open_outlined),
+    label: Text(isOpening ? '正在打开…' : '打开 Runtime 私有目录'),
+  );
 }
 
 class _DataSourceSectionHeader extends StatelessWidget {

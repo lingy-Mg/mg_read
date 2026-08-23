@@ -5,7 +5,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 import 'package:mg_read/app/app_router.dart';
 import 'package:mg_read/app/mg_read_app.dart';
@@ -13,13 +12,11 @@ import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/library/application/library_overview_loader.dart';
-import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/library/domain/library_overview.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
-import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_destination_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
@@ -111,43 +108,39 @@ void main() {
     );
   });
 
-  testWidgets(
-    'opens a persisted shelf detail preview even when its refresh fails',
-    (WidgetTester tester) async {
-      final settings = await createTestAppSettings();
-      addTearDown(settings.close);
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            appSettingsProvider.overrideWithValue(settings),
-            libraryOverviewLoaderProvider.overrideWithValue(
-              const _SingleBookOverviewLoader(),
-            ),
-            libraryBookDetailLauncherProvider.overrideWithValue(
-              _SuccessfulBookDetailLauncher(),
-            ),
-            sourceContentGatewayProvider.overrideWithValue(
-              const _FailingDetailRefreshGateway(),
-            ),
-            pluginRuntimeGatewayProvider.overrideWithValue(
-              const TestReadyPluginRuntimeGateway(),
-            ),
-          ],
-          child: const MgReadApp(),
-        ),
-      );
-      await tester.pumpAndSettle();
+  testWidgets('opens a persisted shelf item directly in the reader', (
+    WidgetTester tester,
+  ) async {
+    final settings = await createTestAppSettings();
+    addTearDown(settings.close);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appSettingsProvider.overrideWithValue(settings),
+          libraryOverviewLoaderProvider.overrideWithValue(
+            const _SingleBookOverviewLoader(),
+          ),
+          libraryReaderLauncherProvider.overrideWithValue(
+            const _FailingReaderLauncher(),
+          ),
+          pluginRuntimeGatewayProvider.overrideWithValue(
+            const TestReadyPluginRuntimeGateway(),
+          ),
+        ],
+        child: const MgReadApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(LibraryBookListItem).first);
-      await tester.pumpAndSettle();
+    await tester.tap(find.byType(LibraryBookListItem).first);
+    await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('source-detail-preview-error')),
-        findsOneWidget,
-      );
-      expect(find.textContaining('诊断代码：library_detail_'), findsNothing);
-    },
-  );
+    expect(find.text('暂时无法开始阅读'), findsOneWidget);
+    expect(
+      find.text('诊断代码：reader_launch_source_detail_timeout'),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('route and reader diagnostics never persist route parameters', (
     WidgetTester tester,
@@ -171,6 +164,15 @@ void main() {
           .where((event) => event.eventName == 'app.route.changed')
           .map((event) => event.attributes.values['toRoute']),
       contains(DiagnosticStringValue('reader')),
+    );
+    expect(
+      diagnostics.sink.events.where(
+        (event) =>
+            event.eventName == 'reader.launch.stage.start' &&
+            event.attributes.values['stage'] ==
+                DiagnosticStringValue('requestBuild'),
+      ),
+      isNotEmpty,
     );
     final encoded = jsonEncode(
       diagnostics.sink.events
@@ -312,93 +314,6 @@ final class _SingleBookOverviewLoader implements LibraryOverviewLoader {
 
   @override
   Future<LibraryOverview> load() async => _overview('书架详情测试');
-}
-
-final class _SuccessfulBookDetailLauncher implements LibraryBookDetailLauncher {
-  @override
-  Future<LibraryBookDetailLaunchData> load(String bookId) async =>
-      LibraryBookDetailLaunchData(
-        pluginId: 'org.example.source',
-        remoteContentId: 'book-1',
-        sourceName: '测试书源',
-        initialContent: PluginContentSummary(
-          id: 'book-1',
-          title: '书架详情测试',
-          contentKind: PluginContentKind.novel,
-          author: null,
-          url: null,
-          coverUrl: null,
-          description: null,
-          language: null,
-          status: PluginContentStatus.unknown,
-          access: PluginAccessKind.unknown,
-          wordCount: null,
-          chapterCount: 0,
-          publishedAt: null,
-          updatedAt: null,
-          latestChapter: null,
-          categories: const <String>[],
-          tags: const <String>[],
-          attributes: const <PluginContentAttribute>[],
-        ),
-        initialCatalog: PluginChaptersResult(
-          pluginId: 'org.example.source',
-          sourceName: '测试书源',
-          items: <PluginChapterSummary>[],
-          nextCursor: null,
-          totalCount: 0,
-        ),
-      );
-}
-
-final class _FailingDetailRefreshGateway implements SourceContentGateway {
-  const _FailingDetailRefreshGateway();
-
-  @override
-  Future<PluginContentDetail> getDetail({
-    required String pluginId,
-    required String id,
-  }) => Future<PluginContentDetail>.error(
-    AppError.fromCode(AppErrorCode.timeout),
-  );
-
-  @override
-  Future<PluginChaptersResult> getChapters({
-    required String pluginId,
-    required String id,
-    String? cursor,
-    int pageSize = 50,
-  }) => Future<PluginChaptersResult>.error(
-    AppError.fromCode(AppErrorCode.timeout),
-  );
-
-  @override
-  Future<PluginDiscoverResult> discover({
-    required String pluginId,
-    String? target,
-    String? cursor,
-    String? collectionId,
-    int pageSize = 20,
-  }) => throw UnsupportedError('Not used by this test.');
-
-  @override
-  Future<PluginChapterContent> getContent({
-    required String pluginId,
-    required String id,
-    required String chapterId,
-  }) => throw UnsupportedError('Not used by this test.');
-
-  @override
-  Future<List<PluginSourceDescriptor>> listSources() =>
-      throw UnsupportedError('Not used by this test.');
-
-  @override
-  Future<PluginSearchResult> search({
-    required String pluginId,
-    required String query,
-    String? cursor,
-    int pageSize = 20,
-  }) => throw UnsupportedError('Not used by this test.');
 }
 
 void _expectBrightnessForCurrentPage(

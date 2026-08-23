@@ -25,6 +25,8 @@ abstract interface class PluginRuntimeGateway {
   Future<void> setEnabled({required String pluginId, required bool enabled});
 
   Future<PluginCodeDirectoryKind> openCodeDirectory({required String pluginId});
+
+  Future<void> openRuntimePrivateDirectory();
 }
 
 /// Production adapter over the Runtime-owned, versioned Flutter Facade.
@@ -135,6 +137,17 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway {
       return await _runtime.invoke(
         OpenPluginCodeDirectoryInvocation(pluginId: pluginId),
       );
+    } on PluginRuntimeException catch (error) {
+      throw normalizePluginRuntimeError(error);
+    } on Object catch (error) {
+      throw AppError.fromUnknown(error);
+    }
+  }
+
+  @override
+  Future<void> openRuntimePrivateDirectory() async {
+    try {
+      await _runtime.invoke(const OpenRuntimePrivateDirectoryInvocation());
     } on PluginRuntimeException catch (error) {
       throw normalizePluginRuntimeError(error);
     } on Object catch (error) {
@@ -362,6 +375,16 @@ final pluginRuntimeSourceDataSizeProvider = FutureProvider.autoDispose
           ),
     );
 
+final pluginRuntimeSourceArchiveSizeProvider = FutureProvider.autoDispose
+    .family<PluginInstallationSize, String>(
+      (Ref ref, String pluginId) => ref
+          .read(pluginRuntimeGatewayProvider)
+          .inspectInstallationSize(
+            pluginId: pluginId,
+            scope: PluginInstallationSizeScope.archive,
+          ),
+    );
+
 final pluginRuntimeSourceNpmSizeProvider = FutureProvider.autoDispose
     .family<PluginInstallationSize, String>(
       (Ref ref, String pluginId) => ref
@@ -383,6 +406,12 @@ final pluginRuntimeSourceActionProvider =
 final pluginRuntimeSourceDirectoryProvider =
     NotifierProvider<PluginRuntimeSourceDirectoryController, Set<String>>(
       PluginRuntimeSourceDirectoryController.new,
+    );
+
+/// Serializes the Windows-only Runtime private-directory shell action.
+final pluginRuntimePrivateDirectoryProvider =
+    NotifierProvider<PluginRuntimePrivateDirectoryController, bool>(
+      PluginRuntimePrivateDirectoryController.new,
     );
 
 /// Imports one user-selected local `.mgplugin` and waits for cold activation.
@@ -654,6 +683,53 @@ final class PluginRuntimeSourceDirectoryController
       state = Set<String>.unmodifiable(
         state.where((String value) => value != pluginId),
       );
+    }
+  }
+}
+
+final class PluginRuntimePrivateDirectoryController extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  Future<void> open() async {
+    if (state) throw AppError.fromCode(AppErrorCode.conflict);
+    state = true;
+    final diagnostics = ref.read(diagnosticsManagerProvider);
+    final span = diagnostics.startSpan(
+      AppDiagnosticEvents.runtimeFacadeCall,
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'capability': DiagnosticValue.string(
+          'runtime.openPrivateDirectory.v1',
+        ),
+        'resultState': DiagnosticValue.string('loading'),
+      }),
+    );
+    try {
+      await ref
+          .read(pluginRuntimeGatewayProvider)
+          .openRuntimePrivateDirectory();
+      span.complete(
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+          'capability': DiagnosticValue.string(
+            'runtime.openPrivateDirectory.v1',
+          ),
+          'resultState': DiagnosticValue.string('success'),
+        }),
+      );
+    } on Object catch (error, stackTrace) {
+      final appError = AppError.fromUnknown(error);
+      span.fail(
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+          'capability': DiagnosticValue.string(
+            'runtime.openPrivateDirectory.v1',
+          ),
+          'resultState': DiagnosticValue.string('failure'),
+          'errorCode': DiagnosticValue.string(appError.code.wireValue),
+        }),
+      );
+      Error.throwWithStackTrace(appError, stackTrace);
+    } finally {
+      state = false;
     }
   }
 }

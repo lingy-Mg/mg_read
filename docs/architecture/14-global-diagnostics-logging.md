@@ -139,6 +139,13 @@ diagnostics/
 Debug/Profile 构建默认是 `keyOnly`，不是“全量日志”。Release 默认至少保留 warn/error/fatal
 和有界生命周期/健康摘要，仍不得自动捕获详情。
 
+非 Release 构建向进程调试输出实时镜像人可读摘要：关键用户流程的 start/terminal，以及所有
+warn/error/fatal。摘要按单行显示时间、级别、稳定事件名、耗时和少量受控字段；它不是完整 JSON
+envelope，也不逐条输出底层持久化/循环事件。完整结构化记录仍在 App/Runtime 的 TXT 与专用查看器
+中。控制台摘要只来自已通过 schema 和隐私策略的事件，不能输出正文、HTTP body、书名/作者、用户
+输入、Cookie、token、绝对路径或原始异常。控制台镜像使用独立的有界队列；镜像失败、控制台关闭或
+输出压力不得改变业务结果和有界 TXT 队列语义。该镜像不把 `keyOnly` 变成全量内容捕获。
+
 ### 捕获模式
 
 | payload 模式 | 行为 |

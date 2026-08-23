@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
@@ -139,6 +140,31 @@ void main() {
       ),
       isEmpty,
     );
+  });
+
+  test('decodes a catalog-sized record batch in one worker isolate', () async {
+    final codec = defaultRegistry.require('app_setting', localScope.kind);
+
+    final documents = await codec.decodeAndUpgradeMany(
+      documents: const <({int version, String payloadJson})>[
+        (version: 2, payloadJson: '{"value":"first","enabled":true}'),
+        (version: 2, payloadJson: '{"value":"second","enabled":false}'),
+        (version: 2, payloadJson: '{"value":"third"}'),
+      ],
+    );
+
+    expect(documents.map((document) => document.document['value']), <String>[
+      'first',
+      'second',
+      'third',
+    ]);
+    expect(documents.first.document['enabled'], isTrue);
+    expect(documents[1].document['enabled'], isFalse);
+    expect(
+      documents.map((document) => document.workerIsolateId).toSet(),
+      hasLength(1),
+    );
+    expect(documents.first.workerIsolateId, isNot(Isolate.current.hashCode));
   });
 
   test('rejects stale revisions', () async {

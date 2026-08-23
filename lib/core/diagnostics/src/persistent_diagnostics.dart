@@ -27,6 +27,7 @@ final class PersistentDiagnosticsConfiguration {
     this.attachmentWriteTimeout = const Duration(seconds: 10),
     this.detailMemoryBytes = 8 * 1024 * 1024,
     this.retentionPolicy = const DiagnosticRetentionPolicy(),
+    this.eventMirror,
   });
 
   final DiagnosticSeverity minimumSeverity;
@@ -41,6 +42,12 @@ final class PersistentDiagnosticsConfiguration {
   final Duration attachmentWriteTimeout;
   final int detailMemoryBytes;
   final DiagnosticRetentionPolicy retentionPolicy;
+
+  /// Optional process-local mirror for already schema-validated events.
+  ///
+  /// Production wiring uses this only for the developer console in non-release
+  /// builds. Failures are deliberately isolated from event admission.
+  final DiagnosticEventMirror? eventMirror;
 
   void validate() {
     retentionPolicy.validate();
@@ -98,6 +105,11 @@ typedef DiagnosticActiveSessionResolver =
 typedef DiagnosticCaptureEnabledResolver = bool Function(String component);
 typedef DiagnosticDropReporter =
     void Function(int droppedEvents, int windowMicros, String reason);
+
+/// Receives the manager-sanitized event for an optional live diagnostics sink.
+///
+/// The callback must remain best-effort; any buffering it performs is bounded.
+typedef DiagnosticEventMirror = void Function(DiagnosticEvent event);
 
 /// Bounded, non-blocking queue between app call sites and segmented TXT.
 final class _PersistentDiagnosticEventSink implements DiagnosticEventSink {
@@ -180,6 +192,7 @@ final class _PersistentDiagnosticEventSink implements DiagnosticEventSink {
     final event = rawEvent.captureSessionId == null && activeSessionId != null
         ? rawEvent.copyWith(captureSessionId: activeSessionId)
         : rawEvent;
+    _mirror(event);
     final estimatedBytes = _estimateBytes(event);
     final priority = event.severity.index >= DiagnosticSeverity.warn.index;
     if (priority) {
@@ -212,6 +225,16 @@ final class _PersistentDiagnosticEventSink implements DiagnosticEventSink {
     _queueByteHighWater = max(_queueByteHighWater, _queueBytes);
     _scheduleDrain(immediate: _queueDepth >= configuration.batchSize);
     return true;
+  }
+
+  void _mirror(DiagnosticEvent event) {
+    final mirror = configuration.eventMirror;
+    if (mirror == null) return;
+    try {
+      mirror(event);
+    } on Object {
+      // Live developer output is not allowed to affect application behavior.
+    }
   }
 
   @override

@@ -424,6 +424,12 @@ test("desktop Runtime reports and clears private plugin caches without paths", a
   assert.deepEqual(usage.result, [{ pluginId: desktopFixture.plugin.id, bytes: 11 }]);
   assert.equal(JSON.stringify(usage.result).includes(dataRoot), false);
 
+  const archiveUsage = await sendRequest(
+    socket,
+    makeRequest(ready, "c:installation-archive-usage", "plugins.installation.usage.v1", {
+      params: { pluginId: desktopFixture.plugin.id, scope: "archive" },
+    }),
+  );
   const dataUsage = await sendRequest(
     socket,
     makeRequest(ready, "c:installation-data-usage", "plugins.installation.usage.v1", {
@@ -436,8 +442,11 @@ test("desktop Runtime reports and clears private plugin caches without paths", a
       params: { pluginId: desktopFixture.plugin.id, scope: "npm" },
     }),
   );
+  assert.equal(archiveUsage.type, "response");
   assert.equal(dataUsage.type, "response");
   assert.equal(npmUsage.type, "response");
+  assert.equal(archiveUsage.result.pluginId, desktopFixture.plugin.id);
+  assert.equal(archiveUsage.result.scope, "archive");
   assert.equal(dataUsage.result.pluginId, desktopFixture.plugin.id);
   assert.equal(dataUsage.result.scope, "data");
   assert.equal(npmUsage.result.scope, "npm");
@@ -447,6 +456,13 @@ test("desktop Runtime reports and clears private plugin caches without paths", a
   assert.ok(npmUsage.result.fileCount > 0);
   assert.equal(JSON.stringify(dataUsage.result).includes(dataRoot), false);
   assert.equal(JSON.stringify(npmUsage.result).includes(dataRoot), false);
+  assert.equal(JSON.stringify(archiveUsage.result).includes(dataRoot), false);
+  await access(join(
+    dataRoot,
+    "plugin-archives",
+    desktopFixture.plugin.id,
+    "1.0.0.mgplugin",
+  ));
 
   const cleared = await sendRequest(
     socket,
@@ -576,7 +592,11 @@ test("embedded import inbox installs an archive before cold activation", async (
   // Android uses this same embedded DesktopRuntime behind Javet. Keep the
   // path-free size capability covered on that execution route as well as the
   // desktop WebSocket route above.
-  const [dataUsage, npmUsage] = await Promise.all([
+  const [archiveUsage, dataUsage, npmUsage] = await Promise.all([
+    runtime.invokeEmbedded("plugins.installation.usage.v1", {
+      pluginId: desktopFixture.plugin.id,
+      scope: "archive",
+    }),
     runtime.invokeEmbedded("plugins.installation.usage.v1", {
       pluginId: desktopFixture.plugin.id,
       scope: "data",
@@ -586,8 +606,11 @@ test("embedded import inbox installs an archive before cold activation", async (
       scope: "npm",
     }),
   ]);
+  assert.equal(archiveUsage.ok, true);
   assert.equal(dataUsage.ok, true);
   assert.equal(npmUsage.ok, true);
+  assert.equal(archiveUsage.result.pluginId, desktopFixture.plugin.id);
+  assert.equal(archiveUsage.result.scope, "archive");
   assert.equal(dataUsage.result.pluginId, desktopFixture.plugin.id);
   assert.equal(dataUsage.result.scope, "data");
   assert.equal(npmUsage.result.pluginId, desktopFixture.plugin.id);

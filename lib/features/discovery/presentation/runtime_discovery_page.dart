@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -59,104 +60,117 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     final components =
         result?.document.components ?? const <PluginDiscoveryComponent>[];
     final resolvedSourceName = sourceName ?? result?.sourceName ?? '当前来源';
-    return PopScope(
-      canPop: !canNavigateBack,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) onBackRequested();
+    return CallbackShortcuts(
+      // Discovery owns an in-page navigation stack. Keep Escape on the same
+      // callback as the visible back button and PopScope; do not pop the
+      // outer GoRouter destination while a category stack still exists.
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.escape): onBackRequested,
       },
-      child: Scaffold(
-        body: SafeArea(
-          bottom: false,
-          child: Align(
-            alignment: canNavigateBack
-                ? Alignment.topLeft
-                : Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: canNavigateBack
-                    ? AppSpacing.discoveryListMaxWidth
-                    : AppSpacing.mobileContentMaxWidth,
-              ),
-              child: ListView(
-                key: const Key('runtime-discovery-content'),
-                padding: EdgeInsets.fromLTRB(
-                  canNavigateBack
-                      ? AppSpacing.regular
-                      : AppSpacing.discoveryPagePadding,
-                  AppSpacing.pageHeaderTopPadding,
-                  canNavigateBack
-                      ? AppSpacing.regular
-                      : AppSpacing.discoveryPagePadding,
-                  AppSpacing.page,
-                ),
-                children: <Widget>[
-                  Row(
+      child: Focus(
+        autofocus: true,
+        child: PopScope(
+          canPop: !canNavigateBack,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) onBackRequested();
+          },
+          child: Scaffold(
+            body: SafeArea(
+              bottom: false,
+              child: Align(
+                alignment: canNavigateBack
+                    ? Alignment.topLeft
+                    : Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: canNavigateBack
+                        ? AppSpacing.discoveryListMaxWidth
+                        : AppSpacing.mobileContentMaxWidth,
+                  ),
+                  child: ListView(
+                    key: const Key('runtime-discovery-content'),
+                    padding: EdgeInsets.fromLTRB(
+                      canNavigateBack
+                          ? AppSpacing.regular
+                          : AppSpacing.discoveryPagePadding,
+                      AppSpacing.pageHeaderTopPadding,
+                      canNavigateBack
+                          ? AppSpacing.regular
+                          : AppSpacing.discoveryPagePadding,
+                      AppSpacing.page,
+                    ),
                     children: <Widget>[
-                      if (canNavigateBack)
-                        IconButton(
-                          key: const Key('runtime-discovery-back'),
-                          tooltip: '返回上一级',
-                          onPressed: onBackRequested,
-                          icon: const Icon(Icons.arrow_back_rounded),
-                        ),
-                      Expanded(
-                        child: DiscoveryTopBar(
-                          title: canNavigateBack
-                              ? _nestedPageTitle(components) ?? '发现'
-                              : '发现',
-                          sourceName: resolvedSourceName,
-                          onSourcePressed: onSourcePressed,
-                          onSearchPressed:
-                              onSearchRequested ??
-                              () => onDestinationRequested(
-                                AppNavigationDestination.search,
-                              ),
-                          onToggleTheme: () => AppThemeModeScope.of(
-                            context,
-                          ).onToggleTheme(Theme.of(context).brightness),
-                          onRefreshPressed: onRefreshRequested,
-                        ),
+                      Row(
+                        children: <Widget>[
+                          if (canNavigateBack)
+                            IconButton(
+                              key: const Key('runtime-discovery-back'),
+                              tooltip: '返回上一级',
+                              onPressed: onBackRequested,
+                              icon: const Icon(Icons.arrow_back_rounded),
+                            ),
+                          Expanded(
+                            child: DiscoveryTopBar(
+                              title: canNavigateBack
+                                  ? _nestedPageTitle(components) ?? '发现'
+                                  : '发现',
+                              sourceName: resolvedSourceName,
+                              onSourcePressed: onSourcePressed,
+                              onSearchPressed:
+                                  onSearchRequested ??
+                                  () => onDestinationRequested(
+                                    AppNavigationDestination.search,
+                                  ),
+                              onToggleTheme: () => AppThemeModeScope.of(
+                                context,
+                              ).onToggleTheme(Theme.of(context).brightness),
+                              onRefreshPressed: onRefreshRequested,
+                            ),
+                          ),
+                        ],
                       ),
+                      if (result == null)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            top: AppSpacing.section,
+                          ),
+                          child: _DiscoveryContentState(
+                            isLoading: isContentLoading,
+                            isEmpty: contentIsEmpty,
+                            failureMessage: contentFailureMessage,
+                            failureCode: contentFailureCode,
+                            onRetry: onRefreshRequested,
+                          ),
+                        )
+                      else
+                        for (final component in components) ...<Widget>[
+                          _DiscoveryComponentRenderer(
+                            component: component,
+                            hideSectionTitle: canNavigateBack,
+                            onTabSelected: onTabSelected,
+                            onCategorySelected: onCategorySelected,
+                            onContentPressed: onContentPressed,
+                            onLoadMore: onLoadMore,
+                            loadingCollectionId: loadingCollectionId,
+                          ),
+                          const SizedBox(height: AppSpacing.section),
+                        ],
                     ],
                   ),
-                  if (result == null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: AppSpacing.section),
-                      child: _DiscoveryContentState(
-                        isLoading: isContentLoading,
-                        isEmpty: contentIsEmpty,
-                        failureMessage: contentFailureMessage,
-                        failureCode: contentFailureCode,
-                        onRetry: onRefreshRequested,
-                      ),
-                    )
-                  else
-                    for (final component in components) ...<Widget>[
-                      _DiscoveryComponentRenderer(
-                        component: component,
-                        hideSectionTitle: canNavigateBack,
-                        onTabSelected: onTabSelected,
-                        onCategorySelected: onCategorySelected,
-                        onContentPressed: onContentPressed,
-                        onLoadMore: onLoadMore,
-                        loadingCollectionId: loadingCollectionId,
-                      ),
-                      const SizedBox(height: AppSpacing.section),
-                    ],
-                ],
+                ),
               ),
             ),
-          ),
-        ),
-        bottomNavigationBar: SafeArea(
-          top: false,
-          child: AppBottomNavigation(
-            selected: AppNavigationDestination.discover,
-            onSelected: (destination) {
-              if (destination != AppNavigationDestination.discover) {
-                onDestinationRequested(destination);
-              }
-            },
+            bottomNavigationBar: SafeArea(
+              top: false,
+              child: AppBottomNavigation(
+                selected: AppNavigationDestination.discover,
+                onSelected: (destination) {
+                  if (destination != AppNavigationDestination.discover) {
+                    onDestinationRequested(destination);
+                  }
+                },
+              ),
+            ),
           ),
         ),
       ),

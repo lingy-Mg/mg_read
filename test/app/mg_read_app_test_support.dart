@@ -80,6 +80,9 @@ final class TestReadyPluginRuntimeGateway implements PluginRuntimeGateway {
   }) async => PluginCodeDirectoryKind.installed;
 
   @override
+  Future<void> openRuntimePrivateDirectory() async {}
+
+  @override
   Future<PluginRuntimeConnection> inspect() async =>
       const PluginRuntimeConnection(
         isHealthy: true,

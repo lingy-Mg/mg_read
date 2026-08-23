@@ -79,6 +79,7 @@ void main() {
     expect(find.byKey(const Key('data-source-installation-size-card')), findsOneWidget);
     expect(find.text('安装后大小'), findsOneWidget);
     expect(find.textContaining('整个书源：0 B'), findsOneWidget);
+    expect(find.textContaining('原始安装包'), findsOneWidget);
     expect(find.textContaining('数据文件'), findsOneWidget);
     expect(find.textContaining('npm 包'), findsOneWidget);
     if (Platform.isWindows) {
@@ -176,6 +177,9 @@ final class _DirectoryGateway implements PluginRuntimeGateway {
         ? PluginCodeDirectoryKind.development
         : PluginCodeDirectoryKind.installed;
   }
+
+  @override
+  Future<void> openRuntimePrivateDirectory() async {}
 
   @override
   Future<bool> selectDevelopmentDirectory() async => false;

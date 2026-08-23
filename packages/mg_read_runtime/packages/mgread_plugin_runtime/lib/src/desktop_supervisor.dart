@@ -34,6 +34,9 @@ typedef _RuntimeProcessExitSink = void Function(int exitCode, bool wasReady);
 typedef _RuntimeStartupFailureFactory =
     PluginRuntimeException Function(String code, String message);
 
+/// Testable Runtime-package-owned Windows shell action.
+typedef _DesktopDirectoryLauncher = Future<void> Function(Directory directory);
+
 /// Immutable locations of the Runtime files owned and launched by this package.
 ///
 /// The values are never supplied by the host application. Production resolves
@@ -43,6 +46,7 @@ final class _DesktopRuntimeBundle {
     required this.dataRoot,
     required this.bundledPluginDirectory,
     required this.developmentPluginDirectory,
+    required this.directoryLauncher,
     required this.entrypoint,
     required this.nodeExecutable,
     required this.workingDirectory,
@@ -56,6 +60,9 @@ final class _DesktopRuntimeBundle {
 
   /// Debug-only workspace projects loaded directly without installation.
   final Directory? developmentPluginDirectory;
+
+  /// Opens a Runtime-owned directory through the Flutter Windows shell layer.
+  final _DesktopDirectoryLauncher directoryLauncher;
 
   /// Compiled Node executable entrypoint that emits ready/diagnostic records.
   final File entrypoint;
@@ -109,6 +116,7 @@ final class _DesktopRuntimeBundle {
       dataRoot: dataRoot,
       bundledPluginDirectory: null,
       developmentPluginDirectory: developmentPluginDirectory,
+      directoryLauncher: _openWithWindowsExplorer,
       entrypoint: File(_joinPath(<String>[bundleRoot.path, 'dist', 'cli.js'])),
       nodeExecutable: File(
         _joinPath(<String>[bundleRoot.path, 'node', 'node.exe']),
@@ -127,6 +135,7 @@ final class _DesktopRuntimeBundle {
     File? nodeExecutableOverride,
     Directory? runtimeDataRoot,
     Directory? developmentPluginDirectory,
+    _DesktopDirectoryLauncher? directoryLauncher,
   }) {
     return _DesktopRuntimeBundle(
       dataRoot:
@@ -140,6 +149,7 @@ final class _DesktopRuntimeBundle {
           ),
       bundledPluginDirectory: null,
       developmentPluginDirectory: developmentPluginDirectory,
+      directoryLauncher: directoryLauncher ?? _discardDirectoryOpen,
       entrypoint:
           entrypointOverride ??
           File(
@@ -159,6 +169,20 @@ final class _DesktopRuntimeBundle {
     );
   }
 }
+
+/// Starts Explorer from the Flutter owner, outside the Node Job Object.
+Future<void> _openWithWindowsExplorer(Directory directory) async {
+  await directory.create(recursive: true);
+  await Process.start(
+    'explorer.exe',
+    <String>[directory.path],
+    mode: ProcessStartMode.detached,
+    runInShell: false,
+  );
+}
+
+/// Prevents package tests from opening a user-visible Explorer window by default.
+Future<void> _discardDirectoryOpen(Directory _) async {}
 
 /// Owns exactly one desktop Node child, its Windows Job, and its loopback link.
 ///
@@ -235,6 +259,11 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       );
     }
 
+    if (invocation is OpenRuntimePrivateDirectoryInvocation) {
+      await _openRuntimePrivateDirectory();
+      return null as T;
+    }
+
     await _synchronizeDevelopmentRuntime();
     try {
       final connection = await _ensureStarted();
@@ -247,6 +276,21 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
     } on Object {
       if (_developmentPluginDirectory != null) _startup = null;
       rethrow;
+    }
+  }
+
+  /// Opens the private root without routing a shell action through the Node child.
+  Future<void> _openRuntimePrivateDirectory() async {
+    try {
+      await _bundle.directoryLauncher(_bundle.dataRoot);
+    } on Object {
+      const diagnostic = RuntimeDiagnostic(
+        code: 'runtime_private_directory_open_failed',
+        level: RuntimeDiagnosticLevel.error,
+        message: 'The Runtime private directory could not be opened.',
+      );
+      _recordDiagnostic(diagnostic);
+      throw _failure(diagnostic.code, diagnostic.message);
     }
   }
 
@@ -304,7 +348,11 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
         totalBytes: 1,
       );
     } on FileSystemException {
-      await temporary.delete().catchError((_) {});
+      try {
+        await temporary.delete();
+      } on FileSystemException {
+        // The temporary file may not have been created before the failure.
+      }
       throw const PluginRuntimeException(
         'disk_full',
         'The selected plugin archive could not be imported.',

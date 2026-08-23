@@ -8,14 +8,10 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
-import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/diagnostics/presentation/diagnostics_viewer_page.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_destination_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
-import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
-import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
-import 'package:mg_read/features/library/application/library_book_detail_failure.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_health_page.dart';
@@ -38,6 +34,17 @@ part 'app_router.g.dart';
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(
   debugLabel: 'mgReadRootNavigator',
 );
+
+/// Gives page-owned [PopScope] handlers first chance to consume a back action.
+///
+/// Discovery uses this for its in-page category stack. A page may report that
+/// it handled back without changing the GoRouter location, so the global
+/// keyboard and mouse handlers must use `maybePop` instead of `router.pop()`.
+Future<bool> popApplicationRoute() async {
+  final NavigatorState? navigator = _rootNavigatorKey.currentState;
+  if (navigator == null) return false;
+  return navigator.maybePop();
+}
 
 /// Supplies the declarative application router and disposes it with the app.
 final appRouterProvider = Provider<GoRouter>((Ref ref) {
@@ -178,72 +185,9 @@ class LibraryRoute extends GoRouteData with $LibraryRoute {
         onReaderRequested: (String bookId) {
           ReaderRoute(bookId: bookId).push(context);
         },
-        onBookDetailRequested: (String bookId) {
-          unawaited(_openLibraryBookDetail(context, bookId));
-        },
       ),
     );
   }
-}
-
-/// Opens the shared discovery-style detail surface for a persisted shelf item.
-Future<void> _openLibraryBookDetail(BuildContext context, String bookId) async {
-  final container = ProviderScope.containerOf(context);
-  final launcher = container.read(libraryBookDetailLauncherProvider);
-  if (launcher == null) return;
-  LibraryBookDetailLaunchData detail;
-  try {
-    detail = await launcher.load(bookId);
-  } on Object catch (error) {
-    final navigatorContext = _rootNavigatorKey.currentContext;
-    if (navigatorContext == null || !navigatorContext.mounted) return;
-    _showLibraryDetailFailure(navigatorContext, error);
-    return;
-  }
-  final navigatorContext = _rootNavigatorKey.currentContext;
-  if (navigatorContext == null || !navigatorContext.mounted) return;
-  try {
-    await showSourceContentDetailSheet(
-      navigatorContext,
-      gateway: container.read(sourceContentGatewayProvider),
-      pluginId: detail.pluginId,
-      id: detail.remoteContentId,
-      initialContent: detail.initialContent,
-      initialCatalog: detail.initialCatalog,
-      initialSourceName: detail.sourceName,
-      shelfState: SourceDetailShelfState.alreadyAdded,
-      onTextChapterRequested:
-          ({
-            required detail,
-            required firstCatalogPage,
-            required chapter,
-          }) async {
-            if (navigatorContext.mounted) {
-              ReaderRoute(bookId: bookId).push(navigatorContext);
-            }
-          },
-    );
-  } on Object catch (error) {
-    if (!navigatorContext.mounted) return;
-    _showLibraryDetailFailure(
-      navigatorContext,
-      LibraryBookDetailFailure(
-        reason: LibraryBookDetailFailureReason.presentationOpen,
-        error: AppError.fromUnknown(error),
-      ),
-    );
-  }
-}
-
-void _showLibraryDetailFailure(BuildContext context, Object error) {
-  final failure = LibraryBookDetailFailure.fromError(error);
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(
-        '${failure.reason.userMessage}\n诊断代码：${failure.diagnosticCode}',
-      ),
-    ),
-  );
 }
 
 /// Runtime-backed source search reached from the shared bottom navigation.

@@ -24,6 +24,10 @@ Runtime 业务 Store 结论已被取代；变更当前边界必须先新增替�
 主项目只负责 UI、路由、主题、用户交互和阅读器视图宿主。它不应知道 Node/Javet、
 子进程、端口、ready、bootId、WebSocket、HTTP、Runtime Store 或插件内部协议。
 
+Windows 的 `OpenRuntimePrivateDirectoryInvocation` 由 Runtime-owned Flutter desktop Supervisor
+调用 Windows shell 打开私有数据根，不经 Node Runtime；Facade 仅返回成功或稳定错误，不返回目录路径；
+Android 保持 `unsupported`。
+
 ## 主项目唯一公开面
 
 Runtime 发布版本化 Flutter-facing 集成包。其唯一高层模式是调用 capability：
@@ -42,11 +46,11 @@ PluginRuntime.invoke<T>(PluginInvocation<T>) -> Future<T>
 字节数及每项 `cleared/failed` 终态；Runtime 仍独占 cache 目录、文件句柄与底层失败细节，
 主应用不得扫描或清理目录。
 
-安装后的书源大小由 `plugins.installation.usage.v1` 提供，`scope=data` 统计书源自身文件，
-`scope=npm` 统计物化后的 `node_modules`，结果只包含字节数、文件数、书源 ID、版本和
-统计范围，不暴露路径。两个范围由主应用异步分别请求，因此 Android 上 npm 文件很多时，
-数据文件结果可以先显示；Android Javet 和 Windows 桌面都调用同一个 Runtime Core 能力，
-但各自保留独立的启动/传输适配。
+安装后的书源大小由 `plugins.installation.usage.v1` 提供，`scope=archive` 统计 Runtime
+保留的原始 `.mgplugin`，`scope=data` 统计书源自身文件，`scope=npm` 统计物化后的
+`node_modules`，结果只包含字节数、文件数、书源 ID、版本和统计范围，不暴露路径。三个范围
+由主应用异步分别请求，因此 Android 上 npm 文件很多时，原始包和数据文件结果可以先显示；
+Android Javet 和 Windows 桌面都调用同一个 Runtime Core 能力，但各自保留独立的启动/传输适配。
 
 Node 运行状态由 `runtime.status.v1` 提供一个可扩展的安全快照：健康状态、Node/Runtime
 版本、运行形态、运行时长、进程内存分项、平台架构和插件投影。Android 返回
@@ -93,6 +97,8 @@ Runtime 仓库必须拥有并测试：
   必须由 Runtime 的集成包实现，不由主项目提供服务。
 - Runtime 自有受控数据根：插件安装版本、插件私有 data/cache、Cookie、临时资源、运行状态和
   诊断。主应用业务数据与 Content Library 不在此数据根。
+- 本地或内置 `.mgplugin` 的原始备份保存在 Runtime 自有 `plugin-archives/<pluginId>/`，
+  不作为主应用业务数据，也不经 Facade 暴露路径或文件句柄。
 - 下载 checkpoint、内容缓存和跨边界原子提交在新 Accepted ADR/Facade 契约完成前保持未实现
   或 `unsupported`，不能从旧 Runtime Store 规划直接恢复。
 - 未来 WebView、通知、媒体和其他平台能力的 Runtime 自有实现，或明确、稳定的

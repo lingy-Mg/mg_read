@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -271,6 +273,7 @@ Future<AppDiagnosticsService> _openDefaultDiagnostics(Directory dataRoot) =>
         minimumSeverity: kReleaseMode
             ? DiagnosticSeverity.warn
             : DiagnosticSeverity.debug,
+        eventMirror: kReleaseMode ? null : _DebugConsoleEventMirror().add,
       ),
       buildMode: kReleaseMode
           ? 'release'
@@ -279,6 +282,56 @@ Future<AppDiagnosticsService> _openDefaultDiagnostics(Directory dataRoot) =>
           : 'debug',
       platform: Platform.operatingSystem,
     );
+
+/// Bounded, best-effort developer-console output outside the app log queue.
+///
+/// This keeps console backpressure, encoding, and I/O out of the user-action
+/// path. On a VS Code desktop debug session [stderr] is the Debug Console;
+/// Flutter's platform tooling owns the corresponding device stream on mobile.
+final class _DebugConsoleEventMirror {
+  static const int _maximumQueuedEvents = 256;
+  static const int _maximumDrainBatch = 32;
+
+  final DiagnosticConsoleFormatter _formatter =
+      const DiagnosticConsoleFormatter();
+  final ListQueue<String> _pending = ListQueue<String>();
+  var _drainScheduled = false;
+
+  void add(DiagnosticEvent event) {
+    if (!_formatter.shouldMirror(event)) return;
+    final String line;
+    try {
+      line = _formatter.format(event);
+    } on Object {
+      return;
+    }
+    if (_pending.length >= _maximumQueuedEvents) return;
+    _pending.addLast(line);
+    if (_drainScheduled) return;
+    _drainScheduled = true;
+    scheduleMicrotask(_drain);
+  }
+
+  void _drain() {
+    _drainScheduled = false;
+    for (
+      var index = 0;
+      index < _maximumDrainBatch && _pending.isNotEmpty;
+      index += 1
+    ) {
+      final line = _pending.removeFirst();
+      try {
+        stderr.writeln(line);
+      } on Object {
+        // Console output is strictly best-effort.
+      }
+    }
+    if (_pending.isNotEmpty) {
+      _drainScheduled = true;
+      scheduleMicrotask(_drain);
+    }
+  }
+}
 
 Future<ContentLibrary> _openDefaultContentLibrary(
   Directory dataRoot,

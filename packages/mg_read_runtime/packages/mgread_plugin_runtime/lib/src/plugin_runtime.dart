@@ -61,6 +61,13 @@ final class PluginRuntime {
   /// stable Runtime error code and safe diagnostics; it never exposes a PID,
   /// port, raw stderr, path, or WebSocket frame.
   Future<T> invoke<T>(PluginInvocation<T> invocation) {
+    if (invocation is OpenRuntimePrivateDirectoryInvocation &&
+        !Platform.isWindows) {
+      throw const PluginRuntimeException(
+        'unsupported',
+        'Opening the Runtime private directory is available on Windows only.',
+      );
+    }
     return _supervisor.invoke(invocation);
   }
 
@@ -122,7 +129,8 @@ final class PluginRuntime {
   /// This is deliberately not a HostPort or a general application injection
   /// point: it accepts only the Runtime repository that contains the exact
   /// checked-in Node bundle and compiled Runtime entrypoint. The optional
-  /// overrides exist solely to exercise package-owned broken-bundle fixtures.
+  /// overrides exist solely to exercise package-owned broken-bundle and shell
+  /// action fixtures.
   /// [runtimeDataRoot] is a Runtime-owned temporary testkit root used to stage
   /// standard plugin fixtures without touching real user data. Production
   /// callers cannot provide or observe this path.
@@ -133,6 +141,7 @@ final class PluginRuntime {
     File? nodeExecutableOverride,
     Directory? runtimeDataRoot,
     Directory? developmentPluginRoot,
+    Future<void> Function(Directory directory)? directoryLauncher,
   }) {
     return PluginRuntime._(
       _DesktopRuntimeSupervisor(
@@ -142,6 +151,7 @@ final class PluginRuntime {
           nodeExecutableOverride: nodeExecutableOverride,
           runtimeDataRoot: runtimeDataRoot,
           developmentPluginDirectory: developmentPluginRoot,
+          directoryLauncher: directoryLauncher,
         ),
       ),
     );

@@ -246,46 +246,42 @@ class ReaderThemeSwatch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ReaderPalette palette = ReaderPalette.fromPreset(preset);
-    return Tooltip(
-      message: label,
-      excludeFromSemantics: true,
-      child: Semantics(
-        button: true,
-        selected: selected,
-        label: label,
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: InkResponse(
         onTap: onTap,
-        excludeSemantics: true,
-        child: InkResponse(
-          onTap: onTap,
-          radius: ReaderSettingsTokens.touchTarget / 2,
-          child: SizedBox.square(
-            dimension: ReaderSettingsTokens.touchTarget,
-            child: Center(
-              child: AnimatedContainer(
-                duration: ReaderSettingsTokens.transitionDuration,
-                width: ReaderSettingsTokens.swatchSize,
-                height: ReaderSettingsTokens.swatchSize,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: palette.background,
-                  border: Border.all(
-                    width: selected
-                        ? ReaderSettingsTokens.selectedBorderWidth
-                        : 1,
-                    color: selected ? palette.text : palette.divider,
-                  ),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: .06),
-                      blurRadius: 3,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
+        radius: ReaderSettingsTokens.touchTarget / 2,
+        child: SizedBox.square(
+          dimension: ReaderSettingsTokens.touchTarget,
+          child: Center(
+            child: AnimatedContainer(
+              duration: ReaderSettingsTokens.transitionDuration,
+              width: ReaderSettingsTokens.swatchSize,
+              height: ReaderSettingsTokens.swatchSize,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: palette.background,
+                border: Border.all(
+                  width: selected
+                      ? ReaderSettingsTokens.selectedBorderWidth
+                      : 1,
+                  color: selected ? palette.text : palette.divider,
                 ),
-                child: selected
-                    ? Icon(Icons.check_rounded, size: 17, color: palette.text)
-                    : null,
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: .06),
+                    blurRadius: 3,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
               ),
+              child: selected
+                  ? Icon(Icons.check_rounded, size: 17, color: palette.text)
+                  : null,
             ),
           ),
         ),
@@ -312,59 +308,55 @@ class ReaderBackgroundChoice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: label,
-      excludeFromSemantics: true,
-      child: Semantics(
-        button: true,
-        selected: selected,
-        label: label,
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(ReaderSettingsTokens.smallRadius),
         onTap: onTap,
-        excludeSemantics: true,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(ReaderSettingsTokens.smallRadius),
-          onTap: onTap,
-          child: SizedBox(
-            width: ReaderSettingsTokens.backgroundPreviewWidth + 4,
-            height: ReaderSettingsTokens.touchTarget,
-            child: Center(
-              child: AnimatedContainer(
-                duration: ReaderSettingsTokens.transitionDuration,
-                width: ReaderSettingsTokens.backgroundPreviewWidth,
-                height: ReaderSettingsTokens.backgroundPreviewHeight,
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(
-                    ReaderSettingsTokens.smallRadius,
-                  ),
-                  border: Border.all(
-                    width: selected
-                        ? ReaderSettingsTokens.selectedBorderWidth
-                        : 1,
-                    color: selected ? palette.text : palette.divider,
-                  ),
+        child: SizedBox(
+          width: ReaderSettingsTokens.backgroundPreviewWidth + 4,
+          height: ReaderSettingsTokens.touchTarget,
+          child: Center(
+            child: AnimatedContainer(
+              duration: ReaderSettingsTokens.transitionDuration,
+              width: ReaderSettingsTokens.backgroundPreviewWidth,
+              height: ReaderSettingsTokens.backgroundPreviewHeight,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(
+                  ReaderSettingsTokens.smallRadius,
                 ),
-                child: ReaderBackgroundSurface(
-                  preset: preset,
-                  palette: palette,
-                  child: selected
-                      ? Align(
-                          alignment: Alignment.topRight,
-                          child: Container(
-                            margin: const EdgeInsets.all(3),
-                            decoration: BoxDecoration(
-                              color: palette.panel.withValues(alpha: .9),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.check_rounded,
-                              size: 14,
-                              color: palette.text,
-                            ),
+                border: Border.all(
+                  width: selected
+                      ? ReaderSettingsTokens.selectedBorderWidth
+                      : 1,
+                  color: selected ? palette.text : palette.divider,
+                ),
+              ),
+              child: ReaderBackgroundSurface(
+                preset: preset,
+                palette: palette,
+                child: selected
+                    ? Align(
+                        alignment: Alignment.topRight,
+                        child: Container(
+                          margin: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: palette.panel.withValues(alpha: .9),
+                            shape: BoxShape.circle,
                           ),
-                        )
-                      : null,
-                ),
+                          child: Icon(
+                            Icons.check_rounded,
+                            size: 14,
+                            color: palette.text,
+                          ),
+                        ),
+                      )
+                    : null,
               ),
             ),
           ),
@@ -503,33 +495,29 @@ class _NavigationItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final Color color = selected ? palette.text : palette.secondaryText;
     return Expanded(
-      child: Tooltip(
-        message: label,
-        excludeFromSemantics: true,
-        child: Semantics(
-          button: true,
-          selected: selected,
-          label: label,
+      child: Semantics(
+        button: true,
+        selected: selected,
+        label: label,
+        onTap: onTap,
+        excludeSemantics: true,
+        child: InkWell(
           onTap: onTap,
-          excludeSemantics: true,
-          child: InkWell(
-            onTap: onTap,
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Icon(icon, size: 22, color: color),
-                  const SizedBox(height: 2),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 10,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                    ),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(icon, size: 22, color: color),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 10,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),

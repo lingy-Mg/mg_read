@@ -15,6 +15,9 @@
   `source.discover/search/getDetail/getChapters/getContent.v1`、`runtime.shutdown`；
 - 一个按标准 package/lock 安装、冷激活并执行完整内容链路的无网络插件投影。
 
+`plugins.installation.usage.v1` 的 `archive` 范围统计 Runtime 保留的原始 `.mgplugin`，
+`data` 范围排除 `node_modules`，`npm` 范围统计物化后的依赖树；三者只返回字节数和文件数。
+
 Node Core 测试和 Flutter↔Node 集成测试共同读取该 fixture，避免两端分别猜测版本、方法或
 上限。历史 `desktop-runtime-m1.2.json` 只保留为 bootstrap 证据，不是当前业务 fixture；旧
 M1.3 模板 fixture、模板 RPC 和 CLI 开关已经删除。
