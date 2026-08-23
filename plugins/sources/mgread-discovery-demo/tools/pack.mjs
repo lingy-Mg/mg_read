@@ -3,27 +3,36 @@ import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-if (process.argv[2] !== 'pack') throw new Error('Usage: node tools/pack.mjs pack');
-const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
-const files = [];
-for (const name of ['package.json', 'package-lock.json', 'README.md', 'LICENSE']) {
-  files.push({ name, bytes: await readFile(resolve(root, name)) });
-}
-await collect('dist');
-await collect('tools');
-files.sort((left, right) => left.name.localeCompare(right.name));
-const archive = zip(files);
-const target = resolve(root, 'artifacts', `${manifest.mgread.id}-${manifest.version}.mgplugin`);
-await mkdir(dirname(target), { recursive: true });
-await rm(target, { force: true });
-await writeFile(target, archive, { mode: 0o444 });
-process.stdout.write(`${relative(root, target).replaceAll('\\', '/')}\n`);
 
-async function collect(directory) {
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  if (process.argv[2] !== 'pack' || process.argv.length !== 3) {
+    throw new Error('Usage: node tools/pack.mjs pack');
+  }
+  await packPlugin();
+}
+
+export async function packPlugin() {
+  const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
+  const files = [];
+  for (const name of ['package.json', 'package-lock.json', 'README.md', 'LICENSE']) {
+    files.push({ name, bytes: await readFile(resolve(root, name)) });
+  }
+  await collect('dist', files);
+  await collect('tools', files);
+  files.sort((left, right) => left.name.localeCompare(right.name));
+  const archive = zip(files);
+  const target = resolve(root, 'artifacts', `${manifest.mgread.id}-${manifest.version}.mgplugin`);
+  await mkdir(dirname(target), { recursive: true });
+  await rm(target, { force: true });
+  await writeFile(target, archive, { mode: 0o444 });
+  process.stdout.write(`${relative(root, target).replaceAll('\\', '/')}\n`);
+}
+
+async function collect(directory, files) {
   const absolute = resolve(root, directory);
   for (const entry of await readdir(absolute, { withFileTypes: true })) {
     const name = `${directory}/${entry.name}`;
-    if (entry.isDirectory()) await collect(name);
+    if (entry.isDirectory()) await collect(name, files);
     else if (entry.isFile()) files.push({ name, bytes: await readFile(resolve(root, name)) });
   }
 }
@@ -38,7 +47,7 @@ function zip(entries) {
     const local = Buffer.alloc(30 + name.length);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
-    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0x0800, 6);
     local.writeUInt16LE(0, 8);
     local.writeUInt32LE(crc, 14);
     local.writeUInt32LE(entry.bytes.length, 18);
@@ -50,7 +59,7 @@ function zip(entries) {
     central.writeUInt32LE(0x02014b50, 0);
     central.writeUInt16LE(20, 4);
     central.writeUInt16LE(20, 6);
-    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(0x0800, 8);
     central.writeUInt16LE(0, 10);
     central.writeUInt32LE(crc, 16);
     central.writeUInt32LE(entry.bytes.length, 20);

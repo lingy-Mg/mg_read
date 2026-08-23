@@ -6,6 +6,9 @@ enum RuntimeInitializationStage {
   assetsCopied,
   assetsReused,
   nodeStarting,
+  pluginCopying,
+  pluginCopied,
+  pluginInstalling,
   ready,
 }
 
@@ -14,11 +17,13 @@ enum RuntimeInitializationStage {
 final class RuntimeInitializationProgress {
   const RuntimeInitializationProgress._({
     required this.completedBytes,
+    required this.detail,
     required this.stage,
     required this.totalBytes,
   });
 
   final int completedBytes;
+  final String? detail;
   final RuntimeInitializationStage stage;
   final int totalBytes;
 
@@ -26,6 +31,7 @@ final class RuntimeInitializationProgress {
 
   static RuntimeInitializationProgress? fromPlatform({
     required int completedBytes,
+    String? detail,
     required String stage,
     required int totalBytes,
   }) {
@@ -34,12 +40,24 @@ final class RuntimeInitializationProgress {
       'assets_copied' => RuntimeInitializationStage.assetsCopied,
       'assets_reused' => RuntimeInitializationStage.assetsReused,
       'node_starting' => RuntimeInitializationStage.nodeStarting,
+      'plugin_copying' => RuntimeInitializationStage.pluginCopying,
+      'plugin_copied' => RuntimeInitializationStage.pluginCopied,
+      'plugin_installing' => RuntimeInitializationStage.pluginInstalling,
       'ready' => RuntimeInitializationStage.ready,
       _ => null,
     };
     if (resolvedStage == null) return null;
+    final normalizedDetail = detail?.trim();
+    if (normalizedDetail != null &&
+        (normalizedDetail.isEmpty ||
+            normalizedDetail.length > 256 ||
+            normalizedDetail.contains('\n') ||
+            normalizedDetail.contains('\r'))) {
+      return null;
+    }
     return RuntimeInitializationProgress._(
       completedBytes: completedBytes,
+      detail: normalizedDetail,
       stage: resolvedStage,
       totalBytes: totalBytes,
     );

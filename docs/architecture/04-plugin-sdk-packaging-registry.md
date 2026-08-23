@@ -190,7 +190,38 @@ Node 已有的 `fs`、`crypto`、`buffer`、`stream`、`url`、`path` 等不再�
 Worker 或子进程；可信模型不把这些用法变成安全边界，Runtime 仍可能在启动/诊断阶段拒绝已知
 不兼容项。
 
-## 冷安装、激活与回滚
+## 插件私有缓存规则
+
+缓存用于消除可重复的远程读取，不是把每一份插件结果或应用业务数据落盘。书源必须为每个
+远程读取审计缓存必要性：同一稳定请求会被重复使用、请求为无副作用的 GET、响应由插件解释且
+不属于 Content Library 业务权威、重新请求会明显影响页面/阅读流时，必须缓存；否则保持不缓存。
+
+| 数据 | 默认规则 | 原因 |
+| --- | --- | --- |
+| 发现/分类/搜索列表 | 必须缓存，10 分钟刷新窗 | 高频重复访问，结果仅为来源展示投影 |
+| 作品详情和章节目录 | 必须缓存，1 小时刷新窗 | 常被列表补全、详情页和目录页重复读取 |
+| 正文、漫画页和媒体字节 | 禁止插件缓存 | 主应用 Content Library/受控文件对象拥有业务持久化，且体积与版权风险高 |
+| 登录态、Cookie、凭据、用户输入回显、写操作响应 | 禁止缓存 | 不能跨会话复用或会泄露/陈旧 |
+| 一次性、低成本或无稳定请求键的响应 | 不缓存 | 缓存成本高于收益或无法安全命中 |
+
+缓存只能写在 Runtime 注入的绝对 `ctx.cacheDir` 下、由插件自己命名的版本化子目录；插件不得
+根据 `cwd`、环境变量、来源 URL 或主应用路径推导其他目录，也不得读写安装树、`ctx.dataDir` 外
+的目录或 Runtime 数据根。Runtime 为每个插件提供的根已经是 `plugin-cache/<plugin-id>/`；主程序
+以后只能经 Runtime 的强类型统计/清理能力管理它，绝不取得路径、文件句柄或原始缓存内容。
+
+每项缓存必须使用版本化 namespace 与完整规范化请求的 SHA-256 键，不把原始 URL、查询词、
+凭据或 Cookie 写入文件名/索引/日志。默认上限为单条 1 MiB、每插件 100 MiB，并按最近访问时间
+LRU 淘汰；写入采用同目录临时文件后原子改名。并发相同键合并为一次远程请求。正常命中直接返回；
+超过刷新窗先在线刷新，只有网络/超时失败时才能把仍在上限内的旧条目作为离线回退。HTTP 非成功
+响应、超限内容、格式不符或损坏内容不得写入；缓存读写、淘汰或损坏处理失败一律降级为缓存未命中，
+不得改变书源业务结果。
+
+书源的缓存测试至少覆盖：进程/实例重建后的命中、TTL 内无网络、过期在线刷新、离线旧值回退、
+无旧值时保留原始错误、同键并发合并、容量 LRU、目录越界拒绝、损坏/超限降级，以及正文/媒体
+不进入插件缓存。缓存命中、刷新与回退只记录受控计数和耗时，不能记录 URL、标题、搜索词、HTML
+或正文。新书源从官方模板派生时必须遵守本节。
+
+## installed 冷安装、激活与回滚
 
 安装新版本不改变当前已加载模块：
 
@@ -216,6 +247,17 @@ stateDiagram-v2
 - GC 扫描所有保留版本的 `package-lock.json` 收集 registry integrity，再删除未标记对象；
   不维护易漂移引用计数。
 
+## Windows Debug development 项目
+
+Windows Debug 直接发现仓库 `plugins/sources/*` 中已经构建的标准项目。它们不打 `.mgplugin`、
+不复制到 Flutter assets、不写 `pending/current`，并以 `development` 状态覆盖同 ID 的 installed
+投影。平台适配器在每次 Facade 调用前检查 package/lock 与 `dist/assets/packages` 的有界指纹；
+变化后先完整回收旧 Node/VM，再启动唯一新 Runtime。开发者使用来源自己的 watch/build 命令更新
+`dist/`。Release 不发现工作区路径。完整边界见 ADR-0019。
+
+Android 测试不使用该路径：测试脚本在 Windows 验证并打包归档，经 ADB 放入 Debug 应用私有
+inbox，再由 Runtime 正式 installer 在冷初始化前安装。
+
 ## Facade 与主项目边界
 
 公开集成面仍是 Runtime 包的 `PluginRuntime.invoke(PluginInvocation<T>)`。当前主项目接入：
@@ -232,15 +274,17 @@ stateDiagram-v2
 
 主项目的插件状态页消费前两项，搜索/发现 application adapter 消费五个内容 invocation；它们
 都不持有 Runtime 路径、Node executable、PID、端口、ready、bootId、WS/HTTP DTO 或安装器
-对象。安装/更新 UI 后续必须等 Runtime 发布相应强类型 invocation，不得在 Flutter feature 内
-复制安装逻辑。
+对象。主应用的添加数据来源 UI 只调用 Runtime Facade 的 `importLocalPlugin()`；文件选择器、
+私有 inbox、原子导入、校验和冷激活均留在 Runtime package，不得在 Flutter feature 内复制安装
+逻辑或传递路径。
 
 ## Registry 边界
 
 首版产品只接受应用固定的官方仓库和用户显式选择的本地 `.mgplugin`。官方索引最终需要提供
 稳定 plugin ID/version、包 URL、包 SHA-256/大小以及兼容投影；包内 npm 依赖仍由各自 lock 的
 SRI 验证。仓库下载、文件选择和流式导入都属于 Runtime capability，不是主项目路径注入。
-当前交付只实现本地标准包安装核心，官方索引/下载 invocation 尚未交付。
+当前交付实现本地标准包安装核心及 Windows/Android 的本地导入 UI 闭环；官方索引/下载
+invocation 尚未交付。
 
 ## 诊断、隐私与验收
 

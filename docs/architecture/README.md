@@ -15,14 +15,15 @@
    受控文件对象属于主应用；Runtime 不打开主应用 SQLite，也不获得数据库/文件绝对路径。
 4. Runtime 可拥有插件安装树、插件私有 data/cache、Cookie、临时运行状态与诊断，但不得成为
    书架、目录、阅读进度、书签等主应用业务权威。
-5. 插件是可信的标准 Node.js 24 项目，使用 `package.json.mgread`、npm lockfile v3、普通
-   `node_modules` 和冷激活版本目录；可信不等于安全沙箱。
+5. 插件是可信的标准 Node.js 24 项目。installed 使用不可变冷激活版本目录；Windows Debug 的
+   development 项目直接读取工作区并在变更后有序重启唯一 Runtime；可信不等于安全沙箱。
 6. WS 控制面和 loopback HTTP 数据面是 Runtime 内部实现；大二进制/超限文本不进入
    JSON/Base64，主应用只消费强类型 Facade。
 7. 阅读器插件不联网、不内置业务数据库；主应用 adapter 提供内容和状态，进度/书签保留语义
    锚点。
 8. 全局诊断只持久化为有界 UTF-8 分段 TXT；默认不读取或保存 body、正文、凭据和复杂对象。
-9. 插件更新在下次应用进程冷激活，不用同进程 Runtime 热重启绕过单 VM 边界。
+9. installed 更新在下次 Runtime 冷激活；仅 Windows Debug development 可在回收旧 VM 后重启
+   唯一 Runtime，不在同一 VM 内热换模块。
 10. Android、Windows、macOS 分别验收。Windows 源码证据不能证明 Android/Javet、macOS 或最终
     发布包。
 

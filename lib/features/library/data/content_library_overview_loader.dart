@@ -15,20 +15,25 @@ final class ContentLibraryOverviewLoader implements LibraryOverviewLoader {
   @override
   Future<LibraryOverview> load() async {
     final page = await _library.listLibrary(const LibraryQuery(limit: 100));
-    final items = await Future.wait(
-      page.items.map((item) async {
-        final progress = await _library.readingProgress.load(item.id);
-        return LibraryItemSummary(
-          id: item.id.value,
-          title: item.title,
-          readingProgress: progress?.bookFraction,
-          readingChapterIndex: progress?.chapterIndex,
-          lastReadAtUtc: progress?.updatedAtUtc,
-        );
-      }),
-    );
-    return LibraryOverview(
-      items: items,
-    );
+    final progressByItemId = <String, LibraryReadingProgress>{
+      for (final progress in await _library.readingProgress.loadMany(
+        page.items.map((item) => item.id),
+      ))
+        progress.itemId.value: progress,
+    };
+    final items = page.items.map((item) {
+      final progress = progressByItemId[item.id.value];
+      return LibraryItemSummary(
+        id: item.id.value,
+        title: item.title,
+        author: item.author,
+        coverUrl: item.coverUrl,
+        sourceName: item.sourceName,
+        readingProgress: progress?.bookFraction,
+        readingChapterIndex: progress?.chapterIndex,
+        lastReadAtUtc: progress?.updatedAtUtc,
+      );
+    });
+    return LibraryOverview(items: items);
   }
 }

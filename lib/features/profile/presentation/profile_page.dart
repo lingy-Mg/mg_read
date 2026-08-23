@@ -3,10 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/features/profile/presentation/profile_view_data.dart';
+import 'package:mg_read/features/profile/domain/profile_reading_stats.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_overview_card.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_settings_list.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
+import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
+
+// Dark-mode plumbing remains available, but the current UI milestone exposes
+// only the light theme and therefore does not render a theme action.
+const bool _themeModeActionEnabled = false;
 
 /// The mobile-first profile and settings surface.
 ///
@@ -21,7 +27,10 @@ class ProfilePage extends StatefulWidget {
     this.onAboutRequested,
     this.onFeedbackRequested,
     this.onPluginCenterRequested,
+    this.onPluginCacheRequested,
+    this.onPendingSettingRequested,
     this.onDiagnosticsRequested,
+    this.readingStats,
     super.key,
   });
 
@@ -33,7 +42,12 @@ class ProfilePage extends StatefulWidget {
   final VoidCallback? onAboutRequested;
   final VoidCallback? onFeedbackRequested;
   final VoidCallback? onPluginCenterRequested;
+  final VoidCallback? onPluginCacheRequested;
+  final ValueChanged<String>? onPendingSettingRequested;
   final VoidCallback? onDiagnosticsRequested;
+
+  /// Local Content Library totals when this page is created by the app route.
+  final ProfileReadingStats? readingStats;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -51,6 +65,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final data = widget.readingStats == null
+        ? ProfileFixtures.preview
+        : ProfileFixtures.preview.withReadingStats(widget.readingStats!);
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -67,18 +84,20 @@ class _ProfilePageState extends State<ProfilePage> {
                 primary: false,
                 padding: const EdgeInsets.fromLTRB(
                   AppSpacing.compactPagePadding,
-                  AppSpacing.homeContentTopPadding,
+                  AppSpacing.pageHeaderTopPadding,
                   AppSpacing.compactPagePadding,
                   AppSpacing.page,
                 ),
                 children: <Widget>[
                   ProfileTopBar(
-                    onToggleTheme: () => _handleToggleTheme(context),
+                    onToggleTheme: _themeModeActionEnabled
+                        ? () => _handleToggleTheme(context)
+                        : null,
                     onNotifications: _showUnavailableMessage,
                   ),
-                  const SizedBox(height: AppSpacing.regular),
+                  const SizedBox(height: AppSpacing.compact + 2),
                   ProfileOverviewCard(
-                    data: ProfileFixtures.preview,
+                    data: data,
                     onEdit: _showUnavailableMessage,
                     onSyncPressed: _showUnavailableMessage,
                   ),
@@ -93,16 +112,16 @@ class _ProfilePageState extends State<ProfilePage> {
                       },
                     ),
                   ],
-                  const SizedBox(height: AppSpacing.comfortable + 5),
+                  const SizedBox(height: AppSpacing.section - 2),
                   _ProfileSectionTitle(title: '设置与管理'),
                   const SizedBox(height: AppSpacing.unit / 2),
                   ProfileSettingsList(
                     items: ProfileFixtures.preview.settings,
                     onItemPressed: _handleSettingsItemPressed,
                   ),
-                  const SizedBox(height: AppSpacing.compact),
+                  const SizedBox(height: AppSpacing.compact - 2),
                   _ProfileSectionTitle(title: '关于与其他'),
-                  const SizedBox(height: AppSpacing.unit),
+                  const SizedBox(height: AppSpacing.compact - 2),
                   ProfileSettingsList(
                     items: ProfileFixtures.preview.about,
                     onItemPressed: _handleAboutItemPressed,
@@ -172,6 +191,16 @@ class _ProfilePageState extends State<ProfilePage> {
       widget.onPluginCenterRequested!();
       return;
     }
+    if (item.id == 'clear-cache' && widget.onPluginCacheRequested != null) {
+      widget.onPluginCacheRequested!();
+      return;
+    }
+    final ValueChanged<String>? onPendingSettingRequested =
+        widget.onPendingSettingRequested;
+    if (onPendingSettingRequested != null) {
+      onPendingSettingRequested(item.id);
+      return;
+    }
     _showUnavailableMessage();
   }
 }
@@ -185,43 +214,61 @@ class ProfileTopBar extends StatelessWidget {
     super.key,
   });
 
-  final VoidCallback onToggleTheme;
+  final VoidCallback? onToggleTheme;
   final VoidCallback onNotifications;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    return Row(
-      children: <Widget>[
-        Expanded(
-          child: Semantics(
-            header: true,
-            child: Text(
-              '我的',
-              style: theme.textTheme.displaySmall?.copyWith(
-                fontSize: 30,
-                fontWeight: FontWeight.w600,
-                height: 1.15,
-                letterSpacing: -0.3,
-              ),
+    return SizedBox(
+      height: AppSpacing.pageHeaderHeight,
+      child: Row(
+        children: <Widget>[
+          const Expanded(child: AppPageTitle(title: '我的')),
+          if (onToggleTheme == null) const _ProfileTopBarDecoration(),
+          if (onToggleTheme != null) ...<Widget>[
+            _ProfileTopBarAction(
+              key: const Key('theme-mode-toggle'),
+              tooltip: theme.brightness == Brightness.dark
+                  ? '切换至浅色模式'
+                  : '切换至深色模式',
+              onPressed: onToggleTheme!,
+              icon: theme.brightness == Brightness.dark
+                  ? Icons.light_mode_outlined
+                  : Icons.dark_mode_outlined,
             ),
+            const SizedBox(width: AppSpacing.compact),
+          ],
+          _ProfileTopBarAction(
+            tooltip: '通知',
+            onPressed: onNotifications,
+            icon: Icons.notifications_none_rounded,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Keeps the reference header silhouette while theme switching is light-only.
+class _ProfileTopBarDecoration extends StatelessWidget {
+  const _ProfileTopBarDecoration();
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return ExcludeSemantics(
+      child: SizedBox(
+        width: AppSpacing.topBarActionSize,
+        height: AppSpacing.topBarActionSize,
+        child: Center(
+          child: Icon(
+            Icons.dark_mode_outlined,
+            size: AppSpacing.topBarActionIconSize,
+            color: theme.colorScheme.onSurface,
           ),
         ),
-        _ProfileTopBarAction(
-          key: const Key('theme-mode-toggle'),
-          tooltip: theme.brightness == Brightness.dark ? '切换至浅色模式' : '切换至深色模式',
-          onPressed: onToggleTheme,
-          icon: theme.brightness == Brightness.dark
-              ? Icons.light_mode_outlined
-              : Icons.dark_mode_outlined,
-        ),
-        const SizedBox(width: AppSpacing.compact),
-        _ProfileTopBarAction(
-          tooltip: '通知',
-          onPressed: onNotifications,
-          icon: Icons.notifications_none_rounded,
-        ),
-      ],
+      ),
     );
   }
 }
@@ -286,9 +333,9 @@ class _ProfileSectionTitle extends StatelessWidget {
         title,
         style: theme.textTheme.titleMedium?.copyWith(
           color: tokens.mutedText,
-          fontSize: 18,
+          fontSize: 17,
           fontWeight: FontWeight.w400,
-          height: 1.2,
+          height: 1.15,
         ),
       ),
     );

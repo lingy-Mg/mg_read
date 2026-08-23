@@ -6,6 +6,7 @@ import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
+import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 
 /// Mobile-first discovery presentation owned by the host UI layer.
 ///
@@ -67,7 +68,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                   primary: false,
                   padding: const EdgeInsets.fromLTRB(
                     AppSpacing.discoveryPagePadding,
-                    AppSpacing.homeContentTopPadding,
+                    AppSpacing.pageHeaderTopPadding,
                     AppSpacing.discoveryPagePadding,
                     AppSpacing.page,
                   ),
@@ -209,6 +210,8 @@ class DiscoveryTopBar extends StatelessWidget {
     required this.onSourcePressed,
     required this.onSearchPressed,
     required this.onToggleTheme,
+    this.title = '发现',
+    this.onRefreshPressed,
     super.key,
   });
 
@@ -216,6 +219,8 @@ class DiscoveryTopBar extends StatelessWidget {
   final VoidCallback onSourcePressed;
   final VoidCallback onSearchPressed;
   final VoidCallback onToggleTheme;
+  final String title;
+  final VoidCallback? onRefreshPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -229,21 +234,7 @@ class DiscoveryTopBar extends StatelessWidget {
             left: AppSpacing.discoveryHeaderInset,
             top: 0,
             bottom: 0,
-            child: Center(
-              child: Semantics(
-                header: true,
-                child: Text(
-                  '发现',
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurface,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w600,
-                    height: 1.15,
-                    letterSpacing: -0.3,
-                  ),
-                ),
-              ),
-            ),
+            child: Center(child: AppPageTitle(title: title)),
           ),
           Align(
             alignment: const Alignment(0.08, 0),
@@ -272,6 +263,15 @@ class DiscoveryTopBar extends StatelessWidget {
                   ),
                   const SizedBox(width: AppSpacing.unit),
                 ],
+                if (onRefreshPressed != null) ...<Widget>[
+                  DiscoveryTopAction(
+                    key: const Key('discovery-refresh-action'),
+                    tooltip: '刷新发现内容',
+                    icon: Icons.refresh_rounded,
+                    onPressed: onRefreshPressed!,
+                  ),
+                  const SizedBox(width: AppSpacing.unit),
+                ],
                 DiscoveryTopAction(
                   key: const Key('discovery-search-action'),
                   tooltip: '搜索书籍',
@@ -291,11 +291,15 @@ class DiscoverySourceSelector extends StatelessWidget {
   const DiscoverySourceSelector({
     required this.sourceName,
     required this.onPressed,
+    this.selectorKey,
+    this.label = '选择数据源',
     super.key,
   });
 
   final String sourceName;
   final VoidCallback onPressed;
+  final Key? selectorKey;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -303,13 +307,13 @@ class DiscoverySourceSelector extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Semantics(
       button: true,
-      label: '选择发现页书源',
+      label: label,
       child: Tooltip(
-        message: '选择发现页书源',
+        message: label,
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            key: const Key('discovery-source-selector'),
+            key: selectorKey ?? const Key('discovery-source-selector'),
             onTap: onPressed,
             borderRadius: AppRadii.pill,
             child: Container(
@@ -324,16 +328,18 @@ class DiscoverySourceSelector extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
-                  Text(
-                    sourceName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: theme.colorScheme.onSurface,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w400,
-                      height: 1.1,
-                      letterSpacing: 0,
+                  Flexible(
+                    child: Text(
+                      sourceName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w400,
+                        height: 1.1,
+                        letterSpacing: 0,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 5),
@@ -798,9 +804,9 @@ class DiscoveryPopularBooks extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    return ConstrainedBox(
       key: const Key('discovery-popular-books'),
-      height: 120,
+      constraints: const BoxConstraints(minHeight: 120),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.start,

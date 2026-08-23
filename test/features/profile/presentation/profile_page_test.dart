@@ -59,11 +59,11 @@ void main() {
       profileNavigation,
     );
 
-    expect(pageTitle.style?.fontSize, 30);
+    expect(pageTitle.style?.fontSize, AppSpacing.pageTitleSize);
     expect(pageTitle.style?.fontWeight, FontWeight.w600);
-    expect(settingTitle.style?.fontSize, 18);
+    expect(settingTitle.style?.fontSize, 16);
     expect(settingTitle.style?.fontWeight, FontWeight.w500);
-    expect(settingDescription.style?.fontSize, 14);
+    expect(settingDescription.style?.fontSize, 13);
     expect(settingDescription.style?.fontWeight, FontWeight.w400);
     expect(profileSemantics.flagsCollection.isSelected, Tristate.isTrue);
     expect(
@@ -73,13 +73,13 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('keeps the top appearance action and local action feedback', (
+  testWidgets('keeps light-only top actions and local action feedback', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('theme-mode-toggle')), findsOneWidget);
+    expect(find.byKey(const Key('theme-mode-toggle')), findsNothing);
 
     await tester.tap(find.byKey(const Key('profile-setting-reading-settings')));
     await tester.pumpAndSettle();

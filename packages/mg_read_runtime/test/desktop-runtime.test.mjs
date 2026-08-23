@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { access, cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,13 +25,13 @@ const fixtureRoot = fileURLToPath(
   new URL("./fixtures/standard-plugin/", import.meta.url),
 );
 
-async function createRuntime(t, { installFixture = false } = {}) {
+async function createRuntime(t, { installFixture = false, openDirectory } = {}) {
   const dataRoot = await mkdtemp(join(tmpdir(), "mgread-runtime-node-test-"));
   if (installFixture) {
     const installer = new PluginInstaller(dataRoot);
     await installer.installProject(fixtureRoot);
   }
-  const runtime = new DesktopRuntime({ dataRoot });
+  const runtime = new DesktopRuntime({ dataRoot, ...(openDirectory === undefined ? {} : { openDirectory }) });
   t.after(async () => {
     await runtime.stop();
     await rm(dataRoot, { force: true, recursive: true });
@@ -219,6 +219,24 @@ test("desktop Runtime completes hello, ping and stable protocol errors over WebS
     },
   });
 
+  const status = await sendRequest(
+    socket,
+    makeRequest(ready, "c:status", "runtime.status.v1"),
+  );
+  assert.equal(status.type, "response");
+  assert.equal(status.id, "c:status");
+  assert.equal(status.result.bootId, ready.bootId);
+  assert.equal(status.result.nodeVersion, process.versions.node);
+  assert.equal(status.result.runtimeVersion, runtimeVersion);
+  assert.equal(status.result.ok, true);
+  assert.equal(typeof status.result.uptimeMs, "number");
+  assert.ok(status.result.uptimeMs >= 0);
+  for (const key of ["rss", "heapTotal", "heapUsed", "external", "arrayBuffers"]) {
+    assert.equal(typeof status.result.memory[key], "number");
+    assert.ok(status.result.memory[key] >= 0);
+  }
+  assert.ok(Array.isArray(status.result.plugins));
+
   const unsupported = await sendRequest(
     socket,
     makeRequest(ready, "c:unknown", "plugin.list"),
@@ -351,12 +369,124 @@ test("desktop Runtime loads and searches an installed standard Node plugin", asy
   assert.deepEqual(content.result.pages, []);
 });
 
-test("desktop Runtime seeds a bundled source only into a new Runtime data root", async (t) => {
+test("desktop Runtime opens only the installed source directory through its owned shell action", async (t) => {
+  const opened = [];
+  const runtime = await createRuntime(t, {
+    installFixture: true,
+    openDirectory: async (directory) => opened.push(directory),
+  });
+  const ready = await runtime.start();
+  const socket = await openRuntimeSocket(ready);
+  t.after(() => socket.close());
+
+  const response = await sendRequest(
+    socket,
+    makeRequest(ready, "c:open-source-directory", "plugins.openCodeDirectory.v1", {
+      params: { pluginId: desktopFixture.plugin.id },
+    }),
+  );
+
+  if (process.platform !== "win32") {
+    assert.equal(response.type, "error");
+    assert.equal(response.error.code, "unsupported");
+    assert.deepEqual(opened, []);
+    return;
+  }
+  assert.equal(response.type, "response");
+  assert.deepEqual(response.result, { kind: "installed" });
+  assert.equal(opened.length, 1);
+  assert.match(opened[0], /plugins[\\/]org\.mgread\.runtime\.fixture[\\/]versions[\\/]1\.0\.0$/);
+  assert.notEqual(JSON.stringify(response), JSON.stringify(opened[0]));
+});
+
+test("desktop Runtime reports and clears private plugin caches without paths", async (t) => {
+  const dataRoot = await mkdtemp(join(tmpdir(), "mgread-runtime-cache-test-"));
+  const installer = new PluginInstaller(dataRoot);
+  await installer.installProject(fixtureRoot);
+  const cacheRoot = join(dataRoot, "plugin-cache", desktopFixture.plugin.id);
+  await mkdir(join(cacheRoot, "nested"), { recursive: true });
+  await writeFile(join(cacheRoot, "nested", "payload.bin"), "cache-bytes");
+  const runtime = new DesktopRuntime({ dataRoot });
+  t.after(async () => {
+    await runtime.stop();
+    await rm(dataRoot, { force: true, recursive: true });
+  });
+
+  const ready = await runtime.start();
+  const socket = await openRuntimeSocket(ready);
+  t.after(() => socket.close());
+
+  const usage = await sendRequest(
+    socket,
+    makeRequest(ready, "c:cache-usage", "plugins.cache.usage.v1"),
+  );
+  assert.equal(usage.type, "response");
+  assert.deepEqual(usage.result, [{ pluginId: desktopFixture.plugin.id, bytes: 11 }]);
+  assert.equal(JSON.stringify(usage.result).includes(dataRoot), false);
+
+  const dataUsage = await sendRequest(
+    socket,
+    makeRequest(ready, "c:installation-data-usage", "plugins.installation.usage.v1", {
+      params: { pluginId: desktopFixture.plugin.id, scope: "data" },
+    }),
+  );
+  const npmUsage = await sendRequest(
+    socket,
+    makeRequest(ready, "c:installation-npm-usage", "plugins.installation.usage.v1", {
+      params: { pluginId: desktopFixture.plugin.id, scope: "npm" },
+    }),
+  );
+  assert.equal(dataUsage.type, "response");
+  assert.equal(npmUsage.type, "response");
+  assert.equal(dataUsage.result.pluginId, desktopFixture.plugin.id);
+  assert.equal(dataUsage.result.scope, "data");
+  assert.equal(npmUsage.result.scope, "npm");
+  assert.ok(dataUsage.result.bytes > 0);
+  assert.ok(npmUsage.result.bytes > 0);
+  assert.ok(dataUsage.result.fileCount > 0);
+  assert.ok(npmUsage.result.fileCount > 0);
+  assert.equal(JSON.stringify(dataUsage.result).includes(dataRoot), false);
+  assert.equal(JSON.stringify(npmUsage.result).includes(dataRoot), false);
+
+  const cleared = await sendRequest(
+    socket,
+    makeRequest(ready, "c:cache-clear", "plugins.cache.clear.v1", {
+      params: { pluginId: desktopFixture.plugin.id },
+    }),
+  );
+  assert.equal(cleared.type, "response");
+  assert.deepEqual(cleared.result, {
+    items: [{
+      pluginId: desktopFixture.plugin.id,
+      bytesBefore: 11,
+      bytesRemaining: 0,
+      status: "cleared",
+    }],
+  });
+  await assert.rejects(access(join(cacheRoot, "nested", "payload.bin")));
+
+  const allCleared = await sendRequest(
+    socket,
+    makeRequest(ready, "c:cache-clear-all", "plugins.cache.clearAll.v1"),
+  );
+  assert.equal(allCleared.type, "response");
+  assert.deepEqual(allCleared.result.items, [{
+    pluginId: desktopFixture.plugin.id,
+    bytesBefore: 0,
+    bytesRemaining: 0,
+    status: "cleared",
+  }]);
+});
+
+test("desktop Runtime reconciles bundled defaults per source at a cold start", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "mgread-runtime-bundled-seed-"));
   const dataRoot = join(root, "runtime-data");
   const bundledPluginRoot = join(root, "bundled-plugins");
   await mkdir(bundledPluginRoot, { recursive: true });
-  await createPluginArchive(fixtureRoot, join(bundledPluginRoot, "fixture.mgplugin"));
+  await createPluginArchive(
+    fixtureRoot,
+    join(bundledPluginRoot, "org.mgread.runtime.fixture-1.0.0.mgplugin"),
+  );
   const runtime = new DesktopRuntime({ dataRoot, bundledPluginRoot });
   t.after(async () => {
     await runtime.stop();
@@ -376,7 +506,29 @@ test("desktop Runtime seeds a bundled source only into a new Runtime data root",
 
   socket.close();
   await runtime.stop();
-  await rm(bundledPluginRoot, { force: true, recursive: true });
+
+  const upgradedRoot = join(root, "upgraded-fixture");
+  const additionalRoot = join(root, "additional-fixture");
+  await cp(fixtureRoot, upgradedRoot, { recursive: true });
+  await cp(fixtureRoot, additionalRoot, { recursive: true });
+  await rewriteFixturePackage(upgradedRoot, {
+    id: desktopFixture.plugin.id,
+    name: "@mgread-plugin/runtime-fixture",
+    version: "1.0.1",
+  });
+  await rewriteFixturePackage(additionalRoot, {
+    id: "org.mgread.runtime.extra",
+    name: "@mgread-plugin/runtime-extra",
+    version: "1.0.0",
+  });
+  await createPluginArchive(
+    upgradedRoot,
+    join(bundledPluginRoot, "org.mgread.runtime.fixture-1.0.1.mgplugin"),
+  );
+  await createPluginArchive(
+    additionalRoot,
+    join(bundledPluginRoot, "org.mgread.runtime.extra-1.0.0.mgplugin"),
+  );
 
   const restarted = new DesktopRuntime({ dataRoot, bundledPluginRoot });
   t.after(() => restarted.stop());
@@ -388,8 +540,80 @@ test("desktop Runtime seeds a bundled source only into a new Runtime data root",
     makeRequest(restartedReady, "c:bundled-seed-second", "plugins.list.v1"),
   );
   assert.equal(secondList.type, "response");
-  assert.equal(secondList.result.length, 1);
+  assert.equal(secondList.result.length, 2);
+  assert.equal(
+    secondList.result.find((plugin) => plugin.id === desktopFixture.plugin.id).activeVersion,
+    "1.0.1",
+  );
+  assert.equal(
+    secondList.result.find((plugin) => plugin.id === "org.mgread.runtime.extra").activeVersion,
+    "1.0.0",
+  );
 });
+
+test("embedded import inbox installs an archive before cold activation", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "mgread-runtime-import-inbox-"));
+  const dataRoot = join(root, "runtime-data");
+  const pluginImportInboxRoot = join(root, "import-inbox");
+  await mkdir(pluginImportInboxRoot, { recursive: true });
+  const archive = join(pluginImportInboxRoot, "runtime-fixture.mgplugin");
+  await createPluginArchive(fixtureRoot, archive);
+  const runtime = new DesktopRuntime({
+    dataRoot,
+    embedded: true,
+    pluginImportInboxRoot,
+  });
+  t.after(async () => {
+    await runtime.stop();
+    await rm(root, { force: true, recursive: true });
+  });
+
+  await runtime.start();
+  const listed = await runtime.invokeEmbedded("plugins.list.v1", {});
+  assert.equal(listed.ok, true);
+  assert.equal(listed.result.length, 1);
+  assert.equal(listed.result[0].id, desktopFixture.plugin.id);
+  // Android uses this same embedded DesktopRuntime behind Javet. Keep the
+  // path-free size capability covered on that execution route as well as the
+  // desktop WebSocket route above.
+  const [dataUsage, npmUsage] = await Promise.all([
+    runtime.invokeEmbedded("plugins.installation.usage.v1", {
+      pluginId: desktopFixture.plugin.id,
+      scope: "data",
+    }),
+    runtime.invokeEmbedded("plugins.installation.usage.v1", {
+      pluginId: desktopFixture.plugin.id,
+      scope: "npm",
+    }),
+  ]);
+  assert.equal(dataUsage.ok, true);
+  assert.equal(npmUsage.ok, true);
+  assert.equal(dataUsage.result.pluginId, desktopFixture.plugin.id);
+  assert.equal(dataUsage.result.scope, "data");
+  assert.equal(npmUsage.result.pluginId, desktopFixture.plugin.id);
+  assert.equal(npmUsage.result.scope, "npm");
+  assert.ok(dataUsage.result.bytes > 0);
+  assert.ok(dataUsage.result.fileCount > 0);
+  assert.ok(npmUsage.result.bytes > 0);
+  assert.ok(npmUsage.result.fileCount > 0);
+  await assert.rejects(access(archive), (error) => error?.code === "ENOENT");
+});
+
+async function rewriteFixturePackage(root, { id, name, version }) {
+  const packagePath = join(root, "package.json");
+  const lockPath = join(root, "package-lock.json");
+  const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+  packageJson.name = name;
+  packageJson.version = version;
+  packageJson.mgread.id = id;
+  const lock = JSON.parse(await readFile(lockPath, "utf8"));
+  lock.name = name;
+  lock.version = version;
+  lock.packages[""] .name = name;
+  lock.packages[""] .version = version;
+  await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+  await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+}
 
 test("desktop Runtime multiplexes bounded concurrent control requests on one socket", async (t) => {
   const runtime = await createRuntime(t);

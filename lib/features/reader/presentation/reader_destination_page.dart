@@ -6,6 +6,7 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
+import 'package:mg_read/features/reader/application/reader_launch_failure.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/reader/presentation/reader_host_page.dart';
 
@@ -61,6 +62,7 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
     if (request != null) return ReaderHostPage(request: request);
     final error = _error;
     if (error != null) {
+      final failure = ReaderLaunchFailure.fromError(error);
       return Scaffold(
         appBar: AppBar(title: const Text('暂时无法开始阅读')),
         body: SafeArea(
@@ -70,7 +72,9 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  const Text('未能获取这本书的可读内容，请稍后重试。'),
+                  Text(failure.reason.userMessage),
+                  const SizedBox(height: 8),
+                  Text('诊断代码：${failure.diagnosticCode}'),
                   const SizedBox(height: 16),
                   FilledButton(
                     onPressed: () => unawaited(_resolve()),
@@ -85,10 +89,7 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
     }
     return Scaffold(
       body: Center(
-        child: Semantics(
-          label: '正在准备阅读内容',
-          child: CircularProgressIndicator(),
-        ),
+        child: Semantics(label: '正在准备阅读内容', child: CircularProgressIndicator()),
       ),
     );
   }

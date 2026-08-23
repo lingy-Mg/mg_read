@@ -12,11 +12,13 @@ class AboutPage extends StatelessWidget {
   const AboutPage({
     required this.onBackRequested,
     required this.onDestinationRequested,
+    this.onItemRequested,
     super.key,
   });
 
   final VoidCallback onBackRequested;
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
+  final ValueChanged<String>? onItemRequested;
 
   @override
   Widget build(BuildContext context) {
@@ -88,7 +90,14 @@ class AboutPage extends StatelessWidget {
                         horizontal: AppDetailMetrics.horizontalPadding,
                       ),
                       child: _AboutSettingsCard(
-                        onItemPressed: () => _showUnavailable(context),
+                        onItemPressed: (String itemId) {
+                          final callback = onItemRequested;
+                          if (callback != null) {
+                            callback(itemId);
+                            return;
+                          }
+                          _showUnavailable(context);
+                        },
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -190,7 +199,7 @@ class _AboutAppIcon extends StatelessWidget {
 class _AboutSettingsCard extends StatelessWidget {
   const _AboutSettingsCard({required this.onItemPressed});
 
-  final VoidCallback onItemPressed;
+  final ValueChanged<String> onItemPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -239,7 +248,7 @@ class _AboutSettingsCard extends StatelessWidget {
               return _AboutSettingsRow(
                 item: items[index],
                 showDivider: index < items.length - 1,
-                onPressed: onItemPressed,
+                onPressed: () => onItemPressed(items[index].id),
               );
             }),
           ),

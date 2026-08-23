@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,15 +8,25 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
+import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/diagnostics/presentation/diagnostics_viewer_page.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_destination_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
+import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
+import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
+import 'package:mg_read/features/library/application/library_book_detail_failure.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
+import 'package:mg_read/features/plugins/presentation/plugin_runtime_health_page.dart';
+import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_detail_page.dart';
+import 'package:mg_read/features/plugins/presentation/plugin_cache_management_page.dart';
 import 'package:mg_read/features/profile/presentation/about_page.dart';
+import 'package:mg_read/features/profile/presentation/about_item_placeholder_page.dart';
 import 'package:mg_read/features/profile/presentation/feedback_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
+import 'package:mg_read/features/profile/application/profile_reading_stats_loader.dart';
+import 'package:mg_read/features/profile/presentation/profile_setting_placeholder_page.dart';
 import 'package:mg_read/features/reader/presentation/reader_destination_page.dart';
 import 'package:mg_read/features/reader/data/transient_source_text_reader.dart';
 import 'package:mg_read/features/reader/presentation/reader_host_page.dart';
@@ -78,14 +90,22 @@ String _stableRouteName(Uri uri) {
     'search' => 'search',
     'discover' => 'discovery',
     'reader' => 'reader',
+    'profile' when segments.length > 2 && segments[1] == 'about' =>
+      'profile.about.${segments[2]}',
     'profile' when segments.length > 1 && segments[1] == 'about' =>
       'profile.about',
     'profile' when segments.length > 1 && segments[1] == 'feedback' =>
       'profile.feedback',
+    'profile' when segments.length > 2 && segments[1] == 'plugins' =>
+      'profile.plugins.${segments[2]}',
     'profile' when segments.length > 1 && segments[1] == 'plugins' =>
       'profile.plugins',
+    'profile' when segments.length > 1 && segments[1] == 'plugin-cache' =>
+      'profile.pluginCache',
     'profile' when segments.length > 1 && segments[1] == 'diagnostics' =>
       'profile.diagnostics',
+    'profile' when segments.length > 2 && segments[1] == 'settings' =>
+      'profile.settings.${segments[2]}',
     'profile' => 'profile',
     _ => 'unknown',
   };
@@ -158,25 +178,103 @@ class LibraryRoute extends GoRouteData with $LibraryRoute {
         onReaderRequested: (String bookId) {
           ReaderRoute(bookId: bookId).push(context);
         },
+        onBookDetailRequested: (String bookId) {
+          unawaited(_openLibraryBookDetail(context, bookId));
+        },
       ),
     );
   }
+}
+
+/// Opens the shared discovery-style detail surface for a persisted shelf item.
+Future<void> _openLibraryBookDetail(BuildContext context, String bookId) async {
+  final container = ProviderScope.containerOf(context);
+  final launcher = container.read(libraryBookDetailLauncherProvider);
+  if (launcher == null) return;
+  LibraryBookDetailLaunchData detail;
+  try {
+    detail = await launcher.load(bookId);
+  } on Object catch (error) {
+    final navigatorContext = _rootNavigatorKey.currentContext;
+    if (navigatorContext == null || !navigatorContext.mounted) return;
+    _showLibraryDetailFailure(navigatorContext, error);
+    return;
+  }
+  final navigatorContext = _rootNavigatorKey.currentContext;
+  if (navigatorContext == null || !navigatorContext.mounted) return;
+  try {
+    await showSourceContentDetailSheet(
+      navigatorContext,
+      gateway: container.read(sourceContentGatewayProvider),
+      pluginId: detail.pluginId,
+      id: detail.remoteContentId,
+      initialContent: detail.initialContent,
+      initialCatalog: detail.initialCatalog,
+      initialSourceName: detail.sourceName,
+      shelfState: SourceDetailShelfState.alreadyAdded,
+      onTextChapterRequested:
+          ({
+            required detail,
+            required firstCatalogPage,
+            required chapter,
+          }) async {
+            if (navigatorContext.mounted) {
+              ReaderRoute(bookId: bookId).push(navigatorContext);
+            }
+          },
+    );
+  } on Object catch (error) {
+    if (!navigatorContext.mounted) return;
+    _showLibraryDetailFailure(
+      navigatorContext,
+      LibraryBookDetailFailure(
+        reason: LibraryBookDetailFailureReason.presentationOpen,
+        error: AppError.fromUnknown(error),
+      ),
+    );
+  }
+}
+
+void _showLibraryDetailFailure(BuildContext context, Object error) {
+  final failure = LibraryBookDetailFailure.fromError(error);
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        '${failure.reason.userMessage}\n诊断代码：${failure.diagnosticCode}',
+      ),
+    ),
+  );
 }
 
 /// Runtime-backed source search reached from the shared bottom navigation.
 @TypedGoRoute<SearchRoute>(path: '/search')
 class SearchRoute extends GoRouteData with $SearchRoute {
   /// Creates the source search destination.
-  const SearchRoute();
+  const SearchRoute({this.sourceId});
+
+  final String? sourceId;
 
   @override
   Page<void> buildPage(BuildContext context, GoRouterState state) {
     return _topLevelDestinationPage(
       state: state,
       child: SearchPage(
+        initialSourceId: sourceId,
         onDestinationRequested: (AppNavigationDestination destination) {
           _goToDestination(context, destination);
         },
+        onSourceManagementRequested: () {
+          const PluginCenterRoute().push(context);
+        },
+        onTextChapterRequested:
+            ({required detail, required firstCatalogPage, required chapter}) {
+              return _openTransientSourceTextReader(
+                context,
+                detail: detail,
+                firstCatalogPage: firstCatalogPage,
+                chapter: chapter,
+              );
+            },
       ),
     );
   }
@@ -195,6 +293,9 @@ class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
       child: DiscoveryDestinationPage(
         onDestinationRequested: (AppNavigationDestination destination) {
           _goToDestination(context, destination);
+        },
+        onSearchRequested: (String? sourceId) {
+          SearchRoute(sourceId: sourceId).go(context);
         },
         onSourceManagementRequested: () {
           const PluginCenterRoute().push(context);
@@ -278,10 +379,19 @@ final class _DismissReaderObserver extends ReaderObserver {
 @TypedGoRoute<ProfileRoute>(
   path: '/profile',
   routes: <TypedRoute<RouteData>>[
-    TypedGoRoute<AboutRoute>(path: 'about'),
+    TypedGoRoute<AboutRoute>(
+      path: 'about',
+      routes: <TypedRoute<RouteData>>[
+        TypedGoRoute<AboutItemPlaceholderRoute>(path: ':itemId'),
+      ],
+    ),
     TypedGoRoute<FeedbackRoute>(path: 'feedback'),
     TypedGoRoute<PluginCenterRoute>(path: 'plugins'),
+    TypedGoRoute<PluginRuntimeHealthRoute>(path: 'plugins/status'),
+    TypedGoRoute<PluginSourceDetailRoute>(path: 'plugins/:pluginId'),
+    TypedGoRoute<PluginCacheRoute>(path: 'plugin-cache'),
     TypedGoRoute<DiagnosticsRoute>(path: 'diagnostics'),
+    TypedGoRoute<ProfileSettingPlaceholderRoute>(path: 'settings/:settingId'),
   ],
 )
 class ProfileRoute extends GoRouteData with $ProfileRoute {
@@ -292,21 +402,35 @@ class ProfileRoute extends GoRouteData with $ProfileRoute {
   Page<void> buildPage(BuildContext context, GoRouterState state) {
     return _topLevelDestinationPage(
       state: state,
-      child: ProfilePage(
-        onDestinationRequested: (AppNavigationDestination destination) {
-          _goToDestination(context, destination);
-        },
-        onAboutRequested: () {
-          const AboutRoute().push(context);
-        },
-        onFeedbackRequested: () {
-          const FeedbackRoute().push(context);
-        },
-        onPluginCenterRequested: () {
-          const PluginCenterRoute().push(context);
-        },
-        onDiagnosticsRequested: () {
-          const DiagnosticsRoute().push(context);
+      child: Consumer(
+        builder: (BuildContext context, WidgetRef ref, Widget? child) {
+          final stats = ref.watch(profileReadingStatsProvider).asData?.value;
+          return ProfilePage(
+            readingStats: stats,
+            onDestinationRequested: (AppNavigationDestination destination) {
+              _goToDestination(context, destination);
+            },
+            onAboutRequested: () {
+              const AboutRoute().push(context);
+            },
+            onFeedbackRequested: () {
+              const FeedbackRoute().push(context);
+            },
+            onPluginCenterRequested: () {
+              const PluginCenterRoute().push(context);
+            },
+            onPluginCacheRequested: () {
+              const PluginCacheRoute().push(context);
+            },
+            onPendingSettingRequested: (String settingId) {
+              ProfileSettingPlaceholderRoute(
+                settingId: settingId,
+              ).push(context);
+            },
+            onDiagnosticsRequested: () {
+              const DiagnosticsRoute().push(context);
+            },
+          );
         },
       ),
     );
@@ -321,6 +445,34 @@ class AboutRoute extends GoRouteData with $AboutRoute {
   Widget build(BuildContext context, GoRouterState state) {
     return AboutPage(
       onBackRequested: () => _returnToProfile(context),
+      onDestinationRequested: (AppNavigationDestination destination) {
+        _goToDestination(context, destination);
+      },
+      onItemRequested: (String itemId) {
+        AboutItemPlaceholderRoute(itemId: itemId).push(context);
+      },
+    );
+  }
+}
+
+/// Empty third-level page for an item under the profile's about page.
+class AboutItemPlaceholderRoute extends GoRouteData
+    with $AboutItemPlaceholderRoute {
+  const AboutItemPlaceholderRoute({required this.itemId});
+
+  final String itemId;
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) {
+    return AboutItemPlaceholderPage(
+      itemId: itemId,
+      onBackRequested: () {
+        if (context.canPop()) {
+          context.pop();
+          return;
+        }
+        const AboutRoute().go(context);
+      },
       onDestinationRequested: (AppNavigationDestination destination) {
         _goToDestination(context, destination);
       },
@@ -354,6 +506,68 @@ class PluginCenterRoute extends GoRouteData with $PluginCenterRoute {
       onDestinationRequested: (AppNavigationDestination destination) {
         _goToDestination(context, destination);
       },
+      onSourcePressed: (String pluginId) {
+        PluginSourceDetailRoute(pluginId: pluginId).push(context);
+      },
+      onRuntimeStatusRequested: () {
+        const PluginRuntimeHealthRoute().push(context);
+      },
+    );
+  }
+}
+
+/// Runtime-owned Node and data-source health overview.
+class PluginRuntimeHealthRoute extends GoRouteData
+    with $PluginRuntimeHealthRoute {
+  const PluginRuntimeHealthRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) {
+    return PluginRuntimeHealthPage(
+      onBackRequested: () {
+        if (context.canPop()) {
+          context.pop();
+          return;
+        }
+        const PluginCenterRoute().go(context);
+      },
+    );
+  }
+}
+
+/// Runtime-backed detail for one data-source projection.
+class PluginSourceDetailRoute extends GoRouteData
+    with $PluginSourceDetailRoute {
+  const PluginSourceDetailRoute({required this.pluginId});
+
+  final String pluginId;
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) {
+    return PluginRuntimeSourceDetailPage(
+      pluginId: pluginId,
+      onBackRequested: () {
+        if (context.canPop()) {
+          context.pop();
+          return;
+        }
+        const PluginCenterRoute().go(context);
+      },
+    );
+  }
+}
+
+/// Runtime-backed cache maintenance reached from profile settings.
+class PluginCacheRoute extends GoRouteData with $PluginCacheRoute {
+  const PluginCacheRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) {
+    return PluginCacheManagementPage(
+      onBackRequested: () => _returnToProfile(context),
+      onDestinationRequested: (AppNavigationDestination destination) {
+        _goToDestination(context, destination);
+      },
     );
   }
 }
@@ -365,6 +579,25 @@ class DiagnosticsRoute extends GoRouteData with $DiagnosticsRoute {
   @override
   Widget build(BuildContext context, GoRouterState state) {
     return DiagnosticsViewerPage(
+      onBackRequested: () => _returnToProfile(context),
+      onDestinationRequested: (AppNavigationDestination destination) {
+        _goToDestination(context, destination);
+      },
+    );
+  }
+}
+
+/// Empty secondary page for a profile setting awaiting its capability.
+class ProfileSettingPlaceholderRoute extends GoRouteData
+    with $ProfileSettingPlaceholderRoute {
+  const ProfileSettingPlaceholderRoute({required this.settingId});
+
+  final String settingId;
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) {
+    return ProfileSettingPlaceholderPage(
+      settingId: settingId,
       onBackRequested: () => _returnToProfile(context),
       onDestinationRequested: (AppNavigationDestination destination) {
         _goToDestination(context, destination);

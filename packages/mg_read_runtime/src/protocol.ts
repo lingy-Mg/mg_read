@@ -29,6 +29,7 @@ export type RuntimeErrorCode =
   | "plugin_load_failed"
   | "plugin_not_found"
   | "timeout"
+  | "unsupported"
   | "version_incompatible";
 
 /**

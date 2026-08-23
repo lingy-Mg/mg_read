@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
@@ -27,6 +28,10 @@ final class PersistenceRecordStore {
   final String databasePath;
   final DiagnosticsManager? _diagnostics;
   bool _closed = false;
+  bool _closing = false;
+  int _activeOperations = 0;
+  Completer<void>? _idleOperations;
+  Future<void>? _closeFuture;
   int? _lastCodecWorkerIsolateId;
   int _batchReadCount = 0;
 
@@ -150,6 +155,30 @@ final class PersistenceRecordStore {
     resultCount: (result) => result.records.length,
   );
 
+  /// Reads records for a bounded set of identity keys with one SQL statement.
+  ///
+  /// This is an infrastructure primitive for typed repositories that need to
+  /// project several related records at once. Callers keep the record kind and
+  /// scope explicit so this does not become a cross-scope lookup API.
+  Future<List<RecordEnvelope>> listByIdentityKeys({
+    required String recordKind,
+    required ScopeKey scope,
+    required Iterable<String> identityKeys,
+  }) {
+    final requested = identityKeys.toSet();
+    return _instrument(
+      operation: 'listByIdentityKeys',
+      recordKind: recordKind,
+      count: requested.length,
+      action: () => _listByIdentityKeys(
+        recordKind: recordKind,
+        scope: scope,
+        identityKeys: requested,
+      ),
+      resultCount: (result) => result.length,
+    );
+  }
+
   Future<RecordEnvelope> update({
     required RecordEnvelope previous,
     required JsonObject document,
@@ -194,11 +223,19 @@ final class PersistenceRecordStore {
   Future<T> transaction<T>(Future<T> Function() action) =>
       _instrument(operation: 'transaction', action: () => _transaction(action));
 
-  Future<void> close() {
-    if (_closed) return Future<void>.value();
+  Future<void> close() => _closeFuture ??= _beginClose();
+
+  Future<void> _beginClose() async {
+    _closing = true;
+    if (_activeOperations != 0) {
+      await (_idleOperations ??= Completer<void>()).future;
+    }
     final diagnostics = _diagnostics;
-    if (diagnostics == null || diagnostics.isClosed) return _close();
-    return diagnostics.runSpan<void>(
+    if (diagnostics == null || diagnostics.isClosed) {
+      await _close();
+      return;
+    }
+    await diagnostics.runSpan<void>(
       AppDiagnosticEvents.persistenceClose,
       (_) => _close(),
       startAttributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
@@ -333,6 +370,40 @@ final class PersistenceRecordStore {
           ? RecordCursor(orderKey: tail.orderKey ?? '', id: tail.id)
           : null,
     );
+  }
+
+  Future<List<RecordEnvelope>> _listByIdentityKeys({
+    required String recordKind,
+    required ScopeKey scope,
+    required Set<String> identityKeys,
+  }) async {
+    _ensureOpen();
+    if (identityKeys.isEmpty) return const <RecordEnvelope>[];
+    if (identityKeys.length > 900 || identityKeys.any((key) => key.isEmpty)) {
+      throw const PersistenceValidationError(
+        'Identity batch reads require 1 to 900 non-empty keys.',
+      );
+    }
+    final placeholders = List.filled(identityKeys.length, '?').join(', ');
+    final rows = await _database
+        .customSelect(
+          'SELECT * FROM metadata_records '
+          'WHERE record_kind = ? AND scope_kind = ? AND scope_id = ? '
+          'AND identity_key IN ($placeholders) '
+          'ORDER BY identity_key ASC, COALESCE(order_key, \'\') ASC, record_id ASC',
+          variables: <Variable<Object>>[
+            Variable.withString(recordKind),
+            Variable.withString(scope.kind),
+            Variable.withString(scope.id),
+            for (final key in identityKeys) Variable.withString(key),
+          ],
+        )
+        .get();
+    final records = <RecordEnvelope>[];
+    for (final row in rows) {
+      records.add(await _rowToEnvelope(row.data));
+    }
+    return List<RecordEnvelope>.unmodifiable(records);
   }
 
   Future<RecordEnvelope> _update({
@@ -516,57 +587,59 @@ final class PersistenceRecordStore {
     int? Function(T result)? resultCount,
     int? Function(T result)? revision,
   }) {
-    final diagnostics = _diagnostics;
-    if (diagnostics == null || diagnostics.isClosed) return action();
-    return diagnostics.runSpan<T>(
-      AppDiagnosticEvents.persistenceOperation,
-      (span) async {
-        final stopwatch = Stopwatch()..start();
-        try {
-          final result = await action();
-          stopwatch.stop();
-          reportSlowDiagnostic(
-            diagnostics,
-            subjectComponent: 'app.persistence',
-            operation: operation,
-            elapsed: stopwatch.elapsed,
-            threshold: AppDiagnosticThresholds.persistenceOperation,
-            outcome: DiagnosticOutcome.success,
-            traceContext: span.traceContext,
-          );
-          return result;
-        } catch (_) {
-          stopwatch.stop();
-          reportSlowDiagnostic(
-            diagnostics,
-            subjectComponent: 'app.persistence',
-            operation: operation,
-            elapsed: stopwatch.elapsed,
-            threshold: AppDiagnosticThresholds.persistenceOperation,
-            outcome: DiagnosticOutcome.error,
-            traceContext: span.traceContext,
-          );
-          rethrow;
-        }
-      },
-      startAttributes: () => _operationAttributes(
-        operation: operation,
-        recordKind: recordKind,
-        count: count,
-      ),
-      successAttributes: (result) => _operationAttributes(
-        operation: operation,
-        recordKind: recordKind,
-        count: resultCount?.call(result) ?? count,
-        revision: revision?.call(result),
-      ),
-      errorAttributes: (error) => _operationAttributes(
-        operation: operation,
-        recordKind: recordKind,
-        count: count,
-        errorCode: _persistenceErrorCode(error),
-      ),
-    );
+    return _withOperation(() {
+      final diagnostics = _diagnostics;
+      if (diagnostics == null || diagnostics.isClosed) return action();
+      return diagnostics.runSpan<T>(
+        AppDiagnosticEvents.persistenceOperation,
+        (span) async {
+          final stopwatch = Stopwatch()..start();
+          try {
+            final result = await action();
+            stopwatch.stop();
+            reportSlowDiagnostic(
+              diagnostics,
+              subjectComponent: 'app.persistence',
+              operation: operation,
+              elapsed: stopwatch.elapsed,
+              threshold: AppDiagnosticThresholds.persistenceOperation,
+              outcome: DiagnosticOutcome.success,
+              traceContext: span.traceContext,
+            );
+            return result;
+          } catch (_) {
+            stopwatch.stop();
+            reportSlowDiagnostic(
+              diagnostics,
+              subjectComponent: 'app.persistence',
+              operation: operation,
+              elapsed: stopwatch.elapsed,
+              threshold: AppDiagnosticThresholds.persistenceOperation,
+              outcome: DiagnosticOutcome.error,
+              traceContext: span.traceContext,
+            );
+            rethrow;
+          }
+        },
+        startAttributes: () => _operationAttributes(
+          operation: operation,
+          recordKind: recordKind,
+          count: count,
+        ),
+        successAttributes: (result) => _operationAttributes(
+          operation: operation,
+          recordKind: recordKind,
+          count: resultCount?.call(result) ?? count,
+          revision: revision?.call(result),
+        ),
+        errorAttributes: (error) => _operationAttributes(
+          operation: operation,
+          recordKind: recordKind,
+          count: count,
+          errorCode: _persistenceErrorCode(error),
+        ),
+      );
+    });
   }
 
   DiagnosticObjectValue _operationAttributes({
@@ -612,16 +685,39 @@ final class PersistenceRecordStore {
     required ScopeKey scope,
     required int version,
     required String payloadJson,
-  }) async {
+  }) => _withOperation(() async {
     _ensureOpen();
     await _database.customStatement(
       'UPDATE metadata_records SET format_version = ?, payload_json = ? WHERE record_id = ? AND scope_kind = ? AND scope_id = ?',
       [version, payloadJson, id, scope.kind, scope.id],
     );
-  }
+  });
 
   void _ensureOpen() {
-    if (_closed) throw const PersistenceClosedError();
+    if (_closed ||
+        (_closing &&
+            !identical(Zone.current[#persistenceRecordStore], this))) {
+      throw const PersistenceClosedError();
+    }
+  }
+
+  Future<T> _withOperation<T>(Future<T> Function() action) {
+    if (identical(Zone.current[#persistenceRecordStore], this)) {
+      return action();
+    }
+    if (_closed || _closing) {
+      return Future<T>.error(const PersistenceClosedError());
+    }
+    _activeOperations++;
+    return runZoned<Future<T>>(
+      () => Future<T>.sync(action).whenComplete(() {
+        _activeOperations--;
+        if (_closing && _activeOperations == 0) {
+          _idleOperations?.complete();
+        }
+      }),
+      zoneValues: <Object?, Object?>{#persistenceRecordStore: this},
+    );
   }
 
   void _validateDraft(RecordDraft draft) {

@@ -6,7 +6,7 @@
 
 | 任务类型 | 必读 | 按需 |
 | --- | --- | --- |
-| 主应用页面、路由、状态 | [workflow](workflow.md)、[主应用结构](../implementation/main-app-structure.md) | [UI 系统](../implementation/ui-design-system.md)、最近的 `lib/features/*` 实现与测试 |
+| 主应用页面、路由、状态 | [workflow](workflow.md)、[主应用结构](../implementation/main-app-structure.md) | [UI 系统](../implementation/ui-design-system.md)、[二级页面规范](../implementation/secondary-page-design-system.md)、最近的 `lib/features/*` 实现与测试 |
 | persistence / settings | [ADR-0011](../architecture/adr/0011-app-owned-versioned-persistence.md)、[主应用持久化](../architecture/10-app-persistence-design.md) | [验收](../architecture/11-app-persistence-acceptance.md)、[设置](../architecture/12-global-settings.md) |
 | Content Library、目录、正文、漫画文件 | [ADR-0100](../architecture/adr/0100-app-owned-content-library.md)、[Content Library](../architecture/20-content-library.md) | [接入说明](../implementation/content-library-integration.md)、ADR-0011 |
 | Runtime Facade 消费 | [系统分层](../architecture/02-system-architecture.md)、Runtime package 的 [AGENTS](../../packages/mg_read_runtime/AGENTS.md) | Facade [README](../../packages/mg_read_runtime/packages/mgread_plugin_runtime/README.md)、插件内容契约 |

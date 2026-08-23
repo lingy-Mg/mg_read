@@ -10,6 +10,10 @@ part of mgread_plugin_runtime;
 abstract interface class _RuntimeSupervisor {
   Future<T> invoke<T>(PluginInvocation<T> invocation);
 
+  Future<void> importLocalPlugin(String sourcePath);
+
+  Future<void> setDevelopmentDirectory(String path);
+
   Stream<RuntimeDiagnostic> get diagnostics;
 
   Stream<RuntimeInitializationProgress> get initialization;
@@ -29,9 +33,9 @@ final class PluginRuntime {
 
   /// Creates or returns the process-scoped production Facade.
   ///
-  /// The Runtime package resolves its own desktop bundle layout. Android and
-  /// package-native launchers are future Runtime implementations, not Flutter
-  /// application responsibilities.
+  /// The Runtime package resolves its own desktop bundle layout. Android uses
+  /// the package-owned Javet bridge; neither platform leaks its launcher or
+  /// file-system details to the host application.
   factory PluginRuntime() {
     if (Platform.isAndroid) {
       return _androidInstance ??= PluginRuntime._(_AndroidRuntimeSupervisor());
@@ -60,6 +64,59 @@ final class PluginRuntime {
     return _supervisor.invoke(invocation);
   }
 
+  /// Opens the platform file picker and imports one local `.mgplugin` source.
+  ///
+  /// The picker and the hand-off to the Runtime-owned inbox both live inside
+  /// this package. The application receives only whether the user selected a
+  /// file; it never receives or passes a filesystem path to Runtime code.
+  Future<bool> importLocalPlugin() async {
+    final file = await openFile(
+      acceptedTypeGroups: <XTypeGroup>[
+        XTypeGroup(
+          label: 'MgRead 数据来源',
+          extensions: <String>['mgplugin'],
+          // Android's MIME database does not know the custom .mgplugin
+          // suffix. These archive MIME types keep the platform picker from
+          // falling back to an unrestricted * / * request. The Runtime still
+          // validates the archive contents after selection.
+          mimeTypes: Platform.isAndroid
+              ? <String>['application/zip', 'application/octet-stream']
+              : null,
+        ),
+      ],
+      confirmButtonText: '导入',
+    );
+    if (file == null) return false;
+    final path = file.path;
+    final bool isAndroid = Platform.isAndroid;
+    if (path.isEmpty ||
+        (!isAndroid && !path.toLowerCase().endsWith('.mgplugin'))) {
+      throw const PluginRuntimeException(
+        'invalid_request',
+        'The selected file is not a MgRead plugin archive.',
+      );
+    }
+    await _supervisor.importLocalPlugin(path);
+    return true;
+  }
+
+  /// Selects a Windows Debug development-source directory.
+  ///
+  /// Android deliberately has no development-directory capability; Android
+  /// sources must be imported as validated `.mgplugin` archives.
+  Future<bool> selectDevelopmentDirectory() async {
+    if (!kDebugMode || !Platform.isWindows) {
+      throw const PluginRuntimeException(
+        'unsupported',
+        'Development source directories are available on Windows only.',
+      );
+    }
+    final path = await getDirectoryPath(confirmButtonText: '选择开发目录');
+    if (path == null || path.isEmpty) return false;
+    await _supervisor.setDevelopmentDirectory(path);
+    return true;
+  }
+
   /// Creates a desktop Facade only for package-owned automated tests.
   ///
   /// This is deliberately not a HostPort or a general application injection
@@ -75,6 +132,7 @@ final class PluginRuntime {
     File? entrypointOverride,
     File? nodeExecutableOverride,
     Directory? runtimeDataRoot,
+    Directory? developmentPluginRoot,
   }) {
     return PluginRuntime._(
       _DesktopRuntimeSupervisor(
@@ -83,6 +141,7 @@ final class PluginRuntime {
           entrypointOverride: entrypointOverride,
           nodeExecutableOverride: nodeExecutableOverride,
           runtimeDataRoot: runtimeDataRoot,
+          developmentPluginDirectory: developmentPluginRoot,
         ),
       ),
     );
@@ -117,5 +176,14 @@ final class PluginRuntime {
   /// Production callers do not manage the Runtime's lifecycle: Windows Job
   /// Object ownership binds the child tree to the Flutter process instead.
   @visibleForTesting
-  Future<void> debugDispose() => _supervisor.dispose();
+  Future<void> debugDispose() async {
+    // The Android bridge owns the native Runtime lifecycle. Local imports use
+    // its controlled cold restart path; test disposal must not detach that
+    // engine from the Flutter plugin.
+    if (Platform.isAndroid) return;
+    await _supervisor.dispose();
+    if (identical(_bundledInstance, this)) {
+      _bundledInstance = null;
+    }
+  }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:mg_read/features/library/domain/library_overview.dart';
+import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
@@ -35,14 +36,16 @@ final class LibraryHomeViewData {
               chapter: '第${(current.readingChapterIndex ?? 0) + 1}章',
               progress: current.readingProgress!,
               lastReadLabel: '上次阅读',
-              coverVariant: LibraryCoverVariant.values[
-                currentIndex % LibraryCoverVariant.values.length
-              ],
+              coverVariant: LibraryCoverVariant
+                  .values[currentIndex % LibraryCoverVariant.values.length],
+              coverUrl: current.coverUrl,
             ),
       books: overview.items.asMap().entries.map(
         (entry) => LibraryBookListItemViewData(
           id: entry.value.id,
           title: entry.value.title,
+          subtitle: _librarySubtitle(entry.value),
+          coverUrl: entry.value.coverUrl,
           coverVariant: LibraryCoverVariant
               .values[entry.key % LibraryCoverVariant.values.length],
           status: LibraryBookStatus.local,
@@ -72,6 +75,15 @@ final class LibraryHomeViewData {
   final int? availableSourceCount;
 }
 
+String? _librarySubtitle(LibraryItemSummary item) {
+  final parts = <String>[
+    if (item.author != null && item.author!.isNotEmpty) item.author!,
+    if (item.sourceName != null && item.sourceName!.isNotEmpty)
+      item.sourceName!,
+  ];
+  return parts.isEmpty ? null : parts.join(' · ');
+}
+
 /// Immutable data for the prominent continue-reading card.
 @immutable
 final class LibraryContinueReadingViewData {
@@ -83,6 +95,8 @@ final class LibraryContinueReadingViewData {
     required this.progress,
     required this.lastReadLabel,
     required this.coverVariant,
+    this.coverUrl,
+    this.coverAssetPath,
   }) : assert(bookId != ''),
        assert(title != ''),
        assert(chapter != ''),
@@ -95,6 +109,8 @@ final class LibraryContinueReadingViewData {
   final double progress;
   final String lastReadLabel;
   final LibraryCoverVariant coverVariant;
+  final Uri? coverUrl;
+  final String? coverAssetPath;
 }
 
 /// The currently active non-persistent update-list filter.
@@ -113,6 +129,7 @@ final class LibraryHomeCallbacks {
     this.onContinueReading,
     this.onOpenBook,
     this.onBookMore,
+    this.onDeleteBook,
     this.onManageSources,
     this.onDiscover,
     this.onImportLocal,
@@ -125,6 +142,7 @@ final class LibraryHomeCallbacks {
   final VoidCallback? onContinueReading;
   final ValueChanged<LibraryBookListItemViewData>? onOpenBook;
   final ValueChanged<LibraryBookListItemViewData>? onBookMore;
+  final Future<void> Function(LibraryBookListItemViewData)? onDeleteBook;
   final VoidCallback? onManageSources;
   final VoidCallback? onDiscover;
   final VoidCallback? onImportLocal;
@@ -140,6 +158,7 @@ final class LibraryHomeCallbacks {
     VoidCallback? onContinueReading,
     ValueChanged<LibraryBookListItemViewData>? onOpenBook,
     ValueChanged<LibraryBookListItemViewData>? onBookMore,
+    Future<void> Function(LibraryBookListItemViewData)? onDeleteBook,
     VoidCallback? onManageSources,
     VoidCallback? onDiscover,
     VoidCallback? onImportLocal,
@@ -152,6 +171,7 @@ final class LibraryHomeCallbacks {
       onContinueReading: onContinueReading ?? this.onContinueReading,
       onOpenBook: onOpenBook ?? this.onOpenBook,
       onBookMore: onBookMore ?? this.onBookMore,
+      onDeleteBook: onDeleteBook ?? this.onDeleteBook,
       onManageSources: onManageSources ?? this.onManageSources,
       onDiscover: onDiscover ?? this.onDiscover,
       onImportLocal: onImportLocal ?? this.onImportLocal,
@@ -173,6 +193,7 @@ abstract final class LibraryHomeFixtures {
       progress: 0.72,
       lastReadLabel: '继续阅读 · 1小时10分钟前',
       coverVariant: LibraryCoverVariant.dusk,
+      coverAssetPath: 'assets/fixtures/home_covers/lord_of_mysteries.png',
     ),
     books: <LibraryBookListItemViewData>[
       LibraryBookListItemViewData(
@@ -181,6 +202,8 @@ abstract final class LibraryHomeFixtures {
         subtitle: '第1268章 不可名状的低语',
         activityLabel: '1小时前',
         coverVariant: LibraryCoverVariant.dusk,
+        coverAssetPath:
+            'assets/fixtures/home_covers/lord_of_mysteries_small.png',
         status: LibraryBookStatus.ongoing,
         hasAttentionIndicator: true,
         tags: const <LibraryMetadataTagViewData>[
@@ -204,6 +227,7 @@ abstract final class LibraryHomeFixtures {
         subtitle: '第980章 天道酬勤',
         activityLabel: '3小时前',
         coverVariant: LibraryCoverVariant.dawn,
+        coverAssetPath: 'assets/fixtures/home_covers/heavenly_path.png',
         status: LibraryBookStatus.ongoing,
         hasAttentionIndicator: true,
         tags: const <LibraryMetadataTagViewData>[
@@ -223,6 +247,7 @@ abstract final class LibraryHomeFixtures {
         subtitle: '第465章 神明的丝线',
         activityLabel: '昨天更新',
         coverVariant: LibraryCoverVariant.indigo,
+        coverAssetPath: 'assets/fixtures/home_covers/mental_hospital.png',
         status: LibraryBookStatus.completed,
         hasAttentionIndicator: true,
         tags: const <LibraryMetadataTagViewData>[
@@ -242,6 +267,7 @@ abstract final class LibraryHomeFixtures {
         subtitle: '第1723章 启航',
         activityLabel: '2天前更新',
         coverVariant: LibraryCoverVariant.ocean,
+        coverAssetPath: 'assets/fixtures/home_covers/deep_space.png',
         status: LibraryBookStatus.local,
         tags: const <LibraryMetadataTagViewData>[
           LibraryMetadataTagViewData(
@@ -260,6 +286,8 @@ abstract final class LibraryHomeFixtures {
         subtitle: '第312章 新的契约',
         activityLabel: '3天前更新',
         coverVariant: LibraryCoverVariant.ember,
+        coverAssetPath:
+            'assets/fixtures/home_covers/circle_of_inevitability.png',
         status: LibraryBookStatus.completed,
         tags: const <LibraryMetadataTagViewData>[
           LibraryMetadataTagViewData(

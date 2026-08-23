@@ -15,6 +15,8 @@ AppPersistence
 
 `ContentLibrary` 向 feature/reader 提供异步强类型仓储；内部 PluginSourceData（pluginId、版本、dataVersion、opaque JSON）不从公开 barrel 导出。普通 JSON 禁止正文、Base64、二进制与绝对路径。首版仅 novel/manga；未知类型只读。漫画文件按漫画 LibraryItemId 分目录，移除漫画时删除整个目录。
 
+书架小说首次阅读时，host 通过 Runtime Facade 分页取得经解码的目录，再以稳定远端章节 ID 初始化一次本地 catalog snapshot；已有 catalog 不因重开阅读器被覆盖。章节正文按需请求：先查 `ContentLibrary`，缺失时才由 typed gateway 获取、校验为小说文本并提交正文对象。Reader 的“已下载/未下载/失败”状态只能由该 catalog entry 的正文引用与当前请求状态生成，不能用页面会话或固定 UI 文案伪造。阅读进度使用语义锚点，并累计 host 观察到的前台阅读秒数；旧进度记录未带时长时按零兼容读取。
+
 发现页的开发期阅读器联调可在未创建 `LibraryItem` 的前提下，用 Runtime Facade 的详情、目录和正文
 构造一次 route-lifetime 的临时阅读会话。该会话的目录、正文、进度、书签和阅读设置只存在内存，
 退出阅读器即丢弃；它不得写入任何 app SQLite、文件对象、Runtime 缓存或书架记录，也不能替代本

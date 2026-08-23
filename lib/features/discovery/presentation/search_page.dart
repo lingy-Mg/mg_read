@@ -5,19 +5,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/discovery/application/search_page_controller.dart';
 import 'package:mg_read/features/discovery/application/search_page_state.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
+import 'package:mg_read/features/discovery/presentation/source_picker_sheet.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/search_page_sections.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
+import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 
 /// Search destination. Runtime data remains outside this presentation shell.
 class SearchPage extends ConsumerStatefulWidget {
-  const SearchPage({required this.onDestinationRequested, super.key});
+  const SearchPage({
+    required this.onDestinationRequested,
+    this.initialSourceId,
+    this.onSourceManagementRequested,
+    this.onTextChapterRequested,
+    super.key,
+  });
 
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
+  final String? initialSourceId;
+  final VoidCallback? onSourceManagementRequested;
+  final SourceTextChapterRequested? onTextChapterRequested;
 
   @override
   ConsumerState<SearchPage> createState() => _SearchPageState();
@@ -30,11 +43,18 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   final FocusNode _queryFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   final List<String> _history = List<String>.of(SearchPageFixtures.history);
+  bool _initialSearchRequested = false;
+  bool _initialSourceApplied = false;
 
   @override
   void initState() {
     super.initState();
     _queryController.addListener(_onQueryChanged);
+    ref.listenManual<SearchPageState>(
+      searchPageControllerProvider,
+      (_, next) => _maybeSearchInitialQuery(next),
+      fireImmediately: true,
+    );
   }
 
   @override
@@ -53,6 +73,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     final SearchPageController controller = ref.read(
       searchPageControllerProvider.notifier,
     );
+    final PluginSearchResult? displayedResult =
+        state.result ??
+        (!state.hasSources ? SearchPageFixtures.previewResult : null);
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -66,22 +89,27 @@ class _SearchPageState extends ConsumerState<SearchPage> {
               controller: _scrollController,
               padding: const EdgeInsets.fromLTRB(
                 AppSpacing.searchPageHorizontalPadding,
-                AppSpacing.compact,
+                AppSpacing.pageHeaderTopPadding,
                 AppSpacing.searchPageHorizontalPadding,
                 AppSpacing.section,
               ),
               children: <Widget>[
+                SizedBox(
+                  height: AppSpacing.pageHeaderHeight,
+                  child: _SearchPageHeader(
+                    onSourceManagementRequested:
+                        widget.onSourceManagementRequested,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.compact),
                 _SearchTopBar(
                   queryController: _queryController,
                   queryFocusNode: _queryFocusNode,
                   isSearching: state.status == SearchPageStatus.searching,
-                  onBack: () => widget.onDestinationRequested(
-                    AppNavigationDestination.home,
-                  ),
                   onSearch: () => _search(controller),
                   onClear: _clearQuery,
                 ),
-                const SizedBox(height: AppSpacing.section),
+                const SizedBox(height: AppSpacing.compact),
                 SearchSuggestionSections(
                   history: List<String>.unmodifiable(_history),
                   onHistorySelected: (String value) =>
@@ -90,20 +118,32 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   onHotSearchSelected: (String value) =>
                       _selectSuggestion(value, controller),
                 ),
-                const SizedBox(height: AppSpacing.section),
+                const SizedBox(height: AppSpacing.regular),
                 SearchResultsSection(
-                  result: state.result ?? SearchPageFixtures.previewResult,
+                  result: displayedResult,
                   status: state.status,
                   error: state.error,
                   onContentPressed: (PluginContentSummary content) {
                     final String? pluginId = state.selectedSourceId;
                     if (pluginId == null) return;
+                    final source = state.sources.firstWhere(
+                      (source) => source.id == pluginId,
+                    );
                     unawaited(
                       showSourceContentDetailSheet(
                         context,
                         gateway: ref.read(sourceContentGatewayProvider),
                         pluginId: pluginId,
                         id: content.id,
+                        initialContent: content,
+                        initialSourceName: source.displayName,
+                        relatedContents:
+                            displayedResult?.items ??
+                            const <PluginContentSummary>[],
+                        onTextChapterRequested: widget.onTextChapterRequested,
+                        onAddToShelf: (content) => ref
+                            .read(discoveryBookshelfSaverProvider)
+                            .save(source: source, content: content),
                       ),
                     );
                   },
@@ -135,6 +175,32 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   }
 
   void _onQueryChanged() => setState(() {});
+
+  void _maybeSearchInitialQuery(SearchPageState state) {
+    if (_initialSearchRequested || !state.hasSources) return;
+    if (state.status != SearchPageStatus.ready) return;
+    if (!_initialSourceApplied) {
+      _initialSourceApplied = true;
+      final preferredSourceId = widget.initialSourceId;
+      if (preferredSourceId != null &&
+          state.sources.any((source) => source.id == preferredSourceId) &&
+          state.selectedSourceId != preferredSourceId) {
+        unawaited(
+          ref
+              .read(searchPageControllerProvider.notifier)
+              .selectSource(preferredSourceId),
+        );
+        return;
+      }
+    }
+    if (_queryController.text.trim().isEmpty) return;
+    _initialSearchRequested = true;
+    unawaited(
+      ref
+          .read(searchPageControllerProvider.notifier)
+          .search(_queryController.text),
+    );
+  }
 
   void _search(SearchPageController controller) {
     final String query = _queryController.text.trim();
@@ -270,7 +336,6 @@ class _SearchTopBar extends StatelessWidget {
     required this.queryController,
     required this.queryFocusNode,
     required this.isSearching,
-    required this.onBack,
     required this.onSearch,
     required this.onClear,
   });
@@ -278,7 +343,6 @@ class _SearchTopBar extends StatelessWidget {
   final TextEditingController queryController;
   final FocusNode queryFocusNode;
   final bool isSearching;
-  final VoidCallback onBack;
   final VoidCallback onSearch;
   final VoidCallback onClear;
 
@@ -289,13 +353,6 @@ class _SearchTopBar extends StatelessWidget {
       height: AppSpacing.searchTopBarHeight,
       child: Row(
         children: <Widget>[
-          IconButton(
-            key: const Key('search-back'),
-            tooltip: '返回首页',
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          ),
-          const SizedBox(width: AppSpacing.unit),
           Expanded(
             child: SizedBox(
               height: AppSpacing.searchQueryHeight,
@@ -337,7 +394,7 @@ class _SearchTopBar extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: AppSpacing.compact),
+          const SizedBox(width: AppSpacing.unit),
           TextButton(
             key: const Key('source-search-submit'),
             onPressed: isSearching ? null : onSearch,
@@ -346,5 +403,66 @@ class _SearchTopBar extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _SearchPageHeader extends ConsumerWidget {
+  const _SearchPageHeader({this.onSourceManagementRequested});
+
+  final VoidCallback? onSourceManagementRequested;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(searchPageControllerProvider);
+    final controller = ref.read(searchPageControllerProvider.notifier);
+    final selectedSource = state.selectedSourceId == null
+        ? null
+        : state.sources.cast<PluginSourceDescriptor?>().firstWhere(
+            (source) => source?.id == state.selectedSourceId,
+            orElse: () => null,
+          );
+    return Stack(
+      alignment: Alignment.center,
+      children: <Widget>[
+        const Positioned(
+          left: AppSpacing.discoveryHeaderInset,
+          top: 0,
+          bottom: 0,
+          child: Center(child: AppPageTitle(title: '搜索')),
+        ),
+        Align(
+          alignment: const Alignment(0.08, 0),
+          child: DiscoverySourceSelector(
+            key: const Key('search-source-selector-widget'),
+            selectorKey: const Key('search-source-selector'),
+            sourceName: selectedSource?.displayName ?? '选择数据源',
+            onPressed: state.selectedSourceId == null
+                ? () {}
+                : () => _showPicker(context, state, controller),
+            label: '选择搜索数据源',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showPicker(
+    BuildContext context,
+    SearchPageState state,
+    SearchPageController controller,
+  ) async {
+    final selected = await showDiscoverySourcePicker(
+      context,
+      sources: state.sources,
+      selectedSourceId: state.selectedSourceId!,
+    );
+    switch (selected) {
+      case DiscoverySourceSelected(:final sourceId):
+        await controller.selectSource(sourceId);
+      case DiscoverySourceManagementRequested():
+        onSourceManagementRequested?.call();
+      case null:
+        return;
+    }
   }
 }

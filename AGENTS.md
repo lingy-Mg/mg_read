@@ -1,7 +1,18 @@
 # MgRead Agent 开发契约
 
+<!-- AGENTS_VERSION: 0.0.2 -->
+
 本文件只保留所有任务都必须知道的硬约束。不要在开工时预加载全部架构、ADR、协议和子项目
 文档；按下面的渐进式读取流程选择当前任务真正需要的材料。
+
+## AGENTS.md 指令版本
+
+- 版本号只表示本文件的 Agent 指令版本，不表示应用、插件或依赖版本。
+- 修改本文件后必须更新版本号：小修改递增 patch（`0.0.x`，例如 `0.0.1` -> `0.0.2`），大修改
+  递增 minor 并将 patch 归零（`0.x.0`，例如 `0.0.2` -> `0.1.0`），大版本固定为 `0`。
+- 完成修改后执行一次 `pwsh -File tools/update_agents_version.ps1 -ChangeType small`；大修改将
+  `small` 换成 `large`。脚本是版本号的唯一修改入口，不要手工递增标记。
+- 没有修改本文件的任务不需要更新该版本号；只读对话也不触发版本变化。
 
 ## 指令优先级
 
@@ -65,7 +76,8 @@ plugins/sources/<source-id>/      实际标准 Node 书源
 - 插件使用标准 Node.js 24 项目：`package.json.mgread` 是唯一元数据，`package-lock.json` v3
   是唯一精确依赖图；不恢复 manifest、bundle、自定义 lock 或共享依赖协议。
 - 插件使用 Node 标准模块解析和普通 `node_modules`；不运行 install script，不支持 Git/native
-  addon，`file:` 依赖只能指向 `.mgplugin` 内部。插件更新只在下次应用进程冷激活。
+  addon，`file:` 依赖只能指向 `.mgplugin` 内部。installed 更新只在下次 Runtime 冷激活；Windows
+  Debug development 项目按 ADR-0019 直读工作区并在变更后有序重启唯一 Runtime。
 
 ## 主应用与阅读器边界
 
@@ -118,12 +130,15 @@ plugins/sources/<source-id>/      实际标准 Node 书源
 - 每次任务只完成用户指定交付包，不顺手进入后续里程碑或实现 WebView、账号、音视频等延期能力。
 - 真实应用/页面/跨层流程的自动化验收一律使用 Android `integration_test`；测试交互只能通过
   `WidgetTester` 的 Finder、语义和稳定 `Key` 驱动。禁止用鼠标坐标、键盘注入、`adb input`、
-  `adb screencap`、Computer Use、桌面自动化或人工点击来操作或取证。
-- Android 测试目标必须由用户事先自行启动并明确批准。当前批准且仅批准
-  `127.0.0.1:7555` 与 `emulator-5556`；Agent 不得启动、创建、选择、唤醒、关闭或重置它们，
-  也不得改用其他设备。未连接时停止 Android 真实验收并如实报告。真实验收不得使用 Windows
+  `adb screencap`、Computer Use、桌面自动化或人工点击来操作或取证。ADR-0019 允许测试脚本仅用
+  ADB 传输已验证的 `.mgplugin` 到 Debug 应用私有 inbox；这不是 UI 操作或截图通道。
+- Android 测试目标必须由用户事先自行启动。`emulator-5556` 是后续 Android
+  Integration Test 的默认已授权目标；只要它已连接且 ready，Agent 可直接使用它运行项目脚本，
+  无需再次请求选择或授权。`127.0.0.1:7555` 与 `emulator-5556` 仍是仅有的允许目标；Agent 不得
+  启动、创建、选择、唤醒、关闭或重置设备，也不得改用其他设备。未连接或未 ready 时停止 Android
+  真实验收并如实报告。真实验收不得使用 Windows
   版本、`flutter run`、Windows 设备或桌面截图替代。
-- 从 `tools/run_android_integration_tests.ps1` 启动真实验收。它只接受上述已连接的用户批准目标，
+- 从 `tools/run_android_integration_tests.ps1` 启动真实验收。它只接受上述已连接且 ready 的目标，
   通过 `flutter drive` 运行 Integration Test，并在忽略的
   `artifacts/integration-tests/` 保存机器可读结果和由 `IntegrationTestWidgetsFlutterBinding`
   请求的截图。截图必须由测试中的 `takeScreenshot` 触发，禁止从操作系统截屏。
@@ -143,8 +158,8 @@ flutter analyze
 - 只改文档时不需要运行 Flutter/Node 业务测试，但必须执行链接、格式、引用和 diff 检查。
 - 子项目命令按开发路由和其最近 `AGENTS.md` 执行；Runtime 的 Windows Node 命令必须使用项目内
   `tools/node-v24.16.0-win-x64`，不得回退到全局 Node。
-- 只有用户明确授权视觉/运行验收时才运行 Integration Test；Android 实际测试以当前已批准的
-  `127.0.0.1:7555` 或 `emulator-5556` 为唯一允许目标。Windows/macOS 的运行验收只能在用户另行授权时由对应主机或 CI
+- 只有用户明确授权视觉/运行验收时才运行 Integration Test；Android 实际测试默认使用已连接且
+  ready 的 `emulator-5556`，并仅允许回退到同样已连接且 ready 的 `127.0.0.1:7555`。Windows/macOS 的运行验收只能在用户另行授权时由对应主机或 CI
   声明完成，绝不作为 Android 实际测试的替代。
 - 交付报告分开列出：完成内容、静态检查、自动化测试、真实运行、平台/真机、发布证据、日志
   断言与未执行项。任何一层都不能替代另一层。

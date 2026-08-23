@@ -48,6 +48,8 @@ final class LibraryItem {
     required this.kind,
     required this.state,
     required this.revision,
+    this.coverUrl,
+    this.sourceName,
     this.source,
   });
   final LibraryItemId id;
@@ -56,6 +58,8 @@ final class LibraryItem {
   final ContentKind kind;
   final String state;
   final int revision;
+  final Uri? coverUrl;
+  final String? sourceName;
 
   /// Stable source identity needed to resolve a shelf item for reading.
   ///
@@ -92,9 +96,11 @@ final class LibraryReadingProgress {
     required this.chapterFraction,
     required this.bookFraction,
     required this.updatedAtUtc,
+    this.totalReadingSeconds = 0,
   }) : assert(characterOffset >= 0),
        assert(chapterFraction >= 0 && chapterFraction <= 1),
-       assert(bookFraction >= 0 && bookFraction <= 1);
+       assert(bookFraction >= 0 && bookFraction <= 1),
+       assert(totalReadingSeconds >= 0);
 
   final LibraryItemId itemId;
   final String chapterId;
@@ -104,13 +110,17 @@ final class LibraryReadingProgress {
   final double chapterFraction;
   final double bookFraction;
   final DateTime updatedAtUtc;
+
+  /// Accumulated foreground reading time measured by the host, in seconds.
+  final int totalReadingSeconds;
 }
 
 /// Narrow, host-owned request for adding a typed source item to the shelf.
 ///
-/// It intentionally keeps only stable source identity and display metadata.
-/// Runtime payloads, URLs, cookies, and dynamic data never cross into a
-/// feature or widget through this type.
+/// It intentionally keeps stable source identity and a small typed display
+/// projection. Runtime payloads, cookies, and dynamic data never cross into a
+/// feature or widget through this type; the optional cover URL is only a
+/// source-provided display reference.
 final class BookshelfAddRequest {
   const BookshelfAddRequest({
     required this.title,
@@ -119,6 +129,8 @@ final class BookshelfAddRequest {
     required this.pluginId,
     required this.pluginVersion,
     required this.remoteContentId,
+    this.coverUrl,
+    this.sourceName,
   }) : assert(title != ''),
        assert(pluginId != ''),
        assert(pluginVersion != ''),
@@ -130,6 +142,8 @@ final class BookshelfAddRequest {
   final String pluginId;
   final String pluginVersion;
   final String remoteContentId;
+  final Uri? coverUrl;
+  final String? sourceName;
 }
 
 final class SourceBinding {
@@ -150,16 +164,42 @@ final class CatalogEntry {
     required this.id,
     required this.itemId,
     required this.bindingId,
+    required this.remoteIdentity,
     required this.title,
     required this.orderKey,
+    required this.index,
     required this.kind,
     required this.contentStatus,
+    this.wordCount,
   });
   final CatalogEntryId id;
   final LibraryItemId itemId;
   final SourceBindingId bindingId;
-  final String title, orderKey, contentStatus;
+  final String remoteIdentity, title, orderKey, contentStatus;
+  final int index;
   final ContentKind? kind;
+  final int? wordCount;
+}
+
+/// A typed remote-novel chapter projection to initialize an app-owned catalog.
+///
+/// It carries only stable chapter identity and display metadata; Runtime payloads
+/// and source URLs remain outside the Content Library boundary.
+final class SourceNovelCatalogChapter {
+  const SourceNovelCatalogChapter({
+    required this.remoteIdentity,
+    required this.title,
+    required this.index,
+    this.wordCount,
+  }) : assert(remoteIdentity != ''),
+       assert(title != ''),
+       assert(index >= 0),
+       assert(wordCount == null || wordCount >= 0);
+
+  final String remoteIdentity;
+  final String title;
+  final int index;
+  final int? wordCount;
 }
 
 final class Page<T> {

@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
+import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
-/// The measured back/title bar shared by profile detail pages.
+/// Backwards-compatible profile wrapper around the shared secondary header.
 class ProfileDetailTopBar extends StatelessWidget {
   const ProfileDetailTopBar({
     required this.title,
@@ -16,64 +17,12 @@ class ProfileDetailTopBar extends StatelessWidget {
   final VoidCallback onBack;
 
   @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return SizedBox(
-      key: const Key('profile-detail-top-bar'),
-      height: AppDetailMetrics.topBarHeight,
-      child: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          Center(
-            child: Semantics(
-              header: true,
-              child: Text(
-                title,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: theme.colorScheme.onSurface,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  height: 1.2,
-                  letterSpacing: 0,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: AppDetailMetrics.backButtonLeft,
-            top:
-                (AppDetailMetrics.topBarHeight -
-                    AppDetailMetrics.backButtonExtent) /
-                2,
-            child: Semantics(
-              button: true,
-              label: '返回',
-              child: Material(
-                color: Colors.transparent,
-                child: InkResponse(
-                  key: const Key('profile-detail-back'),
-                  onTap: onBack,
-                  radius: AppDetailMetrics.backButtonExtent / 2,
-                  child: SizedBox(
-                    width: AppDetailMetrics.backButtonExtent,
-                    height: AppDetailMetrics.backButtonExtent,
-                    child: Center(
-                      child: Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        size: 22,
-                        color: theme.colorScheme.onSurface,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => AppSecondaryPageTopBar(
+    title: title,
+    onBack: onBack,
+    headerKey: const Key('profile-detail-top-bar'),
+    backButtonKey: const Key('profile-detail-back'),
+  );
 }
 
 /// Keeps the shared app navigation phone-width and profile-selected on details.

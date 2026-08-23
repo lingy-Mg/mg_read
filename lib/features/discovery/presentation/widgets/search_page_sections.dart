@@ -5,7 +5,7 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/search_page_state.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
-import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_content_list_item.dart';
 
 /// The local interaction-only content above a source search result list.
 class SearchSuggestionSections extends StatelessWidget {
@@ -35,41 +35,15 @@ class SearchSuggestionSections extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final tokens = AppThemeTokens.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _SectionHeading(
-          title: '搜索历史',
-          trailing: history.isEmpty
-              ? null
-              : IconButton(
-                  key: const Key('search-history-clear'),
-                  tooltip: '清空搜索历史',
-                  onPressed: onHistoryCleared,
-                  icon: const Icon(Icons.delete_outline_rounded),
-                ),
+        _SearchHistoryRow(
+          history: history,
+          onHistorySelected: onHistorySelected,
+          onHistoryCleared: onHistoryCleared,
         ),
-        if (history.isEmpty)
-          Text(
-            '输入关键词后会显示在这里',
-            style: textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
-          )
-        else
-          Wrap(
-            spacing: AppSpacing.compact,
-            runSpacing: AppSpacing.compact,
-            children: history
-                .map(
-                  (value) => _SearchHistoryChip(
-                    label: value,
-                    onPressed: () => onHistorySelected(value),
-                  ),
-                )
-                .toList(growable: false),
-          ),
-        const SizedBox(height: AppSpacing.section),
+        const SizedBox(height: AppSpacing.compact),
         _SectionHeading(
           title: '热门搜索',
           trailing: TextButton.icon(
@@ -84,7 +58,7 @@ class SearchSuggestionSections extends StatelessWidget {
             final columnWidth = (constraints.maxWidth - AppSpacing.section) / 2;
             return Wrap(
               spacing: AppSpacing.section,
-              runSpacing: AppSpacing.regular,
+              runSpacing: AppSpacing.compact,
               children: List<Widget>.generate(
                 _hotSearches.length,
                 (index) => SizedBox(
@@ -100,6 +74,95 @@ class SearchSuggestionSections extends StatelessWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+class _SearchHistoryRow extends StatefulWidget {
+  const _SearchHistoryRow({
+    required this.history,
+    required this.onHistorySelected,
+    required this.onHistoryCleared,
+  });
+
+  final List<String> history;
+  final ValueChanged<String> onHistorySelected;
+  final VoidCallback onHistoryCleared;
+
+  @override
+  State<_SearchHistoryRow> createState() => _SearchHistoryRowState();
+}
+
+class _SearchHistoryRowState extends State<_SearchHistoryRow> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppThemeTokens.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    return SizedBox(
+      height: AppSpacing.searchHistoryChipHeight,
+      child: Row(
+        children: <Widget>[
+          Text('历史', style: textTheme.titleSmall),
+          const SizedBox(width: AppSpacing.compact),
+          Expanded(
+            child: Scrollbar(
+              controller: _scrollController,
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                key: const Key('search-history-scroll'),
+                controller: _scrollController,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(bottom: AppSpacing.unit),
+                child: Row(
+                  children: widget.history.isEmpty
+                      ? <Widget>[
+                          Text(
+                            '暂无历史关键词',
+                            style: textTheme.bodySmall?.copyWith(
+                              color: tokens.mutedText,
+                            ),
+                          ),
+                        ]
+                      : widget.history
+                            .map(
+                              (value) => Padding(
+                                padding: const EdgeInsets.only(
+                                  right: AppSpacing.compact,
+                                ),
+                                child: _SearchHistoryChip(
+                                  label: value,
+                                  onPressed: () =>
+                                      widget.onHistorySelected(value),
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.unit),
+          IconButton(
+            key: const Key('search-history-clear'),
+            tooltip: '清空搜索历史',
+            onPressed: widget.history.isEmpty ? null : widget.onHistoryCleared,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(
+              width: AppSpacing.searchHistoryChipHeight,
+              height: AppSpacing.searchHistoryChipHeight,
+            ),
+            icon: const Icon(Icons.delete_outline_rounded, size: 20),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -182,8 +245,6 @@ class SearchResultsSection extends StatelessWidget {
                   variant: _coverVariantFor(searchResult.items[index], index),
                   onPressed: () => onContentPressed(searchResult.items[index]),
                 ),
-                if (index < searchResult.items.length - 1)
-                  const Divider(height: 1),
               ],
             ],
           ),
@@ -216,130 +277,30 @@ class SearchResultTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final tokens = AppThemeTokens.of(context);
-    final tags = <String>[
-      ...content.categories,
-      ...content.tags,
-    ].take(4).toList(growable: false);
-    final String? update = content.attributes
-        .where(
-          (PluginContentAttribute item) => item.key == 'searchPreviewUpdate',
-        )
-        .map((PluginContentAttribute item) => item.value)
-        .firstOrNull;
-    return Semantics(
-      button: true,
-      label: '查看 ${content.title}',
-      child: InkWell(
-        key: ValueKey<String>('search-result-${content.id}'),
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            vertical: AppSpacing.searchResultVerticalPadding,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              DiscoveryBookCover(
-                title: content.title,
-                variant: variant,
-                width: AppSpacing.searchResultCoverWidth,
-                height: AppSpacing.searchResultCoverHeight,
-                coverUrl: content.coverUrl,
-              ),
-              const SizedBox(width: AppSpacing.regular),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      content.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: textTheme.titleMedium,
-                    ),
-                    if (content.author != null) ...<Widget>[
-                      const SizedBox(height: AppSpacing.unit),
-                      Row(
-                        children: <Widget>[
-                          Icon(
-                            Icons.person_outline_rounded,
-                            size: 16,
-                            color: tokens.mutedText,
-                          ),
-                          const SizedBox(width: AppSpacing.unit),
-                          Expanded(
-                            child: Text(
-                              content.author!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: textTheme.bodyMedium?.copyWith(
-                                color: tokens.mutedText,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                    if (tags.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: AppSpacing.compact),
-                      Wrap(
-                        spacing: AppSpacing.compact,
-                        runSpacing: AppSpacing.unit,
-                        children: tags
-                            .map((value) => _MetadataTag(label: value))
-                            .toList(growable: false),
-                      ),
-                    ],
-                    if (content.latestChapter != null) ...<Widget>[
-                      const SizedBox(
-                        height: AppSpacing.searchResultMetadataGap,
-                      ),
-                      Text(
-                        '最新：${content.latestChapter!.title}${update == null ? '' : '（$update）'}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: textTheme.bodyMedium?.copyWith(
-                          color: tokens.mutedText,
-                        ),
-                      ),
-                    ],
-                    if (content.wordCount != null) ...<Widget>[
-                      const SizedBox(
-                        height: AppSpacing.searchResultMetadataGap,
-                      ),
-                      Text(
-                        '字数：${content.wordCount}',
-                        style: textTheme.bodySmall?.copyWith(
-                          color: tokens.mutedText,
-                        ),
-                      ),
-                    ],
-                    if (content.description != null) ...<Widget>[
-                      const SizedBox(
-                        height: AppSpacing.searchResultMetadataGap,
-                      ),
-                      Text(
-                        content.description!,
-                        style: textTheme.bodyMedium?.copyWith(
-                          color: tokens.mutedText,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.only(top: AppSpacing.regular),
-                child: Icon(Icons.chevron_right_rounded),
-              ),
-            ],
-          ),
-        ),
+    return DiscoveryContentListItem(
+      item: PluginDiscoveryContentItem(
+        content: content,
+        rank: null,
+        metric: _searchMetric(content),
+        recommendation: null,
       ),
+      variant: variant,
+      onPressed: onPressed,
+      keyPrefix: 'search-result',
     );
   }
+}
+
+PluginDiscoveryMetric? _searchMetric(PluginContentSummary content) {
+  for (final attribute in content.attributes) {
+    if (attribute.key == 'searchHeat' || attribute.key == 'heat') {
+      return PluginDiscoveryMetric(
+        label: attribute.label.trim().isEmpty ? '热度' : attribute.label,
+        value: attribute.value,
+      );
+    }
+  }
+  return null;
 }
 
 class _SectionHeading extends StatelessWidget {
@@ -456,28 +417,6 @@ class _ResultHeader extends StatelessWidget {
         ),
         Icon(Icons.arrow_drop_down_rounded, color: tokens.mutedText),
       ],
-    );
-  }
-}
-
-class _MetadataTag extends StatelessWidget {
-  const _MetadataTag({required this.label});
-  final String label;
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppThemeTokens.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: tokens.mutedSurface,
-        borderRadius: AppRadii.control,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.compact,
-          vertical: AppSpacing.unit,
-        ),
-        child: Text(label, style: Theme.of(context).textTheme.bodySmall),
-      ),
     );
   }
 }

@@ -245,6 +245,38 @@ test("installer hardlinks local packages and manager cold-activates named export
   );
 });
 
+test("development projects load in place without creating an installed version", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-development-plugin-");
+  const dataRoot = join(root, "runtime-data");
+  const developmentRoot = join(root, "sources");
+  const projectRoot = join(developmentRoot, "live-source");
+  await createDevelopmentPlugin(projectRoot, "第一版");
+
+  const manager = new PluginManager(dataRoot, { developmentPluginRoot: developmentRoot });
+  await manager.initialize();
+  const firstList = await manager.listInstalled();
+  assert.equal(firstList.length, 1);
+  assert.equal(firstList[0].status, "development");
+  assert.equal(firstList[0].activeVersion, "0.1.0");
+  assert.equal(
+    await fileExists(join(dataRoot, "plugins", "org.example.live-source")),
+    false,
+  );
+
+  const directory = await manager.resolveCodeDirectory("org.example.live-source");
+  assert.equal(directory.kind, "development");
+  assert.equal(directory.directory, projectRoot);
+
+  const first = await manager.search(
+    "org.example.live-source",
+    { query: "测试", cursor: null, pageSize: 20 },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
+  );
+  assert.equal(first.items[0].title, "第一版：测试");
+
+});
+
 test("content v1 requires explicit null keys and preserves zero and empty arrays", () => {
   const summary = {
     id: "book:null-semantics",
@@ -801,6 +833,67 @@ export function getChapters() { throw new Error("unused"); }
 export function getContent() { throw new Error("unused"); }
 `,
     ),
+  ]);
+  return root;
+}
+
+async function createDevelopmentPlugin(root, prefix) {
+  await mkdir(join(root, "dist"), { recursive: true });
+  const packageJson = {
+    name: "@mgread-plugin/live-source",
+    version: "0.1.0",
+    type: "module",
+    main: "dist/index.mjs",
+    engines: { node: ">=24 <25" },
+    mgread: {
+      schemaVersion: 1,
+      id: "org.example.live-source",
+      displayName: "Live source",
+      pluginApi: 1,
+      contentKinds: ["novel"],
+    },
+  };
+  const lock = {
+    name: packageJson.name,
+    version: packageJson.version,
+    lockfileVersion: 3,
+    requires: true,
+    packages: {
+      "": { name: packageJson.name, version: packageJson.version },
+    },
+  };
+  const entry = `
+export function activate() {}
+const summary = (query) => ({
+  id: "live:" + query,
+  title: ${JSON.stringify(prefix)} + "：" + query,
+  contentKind: "novel",
+  author: null,
+  url: null,
+  coverUrl: null,
+  description: null,
+  language: null,
+  status: "unknown",
+  access: "unknown",
+  wordCount: null,
+  chapterCount: 0,
+  publishedAt: null,
+  updatedAt: null,
+  latestChapter: null,
+  categories: [],
+  tags: [],
+  attributes: [],
+});
+export function discover() { return { kind: "document", document: { components: [] } }; }
+export function search(request) { return { items: [summary(request.query)], nextCursor: null, totalCount: 1 }; }
+export function getDetail(request) { return { ...summary(request.id), id: request.id, aliases: [], catalogUrl: null }; }
+export function getChapters() { return { items: [], nextCursor: null, totalCount: 0 }; }
+export function getContent(request) { return { contentKind: "novel", chapterId: request.chapterId, title: null, updatedAt: null, text: "text", pages: [] }; }
+`;
+  await Promise.all([
+    writeFile(join(root, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`),
+    writeFile(join(root, "package-lock.json"), `${JSON.stringify(lock, null, 2)}\n`),
+    writeFile(join(root, "dist", "index.mjs"), entry),
   ]);
   return root;
 }

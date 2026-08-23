@@ -37,5 +37,5 @@ flutter:
     - assets/profile/profile-traveler-avatar.png
     - assets/illustrations/library_first_run_books.png
     - assets/illustrations/library_first_run_books_v2.png
-    - assets/illustrations/library_first_run_books_v3.png
     - assets/illustrations/library_empty_updates.png
+    - assets/fixtures/home_covers/

@@ -108,6 +108,7 @@ final class _WireConnection {
     required String method,
     required Map<String, Object?> params,
     String? idempotencyKey,
+    Duration timeout = _controlTimeout,
   }) async {
     if (_closed) {
       throw const PluginRuntimeException(
@@ -125,7 +126,7 @@ final class _WireConnection {
     final id = _nextId();
     final traceId = 'trace:$id';
     final completer = Completer<Object?>();
-    final deadline = DateTime.now().add(_controlTimeout).millisecondsSinceEpoch;
+    final deadline = DateTime.now().add(timeout).millisecondsSinceEpoch;
     final encoded = jsonEncode(<String, Object?>{
       'v': _protocolVersion,
       'type': 'request',
@@ -156,7 +157,7 @@ final class _WireConnection {
     try {
       _socket.add(encoded);
       return await completer.future.timeout(
-        _controlTimeout,
+        timeout,
         onTimeout: () {
           _sendCancellation(id, traceId);
           throw const PluginRuntimeException(

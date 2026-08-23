@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
@@ -8,41 +10,55 @@ import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
+import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 
 /// Host-controlled, lossless renderer for a validated source discovery tree.
 class RuntimeDiscoveryPage extends StatelessWidget {
   const RuntimeDiscoveryPage({
     required this.result,
     required this.onDestinationRequested,
+    this.onSearchRequested,
     required this.onSourcePressed,
     required this.onTabSelected,
     required this.onCategorySelected,
     required this.onContentPressed,
-    required this.onAddToShelf,
     required this.onRefreshRequested,
     required this.onLoadMore,
     required this.canNavigateBack,
     required this.onBackRequested,
     required this.loadingCollectionId,
+    this.sourceName,
+    this.isContentLoading = false,
+    this.contentIsEmpty = false,
+    this.contentFailureMessage,
+    this.contentFailureCode,
     super.key,
   });
 
-  final PluginDiscoveryDocumentResult result;
+  final PluginDiscoveryDocumentResult? result;
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
+  final VoidCallback? onSearchRequested;
   final VoidCallback onSourcePressed;
   final ValueChanged<String> onTabSelected;
   final ValueChanged<String> onCategorySelected;
   final ValueChanged<PluginContentSummary> onContentPressed;
-  final ValueChanged<PluginContentSummary> onAddToShelf;
   final VoidCallback onRefreshRequested;
   final ValueChanged<PluginDiscoveryContentCollectionComponent> onLoadMore;
   final bool canNavigateBack;
   final VoidCallback onBackRequested;
   final String? loadingCollectionId;
+  final String? sourceName;
+  final bool isContentLoading;
+  final bool contentIsEmpty;
+  final String? contentFailureMessage;
+  final String? contentFailureCode;
 
   @override
   Widget build(BuildContext context) {
-    final components = result.document.components;
+    final result = this.result;
+    final components =
+        result?.document.components ?? const <PluginDiscoveryComponent>[];
+    final resolvedSourceName = sourceName ?? result?.sourceName ?? '当前来源';
     return PopScope(
       canPop: !canNavigateBack,
       onPopInvokedWithResult: (didPop, _) {
@@ -51,17 +67,26 @@ class RuntimeDiscoveryPage extends StatelessWidget {
       child: Scaffold(
         body: SafeArea(
           bottom: false,
-          child: Center(
+          child: Align(
+            alignment: canNavigateBack
+                ? Alignment.topLeft
+                : Alignment.topCenter,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: AppSpacing.mobileContentMaxWidth,
+              constraints: BoxConstraints(
+                maxWidth: canNavigateBack
+                    ? AppSpacing.discoveryListMaxWidth
+                    : AppSpacing.mobileContentMaxWidth,
               ),
               child: ListView(
                 key: const Key('runtime-discovery-content'),
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.discoveryPagePadding,
-                  AppSpacing.homeContentTopPadding,
-                  AppSpacing.discoveryPagePadding,
+                padding: EdgeInsets.fromLTRB(
+                  canNavigateBack
+                      ? AppSpacing.regular
+                      : AppSpacing.discoveryPagePadding,
+                  AppSpacing.pageHeaderTopPadding,
+                  canNavigateBack
+                      ? AppSpacing.regular
+                      : AppSpacing.discoveryPagePadding,
                   AppSpacing.page,
                 ),
                 children: <Widget>[
@@ -76,39 +101,48 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                         ),
                       Expanded(
                         child: DiscoveryTopBar(
-                          sourceName: result.sourceName,
+                          title: canNavigateBack
+                              ? _nestedPageTitle(components) ?? '发现'
+                              : '发现',
+                          sourceName: resolvedSourceName,
                           onSourcePressed: onSourcePressed,
-                          onSearchPressed: () => onDestinationRequested(
-                            AppNavigationDestination.search,
-                          ),
+                          onSearchPressed:
+                              onSearchRequested ??
+                              () => onDestinationRequested(
+                                AppNavigationDestination.search,
+                              ),
                           onToggleTheme: () => AppThemeModeScope.of(
                             context,
                           ).onToggleTheme(Theme.of(context).brightness),
+                          onRefreshPressed: onRefreshRequested,
                         ),
                       ),
                     ],
                   ),
-                  for (final component in components) ...<Widget>[
-                    _DiscoveryComponentRenderer(
-                      component: component,
-                      onTabSelected: onTabSelected,
-                      onCategorySelected: onCategorySelected,
-                      onContentPressed: onContentPressed,
-                      onAddToShelf: onAddToShelf,
-                      onLoadMore: onLoadMore,
-                      loadingCollectionId: loadingCollectionId,
-                    ),
-                    const SizedBox(height: AppSpacing.section),
-                  ],
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      key: const Key('runtime-discovery-refresh'),
-                      onPressed: onRefreshRequested,
-                      icon: const Icon(Icons.refresh_rounded, size: 18),
-                      label: const Text('刷新'),
-                    ),
-                  ),
+                  if (result == null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: AppSpacing.section),
+                      child: _DiscoveryContentState(
+                        isLoading: isContentLoading,
+                        isEmpty: contentIsEmpty,
+                        failureMessage: contentFailureMessage,
+                        failureCode: contentFailureCode,
+                        onRetry: onRefreshRequested,
+                      ),
+                    )
+                  else
+                    for (final component in components) ...<Widget>[
+                      _DiscoveryComponentRenderer(
+                        component: component,
+                        hideSectionTitle: canNavigateBack,
+                        onTabSelected: onTabSelected,
+                        onCategorySelected: onCategorySelected,
+                        onContentPressed: onContentPressed,
+                        onLoadMore: onLoadMore,
+                        loadingCollectionId: loadingCollectionId,
+                      ),
+                      const SizedBox(height: AppSpacing.section),
+                    ],
                 ],
               ),
             ),
@@ -130,24 +164,73 @@ class RuntimeDiscoveryPage extends StatelessWidget {
   }
 }
 
+class _DiscoveryContentState extends StatelessWidget {
+  const _DiscoveryContentState({
+    required this.isLoading,
+    required this.isEmpty,
+    required this.onRetry,
+    this.failureMessage,
+    this.failureCode,
+  });
+
+  final bool isLoading;
+  final bool isEmpty;
+  final String? failureMessage;
+  final String? failureCode;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return const AppLoadingState(
+        key: Key('discovery-loading-content'),
+        label: '正在加载发现内容',
+        message: '插件正在生成分区、榜单和分类。',
+      );
+    }
+    return Column(
+      key: Key(isEmpty ? 'discovery-empty' : 'discovery-failure'),
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Icon(
+          isEmpty ? Icons.inbox_outlined : Icons.error_outline_rounded,
+          size: 40,
+          color: AppThemeTokens.of(context).mutedText,
+        ),
+        const SizedBox(height: AppSpacing.regular),
+        Text(failureMessage ?? '当前来源没有发现内容。'),
+        if (failureCode != null) ...<Widget>[
+          const SizedBox(height: AppSpacing.unit),
+          Text(
+            '稳定错误码：$failureCode',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+        const SizedBox(height: AppSpacing.regular),
+        TextButton(onPressed: onRetry, child: const Text('刷新')),
+      ],
+    );
+  }
+}
+
 class _DiscoveryComponentRenderer extends StatelessWidget {
   const _DiscoveryComponentRenderer({
     required this.component,
     required this.onTabSelected,
     required this.onCategorySelected,
     required this.onContentPressed,
-    required this.onAddToShelf,
     required this.onLoadMore,
     required this.loadingCollectionId,
+    this.hideSectionTitle = false,
   });
 
   final PluginDiscoveryComponent component;
   final ValueChanged<String> onTabSelected;
   final ValueChanged<String> onCategorySelected;
   final ValueChanged<PluginContentSummary> onContentPressed;
-  final ValueChanged<PluginContentSummary> onAddToShelf;
   final ValueChanged<PluginDiscoveryContentCollectionComponent> onLoadMore;
   final String? loadingCollectionId;
+  final bool hideSectionTitle;
 
   @override
   Widget build(BuildContext context) => KeyedSubtree(
@@ -174,6 +257,7 @@ class _DiscoveryComponentRenderer extends StatelessWidget {
             subtitle: subtitle,
             children: children,
           ),
+          hideTitle: hideSectionTitle,
           child: _ChildrenComponent(children: children, renderer: this),
         ),
       PluginDiscoveryGroupComponent(:final layout, :final children) =>
@@ -198,7 +282,6 @@ class _DiscoveryComponentRenderer extends StatelessWidget {
             continuation: continuation,
           ),
           onContentPressed: onContentPressed,
-          onAddToShelf: onAddToShelf,
           onLoadMore: onLoadMore,
           isLoading: loadingCollectionId == component.id,
         ),
@@ -243,9 +326,9 @@ class _ChildrenComponent extends StatelessWidget {
               onTabSelected: renderer.onTabSelected,
               onCategorySelected: renderer.onCategorySelected,
               onContentPressed: renderer.onContentPressed,
-              onAddToShelf: renderer.onAddToShelf,
               onLoadMore: renderer.onLoadMore,
               loadingCollectionId: renderer.loadingCollectionId,
+              hideSectionTitle: renderer.hideSectionTitle,
             ),
           ),
         )
@@ -281,27 +364,35 @@ class _TabsComponent extends StatelessWidget {
 }
 
 class _SectionComponent extends StatelessWidget {
-  const _SectionComponent({required this.component, required this.child});
+  const _SectionComponent({
+    required this.component,
+    required this.child,
+    required this.hideTitle,
+  });
 
   final PluginDiscoverySectionComponent component;
   final Widget child;
+  final bool hideTitle;
 
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: <Widget>[
-      Semantics(
-        header: true,
-        child: Text(
-          component.title,
-          style: Theme.of(context).textTheme.titleMedium,
+      if (!hideTitle)
+        Semantics(
+          header: true,
+          child: Text(
+            component.title,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
         ),
-      ),
+      if (!hideTitle) const SizedBox(height: AppSpacing.compact),
       if (component.subtitle != null) ...<Widget>[
         const SizedBox(height: AppSpacing.unit),
         Text(component.subtitle!, style: Theme.of(context).textTheme.bodySmall),
       ],
-      const SizedBox(height: AppSpacing.compact),
+      if (hideTitle && component.subtitle == null)
+        const SizedBox(height: AppSpacing.unit),
       child,
     ],
   );
@@ -322,9 +413,9 @@ class _GroupComponent extends StatelessWidget {
             onTabSelected: renderer.onTabSelected,
             onCategorySelected: renderer.onCategorySelected,
             onContentPressed: renderer.onContentPressed,
-            onAddToShelf: renderer.onAddToShelf,
             onLoadMore: renderer.onLoadMore,
             loadingCollectionId: renderer.loadingCollectionId,
+            hideSectionTitle: renderer.hideSectionTitle,
           ),
         )
         .toList(growable: false);
@@ -362,14 +453,12 @@ class _ContentCollection extends StatelessWidget {
   const _ContentCollection({
     required this.component,
     required this.onContentPressed,
-    required this.onAddToShelf,
     required this.onLoadMore,
     required this.isLoading,
   });
 
   final PluginDiscoveryContentCollectionComponent component;
   final ValueChanged<PluginContentSummary> onContentPressed;
-  final ValueChanged<PluginContentSummary> onAddToShelf;
   final ValueChanged<PluginDiscoveryContentCollectionComponent> onLoadMore;
   final bool isLoading;
 
@@ -387,7 +476,6 @@ class _ContentCollection extends StatelessWidget {
           (item) => _DiscoveryBookCard(
             item: item,
             onPressed: () => onContentPressed(item.content),
-            onAddToShelf: () => onAddToShelf(item.content),
             showRank: component.layout == PluginDiscoveryContentLayout.ranking,
           ),
         )
@@ -418,16 +506,7 @@ class _ContentCollection extends StatelessWidget {
               : () => onLoadMore(component),
         ),
       ),
-      PluginDiscoveryContentLayout.list => Column(
-        children: <Widget>[
-          if (component.items.isNotEmpty)
-            DiscoveryEditorsChoiceCard(
-              data: _editorsChoiceData(component.items.first),
-              onPressed: () => onContentPressed(component.items.first.content),
-            ),
-          ...cards.skip(1),
-        ],
-      ),
+      PluginDiscoveryContentLayout.list => Column(children: cards),
     };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -534,16 +613,6 @@ DiscoveryRankedBookViewData _rankedData(PluginDiscoveryContentItem item) =>
       coverVariant: _coverVariant(item.content.id),
     );
 
-DiscoveryEditorsChoiceViewData _editorsChoiceData(
-  PluginDiscoveryContentItem item,
-) => DiscoveryEditorsChoiceViewData(
-  title: item.content.title,
-  category: item.content.categories.firstOrNull,
-  description: item.recommendation ?? item.content.description,
-  metadata: item.content.author,
-  coverVariant: _coverVariant(item.content.id),
-);
-
 DiscoveryCategoryViewData _categoryData(PluginDiscoveryCategory category) =>
     DiscoveryCategoryViewData(
       title: category.title,
@@ -557,6 +626,20 @@ DiscoveryCategoryViewData _categoryData(PluginDiscoveryCategory category) =>
       target: category.target,
     );
 
+String? _nestedPageTitle(List<PluginDiscoveryComponent> components) {
+  for (final component in components) {
+    final title = switch (component) {
+      PluginDiscoverySectionComponent(:final title) => title,
+      PluginDiscoveryGroupComponent(:final children) => _nestedPageTitle(
+        children,
+      ),
+      _ => null,
+    };
+    if (title != null && title.trim().isNotEmpty) return title;
+  }
+  return null;
+}
+
 extension on List<String> {
   String? get firstOrNull => isEmpty ? null : first;
 }
@@ -565,83 +648,226 @@ class _DiscoveryBookCard extends StatelessWidget {
   const _DiscoveryBookCard({
     required this.item,
     required this.onPressed,
-    required this.onAddToShelf,
     required this.showRank,
   });
 
   final PluginDiscoveryContentItem item;
   final VoidCallback onPressed;
-  final VoidCallback onAddToShelf;
   final bool showRank;
 
   @override
   Widget build(BuildContext context) {
     final content = item.content;
-    return Card(
-      child: InkWell(
-        key: ValueKey<String>('runtime-discovery-item-${content.id}'),
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.regular),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              if (showRank && item.rank != null) ...<Widget>[
-                Text(
-                  '${item.rank}',
-                  style: Theme.of(context).textTheme.titleMedium,
+    final theme = Theme.of(context);
+    final tokens = AppThemeTokens.of(context);
+    final tags = <String>[
+      ...content.categories,
+      ...content.tags,
+    ].take(3).toList(growable: false);
+    final description = item.recommendation ?? content.description;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final coverWidth = math.min(
+          AppSpacing.discoveryListCoverMaxWidth,
+          math.max(
+            AppSpacing.discoveryListCoverMinWidth,
+            constraints.maxWidth * 0.16,
+          ),
+        );
+        final coverHeight =
+            coverWidth * AppSpacing.discoveryListCoverAspectRatio;
+        final titleStyle = theme.textTheme.titleMedium?.copyWith(
+          fontSize: constraints.maxWidth >= 500 ? 20 : null,
+        );
+        final metadataStyle = theme.textTheme.bodyMedium?.copyWith(
+          color: tokens.mutedText,
+        );
+        return Material(
+          color: tokens.surface,
+          child: InkWell(
+            key: ValueKey<String>('runtime-discovery-item-${content.id}'),
+            onTap: onPressed,
+            child: Container(
+              constraints: BoxConstraints(minHeight: coverHeight),
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.regular),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: tokens.divider, width: 0.8),
                 ),
-                const SizedBox(width: AppSpacing.compact),
-              ],
-              DiscoveryBookCover(
-                title: content.title,
-                coverUrl: content.coverUrl,
-                variant: _coverVariant(content.id),
-                width: 54,
-                height: 76,
               ),
-              const SizedBox(width: AppSpacing.compact),
-              Expanded(
-                child: Column(
+              child: IntrinsicHeight(
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
-                      content.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium,
+                    if (showRank && item.rank != null) ...<Widget>[
+                      Text('${item.rank}', style: theme.textTheme.titleMedium),
+                      const SizedBox(width: AppSpacing.compact),
+                    ],
+                    DiscoveryBookCover(
+                      title: content.title,
+                      coverUrl: content.coverUrl,
+                      variant: _coverVariant(content.id),
+                      width: coverWidth,
+                      height: coverHeight,
                     ),
-                    if (content.author != null)
-                      Text(
-                        content.author!,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    if (content.description != null)
-                      Text(
-                        content.description!,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        key: ValueKey<String>(
-                          'runtime-discovery-add-shelf-${content.id}',
-                        ),
-                        onPressed: onAddToShelf,
-                        child: const Text('加入书架'),
+                    const SizedBox(width: AppSpacing.regular),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            content.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: titleStyle,
+                          ),
+                          const SizedBox(height: AppSpacing.unit),
+                          Text(
+                            _authorAndCategory(content),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                          if (tags.isNotEmpty) ...<Widget>[
+                            const SizedBox(height: AppSpacing.unit),
+                            Wrap(
+                              spacing: AppSpacing.compact,
+                              runSpacing: AppSpacing.unit,
+                              children: tags
+                                  .map((tag) => _DiscoveryListTag(label: tag))
+                                  .toList(growable: false),
+                            ),
+                          ],
+                          if (description != null) ...<Widget>[
+                            const SizedBox(height: AppSpacing.unit),
+                            Text(
+                              description,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ],
+                          const Spacer(),
+                          Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  _bookMetadata(content),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: metadataStyle,
+                                ),
+                              ),
+                              if (item.metric != null) ...<Widget>[
+                                const SizedBox(width: AppSpacing.compact),
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    right: AppSpacing.comfortable,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: <Widget>[
+                                      Icon(
+                                        Icons.local_fire_department_rounded,
+                                        size: 16,
+                                        color: tokens.notification,
+                                      ),
+                                      const SizedBox(width: AppSpacing.unit),
+                                      Text(
+                                        '${item.metric!.value}${item.metric!.label}',
+                                        style: metadataStyle,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+        );
+      },
+    );
+  }
+}
+
+class _DiscoveryListTag extends StatelessWidget {
+  const _DiscoveryListTag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppThemeTokens.of(context);
+    return Container(
+      height: AppSpacing.discoveryListTagHeight,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.regular),
+      decoration: BoxDecoration(
+        color: tokens.accentSoft.withValues(alpha: 0.62),
+        borderRadius: AppRadii.pill,
+      ),
+      child: Text(
+        label,
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: tokens.accent),
       ),
     );
   }
+}
+
+String _authorAndCategory(PluginContentSummary content) {
+  return <String>[
+    if (content.author != null && content.author!.trim().isNotEmpty)
+      content.author!,
+    if (content.categories.isNotEmpty) content.categories.first,
+  ].join(' · ');
+}
+
+String _bookMetadata(PluginContentSummary content) {
+  final updateLabel = _attributeValue(
+    content.attributes,
+    'discoveryUpdatedLabel',
+  );
+  final resolvedUpdateLabel =
+      updateLabel ?? _relativeUpdateLabel(content.updatedAt);
+  return <String>[
+    if (content.chapterCount != null) '${content.chapterCount}章',
+    _statusLabel(content.status),
+    ?resolvedUpdateLabel,
+  ].join(' · ');
+}
+
+String? _relativeUpdateLabel(DateTime? updatedAt) {
+  if (updatedAt == null) return null;
+  final elapsed = DateTime.now().toUtc().difference(updatedAt.toUtc());
+  if (elapsed.inDays > 0) return '${elapsed.inDays}天前更新';
+  if (elapsed.inHours > 0) return '${elapsed.inHours}小时前更新';
+  if (elapsed.inMinutes > 0) return '${elapsed.inMinutes}分钟前更新';
+  return '刚刚更新';
+}
+
+String _statusLabel(PluginContentStatus value) => switch (value) {
+  PluginContentStatus.ongoing => '连载中',
+  PluginContentStatus.completed => '完结',
+  PluginContentStatus.hiatus => '暂停',
+  PluginContentStatus.unknown => '未知',
+};
+
+String? _attributeValue(
+  Iterable<PluginContentAttribute> attributes,
+  String key,
+) {
+  for (final attribute in attributes) {
+    if (attribute.key == key) return attribute.value;
+  }
+  return null;
 }
 
 DiscoveryCoverVariant _coverVariant(String id) {

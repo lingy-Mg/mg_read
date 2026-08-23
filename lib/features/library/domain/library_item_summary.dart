@@ -7,20 +7,27 @@ final class LibraryItemSummary {
   const LibraryItemSummary({
     required this.id,
     required this.title,
+    this.author,
+    this.coverUrl,
+    this.sourceName,
     this.readingProgress,
     this.readingChapterIndex,
     this.lastReadAtUtc,
-  })
-    : assert(id != ''),
-      assert(title != ''),
-      assert(readingProgress == null ||
-          (readingProgress >= 0 && readingProgress <= 1));
+  }) : assert(id != ''),
+       assert(title != ''),
+       assert(
+         readingProgress == null ||
+             (readingProgress >= 0 && readingProgress <= 1),
+       );
 
   /// Stable identifier generated and owned by the host application.
   final String id;
 
   /// User-visible title from the current local projection.
   final String title;
+  final String? author;
+  final Uri? coverUrl;
+  final String? sourceName;
 
   /// Displayable full-book fraction last reported by the reader.
   final double? readingProgress;

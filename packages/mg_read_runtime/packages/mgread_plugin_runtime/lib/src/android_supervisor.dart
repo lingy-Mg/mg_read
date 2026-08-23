@@ -45,7 +45,14 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
         'The Android Runtime has been closed.',
       );
     }
-    final timeout = _started ? _controlTimeout : _androidStartupTimeout;
+    // A size request can be the first Android Runtime call. Keep the normal
+    // cold-start allowance, but do not shorten a long-running capability such
+    // as the npm tree scan back to the 30-second startup timeout.
+    final timeout = _started
+        ? invocation._timeout
+        : invocation._timeout > _androidStartupTimeout
+        ? invocation._timeout
+        : _androidStartupTimeout;
     final deadline = DateTime.now().add(timeout).millisecondsSinceEpoch;
     _recordDiagnostic(
       const RuntimeDiagnostic(
@@ -145,6 +152,41 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
   }
 
   @override
+  Future<void> importLocalPlugin(String sourcePath) async {
+    if (_disposed) {
+      throw const PluginRuntimeException(
+        'runtime_unavailable',
+        'The Android Runtime has been closed.',
+      );
+    }
+    try {
+      await _androidRuntimeChannel.invokeMethod<void>(
+        'importLocalPlugin',
+        <String, Object?>{'sourcePath': sourcePath},
+      );
+      _started = false;
+    } on PlatformException catch (error) {
+      throw PluginRuntimeException(
+        error.code,
+        'The Android Runtime could not import the selected plugin.',
+      );
+    } on Object {
+      throw const PluginRuntimeException(
+        'runtime_unavailable',
+        'The Android Runtime could not import the selected plugin.',
+      );
+    }
+  }
+
+  @override
+  Future<void> setDevelopmentDirectory(String path) {
+    throw const PluginRuntimeException(
+      'unsupported',
+      'Development source directories are available on Windows only.',
+    );
+  }
+
+  @override
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
@@ -169,9 +211,11 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
     final completedBytes = raw['completedBytes'];
     final stage = raw['stage'];
     final totalBytes = raw['totalBytes'];
+    final detail = raw['detail'];
     if (completedBytes is! int ||
         stage is! String ||
         totalBytes is! int ||
+        (detail != null && detail is! String) ||
         completedBytes < 0 ||
         totalBytes < 0 ||
         completedBytes > totalBytes && totalBytes != 0) {
@@ -179,6 +223,7 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
     }
     final progress = RuntimeInitializationProgress.fromPlatform(
       completedBytes: completedBytes,
+      detail: detail as String?,
       stage: stage,
       totalBytes: totalBytes,
     );

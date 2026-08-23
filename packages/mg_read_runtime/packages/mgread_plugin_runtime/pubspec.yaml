@@ -1,12 +1,13 @@
 name: mgread_plugin_runtime
 description: MgRead Runtime-owned Flutter Facade for the bundled desktop Node Runtime.
 publish_to: none
-version: 0.2.0-standard.1
+version: 0.2.0-standard.2
 
 environment:
   sdk: ^3.12.2
 
 dependencies:
+  file_selector: 1.1.0
   flutter:
     sdk: flutter
 
@@ -24,8 +25,6 @@ flutter:
     - assets/runtime/android/runtime-version.txt
     - assets/runtime/android/dist/
     - assets/runtime/android/dist/diagnostics/
-    - assets/runtime/android/default-plugins/
     - assets/runtime/windows-x64/node/
     - assets/runtime/windows-x64/dist/
     - assets/runtime/windows-x64/dist/diagnostics/
-    - assets/runtime/windows-x64/default-plugins/

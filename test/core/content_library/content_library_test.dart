@@ -68,37 +68,116 @@ void main() {
     },
   );
 
-  test('persists semantic reading progress and typed source identity', () async {
-    final item = await library.bookshelf.add(
-      title: '进度测试书',
-      kind: ContentKind.novel,
-      source: source,
-    );
-    await library.readingProgress.save(
-      LibraryReadingProgress(
-        itemId: item.id,
-        chapterId: 'chapter-6',
-        paragraphId: 'chapter-6:paragraph:3',
-        characterOffset: 18,
-        chapterIndex: 5,
-        chapterFraction: 0.5,
-        bookFraction: 0.25,
-        updatedAtUtc: DateTime.utc(2026, 8, 21, 12),
+  test(
+    'persists semantic reading progress and typed source identity',
+    () async {
+      final item = await library.bookshelf.add(
+        title: '进度测试书',
+        kind: ContentKind.novel,
+        source: source,
+      );
+      await library.readingProgress.save(
+        LibraryReadingProgress(
+          itemId: item.id,
+          chapterId: 'chapter-6',
+          paragraphId: 'chapter-6:paragraph:3',
+          characterOffset: 18,
+          chapterIndex: 5,
+          chapterFraction: 0.5,
+          bookFraction: 0.25,
+          updatedAtUtc: DateTime.utc(2026, 8, 21, 12),
+          totalReadingSeconds: 3723,
+        ),
+      );
+      await library.close();
+      library = await ContentLibrary.open(dataRoot: root);
+
+      final restored = await library.getLibraryItem(item.id);
+      final progress = await library.readingProgress.load(item.id);
+
+      expect(restored?.source?.pluginId, 'fixture');
+      expect(restored?.source?.remoteContentId, 'book-1');
+      expect(progress?.chapterId, 'chapter-6');
+      expect(progress?.paragraphId, 'chapter-6:paragraph:3');
+      expect(progress?.characterOffset, 18);
+      expect(progress?.bookFraction, 0.25);
+      expect(progress?.totalReadingSeconds, 3723);
+    },
+  );
+
+  test('concurrent source saves are idempotent and atomically bound', () async {
+    final items = await Future.wait<LibraryItem>([
+      library.bookshelf.add(
+        title: '并发加入',
+        kind: ContentKind.novel,
+        source: source,
       ),
+      library.bookshelf.add(
+        title: '并发加入',
+        kind: ContentKind.novel,
+        source: source,
+      ),
+    ]);
+
+    expect(items.map((item) => item.id.value).toSet(), hasLength(1));
+    expect(
+      (await library.listLibrary(const LibraryQuery())).items,
+      hasLength(1),
     );
-    await library.close();
-    library = await ContentLibrary.open(dataRoot: root);
-
-    final restored = await library.getLibraryItem(item.id);
-    final progress = await library.readingProgress.load(item.id);
-
-    expect(restored?.source?.pluginId, 'fixture');
-    expect(restored?.source?.remoteContentId, 'book-1');
-    expect(progress?.chapterId, 'chapter-6');
-    expect(progress?.paragraphId, 'chapter-6:paragraph:3');
-    expect(progress?.characterOffset, 18);
-    expect(progress?.bookFraction, 0.25);
+    expect(items.first.source?.remoteContentId, 'book-1');
   });
+
+  test(
+    'batch reads unique progress records and omits unread shelf items',
+    () async {
+      final first = await library.bookshelf.add(
+        title: '批量进度一',
+        kind: ContentKind.novel,
+        source: const ContentLibraryIngest(
+          pluginId: 'fixture',
+          producerPluginVersion: '1.0.0',
+          dataVersion: 1,
+          opaqueData: <String, Object?>{'remoteBookId': 'batch-one'},
+        ),
+      );
+      final unread = await library.bookshelf.add(
+        title: '批量进度二',
+        kind: ContentKind.novel,
+        source: const ContentLibraryIngest(
+          pluginId: 'fixture',
+          producerPluginVersion: '1.0.0',
+          dataVersion: 1,
+          opaqueData: <String, Object?>{'remoteBookId': 'batch-two'},
+        ),
+      );
+      await library.readingProgress.save(
+        LibraryReadingProgress(
+          itemId: first.id,
+          chapterId: 'chapter-1',
+          paragraphId: 'chapter-1:paragraph:0',
+          characterOffset: 0,
+          chapterIndex: 0,
+          chapterFraction: 0.25,
+          bookFraction: 0.15,
+          updatedAtUtc: DateTime.utc(2026, 8, 22),
+        ),
+      );
+
+      final progress = await library.readingProgress.loadMany([
+        first.id,
+        unread.id,
+        first.id,
+      ]);
+
+      expect(progress, hasLength(1));
+      expect(progress.single.itemId.value, first.id.value);
+      expect(progress.single.bookFraction, 0.15);
+      expect(
+        await library.readingProgress.loadMany(const <LibraryItemId>[]),
+        isEmpty,
+      );
+    },
+  );
 
   test('session-only manga resource does not retain a URL', () async {
     final item = await library.bookshelf.add(

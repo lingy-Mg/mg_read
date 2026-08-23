@@ -53,6 +53,33 @@ final class TestReadyPluginRuntimeGateway implements PluginRuntimeGateway {
   const TestReadyPluginRuntimeGateway();
 
   @override
+  Stream<RuntimeInitializationProgress> get initialization =>
+      const Stream<RuntimeInitializationProgress>.empty();
+
+  @override
+  Future<PluginInstallationSize> inspectInstallationSize({
+    required String pluginId,
+    required PluginInstallationSizeScope scope,
+  }) async => PluginInstallationSize(
+    bytes: 0,
+    fileCount: 0,
+    pluginId: pluginId,
+    scope: scope,
+    version: 'test',
+  );
+
+  @override
+  Future<bool> importLocalPlugin() async => false;
+
+  @override
+  Future<bool> selectDevelopmentDirectory() async => false;
+
+  @override
+  Future<PluginCodeDirectoryKind> openCodeDirectory({
+    required String pluginId,
+  }) async => PluginCodeDirectoryKind.installed;
+
+  @override
   Future<PluginRuntimeConnection> inspect() async =>
       const PluginRuntimeConnection(
         isHealthy: true,

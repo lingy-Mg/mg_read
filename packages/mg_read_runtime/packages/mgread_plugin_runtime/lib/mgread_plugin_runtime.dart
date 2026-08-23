@@ -13,6 +13,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:file_selector/file_selector.dart';
 
 import 'src/windows_job_object.dart';
 

@@ -1,4 +1,8 @@
-import { DesktopRuntime, type DesktopRuntimeOptions } from "./desktop-runtime.js";
+import {
+  DesktopRuntime,
+  type DesktopRuntimeOptions,
+  type DesktopRuntimeProgress,
+} from "./desktop-runtime.js";
 import {
   emitRuntimeDiagnostic,
   type RuntimeDiagnosticRecord,
@@ -24,11 +28,17 @@ function emitDiagnostic(record: RuntimeDiagnosticRecord): void {
   emitRuntimeDiagnostic(record);
 }
 
+/** Writes only reviewed progress fields to stderr for the Windows supervisor. */
+function emitProgress(progress: DesktopRuntimeProgress): void {
+  process.stderr.write(`${JSON.stringify({ type: "progress", ...progress })}\n`);
+}
+
 /**
  * Parses the CLI's intentionally tiny Runtime-owned launch contract.
  *
  * Values are resolved only by this Runtime's platform adapter: its writable
- * data root and optional immutable bundled-plugin asset directory. They are
+ * data root, optional immutable bundled-plugin assets, and the Windows
+ * debug adapter's source-project root. They are
  * not host callbacks, databases, Cookies, file services or app settings.
  */
 function parseLaunchOptions(arguments_: readonly string[]): DesktopRuntimeOptions {
@@ -47,15 +57,21 @@ function parseLaunchOptions(arguments_: readonly string[]): DesktopRuntimeOption
   }
   const dataRoot = values.get("--data-root");
   const bundledPluginRoot = values.get("--bundled-plugin-root");
+  const developmentPluginRoot = values.get("--development-plugin-root");
+  const expectedValueCount = 1 +
+    (bundledPluginRoot === undefined ? 0 : 1) +
+    (developmentPluginRoot === undefined ? 0 : 1);
   if (
     dataRoot === undefined ||
-    values.size !== (bundledPluginRoot === undefined ? 1 : 2)
+    values.size !== expectedValueCount
   ) {
     throw new Error("The desktop Runtime requires its platform-owned data root.");
   }
   return {
     dataRoot,
     ...(bundledPluginRoot === undefined ? {} : { bundledPluginRoot }),
+    ...(developmentPluginRoot === undefined ? {} : { developmentPluginRoot }),
+    onProgress: emitProgress,
   };
 }
 

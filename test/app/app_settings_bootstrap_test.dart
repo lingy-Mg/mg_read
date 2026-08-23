@@ -1,17 +1,60 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_settings_lifecycle.dart';
 import 'package:mg_read/app/bootstrap.dart';
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
+import 'package:mg_read/core/persistence/persistence.dart';
 import 'package:mg_read/core/settings/settings.dart';
 
 import '../core/diagnostics/diagnostics_testkit.dart';
 import '../core/settings/settings_testkit.dart';
 
 void main() {
+  test('default composition opens one shared app persistence', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'mg-read-bootstrap-shared-persistence-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    var openCalls = 0;
+    Widget? mounted;
+
+    await bootstrapMgReadApp(
+      diagnosticsServiceFactory: null,
+      dataRootResolver: () async => root,
+      appPersistenceFactory: (dataRoot, diagnostics) {
+        openCalls += 1;
+        return AppPersistence.open(
+          dataRoot: dataRoot,
+          registry: RecordDocumentRegistry(<RecordDocumentCodec>[
+            ...contentLibraryRecordDocumentCodecs,
+            ...settingsRecordDocumentCodecs(
+              AppSettingKeys.registry,
+              scopeKind: 'app',
+            ),
+          ]),
+          diagnostics: diagnostics,
+        );
+      },
+      appRunner: (app) => mounted = app,
+      child: const SizedBox.shrink(),
+    );
+
+    expect(openCalls, 1);
+    final scope = mounted! as ProviderScope;
+    final host = scope.child as AppSettingsLifecycleHost;
+    expect(host.manager.state, SettingsState.ready);
+
+    await host.manager.close();
+    await host.closeContentLibrary?.call();
+    host.disposeDiagnosticsBoundary?.call();
+    await host.closeDiagnostics?.call();
+  });
+
   testWidgets(
     'bootstrap awaits initialize and injects the manager explicitly',
     (WidgetTester tester) async {

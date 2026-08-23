@@ -55,34 +55,38 @@ export async function activate(context: MgReadPluginContext): Promise<void> {
 
 /** Maps source categories and category pages to the host discovery screen. */
 export async function discover(request: DiscoverRequest): Promise<DiscoverResult> {
-  const activeContext = requireContext();
-  activeContext.log.info('source_discover_started');
-  if (request.target === null) {
-    activeContext.log.info('source_discover_category_branch');
-  }
-  const result = await loadSource(activeContext).then((source) => source.discover(request));
-  activeContext.log.info('source_discover_completed');
-  return result;
+  return invoke('discover', async (activeContext) => {
+    if (request.target === null) activeContext.log.info('source_discover_category_branch');
+    return (await loadSource(activeContext)).discover(request);
+  });
 }
 
 /** Maps a user query to this source's search endpoint. */
 export async function search(request: SearchRequest): Promise<SearchResult> {
-  return (await loadSource(requireContext())).search(request);
+  return invoke('search', async (activeContext) =>
+    (await loadSource(activeContext)).search(request),
+  );
 }
 
 /** Resolves one opaque `novel:<id>` reference to its metadata. */
 export async function getDetail(request: ContentReferenceRequest): Promise<ContentDetail> {
-  return (await loadSource(requireContext())).getDetail(request);
+  return invoke('get_detail', async (activeContext) =>
+    (await loadSource(activeContext)).getDetail(request),
+  );
 }
 
 /** Resolves a novel reference to ordered opaque chapter IDs. */
 export async function getChapters(request: ChaptersRequest): Promise<ChaptersResult> {
-  return (await loadSource(requireContext())).getChapters(request);
+  return invoke('get_chapters', async (activeContext) =>
+    (await loadSource(activeContext)).getChapters(request),
+  );
 }
 
 /** Resolves one opaque chapter reference to clean text content. */
 export async function getContent(request: ContentRequest): Promise<ChapterContent> {
-  return (await loadSource(requireContext())).getContent(request);
+  return invoke('get_content', async (activeContext) =>
+    (await loadSource(activeContext)).getContent(request),
+  );
 }
 
 let globalThisContext: MgReadPluginContext | undefined;
@@ -90,6 +94,27 @@ let globalThisContext: MgReadPluginContext | undefined;
 function requireContext(): MgReadPluginContext {
   if (globalThisContext === undefined) throw new Error('Source is not activated.');
   return globalThisContext;
+}
+
+type Operation = 'discover' | 'search' | 'get_detail' | 'get_chapters' | 'get_content';
+
+async function invoke<T>(
+  operation: Operation,
+  action: (context: MgReadPluginContext) => Promise<T>,
+): Promise<T> {
+  const activeContext = requireContext();
+  activeContext.log.info(`source_${operation}_started`);
+  try {
+    activeContext.log.debug(`source_${operation}_validated`);
+    const result = await action(activeContext);
+    activeContext.log.debug(`source_${operation}_parsed`);
+    activeContext.log.info(`source_${operation}_result_ready`);
+    activeContext.log.info(`source_${operation}_completed`);
+    return result;
+  } catch {
+    activeContext.log.warn(`source_${operation}_failed`);
+    throw new Error('Source operation failed.');
+  }
 }
 
 async function loadSource(activeContext: MgReadPluginContext): Promise<AliceBookHouseSource> {

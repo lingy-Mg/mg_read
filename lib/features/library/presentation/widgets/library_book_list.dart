@@ -74,29 +74,99 @@ class LibraryBookList extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Column(
-      children: List<Widget>.generate(books.length, (int index) {
-        final LibraryBookListItemViewData book = books[index];
-        return Column(
-          children: <Widget>[
-            LibraryBookListItem(
-              data: book,
-              onOpen: () => onOpenBook(book),
-              onMore: onBookMore == null ? null : () => onBookMore!(book),
-              presentation: presentation,
+      children: List<Widget>.generate(
+        books.length,
+        (int index) => _LibraryBookListRow(
+          book: books[index],
+          onOpenBook: onOpenBook,
+          onBookMore: onBookMore,
+          presentation: presentation,
+          showDivider: showDividers && index < books.length - 1,
+          dividerColor: tokens.divider,
+        ),
+      ),
+    );
+  }
+}
+
+/// A lazily built sliver version of [LibraryBookList].
+///
+/// It preserves the compact row visual contract while avoiding construction of
+/// offscreen rows in long scrolling surfaces.
+class LibraryBookSliverList extends StatelessWidget {
+  /// Creates a sliver list from display-ready book rows and explicit callbacks.
+  LibraryBookSliverList({
+    required Iterable<LibraryBookListItemViewData> books,
+    required this.onOpenBook,
+    this.onBookMore,
+    this.presentation = LibraryBookListPresentation.recentUpdates,
+    this.showDividers = true,
+    super.key,
+  }) : books = List<LibraryBookListItemViewData>.unmodifiable(books);
+
+  final List<LibraryBookListItemViewData> books;
+  final ValueChanged<LibraryBookListItemViewData> onOpenBook;
+  final ValueChanged<LibraryBookListItemViewData>? onBookMore;
+  final LibraryBookListPresentation presentation;
+  final bool showDividers;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppThemeTokens tokens = AppThemeTokens.of(context);
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (BuildContext context, int index) => _LibraryBookListRow(
+          book: books[index],
+          onOpenBook: onOpenBook,
+          onBookMore: onBookMore,
+          presentation: presentation,
+          showDivider: showDividers && index < books.length - 1,
+          dividerColor: tokens.divider,
+        ),
+        childCount: books.length,
+      ),
+    );
+  }
+}
+
+class _LibraryBookListRow extends StatelessWidget {
+  const _LibraryBookListRow({
+    required this.book,
+    required this.onOpenBook,
+    required this.onBookMore,
+    required this.presentation,
+    required this.showDivider,
+    required this.dividerColor,
+  });
+
+  final LibraryBookListItemViewData book;
+  final ValueChanged<LibraryBookListItemViewData> onOpenBook;
+  final ValueChanged<LibraryBookListItemViewData>? onBookMore;
+  final LibraryBookListPresentation presentation;
+  final bool showDivider;
+  final Color dividerColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: <Widget>[
+        LibraryBookListItem(
+          data: book,
+          onOpen: () => onOpenBook(book),
+          onMore: onBookMore == null ? null : () => onBookMore!(book),
+          presentation: presentation,
+        ),
+        if (showDivider)
+          Padding(
+            padding: const EdgeInsets.only(
+              left:
+                  AppSpacing.listCoverWidth +
+                  AppSpacing.compact +
+                  AppSpacing.unit,
             ),
-            if (showDividers && index < books.length - 1)
-              Padding(
-                padding: const EdgeInsets.only(
-                  left:
-                      AppSpacing.listCoverWidth +
-                      AppSpacing.compact +
-                      AppSpacing.unit,
-                ),
-                child: Divider(height: 1, thickness: 1, color: tokens.divider),
-              ),
-          ],
-        );
-      }),
+            child: Divider(height: 1, thickness: 1, color: dividerColor),
+          ),
+      ],
     );
   }
 }
@@ -147,6 +217,8 @@ class LibraryBookListItem extends StatelessWidget {
                 LibraryBookCover(
                   title: data.title,
                   variant: data.coverVariant,
+                  coverUrl: data.coverUrl,
+                  assetPath: data.coverAssetPath,
                   width: AppSpacing.listCoverWidth,
                   height: AppSpacing.listCoverHeight,
                 ),

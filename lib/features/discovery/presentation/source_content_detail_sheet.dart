@@ -19,21 +19,40 @@ typedef SourceTextChapterRequested =
 
 typedef SourceExternalUrlLauncher = Future<bool> Function(Uri url);
 
+typedef SourceShelfSaveRequested =
+    Future<void> Function(PluginContentSummary content);
+
+/// Whether this detail is being viewed from discovery or the local shelf.
+enum SourceDetailShelfState { canAdd, alreadyAdded }
+
 Future<void> showSourceContentDetailSheet(
   BuildContext context, {
   required SourceContentGateway gateway,
   required String pluginId,
   required String id,
+  PluginContentSummary? initialContent,
+  PluginChaptersResult? initialCatalog,
+  String? initialSourceName,
+  Iterable<PluginContentSummary> relatedContents =
+      const <PluginContentSummary>[],
   SourceTextChapterRequested? onTextChapterRequested,
+  SourceShelfSaveRequested? onAddToShelf,
+  SourceDetailShelfState shelfState = SourceDetailShelfState.canAdd,
   SourceExternalUrlLauncher? onExternalUrlRequested,
 }) {
-  final detailFuture = _loadDetail(gateway, pluginId, id);
   return Navigator.of(context).push<void>(
     MaterialPageRoute<void>(
       builder: (_) => _SourceDetailScreen(
-        detailFuture: detailFuture,
         gateway: gateway,
+        pluginId: pluginId,
+        id: id,
+        initialContent: initialContent,
+        initialCatalog: initialCatalog,
+        initialSourceName: initialSourceName,
+        relatedContents: relatedContents,
         onTextChapterRequested: onTextChapterRequested,
+        onAddToShelf: onAddToShelf,
+        shelfState: shelfState,
         onExternalUrlRequested: onExternalUrlRequested ?? _launchSystemBrowser,
       ),
     ),
@@ -63,57 +82,180 @@ final class _SourceDetailBundle {
   final PluginChaptersResult chapters;
 }
 
-class _SourceDetailScreen extends StatelessWidget {
+PluginContentDetail _previewDetail({
+  required String pluginId,
+  required PluginContentSummary content,
+  required String? sourceName,
+}) => PluginContentDetail(
+  pluginId: pluginId,
+  sourceName: sourceName ?? '当前来源',
+  summary: content,
+  aliases: const <String>[],
+  catalogUrl: content.url,
+);
+
+PluginChaptersResult _emptyChapters({
+  required String pluginId,
+  required String? sourceName,
+}) => PluginChaptersResult(
+  pluginId: pluginId,
+  sourceName: sourceName ?? '当前来源',
+  items: const <PluginChapterSummary>[],
+  nextCursor: null,
+  totalCount: null,
+);
+
+class _SourceDetailScreen extends StatefulWidget {
   const _SourceDetailScreen({
-    required this.detailFuture,
     required this.gateway,
+    required this.pluginId,
+    required this.id,
+    required this.initialContent,
+    required this.initialCatalog,
+    required this.initialSourceName,
+    required this.relatedContents,
     required this.onTextChapterRequested,
+    required this.onAddToShelf,
+    required this.shelfState,
     required this.onExternalUrlRequested,
   });
-  final Future<_SourceDetailBundle> detailFuture;
   final SourceContentGateway gateway;
+  final String pluginId;
+  final String id;
+  final PluginContentSummary? initialContent;
+  final PluginChaptersResult? initialCatalog;
+  final String? initialSourceName;
+  final Iterable<PluginContentSummary> relatedContents;
   final SourceTextChapterRequested? onTextChapterRequested;
+  final SourceShelfSaveRequested? onAddToShelf;
+  final SourceDetailShelfState shelfState;
   final SourceExternalUrlLauncher onExternalUrlRequested;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(
-      child: FutureBuilder<_SourceDetailBundle>(
-        future: detailFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return Center(
-              child: Semantics(
-                label: '正在加载内容详情与目录',
-                child: CircularProgressIndicator(),
+  State<_SourceDetailScreen> createState() => _SourceDetailScreenState();
+}
+
+class _SourceDetailScreenState extends State<_SourceDetailScreen> {
+  late final Future<_SourceDetailBundle> _detailFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    // Start the request after the route is mounted so FutureBuilder attaches
+    // its error handler before a synchronous source failure can surface as an
+    // uncaught framework error.
+    _detailFuture = _loadDetail(widget.gateway, widget.pluginId, widget.id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final _SourceDetailBundle? previewBundle = widget.initialContent == null
+        ? null
+        : _SourceDetailBundle(
+            detail: _previewDetail(
+              pluginId: widget.pluginId,
+              content: widget.initialContent!,
+              sourceName: widget.initialSourceName,
+            ),
+            chapters:
+                widget.initialCatalog ??
+                _emptyChapters(
+                  pluginId: widget.pluginId,
+                  sourceName: widget.initialSourceName,
+                ),
+          );
+    return Scaffold(
+      body: SafeArea(
+        child: FutureBuilder<_SourceDetailBundle>(
+          future: _detailFuture,
+          initialData: previewBundle,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              if (snapshot.hasData) {
+                return AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 260),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  child: _SourceDetailView(
+                    key: const ValueKey<String>('source-detail-preview'),
+                    bundle: snapshot.requireData,
+                    gateway: widget.gateway,
+                    relatedContents: widget.relatedContents,
+                    isRefreshing: true,
+                    onTextChapterRequested: widget.onTextChapterRequested,
+                    onAddToShelf: widget.onAddToShelf,
+                    shelfState: widget.shelfState,
+                    onExternalUrlRequested: widget.onExternalUrlRequested,
+                  ),
+                );
+              }
+              return Center(
+                child: Semantics(
+                  label: '正在加载内容详情与目录',
+                  child: CircularProgressIndicator(),
+                ),
+              );
+            }
+            if (snapshot.hasError) {
+              if (previewBundle != null) {
+                return _SourceDetailView(
+                  key: const ValueKey<String>('source-detail-preview-error'),
+                  bundle: previewBundle,
+                  gateway: widget.gateway,
+                  relatedContents: widget.relatedContents,
+                  isRefreshing: false,
+                  onTextChapterRequested: widget.onTextChapterRequested,
+                  onAddToShelf: widget.onAddToShelf,
+                  shelfState: widget.shelfState,
+                  onExternalUrlRequested: widget.onExternalUrlRequested,
+                );
+              }
+              return _DetailFailure(
+                error: AppError.fromUnknown(snapshot.error!),
+              );
+            }
+            return AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              child: _SourceDetailView(
+                key: const ValueKey<String>('source-detail-loaded'),
+                bundle: snapshot.requireData,
+                gateway: widget.gateway,
+                relatedContents: widget.relatedContents,
+                isRefreshing: false,
+                onTextChapterRequested: widget.onTextChapterRequested,
+                onAddToShelf: widget.onAddToShelf,
+                shelfState: widget.shelfState,
+                onExternalUrlRequested: widget.onExternalUrlRequested,
               ),
             );
-          }
-          if (snapshot.hasError) {
-            return _DetailFailure(error: AppError.fromUnknown(snapshot.error!));
-          }
-          return _SourceDetailView(
-            bundle: snapshot.requireData,
-            gateway: gateway,
-            onTextChapterRequested: onTextChapterRequested,
-            onExternalUrlRequested: onExternalUrlRequested,
-          );
-        },
+          },
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _SourceDetailView extends StatefulWidget {
   const _SourceDetailView({
     required this.bundle,
     required this.gateway,
+    required this.relatedContents,
+    required this.isRefreshing,
     required this.onTextChapterRequested,
+    required this.onAddToShelf,
+    required this.shelfState,
     required this.onExternalUrlRequested,
+    super.key,
   });
   final _SourceDetailBundle bundle;
   final SourceContentGateway gateway;
+  final Iterable<PluginContentSummary> relatedContents;
+  final bool isRefreshing;
   final SourceTextChapterRequested? onTextChapterRequested;
+  final SourceShelfSaveRequested? onAddToShelf;
+  final SourceDetailShelfState shelfState;
   final SourceExternalUrlLauncher onExternalUrlRequested;
 
   @override
@@ -124,7 +266,9 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
   late final List<PluginChapterSummary> _chapters;
   late String? _nextCursor;
   late int? _totalCount;
+  late SourceDetailShelfState _shelfState;
   bool _isLoadingMore = false;
+  bool _isSavingToShelf = false;
 
   @override
   void initState() {
@@ -132,6 +276,44 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
     _chapters = List<PluginChapterSummary>.of(widget.bundle.chapters.items);
     _nextCursor = widget.bundle.chapters.nextCursor;
     _totalCount = widget.bundle.chapters.totalCount;
+    _shelfState = widget.shelfState;
+  }
+
+  @override
+  void didUpdateWidget(covariant _SourceDetailView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_isSavingToShelf &&
+        oldWidget.shelfState != widget.shelfState &&
+        widget.shelfState == SourceDetailShelfState.alreadyAdded) {
+      _shelfState = widget.shelfState;
+    }
+  }
+
+  Future<void> _saveToShelf(PluginContentSummary content) async {
+    final save = widget.onAddToShelf;
+    if (save == null ||
+        _isSavingToShelf ||
+        _shelfState == SourceDetailShelfState.alreadyAdded) {
+      return;
+    }
+    setState(() => _isSavingToShelf = true);
+    try {
+      await save(content);
+      if (!mounted) return;
+      setState(() {
+        _isSavingToShelf = false;
+        _shelfState = SourceDetailShelfState.alreadyAdded;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已加入书架。')));
+    } on Object {
+      if (!mounted) return;
+      setState(() => _isSavingToShelf = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('暂时无法加入书架，请稍后重试。')));
+    }
   }
 
   Future<void> _loadMore() async {
@@ -175,7 +357,13 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
       ),
     ),
     gateway: widget.gateway,
+    relatedContents: widget.relatedContents,
+    isRefreshing: widget.isRefreshing,
     onTextChapterRequested: widget.onTextChapterRequested,
+    onAddToShelf: widget.onAddToShelf,
+    shelfState: _shelfState,
+    isSavingToShelf: _isSavingToShelf,
+    onSaveToShelf: _saveToShelf,
     onExternalUrlRequested: widget.onExternalUrlRequested,
     isLoadingMore: _isLoadingMore,
     onLoadMore: _nextCursor == null ? null : _loadMore,
@@ -186,7 +374,13 @@ class _SourceDetailBody extends StatelessWidget {
   const _SourceDetailBody({
     required this.bundle,
     required this.gateway,
+    required this.relatedContents,
+    required this.isRefreshing,
     required this.onTextChapterRequested,
+    required this.onAddToShelf,
+    required this.shelfState,
+    required this.isSavingToShelf,
+    required this.onSaveToShelf,
     required this.onExternalUrlRequested,
     required this.isLoadingMore,
     required this.onLoadMore,
@@ -194,7 +388,13 @@ class _SourceDetailBody extends StatelessWidget {
 
   final _SourceDetailBundle bundle;
   final SourceContentGateway gateway;
+  final Iterable<PluginContentSummary> relatedContents;
+  final bool isRefreshing;
   final SourceTextChapterRequested? onTextChapterRequested;
+  final SourceShelfSaveRequested? onAddToShelf;
+  final SourceDetailShelfState shelfState;
+  final bool isSavingToShelf;
+  final ValueChanged<PluginContentSummary> onSaveToShelf;
   final SourceExternalUrlLauncher onExternalUrlRequested;
   final bool isLoadingMore;
   final VoidCallback? onLoadMore;
@@ -211,13 +411,44 @@ class _SourceDetailBody extends StatelessWidget {
     final labels = <String>{
       ...content.categories,
       ...content.tags,
-    }.toList(growable: false);
+    }.take(3).toList(growable: false);
+    final attributes = _displayAttributes(
+      content.attributes,
+    ).toList(growable: false);
+    final recommendations = relatedContents
+        .where((item) => item.id != content.id)
+        .take(5)
+        .toList(growable: false);
     return ListView(
       key: const Key('source-content-detail-sheet'),
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, AppSpacing.page),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
       children: <Widget>[
         _DetailHeader(sourceUrl: content.url, onOpenUrl: _openUrl),
-        const SizedBox(height: AppSpacing.regular),
+        if (isRefreshing)
+          Padding(
+            padding: const EdgeInsets.only(top: 2, bottom: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: tokens.accent,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '正在补充详情…',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: tokens.mutedText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 20),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -233,10 +464,10 @@ class _SourceDetailBody extends StatelessWidget {
                 coverUrl: content.coverUrl,
                 variant: _coverVariant(content.id),
                 width: 112,
-                height: 158,
+                height: 174,
               ),
             ),
-            const SizedBox(width: AppSpacing.regular),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -246,12 +477,12 @@ class _SourceDetailBody extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleLarge?.copyWith(
-                      fontSize: 30,
+                      fontSize: 24,
                       fontWeight: FontWeight.w700,
-                      height: 1.18,
+                      height: 1.15,
                     ),
                   ),
-                  const SizedBox(height: AppSpacing.compact),
+                  const SizedBox(height: 12),
                   Row(
                     children: <Widget>[
                       Icon(
@@ -267,25 +498,26 @@ class _SourceDetailBody extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodyLarge?.copyWith(
                             color: tokens.mutedText,
+                            fontSize: 16,
                           ),
                         ),
                       ),
                     ],
                   ),
                   if (labels.isNotEmpty) ...<Widget>[
-                    const SizedBox(height: AppSpacing.regular),
+                    const SizedBox(height: 14),
                     Wrap(
-                      spacing: AppSpacing.compact,
-                      runSpacing: AppSpacing.unit,
+                      spacing: 10,
+                      runSpacing: 6,
                       children: labels
                           .map((value) => _DetailTag(label: value))
                           .toList(growable: false),
                     ),
                   ],
-                  const SizedBox(height: AppSpacing.regular),
-                  Divider(color: tokens.divider),
+                  const SizedBox(height: 14),
+                  Divider(color: tokens.divider, height: 1),
                   _DetailStats(content: content),
-                  Divider(color: tokens.divider),
+                  Divider(color: tokens.divider, height: 1),
                   _ExternalRow(
                     key: const Key('source-detail-source-url'),
                     label: '来源频道：${detail.sourceName}',
@@ -297,21 +529,44 @@ class _SourceDetailBody extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: AppSpacing.regular),
+        const SizedBox(height: 24),
         Row(
           children: <Widget>[
             Expanded(
               child: OutlinedButton.icon(
                 key: const Key('source-detail-add-shelf'),
-                onPressed: () => ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('书架保存功能尚未接入此书源。'))),
-                icon: const Icon(Icons.library_add_outlined),
-                label: const Text('加入书架'),
+                onPressed: shelfState == SourceDetailShelfState.alreadyAdded
+                    ? () => ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(const SnackBar(content: Text('此书已在书架中。')))
+                    : onAddToShelf == null
+                    ? () => ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('书架保存功能尚未接入此书源。')),
+                      )
+                    : isSavingToShelf
+                    ? null
+                    : () => onSaveToShelf(content),
+                icon: Icon(
+                  shelfState == SourceDetailShelfState.alreadyAdded
+                      ? Icons.bookmark_added_outlined
+                      : isSavingToShelf
+                      ? Icons.hourglass_top_rounded
+                      : Icons.library_add_outlined,
+                ),
+                label: Text(
+                  shelfState == SourceDetailShelfState.alreadyAdded
+                      ? '已在书架'
+                      : isSavingToShelf
+                      ? '正在加入…'
+                      : '加入书架',
+                ),
                 style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
+                  minimumSize: const Size.fromHeight(54),
                   foregroundColor: tokens.accent,
                   side: BorderSide(color: tokens.accent),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
               ),
             ),
@@ -332,17 +587,20 @@ class _SourceDetailBody extends StatelessWidget {
                         ),
                       ),
                 style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
+                  minimumSize: const Size.fromHeight(54),
                   backgroundColor: tokens.accent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
                 child: const Text('开始阅读'),
               ),
             ),
           ],
         ),
-        const SizedBox(height: AppSpacing.section),
-        Divider(color: tokens.divider),
-        const SizedBox(height: AppSpacing.comfortable),
+        const SizedBox(height: 28),
+        Divider(color: tokens.divider, height: 1),
+        const SizedBox(height: 24),
         Text(
           '简介',
           style: theme.textTheme.titleLarge?.copyWith(
@@ -351,31 +609,37 @@ class _SourceDetailBody extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.compact),
         Text(
-          content.description ?? '该书源未提供简介。',
-          style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText),
+          content.description ?? '正在获取作品简介…',
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: tokens.mutedText,
+            fontSize: 16,
+            height: 1.65,
+          ),
         ),
-        if (_displayAttributes(content.attributes).isNotEmpty) ...<Widget>[
-          const SizedBox(height: AppSpacing.regular),
+        if (attributes.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 14),
           Wrap(
-            spacing: AppSpacing.compact,
-            runSpacing: AppSpacing.unit,
-            children: _displayAttributes(content.attributes)
-                .map(
-                  (value) => _DetailTag(label: '${value.label}：${value.value}'),
-                )
+            spacing: 10,
+            runSpacing: 6,
+            children: attributes
+                .map((value) => _DetailTag(label: value.value))
                 .toList(growable: false),
           ),
         ],
-        const SizedBox(height: AppSpacing.section),
-        Divider(color: tokens.divider),
+        const SizedBox(height: 24),
+        Divider(color: tokens.divider, height: 1),
         if (content.latestChapter != null)
           _ExternalRow(
             key: const Key('source-detail-latest-chapter-url'),
             title: '最新章节',
             label: content.latestChapter!.title,
-            subtitle: content.latestChapter!.updatedAt == null
-                ? null
-                : _formatDateTime(content.latestChapter!.updatedAt!),
+            subtitle:
+                _attributeValue(content.attributes, 'discoveryUpdatedLabel') ??
+                (content.latestChapter!.updatedAt == null
+                    ? null
+                    : _formatDateTime(content.latestChapter!.updatedAt!)),
             url: content.latestChapter!.url,
             onOpenUrl: _openUrl,
           ),
@@ -386,8 +650,77 @@ class _SourceDetailBody extends StatelessWidget {
           url: detail.catalogUrl ?? content.url,
           onOpenUrl: _openUrl,
         ),
-        const SizedBox(height: AppSpacing.section),
-        Divider(color: tokens.divider),
+        if (recommendations.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 24),
+          Divider(color: tokens.divider, height: 1),
+          const SizedBox(height: 22),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  '猜你喜欢',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Text('换一换', style: theme.textTheme.bodyMedium),
+              const SizedBox(width: 4),
+              Icon(Icons.refresh_rounded, size: 18, color: tokens.mutedText),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 144,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: recommendations
+                  .map(
+                    (item) => SizedBox(
+                      width: 58,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: _RecommendationCard(content: item),
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Material(
+            color: tokens.accentSoft.withValues(alpha: .52),
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () {},
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text('查看书友评论', style: theme.textTheme.bodyLarge),
+                    ),
+                    Text(
+                      '4.2万条评论',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: tokens.mutedText,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(Icons.chevron_right_rounded, color: tokens.mutedText),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 28),
+        Divider(color: tokens.divider, height: 1),
+        const SizedBox(height: 20),
         Text(
           '目录',
           style: theme.textTheme.titleLarge?.copyWith(
@@ -441,6 +774,7 @@ class _SourceDetailBody extends StatelessWidget {
       context,
     ).showSnackBar(const SnackBar(content: Text('无法调用系统浏览器打开该链接。')));
   }
+
 }
 
 class _DetailHeader extends StatelessWidget {
@@ -449,7 +783,7 @@ class _DetailHeader extends StatelessWidget {
   final Future<void> Function(BuildContext context, Uri? url) onOpenUrl;
   @override
   Widget build(BuildContext context) => SizedBox(
-    height: 48,
+    height: 52,
     child: Row(
       children: <Widget>[
         IconButton(
@@ -483,24 +817,33 @@ class _DetailStats extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final rating = _attributeValue(content.attributes, 'rating');
+    final ratingCount = _attributeValue(content.attributes, 'ratingCount');
     final heat = _attributeValue(content.attributes, 'heat');
     final favorites = _attributeValue(content.attributes, 'favorites');
+    final firstLabel = rating != null
+        ? '${ratingCount ?? ''}人评分'
+        : heat == null
+        ? '字数'
+        : favorites == null
+        ? '热度'
+        : '热度 · 收藏 $favorites';
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.comfortable),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         children: <Widget>[
           _Stat(
-            value: heat ?? _legacyWordCount(content.wordCount),
-            label: heat == null
-                ? '字数'
-                : favorites == null
-                ? '热度'
-                : '热度 · 收藏 $favorites',
+            value: rating ?? heat ?? _legacyWordCount(content.wordCount),
+            label: firstLabel,
+            suffix: rating == null ? null : '★★★★★',
           ),
-          _Stat(value: _wordCount(content.wordCount), label: '字数'),
+          _Stat(
+            value: _wordCount(content.wordCount),
+            label: content.wordCount == null ? '字数' : '万字',
+          ),
           _Stat(
             value: _chapterCount(content.chapterCount),
-            label: '章节 · ${_statusLabel(content.status)}',
+            label: _statusLabel(content.status),
           ),
         ],
       ),
@@ -509,28 +852,88 @@ class _DetailStats extends StatelessWidget {
 }
 
 class _Stat extends StatelessWidget {
-  const _Stat({required this.value, required this.label});
+  const _Stat({required this.value, required this.label, this.suffix});
   final String value;
   final String label;
+  final String? suffix;
   @override
   Widget build(BuildContext context) => Expanded(
     child: Column(
       children: <Widget>[
-        Text(
-          value,
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Flexible(
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            if (suffix != null)
+              Text(
+                suffix!,
+                maxLines: 1,
+                style: TextStyle(
+                  color: AppThemeTokens.of(context).accent,
+                  fontSize: 11,
+                  letterSpacing: -1,
+                ),
+              ),
+          ],
         ),
-        const SizedBox(height: AppSpacing.unit),
+        const SizedBox(height: 3),
         Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: AppThemeTokens.of(context).mutedText,
+            fontSize: 11,
           ),
         ),
       ],
     ),
+  );
+}
+
+class _RecommendationCard extends StatelessWidget {
+  const _RecommendationCard({required this.content});
+
+  final PluginContentSummary content;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      DiscoveryBookCover(
+        title: content.title,
+        coverUrl: content.coverUrl,
+        variant: _coverVariant(content.id),
+        width: 58,
+        height: 84,
+      ),
+      const SizedBox(height: 6),
+      Text(
+        content.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.bodyMedium,
+      ),
+      const SizedBox(height: 2),
+      Text(
+        content.author ?? '作者未知',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: AppThemeTokens.of(context).mutedText,
+        ),
+      ),
+    ],
   );
 }
 
@@ -781,7 +1184,12 @@ String? _attributeValue(
 Iterable<PluginContentAttribute> _displayAttributes(
   Iterable<PluginContentAttribute> attributes,
 ) => attributes.where(
-  (attribute) => attribute.key != 'heat' && attribute.key != 'favorites',
+  (attribute) =>
+      attribute.key != 'heat' &&
+      attribute.key != 'favorites' &&
+      attribute.key != 'rating' &&
+      attribute.key != 'ratingCount' &&
+      attribute.key != 'discoveryUpdatedLabel',
 );
 
 String _formatDateTime(DateTime value) {

@@ -30,11 +30,11 @@ class LibrarySourceManagerCard extends StatelessWidget {
     )!;
     final String? sourceLabel = sourceCount == null
         ? null
-        : '${sourceCount!} 个可用书源';
+        : '${sourceCount!} 个可用数据源';
 
     return Semantics(
       button: true,
-      label: sourceLabel == null ? '管理我的书源' : '管理我的书源，$sourceLabel',
+      label: sourceLabel == null ? '管理数据源' : '管理数据源，$sourceLabel',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -58,7 +58,7 @@ class LibrarySourceManagerCard extends StatelessWidget {
                     const SizedBox(width: AppSpacing.comfortable),
                     Expanded(
                       child: Text(
-                        '管理我的书源',
+                        '管理数据源',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontSize: 14,
                           fontWeight: FontWeight.w400,

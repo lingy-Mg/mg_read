@@ -23,141 +23,153 @@ class LibraryContinueReadingCard extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
 
-    return Semantics(
-      container: true,
-      label: '继续阅读，${data.title}，${data.chapter}',
-      child: DecoratedBox(
-        decoration: BoxDecoration(borderRadius: AppRadii.card),
-        child: ClipRRect(
-          borderRadius: AppRadii.card,
-          child: Stack(
-            children: <Widget>[
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: <Color>[
-                        tokens.featureSurface,
-                        tokens.surface.withValues(alpha: 0.94),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: CustomPaint(
-                    painter: _ContinueReadingTexturePainter(
-                      color: tokens.accent.withValues(alpha: 0.07),
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.compactPagePadding,
-                  vertical: AppSpacing.continueReadingVerticalPadding,
-                ),
-                child: LayoutBuilder(
-                  builder: (BuildContext context, BoxConstraints constraints) {
-                    final bool stacked =
-                        constraints.maxWidth <
-                        AppSpacing.compactCardStackBreakpoint;
-                    final Widget cover = LibraryBookCover(
-                      title: data.title,
-                      variant: data.coverVariant,
-                      width: AppSpacing.continueReadingCoverWidth,
-                      height: AppSpacing.continueReadingCoverHeight,
-                    );
-                    final Widget details = SizedBox(
-                      height: AppSpacing.continueReadingCoverHeight,
-                      child: _ContinueReadingDetails(
-                        data: data,
-                        onContinueReading: onContinueReading,
+    return SizedBox(
+      width: double.infinity,
+      child: Semantics(
+        container: true,
+        label: '继续阅读，${data.title}，${data.chapter}',
+        child: DecoratedBox(
+          decoration: BoxDecoration(borderRadius: AppRadii.card),
+          child: ClipRRect(
+            borderRadius: AppRadii.card,
+            child: Stack(
+              children: <Widget>[
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: <Color>[
+                          tokens.featureSurface,
+                          tokens.surface.withValues(alpha: 0.94),
+                        ],
                       ),
-                    );
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _ContinueReadingTexturePainter(
+                        color: tokens.accent.withValues(alpha: 0.07),
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.compactPagePadding,
+                    vertical: AppSpacing.continueReadingVerticalPadding,
+                  ),
+                  child: LayoutBuilder(
+                    builder:
+                        (BuildContext context, BoxConstraints constraints) {
+                          final bool stacked =
+                              constraints.maxWidth <
+                              AppSpacing.compactCardStackBreakpoint;
+                          final Widget cover = LibraryBookCover(
+                            title: data.title,
+                            variant: data.coverVariant,
+                            coverUrl: data.coverUrl,
+                            assetPath: data.coverAssetPath,
+                            width: AppSpacing.continueReadingCoverWidth,
+                            height: AppSpacing.continueReadingCoverHeight,
+                          );
+                          final Widget details = SizedBox(
+                            height: AppSpacing.continueReadingCoverHeight,
+                            child: _ContinueReadingDetails(
+                              data: data,
+                              onContinueReading: onContinueReading,
+                            ),
+                          );
 
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        SizedBox(
-                          height: AppSpacing.section + AppSpacing.unit / 2,
-                          child: Row(
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: <Widget>[
-                              Expanded(
-                                child: Text(
-                                  '继续阅读',
-                                  style: theme.textTheme.titleLarge?.copyWith(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w500,
-                                    height: 1.2,
-                                    letterSpacing: -0.1,
-                                  ),
-                                ),
-                              ),
-                              TextButton(
-                                onPressed: onReadingHistory,
-                                style: TextButton.styleFrom(
-                                  backgroundColor: tokens.surface.withValues(
-                                    alpha: 0.52,
-                                  ),
-                                  foregroundColor: tokens.warning,
-                                  minimumSize: Size.zero,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal:
-                                        AppSpacing.unit + AppSpacing.unit / 2,
-                                    vertical: AppSpacing.unit,
-                                  ),
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  shape: const StadiumBorder(),
-                                ),
+                              SizedBox(
+                                height:
+                                    AppSpacing.section + AppSpacing.unit / 2,
                                 child: Row(
-                                  mainAxisSize: MainAxisSize.min,
                                   children: <Widget>[
-                                    Text(
-                                      '阅读记录',
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: tokens.warning,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w400,
-                                            height: 1,
-                                          ),
+                                    Expanded(
+                                      child: Text(
+                                        '继续阅读',
+                                        style: theme.textTheme.titleLarge
+                                            ?.copyWith(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w500,
+                                              height: 1.2,
+                                              letterSpacing: -0.1,
+                                            ),
+                                      ),
                                     ),
-                                    const SizedBox(width: AppSpacing.unit / 2),
-                                    const Icon(
-                                      Icons.chevron_right_rounded,
-                                      size: 14,
+                                    TextButton(
+                                      onPressed: onReadingHistory,
+                                      style: TextButton.styleFrom(
+                                        backgroundColor: tokens.surface
+                                            .withValues(alpha: 0.52),
+                                        foregroundColor: tokens.warning,
+                                        minimumSize: Size.zero,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal:
+                                              AppSpacing.unit +
+                                              AppSpacing.unit / 2,
+                                          vertical: AppSpacing.unit,
+                                        ),
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                        shape: const StadiumBorder(),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: <Widget>[
+                                          Text(
+                                            '阅读记录',
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color: tokens.warning,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w400,
+                                                  height: 1,
+                                                ),
+                                          ),
+                                          const SizedBox(
+                                            width: AppSpacing.unit / 2,
+                                          ),
+                                          const Icon(
+                                            Icons.chevron_right_rounded,
+                                            size: 14,
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
+                              const SizedBox(height: AppSpacing.compact),
+                              if (stacked) ...<Widget>[
+                                Center(child: cover),
+                                const SizedBox(height: AppSpacing.regular),
+                                details,
+                              ] else
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    cover,
+                                    const SizedBox(
+                                      width: AppSpacing.comfortable,
+                                    ),
+                                    Expanded(child: details),
+                                  ],
+                                ),
                             ],
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.compact),
-                        if (stacked) ...<Widget>[
-                          Center(child: cover),
-                          const SizedBox(height: AppSpacing.regular),
-                          details,
-                        ] else
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              cover,
-                              const SizedBox(width: AppSpacing.comfortable),
-                              Expanded(child: details),
-                            ],
-                          ),
-                      ],
-                    );
-                  },
+                          );
+                        },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

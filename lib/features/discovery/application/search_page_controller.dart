@@ -27,6 +27,7 @@ class SearchPageController extends Notifier<SearchPageState> {
   }
 
   Future<void> retrySources() {
+    ref.invalidate(availablePluginSourcesProvider);
     final generation = ++_latestGeneration;
     return _loadSources(generation);
   }
@@ -91,7 +92,7 @@ class SearchPageController extends Notifier<SearchPageState> {
   Future<void> _loadSources(int generation) async {
     state = SearchPageState.loadingSources();
     try {
-      final sources = await _gateway.listSources();
+      final sources = await ref.read(availablePluginSourcesProvider.future);
       if (!_isCurrent(generation)) return;
       state = SearchPageState.ready(
         sources: sources,

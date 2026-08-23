@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -23,6 +24,7 @@ final class AppPersistence {
   final ContentObjectStore contentObjects;
   final FileObjectStore fileObjects;
   final DiagnosticsManager? _diagnostics;
+  Future<void>? _closeFuture;
 
   static Future<AppPersistence> open({
     required Directory dataRoot,
@@ -82,7 +84,9 @@ final class AppPersistence {
     );
   }
 
-  Future<void> close() {
+  Future<void> close() => _closeFuture ??= _beginClose();
+
+  Future<void> _beginClose() async {
     Future<void> closeStores() async {
       await contentObjects.close();
       await fileObjects.close();
@@ -90,8 +94,11 @@ final class AppPersistence {
     }
 
     final diagnostics = _diagnostics;
-    if (diagnostics == null || diagnostics.isClosed) return closeStores();
-    return diagnostics.runSpan<void>(
+    if (diagnostics == null || diagnostics.isClosed) {
+      await closeStores();
+      return;
+    }
+    await diagnostics.runSpan<void>(
       AppDiagnosticEvents.persistenceClose,
       (_) => closeStores(),
       startAttributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
@@ -114,7 +121,7 @@ final class ContentObjectStore {
   final _ContentDatabase _database;
   final String databasePath;
   final DiagnosticsManager? _diagnostics;
-  bool _closed = false;
+  final _StoreLifecycleGate _lifecycle = _StoreLifecycleGate();
   bool get usesBackgroundExecutor => true;
   static Future<ContentObjectStore> open(
     Directory root, {
@@ -156,8 +163,7 @@ final class ContentObjectStore {
     bytes: (result) => result?.byteLength,
   );
 
-  Future<void> close() {
-    if (_closed) return Future<void>.value();
+  Future<void> close() => _lifecycle.close(() {
     final diagnostics = _diagnostics;
     if (diagnostics == null || diagnostics.isClosed) return _close();
     return diagnostics.runSpan<void>(
@@ -168,7 +174,7 @@ final class ContentObjectStore {
       errorAttributes: (_) =>
           _storeAttributes('contentObjects', errorCode: 'close_failed'),
     );
-  }
+  });
 
   Future<StoredContentObject> _put({
     required String objectId,
@@ -222,13 +228,11 @@ final class ContentObjectStore {
   }
 
   Future<void> _close() async {
-    if (_closed) return;
-    _closed = true;
     await _database.close();
   }
 
   void _ensureOpen() {
-    if (_closed) throw StateError('ContentObjectStore is closed.');
+    _lifecycle.ensureOpen();
   }
 
   Future<T> _instrument<T>({
@@ -239,37 +243,39 @@ final class ContentObjectStore {
     int? Function(T result)? countResult,
     int? Function(T result)? bytes,
   }) {
-    final diagnostics = _diagnostics;
-    if (diagnostics == null || diagnostics.isClosed) return action();
-    return diagnostics.runSpan<T>(
-      AppDiagnosticEvents.persistenceOperation,
-      (span) => _runMeasuredPersistenceAction(
-        diagnostics: diagnostics,
-        span: span,
-        operation: operation,
-        action: action,
-      ),
-      startAttributes: () => _persistenceOperationAttributes(
-        store: 'contentObjects',
-        operation: operation,
-        recordKind: recordKind,
-        count: count,
-      ),
-      successAttributes: (result) => _persistenceOperationAttributes(
-        store: 'contentObjects',
-        operation: operation,
-        recordKind: recordKind,
-        count: countResult?.call(result) ?? count,
-        bytes: bytes?.call(result),
-      ),
-      errorAttributes: (error) => _persistenceOperationAttributes(
-        store: 'contentObjects',
-        operation: operation,
-        recordKind: recordKind,
-        count: count,
-        errorCode: _appPersistenceErrorCode(error),
-      ),
-    );
+    return _lifecycle.run(() {
+      final diagnostics = _diagnostics;
+      if (diagnostics == null || diagnostics.isClosed) return action();
+      return diagnostics.runSpan<T>(
+        AppDiagnosticEvents.persistenceOperation,
+        (span) => _runMeasuredPersistenceAction(
+          diagnostics: diagnostics,
+          span: span,
+          operation: operation,
+          action: action,
+        ),
+        startAttributes: () => _persistenceOperationAttributes(
+          store: 'contentObjects',
+          operation: operation,
+          recordKind: recordKind,
+          count: count,
+        ),
+        successAttributes: (result) => _persistenceOperationAttributes(
+          store: 'contentObjects',
+          operation: operation,
+          recordKind: recordKind,
+          count: countResult?.call(result) ?? count,
+          bytes: bytes?.call(result),
+        ),
+        errorAttributes: (error) => _persistenceOperationAttributes(
+          store: 'contentObjects',
+          operation: operation,
+          recordKind: recordKind,
+          count: count,
+          errorCode: _appPersistenceErrorCode(error),
+        ),
+      );
+    });
   }
 }
 
@@ -291,7 +297,7 @@ final class FileObjectStore {
   FileObjectStore._(this._root, this._diagnostics);
   final Directory _root;
   final DiagnosticsManager? _diagnostics;
-  bool _closed = false;
+  final _StoreLifecycleGate _lifecycle = _StoreLifecycleGate();
   bool get usesBackgroundExecutor => true;
   static Future<FileObjectStore> open(
     Directory root, {
@@ -329,8 +335,7 @@ final class FileObjectStore {
     action: () => _deleteMangaAssets(mangaId),
   );
 
-  Future<void> close() {
-    if (_closed) return Future<void>.value();
+  Future<void> close() => _lifecycle.close(() {
     final diagnostics = _diagnostics;
     if (diagnostics == null || diagnostics.isClosed) return _close();
     return diagnostics.runSpan<void>(
@@ -341,7 +346,7 @@ final class FileObjectStore {
       errorAttributes: (_) =>
           _storeAttributes('fileObjects', errorCode: 'close_failed'),
     );
-  }
+  });
 
   Future<StoredFileObject> _commitBytes({
     required String mangaId,
@@ -385,11 +390,11 @@ final class FileObjectStore {
   }
 
   Future<void> _close() async {
-    _closed = true;
+    return;
   }
 
   void _ensureOpen() {
-    if (_closed) throw StateError('FileObjectStore is closed.');
+    _lifecycle.ensureOpen();
   }
 
   Future<T> _instrument<T>({
@@ -399,39 +404,41 @@ final class FileObjectStore {
     int? byteCount,
     required Future<T> Function() action,
   }) {
-    final diagnostics = _diagnostics;
-    if (diagnostics == null || diagnostics.isClosed) return action();
-    return diagnostics.runSpan<T>(
-      AppDiagnosticEvents.persistenceOperation,
-      (span) => _runMeasuredPersistenceAction(
-        diagnostics: diagnostics,
-        span: span,
-        operation: operation,
-        action: action,
-      ),
-      startAttributes: () => _persistenceOperationAttributes(
-        store: 'fileObjects',
-        operation: operation,
-        recordKind: recordKind,
-        count: count,
-        bytes: byteCount,
-      ),
-      successAttributes: (_) => _persistenceOperationAttributes(
-        store: 'fileObjects',
-        operation: operation,
-        recordKind: recordKind,
-        count: count,
-        bytes: byteCount,
-      ),
-      errorAttributes: (error) => _persistenceOperationAttributes(
-        store: 'fileObjects',
-        operation: operation,
-        recordKind: recordKind,
-        count: count,
-        bytes: byteCount,
-        errorCode: _appPersistenceErrorCode(error),
-      ),
-    );
+    return _lifecycle.run(() {
+      final diagnostics = _diagnostics;
+      if (diagnostics == null || diagnostics.isClosed) return action();
+      return diagnostics.runSpan<T>(
+        AppDiagnosticEvents.persistenceOperation,
+        (span) => _runMeasuredPersistenceAction(
+          diagnostics: diagnostics,
+          span: span,
+          operation: operation,
+          action: action,
+        ),
+        startAttributes: () => _persistenceOperationAttributes(
+          store: 'fileObjects',
+          operation: operation,
+          recordKind: recordKind,
+          count: count,
+          bytes: byteCount,
+        ),
+        successAttributes: (_) => _persistenceOperationAttributes(
+          store: 'fileObjects',
+          operation: operation,
+          recordKind: recordKind,
+          count: count,
+          bytes: byteCount,
+        ),
+        errorAttributes: (error) => _persistenceOperationAttributes(
+          store: 'fileObjects',
+          operation: operation,
+          recordKind: recordKind,
+          count: count,
+          bytes: byteCount,
+          errorCode: _appPersistenceErrorCode(error),
+        ),
+      );
+    });
   }
 }
 
@@ -511,6 +518,53 @@ String _appPersistenceErrorCode(Object error) => switch (error) {
   FileSystemException() => 'file_io_failed',
   _ => 'operation_failed',
 };
+
+/// Prevents a store from closing beneath an operation that already started.
+final class _StoreLifecycleGate {
+  bool _closing = false;
+  bool _closed = false;
+  int _activeOperations = 0;
+  Completer<void>? _idleOperations;
+  Future<void>? _closeFuture;
+
+  Future<T> run<T>(Future<T> Function() action) {
+    if (identical(Zone.current[#storeLifecycleGate], this)) {
+      return action();
+    }
+    if (_closing || _closed) {
+      return Future<T>.error(StateError('Persistence store is closed.'));
+    }
+    _activeOperations++;
+    return runZoned<Future<T>>(
+      () => Future<T>.sync(action).whenComplete(() {
+        _activeOperations--;
+        if (_closing && _activeOperations == 0) {
+          _idleOperations?.complete();
+        }
+      }),
+      zoneValues: <Object?, Object?>{#storeLifecycleGate: this},
+    );
+  }
+
+  Future<void> close(Future<void> Function() action) =>
+      _closeFuture ??= _beginClose(action);
+
+  Future<void> _beginClose(Future<void> Function() action) async {
+    _closing = true;
+    if (_activeOperations != 0) {
+      await (_idleOperations ??= Completer<void>()).future;
+    }
+    await action();
+    _closed = true;
+  }
+
+  void ensureOpen() {
+    if (_closed ||
+        (_closing && !identical(Zone.current[#storeLifecycleGate], this))) {
+      throw StateError('Persistence store is closed.');
+    }
+  }
+}
 
 final class _ContentDatabase extends GeneratedDatabase {
   _ContentDatabase(super.executor);

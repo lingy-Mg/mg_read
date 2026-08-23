@@ -69,6 +69,17 @@ Runtime 会拒绝缺少固定 nullable 键的插件响应。
 插件安装目录只读，可变内容只能写到 `dataDir`/`cacheDir`。资源文件可随插件置于 `assets/` 或
 包内目录，并用 `new URL(..., import.meta.url)` 读取，不能假定 `process.cwd()` 是插件根目录。
 
+### 缓存
+
+缓存仅用于可重复的无副作用远程 GET 展示投影：发现/分类/搜索列表使用 10 分钟刷新窗，详情和
+章节目录使用 1 小时刷新窗。缓存必须在 Runtime 提供的绝对 `ctx.cacheDir` 下建立版本化子目录，
+以规范化请求 SHA-256 为键，单条不超过 1 MiB、插件总量不超过 100 MiB 并按 LRU 淘汰；同键并发
+请求合并，过期后先刷新，刷新失败才使用旧值。必须原子写入，缓存失败视作未命中。
+
+不得缓存正文、漫画/封面等媒体字节、Cookie/凭据/登录态、写操作响应或主应用拥有的业务数据；
+不得从 `cwd` 或其他路径推导缓存位置。完整规则和测试矩阵见
+[标准插件规范](../../docs/architecture/04-plugin-sdk-packaging-registry.md#插件私有缓存规则)。
+
 ## 开发与打包
 
 使用 Node `24.16.0`、npm `11.13.0`：
@@ -78,6 +89,11 @@ npm ci
 npm run verify
 npm run pack:plugin
 ```
+
+在 MgRead monorepo 的 Windows Debug 应用中，模板派生的 `plugins/sources/*` 开发项目直接从
+工作区加载；运行来源自己的 `tsc --watch`/build 更新 `dist/` 后，下一次来源调用会有序重启开发
+Runtime 并使用新代码，不需要 pack、复制或安装。下面的 pack 命令只用于 installed 插件和
+Android 安装测试。
 
 若希望使用讨论中的原样命令，可在这个模板目录执行一次 `npm link`，随后直接运行：
 

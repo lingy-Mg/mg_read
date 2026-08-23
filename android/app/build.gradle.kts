@@ -23,6 +23,28 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // The Android runtime and production devices are arm64-v8a only.
+        // Keeping this in defaultConfig applies it to both debug and release.
+        ndk {
+            abiFilters.add("arm64-v8a")
+        }
+    }
+
+    // The Vulkan validation layer is useful for engine debugging but is not
+    // required by the application itself.
+    packaging {
+        jniLibs {
+            // Compress native libraries to reduce direct APK download size.
+            // Android extracts them during installation.
+            useLegacyPackaging = true
+            excludes += setOf(
+                "**/armeabi-v7a/**",
+                "**/x86/**",
+                "**/x86_64/**",
+                "**/libVkLayer_khronos_validation.so",
+            )
+        }
     }
 
     buildTypes {
@@ -31,6 +53,17 @@ android {
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
+    }
+}
+
+// The Runtime facade declares desktop assets for Windows builds. Flutter's
+// asset bundle is shared across platforms, so remove the Windows-only subtree
+// while copying Flutter assets into Android variants.
+tasks.withType<org.gradle.api.tasks.Copy>().configureEach {
+    if (name.startsWith("copyFlutterAssets")) {
+        exclude(
+            "flutter_assets/packages/mgread_plugin_runtime/assets/runtime/windows-x64/**",
+        )
     }
 }
 

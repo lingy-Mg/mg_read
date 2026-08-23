@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AliceBookHouseSource } from '../dist/source.js';
+import * as plugin from '../dist/index.mjs';
 
 test('list results retain an HTTP(S) cover from the source card', async () => {
   const source = new AliceBookHouseSource(
@@ -113,6 +114,64 @@ test('detail projects real source metadata into the v1 summary fields', async ()
   assert.equal(detail.latestChapter?.updatedAt, '2026-08-10T04:31:00.000Z');
 });
 
+test('discovery hydrates list items with detail metadata and heat', async () => {
+  const source = new AliceBookHouseSource(
+    {
+      dataDir: 'data',
+      cacheDir: 'cache',
+      http: {
+        fetch: async (input) => {
+          const path = new URL(input).pathname;
+          if (path === '/novel/42.html') {
+            return new Response(`
+              <h1 class="novel_title">字段测试书</h1>
+              <div class="pic"><img src="https://cdn.example.com/covers/fields.jpg"></div>
+              <div class="novel_info">
+                <p>作 者：<a href="/search.html?q=test&f=author">字段作者</a></p>
+                <p>分 类：<a href="/lists/71.html">科幻</a></p>
+                <p>热 度：562.3万 · 收 藏：49</p>
+                <p>字 数：185.96万 · 章 节：733</p>
+                <p>状 态：连载中</p>
+                <p>最 新：<a href="/book/42/latest.html">最新章节</a></p>
+              </div>
+              <div class="jianjie"><p>这是分类页应该展示的短简介。</p></div>
+              <div class="tags_list">
+                <a href="/search.html?q=tag-a&f=tag"><em>#</em>标签甲</a>
+                <a href="/search.html?q=tag-b&f=tag"><em>#</em>标签乙</a>
+              </div>
+              <div class="book_newchap"><div class="con"><li><em>更新时间：2026-08-10 12:31</em></li></div></div>
+            `);
+          }
+          return new Response(`
+            <article class="list-group-item">
+              <a href="/novel/42.html">字段测试书</a>
+              <a href="/lists/71.html">科幻</a>
+            </article>
+          `);
+        },
+      },
+      log: { debug() {}, info() {}, warn() {}, error() {} },
+      app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
+      plugin: { id: 'org.mgread.aisishuwu', version: '0.2.0' },
+    },
+    { origin: 'https://www.alicesw.com', categories: [{ id: '71', title: '科幻' }] },
+  );
+
+  const result = await source.discover({
+    target: 'category:71',
+    cursor: null,
+    collectionId: null,
+    pageSize: 20,
+  });
+  assert.equal(result.kind, 'document');
+  const item = result.document.components[0].children[0].items[0];
+  assert.equal(item.content.author, '字段作者');
+  assert.equal(item.content.description, '这是分类页应该展示的短简介。');
+  assert.equal(item.content.chapterCount, 733);
+  assert.deepEqual(item.content.tags, ['标签甲', '标签乙']);
+  assert.deepEqual(item.metric, { label: '热度', value: '562.3万' });
+});
+
 test('catalog returns pages asynchronously without re-fetching a loaded source page', async () => {
   let catalogFetches = 0;
   const source = new AliceBookHouseSource(
@@ -149,4 +208,102 @@ test('catalog returns pages asynchronously without re-fetching a loaded source p
   assert.equal(first.totalCount, 5);
   assert.equal(second.nextCursor, 'catalog-page:1:4');
   assert.equal(catalogFetches, 1);
+});
+
+test('public API completes the opaque content chain with safe diagnostic phases', async () => {
+  const events = [];
+  const secret = 'credential-canary-do-not-log';
+  const chapterBody = 'chapter-body-canary-do-not-log';
+  const list = `
+    <article class="list-group-item">
+      <a href="/novel/42.html">测试书名</a>
+      <a href="/lists/71.html">科幻</a>
+      <img src="https://cdn.example.com/covers/42.jpg">
+    </article>
+  `;
+  await plugin.activate({
+    dataDir: 'data',
+    cacheDir: 'cache',
+    http: {
+      fetch: async (input) => {
+        const url = new URL(input);
+        if (url.pathname === '/search.html' && url.searchParams.get('q') === secret) {
+          return new Response('upstream-response-canary', { status: 503 });
+        }
+        if (url.pathname === '/lists/71.html' || url.pathname === '/search.html') {
+          return new Response(list);
+        }
+        if (url.pathname === '/novel/42.html') {
+          return new Response(`
+            <h1 class="novel_title">测试书名</h1>
+            <div class="novel_info"><p>作 者：<a href="/search.html?f=author">测试作者</a></p></div>
+          `);
+        }
+        if (url.pathname === '/other/chapters/id/42.html') {
+          return new Response('<ul class="mulu_list"><li><a href="/book/42/first.html">第一章</a></li></ul>');
+        }
+        if (url.pathname === '/book/42/first.html') {
+          return new Response(`<h1>第一章</h1><article class="read-content"><p>${chapterBody}</p></article>`);
+        }
+        return new Response('not found', { status: 404 });
+      },
+    },
+    log: {
+      debug: (event) => events.push(event),
+      info: (event) => events.push(event),
+      warn: (event) => events.push(event),
+      error: (event) => events.push(event),
+    },
+    app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
+    plugin: { id: 'org.mgread.aisishuwu', version: '0.2.0' },
+  });
+
+  const categoryPage = await plugin.discover({
+    target: null,
+    cursor: null,
+    collectionId: null,
+    pageSize: 20,
+  });
+  assert.equal(categoryPage.kind, 'document');
+  const categoryCollection = categoryPage.document.components[0].children.find(
+    (component) => component.type === 'categoryCollection',
+  );
+  assert.equal(categoryCollection?.type, 'categoryCollection');
+  const categoryTarget = categoryCollection.categories[0].target;
+  const discovery = await plugin.discover({
+    target: categoryTarget,
+    cursor: null,
+    collectionId: null,
+    pageSize: 5,
+  });
+  assert.equal(discovery.kind, 'document');
+  const contentCollection = discovery.document.components[0].children.find(
+    (component) => component.type === 'contentCollection',
+  );
+  assert.equal(contentCollection?.type, 'contentCollection');
+  const contentId = contentCollection.items[0].content.id;
+  const search = await plugin.search({ query: '测试', cursor: null, pageSize: 5 });
+  const detail = await plugin.getDetail({ id: contentId });
+  const chapters = await plugin.getChapters({ id: contentId, cursor: null, pageSize: 5 });
+  const content = await plugin.getContent({ id: contentId, chapterId: chapters.items[0].id });
+
+  assert.equal(search.items[0].id, contentId);
+  assert.equal(detail.id, contentId);
+  assert.equal(content.chapterId, chapters.items[0].id);
+  assert.equal(content.text, chapterBody);
+  for (const operation of ['discover', 'search', 'get_detail', 'get_chapters', 'get_content']) {
+    assert.ok(events.includes(`source_${operation}_started`));
+    assert.ok(events.includes(`source_${operation}_validated`));
+    assert.ok(events.includes(`source_${operation}_parsed`));
+    assert.ok(events.includes(`source_${operation}_result_ready`));
+    assert.ok(events.includes(`source_${operation}_completed`));
+  }
+  assert.ok(events.includes('source_http_fetch_started'));
+
+  await assert.rejects(
+    plugin.search({ query: secret, cursor: null, pageSize: 5 }),
+    /Source operation failed/u,
+  );
+  assert.ok(events.includes('source_search_failed'));
+  assert.doesNotMatch(events.join('\n'), new RegExp(`${secret}|${chapterBody}`, 'u'));
 });

@@ -5,7 +5,7 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import { mkdir, readdir, stat } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import type { Duplex } from "node:stream";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -85,7 +85,13 @@ const RUNTIME_CONTROL_METHOD = Object.freeze({
   diagnosticsStatisticsGet: "diagnostics.statistics.get.v1",
   hello: "runtime.hello",
   ping: "runtime.ping",
+  status: "runtime.status.v1",
+  pluginsCacheClear: "plugins.cache.clear.v1",
+  pluginsCacheClearAll: "plugins.cache.clearAll.v1",
+  pluginsCacheUsage: "plugins.cache.usage.v1",
+  pluginsInstallationUsage: "plugins.installation.usage.v1",
   pluginsList: "plugins.list.v1",
+  pluginsOpenCodeDirectory: "plugins.openCodeDirectory.v1",
   pluginsSetEnabled: "plugins.setEnabled.v1",
   sourceDiscover: "source.discover.v1",
   sourceSearch: "source.search.v1",
@@ -94,6 +100,75 @@ const RUNTIME_CONTROL_METHOD = Object.freeze({
   sourceGetContent: "source.getContent.v1",
   shutdown: "runtime.shutdown",
 } as const);
+
+interface BundledPluginArchive {
+  readonly path: string;
+  readonly pluginId: string;
+  readonly version: string;
+}
+
+interface BundledPluginMarkers {
+  readonly currentVersion: string | null;
+  readonly disabled: boolean;
+  readonly pendingVersion: string | null;
+  readonly uninstallPending: boolean;
+}
+
+function parseBundledPluginArchive(
+  name: string,
+  root: string,
+): BundledPluginArchive {
+  const match = /^([a-z0-9][a-z0-9.-]*)-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.mgplugin$/.exec(name);
+  if (match === null) {
+    throw new Error("Runtime bundled plugin archive name is invalid.");
+  }
+  return Object.freeze({
+    path: resolve(root, name),
+    pluginId: match[1]!,
+    version: match[2]!,
+  });
+}
+
+async function readBundledPluginMarkers(pluginRoot: string): Promise<BundledPluginMarkers> {
+  let names: ReadonlySet<string>;
+  try {
+    names = new Set(
+      (await readdir(pluginRoot, { withFileTypes: true })).map((entry) => entry.name),
+    );
+  } catch (error) {
+    if (isMissingFile(error)) {
+      return Object.freeze({
+        currentVersion: null,
+        disabled: false,
+        pendingVersion: null,
+        uninstallPending: false,
+      });
+    }
+    throw error;
+  }
+  return Object.freeze({
+    currentVersion: await readVersionMarker(pluginRoot, "current", names),
+    disabled: names.has("disabled"),
+    pendingVersion: await readVersionMarker(pluginRoot, "pending", names),
+    uninstallPending: names.has("uninstall-pending"),
+  });
+}
+
+async function readVersionMarker(
+  pluginRoot: string,
+  name: string,
+  names: ReadonlySet<string>,
+): Promise<string | null> {
+  if (!names.has(name)) return null;
+  const value = (await readFile(resolve(pluginRoot, name), "utf8")).trim();
+  return value.length === 0 ? null : value;
+}
+
+function isMissingFile(error: unknown): error is NodeJS.ErrnoException {
+  return typeof error === "object" && error !== null &&
+    "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT";
+}
+
 const RUNTIME_CONTROL_CAPABILITIES = Object.freeze([
   RUNTIME_CONTROL_METHOD.diagnosticsSessionsList,
   RUNTIME_CONTROL_METHOD.diagnosticsEventsList,
@@ -106,7 +181,13 @@ const RUNTIME_CONTROL_CAPABILITIES = Object.freeze([
   RUNTIME_CONTROL_METHOD.diagnosticsRetentionEnforce,
   RUNTIME_CONTROL_METHOD.diagnosticsStatisticsGet,
   RUNTIME_CONTROL_METHOD.ping,
+  RUNTIME_CONTROL_METHOD.status,
+  RUNTIME_CONTROL_METHOD.pluginsCacheUsage,
+  RUNTIME_CONTROL_METHOD.pluginsInstallationUsage,
+  RUNTIME_CONTROL_METHOD.pluginsCacheClear,
+  RUNTIME_CONTROL_METHOD.pluginsCacheClearAll,
   RUNTIME_CONTROL_METHOD.pluginsList,
+  RUNTIME_CONTROL_METHOD.pluginsOpenCodeDirectory,
   RUNTIME_CONTROL_METHOD.pluginsSetEnabled,
   RUNTIME_CONTROL_METHOD.sourceDiscover,
   RUNTIME_CONTROL_METHOD.sourceSearch,
@@ -176,6 +257,26 @@ interface RuntimePingResponse extends JsonObject {
   readonly runtimeVersion: string;
 }
 
+/** Safe process snapshot exposed to the Flutter status page. */
+interface RuntimeStatusResponse extends JsonObject {
+  readonly arch: string;
+  readonly bootId: string;
+  readonly memory: {
+    readonly arrayBuffers: number;
+    readonly external: number;
+    readonly heapTotal: number;
+    readonly heapUsed: number;
+    readonly rss: number;
+  };
+  readonly nodeVersion: string;
+  readonly ok: boolean;
+  readonly platform: string;
+  readonly plugins: readonly JsonObject[];
+  readonly runtimeVersion: string;
+  readonly runtimeKind: "android-javet" | "desktop-node";
+  readonly uptimeMs: number;
+}
+
 /** Acknowledgement sent before the Core begins asynchronous shutdown. */
 interface RuntimeShutdownResponse extends JsonObject {
   readonly accepted: boolean;
@@ -206,6 +307,26 @@ export interface DesktopRuntimeReady {
   readonly type: "ready";
 }
 
+/** Safe, bounded progress emitted while Runtime-owned work is running. */
+export interface DesktopRuntimeProgress {
+  readonly completedBytes: number;
+  readonly detail?: string;
+  readonly stage:
+    | "assets_copying"
+    | "assets_copied"
+    | "assets_reused"
+    | "node_starting"
+    | "plugin_copying"
+    | "plugin_copied"
+    | "plugin_installing"
+    | "ready";
+  readonly totalBytes: number;
+}
+
+export type DesktopRuntimeProgressSink = (
+  progress: DesktopRuntimeProgress,
+) => void;
+
 /** Construction-only options for the Node Runtime Core. */
 export interface DesktopRuntimeOptions {
   /**
@@ -217,6 +338,12 @@ export interface DesktopRuntimeOptions {
   /** Runtime-owned data root; production resolves it in the platform adapter. */
   readonly dataRoot?: string;
 
+  /** Windows debug-only parent directory of directly loaded source projects. */
+  readonly developmentPluginRoot?: string;
+
+  /** Android adapter-owned inbox populated by the approved ADB test tool. */
+  readonly pluginImportInboxRoot?: string;
+
   /**
    * Runtime-package-owned directory of first-run `.mgplugin` seed archives.
    *
@@ -226,8 +353,14 @@ export interface DesktopRuntimeOptions {
    */
   readonly bundledPluginRoot?: string;
 
+  /** Runtime-owned desktop shell action; only package tests may replace it. */
+  readonly openDirectory?: (directory: string) => Promise<void>;
+
   /** Runtime-owned in-process adapter mode; skips the desktop loopback listener. */
   readonly embedded?: boolean;
+
+  /** Safe progress sink used by the platform adapter; never receives paths or raw errors. */
+  readonly onProgress?: DesktopRuntimeProgressSink;
 }
 
 /** Result returned by the Runtime-owned Android Javet adapter. */
@@ -251,10 +384,14 @@ export class DesktopRuntime {
 
   /** Runtime-owned plugin/dependency/data root, never exposed through Facade. */
   readonly #dataRoot: string;
+  readonly #developmentPluginRoot: string | undefined;
+  readonly #pluginImportInboxRoot: string | undefined;
 
   /** Immutable platform-package seed directory, if this launch supplies one. */
   readonly #bundledPluginRoot: string | undefined;
   readonly #embedded: boolean;
+  readonly #openDirectory: (directory: string) => Promise<void>;
+  readonly #onProgress: DesktopRuntimeProgressSink;
 
   /** All currently open RPC sessions, closed before server shutdown. */
   readonly #sessions = new Set<ServerWebSocketSession>();
@@ -274,8 +411,12 @@ export class DesktopRuntime {
     this.#dataRoot =
       options.dataRoot ??
       resolve(tmpdir(), "mgread-runtime-tests", process.pid.toString());
+    this.#developmentPluginRoot = options.developmentPluginRoot;
+    this.#pluginImportInboxRoot = options.pluginImportInboxRoot;
     this.#bundledPluginRoot = options.bundledPluginRoot;
     this.#embedded = options.embedded ?? false;
+    this.#openDirectory = options.openDirectory ?? openWindowsDirectory;
+    this.#onProgress = options.onProgress ?? (() => {});
   }
 
   /**
@@ -370,12 +511,13 @@ export class DesktopRuntime {
     });
 
     try {
+      await this.#installPluginInbox();
       await this.#seedBundledPlugins();
     } catch (error) {
       lifecycleSpan?.end("error", {
         attributes: () => runtimeDiagnosticValue.object({
-          errorCode: runtimeDiagnosticValue.string("bundled_plugin_seed_failed"),
-          stage: runtimeDiagnosticValue.string("bundledPluginSeed"),
+          errorCode: runtimeDiagnosticValue.string("plugin_provisioning_failed"),
+          stage: runtimeDiagnosticValue.string("pluginProvisioning"),
         }),
         severity: "error",
       });
@@ -391,6 +533,9 @@ export class DesktopRuntime {
       ...(lifecycleSpan === undefined ? {} : { parent: lifecycleSpan.trace }),
     });
     const pluginManager = new PluginManager(this.#dataRoot, {
+      ...(this.#developmentPluginRoot === undefined
+        ? {}
+        : { developmentPluginRoot: this.#developmentPluginRoot }),
       events: emitPluginManagerDiagnostic,
       ...(this.#diagnostics === undefined
         ? {}
@@ -524,12 +669,13 @@ export class DesktopRuntime {
   }
 
   /**
-   * Seeds Runtime-owned default packages only for a brand-new plugin root.
+   * Reconciles Runtime-owned default packages at a cold start.
    *
-   * Existing installations, including a deliberate user uninstall, always win:
-   * no archive is re-installed and no version pointer is touched. The installer
-   * still performs the normal archive, lockfile, dependency and cold-activation
-   * path before the manager scans the root below.
+   * Each archive is considered independently: a newly bundled default becomes
+   * available even when another default is already installed, while explicit
+   * disable/uninstall markers remain authoritative. A newer packaged default
+   * follows the normal pending-version transaction, preventing pre-release
+   * protocol migrations from leaving a stale bundled source behind.
    */
   async #seedBundledPlugins(): Promise<void> {
     const bundledPluginRoot = this.#bundledPluginRoot;
@@ -537,38 +683,29 @@ export class DesktopRuntime {
 
     const pluginsRoot = resolve(this.#dataRoot, "plugins");
     await mkdir(pluginsRoot, { recursive: true });
-    const installedEntries = await readdir(pluginsRoot, { withFileTypes: true });
-    for (const entry of installedEntries) {
-      if (!entry.isDirectory()) continue;
-      const markers = await readdir(resolve(pluginsRoot, entry.name), {
-        withFileTypes: true,
-      });
-      // A prior failed install may leave an empty plugin directory behind;
-      // retry that seed. A current/pending/disabled/uninstall marker is an
-      // intentional existing installation and must win over bundled assets.
-      if (
-        markers.some((marker) =>
-          marker.name === "current" ||
-          marker.name === "pending" ||
-          marker.name === "disabled" ||
-          marker.name === "uninstall-pending",
-        )
-      ) {
-        return;
-      }
-    }
-
     const archives = (await readdir(bundledPluginRoot, { withFileTypes: true }))
       .filter((entry) => entry.isFile() && entry.name.endsWith(".mgplugin"))
-      .map((entry) => resolve(bundledPluginRoot, entry.name))
-      .sort((left, right) => left.localeCompare(right));
+      .map((entry) => parseBundledPluginArchive(entry.name, bundledPluginRoot))
+      .sort((left, right) => left.path.localeCompare(right.path));
     if (archives.length === 0) {
       throw new Error("Runtime bundled plugin assets are unavailable.");
     }
 
-    const installer = new PluginInstaller(this.#dataRoot);
+    const installer = new PluginInstaller(this.#dataRoot, {
+      onProgress: this.#onProgress,
+    });
     for (const archive of archives) {
-      const archiveBytes = (await stat(archive)).size;
+      const markers = await readBundledPluginMarkers(
+        resolve(pluginsRoot, archive.pluginId),
+      );
+      if (markers.disabled || markers.uninstallPending) continue;
+      if (
+        markers.currentVersion === archive.version ||
+        markers.pendingVersion === archive.version
+      ) {
+        continue;
+      }
+      const archiveBytes = (await stat(archive.path)).size;
       const installSpan = this.#diagnostics?.manager.startSpan({
         attributes: () => runtimeDiagnosticValue.object({
           operation: runtimeDiagnosticValue.string("bundledSeed"),
@@ -576,7 +713,7 @@ export class DesktopRuntime {
         definition: runtimeDiagnosticEvents.pluginInstall,
       });
       try {
-        const result = await installer.installArchive(archive);
+        const result = await installer.installArchive(archive.path);
         installSpan?.end("success", {
           attributes: () => runtimeDiagnosticValue.object({
             archiveBytes: runtimeDiagnosticValue.int64(BigInt(archiveBytes)),
@@ -594,6 +731,58 @@ export class DesktopRuntime {
           attributes: () => runtimeDiagnosticValue.object({
             errorCode: runtimeDiagnosticValue.string("bundled_plugin_seed_failed"),
             operation: runtimeDiagnosticValue.string("bundledSeed"),
+          }),
+          severity: "error",
+        });
+        throw error;
+      }
+    }
+  }
+
+  async #installPluginInbox(): Promise<void> {
+    const inboxRoot = this.#pluginImportInboxRoot;
+    if (inboxRoot === undefined) return;
+    await mkdir(inboxRoot, { recursive: true });
+    const archives = (await readdir(inboxRoot, { withFileTypes: true }))
+      .filter((entry) => entry.isFile() && /^[a-zA-Z0-9._-]+\.mgplugin$/.test(entry.name))
+      .sort((left, right) => left.name.localeCompare(right.name));
+    if (archives.length > 32) throw new Error("Runtime plugin import inbox is over budget.");
+    const installer = new PluginInstaller(this.#dataRoot, {
+      onProgress: this.#onProgress,
+    });
+    for (const archive of archives) {
+      const archivePath = resolve(inboxRoot, archive.name);
+      const metadata = await stat(archivePath);
+      if (!metadata.isFile() || metadata.size > 32 * 1024 * 1024) {
+        throw new Error("Runtime plugin import archive is over budget.");
+      }
+      const installSpan = this.#diagnostics?.manager.startSpan({
+        attributes: () => runtimeDiagnosticValue.object({
+          operation: runtimeDiagnosticValue.string("platformInbox"),
+        }),
+        definition: runtimeDiagnosticEvents.pluginInstall,
+      });
+      try {
+        const result = await installer.installArchive(archivePath);
+        installSpan?.end("success", {
+          attributes: () => runtimeDiagnosticValue.object({
+            archiveBytes: runtimeDiagnosticValue.int64(BigInt(metadata.size)),
+            fileCount: runtimeDiagnosticValue.int64(
+              BigInt(result.copiedFiles + result.hardlinkedFiles),
+            ),
+            operation: runtimeDiagnosticValue.string("platformInbox"),
+            pendingActivation: runtimeDiagnosticValue.boolean(
+              result.pendingActivation,
+            ),
+          }),
+        });
+        await rm(archivePath, { force: true });
+      } catch (error) {
+        await rm(archivePath, { force: true }).catch(() => {});
+        installSpan?.end("error", {
+          attributes: () => runtimeDiagnosticValue.object({
+            errorCode: runtimeDiagnosticValue.string("plugin_import_failed"),
+            operation: runtimeDiagnosticValue.string("platformInbox"),
           }),
           severity: "error",
         });
@@ -1041,6 +1230,38 @@ export class DesktopRuntime {
           result: ping,
         };
       }
+      case RUNTIME_CONTROL_METHOD.status: {
+        if (Object.keys(request.params).length !== 0) {
+          return {
+            error: this.#requestError(
+              request,
+              "invalid_request",
+              "The Runtime status query accepts no parameters.",
+            ),
+          };
+        }
+        const memory = process.memoryUsage();
+        const plugins = await this.#pluginManager?.listInstalled();
+        const status: RuntimeStatusResponse = {
+          arch: process.arch,
+          bootId: this.#bootId,
+          memory: {
+            arrayBuffers: memory.arrayBuffers,
+            external: memory.external,
+            heapTotal: memory.heapTotal,
+            heapUsed: memory.heapUsed,
+            rss: memory.rss,
+          },
+          nodeVersion: process.versions.node,
+          ok: true,
+          platform: process.platform,
+          plugins: plugins ?? [],
+          runtimeVersion,
+          runtimeKind: process.platform === "android" ? "android-javet" : "desktop-node",
+          uptimeMs: Math.max(0, Math.floor(process.uptime() * 1000)),
+        };
+        return { result: status };
+      }
       case RUNTIME_CONTROL_METHOD.pluginsList: {
         if (Object.keys(request.params).length !== 0) {
           return {
@@ -1054,6 +1275,16 @@ export class DesktopRuntime {
         const plugins = await this.#pluginManager?.listInstalled();
         return { result: plugins ?? [] };
       }
+      case RUNTIME_CONTROL_METHOD.pluginsOpenCodeDirectory:
+        return this.#dispatchPluginOpenCodeDirectory(request);
+      case RUNTIME_CONTROL_METHOD.pluginsCacheUsage:
+        return this.#dispatchPluginCacheUsage(request);
+      case RUNTIME_CONTROL_METHOD.pluginsInstallationUsage:
+        return this.#dispatchPluginInstallationUsage(request);
+      case RUNTIME_CONTROL_METHOD.pluginsCacheClear:
+        return this.#dispatchPluginCacheClear(request);
+      case RUNTIME_CONTROL_METHOD.pluginsCacheClearAll:
+        return this.#dispatchPluginCacheClearAll(request);
       case RUNTIME_CONTROL_METHOD.pluginsSetEnabled:
         return this.#dispatchPluginEnabled(request);
       case RUNTIME_CONTROL_METHOD.sourceDiscover:
@@ -1175,6 +1406,167 @@ export class DesktopRuntime {
         ),
       };
     }
+  }
+
+  /** Opens an internal source directory and returns only its stable kind. */
+  async #dispatchPluginOpenCodeDirectory(
+    request: RuntimeRequest,
+  ): Promise<RuntimeDispatchResult> {
+    if (
+      Object.keys(request.params).length !== 1 ||
+      typeof request.params.pluginId !== "string"
+    ) {
+      return {
+        error: this.#requestError(
+          request,
+          "invalid_request",
+          "The source directory request is invalid.",
+        ),
+      };
+    }
+    if (process.platform !== "win32") {
+      return {
+        error: this.#requestError(
+          request,
+          "unsupported",
+          "Opening source directories is available on Windows only.",
+        ),
+      };
+    }
+    try {
+      const manager = this.#pluginManager;
+      if (manager === undefined) throw new PluginManagerError("plugin_load_failed");
+      const directory = await manager.resolveCodeDirectory(request.params.pluginId);
+      await this.#openDirectory(directory.directory);
+      return { result: { kind: directory.kind } };
+    } catch (error) {
+      if (error instanceof PluginManagerError) {
+        return {
+          error: this.#requestError(
+            request,
+            error.code,
+            pluginManagerErrorMessage(error.code),
+          ),
+        };
+      }
+      return {
+        error: this.#requestError(
+          request,
+          "internal",
+          "The source directory could not be opened.",
+        ),
+      };
+    }
+  }
+
+  /** Returns only cache byte totals; cache paths remain Runtime-private. */
+  async #dispatchPluginCacheUsage(
+    request: RuntimeRequest,
+  ): Promise<RuntimeDispatchResult> {
+    if (Object.keys(request.params).length !== 0) {
+      return this.#pluginCacheInvalidRequest(request);
+    }
+    try {
+      const manager = this.#pluginManager;
+      if (manager === undefined) throw new PluginManagerError("plugin_load_failed");
+      return { result: await manager.listCacheUsage() };
+    } catch (error) {
+      return this.#pluginCacheFailure(request, error);
+    }
+  }
+
+  /** Returns installed source data and materialized npm byte totals. */
+  async #dispatchPluginInstallationUsage(
+    request: RuntimeRequest,
+  ): Promise<RuntimeDispatchResult> {
+    const pluginId = request.params.pluginId;
+    const scope = request.params.scope;
+    if (
+      Object.keys(request.params).length !== 2 ||
+      typeof pluginId !== "string" ||
+      (scope !== "data" && scope !== "npm")
+    ) {
+      return {
+        error: this.#requestError(
+          request,
+          "invalid_request",
+          "The installed source size request is invalid.",
+        ),
+      };
+    }
+    try {
+      const manager = this.#pluginManager;
+      if (manager === undefined) throw new PluginManagerError("plugin_load_failed");
+      return {
+        result: await manager.measureInstallationUsage(pluginId, scope),
+      };
+    } catch (error) {
+      return this.#pluginCacheFailure(request, error);
+    }
+  }
+
+  /** Clears one plugin cache and returns a terminal, path-free status. */
+  async #dispatchPluginCacheClear(
+    request: RuntimeRequest,
+  ): Promise<RuntimeDispatchResult> {
+    if (Object.keys(request.params).length !== 1 || typeof request.params.pluginId !== "string") {
+      return this.#pluginCacheInvalidRequest(request);
+    }
+    try {
+      const manager = this.#pluginManager;
+      if (manager === undefined) throw new PluginManagerError("plugin_load_failed");
+      return { result: await manager.clearPluginCache(request.params.pluginId) };
+    } catch (error) {
+      return this.#pluginCacheFailure(request, error);
+    }
+  }
+
+  /** Clears every installed plugin cache while retaining individual failures. */
+  async #dispatchPluginCacheClearAll(
+    request: RuntimeRequest,
+  ): Promise<RuntimeDispatchResult> {
+    if (Object.keys(request.params).length !== 0) {
+      return this.#pluginCacheInvalidRequest(request);
+    }
+    try {
+      const manager = this.#pluginManager;
+      if (manager === undefined) throw new PluginManagerError("plugin_load_failed");
+      return { result: await manager.clearAllPluginCaches() };
+    } catch (error) {
+      return this.#pluginCacheFailure(request, error);
+    }
+  }
+
+  #pluginCacheInvalidRequest(request: RuntimeRequest): RuntimeDispatchFailure {
+    return {
+      error: this.#requestError(
+        request,
+        "invalid_request",
+        "The plugin cache request is invalid.",
+      ),
+    };
+  }
+
+  #pluginCacheFailure(
+    request: RuntimeRequest,
+    error: unknown,
+  ): RuntimeDispatchFailure {
+    if (error instanceof PluginManagerError) {
+      return {
+        error: this.#requestError(
+          request,
+          error.code,
+          pluginManagerErrorMessage(error.code),
+        ),
+      };
+    }
+    return {
+      error: this.#requestError(
+        request,
+        "internal",
+        "The plugin cache request could not be completed.",
+      ),
+    };
   }
 
   /** Returns the versioned product capability list negotiated by the Facade. */
@@ -1966,4 +2358,21 @@ function pluginManagerErrorMessage(code: PluginManagerError["code"]): string {
     case "timeout":
       return "The plugin request deadline has elapsed.";
   }
+}
+
+/** Opens a verified Runtime-owned folder without sending its path to Flutter. */
+async function openWindowsDirectory(directory: string): Promise<void> {
+  const { spawn } = await import("node:child_process");
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn("explorer.exe", [directory], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
 }

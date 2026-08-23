@@ -15,11 +15,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('首页'), findsAtLeastNWidgets(1));
-    expect(find.text('开始你的阅读旅程'), findsOneWidget);
-    expect(find.text('当前还没有阅读记录'), findsOneWidget);
+    expect(find.text('开始你的阅读旅程'), findsNothing);
+    expect(find.text('当前还没有阅读记录'), findsNothing);
     expect(find.text('暂无更新内容'), findsOneWidget);
     expect(find.text('去发现好书'), findsOneWidget);
-    expect(find.byType(Image), findsAtLeastNWidgets(2));
+    expect(find.byType(Image), findsOneWidget);
 
     await binding.convertFlutterSurfaceToImage();
     await tester.pump();

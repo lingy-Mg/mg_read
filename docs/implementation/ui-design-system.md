@@ -37,7 +37,9 @@
 
 ## 排版与图标
 
-`AppTheme` 负责全局 `TextTheme`：页面标题使用 `displaySmall`，区块标题使用 `titleLarge`，书名使用 `titleMedium`，正文和元信息分别使用 `bodyLarge`/`bodyMedium`/`bodySmall`。主应用文字统一使用 `novel_reader_ui` 包中声明的 `MiSans`；该资源与项目提供的 `MiSansVF.ttf` 校验一致，因此复用同一份字体物料而不把约 20 MB 字体重复打入应用包。文字颜色从 `ColorScheme` 或 `mutedText` 获取，不在 Widget 中写颜色。
+`AppTheme` 负责全局 `TextTheme`：页面标题使用共享 `AppPageTitle`，区块标题使用 `titleLarge`，书名使用 `titleMedium`，正文和元信息分别使用 `bodyLarge`/`bodyMedium`/`bodySmall`。主应用文字统一使用 `novel_reader_ui` 包中声明的 `MiSans`；该资源与项目提供的 `MiSansVF.ttf` 校验一致，因此复用同一份字体物料而不把约 20 MB 字体重复打入应用包。文字颜色从 `ColorScheme` 或 `mutedText` 获取，不在 Widget 中写颜色。
+
+四个主导航页（首页、搜索、发现、我的）共用同一组顶部规范：页面起始留白使用 `AppSpacing.pageHeaderTopPadding`（8），标题容器高度使用 `AppSpacing.pageHeaderHeight`（40），标题字号使用 `AppSpacing.pageTitleSize`（26），字重为 600，行高为 1.15，字距为 -0.3。搜索页将“搜索”作为同样的页面标题，搜索输入区作为标题下的操作区；发现页的书源选择和操作图标属于标题栏附加操作，不改变标题规格。新增主导航页不得自行定义另一套顶部字号、标题高度或起始留白。
 
 图标使用 Material Symbols：顶栏和列表操作为 24，导航目的地为 24，封面内的装饰图标为 28。图标按钮保持 48 的命中区，即使视觉图标较小。
 

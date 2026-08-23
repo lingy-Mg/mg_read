@@ -37,6 +37,27 @@ void main() {
     },
   );
 
+  test('Flutter Facade decodes the Runtime status snapshot', () async {
+    final repositoryRoot = Directory.current.parent.parent;
+    final runtime = PluginRuntime.desktopForTesting(
+      runtimeRepositoryRoot: repositoryRoot,
+    );
+    addTearDown(runtime.debugDispose);
+
+    final status = await runtime.invoke(const RuntimeStatusInvocation());
+
+    expect(status.isHealthy, isTrue);
+    expect(status.nodeVersion, '24.16.0');
+    expect(status.runtimeKind, 'desktop-node');
+    expect(status.uptimeMs, greaterThanOrEqualTo(0));
+    expect(status.memory.rss, greaterThan(0));
+    expect(
+      status.memory.heapTotal,
+      greaterThanOrEqualTo(status.memory.heapUsed),
+    );
+    expect(status.plugins, isA<List<InstalledPlugin>>());
+  });
+
   test(
     'Flutter Facade lists and searches an installed standard Node plugin',
     () async {
@@ -55,6 +76,31 @@ void main() {
       });
 
       final plugins = await runtime.invoke(const InstalledPluginsInvocation());
+      final cacheFile = File(
+        <String>[
+          runtimeDataRoot.path,
+          'plugin-cache',
+          'org.mgread.flutter.fixture',
+          'cache.txt',
+        ].join(Platform.pathSeparator),
+      );
+      await cacheFile.parent.create(recursive: true);
+      await cacheFile.writeAsString('cached');
+      final cacheUsage = await runtime.invoke(
+        const PluginCacheUsageInvocation(),
+      );
+      expect(cacheUsage, hasLength(1));
+      expect(cacheUsage.single.pluginId, 'org.mgread.flutter.fixture');
+      expect(cacheUsage.single.bytes, 6);
+      final cacheClear = await runtime.invoke(
+        const ClearPluginCacheInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
+        ),
+      );
+      expect(cacheClear.items.single.status, PluginCacheClearStatus.cleared);
+      expect(cacheClear.items.single.bytesBefore, 6);
+      expect(cacheClear.items.single.bytesRemaining, 0);
+      expect(await cacheFile.exists(), isFalse);
       final disabled = await runtime.invoke(
         const SetPluginEnabledInvocation(
           pluginId: 'org.mgread.flutter.fixture',
@@ -146,6 +192,61 @@ void main() {
       expect(chapters.items.single.order, 0);
       expect(content.contentKind, PluginContentKind.novel);
       expect(content.text, 'Flutter 标准正文。');
+    },
+  );
+
+  test(
+    'Windows development source changes restart the owned Runtime before the next call',
+    () async {
+      final repositoryRoot = Directory.current.parent.parent;
+      final root = await Directory.systemTemp.createTemp(
+        'mgread-flutter-development-source-',
+      );
+      final developmentRoot = Directory(
+        <String>[root.path, 'sources'].join(Platform.pathSeparator),
+      );
+      final runtimeDataRoot = Directory(
+        <String>[root.path, 'runtime-data'].join(Platform.pathSeparator),
+      );
+      addTearDown(() => root.delete(recursive: true));
+      await _writeDevelopmentPlugin(developmentRoot, '第一版');
+      final runtime = PluginRuntime.desktopForTesting(
+        runtimeRepositoryRoot: repositoryRoot,
+        runtimeDataRoot: runtimeDataRoot,
+        developmentPluginRoot: developmentRoot,
+      );
+      addTearDown(runtime.debugDispose);
+
+      final plugins = await runtime.invoke(const InstalledPluginsInvocation());
+      final first = await runtime.invoke(
+        const SourceSearchInvocation(
+          pluginId: 'org.example.flutter-live',
+          query: '测试',
+        ),
+      );
+      expect(plugins.single.status, 'development');
+      expect(first.items.single.title, '第一版：测试');
+      expect(runtime.debugDesktopProcessStartCount, 1);
+
+      await _writeDevelopmentPlugin(developmentRoot, '第二版');
+      final second = await runtime.invoke(
+        const SourceSearchInvocation(
+          pluginId: 'org.example.flutter-live',
+          query: '测试',
+        ),
+      );
+      expect(second.items.single.title, '第二版：测试');
+      expect(runtime.debugDesktopProcessStartCount, 2);
+      expect(
+        Directory(
+          <String>[
+            runtimeDataRoot.path,
+            'plugins',
+            'org.example.flutter-live',
+          ].join(Platform.pathSeparator),
+        ).existsSync(),
+        isFalse,
+      );
     },
   );
 
@@ -352,6 +453,7 @@ Future<Directory> _stageInstalledStandardPlugin() async {
     "contentKinds": ["novel"]
   }
 }
+
 ''');
   await File(
     <String>[
@@ -474,4 +576,71 @@ export async function getContent(request) {
     <String>[pluginRoot.path, 'pending'].join(Platform.pathSeparator),
   ).writeAsString('1.0.0\n');
   return root;
+}
+
+Future<void> _writeDevelopmentPlugin(
+  Directory developmentRoot,
+  String prefix,
+) async {
+  final projectRoot = Directory(
+    <String>[developmentRoot.path, 'live-source'].join(Platform.pathSeparator),
+  );
+  final dist = Directory(
+    <String>[projectRoot.path, 'dist'].join(Platform.pathSeparator),
+  );
+  await dist.create(recursive: true);
+  const packageName = '@mgread-plugin/flutter-live';
+  const version = '0.1.0';
+  await File(
+    <String>[projectRoot.path, 'package.json'].join(Platform.pathSeparator),
+  ).writeAsString(
+    '${jsonEncode(<String, Object?>{
+      'name': packageName,
+      'version': version,
+      'type': 'module',
+      'main': 'dist/index.mjs',
+      'engines': <String, String>{'node': '>=24 <25'},
+      'mgread': <String, Object?>{
+        'schemaVersion': 1,
+        'id': 'org.example.flutter-live',
+        'displayName': 'Flutter Live',
+        'pluginApi': 1,
+        'contentKinds': <String>['novel'],
+      },
+    })}\n',
+  );
+  await File(
+    <String>[
+      projectRoot.path,
+      'package-lock.json',
+    ].join(Platform.pathSeparator),
+  ).writeAsString(
+    '${jsonEncode(<String, Object?>{
+      'name': packageName,
+      'version': version,
+      'lockfileVersion': 3,
+      'requires': true,
+      'packages': <String, Object?>{
+        '': <String, String>{'name': packageName, 'version': version},
+      },
+    })}\n',
+  );
+  await File(
+    <String>[dist.path, 'index.mjs'].join(Platform.pathSeparator),
+  ).writeAsString('''
+export function activate() {}
+const summary = (query) => ({
+  id: 'live:' + query,
+  title: ${jsonEncode(prefix)} + '：' + query,
+  contentKind: 'novel', author: null, url: null, coverUrl: null,
+  description: null, language: null, status: 'unknown', access: 'unknown',
+  wordCount: null, chapterCount: 0, publishedAt: null, updatedAt: null,
+  latestChapter: null, categories: [], tags: [], attributes: [],
+});
+export function discover() { return { kind: 'document', document: { components: [] } }; }
+export function search(request) { return { items: [summary(request.query)], nextCursor: null, totalCount: 1 }; }
+export function getDetail(request) { return { ...summary(request.id), id: request.id, aliases: [], catalogUrl: null }; }
+export function getChapters() { return { items: [], nextCursor: null, totalCount: 0 }; }
+export function getContent(request) { return { contentKind: 'novel', chapterId: request.chapterId, title: null, updatedAt: null, text: 'text', pages: [] }; }
+''');
 }

@@ -33,6 +33,15 @@ This repository is the official blank MgRead plugin project template.
   credentials, Cookies, tokens or raw exceptions. Capability tests must assert
   correlated script/Runtime events for success and applicable
   timeout/cancel/error paths, with secret/content canaries.
+- Cache only cacheable, repeatable remote GET display projections: discovery/search
+  lists refresh after 10 minutes, and detail/catalog projections after 1 hour.
+  Cache under a versioned child of the Runtime-provided absolute `ctx.cacheDir`
+  only, using hashed request keys, atomic writes, a 1 MiB-entry/100 MiB-plugin
+  LRU limit, single-flight requests and stale data only after refresh failure.
+  Never cache chapter/media bytes, login/Cookie/credential data, write responses,
+  or app-owned business data. Cache I/O/corruption/eviction failures are misses,
+  not capability failures; tests cover persistence, TTL, offline fallback,
+  capacity and the directory boundary.
 
 Before delivery run the pinned Node/npm toolchain, `npm ci`, `npm run verify`,
 and `npm run pack:plugin`.

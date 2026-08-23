@@ -26,7 +26,7 @@ void main() {
     WidgetTester tester,
   ) async {
     await _setViewport(tester, const Size(390, 900));
-    await tester.pumpWidget(const _DetailGoldenHost());
+    await tester.pumpWidget(const _DetailGoldenHost(useReference: true));
     await tester.pumpAndSettle();
 
     expect(
@@ -35,16 +35,16 @@ void main() {
     );
     expect(
       tester.getTopLeft(find.byKey(const Key('source-detail-cover'))).dy,
-      88,
+      100,
     );
-    expect(find.text('喜欢老虎'), findsOneWidget);
-    expect(find.text('185.96万'), findsOneWidget);
-    expect(find.text('733'), findsOneWidget);
-    expect(find.text('章节 · 连载中'), findsOneWidget);
-    expect(find.text('12210'), findsOneWidget);
-    expect(find.text('热度 · 收藏 49'), findsOneWidget);
-    expect(find.text('变身'), findsOneWidget);
-    expect(find.text('ai加料'), findsOneWidget);
+    expect(find.text('爱潜水的乌贼'), findsWidgets);
+    expect(find.text('447万'), findsOneWidget);
+    expect(find.text('1268'), findsOneWidget);
+    expect(find.text('已完结'), findsOneWidget);
+    expect(find.text('9.7'), findsOneWidget);
+    expect(find.text('42.3万人评分'), findsOneWidget);
+    expect(find.text('克苏鲁'), findsWidgets);
+    expect(find.text('西幻'), findsOneWidget);
     await expectLater(
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/source_content_detail_compact_light.png'),
@@ -74,12 +74,31 @@ void main() {
     expect(find.text('第四章 应聘'), findsOneWidget);
     expect(gateway.chapterRequests, <String?>[null, 'catalog-page:1:2']);
   });
+
+  testWidgets('keeps the list summary visible while detail data is loading', (
+    tester,
+  ) async {
+    await _setViewport(tester, const Size(390, 900));
+    final gateway = _DelayedDetailGateway();
+    await tester.pumpWidget(_DetailGoldenHost(gateway: gateway));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('变身绝色女神（ai加料）'), findsWidgets);
+    expect(find.text('正在补充详情…'), findsOneWidget);
+
+    gateway.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('来源页面已验证的作品简介。'), findsOneWidget);
+    expect(find.text('正在补充详情…'), findsNothing);
+  });
 }
 
 class _DetailGoldenHost extends StatelessWidget {
-  const _DetailGoldenHost({this.gateway});
+  const _DetailGoldenHost({this.gateway, this.useReference = false});
 
   final _GoldenDetailGateway? gateway;
+  final bool useReference;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -96,7 +115,9 @@ class _DetailGoldenHost extends StatelessWidget {
         child: child ?? const SizedBox.shrink(),
       );
     },
-    home: _DetailEntry(gateway: gateway ?? _GoldenDetailGateway()),
+    home: _DetailEntry(
+      gateway: gateway ?? _GoldenDetailGateway(useReference: useReference),
+    ),
   );
 }
 
@@ -119,8 +140,11 @@ class _DetailEntryState extends State<_DetailEntry> {
         showSourceContentDetailSheet(
           context,
           gateway: widget.gateway,
-          pluginId: AliceBookHouseDetailFixture.pluginId,
-          id: AliceBookHouseDetailFixture.bookId,
+          pluginId: widget.gateway.pluginId,
+          id: widget.gateway.bookId,
+          initialContent: widget.gateway.detail.summary,
+          initialSourceName: widget.gateway.detail.sourceName,
+          relatedContents: widget.gateway.recommendations,
           onExternalUrlRequested: (_) async => true,
         ),
       );
@@ -132,13 +156,29 @@ class _DetailEntryState extends State<_DetailEntry> {
 }
 
 class _GoldenDetailGateway implements SourceContentGateway {
+  _GoldenDetailGateway({this.useReference = false});
+
+  final bool useReference;
   final List<String?> chapterRequests = <String?>[];
+
+  String get pluginId => useReference
+      ? AliceBookHouseDetailFixture.referencePluginId
+      : AliceBookHouseDetailFixture.pluginId;
+  String get bookId => useReference
+      ? AliceBookHouseDetailFixture.referenceBookId
+      : AliceBookHouseDetailFixture.bookId;
+  PluginContentDetail get detail => useReference
+      ? AliceBookHouseDetailFixture.referenceDetail
+      : AliceBookHouseDetailFixture.detail;
+  List<PluginContentSummary> get recommendations => useReference
+      ? AliceBookHouseDetailFixture.referenceRecommendations
+      : AliceBookHouseDetailFixture.recommendations;
 
   @override
   Future<PluginContentDetail> getDetail({
     required String pluginId,
     required String id,
-  }) async => AliceBookHouseDetailFixture.detail;
+  }) async => detail;
 
   @override
   Future<PluginChaptersResult> getChapters({
@@ -148,6 +188,7 @@ class _GoldenDetailGateway implements SourceContentGateway {
     int pageSize = 50,
   }) async {
     chapterRequests.add(cursor);
+    if (useReference) return AliceBookHouseDetailFixture.referenceCatalog;
     return cursor == null
         ? AliceBookHouseDetailFixture.firstCatalogPage
         : AliceBookHouseDetailFixture.secondCatalogPage;
@@ -180,6 +221,34 @@ class _GoldenDetailGateway implements SourceContentGateway {
     required String id,
     required String chapterId,
   }) async => throw UnimplementedError();
+}
+
+final class _DelayedDetailGateway extends _GoldenDetailGateway {
+  _DelayedDetailGateway() : super();
+
+  final Completer<PluginContentDetail> _detail =
+      Completer<PluginContentDetail>();
+  final Completer<PluginChaptersResult> _chapters =
+      Completer<PluginChaptersResult>();
+
+  @override
+  Future<PluginContentDetail> getDetail({
+    required String pluginId,
+    required String id,
+  }) => _detail.future;
+
+  @override
+  Future<PluginChaptersResult> getChapters({
+    required String pluginId,
+    required String id,
+    String? cursor,
+    int pageSize = 50,
+  }) => _chapters.future;
+
+  void complete() {
+    _detail.complete(detail);
+    _chapters.complete(AliceBookHouseDetailFixture.firstCatalogPage);
+  }
 }
 
 Future<void> _setViewport(WidgetTester tester, Size size) async {

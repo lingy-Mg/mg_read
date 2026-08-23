@@ -63,6 +63,12 @@ JSON 或已注册 key 解码失败只让对应组使用安全默认值并变为 
 声明 Android、Windows、macOS 均支持该目录；它会引入相应平台插件注册与少量原生包体，实际
 Android/macOS 包体和运行仍需各平台验收。
 
+生产组合根只打开一个 `AppPersistence`，以合并后的 settings 与 Content Library codec registry
+共享同一个 metadata record store。设置 manager 和 Content Library 都借用该实例；关闭时先刷新并
+关闭设置 manager，再释放 Content Library，最后由组合根关闭共享 persistence。独立单元测试或窄层
+调用仍可分别使用 `PersistentSettingsStore.open()` 与 `ContentLibrary.open()`，但同一应用进程不得
+用它们重复打开同一个数据库文件。
+
 本设置核心交付不修改现有深色模式 UI 或其测试；`AppSettingKeys.themeMode` 的消费由独立 UI
 交付维护。本交付不实现 reader/download 设置、Runtime、Cookie/Secret Store 或正文。未来
 `features/settings` 只负责 UI/application 意图，必须调用本门面。统一诊断日志 manager 尚未

@@ -17,6 +17,10 @@ import {
   DependencyStoreError,
   type DependencyMaterializationResult,
 } from "./dependency-store.js";
+import type {
+  DesktopRuntimeProgress,
+  DesktopRuntimeProgressSink,
+} from "./desktop-runtime.js";
 import {
   createPluginArchive,
   extractPluginArchive,
@@ -71,13 +75,17 @@ export class PluginInstaller {
     options: {
       readonly dependencyStore?: DependencyStore;
       readonly events?: PluginInstallerEventSink;
+      readonly onProgress?: DesktopRuntimeProgressSink;
     } = {},
   ) {
     this.#dataRoot = resolve(runtimeDataRoot);
     this.#dependencyStore =
       options.dependencyStore ?? new DependencyStore(this.#dataRoot);
     this.#events = options.events ?? (() => {});
+    this.#onProgress = options.onProgress ?? (() => {});
   }
+
+  readonly #onProgress: DesktopRuntimeProgressSink;
 
   /** Installs a `.mgplugin` as an immutable version and writes `pending`. */
   async installArchive(archiveFile: string): Promise<PluginInstallResult> {
@@ -90,8 +98,20 @@ export class PluginInstaller {
     );
     try {
       await mkdir(stagingRoot, { recursive: true });
+      this.#reportProgress({
+        completedBytes: 0,
+        detail: "正在解压并校验数据来源包",
+        stage: "plugin_installing",
+        totalBytes: 0,
+      });
       await extractPluginArchive(archiveFile, stagingRoot);
       const project = await readPluginProject(stagingRoot);
+      this.#reportProgress({
+        completedBytes: 0,
+        detail: `已读取 package.json 和 package-lock.json，共 ${project.dependencies.length} 个 npm 依赖`,
+        stage: "plugin_installing",
+        totalBytes: Math.max(project.dependencies.length, 1),
+      });
       const result = await this.#commitProject(stagingRoot, project.descriptor, project.dependencies);
       this.#events({
         code: "plugin_install_completed",
@@ -213,6 +233,12 @@ export class PluginInstaller {
     const finalVersionRoot = resolve(versionsRoot, descriptor.version);
     try {
       await stat(finalVersionRoot);
+      this.#reportProgress({
+        completedBytes: 1,
+        detail: "数据来源版本已存在，复用已安装的 npm 依赖",
+        stage: "plugin_installing",
+        totalBytes: 1,
+      });
       await atomicWrite(resolve(pluginRoot, "pending"), `${descriptor.version}\n`);
       return Object.freeze({
         copiedFiles: 0,
@@ -229,13 +255,29 @@ export class PluginInstaller {
     let copiedFiles = 0;
     let hardlinkedFiles = 0;
     let skippedOptionalDependencies = 0;
+    const dependencyTotal = Math.max(dependencies.length, 1);
+    let dependencyIndex = 0;
     for (const dependency of dependencies) {
+      dependencyIndex += 1;
       const destination = resolveInside(stagingRoot, dependency.installPath);
       try {
         let source: string;
         if (dependency.kind === "registry") {
+          const reused = await this.#dependencyStore.hasRegistryPackage(dependency);
+          this.#reportProgress({
+            completedBytes: dependencyIndex - 1,
+            detail: `${reused ? "正在复用" : "正在下载并校验"} npm 依赖 ${dependencyLabel(dependency)}（${dependencyIndex}/${dependencies.length}）`,
+            stage: "plugin_installing",
+            totalBytes: dependencyTotal,
+          });
           source = await this.#dependencyStore.ensureRegistryPackage(dependency);
         } else {
+          this.#reportProgress({
+            completedBytes: dependencyIndex - 1,
+            detail: `正在准备本地 npm 依赖 ${dependencyLabel(dependency)}（${dependencyIndex}/${dependencies.length}）`,
+            stage: "plugin_installing",
+            totalBytes: dependencyTotal,
+          });
           source = resolveInside(stagingRoot, dependency.sourcePath!);
           await rejectLocalNativeFiles(source);
         }
@@ -245,6 +287,12 @@ export class PluginInstaller {
         );
         copiedFiles += materialized.copiedFiles;
         hardlinkedFiles += materialized.hardlinkedFiles;
+        this.#reportProgress({
+          completedBytes: dependencyIndex,
+          detail: `npm 依赖已就绪 ${dependencyLabel(dependency)}（${dependencyIndex}/${dependencies.length}）`,
+          stage: "plugin_installing",
+          totalBytes: dependencyTotal,
+        });
       } catch (error) {
         if (
           dependency.optional &&
@@ -253,6 +301,12 @@ export class PluginInstaller {
             isNodeError(error, "ENOENT"))
         ) {
           skippedOptionalDependencies += 1;
+          this.#reportProgress({
+            completedBytes: dependencyIndex,
+            detail: `可选 npm 依赖跳过 ${dependencyLabel(dependency)}（${dependencyIndex}/${dependencies.length}）`,
+            stage: "plugin_installing",
+            totalBytes: dependencyTotal,
+          });
           continue;
         }
         throw error;
@@ -267,6 +321,12 @@ export class PluginInstaller {
     // location before publishing the pending pointer.
     await makeVersionTreeReadOnly(finalVersionRoot);
     await atomicWrite(resolve(pluginRoot, "pending"), `${descriptor.version}\n`);
+    this.#reportProgress({
+      completedBytes: dependencyTotal,
+      detail: "npm 依赖恢复完成，正在完成数据来源安装",
+      stage: "plugin_installing",
+      totalBytes: dependencyTotal,
+    });
     return Object.freeze({
       copiedFiles,
       descriptor,
@@ -276,6 +336,19 @@ export class PluginInstaller {
       skippedOptionalDependencies,
     });
   }
+
+  #reportProgress(progress: DesktopRuntimeProgress): void {
+    try {
+      this.#onProgress(progress);
+    } catch {
+      // Progress reporting is observational and must never change install results.
+    }
+  }
+}
+
+function dependencyLabel(dependency: LockedPluginDependency): string {
+  const label = dependency.installPath.replace(/^node_modules[\\/]/, "");
+  return `${label.slice(0, 96)}@${dependency.version.slice(0, 64)}`;
 }
 
 async function rejectLocalNativeFiles(root: string): Promise<void> {

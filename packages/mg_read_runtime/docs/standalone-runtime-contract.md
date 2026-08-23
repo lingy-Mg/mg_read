@@ -37,6 +37,22 @@ PluginRuntime.invoke<T>(PluginInvocation<T>) -> Future<T>
 和 Content Library 经自身强类型端口持久化。下载跨边界能力需等待新 Accepted ADR。主项目
 不得拼接 raw method 字符串或直接使用 wire envelope。
 
+插件私有缓存清理由 `plugins.cache.usage.v1`、`plugins.cache.clear.v1` 与
+`plugins.cache.clearAll.v1` 三个强类型 Facade capability 表达。它们只返回数据源 ID、逻辑
+字节数及每项 `cleared/failed` 终态；Runtime 仍独占 cache 目录、文件句柄与底层失败细节，
+主应用不得扫描或清理目录。
+
+安装后的书源大小由 `plugins.installation.usage.v1` 提供，`scope=data` 统计书源自身文件，
+`scope=npm` 统计物化后的 `node_modules`，结果只包含字节数、文件数、书源 ID、版本和
+统计范围，不暴露路径。两个范围由主应用异步分别请求，因此 Android 上 npm 文件很多时，
+数据文件结果可以先显示；Android Javet 和 Windows 桌面都调用同一个 Runtime Core 能力，
+但各自保留独立的启动/传输适配。
+
+Node 运行状态由 `runtime.status.v1` 提供一个可扩展的安全快照：健康状态、Node/Runtime
+版本、运行形态、运行时长、进程内存分项、平台架构和插件投影。Android 返回
+`android-javet`，桌面返回 `desktop-node`；它不返回 PID、端口、路径、Cookie、
+原始异常或传输信息；主应用只通过 Flutter Facade 展示该快照。
+
 - 第一次 `invoke()` 自动完成启动、兼容检查、Runtime 自有操作数据恢复、内部 HTTP readiness
   和 WS hello。
 - 资源结果以 Runtime 管理的强类型资源对象返回；主项目不构造/猜测 loopback URL、请求
@@ -116,7 +132,8 @@ Runtime 诊断是上述业务 Store 选型之外的有界运行证据，并固�
   只启动 Runtime 包内、版本矩阵记录的精确 Node，不依赖用户 PATH 或全局 Node。
 - Node/Javet/桌面 Node/协议/Facade 兼容矩阵整体升级；所有版本精确固定。
 - 业务大资源只经过 Runtime HTTP 数据面，JSON/WS 不承载二进制或超限文本。
-- 已加载插件仅在下次应用进程启动时冷激活；不得用 Runtime 热重启绕过该规则。
+- installed 插件仅在下次 Runtime 冷启动激活。ADR-0019 的 Windows Debug development 项目在
+  工作区变化后先回收旧 VM，再启动唯一新 Runtime；不得在同一 VM 中热换模块。
 - 首版插件完全可信，但信任模型不允许放宽 archive/lock/SRI 校验、日志脱敏、输入上限、Plugin API 网络入口
   或有界并发。
 
@@ -144,11 +161,13 @@ readiness 与 WS hello，并在同一 WS 上调用 ping/list 和五个 `source.*
 
 Runtime 还验证标准 `package.json.mgread`、lockfile v3、确定性 `.mgplugin`、安全解压、registry
 SRI、完整 package 资源、包内 `file:`、optional、dependency object store、hardlink/copy、
-不可变版本、pending 冷激活、失败更新回退、卸载和 mark-sweep。Core 只从 Runtime-owned data
-root 扫描插件；生产 Facade 不接受插件路径、package bytes、callback、host.*、主项目数据库/
+不可变版本、pending 冷激活、失败更新回退、卸载和 mark-sweep。Core 通常只从 Runtime-owned data
+root 扫描 installed 插件；Windows Debug development 根由 Runtime 平台适配器内部解析且不穿透
+Facade。生产 Facade 不接受插件路径、package bytes、callback、host.*、主项目数据库/
 路径/Cookie/文件/平台通道。Node 与 Flutter 测试共用
 `protocol/fixtures/standard-node-plugin-v1.json`；公开 Flutter 面提供
-`RuntimePingInvocation`、`InstalledPluginsInvocation`、`SetPluginEnabledInvocation` 与
+`RuntimePingInvocation`、`InstalledPluginsInvocation`、`OpenPluginCodeDirectoryInvocation`、
+`SetPluginEnabledInvocation` 与
 `SourceDiscover/Search/Detail/Chapters/ContentInvocation`，不泄露
 wire metadata。详见[桌面 Runtime 与标准插件闭环](desktop-runtime-bridge.md)。
 

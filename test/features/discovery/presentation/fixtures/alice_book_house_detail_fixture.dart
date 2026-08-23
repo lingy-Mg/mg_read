@@ -77,6 +77,121 @@ abstract final class AliceBookHouseDetailFixture {
     totalCount: 733,
   );
 
+  static final List<PluginContentSummary> recommendations =
+      <PluginContentSummary>[
+        _recommendation('great-dawn', '大道朝天', '猫腻'),
+        _recommendation('deep-shore', '深空彼岸', '辰东'),
+        _recommendation('fate-ring', '宿命之环', '爱潜水的乌贼'),
+        _recommendation('great-hitter', '大奉打更人', '卖报小郎君'),
+        _recommendation('myth-emperor', '我在精神病院学斩神', '林七夜'),
+      ];
+
+  static const String referencePluginId = 'org.mgread.reference';
+  static const String referenceBookId = 'mystery-lord';
+  static final PluginContentDetail referenceDetail = PluginContentDetail(
+    pluginId: referencePluginId,
+    sourceName: '起点中文网',
+    summary: PluginContentSummary(
+      id: referenceBookId,
+      title: '诡秘之主',
+      contentKind: PluginContentKind.novel,
+      author: '爱潜水的乌贼',
+      url: Uri.parse('https://www.qidian.com/book/1010868264'),
+      coverUrl: null,
+      description:
+          '蒸汽与机械的浪潮中，谁能触及非凡？诡秘的序列，命运的齿轮，'
+          '即将开始转动。戴上隐秘的面具，潜入黑暗的深渊，探寻真正的诡秘。',
+      language: 'zh-CN',
+      status: PluginContentStatus.completed,
+      access: PluginAccessKind.unknown,
+      wordCount: 4470000,
+      chapterCount: 1268,
+      publishedAt: null,
+      updatedAt: DateTime.utc(2026, 8, 21, 9),
+      latestChapter: PluginLatestChapter(
+        id: '1268',
+        title: '第1268章 不可名状的低语（大结局）',
+        url: Uri.parse('https://www.qidian.com/chapter/1010868264/811552318/'),
+        updatedAt: DateTime.utc(2026, 8, 21, 9),
+      ),
+      categories: const <String>['玄幻'],
+      tags: const <String>['克苏鲁', '西幻'],
+      attributes: const <PluginContentAttribute>[
+        PluginContentAttribute(key: 'rating', label: '评分', value: '9.7'),
+        PluginContentAttribute(
+          key: 'ratingCount',
+          label: '评分人数',
+          value: '42.3万',
+        ),
+        PluginContentAttribute(key: 'theme', label: '主题', value: '克苏鲁'),
+        PluginContentAttribute(key: 'genre', label: '题材', value: '蒸汽朋克'),
+        PluginContentAttribute(key: 'ability', label: '要素', value: '异能'),
+        PluginContentAttribute(key: 'tone', label: '风格', value: '悬疑'),
+        PluginContentAttribute(
+          key: 'discoveryUpdatedLabel',
+          label: '更新时间',
+          value: '1小时前更新',
+        ),
+      ],
+    ),
+    aliases: const <String>[],
+    catalogUrl: Uri.parse('https://www.qidian.com/book/1010868264#Catalog'),
+  );
+
+  static final PluginChaptersResult referenceCatalog = PluginChaptersResult(
+    pluginId: referencePluginId,
+    sourceName: '起点中文网',
+    items: <PluginChapterSummary>[
+      PluginChapterSummary(
+        id: '1268',
+        title: '第1268章 不可名状的低语（大结局）',
+        order: 1268,
+        url: Uri.parse('https://www.qidian.com/chapter/1010868264/811552318/'),
+        volumeTitle: null,
+        wordCount: null,
+        updatedAt: DateTime.utc(2026, 8, 21, 9),
+        isLocked: false,
+        attributes: const <PluginContentAttribute>[],
+      ),
+    ],
+    nextCursor: null,
+    totalCount: 1268,
+  );
+
+  static final List<PluginContentSummary> referenceRecommendations =
+      <PluginContentSummary>[
+        _recommendation('great-dawn', '大道朝天', '猫腻'),
+        _recommendation('deep-shore', '深空彼岸', '辰东'),
+        _recommendation('fate-ring', '宿命之环', '爱潜水的乌贼'),
+        _recommendation('great-hitter', '大奉打更人', '卖报小郎君'),
+        _recommendation('myth-emperor', '我在精神病院学斩神', '林七夜'),
+      ];
+
+  static PluginContentSummary _recommendation(
+    String id,
+    String title,
+    String author,
+  ) => PluginContentSummary(
+    id: id,
+    title: title,
+    contentKind: PluginContentKind.novel,
+    author: author,
+    url: null,
+    coverUrl: null,
+    description: null,
+    language: 'zh-CN',
+    status: PluginContentStatus.ongoing,
+    access: PluginAccessKind.unknown,
+    wordCount: null,
+    chapterCount: null,
+    publishedAt: null,
+    updatedAt: null,
+    latestChapter: null,
+    categories: const <String>[],
+    tags: const <String>[],
+    attributes: const <PluginContentAttribute>[],
+  );
+
   static PluginChapterSummary _chapter(String id, String title, int order) =>
       PluginChapterSummary(
         id: id,

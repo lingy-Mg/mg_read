@@ -27,6 +27,7 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 progressSink?.success(
                     mapOf(
                         "completedBytes" to progress.completedBytes,
+                        "detail" to progress.detail,
                         "stage" to progress.stage,
                         "totalBytes" to progress.totalBytes,
                     ),
@@ -62,6 +63,22 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                     mainHandler.post {
                         if (error == null) {
                             result.success(value)
+                        } else {
+                            result.error(error.code, error.message, null)
+                        }
+                    }
+                }
+            }
+            "importLocalPlugin" -> {
+                val sourcePath = call.argument<String>("sourcePath")
+                if (sourcePath.isNullOrBlank()) {
+                    result.error("invalid_request", "The selected plugin archive is invalid.", null)
+                    return
+                }
+                host.importLocalPlugin(sourcePath) { error ->
+                    mainHandler.post {
+                        if (error == null) {
+                            result.success(null)
                         } else {
                             result.error(error.code, error.message, null)
                         }

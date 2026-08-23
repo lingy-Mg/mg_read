@@ -10,7 +10,7 @@ export const expectedNodeVersion = "24.16.0";
 export const protocolVersion = "1.0";
 
 /** The version of this Runtime implementation and its bundled contracts. */
-export const runtimeVersion = "0.2.0-standard.1";
+export const runtimeVersion = "0.2.0-standard.2";
 
 /** Android ABIs that have a matching Javet/Node compatibility unit. */
 export type AndroidNodeAbi = "arm64-v8a" | "x86_64";

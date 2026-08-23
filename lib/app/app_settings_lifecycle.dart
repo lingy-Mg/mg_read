@@ -93,14 +93,14 @@ final class _AppSettingsLifecycleHostState
 
   Future<void> _closeResources() async {
     try {
-      await widget.closeContentLibrary?.call();
-    } catch (_) {
-      // Closing the local library must not prevent the remaining shutdown.
-    }
-    try {
       await widget.manager.close();
     } catch (_) {
-      // Shutdown cannot recover settings persistence here and must continue.
+      // Settings shutdown must not prevent the remaining resources closing.
+    }
+    try {
+      await widget.closeContentLibrary?.call();
+    } catch (_) {
+      // Closing the local library must not prevent diagnostics shutdown.
     }
     widget.disposeDiagnosticsBoundary?.call();
     try {

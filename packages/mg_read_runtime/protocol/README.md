@@ -6,11 +6,12 @@
 当前 fixture 是
 [`fixtures/standard-node-plugin-v1.json`](fixtures/standard-node-plugin-v1.json)，固定：
 
-- Node `24.16.0`、Runtime `0.2.0-standard.1`、protocol `1.0`；
+- Node `24.16.0`、Runtime `0.2.0-standard.2`、protocol `1.0`；
 - loopback live/ready 与 `/v1/rpc`；
 - 64 KiB 控制帧、256 个在途请求、1 MiB 写队列和 best-effort cancel；
-- `runtime.hello`、版本化 diagnostics 查询/捕获能力、`runtime.ping`、`plugins.list.v1`、
-  `plugins.setEnabled.v1`、
+- `runtime.hello`、版本化 diagnostics 查询/捕获能力、`runtime.ping`、`runtime.status.v1`、`plugins.list.v1`、
+  `plugins.openCodeDirectory.v1`、`plugins.setEnabled.v1`、`plugins.cache.usage.v1`、`plugins.cache.clear.v1`、
+  `plugins.cache.clearAll.v1`、`plugins.installation.usage.v1`、
   `source.discover/search/getDetail/getChapters/getContent.v1`、`runtime.shutdown`；
 - 一个按标准 package/lock 安装、冷激活并执行完整内容链路的无网络插件投影。
 

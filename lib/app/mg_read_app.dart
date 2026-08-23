@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/app/app_router.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
+import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
+import 'package:mg_read/shared/presentation/widgets/app_back_navigation_scope.dart';
 
 /// The root widget for the MgRead host application.
 class MgReadApp extends ConsumerStatefulWidget {
@@ -32,6 +34,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> {
   Future<void> _warmPluginRuntime() async {
     try {
       await ref.read(pluginRuntimeConnectionProvider.future);
+      await ref.read(availablePluginSourcesProvider.future);
     } on Object {
       // The provider preserves the stable failure for feature UI to render.
       // Its application-layer span already records the failure safely.
@@ -45,17 +48,25 @@ class _MgReadAppState extends ConsumerState<MgReadApp> {
 
   @override
   Widget build(BuildContext context) {
+    final router = ref.watch(appRouterProvider);
     return MaterialApp.router(
       title: 'MgRead',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       themeMode: ThemeMode.light,
-      routerConfig: ref.watch(appRouterProvider),
+      routerConfig: router,
       builder: (BuildContext context, Widget? child) {
-        return AppThemeModeScope(
-          themeMode: ThemeMode.light,
-          onToggleTheme: _toggleTheme,
-          child: child ?? const SizedBox.shrink(),
+        return AppBackNavigationScope(
+          onBackRequested: () async {
+            if (!router.canPop()) return false;
+            router.pop();
+            return true;
+          },
+          child: AppThemeModeScope(
+            themeMode: ThemeMode.light,
+            onToggleTheme: _toggleTheme,
+            child: child ?? const SizedBox.shrink(),
+          ),
         );
       },
     );

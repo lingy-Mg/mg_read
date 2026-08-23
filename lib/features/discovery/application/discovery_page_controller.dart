@@ -29,6 +29,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
 
   Future<void> retry() {
     if (state.sources.isEmpty) {
+      ref.invalidate(availablePluginSourcesProvider);
       return _initialize(++_latestGeneration);
     }
     final selected = state.selectedSourceId ?? state.sources.first.id;
@@ -110,7 +111,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   Future<void> _initialize(int generation) async {
     state = DiscoveryPageState.loadingSources();
     try {
-      final sources = await _gateway.listSources();
+      final sources = await ref.read(availablePluginSourcesProvider.future);
       if (!_isCurrent(generation)) return;
       if (sources.isEmpty) {
         state = DiscoveryPageState.noSources();

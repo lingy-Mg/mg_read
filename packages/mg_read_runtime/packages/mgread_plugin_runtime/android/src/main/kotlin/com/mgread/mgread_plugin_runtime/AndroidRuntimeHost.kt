@@ -2,17 +2,23 @@ package com.mgread.mgread_plugin_runtime
 
 import android.content.Context
 import android.content.res.AssetManager
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.Log
 import com.caoccao.javet.enums.V8AwaitMode
 import com.caoccao.javet.interop.V8Runtime
+import com.caoccao.javet.interop.callback.IJavetDirectCallable
 import com.caoccao.javet.interop.callback.IV8ModuleResolver
 import com.caoccao.javet.interop.callback.JavetBuiltInModuleResolver
+import com.caoccao.javet.interop.callback.JavetCallbackContext
+import com.caoccao.javet.interop.callback.JavetCallbackType
 import com.caoccao.javet.interop.NodeRuntime
 import com.caoccao.javet.interop.V8Host
 import com.caoccao.javet.interop.options.NodeRuntimeOptions
 import com.caoccao.javet.values.V8Value
 import com.caoccao.javet.values.reference.IV8Module
 import com.caoccao.javet.values.reference.V8Module
+import com.caoccao.javet.values.reference.V8ValueFunction
 import com.caoccao.javet.values.reference.V8ValuePromise
 import org.json.JSONObject
 import java.io.File
@@ -32,6 +38,7 @@ internal data class AndroidRuntimeProgress(
     val completedBytes: Long,
     val stage: String,
     val totalBytes: Long,
+    val detail: String? = null,
 )
 
 /** Owns one Javet NodeRuntime and all of its calls on one background thread. */
@@ -45,6 +52,7 @@ internal class AndroidRuntimeHost(
     private val disposed = AtomicBoolean(false)
     private var nodeRuntime: NodeRuntime? = null
     private var runtimeModule: V8Module? = null
+    private var progressCallback: V8ValueFunction? = null
     private var runtimeRoot: File? = null
 
     fun invoke(
@@ -68,6 +76,7 @@ internal class AndroidRuntimeHost(
                 Log.i(TAG, "android_runtime_invoke_complete bytes=${result.length}")
                 callback(null, result)
             } catch (_: Throwable) {
+                runCatching { stopRuntime() }
                 Log.e(TAG, "android_runtime_invoke_failed code=runtime_start_failed")
                 callback(
                     AndroidRuntimeError(
@@ -80,22 +89,159 @@ internal class AndroidRuntimeHost(
         }
     }
 
+    fun importLocalPlugin(
+        sourcePath: String,
+        callback: (AndroidRuntimeError?) -> Unit,
+    ) {
+        if (disposed.get()) {
+            callback(AndroidRuntimeError("runtime_unavailable", "Android Runtime is closed."))
+            return
+        }
+        handler.post {
+            var temporary: File? = null
+            var phase = "validate"
+            try {
+                val sourceName = selectedFileName(sourcePath)
+                check(
+                    !isContentUri(sourcePath) ||
+                        sourceName.endsWith(".mgplugin", ignoreCase = true),
+                ) {
+                    "file_name_invalid"
+                }
+                val inbox = File(context.filesDir, "mgread-runtime/import-inbox").apply {
+                    mkdirs()
+                }
+                val target = File(
+                    inbox,
+                    "import-${System.currentTimeMillis()}.mgplugin",
+                )
+                val temporaryFile = File(target.path + ".part")
+                temporary = temporaryFile
+                phase = "read"
+                val sourceSize = selectedFileSize(sourcePath)
+                onProgress(AndroidRuntimeProgress(0, "plugin_copying", sourceSize))
+                copySelectedFile(sourcePath, temporaryFile) { copiedBytes ->
+                    onProgress(AndroidRuntimeProgress(copiedBytes, "plugin_copying", sourceSize))
+                }
+                onProgress(AndroidRuntimeProgress(sourceSize, "plugin_copied", sourceSize))
+                check(temporaryFile.renameTo(target)) { "disk_full" }
+                phase = "runtime_start"
+                onProgress(AndroidRuntimeProgress(0, "plugin_installing", 0))
+                restartRuntime()
+                ensureStarted()
+                callback(null)
+            } catch (error: Throwable) {
+                temporary?.delete()
+                runCatching { stopRuntime() }
+                val code = when {
+                    error.message == "file_name_invalid" -> "file_name_invalid"
+                    error.message == "file_unavailable" -> "file_unavailable"
+                    error.message == "file_unreadable" -> "file_unreadable"
+                    error.message == "file_too_large" -> "file_too_large"
+                    error.message == "invalid_request" -> "invalid_request"
+                    error.message == "disk_full" -> "disk_full"
+                    phase == "read" -> "file_read_failed"
+                    phase == "runtime_start" -> "plugin_install_failed"
+                    else -> "internal"
+                }
+                callback(
+                    AndroidRuntimeError(
+                        code,
+                        "Android Runtime could not import the selected plugin.",
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun selectedFileName(sourcePath: String): String {
+        if (!isContentUri(sourcePath)) return localFile(sourcePath).name
+        val uri = Uri.parse(sourcePath)
+        context.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) return cursor.getString(index).orEmpty()
+            }
+        }
+        return Uri.decode(uri.lastPathSegment.orEmpty())
+    }
+
+    private fun selectedFileSize(sourcePath: String): Long {
+        if (!isContentUri(sourcePath)) return localFile(sourcePath).length().coerceAtLeast(0L)
+        val uri = Uri.parse(sourcePath)
+        context.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.SIZE),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (index >= 0 && !cursor.isNull(index)) {
+                    return cursor.getLong(index).coerceAtLeast(0L)
+                }
+            }
+        }
+        return 0L
+    }
+
+    private fun copySelectedFile(
+        sourcePath: String,
+        destination: File,
+        onCopied: (Long) -> Unit,
+    ) {
+        val input = if (isContentUri(sourcePath)) {
+            context.contentResolver.openInputStream(Uri.parse(sourcePath))
+        } else {
+            val source = localFile(sourcePath)
+            check(source.isFile) { "file_unavailable" }
+            source.inputStream()
+        } ?: error("file_unreadable")
+        input.use { source ->
+            FileOutputStream(destination).use { target ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var total = 0L
+                var lastReported = 0L
+                while (true) {
+                    val read = source.read(buffer)
+                    if (read < 0) break
+                    total += read
+                    check(total <= MAX_IMPORT_BYTES) { "file_too_large" }
+                    target.write(buffer, 0, read)
+                    if (total - lastReported >= PROGRESS_REPORT_BYTES) {
+                        lastReported = total
+                        onCopied(total)
+                    }
+                }
+                onCopied(total)
+            }
+        }
+    }
+
+    private fun isContentUri(sourcePath: String): Boolean =
+        sourcePath.startsWith("content://", ignoreCase = true)
+
+    private fun localFile(sourcePath: String): File {
+        if (sourcePath.startsWith("file://", ignoreCase = true)) {
+            return File(Uri.parse(sourcePath).path.orEmpty())
+        }
+        return File(sourcePath)
+    }
+
     fun dispose() {
         if (!disposed.compareAndSet(false, true)) return
         Log.i(TAG, "android_runtime_dispose_start")
         val latch = CountDownLatch(1)
         handler.post {
             try {
-                nodeRuntime?.let {
-                    runCatching {
-                        awaitString("globalThis.__mgreadStopJson()")
-                    }
-                    it.setStopping(true)
-                    runtimeModule?.close()
-                    runtimeModule = null
-                    it.close()
-                }
-                nodeRuntime = null
+                stopRuntime()
                 Log.i(TAG, "android_runtime_dispose_complete")
             } finally {
                 latch.countDown()
@@ -105,23 +251,48 @@ internal class AndroidRuntimeHost(
         thread.quitSafely()
     }
 
+    private fun restartRuntime() {
+        if (nodeRuntime == null) return
+        stopRuntime()
+        Log.i(TAG, "android_runtime_restarted_for_plugin_import")
+    }
+
+    private fun stopRuntime() {
+        nodeRuntime?.let {
+            runCatching {
+                awaitString("globalThis.__mgreadStopJson()")
+            }
+            it.setStopping(true)
+            progressCallback?.close()
+            progressCallback = null
+            runtimeModule?.close()
+            runtimeModule = null
+            it.close()
+        }
+        nodeRuntime = null
+    }
+
     private fun ensureStarted() {
         if (nodeRuntime != null) return
         Log.i(TAG, "android_runtime_start")
         val root = File(context.filesDir, "mgread-runtime/android").apply { mkdirs() }
         ensureRuntimeAssets(root)
         val dist = File(root, "dist/desktop-runtime.js")
-        val plugins = File(root, "default-plugins")
-        check(dist.isFile && plugins.isDirectory) { "Android Runtime assets are missing." }
+        check(dist.isFile) { "Android Runtime assets are missing." }
         Log.i(TAG, "android_runtime_node_create_start")
         onProgress(AndroidRuntimeProgress(0, "node_starting", 0))
         val runtime = V8Host.getNodeInstance().createV8Runtime<NodeRuntime>()
         Log.i(TAG, "android_runtime_node_create_complete")
+        installProgressCallback(runtime)
         runtime.setV8ModuleResolver(AndroidModuleResolver(root))
         Log.i(TAG, "android_runtime_module_resolver_ready")
         nodeRuntime = runtime
         runtimeRoot = root
         val dataRoot = File(context.filesDir, "mgread-runtime/data").apply { mkdirs() }
+        val pluginImportInbox = File(
+            context.filesDir,
+            "mgread-runtime/import-inbox",
+        ).apply { mkdirs() }
         check(awaitString("Promise.resolve('android-runtime-probe')") == "android-runtime-probe")
         Log.i(TAG, "android_runtime_promise_probe_complete")
         val module = try {
@@ -153,8 +324,15 @@ internal class AndroidRuntimeHost(
               const { DesktopRuntime } = globalThis.__mgreadDesktopRuntime;
               const core = new DesktopRuntime({
                 dataRoot: ${JSONObject.quote(dataRoot.path)},
-                bundledPluginRoot: ${JSONObject.quote(plugins.path)},
+                pluginImportInboxRoot: ${JSONObject.quote(pluginImportInbox.path)},
                 embedded: true,
+                onProgress: (progress) => {
+                  try {
+                    globalThis.__mgreadReportProgress(JSON.stringify(progress));
+                  } catch (_) {
+                    // Progress is observational and must not change Runtime results.
+                  }
+                },
               });
               await core.start();
               const hello = await core.invokeEmbedded('runtime.hello', {});
@@ -206,6 +384,30 @@ internal class AndroidRuntimeHost(
                 return result.toString()
             }
         }
+    }
+
+    private fun installProgressCallback(runtime: NodeRuntime) {
+        val callbackContext = JavetCallbackContext(
+            "__mgreadReportProgress",
+            JavetCallbackType.DirectCallNoThisAndNoResult,
+            object : IJavetDirectCallable.NoThisAndNoResult<Exception> {
+                override fun call(vararg values: V8Value) {
+                    val raw = values.firstOrNull()?.toString() ?: return
+                    runCatching {
+                        val event = JSONObject(raw)
+                        val stage = event.optString("stage")
+                        val completed = event.optLong("completedBytes", -1L)
+                        val total = event.optLong("totalBytes", -1L)
+                        val detail = event.optString("detail").takeIf { it.isNotEmpty() }
+                        if (stage.isEmpty() || completed < 0L || total < 0L) return@runCatching
+                        onProgress(AndroidRuntimeProgress(completed, stage, total, detail))
+                    }
+                }
+            },
+        )
+        val callback = runtime.createV8ValueFunction(callbackContext)
+        runtime.getGlobalObject().set("__mgreadReportProgress", callback)
+        progressCallback = callback
     }
 
     private fun awaitCompletion(value: V8Value) {
@@ -331,6 +533,8 @@ internal class AndroidRuntimeHost(
     }
 
     private companion object {
+        const val MAX_IMPORT_BYTES = 32L * 1024L * 1024L
+        const val PROGRESS_REPORT_BYTES = 64L * 1024L
         const val TAG = "MgReadAndroidRuntime"
     }
 }

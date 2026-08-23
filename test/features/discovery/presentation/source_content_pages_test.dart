@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
@@ -19,7 +20,6 @@ void main() {
             onTabSelected: (_) {},
             onCategorySelected: (target) => selectedTarget = target,
             onContentPressed: (_) {},
-            onAddToShelf: (_) {},
             onRefreshRequested: () {},
             onLoadMore: (_) {},
             canNavigateBack: false,
@@ -46,6 +46,7 @@ void main() {
     tester,
   ) async {
     var backPressed = false;
+    var refreshPressed = false;
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
@@ -56,8 +57,7 @@ void main() {
           onTabSelected: (_) {},
           onCategorySelected: (_) {},
           onContentPressed: (_) {},
-          onAddToShelf: (_) {},
-          onRefreshRequested: () {},
+          onRefreshRequested: () => refreshPressed = true,
           onLoadMore: (_) {},
           canNavigateBack: true,
           onBackRequested: () => backPressed = true,
@@ -68,6 +68,27 @@ void main() {
 
     await tester.tap(find.byKey(const Key('runtime-discovery-back')));
     expect(backPressed, isTrue);
+
+    expect(
+      find.descendant(
+        of: find.byType(DiscoveryTopBar),
+        matching: find.text('嵌套分类'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(DiscoveryTopBar),
+        matching: find.text('发现'),
+      ),
+      findsNothing,
+    );
+    expect(find.byKey(const Key('discovery-refresh-action')), findsOneWidget);
+    expect(find.text('刷新'), findsNothing);
+    expect(find.byType(DiscoveryEditorsChoiceCard), findsNothing);
+
+    await tester.tap(find.byKey(const Key('discovery-refresh-action')));
+    expect(refreshPressed, isTrue);
   });
 }
 

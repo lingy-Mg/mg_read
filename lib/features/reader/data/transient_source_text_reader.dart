@@ -41,6 +41,7 @@ final class TransientSourceTextReader {
     required String initialChapterId,
     ReaderObserver? observer,
     TextReaderStateStore? stateStore,
+    ReaderExtensions extensions = const ReaderExtensions(),
   }) {
     final initialIndex = _dataSource.indexOf(initialChapterId);
     if (initialIndex == null) {
@@ -63,6 +64,7 @@ final class TransientSourceTextReader {
             ),
           ),
       observer: observer,
+      extensions: extensions,
     );
   }
 }

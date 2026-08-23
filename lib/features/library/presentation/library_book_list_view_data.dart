@@ -13,6 +13,8 @@ final class LibraryBookListItemViewData {
     required this.title,
     required this.coverVariant,
     required this.status,
+    this.coverUrl,
+    this.coverAssetPath,
     this.subtitle,
     this.activityLabel,
     this.hasAttentionIndicator = false,
@@ -28,6 +30,9 @@ final class LibraryBookListItemViewData {
   /// Primary title shown at the top of the row.
   final String title;
 
+  /// Optional source cover retained by the app-owned shelf projection.
+  final Uri? coverUrl;
+
   /// Context-specific secondary text, such as the latest or last-read chapter.
   final String? subtitle;
 
@@ -39,6 +44,9 @@ final class LibraryBookListItemViewData {
 
   final LibraryCoverVariant coverVariant;
   final LibraryBookStatus status;
+
+  /// Optional local cover fixture used by static screens.
+  final String? coverAssetPath;
 
   /// Whether an enabled presentation should render the small attention dot.
   final bool hasAttentionIndicator;

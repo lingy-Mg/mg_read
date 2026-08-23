@@ -14,43 +14,51 @@ import 'package:mg_read/features/library/domain/library_overview.dart';
 import '../../../core/diagnostics/diagnostics_testkit.dart';
 
 void main() {
-  test('keeps the successful overview when the page listener is replaced', () async {
-    final diagnostics = DiagnosticsTestkit();
-    addTearDown(diagnostics.dispose);
-    final loader = _ControlledLibraryOverviewLoader();
-    final container = ProviderContainer(
-      overrides: [
-        libraryOverviewLoaderProvider.overrideWithValue(loader),
-        diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
-      ],
-    );
-    addTearDown(container.dispose);
+  test(
+    'keeps the successful overview when the page listener is replaced',
+    () async {
+      final diagnostics = DiagnosticsTestkit();
+      addTearDown(diagnostics.dispose);
+      final loader = _ControlledLibraryOverviewLoader();
+      final container = ProviderContainer(
+        overrides: [
+          libraryOverviewLoaderProvider.overrideWithValue(loader),
+          diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    final firstSubscription = container.listen(
-      libraryPageControllerProvider,
-      (_, _) {},
-      fireImmediately: true,
-    );
-    await _flush();
-    expect(loader.loadCount, 1);
-    loader.completeNext(_overview('cached'));
-    await _flush();
-    firstSubscription.close();
+      final firstSubscription = container.listen(
+        libraryPageControllerProvider,
+        (_, _) {},
+        fireImmediately: true,
+      );
+      await _flush();
+      expect(loader.loadCount, 1);
+      loader.completeNext(_overview('cached'));
+      await _flush();
+      firstSubscription.close();
 
-    final secondSubscription = container.listen(
-      libraryPageControllerProvider,
-      (_, _) {},
-      fireImmediately: true,
-    );
-    addTearDown(secondSubscription.close);
-    await _flush();
+      final secondSubscription = container.listen(
+        libraryPageControllerProvider,
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(secondSubscription.close);
+      await _flush();
 
-    expect(loader.loadCount, 1);
-    expect(
-      container.read(libraryPageControllerProvider).overview!.items.single.title,
-      'cached',
-    );
-  });
+      expect(loader.loadCount, 1);
+      expect(
+        container
+            .read(libraryPageControllerProvider)
+            .overview!
+            .items
+            .single
+            .title,
+        'cached',
+      );
+    },
+  );
 
   test('latest request generation wins when refreshes overlap', () async {
     final diagnostics = DiagnosticsTestkit();
@@ -115,6 +123,124 @@ void main() {
         hasLength(1),
       );
     }
+  });
+
+  test(
+    'retains old data while refreshing and replaces it after completion',
+    () async {
+      final diagnostics = DiagnosticsTestkit();
+      addTearDown(diagnostics.dispose);
+      final _ControlledLibraryOverviewLoader loader =
+          _ControlledLibraryOverviewLoader();
+      final ProviderContainer container = ProviderContainer(
+        overrides: [
+          libraryOverviewLoaderProvider.overrideWithValue(loader),
+          diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+        ],
+      );
+      addTearDown(container.dispose);
+      final ProviderSubscription<LibraryPageState> subscription = container
+          .listen(
+            libraryPageControllerProvider,
+            (_, _) {},
+            fireImmediately: true,
+          );
+      addTearDown(subscription.close);
+
+      await _flush();
+      loader.completeNext(_overview('old data'));
+      await _flush();
+
+      final Future<void> refresh = container
+          .read(libraryPageControllerProvider.notifier)
+          .refresh();
+      await _flush();
+      final LibraryPageState refreshing = container.read(
+        libraryPageControllerProvider,
+      );
+      expect(refreshing.status, LibraryPageStatus.refreshing);
+      expect(refreshing.overview!.items.single.title, 'old data');
+
+      loader.completeNext(_overview('complete data'));
+      await refresh;
+      expect(
+        container
+            .read(libraryPageControllerProvider)
+            .overview!
+            .items
+            .single
+            .title,
+        'complete data',
+      );
+      expect(
+        container.read(libraryPageControllerProvider).status,
+        LibraryPageStatus.content,
+      );
+    },
+  );
+
+  test('projects shelf mutations immediately and preserves commits on refresh failure', () async {
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    final loader = _ControlledLibraryOverviewLoader();
+    final container = ProviderContainer(
+      overrides: [
+        libraryOverviewLoaderProvider.overrideWithValue(loader),
+        diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+      ],
+    );
+    addTearDown(container.dispose);
+    final subscription = container.listen(
+      libraryPageControllerProvider,
+      (_, _) {},
+      fireImmediately: true,
+    );
+    addTearDown(subscription.close);
+
+    await _flush();
+    loader.completeNext(_overview('durable'));
+    await _flush();
+    final controller = container.read(libraryPageControllerProvider.notifier);
+
+    controller.beginAddition(
+      mutationId: 'source:pending',
+      provisionalItem: const LibraryItemSummary(
+        id: 'pending-shelf:source:pending',
+        title: '立即出现',
+      ),
+    );
+    expect(
+      container.read(libraryPageControllerProvider).overview!.items
+          .map((item) => item.title),
+      contains('立即出现'),
+    );
+
+    controller.commitAddition(
+      mutationId: 'source:pending',
+      durableItem: const LibraryItemSummary(id: 'book-committed', title: '立即出现'),
+    );
+    await _flush();
+    loader.failNext(StateError('refresh unavailable'));
+    await _flush();
+    expect(
+      container.read(libraryPageControllerProvider).overview!.items
+          .map((item) => item.title),
+      contains('立即出现'),
+    );
+    expect(container.read(libraryPageControllerProvider).hasFailure, isFalse);
+
+    controller.beginRemoval('book-durable');
+    expect(
+      container.read(libraryPageControllerProvider).overview!.items
+          .map((item) => item.title),
+      isNot(contains('durable')),
+    );
+    controller.rollbackRemoval('book-durable');
+    expect(
+      container.read(libraryPageControllerProvider).overview!.items
+          .map((item) => item.title),
+      contains('durable'),
+    );
   });
 
   test(

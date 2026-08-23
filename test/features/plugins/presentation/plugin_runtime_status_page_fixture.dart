@@ -5,7 +5,7 @@ const PluginRuntimeConnection dataSourceManagementFixture =
     PluginRuntimeConnection(
       isHealthy: true,
       nodeVersion: '24.16.0',
-      runtimeVersion: '0.2.0-standard.1',
+      runtimeVersion: '0.2.0-standard.2',
       plugins: <PluginRuntimePlugin>[
         PluginRuntimePlugin(
           activeVersion: '1.0.0',

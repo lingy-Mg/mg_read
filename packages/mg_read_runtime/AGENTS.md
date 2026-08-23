@@ -39,7 +39,8 @@ monorepo 根 [AGENTS.md](../../AGENTS.md) 始终适用。本文件只补充 Runt
   不恢复 manifest、bundle、shared dependency、自定义 lock 或旧模板 RPC。
 - Runtime 不执行 npm/pnpm/install scripts，不求解 SemVer；拒绝 Git dependency、包外 `file:`、
   native addon 和原生文件。依赖对象仓的 hardlink/copy 只是内部存储优化。
-- 插件版本不可变，只在下次应用进程冷启动激活；当前进程不热替换或热重启 Runtime。
+- installed 插件版本不可变，只在下次 Runtime 冷启动激活。Windows Debug development 项目按
+  ADR-0019 直读工作区；指纹变化后先回收旧 VM，再启动唯一新 Runtime，不在同一 VM 内热替换。
 - Android 一个专用线程持有一个 Javet `NodeRuntime`；desktop 只从 package 固定路径启动精确
   Node。Windows Job Object、macOS 签名/公证和 Android ABI 都由本 package 验收。
 - desktop 代理只允许显式 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` 与 Windows 手工 Internet

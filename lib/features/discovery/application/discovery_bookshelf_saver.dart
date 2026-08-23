@@ -12,19 +12,40 @@ abstract interface class DiscoveryBookshelfSaver {
   });
 }
 
+/// One source-detail shelf request as observed by app composition.
+///
+/// The identifier only uses stable source identity, so no source payload or
+/// user-visible data is needed to reconcile an optimistic local projection.
+final class DiscoveryBookshelfMutation {
+  const DiscoveryBookshelfMutation(this.request);
+
+  final BookshelfAddRequest request;
+
+  String get id => '${request.pluginId}:${request.remoteContentId}';
+}
+
 /// Main-app adapter that writes only through the public Content Library API.
 final class ContentLibraryDiscoveryBookshelfSaver
     implements DiscoveryBookshelfSaver {
-  const ContentLibraryDiscoveryBookshelfSaver(this._library);
+  const ContentLibraryDiscoveryBookshelfSaver(
+    this._library, {
+    this.onMutationStarted,
+    this.onMutationCommitted,
+    this.onMutationFailed,
+  });
 
   final ContentLibrary _library;
+  final void Function(DiscoveryBookshelfMutation mutation)? onMutationStarted;
+  final void Function(DiscoveryBookshelfMutation mutation, LibraryItem item)?
+  onMutationCommitted;
+  final void Function(DiscoveryBookshelfMutation mutation)? onMutationFailed;
 
   @override
   Future<void> save({
     required PluginSourceDescriptor source,
     required PluginContentSummary content,
   }) async {
-    await _library.bookshelf.addFromSource(
+    final mutation = DiscoveryBookshelfMutation(
       BookshelfAddRequest(
         title: content.title,
         author: content.author,
@@ -35,8 +56,18 @@ final class ContentLibraryDiscoveryBookshelfSaver
         pluginId: source.id,
         pluginVersion: source.pluginVersion,
         remoteContentId: content.id,
+        coverUrl: content.coverUrl,
+        sourceName: source.displayName,
       ),
     );
+    onMutationStarted?.call(mutation);
+    try {
+      final item = await _library.bookshelf.addFromSource(mutation.request);
+      onMutationCommitted?.call(mutation, item);
+    } on Object {
+      onMutationFailed?.call(mutation);
+      rethrow;
+    }
   }
 }
 

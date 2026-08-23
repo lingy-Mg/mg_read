@@ -114,9 +114,9 @@ class ProfileSettingsRow extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleMedium?.copyWith(
-                            fontSize: 18,
+                            fontSize: 16,
                             fontWeight: FontWeight.w500,
-                            height: 1.08,
+                            height: 1.05,
                           ),
                         ),
                         const SizedBox(height: AppSpacing.unit),
@@ -126,7 +126,7 @@ class ProfileSettingsRow extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: tokens.mutedText,
-                            fontSize: 14,
+                            fontSize: 13,
                             fontWeight: FontWeight.w400,
                             height: 1.05,
                           ),
@@ -142,7 +142,7 @@ class ProfileSettingsRow extends StatelessWidget {
                         color: item.isAccentTrailingLabel
                             ? tokens.warning
                             : tokens.mutedText,
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w400,
                         height: 1.1,
                       ),
@@ -152,7 +152,7 @@ class ProfileSettingsRow extends StatelessWidget {
                   Icon(
                     Icons.chevron_right_rounded,
                     color: tokens.mutedText,
-                    size: 24,
+                    size: 20,
                   ),
                 ],
               ),

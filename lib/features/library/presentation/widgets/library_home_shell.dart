@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -6,9 +8,9 @@ import 'package:mg_read/features/library/presentation/library_home_view_data.dar
 import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_continue_reading_card.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_controls.dart';
-import 'package:mg_read/features/library/presentation/widgets/library_source_manager_card.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
+import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 
 /// The responsive, presentation-only app shell for the library landing page.
 class LibraryHomeShell extends StatefulWidget {
@@ -42,6 +44,23 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   LibraryHomeSection _section = LibraryHomeSection.recentUpdates;
   LibraryStatusFilter _filter = LibraryStatusFilter.all;
   String? _actionFeedback;
+  double _contentOpacity = 1;
+
+  @override
+  void didUpdateWidget(covariant LibraryHomeShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isRefreshing &&
+        !widget.isRefreshing &&
+        !identical(oldWidget.data, widget.data)) {
+      _contentOpacity = 0.4;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _contentOpacity = 1;
+        });
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -58,59 +77,34 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
           policy: OrderedTraversalPolicy(),
           child: LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
+              final bool useWidePagePadding =
+                  constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
+              final double pagePadding = useWidePagePadding
+                  ? AppSpacing.widePagePadding
+                  : AppSpacing.compactPagePadding;
               return Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(
-                    maxWidth: AppSpacing.mobileContentMaxWidth,
+                    maxWidth: AppSpacing.contentMaxWidth,
                   ),
                   child: RefreshIndicator(
                     onRefresh: widget.onRefresh,
                     child: Scrollbar(
                       controller: _scrollController,
-                      child: ListView(
+                      child: CustomScrollView(
                         key: const Key('library-home-content'),
                         controller: _scrollController,
                         primary: false,
-                        padding: EdgeInsets.fromLTRB(
-                          AppSpacing.compactPagePadding,
-                          AppSpacing.homeContentTopPadding,
-                          AppSpacing.compactPagePadding,
-                          AppSpacing.page,
-                        ),
                         physics: const AlwaysScrollableScrollPhysics(),
-                        children: <Widget>[
-                          LibraryHomeTopBar(
-                            onSearch: _handleSearch,
-                            onToggleTheme: widget.onToggleTheme,
-                            onReadingHistory: _handleReadingHistory,
-                            onManageSources: _handleManageSources,
-                          ),
-                          if (widget.isRefreshing) ...<Widget>[
-                            const SizedBox(height: AppSpacing.regular),
-                            Semantics(
-                              label: '正在刷新书架',
-                              child: const LinearProgressIndicator(),
+                        slivers: <Widget>[
+                          SliverPadding(
+                            padding: EdgeInsets.fromLTRB(
+                              pagePadding,
+                              AppSpacing.pageHeaderTopPadding,
+                              pagePadding,
+                              AppSpacing.page,
                             ),
-                          ],
-                          if (widget.errorNotice != null) ...<Widget>[
-                            const SizedBox(height: AppSpacing.comfortable),
-                            widget.errorNotice!,
-                          ],
-                          if (_actionFeedback != null) ...<Widget>[
-                            const SizedBox(height: AppSpacing.comfortable),
-                            _ActionFeedbackBanner(
-                              message: _actionFeedback!,
-                              onDismiss: () {
-                                setState(() {
-                                  _actionFeedback = null;
-                                });
-                              },
-                            ),
-                          ],
-                          const SizedBox(height: AppSpacing.regular),
-                          KeyedSubtree(
-                            key: const Key('library-mobile-layout'),
-                            child: _buildCompactContent(context),
+                            sliver: _buildContentSlivers(context),
                           ),
                         ],
                       ),
@@ -132,18 +126,103 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     );
   }
 
+  Widget _buildContentSlivers(BuildContext context) {
+    final List<LibraryBookListItemViewData> books = _visibleBooks;
+    return SliverMainAxisGroup(
+      slivers: <Widget>[
+        SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              LibraryHomeTopBar(
+                onSearch: _handleSearch,
+                onToggleTheme: widget.onToggleTheme,
+                onReadingHistory: _handleReadingHistory,
+                onManageSources: _handleManageSources,
+              ),
+              if (widget.isRefreshing) ...<Widget>[
+                const SizedBox(height: AppSpacing.regular),
+                Semantics(
+                  label: '正在刷新书架',
+                  child: const LinearProgressIndicator(),
+                ),
+              ],
+              if (widget.errorNotice != null) ...<Widget>[
+                const SizedBox(height: AppSpacing.comfortable),
+                widget.errorNotice!,
+              ],
+              if (_actionFeedback != null) ...<Widget>[
+                const SizedBox(height: AppSpacing.comfortable),
+                _ActionFeedbackBanner(
+                  message: _actionFeedback!,
+                  onDismiss: () {
+                    setState(() {
+                      _actionFeedback = null;
+                    });
+                  },
+                ),
+              ],
+              const SizedBox(height: AppSpacing.regular),
+            ],
+          ),
+        ),
+        if (books.isEmpty)
+          SliverAnimatedOpacity(
+            opacity: _contentOpacity,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+            sliver: SliverToBoxAdapter(
+              child: KeyedSubtree(
+                key: const Key('library-mobile-layout'),
+                child: _buildCompactContent(context),
+              ),
+            ),
+          )
+        else ...<Widget>[
+          SliverAnimatedOpacity(
+            opacity: _contentOpacity,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+            sliver: SliverToBoxAdapter(
+              child: KeyedSubtree(
+                key: const Key('library-mobile-layout'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    _buildReadingSurface(context),
+                    const SizedBox(height: AppSpacing.comfortable),
+                    _buildLibraryListHeader(),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          SliverAnimatedOpacity(
+            opacity: _contentOpacity,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+            sliver: LibraryBookSliverList(
+              books: books,
+              onOpenBook: _handleOpenBook,
+              onBookMore: _handleBookMore,
+              presentation: _listPresentation,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildCompactContent(BuildContext context) {
     if (_isFirstRunEmpty) {
       return _buildFirstRunContent(context);
     }
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         _buildReadingSurface(context),
         const SizedBox(height: AppSpacing.comfortable),
         _buildLibraryList(context),
-        const SizedBox(height: AppSpacing.sourceManagerGap),
-        _buildSourceManager(),
       ],
     );
   }
@@ -154,17 +233,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       widget.data.books.isEmpty;
 
   Widget _buildFirstRunContent(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        _LibraryFirstRunCard(
-          onDiscover: _handleDiscover,
-          onImportLocal: _handleImportLocal,
-        ),
-        const SizedBox(height: AppSpacing.section),
-        _buildLibraryList(context),
-      ],
-    );
+    return _buildLibraryList(context);
   }
 
   Widget _buildReadingSurface(BuildContext context) {
@@ -185,7 +254,31 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _buildLibraryListHeader(),
+        if (books.isEmpty)
+          _section == LibraryHomeSection.recentUpdates && _isFirstRunEmpty
+              ? _NoRecentUpdatesCard(onDiscover: _handleDiscover)
+              : _NoMatchingBooks(tokens: tokens)
+        else
+          LibraryBookList(
+            books: books,
+            onOpenBook: _handleOpenBook,
+            onBookMore: _handleBookMore,
+            presentation: _listPresentation,
+          ),
+      ],
+    );
+  }
+
+  LibraryBookListPresentation get _listPresentation =>
+      _section == LibraryHomeSection.recentUpdates
+      ? LibraryBookListPresentation.recentUpdates
+      : LibraryBookListPresentation.shelf;
+
+  Widget _buildLibraryListHeader() {
+    return Column(
       children: <Widget>[
         Row(
           key: const Key('library-list-heading-row'),
@@ -212,27 +305,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
           ],
         ),
         const SizedBox(height: AppSpacing.compact),
-        if (books.isEmpty)
-          _section == LibraryHomeSection.recentUpdates && _isFirstRunEmpty
-              ? _NoRecentUpdatesCard(onDiscover: _handleDiscover)
-              : _NoMatchingBooks(tokens: tokens)
-        else
-          LibraryBookList(
-            books: books,
-            onOpenBook: _handleOpenBook,
-            onBookMore: _handleBookMore,
-            presentation: _section == LibraryHomeSection.recentUpdates
-                ? LibraryBookListPresentation.recentUpdates
-                : LibraryBookListPresentation.shelf,
-          ),
       ],
-    );
-  }
-
-  Widget _buildSourceManager() {
-    return LibrarySourceManagerCard(
-      sourceCount: widget.data.availableSourceCount,
-      onPressed: _handleManageSources,
     );
   }
 
@@ -275,6 +348,12 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   }
 
   void _handleBookMore(LibraryBookListItemViewData book) {
+    final Future<void> Function(LibraryBookListItemViewData)? deleteBook =
+        widget.callbacks.onDeleteBook;
+    if (deleteBook != null) {
+      unawaited(_confirmAndDeleteBook(book, deleteBook));
+      return;
+    }
     final ValueChanged<LibraryBookListItemViewData>? callback =
         widget.callbacks.onBookMore;
     if (callback != null) {
@@ -282,6 +361,43 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       return;
     }
     _showUnavailableMessage();
+  }
+
+  Future<void> _confirmAndDeleteBook(
+    LibraryBookListItemViewData book,
+    Future<void> Function(LibraryBookListItemViewData) deleteBook,
+  ) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('删除书籍'),
+        content: Text('确定要从书架删除《${book.title}》吗？'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+
+    try {
+      await deleteBook(book);
+      if (!mounted) return;
+      setState(() {
+        _actionFeedback = '已从书架删除《${book.title}》';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _actionFeedback = '删除操作未能完成，请稍后刷新。';
+      });
+    }
   }
 
   void _handleManageSources() {
@@ -295,10 +411,6 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       return;
     }
     _handleDestinationSelected(AppNavigationDestination.discover);
-  }
-
-  void _handleImportLocal() {
-    _invoke(widget.callbacks.onImportLocal);
   }
 
   void _handleDestinationSelected(AppNavigationDestination destination) {
@@ -359,70 +471,64 @@ class LibraryHomeTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final VoidCallback? toggleTheme = onToggleTheme;
-    return Row(
-      children: <Widget>[
-        Expanded(
-          child: Semantics(
-            header: true,
-            child: Text(
-              '首页',
-              style: theme.textTheme.displaySmall?.copyWith(
-                fontSize: 26,
-                fontWeight: FontWeight.w600,
-                height: 1.15,
-                letterSpacing: -0.3,
+    return SizedBox(
+      height: AppSpacing.pageHeaderHeight,
+      child: Row(
+        children: <Widget>[
+          const Expanded(child: AppPageTitle(title: '首页')),
+          const SizedBox(width: AppSpacing.compact),
+          _LibraryTopBarAction(
+            tooltip: '搜索书籍',
+            onPressed: onSearch,
+            icon: Icons.search_rounded,
+          ),
+          if (AppTheme.darkModeEnabled && toggleTheme != null)
+            Padding(
+              padding: const EdgeInsets.only(left: AppSpacing.compact),
+              child: _LibraryTopBarAction(
+                key: const Key('theme-mode-toggle'),
+                tooltip: theme.brightness == Brightness.dark
+                    ? '切换至浅色模式'
+                    : '切换至深色模式',
+                onPressed: toggleTheme,
+                icon: theme.brightness == Brightness.dark
+                    ? Icons.light_mode_outlined
+                    : Icons.dark_mode_outlined,
               ),
             ),
+          const SizedBox(width: AppSpacing.compact),
+          MenuAnchor(
+            menuChildren: <Widget>[
+              MenuItemButton(
+                onPressed: onReadingHistory,
+                child: const Text('阅读记录'),
+              ),
+              MenuItemButton(
+                onPressed: onManageSources,
+                child: const Text('管理数据源'),
+              ),
+            ],
+            builder:
+                (
+                  BuildContext context,
+                  MenuController controller,
+                  Widget? child,
+                ) {
+                  return _LibraryTopBarAction(
+                    tooltip: '更多操作',
+                    onPressed: () {
+                      if (controller.isOpen) {
+                        controller.close();
+                      } else {
+                        controller.open();
+                      }
+                    },
+                    icon: Icons.more_vert_rounded,
+                  );
+                },
           ),
-        ),
-        const SizedBox(width: AppSpacing.compact),
-        _LibraryTopBarAction(
-          tooltip: '搜索书籍',
-          onPressed: onSearch,
-          icon: Icons.search_rounded,
-        ),
-        if (AppTheme.darkModeEnabled && toggleTheme != null)
-          Padding(
-            padding: const EdgeInsets.only(left: AppSpacing.compact),
-            child: _LibraryTopBarAction(
-              key: const Key('theme-mode-toggle'),
-              tooltip: theme.brightness == Brightness.dark
-                  ? '切换至浅色模式'
-                  : '切换至深色模式',
-              onPressed: toggleTheme,
-              icon: theme.brightness == Brightness.dark
-                  ? Icons.light_mode_outlined
-                  : Icons.dark_mode_outlined,
-            ),
-          ),
-        const SizedBox(width: AppSpacing.compact),
-        MenuAnchor(
-          menuChildren: <Widget>[
-            MenuItemButton(
-              onPressed: onReadingHistory,
-              child: const Text('阅读记录'),
-            ),
-            MenuItemButton(
-              onPressed: onManageSources,
-              child: const Text('管理书源'),
-            ),
-          ],
-          builder:
-              (BuildContext context, MenuController controller, Widget? child) {
-                return _LibraryTopBarAction(
-                  tooltip: '更多操作',
-                  onPressed: () {
-                    if (controller.isOpen) {
-                      controller.close();
-                    } else {
-                      controller.open();
-                    }
-                  },
-                  icon: Icons.more_vert_rounded,
-                );
-              },
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -557,110 +663,6 @@ class _NoReadingProgressCard extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LibraryFirstRunCard extends StatelessWidget {
-  const _LibraryFirstRunCard({
-    required this.onDiscover,
-    required this.onImportLocal,
-  });
-
-  final VoidCallback onDiscover;
-  final VoidCallback onImportLocal;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tokens = AppThemeTokens.of(context);
-    return Semantics(
-      container: true,
-      label: '开始你的阅读旅程，当前还没有阅读记录',
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: tokens.featureSurface,
-          border: Border.all(color: tokens.divider),
-          borderRadius: AppRadii.card,
-        ),
-        child: ClipRRect(
-          borderRadius: AppRadii.card,
-          child: SizedBox(
-            height: 278,
-            child: Stack(
-              children: <Widget>[
-                Positioned(
-                  top: AppSpacing.page,
-                  right: -AppSpacing.compact,
-                  width: 340,
-                  child: ExcludeSemantics(
-                    child: Image.asset(
-                      'assets/illustrations/library_first_run_books_v3.png',
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(AppSpacing.section),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        '开始你的阅读旅程',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontSize: 23,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.compact),
-                      Text(
-                        '当前还没有阅读记录',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: tokens.mutedText,
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.regular),
-                      SizedBox(
-                        width: 34,
-                        child: Divider(color: tokens.accent, thickness: 2),
-                      ),
-                      const SizedBox(height: AppSpacing.regular),
-                      SizedBox(
-                        width: 190,
-                        child: Text(
-                          '添加书源、导入本地书籍，或去发现页挑选你喜欢的内容',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: tokens.mutedText,
-                            height: 1.5,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      Wrap(
-                        spacing: AppSpacing.compact,
-                        runSpacing: AppSpacing.compact,
-                        children: <Widget>[
-                          FilledButton(
-                            onPressed: onDiscover,
-                            child: const Text('去发现'),
-                          ),
-                          OutlinedButton(
-                            onPressed: onImportLocal,
-                            style: OutlinedButton.styleFrom(
-                              backgroundColor: tokens.featureSurface,
-                            ),
-                            child: const Text('导入本地'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );

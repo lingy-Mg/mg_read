@@ -22,33 +22,17 @@ void main() {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_host(themeMode: ThemeMode.light));
     await tester.pumpAndSettle();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
+    await tester.pump();
+    expect(find.byType(Image), findsNWidgets(6));
 
     await expectLater(
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/library_home_compact_light.png'),
     );
   });
-
-  testWidgets(
-    'matches the compact light source-manager baseline after scroll',
-    (WidgetTester tester) async {
-      await _setViewport(tester, const Size(390, 900));
-      await tester.pumpWidget(_host(themeMode: ThemeMode.light));
-      await tester.pumpAndSettle();
-
-      await tester.drag(
-        find.byKey(const Key('library-home-content')),
-        const Offset(0, -1200),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('管理我的书源'), findsOneWidget);
-      await expectLater(
-        find.byType(MaterialApp),
-        matchesGoldenFile('goldens/library_home_compact_sources_light.png'),
-      );
-    },
-  );
 }
 
 Widget _host({required ThemeMode themeMode}) {

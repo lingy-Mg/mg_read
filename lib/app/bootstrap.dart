@@ -13,11 +13,18 @@ import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
+import 'package:mg_read/features/library/application/library_book_remover.dart';
+import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
+import 'package:mg_read/features/library/data/content_library_book_remover.dart';
+import 'package:mg_read/features/library/data/content_library_book_detail_launcher.dart';
 import 'package:mg_read/features/library/data/content_library_overview_loader.dart';
+import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
 import 'package:mg_read/features/reader/data/content_library_source_text_reader.dart';
+import 'package:mg_read/features/profile/application/profile_reading_stats_loader.dart';
+import 'package:mg_read/features/profile/data/content_library_profile_reading_stats_loader.dart';
 
 typedef SettingsDataRootResolver = Future<Directory> Function();
 typedef MgReadAppRunner = void Function(Widget app);
@@ -25,6 +32,12 @@ typedef AppDiagnosticsServiceFactory =
     Future<AppDiagnosticsService> Function(Directory dataRoot);
 typedef ContentLibraryFactory =
     Future<ContentLibrary> Function(
+      Directory dataRoot,
+      DiagnosticsManager diagnostics,
+      AppPersistence? persistence,
+    );
+typedef AppPersistenceFactory =
+    Future<AppPersistence> Function(
       Directory dataRoot,
       DiagnosticsManager diagnostics,
     );
@@ -43,6 +56,7 @@ Future<void> bootstrapMgReadApp({
       _openDefaultDiagnostics,
   ContentLibrary? contentLibrary,
   ContentLibraryFactory? contentLibraryFactory = _openDefaultContentLibrary,
+  AppPersistenceFactory? appPersistenceFactory = _openDefaultAppPersistence,
   SettingsDataRootResolver dataRootResolver = _defaultSettingsDataRoot,
   MgReadAppRunner appRunner = runApp,
   Widget child = const MgReadApp(),
@@ -83,6 +97,8 @@ Future<void> bootstrapMgReadApp({
       );
   final errorBoundary = AppDiagnosticsErrorBoundary.install(diagnostics);
   ContentLibrary? persistentContentLibrary = contentLibrary;
+  AppPersistence? sharedPersistence;
+  AppSettingsManager? manager = settingsManager;
   final bootstrapStopwatch = Stopwatch()..start();
   final bootstrapSpan = diagnostics.startSpan(
     AppDiagnosticEvents.bootstrap,
@@ -90,30 +106,43 @@ Future<void> bootstrapMgReadApp({
       'stage': DiagnosticValue.string('composition'),
     }),
   );
-  final manager =
-      settingsManager ??
-      AppSettingsManager(
-        registry: AppSettingKeys.registry,
-        diagnostics: diagnostics,
-        storeFactory: () async => PersistentSettingsStore.open(
+  try {
+    if (persistentContentLibrary == null && contentLibraryFactory != null) {
+      if (appPersistenceFactory != null) {
+        sharedPersistence = await appPersistenceFactory(dataRoot!, diagnostics);
+      }
+      persistentContentLibrary = await contentLibraryFactory(
+        dataRoot!,
+        diagnostics,
+        sharedPersistence,
+      );
+    }
+    manager ??= AppSettingsManager(
+      registry: AppSettingKeys.registry,
+      diagnostics: diagnostics,
+      storeFactory: () async {
+        final persistence = sharedPersistence;
+        if (persistence != null) {
+          return PersistentSettingsStore(
+            records: persistence.metadataRecords,
+            scope: const ScopeKey(kind: 'app', id: 'primary'),
+            registry: AppSettingKeys.registry,
+          );
+        }
+        return PersistentSettingsStore.open(
           dataRoot: dataRoot!,
           scope: const ScopeKey(kind: 'app', id: 'primary'),
           registry: AppSettingKeys.registry,
           diagnostics: diagnostics,
-        ),
-      );
-  try {
-    if (persistentContentLibrary == null && contentLibraryFactory != null) {
-      persistentContentLibrary = await contentLibraryFactory(
-        dataRoot!,
-        diagnostics,
-      );
-    }
-    await manager.initialize();
+        );
+      },
+    );
+    final resolvedManager = manager;
+    await resolvedManager.initialize();
     appRunner(
       ProviderScope(
         overrides: [
-          appSettingsProvider.overrideWithValue(manager),
+          appSettingsProvider.overrideWithValue(resolvedManager),
           diagnosticsManagerProvider.overrideWithValue(diagnostics),
           diagnosticsQueryProvider.overrideWithValue(persistentDiagnostics),
           diagnosticsCaptureProvider.overrideWithValue(persistentDiagnostics),
@@ -125,8 +154,46 @@ Future<void> bootstrapMgReadApp({
               ContentLibraryOverviewLoader(persistentContentLibrary),
             ),
           if (persistentContentLibrary != null)
-            discoveryBookshelfSaverProvider.overrideWithValue(
-              ContentLibraryDiscoveryBookshelfSaver(persistentContentLibrary),
+            libraryBookRemoverProvider.overrideWithValue(
+              ContentLibraryBookRemover(persistentContentLibrary),
+            ),
+          if (persistentContentLibrary != null)
+            libraryBookDetailLauncherProvider.overrideWithValue(
+              ContentLibraryBookDetailLauncher(persistentContentLibrary),
+            ),
+          if (persistentContentLibrary != null)
+            profileReadingStatsLoaderProvider.overrideWithValue(
+              ContentLibraryProfileReadingStatsLoader(persistentContentLibrary),
+            ),
+          if (persistentContentLibrary != null)
+            discoveryBookshelfSaverProvider.overrideWith(
+              (ref) => ContentLibraryDiscoveryBookshelfSaver(
+                persistentContentLibrary!,
+                onMutationStarted: (mutation) {
+                  ref
+                      .read(libraryPageControllerProvider.notifier)
+                      .beginAddition(
+                        mutationId: mutation.id,
+                        provisionalItem: _summaryFromShelfRequest(
+                          mutation.id,
+                          mutation.request,
+                        ),
+                      );
+                },
+                onMutationCommitted: (mutation, item) {
+                  ref
+                      .read(libraryPageControllerProvider.notifier)
+                      .commitAddition(
+                        mutationId: mutation.id,
+                        durableItem: _summaryFromLibraryItem(item),
+                      );
+                },
+                onMutationFailed: (mutation) {
+                  ref
+                      .read(libraryPageControllerProvider.notifier)
+                      .rollbackAddition(mutation.id);
+                },
+              ),
             ),
           if (persistentContentLibrary != null)
             libraryReaderLauncherProvider.overrideWith(
@@ -137,11 +204,16 @@ Future<void> bootstrapMgReadApp({
             ),
         ],
         child: AppSettingsLifecycleHost(
-          manager: manager,
+          manager: resolvedManager,
           diagnostics: diagnostics,
           closeDiagnostics: persistentDiagnostics?.close ?? diagnostics.close,
           disposeDiagnosticsBoundary: errorBoundary.dispose,
-          closeContentLibrary: persistentContentLibrary?.close,
+          closeContentLibrary: persistentContentLibrary == null
+              ? null
+              : () => _closePersistenceResources(
+                  persistentContentLibrary!,
+                  sharedPersistence,
+                ),
           child: child,
         ),
       ),
@@ -179,8 +251,9 @@ Future<void> bootstrapMgReadApp({
       traceContext: bootstrapSpan.traceContext,
     );
     errorBoundary.dispose();
+    await manager?.close();
     await persistentContentLibrary?.close();
-    await manager.close();
+    await sharedPersistence?.close();
     await (persistentDiagnostics?.close() ?? diagnostics.close());
     Error.throwWithStackTrace(error, stackTrace);
   }
@@ -210,4 +283,49 @@ Future<AppDiagnosticsService> _openDefaultDiagnostics(Directory dataRoot) =>
 Future<ContentLibrary> _openDefaultContentLibrary(
   Directory dataRoot,
   DiagnosticsManager diagnostics,
-) => ContentLibrary.open(dataRoot: dataRoot, diagnostics: diagnostics);
+  AppPersistence? persistence,
+) => persistence == null
+    ? ContentLibrary.open(dataRoot: dataRoot, diagnostics: diagnostics)
+    : Future<ContentLibrary>.value(
+        ContentLibrary.fromPersistence(persistence, diagnostics: diagnostics),
+      );
+
+Future<AppPersistence> _openDefaultAppPersistence(
+  Directory dataRoot,
+  DiagnosticsManager diagnostics,
+) => AppPersistence.open(
+  dataRoot: dataRoot,
+  registry: RecordDocumentRegistry(<RecordDocumentCodec>[
+    ...contentLibraryRecordDocumentCodecs,
+    ...settingsRecordDocumentCodecs(AppSettingKeys.registry, scopeKind: 'app'),
+  ]),
+  diagnostics: diagnostics,
+);
+
+Future<void> _closePersistenceResources(
+  ContentLibrary contentLibrary,
+  AppPersistence? sharedPersistence,
+) async {
+  await contentLibrary.close();
+  await sharedPersistence?.close();
+}
+
+LibraryItemSummary _summaryFromShelfRequest(
+  String mutationId,
+  BookshelfAddRequest request,
+) => LibraryItemSummary(
+  id: 'pending-shelf:$mutationId',
+  title: request.title,
+  author: request.author,
+  coverUrl: request.coverUrl,
+  sourceName: request.sourceName,
+);
+
+LibraryItemSummary _summaryFromLibraryItem(LibraryItem item) =>
+    LibraryItemSummary(
+      id: item.id.value,
+      title: item.title,
+      author: item.author,
+      coverUrl: item.coverUrl,
+      sourceName: item.sourceName,
+    );

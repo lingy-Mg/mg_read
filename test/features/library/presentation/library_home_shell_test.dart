@@ -6,6 +6,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
@@ -33,7 +34,7 @@ void main() {
     expect(find.byKey(const Key('continue-reading-cta')), findsOneWidget);
     expect(find.text('诡秘之主'), findsAtLeastNWidgets(2));
     expect(find.text('最近更新'), findsOneWidget);
-    expect(find.text('管理我的书源'), findsOneWidget);
+    expect(find.text('管理我的书源'), findsNothing);
     expect(find.byType(AppBottomNavigation), findsOneWidget);
     expect(
       find.byWidgetPredicate(
@@ -50,6 +51,48 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('exposes data-source management from the top-right menu', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(_host());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('管理数据源'), findsOneWidget);
+    expect(find.text('管理书源'), findsNothing);
+  });
+
+  testWidgets('confirms bookshelf deletion before invoking the delete action', (
+    WidgetTester tester,
+  ) async {
+    LibraryBookListItemViewData? deletedBook;
+    await tester.pumpWidget(
+      _host(
+        callbacks: LibraryHomeCallbacks(
+          onDeleteBook: (LibraryBookListItemViewData book) async {
+            deletedBook = book;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('书籍更多操作').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('删除书籍'), findsOneWidget);
+    expect(find.textContaining('确定要从书架删除'), findsOneWidget);
+    expect(deletedBook, isNull);
+
+    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    await tester.pumpAndSettle();
+
+    expect(deletedBook?.id, 'fixture-lord-of-mysteries');
+    expect(find.text('已从书架删除《诡秘之主》'), findsOneWidget);
   });
 
   testWidgets(
@@ -111,8 +154,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('开始你的阅读旅程'), findsOneWidget);
-    expect(find.text('当前还没有阅读记录'), findsOneWidget);
+    expect(find.text('开始你的阅读旅程'), findsNothing);
+    expect(find.text('当前还没有阅读记录'), findsNothing);
     expect(find.text('暂无更新内容'), findsOneWidget);
     expect(find.text('去发现好书'), findsOneWidget);
     expect(find.textContaining('界面预览'), findsNothing);
@@ -216,7 +259,7 @@ void main() {
     },
   );
 
-  testWidgets('uses the shared book list for both home sections', (
+  testWidgets('uses the shared book sliver for both home sections', (
     WidgetTester tester,
   ) async {
     final SemanticsHandle semantics = tester.ensureSemantics();
@@ -225,7 +268,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      tester.widget<LibraryBookList>(find.byType(LibraryBookList)).presentation,
+      tester
+          .widget<LibraryBookSliverList>(find.byType(LibraryBookSliverList))
+          .presentation,
       same(LibraryBookListPresentation.recentUpdates),
     );
     expect(
@@ -240,7 +285,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      tester.widget<LibraryBookList>(find.byType(LibraryBookList)).presentation,
+      tester
+          .widget<LibraryBookSliverList>(find.byType(LibraryBookSliverList))
+          .presentation,
       same(LibraryBookListPresentation.shelf),
     );
     expect(
@@ -253,13 +300,27 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('keeps the mobile layout centered on a wide viewport', (
+  testWidgets('adapts the home content to the available viewport width', (
     WidgetTester tester,
   ) async {
     await _setViewport(tester, const Size(390, 844));
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('library-mobile-layout')), findsOneWidget);
+
+    final Rect compactLayout = tester.getRect(
+      find.byKey(const Key('library-mobile-layout')),
+    );
+    expect(compactLayout.width, 390 - AppSpacing.compactPagePadding * 2);
+
+    await _setViewport(tester, const Size(720, 900));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    final Rect tabletLayout = tester.getRect(
+      find.byKey(const Key('library-mobile-layout')),
+    );
+    expect(tabletLayout.width, 720 - AppSpacing.widePagePadding * 2);
+    expect(tabletLayout.center.dx, closeTo(360, 0.1));
 
     await _setViewport(tester, const Size(1280, 900));
     await tester.pump();
@@ -270,10 +331,38 @@ void main() {
     );
     expect(
       mobileLayout.width,
-      AppSpacing.mobileContentMaxWidth - AppSpacing.compactPagePadding * 2,
+      AppSpacing.contentMaxWidth - AppSpacing.widePagePadding * 2,
     );
     expect(mobileLayout.center.dx, closeTo(640, 0.1));
   });
+
+  testWidgets(
+    'stretches the remaining empty-state card across a narrow window',
+    (WidgetTester tester) async {
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      await _setViewport(tester, const Size(489, 1000));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: LibraryHomeShell(
+            data: LibraryHomeViewData.empty(),
+            isRefreshing: false,
+            onRefresh: () async {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final double expectedWidth = 489 - AppSpacing.compactPagePadding * 2;
+      final Finder emptyUpdatesCard = find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is Semantics && widget.properties.label == '暂无更新内容',
+      );
+      expect(emptyUpdatesCard, findsOneWidget);
+      expect(tester.getRect(emptyUpdatesCard).width, expectedWidth);
+      semantics.dispose();
+    },
+  );
 
   testWidgets(
     'keeps filters beside the section navigation and the reading action on the cover baseline',
@@ -391,7 +480,7 @@ void main() {
       final Scrollbar scrollbar = tester.widget<Scrollbar>(
         find.byType(Scrollbar),
       );
-      final ListView list = tester.widget<ListView>(
+      final CustomScrollView list = tester.widget<CustomScrollView>(
         find.byKey(const Key('library-home-content')),
       );
       expect(scrollbar.controller, same(list.controller));
@@ -408,19 +497,48 @@ void main() {
       await mouse.removePointer(location: const Offset(650, 400));
     },
   );
+
+  testWidgets(
+    'lazily builds a long bookshelf and reaches later rows on scroll',
+    (WidgetTester tester) async {
+      await _setViewport(tester, const Size(390, 844));
+      final data = _largeLibraryHomeData(100);
+      await tester.pumpWidget(_host(data: data));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byType(LibraryBookListItem).evaluate().length,
+        lessThan(data.books.length),
+      );
+      final lastBook = find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is LibraryBookListItem &&
+            widget.data.id == 'performance-book-99',
+      );
+      expect(lastBook, findsNothing);
+
+      await tester.dragUntilVisible(
+        lastBook,
+        find.byKey(const Key('library-home-content')),
+        const Offset(0, -420),
+      );
+      expect(lastBook, findsOneWidget);
+    },
+  );
 }
 
 Widget _host({
   ThemeMode themeMode = ThemeMode.light,
   LibraryHomeCallbacks callbacks = const LibraryHomeCallbacks(),
   VoidCallback? onToggleTheme,
+  LibraryHomeViewData? data,
 }) {
   return MaterialApp(
     theme: AppTheme.light(),
     darkTheme: AppTheme.dark(),
     themeMode: themeMode,
     home: LibraryHomeShell(
-      data: LibraryHomeFixtures.preview,
+      data: data ?? LibraryHomeFixtures.preview,
       callbacks: callbacks,
       isRefreshing: false,
       onRefresh: () async {},
@@ -428,6 +546,21 @@ Widget _host({
     ),
   );
 }
+
+LibraryHomeViewData _largeLibraryHomeData(int count) => LibraryHomeViewData(
+  isPresentationFixture: true,
+  continueReading: null,
+  books: List<LibraryBookListItemViewData>.generate(
+    count,
+    (int index) => LibraryBookListItemViewData(
+      id: 'performance-book-$index',
+      title: '性能测试书 $index',
+      coverVariant:
+          LibraryCoverVariant.values[index % LibraryCoverVariant.values.length],
+      status: LibraryBookStatus.local,
+    ),
+  ),
+);
 
 Future<void> _setViewport(WidgetTester tester, Size size) async {
   tester.view.physicalSize = size;

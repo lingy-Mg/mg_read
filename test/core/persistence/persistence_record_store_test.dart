@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -92,6 +93,54 @@ void main() {
     );
   });
 
+  test('reads a bounded identity-key set with one ordered query', () async {
+    await kit.store.create(
+      RecordDraft(
+        id: 'second',
+        recordKind: 'app_setting',
+        scope: localScope,
+        identityKey: 'appearance',
+        orderKey: '2',
+        document: const {'value': 'dark'},
+      ),
+    );
+    await kit.store.create(
+      RecordDraft(
+        id: 'first',
+        recordKind: 'app_setting',
+        scope: localScope,
+        identityKey: 'appearance',
+        orderKey: '1',
+        document: const {'value': 'light'},
+      ),
+    );
+    await kit.store.create(
+      RecordDraft(
+        id: 'other',
+        recordKind: 'app_setting',
+        scope: localScope,
+        identityKey: 'other',
+        document: const {'value': 'system'},
+      ),
+    );
+
+    final records = await kit.store.listByIdentityKeys(
+      recordKind: 'app_setting',
+      scope: localScope,
+      identityKeys: const <String>['appearance', 'missing', 'appearance'],
+    );
+
+    expect(records.map((record) => record.id), <String>['first', 'second']);
+    expect(
+      await kit.store.listByIdentityKeys(
+        recordKind: 'app_setting',
+        scope: localScope,
+        identityKeys: const <String>[],
+      ),
+      isEmpty,
+    );
+  });
+
   test('rejects stale revisions', () async {
     final created = await kit.store.create(settingDraft('theme'));
     await kit.store.update(
@@ -171,6 +220,31 @@ void main() {
   test('uses a background executor and has a defined close boundary', () async {
     expect(kit.store.usesBackgroundExecutor, isTrue);
     await kit.store.close();
+    await expectLater(
+      kit.store.read(id: 'theme', scope: localScope),
+      throwsA(isA<PersistenceClosedError>()),
+    );
+  });
+
+  test('close waits for an already-started transaction', () async {
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    var transactionFinished = false;
+    final transaction = kit.store.transaction(() async {
+      entered.complete();
+      await release.future;
+      transactionFinished = true;
+    });
+
+    await entered.future;
+    final close = kit.store.close();
+    await Future<void>.delayed(Duration.zero);
+    expect(transactionFinished, isFalse);
+
+    release.complete();
+    await transaction;
+    await close;
+    expect(transactionFinished, isTrue);
     await expectLater(
       kit.store.read(id: 'theme', scope: localScope),
       throwsA(isA<PersistenceClosedError>()),

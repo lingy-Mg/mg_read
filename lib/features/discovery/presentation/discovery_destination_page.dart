@@ -16,17 +16,20 @@ import 'package:mg_read/features/discovery/presentation/source_content_detail_sh
 import 'package:mg_read/features/discovery/presentation/source_picker_sheet.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
+import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 
 /// Runtime-backed discovery destination that keeps transport out of widgets.
 class DiscoveryDestinationPage extends ConsumerWidget {
   const DiscoveryDestinationPage({
     required this.onDestinationRequested,
+    this.onSearchRequested,
     this.onSourceManagementRequested,
     this.onTextChapterRequested,
     super.key,
   });
 
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
+  final ValueChanged<String?>? onSearchRequested;
   final VoidCallback? onSourceManagementRequested;
   final SourceTextChapterRequested? onTextChapterRequested;
 
@@ -35,40 +38,55 @@ class DiscoveryDestinationPage extends ConsumerWidget {
     final state = ref.watch(discoveryPageControllerProvider);
     final controller = ref.read(discoveryPageControllerProvider.notifier);
 
-    if (state.status == DiscoveryPageStatus.loaded) {
+    final selectedSource = _selectedSource(state);
+    if (selectedSource != null &&
+        (state.result != null ||
+            state.status == DiscoveryPageStatus.loadingContent ||
+            state.status == DiscoveryPageStatus.failure ||
+            state.status == DiscoveryPageStatus.empty)) {
       return RuntimeDiscoveryPage(
-        result: state.result!,
+        result: state.result,
+        sourceName: selectedSource.displayName,
         onDestinationRequested: onDestinationRequested,
+        onSearchRequested: onSearchRequested == null
+            ? null
+            : () => onSearchRequested!(state.selectedSourceId),
         onSourcePressed: () => _selectSource(context, state, controller),
         onTabSelected: (target) => unawaited(controller.selectTab(target)),
         onCategorySelected: (target) =>
             unawaited(controller.openCategory(target)),
         onContentPressed: (content) {
+          final result = state.result;
+          if (result == null) return;
+          final saver = ref.read(discoveryBookshelfSaverProvider);
           unawaited(
             showSourceContentDetailSheet(
               context,
               gateway: ref.read(sourceContentGatewayProvider),
               pluginId: state.selectedSourceId!,
               id: content.id,
+              initialContent: content,
+              initialSourceName: selectedSource.displayName,
+              relatedContents: _discoveryContentSummaries(result),
               onTextChapterRequested: onTextChapterRequested,
+              onAddToShelf: (content) =>
+                  saver.save(source: selectedSource, content: content),
             ),
           );
         },
-        onAddToShelf: (content) => unawaited(
-          _addToShelf(
-            context,
-            saver: ref.read(discoveryBookshelfSaverProvider),
-            source: state.sources.singleWhere(
-              (source) => source.id == state.selectedSourceId,
-            ),
-            content: content,
-          ),
-        ),
         onRefreshRequested: () => unawaited(controller.refresh()),
         onLoadMore: (collection) => unawaited(controller.loadMore(collection)),
         canNavigateBack: state.canNavigateBack,
         onBackRequested: controller.goBack,
         loadingCollectionId: state.loadingCollectionId,
+        isContentLoading: state.status == DiscoveryPageStatus.loadingContent,
+        contentIsEmpty: state.status == DiscoveryPageStatus.empty,
+        contentFailureMessage: state.status == DiscoveryPageStatus.failure
+            ? _sourceErrorTitle(state.error!)
+            : null,
+        contentFailureCode: state.status == DiscoveryPageStatus.failure
+            ? state.error!.code.wireValue
+            : null,
       );
     }
 
@@ -114,7 +132,8 @@ class DiscoveryDestinationPage extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('发现'),
+        toolbarHeight: AppSpacing.pageHeaderHeight,
+        title: const AppPageTitle(title: '发现'),
         actions: <Widget>[
           if (AppTheme.darkModeEnabled)
             IconButton(
@@ -160,26 +179,6 @@ class DiscoveryDestinationPage extends ConsumerWidget {
     );
   }
 
-  Future<void> _addToShelf(
-    BuildContext context, {
-    required DiscoveryBookshelfSaver saver,
-    required PluginSourceDescriptor source,
-    required PluginContentSummary content,
-  }) async {
-    try {
-      await saver.save(source: source, content: content);
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('已加入书架。')));
-    } on Object {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('暂时无法加入书架，请稍后重试。')));
-    }
-  }
-
   Future<void> _selectSource(
     BuildContext context,
     DiscoveryPageState state,
@@ -197,6 +196,43 @@ class DiscoveryDestinationPage extends ConsumerWidget {
         onSourceManagementRequested?.call();
       case null:
         return;
+    }
+  }
+}
+
+PluginSourceDescriptor? _selectedSource(DiscoveryPageState state) {
+  final selectedSourceId = state.selectedSourceId;
+  if (selectedSourceId == null) return null;
+  for (final source in state.sources) {
+    if (source.id == selectedSourceId) return source;
+  }
+  return null;
+}
+
+Iterable<PluginContentSummary> _discoveryContentSummaries(
+  PluginDiscoverResult result,
+) sync* {
+  switch (result) {
+    case PluginDiscoveryAppendResult(:final items):
+      yield* items.map((item) => item.content);
+    case PluginDiscoveryDocumentResult(:final document):
+      yield* _documentContentSummaries(document.components);
+  }
+}
+
+Iterable<PluginContentSummary> _documentContentSummaries(
+  Iterable<PluginDiscoveryComponent> components,
+) sync* {
+  for (final component in components) {
+    switch (component) {
+      case PluginDiscoveryContentCollectionComponent(:final items):
+        yield* items.map((item) => item.content);
+      case PluginDiscoveryGroupComponent(:final children):
+        yield* _documentContentSummaries(children);
+      case PluginDiscoverySectionComponent(:final children):
+        yield* _documentContentSummaries(children);
+      default:
+        break;
     }
   }
 }

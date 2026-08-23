@@ -1,6 +1,6 @@
 # ADR-0006：插件版本目录与冷激活更新
 
-- 状态：Accepted
+- 状态：Superseded（被 [ADR-0019](0019-development-plugin-live-loading.md) 取代；installed 插件的冷激活规则继续保留）
 - 日期：2026-08-13
 - 决策者：MgRead 项目
 

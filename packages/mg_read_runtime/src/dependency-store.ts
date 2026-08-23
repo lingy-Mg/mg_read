@@ -75,6 +75,24 @@ export class DependencyStore {
     this.#hardlinkFile = options.hardlinkFile ?? link;
   }
 
+  /** Checks the immutable cache marker without exposing its filesystem path. */
+  async hasRegistryPackage(dependency: LockedPluginDependency): Promise<boolean> {
+    if (dependency.kind !== "registry" || dependency.integrity === undefined) {
+      return false;
+    }
+    const objectRoot = resolve(
+      this.#objectsRoot,
+      dependencyObjectName(dependency.integrity),
+    );
+    try {
+      await stat(resolve(objectRoot, "complete.json"));
+      await stat(resolve(objectRoot, "package", "package.json"));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** Ensures one registry package object exists and returns its package root. */
   ensureRegistryPackage(dependency: LockedPluginDependency): Promise<string> {
     if (dependency.kind !== "registry" || dependency.integrity === undefined) {

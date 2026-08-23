@@ -10,6 +10,7 @@ import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
+import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_detail_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 
 import '../../../app/mg_read_app_test_support.dart';
@@ -40,7 +41,7 @@ void main() {
         pluginRuntimeConnectionProvider.future,
       );
 
-      expect(result.runtimeVersion, '0.2.0-standard.1');
+      expect(result.runtimeVersion, '0.2.0-standard.2');
       expect(result.plugins.single.id, 'org.example.fixture');
       expect(gateway.calls, 1);
       expect(
@@ -125,38 +126,43 @@ void main() {
     expect(error.toString(), isNot(contains('payload details')));
   });
 
-  test('source enable action persists then refreshes the Runtime projection', () async {
-    final diagnostics = DiagnosticsTestkit();
-    addTearDown(diagnostics.dispose);
-    final gateway = _MutablePluginRuntimeGateway();
-    final container = ProviderContainer(
-      overrides: [
-        diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
-        pluginRuntimeGatewayProvider.overrideWithValue(gateway),
-      ],
-    );
-    addTearDown(container.dispose);
+  test(
+    'source enable action persists then refreshes the Runtime projection',
+    () async {
+      final diagnostics = DiagnosticsTestkit();
+      addTearDown(diagnostics.dispose);
+      final gateway = _MutablePluginRuntimeGateway();
+      final container = ProviderContainer(
+        overrides: [
+          diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+          pluginRuntimeGatewayProvider.overrideWithValue(gateway),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    await container.read(pluginRuntimeConnectionProvider.future);
-    await container
-        .read(pluginRuntimeSourceActionProvider.notifier)
-        .setEnabled(pluginId: 'org.example.mutable', enabled: false);
+      await container.read(pluginRuntimeConnectionProvider.future);
+      await container
+          .read(pluginRuntimeSourceActionProvider.notifier)
+          .setEnabled(pluginId: 'org.example.mutable', enabled: false);
 
-    final result = await container.read(pluginRuntimeConnectionProvider.future);
-    expect(gateway.setEnabledCalls, 1);
-    expect(result.plugins.single.enabled, isFalse);
-    expect(
-      diagnostics.sink.events
-          .where(
-            (event) => event.eventName.startsWith('runtime.facade.call.'),
-          )
-          .map((event) => event.eventName),
-      containsAllInOrder(<String>[
-        'runtime.facade.call.start',
-        'runtime.facade.call.complete',
-      ]),
-    );
-  });
+      final result = await container.read(
+        pluginRuntimeConnectionProvider.future,
+      );
+      expect(gateway.setEnabledCalls, 1);
+      expect(result.plugins.single.enabled, isFalse);
+      expect(
+        diagnostics.sink.events
+            .where(
+              (event) => event.eventName.startsWith('runtime.facade.call.'),
+            )
+            .map((event) => event.eventName),
+        containsAllInOrder(<String>[
+          'runtime.facade.call.start',
+          'runtime.facade.call.complete',
+        ]),
+      );
+    },
+  );
 
   testWidgets('data-source page renders the Runtime source projection', (
     WidgetTester tester,
@@ -191,6 +197,36 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const Key('data-source-add')), findsOneWidget);
+  });
+
+  testWidgets('add data source imports through the Runtime application port', (
+    WidgetTester tester,
+  ) async {
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    final gateway = _MutablePluginRuntimeGateway();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+          pluginRuntimeGatewayProvider.overrideWithValue(gateway),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: PluginRuntimeStatusPage(
+            onBackRequested: () {},
+            onDestinationRequested: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('data-source-add')));
+    await tester.pumpAndSettle();
+
+    expect(gateway.importLocalPluginCalls, 1);
+    expect(find.text('数据来源已添加。'), findsOneWidget);
   });
 
   testWidgets('source management opens the typed Runtime status route', (
@@ -232,6 +268,17 @@ void main() {
     expect(find.text('管理数据来源'), findsOneWidget);
     expect(find.text('示例插件'), findsOneWidget);
 
+    await tester.tap(
+      find.byKey(const ValueKey<String>('data-source-org.example.fixture')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(PluginRuntimeSourceDetailPage), findsOneWidget);
+    expect(find.text('查看数据源'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('data-source-detail-back')));
+    await tester.pumpAndSettle();
+    expect(find.byType(PluginRuntimeStatusPage), findsOneWidget);
+
     await tester.tap(find.byKey(const Key('profile-detail-back')));
     await tester.pumpAndSettle();
     expect(find.byType(ProfilePage), findsOneWidget);
@@ -264,7 +311,7 @@ Future<void> _setViewport(WidgetTester tester, Size size) async {
 const _connected = PluginRuntimeConnection(
   isHealthy: true,
   nodeVersion: '24.16.0',
-  runtimeVersion: '0.2.0-standard.1',
+  runtimeVersion: '0.2.0-standard.2',
   plugins: <PluginRuntimePlugin>[
     PluginRuntimePlugin(
       activeVersion: '1.0.0',
@@ -286,6 +333,33 @@ final class _FakePluginRuntimeGateway implements PluginRuntimeGateway {
   int calls = 0;
 
   @override
+  Stream<RuntimeInitializationProgress> get initialization =>
+      const Stream<RuntimeInitializationProgress>.empty();
+
+  @override
+  Future<PluginInstallationSize> inspectInstallationSize({
+    required String pluginId,
+    required PluginInstallationSizeScope scope,
+  }) async => PluginInstallationSize(
+    bytes: 0,
+    fileCount: 0,
+    pluginId: pluginId,
+    scope: scope,
+    version: 'test',
+  );
+
+  @override
+  Future<bool> importLocalPlugin() async => false;
+
+  @override
+  Future<bool> selectDevelopmentDirectory() async => false;
+
+  @override
+  Future<PluginCodeDirectoryKind> openCodeDirectory({
+    required String pluginId,
+  }) async => PluginCodeDirectoryKind.installed;
+
+  @override
   Future<PluginRuntimeConnection> inspect() async {
     calls += 1;
     return result;
@@ -299,6 +373,39 @@ final class _FakePluginRuntimeGateway implements PluginRuntimeGateway {
 }
 
 final class _FailingPluginRuntimeGateway implements PluginRuntimeGateway {
+  @override
+  Stream<RuntimeInitializationProgress> get initialization =>
+      const Stream<RuntimeInitializationProgress>.empty();
+
+  @override
+  Future<PluginInstallationSize> inspectInstallationSize({
+    required String pluginId,
+    required PluginInstallationSizeScope scope,
+  }) async => PluginInstallationSize(
+    bytes: 0,
+    fileCount: 0,
+    pluginId: pluginId,
+    scope: scope,
+    version: 'test',
+  );
+
+  @override
+  Future<bool> importLocalPlugin() {
+    throw AppError.fromCode(AppErrorCode.runtimeUnavailable);
+  }
+
+  @override
+  Future<bool> selectDevelopmentDirectory() {
+    throw AppError.fromCode(AppErrorCode.runtimeUnavailable);
+  }
+
+  @override
+  Future<PluginCodeDirectoryKind> openCodeDirectory({
+    required String pluginId,
+  }) {
+    throw AppError.fromCode(AppErrorCode.runtimeUnavailable);
+  }
+
   @override
   Future<PluginRuntimeConnection> inspect() async {
     await Future<void>.delayed(Duration.zero);
@@ -331,12 +438,46 @@ final class _MutablePluginRuntimeGateway implements PluginRuntimeGateway {
   );
 
   int setEnabledCalls = 0;
+  int importLocalPluginCalls = 0;
+
+  @override
+  Stream<RuntimeInitializationProgress> get initialization =>
+      const Stream<RuntimeInitializationProgress>.empty();
+
+  @override
+  Future<PluginInstallationSize> inspectInstallationSize({
+    required String pluginId,
+    required PluginInstallationSizeScope scope,
+  }) async => PluginInstallationSize(
+    bytes: 0,
+    fileCount: 0,
+    pluginId: pluginId,
+    scope: scope,
+    version: 'test',
+  );
+
+  @override
+  Future<bool> importLocalPlugin() async {
+    importLocalPluginCalls += 1;
+    return true;
+  }
+
+  @override
+  Future<bool> selectDevelopmentDirectory() async => false;
+
+  @override
+  Future<PluginCodeDirectoryKind> openCodeDirectory({
+    required String pluginId,
+  }) async => PluginCodeDirectoryKind.installed;
 
   @override
   Future<PluginRuntimeConnection> inspect() async => _connection;
 
   @override
-  Future<void> setEnabled({required String pluginId, required bool enabled}) async {
+  Future<void> setEnabled({
+    required String pluginId,
+    required bool enabled,
+  }) async {
     setEnabledCalls += 1;
     final PluginRuntimePlugin plugin = _connection.plugins.single;
     _connection = PluginRuntimeConnection(

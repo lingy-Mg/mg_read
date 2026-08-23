@@ -47,10 +47,16 @@ RouteBase get $searchRoute => GoRouteData.$route(
 );
 
 mixin $SearchRoute on GoRouteData {
-  static SearchRoute _fromState(GoRouterState state) => const SearchRoute();
+  static SearchRoute _fromState(GoRouterState state) =>
+      SearchRoute(sourceId: state.uri.queryParameters['source-id']);
+
+  SearchRoute get _self => this as SearchRoute;
 
   @override
-  String get location => GoRouteData.$location('/search');
+  String get location => GoRouteData.$location(
+    '/search',
+    queryParams: {if (_self.sourceId != null) 'source-id': _self.sourceId},
+  );
 
   @override
   void go(BuildContext context) => context.go(location);
@@ -102,6 +108,13 @@ RouteBase get $profileRoute => GoRouteData.$route(
       path: 'about',
       hasOverriddenOnExit: false,
       factory: $AboutRoute._fromState,
+      routes: [
+        GoRouteData.$route(
+          path: ':itemId',
+          hasOverriddenOnExit: false,
+          factory: $AboutItemPlaceholderRoute._fromState,
+        ),
+      ],
     ),
     GoRouteData.$route(
       path: 'feedback',
@@ -114,9 +127,29 @@ RouteBase get $profileRoute => GoRouteData.$route(
       factory: $PluginCenterRoute._fromState,
     ),
     GoRouteData.$route(
+      path: 'plugins/status',
+      hasOverriddenOnExit: false,
+      factory: $PluginRuntimeHealthRoute._fromState,
+    ),
+    GoRouteData.$route(
+      path: 'plugins/:pluginId',
+      hasOverriddenOnExit: false,
+      factory: $PluginSourceDetailRoute._fromState,
+    ),
+    GoRouteData.$route(
+      path: 'plugin-cache',
+      hasOverriddenOnExit: false,
+      factory: $PluginCacheRoute._fromState,
+    ),
+    GoRouteData.$route(
       path: 'diagnostics',
       hasOverriddenOnExit: false,
       factory: $DiagnosticsRoute._fromState,
+    ),
+    GoRouteData.$route(
+      path: 'settings/:settingId',
+      hasOverriddenOnExit: false,
+      factory: $ProfileSettingPlaceholderRoute._fromState,
     ),
   ],
 );
@@ -146,6 +179,31 @@ mixin $AboutRoute on GoRouteData {
 
   @override
   String get location => GoRouteData.$location('/profile/about');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $AboutItemPlaceholderRoute on GoRouteData {
+  static AboutItemPlaceholderRoute _fromState(GoRouterState state) =>
+      AboutItemPlaceholderRoute(itemId: state.pathParameters['itemId']!);
+
+  AboutItemPlaceholderRoute get _self => this as AboutItemPlaceholderRoute;
+
+  @override
+  String get location => GoRouteData.$location(
+    '/profile/about/${Uri.encodeComponent(_self.itemId)}',
+  );
 
   @override
   void go(BuildContext context) => context.go(location);
@@ -202,12 +260,107 @@ mixin $PluginCenterRoute on GoRouteData {
   void replace(BuildContext context) => context.replace(location);
 }
 
+mixin $PluginRuntimeHealthRoute on GoRouteData {
+  static PluginRuntimeHealthRoute _fromState(GoRouterState state) =>
+      const PluginRuntimeHealthRoute();
+
+  @override
+  String get location => GoRouteData.$location('/profile/plugins/status');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $PluginSourceDetailRoute on GoRouteData {
+  static PluginSourceDetailRoute _fromState(GoRouterState state) =>
+      PluginSourceDetailRoute(pluginId: state.pathParameters['pluginId']!);
+
+  PluginSourceDetailRoute get _self => this as PluginSourceDetailRoute;
+
+  @override
+  String get location => GoRouteData.$location(
+    '/profile/plugins/${Uri.encodeComponent(_self.pluginId)}',
+  );
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $PluginCacheRoute on GoRouteData {
+  static PluginCacheRoute _fromState(GoRouterState state) =>
+      const PluginCacheRoute();
+
+  @override
+  String get location => GoRouteData.$location('/profile/plugin-cache');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
 mixin $DiagnosticsRoute on GoRouteData {
   static DiagnosticsRoute _fromState(GoRouterState state) =>
       const DiagnosticsRoute();
 
   @override
   String get location => GoRouteData.$location('/profile/diagnostics');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $ProfileSettingPlaceholderRoute on GoRouteData {
+  static ProfileSettingPlaceholderRoute _fromState(GoRouterState state) =>
+      ProfileSettingPlaceholderRoute(
+        settingId: state.pathParameters['settingId']!,
+      );
+
+  ProfileSettingPlaceholderRoute get _self =>
+      this as ProfileSettingPlaceholderRoute;
+
+  @override
+  String get location => GoRouteData.$location(
+    '/profile/settings/${Uri.encodeComponent(_self.settingId)}',
+  );
 
   @override
   void go(BuildContext context) => context.go(location);

@@ -80,7 +80,7 @@ class ProfileOverviewCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            fontSize: 14,
+                            fontSize: 13,
                             fontWeight: FontWeight.w400,
                             height: 1.2,
                             color: tokens.mutedText,
@@ -143,6 +143,8 @@ class _ProfileAvatar extends StatelessWidget {
             width: AppSpacing.profileAvatarSize,
             height: AppSpacing.profileAvatarSize,
             fit: BoxFit.cover,
+            cacheWidth: 120,
+            cacheHeight: 120,
             filterQuality: FilterQuality.medium,
             semanticLabel: '书海行者的头像',
             errorBuilder:
@@ -178,10 +180,10 @@ class _ProfileName extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.titleLarge?.copyWith(
-              fontSize: 22,
+              fontSize: 20,
               fontWeight: FontWeight.w600,
-              height: 1.1,
-              letterSpacing: -0.25,
+              height: 1.05,
+              letterSpacing: -0.2,
             ),
           ),
         ),
@@ -214,7 +216,7 @@ class _ProfileName extends StatelessWidget {
                   'VIP',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onPrimary,
-                    fontSize: 10,
+                    fontSize: 9,
                     fontWeight: FontWeight.w600,
                     height: 1,
                   ),
@@ -260,7 +262,7 @@ class _ProfileEditButton extends StatelessWidget {
                     '编辑资料',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: tokens.warning,
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.w500,
                       height: 1,
                     ),
@@ -303,7 +305,7 @@ class _ProfileStats extends StatelessWidget {
                       stat.label,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: tokens.mutedText,
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w400,
                         height: 1.1,
                       ),
@@ -312,7 +314,7 @@ class _ProfileStats extends StatelessWidget {
                     Text(
                       stat.value,
                       style: theme.textTheme.titleLarge?.copyWith(
-                        fontSize: 21,
+                        fontSize: 19,
                         fontWeight: FontWeight.w500,
                         height: 1.1,
                       ),
@@ -376,7 +378,7 @@ class _ProfileSyncRow extends StatelessWidget {
                     data.syncLabel,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: tokens.warning,
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: FontWeight.w500,
                       height: 1.1,
                     ),
@@ -386,7 +388,7 @@ class _ProfileSyncRow extends StatelessWidget {
                   data.lastSyncLabel,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: tokens.mutedText,
-                    fontSize: 14,
+                    fontSize: 13,
                     fontWeight: FontWeight.w400,
                     height: 1.1,
                   ),
@@ -395,7 +397,7 @@ class _ProfileSyncRow extends StatelessWidget {
                 Icon(
                   Icons.chevron_right_rounded,
                   color: tokens.mutedText,
-                  size: 22,
+                  size: 20,
                 ),
               ],
             ),

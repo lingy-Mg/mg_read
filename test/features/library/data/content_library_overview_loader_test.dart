@@ -39,12 +39,29 @@ void main() {
           updatedAtUtc: DateTime.utc(2026, 8, 21),
         ),
       );
+      await library.bookshelf.add(
+        title: '尚未阅读的书架测试',
+        kind: ContentKind.novel,
+        source: const ContentLibraryIngest(
+          pluginId: 'test-source',
+          producerPluginVersion: '1.0.0',
+          dataVersion: 1,
+          opaqueData: <String, Object?>{'remoteBookId': 'unread-book'},
+        ),
+      );
 
       final overview = await ContentLibraryOverviewLoader(library).load();
 
-      expect(overview.items, hasLength(1));
-      expect(overview.items.single.id, isNotEmpty);
-      expect(overview.items.single.title, '持久化书架测试');
+      expect(overview.items, hasLength(2));
+      final readItem = overview.items.singleWhere(
+        (summary) => summary.id == item.id.value,
+      );
+      final unreadItem = overview.items.singleWhere(
+        (summary) => summary.title == '尚未阅读的书架测试',
+      );
+      expect(readItem.id, isNotEmpty);
+      expect(readItem.title, '持久化书架测试');
+      expect(unreadItem.readingProgress, isNull);
       expect(overview.continueReading?.id, item.id.value);
       expect(overview.continueReading?.readingProgress, 0.1);
     },

@@ -7,10 +7,8 @@ const _expectedNodeVersion = '24.16.0';
 const _protocolVersion = '1.0';
 
 /// Upper bound for child startup and readiness probes.
-// A new Runtime data root installs the packaged default source before emitting
-// ready. Materialising its verified dependency tree can take roughly 14
-// seconds on Windows, so the first launch needs a bounded but realistic
-// budget. Later starts normally complete much sooner.
+// A new release Runtime data root can install packaged defaults before ready;
+// debug builds instead validate directly loaded workspace projects.
 const _startupTimeout = Duration(seconds: 20);
 
 /// Upper bound for a single already-connected control request.
@@ -24,6 +22,10 @@ const _maxStructuredDiagnosticMessageLength = 256;
 
 /// Receives a safe diagnostic after the monitor validates the child record.
 typedef _RuntimeDiagnosticSink = void Function(RuntimeDiagnostic diagnostic);
+
+/// Receives a bounded, already-safe Runtime progress event.
+typedef _RuntimeInitializationSink =
+    void Function(RuntimeInitializationProgress progress);
 
 /// Reports child termination together with whether readiness was already seen.
 typedef _RuntimeProcessExitSink = void Function(int exitCode, bool wasReady);
@@ -40,6 +42,7 @@ final class _DesktopRuntimeBundle {
   const _DesktopRuntimeBundle({
     required this.dataRoot,
     required this.bundledPluginDirectory,
+    required this.developmentPluginDirectory,
     required this.entrypoint,
     required this.nodeExecutable,
     required this.workingDirectory,
@@ -50,6 +53,9 @@ final class _DesktopRuntimeBundle {
 
   /// Packaged first-run source archives, never visible to the main app.
   final Directory? bundledPluginDirectory;
+
+  /// Debug-only workspace projects loaded directly without installation.
+  final Directory? developmentPluginDirectory;
 
   /// Compiled Node executable entrypoint that emits ready/diagnostic records.
   final File entrypoint;
@@ -89,13 +95,20 @@ final class _DesktopRuntimeBundle {
         'windows-x64',
       ]),
     );
+    final dataRoot = Directory(
+      _joinPath(<String>[localAppData, 'MgRead', 'runtime']),
+    );
+    final developmentPluginDirectory = kDebugMode
+        ? _readConfiguredDevelopmentPluginDirectory(dataRoot) ??
+              _findDevelopmentPluginDirectory(<Directory>[
+                Directory.current,
+                appDirectory,
+              ])
+        : null;
     return _DesktopRuntimeBundle(
-      dataRoot: Directory(
-        _joinPath(<String>[localAppData, 'MgRead', 'runtime']),
-      ),
-      bundledPluginDirectory: Directory(
-        _joinPath(<String>[bundleRoot.path, 'default-plugins']),
-      ),
+      dataRoot: dataRoot,
+      bundledPluginDirectory: null,
+      developmentPluginDirectory: developmentPluginDirectory,
       entrypoint: File(_joinPath(<String>[bundleRoot.path, 'dist', 'cli.js'])),
       nodeExecutable: File(
         _joinPath(<String>[bundleRoot.path, 'node', 'node.exe']),
@@ -113,6 +126,7 @@ final class _DesktopRuntimeBundle {
     File? entrypointOverride,
     File? nodeExecutableOverride,
     Directory? runtimeDataRoot,
+    Directory? developmentPluginDirectory,
   }) {
     return _DesktopRuntimeBundle(
       dataRoot:
@@ -125,6 +139,7 @@ final class _DesktopRuntimeBundle {
             ]),
           ),
       bundledPluginDirectory: null,
+      developmentPluginDirectory: developmentPluginDirectory,
       entrypoint:
           entrypointOverride ??
           File(
@@ -151,7 +166,8 @@ final class _DesktopRuntimeBundle {
 /// WebSocket setup, structured diagnostics, and hard-stop cleanup are joined.
 /// The public Facade intentionally exposes only typed capability invocations.
 final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
-  _DesktopRuntimeSupervisor(this._bundle);
+  _DesktopRuntimeSupervisor(this._bundle)
+    : _developmentPluginDirectory = _bundle.developmentPluginDirectory;
 
   /// Immutable package-owned inputs used for the only allowed child launch.
   final _DesktopRuntimeBundle _bundle;
@@ -159,6 +175,11 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   /// Broadcasts already-redacted diagnostics; it is closed during dispose.
   final StreamController<RuntimeDiagnostic> _diagnosticController =
       StreamController<RuntimeDiagnostic>.broadcast();
+
+  /// Broadcasts bounded import/startup progress without exposing paths.
+  final StreamController<RuntimeInitializationProgress>
+  _initializationController =
+      StreamController<RuntimeInitializationProgress>.broadcast();
 
   /// Oldest-to-newest bounded snapshot used when constructing safe failures.
   final List<RuntimeDiagnostic> _diagnostics = <RuntimeDiagnostic>[];
@@ -184,6 +205,13 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   /// Memoized startup operation; concurrent invokes must await this one future.
   Future<_WireConnection>? _startup;
 
+  /// Serializes debug fingerprint checks and clean one-VM-at-a-time restarts.
+  Future<void> _developmentSynchronization = Future<void>.value();
+  String? _developmentFingerprint;
+  bool _developmentRestarting = false;
+  bool _controlledRestarting = false;
+  Directory? _developmentPluginDirectory;
+
   /// Package-test-only child launch count; not a public process handle.
   int get debugProcessStartCount => _processStartCount;
 
@@ -192,7 +220,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
 
   @override
   Stream<RuntimeInitializationProgress> get initialization =>
-      const Stream<RuntimeInitializationProgress>.empty();
+      _initializationController.stream;
 
   /// Immutable copy of all currently retained diagnostics, oldest first.
   List<RuntimeDiagnostic> get latestDiagnostics =>
@@ -207,12 +235,200 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       );
     }
 
-    final connection = await _ensureStarted();
-    final result = await connection.request(
-      method: invocation._wireMethod,
-      params: invocation._wireParams,
+    await _synchronizeDevelopmentRuntime();
+    try {
+      final connection = await _ensureStarted();
+      final result = await connection.request(
+        method: invocation._wireMethod,
+        params: invocation._wireParams,
+        timeout: invocation._timeout,
+      );
+      return invocation._decodeResult(result);
+    } on Object {
+      if (_developmentPluginDirectory != null) _startup = null;
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> importLocalPlugin(String sourcePath) async {
+    if (_disposed) {
+      throw const PluginRuntimeException(
+        'runtime_unavailable',
+        'The desktop Runtime has been closed.',
+      );
+    }
+    final source = File(sourcePath);
+    if (!await source.exists()) {
+      throw const PluginRuntimeException(
+        'not_found',
+        'The selected plugin archive is unavailable.',
+      );
+    }
+    final inbox = Directory(
+      _joinPath(<String>[_bundle.dataRoot.path, 'import-inbox']),
     );
-    return invocation._decodeResult(result);
+    await inbox.create(recursive: true);
+    final target = File(
+      _joinPath(<String>[
+        inbox.path,
+        'import-${DateTime.now().microsecondsSinceEpoch}.mgplugin',
+      ]),
+    );
+    final temporary = File('${target.path}.part');
+    _controlledRestarting = true;
+    try {
+      final totalBytes = await source.length();
+      _emitInitializationProgress(
+        completedBytes: 0,
+        stage: 'plugin_copying',
+        totalBytes: totalBytes,
+      );
+      await source.copy(temporary.path);
+      _emitInitializationProgress(
+        completedBytes: totalBytes,
+        stage: 'plugin_copied',
+        totalBytes: totalBytes,
+      );
+      await temporary.rename(target.path);
+      _emitInitializationProgress(
+        completedBytes: 0,
+        stage: 'plugin_installing',
+        totalBytes: 0,
+      );
+      await _restartForPluginImport();
+      await _ensureStarted();
+      _emitInitializationProgress(
+        completedBytes: 1,
+        stage: 'ready',
+        totalBytes: 1,
+      );
+    } on FileSystemException {
+      await temporary.delete().catchError((_) {});
+      throw const PluginRuntimeException(
+        'disk_full',
+        'The selected plugin archive could not be imported.',
+      );
+    } finally {
+      _controlledRestarting = false;
+    }
+  }
+
+  @override
+  Future<void> setDevelopmentDirectory(String path) async {
+    if (_disposed) {
+      throw const PluginRuntimeException(
+        'runtime_unavailable',
+        'The desktop Runtime has been closed.',
+      );
+    }
+    if (!kDebugMode) {
+      throw const PluginRuntimeException(
+        'unsupported',
+        'Development source directories are available in Windows Debug only.',
+      );
+    }
+    final directory = Directory(path);
+    if (!await directory.exists()) {
+      throw const PluginRuntimeException(
+        'not_found',
+        'The selected development directory is unavailable.',
+      );
+    }
+    try {
+      await _writeConfiguredDevelopmentPluginDirectory(
+        _bundle.dataRoot,
+        directory.path,
+      );
+    } on FileSystemException {
+      throw const PluginRuntimeException(
+        'disk_full',
+        'The development directory could not be saved.',
+      );
+    }
+    _developmentPluginDirectory = directory;
+    _developmentFingerprint = null;
+    await _restartForDevelopmentChange();
+  }
+
+  Future<void> _synchronizeDevelopmentRuntime() async {
+    final developmentRoot = _developmentPluginDirectory;
+    if (developmentRoot == null) return;
+    final previous = _developmentSynchronization;
+    final gate = Completer<void>();
+    _developmentSynchronization = gate.future;
+    try {
+      await previous;
+      final nextFingerprint = await _fingerprintDevelopmentPlugins(
+        developmentRoot,
+      );
+      final currentFingerprint = _developmentFingerprint;
+      if (currentFingerprint == null) {
+        _developmentFingerprint = nextFingerprint;
+        return;
+      }
+      if (currentFingerprint == nextFingerprint) return;
+      await _restartForDevelopmentChange();
+      _developmentFingerprint = nextFingerprint;
+    } finally {
+      gate.complete();
+    }
+  }
+
+  Future<void> _restartForDevelopmentChange() async {
+    _developmentRestarting = true;
+    try {
+      final connection = _connection;
+      if (connection != null) {
+        try {
+          await connection
+              .request(
+                method: 'runtime.shutdown',
+                params: const <String, Object?>{},
+                idempotencyKey: 'development-source-change',
+              )
+              .timeout(_startupTimeout);
+        } on Object {
+          // The Job Object remains the authoritative bounded cleanup path.
+        }
+        await connection.close();
+        _connection = null;
+      }
+      await _terminateOwnedProcessTree();
+      await _disposeMonitor();
+      _startup = null;
+      _recordDiagnostic(
+        const RuntimeDiagnostic(
+          code: 'runtime_development_plugins_reloaded',
+          level: RuntimeDiagnosticLevel.info,
+          message:
+              'Windows development sources changed and the Runtime was reloaded.',
+        ),
+      );
+    } finally {
+      _developmentRestarting = false;
+    }
+  }
+
+  Future<void> _restartForPluginImport() async {
+    final connection = _connection;
+    if (connection == null) return;
+    try {
+      await connection
+          .request(
+            method: 'runtime.shutdown',
+            params: const <String, Object?>{},
+            idempotencyKey: 'local-plugin-import',
+          )
+          .timeout(_startupTimeout);
+    } on Object {
+      // The owned Job Object remains the authoritative cleanup path.
+    }
+    await connection.close();
+    _connection = null;
+    await _terminateOwnedProcessTree();
+    await _disposeMonitor();
+    _startup = null;
   }
 
   ///
@@ -253,6 +469,28 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
     await _terminateOwnedProcessTree();
     await _disposeMonitor();
     await _diagnosticController.close();
+    await _initializationController.close();
+  }
+
+  void _emitInitializationProgress({
+    required int completedBytes,
+    required String stage,
+    required int totalBytes,
+  }) {
+    final progress = RuntimeInitializationProgress.fromPlatform(
+      completedBytes: completedBytes,
+      stage: stage,
+      totalBytes: totalBytes,
+    );
+    if (progress != null && !_initializationController.isClosed) {
+      _initializationController.add(progress);
+    }
+  }
+
+  void _recordInitializationProgress(RuntimeInitializationProgress progress) {
+    if (!_initializationController.isClosed) {
+      _initializationController.add(progress);
+    }
   }
 
   /// Returns the shared startup future, preventing concurrent duplicate cores.
@@ -287,6 +525,8 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
           '--data-root=${_bundle.dataRoot.path}',
           if (_bundle.bundledPluginDirectory != null)
             '--bundled-plugin-root=${_bundle.bundledPluginDirectory!.path}',
+          if (_developmentPluginDirectory != null)
+            '--development-plugin-root=${_developmentPluginDirectory!.path}',
         ],
         environment: _allowlistedEnvironment(),
         includeParentEnvironment: false,
@@ -304,6 +544,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       final monitor = _RuntimeChildMonitor(
         process,
         onDiagnostic: _recordDiagnostic,
+        onProgress: _recordInitializationProgress,
         onExit: _handleProcessExit,
         startupFailure: _failure,
       );
@@ -404,6 +645,14 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
         'The packaged default source assets are unavailable.',
       );
     }
+    final developmentPluginDirectory = _developmentPluginDirectory;
+    if (developmentPluginDirectory != null &&
+        !await developmentPluginDirectory.exists()) {
+      throw _failure(
+        'runtime_development_plugin_root_missing',
+        'The Windows development source directory is unavailable.',
+      );
+    }
   }
 
   /// Converts a post-ready child exit into a safe transport failure/diagnostic.
@@ -412,7 +661,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       return;
     }
     _connection?.markProcessExited();
-    if (!_disposed) {
+    if (!_disposed && !_developmentRestarting && !_controlledRestarting) {
       _recordDiagnostic(
         RuntimeDiagnostic(
           code: 'runtime_process_exited',
@@ -595,9 +844,11 @@ final class _RuntimeChildMonitor {
   _RuntimeChildMonitor(
     this._process, {
     required _RuntimeDiagnosticSink onDiagnostic,
+    required _RuntimeInitializationSink onProgress,
     required _RuntimeProcessExitSink onExit,
     required _RuntimeStartupFailureFactory startupFailure,
   }) : _onDiagnostic = onDiagnostic,
+       _onProgress = onProgress,
        _onExit = onExit,
        _startupFailure = startupFailure {
     _stdoutSubscription = _process.stdout
@@ -632,6 +883,9 @@ final class _RuntimeChildMonitor {
 
   /// Safe diagnostic sink owned by the supervisor, never the Flutter host.
   final _RuntimeDiagnosticSink _onDiagnostic;
+
+  /// Safe progress sink owned by the supervisor, never the Flutter host.
+  final _RuntimeInitializationSink _onProgress;
 
   /// Informs the supervisor whether exit occurred before or after readiness.
   final _RuntimeProcessExitSink _onExit;
@@ -734,6 +988,11 @@ final class _RuntimeChildMonitor {
     if (_disposed) {
       return;
     }
+    final progress = _parseStructuredProgress(line);
+    if (progress != null) {
+      _onProgress(progress);
+      return;
+    }
     final diagnostic = _parseStructuredDiagnostic(line);
     if (diagnostic == null) {
       _record(
@@ -786,6 +1045,34 @@ final class _RuntimeChildMonitor {
 
   /// Forwards a value that was already validated/redacted by this monitor.
   void _record(RuntimeDiagnostic diagnostic) => _onDiagnostic(diagnostic);
+}
+
+RuntimeInitializationProgress? _parseStructuredProgress(String line) {
+  try {
+    final value = _jsonObject(jsonDecode(line), 'Runtime progress record');
+    if (value['type'] != 'progress') return null;
+    final completedBytes = value['completedBytes'];
+    final totalBytes = value['totalBytes'];
+    final stage = value['stage'];
+    final detail = value['detail'];
+    if (completedBytes is! int ||
+        totalBytes is! int ||
+        stage is! String ||
+        (detail != null && detail is! String) ||
+        completedBytes < 0 ||
+        totalBytes < 0 ||
+        (totalBytes > 0 && completedBytes > totalBytes)) {
+      return null;
+    }
+    return RuntimeInitializationProgress.fromPlatform(
+      completedBytes: completedBytes,
+      detail: detail as String?,
+      stage: stage,
+      totalBytes: totalBytes,
+    );
+  } on Object {
+    return null;
+  }
 }
 
 /// Validated child diagnostic together with its lifecycle terminality.
@@ -886,6 +1173,108 @@ String? _environmentValueIgnoringCase(
 
 /// Joins package-owned path segments without relying on the host application's CWD.
 String _joinPath(List<String> parts) => parts.join(Platform.pathSeparator);
+
+Directory? _findDevelopmentPluginDirectory(List<Directory> starts) {
+  for (final start in starts) {
+    var current = start.absolute;
+    for (var depth = 0; depth < 12; depth += 1) {
+      final sources = Directory(
+        _joinPath(<String>[current.path, 'plugins', 'sources']),
+      );
+      final runtimePackage = File(
+        _joinPath(<String>[
+          current.path,
+          'packages',
+          'mg_read_runtime',
+          'package.json',
+        ]),
+      );
+      if (sources.existsSync() && runtimePackage.existsSync()) return sources;
+      final parent = current.parent;
+      if (parent.path == current.path) break;
+      current = parent;
+    }
+  }
+  return null;
+}
+
+Directory? _readConfiguredDevelopmentPluginDirectory(Directory dataRoot) {
+  final file = File(
+    _joinPath(<String>[dataRoot.path, 'development-directory.txt']),
+  );
+  try {
+    final path = file.readAsStringSync().trim();
+    if (path.isEmpty) return null;
+    final directory = Directory(path);
+    return directory.existsSync() ? directory : null;
+  } on Object {
+    return null;
+  }
+}
+
+Future<void> _writeConfiguredDevelopmentPluginDirectory(
+  Directory dataRoot,
+  String path,
+) async {
+  await dataRoot.create(recursive: true);
+  final file = File(
+    _joinPath(<String>[dataRoot.path, 'development-directory.txt']),
+  );
+  final temporary = File('${file.path}.next');
+  await temporary.writeAsString('$path\n', flush: true);
+  await temporary.rename(file.path);
+}
+
+Future<String> _fingerprintDevelopmentPlugins(Directory root) async {
+  final rootPath = root.absolute.path;
+  final files = <File>[];
+  await for (final entity in root.list(recursive: true, followLinks: false)) {
+    if (entity is! File) continue;
+    final relativePath = entity.path
+        .substring(rootPath.length)
+        .replaceAll('\\', '/')
+        .replaceFirst(RegExp('^/+'), '');
+    final segments = relativePath.split('/');
+    if (segments.length < 2) continue;
+    final projectPath = segments.sublist(1);
+    if (projectPath.length == 1 &&
+        (projectPath.single == 'package.json' ||
+            projectPath.single == 'package-lock.json')) {
+      files.add(entity);
+    } else if (projectPath.length > 1 &&
+        const <String>{
+          'dist',
+          'assets',
+          'packages',
+        }.contains(projectPath.first)) {
+      files.add(entity);
+    }
+  }
+  files.sort((left, right) => left.path.compareTo(right.path));
+  if (files.length > 4096) {
+    throw const PluginRuntimeException(
+      'runtime_development_plugin_budget_exceeded',
+      'The Windows development source tree exceeds its file budget.',
+    );
+  }
+  var hash = 0xcbf29ce484222325;
+  var totalBytes = 0;
+  for (final file in files) {
+    final bytes = await file.readAsBytes();
+    totalBytes += bytes.length;
+    if (totalBytes > 32 * 1024 * 1024) {
+      throw const PluginRuntimeException(
+        'runtime_development_plugin_budget_exceeded',
+        'The Windows development source tree exceeds its byte budget.',
+      );
+    }
+    for (final value in <int>[...utf8.encode(file.path), 0, ...bytes, 0]) {
+      hash ^= value;
+      hash = (hash * 0x100000001b3) & 0xffffffffffffffff;
+    }
+  }
+  return hash.toRadixString(16).padLeft(16, '0');
+}
 
 /// Validated subset of the child stdout ready record required by the supervisor.
 final class _RuntimeReady {

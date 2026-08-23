@@ -6,11 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/core/errors/app_error.dart';
+import 'package:mg_read/features/library/application/library_book_remover.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/application/library_page_state.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
+import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 
 /// The library landing page driven by immutable lifecycle and display state.
 class LibraryPage extends ConsumerWidget {
@@ -23,6 +25,7 @@ class LibraryPage extends ConsumerWidget {
     this.callbacks = const LibraryHomeCallbacks(),
     this.onDestinationRequested,
     this.onReaderRequested,
+    this.onBookDetailRequested,
     super.key,
   });
 
@@ -35,12 +38,18 @@ class LibraryPage extends ConsumerWidget {
   /// Lets the app layer resolve a persisted shelf item for reading.
   final ValueChanged<String>? onReaderRequested;
 
+  /// Lets the app layer open a persisted shelf item's detail surface.
+  final ValueChanged<String>? onBookDetailRequested;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppThemeModeScope themeModeScope = AppThemeModeScope.of(context);
     final LibraryPageState state = ref.watch(libraryPageControllerProvider);
     final LibraryPageController controller = ref.read(
       libraryPageControllerProvider.notifier,
+    );
+    final LibraryBookRemover? bookRemover = ref.read(
+      libraryBookRemoverProvider,
     );
 
     if (state.status == LibraryPageStatus.initialLoading) {
@@ -59,6 +68,7 @@ class LibraryPage extends ConsumerWidget {
     final ValueChanged<AppNavigationDestination>? destinationRequested =
         onDestinationRequested;
     final ValueChanged<String>? readerRequested = onReaderRequested;
+    final ValueChanged<String>? bookDetailRequested = onBookDetailRequested;
     final LibraryHomeCallbacks resolvedCallbacks = callbacks.copyWith(
       onNavigationSelected: destinationRequested == null
           ? callbacks.onNavigationSelected
@@ -72,17 +82,35 @@ class LibraryPage extends ConsumerWidget {
               callbacks.onDiscover?.call();
               destinationRequested(AppNavigationDestination.discover);
             },
-      onOpenBook: readerRequested == null
-          ? callbacks.onOpenBook
+      onOpenBook: bookDetailRequested == null
+          ? readerRequested == null
+                ? callbacks.onOpenBook
+                : (book) {
+                    callbacks.onOpenBook?.call(book);
+                    readerRequested(book.id);
+                  }
           : (book) {
               callbacks.onOpenBook?.call(book);
-              readerRequested(book.id);
+              bookDetailRequested(book.id);
             },
       onContinueReading: readerRequested == null || data.continueReading == null
           ? callbacks.onContinueReading
           : () {
               callbacks.onContinueReading?.call();
               readerRequested(data.continueReading!.bookId);
+            },
+      onDeleteBook: bookRemover == null
+          ? null
+          : (book) async {
+              await callbacks.onDeleteBook?.call(book);
+              controller.beginRemoval(book.id);
+              try {
+                await bookRemover.removeBook(book.id);
+                controller.commitRemoval(book.id);
+              } on Object {
+                controller.rollbackRemoval(book.id);
+                rethrow;
+              }
             },
     );
     return LibraryHomeShell(
@@ -109,29 +137,9 @@ class _LibraryLoadingState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: Semantics(
-            label: '正在加载书架',
-            child: ExcludeSemantics(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  CircularProgressIndicator(color: tokens.accent),
-                  const SizedBox(height: AppSpacing.regular),
-                  Text(
-                    '正在加载书架',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+        child: const AppLoadingState(label: '正在加载书架', message: '正在加载书架'),
       ),
     );
   }

@@ -44,7 +44,10 @@ export type {
   PluginInstallResult,
 } from "./plugin-installer.js";
 export { PluginManager, PluginManagerError } from "./plugin-manager.js";
-export type { InstalledPluginSnapshot } from "./plugin-manager.js";
+export type {
+  InstalledPluginSnapshot,
+  PluginInstallationUsage,
+} from "./plugin-manager.js";
 export { PluginContentValidationError } from "./plugin-content.js";
 export type {
   ParsedPluginRequest,

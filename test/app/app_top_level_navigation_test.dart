@@ -31,7 +31,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byType(SearchPage), findsOneWidget);
-      expect(find.byKey(const Key('app-empty-search-page')), findsOneWidget);
+      expect(find.byKey(const Key('source-search-results')), findsOneWidget);
       _expectSelectedDestination(tester, AppNavigationDestination.search);
 
       await tester.tap(find.byKey(const Key('app-nav-discover')));

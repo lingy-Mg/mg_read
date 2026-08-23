@@ -13,9 +13,14 @@ const _entryKind = 'content_catalog_entry';
 const _readingProgressKind = 'content_library_reading_progress';
 
 final class ContentLibrary {
-  ContentLibrary._(this._persistence, this._diagnostics);
+  ContentLibrary._(
+    this._persistence,
+    this._diagnostics, {
+    required this._closePersistenceOnClose,
+  });
   final AppPersistence _persistence;
   final DiagnosticsManager? _diagnostics;
+  final bool _closePersistenceOnClose;
   late final BookshelfRepository bookshelf = BookshelfRepository._(this);
   late final CatalogRepository catalog = CatalogRepository._(this);
   late final ContentRepository content = ContentRepository._(this);
@@ -31,8 +36,24 @@ final class ContentLibrary {
       diagnostics: diagnostics,
     ),
     diagnostics,
+    closePersistenceOnClose: true,
   );
-  Future<void> close() => _persistence.close();
+
+  /// Creates the library over the composition root's single persistence owner.
+  ///
+  /// The supplied registry must include [contentLibraryRecordDocumentCodecs].
+  /// The application composition root retains ownership of the supplied
+  /// [AppPersistence]; [close] therefore leaves it open.
+  factory ContentLibrary.fromPersistence(
+    AppPersistence persistence, {
+    DiagnosticsManager? diagnostics,
+  }) => ContentLibrary._(
+    persistence,
+    diagnostics,
+    closePersistenceOnClose: false,
+  );
+  Future<void> close() =>
+      _closePersistenceOnClose ? _persistence.close() : Future<void>.value();
   Future<Page<LibraryItem>> listLibrary(LibraryQuery query) =>
       bookshelf.list(query);
   Future<LibraryItem?> getLibraryItem(LibraryItemId id) => bookshelf.get(id);
@@ -40,7 +61,22 @@ final class ContentLibrary {
     LibraryItemId itemId,
     CatalogQuery query,
   ) => catalog.list(itemId, query);
+  Future<List<CatalogEntry>> listAllCatalog(LibraryItemId itemId) =>
+      catalog.listAll(itemId);
+  Future<List<CatalogEntry>> ensureNovelCatalog({
+    required LibraryItemId itemId,
+    required Iterable<SourceNovelCatalogChapter> chapters,
+  }) => catalog.ensureNovelCatalog(itemId: itemId, chapters: chapters);
   Future<ReadableContent?> openContent(CatalogEntryId id) => content.open(id);
+  Future<void> cacheNovelChapter({
+    required LibraryItemId itemId,
+    required String remoteChapterId,
+    required String text,
+  }) => content.cacheNovelChapter(
+    itemId: itemId,
+    remoteChapterId: remoteChapterId,
+    text: text,
+  );
 
   Future<T> _trace<T>({
     required String operation,
@@ -137,7 +173,11 @@ final class BookshelfRepository {
       pluginId: request.pluginId,
       producerPluginVersion: request.pluginVersion,
       dataVersion: 1,
-      opaqueData: <String, Object?>{'remoteBookId': request.remoteContentId},
+      opaqueData: <String, Object?>{
+        'remoteBookId': request.remoteContentId,
+        if (request.coverUrl != null) 'coverUrl': request.coverUrl.toString(),
+        if (request.sourceName != null) 'sourceName': request.sourceName,
+      },
     ),
   );
 
@@ -182,47 +222,65 @@ final class BookshelfRepository {
     _safeText(title);
     final identity =
         '${source.pluginId}:${source.opaqueData['remoteBookId'] ?? title}';
-    final existing = await _library._persistence.metadataRecords.list(
-      RecordQuery(
-        recordKind: _itemKind,
-        scope: _scope,
-        identityKey: identity,
-        limit: 1,
-      ),
-    );
-    if (existing.records.isNotEmpty) return _item(existing.records.single);
-    final id = _id();
-    final document = {
-      'title': title,
-      'author': ?author,
-      'kind': kind.code,
-      'plugin': _plugin(source),
-      'summary': <String, Object?>{},
-    };
-    final record = await _library._persistence.metadataRecords.create(
-      RecordDraft(
-        id: id,
-        recordKind: _itemKind,
-        scope: _scope,
-        identityKey: identity,
-        orderKey: id,
-        stateKey: 'active',
-        document: document,
-      ),
-    );
-    await _library._persistence.metadataRecords.create(
-      RecordDraft(
-        id: _id(),
-        recordKind: _bindingKind,
-        scope: _scope,
-        parentId: id,
-        identityKey: identity,
-        orderKey: '0',
-        stateKey: 'available',
-        document: {'itemId': id, 'plugin': _plugin(source)},
-      ),
-    );
-    return _item(record);
+    return _library._persistence.metadataRecords.transaction(() async {
+      final existing = await _library._persistence.metadataRecords.list(
+        RecordQuery(
+          recordKind: _itemKind,
+          scope: _scope,
+          identityKey: identity,
+          limit: 1,
+        ),
+      );
+      final shelfSummary = _shelfSummary(source);
+      if (existing.records.isNotEmpty) {
+        final previous = existing.records.single;
+        final updated = await _library._persistence.metadataRecords.update(
+          previous: previous,
+          document: <String, Object?>{
+            ...previous.document,
+            'title': title,
+            'author': ?author,
+            'summary': <String, Object?>{
+              ..._summaryFromDocument(previous.document),
+              ...shelfSummary,
+            },
+          },
+        );
+        return _item(updated);
+      }
+      final id = _id();
+      final document = {
+        'title': title,
+        'author': ?author,
+        'kind': kind.code,
+        'plugin': _plugin(source),
+        'summary': shelfSummary,
+      };
+      final record = await _library._persistence.metadataRecords.create(
+        RecordDraft(
+          id: id,
+          recordKind: _itemKind,
+          scope: _scope,
+          identityKey: identity,
+          orderKey: id,
+          stateKey: 'active',
+          document: document,
+        ),
+      );
+      await _library._persistence.metadataRecords.create(
+        RecordDraft(
+          id: _id(),
+          recordKind: _bindingKind,
+          scope: _scope,
+          parentId: id,
+          identityKey: identity,
+          orderKey: '0',
+          stateKey: 'available',
+          document: {'itemId': id, 'plugin': _plugin(source)},
+        ),
+      );
+      return _item(record);
+    });
   }
 
   Future<Page<LibraryItem>> _list(LibraryQuery query) async {
@@ -271,6 +329,23 @@ final class ReadingProgressRepository {
     resultState: (result) => result == null ? 'empty' : 'content',
   );
 
+  /// Reads the saved positions for several shelf items in one metadata query.
+  ///
+  /// Missing positions are omitted. A repeated item ID is read once, and any
+  /// duplicate persisted record keeps the same first-record behavior as [load].
+  Future<List<LibraryReadingProgress>> loadMany(
+    Iterable<LibraryItemId> itemIds,
+  ) {
+    final itemIdsByValue = <String>{for (final itemId in itemIds) itemId.value};
+    return _library._trace(
+      operation: 'readingProgressLoadMany',
+      itemCount: itemIdsByValue.length,
+      action: () => _loadMany(itemIdsByValue),
+      resultCount: (result) => result.length,
+      resultState: (result) => result.isEmpty ? 'empty' : 'content',
+    );
+  }
+
   /// Persists a layout-independent reading position for [progress.itemId].
   Future<void> save(LibraryReadingProgress progress) => _library._trace(
     operation: 'readingProgressSave',
@@ -288,6 +363,25 @@ final class ReadingProgressRepository {
       ),
     );
     return page.records.isEmpty ? null : _readingProgress(page.records.single);
+  }
+
+  Future<List<LibraryReadingProgress>> _loadMany(
+    Set<String> itemIdsByValue,
+  ) async {
+    if (itemIdsByValue.isEmpty) return const <LibraryReadingProgress>[];
+    final records = await _library._persistence.metadataRecords
+        .listByIdentityKeys(
+          recordKind: _readingProgressKind,
+          scope: _scope,
+          identityKeys: itemIdsByValue,
+        );
+    final progressByItemId = <String, LibraryReadingProgress>{};
+    for (final record in records) {
+      final itemId = record.identityKey;
+      if (itemId == null || progressByItemId.containsKey(itemId)) continue;
+      progressByItemId[itemId] = _readingProgress(record);
+    }
+    return List<LibraryReadingProgress>.unmodifiable(progressByItemId.values);
   }
 
   Future<void> _save(LibraryReadingProgress progress) async {
@@ -351,6 +445,31 @@ final class CatalogRepository {
         resultState: (result) => result.items.isEmpty ? 'empty' : 'content',
       );
 
+  /// Returns the active catalog for one item without leaking persistence cursors.
+  Future<List<CatalogEntry>> listAll(LibraryItemId itemId) => _library._trace(
+    operation: 'catalogListAll',
+    action: () => _listAll(itemId),
+    resultCount: (result) => result.length,
+    resultState: (result) => result.isEmpty ? 'empty' : 'content',
+  );
+
+  /// Initializes a persisted novel catalog once, preserving downloaded chapter
+  /// content on all later reader launches.
+  Future<List<CatalogEntry>> ensureNovelCatalog({
+    required LibraryItemId itemId,
+    required Iterable<SourceNovelCatalogChapter> chapters,
+  }) {
+    final copied = List<SourceNovelCatalogChapter>.of(chapters);
+    return _library._trace(
+      operation: 'catalogEnsureNovel',
+      contentKind: ContentKind.novel.code,
+      itemCount: copied.length,
+      action: () => _ensureNovelCatalog(itemId, copied),
+      resultCount: (result) => result.length,
+      resultState: (result) => result.isEmpty ? 'empty' : 'content',
+    );
+  }
+
   Future<void> _replaceSnapshot({
     required LibraryItemId itemId,
     required SourceBindingId bindingId,
@@ -374,6 +493,8 @@ final class CatalogRepository {
             'snapshotId': snapshot,
             'title': input.title,
             'kind': input.kindCode,
+            if (input.index != null) 'index': input.index,
+            if (input.wordCount != null) 'wordCount': input.wordCount,
             'plugin': _plugin(input.source),
             'contentStatus': 'missing',
           },
@@ -428,6 +549,79 @@ final class CatalogRepository {
       nextCursor: _cursorText(page.nextCursor),
     );
   }
+
+  Future<List<CatalogEntry>> _listAll(LibraryItemId itemId) async {
+    final entries = <CatalogEntry>[];
+    String? cursor;
+    do {
+      final page = await _list(itemId, CatalogQuery(after: cursor, limit: 500));
+      entries.addAll(page.items);
+      cursor = page.nextCursor;
+    } while (cursor != null);
+    return List<CatalogEntry>.unmodifiable(entries);
+  }
+
+  Future<List<CatalogEntry>> _ensureNovelCatalog(
+    LibraryItemId itemId,
+    List<SourceNovelCatalogChapter> chapters,
+  ) async {
+    final existing = await _listAll(itemId);
+    if (existing.isNotEmpty) return existing;
+    if (chapters.isEmpty) {
+      throw ArgumentError.value(
+        chapters,
+        'chapters',
+        'Cannot persist an empty catalog.',
+      );
+    }
+    final seen = <String>{};
+    for (final chapter in chapters) {
+      if (!seen.add(chapter.remoteIdentity)) {
+        throw ArgumentError.value(chapter.remoteIdentity, 'chapters');
+      }
+    }
+    final item = await _library._persistence.metadataRecords.read(
+      id: itemId.value,
+      scope: _scope,
+    );
+    final source = item == null ? null : _itemSource(item.document['plugin']);
+    if (source == null) {
+      throw StateError('The shelf item has no source identity.');
+    }
+    final bindings = await _library._persistence.metadataRecords.list(
+      RecordQuery(
+        recordKind: _bindingKind,
+        scope: _scope,
+        parentId: itemId.value,
+        limit: 1,
+      ),
+    );
+    if (bindings.records.isEmpty) {
+      throw StateError('The shelf item has no source binding.');
+    }
+    final ingest = ContentLibraryIngest(
+      pluginId: source.pluginId,
+      producerPluginVersion: source.pluginVersion,
+      dataVersion: 1,
+      opaqueData: <String, Object?>{'remoteBookId': source.remoteContentId},
+    );
+    await _replaceSnapshot(
+      itemId: itemId,
+      bindingId: SourceBindingId(bindings.records.single.id),
+      entries: chapters.map(
+        (chapter) => IngestCatalogEntry(
+          remoteIdentity: chapter.remoteIdentity,
+          title: chapter.title,
+          orderKey: chapter.index.toString().padLeft(12, '0'),
+          kindCode: ContentKind.novel.code,
+          source: ingest,
+          index: chapter.index,
+          wordCount: chapter.wordCount,
+        ),
+      ),
+    );
+    return _listAll(itemId);
+  }
 }
 
 final class ContentRepository {
@@ -463,6 +657,23 @@ final class ContentRepository {
     resultState: (result) => result == null ? 'notFound' : 'content',
   );
 
+  /// Commits one validated novel chapter under its persisted source identity.
+  Future<void> cacheNovelChapter({
+    required LibraryItemId itemId,
+    required String remoteChapterId,
+    required String text,
+  }) => _library._trace(
+    operation: 'contentCacheNovelChapter',
+    contentKind: ContentKind.novel.code,
+    itemCount: 1,
+    bytes: text.length,
+    action: () => _cacheNovelChapter(
+      itemId: itemId,
+      remoteChapterId: remoteChapterId,
+      text: text,
+    ),
+  );
+
   Future<void> _putNovel({
     required CatalogEntryId entryId,
     required String text,
@@ -477,6 +688,35 @@ final class ContentRepository {
       payload: text,
     );
     await _attach(entryId, objectId, 'novel', source);
+  }
+
+  Future<void> _cacheNovelChapter({
+    required LibraryItemId itemId,
+    required String remoteChapterId,
+    required String text,
+  }) async {
+    final entries = await _library.catalog._listAll(itemId);
+    final entry = entries.where(
+      (value) => value.remoteIdentity == remoteChapterId,
+    );
+    if (entry.length != 1) {
+      throw StateError('The cached catalog does not contain the chapter.');
+    }
+    final item = await _library.getLibraryItem(itemId);
+    final source = item?.source;
+    if (source == null) {
+      throw StateError('The shelf item has no source identity.');
+    }
+    await _putNovel(
+      entryId: entry.single.id,
+      text: text,
+      source: ContentLibraryIngest(
+        pluginId: source.pluginId,
+        producerPluginVersion: source.pluginVersion,
+        dataVersion: 1,
+        opaqueData: <String, Object?>{'remoteBookId': source.remoteContentId},
+      ),
+    );
   }
 
   Future<void> _putManga({
@@ -568,10 +808,13 @@ final class IngestCatalogEntry {
     required this.orderKey,
     required this.kindCode,
     required this.source,
+    this.index,
+    this.wordCount,
   });
   final String? id;
   final String remoteIdentity, title, orderKey, kindCode;
   final ContentLibraryIngest source;
+  final int? index, wordCount;
 }
 
 final class IngestMangaPage {
@@ -618,15 +861,24 @@ DiagnosticObjectValue _libraryAttributes({
   ),
 });
 
-RecordDocumentRegistry get _registry => RecordDocumentRegistry([
-  for (final kind in [_itemKind, _bindingKind, _entryKind, _readingProgressKind])
-    RecordDocumentCodec(
+Iterable<RecordDocumentCodec> get contentLibraryRecordDocumentCodecs sync* {
+  for (final kind in [
+    _itemKind,
+    _bindingKind,
+    _entryKind,
+    _readingProgressKind,
+  ]) {
+    yield RecordDocumentCodec(
       recordKind: kind,
       scopeKind: _scope.kind,
       currentVersion: 1,
       validators: {1: _validate},
-    ),
-]);
+    );
+  }
+}
+
+RecordDocumentRegistry get _registry =>
+    RecordDocumentRegistry(contentLibraryRecordDocumentCodecs);
 void _validate(JsonObject value) {
   if (jsonEncode(value).length > 256 * 1024) {
     throw const PersistenceValidationError(
@@ -648,8 +900,40 @@ LibraryItem _item(RecordEnvelope r) => LibraryItem(
   kind: ContentKind.fromCode(r.document['kind'] as String) ?? ContentKind.novel,
   state: r.stateKey ?? 'unknown',
   revision: r.revision,
+  coverUrl: _uriFromSummary(r.document, 'coverUrl'),
+  sourceName: _stringFromSummary(r.document, 'sourceName'),
   source: _itemSource(r.document['plugin']),
 );
+
+Map<String, Object?> _shelfSummary(ContentLibraryIngest source) {
+  final summary = <String, Object?>{};
+  final coverUrl = source.opaqueData['coverUrl'];
+  final sourceName = source.opaqueData['sourceName'];
+  if (coverUrl is String && coverUrl.isNotEmpty) {
+    summary['coverUrl'] = coverUrl;
+  }
+  if (sourceName is String && sourceName.isNotEmpty) {
+    summary['sourceName'] = sourceName;
+  }
+  return summary;
+}
+
+Map<String, Object?> _summaryFromDocument(Map<String, Object?> document) {
+  final raw = document['summary'];
+  return raw is Map<String, Object?>
+      ? Map<String, Object?>.from(raw)
+      : <String, Object?>{};
+}
+
+String? _stringFromSummary(Map<String, Object?> document, String key) {
+  final value = _summaryFromDocument(document)[key];
+  return value is String && value.isNotEmpty ? value : null;
+}
+
+Uri? _uriFromSummary(Map<String, Object?> document, String key) {
+  final value = _stringFromSummary(document, key);
+  return value == null ? null : Uri.tryParse(value);
+}
 
 LibraryItemSource? _itemSource(Object? rawPlugin) {
   if (rawPlugin is! Map<String, Object?>) return null;
@@ -673,20 +957,24 @@ LibraryItemSource? _itemSource(Object? rawPlugin) {
   );
 }
 
-Map<String, Object?> _readingProgressDocument(LibraryReadingProgress progress) =>
-    <String, Object?>{
-      'chapterId': progress.chapterId,
-      'paragraphId': progress.paragraphId,
-      'characterOffset': progress.characterOffset,
-      'chapterIndex': progress.chapterIndex,
-      'chapterFraction': progress.chapterFraction,
-      'bookFraction': progress.bookFraction,
-      'updatedAtUtc': progress.updatedAtUtc.toUtc().toIso8601String(),
-    };
+Map<String, Object?> _readingProgressDocument(
+  LibraryReadingProgress progress,
+) => <String, Object?>{
+  'chapterId': progress.chapterId,
+  'paragraphId': progress.paragraphId,
+  'characterOffset': progress.characterOffset,
+  'chapterIndex': progress.chapterIndex,
+  'chapterFraction': progress.chapterFraction,
+  'bookFraction': progress.bookFraction,
+  'updatedAtUtc': progress.updatedAtUtc.toUtc().toIso8601String(),
+  'totalReadingSeconds': progress.totalReadingSeconds,
+};
 
 LibraryReadingProgress _readingProgress(RecordEnvelope record) {
   final document = record.document;
-  final updatedAt = DateTime.tryParse(document['updatedAtUtc'] as String? ?? '');
+  final updatedAt = DateTime.tryParse(
+    document['updatedAtUtc'] as String? ?? '',
+  );
   if (updatedAt == null ||
       document['chapterId'] is! String ||
       document['paragraphId'] is! String ||
@@ -705,6 +993,7 @@ LibraryReadingProgress _readingProgress(RecordEnvelope record) {
     chapterFraction: (document['chapterFraction']! as num).toDouble(),
     bookFraction: (document['bookFraction']! as num).toDouble(),
     updatedAtUtc: updatedAt.toUtc(),
+    totalReadingSeconds: document['totalReadingSeconds'] as int? ?? 0,
   );
 }
 
@@ -714,11 +1003,21 @@ CatalogEntry _entry(RecordEnvelope r) => CatalogEntry(
   id: CatalogEntryId(r.id),
   itemId: LibraryItemId(r.parentId!),
   bindingId: SourceBindingId(r.document['bindingId'] as String),
+  remoteIdentity: _remoteIdentity(r.identityKey),
   title: r.document['title'] as String,
   orderKey: r.orderKey ?? '',
+  index: r.document['index'] as int? ?? 0,
   kind: ContentKind.fromCode(r.document['kind'] as String),
   contentStatus: r.document['contentStatus'] as String? ?? 'missing',
+  wordCount: r.document['wordCount'] as int?,
 );
+
+String _remoteIdentity(String? identityKey) {
+  if (identityKey == null) return '';
+  final separator = identityKey.indexOf(':');
+  return separator < 0 ? identityKey : identityKey.substring(separator + 1);
+}
+
 RecordCursor? _cursor(String? input) {
   if (input == null) return null;
   final parts = input.split('|');

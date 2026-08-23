@@ -295,6 +295,18 @@ final sourceContentGatewayProvider = Provider<SourceContentGateway>((Ref ref) {
   );
 });
 
+/// Process-scoped cache of all enabled, source-capable plugins.
+///
+/// Discovery and search share this projection so entering either page never
+/// causes a second Runtime readiness/list request. The provider is deliberately
+/// not auto-disposed: the source list is part of the app's warmed Runtime
+/// session and is refreshed when the Runtime projection is invalidated.
+final availablePluginSourcesProvider =
+    FutureProvider<List<PluginSourceDescriptor>>((Ref ref) {
+      final gateway = ref.watch(sourceContentGatewayProvider);
+      return gateway.listSources();
+    });
+
 bool _isUsableSource(PluginRuntimePlugin plugin) {
   return plugin.enabled &&
       plugin.activeVersion != null &&

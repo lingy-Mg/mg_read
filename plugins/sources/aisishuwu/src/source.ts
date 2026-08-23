@@ -17,6 +17,7 @@ import type {
   SearchRequest,
   SearchResult,
 } from './mgread-api.js';
+import { PluginHtmlCache, type HtmlCachePolicy } from './html-cache.js';
 import { nonBlank } from './utils.js';
 
 export interface SourceRules {
@@ -38,6 +39,19 @@ interface CatalogChapter {
 
 let cheerioModule: Promise<typeof import('cheerio')> | undefined;
 
+const listingHtmlCachePolicy = Object.freeze({
+  namespace: 'listing',
+  staleAfterMs: 10 * 60 * 1000,
+} satisfies HtmlCachePolicy);
+const detailHtmlCachePolicy = Object.freeze({
+  namespace: 'detail',
+  staleAfterMs: 60 * 60 * 1000,
+} satisfies HtmlCachePolicy);
+const catalogHtmlCachePolicy = Object.freeze({
+  namespace: 'catalog',
+  staleAfterMs: 60 * 60 * 1000,
+} satisfies HtmlCachePolicy);
+
 function loadCheerio(): Promise<typeof import('cheerio')> {
   return (cheerioModule ??= import('cheerio'));
 }
@@ -53,6 +67,7 @@ export class AliceBookHouseSource {
   readonly #coverUrls = new Map<string, string | null>();
   readonly #chapterCounts = new Map<string, number | null>();
   readonly #catalogPages = new Map<string, CatalogPage>();
+  readonly #htmlCache: PluginHtmlCache;
 
   constructor(
     private readonly context: MgReadPluginContext,
@@ -70,6 +85,7 @@ export class AliceBookHouseSource {
         return Object.freeze({ id: category.id, title: category.title });
       }),
     );
+    this.#htmlCache = new PluginHtmlCache(context.cacheDir);
   }
 
   async discover(request: DiscoverRequest): Promise<DiscoverResult> {
@@ -108,8 +124,13 @@ export class AliceBookHouseSource {
     const page = decodePageCursor(request.cursor, 'category-page');
     const pageUrl = new URL(`/lists/${category.id}.html`, this.#baseUrl);
     pageUrl.searchParams.set('page', String(page));
-    const items = await this.#parseList(await this.#getHtml(pageUrl), pageUrl);
-    const visible = await this.#withCovers(items.slice(0, request.pageSize));
+    const items = await this.#parseList(
+      await this.#getHtml(pageUrl, undefined, listingHtmlCachePolicy),
+      pageUrl,
+    );
+    const visible = await this.#withDiscoveryDetails(
+      items.slice(0, request.pageSize),
+    );
 
     const continuation = items.length >= request.pageSize
         ? Object.freeze({ target: request.target, cursor: encodePageCursor('category-page', page + 1) })
@@ -119,7 +140,7 @@ export class AliceBookHouseSource {
       visible.map((content) => Object.freeze({
         content,
         rank: null,
-        metric: null,
+        metric: discoveryMetric(content),
         recommendation: null,
       })),
     );
@@ -160,7 +181,10 @@ export class AliceBookHouseSource {
     searchUrl.searchParams.set('q', request.query);
     searchUrl.searchParams.set('f', '_all');
     searchUrl.searchParams.set('p', String(page));
-    const items = await this.#parseList(await this.#getHtml(searchUrl), searchUrl);
+    const items = await this.#parseList(
+      await this.#getHtml(searchUrl, undefined, listingHtmlCachePolicy),
+      searchUrl,
+    );
 
     const visible = await this.#withCovers(items.slice(0, request.pageSize));
     return Object.freeze({
@@ -177,7 +201,9 @@ export class AliceBookHouseSource {
     const novelId = decodeNovelId(request.id);
     const detailUrl = new URL(`/novel/${novelId}.html`, this.#baseUrl);
     const cheerio = await loadCheerio();
-    const $ = cheerio.load(await this.#getHtml(detailUrl, detailUrl));
+    const $ = cheerio.load(
+      await this.#getHtml(detailUrl, detailUrl, detailHtmlCachePolicy),
+    );
     const title = requiredText($('.novel_title').first().text());
     const info = $('.novel_info').first();
     const author = textOrNull(info.find('a[href*="f=author"]').first().text());
@@ -296,18 +322,28 @@ export class AliceBookHouseSource {
     });
   }
 
-  async #getHtml(url: URL, referer?: URL): Promise<string> {
-    const response = await this.context.http.fetch(url, {
-      headers: {
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        ...(referer === undefined ? {} : { Referer: referer.toString() }),
-      },
-    });
-    if (!response.ok) {
-      throw new Error(`Source request failed with HTTP ${response.status}.`);
-    }
-    return response.text();
+  async #getHtml(
+    url: URL,
+    referer?: URL,
+    cachePolicy?: HtmlCachePolicy,
+  ): Promise<string> {
+    const request = async (): Promise<string> => {
+      this.context.log.debug('source_http_fetch_started');
+      const response = await this.context.http.fetch(url, {
+        headers: {
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          ...(referer === undefined ? {} : { Referer: referer.toString() }),
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`Source request failed with HTTP ${response.status}.`);
+      }
+      return response.text();
+    };
+    return cachePolicy === undefined
+      ? request()
+      : this.#htmlCache.getOrFetch(url, cachePolicy, request);
   }
 
   async #parseList(html: string, pageUrl: URL): Promise<readonly ContentSummary[]> {
@@ -423,7 +459,9 @@ export class AliceBookHouseSource {
 
     const catalogUrl = this.#catalogPageUrl(novelId, page);
     const cheerio = await loadCheerio();
-    const $ = cheerio.load(await this.#getHtml(catalogUrl, catalogUrl));
+    const $ = cheerio.load(
+      await this.#getHtml(catalogUrl, catalogUrl, catalogHtmlCachePolicy),
+    );
     const seen = new Set<string>();
     const chapters = $('.mulu_list a[href*="/book/"], a[href*="/book/"]')
       .toArray()
@@ -485,6 +523,33 @@ export class AliceBookHouseSource {
     return Object.freeze(hydrated);
   }
 
+  async #withDiscoveryDetails(
+    contents: readonly ContentSummary[],
+  ): Promise<readonly ContentSummary[]> {
+    const hydrated = new Array<ContentSummary>(contents.length);
+    let nextIndex = 0;
+    const worker = async (): Promise<void> => {
+      while (nextIndex < contents.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        const content = contents[index]!;
+        try {
+          const detail = await this.getDetail({ id: content.id });
+          hydrated[index] = mergeDiscoverySummary(content, detail);
+        } catch {
+          hydrated[index] = await this.#withCover(content);
+        }
+      }
+    };
+    await Promise.all(
+      Array.from(
+        { length: Math.min(4, contents.length) },
+        () => worker(),
+      ),
+    );
+    return Object.freeze(hydrated);
+  }
+
   async #withCover(content: ContentSummary): Promise<ContentSummary> {
     if (content.coverUrl !== null) return content;
     if (this.#coverUrls.has(content.id)) {
@@ -497,7 +562,9 @@ export class AliceBookHouseSource {
     const detailUrl = new URL(`/novel/${novelId}.html`, this.#baseUrl);
     try {
       const cheerio = await loadCheerio();
-      const $ = cheerio.load(await this.#getHtml(detailUrl, detailUrl));
+      const $ = cheerio.load(
+        await this.#getHtml(detailUrl, detailUrl, detailHtmlCachePolicy),
+      );
       const coverUrl = this.#coverUrl($, detailUrl);
       this.#coverUrls.set(content.id, coverUrl);
       return coverUrl === null
@@ -541,6 +608,55 @@ export class AliceBookHouseSource {
     if (category === undefined) throw new Error('Category target is invalid.');
     return category;
   }
+}
+
+function mergeDiscoverySummary(
+  summary: ContentSummary,
+  detail: ContentDetail,
+): ContentSummary {
+  return Object.freeze({
+    ...summary,
+    author: summary.author ?? detail.author,
+    coverUrl: summary.coverUrl ?? detail.coverUrl,
+    description: summary.description ?? detail.description,
+    status: summary.status === 'unknown' ? detail.status : summary.status,
+    access: summary.access === 'unknown' ? detail.access : summary.access,
+    wordCount: summary.wordCount ?? detail.wordCount,
+    chapterCount: summary.chapterCount ?? detail.chapterCount,
+    updatedAt: summary.updatedAt ?? detail.updatedAt,
+    latestChapter: summary.latestChapter ?? detail.latestChapter,
+    categories: summary.categories.length === 0
+        ? detail.categories
+        : summary.categories,
+    tags: summary.tags.length === 0 ? detail.tags : summary.tags,
+    attributes: summary.attributes.length === 0
+        ? detail.attributes
+        : summary.attributes,
+  });
+}
+
+function discoveryMetric(content: ContentSummary): {
+  readonly label: string;
+  readonly value: string;
+} | null {
+  const heat = content.attributes.find((attribute) => attribute.key === 'heat');
+  if (heat === undefined) return null;
+  return Object.freeze({
+    label: heat.label,
+    value: displayCount(heat.value),
+  });
+}
+
+function displayCount(value: string): string {
+  const count = Number(value);
+  if (!Number.isFinite(count)) return value;
+  if (count >= 100000000) return `${trimCount(count / 100000000)}亿`;
+  if (count >= 10000) return `${trimCount(count / 10000)}万`;
+  return String(Math.round(count));
+}
+
+function trimCount(value: number): string {
+  return value.toFixed(1).replace(/\.0$/u, '');
 }
 
 function requiredText(value: string | undefined): string {

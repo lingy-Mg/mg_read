@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:mg_read/features/profile/domain/profile_reading_stats.dart';
+
 /// Immutable, presentation-only data for the profile and settings screen.
 ///
 /// This projection intentionally contains no account identity, Runtime Store,
@@ -28,6 +30,38 @@ final class ProfileViewData {
   final String lastSyncLabel;
   final List<ProfileSettingsItemViewData> settings;
   final List<ProfileSettingsItemViewData> about;
+
+  /// Reuses the established summary-card design with local, non-account data.
+  ProfileViewData withReadingStats(ProfileReadingStats readingStats) {
+    return ProfileViewData(
+      displayName: displayName,
+      motto: motto,
+      stats: <ProfileStatViewData>[
+        ProfileStatViewData(
+          label: '阅读时长',
+          value: _readingDurationText(readingStats.totalReadingSeconds),
+        ),
+        ProfileStatViewData(
+          label: '阅读书籍',
+          value: '${readingStats.readBookCount} 本',
+        ),
+        ProfileStatViewData(
+          label: '书架收藏',
+          value: '${readingStats.shelfBookCount} 本',
+        ),
+      ],
+      syncLabel: syncLabel,
+      lastSyncLabel: lastSyncLabel,
+      settings: settings,
+      about: about,
+    );
+  }
+}
+
+String _readingDurationText(int totalSeconds) {
+  final duration = Duration(seconds: totalSeconds);
+  if (duration.inHours > 0) return '${duration.inHours} 小时';
+  return '${duration.inMinutes} 分钟';
 }
 
 /// One compact profile statistic shown in the summary card.
@@ -134,9 +168,8 @@ abstract final class ProfileFixtures {
       ProfileSettingsItemViewData(
         id: 'clear-cache',
         title: '清理缓存',
-        description: '释放存储空间',
+        description: '管理各数据源的临时缓存',
         icon: ProfileSettingsIcon.clearCache,
-        trailingLabel: '512MB',
       ),
     ],
     about: <ProfileSettingsItemViewData>[

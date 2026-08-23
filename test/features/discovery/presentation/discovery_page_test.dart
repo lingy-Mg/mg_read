@@ -39,17 +39,17 @@ void main() {
       final Rect navigation = tester.getRect(find.byType(AppBottomNavigation));
 
       expect(hero.left, closeTo(16, 0.1));
-      expect(hero.top, closeTo(127, 0.1));
+      expect(hero.top, closeTo(124, 0.1));
       expect(hero.width, closeTo(358, 0.1));
       expect(hero.height, AppSpacing.discoveryHeroHeight);
       expect(heroCover.size, const Size(108, 164));
       expect(heroCover.right, closeTo(340, 0.1));
       expect(ranking.left, closeTo(16, 0.1));
-      expect(ranking.top, closeTo(486, 0.1));
+      expect(ranking.top, closeTo(483, 0.1));
       expect(ranking.height, AppSpacing.discoveryBoardHeight);
       expect(categories.left, closeTo(199, 0.1));
       expect(categories.size, ranking.size);
-      expect(navigation.top, closeTo(820, 0.1));
+      expect(navigation.top, closeTo(828, 0.1));
       expect(navigation.height, AppSpacing.bottomNavigationHeight);
     },
   );
@@ -142,11 +142,22 @@ void main() {
     expect(hero.center.dx, closeTo(640, 0.1));
     expect(hero.width, closeTo(358, 0.1));
   });
+
+  testWidgets('does not overflow on a compact viewport with larger text', (
+    WidgetTester tester,
+  ) async {
+    await _setViewport(tester, const Size(360, 800));
+    await tester.pumpWidget(_host(textScaler: const TextScaler.linear(1.3)));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Widget _host({
   ValueChanged<AppNavigationDestination>? onDestinationRequested,
   VoidCallback? onToggleTheme,
+  TextScaler? textScaler,
 }) {
   return MaterialApp(
     debugShowCheckedModeBanner: false,
@@ -157,6 +168,7 @@ Widget _host({
         data: mediaQuery.copyWith(
           padding: const EdgeInsets.only(top: 24),
           viewPadding: const EdgeInsets.only(top: 24),
+          textScaler: textScaler ?? mediaQuery.textScaler,
         ),
         child: child ?? const SizedBox.shrink(),
       );

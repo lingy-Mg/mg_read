@@ -36,10 +36,13 @@ CLI 要求 Runtime-owned `--data-root`，Core 在发送 ready 前：
 5. 调用命名 `activate(ctx)`，随后把插件加入可分派集合；
 6. 完成全部扫描后才绑定业务 ready 投影。
 
-Windows Flutter 包还可带 Runtime 自有的 `default-plugins/` 种子归档。仅当 data root 中从未
-出现过插件目录时，Runtime 在 cold initialize 前按标准 `.mgplugin` 安装路径导入这些归档；
-随后在同一次启动中冷激活。已有安装或用户卸载决策绝不被种子覆盖，主应用也不知道归档或
-安装路径。
+Windows Debug 不携带 `default-plugins/`。平台适配器直接定位仓库 `plugins/sources`，Runtime
+从工作区加载已经构建的标准项目；package/lock 或 `dist/assets/packages` 变化时，在下一次
+Facade 调用前先回收旧进程/VM，再创建唯一的新 Runtime。Release 不解析工作区。
+
+Android Integration Test 使用另一条路线：Windows 固定工具链先验证并打 `.mgplugin`，测试脚本
+经 ADB 把归档放进 Debug 应用私有 inbox，Android Runtime 在 manager 冷初始化前调用正式
+installer。它不扫描 Windows 目录，也不把 inbox 暴露给主应用。
 
 `ctx` 当前包含 Runtime-owned `dataDir`、`cacheDir`、传播 signal/deadline 的 `http.fetch`、
 丢弃自由文本的结构化 `log`、只读 `app` 和 `plugin`。插件安装树视为只读。
@@ -100,7 +103,7 @@ duration 和受控计数；不记录 keyword、结果内容、Cookie、token、�
 
 ## 发布边界
 
-`npm run stage:flutter-windows` 把编译 Core、固定 `node.exe` 和 Node LICENSE 放入 Flutter
+`npm run stage:flutter-windows` 只把编译 Core、固定 `node.exe` 和 Node LICENSE 放入 Flutter
 package 自身资产目录；`pubspec.yaml` 显式列出 `node/`、`dist/` 与 `dist/diagnostics/`，不能依赖
 Flutter 目录资产的非递归行为。主项目不提供路径。Windows Debug 主应用构建已验证这些资产会
 进入 `flutter_assets/packages/mgread_plugin_runtime/`，且包内 Node 能完成 ready/hello/shutdown

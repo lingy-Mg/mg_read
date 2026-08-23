@@ -19,7 +19,10 @@ export async function search(request) {
 
 export async function getDetail(request) {
   requireContext().log.info('demo_detail');
-  return { ...book(request.id, '组件演示书籍'), aliases: [], catalogUrl: null };
+  if (typeof request?.id !== 'string' || !request.id.startsWith('demo:') || request.id.length === 5) {
+    throw new Error('Invalid demonstration content id.');
+  }
+  return { ...book(request.id.slice(5), '组件演示书籍'), aliases: [], catalogUrl: null };
 }
 
 export async function getChapters(request) {

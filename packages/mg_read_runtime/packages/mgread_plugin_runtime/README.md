@@ -8,6 +8,15 @@ wire envelope。
 final runtime = PluginRuntime();
 final ping = await runtime.invoke(const RuntimePingInvocation());
 final plugins = await runtime.invoke(const InstalledPluginsInvocation());
+final sourceDirectoryKind = await runtime.invoke(
+  const OpenPluginCodeDirectoryInvocation(
+    pluginId: 'org.example.source',
+  ),
+);
+final cacheUsage = await runtime.invoke(const PluginCacheUsageInvocation());
+final cleared = await runtime.invoke(
+  const ClearAllPluginCachesInvocation(),
+);
 final results = await runtime.invoke(
   const SourceSearchInvocation(
     pluginId: 'org.example.source',
@@ -17,6 +26,11 @@ final results = await runtime.invoke(
 final discovery = await runtime.invoke(
   const SourceDiscoverInvocation(pluginId: 'org.example.source'),
 );
+
+// Opens the native Windows or Android picker, accepts one `.mgplugin`,
+// installs it through the Runtime-owned inbox, cold-activates it, and returns
+// false when the user cancels.
+final imported = await runtime.importLocalPlugin();
 final detail = await runtime.invoke(
   const SourceDetailInvocation(
     pluginId: 'org.example.source',
@@ -56,9 +70,22 @@ Facade 将失败投影为稳定 `PluginRuntimeException.code` 和有界诊断，
 `PluginRuntime.desktopForTesting` 与 `debug*` 成员只用于本仓库 testkit。测试专用临时 data
 root 用来预置标准插件版本，不是生产依赖注入接口，也不能由主项目调用。
 
+`importLocalPlugin()` 是生产 Facade 的本地数据源导入能力。文件选择器、私有 inbox、原子复制、
+`.mgplugin` 校验和冷激活均由本 package/Runtime 负责；主应用只接收取消或成功结果，不接触文件路径。
+Windows 通过受管 Node 子进程重启完成冷激活，Android 通过专用 Javet 线程有序停止并重建唯一活动
+Runtime 实例完成冷激活。
+
 发布 Windows package 前由 Runtime 仓库执行 `npm run stage:flutter-windows`，把固定
 `node.exe`、Node LICENSE 和编译 Core 放入本 package 的递归资产布局。Android Javet、macOS 和最终应用包内
 运行需要各自验收，desktop 源码测试不替代这些门禁。
+
+Windows Debug 由本 package 在仓库内解析 `plugins/sources` 并把该内部目录交给 Runtime；书源
+项目不复制进 assets。package/lock 或已构建输出变化后，Facade 在下一次调用前回收旧 Node/VM，
+再启动唯一的新 Runtime。Release 不启用该路径。
+
+`OpenPluginCodeDirectoryInvocation` 仅在 Windows 桌面端由 Runtime 打开目录：development 结果
+打开工作区项目，安装来源打开当前 immutable version 副本。Facade 只返回这两种类型，绝不返回
+绝对路径；安装副本不是即时开发加载入口。
 
 源码环境的 Facade 冷启动/热调用基线可从本目录运行：
 

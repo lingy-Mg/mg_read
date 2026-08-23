@@ -3,7 +3,7 @@
 - 状态：Accepted
 - 日期：2026-08-14
 - 决策者：MgRead 项目
-- 细化：[ADR-0002](0002-trusted-plugins.md)、[ADR-0006](0006-cold-plugin-activation.md)
+- 细化：[ADR-0002](0002-trusted-plugins.md)、[ADR-0019](0019-development-plugin-live-loading.md)
 
 ## 背景
 
@@ -39,8 +39,9 @@
 9. `.mgplugin` 保留，但只是标准 Node 项目的 ZIP 运输容器。默认包含 `package.json`、
    `package-lock.json`、`dist/`、可选 `assets/`、包内 `packages/`、README/LICENSE；默认不含
    `node_modules`。
-10. 插件版本仍安装到不可变版本目录，更新完整安装后写 `pending`，只在下次应用进程冷启动
-    激活。依赖 GC 扫描保留版本的 lockfile 收集 integrity，不维护易漂移的引用计数。
+10. installed 插件版本仍安装到不可变版本目录，更新完整安装后写 `pending`，只在下次 Runtime
+    冷启动激活。Windows Debug 的 development 项目例外由 ADR-0019 定义，不进入安装树。依赖 GC
+    扫描保留版本的 lockfile 收集 integrity，不维护易漂移的引用计数。
 
 ## `package.json` v1 投影
 

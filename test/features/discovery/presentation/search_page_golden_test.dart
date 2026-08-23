@@ -7,6 +7,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
+import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 
 void main() {
   setUpAll(() async {
@@ -26,7 +27,17 @@ void main() {
     await tester.pumpWidget(const _SearchPageGoldenHost());
     await tester.pumpAndSettle();
 
-    expect(tester.getTopLeft(find.byKey(const Key('search-back'))).dy, 40);
+    expect(find.byKey(const Key('search-back')), findsNothing);
+    expect(find.byKey(const Key('search-source-selector')), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const Key('source-search-query'))).height,
+      AppSpacing.searchQueryHeight,
+    );
+    final Text pageTitle = tester.widget<Text>(
+      find.descendant(of: find.byType(AppPageTitle), matching: find.text('搜索')),
+    );
+    expect(pageTitle.style?.fontSize, AppSpacing.pageTitleSize);
+    expect(pageTitle.style?.fontWeight, FontWeight.w600);
     await expectLater(
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/search_page_compact_light.png'),
