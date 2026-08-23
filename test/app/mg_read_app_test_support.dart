@@ -115,6 +115,13 @@ final class _EmptySourceContentGateway implements SourceContentGateway {
   }) async => throw StateError('No source is installed in the app testkit.');
 
   @override
+  Future<PluginSearchSuggestionsResult> searchSuggestions({
+    required String pluginId,
+    String? cursor,
+    int pageSize = 20,
+  }) async => throw StateError('No source is installed in the app testkit.');
+
+  @override
   Future<PluginDiscoverResult> discover({
     required String pluginId,
     String? target,

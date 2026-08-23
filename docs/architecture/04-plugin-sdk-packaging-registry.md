@@ -176,7 +176,7 @@ export async function getChapters(request) {}
 export async function getContent(request) {}
 ```
 
-六个命名导出和全部内容对象遵循
+六个必需命名导出、可选的 `searchSuggestions` 热门搜索扩展和全部内容对象遵循
 [插件内容 API v1](15-plugin-content-contract.md)。此前仅返回 `id/title/author` 的
 `search(keyword)` 是未发布开发证据，不能继续作为公开契约；Runtime、Facade、fixture 与模板
 必须同时切换，不能让主项目直接加载模块。开发期旧默认导出只作为读取旧包时拒绝迁移的对象，

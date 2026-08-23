@@ -34,12 +34,15 @@ import {
   type PluginDiscoverResult,
   type PluginSearchRequest,
   type PluginSearchResult,
+  type PluginSearchSuggestionsRequest,
+  type PluginSearchSuggestionsResult,
   PluginContentValidationError,
   validateChaptersResult,
   validateContentResult,
   validateDetailResult,
   validateDiscoverResult,
   validateSearchResult,
+  validateSearchSuggestionsResult,
 } from "./plugin-content.js";
 
 export type PluginManagerEventCode =
@@ -160,6 +163,7 @@ interface LoadedPluginModule {
   getContent: PluginContentFunction;
   getDetail: PluginContentFunction;
   search: PluginContentFunction;
+  searchSuggestions: PluginContentFunction;
 }
 
 interface LoadedPlugin {
@@ -434,6 +438,24 @@ export class PluginManager {
       signal,
       deadlineUnixMs,
       validateSearchResult,
+      trace,
+    );
+  }
+
+  async searchSuggestions(
+    pluginId: string,
+    request: PluginSearchSuggestionsRequest,
+    signal: AbortSignal,
+    deadlineUnixMs: string,
+    trace?: PluginRuntimeTraceContext,
+  ): Promise<PluginSearchSuggestionsResult> {
+    return this.#invokeContent(
+      pluginId,
+      "searchSuggestions",
+      request,
+      signal,
+      deadlineUnixMs,
+      validateSearchSuggestionsResult,
       trace,
     );
   }
@@ -1051,6 +1073,7 @@ function normalizePluginModule(imported: Record<string, unknown>): LoadedPluginM
   const activate = imported.activate;
   const discover = imported.discover;
   const search = imported.search;
+  const searchSuggestions = imported.searchSuggestions;
   const getDetail = imported.getDetail;
   const getChapters = imported.getChapters;
   const getContent = imported.getContent;
@@ -1071,6 +1094,11 @@ function normalizePluginModule(imported: Record<string, unknown>): LoadedPluginM
     getContent: getContent as PluginContentFunction,
     getDetail: getDetail as PluginContentFunction,
     search: search as PluginContentFunction,
+    // Popular search is an opt-in v1 extension. Older source packages remain
+    // valid and project an empty source-owned list rather than local defaults.
+    searchSuggestions: typeof searchSuggestions === "function"
+      ? searchSuggestions as PluginContentFunction
+      : () => ({ items: [], nextCursor: null }),
   });
 }
 

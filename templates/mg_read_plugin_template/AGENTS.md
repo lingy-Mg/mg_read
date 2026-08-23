@@ -18,8 +18,9 @@ This repository is the official blank MgRead plugin project template.
   supported. `file:` dependencies must stay under `packages/`.
 - `.mgplugin` is only a ZIP transport container and must not contain
   `node_modules`.
-- Plugin API v1 uses the six named exports
-  `activate/discover/search/getDetail/getChapters/getContent`. Content objects
+- Plugin API v1 uses the six required named exports
+  `activate/discover/search/getDetail/getChapters/getContent`; sources that can
+  provide hot terms may additionally export `searchSuggestions`. Content objects
   keep every fixed nullable key and use explicit `null`; collections always use
   arrays, while missing keys, `undefined`, blank sentinel strings and arbitrary
   metadata maps are invalid.

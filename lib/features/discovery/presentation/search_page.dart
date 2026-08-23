@@ -37,13 +37,10 @@ class SearchPage extends ConsumerStatefulWidget {
 }
 
 class _SearchPageState extends ConsumerState<SearchPage> {
-  final TextEditingController _queryController = TextEditingController(
-    text: SearchPageFixtures.query,
-  );
+  final TextEditingController _queryController = TextEditingController();
   final FocusNode _queryFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   final List<String> _history = List<String>.of(SearchPageFixtures.history);
-  bool _initialSearchRequested = false;
   bool _initialSourceApplied = false;
 
   @override
@@ -52,7 +49,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     _queryController.addListener(_onQueryChanged);
     ref.listenManual<SearchPageState>(
       searchPageControllerProvider,
-      (_, next) => _maybeSearchInitialQuery(next),
+      (_, next) => _applyInitialSource(next),
       fireImmediately: true,
     );
   }
@@ -73,9 +70,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     final SearchPageController controller = ref.read(
       searchPageControllerProvider.notifier,
     );
-    final PluginSearchResult? displayedResult =
-        state.result ??
-        (!state.hasSources ? SearchPageFixtures.previewResult : null);
+    final PluginSearchResult? displayedResult = state.result;
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -117,6 +112,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   onHistoryCleared: _clearHistory,
                   onHotSearchSelected: (String value) =>
                       _selectSuggestion(value, controller),
+                  hotSearches: state.hotSearches,
+                  onHotSearchRefreshed: () =>
+                      unawaited(controller.refreshSuggestions()),
                 ),
                 const SizedBox(height: AppSpacing.regular),
                 SearchResultsSection(
@@ -176,8 +174,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   void _onQueryChanged() => setState(() {});
 
-  void _maybeSearchInitialQuery(SearchPageState state) {
-    if (_initialSearchRequested || !state.hasSources) return;
+  void _applyInitialSource(SearchPageState state) {
+    if (!state.hasSources) return;
     if (state.status != SearchPageStatus.ready) return;
     if (!_initialSourceApplied) {
       _initialSourceApplied = true;
@@ -193,13 +191,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         return;
       }
     }
-    if (_queryController.text.trim().isEmpty) return;
-    _initialSearchRequested = true;
-    unawaited(
-      ref
-          .read(searchPageControllerProvider.notifier)
-          .search(_queryController.text),
-    );
   }
 
   void _search(SearchPageController controller) {
@@ -234,9 +225,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   }
 }
 
-/// Reference-only presentation content until the product data contract arrives.
+/// Reference-only history used before persistent search history is introduced.
 abstract final class SearchPageFixtures {
-  static const String query = '诡秘之主';
   static const List<String> history = <String>[
     '诡秘之主',
     '大道朝天',
@@ -244,91 +234,6 @@ abstract final class SearchPageFixtures {
     '宿命之环',
     '道诡异仙',
   ];
-
-  static final PluginSearchResult previewResult = PluginSearchResult(
-    pluginId: 'presentation.preview',
-    sourceName: '界面预览',
-    totalCount: 12,
-    nextCursor: null,
-    items: <PluginContentSummary>[
-      _item(
-        'preview-1',
-        '诡秘之主',
-        '爱潜水的乌贼',
-        <String>['玄幻', '克苏鲁', '西幻', '穿越'],
-        '第1268章 不可名状的低语',
-        '1小时前更新',
-        '发现 12 个来源',
-      ),
-      _item(
-        'preview-2',
-        '诡秘之主：番外与资料集',
-        '爱潜水的乌贼',
-        <String>['玄幻', '克苏鲁', '西幻', '衍生'],
-        '番外 · 愚者之途',
-        '3天前更新',
-        '发现 6 个来源',
-      ),
-      _item(
-        'preview-3',
-        '诡秘之主同人：愚者的旅途',
-        '风起云涌',
-        <String>['同人', '衍生', '克苏鲁', '二次元'],
-        '第95章 新的序列',
-        '2天前更新',
-        '发现 3 个来源',
-      ),
-      _item(
-        'preview-4',
-        '从诡秘之主开始的轮回',
-        '歪倒',
-        <String>['科幻', '无限流', '诸天', '穿越'],
-        '第512章 旧日的呢喃',
-        '5小时前更新',
-        '发现 4 个来源',
-      ),
-    ],
-  );
-
-  static PluginContentSummary _item(
-    String id,
-    String title,
-    String author,
-    List<String> tags,
-    String chapter,
-    String update,
-    String sources,
-  ) => PluginContentSummary(
-    id: id,
-    title: title,
-    contentKind: PluginContentKind.novel,
-    author: author,
-    url: null,
-    coverUrl: null,
-    description: sources,
-    language: null,
-    status: PluginContentStatus.ongoing,
-    access: PluginAccessKind.unknown,
-    wordCount: null,
-    chapterCount: null,
-    publishedAt: null,
-    updatedAt: null,
-    latestChapter: PluginLatestChapter(
-      id: null,
-      title: chapter,
-      url: null,
-      updatedAt: null,
-    ),
-    categories: tags,
-    tags: const <String>[],
-    attributes: <PluginContentAttribute>[
-      PluginContentAttribute(
-        key: 'searchPreviewUpdate',
-        label: '更新',
-        value: update,
-      ),
-    ],
-  );
 }
 
 class _SearchTopBar extends StatelessWidget {

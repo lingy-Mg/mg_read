@@ -106,6 +106,20 @@ search({ query, cursor, pageSize }) -> {
 `query` 必须是非空用户输入，cursor 完全不透明。Runtime Facade 结果额外带调用使用的
 `pluginId` 和 `sourceName`；插件不重复填写这两个可信投影。
 
+### 热门搜索建议
+
+```ts
+searchSuggestions({ cursor, pageSize }) -> {
+  items: Array<{ query: string, metric: string | null }>,
+  nextCursor: string | null
+}
+```
+
+这是可选的 `source.searchSuggestions.v1` 能力：书源决定热门词及可展示的短热度文字，宿主不再
+内置或混入本地热门词。`query` 是非空、去重的可直接提交搜索词；`metric` 必须显式为字符串或
+`null`，不能携带 URL、作者、正文或未脱敏用户数据。尚未实现该扩展的旧 v1 书源返回空列表，
+不影响普通搜索；点击任一建议才会发起 `search`。
+
 ## 发现
 
 ```ts

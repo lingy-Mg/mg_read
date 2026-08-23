@@ -10,6 +10,8 @@ import type {
   MgReadPluginContext,
   SearchRequest,
   SearchResult,
+  SearchSuggestionsRequest,
+  SearchSuggestionsResult,
 } from './mgread-api.js';
 import type { AliceBookHouseSource, SourceRules } from './source.js';
 
@@ -68,6 +70,15 @@ export async function search(request: SearchRequest): Promise<SearchResult> {
   );
 }
 
+/** Returns popular search terms chosen by this source, never host defaults. */
+export async function searchSuggestions(
+  request: SearchSuggestionsRequest,
+): Promise<SearchSuggestionsResult> {
+  return invoke('search_suggestions', async (activeContext) =>
+    (await loadSource(activeContext)).searchSuggestions(request),
+  );
+}
+
 /** Resolves one opaque `novel:<id>` reference to its metadata. */
 export async function getDetail(request: ContentReferenceRequest): Promise<ContentDetail> {
   return invoke('get_detail', async (activeContext) =>
@@ -96,7 +107,7 @@ function requireContext(): MgReadPluginContext {
   return globalThisContext;
 }
 
-type Operation = 'discover' | 'search' | 'get_detail' | 'get_chapters' | 'get_content';
+type Operation = 'discover' | 'search' | 'search_suggestions' | 'get_detail' | 'get_chapters' | 'get_content';
 
 async function invoke<T>(
   operation: Operation,

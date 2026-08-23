@@ -24,6 +24,11 @@ final results = await runtime.invoke(
     query: '示例',
   ),
 );
+final suggestions = await runtime.invoke(
+  const SourceSearchSuggestionsInvocation(
+    pluginId: 'org.example.source',
+  ),
+);
 final discovery = await runtime.invoke(
   const SourceDiscoverInvocation(pluginId: 'org.example.source'),
 );

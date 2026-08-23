@@ -11,25 +11,26 @@ import 'package:mg_read/features/discovery/presentation/source_content_detail_sh
 import 'fixtures/alice_book_house_detail_fixture.dart';
 
 void main() {
-  testWidgets('detail forwards one typed shelf save while the request is active', (
-    tester,
-  ) async {
-    var saveCount = 0;
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light(),
-        home: _DetailHost(onAddToShelf: (_) async => saveCount++),
-      ),
-    );
-    await tester.pumpAndSettle();
+  testWidgets(
+    'detail forwards one typed shelf save while the request is active',
+    (tester) async {
+      var saveCount = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: _DetailHost(onAddToShelf: (_) async => saveCount++),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('source-detail-add-shelf')));
-    await tester.tap(find.byKey(const Key('source-detail-add-shelf')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('source-detail-add-shelf')));
+      await tester.tap(find.byKey(const Key('source-detail-add-shelf')));
+      await tester.pumpAndSettle();
 
-    expect(saveCount, 1);
-    expect(find.text('已加入书架。'), findsOneWidget);
-  });
+      expect(saveCount, 1);
+      expect(find.text('已加入书架。'), findsOneWidget);
+    },
+  );
 
   testWidgets('detail reports a shelf save failure', (tester) async {
     await tester.pumpWidget(
@@ -118,6 +119,13 @@ final class _FixtureGateway implements SourceContentGateway {
   Future<PluginSearchResult> search({
     required String pluginId,
     required String query,
+    String? cursor,
+    int pageSize = 20,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<PluginSearchSuggestionsResult> searchSuggestions({
+    required String pluginId,
     String? cursor,
     int pageSize = 20,
   }) => throw UnimplementedError();

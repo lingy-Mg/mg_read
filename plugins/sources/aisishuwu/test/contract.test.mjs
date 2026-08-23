@@ -4,10 +4,10 @@ import test from 'node:test';
 
 import * as plugin from '../dist/index.mjs';
 
-test('exports exactly the six standard Plugin API v1 entry points', async () => {
+test('exports the standard Plugin API v1 entry points and hot-search extension', async () => {
   assert.deepEqual(
     Object.keys(plugin).sort(),
-    ['activate', 'discover', 'getChapters', 'getContent', 'getDetail', 'search'],
+    ['activate', 'discover', 'getChapters', 'getContent', 'getDetail', 'search', 'searchSuggestions'],
   );
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(packageJson.mgread.id, 'org.mgread.aisishuwu');

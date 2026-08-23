@@ -15,6 +15,7 @@ final searchPageControllerProvider =
 class SearchPageController extends Notifier<SearchPageState> {
   late SourceContentGateway _gateway;
   int _latestGeneration = 0;
+  int _latestSuggestionGeneration = 0;
   bool _disposed = false;
 
   @override
@@ -39,7 +40,9 @@ class SearchPageController extends Notifier<SearchPageState> {
       sources: state.sources,
       selectedSourceId: pluginId,
       query: query,
+      hotSearches: state.hotSearches,
     );
+    unawaited(_loadSuggestions(pluginId, ++_latestSuggestionGeneration));
     if (query.isNotEmpty) await search(query);
   }
 
@@ -48,6 +51,7 @@ class SearchPageController extends Notifier<SearchPageState> {
     state = SearchPageState.ready(
       sources: state.sources,
       selectedSourceId: state.selectedSourceId,
+      hotSearches: state.hotSearches,
     );
   }
 
@@ -67,6 +71,7 @@ class SearchPageController extends Notifier<SearchPageState> {
       selectedSourceId: pluginId,
       query: query,
       retainedResult: retainedResult,
+      hotSearches: state.hotSearches,
     );
     try {
       final result = await _gateway.search(pluginId: pluginId, query: query);
@@ -76,6 +81,7 @@ class SearchPageController extends Notifier<SearchPageState> {
         selectedSourceId: pluginId,
         query: query,
         result: result,
+        hotSearches: state.hotSearches,
       );
     } on Object catch (error) {
       if (!_isCurrent(generation)) return;
@@ -85,6 +91,7 @@ class SearchPageController extends Notifier<SearchPageState> {
         query: query,
         error: AppError.fromUnknown(error),
         retainedResult: retainedResult,
+        hotSearches: state.hotSearches,
       );
     }
   }
@@ -98,6 +105,11 @@ class SearchPageController extends Notifier<SearchPageState> {
         sources: sources,
         selectedSourceId: sources.isEmpty ? null : sources.first.id,
       );
+      if (sources.isNotEmpty) {
+        unawaited(
+          _loadSuggestions(sources.first.id, ++_latestSuggestionGeneration),
+        );
+      }
     } on Object catch (error) {
       if (!_isCurrent(generation)) return;
       state = SearchPageState.failure(
@@ -105,6 +117,7 @@ class SearchPageController extends Notifier<SearchPageState> {
         selectedSourceId: null,
         query: '',
         error: AppError.fromUnknown(error),
+        hotSearches: state.hotSearches,
       );
     }
   }
@@ -112,4 +125,28 @@ class SearchPageController extends Notifier<SearchPageState> {
   bool _isCurrent(int generation) {
     return !_disposed && generation == _latestGeneration;
   }
+
+  Future<void> refreshSuggestions() async {
+    final pluginId = state.selectedSourceId;
+    if (pluginId == null) return;
+    final generation = ++_latestSuggestionGeneration;
+    await _loadSuggestions(pluginId, generation);
+  }
+
+  Future<void> _loadSuggestions(String pluginId, int generation) async {
+    try {
+      final suggestions = await _gateway.searchSuggestions(pluginId: pluginId);
+      if (!_isCurrentSuggestion(generation) ||
+          state.selectedSourceId != pluginId) {
+        return;
+      }
+      state = state.withHotSearches(suggestions.items);
+    } on Object {
+      // Suggestions are optional source metadata. Their failure must not erase
+      // a selectable source or turn the page into a false search failure.
+    }
+  }
+
+  bool _isCurrentSuggestion(int generation) =>
+      !_disposed && generation == _latestSuggestionGeneration;
 }

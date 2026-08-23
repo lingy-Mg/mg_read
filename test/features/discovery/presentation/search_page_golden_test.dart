@@ -86,6 +86,20 @@ class _GoldenSourceGateway implements SourceContentGateway {
   }) => throw UnimplementedError();
 
   @override
+  Future<PluginSearchSuggestionsResult> searchSuggestions({
+    required String pluginId,
+    String? cursor,
+    int pageSize = 20,
+  }) => Future<PluginSearchSuggestionsResult>.value(
+    PluginSearchSuggestionsResult(
+      pluginId: pluginId,
+      sourceName: 'Golden 书源',
+      items: const <PluginSearchSuggestion>[],
+      nextCursor: null,
+    ),
+  );
+
+  @override
   Future<PluginDiscoverResult> discover({
     required String pluginId,
     String? target,

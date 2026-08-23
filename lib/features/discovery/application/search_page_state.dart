@@ -15,7 +15,9 @@ final class SearchPageState {
     required this.query,
     required this.result,
     required this.error,
-  }) : sources = List<PluginSourceDescriptor>.unmodifiable(sources);
+    required Iterable<PluginSearchSuggestion> hotSearches,
+  }) : sources = List<PluginSourceDescriptor>.unmodifiable(sources),
+       hotSearches = List<PluginSearchSuggestion>.unmodifiable(hotSearches);
 
   factory SearchPageState.loadingSources() => SearchPageState._(
     status: SearchPageStatus.loadingSources,
@@ -24,12 +26,15 @@ final class SearchPageState {
     query: '',
     result: null,
     error: null,
+    hotSearches: const <PluginSearchSuggestion>[],
   );
 
   factory SearchPageState.ready({
     required Iterable<PluginSourceDescriptor> sources,
     required String? selectedSourceId,
     String query = '',
+    Iterable<PluginSearchSuggestion> hotSearches =
+        const <PluginSearchSuggestion>[],
   }) => SearchPageState._(
     status: SearchPageStatus.ready,
     sources: sources,
@@ -37,6 +42,7 @@ final class SearchPageState {
     query: query,
     result: null,
     error: null,
+    hotSearches: hotSearches,
   );
 
   factory SearchPageState.searching({
@@ -44,6 +50,8 @@ final class SearchPageState {
     required String selectedSourceId,
     required String query,
     PluginSearchResult? retainedResult,
+    Iterable<PluginSearchSuggestion> hotSearches =
+        const <PluginSearchSuggestion>[],
   }) => SearchPageState._(
     status: SearchPageStatus.searching,
     sources: sources,
@@ -51,6 +59,7 @@ final class SearchPageState {
     query: query,
     result: retainedResult,
     error: null,
+    hotSearches: hotSearches,
   );
 
   factory SearchPageState.loaded({
@@ -58,6 +67,8 @@ final class SearchPageState {
     required String selectedSourceId,
     required String query,
     required PluginSearchResult result,
+    Iterable<PluginSearchSuggestion> hotSearches =
+        const <PluginSearchSuggestion>[],
   }) => SearchPageState._(
     status: SearchPageStatus.loaded,
     sources: sources,
@@ -65,6 +76,7 @@ final class SearchPageState {
     query: query,
     result: result,
     error: null,
+    hotSearches: hotSearches,
   );
 
   factory SearchPageState.failure({
@@ -73,6 +85,8 @@ final class SearchPageState {
     required String query,
     required AppError error,
     PluginSearchResult? retainedResult,
+    Iterable<PluginSearchSuggestion> hotSearches =
+        const <PluginSearchSuggestion>[],
   }) => SearchPageState._(
     status: SearchPageStatus.failure,
     sources: sources,
@@ -80,6 +94,7 @@ final class SearchPageState {
     query: query,
     result: retainedResult,
     error: error,
+    hotSearches: hotSearches,
   );
 
   final SearchPageStatus status;
@@ -88,6 +103,18 @@ final class SearchPageState {
   final String query;
   final PluginSearchResult? result;
   final AppError? error;
+  final List<PluginSearchSuggestion> hotSearches;
 
   bool get hasSources => sources.isNotEmpty;
+
+  SearchPageState withHotSearches(Iterable<PluginSearchSuggestion> value) =>
+      SearchPageState._(
+        status: status,
+        sources: sources,
+        selectedSourceId: selectedSourceId,
+        query: query,
+        result: result,
+        error: error,
+        hotSearches: value,
+      );
 }

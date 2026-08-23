@@ -14,6 +14,8 @@ class SearchSuggestionSections extends StatelessWidget {
     required this.onHistorySelected,
     required this.onHistoryCleared,
     required this.onHotSearchSelected,
+    required this.hotSearches,
+    required this.onHotSearchRefreshed,
     super.key,
   });
 
@@ -21,17 +23,8 @@ class SearchSuggestionSections extends StatelessWidget {
   final ValueChanged<String> onHistorySelected;
   final VoidCallback onHistoryCleared;
   final ValueChanged<String> onHotSearchSelected;
-
-  static const List<String> _hotSearches = <String>[
-    '诡秘之主',
-    '大道朝天',
-    '深空彼岸',
-    '宿命之环',
-    '道诡异仙',
-    '我在精神病院学斩神',
-    '九星霸体诀',
-    '仙逆',
-  ];
+  final List<PluginSearchSuggestion> hotSearches;
+  final VoidCallback onHotSearchRefreshed;
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +41,7 @@ class SearchSuggestionSections extends StatelessWidget {
           title: '热门搜索',
           trailing: TextButton.icon(
             key: const Key('search-hot-refresh'),
-            onPressed: () {},
+            onPressed: onHotSearchRefreshed,
             icon: const Icon(Icons.refresh_rounded, size: 20),
             label: const Text('换一换'),
           ),
@@ -60,13 +53,15 @@ class SearchSuggestionSections extends StatelessWidget {
               spacing: AppSpacing.section,
               runSpacing: AppSpacing.compact,
               children: List<Widget>.generate(
-                _hotSearches.length,
+                hotSearches.length,
                 (index) => SizedBox(
                   width: columnWidth,
                   child: _HotSearchItem(
                     rank: index + 1,
-                    label: _hotSearches[index],
-                    onPressed: () => onHotSearchSelected(_hotSearches[index]),
+                    label: hotSearches[index].query,
+                    metric: hotSearches[index].metric,
+                    onPressed: () =>
+                        onHotSearchSelected(hotSearches[index].query),
                   ),
                 ),
               ),
@@ -353,10 +348,12 @@ class _HotSearchItem extends StatelessWidget {
   const _HotSearchItem({
     required this.rank,
     required this.label,
+    required this.metric,
     required this.onPressed,
   });
   final int rank;
   final String label;
+  final String? metric;
   final VoidCallback onPressed;
   @override
   Widget build(BuildContext context) {
@@ -382,6 +379,15 @@ class _HotSearchItem extends StatelessWidget {
             Expanded(
               child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
+            if (metric != null) ...<Widget>[
+              const SizedBox(width: AppSpacing.compact),
+              Text(
+                metric!,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+              ),
+            ],
             if (isTopRank)
               Icon(
                 Icons.local_fire_department_rounded,

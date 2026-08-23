@@ -132,6 +132,13 @@ final class _TreeGateway implements SourceContentGateway {
   }) => throw UnsupportedError('Not used by discovery tree test.');
 
   @override
+  Future<PluginSearchSuggestionsResult> searchSuggestions({
+    required String pluginId,
+    String? cursor,
+    int pageSize = 20,
+  }) => throw UnsupportedError('Not used by discovery tree test.');
+
+  @override
   Future<PluginContentDetail> getDetail({
     required String pluginId,
     required String id,

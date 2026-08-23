@@ -9,7 +9,7 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 
 void main() {
-  testWidgets('submits the prefilled query when a source is available', (
+  testWidgets('does not search until the user selects a history keyword', (
     tester,
   ) async {
     final gateway = _SearchGateway();
@@ -24,13 +24,19 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(gateway.queries, <String>['诡秘之主']);
-    expect(find.text('真实搜索结果'), findsWidgets);
-    expect(find.text('界面预览'), findsNothing);
+    expect(gateway.queries, isEmpty);
+    expect(find.text('输入关键词开始搜索'), findsOneWidget);
+    expect(find.text('真实搜索结果'), findsNothing);
     final historyScroll = tester.widget<SingleChildScrollView>(
       find.byKey(const Key('search-history-scroll')),
     );
     expect(historyScroll.scrollDirection, Axis.horizontal);
+
+    await tester.tap(find.text('诡秘之主').first);
+    await tester.pumpAndSettle();
+
+    expect(gateway.queries, <String>['诡秘之主']);
+    expect(find.text('真实搜索结果'), findsWidgets);
   });
 
   testWidgets('keeps the discovery source when opening search', (tester) async {
@@ -54,7 +60,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(gateway.pluginIds, <String>['source.second']);
+    expect(gateway.pluginIds, isEmpty);
     expect(find.text('第二个书源'), findsOneWidget);
   });
 
@@ -90,6 +96,9 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('诡秘之主').first);
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('真实搜索结果').first);
@@ -178,6 +187,20 @@ final class _SearchGateway implements SourceContentGateway {
       totalCount: 1,
     );
   }
+
+  @override
+  Future<PluginSearchSuggestionsResult> searchSuggestions({
+    required String pluginId,
+    String? cursor,
+    int pageSize = 20,
+  }) async => PluginSearchSuggestionsResult(
+    pluginId: pluginId,
+    sourceName: '测试书源',
+    items: const <PluginSearchSuggestion>[
+      PluginSearchSuggestion(query: '诡秘之主', metric: '12.3万'),
+    ],
+    nextCursor: null,
+  );
 
   @override
   Future<PluginDiscoverResult> discover({

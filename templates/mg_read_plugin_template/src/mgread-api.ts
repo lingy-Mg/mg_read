@@ -95,6 +95,22 @@ export interface SearchResult {
   readonly totalCount: number | null;
 }
 
+/** Optional source-owned popular search terms. Do not substitute host defaults. */
+export interface SearchSuggestion {
+  readonly query: string;
+  readonly metric: string | null;
+}
+
+export interface SearchSuggestionsRequest {
+  readonly cursor: string | null;
+  readonly pageSize: number;
+}
+
+export interface SearchSuggestionsResult {
+  readonly items: readonly SearchSuggestion[];
+  readonly nextCursor: string | null;
+}
+
 export interface DiscoverRequest {
   /** 首次发现为 null；tab/分类返回的 target 只回传给当前插件。 */
   readonly target: string | null;

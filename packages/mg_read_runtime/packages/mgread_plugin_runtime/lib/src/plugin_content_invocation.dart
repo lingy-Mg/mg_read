@@ -199,6 +199,92 @@ final class PluginSearchResult {
 }
 
 @immutable
+final class SourceSearchSuggestionsInvocation
+    extends PluginInvocation<PluginSearchSuggestionsResult> {
+  const SourceSearchSuggestionsInvocation({
+    required this.pluginId,
+    this.cursor,
+    this.pageSize = 20,
+  });
+
+  final String pluginId;
+  final String? cursor;
+  final int pageSize;
+
+  @override
+  String get _wireMethod => 'source.searchSuggestions.v1';
+
+  @override
+  Map<String, Object?> get _wireParams => <String, Object?>{
+    'pluginId': pluginId,
+    'cursor': cursor,
+    'pageSize': pageSize,
+  };
+
+  @override
+  PluginSearchSuggestionsResult _decodeResult(Object? value) {
+    final result = _contentObject(value, 'Source search suggestions result');
+    _requireMatchingPlugin(result, pluginId, 'Source search suggestions result');
+    final items = _contentList(
+      result,
+      'items',
+      'Source search suggestions result',
+    ).map((raw) {
+      final item = _contentObject(raw, 'Source search suggestion');
+      return PluginSearchSuggestion(
+        query: _contentString(item, 'query', 'Source search suggestion'),
+        metric: _contentNullableString(
+          item,
+          'metric',
+          'Source search suggestion',
+        ),
+      );
+    }).toList(growable: false);
+    _requireUnique(
+      items.map((item) => item.query),
+      'Source search suggestions result',
+    );
+    return PluginSearchSuggestionsResult(
+      pluginId: pluginId,
+      sourceName: _contentString(
+        result,
+        'sourceName',
+        'Source search suggestions result',
+      ),
+      items: items,
+      nextCursor: _contentNullableString(
+        result,
+        'nextCursor',
+        'Source search suggestions result',
+      ),
+    );
+  }
+}
+
+@immutable
+final class PluginSearchSuggestionsResult {
+  PluginSearchSuggestionsResult({
+    required this.pluginId,
+    required this.sourceName,
+    required List<PluginSearchSuggestion> items,
+    required this.nextCursor,
+  }) : items = List<PluginSearchSuggestion>.unmodifiable(items);
+
+  final String pluginId;
+  final String sourceName;
+  final List<PluginSearchSuggestion> items;
+  final String? nextCursor;
+}
+
+@immutable
+final class PluginSearchSuggestion {
+  const PluginSearchSuggestion({required this.query, required this.metric});
+
+  final String query;
+  final String? metric;
+}
+
+@immutable
 final class SourceDiscoverInvocation
     extends PluginInvocation<PluginDiscoverResult> {
   const SourceDiscoverInvocation({

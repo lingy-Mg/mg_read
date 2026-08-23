@@ -34,7 +34,8 @@ export async function getContent(request) {}
 `main` 必须指向构建后的 `dist/` 内入口。不要把元数据复制到其他文件，也不要让 `main`
 指向源码、bundle 或 `node_modules`。`mgread.displayName` 是 UI 显示的来源名，npm `name`
 不是 UI 文案。Runtime 会先冷激活该不可变版本一次，再按需调用这六个
-命名导出；它们不是应用自行发现的默认导出，也不应改名。
+必需命名导出；能提供热门搜索词的书源可额外导出 `searchSuggestions`。它们不是应用自行发现的
+默认导出，也不应改名。
 
 - `activate(ctx)`：生命周期初始化点。只在此保存 Runtime 提供的上下文、读取只读资源和建立
   可复用的轻量状态；不要在模块顶层做依赖 `ctx` 的工作，也不要在这里启动 Worker、子进程或

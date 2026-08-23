@@ -62,6 +62,9 @@ export interface ContentSummary {
 
 export interface SearchRequest { readonly query: string; readonly cursor: string | null; readonly pageSize: number; }
 export interface SearchResult { readonly items: readonly ContentSummary[]; readonly nextCursor: string | null; readonly totalCount: number | null; }
+export interface SearchSuggestion { readonly query: string; readonly metric: string | null; }
+export interface SearchSuggestionsRequest { readonly cursor: string | null; readonly pageSize: number; }
+export interface SearchSuggestionsResult { readonly items: readonly SearchSuggestion[]; readonly nextCursor: string | null; }
 export interface DiscoverRequest { readonly target: string | null; readonly cursor: string | null; readonly collectionId: string | null; readonly pageSize: number; }
 export interface DiscoveryCategory { readonly id: string; readonly title: string; readonly target: string; readonly count: number | null; readonly url: string | null; }
 export interface DiscoveryContentItem { readonly content: ContentSummary; readonly rank: number | null; readonly metric: { readonly label: string; readonly value: string } | null; readonly recommendation: string | null; }

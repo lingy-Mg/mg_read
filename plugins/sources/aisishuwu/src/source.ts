@@ -16,6 +16,8 @@ import type {
   MgReadPluginContext,
   SearchRequest,
   SearchResult,
+  SearchSuggestionsRequest,
+  SearchSuggestionsResult,
 } from './mgread-api.js';
 import { PluginHtmlCache, type HtmlCachePolicy } from './html-cache.js';
 import { nonBlank } from './utils.js';
@@ -186,7 +188,10 @@ export class AliceBookHouseSource {
       searchUrl,
     );
 
-    const visible = await this.#withCovers(items.slice(0, request.pageSize));
+    // Search rows deliberately match discovery rows: a detail hydration supplies
+    // the cover plus all rich summary fields, while a single failed detail only
+    // falls back to the safe list projection.
+    const visible = await this.#withDiscoveryDetails(items.slice(0, request.pageSize));
     return Object.freeze({
       items: visible,
       nextCursor:
@@ -194,6 +199,27 @@ export class AliceBookHouseSource {
           ? encodePageCursor('search-page', page + 1)
           : null,
       totalCount: null,
+    });
+  }
+
+  async searchSuggestions(
+    request: SearchSuggestionsRequest,
+  ): Promise<SearchSuggestionsResult> {
+    const page = decodePageCursor(request.cursor, 'search-suggestions-page');
+    const homeUrl = new URL('/', this.#baseUrl);
+    if (page > 1) return Object.freeze({ items: Object.freeze([]), nextCursor: null });
+    const contents = await this.#parseList(
+      await this.#getHtml(homeUrl, undefined, listingHtmlCachePolicy),
+      homeUrl,
+    );
+    return Object.freeze({
+      items: Object.freeze(
+        contents.slice(0, request.pageSize).map((content) => Object.freeze({
+          query: content.title,
+          metric: null,
+        })),
+      ),
+      nextCursor: null,
     });
   }
 

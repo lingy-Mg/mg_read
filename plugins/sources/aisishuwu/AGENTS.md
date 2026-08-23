@@ -8,7 +8,8 @@ This package is one real MgRead content-source plugin, not a Runtime or an
 application feature.
 
 - Keep the standard Node 24 project format: `package.json.mgread`, lockfile v3,
-  normal multi-file ESM output, and the six named Plugin API v1 exports.
+  normal multi-file ESM output, the six required Plugin API v1 exports, and
+  the optional `searchSuggestions` extension when this source supplies hot terms.
 - Production code may use only the public `ctx.http`, `ctx.log`, `ctx.dataDir`,
   and `ctx.cacheDir` capabilities. Never depend on Runtime paths, wire DTOs,
   test launchers, host callbacks, or the main application's database.
@@ -19,7 +20,7 @@ application feature.
 - Do not log URLs, search terms, titles, HTML, or chapter text. Never add
   credentials, cookie exports, login automation, anti-bot bypasses, Workers,
   child processes, native addons, Git dependencies, or install scripts.
-- Logging is required for every `activate`, `discover`, `search`, `getDetail`,
+- Logging is required for every `activate`, `discover`, `search`, `searchSuggestions`, `getDetail`,
   `getChapters` and `getContent` execution. Use only structured `ctx.log`
   phase events for start, validation/branch, remote-fetch handoff, parsing,
   result count/byte projection and exactly one terminal outcome. Runtime owns

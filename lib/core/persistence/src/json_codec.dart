@@ -7,6 +7,14 @@ import 'record.dart';
 typedef JsonValidator = void Function(JsonObject document);
 typedef JsonUpgrader = JsonObject Function(JsonObject document);
 
+// Metadata documents are deliberately small. Sending a tiny document through
+// a freshly spawned isolate can cost orders of magnitude more than parsing it,
+// especially on Windows debug builds. These limits bound inline work to at
+// most 48 KiB of UTF-8 source text (Chinese text uses at most three bytes per
+// Dart code unit). Larger documents retain the background-isolate path.
+const _maximumInlineDocumentCodeUnits = 4 * 1024;
+const _maximumInlineBatchCodeUnits = 16 * 1024;
+
 final class JsonDocumentLimits {
   const JsonDocumentLimits({
     this.maxEncodedBytes = 256 * 1024,
@@ -104,15 +112,15 @@ final class RecordDocumentCodec {
       }
     }
     if (requested.isEmpty) return const <PreparedJsonDocument>[];
-    final normalizedDocuments = await Isolate.run(
-      () => _decodeAndNormalizeMany(
-        requested
-            .map((document) => document.payloadJson)
-            .toList(growable: false),
-        limits,
-      ),
-      debugName: 'mg-read-json-decode-batch',
-    );
+    final payloads = requested
+        .map((document) => document.payloadJson)
+        .toList(growable: false);
+    final normalizedDocuments = _canDecodeInline(payloads)
+        ? _decodeAndNormalizeMany(payloads, limits)
+        : await Isolate.run(
+            () => _decodeAndNormalizeMany(payloads, limits),
+            debugName: 'mg-read-json-decode-batch',
+          );
     final prepared = <PreparedJsonDocument>[];
     for (var index = 0; index < requested.length; index++) {
       prepared.add(
@@ -221,6 +229,16 @@ List<_NormalizedJson> _decodeAndNormalizeMany(
 ) => payloads
     .map((payloadJson) => _decodeAndNormalize(payloadJson, limits))
     .toList(growable: false);
+
+bool _canDecodeInline(List<String> payloads) {
+  var totalCodeUnits = 0;
+  for (final payload in payloads) {
+    if (payload.length > _maximumInlineDocumentCodeUnits) return false;
+    totalCodeUnits += payload.length;
+    if (totalCodeUnits > _maximumInlineBatchCodeUnits) return false;
+  }
+  return true;
+}
 
 _NormalizedJson _normalizeAndEncode(
   JsonObject document,

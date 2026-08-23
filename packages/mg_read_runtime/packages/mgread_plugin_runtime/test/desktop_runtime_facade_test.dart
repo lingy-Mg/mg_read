@@ -192,9 +192,15 @@ void main() {
           query: 'Flutter',
         ),
       );
+      final suggestions = await runtime.invoke(
+        const SourceSearchSuggestionsInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
+        ),
+      );
       final discovery = await runtime.invoke(
         const SourceDiscoverInvocation(pluginId: 'org.mgread.flutter.fixture'),
       );
+      expect(suggestions.items, isEmpty);
       final detail = await runtime.invoke(
         SourceDetailInvocation(
           pluginId: 'org.mgread.flutter.fixture',

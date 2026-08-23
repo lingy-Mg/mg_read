@@ -114,7 +114,7 @@ test('detail projects real source metadata into the v1 summary fields', async ()
   assert.equal(detail.latestChapter?.updatedAt, '2026-08-10T04:31:00.000Z');
 });
 
-test('discovery hydrates list items with detail metadata and heat', async () => {
+test('search hydrates list items with the same cover and rich metadata as discovery', async () => {
   const source = new AliceBookHouseSource(
     {
       dataDir: 'data',
@@ -157,19 +157,55 @@ test('discovery hydrates list items with detail metadata and heat', async () => 
     { origin: 'https://www.alicesw.com', categories: [{ id: '71', title: '科幻' }] },
   );
 
-  const result = await source.discover({
-    target: 'category:71',
+  const result = await source.search({
+    query: '字段测试',
     cursor: null,
-    collectionId: null,
     pageSize: 20,
   });
-  assert.equal(result.kind, 'document');
-  const item = result.document.components[0].children[0].items[0];
-  assert.equal(item.content.author, '字段作者');
-  assert.equal(item.content.description, '这是分类页应该展示的短简介。');
-  assert.equal(item.content.chapterCount, 733);
-  assert.deepEqual(item.content.tags, ['标签甲', '标签乙']);
-  assert.deepEqual(item.metric, { label: '热度', value: '562.3万' });
+  const item = result.items[0];
+  assert.equal(item.author, '字段作者');
+  assert.equal(item.coverUrl, 'https://cdn.example.com/covers/fields.jpg');
+  assert.equal(item.description, '这是分类页应该展示的短简介。');
+  assert.equal(item.wordCount, 1859600);
+  assert.equal(item.chapterCount, 733);
+  assert.equal(item.status, 'ongoing');
+  assert.deepEqual(item.categories, ['科幻']);
+  assert.deepEqual(item.tags, ['标签甲', '标签乙']);
+  assert.deepEqual(item.attributes, [
+    { key: 'heat', label: '热度', value: '5623000' },
+    { key: 'favorites', label: '收藏', value: '49' },
+  ]);
+});
+
+test('popular search terms come from the source home page', async () => {
+  const source = new AliceBookHouseSource(
+    {
+      dataDir: 'data',
+      cacheDir: 'cache',
+      http: {
+        fetch: async () => new Response(`
+          <article class="list-group-item"><a href="/novel/42.html">首页热书</a></article>
+          <article class="list-group-item"><a href="/novel/43.html">第二本热书</a></article>
+        `),
+      },
+      log: { debug() {}, info() {}, warn() {}, error() {} },
+      app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
+      plugin: { id: 'org.mgread.aisishuwu', version: '0.2.0' },
+    },
+    { origin: 'https://www.alicesw.com', categories: [{ id: '71', title: '科幻' }] },
+  );
+
+  const suggestions = await source.searchSuggestions({
+    cursor: null,
+    pageSize: 20,
+  });
+  assert.deepEqual(suggestions, {
+    items: [
+      { query: '首页热书', metric: null },
+      { query: '第二本热书', metric: null },
+    ],
+    nextCursor: null,
+  });
 });
 
 test('catalog returns pages asynchronously without re-fetching a loaded source page', async () => {
@@ -230,7 +266,11 @@ test('public API completes the opaque content chain with safe diagnostic phases'
         if (url.pathname === '/search.html' && url.searchParams.get('q') === secret) {
           return new Response('upstream-response-canary', { status: 503 });
         }
-        if (url.pathname === '/lists/71.html' || url.pathname === '/search.html') {
+        if (
+          url.pathname === '/' ||
+          url.pathname === '/lists/71.html' ||
+          url.pathname === '/search.html'
+        ) {
           return new Response(list);
         }
         if (url.pathname === '/novel/42.html') {
@@ -283,15 +323,17 @@ test('public API completes the opaque content chain with safe diagnostic phases'
   assert.equal(contentCollection?.type, 'contentCollection');
   const contentId = contentCollection.items[0].content.id;
   const search = await plugin.search({ query: '测试', cursor: null, pageSize: 5 });
+  const suggestions = await plugin.searchSuggestions({ cursor: null, pageSize: 5 });
   const detail = await plugin.getDetail({ id: contentId });
   const chapters = await plugin.getChapters({ id: contentId, cursor: null, pageSize: 5 });
   const content = await plugin.getContent({ id: contentId, chapterId: chapters.items[0].id });
 
   assert.equal(search.items[0].id, contentId);
+  assert.equal(suggestions.items[0].query, '测试书名');
   assert.equal(detail.id, contentId);
   assert.equal(content.chapterId, chapters.items[0].id);
   assert.equal(content.text, chapterBody);
-  for (const operation of ['discover', 'search', 'get_detail', 'get_chapters', 'get_content']) {
+  for (const operation of ['discover', 'search', 'search_suggestions', 'get_detail', 'get_chapters', 'get_content']) {
     assert.ok(events.includes(`source_${operation}_started`));
     assert.ok(events.includes(`source_${operation}_validated`));
     assert.ok(events.includes(`source_${operation}_parsed`));

@@ -142,30 +142,39 @@ void main() {
     );
   });
 
-  test('decodes a catalog-sized record batch in one worker isolate', () async {
-    final codec = defaultRegistry.require('app_setting', localScope.kind);
+  test(
+    'decodes bounded metadata inline and large documents in a worker',
+    () async {
+      final codec = defaultRegistry.require('app_setting', localScope.kind);
 
-    final documents = await codec.decodeAndUpgradeMany(
-      documents: const <({int version, String payloadJson})>[
-        (version: 2, payloadJson: '{"value":"first","enabled":true}'),
-        (version: 2, payloadJson: '{"value":"second","enabled":false}'),
-        (version: 2, payloadJson: '{"value":"third"}'),
-      ],
-    );
+      final documents = await codec.decodeAndUpgradeMany(
+        documents: const <({int version, String payloadJson})>[
+          (version: 2, payloadJson: '{"value":"first","enabled":true}'),
+          (version: 2, payloadJson: '{"value":"second","enabled":false}'),
+          (version: 2, payloadJson: '{"value":"third"}'),
+        ],
+      );
 
-    expect(documents.map((document) => document.document['value']), <String>[
-      'first',
-      'second',
-      'third',
-    ]);
-    expect(documents.first.document['enabled'], isTrue);
-    expect(documents[1].document['enabled'], isFalse);
-    expect(
-      documents.map((document) => document.workerIsolateId).toSet(),
-      hasLength(1),
-    );
-    expect(documents.first.workerIsolateId, isNot(Isolate.current.hashCode));
-  });
+      expect(documents.map((document) => document.document['value']), <String>[
+        'first',
+        'second',
+        'third',
+      ]);
+      expect(documents.first.document['enabled'], isTrue);
+      expect(documents[1].document['enabled'], isFalse);
+      expect(
+        documents.map((document) => document.workerIsolateId).toSet(),
+        hasLength(1),
+      );
+      expect(documents.first.workerIsolateId, Isolate.current.hashCode);
+
+      final large = await codec.decodeAndUpgrade(
+        version: 2,
+        payloadJson: jsonEncode(<String, Object?>{'value': 'x' * (5 * 1024)}),
+      );
+      expect(large.workerIsolateId, isNot(Isolate.current.hashCode));
+    },
+  );
 
   test('rejects stale revisions', () async {
     final created = await kit.store.create(settingDraft('theme'));

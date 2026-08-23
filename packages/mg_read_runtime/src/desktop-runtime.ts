@@ -64,6 +64,7 @@ import {
   parseDetailParams,
   parseDiscoverParams,
   parseSearchParams,
+  parseSearchSuggestionsParams,
   pluginContentResultCount,
   PluginContentValidationError,
   type PluginContentOperation,
@@ -95,6 +96,7 @@ const RUNTIME_CONTROL_METHOD = Object.freeze({
   pluginsSetEnabled: "plugins.setEnabled.v1",
   sourceDiscover: "source.discover.v1",
   sourceSearch: "source.search.v1",
+  sourceSearchSuggestions: "source.searchSuggestions.v1",
   sourceGetDetail: "source.getDetail.v1",
   sourceGetChapters: "source.getChapters.v1",
   sourceGetContent: "source.getContent.v1",
@@ -191,6 +193,7 @@ const RUNTIME_CONTROL_CAPABILITIES = Object.freeze([
   RUNTIME_CONTROL_METHOD.pluginsSetEnabled,
   RUNTIME_CONTROL_METHOD.sourceDiscover,
   RUNTIME_CONTROL_METHOD.sourceSearch,
+  RUNTIME_CONTROL_METHOD.sourceSearchSuggestions,
   RUNTIME_CONTROL_METHOD.sourceGetDetail,
   RUNTIME_CONTROL_METHOD.sourceGetChapters,
   RUNTIME_CONTROL_METHOD.sourceGetContent,
@@ -1301,6 +1304,13 @@ export class DesktopRuntime {
           "search",
           controlTrace,
         );
+      case RUNTIME_CONTROL_METHOD.sourceSearchSuggestions:
+        return this.#dispatchPluginContent(
+          request,
+          cancellation,
+          "searchSuggestions",
+          controlTrace,
+        );
       case RUNTIME_CONTROL_METHOD.sourceGetDetail:
         return this.#dispatchPluginContent(
           request,
@@ -1820,6 +1830,17 @@ export class DesktopRuntime {
         case "search": {
           const parsed = parseSearchParams(request.params);
           result = await manager.search(
+            parsed.pluginId,
+            parsed.request,
+            cancellation,
+            request.deadlineUnixMs,
+            span?.trace,
+          );
+          break;
+        }
+        case "searchSuggestions": {
+          const parsed = parseSearchSuggestionsParams(request.params);
+          result = await manager.searchSuggestions(
             parsed.pluginId,
             parsed.request,
             cancellation,

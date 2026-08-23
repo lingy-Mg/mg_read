@@ -207,6 +207,13 @@ class _GoldenDetailGateway implements SourceContentGateway {
   }) async => throw UnimplementedError();
 
   @override
+  Future<PluginSearchSuggestionsResult> searchSuggestions({
+    required String pluginId,
+    String? cursor,
+    int pageSize = 20,
+  }) async => throw UnimplementedError();
+
+  @override
   Future<PluginDiscoverResult> discover({
     required String pluginId,
     String? target,

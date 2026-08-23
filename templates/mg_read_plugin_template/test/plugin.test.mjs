@@ -25,6 +25,7 @@ test('standard named exports activate and use multi-file/local-package resources
   });
 
   const search = await plugin.search({ query: '示例', cursor: null, pageSize: 20 });
+  const suggestions = await plugin.searchSuggestions({ cursor: null, pageSize: 20 });
   const summary = search.items[0];
   const discovery = await plugin.discover({ target: null, cursor: null, pageSize: 20 });
   const detail = await plugin.getDetail({ id: summary.id });
@@ -61,6 +62,7 @@ test('standard named exports activate and use multi-file/local-package resources
     assert.equal(Array.isArray(summary[key]), true, `${key} must always be an array`);
   }
   assert.equal(search.nextCursor, null);
+  assert.equal(suggestions.items[0].query, 'MgRead 模板：热门示例');
   assert.equal(discovery.kind, 'document');
   assert.equal(discovery.document.components[0].type, 'tabs');
   assert.equal(discovery.document.components[1].children[0].layout, 'featured');

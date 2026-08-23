@@ -89,4 +89,7 @@ export type {
   PluginMangaPage,
   PluginSearchRequest,
   PluginSearchResult,
+  PluginSearchSuggestion,
+  PluginSearchSuggestionsRequest,
+  PluginSearchSuggestionsResult,
 } from "./plugin-content.js";

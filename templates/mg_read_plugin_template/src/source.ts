@@ -13,6 +13,8 @@ import type {
   DiscoverResult,
   SearchRequest,
   SearchResult,
+  SearchSuggestionsRequest,
+  SearchSuggestionsResult,
 } from './mgread-api.js';
 import { stableExampleId } from './utils.js';
 
@@ -111,6 +113,17 @@ export function createLocalExampleSource(prefix: string) {
         items: Object.freeze([createSummary(prefix, request.query)]),
         nextCursor: null,
         totalCount: 1,
+      });
+    },
+
+    searchSuggestions(
+      _request: SearchSuggestionsRequest,
+    ): SearchSuggestionsResult {
+      return Object.freeze({
+        items: Object.freeze([
+          Object.freeze({ query: formatExampleTitle(prefix, '热门示例'), metric: null }),
+        ]),
+        nextCursor: null,
       });
     },
 

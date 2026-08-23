@@ -12,6 +12,8 @@ import type {
   MgReadPluginContext,
   SearchRequest,
   SearchResult,
+  SearchSuggestionsRequest,
+  SearchSuggestionsResult,
 } from './mgread-api.js';
 import { createLocalExampleSource } from './source.js';
 import { requireActivated } from './utils.js';
@@ -53,6 +55,14 @@ export async function discover(request: DiscoverRequest): Promise<DiscoverResult
 export async function search(request: SearchRequest): Promise<SearchResult> {
   requireActivated(context);
   return requireActivated(source).search(request);
+}
+
+/** Optional source-owned popular terms for the host search page. */
+export async function searchSuggestions(
+  request: SearchSuggestionsRequest,
+): Promise<SearchSuggestionsResult> {
+  requireActivated(context);
+  return requireActivated(source).searchSuggestions(request);
 }
 
 export async function getDetail(

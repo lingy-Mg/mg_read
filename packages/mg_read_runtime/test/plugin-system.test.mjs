@@ -160,6 +160,15 @@ test("installer hardlinks local packages and manager cold-activates named export
   assert.deepEqual(search.items[0].tags, []);
   assert.equal(search.nextCursor, null);
   assert.equal(search.sourceName, "Runtime 标准测试书源");
+  const suggestions = await manager.searchSuggestions(
+    "org.mgread.runtime.fixture",
+    { cursor: null, pageSize: 20 },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
+  );
+  assert.deepEqual(suggestions.items, []);
+  assert.equal(suggestions.nextCursor, null);
+  assert.equal(suggestions.sourceName, "Runtime 标准测试书源");
   const discovery = await manager.discover(
     "org.mgread.runtime.fixture",
     { target: null, cursor: null, collectionId: null, pageSize: 20 },
@@ -241,7 +250,7 @@ test("installer hardlinks local packages and manager cold-activates named export
   );
   assert.equal(
     managerEvents.filter((event) => event.code === "plugin_invocation_completed").length,
-    6,
+    7,
   );
 });
 

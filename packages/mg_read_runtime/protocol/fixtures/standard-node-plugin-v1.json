@@ -38,6 +38,7 @@
       "plugins.setEnabled.v1",
       "source.discover.v1",
       "source.search.v1",
+      "source.searchSuggestions.v1",
       "source.getDetail.v1",
       "source.getChapters.v1",
       "source.getContent.v1",

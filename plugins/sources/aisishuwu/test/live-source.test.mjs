@@ -33,6 +33,10 @@ test('live source completes category, search, detail, catalog, and content flow'
   const search = await plugin.search({ query: '修仙', cursor: null, pageSize: 5 });
   assert.ok(search.items.length > 0);
 
+  const suggestions = await plugin.searchSuggestions({ cursor: null, pageSize: 5 });
+  assert.ok(suggestions.items.length > 0);
+  assert.ok(suggestions.items.every((item) => item.query.trim().length > 0));
+
   const detail = await plugin.getDetail({ id: book.id });
   assert.equal(detail.id, book.id);
   assert.ok(detail.title.length > 0);

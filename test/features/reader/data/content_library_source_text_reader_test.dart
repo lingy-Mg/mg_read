@@ -261,6 +261,13 @@ final class _FakeGateway implements SourceContentGateway {
     String? cursor,
     int pageSize = 20,
   }) => throw UnsupportedError('Not used by reader launch.');
+
+  @override
+  Future<PluginSearchSuggestionsResult> searchSuggestions({
+    required String pluginId,
+    String? cursor,
+    int pageSize = 20,
+  }) => throw UnsupportedError('Not used by reader launch.');
 }
 
 PluginChapterSummary _chapter(

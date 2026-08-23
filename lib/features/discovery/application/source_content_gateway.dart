@@ -36,6 +36,12 @@ abstract interface class SourceContentGateway {
     int pageSize = 20,
   });
 
+  Future<PluginSearchSuggestionsResult> searchSuggestions({
+    required String pluginId,
+    String? cursor,
+    int pageSize = 20,
+  });
+
   Future<PluginDiscoverResult> discover({
     required String pluginId,
     String? target,
@@ -113,6 +119,25 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
         SourceSearchInvocation(
           pluginId: pluginId,
           query: query,
+          cursor: cursor,
+          pageSize: pageSize,
+        ),
+      ),
+      resultCount: (result) => result.items.length,
+    );
+  }
+
+  @override
+  Future<PluginSearchSuggestionsResult> searchSuggestions({
+    required String pluginId,
+    String? cursor,
+    int pageSize = 20,
+  }) {
+    return _invoke(
+      capability: 'source.searchSuggestions.v1',
+      action: () => _runtime.invoke(
+        SourceSearchSuggestionsInvocation(
+          pluginId: pluginId,
           cursor: cursor,
           pageSize: pageSize,
         ),

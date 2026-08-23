@@ -7,6 +7,7 @@ const MAX_URL_CHARACTERS = 8_192;
 const MAX_CURSOR_CHARACTERS = 2_048;
 const MAX_PAGE_SIZE = 50;
 const MAX_SEARCH_ITEMS = 50;
+const MAX_SEARCH_SUGGESTIONS = 50;
 const MAX_DISCOVERY_TABS = 16;
 const MAX_DISCOVERY_COMPONENTS = 128;
 const MAX_DISCOVERY_DEPTH = 8;
@@ -76,7 +77,8 @@ export type PluginContentOperation =
   | "getChapters"
   | "getContent"
   | "getDetail"
-  | "search";
+  | "search"
+  | "searchSuggestions";
 
 export interface PluginContentAttribute extends JsonObject {
   readonly key: string;
@@ -125,6 +127,25 @@ export interface PluginSearchResult extends JsonObject {
   readonly pluginId: string;
   readonly sourceName: string;
   readonly totalCount: number | null;
+}
+
+/** A source-owned popular search term. Its query is safe only for immediate
+ * user-initiated search and must never enter default diagnostics. */
+export interface PluginSearchSuggestion extends JsonObject {
+  readonly query: string;
+  readonly metric: string | null;
+}
+
+export interface PluginSearchSuggestionsRequest extends JsonObject {
+  readonly cursor: string | null;
+  readonly pageSize: number;
+}
+
+export interface PluginSearchSuggestionsResult extends JsonObject {
+  readonly items: readonly PluginSearchSuggestion[];
+  readonly nextCursor: string | null;
+  readonly pluginId: string;
+  readonly sourceName: string;
 }
 
 export interface PluginDiscoverRequest extends JsonObject {
@@ -333,6 +354,19 @@ export function parseSearchParams(
   });
 }
 
+export function parseSearchSuggestionsParams(
+  params: JsonObject,
+): ParsedPluginRequest<PluginSearchSuggestionsRequest> {
+  assertOnlyKeys(params, ["pluginId", "cursor", "pageSize"]);
+  return Object.freeze({
+    pluginId: readPluginId(params, "pluginId"),
+    request: Object.freeze({
+      cursor: readNullableCursor(params, "cursor"),
+      pageSize: readPageSize(params, "pageSize"),
+    }),
+  });
+}
+
 export function parseDiscoverParams(
   params: JsonObject,
 ): ParsedPluginRequest<PluginDiscoverRequest> {
@@ -409,6 +443,32 @@ export function validateSearchResult(
     pluginId,
     sourceName,
     totalCount: readNullableCount(raw, "totalCount"),
+  });
+  assertInlineBudget(result);
+  return result;
+}
+
+export function validateSearchSuggestionsResult(
+  pluginId: string,
+  sourceName: string,
+  value: unknown,
+): PluginSearchSuggestionsResult {
+  const raw = readRecord(value);
+  const items = Object.freeze(
+    readArray(raw, "items", MAX_SEARCH_SUGGESTIONS).map((item) => {
+      const suggestion = readRecord(item);
+      return Object.freeze({
+        metric: readNullableString(suggestion, "metric", MAX_LABEL_CHARACTERS),
+        query: readRequiredString(suggestion, "query", MAX_TEXT_METADATA_CHARACTERS),
+      });
+    }),
+  );
+  assertUnique(items.map((item) => item.query));
+  const result = Object.freeze({
+    items,
+    nextCursor: readNullableCursor(raw, "nextCursor"),
+    pluginId,
+    sourceName,
   });
   assertInlineBudget(result);
   return result;
