@@ -5,9 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/discovery/application/search_page_controller.dart';
 import 'package:mg_read/features/discovery/application/search_page_state.dart';
+import 'package:mg_read/features/discovery/application/search_history_store.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
@@ -15,6 +17,7 @@ import 'package:mg_read/features/discovery/presentation/source_picker_sheet.dart
 import 'package:mg_read/features/discovery/presentation/widgets/search_page_sections.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
+import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 
 /// Search destination. Runtime data remains outside this presentation shell.
@@ -40,7 +43,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   final TextEditingController _queryController = TextEditingController();
   final FocusNode _queryFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
-  final List<String> _history = List<String>.of(SearchPageFixtures.history);
+  final List<String> _history = <String>[];
+  int _historyGeneration = 0;
+  bool _historyWasCleared = false;
   bool _initialSourceApplied = false;
 
   @override
@@ -52,6 +57,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       (_, next) => _applyInitialSource(next),
       fireImmediately: true,
     );
+    unawaited(_loadHistory());
   }
 
   @override
@@ -70,90 +76,110 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     final SearchPageController controller = ref.read(
       searchPageControllerProvider.notifier,
     );
+    final bookshelfMembership = ref.watch(bookshelfMembershipProvider);
     final PluginSearchResult? displayedResult = state.result;
     return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: AppSpacing.searchPageContentMaxWidth,
-            ),
-            child: ListView(
-              key: const Key('search-page-scroll'),
-              controller: _scrollController,
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.searchPageHorizontalPadding,
-                AppSpacing.pageHeaderTopPadding,
-                AppSpacing.searchPageHorizontalPadding,
-                AppSpacing.section,
+      body: AppPageBackdrop(
+        style: AppPageBackdropStyle.search,
+        child: SafeArea(
+          bottom: false,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: AppSpacing.searchPageContentMaxWidth,
               ),
-              children: <Widget>[
-                SizedBox(
-                  height: AppSpacing.pageHeaderHeight,
-                  child: _SearchPageHeader(
-                    onSourceManagementRequested:
-                        widget.onSourceManagementRequested,
+              child: ListView(
+                key: const Key('search-page-scroll'),
+                controller: _scrollController,
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.searchPageHorizontalPadding,
+                  AppSpacing.pageHeaderTopPadding,
+                  AppSpacing.searchPageHorizontalPadding,
+                  AppSpacing.section,
+                ),
+                children: <Widget>[
+                  SizedBox(
+                    height: AppSpacing.pageHeaderHeight,
+                    child: _SearchPageHeader(
+                      onSourceManagementRequested:
+                          widget.onSourceManagementRequested,
+                    ),
                   ),
-                ),
-                const SizedBox(height: AppSpacing.compact),
-                _SearchTopBar(
-                  queryController: _queryController,
-                  queryFocusNode: _queryFocusNode,
-                  isSearching: state.status == SearchPageStatus.searching,
-                  onSearch: () => _search(controller),
-                  onClear: _clearQuery,
-                ),
-                const SizedBox(height: AppSpacing.compact),
-                SearchSuggestionSections(
-                  history: List<String>.unmodifiable(_history),
-                  onHistorySelected: (String value) =>
-                      _selectSuggestion(value, controller),
-                  onHistoryCleared: _clearHistory,
-                  onHotSearchSelected: (String value) =>
-                      _selectSuggestion(value, controller),
-                  hotSearches: state.hotSearches,
-                  onHotSearchRefreshed: () =>
-                      unawaited(controller.refreshSuggestions()),
-                ),
-                const SizedBox(height: AppSpacing.regular),
-                SearchResultsSection(
-                  result: displayedResult,
-                  status: state.status,
-                  error: state.error,
-                  onContentPressed: (PluginContentSummary content) {
-                    final String? pluginId = state.selectedSourceId;
-                    if (pluginId == null) return;
-                    final source = state.sources.firstWhere(
-                      (source) => source.id == pluginId,
-                    );
-                    unawaited(
-                      showSourceContentDetailSheet(
-                        context,
-                        gateway: ref.read(sourceContentGatewayProvider),
-                        pluginId: pluginId,
-                        id: content.id,
-                        initialContent: content,
-                        initialSourceName: source.displayName,
-                        relatedContents:
-                            displayedResult?.items ??
-                            const <PluginContentSummary>[],
-                        onTextChapterRequested: widget.onTextChapterRequested,
-                        onAddToShelf: (content) => ref
-                            .read(discoveryBookshelfSaverProvider)
-                            .save(source: source, content: content),
-                      ),
-                    );
-                  },
-                  onRetry: () {
-                    if (state.sources.isEmpty) {
-                      unawaited(controller.retrySources());
-                    } else {
-                      _search(controller);
-                    }
-                  },
-                ),
-              ],
+                  const SizedBox(height: AppSpacing.compact),
+                  _SearchTopBar(
+                    queryController: _queryController,
+                    queryFocusNode: _queryFocusNode,
+                    isSearching: state.status == SearchPageStatus.searching,
+                    onSearch: () => _search(controller),
+                    onClear: _clearQuery,
+                  ),
+                  const SizedBox(height: AppSpacing.compact),
+                  SearchSuggestionSections(
+                    history: List<String>.unmodifiable(_history),
+                    onHistorySelected: (String value) =>
+                        _selectSuggestion(value, controller),
+                    onHistoryCleared: _clearHistory,
+                    onHotSearchSelected: (String value) =>
+                        _selectSuggestion(value, controller),
+                    hotSearches: state.hotSearches,
+                    onHotSearchRefreshed: () =>
+                        unawaited(controller.refreshSuggestions()),
+                  ),
+                  const SizedBox(height: AppSpacing.regular),
+                  SearchResultsSection(
+                    result: displayedResult,
+                    status: state.status,
+                    query: state.query,
+                    error: state.error,
+                    isInBookshelf: (content) {
+                      final pluginId = state.selectedSourceId;
+                      return pluginId != null &&
+                          bookshelfMembership.contains(
+                            pluginId: pluginId,
+                            title: content.title,
+                          );
+                    },
+                    onContentPressed: (PluginContentSummary content) {
+                      final String? pluginId = state.selectedSourceId;
+                      if (pluginId == null) return;
+                      final source = state.sources.firstWhere(
+                        (source) => source.id == pluginId,
+                      );
+                      unawaited(
+                        showSourceContentDetailSheet(
+                          context,
+                          gateway: ref.read(sourceContentGatewayProvider),
+                          pluginId: pluginId,
+                          id: content.id,
+                          initialContent: content,
+                          initialSourceName: source.displayName,
+                          relatedContents:
+                              displayedResult?.items ??
+                              const <PluginContentSummary>[],
+                          onTextChapterRequested: widget.onTextChapterRequested,
+                          shelfState:
+                              bookshelfMembership.contains(
+                                pluginId: pluginId,
+                                title: content.title,
+                              )
+                              ? SourceDetailShelfState.alreadyAdded
+                              : SourceDetailShelfState.canAdd,
+                          onAddToShelf: (content) => ref
+                              .read(discoveryBookshelfSaverProvider)
+                              .save(source: source, content: content),
+                        ),
+                      );
+                    },
+                    onRetry: () {
+                      if (state.sources.isEmpty) {
+                        unawaited(controller.retrySources());
+                      } else {
+                        _search(controller);
+                      }
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -200,12 +226,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       return;
     }
     _queryFocusNode.unfocus();
-    setState(() {
-      _history
-        ..remove(query)
-        ..insert(0, query);
-      if (_history.length > 5) _history.removeLast();
-    });
+    _replaceHistory(
+      <String>[query, ..._history.where((item) => item != query)].take(5),
+    );
     unawaited(controller.search(query));
   }
 
@@ -214,7 +237,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     unawaited(ref.read(searchPageControllerProvider.notifier).clear());
   }
 
-  void _clearHistory() => setState(_history.clear);
+  void _clearHistory() {
+    _historyGeneration++;
+    _historyWasCleared = true;
+    setState(_history.clear);
+    unawaited(_saveHistory(const <String>[]));
+  }
 
   void _selectSuggestion(String value, SearchPageController controller) {
     _queryController.value = TextEditingValue(
@@ -223,17 +251,66 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     );
     _search(controller);
   }
-}
 
-/// Reference-only history used before persistent search history is introduced.
-abstract final class SearchPageFixtures {
-  static const List<String> history = <String>[
-    '诡秘之主',
-    '大道朝天',
-    '深空彼岸',
-    '宿命之环',
-    '道诡异仙',
-  ];
+  Future<void> _loadHistory() async {
+    List<String> loaded;
+    try {
+      loaded = await ref.read(searchHistoryStoreProvider).load();
+    } on Object {
+      return;
+    }
+    if (!mounted) return;
+
+    if (_historyGeneration == 0) {
+      setState(() {
+        _history
+          ..clear()
+          ..addAll(loaded.take(5));
+      });
+      return;
+    }
+    if (_historyWasCleared) return;
+
+    final merged = <String>[
+      ..._history,
+      ...loaded.where((item) => !_history.contains(item)),
+    ].take(5).toList();
+    if (_sameHistory(merged, _history)) return;
+    setState(() {
+      _history
+        ..clear()
+        ..addAll(merged);
+    });
+    unawaited(_saveHistory(merged));
+  }
+
+  void _replaceHistory(Iterable<String> next) {
+    final replacement = List<String>.of(next.take(5));
+    _historyGeneration++;
+    _historyWasCleared = false;
+    setState(() {
+      _history
+        ..clear()
+        ..addAll(replacement);
+    });
+    unawaited(_saveHistory(replacement));
+  }
+
+  Future<void> _saveHistory(List<String> history) async {
+    try {
+      await ref.read(searchHistoryStoreProvider).save(history);
+    } on Object {
+      // Search remains usable when a background persistence attempt fails.
+    }
+  }
+
+  static bool _sameHistory(List<String> left, List<String> right) {
+    if (left.length != right.length) return false;
+    for (var index = 0; index < left.length; index++) {
+      if (left[index] != right[index]) return false;
+    }
+    return true;
+  }
 }
 
 class _SearchTopBar extends StatelessWidget {
@@ -271,13 +348,21 @@ class _SearchTopBar extends StatelessWidget {
                 decoration: InputDecoration(
                   hintText: '书名、作者或关键词',
                   prefixIcon: const Icon(Icons.search_rounded),
-                  suffixIcon: queryController.text.isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: '清空搜索',
-                          onPressed: onClear,
-                          icon: const Icon(Icons.cancel_rounded),
-                        ),
+                  suffixIcon: AnimatedSwitcher(
+                    duration: AppMotion.navigationSelection,
+                    switchInCurve: AppMotion.navigationCurve,
+                    switchOutCurve: AppMotion.navigationReverseCurve,
+                    child: isSearching
+                        ? const _SearchFieldProgress()
+                        : queryController.text.isEmpty
+                        ? const SizedBox.shrink(key: ValueKey<String>('empty'))
+                        : IconButton(
+                            key: const ValueKey<String>('clear'),
+                            tooltip: '清空搜索',
+                            onPressed: onClear,
+                            icon: const Icon(Icons.cancel_rounded),
+                          ),
+                  ),
                   filled: true,
                   fillColor: tokens.mutedSurface,
                   contentPadding: const EdgeInsets.symmetric(
@@ -311,6 +396,25 @@ class _SearchTopBar extends StatelessWidget {
   }
 }
 
+class _SearchFieldProgress extends StatelessWidget {
+  const _SearchFieldProgress();
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: '搜索进行中',
+    child: ExcludeSemantics(
+      child: Center(
+        key: Key('source-search-field-progress'),
+        child: SizedBox(
+          width: AppSpacing.comfortable,
+          height: AppSpacing.comfortable,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ),
+    ),
+  );
+}
+
 class _SearchPageHeader extends ConsumerWidget {
   const _SearchPageHeader({this.onSourceManagementRequested});
 
@@ -336,7 +440,7 @@ class _SearchPageHeader extends ConsumerWidget {
           child: Center(child: AppPageTitle(title: '搜索')),
         ),
         Align(
-          alignment: const Alignment(0.08, 0),
+          alignment: Alignment.center,
           child: DiscoverySourceSelector(
             key: const Key('search-source-selector-widget'),
             selectorKey: const Key('search-source-selector'),

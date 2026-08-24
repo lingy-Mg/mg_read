@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -6,6 +8,7 @@ import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
+import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 
 /// Mobile-first discovery presentation owned by the host UI layer.
@@ -51,102 +54,118 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: FocusTraversalGroup(
-          policy: OrderedTraversalPolicy(),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: AppSpacing.mobileContentMaxWidth,
-              ),
-              child: Scrollbar(
-                controller: _scrollController,
-                child: ListView(
-                  key: const Key('discovery-page-content'),
-                  controller: _scrollController,
-                  primary: false,
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.discoveryPagePadding,
-                    AppSpacing.pageHeaderTopPadding,
-                    AppSpacing.discoveryPagePadding,
-                    AppSpacing.page,
-                  ),
-                  children: <Widget>[
-                    DiscoveryTopBar(
-                      sourceName: _data.sourceName,
-                      onSourcePressed:
-                          widget.onSourcePressed ?? _showUnavailableMessage,
-                      onSearchPressed: () => _handleDestinationSelected(
-                        AppNavigationDestination.search,
-                      ),
-                      onToggleTheme: () => _handleToggleTheme(context),
+      body: AppPageBackdrop(
+        style: AppPageBackdropStyle.discover,
+        child: SafeArea(
+          bottom: false,
+          child: FocusTraversalGroup(
+            policy: OrderedTraversalPolicy(),
+            child: LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final bool useWidePagePadding =
+                    constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
+                final double pagePadding = useWidePagePadding
+                    ? AppSpacing.widePagePadding
+                    : AppSpacing.discoveryPagePadding;
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: AppSpacing.contentMaxWidth,
                     ),
-                    const SizedBox(height: 10),
-                    DiscoveryTabs(
-                      tabs: _data.tabs,
-                      selectedTabId: _data.selectedTabId,
-                      onSelected: _handleTabSelected,
-                    ),
-                    const SizedBox(height: 10),
-                    DiscoveryHeroCard(
-                      data: _data.hero,
-                      onPressed: _showUnavailableMessage,
-                    ),
-                    const SizedBox(height: AppSpacing.regular),
-                    DiscoverySectionHeader(
-                      title: _data.popularTitle,
-                      actionLabel: '换一换',
-                      actionIcon: Icons.refresh_rounded,
-                      onAction:
-                          widget.onRefreshRequested ?? _showUnavailableMessage,
-                    ),
-                    const SizedBox(height: 7),
-                    DiscoveryPopularBooks(
-                      books: _data.popularBooks,
-                      onBookPressed: (_) => _showUnavailableMessage(),
-                    ),
-                    const SizedBox(height: AppSpacing.regular),
-                    SizedBox(
-                      height: AppSpacing.discoveryBoardHeight,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                    child: Scrollbar(
+                      controller: _scrollController,
+                      child: ListView(
+                        key: const Key('discovery-page-content'),
+                        controller: _scrollController,
+                        primary: false,
+                        padding: EdgeInsets.fromLTRB(
+                          pagePadding,
+                          AppSpacing.pageHeaderTopPadding,
+                          pagePadding,
+                          AppSpacing.page,
+                        ),
                         children: <Widget>[
-                          Expanded(
-                            child: DiscoveryRankingBoard(
-                              title: _data.rankingTitle,
-                              books: _data.rankedBooks,
-                              onPressed: (_) => _showUnavailableMessage(),
-                              onMorePressed: _showUnavailableMessage,
+                          DiscoveryTopBar(
+                            sourceName: _data.sourceName,
+                            onSourcePressed:
+                                widget.onSourcePressed ??
+                                _showUnavailableMessage,
+                            onSearchPressed: () => _handleDestinationSelected(
+                              AppNavigationDestination.search,
+                            ),
+                            onToggleTheme: () => _handleToggleTheme(context),
+                          ),
+                          const SizedBox(height: 10),
+                          DiscoveryTabs(
+                            tabs: _data.tabs,
+                            selectedTabId: _data.selectedTabId,
+                            onSelected: _handleTabSelected,
+                          ),
+                          const SizedBox(height: 10),
+                          DiscoveryHeroCard(
+                            data: _data.hero,
+                            onPressed: _showUnavailableMessage,
+                          ),
+                          const SizedBox(height: AppSpacing.regular),
+                          DiscoverySectionHeader(
+                            title: _data.popularTitle,
+                            actionLabel: '换一换',
+                            actionIcon: Icons.refresh_rounded,
+                            onAction:
+                                widget.onRefreshRequested ??
+                                _showUnavailableMessage,
+                          ),
+                          const SizedBox(height: 7),
+                          DiscoveryPopularBooks(
+                            books: _data.popularBooks,
+                            onBookPressed: (_) => _showUnavailableMessage(),
+                          ),
+                          const SizedBox(height: AppSpacing.regular),
+                          SizedBox(
+                            height: AppSpacing.discoveryBoardHeight,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: <Widget>[
+                                Expanded(
+                                  child: DiscoveryRankingBoard(
+                                    title: _data.rankingTitle,
+                                    books: _data.rankedBooks,
+                                    onPressed: (_) => _showUnavailableMessage(),
+                                    onMorePressed: _showUnavailableMessage,
+                                  ),
+                                ),
+                                const SizedBox(
+                                  width: AppSpacing.discoveryBoardGap,
+                                ),
+                                Expanded(
+                                  child: DiscoveryCategoryBoard(
+                                    title: _data.categoryTitle,
+                                    categories: _data.categories,
+                                    onPressed: _showUnavailableMessage,
+                                    onCategoryPressed: _handleCategorySelected,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(width: AppSpacing.discoveryBoardGap),
-                          Expanded(
-                            child: DiscoveryCategoryBoard(
-                              title: _data.categoryTitle,
-                              categories: _data.categories,
-                              onPressed: _showUnavailableMessage,
-                              onCategoryPressed: _handleCategorySelected,
-                            ),
+                          const SizedBox(height: AppSpacing.compact),
+                          DiscoverySectionHeader(
+                            title: _data.editorsChoiceTitle,
+                            actionLabel: '更多',
+                            actionIcon: Icons.chevron_right_rounded,
+                            onAction: _showUnavailableMessage,
+                          ),
+                          const SizedBox(height: AppSpacing.unit),
+                          DiscoveryEditorsChoiceCard(
+                            data: _data.editorsChoice,
+                            onPressed: _showUnavailableMessage,
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: AppSpacing.compact),
-                    DiscoverySectionHeader(
-                      title: _data.editorsChoiceTitle,
-                      actionLabel: '更多',
-                      actionIcon: Icons.chevron_right_rounded,
-                      onAction: _showUnavailableMessage,
-                    ),
-                    const SizedBox(height: AppSpacing.unit),
-                    DiscoveryEditorsChoiceCard(
-                      data: _data.editorsChoice,
-                      onPressed: _showUnavailableMessage,
-                    ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             ),
           ),
         ),
@@ -237,7 +256,7 @@ class DiscoveryTopBar extends StatelessWidget {
             child: Center(child: AppPageTitle(title: title)),
           ),
           Align(
-            alignment: const Alignment(0.08, 0),
+            alignment: Alignment.center,
             child: DiscoverySourceSelector(
               sourceName: sourceName,
               onPressed: onSourcePressed,
@@ -333,9 +352,8 @@ class DiscoverySourceSelector extends StatelessWidget {
                       sourceName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurface,
-                        fontSize: 12.5,
                         fontWeight: FontWeight.w400,
                         height: 1.1,
                         letterSpacing: 0,
@@ -443,6 +461,7 @@ class DiscoveryTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final Color foreground = selected ? tokens.accent : tokens.mutedText;
     return Semantics(
@@ -459,9 +478,8 @@ class DiscoveryTab extends StatelessWidget {
             children: <Widget>[
               Text(
                 label,
-                style: TextStyle(
+                style: theme.textTheme.bodyMedium?.copyWith(
                   color: foreground,
-                  fontSize: 15,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                   height: 1.25,
                   letterSpacing: 0,
@@ -556,9 +574,8 @@ class DiscoveryHeroCard extends StatelessWidget {
                                 data.title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
+                                style: theme.textTheme.titleLarge?.copyWith(
                                   color: theme.colorScheme.onSurface,
-                                  fontSize: 17,
                                   fontWeight: FontWeight.w600,
                                   height: 1.2,
                                   letterSpacing: 0,
@@ -577,11 +594,10 @@ class DiscoveryHeroCard extends StatelessWidget {
                             data.description!,
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
+                            style: theme.textTheme.bodyMedium?.copyWith(
                               color: theme.colorScheme.onSurface.withValues(
                                 alpha: 0.78,
                               ),
-                              fontSize: 13,
                               fontWeight: FontWeight.w400,
                               height: 1.48,
                               letterSpacing: 0,
@@ -594,9 +610,8 @@ class DiscoveryHeroCard extends StatelessWidget {
                             data.metadata!,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
+                            style: theme.textTheme.bodySmall?.copyWith(
                               color: tokens.mutedText,
-                              fontSize: 11.5,
                               fontWeight: FontWeight.w400,
                               height: 1.2,
                               letterSpacing: 0,
@@ -619,12 +634,11 @@ class DiscoveryHeroCard extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            child: const Center(
+                            child: Center(
                               child: Text(
                                 '立即阅读',
-                                style: TextStyle(
+                                style: theme.textTheme.labelLarge?.copyWith(
                                   color: Colors.white,
-                                  fontSize: 13,
                                   fontWeight: FontWeight.w500,
                                   height: 1.1,
                                   letterSpacing: 0,
@@ -668,6 +682,7 @@ class DiscoveryTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -679,9 +694,8 @@ class DiscoveryTag extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
         child: Text(
           label,
-          style: TextStyle(
+          style: theme.textTheme.bodySmall?.copyWith(
             color: tokens.warning,
-            fontSize: 10.5,
             fontWeight: FontWeight.w400,
             height: 1,
             letterSpacing: 0,
@@ -751,9 +765,8 @@ class DiscoverySectionHeader extends StatelessWidget {
               header: true,
               child: Text(
                 title,
-                style: TextStyle(
+                style: theme.textTheme.titleLarge?.copyWith(
                   color: theme.colorScheme.onSurface,
-                  fontSize: 17,
                   fontWeight: FontWeight.w600,
                   height: 1.2,
                   letterSpacing: 0,
@@ -772,9 +785,8 @@ class DiscoverySectionHeader extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     actionLabel,
-                    style: TextStyle(
+                    style: theme.textTheme.bodySmall?.copyWith(
                       color: tokens.mutedText,
-                      fontSize: 12,
                       fontWeight: FontWeight.w400,
                       height: 1.2,
                       letterSpacing: 0,
@@ -862,9 +874,8 @@ class DiscoveryPopularBook extends StatelessWidget {
                 data.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
+                style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurface,
-                  fontSize: 12,
                   fontWeight: FontWeight.w400,
                   height: 1.2,
                   letterSpacing: 0,
@@ -876,9 +887,8 @@ class DiscoveryPopularBook extends StatelessWidget {
                   data.author!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: theme.textTheme.bodySmall?.copyWith(
                     color: tokens.mutedText,
-                    fontSize: 10.5,
                     fontWeight: FontWeight.w400,
                     height: 1.2,
                     letterSpacing: 0,
@@ -973,9 +983,8 @@ class DiscoveryRankingRow extends StatelessWidget {
                 child: Text(
                   '${data.rank}',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: theme.textTheme.bodySmall?.copyWith(
                     color: rankColor,
-                    fontSize: 12,
                     fontWeight: FontWeight.w600,
                     height: 1.1,
                     letterSpacing: 0,
@@ -993,9 +1002,8 @@ class DiscoveryRankingRow extends StatelessWidget {
                     data.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
+                    style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurface,
-                      fontSize: 10.5,
                       fontWeight: FontWeight.w500,
                       height: 1.15,
                       letterSpacing: 0,
@@ -1007,9 +1015,8 @@ class DiscoveryRankingRow extends StatelessWidget {
                       data.author!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: theme.textTheme.bodySmall?.copyWith(
                         color: tokens.mutedText,
-                        fontSize: 8.5,
                         fontWeight: FontWeight.w400,
                         height: 1.1,
                         letterSpacing: 0,
@@ -1029,9 +1036,8 @@ class DiscoveryRankingRow extends StatelessWidget {
               const SizedBox(width: 1),
               Text(
                 data.heat!,
-                style: TextStyle(
+                style: theme.textTheme.bodySmall?.copyWith(
                   color: tokens.mutedText,
-                  fontSize: 8.5,
                   fontWeight: FontWeight.w400,
                   height: 1.1,
                   letterSpacing: 0,
@@ -1066,43 +1072,40 @@ class DiscoveryCategoryBoard extends StatelessWidget {
         .toList(growable: false);
     return DiscoveryBoardSurface(
       key: const Key('discovery-category-board'),
-      child: Column(
-        children: <Widget>[
-          DiscoveryBoardHeader(title: title, onPressed: onPressed),
-          const SizedBox(height: 6),
-          for (
-            int row = 0;
-            row < (visible.length + 1) ~/ 2;
-            row += 1
-          ) ...<Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: DiscoveryCategoryTile(
-                    key: ValueKey<String>(
-                      'discovery-category-${visible[row * 2].target ?? visible[row * 2].title}',
-                    ),
-                    data: visible[row * 2],
-                    onPressed: () => _handleCategory(visible[row * 2]),
-                  ),
-                ),
-                const SizedBox(width: 5),
-                if (row * 2 + 1 < visible.length)
-                  Expanded(
-                    child: DiscoveryCategoryTile(
-                      key: ValueKey<String>(
-                        'discovery-category-${visible[row * 2 + 1].target ?? visible[row * 2 + 1].title}',
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final int columnCount = discoveryAdaptiveColumnCount(
+            constraints.maxWidth,
+            visible.length,
+          );
+          final double gap = AppSpacing.discoveryCategoryTileGap;
+          final double tileWidth =
+              (constraints.maxWidth - gap * (columnCount - 1)) / columnCount;
+          return Column(
+            children: <Widget>[
+              DiscoveryBoardHeader(title: title, onPressed: onPressed),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: visible
+                    .map(
+                      (category) => SizedBox(
+                        width: tileWidth,
+                        child: DiscoveryCategoryTile(
+                          key: ValueKey<String>(
+                            'discovery-category-${category.target ?? category.title}',
+                          ),
+                          data: category,
+                          onPressed: () => _handleCategory(category),
+                        ),
                       ),
-                      data: visible[row * 2 + 1],
-                      onPressed: () => _handleCategory(visible[row * 2 + 1]),
-                    ),
-                  ),
-                if (row * 2 + 1 >= visible.length) const Spacer(),
-              ],
-            ),
-            if (row != (visible.length - 1) ~/ 2) const SizedBox(height: 5),
-          ],
-        ],
+                    )
+                    .toList(growable: false),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1115,6 +1118,20 @@ class DiscoveryCategoryBoard extends StatelessWidget {
     }
     callback(category);
   }
+}
+
+/// Returns the number of equal category controls that fit the available width.
+///
+/// Two columns remain the compact reference layout. Wider boards gain columns
+/// only when each control can retain the same minimum readable width.
+int discoveryAdaptiveColumnCount(double maxWidth, int itemCount) {
+  if (itemCount <= 0) return 1;
+  final int estimated =
+      ((maxWidth + AppSpacing.discoveryCategoryTileGap) /
+              (AppSpacing.discoveryCategoryTileMinWidth +
+                  AppSpacing.discoveryCategoryTileGap))
+          .floor();
+  return math.max(2, math.min(itemCount, estimated));
 }
 
 class DiscoveryCategoryTile extends StatelessWidget {
@@ -1174,9 +1191,8 @@ class DiscoveryCategoryTile extends StatelessWidget {
                         data.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
+                        style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurface,
-                          fontSize: 11,
                           fontWeight: FontWeight.w500,
                           height: 1.1,
                           letterSpacing: 0,
@@ -1188,9 +1204,8 @@ class DiscoveryCategoryTile extends StatelessWidget {
                           data.count!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                          style: theme.textTheme.bodySmall?.copyWith(
                             color: tokens.mutedText,
-                            fontSize: 8.5,
                             fontWeight: FontWeight.w400,
                             height: 1,
                             letterSpacing: 0,
@@ -1280,9 +1295,8 @@ class DiscoveryBoardHeader extends StatelessWidget {
               header: true,
               child: Text(
                 title,
-                style: TextStyle(
+                style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurface,
-                  fontSize: 15,
                   fontWeight: FontWeight.w600,
                   height: 1.15,
                   letterSpacing: 0,
@@ -1298,9 +1312,8 @@ class DiscoveryBoardHeader extends StatelessWidget {
               children: <Widget>[
                 Text(
                   '更多',
-                  style: TextStyle(
+                  style: theme.textTheme.bodySmall?.copyWith(
                     color: tokens.mutedText,
-                    fontSize: 10,
                     fontWeight: FontWeight.w400,
                     height: 1.1,
                     letterSpacing: 0,
@@ -1372,9 +1385,8 @@ class DiscoveryEditorsChoiceCard extends StatelessWidget {
                                   data.title,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
+                                  style: theme.textTheme.bodyMedium?.copyWith(
                                     color: theme.colorScheme.onSurface,
-                                    fontSize: 15,
                                     fontWeight: FontWeight.w600,
                                     height: 1.15,
                                     letterSpacing: 0,
@@ -1393,11 +1405,10 @@ class DiscoveryEditorsChoiceCard extends StatelessWidget {
                               data.description!,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
+                              style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.colorScheme.onSurface.withValues(
                                   alpha: 0.76,
                                 ),
-                                fontSize: 10.5,
                                 fontWeight: FontWeight.w400,
                                 height: 1.28,
                                 letterSpacing: 0,
@@ -1410,9 +1421,8 @@ class DiscoveryEditorsChoiceCard extends StatelessWidget {
                               data.metadata!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
+                              style: theme.textTheme.bodySmall?.copyWith(
                                 color: tokens.mutedText,
-                                fontSize: 9.5,
                                 fontWeight: FontWeight.w400,
                                 height: 1.1,
                                 letterSpacing: 0,

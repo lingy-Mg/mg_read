@@ -5,15 +5,23 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/discovery_page_state.dart';
+import 'package:mg_read/features/discovery/application/discovery_source_selection_store.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 
+/// Keeps the first resolved discovery document for the lifetime of the app.
+///
+/// Top-level destination navigation removes the discovery widget from the
+/// tree. This controller must therefore outlive that widget so returning to
+/// discovery restores its loaded document instead of issuing a new request.
+/// Explicit refreshes and source changes still replace the cached document.
 final discoveryPageControllerProvider =
-    NotifierProvider.autoDispose<DiscoveryPageController, DiscoveryPageState>(
+    NotifierProvider<DiscoveryPageController, DiscoveryPageState>(
       DiscoveryPageController.new,
     );
 
 class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   late SourceContentGateway _gateway;
+  late DiscoverySourceSelectionStore _sourceSelectionStore;
   final List<_DiscoveryNavigationEntry> _stack = <_DiscoveryNavigationEntry>[];
   int _latestGeneration = 0;
   bool _disposed = false;
@@ -21,6 +29,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   @override
   DiscoveryPageState build() {
     _gateway = ref.watch(sourceContentGatewayProvider);
+    _sourceSelectionStore = ref.watch(discoverySourceSelectionStoreProvider);
     ref.onDispose(() => _disposed = true);
     final generation = ++_latestGeneration;
     scheduleMicrotask(() => unawaited(_initialize(generation)));
@@ -49,6 +58,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
 
   Future<void> selectSource(String pluginId) async {
     if (!state.sources.any((source) => source.id == pluginId)) return;
+    await _saveSelectedSource(pluginId);
     _stack.clear();
     await _loadDocument(pluginId: pluginId, target: null, resetStack: true);
   }
@@ -120,8 +130,14 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
         state = DiscoveryPageState.noSources();
         return;
       }
+      final savedSourceId = await _loadSavedSourceId();
+      if (!_isCurrent(generation)) return;
+      final selectedSourceId =
+          sources.any((source) => source.id == savedSourceId)
+          ? savedSourceId!
+          : sources.first.id;
       await _loadDocument(
-        pluginId: sources.first.id,
+        pluginId: selectedSourceId,
         target: null,
         sources: sources,
         generation: generation,
@@ -134,6 +150,25 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
         selectedSourceId: null,
         error: AppError.fromUnknown(error),
       );
+    }
+  }
+
+  Future<String?> _loadSavedSourceId() async {
+    try {
+      return await _sourceSelectionStore.load();
+    } on Object {
+      // A settings read failure must not prevent discovery from using a valid
+      // source for this session. The settings manager records its own state.
+      return null;
+    }
+  }
+
+  Future<void> _saveSelectedSource(String sourceId) async {
+    try {
+      await _sourceSelectionStore.save(sourceId);
+    } on Object {
+      // Keep the user's in-session selection usable if durable persistence is
+      // temporarily unavailable. The settings manager retains/retries it.
     }
   }
 

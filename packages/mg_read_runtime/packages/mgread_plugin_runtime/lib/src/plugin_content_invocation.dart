@@ -93,6 +93,7 @@ final class PluginContentSummary {
     required this.author,
     required this.url,
     required this.coverUrl,
+    this.coverBytes,
     required this.description,
     required this.language,
     required this.status,
@@ -115,6 +116,11 @@ final class PluginContentSummary {
   final String? author;
   final Uri? url;
   final Uri? coverUrl;
+
+  /// Host-local decoded cover bytes. This is never read from or written to
+  /// the Runtime wire payload; the Flutter host may fill it from its cover
+  /// persistence adapter after the typed result is decoded.
+  final List<int>? coverBytes;
   final String? description;
   final String? language;
   final PluginContentStatus status;
@@ -224,22 +230,29 @@ final class SourceSearchSuggestionsInvocation
   @override
   PluginSearchSuggestionsResult _decodeResult(Object? value) {
     final result = _contentObject(value, 'Source search suggestions result');
-    _requireMatchingPlugin(result, pluginId, 'Source search suggestions result');
-    final items = _contentList(
+    _requireMatchingPlugin(
       result,
-      'items',
+      pluginId,
       'Source search suggestions result',
-    ).map((raw) {
-      final item = _contentObject(raw, 'Source search suggestion');
-      return PluginSearchSuggestion(
-        query: _contentString(item, 'query', 'Source search suggestion'),
-        metric: _contentNullableString(
-          item,
-          'metric',
-          'Source search suggestion',
-        ),
-      );
-    }).toList(growable: false);
+    );
+    final items =
+        _contentList(result, 'items', 'Source search suggestions result')
+            .map((raw) {
+              final item = _contentObject(raw, 'Source search suggestion');
+              return PluginSearchSuggestion(
+                query: _contentString(
+                  item,
+                  'query',
+                  'Source search suggestion',
+                ),
+                metric: _contentNullableString(
+                  item,
+                  'metric',
+                  'Source search suggestion',
+                ),
+              );
+            })
+            .toList(growable: false);
     _requireUnique(
       items.map((item) => item.query),
       'Source search suggestions result',

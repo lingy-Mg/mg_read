@@ -579,28 +579,6 @@ export class DesktopRuntime {
       type: "diagnostic",
     });
 
-    if (this.#embedded) {
-      const ready: DesktopRuntimeReady = Object.freeze({
-        bootId: this.#bootId,
-        host: LOOPBACK_HOST,
-        nodeVersion: process.versions.node,
-        pid: process.pid,
-        port: 0,
-        protocolVersion,
-        runtimeVersion,
-        startedAt: this.#startedAt,
-        type: "ready",
-      });
-      this.#ready = ready;
-      lifecycleSpan?.end("success", {
-        attributes: () => runtimeDiagnosticValue.object({
-          platform: runtimeDiagnosticValue.string(process.platform),
-          stage: runtimeDiagnosticValue.string("ready"),
-        }),
-      });
-      return ready;
-    }
-
     const server = createServer((request, response) => {
       this.#handleHttp(request, response);
     });
@@ -661,6 +639,7 @@ export class DesktopRuntime {
       startedAt: this.#startedAt,
       type: "ready",
     });
+    pluginManager.setResourceOrigin(`http://${LOOPBACK_HOST}:${address.port}`);
     this.#ready = ready;
     lifecycleSpan?.end("success", {
       attributes: () => runtimeDiagnosticValue.object({
@@ -890,6 +869,12 @@ export class DesktopRuntime {
         }),
       });
     };
+    const resourceMatch = /^\/v1\/source-resource\/([A-Za-z0-9_-]{32,128})$/.exec(url.pathname);
+    if (resourceMatch !== null) {
+      if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); finish(405); return; }
+      void this.#serveSourceResource(resourceMatch[1]!, response, finish);
+      return;
+    }
     if (request.method !== "GET") {
       response.writeHead(405, { Allow: "GET" });
       response.end();
@@ -925,6 +910,17 @@ export class DesktopRuntime {
 
     this.#writeJson(response, 404, { code: "not_found" });
     finish(404);
+  }
+
+  async #serveSourceResource(token: string, response: ServerResponse, finish: (status: number) => void): Promise<void> {
+    try {
+      const result = await this.#pluginManager?.consumeResource(token, new AbortController().signal);
+      if (result === undefined) { response.writeHead(404); response.end(); finish(404); return; }
+      response.writeHead(result.status, { "Cache-Control": "no-store", ...result.headers, "Content-Length": result.body.byteLength });
+      response.end(result.body); finish(result.status);
+    } catch {
+      response.writeHead(404); response.end(); finish(404);
+    }
   }
 
   /**

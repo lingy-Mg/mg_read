@@ -166,7 +166,9 @@ class SearchResultsSection extends StatelessWidget {
   const SearchResultsSection({
     required this.result,
     required this.status,
+    required this.query,
     required this.error,
+    this.isInBookshelf = _neverInBookshelf,
     required this.onContentPressed,
     required this.onRetry,
     super.key,
@@ -174,7 +176,9 @@ class SearchResultsSection extends StatelessWidget {
 
   final PluginSearchResult? result;
   final SearchPageStatus status;
+  final String query;
   final AppError? error;
+  final bool Function(PluginContentSummary content) isInBookshelf;
   final ValueChanged<PluginContentSummary> onContentPressed;
   final VoidCallback onRetry;
 
@@ -182,25 +186,40 @@ class SearchResultsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final isSearching = status == SearchPageStatus.searching;
     if (result == null) {
-      return _SearchResultMessage(
-        key: const Key('app-empty-search-page'),
-        icon: status == SearchPageStatus.loadingSources
-            ? Icons.hourglass_top_rounded
-            : error == null
-            ? Icons.manage_search_rounded
-            : Icons.error_outline_rounded,
-        title: status == SearchPageStatus.loadingSources
-            ? '正在准备搜索'
-            : error == null
-            ? '输入关键词开始搜索'
-            : _sourceErrorTitle(error!),
-        message: status == SearchPageStatus.loadingSources
-            ? '正在读取可用书源。'
-            : error == null
-            ? '书源数据接入后，结果会显示在这里。'
-            : '稳定错误码：${error!.code.wireValue}',
-        loading: status == SearchPageStatus.loadingSources,
-        onRetry: error == null ? null : onRetry,
+      return AnimatedSwitcher(
+        duration: AppMotion.navigationSelection,
+        switchInCurve: AppMotion.navigationCurve,
+        switchOutCurve: AppMotion.navigationReverseCurve,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SizeTransition(
+            alignment: Alignment.topCenter,
+            sizeFactor: animation,
+            child: child,
+          ),
+        ),
+        child: isSearching
+            ? _SearchInProgressState(query: query)
+            : _SearchResultMessage(
+                key: const Key('app-empty-search-page'),
+                icon: status == SearchPageStatus.loadingSources
+                    ? Icons.hourglass_top_rounded
+                    : error == null
+                    ? Icons.manage_search_rounded
+                    : Icons.error_outline_rounded,
+                title: status == SearchPageStatus.loadingSources
+                    ? '正在准备搜索'
+                    : error == null
+                    ? '输入关键词开始搜索'
+                    : _sourceErrorTitle(error!),
+                message: status == SearchPageStatus.loadingSources
+                    ? '正在读取可用书源。'
+                    : error == null
+                    ? '书源数据接入后，结果会显示在这里。'
+                    : '稳定错误码：${error!.code.wireValue}',
+                loading: status == SearchPageStatus.loadingSources,
+                onRetry: error == null ? null : onRetry,
+              ),
       );
     }
     final searchResult = result!;
@@ -210,10 +229,16 @@ class SearchResultsSection extends StatelessWidget {
         const Divider(),
         const SizedBox(height: AppSpacing.comfortable),
         _ResultHeader(result: searchResult),
-        if (isSearching) ...<Widget>[
-          const SizedBox(height: AppSpacing.compact),
-          const LinearProgressIndicator(),
-        ],
+        AnimatedSize(
+          duration: AppMotion.navigationSelection,
+          curve: AppMotion.navigationCurve,
+          child: isSearching
+              ? Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.compact),
+                  child: _RetainedResultsSearchProgress(query: query),
+                )
+              : const SizedBox.shrink(),
+        ),
         if (error != null) ...<Widget>[
           const SizedBox(height: AppSpacing.compact),
           _InlineSearchFailure(error: error!, onRetry: onRetry),
@@ -238,12 +263,97 @@ class SearchResultsSection extends StatelessWidget {
                 SearchResultTile(
                   content: searchResult.items[index],
                   variant: _coverVariantFor(searchResult.items[index], index),
+                  isInBookshelf: isInBookshelf(searchResult.items[index]),
                   onPressed: () => onContentPressed(searchResult.items[index]),
                 ),
               ],
             ],
           ),
       ],
+    );
+  }
+}
+
+class _SearchInProgressState extends StatelessWidget {
+  const _SearchInProgressState({required this.query});
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppThemeTokens.of(context);
+    return Semantics(
+      key: const Key('source-search-progress'),
+      label: '正在搜索“$query”',
+      liveRegion: true,
+      child: ExcludeSemantics(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.section),
+          child: Center(
+            child: Column(
+              children: <Widget>[
+                const SizedBox(
+                  width: AppSpacing.section,
+                  height: AppSpacing.section,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(height: AppSpacing.regular),
+                Text(
+                  '正在搜索“$query”',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: AppSpacing.unit),
+                Text(
+                  '搜索结果将自动显示',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RetainedResultsSearchProgress extends StatelessWidget {
+  const _RetainedResultsSearchProgress({required this.query});
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppThemeTokens.of(context);
+    return Semantics(
+      label: '正在搜索“$query”',
+      liveRegion: true,
+      child: ExcludeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                const SizedBox(
+                  width: AppSpacing.comfortable,
+                  height: AppSpacing.comfortable,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: AppSpacing.compact),
+                Text(
+                  '正在搜索“$query”',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.unit),
+            const LinearProgressIndicator(),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -264,11 +374,13 @@ class SearchResultTile extends StatelessWidget {
     required this.content,
     required this.variant,
     required this.onPressed,
+    this.isInBookshelf = false,
     super.key,
   });
   final PluginContentSummary content;
   final DiscoveryCoverVariant variant;
   final VoidCallback onPressed;
+  final bool isInBookshelf;
 
   @override
   Widget build(BuildContext context) {
@@ -281,10 +393,13 @@ class SearchResultTile extends StatelessWidget {
       ),
       variant: variant,
       onPressed: onPressed,
+      isInBookshelf: isInBookshelf,
       keyPrefix: 'search-result',
     );
   }
 }
+
+bool _neverInBookshelf(PluginContentSummary _) => false;
 
 PluginDiscoveryMetric? _searchMetric(PluginContentSummary content) {
   for (final attribute in content.attributes) {

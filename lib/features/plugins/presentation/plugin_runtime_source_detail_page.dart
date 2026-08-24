@@ -26,46 +26,41 @@ class PluginRuntimeSourceDetailPage extends ConsumerWidget {
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: AppDetailMetrics.viewportWidth,
-            ),
-            child: Column(
-              children: <Widget>[
-                AppSecondaryPageTopBar(
-                  key: const Key('data-source-detail-top-bar'),
-                  backButtonKey: const Key('data-source-detail-back'),
-                  title: '查看数据源',
-                  onBack: onBackRequested,
-                ),
-                Expanded(
-                  child: connection.when(
-                    loading: () => const AppLoadingState(
-                      label: '正在加载数据源详情',
-                      message: '正在读取数据源信息。',
-                    ),
-                    error: (Object _, StackTrace _) => _DetailFailure(
-                      onRetry: () =>
-                          ref.invalidate(pluginRuntimeConnectionProvider),
-                    ),
-                    data: (PluginRuntimeConnection value) {
-                      final source = value.plugins
-                          .where((plugin) => plugin.id == pluginId)
-                          .firstOrNull;
-                      if (source == null) {
-                        return _DetailFailure(
-                          onRetry: () =>
-                              ref.invalidate(pluginRuntimeConnectionProvider),
-                          message: '该数据源已不存在或暂时不可用。',
-                        );
-                      }
-                      return _DetailContent(source: source);
-                    },
+        child: AppSecondaryPageContent(
+          child: Column(
+            children: <Widget>[
+              AppSecondaryPageTopBar(
+                key: const Key('data-source-detail-top-bar'),
+                backButtonKey: const Key('data-source-detail-back'),
+                title: '查看数据源',
+                onBack: onBackRequested,
+              ),
+              Expanded(
+                child: connection.when(
+                  loading: () => const AppLoadingState(
+                    label: '正在加载数据源详情',
+                    message: '正在读取数据源信息。',
                   ),
+                  error: (Object _, StackTrace _) => _DetailFailure(
+                    onRetry: () =>
+                        ref.invalidate(pluginRuntimeConnectionProvider),
+                  ),
+                  data: (PluginRuntimeConnection value) {
+                    final source = value.plugins
+                        .where((plugin) => plugin.id == pluginId)
+                        .firstOrNull;
+                    if (source == null) {
+                      return _DetailFailure(
+                        onRetry: () =>
+                            ref.invalidate(pluginRuntimeConnectionProvider),
+                        message: '该数据源已不存在或暂时不可用。',
+                      );
+                    }
+                    return _DetailContent(source: source);
+                  },
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -248,7 +243,8 @@ class _InstallationSizeCard extends StatelessWidget {
     final npmResult = npmUsage is AsyncData<PluginInstallationSize>
         ? (npmUsage as AsyncData<PluginInstallationSize>).value
         : null;
-    final total = archiveResult == null || dataResult == null || npmResult == null
+    final total =
+        archiveResult == null || dataResult == null || npmResult == null
         ? null
         : archiveResult.bytes + dataResult.bytes + npmResult.bytes;
     return DecoratedBox(

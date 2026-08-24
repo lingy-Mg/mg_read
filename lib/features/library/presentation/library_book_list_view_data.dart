@@ -14,6 +14,7 @@ final class LibraryBookListItemViewData {
     required this.coverVariant,
     required this.status,
     this.coverUrl,
+    this.coverBytes,
     this.coverAssetPath,
     this.subtitle,
     this.activityLabel,
@@ -32,6 +33,9 @@ final class LibraryBookListItemViewData {
 
   /// Optional source cover retained by the app-owned shelf projection.
   final Uri? coverUrl;
+
+  /// Cover bytes loaded from the app-owned persistent cover object.
+  final List<int>? coverBytes;
 
   /// Context-specific secondary text, such as the latest or last-read chapter.
   final String? subtitle;

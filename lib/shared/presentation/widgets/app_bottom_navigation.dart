@@ -90,7 +90,6 @@ class _AppNavigationItem extends StatelessWidget {
     final TextStyle labelStyle =
         (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
           color: foreground,
-          fontSize: AppSpacing.bottomNavigationLabelSize,
           fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
           height: 1.1,
         );

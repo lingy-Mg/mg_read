@@ -87,6 +87,36 @@ final class RecordDocumentCodec {
     );
   }
 
+  /// Prepares a write batch with one encode pass.
+  ///
+  /// Catalog snapshots contain many small documents. Preparing each document
+  /// through [prepareCurrent] starts one isolate for every row, which makes a
+  /// large catalog pay the isolate startup cost repeatedly. Keep the batch
+  /// boundary owned by the record store, but encode all documents in that
+  /// boundary together.
+  Future<List<PreparedJsonDocument>> prepareCurrentMany({
+    required Iterable<JsonObject> documents,
+  }) async {
+    final requested = List<JsonObject>.of(documents);
+    if (requested.isEmpty) return const <PreparedJsonDocument>[];
+    final normalizedDocuments = await Isolate.run(
+      () => _normalizeAndEncodeMany(requested, limits),
+      debugName: 'mg-read-json-encode-batch',
+    );
+    return List<PreparedJsonDocument>.unmodifiable(
+      List<PreparedJsonDocument>.generate(normalizedDocuments.length, (index) {
+        final prepared = normalizedDocuments[index];
+        final frozen = freezeJsonObject(prepared.document);
+        _validators[currentVersion]!(frozen);
+        return PreparedJsonDocument(
+          document: frozen,
+          payloadJson: prepared.payloadJson,
+          workerIsolateId: prepared.workerIsolateId,
+        );
+      }),
+    );
+  }
+
   Future<PreparedJsonDocument> decodeAndUpgrade({
     required int version,
     required String payloadJson,
@@ -239,6 +269,13 @@ bool _canDecodeInline(List<String> payloads) {
   }
   return true;
 }
+
+List<_NormalizedJson> _normalizeAndEncodeMany(
+  List<JsonObject> documents,
+  JsonDocumentLimits limits,
+) => documents
+    .map((document) => _normalizeAndEncode(document, limits))
+    .toList(growable: false);
 
 _NormalizedJson _normalizeAndEncode(
   JsonObject document,

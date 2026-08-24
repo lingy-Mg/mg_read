@@ -9,6 +9,7 @@ import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/discovery_page_controller.dart';
 import 'package:mg_read/features/discovery/application/discovery_page_state.dart';
+import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.dart';
@@ -37,6 +38,7 @@ class DiscoveryDestinationPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(discoveryPageControllerProvider);
     final controller = ref.read(discoveryPageControllerProvider.notifier);
+    final bookshelfMembership = ref.watch(bookshelfMembershipProvider);
 
     final selectedSource = _selectedSource(state);
     if (selectedSource != null &&
@@ -55,6 +57,10 @@ class DiscoveryDestinationPage extends ConsumerWidget {
         onTabSelected: (target) => unawaited(controller.selectTab(target)),
         onCategorySelected: (target) =>
             unawaited(controller.openCategory(target)),
+        isInBookshelf: (content) => bookshelfMembership.contains(
+          pluginId: state.selectedSourceId!,
+          title: content.title,
+        ),
         onContentPressed: (content) {
           final result = state.result;
           if (result == null) return;
@@ -69,6 +75,13 @@ class DiscoveryDestinationPage extends ConsumerWidget {
               initialSourceName: selectedSource.displayName,
               relatedContents: _discoveryContentSummaries(result),
               onTextChapterRequested: onTextChapterRequested,
+              shelfState:
+                  bookshelfMembership.contains(
+                    pluginId: state.selectedSourceId!,
+                    title: content.title,
+                  )
+                  ? SourceDetailShelfState.alreadyAdded
+                  : SourceDetailShelfState.canAdd,
               onAddToShelf: (content) =>
                   saver.save(source: selectedSource, content: content),
             ),

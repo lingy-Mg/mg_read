@@ -176,6 +176,30 @@ void main() {
     },
   );
 
+  test('encodes a metadata write batch in one worker invocation', () async {
+    final codec = defaultRegistry.require('app_setting', localScope.kind);
+
+    final documents = await codec.prepareCurrentMany(
+      documents: const <JsonObject>[
+        {'value': 'first'},
+        {'value': 'second'},
+        {'value': 'third'},
+      ],
+    );
+
+    expect(documents, hasLength(3));
+    expect(documents.map((document) => document.document['value']), <String>[
+      'first',
+      'second',
+      'third',
+    ]);
+    expect(
+      documents.map((document) => document.workerIsolateId).toSet(),
+      hasLength(1),
+    );
+    expect(documents.first.workerIsolateId, isNot(Isolate.current.hashCode));
+  });
+
   test('rejects stale revisions', () async {
     final created = await kit.store.create(settingDraft('theme'));
     await kit.store.update(

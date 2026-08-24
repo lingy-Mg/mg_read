@@ -77,7 +77,6 @@ class _SectionButton extends StatelessWidget {
             Text(
               label,
               style: theme.textTheme.titleMedium?.copyWith(
-                fontSize: 16,
                 height: 1.15,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                 color: isSelected ? null : tokens.mutedText,
@@ -203,7 +202,6 @@ class _FilterChip extends StatelessWidget {
                 child: Text(
                   label,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 11,
                     fontWeight: FontWeight.w400,
                     height: 1,
                     color: selected ? tokens.warning : tokens.mutedText,

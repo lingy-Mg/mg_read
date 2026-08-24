@@ -98,13 +98,11 @@ class _DiscoverySourcePickerSheetState
                   child: Stack(
                     alignment: Alignment.center,
                     children: <Widget>[
-                      const Text(
+                      Text(
                         '选择数据来源',
                         key: Key('discovery-source-picker-title'),
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       Positioned(
                         right: 22,
@@ -141,8 +139,8 @@ class _DiscoverySourcePickerSheetState
                         isDense: true,
                         contentPadding: EdgeInsets.zero,
                         hintText: '搜索数据来源',
-                        hintStyle: Theme.of(context).textTheme.bodyLarge
-                            ?.copyWith(color: tokens.mutedText, fontSize: 12),
+                        hintStyle: Theme.of(context).textTheme.bodyMedium
+                            ?.copyWith(color: tokens.mutedText),
                         prefixIcon: IconTheme(
                           data: IconThemeData(
                             color: tokens.mutedText,
@@ -254,6 +252,7 @@ class _SourceFilterButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final tokens = AppThemeTokens.of(context);
     return Semantics(
       button: true,
@@ -270,9 +269,8 @@ class _SourceFilterButton extends StatelessWidget {
             child: Center(
               child: Text(
                 label,
-                style: TextStyle(
+                style: theme.textTheme.bodySmall?.copyWith(
                   color: selected ? tokens.accent : tokens.mutedText,
-                  fontSize: 12,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                 ),
               ),
@@ -339,7 +337,6 @@ class _SourcePickerRow extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleMedium?.copyWith(
-                          fontSize: 12,
                           height: 1.1,
                           fontWeight: FontWeight.w500,
                         ),
@@ -349,7 +346,6 @@ class _SourcePickerRow extends StatelessWidget {
                         _sourceSubtitle(source, kinds),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: tokens.mutedText,
-                          fontSize: 9,
                           height: 1.05,
                         ),
                       ),
@@ -391,7 +387,9 @@ class _SourceMonogram extends StatelessWidget {
         mark.glyph,
         style: TextStyle(
           color: Colors.white,
-          fontSize: mark.glyph.length > 1 ? 11 : 16,
+          fontSize: mark.glyph.length > 1
+              ? AppTypography.caption
+              : AppTypography.itemTitle,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -501,7 +499,7 @@ class _SourcePickerFooter extends StatelessWidget {
                   label: const Text('管理数据源'),
                   style: TextButton.styleFrom(
                     foregroundColor: tokens.accent,
-                    textStyle: textStyle?.copyWith(fontSize: 12),
+                    textStyle: textStyle,
                   ),
                 ),
               ),
@@ -517,7 +515,7 @@ class _SourcePickerFooter extends StatelessWidget {
                   label: const Text('添加数据源'),
                   style: TextButton.styleFrom(
                     foregroundColor: tokens.accent,
-                    textStyle: textStyle?.copyWith(fontSize: 12),
+                    textStyle: textStyle,
                   ),
                 ),
               ),

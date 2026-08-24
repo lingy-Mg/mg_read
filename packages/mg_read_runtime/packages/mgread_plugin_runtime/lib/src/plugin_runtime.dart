@@ -12,6 +12,8 @@ abstract interface class _RuntimeSupervisor {
 
   Future<void> importLocalPlugin(String sourcePath);
 
+  Future<bool> pickAndImportLocalPlugin();
+
   Future<void> setDevelopmentDirectory(String path);
 
   Stream<RuntimeDiagnostic> get diagnostics;
@@ -77,6 +79,9 @@ final class PluginRuntime {
   /// this package. The application receives only whether the user selected a
   /// file; it never receives or passes a filesystem path to Runtime code.
   Future<bool> importLocalPlugin() async {
+    if (Platform.isAndroid) {
+      return _supervisor.pickAndImportLocalPlugin();
+    }
     final file = await openFile(
       acceptedTypeGroups: <XTypeGroup>[
         XTypeGroup(
@@ -95,9 +100,7 @@ final class PluginRuntime {
     );
     if (file == null) return false;
     final path = file.path;
-    final bool isAndroid = Platform.isAndroid;
-    if (path.isEmpty ||
-        (!isAndroid && !path.toLowerCase().endsWith('.mgplugin'))) {
+    if (path.isEmpty || !path.toLowerCase().endsWith('.mgplugin')) {
       throw const PluginRuntimeException(
         'invalid_request',
         'The selected file is not a MgRead plugin archive.',

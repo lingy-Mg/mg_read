@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_detail_chrome.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
@@ -35,98 +36,88 @@ class AboutPage extends StatelessWidget {
         padding: EdgeInsets.only(top: supplementaryTopInset),
         child: SafeArea(
           bottom: false,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: AppDetailMetrics.viewportWidth,
-              ),
-              child: SizedBox.expand(
-                child: ListView(
-                  key: const Key('about-page-content'),
-                  padding: EdgeInsets.zero,
-                  children: <Widget>[
-                    ProfileDetailTopBar(title: '关于我们', onBack: onBackRequested),
-                    const SizedBox(height: AppDetailMetrics.aboutIconTopGap),
-                    const Align(child: _AboutAppIcon()),
-                    const SizedBox(height: 15),
-                    Text(
-                      '统一阅读',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        color: theme.colorScheme.onSurface,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w700,
-                        height: 1.15,
-                        letterSpacing: -0.35,
-                      ),
+          child: AppSecondaryPageContent(
+            child: SizedBox.expand(
+              child: ListView(
+                key: const Key('about-page-content'),
+                padding: EdgeInsets.zero,
+                children: <Widget>[
+                  ProfileDetailTopBar(title: '关于我们', onBack: onBackRequested),
+                  const SizedBox(height: AppDetailMetrics.aboutIconTopGap),
+                  const Align(child: _AboutAppIcon()),
+                  const SizedBox(height: 15),
+                  Text(
+                    '统一阅读',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                      height: 1.15,
+                      letterSpacing: -0.35,
                     ),
-                    const SizedBox(height: 7),
-                    Text(
-                      '版本 1.2.0',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color: tokens.mutedText,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w400,
-                        height: 1.35,
-                        letterSpacing: 0,
-                      ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    '版本 1.2.0',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: tokens.mutedText,
+                      fontWeight: FontWeight.w400,
+                      height: 1.35,
+                      letterSpacing: 0,
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      '书山有路勤为径，阅读点亮生活。',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: tokens.mutedText,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                        height: 1.5,
-                        letterSpacing: 0,
-                      ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '书山有路勤为径，阅读点亮生活。',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: tokens.mutedText,
+                      fontWeight: FontWeight.w400,
+                      height: 1.5,
+                      letterSpacing: 0,
                     ),
-                    const SizedBox(height: AppDetailMetrics.aboutCardTopGap),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppDetailMetrics.horizontalPadding,
-                      ),
-                      child: _AboutSettingsCard(
-                        onItemPressed: (String itemId) {
-                          final callback = onItemRequested;
-                          if (callback != null) {
-                            callback(itemId);
-                            return;
-                          }
-                          _showUnavailable(context);
-                        },
-                      ),
+                  ),
+                  const SizedBox(height: AppDetailMetrics.aboutCardTopGap),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppDetailMetrics.horizontalPadding,
                     ),
-                    const SizedBox(height: 20),
-                    Text(
-                      '© 2018–2024 统一阅读',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: tokens.mutedText,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w400,
-                        height: 1.5,
-                        letterSpacing: 0,
-                      ),
+                    child: _AboutSettingsCard(
+                      onItemPressed: (String itemId) {
+                        final callback = onItemRequested;
+                        if (callback != null) {
+                          callback(itemId);
+                          return;
+                        }
+                        _showUnavailable(context);
+                      },
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '保留所有权利',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: tokens.mutedText,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w400,
-                        height: 1.5,
-                        letterSpacing: 0,
-                      ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    '© 2018–2024 统一阅读',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: tokens.mutedText,
+                      fontWeight: FontWeight.w400,
+                      height: 1.5,
+                      letterSpacing: 0,
                     ),
-                    const SizedBox(height: 18),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '保留所有权利',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: tokens.mutedText,
+                      fontWeight: FontWeight.w400,
+                      height: 1.5,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                ],
               ),
             ),
           ),
@@ -299,7 +290,6 @@ class _AboutSettingsRow extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleMedium?.copyWith(
                             color: theme.colorScheme.onSurface,
-                            fontSize: 16,
                             fontWeight: FontWeight.w500,
                             height: 1.2,
                             letterSpacing: 0,
@@ -310,9 +300,8 @@ class _AboutSettingsRow extends StatelessWidget {
                         const SizedBox(width: 8),
                         Text(
                           item.trailing!,
-                          style: theme.textTheme.bodyMedium?.copyWith(
+                          style: theme.textTheme.bodySmall?.copyWith(
                             color: tokens.mutedText,
-                            fontSize: 12,
                             fontWeight: FontWeight.w400,
                             height: 1.2,
                             letterSpacing: 0,

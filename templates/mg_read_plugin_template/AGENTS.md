@@ -44,5 +44,10 @@ This repository is the official blank MgRead plugin project template.
   not capability failures; tests cover persistence, TTL, offline fallback,
   capacity and the directory boundary.
 
-Before delivery run the pinned Node/npm toolchain, `npm ci`, `npm run verify`,
-and `npm run pack:plugin`.
+Before delivery run the pinned Node/npm toolchain, `npm ci`, `npm test`,
+`npm run verify`, and `npm run pack:plugin`. A real source derived from this
+template must also run its explicit `npm run test:live` smoke test after source
+parsing changes; the blank template remains deterministic and local, so it must
+not gain a real network target merely to satisfy that smoke step. Windows Debug
+can load the built workspace `dist/` directly, but that evidence does not
+replace the required Node tests or Android packaged-plugin acceptance.

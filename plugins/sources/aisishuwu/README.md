@@ -9,17 +9,24 @@
 ```powershell
 $env:PATH = "$PWD\..\..\..\packages\mg_read_runtime\tools\node-v24.16.0-win-x64;$env:PATH"
 npm.cmd ci
+npm.cmd test
 npm.cmd run verify
 npm.cmd run test:live
 ```
+
+`npm test` 是不依赖网站的离线回归，`npm run verify` 是交付前门槛。修改来源解析或请求规则后，
+必须再执行 `npm run test:live`；线上 smoke 失败时不能把该来源标记为已完成。Windows Debug 可以
+直接读取构建后的工作区 `dist/`，下一次书源调用会触发 development Runtime 按指纹重载，不需要先
+打包或安装；这不替代 Android 的正式 `.mgplugin` 验收。
 
 `npm run test:live` 是明确的线上 smoke 测试：它实际请求目标站点的分类、搜索、详情、目录
 和正文页面，但不保存返回 HTML 或正文。它依赖站点可用性，不应作为常规离线 CI 的唯一测试。
 
 ## 插件私有缓存
 
-分类与搜索列表 HTML 缓存 10 分钟，作品详情和章节目录 HTML 缓存 1 小时；正文和任何下载内容
-不落盘。每个条目最多 1 MiB，总量最多 100 MiB，按最近访问时间淘汰。过期条目会优先在线
+分类与搜索列表 HTML 缓存 10 分钟，作品详情和章节目录 HTML 缓存 1 小时；首页“热门推荐小说”
+缓存 24 小时并在请求时惰性刷新；正文和任何下载内容不落盘。每个条目最多 1 MiB，总量最多
+100 MiB，按最近访问时间淘汰。过期条目会优先在线
 刷新；只有刷新失败时才作为离线回退返回。HTTP 失败响应、超限内容、损坏条目均不缓存。
 
 缓存仅写入 Runtime 注入的绝对 `ctx.cacheDir/html-cache-v1/`，其上层已经是

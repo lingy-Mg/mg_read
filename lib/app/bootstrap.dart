@@ -22,7 +22,12 @@ import 'package:mg_read/features/library/data/content_library_book_detail_launch
 import 'package:mg_read/features/library/data/content_library_overview_loader.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
+import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
+import 'package:mg_read/features/discovery/application/content_library_source_prefetcher.dart';
+import 'package:mg_read/features/discovery/application/source_cover_persistence.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/discovery/data/content_library_bookshelf_membership.dart';
+import 'package:mg_read/features/discovery/data/content_library_source_cover_persistence.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
 import 'package:mg_read/features/reader/data/content_library_source_text_reader.dart';
 import 'package:mg_read/features/profile/application/profile_reading_stats_loader.dart';
@@ -168,9 +173,21 @@ Future<void> bootstrapMgReadApp({
               ContentLibraryProfileReadingStatsLoader(persistentContentLibrary),
             ),
           if (persistentContentLibrary != null)
-            discoveryBookshelfSaverProvider.overrideWith(
-              (ref) => ContentLibraryDiscoveryBookshelfSaver(
-                persistentContentLibrary!,
+            bookshelfMembershipLoaderProvider.overrideWithValue(
+              ContentLibraryBookshelfMembershipLoader(persistentContentLibrary),
+            ),
+          if (persistentContentLibrary != null)
+            discoveryBookshelfSaverProvider.overrideWith((ref) {
+              final library = persistentContentLibrary!;
+              final membership = ref.read(bookshelfMembershipProvider.notifier);
+              return ContentLibraryDiscoveryBookshelfSaver(
+                library,
+                prefetcher: ContentLibrarySourcePrefetcher(
+                  library,
+                  ref.read(sourceContentGatewayProvider),
+                  diagnostics: diagnostics,
+                ),
+                membership: membership,
                 onMutationStarted: (mutation) {
                   ref
                       .read(libraryPageControllerProvider.notifier)
@@ -183,6 +200,10 @@ Future<void> bootstrapMgReadApp({
                       );
                 },
                 onMutationCommitted: (mutation, item) {
+                  membership.markAdded(
+                    pluginId: mutation.request.pluginId,
+                    title: item.title,
+                  );
                   ref
                       .read(libraryPageControllerProvider.notifier)
                       .commitAddition(
@@ -195,7 +216,11 @@ Future<void> bootstrapMgReadApp({
                       .read(libraryPageControllerProvider.notifier)
                       .rollbackAddition(mutation.id);
                 },
-              ),
+              );
+            }),
+          if (persistentContentLibrary != null)
+            sourceCoverPersistenceProvider.overrideWithValue(
+              ContentLibrarySourceCoverPersistence(persistentContentLibrary),
             ),
           if (persistentContentLibrary != null)
             libraryReaderLauncherProvider.overrideWith(

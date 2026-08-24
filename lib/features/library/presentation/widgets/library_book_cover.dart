@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -12,7 +14,7 @@ class LibraryBookCover extends StatelessWidget {
     required this.width,
     required this.height,
     this.assetPath,
-    this.coverUrl,
+    this.coverBytes,
     super.key,
   });
 
@@ -21,7 +23,7 @@ class LibraryBookCover extends StatelessWidget {
   final double width;
   final double height;
   final String? assetPath;
-  final Uri? coverUrl;
+  final List<int>? coverBytes;
 
   @override
   Widget build(BuildContext context) {
@@ -35,11 +37,11 @@ class LibraryBookCover extends StatelessWidget {
         child: SizedBox(
           width: width,
           height: height,
-          child: coverUrl != null
+          child: coverBytes != null && coverBytes!.isNotEmpty
               ? ClipRRect(
                   borderRadius: AppRadii.bookCover,
-                  child: Image.network(
-                    coverUrl.toString(),
+                  child: Image.memory(
+                    Uint8List.fromList(coverBytes!),
                     width: width,
                     height: height,
                     fit: BoxFit.cover,

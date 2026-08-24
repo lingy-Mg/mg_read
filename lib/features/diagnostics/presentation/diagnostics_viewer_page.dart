@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 import 'package:mg_read/features/diagnostics/application/diagnostics_viewer_gateway.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_detail_chrome.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
@@ -72,94 +73,90 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 960),
-            child: Column(
-              children: <Widget>[
-                ProfileDetailTopBar(
-                  title: '调试日志',
-                  onBack: widget.onBackRequested,
-                ),
-                Expanded(
-                  child: RefreshIndicator(
-                    onRefresh: () => _loadEvents(reset: true),
-                    child: CustomScrollView(
-                      key: const Key('diagnostics-viewer-content'),
-                      slivers: <Widget>[
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(
-                            AppSpacing.comfortable,
-                            AppSpacing.regular,
-                            AppSpacing.comfortable,
-                            AppSpacing.page,
-                          ),
-                          sliver: SliverList.list(
-                            children: <Widget>[
-                              _CapturePanel(
-                                mode:
-                                    _capture?.mode ?? DiagnosticsDetailMode.off,
-                                busy: _captureBusy,
-                                warningCode: _capture?.warningCode,
-                                errorCode: _captureError,
-                                onModeSelected: _changeCaptureMode,
-                              ),
-                              const SizedBox(height: AppSpacing.regular),
-                              _SourceSelector(
-                                source: _source,
-                                onSelected: _selectSource,
-                              ),
-                              const SizedBox(height: AppSpacing.regular),
-                              if (_loading)
-                                const Padding(
-                                  padding: EdgeInsets.all(AppSpacing.page),
-                                  child: Center(
-                                    child: CircularProgressIndicator(
-                                      key: Key('diagnostics-viewer-loading'),
-                                    ),
-                                  ),
-                                )
-                              else if (_loadError != null)
-                                _LoadFailure(
-                                  errorCode: _loadError!,
-                                  onRetry: () => _loadEvents(reset: true),
-                                )
-                              else if (_events.isEmpty)
-                                const _EmptyEvents()
-                              else
-                                ..._events.map(_buildEventCard),
-                              if (!_loading && _nextCursor != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                    top: AppSpacing.compact,
-                                  ),
-                                  child: OutlinedButton.icon(
-                                    key: const Key('diagnostics-load-more'),
-                                    onPressed: _loadingMore
-                                        ? null
-                                        : () => _loadEvents(reset: false),
-                                    icon: _loadingMore
-                                        ? const SizedBox.square(
-                                            dimension: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          )
-                                        : const Icon(Icons.expand_more_rounded),
-                                    label: Text(
-                                      _loadingMore ? '正在读取…' : '读取更早日志',
-                                    ),
+        child: AppSecondaryPageContent(
+          child: Column(
+            children: <Widget>[
+              ProfileDetailTopBar(
+                title: '调试日志',
+                onBack: widget.onBackRequested,
+              ),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: () => _loadEvents(reset: true),
+                  child: CustomScrollView(
+                    key: const Key('diagnostics-viewer-content'),
+                    slivers: <Widget>[
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.comfortable,
+                          AppSpacing.regular,
+                          AppSpacing.comfortable,
+                          AppSpacing.page,
+                        ),
+                        sliver: SliverList.list(
+                          children: <Widget>[
+                            _CapturePanel(
+                              mode: _capture?.mode ?? DiagnosticsDetailMode.off,
+                              busy: _captureBusy,
+                              warningCode: _capture?.warningCode,
+                              errorCode: _captureError,
+                              onModeSelected: _changeCaptureMode,
+                            ),
+                            const SizedBox(height: AppSpacing.regular),
+                            _SourceSelector(
+                              source: _source,
+                              onSelected: _selectSource,
+                            ),
+                            const SizedBox(height: AppSpacing.regular),
+                            if (_loading)
+                              const Padding(
+                                padding: EdgeInsets.all(AppSpacing.page),
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    key: Key('diagnostics-viewer-loading'),
                                   ),
                                 ),
-                            ],
-                          ),
+                              )
+                            else if (_loadError != null)
+                              _LoadFailure(
+                                errorCode: _loadError!,
+                                onRetry: () => _loadEvents(reset: true),
+                              )
+                            else if (_events.isEmpty)
+                              const _EmptyEvents()
+                            else
+                              ..._events.map(_buildEventCard),
+                            if (!_loading && _nextCursor != null)
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  top: AppSpacing.compact,
+                                ),
+                                child: OutlinedButton.icon(
+                                  key: const Key('diagnostics-load-more'),
+                                  onPressed: _loadingMore
+                                      ? null
+                                      : () => _loadEvents(reset: false),
+                                  icon: _loadingMore
+                                      ? const SizedBox.square(
+                                          dimension: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(Icons.expand_more_rounded),
+                                  label: Text(
+                                    _loadingMore ? '正在读取…' : '读取更早日志',
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -778,7 +775,9 @@ class _PlainTextPreview extends StatelessWidget {
       child: SingleChildScrollView(
         child: SelectableText(
           text,
-          style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
         ),
       ),
     );

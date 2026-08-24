@@ -282,6 +282,14 @@ class ReaderBookInfo {
     this.author,
     this.description,
     this.sourceName,
+    this.sourceUrl,
+    this.coverUrl,
+    this.wordCount,
+    this.chapterCount,
+    this.statusLabel,
+    this.latestChapterTitle,
+    this.latestChapterUrl,
+    this.labels = const <String>[],
     this.sourceKind = ReaderBookSourceKind.unknown,
   });
 
@@ -302,6 +310,35 @@ class ReaderBookInfo {
   /// When supplied, it is shown below the reader title bar. The reader never
   /// uses this value to fetch content or select a source.
   final String? sourceName;
+
+  /// HTTP or HTTPS URL for the book at its source, when the host knows it.
+  ///
+  /// The reader only displays and opens this URL after an explicit user tap.
+  final Uri? sourceUrl;
+
+  /// Optional source-provided cover reference used by the host-facing detail
+  /// presentation. The reader may fall back to its neutral cover placeholder.
+  final Uri? coverUrl;
+
+  /// Optional book word count for the detail statistics row.
+  final int? wordCount;
+
+  /// Optional total chapter count for the detail statistics row.
+  final int? chapterCount;
+
+  /// Optional host-formatted status label, such as “连载” or “已完结”.
+  final String? statusLabel;
+
+  /// Optional latest-chapter title shown in the detail presentation.
+  final String? latestChapterTitle;
+
+  /// Optional URL for [latestChapterTitle].
+  final Uri? latestChapterUrl;
+
+  /// Categories and tags displayed as compact detail labels.
+  ///
+  /// Hosts should pass an immutable list. The reader never mutates it.
+  final List<String> labels;
 
   /// Host classification of the book's source.
   ///
@@ -594,6 +631,7 @@ class TextReaderPreferences {
     this.bottomPadding = 32,
     this.brightness = 1,
     this.navigationMode = ReaderNavigationMode.horizontalPages,
+    this.singleHandMode = false,
     this.keepScreenOn = true,
     this.pageAnimation = ReaderPageAnimation.slide,
     this.immersiveMode = false,
@@ -658,6 +696,12 @@ class TextReaderPreferences {
 
   /// Horizontal pagination or vertical scrolling.
   final ReaderNavigationMode navigationMode;
+
+  /// Whether both left and right taps advance to the next page.
+  ///
+  /// This affects horizontal reading tap zones only. Swipe direction and
+  /// vertical scrolling retain their normal behavior.
+  final bool singleHandMode;
 
   /// Requests display-awake while an active reader is in the foreground.
   final bool keepScreenOn;
@@ -781,6 +825,7 @@ class TextReaderPreferences {
     double? bottomPadding,
     double? brightness,
     ReaderNavigationMode? navigationMode,
+    bool? singleHandMode,
     bool? keepScreenOn,
     ReaderPageAnimation? pageAnimation,
     bool? immersiveMode,
@@ -806,6 +851,7 @@ class TextReaderPreferences {
       bottomPadding: bottomPadding ?? this.bottomPadding,
       brightness: brightness ?? this.brightness,
       navigationMode: navigationMode ?? this.navigationMode,
+      singleHandMode: singleHandMode ?? this.singleHandMode,
       keepScreenOn: keepScreenOn ?? this.keepScreenOn,
       pageAnimation: pageAnimation ?? this.pageAnimation,
       immersiveMode: immersiveMode ?? this.immersiveMode,
@@ -834,6 +880,7 @@ class TextReaderPreferences {
       bottomPadding == other.bottomPadding &&
       brightness == other.brightness &&
       navigationMode == other.navigationMode &&
+      singleHandMode == other.singleHandMode &&
       keepScreenOn == other.keepScreenOn &&
       pageAnimation == other.pageAnimation &&
       immersiveMode == other.immersiveMode &&
@@ -858,6 +905,7 @@ class TextReaderPreferences {
     bottomPadding,
     brightness,
     navigationMode,
+    singleHandMode,
     keepScreenOn,
     pageAnimation,
     immersiveMode,

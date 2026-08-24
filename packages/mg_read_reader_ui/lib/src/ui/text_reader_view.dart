@@ -190,6 +190,17 @@ class _TextReaderViewState extends State<TextReaderView> {
   ReaderChapterInfo? get _currentChapter => _currentChapterInfo;
   bool get _isBookPreview =>
       !_loading && _failure == null && _progress?.isBookPreview == true;
+  ReaderProgress _defaultChapterProgress() {
+    final ReaderChapterInfo? firstChapter =
+        _catalogByIndex[0] ?? (_catalog.isEmpty ? null : _catalog.first);
+    if (firstChapter == null) return const ReaderProgress.bookPreview();
+    return ReaderProgress(
+      chapterId: firstChapter.id,
+      paragraphId: '',
+      chapterIndex: firstChapter.index,
+    );
+  }
+
   TextScaler get _textScaler => MediaQuery.textScalerOf(
     context,
   ).clamp(minScaleFactor: .85, maxScaleFactor: 1.3);
@@ -544,8 +555,14 @@ class _TextReaderViewState extends State<TextReaderView> {
 
       _book = results[0] as ReaderBookInfo;
       _mergeCatalog(results[1] as ChapterCatalogPage);
-      _progress =
-          results[2] as ReaderProgress? ?? const ReaderProgress.bookPreview();
+      final ReaderProgress? loadedProgress = results[2] as ReaderProgress?;
+      // A new shelf item has no saved anchor yet. Start at chapter zero rather
+      // than showing a separate metadata page with a second "开始阅读" action.
+      // Normalize older preview anchors as well so that page does not return
+      // when the book is opened again after an app update.
+      _progress = loadedProgress == null || loadedProgress.isBookPreview
+          ? _defaultChapterProgress()
+          : loadedProgress;
       _preferences = results[3] as TextReaderPreferences;
       unawaited(_loadPersistedCustomFont());
       if (!_isNightTheme(_preferences.theme)) {
@@ -1283,6 +1300,11 @@ class _TextReaderViewState extends State<TextReaderView> {
     _stopAutoReading();
     final Size? size = context.size;
     if (size == null || size.width <= 0) return;
+    if (_preferences.singleHandMode) {
+      _pageTurnForward = true;
+      unawaited(_nextPage());
+      return;
+    }
     final double fraction = localPosition.dx / size.width;
     if (fraction < 0.3) {
       _pageTurnForward = false;
@@ -1389,7 +1411,7 @@ class _TextReaderViewState extends State<TextReaderView> {
       return;
     }
     if (_chapterIndex == 0) {
-      await _showBookPreview();
+      _showNotice(ReaderStrings.noPreviousChapter);
       return;
     }
     try {
@@ -3364,13 +3386,7 @@ class _TextReaderViewState extends State<TextReaderView> {
         duration: const Duration(milliseconds: 180),
         child: Stack(
           children: <Widget>[
-            Align(
-              alignment: Alignment.topCenter,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[_buildTopBar(), _buildSourceInfoBar()],
-              ),
-            ),
+            Align(alignment: Alignment.topCenter, child: _buildTopBar()),
             Align(alignment: Alignment.bottomCenter, child: _buildBottomBar()),
           ],
         ),
@@ -3385,58 +3401,74 @@ class _TextReaderViewState extends State<TextReaderView> {
       child: SafeArea(
         bottom: false,
         child: Container(
-          height: 54,
+          height: 76,
           decoration: BoxDecoration(
             border: Border(bottom: BorderSide(color: _palette.divider)),
           ),
-          child: Row(
+          child: Stack(
             children: <Widget>[
-              IconButton(
-                tooltip: ReaderStrings.back,
-                onPressed: _requestExit,
-                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+              Positioned(
+                left: 56,
+                right: 96,
+                top: 0,
+                height: 45,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _book?.title ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
               ),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              Positioned(
+                left: 56,
+                right: 56,
+                bottom: 3,
+                height: 24,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: _palette.panel.withValues(alpha: .76),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: _buildCompactSourceRow(),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: IconButton(
+                  tooltip: ReaderStrings.back,
+                  onPressed: _requestExit,
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    Text(
-                      _book?.title ?? '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    Text(
-                      _content?.title ?? '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: _palette.secondaryText,
-                        fontSize: 12,
+                    IconButton(
+                      tooltip: _isCurrentBookmarked
+                          ? ReaderStrings.removeBookmark
+                          : ReaderStrings.addBookmark,
+                      onPressed: _toggleBookmark,
+                      icon: Icon(
+                        _isCurrentBookmarked
+                            ? Icons.bookmark_rounded
+                            : Icons.bookmark_border_rounded,
+                        color: _isCurrentBookmarked ? _palette.accent : null,
                       ),
+                    ),
+                    IconButton(
+                      tooltip: ReaderStrings.refreshChapter,
+                      onPressed: _content == null
+                          ? null
+                          : () => unawaited(_refreshCurrentChapter()),
+                      icon: const Icon(Icons.refresh_rounded, size: 21),
                     ),
                   ],
                 ),
-              ),
-              IconButton(
-                tooltip: _isCurrentBookmarked
-                    ? ReaderStrings.removeBookmark
-                    : ReaderStrings.addBookmark,
-                onPressed: _toggleBookmark,
-                icon: Icon(
-                  _isCurrentBookmarked
-                      ? Icons.bookmark_rounded
-                      : Icons.bookmark_border_rounded,
-                  color: _isCurrentBookmarked ? _palette.accent : null,
-                ),
-              ),
-              IconButton(
-                tooltip: ReaderStrings.refreshChapter,
-                onPressed: _content == null
-                    ? null
-                    : () => unawaited(_refreshCurrentChapter()),
-                icon: const Icon(Icons.refresh_rounded, size: 21),
               ),
             ],
           ),
@@ -3445,84 +3477,104 @@ class _TextReaderViewState extends State<TextReaderView> {
     );
   }
 
-  Widget _buildSourceInfoBar() {
+  Widget _buildCompactSourceRow() {
     final String sourceName = _sourceDisplayName;
-    final String? chapterUrl = _currentChapterUrl;
-    final Uri? chapterUri = _currentChapterUri;
-    final Widget chapterUrlLabel = Row(
+    final String? sourceUrl = _sourceDisplayUrl;
+    final Uri? sourceUri = _sourceDisplayUri;
+    return SizedBox(
+      height: 22,
+      child: Row(
+        children: <Widget>[
+          Flexible(
+            child: Text(
+              sourceName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: _palette.secondaryText.withValues(alpha: .78),
+                fontSize: 11,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(width: 1, height: 14, color: _palette.divider),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _buildSourceUrlAction(
+              sourceUrl: sourceUrl,
+              sourceUri: sourceUri,
+              compact: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSourceUrlAction({
+    required String? sourceUrl,
+    required Uri? sourceUri,
+    bool compact = false,
+  }) {
+    final Widget label = Row(
       children: <Widget>[
         Icon(
           Icons.open_in_new_rounded,
-          size: 16,
-          color: chapterUri == null ? _palette.secondaryText : _palette.accent,
+          size: compact ? 14 : 16,
+          color: sourceUri == null
+              ? _palette.secondaryText.withValues(alpha: .78)
+              : compact
+              ? _palette.accent.withValues(alpha: .82)
+              : _palette.accent,
         ),
         const SizedBox(width: 5),
         Expanded(
           child: Text(
-            chapterUrl ?? ReaderStrings.chapterUrlUnavailable,
+            sourceUrl ?? ReaderStrings.sourceUrlUnavailable,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: chapterUri == null
-                  ? _palette.secondaryText
+              color: sourceUri == null
+                  ? _palette.secondaryText.withValues(alpha: .78)
+                  : compact
+                  ? _palette.text.withValues(alpha: .78)
                   : _palette.text,
-              fontSize: 11,
-              decoration: chapterUri == null ? null : TextDecoration.underline,
+              fontSize: compact ? 11 : 12,
+              decoration: sourceUri == null ? null : TextDecoration.underline,
               decorationColor: _palette.accent,
             ),
           ),
         ),
       ],
     );
-
-    final Widget chapterUrlAction = chapterUri == null
-        ? SizedBox(height: 48, child: chapterUrlLabel)
-        : Tooltip(
-            message: chapterUrl!,
-            child: Semantics(
-              button: true,
-              link: true,
-              label: '${ReaderStrings.openChapterUrl}: $chapterUrl',
-              child: InkWell(
-                borderRadius: BorderRadius.circular(6),
-                onTap: () => unawaited(_openCurrentChapterUrl()),
-                child: SizedBox(height: 48, child: chapterUrlLabel),
-              ),
-            ),
-          );
-
-    return Material(
-      color: _palette.panel.withValues(alpha: 0.92),
-      child: Container(
-        height: 48,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: _palette.divider)),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        child: Row(
-          children: <Widget>[
-            Flexible(
-              fit: FlexFit.loose,
-              child: Text(
-                sourceName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: _palette.secondaryText, fontSize: 11),
-              ),
-            ),
-            Container(width: 1, height: 16, color: _palette.divider),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Semantics(
-                label: ReaderStrings.chapterUrl,
-                child: chapterUrlAction,
-              ),
-            ),
-          ],
+    if (sourceUri == null) return label;
+    return Tooltip(
+      message: sourceUrl!,
+      child: Semantics(
+        button: true,
+        link: true,
+        label: '${ReaderStrings.openSourceUrl}: $sourceUrl',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(6),
+          onTap: () => unawaited(_openSourceUrl(sourceUri)),
+          child: SizedBox(height: compact ? 22 : 48, child: label),
         ),
       ),
     );
+  }
+
+  Future<void> _openSourceUrl(Uri uri) async {
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched) {
+        throw StateError(ReaderStrings.chapterUrlOpenFailed);
+      }
+    } catch (error) {
+      await _reportFailure(_asFailure(error, ReaderFailureKind.platform));
+    }
   }
 
   Future<void> _refreshCurrentChapter() async {
@@ -3538,6 +3590,11 @@ class _TextReaderViewState extends State<TextReaderView> {
         : sourceName;
   }
 
+  String? get _sourceDisplayUrl =>
+      _book?.sourceUrl?.toString() ?? _currentChapterUrl;
+
+  Uri? get _sourceDisplayUri => _book?.sourceUrl ?? _currentChapterUri;
+
   String? get _currentChapterUrl {
     final String? chapterUrl = _content?.chapterUrl?.trim();
     return chapterUrl == null || chapterUrl.isEmpty ? null : chapterUrl;
@@ -3551,30 +3608,6 @@ class _TextReaderViewState extends State<TextReaderView> {
       'http' || 'https' => uri,
       _ => null,
     };
-  }
-
-  Future<void> _openCurrentChapterUrl() async {
-    final Uri? uri = _currentChapterUri;
-    if (uri == null) {
-      await _reportFailure(
-        const ReaderFailure(
-          ReaderFailureKind.platform,
-          ReaderStrings.chapterUrlInvalid,
-        ),
-      );
-      return;
-    }
-    try {
-      final bool launched = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
-      if (!launched) {
-        throw StateError(ReaderStrings.chapterUrlOpenFailed);
-      }
-    } catch (error) {
-      await _reportFailure(_asFailure(error, ReaderFailureKind.platform));
-    }
   }
 
   Widget _buildBottomBar() {
@@ -3962,6 +3995,13 @@ class _TextReaderViewState extends State<TextReaderView> {
 
   Widget _buildBookDetailTab(int routeSession, String routeBookId) {
     final ReaderBookInfo? book = _book;
+    final List<String> labels = book == null
+        ? const <String>[]
+        : book.labels
+              .where((label) => label.trim().isNotEmpty)
+              .take(6)
+              .toList();
+    final int chapterCount = book?.chapterCount ?? _catalogTotal;
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
       children: <Widget>[
@@ -3971,48 +4011,95 @@ class _TextReaderViewState extends State<TextReaderView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
-                  book?.title ?? ReaderStrings.bookPreview,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                if (book?.author?.isNotEmpty == true) ...<Widget>[
-                  const SizedBox(height: 4),
-                  Text(
-                    book!.author!,
-                    style: TextStyle(
-                      color: _palette.secondaryText,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 10),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Icon(
-                      Icons.format_list_numbered_rounded,
-                      size: 16,
-                      color: _palette.secondaryText,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      ReaderStrings.chapterCount(_catalogTotal),
-                      style: TextStyle(
-                        color: _palette.secondaryText,
-                        fontSize: 12,
+                    _buildDetailCover(book),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            book?.title ?? ReaderStrings.bookPreview,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              height: 1.15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            book?.author?.isNotEmpty == true
+                                ? book!.author!
+                                : '作者未知',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _palette.secondaryText,
+                              fontSize: 14,
+                            ),
+                          ),
+                          if (labels.isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: labels
+                                  .map(_buildDetailTag)
+                                  .toList(growable: false),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ],
                 ),
+                const SizedBox(height: 18),
+                _buildDetailStats(book, chapterCount),
+                const SizedBox(height: 12),
+                _buildDetailExternalRow(
+                  icon: Icons.language_rounded,
+                  title: '来源频道',
+                  label: book?.sourceName ?? ReaderStrings.sourceUnavailable,
+                  url: _sourceDisplayUri,
+                ),
                 if (book?.description?.isNotEmpty == true) ...<Widget>[
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 20),
+                  Divider(color: _palette.divider, height: 1),
+                  const SizedBox(height: 18),
+                  const Text(
+                    '简介',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
                   Text(
                     book!.description!,
-                    style: const TextStyle(fontSize: 14, height: 1.6),
+                    style: TextStyle(
+                      color: _palette.secondaryText,
+                      fontSize: 14,
+                      height: 1.65,
+                    ),
                   ),
                 ],
+                if (book?.latestChapterTitle?.isNotEmpty == true) ...<Widget>[
+                  const SizedBox(height: 18),
+                  _buildDetailExternalRow(
+                    icon: Icons.auto_stories_outlined,
+                    title: '最新章节',
+                    label: book!.latestChapterTitle!,
+                    url: book.latestChapterUrl,
+                  ),
+                ],
+                const SizedBox(height: 18),
+                _buildDetailExternalRow(
+                  icon: Icons.menu_book_outlined,
+                  title: '阅读来源',
+                  label: book?.sourceName ?? ReaderStrings.sourceUnavailable,
+                  url: _sourceDisplayUri,
+                ),
                 if (widget.extensions.commentFeed != null &&
                     _preferences.showBookComments) ...<Widget>[
                   const SizedBox(height: 16),
@@ -4033,6 +4120,143 @@ class _TextReaderViewState extends State<TextReaderView> {
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildDetailCover(ReaderBookInfo? book) => Container(
+    width: 96,
+    height: 146,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(12),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: <Color>[
+          _palette.accent.withValues(alpha: .92),
+          _palette.text.withValues(alpha: .78),
+        ],
+      ),
+      boxShadow: <BoxShadow>[
+        BoxShadow(
+          color: Colors.black.withValues(alpha: .16),
+          blurRadius: 14,
+          offset: const Offset(0, 6),
+        ),
+      ],
+    ),
+    padding: const EdgeInsets.all(10),
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        const Icon(Icons.menu_book_rounded, size: 30, color: Colors.white),
+        const SizedBox(height: 8),
+        Text(
+          book?.title ?? ReaderStrings.bookPreview,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            height: 1.2,
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildDetailTag(String label) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: _palette.accent.withValues(alpha: .12),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Text(label, style: TextStyle(color: _palette.accent, fontSize: 11)),
+  );
+
+  Widget _buildDetailStats(ReaderBookInfo? book, int chapterCount) {
+    final String wordCount = book?.wordCount == null
+        ? '—'
+        : '${(book!.wordCount! / 10000).toStringAsFixed(1)}万';
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        border: Border.symmetric(
+          horizontal: BorderSide(color: _palette.divider),
+        ),
+      ),
+      child: Row(
+        children: <Widget>[
+          _buildDetailStat(wordCount, '字数'),
+          _buildDetailStat(chapterCount > 0 ? '$chapterCount' : '—', '章节'),
+          _buildDetailStat(book?.statusLabel ?? '—', '状态'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailStat(String value, String label) => Expanded(
+    child: Column(
+      children: <Widget>[
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          style: TextStyle(color: _palette.secondaryText, fontSize: 11),
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildDetailExternalRow({
+    required IconData icon,
+    required String title,
+    required String label,
+    required Uri? url,
+  }) {
+    final String? value = url?.toString();
+    return Row(
+      children: <Widget>[
+        Icon(icon, size: 18, color: _palette.secondaryText),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                title,
+                style: TextStyle(color: _palette.secondaryText, fontSize: 11),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+        if (url != null)
+          IconButton(
+            tooltip: ReaderStrings.openSourceUrl,
+            onPressed: () => unawaited(_openSourceUrl(url)),
+            icon: Icon(Icons.open_in_new_rounded, color: _palette.accent),
+          )
+        else
+          Text(
+            value ?? ReaderStrings.sourceUrlUnavailable,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: _palette.secondaryText, fontSize: 11),
+          ),
       ],
     );
   }

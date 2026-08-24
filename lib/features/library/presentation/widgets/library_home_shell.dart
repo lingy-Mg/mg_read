@@ -10,6 +10,7 @@ import 'package:mg_read/features/library/presentation/widgets/library_continue_r
 import 'package:mg_read/features/library/presentation/widgets/library_home_controls.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
+import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 
 /// The responsive, presentation-only app shell for the library landing page.
@@ -71,48 +72,51 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: FocusTraversalGroup(
-          policy: OrderedTraversalPolicy(),
-          child: LayoutBuilder(
-            builder: (BuildContext context, BoxConstraints constraints) {
-              final bool useWidePagePadding =
-                  constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
-              final double pagePadding = useWidePagePadding
-                  ? AppSpacing.widePagePadding
-                  : AppSpacing.compactPagePadding;
-              return Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: AppSpacing.contentMaxWidth,
-                  ),
-                  child: RefreshIndicator(
-                    onRefresh: widget.onRefresh,
-                    child: Scrollbar(
-                      controller: _scrollController,
-                      child: CustomScrollView(
-                        key: const Key('library-home-content'),
+      body: AppPageBackdrop(
+        style: AppPageBackdropStyle.home,
+        child: SafeArea(
+          bottom: false,
+          child: FocusTraversalGroup(
+            policy: OrderedTraversalPolicy(),
+            child: LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final bool useWidePagePadding =
+                    constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
+                final double pagePadding = useWidePagePadding
+                    ? AppSpacing.widePagePadding
+                    : AppSpacing.compactPagePadding;
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: AppSpacing.contentMaxWidth,
+                    ),
+                    child: RefreshIndicator(
+                      onRefresh: widget.onRefresh,
+                      child: Scrollbar(
                         controller: _scrollController,
-                        primary: false,
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        slivers: <Widget>[
-                          SliverPadding(
-                            padding: EdgeInsets.fromLTRB(
-                              pagePadding,
-                              AppSpacing.pageHeaderTopPadding,
-                              pagePadding,
-                              AppSpacing.page,
+                        child: CustomScrollView(
+                          key: const Key('library-home-content'),
+                          controller: _scrollController,
+                          primary: false,
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          slivers: <Widget>[
+                            SliverPadding(
+                              padding: EdgeInsets.fromLTRB(
+                                pagePadding,
+                                AppSpacing.pageHeaderTopPadding,
+                                pagePadding,
+                                AppSpacing.page,
+                              ),
+                              sliver: _buildContentSlivers(context),
                             ),
-                            sliver: _buildContentSlivers(context),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
       ),

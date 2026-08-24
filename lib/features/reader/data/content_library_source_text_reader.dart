@@ -48,13 +48,22 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
     }
 
     final catalog = await _library.listAllCatalog(item.id);
-    if (catalog.isEmpty) {
+    if (catalog.isEmpty ||
+        catalog.any((entry) => !entry.hasExplicitRemoteIdentity)) {
+      // Legacy snapshots did not persist the remote chapter ID separately
+      // from the binding key. Refresh them before constructing the reader so
+      // a source ID containing ':' cannot reach the reader truncated.
       return _launchLiveSession(item, source, observer);
     }
     final localCatalog = _asSourceCatalog(
       source,
       item.sourceName ?? '书架缓存',
       catalog,
+    );
+    final detail = await _resolveDetail(
+      item,
+      source,
+      chapterCount: catalog.length,
     );
     final chapterAccess = _CachedNovelChapterAccess(
       library: _library,
@@ -68,7 +77,7 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
       itemId: item.id,
     );
     final session = TransientSourceTextReader(
-      detail: _localDetail(item, source, chapterCount: catalog.length),
+      detail: detail,
       firstCatalogPage: localCatalog,
       loadChapterPage: ({String? cursor, int pageSize = _catalogPageSize}) {
         if (cursor != null) {
@@ -109,7 +118,13 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
         AppErrorCode.notFound,
       );
     }
-    final catalog = await _library.ensureNovelCatalog(
+    final detail = await _resolveDetail(
+      item,
+      source,
+      chapterCount:
+          firstCatalogPage.totalCount ?? firstCatalogPage.items.length,
+    );
+    final catalog = await _library.syncNovelCatalog(
       itemId: item.id,
       chapters: firstCatalogPage.items
           .map(
@@ -134,12 +149,7 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
       itemId: item.id,
     );
     final session = TransientSourceTextReader(
-      detail: _localDetail(
-        item,
-        source,
-        chapterCount:
-            firstCatalogPage.totalCount ?? firstCatalogPage.items.length,
-      ),
+      detail: detail,
       firstCatalogPage: firstCatalogPage,
       loadChapterPage: ({String? cursor, int pageSize = _catalogPageSize}) {
         return _gateway.getChapters(
@@ -158,6 +168,53 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
       stateStore: stateStore,
       extensions: ReaderExtensions(chapterStateCapability: chapterAccess),
     );
+  }
+
+  Future<PluginContentDetail> _resolveDetail(
+    LibraryItem item,
+    LibraryItemSource source, {
+    required int chapterCount,
+  }) async {
+    final fallback = _localDetail(item, source, chapterCount: chapterCount);
+    try {
+      final remote = await _gateway.getDetail(
+        pluginId: source.pluginId,
+        id: source.remoteContentId,
+      );
+      final summary = remote.summary;
+      return PluginContentDetail(
+        pluginId: remote.pluginId,
+        sourceName: remote.sourceName.isEmpty
+            ? fallback.sourceName
+            : remote.sourceName,
+        summary: PluginContentSummary(
+          id: summary.id,
+          title: summary.title.isEmpty ? fallback.summary.title : summary.title,
+          contentKind: summary.contentKind,
+          author: summary.author ?? fallback.summary.author,
+          url: summary.url,
+          coverUrl: summary.coverUrl ?? fallback.summary.coverUrl,
+          description: summary.description,
+          language: summary.language,
+          status: summary.status,
+          access: summary.access,
+          wordCount: summary.wordCount,
+          chapterCount: summary.chapterCount ?? chapterCount,
+          publishedAt: summary.publishedAt,
+          updatedAt: summary.updatedAt,
+          latestChapter: summary.latestChapter,
+          categories: summary.categories,
+          tags: summary.tags,
+          attributes: summary.attributes,
+        ),
+        aliases: remote.aliases,
+        catalogUrl: remote.catalogUrl ?? summary.url,
+      );
+    } on Object {
+      // A shelf must remain readable when refreshing optional presentation
+      // metadata fails; the local projection still carries title and source.
+      return fallback;
+    }
   }
 
   PluginContentDetail _localDetail(

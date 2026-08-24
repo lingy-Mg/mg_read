@@ -1,7 +1,7 @@
 /// Immutable, host-owned projection used by the library page.
 ///
-/// M2.1 only uses this for state and test fixtures. It does not fetch, persist,
-/// or resolve any real source content.
+/// The feature receives a local display projection; cover bytes are loaded by
+/// the data adapter from the app-owned cover object store.
 final class LibraryItemSummary {
   /// Creates one stable library-item projection.
   const LibraryItemSummary({
@@ -9,6 +9,7 @@ final class LibraryItemSummary {
     required this.title,
     this.author,
     this.coverUrl,
+    this.coverBytes,
     this.sourceName,
     this.readingProgress,
     this.readingChapterIndex,
@@ -27,6 +28,9 @@ final class LibraryItemSummary {
   final String title;
   final String? author;
   final Uri? coverUrl;
+
+  /// Cover bytes loaded from the app-owned file object, when available.
+  final List<int>? coverBytes;
   final String? sourceName;
 
   /// Displayable full-book fraction last reported by the reader.

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/discovery/application/search_history_store.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
@@ -52,6 +53,7 @@ class _SearchPageGoldenHost extends StatelessWidget {
   Widget build(BuildContext context) => ProviderScope(
     overrides: [
       sourceContentGatewayProvider.overrideWithValue(_GoldenSourceGateway()),
+      searchHistoryStoreProvider.overrideWithValue(_GoldenSearchHistoryStore()),
     ],
     child: MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -70,6 +72,20 @@ class _SearchPageGoldenHost extends StatelessWidget {
       home: SearchPage(onDestinationRequested: (_) {}),
     ),
   );
+}
+
+final class _GoldenSearchHistoryStore implements SearchHistoryStore {
+  @override
+  Future<List<String>> load() async => const <String>[
+    '诡秘之主',
+    '大道朝天',
+    '深空彼岸',
+    '宿命之环',
+    '道诡异仙',
+  ];
+
+  @override
+  Future<void> save(List<String> history) async {}
 }
 
 class _GoldenSourceGateway implements SourceContentGateway {

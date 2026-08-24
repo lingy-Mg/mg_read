@@ -66,4 +66,48 @@ void main() {
       expect(overview.continueReading?.readingProgress, 0.1);
     },
   );
+
+  test('fetches a missing cover once and reuses it after reopening', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'mg-read-library-cover-',
+    );
+    var library = await ContentLibrary.open(dataRoot: root);
+    final item = await library.bookshelf.addFromSource(
+      BookshelfAddRequest(
+        title: '首次加载封面',
+        author: null,
+        kind: ContentKind.novel,
+        pluginId: 'test-source',
+        pluginVersion: '1.0.0',
+        remoteContentId: 'cover-book',
+        coverUrl: Uri.parse('https://covers.example/cover.png'),
+      ),
+    );
+    final bytes = <int>[1, 2, 3, 4, 5];
+    var fetchCount = 0;
+
+    final first = await ContentLibraryOverviewLoader(
+      library,
+      fetcher: (uri) async {
+        expect(uri, Uri.parse('https://covers.example/cover.png'));
+        fetchCount += 1;
+        return bytes;
+      },
+    ).load();
+    expect(first.items.single.coverBytes, bytes);
+    expect(fetchCount, 1);
+
+    await library.close();
+    library = await ContentLibrary.open(dataRoot: root);
+    final second = await ContentLibraryOverviewLoader(
+      library,
+      fetcher: (_) async {
+        fail('A durable cover should not be fetched again.');
+      },
+    ).load();
+    expect(second.items.single.id, item.id.value);
+    expect(second.items.single.coverBytes, bytes);
+    await library.close();
+    await root.delete(recursive: true);
+  });
 }

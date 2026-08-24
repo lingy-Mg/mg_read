@@ -45,6 +45,7 @@
 - [首页 UI 系统](implementation/ui-design-system.md)
 - [二级页面与设置空页面规范](implementation/secondary-page-design-system.md)
 - [发现页开发规范](implementation/discovery-development.md)
+- [全局封面持久化规范](implementation/cover-persistence.md)
 - [M2 UI 基础设施历史交付说明](implementation/m2-app-infrastructure.md)
 - 源码局部地图：[`lib/`](../lib/README.md)、[`lib/core/`](../lib/core/README.md)、
   [`lib/features/`](../lib/features/README.md)、[`lib/shared/`](../lib/shared/README.md)、

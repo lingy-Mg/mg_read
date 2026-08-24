@@ -81,10 +81,10 @@ void main() {
         find.byKey(const ValueKey<String>('discovery-tab-推荐')),
       );
 
-      expect(title.style?.fontSize, 26);
+      expect(title.style?.fontSize, AppTypography.pageTitle);
       expect(title.style?.fontWeight, FontWeight.w600);
       expect(title.style?.height, 1.15);
-      expect(popularTitle.style?.fontSize, 17);
+      expect(popularTitle.style?.fontSize, AppTypography.sectionTitle);
       expect(popularTitle.style?.fontWeight, FontWeight.w600);
       expect(discoverNavigation.flagsCollection.isSelected, Tristate.isTrue);
       expect(recommendationTab.flagsCollection.isSelected, Tristate.isTrue);
@@ -140,7 +140,38 @@ void main() {
 
     final Rect hero = tester.getRect(find.byType(DiscoveryHeroCard));
     expect(hero.center.dx, closeTo(640, 0.1));
-    expect(hero.width, closeTo(358, 0.1));
+    expect(
+      hero.width,
+      closeTo(AppSpacing.contentMaxWidth - AppSpacing.widePagePadding * 2, 0.1),
+    );
+  });
+
+  testWidgets('adds category columns only when the board can fit them', (
+    WidgetTester tester,
+  ) async {
+    await _setViewport(tester, const Size(390, 900));
+    await tester.pumpWidget(_host());
+    await tester.pumpAndSettle();
+
+    final Finder compactTiles = find.byType(DiscoveryCategoryTile);
+    expect(compactTiles, findsNWidgets(8));
+    final double compactTop = tester.getTopLeft(compactTiles.first).dy;
+    expect(tester.getTopLeft(compactTiles.at(2)).dy, greaterThan(compactTop));
+
+    await _setViewport(tester, const Size(1280, 900));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    final List<Rect> wideTiles = List<Rect>.generate(
+      compactTiles.evaluate().length,
+      (int index) => tester.getRect(compactTiles.at(index)),
+      growable: false,
+    );
+    final double firstRowTop = wideTiles.first.top;
+    expect(
+      wideTiles.where((rect) => (rect.top - firstRowTop).abs() < 0.1),
+      hasLength(4),
+    );
   });
 
   testWidgets('does not overflow on a compact viewport with larger text', (

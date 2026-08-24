@@ -152,6 +152,34 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
   }
 
   @override
+  Future<bool> pickAndImportLocalPlugin() async {
+    if (_disposed) {
+      throw const PluginRuntimeException(
+        'runtime_unavailable',
+        'The Android Runtime has been closed.',
+      );
+    }
+    try {
+      final imported = await _androidRuntimeChannel.invokeMethod<bool>(
+        'pickAndImportLocalPlugin',
+      );
+      if (imported != true) return false;
+      _started = false;
+      return true;
+    } on PlatformException catch (error) {
+      throw PluginRuntimeException(
+        error.code,
+        'The Android Runtime could not import the selected plugin.',
+      );
+    } on Object {
+      throw const PluginRuntimeException(
+        'runtime_unavailable',
+        'The Android Runtime could not import the selected plugin.',
+      );
+    }
+  }
+
+  @override
   Future<void> importLocalPlugin(String sourcePath) async {
     if (_disposed) {
       throw const PluginRuntimeException(

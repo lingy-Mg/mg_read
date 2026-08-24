@@ -328,6 +328,68 @@ final class FileObjectStore {
     ),
   );
 
+  /// Commits one bookshelf cover below the app-owned file object root.
+  Future<StoredFileObject> commitCoverBytes({
+    required String itemId,
+    required List<int> bytes,
+    required String mimeType,
+  }) => _instrument(
+    operation: 'commitCoverBytes',
+    recordKind: 'bookshelfCover',
+    count: 1,
+    byteCount: bytes.length,
+    action: () =>
+        _commitCoverBytes(itemId: itemId, bytes: bytes, mimeType: mimeType),
+  );
+
+  /// Commits a regenerable global cover under a hashed, path-safe key.
+  Future<StoredFileObject> commitGlobalCoverBytes({
+    required String coverKey,
+    required List<int> bytes,
+    required String mimeType,
+  }) => _instrument(
+    operation: 'commitGlobalCoverBytes',
+    recordKind: 'globalCover',
+    count: 1,
+    byteCount: bytes.length,
+    action: () => _commitGlobalCoverBytes(
+      coverKey: coverKey,
+      bytes: bytes,
+      mimeType: mimeType,
+    ),
+  );
+
+  /// Reads a previously committed bookshelf cover without exposing its path.
+  Future<List<int>?> readCoverBytes(String itemId) => _instrument(
+    operation: 'readCoverBytes',
+    recordKind: 'bookshelfCover',
+    count: 1,
+    action: () => _readCoverBytes(itemId),
+  );
+
+  /// Reads and touches a global cover for LRU purposes.
+  Future<List<int>?> readGlobalCoverBytes(String coverKey) => _instrument(
+    operation: 'readGlobalCoverBytes',
+    recordKind: 'globalCover',
+    count: 1,
+    action: () => _readGlobalCoverBytes(coverKey),
+  );
+
+  /// Removes the cover owned by one bookshelf item.
+  Future<void> deleteCover(String itemId) => _instrument(
+    operation: 'deleteCover',
+    recordKind: 'bookshelfCover',
+    count: 1,
+    action: () => _deleteCover(itemId),
+  );
+
+  /// Evicts the oldest global cover files until [maxBytes] is respected.
+  Future<void> pruneGlobalCovers({required int maxBytes}) => _instrument(
+    operation: 'pruneGlobalCovers',
+    recordKind: 'globalCover',
+    action: () => _pruneGlobalCovers(maxBytes),
+  );
+
   Future<void> deleteMangaAssets(String mangaId) => _instrument(
     operation: 'deleteMangaAssets',
     recordKind: 'mangaAsset',
@@ -381,11 +443,142 @@ final class FileObjectStore {
     );
   }
 
+  Future<StoredFileObject> _commitCoverBytes({
+    required String itemId,
+    required List<int> bytes,
+    required String mimeType,
+  }) async {
+    _ensureOpen();
+    _validateOwnerId(itemId);
+    final folder = Directory(
+      '${_root.path}${Platform.pathSeparator}covers${Platform.pathSeparator}$itemId',
+    );
+    await folder.create(recursive: true);
+    final temp = File('${folder.path}${Platform.pathSeparator}.cover.part');
+    final target = File('${folder.path}${Platform.pathSeparator}cover.asset');
+    await temp.writeAsBytes(bytes, flush: true);
+    if (await target.exists()) {
+      await temp.delete();
+    } else {
+      await temp.rename(target.path);
+    }
+    return StoredFileObject(
+      assetId: 'cover',
+      relativePath: 'covers/$itemId/cover.asset',
+      byteLength: bytes.length,
+      mimeType: mimeType,
+    );
+  }
+
+  Future<StoredFileObject> _commitGlobalCoverBytes({
+    required String coverKey,
+    required List<int> bytes,
+    required String mimeType,
+  }) async {
+    _ensureOpen();
+    _validateCoverKey(coverKey);
+    final folder = Directory(
+      '${_root.path}${Platform.pathSeparator}global${Platform.pathSeparator}$coverKey',
+    );
+    await folder.create(recursive: true);
+    final temp = File('${folder.path}${Platform.pathSeparator}.cover.part');
+    final target = File('${folder.path}${Platform.pathSeparator}cover.asset');
+    await temp.writeAsBytes(bytes, flush: true);
+    if (await target.exists()) {
+      await temp.delete();
+    } else {
+      await temp.rename(target.path);
+    }
+    return StoredFileObject(
+      assetId: coverKey,
+      relativePath: 'global/$coverKey/cover.asset',
+      byteLength: bytes.length,
+      mimeType: mimeType,
+    );
+  }
+
+  Future<List<int>?> _readCoverBytes(String itemId) async {
+    _ensureOpen();
+    _validateOwnerId(itemId);
+    final file = File(
+      '${_root.path}${Platform.pathSeparator}covers${Platform.pathSeparator}$itemId${Platform.pathSeparator}cover.asset',
+    );
+    if (!await file.exists() || await file.length() > 5 * 1024 * 1024) {
+      return null;
+    }
+    return file.readAsBytes();
+  }
+
+  Future<List<int>?> _readGlobalCoverBytes(String coverKey) async {
+    _ensureOpen();
+    _validateCoverKey(coverKey);
+    final file = File(
+      '${_root.path}${Platform.pathSeparator}global${Platform.pathSeparator}$coverKey${Platform.pathSeparator}cover.asset',
+    );
+    if (!await file.exists() || await file.length() > 5 * 1024 * 1024) {
+      return null;
+    }
+    final bytes = await file.readAsBytes();
+    await file.setLastModified(DateTime.now());
+    return bytes;
+  }
+
+  Future<void> _deleteCover(String itemId) async {
+    _ensureOpen();
+    _validateOwnerId(itemId);
+    final folder = Directory(
+      '${_root.path}${Platform.pathSeparator}covers${Platform.pathSeparator}$itemId',
+    );
+    if (await folder.exists()) await folder.delete(recursive: true);
+  }
+
+  Future<void> _pruneGlobalCovers(int maxBytes) async {
+    _ensureOpen();
+    if (maxBytes <= 0) throw ArgumentError.value(maxBytes, 'maxBytes');
+    final root = Directory('${_root.path}${Platform.pathSeparator}global');
+    if (!await root.exists()) return;
+    final entries = <_GlobalCoverFile>[];
+    await for (final entity in root.list()) {
+      if (entity is! Directory) continue;
+      final key = entity.path.split(Platform.pathSeparator).last;
+      if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(key)) continue;
+      final file = File('${entity.path}${Platform.pathSeparator}cover.asset');
+      if (!await file.exists()) continue;
+      entries.add(
+        _GlobalCoverFile(
+          file: file,
+          length: await file.length(),
+          modified: await file.lastModified(),
+        ),
+      );
+    }
+    var total = entries.fold<int>(0, (sum, entry) => sum + entry.length);
+    if (total <= maxBytes) return;
+    entries.sort((a, b) => a.modified.compareTo(b.modified));
+    for (final entry in entries) {
+      if (total <= maxBytes) break;
+      await entry.file.parent.delete(recursive: true);
+      total -= entry.length;
+    }
+  }
+
   Future<void> _deleteMangaAssets(String mangaId) async {
     _ensureOpen();
     final folder = Directory('${_root.path}${Platform.pathSeparator}$mangaId');
     if (await folder.exists()) {
       await folder.delete(recursive: true);
+    }
+  }
+
+  void _validateOwnerId(String ownerId) {
+    if (!RegExp(r'^[A-Za-z0-9_-]{16,128}$').hasMatch(ownerId)) {
+      throw ArgumentError.value(ownerId, 'ownerId');
+    }
+  }
+
+  void _validateCoverKey(String coverKey) {
+    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(coverKey)) {
+      throw ArgumentError.value(coverKey, 'coverKey');
     }
   }
 
@@ -451,6 +644,18 @@ final class StoredFileObject {
   });
   final String assetId, relativePath, mimeType;
   final int byteLength;
+}
+
+final class _GlobalCoverFile {
+  const _GlobalCoverFile({
+    required this.file,
+    required this.length,
+    required this.modified,
+  });
+
+  final File file;
+  final int length;
+  final DateTime modified;
 }
 
 DiagnosticObjectValue _storeAttributes(String store, {String? errorCode}) =>

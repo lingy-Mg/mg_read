@@ -82,6 +82,29 @@ final class LibraryItemSource {
   final String remoteContentId;
 }
 
+/// Stable identity for a regenerable source cover shared by all features.
+///
+/// The URL is part of the identity so a source changing its cover naturally
+/// creates a new cache entry without mutating an older entry in place.
+final class CoverKey {
+  const CoverKey({
+    required this.pluginId,
+    required this.remoteContentId,
+    required this.coverUrl,
+    this.pluginVersion = 'unknown',
+  }) : assert(pluginId != ''),
+       assert(pluginVersion != ''),
+       assert(remoteContentId != '');
+
+  final String pluginId;
+  final String pluginVersion;
+  final String remoteContentId;
+  final Uri coverUrl;
+
+  String get canonicalValue =>
+      '$pluginId\u001f$pluginVersion\u001f$remoteContentId\u001f$coverUrl';
+}
+
 /// A durable, layout-independent text-reading position for one shelf item.
 ///
 /// It uses the reader package's semantic anchors rather than a page number or
@@ -171,6 +194,8 @@ final class CatalogEntry {
     required this.kind,
     required this.contentStatus,
     this.wordCount,
+    this.hasExplicitRemoteIdentity = true,
+    this.contentReference,
   });
   final CatalogEntryId id;
   final LibraryItemId itemId;
@@ -179,6 +204,14 @@ final class CatalogEntry {
   final int index;
   final ContentKind? kind;
   final int? wordCount;
+  final String? contentReference;
+
+  /// Whether this entry was written with the lossless remote identity field.
+  ///
+  /// Older snapshots encoded the identity in a colon-delimited persistence
+  /// key, which could truncate source IDs that themselves contained a colon.
+  /// Readers use this flag to refresh those legacy snapshots once.
+  final bool hasExplicitRemoteIdentity;
 }
 
 /// A typed remote-novel chapter projection to initialize an app-owned catalog.

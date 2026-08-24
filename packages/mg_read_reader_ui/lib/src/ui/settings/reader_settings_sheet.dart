@@ -237,44 +237,60 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
             constraints: const BoxConstraints(
               maxWidth: ReaderSettingsTokens.maxSheetWidth,
             ),
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(ReaderSettingsTokens.sheetRadius),
-              ),
-              child: Material(
-                color: palette.panel,
-                child: SafeArea(
-                  top: false,
-                  child: Column(
-                    children: <Widget>[
-                      Expanded(
-                        child: AnimatedSwitcher(
-                          duration: ReaderSettingsTokens.transitionDuration,
-                          child: KeyedSubtree(
-                            key: ValueKey<_SettingsPage>(_page),
-                            child: switch (_page) {
-                              _SettingsPage.main => _buildMainPage(palette),
-                              _SettingsPage.font => _buildFontPage(palette),
-                              _SettingsPage.spacing => _buildSpacingPage(
-                                palette,
-                              ),
-                              _SettingsPage.comments => _buildCommentsPage(
-                                palette,
-                              ),
-                              _SettingsPage.more => _buildMorePage(palette),
-                            },
+            child: SizedBox(
+              width: double.infinity,
+              height: double.infinity,
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(ReaderSettingsTokens.sheetRadius),
+                ),
+                child: Material(
+                  color: palette.panel,
+                  child: SafeArea(
+                    top: false,
+                    child: Column(
+                      children: <Widget>[
+                        Expanded(
+                          child: AnimatedSwitcher(
+                            duration: ReaderSettingsTokens.transitionDuration,
+                            layoutBuilder:
+                                (
+                                  Widget? currentChild,
+                                  List<Widget> previousChildren,
+                                ) => Stack(
+                                  alignment: Alignment.topCenter,
+                                  children: <Widget>[
+                                    ...previousChildren,
+                                    ?currentChild,
+                                  ],
+                                ),
+                            child: KeyedSubtree(
+                              key: ValueKey<_SettingsPage>(_page),
+                              child: switch (_page) {
+                                _SettingsPage.main => _buildMainPage(palette),
+                                _SettingsPage.font => _buildFontPage(palette),
+                                _SettingsPage.spacing => _buildSpacingPage(
+                                  palette,
+                                ),
+                                _SettingsPage.comments => _buildCommentsPage(
+                                  palette,
+                                ),
+                                _SettingsPage.more => _buildMorePage(palette),
+                              },
+                            ),
                           ),
                         ),
-                      ),
-                      ReaderSettingsBottomNavigation(
-                        palette: palette,
-                        nightSelected: _isNightTheme(_preferences.theme),
-                        onCatalogPressed: widget.onCatalogPressed,
-                        onNightPressed: _toggleNight,
-                        onSettingsPressed: () => _openPage(_SettingsPage.main),
-                        onBookmarksPressed: widget.onBookmarksPressed,
-                      ),
-                    ],
+                        ReaderSettingsBottomNavigation(
+                          palette: palette,
+                          nightSelected: _isNightTheme(_preferences.theme),
+                          onCatalogPressed: widget.onCatalogPressed,
+                          onNightPressed: _toggleNight,
+                          onSettingsPressed: () =>
+                              _openPage(_SettingsPage.main),
+                          onBookmarksPressed: widget.onBookmarksPressed,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -365,7 +381,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
           ),
           const SizedBox(width: 8),
           SizedBox(
-            width: 108,
+            width: ReaderSettingsTokens.eyeCareControlWidth,
             child: ReaderSettingsCapsule(
               palette: palette,
               padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -476,7 +492,10 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
           label: ReaderStrings.fontSize,
           child: Row(
             children: <Widget>[
-              SizedBox(width: 136, child: sizeControl),
+              SizedBox(
+                width: ReaderSettingsTokens.fontSizeControlWidth,
+                child: sizeControl,
+              ),
               const SizedBox(width: 6),
               SizedBox(
                 width:
@@ -499,8 +518,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
       label: ReaderStrings.color,
       child: SizedBox(
         height: ReaderSettingsTokens.touchTarget,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
+        child: ReaderSettingsHorizontalList(
           itemCount: _themeOrder.length,
           separatorBuilder: (_, _) => const SizedBox(width: 8),
           itemBuilder: (BuildContext context, int index) {
@@ -523,8 +541,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
       alignTop: true,
       child: SizedBox(
         height: ReaderSettingsTokens.touchTarget,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
+        child: ReaderSettingsHorizontalList(
           itemCount: ReaderBackgroundPreset.values.length,
           separatorBuilder: (_, _) => const SizedBox(width: 8),
           itemBuilder: (BuildContext context, int index) {
@@ -684,7 +701,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
               ReaderStrings.externalFonts,
               style: TextStyle(
                 color: palette.secondaryText,
-                fontSize: 12,
+                fontSize: ReaderSettingsTokens.subpageLabelFontSize,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -844,20 +861,26 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
             widget.onAutoReadingChanged(value);
           },
         ),
-        _labeledChoice<ReaderAutoReadingPace>(
-          ReaderStrings.autoReadingSpeed,
-          ReaderAutoReadingPace.values,
-          _autoReadingPace,
-          (ReaderAutoReadingPace value) => switch (value) {
+        _settingsChoice<ReaderAutoReadingPace>(
+          title: ReaderStrings.autoReadingSpeed,
+          values: ReaderAutoReadingPace.values,
+          selected: _autoReadingPace,
+          labelFor: (ReaderAutoReadingPace value) => switch (value) {
             ReaderAutoReadingPace.slow => ReaderStrings.slow,
             ReaderAutoReadingPace.normal => ReaderStrings.standard,
             ReaderAutoReadingPace.fast => ReaderStrings.fast,
           },
-          (ReaderAutoReadingPace value) {
+          onSelected: (ReaderAutoReadingPace value) {
             setState(() => _autoReadingPace = value);
             widget.onAutoReadingPaceChanged(value);
           },
-          palette,
+          palette: palette,
+        ),
+        _settingsSwitch(
+          title: ReaderStrings.singleHandMode,
+          value: _preferences.singleHandMode,
+          onChanged: (bool value) =>
+              _commit(_preferences.copyWith(singleHandMode: value)),
         ),
         if (widget.platformCapabilities.keepScreenOn)
           _settingsSwitch(
@@ -946,11 +969,57 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
       dense: true,
       visualDensity: const VisualDensity(vertical: -4),
       contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-      title: Text(title, style: const TextStyle(fontSize: 13)),
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontSize: ReaderSettingsTokens.subpageLabelFontSize,
+        ),
+      ),
       value: value,
       onChanged: onChanged,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(ReaderSettingsTokens.smallRadius),
+      ),
+    );
+  }
+
+  Widget _settingsChoice<T>({
+    required String title,
+    required List<T> values,
+    required T selected,
+    required String Function(T) labelFor,
+    required ValueChanged<T> onSelected,
+    required ReaderPalette palette,
+  }) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(
+        minHeight: ReaderSettingsTokens.rowMinHeight,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: ReaderSettingsTokens.subpageLabelFontSize,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: ReaderSettingsTokens.autoReadingSpeedControlWidth,
+              child: ReaderSettingsSegmentedControl<T>(
+                values: values,
+                selected: selected,
+                labelFor: labelFor,
+                onSelected: onSelected,
+                palette: palette,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

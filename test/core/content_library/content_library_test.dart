@@ -105,6 +105,38 @@ void main() {
     },
   );
 
+  test('persists and removes a bookshelf cover outside metadata', () async {
+    final item = await library.bookshelf.addFromSource(
+      BookshelfAddRequest(
+        title: '封面测试书',
+        author: null,
+        kind: ContentKind.novel,
+        pluginId: 'fixture',
+        pluginVersion: '1.0.0',
+        remoteContentId: 'cover-book',
+        coverUrl: Uri.parse('https://covers.example/cover-book.png'),
+      ),
+    );
+    final bytes = <int>[137, 80, 78, 71, 1, 2, 3];
+
+    await library.bookshelf.saveCover(
+      id: item.id,
+      bytes: bytes,
+      mimeType: 'image/png',
+    );
+    expect(await library.bookshelf.readCover(item.id), bytes);
+
+    await library.close();
+    library = await ContentLibrary.open(dataRoot: root);
+    expect(await library.bookshelf.readCover(item.id), bytes);
+
+    await library.bookshelf.remove(
+      item.id,
+      LibraryRemovalPolicy.removeFromShelfKeepContent,
+    );
+    expect(await library.bookshelf.readCover(item.id), isNull);
+  });
+
   test('concurrent source saves are idempotent and atomically bound', () async {
     final items = await Future.wait<LibraryItem>([
       library.bookshelf.add(

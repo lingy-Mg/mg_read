@@ -1,9 +1,79 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
 import '../reader_strings.dart';
 import '../reader_theme.dart';
 import 'reader_settings_tokens.dart';
+
+/// A horizontal settings rail that maps the mouse wheel to horizontal motion.
+///
+/// Windows precision wheels may report either vertical or horizontal deltas;
+/// the dominant axis is used so the same control works with a mouse wheel and
+/// a trackpad without changing the touch interaction.
+class ReaderSettingsHorizontalList extends StatefulWidget {
+  const ReaderSettingsHorizontalList({
+    super.key,
+    required this.itemCount,
+    required this.itemBuilder,
+    required this.separatorBuilder,
+  });
+
+  final int itemCount;
+  final IndexedWidgetBuilder itemBuilder;
+  final IndexedWidgetBuilder separatorBuilder;
+
+  @override
+  State<ReaderSettingsHorizontalList> createState() =>
+      _ReaderSettingsHorizontalListState();
+}
+
+class _ReaderSettingsHorizontalListState
+    extends State<ReaderSettingsHorizontalList> {
+  late final ScrollController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent || !_controller.hasClients) return;
+    final Offset delta = event.scrollDelta;
+    final double amount = delta.dy.abs() >= delta.dx.abs()
+        ? delta.dy
+        : delta.dx;
+    if (amount == 0) return;
+    final ScrollPosition position = _controller.position;
+    _controller.jumpTo(
+      (_controller.offset + amount)
+          .clamp(0, position.maxScrollExtent)
+          .toDouble(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerSignal: _handlePointerSignal,
+      child: ListView.separated(
+        controller: _controller,
+        scrollDirection: Axis.horizontal,
+        itemCount: widget.itemCount,
+        separatorBuilder: widget.separatorBuilder,
+        itemBuilder: widget.itemBuilder,
+      ),
+    );
+  }
+}
 
 class ReaderSettingsSectionRow extends StatelessWidget {
   const ReaderSettingsSectionRow({
@@ -35,8 +105,8 @@ class ReaderSettingsSectionRow extends StatelessWidget {
               child: Text(
                 label,
                 style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
+                  fontSize: ReaderSettingsTokens.sectionLabelFontSize,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -68,47 +138,52 @@ class ReaderSettingsCapsule extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Widget result = Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(
-        ReaderSettingsTokens.controlRadius + 4,
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(
-          ReaderSettingsTokens.controlRadius + 4,
-        ),
-        onTap: onTap,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            minHeight: ReaderSettingsTokens.controlHeight,
+    final Widget result = SizedBox(
+      height: ReaderSettingsTokens.touchTarget,
+      child: Center(
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(
+            ReaderSettingsTokens.controlRadius + 4,
           ),
-          child: Stack(
-            fit: StackFit.passthrough,
-            children: <Widget>[
-              Positioned.fill(
-                top: 2,
-                bottom: 2,
-                child: Ink(
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? ReaderSettingsTokens.selectedControl(palette)
-                        : ReaderSettingsTokens.mutedControl(palette),
-                    borderRadius: BorderRadius.circular(
-                      ReaderSettingsTokens.controlRadius,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(
+              ReaderSettingsTokens.controlRadius + 4,
+            ),
+            onTap: onTap,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                minHeight: ReaderSettingsTokens.controlHeight,
+              ),
+              child: Stack(
+                fit: StackFit.passthrough,
+                children: <Widget>[
+                  Positioned.fill(
+                    child: Ink(
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? ReaderSettingsTokens.selectedControl(palette)
+                            : ReaderSettingsTokens.mutedControl(palette),
+                        borderRadius: BorderRadius.circular(
+                          ReaderSettingsTokens.controlRadius,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              Padding(
-                padding: padding,
-                child: Center(
-                  child: DefaultTextStyle.merge(
-                    style: const TextStyle(fontSize: 13),
-                    child: child,
+                  Padding(
+                    padding: padding,
+                    child: Center(
+                      child: DefaultTextStyle.merge(
+                        style: const TextStyle(
+                          fontSize: ReaderSettingsTokens.controlTextSize,
+                        ),
+                        child: child,
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -149,79 +224,104 @@ class ReaderSettingsSegmentedControl<T> extends StatelessWidget {
         final double itemWidth = ((constraints.maxWidth - 6) / values.length)
             .clamp(48, 132)
             .toDouble();
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Container(
-            constraints: BoxConstraints(
-              minWidth: constraints.maxWidth,
-              minHeight: ReaderSettingsTokens.controlHeight,
-            ),
-            decoration: BoxDecoration(
-              color: ReaderSettingsTokens.mutedControl(palette),
-              borderRadius: BorderRadius.circular(
-                ReaderSettingsTokens.controlRadius,
+        return SizedBox(
+          height: ReaderSettingsTokens.touchTarget,
+          child: Stack(
+            children: <Widget>[
+              Positioned(
+                top:
+                    (ReaderSettingsTokens.touchTarget -
+                        ReaderSettingsTokens.controlHeight) /
+                    2,
+                left: 0,
+                right: 0,
+                height: ReaderSettingsTokens.controlHeight,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: ReaderSettingsTokens.mutedControl(palette),
+                    borderRadius: BorderRadius.circular(
+                      ReaderSettingsTokens.controlRadius,
+                    ),
+                  ),
+                ),
               ),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 3),
-            child: Row(
-              children: values
-                  .map((T value) {
-                    final bool isSelected = value == selected;
-                    return SizedBox(
-                      width: itemWidth,
-                      height: ReaderSettingsTokens.touchTarget,
-                      child: Semantics(
-                        button: true,
-                        selected: isSelected,
-                        label: labelFor(value),
-                        onTap: () => onSelected(value),
-                        excludeSemantics: true,
-                        child: Material(
-                          color: Colors.transparent,
-                          borderRadius: BorderRadius.circular(
-                            ReaderSettingsTokens.controlRadius,
-                          ),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(
-                              ReaderSettingsTokens.controlRadius,
-                            ),
-                            onTap: () => onSelected(value),
-                            child: Center(
-                              child: AnimatedContainer(
-                                duration:
-                                    ReaderSettingsTokens.transitionDuration,
-                                height: 40,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? palette.panel
-                                      : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(
-                                    ReaderSettingsTokens.controlRadius - 2,
+              Positioned.fill(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: Row(
+                        children: values
+                            .map((T value) {
+                              final bool isSelected = value == selected;
+                              return SizedBox(
+                                width: itemWidth,
+                                height: ReaderSettingsTokens.touchTarget,
+                                child: Semantics(
+                                  button: true,
+                                  selected: isSelected,
+                                  label: labelFor(value),
+                                  onTap: () => onSelected(value),
+                                  excludeSemantics: true,
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    borderRadius: BorderRadius.circular(
+                                      ReaderSettingsTokens.controlRadius,
+                                    ),
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(
+                                        ReaderSettingsTokens.controlRadius,
+                                      ),
+                                      onTap: () => onSelected(value),
+                                      child: Center(
+                                        child: AnimatedContainer(
+                                          duration: ReaderSettingsTokens
+                                              .transitionDuration,
+                                          height:
+                                              ReaderSettingsTokens
+                                                  .controlHeight -
+                                              4,
+                                          alignment: Alignment.center,
+                                          decoration: BoxDecoration(
+                                            color: isSelected
+                                                ? palette.panel
+                                                : Colors.transparent,
+                                            borderRadius: BorderRadius.circular(
+                                              ReaderSettingsTokens
+                                                      .controlRadius -
+                                                  2,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            labelFor(value),
+                                            maxLines: 1,
+                                            style: TextStyle(
+                                              fontSize: ReaderSettingsTokens
+                                                  .controlTextSize,
+                                              fontWeight: isSelected
+                                                  ? FontWeight.w700
+                                                  : FontWeight.w500,
+                                              color: isSelected
+                                                  ? palette.text
+                                                  : palette.secondaryText,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                                child: Text(
-                                  labelFor(value),
-                                  maxLines: 1,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: isSelected
-                                        ? FontWeight.w700
-                                        : FontWeight.w500,
-                                    color: isSelected
-                                        ? palette.text
-                                        : palette.secondaryText,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
+                              );
+                            })
+                            .toList(growable: false),
                       ),
-                    );
-                  })
-                  .toList(growable: false),
-            ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -337,26 +437,31 @@ class ReaderBackgroundChoice extends StatelessWidget {
                   color: selected ? palette.text : palette.divider,
                 ),
               ),
-              child: ReaderBackgroundSurface(
-                preset: preset,
-                palette: palette,
-                child: selected
-                    ? Align(
-                        alignment: Alignment.topRight,
-                        child: Container(
-                          margin: const EdgeInsets.all(3),
-                          decoration: BoxDecoration(
-                            color: palette.panel.withValues(alpha: .9),
-                            shape: BoxShape.circle,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(
+                  ReaderSettingsTokens.smallRadius - 1,
+                ),
+                child: ReaderBackgroundSurface(
+                  preset: preset,
+                  palette: palette,
+                  child: selected
+                      ? Align(
+                          alignment: Alignment.topRight,
+                          child: Container(
+                            margin: const EdgeInsets.all(3),
+                            decoration: BoxDecoration(
+                              color: palette.panel.withValues(alpha: .9),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.check_rounded,
+                              size: 14,
+                              color: palette.text,
+                            ),
                           ),
-                          child: Icon(
-                            Icons.check_rounded,
-                            size: 14,
-                            color: palette.text,
-                          ),
-                        ),
-                      )
-                    : null,
+                        )
+                      : null,
+                ),
               ),
             ),
           ),
@@ -397,7 +502,7 @@ class ReaderSettingsSubpageHeader extends StatelessWidget {
               Text(
                 title,
                 style: const TextStyle(
-                  fontSize: 18,
+                  fontSize: ReaderSettingsTokens.subpageTitleFontSize,
                   fontWeight: FontWeight.w700,
                 ),
               ),

@@ -40,9 +40,8 @@ class AppSecondaryPageTopBar extends StatelessWidget {
               child: Text(
                 title,
                 textAlign: TextAlign.center,
-                style: theme.textTheme.titleMedium?.copyWith(
+                style: theme.textTheme.titleLarge?.copyWith(
                   color: theme.colorScheme.onSurface,
-                  fontSize: 18,
                   fontWeight: FontWeight.w600,
                   height: 1.2,
                   letterSpacing: 0,
@@ -116,6 +115,37 @@ class AppSecondaryPageIconButton extends StatelessWidget {
   }
 }
 
+/// Centers secondary-page content while preserving the compact phone layout.
+///
+/// Individual pages retain ownership of their inner list and card padding.
+/// This shell provides the shared desktop gutter and maximum readable width.
+class AppSecondaryPageContent extends StatelessWidget {
+  const AppSecondaryPageContent({required this.child, super.key});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (BuildContext context, BoxConstraints constraints) {
+      final double horizontalPadding =
+          constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint
+          ? AppSpacing.widePagePadding
+          : 0;
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: AppSpacing.contentMaxWidth,
+            ),
+            child: SizedBox(width: double.infinity, child: child),
+          ),
+        ),
+      );
+    },
+  );
+}
+
 /// A small, consistent shell for secondary pages that are not implemented yet.
 class AppSecondaryPlaceholderPage extends StatelessWidget {
   const AppSecondaryPlaceholderPage({
@@ -137,56 +167,51 @@ class AppSecondaryPlaceholderPage extends StatelessWidget {
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: AppDetailMetrics.viewportWidth,
-            ),
-            child: Column(
-              children: <Widget>[
-                AppSecondaryPageTopBar(
-                  key: const Key('secondary-placeholder-top-bar'),
-                  title: title,
-                  onBack: onBack,
-                  backButtonKey: const Key('secondary-placeholder-back'),
-                ),
-                Expanded(
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(
-                        AppDetailMetrics.horizontalPadding,
-                      ),
-                      child: Semantics(
-                        container: true,
-                        label: '$title，功能建设中',
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(
-                              Icons.construction_outlined,
-                              size: 40,
-                              color: tokens.mutedText,
-                            ),
-                            const SizedBox(height: AppSpacing.regular),
-                            Text(
-                              '功能建设中',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: AppSpacing.unit),
-                            Text(
-                              description,
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: tokens.mutedText),
-                            ),
-                          ],
-                        ),
+        child: AppSecondaryPageContent(
+          child: Column(
+            children: <Widget>[
+              AppSecondaryPageTopBar(
+                key: const Key('secondary-placeholder-top-bar'),
+                title: title,
+                onBack: onBack,
+                backButtonKey: const Key('secondary-placeholder-back'),
+              ),
+              Expanded(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(
+                      AppDetailMetrics.horizontalPadding,
+                    ),
+                    child: Semantics(
+                      container: true,
+                      label: '$title，功能建设中',
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Icon(
+                            Icons.construction_outlined,
+                            size: 40,
+                            color: tokens.mutedText,
+                          ),
+                          const SizedBox(height: AppSpacing.regular),
+                          Text(
+                            '功能建设中',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: AppSpacing.unit),
+                          Text(
+                            description,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: tokens.mutedText),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

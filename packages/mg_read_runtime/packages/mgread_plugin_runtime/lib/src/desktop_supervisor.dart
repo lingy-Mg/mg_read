@@ -295,6 +295,14 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   }
 
   @override
+  Future<bool> pickAndImportLocalPlugin() {
+    throw const PluginRuntimeException(
+      'unsupported',
+      'The Android file picker is unavailable on desktop.',
+    );
+  }
+
+  @override
   Future<void> importLocalPlugin(String sourcePath) async {
     if (_disposed) {
       throw const PluginRuntimeException(

@@ -35,49 +35,44 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: AppDetailMetrics.viewportWidth,
-            ),
-            child: Column(
-              children: <Widget>[
-                AppSecondaryPageTopBar(
-                  headerKey: const Key('data-source-top-bar'),
-                  backButtonKey: const Key('profile-detail-back'),
-                  title: '管理数据来源',
-                  onBack: onBackRequested,
-                  actions: <Widget>[
-                    if (onRuntimeStatusRequested != null)
-                      AppSecondaryPageIconButton(
-                        key: const Key('data-source-runtime-status'),
-                        label: 'Node 状态',
-                        icon: Icons.monitor_heart_outlined,
-                        onPressed: onRuntimeStatusRequested!,
-                      ),
+        child: AppSecondaryPageContent(
+          child: Column(
+            children: <Widget>[
+              AppSecondaryPageTopBar(
+                headerKey: const Key('data-source-top-bar'),
+                backButtonKey: const Key('profile-detail-back'),
+                title: '管理数据来源',
+                onBack: onBackRequested,
+                actions: <Widget>[
+                  if (onRuntimeStatusRequested != null)
                     AppSecondaryPageIconButton(
-                      key: const Key('data-source-management-help'),
-                      label: '数据来源说明',
-                      icon: Icons.help_outline,
-                      onPressed: () => _showHelp(context, ref),
+                      key: const Key('data-source-runtime-status'),
+                      label: 'Node 状态',
+                      icon: Icons.monitor_heart_outlined,
+                      onPressed: onRuntimeStatusRequested!,
                     ),
-                  ],
-                ),
-                Expanded(
-                  child: connection.when(
-                    loading: () => const _DataSourceLoading(),
-                    error: (Object _, StackTrace _) => _DataSourceFailure(
-                      onRetry: () =>
-                          ref.invalidate(pluginRuntimeConnectionProvider),
-                    ),
-                    data: (PluginRuntimeConnection value) => _DataSourceContent(
-                      sources: _sourcesFromConnection(value),
-                      onSourcePressed: onSourcePressed,
-                    ),
+                  AppSecondaryPageIconButton(
+                    key: const Key('data-source-management-help'),
+                    label: '数据来源说明',
+                    icon: Icons.help_outline,
+                    onPressed: () => _showHelp(context, ref),
+                  ),
+                ],
+              ),
+              Expanded(
+                child: connection.when(
+                  loading: () => const _DataSourceLoading(),
+                  error: (Object _, StackTrace _) => _DataSourceFailure(
+                    onRetry: () =>
+                        ref.invalidate(pluginRuntimeConnectionProvider),
+                  ),
+                  data: (PluginRuntimeConnection value) => _DataSourceContent(
+                    sources: _sourcesFromConnection(value),
+                    onSourcePressed: onSourcePressed,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -214,9 +209,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
 
   Future<void> _openRuntimePrivateDirectory() async {
     try {
-      await ref
-          .read(pluginRuntimePrivateDirectoryProvider.notifier)
-          .open();
+      await ref.read(pluginRuntimePrivateDirectoryProvider.notifier).open();
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -502,7 +495,6 @@ class _DataSourceSectionHeader extends StatelessWidget {
           child: Text(
             '我的数据来源',
             style: theme.textTheme.titleLarge?.copyWith(
-              fontSize: AppSpacing.dataSourceSectionTitleSize,
               fontWeight: FontWeight.w700,
               height: 1.2,
               letterSpacing: -0.3,
@@ -512,10 +504,7 @@ class _DataSourceSectionHeader extends StatelessWidget {
         Text(
           '已启用 $enabledCount/$sourceCount',
           key: const Key('data-source-enabled-count'),
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: tokens.mutedText,
-            fontSize: AppSpacing.dataSourceMetadataSize,
-          ),
+          style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
         ),
       ],
     );
@@ -586,7 +575,6 @@ class _DataSourceRow extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleMedium?.copyWith(
-                          fontSize: AppSpacing.dataSourceNameSize,
                           fontWeight: FontWeight.w600,
                           height: 1.12,
                         ),
@@ -596,7 +584,6 @@ class _DataSourceRow extends StatelessWidget {
                         source.kindLabel,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: tokens.mutedText,
-                          fontSize: AppSpacing.dataSourceMetadataSize,
                           height: 1.1,
                         ),
                       ),
@@ -695,7 +682,7 @@ class _BrandGlyph extends StatelessWidget {
     return switch (brand) {
       _DataSourceBrand.qidian => Text(
         '起',
-        style: _glyphTextStyle(context, color, 25),
+        style: _glyphTextStyle(context, color),
       ),
       _DataSourceBrand.tomato => CustomPaint(
         size: const Size.square(AppSpacing.dataSourceMarkExtent),
@@ -712,7 +699,7 @@ class _BrandGlyph extends StatelessWidget {
       ),
       _DataSourceBrand.seventeenK => Text(
         '17K',
-        style: _glyphTextStyle(context, color, 15),
+        style: _glyphTextStyle(context, color),
       ),
       _DataSourceBrand.generic => Icon(
         Icons.extension_rounded,
@@ -722,14 +709,9 @@ class _BrandGlyph extends StatelessWidget {
     };
   }
 
-  TextStyle? _glyphTextStyle(
-    BuildContext context,
-    Color foreground,
-    double size,
-  ) {
+  TextStyle? _glyphTextStyle(BuildContext context, Color foreground) {
     return Theme.of(context).textTheme.titleLarge?.copyWith(
       color: foreground,
-      fontSize: size,
       fontWeight: FontWeight.w700,
       height: 1,
       letterSpacing: -0.8,
@@ -930,7 +912,6 @@ class _AddDataSourceButton extends StatelessWidget {
                       isImporting ? '正在添加数据来源…' : '添加数据来源',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         color: tokens.dataSourceAccent,
-                        fontSize: AppSpacing.dataSourceNameSize,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +7,8 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
+import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
+import 'package:mg_read/features/discovery/application/search_history_store.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 
@@ -15,7 +19,12 @@ void main() {
     final gateway = _SearchGateway();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [sourceContentGatewayProvider.overrideWithValue(gateway)],
+        overrides: [
+          sourceContentGatewayProvider.overrideWithValue(gateway),
+          searchHistoryStoreProvider.overrideWithValue(
+            _MemorySearchHistoryStore(const <String>['诡秘之主']),
+          ),
+        ],
         child: MaterialApp(
           theme: AppTheme.light(),
           home: SearchPage(onDestinationRequested: (_) {}),
@@ -48,7 +57,12 @@ void main() {
     );
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [sourceContentGatewayProvider.overrideWithValue(gateway)],
+        overrides: [
+          sourceContentGatewayProvider.overrideWithValue(gateway),
+          searchHistoryStoreProvider.overrideWithValue(
+            _MemorySearchHistoryStore(const <String>['诡秘之主']),
+          ),
+        ],
         child: MaterialApp(
           theme: AppTheme.light(),
           home: SearchPage(
@@ -65,6 +79,82 @@ void main() {
   });
 
   testWidgets(
+    'uses the same-source same-title shelf state in list and detail',
+    (tester) async {
+      final gateway = _SearchGateway();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sourceContentGatewayProvider.overrideWithValue(gateway),
+            searchHistoryStoreProvider.overrideWithValue(
+              _MemorySearchHistoryStore(const <String>['诡秘之主']),
+            ),
+            bookshelfMembershipLoaderProvider.overrideWithValue(
+              _MemoryMembershipLoader(const <BookshelfMembershipEntry>[
+                BookshelfMembershipEntry(
+                  pluginId: 'source.test',
+                  title: '真实搜索结果',
+                ),
+              ]),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: SearchPage(onDestinationRequested: (_) {}),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('诡秘之主').first);
+      await tester.pumpAndSettle();
+      expect(find.text('已在书架'), findsOneWidget);
+
+      await tester.tap(find.text('真实搜索结果').first);
+      await tester.pumpAndSettle();
+      expect(find.text('已在书架'), findsOneWidget);
+    },
+  );
+
+  testWidgets('shows Material search progress until results arrive', (
+    tester,
+  ) async {
+    final completion = Completer<PluginSearchResult>();
+    final gateway = _SearchGateway(searchCompletion: completion);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sourceContentGatewayProvider.overrideWithValue(gateway),
+          searchHistoryStoreProvider.overrideWithValue(
+            _MemorySearchHistoryStore(const <String>['诡秘之主']),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: SearchPage(onDestinationRequested: (_) {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('诡秘之主').first);
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('source-search-field-progress')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('source-search-progress')), findsOneWidget);
+    expect(find.text('正在搜索“诡秘之主”'), findsOneWidget);
+
+    completion.complete(_searchResult('source.test'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('source-search-progress')), findsNothing);
+    expect(find.text('真实搜索结果'), findsWidgets);
+  });
+
+  testWidgets(
     'uses the reader callback and selected source from search detail',
     (tester) async {
       final gateway = _SearchGateway();
@@ -76,6 +166,9 @@ void main() {
         ProviderScope(
           overrides: [
             sourceContentGatewayProvider.overrideWithValue(gateway),
+            searchHistoryStoreProvider.overrideWithValue(
+              _MemorySearchHistoryStore(const <String>['诡秘之主']),
+            ),
             discoveryBookshelfSaverProvider.overrideWithValue(saver),
           ],
           child: MaterialApp(
@@ -123,6 +216,23 @@ void main() {
   );
 }
 
+final class _MemorySearchHistoryStore implements SearchHistoryStore {
+  _MemorySearchHistoryStore(Iterable<String> initial)
+    : _history = List<String>.of(initial);
+
+  final List<String> _history;
+
+  @override
+  Future<List<String>> load() async => List<String>.of(_history);
+
+  @override
+  Future<void> save(List<String> history) async {
+    _history
+      ..clear()
+      ..addAll(history);
+  }
+}
+
 final class _RecordingBookshelfSaver implements DiscoveryBookshelfSaver {
   PluginSourceDescriptor? source;
   PluginContentSummary? content;
@@ -137,14 +247,24 @@ final class _RecordingBookshelfSaver implements DiscoveryBookshelfSaver {
   }
 }
 
+final class _MemoryMembershipLoader implements BookshelfMembershipLoader {
+  const _MemoryMembershipLoader(this.entries);
+
+  final List<BookshelfMembershipEntry> entries;
+
+  @override
+  Future<Iterable<BookshelfMembershipEntry>> load() async => entries;
+}
+
 final class _SearchGateway implements SourceContentGateway {
-  _SearchGateway({List<PluginSourceDescriptor>? sources})
+  _SearchGateway({List<PluginSourceDescriptor>? sources, this.searchCompletion})
     : sources =
           sources ?? <PluginSourceDescriptor>[_source('source.test', '测试书源')];
 
   final List<PluginSourceDescriptor> sources;
   final List<String> queries = <String>[];
   final List<String> pluginIds = <String>[];
+  final Completer<PluginSearchResult>? searchCompletion;
 
   @override
   Future<List<PluginSourceDescriptor>> listSources() async => sources;
@@ -158,34 +278,7 @@ final class _SearchGateway implements SourceContentGateway {
   }) async {
     queries.add(query);
     pluginIds.add(pluginId);
-    return PluginSearchResult(
-      pluginId: pluginId,
-      sourceName: '测试书源',
-      items: <PluginContentSummary>[
-        PluginContentSummary(
-          id: 'real-result',
-          title: '真实搜索结果',
-          contentKind: PluginContentKind.novel,
-          author: null,
-          url: null,
-          coverUrl: null,
-          description: null,
-          language: null,
-          status: PluginContentStatus.unknown,
-          access: PluginAccessKind.unknown,
-          wordCount: null,
-          chapterCount: null,
-          publishedAt: null,
-          updatedAt: null,
-          latestChapter: null,
-          categories: const <String>[],
-          tags: const <String>[],
-          attributes: const <PluginContentAttribute>[],
-        ),
-      ],
-      nextCursor: null,
-      totalCount: 1,
-    );
+    return searchCompletion?.future ?? _searchResult(pluginId);
   }
 
   @override
@@ -256,6 +349,35 @@ final class _SearchGateway implements SourceContentGateway {
     required String chapterId,
   }) => throw UnimplementedError();
 }
+
+PluginSearchResult _searchResult(String pluginId) => PluginSearchResult(
+  pluginId: pluginId,
+  sourceName: '测试书源',
+  items: <PluginContentSummary>[
+    PluginContentSummary(
+      id: 'real-result',
+      title: '真实搜索结果',
+      contentKind: PluginContentKind.novel,
+      author: null,
+      url: null,
+      coverUrl: null,
+      description: null,
+      language: null,
+      status: PluginContentStatus.unknown,
+      access: PluginAccessKind.unknown,
+      wordCount: null,
+      chapterCount: null,
+      publishedAt: null,
+      updatedAt: null,
+      latestChapter: null,
+      categories: const <String>[],
+      tags: const <String>[],
+      attributes: const <PluginContentAttribute>[],
+    ),
+  ],
+  nextCursor: null,
+  totalCount: 1,
+);
 
 PluginContentSummary _content(String id) => PluginContentSummary(
   id: id,

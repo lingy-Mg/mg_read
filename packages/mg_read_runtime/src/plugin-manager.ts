@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createRequire } from "node:module";
 import {
@@ -140,6 +140,7 @@ interface MgReadPluginContext {
   readonly http: {
     fetch(input: string | URL, init?: RequestInit): Promise<Response>;
   };
+  readonly resource: { proxy(request: JsonObject): string };
   readonly log: {
     debug(event: string): void;
     error(event: string): void;
@@ -164,6 +165,7 @@ interface LoadedPluginModule {
   getDetail: PluginContentFunction;
   search: PluginContentFunction;
   searchSuggestions: PluginContentFunction;
+  resource: PluginContentFunction;
 }
 
 interface LoadedPlugin {
@@ -197,12 +199,20 @@ export interface PluginRuntimeHttpClient {
   ): Promise<Response>;
 }
 
+export interface PluginResourceResponse {
+  readonly status: number;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body: Uint8Array;
+}
+
 /** Cold-start loader for standard Node projects in one shared VM/module cache. */
 export class PluginManager {
   readonly #dataRoot: string;
   readonly #developmentPluginRoot: string | undefined;
   readonly #events: PluginManagerEventSink;
   readonly #http: PluginRuntimeHttpClient;
+  readonly #resources = new Map<string, { pluginId: string; request: JsonObject }>();
+  #resourceOrigin = "http://127.0.0.1";
   readonly #invocationScope = new AsyncLocalStorage<PluginInvocationScope>();
   readonly #installedLoaded = new Map<string, LoadedPlugin>();
   readonly #developmentLoaded = new Map<string, DevelopmentPlugin>();
@@ -233,6 +243,44 @@ export class PluginManager {
   initialize(): Promise<void> {
     return (this.#initializePromise ??= this.#initialize());
   }
+
+  setResourceOrigin(origin: string): void { this.#resourceOrigin = origin; }
+
+  createResourceUrl(pluginId: string, request: JsonObject): string {
+    if (!isPluginId(pluginId) || Buffer.byteLength(JSON.stringify(request), "utf8") > 16 * 1024) throw new PluginManagerError("invalid_request");
+    if (this.#resources.size >= 1024) {
+      const oldest = this.#resources.keys().next().value;
+      if (typeof oldest === "string") this.#resources.delete(oldest);
+    }
+    const token = randomBytes(32).toString("base64url");
+    this.#resources.set(token, { pluginId, request });
+    return `${this.#resourceOrigin}/v1/source-resource/${token}`;
+  }
+
+  async consumeResource(token: string, signal: AbortSignal): Promise<PluginResourceResponse> {
+    const entry = this.#resources.get(token);
+    if (entry === undefined || signal.aborted) throw new PluginManagerError("invalid_request");
+    await this.initialize(); await this.#refreshDevelopmentPlugins();
+    const loaded = this.#developmentLoaded.get(entry.pluginId)?.loaded ?? this.#installedLoaded.get(entry.pluginId);
+    if (loaded === undefined) throw new PluginManagerError("plugin_not_found");
+    const result = await loaded.module.resource(entry.request);
+    if (typeof result !== "object" || result === null) throw new PluginManagerError("invalid_request");
+    const value = result as Record<string, unknown>;
+    const status = value.status === undefined ? 200 : value.status;
+    const bodyValue = value.body;
+    const body = typeof bodyValue === "string" ? Buffer.from(bodyValue, "utf8") : bodyValue instanceof Uint8Array ? Buffer.from(bodyValue) : undefined;
+    if (typeof status !== "number" || !Number.isInteger(status) || status < 100 || status > 599 || body === undefined || body.byteLength > 8 * 1024 * 1024) throw new PluginManagerError("invalid_request");
+    const headers: Record<string, string> = {};
+    if (value.headers !== undefined) {
+      if (typeof value.headers !== "object" || value.headers === null) throw new PluginManagerError("invalid_request");
+      for (const [key, header] of Object.entries(value.headers as Record<string, unknown>)) {
+        if (!/^(content-type|cache-control|content-disposition|etag|expires|last-modified)$/i.test(key) || typeof header !== "string" || header.length > 1024) throw new PluginManagerError("invalid_request");
+        headers[key] = header;
+      }
+    }
+    return { status, headers, body };
+  }
+
 
   /** Returns the immutable cold-start installation projection. */
   async listInstalled(): Promise<readonly InstalledPluginSnapshot[]> {
@@ -1039,6 +1087,7 @@ export class PluginManager {
           }, scope?.trace);
         },
       }),
+      resource: Object.freeze({ proxy: (request: JsonObject) => this.createResourceUrl(descriptor.id, request) }),
       log: Object.freeze({
         debug: emitLog,
         error: emitLog,
@@ -1074,6 +1123,7 @@ function normalizePluginModule(imported: Record<string, unknown>): LoadedPluginM
   const discover = imported.discover;
   const search = imported.search;
   const searchSuggestions = imported.searchSuggestions;
+  const resource = imported.resource;
   const getDetail = imported.getDetail;
   const getChapters = imported.getChapters;
   const getContent = imported.getContent;
@@ -1099,6 +1149,7 @@ function normalizePluginModule(imported: Record<string, unknown>): LoadedPluginM
     searchSuggestions: typeof searchSuggestions === "function"
       ? searchSuggestions as PluginContentFunction
       : () => ({ items: [], nextCursor: null }),
+    resource: typeof resource === "function" ? resource as PluginContentFunction : async () => ({ status: 404, body: "" }),
   });
 }
 

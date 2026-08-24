@@ -30,13 +30,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      tester.state<ScrollableState>(find.byType(Scrollable)).position.pixels,
+      tester
+          .state<ScrollableState>(_detailVerticalScrollableFinder())
+          .position
+          .pixels,
       0,
     );
     expect(
       tester.getTopLeft(find.byKey(const Key('source-detail-cover'))).dy,
       100,
     );
+    expect(find.byKey(const Key('source-detail-header-title')), findsOneWidget);
     expect(find.text('爱潜水的乌贼'), findsWidgets);
     expect(find.text('447万'), findsOneWidget);
     expect(find.text('1268'), findsOneWidget);
@@ -45,10 +49,41 @@ void main() {
     expect(find.text('42.3万人评分'), findsOneWidget);
     expect(find.text('克苏鲁'), findsWidgets);
     expect(find.text('西幻'), findsOneWidget);
+    expect(
+      find.byKey(const Key('source-detail-recommendations-scroll')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('source-detail-recommendations-refresh')),
+      findsOneWidget,
+    );
     await expectLater(
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/source_content_detail_compact_light.png'),
     );
+  });
+
+  testWidgets('formats numeric source stats without duplicating the word label',
+      (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 900));
+    await tester.pumpWidget(const _DetailGoldenHost());
+    await tester.pumpAndSettle();
+
+    expect(find.text('1.22万'), findsOneWidget);
+    expect(find.text('185.96万'), findsOneWidget);
+    expect(find.text('字数：1859600'), findsNothing);
+  });
+
+  testWidgets('does not display zero when detail data has a valid chapter count',
+      (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 900));
+    await tester.pumpWidget(
+      _DetailGoldenHost(gateway: _GoldenDetailGateway(chaptersTotalOverride: 0)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('共 733 章', skipOffstage: false), findsOneWidget);
+    expect(find.text('共 0 章', skipOffstage: false), findsNothing);
   });
 
   testWidgets('loads only the next catalog page when requested', (
@@ -64,7 +99,7 @@ void main() {
       280,
       scrollable: find.descendant(
         of: find.byKey(const Key('source-content-detail-sheet')),
-        matching: find.byType(Scrollable),
+        matching: _detailVerticalScrollableFinder(),
       ),
     );
     await tester.tap(find.byKey(const Key('source-detail-load-more-chapters')));
@@ -93,6 +128,11 @@ void main() {
     expect(find.text('正在补充详情…'), findsNothing);
   });
 }
+
+Finder _detailVerticalScrollableFinder() => find.byWidgetPredicate(
+  (Widget widget) =>
+      widget is Scrollable && widget.axisDirection == AxisDirection.down,
+);
 
 class _DetailGoldenHost extends StatelessWidget {
   const _DetailGoldenHost({this.gateway, this.useReference = false});
@@ -156,9 +196,13 @@ class _DetailEntryState extends State<_DetailEntry> {
 }
 
 class _GoldenDetailGateway implements SourceContentGateway {
-  _GoldenDetailGateway({this.useReference = false});
+  _GoldenDetailGateway({
+    this.useReference = false,
+    this.chaptersTotalOverride,
+  });
 
   final bool useReference;
+  final int? chaptersTotalOverride;
   final List<String?> chapterRequests = <String?>[];
 
   String get pluginId => useReference
@@ -188,10 +232,20 @@ class _GoldenDetailGateway implements SourceContentGateway {
     int pageSize = 50,
   }) async {
     chapterRequests.add(cursor);
-    if (useReference) return AliceBookHouseDetailFixture.referenceCatalog;
-    return cursor == null
+    final result = useReference
+        ? AliceBookHouseDetailFixture.referenceCatalog
+        : cursor == null
         ? AliceBookHouseDetailFixture.firstCatalogPage
         : AliceBookHouseDetailFixture.secondCatalogPage;
+    final override = chaptersTotalOverride;
+    if (override == null) return result;
+    return PluginChaptersResult(
+      pluginId: result.pluginId,
+      sourceName: result.sourceName,
+      items: result.items,
+      nextCursor: result.nextCursor,
+      totalCount: override,
+    );
   }
 
   @override

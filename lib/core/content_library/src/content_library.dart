@@ -5,12 +5,14 @@ import 'dart:math';
 import 'package:mg_read/core/content_library/src/models.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
+import 'package:mg_read/core/persistence/src/diagnostic_sha256.dart';
 
 const _scope = ScopeKey(kind: 'content_library', id: 'default');
 const _itemKind = 'content_library_item';
 const _bindingKind = 'content_source_binding';
 const _entryKind = 'content_catalog_entry';
 const _readingProgressKind = 'content_library_reading_progress';
+const _coverCacheMaxBytes = 100 * 1024 * 1024;
 
 final class ContentLibrary {
   ContentLibrary._(
@@ -26,6 +28,7 @@ final class ContentLibrary {
   late final ContentRepository content = ContentRepository._(this);
   late final ReadingProgressRepository readingProgress =
       ReadingProgressRepository._(this);
+  late final CoverRepository covers = CoverRepository._(this);
   static Future<ContentLibrary> open({
     required Directory dataRoot,
     DiagnosticsManager? diagnostics,
@@ -67,6 +70,10 @@ final class ContentLibrary {
     required LibraryItemId itemId,
     required Iterable<SourceNovelCatalogChapter> chapters,
   }) => catalog.ensureNovelCatalog(itemId: itemId, chapters: chapters);
+  Future<List<CatalogEntry>> syncNovelCatalog({
+    required LibraryItemId itemId,
+    required Iterable<SourceNovelCatalogChapter> chapters,
+  }) => catalog.syncNovelCatalog(itemId: itemId, chapters: chapters);
   Future<ReadableContent?> openContent(CatalogEntryId id) => content.open(id);
   Future<void> cacheNovelChapter({
     required LibraryItemId itemId,
@@ -206,6 +213,38 @@ final class BookshelfRepository {
     resultState: (result) => result == null ? 'empty' : 'content',
   );
 
+  /// Reads the durable cover owned by [id], if the first-load fetch succeeded.
+  ///
+  /// The file object path remains private to the app-owned persistence layer.
+  Future<List<int>?> readCover(LibraryItemId id) => _library._trace(
+    operation: 'bookshelfCoverRead',
+    contentKind: 'image',
+    itemCount: 1,
+    action: () => _library._persistence.fileObjects.readCoverBytes(id.value),
+    resultCount: (result) => result == null ? 0 : 1,
+    resultState: (result) => result == null ? 'miss' : 'hit',
+  );
+
+  /// Persists one validated cover after it has been fetched from its source.
+  Future<void> saveCover({
+    required LibraryItemId id,
+    required List<int> bytes,
+    required String mimeType,
+  }) => _library._trace(
+    operation: 'bookshelfCoverSave',
+    contentKind: 'image',
+    itemCount: 1,
+    bytes: bytes.length,
+    action: () async {
+      _validateCover(bytes, mimeType);
+      await _library._persistence.fileObjects.commitCoverBytes(
+        itemId: id.value,
+        bytes: bytes,
+        mimeType: mimeType,
+      );
+    },
+  );
+
   Future<void> remove(LibraryItemId id, LibraryRemovalPolicy policy) =>
       _library._trace(
         operation: 'bookshelfRemove',
@@ -308,10 +347,55 @@ final class BookshelfRepository {
     if (record.document['kind'] == ContentKind.manga.code) {
       await _library._persistence.fileObjects.deleteMangaAssets(id.value);
     }
+    await _library._persistence.fileObjects.deleteCover(id.value);
     await _library._persistence.metadataRecords.delete(
       previous: record,
     ); /* objects remain unless a later bounded maintenance pass proves no references */
   }
+}
+
+/// App-owned, cross-feature persistence for regenerable source covers.
+///
+/// Search, discovery, detail and bookshelf adapters all address the same
+/// source cover through [CoverKey]. The repository exposes bytes only; file
+/// paths and eviction details remain inside the persistence boundary.
+final class CoverRepository {
+  CoverRepository._(this._library);
+
+  final ContentLibrary _library;
+
+  Future<List<int>?> read(CoverKey key) => _library._trace(
+    operation: 'coverRead',
+    contentKind: 'image',
+    itemCount: 1,
+    action: () => _library._persistence.fileObjects.readGlobalCoverBytes(
+      _storageKey(key),
+    ),
+    resultCount: (result) => result == null ? 0 : 1,
+    resultState: (result) => result == null ? 'miss' : 'hit',
+  );
+
+  Future<void> save({
+    required CoverKey key,
+    required List<int> bytes,
+    String mimeType = 'image/unknown',
+  }) => _library._trace(
+    operation: 'coverSave',
+    contentKind: 'image',
+    itemCount: 1,
+    bytes: bytes.length,
+    action: () async {
+      _validateCover(bytes, mimeType);
+      await _library._persistence.fileObjects.commitGlobalCoverBytes(
+        coverKey: _storageKey(key),
+        bytes: bytes,
+        mimeType: mimeType,
+      );
+      await _library._persistence.fileObjects.pruneGlobalCovers(
+        maxBytes: _coverCacheMaxBytes,
+      );
+    },
+  );
 }
 
 /// Stores the user-owned semantic position reported by the text reader.
@@ -470,15 +554,37 @@ final class CatalogRepository {
     );
   }
 
+  /// Replaces the active novel catalog while preserving cached chapter bodies.
+  ///
+  /// Source chapter IDs are stored explicitly, rather than reconstructed from
+  /// the internal binding key, so IDs containing `:` remain lossless.
+  Future<List<CatalogEntry>> syncNovelCatalog({
+    required LibraryItemId itemId,
+    required Iterable<SourceNovelCatalogChapter> chapters,
+  }) {
+    final copied = List<SourceNovelCatalogChapter>.of(chapters);
+    return _library._trace(
+      operation: 'catalogSyncNovel',
+      contentKind: ContentKind.novel.code,
+      itemCount: copied.length,
+      action: () => _syncNovelCatalog(itemId, copied),
+      resultCount: (result) => result.length,
+      resultState: (result) => result.isEmpty ? 'empty' : 'content',
+    );
+  }
+
   Future<void> _replaceSnapshot({
     required LibraryItemId itemId,
     required SourceBindingId bindingId,
     required Iterable<IngestCatalogEntry> entries,
+    Map<String, CatalogEntry> previousByRemoteIdentity =
+        const <String, CatalogEntry>{},
   }) async {
     final snapshot = _id();
     var ordinal = 0;
     final batch = <RecordDraft>[];
     for (final input in entries) {
+      final previous = previousByRemoteIdentity[input.remoteIdentity];
       batch.add(
         RecordDraft(
           id: input.id ?? _id(),
@@ -491,17 +597,32 @@ final class CatalogRepository {
           document: {
             'bindingId': bindingId.value,
             'snapshotId': snapshot,
+            'remoteIdentity': input.remoteIdentity,
             'title': input.title,
             'kind': input.kindCode,
             if (input.index != null) 'index': input.index,
             if (input.wordCount != null) 'wordCount': input.wordCount,
             'plugin': _plugin(input.source),
             'contentStatus': 'missing',
+            if (previous != null && previous.contentStatus == 'ready')
+              'contentStatus': 'ready',
           },
         ),
       );
+      if (previous != null && previous.contentReference != null) {
+        final record = batch.last.document;
+        // The object reference is deliberately retained across catalog
+        // snapshots; the app-owned content object remains immutable.
+        record['contentReference'] = previous.contentReference;
+        if (previous.kind != null) {
+          record['contentKind'] = previous.kind!.code;
+        }
+      }
       ordinal++;
-      if (batch.length == 250) {
+      // PersistenceRecordStore rejects batches larger than 128 records.
+      // Keep catalog snapshot writes below that contract so a source can
+      // return a whole 166-chapter page without failing reader launch.
+      if (batch.length == PersistenceRecordStore.maxWriteBatchSize) {
         await _library._persistence.metadataRecords.createBatch(batch);
         batch.clear();
       }
@@ -608,6 +729,70 @@ final class CatalogRepository {
     await _replaceSnapshot(
       itemId: itemId,
       bindingId: SourceBindingId(bindings.records.single.id),
+      entries: chapters.map(
+        (chapter) => IngestCatalogEntry(
+          remoteIdentity: chapter.remoteIdentity,
+          title: chapter.title,
+          orderKey: chapter.index.toString().padLeft(12, '0'),
+          kindCode: ContentKind.novel.code,
+          source: ingest,
+          index: chapter.index,
+          wordCount: chapter.wordCount,
+        ),
+      ),
+    );
+    return _listAll(itemId);
+  }
+
+  Future<List<CatalogEntry>> _syncNovelCatalog(
+    LibraryItemId itemId,
+    List<SourceNovelCatalogChapter> chapters,
+  ) async {
+    if (chapters.isEmpty) {
+      throw ArgumentError.value(
+        chapters,
+        'chapters',
+        'Cannot persist an empty catalog.',
+      );
+    }
+    final seen = <String>{};
+    for (final chapter in chapters) {
+      if (!seen.add(chapter.remoteIdentity)) {
+        throw ArgumentError.value(chapter.remoteIdentity, 'chapters');
+      }
+    }
+    final item = await _library._persistence.metadataRecords.read(
+      id: itemId.value,
+      scope: _scope,
+    );
+    final source = item == null ? null : _itemSource(item.document['plugin']);
+    if (source == null) {
+      throw StateError('The shelf item has no source identity.');
+    }
+    final bindings = await _library._persistence.metadataRecords.list(
+      RecordQuery(
+        recordKind: _bindingKind,
+        scope: _scope,
+        parentId: itemId.value,
+        limit: 1,
+      ),
+    );
+    if (bindings.records.isEmpty) {
+      throw StateError('The shelf item has no source binding.');
+    }
+    final previous = {
+      for (final entry in await _listAll(itemId)) entry.remoteIdentity: entry,
+    };
+    final ingest = ContentLibraryIngest(
+      pluginId: source.pluginId,
+      producerPluginVersion: source.pluginVersion,
+      dataVersion: 1,
+      opaqueData: <String, Object?>{'remoteBookId': source.remoteContentId},
+    );
+    await _replaceSnapshot(
+      itemId: itemId,
+      bindingId: SourceBindingId(bindings.records.single.id),
+      previousByRemoteIdentity: previous,
       entries: chapters.map(
         (chapter) => IngestCatalogEntry(
           remoteIdentity: chapter.remoteIdentity,
@@ -1003,13 +1188,17 @@ CatalogEntry _entry(RecordEnvelope r) => CatalogEntry(
   id: CatalogEntryId(r.id),
   itemId: LibraryItemId(r.parentId!),
   bindingId: SourceBindingId(r.document['bindingId'] as String),
-  remoteIdentity: _remoteIdentity(r.identityKey),
+  remoteIdentity: r.document['remoteIdentity'] is String
+      ? r.document['remoteIdentity']! as String
+      : _remoteIdentity(r.identityKey),
   title: r.document['title'] as String,
   orderKey: r.orderKey ?? '',
   index: r.document['index'] as int? ?? 0,
   kind: ContentKind.fromCode(r.document['kind'] as String),
   contentStatus: r.document['contentStatus'] as String? ?? 'missing',
   wordCount: r.document['wordCount'] as int?,
+  hasExplicitRemoteIdentity: r.document['remoteIdentity'] is String,
+  contentReference: r.document['contentReference'] as String?,
 );
 
 String _remoteIdentity(String? identityKey) {
@@ -1040,4 +1229,18 @@ void _safeText(String text) {
   if (text.isEmpty || text.length > 32768) {
     throw ArgumentError.value(text, 'text');
   }
+}
+
+void _validateCover(List<int> bytes, String mimeType) {
+  if (bytes.isEmpty || bytes.length > 5 * 1024 * 1024) {
+    throw ArgumentError.value(bytes.length, 'bytes');
+  }
+  if (mimeType.isEmpty || mimeType.length > 128) {
+    throw ArgumentError.value(mimeType, 'mimeType');
+  }
+}
+
+String _storageKey(CoverKey key) {
+  final digest = DiagnosticSha256()..add(utf8.encode(key.canonicalValue));
+  return digest.closeHex();
 }

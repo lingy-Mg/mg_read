@@ -133,6 +133,13 @@ void main() {
 
       final Rect card = tester.getRect(find.byType(ProfileOverviewCard));
       expect(card.center.dx, closeTo(640, 0.1));
+      expect(
+        card.width,
+        closeTo(
+          AppSpacing.contentMaxWidth - AppSpacing.widePagePadding * 2,
+          0.1,
+        ),
+      );
     },
   );
 }

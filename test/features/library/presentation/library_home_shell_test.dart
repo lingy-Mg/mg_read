@@ -200,7 +200,7 @@ void main() {
       ),
     );
 
-    expect(pageTitle.style?.fontSize, 26);
+    expect(pageTitle.style?.fontSize, AppTypography.pageTitle);
     expect(pageTitle.style?.fontWeight, FontWeight.w600);
     expect(continueCardTitle.style?.fontSize, 18);
     expect(continueCardTitle.style?.fontWeight, FontWeight.w500);

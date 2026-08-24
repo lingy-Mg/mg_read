@@ -14,8 +14,9 @@
   `Scaffold.body` 的裸 `Center` 或 `Column` 中。
 - 顶部栏高度为 `AppDetailMetrics.topBarHeight`（64），标题使用 18 号、600 字重并垂直居中。
   返回和右侧操作都使用 48 × 48 命中区。
-- 页面内容限制在 `AppDetailMetrics.viewportWidth`（390）以内；设置二级页的底部导航使用
-  `AppBottomNavigation`，保持“我的”选中态。
+- 页面内容与主导航页共用 `AppSpacing.contentMaxWidth`（1184）；小于 720 时保留手机布局，
+  不额外增加外侧边距，720 及以上使用 `AppSpacing.widePagePadding`（32）并居中。设置二级页的
+  底部导航使用 `AppBottomNavigation`，保持“我的”选中态。
 - 标题、返回回调和右侧操作是顶部栏的可变参数；页面不得重新定义另一套标题栏尺寸、图标
   命中区或状态栏处理。
 - 当前 UI 只验收浅色模式；不新增深色截图或 Golden。

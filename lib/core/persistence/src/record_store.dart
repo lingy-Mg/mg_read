@@ -453,14 +453,42 @@ final class PersistenceRecordStore {
   Future<void> _createBatch(List<RecordDraft> drafts) async {
     _ensureOpen();
     _validateWriteBatchSize(drafts.length);
-    final prepared = <_PreparedDraft>[];
-    for (final draft in drafts) {
-      prepared.add(await _prepareDraft(draft));
+    final prepared = List<_PreparedDraft?>.filled(drafts.length, null);
+    final groups = <(String, String), List<(int, RecordDraft)>>{};
+    for (var index = 0; index < drafts.length; index++) {
+      final draft = drafts[index];
+      _validateDraft(draft);
+      groups
+          .putIfAbsent((
+            draft.recordKind,
+            draft.scope.kind,
+          ), () => <(int, RecordDraft)>[])
+          .add((index, draft));
+    }
+    for (final group in groups.values) {
+      final codec = _registry.require(
+        group.first.$2.recordKind,
+        group.first.$2.scope.kind,
+      );
+      final documents = await codec.prepareCurrentMany(
+        documents: group.map((entry) => entry.$2.document),
+      );
+      for (var index = 0; index < group.length; index++) {
+        final entry = group[index];
+        final document = documents[index];
+        _lastCodecWorkerIsolateId = document.workerIsolateId;
+        prepared[entry.$1] = _PreparedDraft(
+          draft: entry.$2,
+          codec: codec,
+          document: document,
+          now: _clock().toUtc(),
+        );
+      }
     }
     try {
       await _database.transaction(() async {
         for (final draft in prepared) {
-          await _insertPreparedDraft(draft);
+          await _insertPreparedDraft(draft!);
         }
       });
     } catch (error) {

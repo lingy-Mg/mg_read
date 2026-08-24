@@ -2,7 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
+import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/discovery/application/content_library_source_prefetcher.dart';
 
 /// Application port for saving one typed discovery result to the local shelf.
 abstract interface class DiscoveryBookshelfSaver {
@@ -32,6 +34,8 @@ final class ContentLibraryDiscoveryBookshelfSaver
     this.onMutationStarted,
     this.onMutationCommitted,
     this.onMutationFailed,
+    this.prefetcher,
+    this.membership,
   });
 
   final ContentLibrary _library;
@@ -39,6 +43,8 @@ final class ContentLibraryDiscoveryBookshelfSaver
   final void Function(DiscoveryBookshelfMutation mutation, LibraryItem item)?
   onMutationCommitted;
   final void Function(DiscoveryBookshelfMutation mutation)? onMutationFailed;
+  final ContentLibrarySourcePrefetcher? prefetcher;
+  final BookshelfMembershipController? membership;
 
   @override
   Future<void> save({
@@ -60,10 +66,18 @@ final class ContentLibraryDiscoveryBookshelfSaver
         sourceName: source.displayName,
       ),
     );
+    if (await membership?.containsWhenReady(
+          pluginId: mutation.request.pluginId,
+          title: mutation.request.title,
+        ) ??
+        false) {
+      return;
+    }
     onMutationStarted?.call(mutation);
     try {
       final item = await _library.bookshelf.addFromSource(mutation.request);
       onMutationCommitted?.call(mutation, item);
+      prefetcher?.start(item);
     } on Object {
       onMutationFailed?.call(mutation);
       rethrow;

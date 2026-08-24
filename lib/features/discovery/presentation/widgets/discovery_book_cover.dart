@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -10,7 +12,7 @@ class DiscoveryBookCover extends StatelessWidget {
     required this.variant,
     required this.width,
     required this.height,
-    this.coverUrl,
+    this.coverBytes,
     super.key,
   });
 
@@ -18,7 +20,7 @@ class DiscoveryBookCover extends StatelessWidget {
   final DiscoveryCoverVariant variant;
   final double width;
   final double height;
-  final Uri? coverUrl;
+  final List<int>? coverBytes;
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +39,7 @@ class DiscoveryBookCover extends StatelessWidget {
 
     return Semantics(
       image: true,
-      label: coverUrl == null ? '$title 的封面占位图' : '$title 的封面',
+      label: coverBytes == null ? '$title 的封面占位图' : '$title 的封面',
       child: ExcludeSemantics(
         child: SizedBox(
           width: width,
@@ -60,10 +62,10 @@ class DiscoveryBookCover extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: AppRadii.discoveryCover,
-              child: coverUrl == null
+              child: coverBytes == null || coverBytes!.isEmpty
                   ? _placeholder(foreground, titleSize)
-                  : Image.network(
-                      coverUrl.toString(),
+                  : Image.memory(
+                      Uint8List.fromList(coverBytes!),
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) =>
                           _placeholder(foreground, titleSize),

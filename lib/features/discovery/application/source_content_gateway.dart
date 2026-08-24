@@ -5,6 +5,11 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
+import 'package:mg_read/features/discovery/application/source_cover_persistence.dart';
+
+// The adapter keeps its implementation field private while exposing a named
+// dependency for the composition root.
+// ignore_for_file: prefer_initializing_formals
 
 /// App-visible projection of one enabled source-capable plugin.
 @immutable
@@ -75,12 +80,15 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
   const MgReadSourceContentGateway(
     this._runtime,
     this._diagnostics,
-    this._loadRuntimeConnection,
-  );
+    this._loadRuntimeConnection, {
+    SourceCoverPersistence coverPersistence =
+        const EmptySourceCoverPersistence(),
+  }) : _coverPersistence = coverPersistence;
 
   final PluginRuntime _runtime;
   final DiagnosticsManager _diagnostics;
   final Future<PluginRuntimeConnection> Function() _loadRuntimeConnection;
+  final SourceCoverPersistence _coverPersistence;
 
   @override
   Future<List<PluginSourceDescriptor>> listSources() {
@@ -115,12 +123,14 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
   }) {
     return _invoke(
       capability: 'source.search.v1',
-      action: () => _runtime.invoke(
-        SourceSearchInvocation(
-          pluginId: pluginId,
-          query: query,
-          cursor: cursor,
-          pageSize: pageSize,
+      action: () async => _hydrateSearch(
+        await _runtime.invoke(
+          SourceSearchInvocation(
+            pluginId: pluginId,
+            query: query,
+            cursor: cursor,
+            pageSize: pageSize,
+          ),
         ),
       ),
       resultCount: (result) => result.items.length,
@@ -156,13 +166,15 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
   }) {
     return _invoke(
       capability: 'source.discover.v1',
-      action: () => _runtime.invoke(
-        SourceDiscoverInvocation(
-          pluginId: pluginId,
-          target: target,
-          cursor: cursor,
-          collectionId: collectionId,
-          pageSize: pageSize,
+      action: () async => _hydrateDiscover(
+        await _runtime.invoke(
+          SourceDiscoverInvocation(
+            pluginId: pluginId,
+            target: target,
+            cursor: cursor,
+            collectionId: collectionId,
+            pageSize: pageSize,
+          ),
         ),
       ),
       resultCount: (result) => switch (result) {
@@ -180,10 +192,195 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
   }) {
     return _invoke(
       capability: 'source.getDetail.v1',
-      action: () =>
-          _runtime.invoke(SourceDetailInvocation(pluginId: pluginId, id: id)),
+      action: () async => _hydrateDetail(
+        await _runtime.invoke(
+          SourceDetailInvocation(pluginId: pluginId, id: id),
+        ),
+      ),
       resultCount: (_) => 1,
     );
+  }
+
+  Future<PluginSearchResult> _hydrateSearch(PluginSearchResult result) async {
+    final pluginVersion = await _pluginVersion(result.pluginId);
+    final items = await _hydrateSummaries(
+      result.pluginId,
+      pluginVersion,
+      result.items,
+    );
+    return PluginSearchResult(
+      pluginId: result.pluginId,
+      sourceName: result.sourceName,
+      items: items,
+      nextCursor: result.nextCursor,
+      totalCount: result.totalCount,
+    );
+  }
+
+  Future<List<PluginContentSummary>> _hydrateSummaries(
+    String pluginId,
+    String pluginVersion,
+    Iterable<PluginContentSummary> items,
+  ) async {
+    final hydrated = await Future.wait(
+      items.map((item) => _hydrateSummary(pluginId, pluginVersion, item)),
+    );
+    return List<PluginContentSummary>.unmodifiable(hydrated);
+  }
+
+  Future<PluginContentDetail> _hydrateDetail(PluginContentDetail detail) async {
+    final pluginVersion = await _pluginVersion(detail.pluginId);
+    return PluginContentDetail(
+      pluginId: detail.pluginId,
+      sourceName: detail.sourceName,
+      summary: await _hydrateSummary(
+        detail.pluginId,
+        pluginVersion,
+        detail.summary,
+      ),
+      aliases: detail.aliases,
+      catalogUrl: detail.catalogUrl,
+    );
+  }
+
+  Future<PluginDiscoverResult> _hydrateDiscover(
+    PluginDiscoverResult result,
+  ) async {
+    final pluginVersion = await _pluginVersion(result.pluginId);
+    return switch (result) {
+      PluginDiscoveryDocumentResult(:final document) =>
+        PluginDiscoveryDocumentResult(
+          pluginId: result.pluginId,
+          sourceName: result.sourceName,
+          document: PluginDiscoveryDocument(
+            components: await Future.wait(
+              document.components.map(
+                (component) => _hydrateComponent(
+                  result.pluginId,
+                  pluginVersion,
+                  component,
+                ),
+              ),
+            ),
+          ),
+        ),
+      PluginDiscoveryAppendResult(
+        :final collectionId,
+        :final items,
+        :final continuation,
+      ) =>
+        PluginDiscoveryAppendResult(
+          pluginId: result.pluginId,
+          sourceName: result.sourceName,
+          collectionId: collectionId,
+          items: await _hydrateItems(result.pluginId, pluginVersion, items),
+          continuation: continuation,
+        ),
+    };
+  }
+
+  Future<PluginDiscoveryComponent> _hydrateComponent(
+    String pluginId,
+    String pluginVersion,
+    PluginDiscoveryComponent component,
+  ) async {
+    return switch (component) {
+      PluginDiscoveryContentCollectionComponent(
+        :final id,
+        :final layout,
+        :final items,
+        :final continuation,
+      ) =>
+        PluginDiscoveryContentCollectionComponent(
+          id: id,
+          layout: layout,
+          items: await _hydrateItems(pluginId, pluginVersion, items),
+          continuation: continuation,
+        ),
+      PluginDiscoverySectionComponent(
+        :final id,
+        :final title,
+        :final subtitle,
+        :final children,
+      ) =>
+        PluginDiscoverySectionComponent(
+          id: id,
+          title: title,
+          subtitle: subtitle,
+          children: await Future.wait(
+            children.map(
+              (child) => _hydrateComponent(pluginId, pluginVersion, child),
+            ),
+          ),
+        ),
+      PluginDiscoveryGroupComponent(
+        :final id,
+        :final layout,
+        :final children,
+      ) =>
+        PluginDiscoveryGroupComponent(
+          id: id,
+          layout: layout,
+          children: await Future.wait(
+            children.map(
+              (child) => _hydrateComponent(pluginId, pluginVersion, child),
+            ),
+          ),
+        ),
+      _ => component,
+    };
+  }
+
+  Future<List<PluginDiscoveryContentItem>> _hydrateItems(
+    String pluginId,
+    String pluginVersion,
+    Iterable<PluginDiscoveryContentItem> items,
+  ) async {
+    final sourceItems = items.toList(growable: false);
+    final hydrated = await Future.wait(
+      sourceItems.map(
+        (item) async => PluginDiscoveryContentItem(
+          content: await _hydrateSummary(pluginId, pluginVersion, item.content),
+          rank: item.rank,
+          metric: item.metric,
+          recommendation: item.recommendation,
+        ),
+      ),
+    );
+    return List<PluginDiscoveryContentItem>.unmodifiable(hydrated);
+  }
+
+  Future<PluginContentSummary> _hydrateSummary(
+    String pluginId,
+    String pluginVersion,
+    PluginContentSummary summary,
+  ) async {
+    if (summary.coverBytes != null || summary.coverUrl == null) return summary;
+    List<int>? bytes;
+    try {
+      bytes = await _coverPersistence.resolve(
+        pluginId: pluginId,
+        pluginVersion: pluginVersion,
+        remoteContentId: summary.id,
+        coverUrl: summary.coverUrl,
+      );
+    } catch (_) {
+      return summary;
+    }
+    if (bytes == null || bytes.isEmpty) return summary;
+    return _copySummaryWithCover(summary, bytes);
+  }
+
+  Future<String> _pluginVersion(String pluginId) async {
+    try {
+      final connection = await _loadRuntimeConnection();
+      for (final plugin in connection.plugins) {
+        if (plugin.id == pluginId) return plugin.activeVersion ?? 'unknown';
+      }
+    } catch (_) {
+      // The cover key remains stable and usable if version discovery is down.
+    }
+    return 'unknown';
   }
 
   @override
@@ -294,6 +491,31 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
   }
 }
 
+PluginContentSummary _copySummaryWithCover(
+  PluginContentSummary summary,
+  List<int> coverBytes,
+) => PluginContentSummary(
+  id: summary.id,
+  title: summary.title,
+  contentKind: summary.contentKind,
+  author: summary.author,
+  url: summary.url,
+  coverUrl: summary.coverUrl,
+  coverBytes: List<int>.unmodifiable(coverBytes),
+  description: summary.description,
+  language: summary.language,
+  status: summary.status,
+  access: summary.access,
+  wordCount: summary.wordCount,
+  chapterCount: summary.chapterCount,
+  publishedAt: summary.publishedAt,
+  updatedAt: summary.updatedAt,
+  latestChapter: summary.latestChapter,
+  categories: summary.categories,
+  tags: summary.tags,
+  attributes: summary.attributes,
+);
+
 int _discoveryDocumentItemCount(PluginDiscoveryDocument document) => document
     .components
     .fold<int>(0, (count, component) => count + _componentItemCount(component));
@@ -317,6 +539,7 @@ final sourceContentGatewayProvider = Provider<SourceContentGateway>((Ref ref) {
     ref.watch(pluginRuntimeFacadeProvider),
     ref.watch(diagnosticsManagerProvider),
     () => runtimeConnection,
+    coverPersistence: ref.watch(sourceCoverPersistenceProvider),
   );
 });
 

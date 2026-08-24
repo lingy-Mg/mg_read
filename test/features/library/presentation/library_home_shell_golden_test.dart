@@ -26,7 +26,7 @@ void main() {
       () => Future<void>.delayed(const Duration(milliseconds: 100)),
     );
     await tester.pump();
-    expect(find.byType(Image), findsNWidgets(6));
+    expect(find.byType(Image), findsNWidgets(8));
 
     await expectLater(
       find.byType(MaterialApp),

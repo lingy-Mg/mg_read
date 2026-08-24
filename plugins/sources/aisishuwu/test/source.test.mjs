@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import { AliceBookHouseSource } from '../dist/source.js';
@@ -65,6 +68,29 @@ test('detail results retain a lazy-loaded cover from the source page', async () 
   const detail = await source.getDetail({ id: 'novel:42' });
 
   assert.equal(detail.coverUrl, 'https://cdn.example.com/covers/42.jpg');
+});
+
+test('Runtime proxy replaces an Alice cover URL and rejects off-origin resources', async () => {
+  let proxyRequest;
+  let fetchCount = 0;
+  const context = {
+    dataDir: 'data', cacheDir: 'cache',
+    resource: { proxy: (request) => { proxyRequest = request; return 'http://127.0.0.1:1234/v1/source-resource/opaque'; } },
+    http: { fetch: async () => { fetchCount += 1; return new Response('<h1 class="novel_title">封面测试书</h1><section class="pic"><img src="https://www.alicesw.com/covers/42.jpg"></section><div class="novel_info"><a href="/lists/62.html">玄幻</a><p>字 数：0 · 章 节：0</p><p>状 态：连载中</p></div>'); } },
+    log: { debug() {}, info() {}, warn() {}, error() {} },
+    app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
+    plugin: { id: 'org.mgread.aisishuwu', version: '0.1.0' },
+  };
+  const source = new AliceBookHouseSource(context, { origin: 'https://www.alicesw.com', categories: [] });
+  const detail = await source.getDetail({ id: 'novel:42' });
+  assert.equal(detail.coverUrl, 'http://127.0.0.1:1234/v1/source-resource/opaque');
+  assert.deepEqual(proxyRequest, { url: 'https://www.alicesw.com/covers/42.jpg' });
+
+  await plugin.activate(context);
+  const result = await plugin.resource({ url: 'https://evil.example/covers/42.jpg' });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.byteLength, 0);
+  assert.equal(fetchCount, 1);
 });
 
 test('detail projects real source metadata into the v1 summary fields', async () => {
@@ -177,16 +203,30 @@ test('search hydrates list items with the same cover and rich metadata as discov
   ]);
 });
 
-test('popular search terms come from the source home page', async () => {
+test('popular search terms come only from the home hot-recommendation section and are cached', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'mgread-aisishuwu-hot-search-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  let fetchCount = 0;
   const source = new AliceBookHouseSource(
     {
       dataDir: 'data',
-      cacheDir: 'cache',
+      cacheDir: join(root, 'cache'),
       http: {
-        fetch: async () => new Response(`
-          <article class="list-group-item"><a href="/novel/42.html">首页热书</a></article>
-          <article class="list-group-item"><a href="/novel/43.html">第二本热书</a></article>
-        `),
+        fetch: async () => {
+          fetchCount += 1;
+          return new Response(`
+            <div class="title">原创专区</div>
+            <article class="list-group-item"><a href="/novel/1.html">不应出现的首页书</a></article>
+            <div class="innerss">
+              <div class="title">热门推荐小说</div>
+              <div class="details"><ul class="item-list">
+                <li><a class="titles" href="/novel/42.html">首页热书</a></li>
+                <li><a class="titles" href="/novel/43.html">第二本热书</a></li>
+                <li><a class="titles" href="/novel/44.html">首页热书</a></li>
+              </ul></div>
+            </div>
+          `);
+        },
       },
       log: { debug() {}, info() {}, warn() {}, error() {} },
       app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
@@ -199,6 +239,10 @@ test('popular search terms come from the source home page', async () => {
     cursor: null,
     pageSize: 20,
   });
+  const cachedSuggestions = await source.searchSuggestions({
+    cursor: null,
+    pageSize: 20,
+  });
   assert.deepEqual(suggestions, {
     items: [
       { query: '首页热书', metric: null },
@@ -206,9 +250,55 @@ test('popular search terms come from the source home page', async () => {
     ],
     nextCursor: null,
   });
+  assert.deepEqual(cachedSuggestions, suggestions);
+  assert.equal(fetchCount, 1);
 });
 
-test('catalog returns pages asynchronously without re-fetching a loaded source page', async () => {
+test('catalog does not let a zero detail count hide loaded chapters', async () => {
+  const source = new AliceBookHouseSource(
+    {
+      dataDir: 'data',
+      cacheDir: 'cache',
+      http: {
+        fetch: async (input) => {
+          const path = new URL(input).pathname;
+          if (path === '/novel/42.html') {
+            return new Response(`
+              <h1 class="novel_title">零值测试书</h1>
+              <div class="novel_info">
+                <p>字 数：0 · 章 节：0</p>
+                <p>状 态：连载中</p>
+              </div>
+            `);
+          }
+          return new Response(`
+            <div class="book_newchap"><div class="tit">最新章节：全5章</div></div>
+            <ul class="mulu_list">
+              <li><a href="/book/42/a.html">第一章</a></li>
+              <li><a href="/book/42/b.html">第二章</a></li>
+              <li><a href="/book/42/c.html">第三章</a></li>
+              <li><a href="/book/42/d.html">第四章</a></li>
+              <li><a href="/book/42/e.html">第五章</a></li>
+            </ul>
+          `);
+        },
+      },
+      log: { debug() {}, info() {}, warn() {}, error() {} },
+      app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
+      plugin: { id: 'org.mgread.aisishuwu', version: '0.1.0' },
+    },
+    { origin: 'https://www.alicesw.com', categories: [] },
+  );
+
+  const detail = await source.getDetail({ id: 'novel:42' });
+  assert.equal(detail.chapterCount, 0);
+  const chapters = await source.getChapters({ id: 'novel:42', cursor: null, pageSize: 20 });
+
+  assert.equal(chapters.items.length, 5);
+  assert.equal(chapters.totalCount, 5);
+});
+
+test('catalog returns the complete source page without re-fetching it', async () => {
   let catalogFetches = 0;
   const source = new AliceBookHouseSource(
     {
@@ -237,12 +327,16 @@ test('catalog returns pages asynchronously without re-fetching a loaded source p
   );
 
   const first = await source.getChapters({ id: 'novel:42', cursor: null, pageSize: 2 });
-  const second = await source.getChapters({ id: 'novel:42', cursor: first.nextCursor, pageSize: 2 });
 
-  assert.deepEqual(first.items.map((chapter) => chapter.title), ['第一章', '第二章']);
-  assert.deepEqual(second.items.map((chapter) => chapter.title), ['第三章', '第四章']);
+  assert.deepEqual(first.items.map((chapter) => chapter.title), [
+    '第一章',
+    '第二章',
+    '第三章',
+    '第四章',
+    '第五章',
+  ]);
   assert.equal(first.totalCount, 5);
-  assert.equal(second.nextCursor, 'catalog-page:1:4');
+  assert.equal(first.nextCursor, null);
   assert.equal(catalogFetches, 1);
 });
 
@@ -256,6 +350,12 @@ test('public API completes the opaque content chain with safe diagnostic phases'
       <a href="/lists/71.html">科幻</a>
       <img src="https://cdn.example.com/covers/42.jpg">
     </article>
+    <div class="innerss">
+      <div class="title">热门推荐小说</div>
+      <div class="details"><ul class="item-list">
+        <li><a class="titles" href="/novel/42.html">测试书名</a></li>
+      </ul></div>
+    </div>
   `;
   await plugin.activate({
     dataDir: 'data',

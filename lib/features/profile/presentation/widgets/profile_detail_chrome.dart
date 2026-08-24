@@ -44,7 +44,7 @@ class ProfileDetailBottomBar extends StatelessWidget {
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(
-                maxWidth: AppDetailMetrics.viewportWidth,
+                maxWidth: AppSpacing.contentMaxWidth,
               ),
               child: AppBottomNavigation(
                 selected: AppNavigationDestination.profile,

@@ -34,6 +34,27 @@ void main() {
           await tester.pumpAndSettle();
           expect(find.text('亮度'), findsOneWidget);
 
+          if (cycle == 0) {
+            await tester.tap(find.text('更多'));
+            await tester.pumpAndSettle();
+            expect(find.text('自动阅读速度'), findsOneWidget);
+            final Finder settingsSheet = find.byWidgetPredicate(
+              (Widget widget) =>
+                  widget.runtimeType.toString() == 'ReaderSettingsSheet',
+            );
+            final Offset moreTitle = tester.getTopLeft(find.text('更多').last);
+            final Offset autoTitle = tester.getTopLeft(find.text('自动阅读速度'));
+            // Keep the subpage content attached to the top of the sheet.
+            expect(settingsSheet, findsOneWidget);
+            final double sheetTop = tester.getTopLeft(settingsSheet).dy;
+            expect(moreTitle.dy - sheetTop, lessThan(72));
+            expect(autoTitle.dy - moreTitle.dy, lessThan(100));
+            expect(find.text('单手模式'), findsOneWidget);
+            expect(tester.takeException(), isNull);
+            await tester.binding.handlePopRoute();
+            await tester.pumpAndSettle();
+          }
+
           await tester.binding.handlePopRoute();
           await tester.pumpAndSettle();
           expect(settings, findsOneWidget);

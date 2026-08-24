@@ -369,6 +369,26 @@ test("desktop Runtime loads and searches an installed standard Node plugin", asy
   assert.deepEqual(content.result.pages, []);
 });
 
+test("source resource URLs are reusable, bounded, and forward binary responses", async (t) => {
+  const runtime = await createRuntime(t, { installFixture: true });
+  const ready = await runtime.start();
+  const socket = await openRuntimeSocket(ready);
+  t.after(() => socket.close());
+  const response = await sendRequest(socket, makeRequest(ready, "c:resource-search", "source.search.v1", {
+    params: { query: "proxy-resource", cursor: null, pageSize: 1, pluginId: desktopFixture.plugin.id },
+  }));
+  assert.equal(response.type, "response", JSON.stringify(response));
+  const resourceUrl = response.result.items[0].coverUrl;
+  assert.match(resourceUrl, new RegExp(`^http://${ready.host}:${ready.port}/v1/source-resource/[A-Za-z0-9_-]{43}$`));
+  for (let index = 0; index < 2; index += 1) {
+    const fetched = await fetch(resourceUrl);
+    assert.equal(fetched.status, 206);
+    assert.equal(fetched.headers.get("content-type"), "image/test");
+    assert.deepEqual([...new Uint8Array(await fetched.arrayBuffer())], [77, 71, 82, 69, 65, 68]);
+  }
+  assert.equal((await fetch(`${resourceUrl}x`)).status, 404);
+});
+
 test("desktop Runtime opens only the installed source directory through its owned shell action", async (t) => {
   const opened = [];
   const runtime = await createRuntime(t, {

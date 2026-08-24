@@ -509,6 +509,20 @@ abstract final class AppDiagnosticEvents {
         },
       );
 
+  static final DiagnosticEventDefinition readerPrefetch =
+      DiagnosticEventDefinition.span(
+        name: 'reader.prefetch',
+        component: 'feature.reader',
+        summary: 'Background preparation after a source book enters the shelf.',
+        fields: <String, DiagnosticFieldDefinition>{
+          'contentKind': _string,
+          'chapterCount': _int64,
+          'cachedChapterCount': _int64,
+          'resultState': _string,
+          'errorCode': _string,
+        },
+      );
+
   static final DiagnosticEventDefinition runtimeFacadeCall =
       DiagnosticEventDefinition.span(
         name: 'runtime.facade.call',
@@ -665,6 +679,7 @@ abstract final class AppDiagnosticEvents {
         libraryOperation,
         readerLaunch,
         readerLaunchStage,
+        readerPrefetch,
         runtimeFacadeCall,
         performanceSlow,
         writerState,

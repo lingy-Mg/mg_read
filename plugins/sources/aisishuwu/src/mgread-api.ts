@@ -5,6 +5,7 @@ export interface MgReadPluginContext {
   readonly http: {
     fetch(input: string | URL, init?: RequestInit): Promise<Response>;
   };
+  readonly resource: { proxy(request: Record<string, unknown>): string };
   readonly log: {
     debug(event: string): void;
     info(event: string): void;

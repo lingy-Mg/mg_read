@@ -13,7 +13,7 @@
 - 以暖白背景和低饱和琥珀色建立安静、专注的阅读入口；主操作集中在“继续阅读”。
 - 用大标题、持续阅读卡、分段导航、筛选与纵向更新列表形成从当前阅读到书架动态的阅读顺序。
 - 表面使用轻微色差、细边框和克制阴影分组，不用高对比的大面积渐变或装饰性图片。
-- 书籍封面使用中性、可复用的 Flutter 渐变/几何占位图；不下载、复制或声称拥有真实书封面。
+- 书籍封面使用中性、可复用的 Flutter 渐变/几何占位图；不下载、复制或声称拥有真实书封面。四个主导航页可使用原创、无文字的低对比底纹作为内容层背景，但不得把它们误用为书籍封面或远程内容。
 
 ## 语义设计 token
 
@@ -37,9 +37,9 @@
 
 ## 排版与图标
 
-`AppTheme` 负责全局 `TextTheme`：页面标题使用共享 `AppPageTitle`，区块标题使用 `titleLarge`，书名使用 `titleMedium`，正文和元信息分别使用 `bodyLarge`/`bodyMedium`/`bodySmall`。主应用文字统一使用 `novel_reader_ui` 包中声明的 `MiSans`；该资源与项目提供的 `MiSansVF.ttf` 校验一致，因此复用同一份字体物料而不把约 20 MB 字体重复打入应用包。文字颜色从 `ColorScheme` 或 `mutedText` 获取，不在 Widget 中写颜色。
+`AppTheme` 负责全局 `TextTheme`，`AppTypography` 定义唯一的紧凑字号阶梯：display 30、页面标题 24、区块标题 18、条目标题 16、正文 14、次要信息 13、caption 11、操作 14。页面标题使用共享 `AppPageTitle`，区块标题使用 `titleLarge`，书名/条目标题使用 `titleMedium`，正文和元信息分别使用 `bodyLarge`/`bodyMedium`/`bodySmall`。页面和组件不得自行写字号；需要选择层级时使用对应 `TextTheme` 角色，若需直接构造文本样式也只能引用 `AppTypography`，不得写新的数值。唯一例外是按封面/插画尺寸计算的装饰文字，以及阅读器专属排版域；这两类不参与主应用层级规范。主应用文字统一使用 `novel_reader_ui` 包中声明的 `MiSans`；该资源与项目提供的 `MiSansVF.ttf` 校验一致，因此复用同一份字体物料而不把约 20 MB 字体重复打入应用包。文字颜色从 `ColorScheme` 或 `mutedText` 获取，不在 Widget 中写颜色。
 
-四个主导航页（首页、搜索、发现、我的）共用同一组顶部规范：页面起始留白使用 `AppSpacing.pageHeaderTopPadding`（8），标题容器高度使用 `AppSpacing.pageHeaderHeight`（40），标题字号使用 `AppSpacing.pageTitleSize`（26），字重为 600，行高为 1.15，字距为 -0.3。搜索页将“搜索”作为同样的页面标题，搜索输入区作为标题下的操作区；发现页的书源选择和操作图标属于标题栏附加操作，不改变标题规格。新增主导航页不得自行定义另一套顶部字号、标题高度或起始留白。
+四个主导航页（首页、搜索、发现、我的）共用同一组顶部规范：页面起始留白使用 `AppSpacing.pageHeaderTopPadding`（8），标题容器高度使用 `AppSpacing.pageHeaderHeight`（40），标题字号使用 `AppTypography.pageTitle`（24），字重为 600，行高为 1.15，字距为 -0.3。搜索页将“搜索”作为同样的页面标题，搜索输入区作为标题下的操作区；发现页的书源选择和操作图标属于标题栏附加操作，不改变标题规格。新增主导航页不得自行定义另一套顶部字号、标题高度或起始留白。
 
 图标使用 Material Symbols：顶栏和列表操作为 24，导航目的地为 24，封面内的装饰图标为 28。图标按钮保持 48 的命中区，即使视觉图标较小。
 

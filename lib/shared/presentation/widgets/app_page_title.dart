@@ -17,7 +17,7 @@ class AppPageTitle extends StatelessWidget {
       child: Text(
         title,
         style: theme.textTheme.titleLarge?.copyWith(
-          fontSize: AppSpacing.pageTitleSize,
+          fontSize: AppTypography.pageTitle,
           fontWeight: FontWeight.w600,
           height: 1.15,
           letterSpacing: -0.3,

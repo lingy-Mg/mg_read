@@ -50,46 +50,40 @@ class _PluginCacheManagementPageState
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: AppDetailMetrics.viewportWidth,
-            ),
-            child: Column(
-              children: <Widget>[
-                AppSecondaryPageTopBar(
-                  headerKey: const Key('plugin-cache-top-bar'),
-                  backButtonKey: const Key('plugin-cache-back'),
-                  title: '数据源缓存',
-                  onBack: widget.onBackRequested,
-                ),
-                Expanded(
-                  child: state.when(
-                    loading: () => const AppLoadingState(
-                      label: '正在读取缓存用量',
-                      message: '正在读取缓存用量',
-                      progressKey: Key('plugin-cache-loading'),
-                    ),
-                    error: (Object _, StackTrace _) => Center(
-                      child: TextButton(
-                        key: const Key('plugin-cache-retry'),
-                        onPressed: () => ref
-                            .read(pluginCacheManagementProvider.notifier)
-                            .refresh(),
-                        child: const Text('缓存信息暂不可用，点击重试'),
-                      ),
-                    ),
-                    data: (value) => _CacheContent(
-                      state: value,
-                      onClearAll: () =>
-                          _confirmAndClearAll(context, ref, value),
-                      onClearPlugin: (entry) =>
-                          _confirmAndClearPlugin(context, ref, entry),
+        child: AppSecondaryPageContent(
+          child: Column(
+            children: <Widget>[
+              AppSecondaryPageTopBar(
+                headerKey: const Key('plugin-cache-top-bar'),
+                backButtonKey: const Key('plugin-cache-back'),
+                title: '数据源缓存',
+                onBack: widget.onBackRequested,
+              ),
+              Expanded(
+                child: state.when(
+                  loading: () => const AppLoadingState(
+                    label: '正在读取缓存用量',
+                    message: '正在读取缓存用量',
+                    progressKey: Key('plugin-cache-loading'),
+                  ),
+                  error: (Object _, StackTrace _) => Center(
+                    child: TextButton(
+                      key: const Key('plugin-cache-retry'),
+                      onPressed: () => ref
+                          .read(pluginCacheManagementProvider.notifier)
+                          .refresh(),
+                      child: const Text('缓存信息暂不可用，点击重试'),
                     ),
                   ),
+                  data: (value) => _CacheContent(
+                    state: value,
+                    onClearAll: () => _confirmAndClearAll(context, ref, value),
+                    onClearPlugin: (entry) =>
+                        _confirmAndClearPlugin(context, ref, entry),
+                  ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

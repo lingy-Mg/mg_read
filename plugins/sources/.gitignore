@@ -1,0 +1,23 @@
+# Shared Git policy for every plugin under plugins/sources.
+# Keep package-lock.json tracked; Runtime/plugin installs depend on it.
+
+# Local dependency trees, including nested package dependencies.
+**/node_modules/
+
+# TypeScript/build output used by Windows Debug development.
+**/dist/
+
+# Generated .mgplugin transport archives.
+**/artifacts/
+
+# Local test and coverage output.
+**/coverage/
+
+# Local logs and machine-specific files.
+**/*.log
+**/.DS_Store
+
+# Never commit local credentials or environment overrides.
+**/.env
+**/.env.*
+!**/.env.example

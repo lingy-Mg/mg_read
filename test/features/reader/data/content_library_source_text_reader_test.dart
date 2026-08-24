@@ -59,7 +59,7 @@ void main() {
       final firstRequest = await reader.launch(item.id.value);
       expect(firstRequest.bookId, item.id.value);
       expect(gateway.requestedChapterPageSizes, <int>[20]);
-      expect(gateway.requestedDetailCount, 0);
+      expect(gateway.requestedDetailCount, 1);
       expect(firstRequest.extensions.chapterStateCapability, isNotNull);
       expect(await library.listAllCatalog(item.id), hasLength(2));
       expect(
@@ -103,7 +103,7 @@ void main() {
         '第一段。',
       );
       expect(gateway.requestedChapterPageSizes, <int>[20]);
-      expect(gateway.requestedDetailCount, 0);
+      expect(gateway.requestedDetailCount, 2);
       expect(gateway.requestedContentChapterIds, <String>['chapter-1']);
     },
   );
@@ -149,6 +149,41 @@ void main() {
       );
     },
   );
+
+  test('keeps source chapter IDs that contain a colon readable', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-reader-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final item = await library.bookshelf.addFromSource(
+      const BookshelfAddRequest(
+        title: '复合章节 ID',
+        author: null,
+        kind: ContentKind.novel,
+        pluginId: 'org.example.source',
+        pluginVersion: '1.0.0',
+        remoteContentId: 'book-colon-id',
+      ),
+    );
+    final reader = ContentLibrarySourceTextReader(
+      library,
+      _ColonChapterGateway(),
+    );
+
+    final request = await reader.launch(item.id.value);
+    final content = await request.dataSource.loadChapterContent(
+      item.id.value,
+      'chapter:1',
+    );
+
+    expect(content.paragraphs.single.text, '带冒号 ID 的首章。');
+    expect(
+      (await library.listAllCatalog(item.id)).first.remoteIdentity,
+      'chapter:1',
+    );
+  });
 }
 
 final class _CatalogFailureGateway extends _FakeGateway {
@@ -160,6 +195,41 @@ final class _CatalogFailureGateway extends _FakeGateway {
     int pageSize = 50,
   }) => Future<PluginChaptersResult>.error(
     AppError.fromCode(AppErrorCode.timeout),
+  );
+}
+
+final class _ColonChapterGateway extends _FakeGateway {
+  @override
+  Future<PluginChaptersResult> getChapters({
+    required String pluginId,
+    required String id,
+    String? cursor,
+    int pageSize = 50,
+  }) async => PluginChaptersResult(
+    pluginId: pluginId,
+    sourceName: '示例书源',
+    items: <PluginChapterSummary>[
+      _chapter('chapter:1', '第一章', 0),
+      _chapter('chapter:https://2', '第二章', 1),
+    ],
+    nextCursor: null,
+    totalCount: 2,
+  );
+
+  @override
+  Future<PluginChapterContent> getContent({
+    required String pluginId,
+    required String id,
+    required String chapterId,
+  }) async => PluginChapterContent(
+    pluginId: pluginId,
+    sourceName: '示例书源',
+    contentKind: PluginContentKind.novel,
+    chapterId: chapterId,
+    title: '第一章',
+    updatedAt: null,
+    text: '带冒号 ID 的首章。',
+    pages: const <PluginMangaPage>[],
   );
 }
 
@@ -221,7 +291,7 @@ final class _FakeGateway implements SourceContentGateway {
         title: '测试书',
         contentKind: PluginContentKind.novel,
         author: '测试作者',
-        url: null,
+        url: Uri.parse('https://source.example/books/book-1'),
         coverUrl: Uri.parse('https://cdn.example.com/book.jpg'),
         description: '测试简介',
         language: 'zh-CN',

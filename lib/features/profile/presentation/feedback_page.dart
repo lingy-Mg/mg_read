@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_detail_chrome.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
@@ -71,54 +72,48 @@ class _FeedbackPageState extends State<FeedbackPage> {
         padding: EdgeInsets.only(top: supplementaryTopInset),
         child: SafeArea(
           bottom: false,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: AppDetailMetrics.viewportWidth,
-              ),
-              child: SizedBox.expand(
-                child: ListView(
-                  key: const Key('feedback-page-content'),
-                  controller: _scrollController,
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: EdgeInsets.zero,
-                  children: <Widget>[
-                    ProfileDetailTopBar(
-                      title: '意见反馈',
-                      onBack: widget.onBackRequested,
+          child: AppSecondaryPageContent(
+            child: SizedBox.expand(
+              child: ListView(
+                key: const Key('feedback-page-content'),
+                controller: _scrollController,
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: EdgeInsets.zero,
+                children: <Widget>[
+                  ProfileDetailTopBar(
+                    title: '意见反馈',
+                    onBack: widget.onBackRequested,
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: AppDetailMetrics.horizontalPadding,
                     ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: AppDetailMetrics.horizontalPadding,
-                      ),
-                      child: _FeedbackThanksBanner(),
+                    child: _FeedbackThanksBanner(),
+                  ),
+                  const SizedBox(height: AppDetailMetrics.feedbackCardTopGap),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppDetailMetrics.horizontalPadding,
                     ),
-                    const SizedBox(height: AppDetailMetrics.feedbackCardTopGap),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppDetailMetrics.horizontalPadding,
-                      ),
-                      child: _FeedbackFormCard(
-                        contentController: _contentController,
-                        contactController: _contactController,
-                        contentFocusNode: _contentFocusNode,
-                        contactFocusNode: _contactFocusNode,
-                        selectedType: _selectedType,
-                        contentLength:
-                            _contentController.text.characters.length,
-                        onTypeSelected: (_FeedbackType value) {
-                          setState(() {
-                            _selectedType = value;
-                          });
-                        },
-                        onAddImage: () => _showMessage('截图选择尚未接入，当前不会访问本地文件。'),
-                        onSubmit: _submit,
-                      ),
+                    child: _FeedbackFormCard(
+                      contentController: _contentController,
+                      contactController: _contactController,
+                      contentFocusNode: _contentFocusNode,
+                      contactFocusNode: _contactFocusNode,
+                      selectedType: _selectedType,
+                      contentLength: _contentController.text.characters.length,
+                      onTypeSelected: (_FeedbackType value) {
+                        setState(() {
+                          _selectedType = value;
+                        });
+                      },
+                      onAddImage: () => _showMessage('截图选择尚未接入，当前不会访问本地文件。'),
+                      onSubmit: _submit,
                     ),
-                    const SizedBox(height: 9),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 9),
+                ],
               ),
             ),
           ),
@@ -198,7 +193,6 @@ class _FeedbackThanksBanner extends StatelessWidget {
                       '感谢您的反馈！',
                       style: theme.textTheme.titleMedium?.copyWith(
                         color: theme.colorScheme.onSurface,
-                        fontSize: 16,
                         fontWeight: FontWeight.w600,
                         height: 1.25,
                         letterSpacing: 0,
@@ -209,7 +203,6 @@ class _FeedbackThanksBanner extends StatelessWidget {
                       '您的每一条建议都对我们非常重要，\n将帮助我们持续改进产品体验。',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: tokens.mutedText,
-                        fontSize: 12.5,
                         fontWeight: FontWeight.w400,
                         height: 1.5,
                         letterSpacing: 0,
@@ -564,7 +557,6 @@ class _FeedbackTypeButton extends StatelessWidget {
                     maxLines: 1,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: foreground,
-                      fontSize: 12.5,
                       fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
                       height: 1,
                       letterSpacing: 0,
@@ -601,7 +593,6 @@ class _FeedbackSectionLabel extends StatelessWidget {
                 text: title,
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: theme.colorScheme.onSurface,
-                  fontSize: 15,
                   fontWeight: FontWeight.w600,
                   height: 1.2,
                   letterSpacing: 0,
@@ -610,9 +601,8 @@ class _FeedbackSectionLabel extends StatelessWidget {
               if (optional)
                 TextSpan(
                   text: '（选填）',
-                  style: theme.textTheme.bodyMedium?.copyWith(
+                  style: theme.textTheme.bodySmall?.copyWith(
                     color: tokens.mutedText,
-                    fontSize: 12.5,
                     fontWeight: FontWeight.w400,
                     height: 1.2,
                     letterSpacing: 0,
@@ -674,7 +664,6 @@ class _FeedbackContentEditor extends StatelessWidget {
                   ],
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurface,
-                    fontSize: 13,
                     fontWeight: FontWeight.w400,
                     height: 1.5,
                     letterSpacing: 0,
@@ -689,7 +678,6 @@ class _FeedbackContentEditor extends StatelessWidget {
                     hintMaxLines: 2,
                     hintStyle: theme.textTheme.bodyMedium?.copyWith(
                       color: tokens.mutedText.withValues(alpha: 0.78),
-                      fontSize: 13,
                       fontWeight: FontWeight.w400,
                       height: 1.5,
                       letterSpacing: 0,
@@ -706,7 +694,6 @@ class _FeedbackContentEditor extends StatelessWidget {
                 key: const Key('feedback-character-count'),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: tokens.mutedText,
-                  fontSize: 12.5,
                   fontWeight: FontWeight.w400,
                   height: 1,
                   letterSpacing: 0,
@@ -756,7 +743,6 @@ class _FeedbackImageTile extends StatelessWidget {
                   '添加图片',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: tokens.mutedText,
-                    fontSize: 12,
                     fontWeight: FontWeight.w400,
                     height: 1.15,
                     letterSpacing: 0,
@@ -767,7 +753,6 @@ class _FeedbackImageTile extends StatelessWidget {
                   '（最多5张）',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: tokens.mutedText,
-                    fontSize: 10.5,
                     fontWeight: FontWeight.w400,
                     height: 1.15,
                     letterSpacing: 0,
@@ -848,7 +833,6 @@ class _FeedbackContactField extends StatelessWidget {
             maxLines: 1,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurface,
-              fontSize: 13,
               fontWeight: FontWeight.w400,
               height: 1.25,
               letterSpacing: 0,
@@ -862,7 +846,6 @@ class _FeedbackContactField extends StatelessWidget {
               hintText: '请留下您的邮箱或手机号，方便我们联系您',
               hintStyle: theme.textTheme.bodyMedium?.copyWith(
                 color: tokens.mutedText.withValues(alpha: 0.72),
-                fontSize: 12.5,
                 fontWeight: FontWeight.w400,
                 height: 1.2,
                 letterSpacing: 0,
@@ -890,7 +873,6 @@ class _FeedbackHelperText extends StatelessWidget {
           '仅用于反馈回复，不会对外公开',
           style: theme.textTheme.bodySmall?.copyWith(
             color: tokens.mutedText,
-            fontSize: 11.5,
             fontWeight: FontWeight.w400,
             height: 1.2,
             letterSpacing: 0,
@@ -937,7 +919,6 @@ class _FeedbackSubmitButton extends StatelessWidget {
                 '提交反馈',
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: theme.colorScheme.onPrimary,
-                  fontSize: 16,
                   fontWeight: FontWeight.w600,
                   height: 1.15,
                   letterSpacing: 0,
@@ -969,7 +950,6 @@ class _FeedbackPrivacyNotice extends StatelessWidget {
             '我们会严格保护您的隐私信息',
             style: theme.textTheme.bodySmall?.copyWith(
               color: tokens.mutedText,
-              fontSize: 11.5,
               fontWeight: FontWeight.w400,
               height: 1.2,
               letterSpacing: 0,

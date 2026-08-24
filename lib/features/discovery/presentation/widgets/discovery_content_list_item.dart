@@ -6,6 +6,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_bookshelf_badge.dart';
 
 /// Shared compact content row used by discovery and source search results.
 class DiscoveryContentListItem extends StatelessWidget {
@@ -14,6 +15,7 @@ class DiscoveryContentListItem extends StatelessWidget {
     required this.variant,
     required this.onPressed,
     required this.keyPrefix,
+    this.isInBookshelf = false,
     this.showRank = false,
     super.key,
   });
@@ -23,6 +25,7 @@ class DiscoveryContentListItem extends StatelessWidget {
   final VoidCallback onPressed;
   final String keyPrefix;
   final bool showRank;
+  final bool isInBookshelf;
 
   @override
   Widget build(BuildContext context) {
@@ -45,9 +48,7 @@ class DiscoveryContentListItem extends StatelessWidget {
         );
         final coverHeight =
             coverWidth * AppSpacing.discoveryListCoverAspectRatio;
-        final titleStyle = theme.textTheme.titleMedium?.copyWith(
-          fontSize: constraints.maxWidth >= 500 ? 20 : null,
-        );
+        final titleStyle = theme.textTheme.titleMedium;
         final metadataStyle = theme.textTheme.bodyMedium?.copyWith(
           color: tokens.mutedText,
         );
@@ -82,7 +83,7 @@ class DiscoveryContentListItem extends StatelessWidget {
                       ],
                       DiscoveryBookCover(
                         title: content.title,
-                        coverUrl: content.coverUrl,
+                        coverBytes: content.coverBytes,
                         variant: variant,
                         width: coverWidth,
                         height: coverHeight,
@@ -98,6 +99,10 @@ class DiscoveryContentListItem extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: titleStyle,
                             ),
+                            if (isInBookshelf) ...<Widget>[
+                              const SizedBox(height: AppSpacing.unit),
+                              const DiscoveryBookshelfBadge(),
+                            ],
                             const SizedBox(height: AppSpacing.unit),
                             Text(
                               _authorAndCategory(content),

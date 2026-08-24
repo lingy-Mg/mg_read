@@ -103,29 +103,35 @@ abstract final class AppTheme {
     );
     final TextTheme textTheme = base.textTheme.copyWith(
       displaySmall: base.textTheme.displaySmall?.copyWith(
-        fontSize: 34,
+        fontSize: AppTypography.display,
         fontWeight: FontWeight.w700,
         height: 1.18,
         letterSpacing: -0.6,
       ),
       titleLarge: base.textTheme.titleLarge?.copyWith(
-        fontSize: 24,
+        fontSize: AppTypography.sectionTitle,
         fontWeight: FontWeight.w600,
         height: 1.25,
       ),
       titleMedium: base.textTheme.titleMedium?.copyWith(
-        fontSize: 18,
+        fontSize: AppTypography.itemTitle,
         fontWeight: FontWeight.w600,
         height: 1.3,
       ),
-      bodyLarge: base.textTheme.bodyLarge?.copyWith(fontSize: 16, height: 1.5),
+      bodyLarge: base.textTheme.bodyLarge?.copyWith(
+        fontSize: AppTypography.body,
+        height: 1.5,
+      ),
       bodyMedium: base.textTheme.bodyMedium?.copyWith(
-        fontSize: 14,
+        fontSize: AppTypography.secondary,
         height: 1.45,
       ),
-      bodySmall: base.textTheme.bodySmall?.copyWith(fontSize: 12, height: 1.4),
+      bodySmall: base.textTheme.bodySmall?.copyWith(
+        fontSize: AppTypography.caption,
+        height: 1.4,
+      ),
       labelLarge: base.textTheme.labelLarge?.copyWith(
-        fontSize: 15,
+        fontSize: AppTypography.action,
         fontWeight: FontWeight.w600,
       ),
     );
@@ -154,6 +160,22 @@ abstract final class AppTheme {
       extensions: <ThemeExtension<dynamic>>[tokens],
     );
   }
+}
+
+/// Semantic typography scale shared by every app surface.
+///
+/// Components should select a [TextTheme] role instead of introducing a
+/// feature-local font size. The page title is intentionally separate because
+/// it is shared by the four primary destinations but is not a Material role.
+abstract final class AppTypography {
+  static const double display = 30;
+  static const double pageTitle = 24;
+  static const double sectionTitle = 18;
+  static const double itemTitle = 16;
+  static const double body = 14;
+  static const double secondary = 13;
+  static const double caption = 11;
+  static const double action = 14;
 }
 
 /// Semantic colors for MgRead surfaces and neutral cover placeholders.
@@ -343,7 +365,9 @@ abstract final class AppSpacing {
   static const double widePagePadding = unit * 8;
   static const double pageHeaderTopPadding = compact;
   static const double pageHeaderHeight = unit * 10;
-  static const double pageTitleSize = 26;
+
+  /// Backwards-compatible alias for the shared primary-page title scale.
+  static const double pageTitleSize = AppTypography.pageTitle;
   static const double minimumTouchTarget = 48;
   static const double sectionControlHeight = unit * 8;
   static const double statusFilterHeight = unit * 6;
@@ -406,6 +430,8 @@ abstract final class AppSpacing {
   static const double discoveryPopularItemWidth = unit * 15;
   static const double discoveryBoardHeight = unit * 54;
   static const double discoveryBoardGap = unit * 2;
+  static const double discoveryCategoryTileGap = 5;
+  static const double discoveryCategoryTileMinWidth = 120;
   static const double discoveryRankCoverWidth = unit * 5;
   static const double discoveryRankCoverHeight = unit * 7;
   static const double discoveryCategoryTileHeight = 35;
@@ -451,7 +477,8 @@ abstract final class AppDetailMetrics {
 
   static const double aboutIconTopGap = 29;
   static const double aboutIconExtent = 106;
-  static const double aboutCardTopGap = 36;
+  // Preserves the measured about-page card baseline after compact typography.
+  static const double aboutCardTopGap = 49;
   static const double aboutCardHeight = 320;
   static const double aboutRowHeight = 64;
 

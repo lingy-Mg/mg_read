@@ -50,6 +50,18 @@ class LibraryContinueReadingCard extends StatelessWidget {
                 ),
                 Positioned.fill(
                   child: IgnorePointer(
+                    child: Opacity(
+                      opacity: 0.72,
+                      child: Image.asset(
+                        'assets/illustrations/home/continue_reading_backdrop.png',
+                        fit: BoxFit.cover,
+                        alignment: Alignment.centerRight,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: IgnorePointer(
                     child: CustomPaint(
                       painter: _ContinueReadingTexturePainter(
                         color: tokens.accent.withValues(alpha: 0.07),
@@ -71,7 +83,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
                           final Widget cover = LibraryBookCover(
                             title: data.title,
                             variant: data.coverVariant,
-                            coverUrl: data.coverUrl,
+                            coverBytes: data.coverBytes,
                             assetPath: data.coverAssetPath,
                             width: AppSpacing.continueReadingCoverWidth,
                             height: AppSpacing.continueReadingCoverHeight,
@@ -97,7 +109,6 @@ class LibraryContinueReadingCard extends StatelessWidget {
                                         '继续阅读',
                                         style: theme.textTheme.titleLarge
                                             ?.copyWith(
-                                              fontSize: 18,
                                               fontWeight: FontWeight.w500,
                                               height: 1.2,
                                               letterSpacing: -0.1,
@@ -129,7 +140,6 @@ class LibraryContinueReadingCard extends StatelessWidget {
                                             style: theme.textTheme.bodySmall
                                                 ?.copyWith(
                                                   color: tokens.warning,
-                                                  fontSize: 11,
                                                   fontWeight: FontWeight.w400,
                                                   height: 1,
                                                 ),
@@ -200,7 +210,6 @@ class _ContinueReadingDetails extends StatelessWidget {
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.titleLarge?.copyWith(
-            fontSize: 20,
             fontWeight: FontWeight.w500,
             height: 1.16,
             letterSpacing: -0.2,
@@ -213,7 +222,6 @@ class _ContinueReadingDetails extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodyMedium?.copyWith(
             color: tokens.warning,
-            fontSize: 13,
             fontWeight: FontWeight.w400,
             height: 1.2,
           ),
@@ -236,10 +244,9 @@ class _ContinueReadingDetails extends StatelessWidget {
             const SizedBox(width: AppSpacing.continueReadingProgressValueGap),
             Text(
               '$percentage%',
-              style: theme.textTheme.bodyLarge?.copyWith(
+              style: theme.textTheme.bodySmall?.copyWith(
                 color: tokens.accent,
                 fontWeight: FontWeight.w400,
-                fontSize: 12,
                 height: 1.1,
               ),
             ),
@@ -252,7 +259,6 @@ class _ContinueReadingDetails extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodySmall?.copyWith(
             color: tokens.mutedText,
-            fontSize: 10,
             fontWeight: FontWeight.w400,
             height: 1.2,
           ),
@@ -298,7 +304,6 @@ class _ContinueReadingAction extends StatelessWidget {
                 '继续阅读',
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: theme.colorScheme.onPrimary,
-                  fontSize: 14,
                   fontWeight: FontWeight.w500,
                   height: 1.2,
                 ),

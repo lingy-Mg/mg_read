@@ -87,14 +87,24 @@ Runtime 会拒绝缺少固定 nullable 键的插件响应。
 
 ```powershell
 npm ci
+npm test
 npm run verify
 npm run pack:plugin
 ```
+
+`npm test` 是开发期间的必跑离线回归，不能依赖目标网站；`npm run verify` 是交付前门槛，包含
+类型检查、离线测试和标准插件打包。真实书源在来源解析或请求规则变化后还必须执行一次
+`npm run test:live`，验证分类、搜索、详情、目录和正文。线上 smoke 不作为常规 CI 的唯一测试，
+但失败时不能宣称该来源完成。
 
 在 MgRead monorepo 的 Windows Debug 应用中，模板派生的 `plugins/sources/*` 开发项目直接从
 工作区加载；运行来源自己的 `tsc --watch`/build 更新 `dist/` 后，下一次来源调用会有序重启开发
 Runtime 并使用新代码，不需要 pack、复制或安装。下面的 pack 命令只用于 installed 插件和
 Android 安装测试。
+
+因此电脑端可以直接测试插件：先运行 `npm test` 验证 Node 代码，再启动/使用 Windows Debug
+应用实际调用书源验证 Runtime Facade 链路。Windows 直测只证明 development 工作区加载；Android
+和发布仍必须使用 `.mgplugin` 安装路线。
 
 若希望使用讨论中的原样命令，可在这个模板目录执行一次 `npm link`，随后直接运行：
 

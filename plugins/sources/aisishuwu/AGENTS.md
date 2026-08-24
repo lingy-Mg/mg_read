@@ -31,11 +31,19 @@ application feature.
   correlated with the Runtime invocation and HTTP terminal event for success,
   plus the applicable timeout/cancel/error case. Include a secret/content
   canary proving prohibited values are absent from default diagnostics.
-- `npm run test:live` is an explicit online smoke test required for a source
-  change: it calls the target's category, search, detail, catalog, and content
-  URLs without saving returned HTML or chapter content. Do not turn it into a
-  routine CI dependency.
+- `npm test` is the mandatory deterministic offline regression for every source
+  change; it must not depend on the target website. `npm run verify` is the
+  delivery gate and includes typecheck, offline tests and packaging.
+- `npm run test:live` is an explicit online smoke test required after source
+  parsing/request changes: it calls the target's category, search, detail,
+  catalog, and content URLs without saving returned HTML or chapter content.
+  Do not turn it into a routine CI dependency, but do not claim the source
+  change is complete when this evidence is absent or failed.
+- Windows Debug can load this built workspace directly: run the source
+  build/watch command, then call the source from the desktop Debug app. This
+  verifies development Runtime loading and does not replace Node tests, live
+  smoke, or Android packaged-plugin acceptance.
 
 Before delivery use the Node 24.16.0 toolchain from
-`../../../packages/mg_read_runtime/tools/node-v24.16.0-win-x64`, then run `npm ci` and
-`npm run verify`.
+`../../../packages/mg_read_runtime/tools/node-v24.16.0-win-x64`, then run `npm ci`,
+`npm test`, `npm run verify`, and the applicable `npm run test:live`.

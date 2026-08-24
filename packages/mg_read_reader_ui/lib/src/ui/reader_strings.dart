@@ -16,6 +16,9 @@ abstract final class ReaderStrings {
   static const more = '更多';
   static const source = '书源';
   static const sourceUnavailable = '未提供';
+  static const sourceUrl = '来源链接';
+  static const sourceUrlUnavailable = '未提供链接';
+  static const openSourceUrl = '在外部浏览器打开来源链接';
   static const chapterUrl = '当前章节 URL';
   static const chapterUrlUnavailable = '未提供链接';
   static const openChapterUrl = '在外部浏览器打开当前章节';
@@ -111,6 +114,7 @@ abstract final class ReaderStrings {
   static const startAutoReading = '开启自动阅读';
   static const stopAutoReading = '停止自动阅读';
   static const autoReadingSpeed = '自动阅读速度';
+  static const singleHandMode = '单手模式';
   static const slow = '慢';
   static const fast = '快';
   static const bookComments = '书籍评论';

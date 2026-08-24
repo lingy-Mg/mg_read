@@ -217,7 +217,7 @@ class LibraryBookListItem extends StatelessWidget {
                 LibraryBookCover(
                   title: data.title,
                   variant: data.coverVariant,
-                  coverUrl: data.coverUrl,
+                  coverBytes: data.coverBytes,
                   assetPath: data.coverAssetPath,
                   width: AppSpacing.listCoverWidth,
                   height: AppSpacing.listCoverHeight,
@@ -295,7 +295,6 @@ class LibraryMetadataTag extends StatelessWidget {
                   data.label,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: foreground,
-                    fontSize: 10,
                     fontWeight: FontWeight.w400,
                     height: 1,
                   ),
@@ -330,7 +329,6 @@ class _BookListDetails extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.titleMedium?.copyWith(
-              fontSize: 16,
               fontWeight: FontWeight.w600,
               height: 1.18,
             ),
@@ -347,7 +345,6 @@ class _BookListDetails extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: tokens.mutedText,
-                fontSize: 12,
                 fontWeight: FontWeight.w400,
                 height: 1.2,
               ),
@@ -416,7 +413,6 @@ class _BookListTrailing extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: tokens.mutedText,
-                  fontSize: 11,
                   fontWeight: FontWeight.w400,
                   height: 1.2,
                 ),

@@ -59,8 +59,7 @@ class LibrarySourceManagerCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         '管理数据源',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontSize: 14,
+                        style: theme.textTheme.bodyLarge?.copyWith(
                           fontWeight: FontWeight.w400,
                           height: 1.2,
                           color: sourceTitleColor,
@@ -70,9 +69,8 @@ class LibrarySourceManagerCard extends StatelessWidget {
                     if (sourceLabel != null) ...<Widget>[
                       Text(
                         sourceLabel,
-                        style: theme.textTheme.bodyMedium?.copyWith(
+                        style: theme.textTheme.bodySmall?.copyWith(
                           color: tokens.mutedText.withValues(alpha: 0.78),
-                          fontSize: 12,
                           fontWeight: FontWeight.w400,
                           height: 1.2,
                         ),

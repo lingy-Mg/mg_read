@@ -83,3 +83,9 @@ export async function getContent(request: ContentRequest): Promise<ChapterConten
   // chapterId 必须来自 getChapters；返回值中的 chapterId 用于防止异步结果与请求章节错配。
   return requireActivated(source).getContent(request);
 }
+
+/** Optional binary/text resource handler invoked by a Runtime-owned proxy URL. */
+export async function resource(_request: Record<string, unknown>): Promise<{ status: number; body: string }> {
+  requireActivated(context);
+  return { status: 404, body: '' };
+}

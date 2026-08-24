@@ -52,9 +52,17 @@ test('live source completes category, search, detail, catalog, and content flow'
   assert.equal(fixtureDetail.status, 'ongoing');
   assert.ok(fixtureDetail.tags.length >= 5);
 
+  const fixtureChapters = await plugin.getChapters({
+    id: 'novel:52801',
+    cursor: null,
+    pageSize: 20,
+  });
+  assert.equal(fixtureChapters.items.length, 733);
+  assert.equal(fixtureChapters.totalCount, 733);
+  assert.equal(fixtureChapters.nextCursor, null);
+
   const chapters = await plugin.getChapters({ id: book.id, cursor: null, pageSize: 5 });
-  assert.equal(chapters.items.length, 5);
-  assert.notEqual(chapters.nextCursor, null);
+  assert.ok(chapters.items.length > 0);
   const content = await plugin.getContent({ id: book.id, chapterId: chapters.items[0].id });
   assert.equal(content.chapterId, chapters.items[0].id);
   assert.equal(content.contentKind, 'novel');

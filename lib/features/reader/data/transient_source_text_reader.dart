@@ -102,9 +102,28 @@ final class _TransientSourceTextReaderDataSource
       author: summary.author,
       description: summary.description,
       sourceName: detail.sourceName,
+      sourceUrl: detail.catalogUrl ?? summary.url,
+      coverUrl: summary.coverUrl,
+      wordCount: summary.wordCount,
+      chapterCount: summary.chapterCount ?? detail.summary.chapterCount,
+      statusLabel: _statusLabel(summary.status),
+      latestChapterTitle: summary.latestChapter?.title,
+      latestChapterUrl: summary.latestChapter?.url,
+      labels: List<String>.unmodifiable(<String>[
+        ...summary.categories,
+        ...summary.tags,
+        for (final attribute in summary.attributes) attribute.value,
+      ]),
       sourceKind: ReaderBookSourceKind.remote,
     );
   }
+
+  String? _statusLabel(PluginContentStatus status) => switch (status) {
+    PluginContentStatus.ongoing => '连载',
+    PluginContentStatus.completed => '已完结',
+    PluginContentStatus.hiatus => '暂停更新',
+    PluginContentStatus.unknown => null,
+  };
 
   @override
   Future<ChapterCatalogPage> loadChapterCatalog(

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -415,15 +416,24 @@ class _SourceDetailBody extends StatelessWidget {
     final attributes = _displayAttributes(
       content.attributes,
     ).toList(growable: false);
-    final recommendations = relatedContents
-        .where((item) => item.id != content.id)
-        .take(5)
-        .toList(growable: false);
+    final chapterTotal = _chapterTotal(
+      reportedTotal: bundle.chapters.totalCount,
+      detailTotal: content.chapterCount,
+      loadedCount: bundle.chapters.items.length,
+    );
+    final recommendationCandidates = _recommendationCandidates(
+      relatedContents,
+      excludedId: content.id,
+    );
     return ListView(
       key: const Key('source-content-detail-sheet'),
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
       children: <Widget>[
-        _DetailHeader(sourceUrl: content.url, onOpenUrl: _openUrl),
+        _DetailHeader(
+          title: content.title,
+          sourceUrl: content.url,
+          onOpenUrl: _openUrl,
+        ),
         if (isRefreshing)
           Padding(
             padding: const EdgeInsets.only(top: 2, bottom: 8),
@@ -461,7 +471,7 @@ class _SourceDetailBody extends StatelessWidget {
               child: DiscoveryBookCover(
                 key: const Key('source-detail-cover'),
                 title: content.title,
-                coverUrl: content.coverUrl,
+                coverBytes: content.coverBytes,
                 variant: _coverVariant(content.id),
                 width: 112,
                 height: 174,
@@ -477,7 +487,6 @@ class _SourceDetailBody extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleLarge?.copyWith(
-                      fontSize: 24,
                       fontWeight: FontWeight.w700,
                       height: 1.15,
                     ),
@@ -498,7 +507,6 @@ class _SourceDetailBody extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodyLarge?.copyWith(
                             color: tokens.mutedText,
-                            fontSize: 16,
                           ),
                         ),
                       ),
@@ -614,7 +622,6 @@ class _SourceDetailBody extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodyLarge?.copyWith(
             color: tokens.mutedText,
-            fontSize: 16,
             height: 1.65,
           ),
         ),
@@ -650,43 +657,11 @@ class _SourceDetailBody extends StatelessWidget {
           url: detail.catalogUrl ?? content.url,
           onOpenUrl: _openUrl,
         ),
-        if (recommendations.isNotEmpty) ...<Widget>[
+        if (recommendationCandidates.isNotEmpty) ...<Widget>[
           const SizedBox(height: 24),
           Divider(color: tokens.divider, height: 1),
           const SizedBox(height: 22),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: Text(
-                  '猜你喜欢',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              Text('换一换', style: theme.textTheme.bodyMedium),
-              const SizedBox(width: 4),
-              Icon(Icons.refresh_rounded, size: 18, color: tokens.mutedText),
-            ],
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            height: 144,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: recommendations
-                  .map(
-                    (item) => SizedBox(
-                      width: 58,
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 10),
-                        child: _RecommendationCard(content: item),
-                      ),
-                    ),
-                  )
-                  .toList(growable: false),
-            ),
-          ),
+          _RecommendationsSection(candidates: recommendationCandidates),
           const SizedBox(height: 20),
           Material(
             color: tokens.accentSoft.withValues(alpha: .52),
@@ -728,9 +703,7 @@ class _SourceDetailBody extends StatelessWidget {
           ),
         ),
         Text(
-          bundle.chapters.totalCount == null
-              ? '本页 ${bundle.chapters.items.length} 章'
-              : '共 ${bundle.chapters.totalCount} 章',
+          chapterTotal == null ? '暂无章节' : '共 $chapterTotal 章',
           style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
         ),
         for (final chapter in bundle.chapters.items)
@@ -774,37 +747,59 @@ class _SourceDetailBody extends StatelessWidget {
       context,
     ).showSnackBar(const SnackBar(content: Text('无法调用系统浏览器打开该链接。')));
   }
-
 }
 
 class _DetailHeader extends StatelessWidget {
-  const _DetailHeader({required this.sourceUrl, required this.onOpenUrl});
+  const _DetailHeader({
+    required this.title,
+    required this.sourceUrl,
+    required this.onOpenUrl,
+  });
+  final String title;
   final Uri? sourceUrl;
   final Future<void> Function(BuildContext context, Uri? url) onOpenUrl;
   @override
   Widget build(BuildContext context) => SizedBox(
     height: 52,
-    child: Row(
+    child: Stack(
+      alignment: Alignment.center,
       children: <Widget>[
-        IconButton(
-          key: const Key('source-detail-back'),
-          tooltip: '返回',
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 96),
+          child: Text(
+            title,
+            key: const Key('source-detail-header-title'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
         ),
-        const Spacer(),
-        IconButton(
-          key: const Key('source-detail-open-source-url'),
-          tooltip: '在浏览器打开来源',
-          onPressed: sourceUrl == null
-              ? null
-              : () => unawaited(onOpenUrl(context, sourceUrl)),
-          icon: const Icon(Icons.ios_share_rounded),
-        ),
-        IconButton(
-          tooltip: '更多',
-          onPressed: () {},
-          icon: const Icon(Icons.more_vert_rounded),
+        Row(
+          children: <Widget>[
+            IconButton(
+              key: const Key('source-detail-back'),
+              tooltip: '返回',
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.arrow_back_ios_new_rounded),
+            ),
+            const Spacer(),
+            IconButton(
+              key: const Key('source-detail-open-source-url'),
+              tooltip: '在浏览器打开来源',
+              onPressed: sourceUrl == null
+                  ? null
+                  : () => unawaited(onOpenUrl(context, sourceUrl)),
+              icon: const Icon(Icons.ios_share_rounded),
+            ),
+            IconButton(
+              tooltip: '更多',
+              onPressed: () {},
+              icon: const Icon(Icons.more_vert_rounded),
+            ),
+          ],
         ),
       ],
     ),
@@ -822,24 +817,29 @@ class _DetailStats extends StatelessWidget {
     final heat = _attributeValue(content.attributes, 'heat');
     final favorites = _attributeValue(content.attributes, 'favorites');
     final firstLabel = rating != null
-        ? '${ratingCount ?? ''}人评分'
+        ? '${ratingCount == null ? '' : _formatStatValue(ratingCount)}人评分'
         : heat == null
-        ? '字数'
+        ? '热度'
         : favorites == null
         ? '热度'
-        : '热度 · 收藏 $favorites';
+        : '热度 · 收藏 ${_formatStatValue(favorites)}';
+    final firstValue = rating != null
+        ? _formatStatValue(rating)
+        : heat == null
+        ? '—'
+        : _formatStatValue(heat);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: <Widget>[
           _Stat(
-            value: rating ?? heat ?? _legacyWordCount(content.wordCount),
+            value: firstValue,
             label: firstLabel,
             suffix: rating == null ? null : '★★★★★',
           ),
           _Stat(
             value: _wordCount(content.wordCount),
-            label: content.wordCount == null ? '字数' : '万字',
+            label: _wordCountLabel(content.wordCount),
           ),
           _Stat(
             value: _chapterCount(content.chapterCount),
@@ -868,9 +868,9 @@ class _Stat extends StatelessWidget {
                 value,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontSize: 18,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                   fontWeight: FontWeight.w700,
+                  height: 1.2,
                 ),
               ),
             ),
@@ -878,27 +878,158 @@ class _Stat extends StatelessWidget {
               Text(
                 suffix!,
                 maxLines: 1,
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: AppThemeTokens.of(context).accent,
-                  fontSize: 11,
                   letterSpacing: -1,
                 ),
               ),
           ],
         ),
-        const SizedBox(height: 3),
+        const SizedBox(height: 2),
         Text(
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: AppThemeTokens.of(context).mutedText,
-            fontSize: 11,
           ),
         ),
       ],
     ),
   );
+}
+
+List<PluginContentSummary> _recommendationCandidates(
+  Iterable<PluginContentSummary> contents, {
+  required String excludedId,
+}) {
+  final seen = <String>{excludedId};
+  return contents.where((item) => seen.add(item.id)).toList(growable: false);
+}
+
+class _RecommendationsSection extends StatefulWidget {
+  const _RecommendationsSection({required this.candidates});
+
+  final List<PluginContentSummary> candidates;
+
+  @override
+  State<_RecommendationsSection> createState() =>
+      _RecommendationsSectionState();
+}
+
+class _RecommendationsSectionState extends State<_RecommendationsSection> {
+  late List<PluginContentSummary> _visibleCandidates;
+
+  @override
+  void initState() {
+    super.initState();
+    _reshuffle(useRandom: false);
+  }
+
+  @override
+  void didUpdateWidget(covariant _RecommendationsSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.candidates.length != widget.candidates.length ||
+        !_sameCandidateIds(oldWidget.candidates, widget.candidates)) {
+      _reshuffle(useRandom: false);
+    }
+  }
+
+  void _reshuffle({bool useRandom = true}) {
+    _visibleCandidates = List<PluginContentSummary>.of(widget.candidates)
+      ..shuffle(math.Random(useRandom ? null : _recommendationSeed()));
+  }
+
+  int _recommendationSeed() {
+    var seed = 17;
+    for (final candidate in widget.candidates) {
+      for (final unit in candidate.id.codeUnits) {
+        seed = (seed * 31 + unit) & 0x7fffffff;
+      }
+    }
+    return seed;
+  }
+
+  bool _sameCandidateIds(
+    List<PluginContentSummary> previous,
+    List<PluginContentSummary> current,
+  ) {
+    if (previous.length != current.length) return false;
+    for (var index = 0; index < current.length; index++) {
+      if (previous[index].id != current[index].id) return false;
+    }
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = AppThemeTokens.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                '猜你喜欢',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Semantics(
+              button: true,
+              label: '换一换推荐内容',
+              child: InkWell(
+                key: const Key('source-detail-recommendations-refresh'),
+                borderRadius: AppRadii.pill,
+                onTap: () => setState(_reshuffle),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.unit,
+                    vertical: AppSpacing.unit,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text('换一换', style: theme.textTheme.bodyMedium),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.refresh_rounded,
+                        size: 18,
+                        color: tokens.mutedText,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          key: const Key('source-detail-recommendations-scroll'),
+          height: 194,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const ClampingScrollPhysics(),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: _visibleCandidates
+                  .map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: _RecommendationCard(content: item),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _RecommendationCard extends StatelessWidget {
@@ -912,15 +1043,15 @@ class _RecommendationCard extends StatelessWidget {
     children: <Widget>[
       DiscoveryBookCover(
         title: content.title,
-        coverUrl: content.coverUrl,
+        coverBytes: content.coverBytes,
         variant: _coverVariant(content.id),
-        width: 58,
-        height: 84,
+        width: 96,
+        height: 140,
       ),
-      const SizedBox(height: 6),
+      const SizedBox(height: 7),
       Text(
         content.title,
-        maxLines: 1,
+        maxLines: 2,
         overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.bodyMedium,
       ),
@@ -1145,15 +1276,62 @@ DiscoveryCoverVariant _coverVariant(String id) {
 
 String _wordCount(int? value) {
   if (value == null) return '—';
-  if (value < 10000) return '$value字';
-  final count = value / 10000;
-  final digits = value % 10000 == 0 ? 0 : 2;
-  return '${count.toStringAsFixed(digits)}万';
+  return _formatReadableCount(value);
 }
 
-String _legacyWordCount(int? value) => value == null ? '—' : '字数：$value';
+String _wordCountLabel(int? value) =>
+    value != null && value >= 10000 ? '万字' : '字数';
 
-String _chapterCount(int? value) => value == null ? '—' : '$value';
+String _chapterCount(int? value) =>
+    value == null ? '—' : _formatReadableCount(value);
+
+int? _chapterTotal({
+  required int? reportedTotal,
+  required int? detailTotal,
+  required int loadedCount,
+}) {
+  for (final count in <int?>[reportedTotal, detailTotal]) {
+    if (count != null && count > 0) return count;
+  }
+  return loadedCount > 0 ? loadedCount : null;
+}
+
+String _formatStatValue(String value) {
+  final normalized = value.trim();
+  final parsed = num.tryParse(normalized);
+  if (parsed == null || !parsed.isFinite) return value;
+  if (parsed == parsed.roundToDouble()) {
+    return _formatReadableCount(parsed.toInt());
+  }
+  if (parsed.abs() >= 10000) {
+    return _formatReadableDecimal(parsed);
+  }
+  return normalized;
+}
+
+String _formatReadableCount(int value) {
+  final absolute = value.abs();
+  if (absolute >= 100000000) {
+    return '${value < 0 ? '-' : ''}${_trimDecimal(absolute / 100000000)}亿';
+  }
+  if (absolute >= 10000) {
+    return '${value < 0 ? '-' : ''}${_trimDecimal(absolute / 10000)}万';
+  }
+  return '$value';
+}
+
+String _formatReadableDecimal(num value) {
+  final absolute = value.abs();
+  if (absolute >= 100000000) {
+    return '${value < 0 ? '-' : ''}${_trimDecimal(absolute / 100000000)}亿';
+  }
+  return '${value < 0 ? '-' : ''}${_trimDecimal(absolute / 10000)}万';
+}
+
+String _trimDecimal(num value) => value
+    .toStringAsFixed(2)
+    .replaceFirst(RegExp(r'\.0+$'), '')
+    .replaceFirst(RegExp(r'0+$'), '');
 String _statusLabel(PluginContentStatus value) => switch (value) {
   PluginContentStatus.ongoing => '连载中',
   PluginContentStatus.completed => '已完结',

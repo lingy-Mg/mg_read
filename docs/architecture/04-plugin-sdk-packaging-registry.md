@@ -262,6 +262,39 @@ Windows Debug 直接发现仓库 `plugins/sources/*` 中已经构建的标准项
 Android 测试不使用该路径：测试脚本在 Windows 验证并打包归档，经 ADB 放入 Debug 应用私有
 inbox，再由 Runtime 正式 installer 在冷初始化前安装。
 
+## 插件开发测试与完成门槛
+
+插件是普通 Node.js 24 项目，因此电脑端开发可以直接测试，不必每次先打包、安装或等待 Android。
+但 Node 本地测试只证明插件代码和 Plugin API 链路正确，不等于 Windows Debug Runtime、Android
+安装包或最终 UI 已验收。插件开发完成前，必须按受影响边界留下对应证据：
+
+| 层级 | 必须执行 | 证明范围 |
+| --- | --- | --- |
+| 本地静态与离线测试 | `npm ci`、`npm run typecheck`、`npm test` | Node 24 编译、导出契约、解析逻辑、错误分支、缓存和脱敏 canary；不得依赖线上站点 |
+| 插件交付检查 | `npm run verify`、`npm run pack:plugin` | 完整离线测试、标准 `.mgplugin` 生成和包内容边界；`verify` 已包含 typecheck/test 时不重复计数 |
+| 来源线上 smoke | `npm run test:live` | 对真实来源执行分类、搜索、详情、目录和正文链路；来源行为变更后必须执行，不能作为常规 CI 的唯一测试 |
+| Windows Debug 直测 | 构建 `dist` 后在 Windows Debug 应用中实际调用该书源 | 工作区 development 插件被 Runtime 发现、Facade 调用和重载链路可用；不需要 pack/copy/install |
+| Android/发布验收 | 使用受控脚本安装 `.mgplugin` 后运行 Android Integration Test | 正式安装、冷激活、平台链路和真实应用行为；不能由 Node 本地测试或 Windows 直测替代 |
+
+推荐的电脑端插件循环如下：
+
+```powershell
+$nodeRoot = (Resolve-Path "../../../packages/mg_read_runtime/tools/node-v24.16.0-win-x64").Path
+$env:PATH = "$nodeRoot;$env:PATH"
+npm.cmd ci
+npm.cmd test                  # 修改期间快速离线回归
+npm.cmd run test:live         # 来源解析变化后执行一次
+npm.cmd run verify            # 完成前必做，包含 typecheck、npm test 和打包
+```
+
+开发期间可以使用 `tsc --watch` 或插件自己的 watch/build 命令持续更新 `dist/`。Windows Debug
+Runtime 会在下一次 Facade 调用前检测工作区指纹；检测到变化后串行回收旧 Node/VM 并重新加载，因而
+可以直接在电脑端验证当前源码。Release 和 Android 不读取工作区，必须走正式 `.mgplugin` 安装路线。
+
+线上 smoke 因外部站点可能暂时不可用，不应被偷偷跳过或伪造成通过；若它失败，交付记录必须明确是
+网络/来源故障还是插件解析故障，并将该来源标记为未完成线上验收。生产插件测试不得把真实 HTML、正文、
+用户输入、URL 或凭据写入日志或测试产物。
+
 ## Facade 与主项目边界
 
 公开集成面仍是 Runtime 包的 `PluginRuntime.invoke(PluginInvocation<T>)`。当前主项目接入：

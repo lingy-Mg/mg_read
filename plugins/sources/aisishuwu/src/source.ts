@@ -53,6 +53,10 @@ const catalogHtmlCachePolicy = Object.freeze({
   namespace: 'catalog',
   staleAfterMs: 60 * 60 * 1000,
 } satisfies HtmlCachePolicy);
+const hotSearchHtmlCachePolicy = Object.freeze({
+  namespace: 'hot-search',
+  staleAfterMs: 24 * 60 * 60 * 1000,
+} satisfies HtmlCachePolicy);
 
 function loadCheerio(): Promise<typeof import('cheerio')> {
   return (cheerioModule ??= import('cheerio'));
@@ -208,14 +212,13 @@ export class AliceBookHouseSource {
     const page = decodePageCursor(request.cursor, 'search-suggestions-page');
     const homeUrl = new URL('/', this.#baseUrl);
     if (page > 1) return Object.freeze({ items: Object.freeze([]), nextCursor: null });
-    const contents = await this.#parseList(
-      await this.#getHtml(homeUrl, undefined, listingHtmlCachePolicy),
-      homeUrl,
+    const contents = await this.#parseHotSearches(
+      await this.#getHtml(homeUrl, undefined, hotSearchHtmlCachePolicy),
     );
     return Object.freeze({
       items: Object.freeze(
-        contents.slice(0, request.pageSize).map((content) => Object.freeze({
-          query: content.title,
+        contents.slice(0, boundedPageSize(request.pageSize)).map((query) => Object.freeze({
+          query,
           metric: null,
         })),
       ),
@@ -255,7 +258,7 @@ export class AliceBookHouseSource {
             updatedAt: latestUpdatedAt,
           });
 
-    const coverUrl = this.#coverUrl($, detailUrl);
+    const coverUrl = await this.#proxyCoverUrl(this.#coverUrl($, detailUrl));
     const contentId = `novel:${novelId}`;
     this.#coverUrls.set(contentId, coverUrl);
     this.#chapterCounts.set(contentId, stats.chapterCount);
@@ -283,15 +286,39 @@ export class AliceBookHouseSource {
   async getChapters(request: ChaptersRequest): Promise<ChaptersResult> {
     const novelId = decodeNovelId(request.id);
     const cursor = decodeCatalogCursor(request.cursor);
-    const pageSize = boundedPageSize(request.pageSize);
     const catalog = await this.#catalogPage(novelId, cursor.page);
-    const page = catalog.chapters.slice(cursor.offset, cursor.offset + pageSize);
+
+    // Alice serves the complete catalog in one HTML document. Returning that
+    // document as one source page is important for the app-owned shelf cache:
+    // the first catalog response is persisted when a book is added, and a
+    // later local reader session must not mistake the first 20 entries for a
+    // complete catalog. Search/discovery remain paginated independently.
+    const page =
+      cursor.offset === 0 && cursor.page === 1
+        ? catalog.chapters
+        : catalog.chapters.slice(
+            cursor.offset,
+            cursor.offset + boundedPageSize(request.pageSize),
+          );
     const nextCursor =
-      cursor.offset + page.length < catalog.chapters.length
+      cursor.offset === 0 && cursor.page === 1
+        ? null
+        : cursor.offset + page.length < catalog.chapters.length
         ? encodeCatalogCursor(cursor.page, cursor.offset + page.length)
         : catalog.nextPage === null
         ? null
         : encodeCatalogCursor(catalog.nextPage, 0);
+    const detailChapterCount = this.#chapterCounts.get(request.id);
+    const totalCount =
+      detailChapterCount !== null &&
+      detailChapterCount !== undefined &&
+      detailChapterCount > 0
+        ? detailChapterCount
+        : catalog.totalCount !== null &&
+            catalog.totalCount !== undefined &&
+            catalog.totalCount > 0
+        ? catalog.totalCount
+        : catalog.chapters.length;
 
     return Object.freeze({
       items: Object.freeze(
@@ -310,7 +337,7 @@ export class AliceBookHouseSource {
         ),
       ),
       nextCursor,
-      totalCount: this.#chapterCounts.get(request.id) ?? catalog.totalCount,
+      totalCount,
     });
   }
 
@@ -384,6 +411,26 @@ export class AliceBookHouseSource {
         .toArray()
         .flatMap((element) => this.#parseBookElement($, element, pageUrl, seen)),
     );
+  }
+
+  async #parseHotSearches(html: string): Promise<readonly string[]> {
+    const cheerio = await loadCheerio();
+    const $ = cheerio.load(html);
+    const title = $('.title').filter((_, element) =>
+      compactSourceText($(element).text()) === '热门推荐小说',
+    ).first();
+    if (title.length === 0) return Object.freeze([]);
+    const section = title.closest('.innerss');
+    const seen = new Set<string>();
+    const queries = section.find('.details ul.item-list > li a.titles')
+      .toArray()
+      .flatMap((element) => {
+        const query = textOrNull($(element).text());
+        if (query === null || seen.has(query)) return [];
+        seen.add(query);
+        return [query];
+      });
+    return Object.freeze(queries);
   }
 
   #parseBookElement(
@@ -591,7 +638,7 @@ export class AliceBookHouseSource {
       const $ = cheerio.load(
         await this.#getHtml(detailUrl, detailUrl, detailHtmlCachePolicy),
       );
-      const coverUrl = this.#coverUrl($, detailUrl);
+      const coverUrl = await this.#proxyCoverUrl(this.#coverUrl($, detailUrl));
       this.#coverUrls.set(content.id, coverUrl);
       return coverUrl === null
           ? content
@@ -600,6 +647,13 @@ export class AliceBookHouseSource {
       this.#coverUrls.set(content.id, null);
       return content;
     }
+  }
+
+  async #proxyCoverUrl(url: string | null): Promise<string | null> {
+    if (url === null) return null;
+    // Offline fixtures may omit the optional proxy capability; production
+    // Runtime contexts always provide it.
+    return this.context.resource?.proxy({ url }) ?? url;
   }
 
   #sourceUrl(value: string, base: URL): URL {

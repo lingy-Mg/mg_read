@@ -8,6 +8,7 @@ import 'package:mg_read/features/profile/presentation/widgets/profile_overview_c
 import 'package:mg_read/features/profile/presentation/widgets/profile_settings_list.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
+import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 
 // Dark-mode plumbing remains available, but the current UI milestone exposes
@@ -69,66 +70,81 @@ class _ProfilePageState extends State<ProfilePage> {
         ? ProfileFixtures.preview
         : ProfileFixtures.preview.withReadingStats(widget.readingStats!);
     return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: AppSpacing.mobileContentMaxWidth,
-            ),
-            child: Scrollbar(
-              controller: _scrollController,
-              child: ListView(
-                key: const Key('profile-page-content'),
-                controller: _scrollController,
-                primary: false,
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.compactPagePadding,
-                  AppSpacing.pageHeaderTopPadding,
-                  AppSpacing.compactPagePadding,
-                  AppSpacing.page,
-                ),
-                children: <Widget>[
-                  ProfileTopBar(
-                    onToggleTheme: _themeModeActionEnabled
-                        ? () => _handleToggleTheme(context)
-                        : null,
-                    onNotifications: _showUnavailableMessage,
+      body: AppPageBackdrop(
+        style: AppPageBackdropStyle.profile,
+        child: SafeArea(
+          bottom: false,
+          child: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              final bool useWidePagePadding =
+                  constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
+              final double pagePadding = useWidePagePadding
+                  ? AppSpacing.widePagePadding
+                  : AppSpacing.compactPagePadding;
+              return Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: AppSpacing.contentMaxWidth,
                   ),
-                  const SizedBox(height: AppSpacing.compact + 2),
-                  ProfileOverviewCard(
-                    data: data,
-                    onEdit: _showUnavailableMessage,
-                    onSyncPressed: _showUnavailableMessage,
-                  ),
-                  if (_actionFeedback != null) ...<Widget>[
-                    const SizedBox(height: AppSpacing.regular),
-                    _ProfileActionFeedback(
-                      message: _actionFeedback!,
-                      onDismiss: () {
-                        setState(() {
-                          _actionFeedback = null;
-                        });
-                      },
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: Scrollbar(
+                      controller: _scrollController,
+                      child: ListView(
+                        key: const Key('profile-page-content'),
+                        controller: _scrollController,
+                        primary: false,
+                        padding: EdgeInsets.fromLTRB(
+                          pagePadding,
+                          AppSpacing.pageHeaderTopPadding,
+                          pagePadding,
+                          AppSpacing.page,
+                        ),
+                        children: <Widget>[
+                          ProfileTopBar(
+                            onToggleTheme: _themeModeActionEnabled
+                                ? () => _handleToggleTheme(context)
+                                : null,
+                            onNotifications: _showUnavailableMessage,
+                          ),
+                          const SizedBox(height: AppSpacing.compact + 2),
+                          ProfileOverviewCard(
+                            data: data,
+                            onEdit: _showUnavailableMessage,
+                            onSyncPressed: _showUnavailableMessage,
+                          ),
+                          if (_actionFeedback != null) ...<Widget>[
+                            const SizedBox(height: AppSpacing.regular),
+                            _ProfileActionFeedback(
+                              message: _actionFeedback!,
+                              onDismiss: () {
+                                setState(() {
+                                  _actionFeedback = null;
+                                });
+                              },
+                            ),
+                          ],
+                          const SizedBox(height: AppSpacing.section - 2),
+                          _ProfileSectionTitle(title: '设置与管理'),
+                          const SizedBox(height: AppSpacing.unit / 2),
+                          ProfileSettingsList(
+                            items: ProfileFixtures.preview.settings,
+                            onItemPressed: _handleSettingsItemPressed,
+                          ),
+                          const SizedBox(height: AppSpacing.compact - 2),
+                          _ProfileSectionTitle(title: '关于与其他'),
+                          const SizedBox(height: AppSpacing.compact - 2),
+                          ProfileSettingsList(
+                            items: ProfileFixtures.preview.about,
+                            onItemPressed: _handleAboutItemPressed,
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                  const SizedBox(height: AppSpacing.section - 2),
-                  _ProfileSectionTitle(title: '设置与管理'),
-                  const SizedBox(height: AppSpacing.unit / 2),
-                  ProfileSettingsList(
-                    items: ProfileFixtures.preview.settings,
-                    onItemPressed: _handleSettingsItemPressed,
                   ),
-                  const SizedBox(height: AppSpacing.compact - 2),
-                  _ProfileSectionTitle(title: '关于与其他'),
-                  const SizedBox(height: AppSpacing.compact - 2),
-                  ProfileSettingsList(
-                    items: ProfileFixtures.preview.about,
-                    onItemPressed: _handleAboutItemPressed,
-                  ),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -333,7 +349,6 @@ class _ProfileSectionTitle extends StatelessWidget {
         title,
         style: theme.textTheme.titleMedium?.copyWith(
           color: tokens.mutedText,
-          fontSize: 17,
           fontWeight: FontWeight.w400,
           height: 1.15,
         ),

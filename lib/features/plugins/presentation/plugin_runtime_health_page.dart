@@ -22,45 +22,39 @@ class PluginRuntimeHealthPage extends ConsumerWidget {
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: AppDetailMetrics.viewportWidth,
-            ),
-            child: Column(
-              children: <Widget>[
-                AppSecondaryPageTopBar(
-                  headerKey: const Key('runtime-health-top-bar'),
-                  backButtonKey: const Key('runtime-health-back'),
-                  title: 'Node 状态',
-                  onBack: onBackRequested,
-                  actions: <Widget>[
-                    AppSecondaryPageIconButton(
-                      key: const Key('runtime-health-refresh'),
-                      label: '刷新状态',
-                      icon: Icons.refresh_rounded,
-                      onPressed: () =>
-                          ref.invalidate(pluginRuntimeStatusProvider),
-                    ),
-                  ],
-                ),
-                Expanded(
-                  child: status.when(
-                    loading: () => const AppLoadingState(
-                      label: '正在读取 Node 状态',
-                      message: '正在读取 Node 状态',
-                      progressKey: Key('runtime-health-loading'),
-                    ),
-                    error: (Object _, StackTrace _) => _RuntimeHealthFailure(
-                      onRetry: () =>
-                          ref.invalidate(pluginRuntimeStatusProvider),
-                    ),
-                    data: (PluginRuntimeStatus value) =>
-                        _RuntimeHealthContent(status: value),
+        child: AppSecondaryPageContent(
+          child: Column(
+            children: <Widget>[
+              AppSecondaryPageTopBar(
+                headerKey: const Key('runtime-health-top-bar'),
+                backButtonKey: const Key('runtime-health-back'),
+                title: 'Node 状态',
+                onBack: onBackRequested,
+                actions: <Widget>[
+                  AppSecondaryPageIconButton(
+                    key: const Key('runtime-health-refresh'),
+                    label: '刷新状态',
+                    icon: Icons.refresh_rounded,
+                    onPressed: () =>
+                        ref.invalidate(pluginRuntimeStatusProvider),
                   ),
+                ],
+              ),
+              Expanded(
+                child: status.when(
+                  loading: () => const AppLoadingState(
+                    label: '正在读取 Node 状态',
+                    message: '正在读取 Node 状态',
+                    progressKey: Key('runtime-health-loading'),
+                  ),
+                  error: (Object _, StackTrace _) => _RuntimeHealthFailure(
+                    onRetry: () => ref.invalidate(pluginRuntimeStatusProvider),
+                  ),
+                  data: (PluginRuntimeStatus value) =>
+                      _RuntimeHealthContent(status: value),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

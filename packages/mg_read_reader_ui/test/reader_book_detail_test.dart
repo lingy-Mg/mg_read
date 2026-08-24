@@ -1,0 +1,121 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:novel_reader_ui/novel_reader_ui.dart';
+
+void main() {
+  testWidgets('reader source row and book details expose source metadata', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TextReaderView(
+            bookId: 'detail-book',
+            dataSource: const _DetailDataSource(),
+            stateStore: const _DetailStateStore(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(TextReaderView));
+    await tester.pumpAndSettle();
+    expect(find.text('演示书源'), findsOneWidget);
+    expect(
+      find.text('https://source.example/books/detail-book'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('目录'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('书籍详情'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('详情测试书'), findsWidgets);
+    expect(find.text('测试作者'), findsWidgets);
+    expect(find.text('测试简介'), findsOneWidget);
+    expect(find.text('玄幻'), findsOneWidget);
+    expect(find.text('连载'), findsOneWidget);
+    expect(find.text('来源频道'), findsOneWidget);
+  });
+}
+
+final class _DetailDataSource implements TextReaderDataSource {
+  const _DetailDataSource();
+
+  static const ReaderChapterInfo _chapter = ReaderChapterInfo(
+    id: 'chapter-1',
+    title: '第一章',
+    index: 0,
+  );
+
+  @override
+  Future<ReaderBookInfo> loadBookInfo(String bookId) async => ReaderBookInfo(
+    id: 'detail-book',
+    title: '详情测试书',
+    author: '测试作者',
+    description: '测试简介',
+    sourceName: '演示书源',
+    sourceUrl: Uri.parse('https://source.example/books/detail-book'),
+    wordCount: 120000,
+    chapterCount: 12,
+    statusLabel: '连载',
+    labels: <String>['玄幻'],
+    sourceKind: ReaderBookSourceKind.remote,
+  );
+
+  @override
+  Future<ChapterCatalogPage> loadChapterCatalog(
+    String bookId, {
+    String? cursor,
+    int pageSize = 100,
+  }) async => ChapterCatalogPage(
+    items: <ReaderChapterInfo>[_chapter],
+    total: 1,
+    hasMore: false,
+  );
+
+  @override
+  Future<ReaderChapterInfo> loadChapterAtIndex(String bookId, int index) async {
+    if (index != 0) throw RangeError.index(index, const <int>[0]);
+    return _chapter;
+  }
+
+  @override
+  Future<TextChapterContent> loadChapterContent(
+    String bookId,
+    String chapterId,
+  ) async => TextChapterContent(
+    chapterId: 'chapter-1',
+    title: '第一章',
+    paragraphs: <TextParagraph>[TextParagraph(id: 'p1', text: '正文。')],
+  );
+}
+
+final class _DetailStateStore implements TextReaderStateStore {
+  const _DetailStateStore();
+
+  @override
+  Future<List<ReaderBookmark>> loadBookmarks(String bookId) async =>
+      const <ReaderBookmark>[];
+
+  @override
+  Future<TextReaderPreferences?> loadPreferences() async => null;
+
+  @override
+  Future<ReaderProgress?> loadProgress(String bookId) async =>
+      const ReaderProgress(chapterId: 'chapter-1', paragraphId: 'p1');
+
+  @override
+  Future<void> addBookmark(ReaderBookmark bookmark) async {}
+
+  @override
+  Future<void> removeBookmark(String bookId, String bookmarkId) async {}
+
+  @override
+  Future<void> savePreferences(TextReaderPreferences preferences) async {}
+
+  @override
+  Future<void> saveProgress(String bookId, ReaderProgress progress) async {}
+}

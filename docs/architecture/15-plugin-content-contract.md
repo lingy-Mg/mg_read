@@ -150,6 +150,58 @@ discover({ target, cursor, collectionId, pageSize }) -> DiscoveryDocumentResult 
 - v1 控制面只允许有界内联小说文本；超限正文和图片必须走 Runtime 资源数据面，不能拆成
   Base64 或无界 JSON。
 
+## Runtime 资源代理数据面
+
+封面、漫画页和其他不适合放入控制面 JSON 的来源资源，通过书源发起、Runtime 托管的本地代理
+传递。它的目标是让复杂请求头、Cookie、签名算法和二进制响应始终留在 Node 书源侧；Widget
+不得直接请求来源 URL，也不得自行复刻书源 HTTP 逻辑。
+
+### 书源 API
+
+激活上下文提供：
+
+```ts
+ctx.resource.proxy(request) -> string
+```
+
+`request` 是书源私有的 JSON 对象（最多 16 KiB），Runtime 返回不透明的本地资源 URL。书源将
+该 URL 放入 `coverUrl` 或漫画页 URL；App 按普通图片 URL 加载它。URL 不含原始来源地址、Cookie、
+token 或用户输入，App 不得解析、拼接、替换或把它当作业务主键。
+
+书源可选导出对应的处理器：
+
+```ts
+resource(request) -> {
+  status?: number,
+  headers?: Record<string, string>,
+  body: string | Uint8Array
+}
+```
+
+当 App 对该 URL 发起 `GET` 时，Runtime 只把保存的私有 `request` 交给同一插件的 `resource()`。
+旧插件未导出该函数时稳定返回 `404`，不影响既有内容能力。处理器必须再次校验请求中的来源引用，
+并且所有远程访问只能使用 `ctx.http.fetch`；不能信任 URL 已因来自代理令牌而安全，也不能把请求
+转交给 Flutter、主应用或第三方子进程。
+
+### 生命周期、响应与安全
+
+- 资源 URL 仅在生成它的 Runtime 进程存活期间有效。Runtime 的 loopback 端口和不透明映射会在
+  冷启动时重建，不能把该 URL 当作可跨启动使用的远程地址；需要重新展示时由书源链路重新生成。
+- Runtime 只接受 `GET`，代理令牌最多保留 1024 个；达到上限时淘汰最早的条目。调用方必须能将
+  代理失败降级为封面/页面加载失败，不能把令牌当成持久文件标识。
+- `body` 可为 UTF-8 文本或任意二进制，最大 8 MiB。Runtime 只透传
+  `content-type`、`cache-control`、`content-disposition`、`etag`、`expires`、`last-modified`；
+  它自行设置长度和默认 `no-store`，拒绝 Cookie、认证、跳转/连接等头。
+- 默认诊断不得记录代理 URL、令牌、私有 request、来源 URL、响应头、正文或二进制内容。书源仍须
+  用 `ctx.log` 写入有界阶段事件，并让 Runtime 的 HTTP/调用诊断保留唯一终态。
+
+### 开发与验收
+
+新增或修改资源代理时，Runtime 必须覆盖生成 URL、重复 `GET`、二进制 body、状态码、安全响应头
+和未知/失效令牌；书源离线测试必须覆盖代理 URL 的生成、请求校验及“拒绝时不发起 HTTP”。来源
+请求逻辑变化后，仍按书源规范运行不保存 HTML/正文的 `npm run test:live`。Android 的实际图片加载
+属于 Integration Test 验收，不能由 Node 或桌面 Runtime 测试替代。
+
 ## 校验、错误与日志
 
 Runtime 在插件调用完成、写入 wire 之前校验全部固定键、枚举、URL、时间、计数、唯一性和大小。

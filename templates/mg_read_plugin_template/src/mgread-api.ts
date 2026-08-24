@@ -10,6 +10,10 @@ export interface MgReadPluginContext {
   readonly http: {
     fetch(input: string | URL, init?: RequestInit): Promise<Response>;
   };
+  /** Creates a process-scoped Runtime-owned URL whose request is handled by `resource`. */
+  readonly resource: {
+    proxy(request: Record<string, unknown>): string;
+  };
   readonly log: {
     debug(event: string): void;
     info(event: string): void;

@@ -80,7 +80,6 @@ class ProfileOverviewCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            fontSize: 13,
                             fontWeight: FontWeight.w400,
                             height: 1.2,
                             color: tokens.mutedText,
@@ -180,7 +179,6 @@ class _ProfileName extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.titleLarge?.copyWith(
-              fontSize: 20,
               fontWeight: FontWeight.w600,
               height: 1.05,
               letterSpacing: -0.2,
@@ -216,7 +214,6 @@ class _ProfileName extends StatelessWidget {
                   'VIP',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onPrimary,
-                    fontSize: 9,
                     fontWeight: FontWeight.w600,
                     height: 1,
                   ),
@@ -260,9 +257,8 @@ class _ProfileEditButton extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     '编辑资料',
-                    style: theme.textTheme.bodyMedium?.copyWith(
+                    style: theme.textTheme.bodySmall?.copyWith(
                       color: tokens.warning,
-                      fontSize: 11,
                       fontWeight: FontWeight.w500,
                       height: 1,
                     ),
@@ -305,7 +301,6 @@ class _ProfileStats extends StatelessWidget {
                       stat.label,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: tokens.mutedText,
-                        fontSize: 13,
                         fontWeight: FontWeight.w400,
                         height: 1.1,
                       ),
@@ -313,8 +308,7 @@ class _ProfileStats extends StatelessWidget {
                     const SizedBox(height: AppSpacing.unit),
                     Text(
                       stat.value,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontSize: 19,
+                      style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w500,
                         height: 1.1,
                       ),
@@ -378,7 +372,6 @@ class _ProfileSyncRow extends StatelessWidget {
                     data.syncLabel,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: tokens.warning,
-                      fontSize: 13,
                       fontWeight: FontWeight.w500,
                       height: 1.1,
                     ),
@@ -388,7 +381,6 @@ class _ProfileSyncRow extends StatelessWidget {
                   data.lastSyncLabel,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: tokens.mutedText,
-                    fontSize: 13,
                     fontWeight: FontWeight.w400,
                     height: 1.1,
                   ),

@@ -100,6 +100,35 @@ export async function getContent(request: ContentRequest): Promise<ChapterConten
   );
 }
 
+/** Runtime-owned cover proxy handler; credentials and network access stay in Node. */
+export async function resource(request: Record<string, unknown>): Promise<{
+  readonly status: number;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body: Uint8Array;
+}> {
+  return invoke('resource', async (activeContext) => {
+    const url = request.url;
+    if (typeof url !== 'string') return { status: 400, headers: {}, body: new Uint8Array() };
+    let coverUrl: URL;
+    try {
+      coverUrl = new URL(url);
+      if (coverUrl.protocol !== 'https:' || coverUrl.origin !== 'https://www.alicesw.com') {
+        return { status: 400, headers: {}, body: new Uint8Array() };
+      }
+    } catch {
+      return { status: 400, headers: {}, body: new Uint8Array() };
+    }
+    const response = await activeContext.http.fetch(coverUrl, { method: 'GET' });
+    const body = new Uint8Array(await response.arrayBuffer());
+    const contentType = response.headers.get('content-type');
+    return {
+      status: response.status,
+      headers: contentType === null ? {} : { 'content-type': contentType },
+      body,
+    };
+  });
+}
+
 let globalThisContext: MgReadPluginContext | undefined;
 
 function requireContext(): MgReadPluginContext {
@@ -107,7 +136,7 @@ function requireContext(): MgReadPluginContext {
   return globalThisContext;
 }
 
-type Operation = 'discover' | 'search' | 'search_suggestions' | 'get_detail' | 'get_chapters' | 'get_content';
+type Operation = 'discover' | 'search' | 'search_suggestions' | 'get_detail' | 'get_chapters' | 'get_content' | 'resource';
 
 async function invoke<T>(
   operation: Operation,

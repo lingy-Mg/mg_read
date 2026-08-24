@@ -39,6 +39,7 @@ final class LibraryHomeViewData {
               coverVariant: LibraryCoverVariant
                   .values[currentIndex % LibraryCoverVariant.values.length],
               coverUrl: current.coverUrl,
+              coverBytes: current.coverBytes,
             ),
       books: overview.items.asMap().entries.map(
         (entry) => LibraryBookListItemViewData(
@@ -46,6 +47,7 @@ final class LibraryHomeViewData {
           title: entry.value.title,
           subtitle: _librarySubtitle(entry.value),
           coverUrl: entry.value.coverUrl,
+          coverBytes: entry.value.coverBytes,
           coverVariant: LibraryCoverVariant
               .values[entry.key % LibraryCoverVariant.values.length],
           status: LibraryBookStatus.local,
@@ -96,6 +98,7 @@ final class LibraryContinueReadingViewData {
     required this.lastReadLabel,
     required this.coverVariant,
     this.coverUrl,
+    this.coverBytes,
     this.coverAssetPath,
   }) : assert(bookId != ''),
        assert(title != ''),
@@ -110,6 +113,7 @@ final class LibraryContinueReadingViewData {
   final String lastReadLabel;
   final LibraryCoverVariant coverVariant;
   final Uri? coverUrl;
+  final List<int>? coverBytes;
   final String? coverAssetPath;
 }
 

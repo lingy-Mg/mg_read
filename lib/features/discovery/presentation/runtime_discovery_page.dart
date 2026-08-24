@@ -9,6 +9,7 @@ import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_bookshelf_badge.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
@@ -25,6 +26,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     required this.onContentPressed,
     required this.onRefreshRequested,
     required this.onLoadMore,
+    this.isInBookshelf = _neverInBookshelf,
     required this.canNavigateBack,
     required this.onBackRequested,
     required this.loadingCollectionId,
@@ -45,6 +47,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
   final ValueChanged<PluginContentSummary> onContentPressed;
   final VoidCallback onRefreshRequested;
   final ValueChanged<PluginDiscoveryContentCollectionComponent> onLoadMore;
+  final bool Function(PluginContentSummary content) isInBookshelf;
   final bool canNavigateBack;
   final VoidCallback onBackRequested;
   final String? loadingCollectionId;
@@ -77,87 +80,96 @@ class RuntimeDiscoveryPage extends StatelessWidget {
           child: Scaffold(
             body: SafeArea(
               bottom: false,
-              child: Align(
-                alignment: canNavigateBack
-                    ? Alignment.topLeft
-                    : Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: canNavigateBack
-                        ? AppSpacing.discoveryListMaxWidth
-                        : AppSpacing.mobileContentMaxWidth,
-                  ),
-                  child: ListView(
-                    key: const Key('runtime-discovery-content'),
-                    padding: EdgeInsets.fromLTRB(
-                      canNavigateBack
-                          ? AppSpacing.regular
-                          : AppSpacing.discoveryPagePadding,
-                      AppSpacing.pageHeaderTopPadding,
-                      canNavigateBack
-                          ? AppSpacing.regular
-                          : AppSpacing.discoveryPagePadding,
-                      AppSpacing.page,
-                    ),
-                    children: <Widget>[
-                      Row(
+              child: LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints constraints) {
+                  final bool useWidePagePadding =
+                      constraints.maxWidth >=
+                      AppSpacing.compactLayoutBreakpoint;
+                  final double pagePadding = canNavigateBack
+                      ? AppSpacing.regular
+                      : useWidePagePadding
+                      ? AppSpacing.widePagePadding
+                      : AppSpacing.discoveryPagePadding;
+                  return Align(
+                    alignment: canNavigateBack
+                        ? Alignment.topLeft
+                        : Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: canNavigateBack
+                            ? AppSpacing.discoveryListMaxWidth
+                            : AppSpacing.contentMaxWidth,
+                      ),
+                      child: ListView(
+                        key: const Key('runtime-discovery-content'),
+                        padding: EdgeInsets.fromLTRB(
+                          pagePadding,
+                          AppSpacing.pageHeaderTopPadding,
+                          pagePadding,
+                          AppSpacing.page,
+                        ),
                         children: <Widget>[
-                          if (canNavigateBack)
-                            IconButton(
-                              key: const Key('runtime-discovery-back'),
-                              tooltip: '返回上一级',
-                              onPressed: onBackRequested,
-                              icon: const Icon(Icons.arrow_back_rounded),
-                            ),
-                          Expanded(
-                            child: DiscoveryTopBar(
-                              title: canNavigateBack
-                                  ? _nestedPageTitle(components) ?? '发现'
-                                  : '发现',
-                              sourceName: resolvedSourceName,
-                              onSourcePressed: onSourcePressed,
-                              onSearchPressed:
-                                  onSearchRequested ??
-                                  () => onDestinationRequested(
-                                    AppNavigationDestination.search,
-                                  ),
-                              onToggleTheme: () => AppThemeModeScope.of(
-                                context,
-                              ).onToggleTheme(Theme.of(context).brightness),
-                              onRefreshPressed: onRefreshRequested,
-                            ),
+                          Row(
+                            children: <Widget>[
+                              if (canNavigateBack)
+                                IconButton(
+                                  key: const Key('runtime-discovery-back'),
+                                  tooltip: '返回上一级',
+                                  onPressed: onBackRequested,
+                                  icon: const Icon(Icons.arrow_back_rounded),
+                                ),
+                              Expanded(
+                                child: DiscoveryTopBar(
+                                  title: canNavigateBack
+                                      ? _nestedPageTitle(components) ?? '发现'
+                                      : '发现',
+                                  sourceName: resolvedSourceName,
+                                  onSourcePressed: onSourcePressed,
+                                  onSearchPressed:
+                                      onSearchRequested ??
+                                      () => onDestinationRequested(
+                                        AppNavigationDestination.search,
+                                      ),
+                                  onToggleTheme: () => AppThemeModeScope.of(
+                                    context,
+                                  ).onToggleTheme(Theme.of(context).brightness),
+                                  onRefreshPressed: onRefreshRequested,
+                                ),
+                              ),
+                            ],
                           ),
+                          if (result == null)
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                top: AppSpacing.section,
+                              ),
+                              child: _DiscoveryContentState(
+                                isLoading: isContentLoading,
+                                isEmpty: contentIsEmpty,
+                                failureMessage: contentFailureMessage,
+                                failureCode: contentFailureCode,
+                                onRetry: onRefreshRequested,
+                              ),
+                            )
+                          else
+                            for (final component in components) ...<Widget>[
+                              _DiscoveryComponentRenderer(
+                                component: component,
+                                hideSectionTitle: canNavigateBack,
+                                onTabSelected: onTabSelected,
+                                onCategorySelected: onCategorySelected,
+                                onContentPressed: onContentPressed,
+                                onLoadMore: onLoadMore,
+                                loadingCollectionId: loadingCollectionId,
+                                isInBookshelf: isInBookshelf,
+                              ),
+                              const SizedBox(height: AppSpacing.section),
+                            ],
                         ],
                       ),
-                      if (result == null)
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            top: AppSpacing.section,
-                          ),
-                          child: _DiscoveryContentState(
-                            isLoading: isContentLoading,
-                            isEmpty: contentIsEmpty,
-                            failureMessage: contentFailureMessage,
-                            failureCode: contentFailureCode,
-                            onRetry: onRefreshRequested,
-                          ),
-                        )
-                      else
-                        for (final component in components) ...<Widget>[
-                          _DiscoveryComponentRenderer(
-                            component: component,
-                            hideSectionTitle: canNavigateBack,
-                            onTabSelected: onTabSelected,
-                            onCategorySelected: onCategorySelected,
-                            onContentPressed: onContentPressed,
-                            onLoadMore: onLoadMore,
-                            loadingCollectionId: loadingCollectionId,
-                          ),
-                          const SizedBox(height: AppSpacing.section),
-                        ],
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                },
               ),
             ),
             bottomNavigationBar: SafeArea(
@@ -177,6 +189,8 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     );
   }
 }
+
+bool _neverInBookshelf(PluginContentSummary _) => false;
 
 class _DiscoveryContentState extends StatelessWidget {
   const _DiscoveryContentState({
@@ -235,6 +249,7 @@ class _DiscoveryComponentRenderer extends StatelessWidget {
     required this.onContentPressed,
     required this.onLoadMore,
     required this.loadingCollectionId,
+    required this.isInBookshelf,
     this.hideSectionTitle = false,
   });
 
@@ -244,6 +259,7 @@ class _DiscoveryComponentRenderer extends StatelessWidget {
   final ValueChanged<PluginContentSummary> onContentPressed;
   final ValueChanged<PluginDiscoveryContentCollectionComponent> onLoadMore;
   final String? loadingCollectionId;
+  final bool Function(PluginContentSummary content) isInBookshelf;
   final bool hideSectionTitle;
 
   @override
@@ -298,6 +314,7 @@ class _DiscoveryComponentRenderer extends StatelessWidget {
           onContentPressed: onContentPressed,
           onLoadMore: onLoadMore,
           isLoading: loadingCollectionId == component.id,
+          isInBookshelf: isInBookshelf,
         ),
       PluginDiscoveryCategoryCollectionComponent(
         :final layout,
@@ -342,6 +359,7 @@ class _ChildrenComponent extends StatelessWidget {
               onContentPressed: renderer.onContentPressed,
               onLoadMore: renderer.onLoadMore,
               loadingCollectionId: renderer.loadingCollectionId,
+              isInBookshelf: renderer.isInBookshelf,
               hideSectionTitle: renderer.hideSectionTitle,
             ),
           ),
@@ -429,6 +447,7 @@ class _GroupComponent extends StatelessWidget {
             onContentPressed: renderer.onContentPressed,
             onLoadMore: renderer.onLoadMore,
             loadingCollectionId: renderer.loadingCollectionId,
+            isInBookshelf: renderer.isInBookshelf,
             hideSectionTitle: renderer.hideSectionTitle,
           ),
         )
@@ -469,12 +488,14 @@ class _ContentCollection extends StatelessWidget {
     required this.onContentPressed,
     required this.onLoadMore,
     required this.isLoading,
+    required this.isInBookshelf,
   });
 
   final PluginDiscoveryContentCollectionComponent component;
   final ValueChanged<PluginContentSummary> onContentPressed;
   final ValueChanged<PluginDiscoveryContentCollectionComponent> onLoadMore;
   final bool isLoading;
+  final bool Function(PluginContentSummary content) isInBookshelf;
 
   @override
   Widget build(BuildContext context) {
@@ -491,6 +512,7 @@ class _ContentCollection extends StatelessWidget {
             item: item,
             onPressed: () => onContentPressed(item.content),
             showRank: component.layout == PluginDiscoveryContentLayout.ranking,
+            isInBookshelf: isInBookshelf(item.content),
           ),
         )
         .toList(growable: false);
@@ -581,18 +603,22 @@ class _CategoryCollection extends StatelessWidget {
         .toList(growable: false);
     return switch (component.layout) {
       PluginDiscoveryCategoryLayout.grid => LayoutBuilder(
-        builder: (context, constraints) => Wrap(
-          spacing: AppSpacing.compact,
-          runSpacing: AppSpacing.compact,
-          children: children
-              .map(
-                (child) => SizedBox(
-                  width: (constraints.maxWidth - AppSpacing.compact) / 2,
-                  child: child,
-                ),
-              )
-              .toList(growable: false),
-        ),
+        builder: (context, constraints) {
+          final int columnCount = discoveryAdaptiveColumnCount(
+            constraints.maxWidth,
+            children.length,
+          );
+          final double gap = AppSpacing.compact;
+          final double itemWidth =
+              (constraints.maxWidth - gap * (columnCount - 1)) / columnCount;
+          return Wrap(
+            spacing: gap,
+            runSpacing: gap,
+            children: children
+                .map((child) => SizedBox(width: itemWidth, child: child))
+                .toList(growable: false),
+          );
+        },
       ),
       PluginDiscoveryCategoryLayout.list => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -663,11 +689,13 @@ class _DiscoveryBookCard extends StatelessWidget {
     required this.item,
     required this.onPressed,
     required this.showRank,
+    required this.isInBookshelf,
   });
 
   final PluginDiscoveryContentItem item;
   final VoidCallback onPressed;
   final bool showRank;
+  final bool isInBookshelf;
 
   @override
   Widget build(BuildContext context) {
@@ -690,9 +718,7 @@ class _DiscoveryBookCard extends StatelessWidget {
         );
         final coverHeight =
             coverWidth * AppSpacing.discoveryListCoverAspectRatio;
-        final titleStyle = theme.textTheme.titleMedium?.copyWith(
-          fontSize: constraints.maxWidth >= 500 ? 20 : null,
-        );
+        final titleStyle = theme.textTheme.titleMedium;
         final metadataStyle = theme.textTheme.bodyMedium?.copyWith(
           color: tokens.mutedText,
         );
@@ -719,7 +745,7 @@ class _DiscoveryBookCard extends StatelessWidget {
                     ],
                     DiscoveryBookCover(
                       title: content.title,
-                      coverUrl: content.coverUrl,
+                      coverBytes: content.coverBytes,
                       variant: _coverVariant(content.id),
                       width: coverWidth,
                       height: coverHeight,
@@ -735,6 +761,10 @@ class _DiscoveryBookCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: titleStyle,
                           ),
+                          if (isInBookshelf) ...<Widget>[
+                            const SizedBox(height: AppSpacing.unit),
+                            const DiscoveryBookshelfBadge(),
+                          ],
                           const SizedBox(height: AppSpacing.unit),
                           Text(
                             _authorAndCategory(content),
