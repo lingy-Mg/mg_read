@@ -69,11 +69,7 @@ Future<_SourceDetailBundle> _loadDetail(
   String id,
 ) async {
   final detail = await gateway.getDetail(pluginId: pluginId, id: id);
-  final chapters = await gateway.getChapters(
-    pluginId: pluginId,
-    id: id,
-    pageSize: 20,
-  );
+  final chapters = await gateway.getChapters(pluginId: pluginId, id: id);
   return _SourceDetailBundle(detail: detail, chapters: chapters);
 }
 
@@ -102,8 +98,6 @@ PluginChaptersResult _emptyChapters({
   pluginId: pluginId,
   sourceName: sourceName ?? '当前来源',
   items: const <PluginChapterSummary>[],
-  nextCursor: null,
-  totalCount: null,
 );
 
 class _SourceDetailScreen extends StatefulWidget {
@@ -265,18 +259,14 @@ class _SourceDetailView extends StatefulWidget {
 
 class _SourceDetailViewState extends State<_SourceDetailView> {
   late final List<PluginChapterSummary> _chapters;
-  late String? _nextCursor;
-  late int? _totalCount;
   late SourceDetailShelfState _shelfState;
-  bool _isLoadingMore = false;
+  var _visibleChapterCount = 20;
   bool _isSavingToShelf = false;
 
   @override
   void initState() {
     super.initState();
     _chapters = List<PluginChapterSummary>.of(widget.bundle.chapters.items);
-    _nextCursor = widget.bundle.chapters.nextCursor;
-    _totalCount = widget.bundle.chapters.totalCount;
     _shelfState = widget.shelfState;
   }
 
@@ -317,32 +307,13 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
     }
   }
 
-  Future<void> _loadMore() async {
-    final cursor = _nextCursor;
-    if (cursor == null || _isLoadingMore) return;
-    setState(() => _isLoadingMore = true);
-    try {
-      final next = await widget.gateway.getChapters(
-        pluginId: widget.bundle.detail.pluginId,
-        id: widget.bundle.detail.summary.id,
-        cursor: cursor,
-        pageSize: 20,
+  void _loadMore() {
+    setState(() {
+      _visibleChapterCount = math.min(
+        _visibleChapterCount + 20,
+        _chapters.length,
       );
-      if (!mounted) return;
-      final seen = _chapters.map((chapter) => chapter.id).toSet();
-      setState(() {
-        _chapters.addAll(next.items.where((chapter) => seen.add(chapter.id)));
-        _nextCursor = next.nextCursor;
-        _totalCount = next.totalCount ?? _totalCount;
-        _isLoadingMore = false;
-      });
-    } on Object {
-      if (!mounted) return;
-      setState(() => _isLoadingMore = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('无法加载更多章节，请稍后重试。')));
-    }
+    });
   }
 
   @override
@@ -353,8 +324,6 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
         pluginId: widget.bundle.chapters.pluginId,
         sourceName: widget.bundle.chapters.sourceName,
         items: _chapters,
-        nextCursor: _nextCursor,
-        totalCount: _totalCount,
       ),
     ),
     gateway: widget.gateway,
@@ -366,8 +335,8 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
     isSavingToShelf: _isSavingToShelf,
     onSaveToShelf: _saveToShelf,
     onExternalUrlRequested: widget.onExternalUrlRequested,
-    isLoadingMore: _isLoadingMore,
-    onLoadMore: _nextCursor == null ? null : _loadMore,
+    visibleChapterCount: _visibleChapterCount,
+    onLoadMore: _visibleChapterCount < _chapters.length ? _loadMore : null,
   );
 }
 
@@ -383,7 +352,7 @@ class _SourceDetailBody extends StatelessWidget {
     required this.isSavingToShelf,
     required this.onSaveToShelf,
     required this.onExternalUrlRequested,
-    required this.isLoadingMore,
+    required this.visibleChapterCount,
     required this.onLoadMore,
   });
 
@@ -397,7 +366,7 @@ class _SourceDetailBody extends StatelessWidget {
   final bool isSavingToShelf;
   final ValueChanged<PluginContentSummary> onSaveToShelf;
   final SourceExternalUrlLauncher onExternalUrlRequested;
-  final bool isLoadingMore;
+  final int visibleChapterCount;
   final VoidCallback? onLoadMore;
 
   @override
@@ -417,7 +386,6 @@ class _SourceDetailBody extends StatelessWidget {
       content.attributes,
     ).toList(growable: false);
     final chapterTotal = _chapterTotal(
-      reportedTotal: bundle.chapters.totalCount,
       detailTotal: content.chapterCount,
       loadedCount: bundle.chapters.items.length,
     );
@@ -706,7 +674,7 @@ class _SourceDetailBody extends StatelessWidget {
           chapterTotal == null ? '暂无章节' : '共 $chapterTotal 章',
           style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
         ),
-        for (final chapter in bundle.chapters.items)
+        for (final chapter in bundle.chapters.items.take(visibleChapterCount))
           _ChapterRow(
             chapter: chapter,
             onRead: () => unawaited(
@@ -726,13 +694,8 @@ class _SourceDetailBody extends StatelessWidget {
             padding: const EdgeInsets.only(top: AppSpacing.regular),
             child: OutlinedButton(
               key: const Key('source-detail-load-more-chapters'),
-              onPressed: isLoadingMore ? null : onLoadMore,
-              child: isLoadingMore
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('加载更多章节'),
+              onPressed: onLoadMore,
+              child: const Text('加载更多章节'),
             ),
           ),
       ],
@@ -1285,15 +1248,9 @@ String _wordCountLabel(int? value) =>
 String _chapterCount(int? value) =>
     value == null ? '—' : _formatReadableCount(value);
 
-int? _chapterTotal({
-  required int? reportedTotal,
-  required int? detailTotal,
-  required int loadedCount,
-}) {
-  for (final count in <int?>[reportedTotal, detailTotal]) {
-    if (count != null && count > 0) return count;
-  }
-  return loadedCount > 0 ? loadedCount : null;
+int? _chapterTotal({required int? detailTotal, required int loadedCount}) {
+  if (loadedCount > 0) return loadedCount;
+  return detailTotal != null && detailTotal > 0 ? detailTotal : null;
 }
 
 String _formatStatValue(String value) {

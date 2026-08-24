@@ -1,6 +1,7 @@
 # 15 插件内容 API v1
 
-本专题落实 [ADR-0018](adr/0018-recursive-discovery-document.md)。规范类型、运行时校验与
+本专题落实 [ADR-0018](adr/0018-recursive-discovery-document.md) 与
+[ADR-0020](adr/0020-complete-source-catalog.md)。规范类型、运行时校验与
 跨语言 fixture 由 `mg_read_runtime` 维护；本文件固定产品语义，主项目只消费 Runtime Facade
 发布的 Dart 强类型。
 
@@ -9,7 +10,7 @@
 ```text
 discover/search -> ContentSummary.id
                          |-> getDetail({ id })
-                         |-> getChapters({ id, cursor, pageSize })
+                         |-> getChapters({ id })
                                       |-> ChapterSummary.id
                                       `-> getContent({ id, chapterId })
 ```
@@ -30,7 +31,8 @@ discover/search -> ContentSummary.id
 | URL | HTTP(S) 字符串或 `null` | 不含凭据；只作元数据，不作业务主键 |
 
 Runtime 不自动把空字符串改成 null，也不把缺键补成 null。错误插件必须在开发期暴露，不能让
-不同语言各自生成默认值。未知附加键可以被 Runtime 丢弃，但不会穿透 Facade。
+不同语言各自生成默认值。一般未知附加键可以被 Runtime 丢弃且不会穿透 Facade；完整目录为避免
+把旧分页首段误认成全量，结果只允许 `items`。
 
 ## 富内容摘要
 
@@ -140,7 +142,8 @@ discover({ target, cursor, collectionId, pageSize }) -> DiscoveryDocumentResult 
 ## 详情、目录和正文
 
 - `getDetail({id})` 返回完整富摘要并增加固定 `aliases` 数组与 nullable `catalogUrl`。
-- `getChapters({id,cursor,pageSize})` 返回 `items/nextCursor/totalCount`。每章至少有稳定
+- `getChapters({id})` 一次返回完整的 `{items}`，`items.length` 就是本次完整章节数；目录不向
+  宿主暴露分页字段。目标网站自身有分页时，书源必须在内部追完并按稳定 ID 去重。每章至少有稳定
   `id/title/order`，并显式返回 nullable `url/volumeTitle/wordCount/updatedAt/isLocked` 与
   非 null `attributes` 数组。
 - `getContent({id,chapterId})` 返回固定 `contentKind/chapterId/title/updatedAt/text/pages`。
@@ -149,6 +152,8 @@ discover({ target, cursor, collectionId, pageSize }) -> DiscoveryDocumentResult 
   同一发现分区内的内容/分类 ID 均不可重复。
 - v1 控制面只允许有界内联小说文本；超限正文和图片必须走 Runtime 资源数据面，不能拆成
   Base64 或无界 JSON。
+- 完整目录最多 5000 章，编码后的目录结果最多 2 MiB；5001 章、重复章节 ID、超限结果或旧
+  `cursor/pageSize/nextCursor/totalCount` 形状统一拒绝为 `plugin_invalid_response`。
 
 ## Runtime 资源代理数据面
 

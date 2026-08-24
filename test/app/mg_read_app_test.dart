@@ -313,7 +313,8 @@ final class _SingleBookOverviewLoader implements LibraryOverviewLoader {
   const _SingleBookOverviewLoader();
 
   @override
-  Future<LibraryOverview> load() async => _overview('书架详情测试');
+  Future<LibraryOverview> load({Object? visibility}) async =>
+      _overview('书架详情测试');
 }
 
 void _expectBrightnessForCurrentPage(
@@ -344,7 +345,7 @@ final class _ControlledLibraryOverviewLoader implements LibraryOverviewLoader {
       Queue<Completer<LibraryOverview>>();
 
   @override
-  Future<LibraryOverview> load() {
+  Future<LibraryOverview> load({Object? visibility}) {
     final Completer<LibraryOverview> completer = Completer<LibraryOverview>();
     _pending.add(completer);
     return completer.future;

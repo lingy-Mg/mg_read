@@ -134,8 +134,6 @@ export async function getChapters(request) {
         attributes: [],
       },
     ],
-    nextCursor: null,
-    totalCount: 1,
   };
 }
 

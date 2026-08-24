@@ -346,8 +346,6 @@ test("desktop Runtime loads and searches an installed standard Node plugin", asy
       params: {
         pluginId: desktopFixture.plugin.id,
         id: response.result.items[0].id,
-        cursor: null,
-        pageSize: 20,
       },
     }),
   );

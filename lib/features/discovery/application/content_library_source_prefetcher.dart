@@ -8,10 +8,9 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 
 /// Warms the app-owned source data immediately after a book is added.
 ///
-/// The first catalog page is committed before the first chapter is cached, so
-/// a user can open the shelf while the remaining catalog pages are still
-/// downloading. All failures are isolated to this best-effort background
-/// task; the shelf mutation itself has already committed successfully.
+/// The complete catalog is committed atomically before the first chapter is
+/// cached. All failures are isolated to this best-effort background task; the
+/// shelf mutation itself has already committed successfully.
 final class ContentLibrarySourcePrefetcher {
   ContentLibrarySourcePrefetcher(
     this._library,
@@ -59,12 +58,11 @@ final class ContentLibrarySourcePrefetcher {
     var cachedChapterCount = 0;
     try {
       final detailFuture = _loadDetail(source);
-      final firstPage = await _gateway.getChapters(
+      final catalogResult = await _gateway.getChapters(
         pluginId: source.pluginId,
         id: source.remoteContentId,
-        pageSize: _pageSize,
       );
-      if (firstPage.items.isEmpty) {
+      if (catalogResult.items.isEmpty) {
         span?.complete(
           attributes: _attributes(
             catalogCount: 0,
@@ -75,24 +73,16 @@ final class ContentLibrarySourcePrefetcher {
         return;
       }
 
-      final firstCatalog = _toCatalog(firstPage.items);
-      // If the source already returned the complete catalog, wait for the
-      // single page and persist it once. Persisting firstPage and then the
-      // same complete page doubles JSON encoding and metadata writes for large
-      // books such as sources that ignore the requested page size.
-      if (firstPage.nextCursor != null) {
-        await _library.syncNovelCatalog(
-          itemId: item.id,
-          chapters: firstCatalog,
-        );
-      }
-
       final firstContent = _gateway.getContent(
         pluginId: source.pluginId,
         id: source.remoteContentId,
-        chapterId: firstPage.items.first.id,
+        chapterId: catalogResult.items.first.id,
       );
-      final allPages = _loadAllPages(source, firstPage);
+      final catalog = await _library.syncNovelCatalog(
+        itemId: item.id,
+        chapters: _toCatalog(catalogResult.items),
+      );
+      catalogCount = catalog.length;
 
       try {
         final content = await firstContent;
@@ -101,7 +91,7 @@ final class ContentLibrarySourcePrefetcher {
             content.text!.isNotEmpty) {
           await _library.cacheNovelChapter(
             itemId: item.id,
-            remoteChapterId: firstPage.items.first.id,
+            remoteChapterId: catalogResult.items.first.id,
             text: content.text!,
           );
           cachedChapterCount = 1;
@@ -109,13 +99,6 @@ final class ContentLibrarySourcePrefetcher {
       } on Object {
         // The reader can retry a missing first chapter on demand.
       }
-
-      final allChapters = await allPages;
-      catalogCount = allChapters.length;
-      await _library.syncNovelCatalog(
-        itemId: item.id,
-        chapters: _toCatalog(allChapters),
-      );
 
       final detail = await detailFuture;
       if (detail != null) {
@@ -168,38 +151,6 @@ final class ContentLibrarySourcePrefetcher {
     }
   }
 
-  Future<List<PluginChapterSummary>> _loadAllPages(
-    LibraryItemSource source,
-    PluginChaptersResult firstPage,
-  ) async {
-    final chapters = <PluginChapterSummary>[...firstPage.items];
-    var cursor = firstPage.nextCursor;
-    final seenCursors = <String>{};
-    while (cursor != null) {
-      if (!seenCursors.add(cursor)) {
-        throw StateError('The source returned a repeated catalog cursor.');
-      }
-      final page = await _gateway.getChapters(
-        pluginId: source.pluginId,
-        id: source.remoteContentId,
-        cursor: cursor,
-        pageSize: _pageSize,
-      );
-      if (page.items.isEmpty) {
-        throw StateError('The source returned an empty catalog page.');
-      }
-      chapters.addAll(page.items);
-      cursor = page.nextCursor;
-    }
-    final seenChapterIds = <String>{};
-    for (final chapter in chapters) {
-      if (!seenChapterIds.add(chapter.id)) {
-        throw StateError('The source returned a duplicate chapter ID.');
-      }
-    }
-    return chapters;
-  }
-
   List<SourceNovelCatalogChapter> _toCatalog(
     Iterable<PluginChapterSummary> chapters,
   ) => [
@@ -224,6 +175,4 @@ final class ContentLibrarySourcePrefetcher {
     'resultState': DiagnosticValue.string(resultState),
     if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
   });
-
-  static const int _pageSize = 50;
 }

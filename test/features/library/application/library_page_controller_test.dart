@@ -179,69 +179,87 @@ void main() {
     },
   );
 
-  test('projects shelf mutations immediately and preserves commits on refresh failure', () async {
-    final diagnostics = DiagnosticsTestkit();
-    addTearDown(diagnostics.dispose);
-    final loader = _ControlledLibraryOverviewLoader();
-    final container = ProviderContainer(
-      overrides: [
-        libraryOverviewLoaderProvider.overrideWithValue(loader),
-        diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
-      ],
-    );
-    addTearDown(container.dispose);
-    final subscription = container.listen(
-      libraryPageControllerProvider,
-      (_, _) {},
-      fireImmediately: true,
-    );
-    addTearDown(subscription.close);
+  test(
+    'projects shelf mutations immediately and preserves commits on refresh failure',
+    () async {
+      final diagnostics = DiagnosticsTestkit();
+      addTearDown(diagnostics.dispose);
+      final loader = _ControlledLibraryOverviewLoader();
+      final container = ProviderContainer(
+        overrides: [
+          libraryOverviewLoaderProvider.overrideWithValue(loader),
+          diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+        ],
+      );
+      addTearDown(container.dispose);
+      final subscription = container.listen(
+        libraryPageControllerProvider,
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
 
-    await _flush();
-    loader.completeNext(_overview('durable'));
-    await _flush();
-    final controller = container.read(libraryPageControllerProvider.notifier);
+      await _flush();
+      loader.completeNext(_overview('durable'));
+      await _flush();
+      final controller = container.read(libraryPageControllerProvider.notifier);
 
-    controller.beginAddition(
-      mutationId: 'source:pending',
-      provisionalItem: const LibraryItemSummary(
-        id: 'pending-shelf:source:pending',
-        title: '立即出现',
-      ),
-    );
-    expect(
-      container.read(libraryPageControllerProvider).overview!.items
-          .map((item) => item.title),
-      contains('立即出现'),
-    );
+      controller.beginAddition(
+        mutationId: 'source:pending',
+        provisionalItem: const LibraryItemSummary(
+          id: 'pending-shelf:source:pending',
+          title: '立即出现',
+        ),
+      );
+      expect(
+        container
+            .read(libraryPageControllerProvider)
+            .overview!
+            .items
+            .map((item) => item.title),
+        contains('立即出现'),
+      );
 
-    controller.commitAddition(
-      mutationId: 'source:pending',
-      durableItem: const LibraryItemSummary(id: 'book-committed', title: '立即出现'),
-    );
-    await _flush();
-    loader.failNext(StateError('refresh unavailable'));
-    await _flush();
-    expect(
-      container.read(libraryPageControllerProvider).overview!.items
-          .map((item) => item.title),
-      contains('立即出现'),
-    );
-    expect(container.read(libraryPageControllerProvider).hasFailure, isFalse);
+      controller.commitAddition(
+        mutationId: 'source:pending',
+        durableItem: const LibraryItemSummary(
+          id: 'book-committed',
+          title: '立即出现',
+        ),
+      );
+      await _flush();
+      loader.failNext(StateError('refresh unavailable'));
+      await _flush();
+      expect(
+        container
+            .read(libraryPageControllerProvider)
+            .overview!
+            .items
+            .map((item) => item.title),
+        contains('立即出现'),
+      );
+      expect(container.read(libraryPageControllerProvider).hasFailure, isFalse);
 
-    controller.beginRemoval('book-durable');
-    expect(
-      container.read(libraryPageControllerProvider).overview!.items
-          .map((item) => item.title),
-      isNot(contains('durable')),
-    );
-    controller.rollbackRemoval('book-durable');
-    expect(
-      container.read(libraryPageControllerProvider).overview!.items
-          .map((item) => item.title),
-      contains('durable'),
-    );
-  });
+      controller.beginRemoval('book-durable');
+      expect(
+        container
+            .read(libraryPageControllerProvider)
+            .overview!
+            .items
+            .map((item) => item.title),
+        isNot(contains('durable')),
+      );
+      controller.rollbackRemoval('book-durable');
+      expect(
+        container
+            .read(libraryPageControllerProvider)
+            .overview!
+            .items
+            .map((item) => item.title),
+        contains('durable'),
+      );
+    },
+  );
 
   test(
     'load failure records a stable code without exception content',
@@ -298,7 +316,7 @@ final class _ControlledLibraryOverviewLoader implements LibraryOverviewLoader {
   int loadCount = 0;
 
   @override
-  Future<LibraryOverview> load() {
+  Future<LibraryOverview> load({Object? visibility}) {
     loadCount++;
     final Completer<LibraryOverview> completer = Completer<LibraryOverview>();
     _pending.add(completer);

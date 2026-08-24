@@ -616,14 +616,10 @@ final class SourceChaptersInvocation
   const SourceChaptersInvocation({
     required this.pluginId,
     required this.id,
-    this.cursor,
-    this.pageSize = 50,
   });
 
   final String pluginId;
   final String id;
-  final String? cursor;
-  final int pageSize;
 
   @override
   String get _wireMethod => 'source.getChapters.v1';
@@ -632,8 +628,6 @@ final class SourceChaptersInvocation
   Map<String, Object?> get _wireParams => <String, Object?>{
     'pluginId': pluginId,
     'id': id,
-    'cursor': cursor,
-    'pageSize': pageSize,
   };
 
   @override
@@ -654,16 +648,6 @@ final class SourceChaptersInvocation
         'Source chapters result',
       ),
       items: items,
-      nextCursor: _contentNullableString(
-        result,
-        'nextCursor',
-        'Source chapters result',
-      ),
-      totalCount: _contentNullableInt(
-        result,
-        'totalCount',
-        'Source chapters result',
-      ),
     );
   }
 }
@@ -674,15 +658,11 @@ final class PluginChaptersResult {
     required this.pluginId,
     required this.sourceName,
     required List<PluginChapterSummary> items,
-    required this.nextCursor,
-    required this.totalCount,
   }) : items = List<PluginChapterSummary>.unmodifiable(items);
 
   final String pluginId;
   final String sourceName;
   final List<PluginChapterSummary> items;
-  final String? nextCursor;
-  final int? totalCount;
 }
 
 @immutable

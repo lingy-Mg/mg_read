@@ -100,7 +100,7 @@ final class _ReadingLibraryOverviewLoader implements LibraryOverviewLoader {
   const _ReadingLibraryOverviewLoader();
 
   @override
-  Future<LibraryOverview> load() async => LibraryOverview(
+  Future<LibraryOverview> load({Object? visibility}) async => LibraryOverview(
     items: <LibraryItemSummary>[
       LibraryItemSummary(
         id: 'library-book-1',
@@ -152,7 +152,7 @@ final class _PendingRefreshOverviewLoader implements LibraryOverviewLoader {
   bool get refreshCompleted => _refresh.isCompleted;
 
   @override
-  Future<LibraryOverview> load() {
+  Future<LibraryOverview> load({Object? visibility}) {
     loadCount += 1;
     if (loadCount == 1) {
       return Future<LibraryOverview>.value(

@@ -63,34 +63,34 @@ void main() {
     );
   });
 
-  testWidgets('formats numeric source stats without duplicating the word label',
-      (WidgetTester tester) async {
-    await _setViewport(tester, const Size(390, 900));
-    await tester.pumpWidget(const _DetailGoldenHost());
-    await tester.pumpAndSettle();
+  testWidgets(
+    'formats numeric source stats without duplicating the word label',
+    (WidgetTester tester) async {
+      await _setViewport(tester, const Size(390, 900));
+      await tester.pumpWidget(const _DetailGoldenHost());
+      await tester.pumpAndSettle();
 
-    expect(find.text('1.22万'), findsOneWidget);
-    expect(find.text('185.96万'), findsOneWidget);
-    expect(find.text('字数：1859600'), findsNothing);
-  });
+      expect(find.text('1.22万'), findsOneWidget);
+      expect(find.text('185.96万'), findsOneWidget);
+      expect(find.text('字数：1859600'), findsNothing);
+    },
+  );
 
-  testWidgets('does not display zero when detail data has a valid chapter count',
-      (WidgetTester tester) async {
-    await _setViewport(tester, const Size(390, 900));
-    await tester.pumpWidget(
-      _DetailGoldenHost(gateway: _GoldenDetailGateway(chaptersTotalOverride: 0)),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('共 733 章', skipOffstage: false), findsOneWidget);
-    expect(find.text('共 0 章', skipOffstage: false), findsNothing);
-  });
-
-  testWidgets('loads only the next catalog page when requested', (
+  testWidgets('uses the complete catalog length as the chapter count', (
     WidgetTester tester,
   ) async {
     await _setViewport(tester, const Size(390, 900));
-    final gateway = _GoldenDetailGateway();
+    await tester.pumpWidget(_DetailGoldenHost(gateway: _GoldenDetailGateway()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('共 4 章', skipOffstage: false), findsOneWidget);
+  });
+
+  testWidgets('reveals more chapters locally without another source request', (
+    WidgetTester tester,
+  ) async {
+    await _setViewport(tester, const Size(390, 900));
+    final gateway = _GoldenDetailGateway(catalogItemCount: 22);
     await tester.pumpWidget(_DetailGoldenHost(gateway: gateway));
     await tester.pumpAndSettle();
 
@@ -105,9 +105,9 @@ void main() {
     await tester.tap(find.byKey(const Key('source-detail-load-more-chapters')));
     await tester.pumpAndSettle();
 
-    expect(find.text('第三章 风华绝代'), findsOneWidget);
-    expect(find.text('第四章 应聘'), findsOneWidget);
-    expect(gateway.chapterRequests, <String?>[null, 'catalog-page:1:2']);
+    expect(find.text('第二十一章'), findsOneWidget);
+    expect(find.text('第二十二章'), findsOneWidget);
+    expect(gateway.chapterRequests, 1);
   });
 
   testWidgets('keeps the list summary visible while detail data is loading', (
@@ -196,14 +196,11 @@ class _DetailEntryState extends State<_DetailEntry> {
 }
 
 class _GoldenDetailGateway implements SourceContentGateway {
-  _GoldenDetailGateway({
-    this.useReference = false,
-    this.chaptersTotalOverride,
-  });
+  _GoldenDetailGateway({this.useReference = false, this.catalogItemCount});
 
   final bool useReference;
-  final int? chaptersTotalOverride;
-  final List<String?> chapterRequests = <String?>[];
+  final int? catalogItemCount;
+  var chapterRequests = 0;
 
   String get pluginId => useReference
       ? AliceBookHouseDetailFixture.referencePluginId
@@ -228,23 +225,31 @@ class _GoldenDetailGateway implements SourceContentGateway {
   Future<PluginChaptersResult> getChapters({
     required String pluginId,
     required String id,
-    String? cursor,
-    int pageSize = 50,
   }) async {
-    chapterRequests.add(cursor);
-    final result = useReference
+    chapterRequests += 1;
+    final base = useReference
         ? AliceBookHouseDetailFixture.referenceCatalog
-        : cursor == null
-        ? AliceBookHouseDetailFixture.firstCatalogPage
-        : AliceBookHouseDetailFixture.secondCatalogPage;
-    final override = chaptersTotalOverride;
-    if (override == null) return result;
+        : AliceBookHouseDetailFixture.firstCatalogPage;
+    final count = catalogItemCount;
+    if (count == null || count <= base.items.length) return base;
     return PluginChaptersResult(
-      pluginId: result.pluginId,
-      sourceName: result.sourceName,
-      items: result.items,
-      nextCursor: result.nextCursor,
-      totalCount: override,
+      pluginId: base.pluginId,
+      sourceName: base.sourceName,
+      items: <PluginChapterSummary>[
+        ...base.items,
+        for (var index = base.items.length; index < count; index += 1)
+          PluginChapterSummary(
+            id: 'chapter:${index + 1}',
+            title: '第${_chineseNumber(index + 1)}章',
+            order: index,
+            url: null,
+            volumeTitle: null,
+            wordCount: null,
+            updatedAt: null,
+            isLocked: false,
+            attributes: const <PluginContentAttribute>[],
+          ),
+      ],
     );
   }
 
@@ -302,8 +307,6 @@ final class _DelayedDetailGateway extends _GoldenDetailGateway {
   Future<PluginChaptersResult> getChapters({
     required String pluginId,
     required String id,
-    String? cursor,
-    int pageSize = 50,
   }) => _chapters.future;
 
   void complete() {
@@ -311,6 +314,12 @@ final class _DelayedDetailGateway extends _GoldenDetailGateway {
     _chapters.complete(AliceBookHouseDetailFixture.firstCatalogPage);
   }
 }
+
+String _chineseNumber(int value) => switch (value) {
+  21 => '二十一',
+  22 => '二十二',
+  _ => '$value',
+};
 
 Future<void> _setViewport(WidgetTester tester, Size size) async {
   tester.view.physicalSize = size;

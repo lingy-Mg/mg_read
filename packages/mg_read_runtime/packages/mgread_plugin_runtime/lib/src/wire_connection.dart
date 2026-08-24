@@ -1,13 +1,13 @@
 part of mgread_plugin_runtime;
 
 /// Maximum JSON-encoded control request or response supported by both ends.
-const _maxControlFrameBytes = 64 * 1024;
+const _maxControlFrameBytes = 4 * 1024 * 1024;
 
 /// Per-connection request multiplexer limit negotiated by `runtime.hello`.
 const _maxInFlightRequests = 256;
 
 /// Client-side byte window that prevents a large pending batch from growing.
-const _maxOutboundQueueBytes = 1024 * 1024;
+const _maxOutboundQueueBytes = 8 * 1024 * 1024;
 
 /// JSON object shape after Dart's decoder has discarded non-string keys.
 typedef _RuntimeJsonObject = Map<String, Object?>;
@@ -142,7 +142,7 @@ final class _WireConnection {
     if (encodedBytes > _maxControlFrameBytes) {
       throw const PluginRuntimeException(
         'invalid_request',
-        'The Runtime control request exceeds its 64 KiB limit.',
+        'The Runtime control request exceeds its negotiated limit.',
       );
     }
     if (_inFlightControlBytes + encodedBytes > _maxOutboundQueueBytes) {

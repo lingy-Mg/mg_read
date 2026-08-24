@@ -217,8 +217,6 @@ export interface ContentDetail extends ContentSummary {
 
 export interface ChaptersRequest {
   readonly id: string;
-  readonly cursor: string | null;
-  readonly pageSize: number;
 }
 
 export interface ChapterSummary {
@@ -236,8 +234,6 @@ export interface ChapterSummary {
 
 export interface ChaptersResult {
   readonly items: readonly ChapterSummary[];
-  readonly nextCursor: string | null;
-  readonly totalCount: number | null;
 }
 
 export interface ContentRequest {

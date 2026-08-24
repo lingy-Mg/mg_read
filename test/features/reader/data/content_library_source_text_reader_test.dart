@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,7 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
+import 'package:mg_read/features/discovery/application/content_library_source_prefetcher.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/reader/application/reader_launch_failure.dart';
 import 'package:mg_read/features/reader/data/content_library_source_text_reader.dart';
@@ -58,7 +60,7 @@ void main() {
 
       final firstRequest = await reader.launch(item.id.value);
       expect(firstRequest.bookId, item.id.value);
-      expect(gateway.requestedChapterPageSizes, <int>[20]);
+      expect(gateway.requestedCatalogCount, 1);
       expect(gateway.requestedDetailCount, 1);
       expect(firstRequest.extensions.chapterStateCapability, isNotNull);
       expect(await library.listAllCatalog(item.id), hasLength(2));
@@ -102,7 +104,7 @@ void main() {
         )).paragraphs.single.text,
         '第一段。',
       );
-      expect(gateway.requestedChapterPageSizes, <int>[20]);
+      expect(gateway.requestedCatalogCount, 1);
       expect(gateway.requestedDetailCount, 2);
       expect(gateway.requestedContentChapterIds, <String>['chapter-1']);
     },
@@ -184,6 +186,135 @@ void main() {
       'chapter:1',
     );
   });
+
+  test(
+    'waits for the shared prefetch instead of requesting the catalog twice',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'mg-read-reader-prefetch-',
+      );
+      final library = await ContentLibrary.open(dataRoot: root);
+      addTearDown(() async {
+        await library.close();
+        await root.delete(recursive: true);
+      });
+      final item = await library.bookshelf.addFromSource(
+        const BookshelfAddRequest(
+          title: '共享预取',
+          author: null,
+          kind: ContentKind.novel,
+          pluginId: 'org.example.source',
+          pluginVersion: '1.0.0',
+          remoteContentId: 'book-shared-prefetch',
+        ),
+      );
+      final gateway = _GatedCatalogGateway();
+      final prefetcher = ContentLibrarySourcePrefetcher(library, gateway);
+      final reader = ContentLibrarySourceTextReader(
+        library,
+        gateway,
+        prefetcher,
+      );
+
+      prefetcher.start(item);
+      await gateway.catalogRequested.future;
+      final launch = reader.launch(item.id.value);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(gateway.requestedCatalogCount, 1);
+      expect(await library.listAllCatalog(item.id), isEmpty);
+
+      gateway.releaseCatalog();
+      final request = await launch;
+
+      expect(request.bookId, item.id.value);
+      expect(gateway.requestedCatalogCount, 1);
+      expect(await library.listAllCatalog(item.id), hasLength(2));
+    },
+  );
+
+  test(
+    'retries once in the reader after a background catalog failure',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'mg-read-reader-retry-',
+      );
+      final library = await ContentLibrary.open(dataRoot: root);
+      addTearDown(() async {
+        await library.close();
+        await root.delete(recursive: true);
+      });
+      final item = await library.bookshelf.addFromSource(
+        const BookshelfAddRequest(
+          title: '失败重试',
+          author: null,
+          kind: ContentKind.novel,
+          pluginId: 'org.example.source',
+          pluginVersion: '1.0.0',
+          remoteContentId: 'book-prefetch-retry',
+        ),
+      );
+      final gateway = _FailOnceCatalogGateway();
+      final prefetcher = ContentLibrarySourcePrefetcher(library, gateway);
+      final reader = ContentLibrarySourceTextReader(
+        library,
+        gateway,
+        prefetcher,
+      );
+
+      prefetcher.start(item);
+      await prefetcher.waitFor(item.id.value);
+      final request = await reader.launch(item.id.value);
+
+      expect(request.bookId, item.id.value);
+      expect(gateway.requestedCatalogCount, 2);
+      expect(await library.listAllCatalog(item.id), hasLength(2));
+    },
+  );
+
+  test(
+    'replaces an old partial catalog when remote detail reports more chapters',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'mg-read-reader-repair-',
+      );
+      final library = await ContentLibrary.open(dataRoot: root);
+      addTearDown(() async {
+        await library.close();
+        await root.delete(recursive: true);
+      });
+      final item = await library.bookshelf.addFromSource(
+        const BookshelfAddRequest(
+          title: '半目录修复',
+          author: null,
+          kind: ContentKind.novel,
+          pluginId: 'org.example.source',
+          pluginVersion: '1.0.0',
+          remoteContentId: 'book-partial-repair',
+        ),
+      );
+      await library.syncNovelCatalog(
+        itemId: item.id,
+        chapters: const <SourceNovelCatalogChapter>[
+          SourceNovelCatalogChapter(
+            remoteIdentity: 'chapter-1',
+            title: '第一章',
+            index: 0,
+          ),
+        ],
+      );
+      final gateway = _FakeGateway();
+
+      final request = await ContentLibrarySourceTextReader(
+        library,
+        gateway,
+      ).launch(item.id.value);
+
+      expect(request.bookId, item.id.value);
+      expect(gateway.requestedCatalogCount, 1);
+      expect(await library.listAllCatalog(item.id), hasLength(2));
+    },
+  );
 }
 
 final class _CatalogFailureGateway extends _FakeGateway {
@@ -191,8 +322,6 @@ final class _CatalogFailureGateway extends _FakeGateway {
   Future<PluginChaptersResult> getChapters({
     required String pluginId,
     required String id,
-    String? cursor,
-    int pageSize = 50,
   }) => Future<PluginChaptersResult>.error(
     AppError.fromCode(AppErrorCode.timeout),
   );
@@ -203,8 +332,6 @@ final class _ColonChapterGateway extends _FakeGateway {
   Future<PluginChaptersResult> getChapters({
     required String pluginId,
     required String id,
-    String? cursor,
-    int pageSize = 50,
   }) async => PluginChaptersResult(
     pluginId: pluginId,
     sourceName: '示例书源',
@@ -212,8 +339,6 @@ final class _ColonChapterGateway extends _FakeGateway {
       _chapter('chapter:1', '第一章', 0),
       _chapter('chapter:https://2', '第二章', 1),
     ],
-    nextCursor: null,
-    totalCount: 2,
   );
 
   @override
@@ -233,8 +358,58 @@ final class _ColonChapterGateway extends _FakeGateway {
   );
 }
 
+final class _GatedCatalogGateway extends _FakeGateway {
+  final catalogRequested = Completer<void>();
+  final _catalogRelease = Completer<void>();
+
+  void releaseCatalog() => _catalogRelease.complete();
+
+  @override
+  Future<PluginChaptersResult> getChapters({
+    required String pluginId,
+    required String id,
+  }) async {
+    requestedCatalogCount += 1;
+    if (!catalogRequested.isCompleted) catalogRequested.complete();
+    await _catalogRelease.future;
+    return PluginChaptersResult(
+      pluginId: pluginId,
+      sourceName: '示例书源',
+      items: <PluginChapterSummary>[
+        _chapter('chapter-1', '第一章', 0),
+        _chapter('chapter-2', '第二章', 1),
+      ],
+    );
+  }
+}
+
+final class _FailOnceCatalogGateway extends _FakeGateway {
+  @override
+  Future<PluginChaptersResult> getChapters({
+    required String pluginId,
+    required String id,
+  }) {
+    requestedCatalogCount += 1;
+    if (requestedCatalogCount == 1) {
+      return Future<PluginChaptersResult>.error(
+        AppError.fromCode(AppErrorCode.timeout),
+      );
+    }
+    return Future<PluginChaptersResult>.value(
+      PluginChaptersResult(
+        pluginId: pluginId,
+        sourceName: '示例书源',
+        items: <PluginChapterSummary>[
+          _chapter('chapter-1', '第一章', 0),
+          _chapter('chapter-2', '第二章', 1),
+        ],
+      ),
+    );
+  }
+}
+
 final class _FakeGateway implements SourceContentGateway {
-  final requestedChapterPageSizes = <int>[];
+  var requestedCatalogCount = 0;
   final requestedContentChapterIds = <String>[];
   var requestedDetailCount = 0;
 
@@ -242,10 +417,8 @@ final class _FakeGateway implements SourceContentGateway {
   Future<PluginChaptersResult> getChapters({
     required String pluginId,
     required String id,
-    String? cursor,
-    int pageSize = 50,
   }) async {
-    requestedChapterPageSizes.add(pageSize);
+    requestedCatalogCount += 1;
     return PluginChaptersResult(
       pluginId: pluginId,
       sourceName: '示例书源',
@@ -253,8 +426,6 @@ final class _FakeGateway implements SourceContentGateway {
         _chapter('chapter-1', '第一章', 0, wordCount: 1234),
         _chapter('chapter-2', '第二章', 1),
       ],
-      nextCursor: null,
-      totalCount: 2,
     );
   }
 

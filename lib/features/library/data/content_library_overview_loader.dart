@@ -21,8 +21,12 @@ final class ContentLibraryOverviewLoader implements LibraryOverviewLoader {
   final LibraryCoverFetcher _fetcher;
 
   @override
-  Future<LibraryOverview> load() async {
-    final page = await _library.listLibrary(const LibraryQuery(limit: 100));
+  Future<LibraryOverview> load({
+    LibraryVisibility visibility = LibraryVisibility.normal,
+  }) async {
+    final page = await _library.listLibrary(
+      LibraryQuery(limit: 100, visibility: visibility),
+    );
     final progressByItemId = <String, LibraryReadingProgress>{
       for (final progress in await _library.readingProgress.loadMany(
         page.items.map((item) => item.id),

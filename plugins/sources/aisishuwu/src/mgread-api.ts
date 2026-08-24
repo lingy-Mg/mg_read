@@ -82,8 +82,8 @@ export interface DiscoveryDocument { readonly components: readonly DiscoveryComp
 export type DiscoverResult = { readonly kind: 'document'; readonly document: DiscoveryDocument } | { readonly kind: 'append'; readonly collectionId: string; readonly items: readonly DiscoveryContentItem[]; readonly continuation: DiscoveryContinuation | null; };
 export interface ContentReferenceRequest { readonly id: string; }
 export interface ContentDetail extends ContentSummary { readonly aliases: readonly string[]; readonly catalogUrl: string | null; }
-export interface ChaptersRequest { readonly id: string; readonly cursor: string | null; readonly pageSize: number; }
+export interface ChaptersRequest { readonly id: string; }
 export interface ChapterSummary { readonly id: string; readonly title: string; readonly order: number; readonly url: string | null; readonly volumeTitle: string | null; readonly wordCount: number | null; readonly updatedAt: string | null; readonly isLocked: boolean | null; readonly attributes: readonly ContentAttribute[]; }
-export interface ChaptersResult { readonly items: readonly ChapterSummary[]; readonly nextCursor: string | null; readonly totalCount: number | null; }
+export interface ChaptersResult { readonly items: readonly ChapterSummary[]; }
 export interface ContentRequest { readonly id: string; readonly chapterId: string; }
 export interface ChapterContent { readonly chapterId: string; readonly contentKind: ContentKind; readonly title: string | null; readonly updatedAt: string | null; readonly text: string | null; readonly pages: readonly { readonly id: string; readonly index: number; readonly url: string; readonly mimeType: string | null; readonly width: number | null; readonly height: number | null; }[]; }

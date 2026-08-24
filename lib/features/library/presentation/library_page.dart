@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/core/errors/app_error.dart';
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/library/application/library_book_remover.dart';
+import 'package:mg_read/features/library/application/library_book_visibility_changer.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/application/library_page_state.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
@@ -26,6 +28,7 @@ class LibraryPage extends ConsumerWidget {
     this.onDestinationRequested,
     this.onReaderRequested,
     this.onBookDetailRequested,
+    this.onPrivacyLibraryRequested,
     super.key,
   });
 
@@ -41,6 +44,9 @@ class LibraryPage extends ConsumerWidget {
   /// Lets the app layer open a persisted shelf item's detail surface.
   final ValueChanged<String>? onBookDetailRequested;
 
+  /// Lets the app route own navigation to the private bookshelf.
+  final VoidCallback? onPrivacyLibraryRequested;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppThemeModeScope themeModeScope = AppThemeModeScope.of(context);
@@ -50,6 +56,9 @@ class LibraryPage extends ConsumerWidget {
     );
     final LibraryBookRemover? bookRemover = ref.read(
       libraryBookRemoverProvider,
+    );
+    final LibraryBookVisibilityChanger? visibilityChanger = ref.read(
+      libraryBookVisibilityChangerProvider,
     );
 
     if (state.status == LibraryPageStatus.initialLoading) {
@@ -111,6 +120,28 @@ class LibraryPage extends ConsumerWidget {
                 controller.rollbackRemoval(book.id);
                 rethrow;
               }
+            },
+      onSetBookPrivate: visibilityChanger == null
+          ? null
+          : (book) async {
+              await callbacks.onSetBookPrivate?.call(book);
+              controller.beginRemoval(book.id);
+              try {
+                await visibilityChanger.setBookVisibility(
+                  book.id,
+                  LibraryVisibility.private,
+                );
+                controller.commitRemoval(book.id);
+              } on Object {
+                controller.rollbackRemoval(book.id);
+                rethrow;
+              }
+            },
+      onPrivacyLibraryRequested: onPrivacyLibraryRequested == null
+          ? callbacks.onPrivacyLibraryRequested
+          : () {
+              callbacks.onPrivacyLibraryRequested?.call();
+              onPrivacyLibraryRequested!();
             },
     );
     return LibraryHomeShell(

@@ -107,8 +107,6 @@ final class _FixtureGateway implements SourceContentGateway {
   Future<PluginChaptersResult> getChapters({
     required String pluginId,
     required String id,
-    String? cursor,
-    int pageSize = 50,
   }) async => AliceBookHouseDetailFixture.firstCatalogPage;
 
   @override

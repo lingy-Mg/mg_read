@@ -153,7 +153,6 @@ class _ProfilePageState extends State<ProfilePage> {
         child: AppBottomNavigation(
           selected: AppNavigationDestination.profile,
           onSelected: _handleDestinationSelected,
-          showSelectionIndicator: false,
         ),
       ),
     );

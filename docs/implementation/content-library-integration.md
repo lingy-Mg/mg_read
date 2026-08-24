@@ -67,7 +67,8 @@ switch (content) {
 }
 ```
 
-分页必须使用返回的 `nextCursor` 继续请求，不能假定一次读出完整目录：
+下面是应用自有 `ContentLibrary` 的本地查询分页；它与书源 `getChapters({id})` 的单次完整返回
+无关。本地遍历必须使用返回的 `nextCursor`，不能假定一次查询读出整个持久化目录：
 
 ```dart
 String? cursor;

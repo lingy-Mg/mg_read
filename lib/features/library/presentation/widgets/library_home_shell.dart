@@ -13,6 +13,12 @@ import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 
+const _deleteBookAction = LibraryBookListAction(id: 'delete', label: '删除');
+const _setBookPrivateAction = LibraryBookListAction(
+  id: 'set-private',
+  label: '设为隐私',
+);
+
 /// The responsive, presentation-only app shell for the library landing page.
 class LibraryHomeShell extends StatefulWidget {
   /// Creates a library home shell from immutable [data] and explicit actions.
@@ -143,6 +149,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                 onToggleTheme: widget.onToggleTheme,
                 onReadingHistory: _handleReadingHistory,
                 onManageSources: _handleManageSources,
+                onPrivacyLibrary: _handlePrivacyLibrary,
               ),
               if (widget.isRefreshing) ...<Widget>[
                 const SizedBox(height: AppSpacing.regular),
@@ -209,6 +216,8 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
               books: books,
               onOpenBook: _handleOpenBook,
               onBookMore: _handleBookMore,
+              actions: _bookActions,
+              onBookAction: _handleBookAction,
               presentation: _listPresentation,
             ),
           ),
@@ -270,6 +279,8 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
             books: books,
             onOpenBook: _handleOpenBook,
             onBookMore: _handleBookMore,
+            actions: _bookActions,
+            onBookAction: _handleBookAction,
             presentation: _listPresentation,
           ),
       ],
@@ -280,6 +291,11 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       _section == LibraryHomeSection.recentUpdates
       ? LibraryBookListPresentation.recentUpdates
       : LibraryBookListPresentation.shelf;
+
+  List<LibraryBookListAction> get _bookActions => <LibraryBookListAction>[
+    if (widget.callbacks.onSetBookPrivate != null) _setBookPrivateAction,
+    if (widget.callbacks.onDeleteBook != null) _deleteBookAction,
+  ];
 
   Widget _buildLibraryListHeader() {
     return Column(
@@ -352,12 +368,6 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   }
 
   void _handleBookMore(LibraryBookListItemViewData book) {
-    final Future<void> Function(LibraryBookListItemViewData)? deleteBook =
-        widget.callbacks.onDeleteBook;
-    if (deleteBook != null) {
-      unawaited(_confirmAndDeleteBook(book, deleteBook));
-      return;
-    }
     final ValueChanged<LibraryBookListItemViewData>? callback =
         widget.callbacks.onBookMore;
     if (callback != null) {
@@ -365,6 +375,47 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       return;
     }
     _showUnavailableMessage();
+  }
+
+  void _handleBookAction(
+    LibraryBookListItemViewData book,
+    LibraryBookListAction action,
+  ) {
+    switch (action.id) {
+      case 'delete':
+        final deleteBook = widget.callbacks.onDeleteBook;
+        if (deleteBook != null) {
+          unawaited(_confirmAndDeleteBook(book, deleteBook));
+          return;
+        }
+        break;
+      case 'set-private':
+        final setPrivate = widget.callbacks.onSetBookPrivate;
+        if (setPrivate != null) {
+          unawaited(_setBookPrivate(book, setPrivate));
+          return;
+        }
+        break;
+    }
+    _showUnavailableMessage();
+  }
+
+  Future<void> _setBookPrivate(
+    LibraryBookListItemViewData book,
+    Future<void> Function(LibraryBookListItemViewData) setPrivate,
+  ) async {
+    try {
+      await setPrivate(book);
+      if (!mounted) return;
+      setState(() {
+        _actionFeedback = '已将《${book.title}》设为隐私书籍';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _actionFeedback = '隐私设置未能完成，请稍后刷新。';
+      });
+    }
   }
 
   Future<void> _confirmAndDeleteBook(
@@ -406,6 +457,10 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
 
   void _handleManageSources() {
     _invoke(widget.callbacks.onManageSources);
+  }
+
+  void _handlePrivacyLibrary() {
+    _invoke(widget.callbacks.onPrivacyLibraryRequested);
   }
 
   void _handleDiscover() {
@@ -462,6 +517,7 @@ class LibraryHomeTopBar extends StatelessWidget {
     required this.onSearch,
     required this.onReadingHistory,
     required this.onManageSources,
+    required this.onPrivacyLibrary,
     this.onToggleTheme,
     super.key,
   });
@@ -470,6 +526,7 @@ class LibraryHomeTopBar extends StatelessWidget {
   final VoidCallback? onToggleTheme;
   final VoidCallback onReadingHistory;
   final VoidCallback onManageSources;
+  final VoidCallback onPrivacyLibrary;
 
   @override
   Widget build(BuildContext context) {
@@ -510,6 +567,10 @@ class LibraryHomeTopBar extends StatelessWidget {
               MenuItemButton(
                 onPressed: onManageSources,
                 child: const Text('管理数据源'),
+              ),
+              MenuItemButton(
+                onPressed: onPrivacyLibrary,
+                child: const Text('隐私书架'),
               ),
             ],
             builder:

@@ -213,6 +213,12 @@ void main() {
           id: result.items.single.id,
         ),
       );
+      final largeChapters = await runtime.invoke(
+        const SourceChaptersInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
+          id: 'flutter:large-catalog',
+        ),
+      );
       final content = await runtime.invoke(
         SourceContentInvocation(
           pluginId: 'org.mgread.flutter.fixture',
@@ -254,6 +260,8 @@ void main() {
       );
       expect(detail.catalogUrl, isNull);
       expect(chapters.items.single.order, 0);
+      expect(largeChapters.items, hasLength(733));
+      expect(largeChapters.items.last.order, 732);
       expect(content.contentKind, PluginContentKind.novel);
       expect(content.text, 'Flutter 标准正文。');
     },
@@ -609,20 +617,19 @@ export async function getDetail(request) {
   };
 }
 export async function getChapters(request) {
+  const count = request.id === 'flutter:large-catalog' ? 733 : 1;
   return {
-    items: [{
-      id: `\${request.id}:chapter-1`,
-      title: '第一章',
-      order: 0,
+    items: Array.from({ length: count }, (_, index) => ({
+      id: `\${request.id}:chapter-\${index + 1}`,
+      title: `第\${index + 1}章\${'大'.repeat(60)}`,
+      order: index,
       url: null,
       volumeTitle: null,
       wordCount: 12,
       updatedAt: null,
       isLocked: false,
       attributes: [],
-    }],
-    nextCursor: null,
-    totalCount: 1,
+    })),
   };
 }
 export async function getContent(request) {

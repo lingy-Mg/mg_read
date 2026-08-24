@@ -9,6 +9,7 @@ import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/shared/presentation/widgets/app_back_navigation_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 
 /// The root widget for the MgRead host application.
 class MgReadApp extends ConsumerStatefulWidget {
@@ -56,12 +57,14 @@ class _MgReadAppState extends ConsumerState<MgReadApp> {
       themeMode: ThemeMode.light,
       routerConfig: router,
       builder: (BuildContext context, Widget? child) {
-        return AppBackNavigationScope(
-          onBackRequested: popApplicationRoute,
-          child: AppThemeModeScope(
-            themeMode: ThemeMode.light,
-            onToggleTheme: _toggleTheme,
-            child: child ?? const SizedBox.shrink(),
+        return AppBottomNavigationMotionScope(
+          child: AppBackNavigationScope(
+            onBackRequested: popApplicationRoute,
+            child: AppThemeModeScope(
+              themeMode: ThemeMode.light,
+              onToggleTheme: _toggleTheme,
+              child: child ?? const SizedBox.shrink(),
+            ),
           ),
         );
       },

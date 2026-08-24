@@ -162,8 +162,9 @@ Runtime 诊断是上述业务 Store 选型之外的有界运行证据，并固�
 当前验证精确 Node/npm、TypeScript Core、npm 无原生 Addon 依赖，以及 Windows x64 上的
 Flutter↔Node desktop bootstrap：Runtime-owned Facade 在 child 创建前持有 Windows
 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object，启动固定 Node、解析 ready、通过内部 HTTP
-readiness 与 WS hello，并在同一 WS 上调用 ping/list 和五个 `source.*.v1` 内容能力。控制面固定 64 KiB frame、256
-在途请求、1 MiB 写侧队列、deadline best-effort cancel；超限大内容仍属于未来 HTTP 数据面。
+readiness 与 WS hello，并在同一 WS 上调用 ping/list 和五个 `source.*.v1` 内容能力。控制面固定 4 MiB frame、256
+在途请求、8 MiB 写侧队列、deadline best-effort cancel；目录允许最多 5000 章/2 MiB，其他超限
+大内容仍属于未来 HTTP 数据面。
 
 Runtime 还验证标准 `package.json.mgread`、lockfile v3、确定性 `.mgplugin`、安全解压、registry
 SRI、完整 package 资源、包内 `file:`、optional、dependency object store、hardlink/copy、

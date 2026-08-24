@@ -137,6 +137,78 @@ void main() {
     expect(await library.bookshelf.readCover(item.id), isNull);
   });
 
+  test(
+    'persists privacy visibility without changing progress or content',
+    () async {
+      final normal = await library.bookshelf.add(
+        title: '普通书籍',
+        kind: ContentKind.novel,
+        source: const ContentLibraryIngest(
+          pluginId: 'fixture',
+          producerPluginVersion: '1.0.0',
+          dataVersion: 1,
+          opaqueData: <String, Object?>{'remoteBookId': 'normal-book'},
+        ),
+      );
+      final private = await library.bookshelf.add(
+        title: '隐私书籍',
+        kind: ContentKind.novel,
+        source: const ContentLibraryIngest(
+          pluginId: 'fixture',
+          producerPluginVersion: '1.0.0',
+          dataVersion: 1,
+          opaqueData: <String, Object?>{'remoteBookId': 'private-book'},
+        ),
+      );
+      final progress = LibraryReadingProgress(
+        itemId: private.id,
+        chapterId: 'chapter-1',
+        paragraphId: 'paragraph-1',
+        characterOffset: 3,
+        chapterIndex: 0,
+        chapterFraction: 0.5,
+        bookFraction: 0.25,
+        updatedAtUtc: DateTime.utc(2026, 8, 24),
+      );
+      await library.readingProgress.save(progress);
+
+      await library.bookshelf.setVisibility(
+        private.id,
+        LibraryVisibility.private,
+      );
+      await library.close();
+      library = await ContentLibrary.open(dataRoot: root);
+
+      expect(
+        (await library.listLibrary(
+          const LibraryQuery(visibility: LibraryVisibility.normal),
+        )).items.map((item) => item.id.value),
+        <String>[normal.id.value],
+      );
+      expect(
+        (await library.listLibrary(
+          const LibraryQuery(visibility: LibraryVisibility.private),
+        )).items.single.visibility,
+        LibraryVisibility.private,
+      );
+      expect(
+        (await library.readingProgress.load(private.id))?.bookFraction,
+        progress.bookFraction,
+      );
+
+      await library.bookshelf.setVisibility(
+        private.id,
+        LibraryVisibility.normal,
+      );
+      expect(
+        (await library.listLibrary(
+          const LibraryQuery(visibility: LibraryVisibility.normal),
+        )).items.map((item) => item.id.value).toSet(),
+        <String>{normal.id.value, private.id.value},
+      );
+    },
+  );
+
   test('concurrent source saves are idempotent and atomically bound', () async {
     final items = await Future.wait<LibraryItem>([
       library.bookshelf.add(

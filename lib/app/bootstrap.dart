@@ -16,8 +16,10 @@ import 'package:mg_read/core/persistence/persistence.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/application/library_book_remover.dart';
+import 'package:mg_read/features/library/application/library_book_visibility_changer.dart';
 import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
 import 'package:mg_read/features/library/data/content_library_book_remover.dart';
+import 'package:mg_read/features/library/data/content_library_book_visibility_changer.dart';
 import 'package:mg_read/features/library/data/content_library_book_detail_launcher.dart';
 import 'package:mg_read/features/library/data/content_library_overview_loader.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
@@ -146,6 +148,7 @@ Future<void> bootstrapMgReadApp({
     );
     final resolvedManager = manager;
     await resolvedManager.initialize();
+    ContentLibrarySourcePrefetcher? sourcePrefetcher;
     appRunner(
       ProviderScope(
         overrides: [
@@ -165,6 +168,10 @@ Future<void> bootstrapMgReadApp({
               ContentLibraryBookRemover(persistentContentLibrary),
             ),
           if (persistentContentLibrary != null)
+            libraryBookVisibilityChangerProvider.overrideWithValue(
+              ContentLibraryBookVisibilityChanger(persistentContentLibrary),
+            ),
+          if (persistentContentLibrary != null)
             libraryBookDetailLauncherProvider.overrideWithValue(
               ContentLibraryBookDetailLauncher(persistentContentLibrary),
             ),
@@ -182,7 +189,7 @@ Future<void> bootstrapMgReadApp({
               final membership = ref.read(bookshelfMembershipProvider.notifier);
               return ContentLibraryDiscoveryBookshelfSaver(
                 library,
-                prefetcher: ContentLibrarySourcePrefetcher(
+                prefetcher: sourcePrefetcher ??= ContentLibrarySourcePrefetcher(
                   library,
                   ref.read(sourceContentGatewayProvider),
                   diagnostics: diagnostics,
@@ -227,6 +234,11 @@ Future<void> bootstrapMgReadApp({
               (ref) => ContentLibrarySourceTextReader(
                 persistentContentLibrary!,
                 ref.read(sourceContentGatewayProvider),
+                sourcePrefetcher ??= ContentLibrarySourcePrefetcher(
+                  persistentContentLibrary,
+                  ref.read(sourceContentGatewayProvider),
+                  diagnostics: diagnostics,
+                ),
               ),
             ),
         ],

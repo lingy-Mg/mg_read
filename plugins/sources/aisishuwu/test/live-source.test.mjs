@@ -17,7 +17,7 @@ test('live source completes category, search, detail, catalog, and content flow'
     http: { fetch },
     log: { debug() {}, info() {}, warn() {}, error() {} },
     app: { runtimeVersion: 'live-test', nodeVersion: process.versions.node, pluginApi: 1 },
-    plugin: { id: 'org.mgread.aisishuwu', version: '0.1.0' },
+    plugin: { id: 'org.mgread.aisishuwu', version: '0.2.2' },
   });
 
   const categories = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });
@@ -54,14 +54,15 @@ test('live source completes category, search, detail, catalog, and content flow'
 
   const fixtureChapters = await plugin.getChapters({
     id: 'novel:52801',
-    cursor: null,
-    pageSize: 20,
   });
   assert.equal(fixtureChapters.items.length, 733);
-  assert.equal(fixtureChapters.totalCount, 733);
-  assert.equal(fixtureChapters.nextCursor, null);
+  assert.equal(new Set(fixtureChapters.items.map((chapter) => chapter.id)).size, 733);
+  assert.deepEqual(
+    fixtureChapters.items.map((chapter) => chapter.order),
+    Array.from({ length: 733 }, (_, index) => index),
+  );
 
-  const chapters = await plugin.getChapters({ id: book.id, cursor: null, pageSize: 5 });
+  const chapters = await plugin.getChapters({ id: book.id });
   assert.ok(chapters.items.length > 0);
   const content = await plugin.getContent({ id: book.id, chapterId: chapters.items[0].id });
   assert.equal(content.chapterId, chapters.items[0].id);

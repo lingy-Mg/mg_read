@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/library/application/library_overview_loader.dart';
@@ -20,13 +21,23 @@ final libraryPageControllerProvider =
       LibraryPageController.new,
     );
 
+/// Owns the privacy-only shelf projection with the same lifecycle guarantees
+/// as the normal library landing page.
+final privateLibraryPageControllerProvider =
+    NotifierProvider<PrivateLibraryPageController, LibraryPageState>(
+      PrivateLibraryPageController.new,
+    );
+
 /// Immutable-state controller with request-generation protection.
 ///
 /// The durable overview is merged with short-lived shelf mutations so a save or
 /// removal is reflected immediately. A successful background reconciliation
 /// replaces that projection; a reconciliation failure deliberately keeps the
 /// durable mutation outcome visible.
-class LibraryPageController extends Notifier<LibraryPageState> {
+abstract class _LibraryOverviewPageController
+    extends Notifier<LibraryPageState> {
+  LibraryVisibility get visibility;
+
   late LibraryOverviewLoader _loader;
   late DiagnosticsManager _diagnostics;
   int _latestGeneration = 0;
@@ -125,7 +136,8 @@ class LibraryPageController extends Notifier<LibraryPageState> {
   }) async {
     if (!_isCurrent(generation)) return;
 
-    final bool initialLoad = retainedOverview == null &&
+    final bool initialLoad =
+        retainedOverview == null &&
         !_hasLoadedBase &&
         _pendingAdditions.isEmpty &&
         _pendingRemovals.isEmpty;
@@ -161,7 +173,9 @@ class LibraryPageController extends Notifier<LibraryPageState> {
     }
 
     try {
-      final LibraryOverview overview = await _loader.load();
+      final LibraryOverview overview = await _loader.load(
+        visibility: visibility,
+      );
       if (!_isCurrent(generation)) {
         span.cancel(
           attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
@@ -204,7 +218,8 @@ class LibraryPageController extends Notifier<LibraryPageState> {
       } else {
         state = LibraryPageState.failure(
           error: appError,
-          retainedOverview: retainedOverview ??
+          retainedOverview:
+              retainedOverview ??
               (_hasLoadedBase ? _projectedOverview() : null),
         );
       }
@@ -227,7 +242,8 @@ class LibraryPageController extends Notifier<LibraryPageState> {
     ];
     final knownIds = items.map((item) => item.id).toSet();
     for (final pending in _pendingAdditions.values) {
-      if (hiddenIds.contains(pending.item.id) || !knownIds.add(pending.item.id)) {
+      if (hiddenIds.contains(pending.item.id) ||
+          !knownIds.add(pending.item.id)) {
         continue;
       }
       items.add(pending.item);
@@ -252,6 +268,17 @@ class LibraryPageController extends Notifier<LibraryPageState> {
 
   bool _isCurrent(int generation) =>
       !_disposed && generation == _latestGeneration;
+}
+
+final class LibraryPageController extends _LibraryOverviewPageController {
+  @override
+  LibraryVisibility get visibility => LibraryVisibility.normal;
+}
+
+final class PrivateLibraryPageController
+    extends _LibraryOverviewPageController {
+  @override
+  LibraryVisibility get visibility => LibraryVisibility.private;
 }
 
 final class _PendingAddition {

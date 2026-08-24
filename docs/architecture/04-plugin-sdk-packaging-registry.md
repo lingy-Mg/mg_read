@@ -182,6 +182,9 @@ export async function getContent(request) {}
 必须同时切换，不能让主项目直接加载模块。开发期旧默认导出只作为读取旧包时拒绝迁移的对象，
 不是公开模板契约。
 
+`getChapters({id})` 必须一次返回完整 `{items}`。来源网站自己的目录分页由插件内部追完并去重，
+不得向宿主返回 `cursor/pageSize/nextCursor/totalCount`；完整目录受 5000 条和 2 MiB 双重上限约束。
+
 `ctx` 只提供 MgRead 独有能力：
 
 - `dataDir`、`cacheDir`：插件专属可写目录；

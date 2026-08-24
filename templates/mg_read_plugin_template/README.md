@@ -46,8 +46,9 @@ export async function getContent(request) {}
 - `search({query,cursor,pageSize})`：返回 `items/nextCursor/totalCount`。每个 item 都包含书名、
   内容类型，以及显式 nullable 的作者、URL、封面、简介、字数、章节数、更新时间、最新章节等
   字段；`id` 必须是后续 `getDetail`、`getChapters` 能识别的稳定来源 ID。
-- `getDetail({id})`、`getChapters({id,cursor,pageSize})`：接收前一步的稳定 ID，分别返回完整
-  内容元信息与分页章节列表。
+- `getDetail({id})`、`getChapters({id})`：接收前一步的稳定 ID，分别返回完整内容元信息与单次
+  完整 `{items}` 章节列表。网站自身分页必须由书源内部追完并去重；不得返回目录 cursor，目录
+  最多 5000 章且编码结果最多 2 MiB。
   不要把页码、像素位置等 UI 状态当作 ID 或进度语义。
 - `getContent({id,chapterId})`：接收内容和章节稳定 ID，返回该章节内容。正文和大对象不要写入日志、
   `package.json` 或静态元数据。
@@ -112,7 +113,7 @@ Android 安装测试。
 mgread pack
 ```
 
-输出位于 `artifacts/org.example.source-0.1.0.mgplugin`。容器只含 `package.json`、
+输出位于 `artifacts/org.example.source-0.1.1.mgplugin`。容器只含 `package.json`、
 `package-lock.json`、`dist/`、`assets/`、包内 `packages/`、`tools/`、README/LICENSE，不含
 `node_modules`。Runtime 不运行 npm、pnpm 或 install scripts，也不支持 Git/native addon。
 

@@ -15,9 +15,10 @@ const MAX_DISCOVERY_ITEMS = 50;
 const MAX_CATEGORIES = 32;
 const MAX_TAGS = 64;
 const MAX_ATTRIBUTES = 32;
-const MAX_CHAPTER_ITEMS = 200;
+const MAX_CHAPTER_ITEMS = 5_000;
 const MAX_MANGA_PAGES = 500;
 const MAX_INLINE_RESULT_BYTES = 56 * 1_024;
+const MAX_INLINE_CHAPTER_CATALOG_BYTES = 2 * 1_024 * 1_024;
 const MAX_INLINE_TEXT_BYTES = 48 * 1_024;
 
 const contentKinds = new Set<PluginContentKind>(["novel", "manga"]);
@@ -277,9 +278,7 @@ export interface PluginContentDetail extends PluginContentSummary {
 }
 
 export interface PluginChaptersRequest extends JsonObject {
-  readonly cursor: string | null;
   readonly id: string;
-  readonly pageSize: number;
 }
 
 export interface PluginChapterSummary extends JsonObject {
@@ -296,10 +295,8 @@ export interface PluginChapterSummary extends JsonObject {
 
 export interface PluginChaptersResult extends JsonObject {
   readonly items: readonly PluginChapterSummary[];
-  readonly nextCursor: string | null;
   readonly pluginId: string;
   readonly sourceName: string;
-  readonly totalCount: number | null;
 }
 
 export interface PluginContentRequest extends JsonObject {
@@ -404,13 +401,11 @@ export function parseDetailParams(
 export function parseChaptersParams(
   params: JsonObject,
 ): ParsedPluginRequest<PluginChaptersRequest> {
-  assertOnlyKeys(params, ["pluginId", "id", "cursor", "pageSize"]);
+  assertOnlyKeys(params, ["pluginId", "id"]);
   return Object.freeze({
     pluginId: readPluginId(params, "pluginId"),
     request: Object.freeze({
-      cursor: readNullableCursor(params, "cursor"),
       id: readRequiredString(params, "id", MAX_ID_CHARACTERS),
-      pageSize: readPageSize(params, "pageSize"),
     }),
   });
 }
@@ -537,18 +532,17 @@ export function validateChaptersResult(
   value: unknown,
 ): PluginChaptersResult {
   const raw = readRecord(value);
+  assertOnlyKeys(raw, ["items"]);
   const items = Object.freeze(
     readArray(raw, "items", MAX_CHAPTER_ITEMS).map(validateChapterSummary),
   );
   assertUnique(items.map((item) => item.id));
   const result = Object.freeze({
     items,
-    nextCursor: readNullableCursor(raw, "nextCursor"),
     pluginId,
     sourceName,
-    totalCount: readNullableCount(raw, "totalCount"),
   });
-  assertInlineBudget(result);
+  assertInlineBudget(result, MAX_INLINE_CHAPTER_CATALOG_BYTES);
   return result;
 }
 
@@ -1062,7 +1056,10 @@ function readNullableObject<T>(
   return value === null ? null : decode(value);
 }
 
-function assertOnlyKeys(raw: JsonObject, allowed: readonly string[]): void {
+function assertOnlyKeys(
+  raw: Readonly<Record<string, unknown>>,
+  allowed: readonly string[],
+): void {
   const allowedSet = new Set(allowed);
   if (Object.keys(raw).some((key) => !allowedSet.has(key))) fail();
 }
@@ -1071,8 +1068,11 @@ function assertUnique(values: readonly string[]): void {
   if (new Set(values).size !== values.length) fail();
 }
 
-function assertInlineBudget(value: JsonObject): void {
-  if (Buffer.byteLength(JSON.stringify(value), "utf8") > MAX_INLINE_RESULT_BYTES) {
+function assertInlineBudget(
+  value: JsonObject,
+  maximumBytes = MAX_INLINE_RESULT_BYTES,
+): void {
+  if (Buffer.byteLength(JSON.stringify(value), "utf8") > maximumBytes) {
     fail();
   }
 }

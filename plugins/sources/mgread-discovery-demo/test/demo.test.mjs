@@ -32,7 +32,7 @@ test('detail preserves generated opaque ids and rejects foreign ids', async () =
 test('packed archive marks local and central entry names as UTF-8', async () => {
   await packPlugin();
   const archive = await readFile(
-    new URL('../artifacts/org.mgread.discovery-demo-0.1.0.mgplugin', import.meta.url),
+    new URL('../artifacts/org.mgread.discovery-demo-0.1.1.mgplugin', import.meta.url),
   );
   const endOfCentralDirectory = archive.length - 22;
   const centralOffset = archive.readUInt32LE(endOfCentralDirectory + 16);

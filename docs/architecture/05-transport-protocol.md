@@ -23,8 +23,9 @@ Runtime 仓库目前只实现 desktop bootstrap 所需的内部 `/health/live`�
 `plugin.search.v1` 不构成可用产品契约；它由 ADR-0017 的 `source.discover.v1`、
 `source.search.v1`、`source.getDetail.v1`、`source.getChapters.v1`、
 `source.getContent.v1` 直接替换。当前实现验证协议版本、bootId、`c:` ID、trace、deadline、
-对象参数和 64 KiB text frame；Node 与 Flutter 测试读取同一 fixture。它也实现 Facade deadline
-后的 best-effort `cancel`、256 在途请求上限、1 MiB 写侧背压队列和五个内容方法的强类型结果。
+对象参数和 4 MiB text frame；Node 与 Flutter 测试读取同一 fixture。它也实现 Facade deadline
+后的 best-effort `cancel`、256 在途请求上限、8 MiB 写侧背压队列和五个内容方法的强类型结果。
+常规内联结果继续使用较小预算；完整目录是最多 5000 章、2 MiB 的专用例外。
 事件、重连、snapshot、资源 HTTP 与 Range 尚未实现，因此这仍不是本章完整协议验收。详见
 [Runtime desktop 文档](../../packages/mg_read_runtime/docs/desktop-runtime-bridge.md)。
 
@@ -214,7 +215,7 @@ sequenceDiagram
 | `plugin.diagnose` | 获取脱敏诊断 | 是 |
 | `registry.refresh` / `registry.list` | 条件刷新与查询官方仓库 | 是 |
 | `source.discover.v1` / `source.search.v1` | 发现分区和富搜索结果，不透明 cursor 分页 | 是 |
-| `source.getDetail.v1` / `source.getChapters.v1` | 富详情和目录分页 | 是 |
+| `source.getDetail.v1` / `source.getChapters.v1` | 富详情和单次完整目录 | 是 |
 | `source.getContent.v1` | 有界小说正文或有序漫画页描述；超限数据转资源句柄 | 是 |
 | `resource.release` | 提前释放临时句柄 | 写但天然幂等 |
 | `download.start` | 创建/绑定传输 | 写；必须有幂等键 |

@@ -151,8 +151,6 @@ export function createLocalExampleSource(prefix: string) {
             attributes: Object.freeze([]),
           }),
         ]),
-        nextCursor: null,
-        totalCount: 1,
       });
     },
 

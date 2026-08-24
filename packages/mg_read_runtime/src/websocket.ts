@@ -8,10 +8,10 @@ const CLOSE_TRY_AGAIN_LATER = 1013;
 const CLOSE_UNSUPPORTED_DATA = 1003;
 
 /** Maximum encoded size of one Runtime control message. */
-export const maxWebSocketControlFrameBytes = 64 * 1024;
+export const maxWebSocketControlFrameBytes = 4 * 1024 * 1024;
 
 /** Maximum application-plus-socket backlog retained for one connection. */
-export const maxWebSocketOutboundQueueBytes = 1024 * 1024;
+export const maxWebSocketOutboundQueueBytes = 8 * 1024 * 1024;
 
 const MAX_BUFFERED_BYTES = maxWebSocketControlFrameBytes + 32;
 const webSocketOpcode = Object.freeze({
@@ -201,12 +201,20 @@ export class ServerWebSocketSession {
         payloadLength = this.#buffer.readUInt16BE(offset);
         offset += 2;
       } else if (payloadLength === 127) {
-        this.#fail(CLOSE_MESSAGE_TOO_BIG, "Runtime control frames are limited to 64 KiB.");
-        return;
+        if (this.#buffer.length < offset + 8) {
+          return;
+        }
+        const extendedLength = this.#buffer.readBigUInt64BE(offset);
+        offset += 8;
+        if (extendedLength > BigInt(Number.MAX_SAFE_INTEGER)) {
+          this.#fail(CLOSE_MESSAGE_TOO_BIG, "Runtime control frame exceeds its limit.");
+          return;
+        }
+        payloadLength = Number(extendedLength);
       }
 
       if (payloadLength > maxWebSocketControlFrameBytes) {
-        this.#fail(CLOSE_MESSAGE_TOO_BIG, "Runtime control frame exceeds 64 KiB.");
+        this.#fail(CLOSE_MESSAGE_TOO_BIG, "Runtime control frame exceeds its limit.");
         return;
       }
       if (opcode >= 0x8 && payloadLength > 125) {
@@ -292,11 +300,16 @@ export class ServerWebSocketSession {
     let header: Buffer;
     if (payload.length <= 125) {
       header = Buffer.from([0x80 | opcode, payload.length]);
-    } else {
+    } else if (payload.length <= 0xffff) {
       header = Buffer.allocUnsafe(4);
       header[0] = 0x80 | opcode;
       header[1] = 126;
       header.writeUInt16BE(payload.length, 2);
+    } else {
+      header = Buffer.allocUnsafe(10);
+      header[0] = 0x80 | opcode;
+      header[1] = 127;
+      header.writeBigUInt64BE(BigInt(payload.length), 2);
     }
     return Buffer.concat([header, payload]);
   }

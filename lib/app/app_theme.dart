@@ -396,8 +396,8 @@ abstract final class AppSpacing {
   static const double topBarActionIconSize = unit * 6;
   static const double bottomNavigationIconSize = unit * 6;
   static const double bottomNavigationLabelSize = 11;
-  static const double bottomNavigationIndicatorWidth = unit * 11;
-  static const double bottomNavigationIndicatorHeight = unit * 7;
+  static const double bottomNavigationIndicatorWidth = unit * 14;
+  static const double bottomNavigationIndicatorHeight = unit * 10;
   static const double unreadDotSize = unit + unit / 2;
   static const double profileCardHeight = 196;
   static const double profileSummaryHeight = 153;
@@ -473,7 +473,6 @@ abstract final class AppDetailMetrics {
   static const double backButtonExtent = 48;
   static const double backButtonLeft = 8;
   static const double bottomNavigationHeight = 76;
-  static const double bottomNavigationTopPadding = 6;
 
   static const double aboutIconTopGap = 29;
   static const double aboutIconExtent = 106;
@@ -531,7 +530,25 @@ abstract final class AppRadii {
 /// Shared motion timings for short, non-disruptive application feedback.
 abstract final class AppMotion {
   static const Duration navigationSelection = Duration(milliseconds: 180);
+  static const Duration bottomNavigationIconResponse = Duration(
+    milliseconds: 300,
+  );
+  static const Duration bottomNavigationLabelResponse = Duration(
+    milliseconds: 260,
+  );
+  static const Duration bottomNavigationPillTravel = Duration(
+    milliseconds: 420,
+  );
   static const Duration destinationTransition = Duration(milliseconds: 220);
+  static const double bottomNavigationPillOvershoot = 0.045;
+  static const double bottomNavigationPillTravelWidthScale = 0.72;
+  static const double bottomNavigationPillTravelHeightScale = 0.8;
+  static const double bottomNavigationPillArrivalWidthScale = 1.08;
+  static const double bottomNavigationPillArrivalHeightScale = 1.06;
+  static const double bottomNavigationSelectionHandoff = 0.64;
+  static const double bottomNavigationSelectedIconScale = 1.12;
+  static const double bottomNavigationUnselectedIconAlignmentY = -0.38;
+  static const double bottomNavigationLabelAlignmentY = 0.58;
   static const Curve navigationCurve = Curves.easeOutCubic;
   static const Curve navigationReverseCurve = Curves.easeInCubic;
 }

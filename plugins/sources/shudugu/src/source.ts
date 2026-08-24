@@ -119,13 +119,10 @@ export class ShuduguSource {
     const id = decodeNovelId(request.id);
     let chapters = this.#catalogs.get(id);
     if (chapters === undefined) { chapters = (await this.getDetail({ id: request.id })).chapterCount === null ? [] : this.#catalogs.get(id) ?? []; }
-    const cursor = decodeOffsetCursor(request.cursor);
-    const page = cursor === 0 ? chapters : chapters.slice(cursor, cursor + boundedPageSize(request.pageSize));
-    const nextCursor = cursor === 0 ? null : cursor + page.length < chapters.length ? `catalog-offset:${cursor + page.length}` : null;
-    return Object.freeze({ items: Object.freeze(page.map((chapter, index) => Object.freeze({
-      id: chapter.id, title: chapter.title, order: cursor + index, url: chapter.url.toString(), volumeTitle: null,
+    return Object.freeze({ items: Object.freeze(chapters.map((chapter, index) => Object.freeze({
+      id: chapter.id, title: chapter.title, order: index, url: chapter.url.toString(), volumeTitle: null,
       wordCount: null, updatedAt: null, isLocked: false, attributes: Object.freeze([]),
-    }))), nextCursor, totalCount: chapters.length });
+    }))) });
   }
 
   async getContent(request: ContentRequest): Promise<ChapterContent> {
@@ -203,7 +200,6 @@ function textOrNull(value: string | undefined): string | null { return nonBlank(
 function novelIdFromUrl(url: URL): string | null { return /^\/(\d+)\/$/u.exec(url.pathname)?.[1] ?? null; }
 function decodeNovelId(id: string): string { const value = /^novel:(\d+)$/u.exec(id)?.[1]; if (value === undefined) throw new Error('Novel ID is invalid.'); return value; }
 function decodePage(cursor: string | null, scope: string): number { if (cursor === null) return 1; const value = Number(new RegExp(`^${scope}:(\\d+)$`, 'u').exec(cursor)?.[1] ?? Number.NaN); if (!Number.isSafeInteger(value) || value < 1) throw new Error('Cursor is invalid.'); return value; }
-function decodeOffsetCursor(cursor: string | null): number { if (cursor === null) return 0; const value = Number(/^catalog-offset:(\d+)$/u.exec(cursor)?.[1] ?? Number.NaN); if (!Number.isSafeInteger(value) || value < 1) throw new Error('Catalog cursor is invalid.'); return value; }
 function boundedPageSize(value: number): number { if (!Number.isSafeInteger(value) || value < 1) throw new Error('Page size is invalid.'); return Math.min(value, 100); }
 function parseSearchTotal(value: string): number | null { const count = Number(/共(\d+)本小说/u.exec(value.replace(/\s+/g, ''))?.[1] ?? Number.NaN); return Number.isSafeInteger(count) && count >= 0 ? count : null; }
 function parseCount(value: string, suffix: string): number | null { const match = /([\d.]+)(万|亿)?/u.exec(value); if (match === null) return null; const number = Number(match[1]); const result = Math.round(number * (match[2] === '万' ? 10000 : match[2] === '亿' ? 100000000 : 1)); return Number.isSafeInteger(result) && result >= 0 && value.includes(suffix) ? result : null; }

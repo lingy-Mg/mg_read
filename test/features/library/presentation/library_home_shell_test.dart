@@ -84,6 +84,10 @@ void main() {
     await tester.tap(find.byTooltip('书籍更多操作').first);
     await tester.pumpAndSettle();
 
+    expect(find.text('删除'), findsOneWidget);
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+
     expect(find.text('删除书籍'), findsOneWidget);
     expect(find.textContaining('确定要从书架删除'), findsOneWidget);
     expect(deletedBook, isNull);
@@ -93,6 +97,41 @@ void main() {
 
     expect(deletedBook?.id, 'fixture-lord-of-mysteries');
     expect(find.text('已从书架删除《诡秘之主》'), findsOneWidget);
+  });
+
+  testWidgets('offers privacy actions from book and home overflow menus', (
+    WidgetTester tester,
+  ) async {
+    LibraryBookListItemViewData? privateBook;
+    var privateShelfOpenCount = 0;
+    await tester.pumpWidget(
+      _host(
+        callbacks: LibraryHomeCallbacks(
+          onSetBookPrivate: (book) async {
+            privateBook = book;
+          },
+          onPrivacyLibraryRequested: () {
+            privateShelfOpenCount++;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('书籍更多操作').first);
+    await tester.pumpAndSettle();
+    expect(find.text('设为隐私'), findsOneWidget);
+    await tester.tap(find.text('设为隐私'));
+    await tester.pumpAndSettle();
+    expect(privateBook?.id, 'fixture-lord-of-mysteries');
+    expect(find.textContaining('设为隐私书籍'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    expect(find.text('隐私书架'), findsOneWidget);
+    await tester.tap(find.text('隐私书架'));
+    await tester.pumpAndSettle();
+    expect(privateShelfOpenCount, 1);
   });
 
   testWidgets(

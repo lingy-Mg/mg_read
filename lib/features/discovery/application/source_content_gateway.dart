@@ -63,8 +63,6 @@ abstract interface class SourceContentGateway {
   Future<PluginChaptersResult> getChapters({
     required String pluginId,
     required String id,
-    String? cursor,
-    int pageSize = 50,
   });
 
   Future<PluginChapterContent> getContent({
@@ -387,19 +385,11 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
   Future<PluginChaptersResult> getChapters({
     required String pluginId,
     required String id,
-    String? cursor,
-    int pageSize = 50,
   }) {
     return _invoke(
       capability: 'source.getChapters.v1',
-      action: () => _runtime.invoke(
-        SourceChaptersInvocation(
-          pluginId: pluginId,
-          id: id,
-          cursor: cursor,
-          pageSize: pageSize,
-        ),
-      ),
+      action: () =>
+          _runtime.invoke(SourceChaptersInvocation(pluginId: pluginId, id: id)),
       resultCount: (result) => result.items.length,
     );
   }

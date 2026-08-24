@@ -137,8 +137,6 @@ final class _CountingSourceGateway implements SourceContentGateway {
   Future<PluginChaptersResult> getChapters({
     required String pluginId,
     required String id,
-    String? cursor,
-    int pageSize = 50,
   }) => throw UnsupportedError('Not used by source cache test.');
 
   @override

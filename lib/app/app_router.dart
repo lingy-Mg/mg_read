@@ -13,6 +13,7 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/discovery/presentation/discovery_destination_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
+import 'package:mg_read/features/library/presentation/private_library_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_health_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_detail_page.dart';
@@ -97,6 +98,7 @@ String _stableRouteName(Uri uri) {
     'search' => 'search',
     'discover' => 'discovery',
     'reader' => 'reader',
+    'private-library' => 'library.private',
     'profile' when segments.length > 2 && segments[1] == 'about' =>
       'profile.about.${segments[2]}',
     'profile' when segments.length > 1 && segments[1] == 'about' =>
@@ -185,9 +187,26 @@ class LibraryRoute extends GoRouteData with $LibraryRoute {
         onReaderRequested: (String bookId) {
           ReaderRoute(bookId: bookId).push(context);
         },
+        onPrivacyLibraryRequested: () {
+          const PrivateLibraryRoute().push(context);
+        },
       ),
     );
   }
+}
+
+/// Privacy-only bookshelf reached from the library overflow menu.
+@TypedGoRoute<PrivateLibraryRoute>(path: '/private-library')
+class PrivateLibraryRoute extends GoRouteData with $PrivateLibraryRoute {
+  const PrivateLibraryRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) => PrivateLibraryPage(
+    onBackRequested: () => _returnToLibrary(context),
+    onDestinationRequested: (destination) =>
+        _goToDestination(context, destination),
+    onReaderRequested: (bookId) => ReaderRoute(bookId: bookId).push(context),
+  );
 }
 
 /// Runtime-backed source search reached from the shared bottom navigation.
@@ -274,15 +293,7 @@ Future<void> _openTransientSourceTextReader(
   ).read(sourceContentGatewayProvider);
   final session = TransientSourceTextReader(
     detail: detail,
-    firstCatalogPage: firstCatalogPage,
-    loadChapterPage: ({String? cursor, int pageSize = 100}) {
-      return gateway.getChapters(
-        pluginId: detail.pluginId,
-        id: detail.summary.id,
-        cursor: cursor,
-        pageSize: pageSize,
-      );
-    },
+    catalog: firstCatalogPage,
     loadChapterContent: (String chapterId) {
       return gateway.getContent(
         pluginId: detail.pluginId,
@@ -556,6 +567,14 @@ void _returnToProfile(BuildContext context) {
     return;
   }
   const ProfileRoute().go(context);
+}
+
+void _returnToLibrary(BuildContext context) {
+  if (context.canPop()) {
+    context.pop();
+    return;
+  }
+  const LibraryRoute().go(context);
 }
 
 /// A reader intent route carrying only the host-owned stable book identifier.

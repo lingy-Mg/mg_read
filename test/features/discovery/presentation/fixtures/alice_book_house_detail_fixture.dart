@@ -61,20 +61,9 @@ abstract final class AliceBookHouseDetailFixture {
     items: <PluginChapterSummary>[
       _chapter('chapter:1', '第一章 重生', 0),
       _chapter('chapter:2', '第二章 苏醒', 1),
-    ],
-    nextCursor: 'catalog-page:1:2',
-    totalCount: 733,
-  );
-
-  static final PluginChaptersResult secondCatalogPage = PluginChaptersResult(
-    pluginId: pluginId,
-    sourceName: '爱丽丝书屋',
-    items: <PluginChapterSummary>[
       _chapter('chapter:3', '第三章 风华绝代', 2),
       _chapter('chapter:4', '第四章 应聘', 3),
     ],
-    nextCursor: null,
-    totalCount: 733,
   );
 
   static final List<PluginContentSummary> recommendations =
@@ -154,8 +143,6 @@ abstract final class AliceBookHouseDetailFixture {
         attributes: const <PluginContentAttribute>[],
       ),
     ],
-    nextCursor: null,
-    totalCount: 1268,
   );
 
   static final List<PluginContentSummary> referenceRecommendations =

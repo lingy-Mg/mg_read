@@ -4,6 +4,23 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
 
+/// One explicit overflow-menu action supplied by the owning library surface.
+@immutable
+final class LibraryBookListAction {
+  const LibraryBookListAction({required this.id, required this.label})
+    : assert(id != ''),
+      assert(label != '');
+
+  final String id;
+  final String label;
+}
+
+typedef LibraryBookListActionSelected =
+    void Function(
+      LibraryBookListItemViewData book,
+      LibraryBookListAction action,
+    );
+
 /// Layout switches for the shared compact book-list design.
 ///
 /// The presets keep recent updates, the shelf, and reading history on the same
@@ -59,14 +76,19 @@ class LibraryBookList extends StatelessWidget {
     required Iterable<LibraryBookListItemViewData> books,
     required this.onOpenBook,
     this.onBookMore,
+    Iterable<LibraryBookListAction> actions = const <LibraryBookListAction>[],
+    this.onBookAction,
     this.presentation = LibraryBookListPresentation.recentUpdates,
     this.showDividers = true,
     super.key,
-  }) : books = List<LibraryBookListItemViewData>.unmodifiable(books);
+  }) : books = List<LibraryBookListItemViewData>.unmodifiable(books),
+       actions = List<LibraryBookListAction>.unmodifiable(actions);
 
   final List<LibraryBookListItemViewData> books;
   final ValueChanged<LibraryBookListItemViewData> onOpenBook;
   final ValueChanged<LibraryBookListItemViewData>? onBookMore;
+  final List<LibraryBookListAction> actions;
+  final LibraryBookListActionSelected? onBookAction;
   final LibraryBookListPresentation presentation;
   final bool showDividers;
 
@@ -80,6 +102,8 @@ class LibraryBookList extends StatelessWidget {
           book: books[index],
           onOpenBook: onOpenBook,
           onBookMore: onBookMore,
+          actions: actions,
+          onBookAction: onBookAction,
           presentation: presentation,
           showDivider: showDividers && index < books.length - 1,
           dividerColor: tokens.divider,
@@ -99,14 +123,19 @@ class LibraryBookSliverList extends StatelessWidget {
     required Iterable<LibraryBookListItemViewData> books,
     required this.onOpenBook,
     this.onBookMore,
+    Iterable<LibraryBookListAction> actions = const <LibraryBookListAction>[],
+    this.onBookAction,
     this.presentation = LibraryBookListPresentation.recentUpdates,
     this.showDividers = true,
     super.key,
-  }) : books = List<LibraryBookListItemViewData>.unmodifiable(books);
+  }) : books = List<LibraryBookListItemViewData>.unmodifiable(books),
+       actions = List<LibraryBookListAction>.unmodifiable(actions);
 
   final List<LibraryBookListItemViewData> books;
   final ValueChanged<LibraryBookListItemViewData> onOpenBook;
   final ValueChanged<LibraryBookListItemViewData>? onBookMore;
+  final List<LibraryBookListAction> actions;
+  final LibraryBookListActionSelected? onBookAction;
   final LibraryBookListPresentation presentation;
   final bool showDividers;
 
@@ -119,6 +148,8 @@ class LibraryBookSliverList extends StatelessWidget {
           book: books[index],
           onOpenBook: onOpenBook,
           onBookMore: onBookMore,
+          actions: actions,
+          onBookAction: onBookAction,
           presentation: presentation,
           showDivider: showDividers && index < books.length - 1,
           dividerColor: tokens.divider,
@@ -134,6 +165,8 @@ class _LibraryBookListRow extends StatelessWidget {
     required this.book,
     required this.onOpenBook,
     required this.onBookMore,
+    required this.actions,
+    required this.onBookAction,
     required this.presentation,
     required this.showDivider,
     required this.dividerColor,
@@ -142,6 +175,8 @@ class _LibraryBookListRow extends StatelessWidget {
   final LibraryBookListItemViewData book;
   final ValueChanged<LibraryBookListItemViewData> onOpenBook;
   final ValueChanged<LibraryBookListItemViewData>? onBookMore;
+  final List<LibraryBookListAction> actions;
+  final LibraryBookListActionSelected? onBookAction;
   final LibraryBookListPresentation presentation;
   final bool showDivider;
   final Color dividerColor;
@@ -154,6 +189,10 @@ class _LibraryBookListRow extends StatelessWidget {
           data: book,
           onOpen: () => onOpenBook(book),
           onMore: onBookMore == null ? null : () => onBookMore!(book),
+          actions: actions,
+          onAction: onBookAction == null
+              ? null
+              : (action) => onBookAction!(book, action),
           presentation: presentation,
         ),
         if (showDivider)
@@ -178,6 +217,8 @@ class LibraryBookListItem extends StatelessWidget {
     required this.data,
     required this.onOpen,
     this.onMore,
+    this.actions = const <LibraryBookListAction>[],
+    this.onAction,
     this.presentation = LibraryBookListPresentation.recentUpdates,
     super.key,
   });
@@ -185,6 +226,8 @@ class LibraryBookListItem extends StatelessWidget {
   final LibraryBookListItemViewData data;
   final VoidCallback onOpen;
   final VoidCallback? onMore;
+  final List<LibraryBookListAction> actions;
+  final ValueChanged<LibraryBookListAction>? onAction;
   final LibraryBookListPresentation presentation;
 
   @override
@@ -239,6 +282,8 @@ class LibraryBookListItem extends StatelessWidget {
                 _BookListTrailing(
                   data: data,
                   onMore: onMore,
+                  actions: actions,
+                  onAction: onAction,
                   presentation: presentation,
                   showAttentionIndicator: showAttentionIndicator,
                   theme: theme,
@@ -375,6 +420,8 @@ class _BookListTrailing extends StatelessWidget {
   const _BookListTrailing({
     required this.data,
     required this.onMore,
+    required this.actions,
+    required this.onAction,
     required this.presentation,
     required this.showAttentionIndicator,
     required this.theme,
@@ -383,6 +430,8 @@ class _BookListTrailing extends StatelessWidget {
 
   final LibraryBookListItemViewData data;
   final VoidCallback? onMore;
+  final List<LibraryBookListAction> actions;
+  final ValueChanged<LibraryBookListAction>? onAction;
   final LibraryBookListPresentation presentation;
   final bool showAttentionIndicator;
   final ThemeData theme;
@@ -391,7 +440,8 @@ class _BookListTrailing extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool showMoreAction =
-        presentation.showOverflowAction && onMore != null;
+        presentation.showOverflowAction &&
+        (onMore != null || (actions.isNotEmpty && onAction != null));
     final String? activityLabel = presentation.showActivityLabel
         ? data.activityLabel
         : null;
@@ -424,13 +474,41 @@ class _BookListTrailing extends StatelessWidget {
               child: SizedBox(
                 width: AppSpacing.section,
                 height: AppSpacing.section,
-                child: IconButton(
-                  tooltip: '书籍更多操作',
-                  onPressed: onMore,
-                  padding: EdgeInsets.zero,
-                  iconSize: 16,
-                  icon: const Icon(Icons.more_vert_rounded),
-                ),
+                child: actions.isNotEmpty && onAction != null
+                    ? MenuAnchor(
+                        menuChildren: <Widget>[
+                          for (final action in actions)
+                            MenuItemButton(
+                              onPressed: () => onAction!(action),
+                              child: Text(action.label),
+                            ),
+                        ],
+                        builder:
+                            (
+                              BuildContext context,
+                              MenuController controller,
+                              Widget? child,
+                            ) => IconButton(
+                              tooltip: '书籍更多操作',
+                              onPressed: () {
+                                if (controller.isOpen) {
+                                  controller.close();
+                                } else {
+                                  controller.open();
+                                }
+                              },
+                              padding: EdgeInsets.zero,
+                              iconSize: 16,
+                              icon: const Icon(Icons.more_vert_rounded),
+                            ),
+                      )
+                    : IconButton(
+                        tooltip: '书籍更多操作',
+                        onPressed: onMore,
+                        padding: EdgeInsets.zero,
+                        iconSize: 16,
+                        icon: const Icon(Icons.more_vert_rounded),
+                      ),
               ),
             ),
           if (showAttentionIndicator)

@@ -320,8 +320,6 @@ final class _SearchGateway implements SourceContentGateway {
   Future<PluginChaptersResult> getChapters({
     required String pluginId,
     required String id,
-    String? cursor,
-    int pageSize = 50,
   }) async => PluginChaptersResult(
     pluginId: pluginId,
     sourceName: '测试书源',
@@ -338,8 +336,6 @@ final class _SearchGateway implements SourceContentGateway {
         attributes: const <PluginContentAttribute>[],
       ),
     ],
-    nextCursor: null,
-    totalCount: 1,
   );
 
   @override

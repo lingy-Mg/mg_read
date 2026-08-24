@@ -4,6 +4,7 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/discovery/application/content_library_source_prefetcher.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
 import 'package:mg_read/features/reader/application/reader_launch_failure.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
@@ -12,14 +13,19 @@ import 'package:mg_read/features/reader/data/transient_source_text_reader.dart';
 
 /// Opens a shelf novel with app-owned reading state and a typed source gateway.
 ///
-/// A newly added title persists its first remote catalog page before the
-/// reader asks for text. This makes that page's chapter identities available
-/// to the app-owned body cache on the first read and on later launches.
+/// A newly added title persists its complete remote catalog before the reader
+/// asks for text. This makes every chapter identity available to the app-owned
+/// body cache on the first read and on later launches.
 final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
-  const ContentLibrarySourceTextReader(this._library, this._gateway);
+  const ContentLibrarySourceTextReader(
+    this._library,
+    this._gateway, [
+    this._prefetcher,
+  ]);
 
   final ContentLibrary _library;
   final SourceContentGateway _gateway;
+  final ContentLibrarySourcePrefetcher? _prefetcher;
 
   @override
   Future<ReaderLaunchRequest> launch(
@@ -47,6 +53,7 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
       );
     }
 
+    await _prefetcher?.waitFor(item.id.value);
     final catalog = await _library.listAllCatalog(item.id);
     if (catalog.isEmpty ||
         catalog.any((entry) => !entry.hasExplicitRemoteIdentity)) {
@@ -65,6 +72,9 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
       source,
       chapterCount: catalog.length,
     );
+    if ((detail.summary.chapterCount ?? catalog.length) > catalog.length) {
+      return _launchLiveSession(item, source, observer, detail: detail);
+    }
     final chapterAccess = _CachedNovelChapterAccess(
       library: _library,
       gateway: _gateway,
@@ -78,13 +88,7 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
     );
     final session = TransientSourceTextReader(
       detail: detail,
-      firstCatalogPage: localCatalog,
-      loadChapterPage: ({String? cursor, int pageSize = _catalogPageSize}) {
-        if (cursor != null) {
-          throw StateError('Catalog is complete.');
-        }
-        return Future<PluginChaptersResult>.value(localCatalog);
-      },
+      catalog: localCatalog,
       loadChapterContent: chapterAccess.load,
       bookId: item.id.value,
     );
@@ -96,37 +100,37 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
     );
   }
 
-  /// A newly added shelf item has no local catalog yet.  Start it with the
-  /// same first-page, paginated source session used by discovery instead of
-  /// blocking on downloading and committing an entire catalog first.
+  /// A newly added or incomplete shelf item refreshes and atomically commits
+  /// one complete source catalog before constructing the reader session.
   Future<ReaderLaunchRequest> _launchLiveSession(
     LibraryItem item,
     LibraryItemSource source,
-    ReaderObserver? observer,
-  ) async {
-    final firstCatalogPage = await _resolve(
+    ReaderObserver? observer, {
+    PluginContentDetail? detail,
+  }) async {
+    final remoteCatalog = await _resolve(
       ReaderLaunchFailureReason.sourceCatalog,
       () => _gateway.getChapters(
         pluginId: source.pluginId,
         id: source.remoteContentId,
-        pageSize: _catalogPageSize,
       ),
     );
-    if (firstCatalogPage.items.isEmpty) {
+    if (remoteCatalog.items.isEmpty) {
       throw _failure(
         ReaderLaunchFailureReason.sourceCatalogEmpty,
         AppErrorCode.notFound,
       );
     }
-    final detail = await _resolveDetail(
-      item,
-      source,
-      chapterCount:
-          firstCatalogPage.totalCount ?? firstCatalogPage.items.length,
-    );
+    final resolvedDetail =
+        detail ??
+        await _resolveDetail(
+          item,
+          source,
+          chapterCount: remoteCatalog.items.length,
+        );
     final catalog = await _library.syncNovelCatalog(
       itemId: item.id,
-      chapters: firstCatalogPage.items
+      chapters: remoteCatalog.items
           .map(
             (chapter) => SourceNovelCatalogChapter(
               remoteIdentity: chapter.id,
@@ -149,21 +153,13 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
       itemId: item.id,
     );
     final session = TransientSourceTextReader(
-      detail: detail,
-      firstCatalogPage: firstCatalogPage,
-      loadChapterPage: ({String? cursor, int pageSize = _catalogPageSize}) {
-        return _gateway.getChapters(
-          pluginId: source.pluginId,
-          id: source.remoteContentId,
-          cursor: cursor,
-          pageSize: pageSize.clamp(1, _catalogPageSize),
-        );
-      },
+      detail: resolvedDetail,
+      catalog: remoteCatalog,
       loadChapterContent: chapterAccess.load,
       bookId: item.id.value,
     );
     return session.createLaunchRequest(
-      initialChapterId: firstCatalogPage.items.first.id,
+      initialChapterId: remoteCatalog.items.first.id,
       observer: _TimedReaderObserver(stateStore, observer),
       stateStore: stateStore,
       extensions: ReaderExtensions(chapterStateCapability: chapterAccess),
@@ -269,11 +265,7 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
           attributes: const <PluginContentAttribute>[],
         ),
     ],
-    nextCursor: null,
-    totalCount: catalog.length,
   );
-
-  static const int _catalogPageSize = 20;
 
   Future<T> _resolve<T>(
     ReaderLaunchFailureReason reason,

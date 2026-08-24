@@ -285,48 +285,28 @@ export class AliceBookHouseSource {
 
   async getChapters(request: ChaptersRequest): Promise<ChaptersResult> {
     const novelId = decodeNovelId(request.id);
-    const cursor = decodeCatalogCursor(request.cursor);
-    const catalog = await this.#catalogPage(novelId, cursor.page);
-
-    // Alice serves the complete catalog in one HTML document. Returning that
-    // document as one source page is important for the app-owned shelf cache:
-    // the first catalog response is persisted when a book is added, and a
-    // later local reader session must not mistake the first 20 entries for a
-    // complete catalog. Search/discovery remain paginated independently.
-    const page =
-      cursor.offset === 0 && cursor.page === 1
-        ? catalog.chapters
-        : catalog.chapters.slice(
-            cursor.offset,
-            cursor.offset + boundedPageSize(request.pageSize),
-          );
-    const nextCursor =
-      cursor.offset === 0 && cursor.page === 1
-        ? null
-        : cursor.offset + page.length < catalog.chapters.length
-        ? encodeCatalogCursor(cursor.page, cursor.offset + page.length)
-        : catalog.nextPage === null
-        ? null
-        : encodeCatalogCursor(catalog.nextPage, 0);
-    const detailChapterCount = this.#chapterCounts.get(request.id);
-    const totalCount =
-      detailChapterCount !== null &&
-      detailChapterCount !== undefined &&
-      detailChapterCount > 0
-        ? detailChapterCount
-        : catalog.totalCount !== null &&
-            catalog.totalCount !== undefined &&
-            catalog.totalCount > 0
-        ? catalog.totalCount
-        : catalog.chapters.length;
+    const chapters: CatalogChapter[] = [];
+    const seenChapterIds = new Set<string>();
+    const seenPages = new Set<number>();
+    let page: number | null = 1;
+    while (page !== null) {
+      if (!seenPages.add(page)) throw new Error('Catalog page repeated.');
+      const catalog = await this.#catalogPage(novelId, page);
+      for (const chapter of catalog.chapters) {
+        if (seenChapterIds.has(chapter.id)) continue;
+        seenChapterIds.add(chapter.id);
+        chapters.push(chapter);
+      }
+      page = catalog.nextPage;
+    }
 
     return Object.freeze({
       items: Object.freeze(
-        page.map((chapter, index) =>
+        chapters.map((chapter, index) =>
           Object.freeze({
             id: chapter.id,
             title: chapter.title,
-            order: (cursor.page - 1) * 100000 + cursor.offset + index,
+            order: index,
             url: chapter.url.toString(),
             volumeTitle: null,
             wordCount: null,
@@ -336,8 +316,6 @@ export class AliceBookHouseSource {
           }),
         ),
       ),
-      nextCursor,
-      totalCount,
     });
   }
 
@@ -769,29 +747,6 @@ function decodePageCursor(cursor: string | null, scope: string): number {
 
 function encodePageCursor(scope: string, value: number): string {
   return `${scope}:${value}`;
-}
-
-function decodeCatalogCursor(cursor: string | null): {
-  readonly page: number;
-  readonly offset: number;
-} {
-  if (cursor === null) return Object.freeze({ page: 1, offset: 0 });
-  const match = /^catalog-page:(\d+):(\d+)$/u.exec(cursor);
-  const page = match?.[1] === undefined ? Number.NaN : Number(match[1]);
-  const offset = match?.[2] === undefined ? Number.NaN : Number(match[2]);
-  if (
-    !Number.isSafeInteger(page) ||
-    !Number.isSafeInteger(offset) ||
-    page < 1 ||
-    offset < 0
-  ) {
-    throw new Error('Catalog cursor is invalid.');
-  }
-  return Object.freeze({ page, offset });
-}
-
-function encodeCatalogCursor(page: number, offset: number): string {
-  return `catalog-page:${page}:${offset}`;
 }
 
 function boundedPageSize(value: number): number {

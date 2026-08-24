@@ -252,6 +252,17 @@ final class BookshelfRepository {
         action: () => _remove(id, policy),
       );
 
+  /// Changes only the local shelf visibility for one item.
+  ///
+  /// The retained catalog, cached content, covers, and reading progress are
+  /// deliberately unaffected.
+  Future<void> setVisibility(LibraryItemId id, LibraryVisibility visibility) =>
+      _library._trace(
+        operation: 'bookshelfSetVisibility',
+        itemCount: 1,
+        action: () => _setVisibility(id, visibility),
+      );
+
   Future<LibraryItem> _add({
     required String title,
     String? author,
@@ -332,9 +343,32 @@ final class BookshelfRepository {
         limit: query.limit,
       ),
     );
-    return Page(
-      items: page.records.map(_item).toList(growable: false),
-      nextCursor: _cursorText(page.nextCursor),
+    final items = page.records
+        .map(_item)
+        .where(
+          (item) =>
+              query.visibility == null || item.visibility == query.visibility,
+        )
+        .toList(growable: false);
+    return Page(items: items, nextCursor: _cursorText(page.nextCursor));
+  }
+
+  Future<void> _setVisibility(
+    LibraryItemId id,
+    LibraryVisibility visibility,
+  ) async {
+    final record = await _library._persistence.metadataRecords.read(
+      id: id.value,
+      scope: _scope,
+    );
+    if (record == null || record.recordKind != _itemKind) return;
+    if (_visibilityFromDocument(record.document) == visibility) return;
+    await _library._persistence.metadataRecords.update(
+      previous: record,
+      document: <String, Object?>{
+        ...record.document,
+        'visibility': visibility.wireValue,
+      },
     );
   }
 
@@ -1088,7 +1122,11 @@ LibraryItem _item(RecordEnvelope r) => LibraryItem(
   coverUrl: _uriFromSummary(r.document, 'coverUrl'),
   sourceName: _stringFromSummary(r.document, 'sourceName'),
   source: _itemSource(r.document['plugin']),
+  visibility: _visibilityFromDocument(r.document),
 );
+
+LibraryVisibility _visibilityFromDocument(Map<String, Object?> document) =>
+    LibraryVisibility.fromWireValue(document['visibility'] as String?);
 
 Map<String, Object?> _shelfSummary(ContentLibraryIngest source) {
   final summary = <String, Object?>{};

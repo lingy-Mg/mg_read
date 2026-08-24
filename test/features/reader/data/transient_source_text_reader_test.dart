@@ -8,7 +8,6 @@ void main() {
   test(
     'adapts Runtime source chapters into a route-lifetime text reader',
     () async {
-      var catalogCalls = 0;
       var contentCalls = 0;
       final reader = TransientSourceTextReader(
         detail: PluginContentDetail(
@@ -18,20 +17,12 @@ void main() {
           aliases: const <String>[],
           catalogUrl: null,
         ),
-        firstCatalogPage: _chapters(
-          items: <PluginChapterSummary>[_chapter('chapter-1', '第一章')],
-          nextCursor: 'page-2',
-          totalCount: 2,
+        catalog: _chapters(
+          items: <PluginChapterSummary>[
+            _chapter('chapter-1', '第一章'),
+            _chapter('chapter-2', '第二章'),
+          ],
         ),
-        loadChapterPage: ({String? cursor, int pageSize = 100}) async {
-          catalogCalls += 1;
-          expect(cursor, 'page-2');
-          return _chapters(
-            items: <PluginChapterSummary>[_chapter('chapter-2', '第二章')],
-            nextCursor: null,
-            totalCount: 2,
-          );
-        },
         loadChapterContent: (String chapterId) async {
           contentCalls += 1;
           return PluginChapterContent(
@@ -63,8 +54,9 @@ void main() {
       final firstPage = await request.dataSource.loadChapterCatalog(
         request.bookId,
       );
-      expect(firstPage.items.single.index, 0);
-      expect(firstPage.hasMore, isTrue);
+      expect(firstPage.items, hasLength(2));
+      expect(firstPage.items.first.index, 0);
+      expect(firstPage.hasMore, isFalse);
 
       final chapter = await request.dataSource.loadChapterContent(
         request.bookId,
@@ -82,7 +74,6 @@ void main() {
         1,
       );
       expect(second.id, 'chapter-2');
-      expect(catalogCalls, 1);
 
       final replacement = const ReaderProgress(
         chapterId: 'chapter-2',
@@ -94,6 +85,44 @@ void main() {
         await request.stateStore.loadProgress(request.bookId),
         replacement,
       );
+    },
+  );
+
+  test(
+    'slices the complete in-memory catalog for reader consumption',
+    () async {
+      final catalog = List<PluginChapterSummary>.generate(
+        205,
+        (index) => _chapter('chapter-$index', '第${index + 1}章', order: index),
+      );
+      final reader = TransientSourceTextReader(
+        detail: PluginContentDetail(
+          pluginId: 'org.example.source',
+          sourceName: '示例书源',
+          summary: _summary(),
+          aliases: const <String>[],
+          catalogUrl: null,
+        ),
+        catalog: _chapters(items: catalog),
+        loadChapterContent: (_) => throw UnsupportedError('Not used.'),
+      );
+      final request = reader.createLaunchRequest(initialChapterId: 'chapter-0');
+
+      final first = await request.dataSource.loadChapterCatalog(request.bookId);
+      final second = await request.dataSource.loadChapterCatalog(
+        request.bookId,
+        cursor: first.nextCursor,
+      );
+      final third = await request.dataSource.loadChapterCatalog(
+        request.bookId,
+        cursor: second.nextCursor,
+      );
+
+      expect(first.items, hasLength(100));
+      expect(second.items, hasLength(100));
+      expect(third.items, hasLength(5));
+      expect(third.items.last.id, 'chapter-204');
+      expect(third.hasMore, isFalse);
     },
   );
 }
@@ -121,25 +150,19 @@ PluginContentSummary _summary() {
   );
 }
 
-PluginChaptersResult _chapters({
-  required List<PluginChapterSummary> items,
-  required String? nextCursor,
-  required int totalCount,
-}) {
+PluginChaptersResult _chapters({required List<PluginChapterSummary> items}) {
   return PluginChaptersResult(
     pluginId: 'org.example.source',
     sourceName: '示例书源',
     items: items,
-    nextCursor: nextCursor,
-    totalCount: totalCount,
   );
 }
 
-PluginChapterSummary _chapter(String id, String title) {
+PluginChapterSummary _chapter(String id, String title, {int order = 0}) {
   return PluginChapterSummary(
     id: id,
     title: title,
-    order: 0,
+    order: order,
     url: null,
     volumeTitle: null,
     wordCount: null,

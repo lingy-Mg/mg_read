@@ -143,8 +143,6 @@ final class _ReferenceDetailGateway implements SourceContentGateway {
   Future<PluginChaptersResult> getChapters({
     required String pluginId,
     required String id,
-    String? cursor,
-    int pageSize = 50,
   }) async => PluginChaptersResult(
     pluginId: pluginId,
     sourceName: '起点中文网',
@@ -161,8 +159,6 @@ final class _ReferenceDetailGateway implements SourceContentGateway {
         attributes: const <PluginContentAttribute>[],
       ),
     ],
-    nextCursor: null,
-    totalCount: 1268,
   );
 
   @override

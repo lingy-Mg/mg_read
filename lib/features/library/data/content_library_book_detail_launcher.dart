@@ -63,7 +63,7 @@ final class ContentLibraryBookDetailLauncher
         pluginId: source.pluginId,
         sourceName: item.sourceName ?? '书架来源',
         items: <PluginChapterSummary>[
-          for (final entry in catalog.take(20))
+          for (final entry in catalog)
             PluginChapterSummary(
               id: entry.remoteIdentity,
               title: entry.title,
@@ -76,8 +76,6 @@ final class ContentLibraryBookDetailLauncher
               attributes: const <PluginContentAttribute>[],
             ),
         ],
-        nextCursor: null,
-        totalCount: catalog.length,
       ),
     );
   }

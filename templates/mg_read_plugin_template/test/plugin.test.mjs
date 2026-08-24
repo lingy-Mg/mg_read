@@ -21,7 +21,7 @@ test('standard named exports activate and use multi-file/local-package resources
       error: (event) => events.push(event),
     },
     app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
-    plugin: { id: 'org.example.source', version: '0.1.0' },
+    plugin: { id: 'org.example.source', version: '0.1.1' },
   });
 
   const search = await plugin.search({ query: '示例', cursor: null, pageSize: 20 });
@@ -31,8 +31,6 @@ test('standard named exports activate and use multi-file/local-package resources
   const detail = await plugin.getDetail({ id: summary.id });
   const chapters = await plugin.getChapters({
     id: summary.id,
-    cursor: null,
-    pageSize: 20,
   });
   const content = await plugin.getContent({
     id: summary.id,

@@ -27,6 +27,7 @@ import {
 } from "../dist/index.js";
 import {
   PluginContentValidationError,
+  parseChaptersParams,
   validateChaptersResult,
   validateContentResult,
   validateDetailResult,
@@ -183,7 +184,7 @@ test("installer hardlinks local packages and manager cold-activates named export
   );
   const chapters = await manager.getChapters(
     "org.mgread.runtime.fixture",
-    { id: search.items[0].id, cursor: null, pageSize: 20 },
+    { id: search.items[0].id },
     new AbortController().signal,
     String(Date.now() + 5_000),
   );
@@ -374,8 +375,6 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
         attributes: [],
       },
     ],
-    nextCursor: null,
-    totalCount: 0,
   });
   assert.equal(chapters.items[0].wordCount, 0);
   assert.equal(chapters.items[0].isLocked, null);
@@ -459,6 +458,72 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
             height: null,
           },
         ],
+      }),
+    PluginContentValidationError,
+  );
+});
+
+test("complete chapter catalogs enforce count, byte, uniqueness, and shape limits", () => {
+  assert.deepEqual(
+    parseChaptersParams({ pluginId: "org.example.catalog", id: "book:1" }),
+    { pluginId: "org.example.catalog", request: { id: "book:1" } },
+  );
+  assert.throws(
+    () =>
+      parseChaptersParams({
+        pluginId: "org.example.catalog",
+        id: "book:1",
+        cursor: null,
+        pageSize: 20,
+      }),
+    PluginContentValidationError,
+  );
+  const chapter = (index, idPrefix = "chapter") => ({
+    id: `${idPrefix}:${index}`,
+    title: `第${index + 1}章`,
+    order: index,
+    url: null,
+    volumeTitle: null,
+    wordCount: null,
+    updatedAt: null,
+    isLocked: false,
+    attributes: [],
+  });
+  const maximum = Array.from({ length: 5_000 }, (_, index) => chapter(index));
+  assert.equal(
+    validateChaptersResult("org.example.catalog", "完整目录", { items: maximum })
+      .items.length,
+    5_000,
+  );
+  assert.throws(
+    () =>
+      validateChaptersResult("org.example.catalog", "完整目录", {
+        items: [...maximum, chapter(5_000)],
+      }),
+    PluginContentValidationError,
+  );
+  assert.throws(
+    () =>
+      validateChaptersResult("org.example.catalog", "完整目录", {
+        items: [chapter(0), { ...chapter(1), id: chapter(0).id }],
+      }),
+    PluginContentValidationError,
+  );
+  const oversized = Array.from({ length: 4_500 }, (_, index) =>
+    chapter(index, `chapter:${"x".repeat(480)}`),
+  );
+  assert.throws(
+    () =>
+      validateChaptersResult("org.example.catalog", "完整目录", {
+        items: oversized,
+      }),
+    PluginContentValidationError,
+  );
+  assert.throws(
+    () =>
+      validateChaptersResult("org.example.catalog", "完整目录", {
+        items: [chapter(0)],
+        nextCursor: null,
       }),
     PluginContentValidationError,
   );
@@ -896,7 +961,7 @@ const summary = (query) => ({
 export function discover() { return { kind: "document", document: { components: [] } }; }
 export function search(request) { return { items: [summary(request.query)], nextCursor: null, totalCount: 1 }; }
 export function getDetail(request) { return { ...summary(request.id), id: request.id, aliases: [], catalogUrl: null }; }
-export function getChapters() { return { items: [], nextCursor: null, totalCount: 0 }; }
+export function getChapters() { return { items: [] }; }
 export function getContent(request) { return { contentKind: "novel", chapterId: request.chapterId, title: null, updatedAt: null, text: "text", pages: [] }; }
 `;
   await Promise.all([

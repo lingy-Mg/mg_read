@@ -32,7 +32,9 @@ and serves the typed plugin list plus discovery, search, detail, chapters and
 bounded content. Node and Flutter integration tests share
 `protocol/fixtures/standard-node-plugin-v1.json`; 128 concurrent Facade calls
 share one child process while the control protocol fixes a 256 in-flight cap and
-1 MiB outbound queue cap. The production Facade does not permit arbitrary plugin
+4 MiB frame/8 MiB outbound queue cap. The complete chapter catalog is the only
+large JSON exception and is separately limited to 5000 items/2 MiB. The
+production Facade does not permit arbitrary plugin
 locations, data-root injection, host callbacks or raw wire access.
 
 This evidence deliberately excludes Android/Javet and all mobile tests, as well

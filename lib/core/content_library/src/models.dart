@@ -48,6 +48,7 @@ final class LibraryItem {
     required this.kind,
     required this.state,
     required this.revision,
+    this.visibility = LibraryVisibility.normal,
     this.coverUrl,
     this.sourceName,
     this.source,
@@ -58,6 +59,12 @@ final class LibraryItem {
   final ContentKind kind;
   final String state;
   final int revision;
+
+  /// Whether this item participates in the normal or privacy-only shelf.
+  ///
+  /// Visibility never changes the item's source identity, reading progress, or
+  /// locally retained content.
+  final LibraryVisibility visibility;
   final Uri? coverUrl;
   final String? sourceName;
 
@@ -241,10 +248,32 @@ final class Page<T> {
   final String? nextCursor;
 }
 
+enum LibraryVisibility {
+  normal('normal'),
+  private('private');
+
+  const LibraryVisibility(this.wireValue);
+
+  final String wireValue;
+
+  static LibraryVisibility fromWireValue(String? value) => switch (value) {
+    'private' => private,
+    _ => normal,
+  };
+}
+
 final class LibraryQuery {
-  const LibraryQuery({this.after, this.limit = 100, this.state});
+  const LibraryQuery({
+    this.after,
+    this.limit = 100,
+    this.state,
+    this.visibility,
+  });
   final String? after, state;
   final int limit;
+
+  /// Omitting this retains the legacy all-items query behavior.
+  final LibraryVisibility? visibility;
 }
 
 final class CatalogQuery {

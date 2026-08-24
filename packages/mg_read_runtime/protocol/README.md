@@ -6,9 +6,10 @@
 当前 fixture 是
 [`fixtures/standard-node-plugin-v1.json`](fixtures/standard-node-plugin-v1.json)，固定：
 
-- Node `24.16.0`、Runtime `0.2.0-standard.2`、protocol `1.0`；
+- Node `24.16.0`、Runtime `0.3.0-standard.0`、protocol `1.0`；
 - loopback live/ready 与 `/v1/rpc`；
-- 64 KiB 控制帧、256 个在途请求、1 MiB 写队列和 best-effort cancel；
+- 4 MiB 控制帧、256 个在途请求、8 MiB 写队列和 best-effort cancel；
+- `getChapters({id}) -> {items}` 的单次完整目录，以及 5000 条/2 MiB 专用边界；
 - `runtime.hello`、版本化 diagnostics 查询/捕获能力、`runtime.ping`、`runtime.status.v1`、`plugins.list.v1`、
   `plugins.openCodeDirectory.v1`、`plugins.setEnabled.v1`、`plugins.cache.usage.v1`、`plugins.cache.clear.v1`、
   `plugins.cache.clearAll.v1`、`plugins.installation.usage.v1`、

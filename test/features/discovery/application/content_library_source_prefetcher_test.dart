@@ -1,15 +1,20 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/discovery/application/content_library_source_prefetcher.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 
+import '../../../core/diagnostics/diagnostics_testkit.dart';
+
 void main() {
   test(
-    'prefetches detail, every catalog page, and the first chapter',
+    'prefetches detail, the complete catalog, and the first chapter',
     () async {
       final root = await Directory.systemTemp.createTemp('mg-read-prefetch-');
       final library = await ContentLibrary.open(dataRoot: root);
@@ -44,8 +49,68 @@ void main() {
         isA<NovelChapterContent>(),
       );
       expect(gateway.detailCalls, 1);
-      expect(gateway.catalogCursors, <String?>[null, 'page-2']);
+      expect(gateway.catalogCalls, 1);
       expect(gateway.contentChapterIds, <String>['chapter:1']);
+    },
+  );
+
+  test(
+    'deduplicates concurrent prefetch and never exposes a half catalog',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'mg-read-prefetch-dedupe-',
+      );
+      final library = await ContentLibrary.open(dataRoot: root);
+      addTearDown(() async {
+        await library.close();
+        await root.delete(recursive: true);
+      });
+      final item = await library.bookshelf.addFromSource(
+        const BookshelfAddRequest(
+          title: '并发预取测试书',
+          author: null,
+          kind: ContentKind.novel,
+          pluginId: 'org.example.source',
+          pluginVersion: '1.0.0',
+          remoteContentId: 'book-deduplicated',
+        ),
+      );
+      final gateway = _GatedPrefetchGateway();
+      final diagnostics = DiagnosticsTestkit();
+      addTearDown(diagnostics.dispose);
+      final prefetcher = ContentLibrarySourcePrefetcher(
+        library,
+        gateway,
+        diagnostics: diagnostics.manager,
+      );
+
+      prefetcher.start(item);
+      prefetcher.start(item);
+      await gateway.catalogRequested.future;
+
+      expect(gateway.catalogCalls, 1);
+      expect(await library.listAllCatalog(item.id), isEmpty);
+
+      gateway.releaseCatalog();
+      await prefetcher.waitFor(item.id.value);
+
+      expect(await library.listAllCatalog(item.id), hasLength(2));
+      expect(gateway.catalogCalls, 1);
+      final events = diagnostics.sink.events
+          .where((event) => event.eventName.startsWith('reader.prefetch.'))
+          .toList(growable: false);
+      expect(
+        events.where((event) => event.phase == DiagnosticPhase.start),
+        hasLength(1),
+      );
+      expect(
+        events.where((event) => event.phase == DiagnosticPhase.terminal),
+        hasLength(1),
+      );
+      expect(
+        jsonEncode(events.map(const DiagnosticEventCodec().encode).toList()),
+        isNot(contains('并发预取测试书')),
+      );
     },
   );
 
@@ -93,7 +158,7 @@ void main() {
 
 final class _PrefetchGateway implements SourceContentGateway {
   var detailCalls = 0;
-  final catalogCursors = <String?>[];
+  var catalogCalls = 0;
   final contentChapterIds = <String>[];
 
   @override
@@ -134,19 +199,15 @@ final class _PrefetchGateway implements SourceContentGateway {
   Future<PluginChaptersResult> getChapters({
     required String pluginId,
     required String id,
-    String? cursor,
-    int pageSize = 50,
   }) async {
-    catalogCursors.add(cursor);
-    final items = cursor == null
-        ? <PluginChapterSummary>[_chapter('chapter:1', '第一章', 0)]
-        : <PluginChapterSummary>[_chapter('chapter:2', '第二章', 1)];
+    catalogCalls += 1;
     return PluginChaptersResult(
       pluginId: pluginId,
       sourceName: '预取书源',
-      items: items,
-      nextCursor: cursor == null ? 'page-2' : null,
-      totalCount: 2,
+      items: <PluginChapterSummary>[
+        _chapter('chapter:1', '第一章', 0),
+        _chapter('chapter:2', '第二章', 1),
+      ],
     );
   }
 
@@ -196,6 +257,31 @@ final class _PrefetchGateway implements SourceContentGateway {
     String? collectionId,
     int pageSize = 20,
   }) => throw UnsupportedError('Not used.');
+}
+
+final class _GatedPrefetchGateway extends _PrefetchGateway {
+  final catalogRequested = Completer<void>();
+  final _catalogRelease = Completer<void>();
+
+  void releaseCatalog() => _catalogRelease.complete();
+
+  @override
+  Future<PluginChaptersResult> getChapters({
+    required String pluginId,
+    required String id,
+  }) async {
+    catalogCalls += 1;
+    if (!catalogRequested.isCompleted) catalogRequested.complete();
+    await _catalogRelease.future;
+    return PluginChaptersResult(
+      pluginId: pluginId,
+      sourceName: '预取书源',
+      items: <PluginChapterSummary>[
+        _chapter('chapter:1', '第一章', 0),
+        _chapter('chapter:2', '第二章', 1),
+      ],
+    );
+  }
 }
 
 PluginChapterSummary _chapter(String id, String title, int order) =>

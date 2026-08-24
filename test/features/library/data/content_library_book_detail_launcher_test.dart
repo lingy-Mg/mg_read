@@ -56,7 +56,7 @@ void main() {
       expect(detail.initialContent.title, '书架详情测试');
       expect(detail.initialContent.contentKind, PluginContentKind.novel);
       expect(detail.initialContent.chapterCount, 1);
-      expect(detail.initialCatalog.totalCount, 1);
+      expect(detail.initialCatalog.items, hasLength(1));
       expect(detail.initialCatalog.items.single.id, 'chapter-1');
       expect(detail.initialCatalog.items.single.wordCount, 1234);
     },

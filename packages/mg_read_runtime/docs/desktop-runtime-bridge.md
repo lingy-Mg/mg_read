@@ -59,13 +59,14 @@ installer。它不扫描 Windows 目录，也不把 inbox 暴露给主应用。
 - `source.discover.v1`：插件定义受限递归组件 document，或对指定内容集合的 append；
 - `source.search.v1`：稳定 plugin ID、受限 query、分页和富内容摘要；
 - `source.getDetail.v1`：富内容详情、别名和目录 URL；
-- `source.getChapters.v1`：有序、分页的强类型目录；
+- `source.getChapters.v1`：最多 5000 章、2 MiB 的单次完整强类型目录；
 - `source.getContent.v1`：有界小说文本或漫画页资源元数据；
 - `runtime.shutdown`：有幂等键的受控关闭。
 
-控制面只绑定 `127.0.0.1:0`，验证协议/bootId/request ID/trace/deadline/对象参数，限制 64 KiB
-frame、256 个在途请求和 1 MiB 写队列。Facade deadline 后发 best-effort cancel，迟到响应不会
-完成其他调用。大内容必须等资源 HTTP capability，不能进入 JSON/Base64。
+控制面只绑定 `127.0.0.1:0`，验证协议/bootId/request ID/trace/deadline/对象参数，限制 4 MiB
+frame、256 个在途请求和 8 MiB 写队列，并实现 RFC 6455 的 64 位 payload length。Facade deadline
+后发 best-effort cancel，迟到响应不会完成其他调用。除 2 MiB 完整目录外的大内容必须走资源
+HTTP capability，不能进入 JSON/Base64。
 
 Windows Supervisor 在启动 child 前创建并持有
 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object。正常关闭、Flutter owner 退出或异常释放 Job

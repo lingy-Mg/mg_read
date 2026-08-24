@@ -3,10 +3,6 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 
-/// Loads one opaque Runtime-owned page of a source chapter catalog.
-typedef SourceChapterPageLoader =
-    Future<PluginChaptersResult> Function({String? cursor, int pageSize});
-
 /// Loads one Runtime-owned source chapter without exposing transport to reader UI.
 typedef SourceChapterContentLoader =
     Future<PluginChapterContent> Function(String chapterId);
@@ -19,14 +15,12 @@ typedef SourceChapterContentLoader =
 final class TransientSourceTextReader {
   TransientSourceTextReader({
     required this.detail,
-    required PluginChaptersResult firstCatalogPage,
-    required SourceChapterPageLoader loadChapterPage,
+    required PluginChaptersResult catalog,
     required SourceChapterContentLoader loadChapterContent,
     String? bookId,
   }) : _dataSource = _TransientSourceTextReaderDataSource(
          detail: detail,
-         firstCatalogPage: firstCatalogPage,
-         loadChapterPage: loadChapterPage,
+         catalog: catalog,
          loadChapterContent: loadChapterContent,
          bookId: bookId ?? 'source:${detail.pluginId}:${detail.summary.id}',
        );
@@ -48,7 +42,7 @@ final class TransientSourceTextReader {
       throw ArgumentError.value(
         initialChapterId,
         'initialChapterId',
-        'The selected source chapter is not in the initial catalog page.',
+        'The selected source chapter is not in the catalog.',
       );
     }
     return ReaderLaunchRequest(
@@ -73,21 +67,17 @@ final class _TransientSourceTextReaderDataSource
     implements TextReaderDataSource {
   _TransientSourceTextReaderDataSource({
     required this.detail,
-    required PluginChaptersResult firstCatalogPage,
-    required this._loadChapterPage,
+    required PluginChaptersResult catalog,
     required this._loadChapterContent,
     required this.bookId,
   }) {
-    _cachePage(null, firstCatalogPage, offset: 0);
+    _cacheCatalog(catalog);
   }
 
   final PluginContentDetail detail;
   final String bookId;
-  final SourceChapterPageLoader _loadChapterPage;
   final SourceChapterContentLoader _loadChapterContent;
-  final Map<String?, PluginChaptersResult> _catalogPages =
-      <String?, PluginChaptersResult>{};
-  final Map<String?, int> _pageOffsets = <String?, int>{};
+  late final PluginChaptersResult _catalog;
   final Map<int, PluginChapterSummary> _chapterByIndex =
       <int, PluginChapterSummary>{};
   final Map<String, int> _indexByChapterId = <String, int>{};
@@ -132,34 +122,30 @@ final class _TransientSourceTextReaderDataSource
     int pageSize = 100,
   }) async {
     _requireBook(bookId);
-    final page = await _pageFor(cursor, pageSize: pageSize);
-    final offset = _pageOffsets[cursor];
-    if (offset == null) throw StateError('Unknown source catalog cursor.');
-    final total = page.totalCount ?? offset + page.items.length;
-    final hasMore = page.totalCount != null && page.nextCursor != null;
+    final offset = _catalogOffset(cursor);
+    final boundedPageSize = pageSize.clamp(1, 500);
+    final end = (offset + boundedPageSize).clamp(0, _catalog.items.length);
+    final items = _catalog.items.sublist(offset, end);
+    final hasMore = end < _catalog.items.length;
     return ChapterCatalogPage(
       items: <ReaderChapterInfo>[
-        for (var index = 0; index < page.items.length; index += 1)
-          _toReaderChapter(page.items[index], offset + index),
+        for (var index = 0; index < items.length; index += 1)
+          _toReaderChapter(items[index], offset + index),
       ],
-      total: total,
+      total: _catalog.items.length,
       hasMore: hasMore,
-      nextCursor: hasMore ? page.nextCursor : null,
+      nextCursor: hasMore ? 'catalog-offset:$end' : null,
     );
   }
 
   @override
   Future<ReaderChapterInfo> loadChapterAtIndex(String bookId, int index) async {
     _requireBook(bookId);
-    while (!_chapterByIndex.containsKey(index)) {
-      final page = _catalogPages.values.last;
-      final cursor = page.nextCursor;
-      if (cursor == null || page.totalCount == null) {
-        throw RangeError.index(index, _chapterByIndex, 'index');
-      }
-      await _pageFor(cursor, pageSize: 100);
+    final chapter = _chapterByIndex[index];
+    if (chapter == null) {
+      throw RangeError.index(index, _chapterByIndex, 'index');
     }
-    return _toReaderChapter(_chapterByIndex[index]!, index);
+    return _toReaderChapter(chapter, index);
   }
 
   @override
@@ -186,29 +172,11 @@ final class _TransientSourceTextReaderDataSource
 
   int? indexOf(String chapterId) => _indexByChapterId[chapterId];
 
-  Future<PluginChaptersResult> _pageFor(
-    String? cursor, {
-    required int pageSize,
-  }) async {
-    final cached = _catalogPages[cursor];
-    if (cached != null) return cached;
-    final offset = _pageOffsets[cursor];
-    if (offset == null) throw StateError('Unknown source catalog cursor.');
-    final page = await _loadChapterPage(cursor: cursor, pageSize: pageSize);
-    _cachePage(cursor, page, offset: offset);
-    return page;
-  }
-
-  void _cachePage(
-    String? cursor,
-    PluginChaptersResult page, {
-    required int offset,
-  }) {
-    _catalogPages[cursor] = page;
-    _pageOffsets[cursor] = offset;
-    for (var index = 0; index < page.items.length; index += 1) {
-      final absoluteIndex = offset + index;
-      final chapter = page.items[index];
+  void _cacheCatalog(PluginChaptersResult catalog) {
+    _catalog = catalog;
+    for (var index = 0; index < catalog.items.length; index += 1) {
+      final absoluteIndex = index;
+      final chapter = catalog.items[index];
       if (_chapterByIndex.containsKey(absoluteIndex) ||
           _indexByChapterId.containsKey(chapter.id)) {
         throw StateError(
@@ -218,9 +186,16 @@ final class _TransientSourceTextReaderDataSource
       _chapterByIndex[absoluteIndex] = chapter;
       _indexByChapterId[chapter.id] = absoluteIndex;
     }
-    if (page.nextCursor != null) {
-      _pageOffsets[page.nextCursor] = offset + page.items.length;
+  }
+
+  int _catalogOffset(String? cursor) {
+    if (cursor == null) return 0;
+    final match = RegExp(r'^catalog-offset:(\d+)$').firstMatch(cursor);
+    final offset = int.tryParse(match?.group(1) ?? '');
+    if (offset == null || offset <= 0 || offset >= _catalog.items.length) {
+      throw StateError('Unknown source catalog cursor.');
     }
+    return offset;
   }
 
   ReaderChapterInfo _toReaderChapter(PluginChapterSummary chapter, int index) {

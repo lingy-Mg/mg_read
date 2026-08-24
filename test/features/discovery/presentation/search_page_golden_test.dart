@@ -134,8 +134,6 @@ class _GoldenSourceGateway implements SourceContentGateway {
   Future<PluginChaptersResult> getChapters({
     required String pluginId,
     required String id,
-    String? cursor,
-    int pageSize = 50,
   }) => throw UnimplementedError();
 
   @override

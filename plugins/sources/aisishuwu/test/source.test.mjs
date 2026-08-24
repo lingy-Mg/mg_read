@@ -28,7 +28,7 @@ test('list results retain an HTTP(S) cover from the source card', async () => {
       },
       log: { debug() {}, info() {}, warn() {}, error() {} },
       app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
-      plugin: { id: 'org.mgread.aisishuwu', version: '0.1.0' },
+      plugin: { id: 'org.mgread.aisishuwu', version: '0.2.2' },
     },
     { origin: 'https://www.alicesw.com', categories: [{ id: '62', title: '玄幻' }] },
   );
@@ -60,7 +60,7 @@ test('detail results retain a lazy-loaded cover from the source page', async () 
       },
       log: { debug() {}, info() {}, warn() {}, error() {} },
       app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
-      plugin: { id: 'org.mgread.aisishuwu', version: '0.1.0' },
+      plugin: { id: 'org.mgread.aisishuwu', version: '0.2.2' },
     },
     { origin: 'https://www.alicesw.com', categories: [{ id: '62', title: '玄幻' }] },
   );
@@ -79,7 +79,7 @@ test('Runtime proxy replaces an Alice cover URL and rejects off-origin resources
     http: { fetch: async () => { fetchCount += 1; return new Response('<h1 class="novel_title">封面测试书</h1><section class="pic"><img src="https://www.alicesw.com/covers/42.jpg"></section><div class="novel_info"><a href="/lists/62.html">玄幻</a><p>字 数：0 · 章 节：0</p><p>状 态：连载中</p></div>'); } },
     log: { debug() {}, info() {}, warn() {}, error() {} },
     app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
-    plugin: { id: 'org.mgread.aisishuwu', version: '0.1.0' },
+    plugin: { id: 'org.mgread.aisishuwu', version: '0.2.2' },
   };
   const source = new AliceBookHouseSource(context, { origin: 'https://www.alicesw.com', categories: [] });
   const detail = await source.getDetail({ id: 'novel:42' });
@@ -120,7 +120,7 @@ test('detail projects real source metadata into the v1 summary fields', async ()
       },
       log: { debug() {}, info() {}, warn() {}, error() {} },
       app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
-      plugin: { id: 'org.mgread.aisishuwu', version: '0.1.0' },
+      plugin: { id: 'org.mgread.aisishuwu', version: '0.2.2' },
     },
     { origin: 'https://www.alicesw.com', categories: [{ id: '71', title: '科幻' }] },
   );
@@ -285,17 +285,16 @@ test('catalog does not let a zero detail count hide loaded chapters', async () =
       },
       log: { debug() {}, info() {}, warn() {}, error() {} },
       app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
-      plugin: { id: 'org.mgread.aisishuwu', version: '0.1.0' },
+      plugin: { id: 'org.mgread.aisishuwu', version: '0.2.2' },
     },
     { origin: 'https://www.alicesw.com', categories: [] },
   );
 
   const detail = await source.getDetail({ id: 'novel:42' });
   assert.equal(detail.chapterCount, 0);
-  const chapters = await source.getChapters({ id: 'novel:42', cursor: null, pageSize: 20 });
+  const chapters = await source.getChapters({ id: 'novel:42' });
 
   assert.equal(chapters.items.length, 5);
-  assert.equal(chapters.totalCount, 5);
 });
 
 test('catalog returns the complete source page without re-fetching it', async () => {
@@ -321,12 +320,12 @@ test('catalog returns the complete source page without re-fetching it', async ()
       },
       log: { debug() {}, info() {}, warn() {}, error() {} },
       app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
-      plugin: { id: 'org.mgread.aisishuwu', version: '0.1.0' },
+      plugin: { id: 'org.mgread.aisishuwu', version: '0.2.2' },
     },
     { origin: 'https://www.alicesw.com', categories: [{ id: '71', title: '科幻' }] },
   );
 
-  const first = await source.getChapters({ id: 'novel:42', cursor: null, pageSize: 2 });
+  const first = await source.getChapters({ id: 'novel:42' });
 
   assert.deepEqual(first.items.map((chapter) => chapter.title), [
     '第一章',
@@ -335,9 +334,43 @@ test('catalog returns the complete source page without re-fetching it', async ()
     '第四章',
     '第五章',
   ]);
-  assert.equal(first.totalCount, 5);
-  assert.equal(first.nextCursor, null);
   assert.equal(catalogFetches, 1);
+});
+
+test('catalog follows source pagination internally and returns one deduplicated result', async () => {
+  const requestedPages = [];
+  const source = new AliceBookHouseSource(
+    {
+      dataDir: 'data',
+      cacheDir: 'cache',
+      http: {
+        fetch: async (input) => {
+          const url = new URL(input);
+          const page = Number(url.searchParams.get('page') ?? '1');
+          requestedPages.push(page);
+          return new Response(
+            page === 1
+              ? `<ul class="mulu_list"><li><a href="/book/42/a.html">第一章</a></li><li><a href="/book/42/b.html">第二章</a></li></ul><div class="pagination"><a rel="next" href="?page=2">下一页</a></div>`
+              : `<ul class="mulu_list"><li><a href="/book/42/b.html">第二章</a></li><li><a href="/book/42/c.html">第三章</a></li></ul>`,
+          );
+        },
+      },
+      log: { debug() {}, info() {}, warn() {}, error() {} },
+      app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
+      plugin: { id: 'org.mgread.aisishuwu', version: '0.2.2' },
+    },
+    { origin: 'https://www.alicesw.com', categories: [] },
+  );
+
+  const chapters = await source.getChapters({ id: 'novel:42' });
+
+  assert.deepEqual(requestedPages, [1, 2]);
+  assert.deepEqual(chapters.items.map(({ title, order }) => ({ title, order })), [
+    { title: '第一章', order: 0 },
+    { title: '第二章', order: 1 },
+    { title: '第三章', order: 2 },
+  ]);
+  assert.equal(new Set(chapters.items.map((chapter) => chapter.id)).size, 3);
 });
 
 test('public API completes the opaque content chain with safe diagnostic phases', async () => {
@@ -425,7 +458,7 @@ test('public API completes the opaque content chain with safe diagnostic phases'
   const search = await plugin.search({ query: '测试', cursor: null, pageSize: 5 });
   const suggestions = await plugin.searchSuggestions({ cursor: null, pageSize: 5 });
   const detail = await plugin.getDetail({ id: contentId });
-  const chapters = await plugin.getChapters({ id: contentId, cursor: null, pageSize: 5 });
+  const chapters = await plugin.getChapters({ id: contentId });
   const content = await plugin.getContent({ id: contentId, chapterId: chapters.items[0].id });
 
   assert.equal(search.items[0].id, contentId);

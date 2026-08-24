@@ -22,6 +22,12 @@ void main() {
 
       expect(find.byType(LibraryPage), findsOneWidget);
       _expectSelectedDestination(tester, AppNavigationDestination.home);
+      final double initialIndicatorX = tester
+          .getRect(
+            find.byKey(const Key('app-bottom-navigation-moving-indicator')),
+          )
+          .center
+          .dx;
 
       await tester.tap(find.byKey(const Key('app-nav-search')));
       await tester.pump();
@@ -29,9 +35,21 @@ void main() {
         find.byKey(const Key('top-level-destination-transition')),
         findsOneWidget,
       );
+      await tester.pump(const Duration(milliseconds: 90));
+      expect(
+        tester
+            .getRect(
+              find
+                  .byKey(const Key('app-bottom-navigation-moving-indicator'))
+                  .first,
+            )
+            .center
+            .dx,
+        greaterThan(initialIndicatorX),
+      );
       await tester.pumpAndSettle();
       expect(find.byType(SearchPage), findsOneWidget);
-      expect(find.byKey(const Key('source-search-results')), findsOneWidget);
+      expect(find.byKey(const Key('source-search-query')), findsOneWidget);
       _expectSelectedDestination(tester, AppNavigationDestination.search);
 
       await tester.tap(find.byKey(const Key('app-nav-discover')));

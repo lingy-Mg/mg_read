@@ -134,6 +134,8 @@ final class LibraryHomeCallbacks {
     this.onOpenBook,
     this.onBookMore,
     this.onDeleteBook,
+    this.onSetBookPrivate,
+    this.onPrivacyLibraryRequested,
     this.onManageSources,
     this.onDiscover,
     this.onImportLocal,
@@ -147,6 +149,8 @@ final class LibraryHomeCallbacks {
   final ValueChanged<LibraryBookListItemViewData>? onOpenBook;
   final ValueChanged<LibraryBookListItemViewData>? onBookMore;
   final Future<void> Function(LibraryBookListItemViewData)? onDeleteBook;
+  final Future<void> Function(LibraryBookListItemViewData)? onSetBookPrivate;
+  final VoidCallback? onPrivacyLibraryRequested;
   final VoidCallback? onManageSources;
   final VoidCallback? onDiscover;
   final VoidCallback? onImportLocal;
@@ -163,6 +167,8 @@ final class LibraryHomeCallbacks {
     ValueChanged<LibraryBookListItemViewData>? onOpenBook,
     ValueChanged<LibraryBookListItemViewData>? onBookMore,
     Future<void> Function(LibraryBookListItemViewData)? onDeleteBook,
+    Future<void> Function(LibraryBookListItemViewData)? onSetBookPrivate,
+    VoidCallback? onPrivacyLibraryRequested,
     VoidCallback? onManageSources,
     VoidCallback? onDiscover,
     VoidCallback? onImportLocal,
@@ -176,6 +182,9 @@ final class LibraryHomeCallbacks {
       onOpenBook: onOpenBook ?? this.onOpenBook,
       onBookMore: onBookMore ?? this.onBookMore,
       onDeleteBook: onDeleteBook ?? this.onDeleteBook,
+      onSetBookPrivate: onSetBookPrivate ?? this.onSetBookPrivate,
+      onPrivacyLibraryRequested:
+          onPrivacyLibraryRequested ?? this.onPrivacyLibraryRequested,
       onManageSources: onManageSources ?? this.onManageSources,
       onDiscover: onDiscover ?? this.onDiscover,
       onImportLocal: onImportLocal ?? this.onImportLocal,

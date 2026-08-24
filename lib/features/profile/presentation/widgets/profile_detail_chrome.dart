@@ -49,9 +49,7 @@ class ProfileDetailBottomBar extends StatelessWidget {
               child: AppBottomNavigation(
                 selected: AppNavigationDestination.profile,
                 onSelected: onSelected,
-                showSelectionIndicator: false,
                 height: AppDetailMetrics.bottomNavigationHeight,
-                topPadding: AppDetailMetrics.bottomNavigationTopPadding,
               ),
             ),
           ),

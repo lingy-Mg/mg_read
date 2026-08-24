@@ -101,13 +101,75 @@ void main() {
     library = await ContentLibrary.open(dataRoot: root);
     final second = await ContentLibraryOverviewLoader(
       library,
-      fetcher: (_) async {
-        fail('A durable cover should not be fetched again.');
-      },
+      fetcher: (_) async =>
+          fail('A durable cover should not be fetched again.'),
     ).load();
     expect(second.items.single.id, item.id.value);
     expect(second.items.single.coverBytes, bytes);
     await library.close();
     await root.delete(recursive: true);
   });
+
+  test('normal overview and continue reading exclude private books', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'mg-read-library-private-overview-',
+    );
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final normal = await library.bookshelf.add(
+      title: '普通继续阅读',
+      kind: ContentKind.novel,
+      source: const ContentLibraryIngest(
+        pluginId: 'fixture',
+        producerPluginVersion: '1.0.0',
+        dataVersion: 1,
+        opaqueData: <String, Object?>{'remoteBookId': 'normal'},
+      ),
+    );
+    final private = await library.bookshelf.add(
+      title: '隐私继续阅读',
+      kind: ContentKind.novel,
+      source: const ContentLibraryIngest(
+        pluginId: 'fixture',
+        producerPluginVersion: '1.0.0',
+        dataVersion: 1,
+        opaqueData: <String, Object?>{'remoteBookId': 'private'},
+      ),
+    );
+    await library.readingProgress.save(_progress(normal.id, 1));
+    await library.readingProgress.save(_progress(private.id, 2));
+    await library.bookshelf.setVisibility(
+      private.id,
+      LibraryVisibility.private,
+    );
+
+    final loader = ContentLibraryOverviewLoader(library);
+    final normalOverview = await loader.load();
+    final privateOverview = await loader.load(
+      visibility: LibraryVisibility.private,
+    );
+
+    expect(normalOverview.items.map((item) => item.id), <String>[
+      normal.id.value,
+    ]);
+    expect(normalOverview.continueReading?.id, normal.id.value);
+    expect(privateOverview.items.map((item) => item.id), <String>[
+      private.id.value,
+    ]);
+  });
 }
+
+LibraryReadingProgress _progress(LibraryItemId id, int hour) =>
+    LibraryReadingProgress(
+      itemId: id,
+      chapterId: 'chapter-$hour',
+      paragraphId: 'paragraph-$hour',
+      characterOffset: 0,
+      chapterIndex: 0,
+      chapterFraction: 0.5,
+      bookFraction: 0.5,
+      updatedAtUtc: DateTime.utc(2026, 8, 24, hour),
+    );

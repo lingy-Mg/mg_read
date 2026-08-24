@@ -220,7 +220,6 @@ class AppSecondaryPlaceholderPage extends StatelessWidget {
         child: AppBottomNavigation(
           selected: AppNavigationDestination.profile,
           onSelected: onDestinationSelected,
-          showSelectionIndicator: false,
         ),
       ),
     );

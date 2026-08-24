@@ -27,11 +27,9 @@ export async function getDetail(request) {
 
 export async function getChapters(request) {
   requireContext().log.info('demo_chapters');
-  return {
-    items: [{ id: `${request.id}:chapter-1`, title: '第一章', order: 0, url: null, volumeTitle: null, wordCount: 1200, updatedAt: null, isLocked: false, attributes: [] }],
-    nextCursor: null,
-    totalCount: 1,
-  };
+    return {
+      items: [{ id: `${request.id}:chapter-1`, title: '第一章', order: 0, url: null, volumeTitle: null, wordCount: 1200, updatedAt: null, isLocked: false, attributes: [] }],
+    };
 }
 
 export async function getContent(request) {

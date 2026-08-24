@@ -4,6 +4,7 @@
 - 日期：2026-08-21
 - 决策者：MgRead 项目
 - 替代：[ADR-0017](0017-versioned-plugin-content-contract.md)
+- 目录分页：由 [ADR-0020](0020-complete-source-catalog.md) 局部替代
 
 ## 背景
 
