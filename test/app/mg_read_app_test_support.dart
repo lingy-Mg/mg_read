@@ -10,9 +10,7 @@ import 'package:mg_read/features/plugins/application/plugin_runtime_connection.d
 import '../core/settings/settings_testkit.dart';
 
 /// Provides the initialized settings boundary required by [MgReadApp] tests.
-Future<AppSettingsManager> createTestAppSettings({
-  String themeMode = 'system',
-}) async {
+Future<AppSettingsManager> createTestAppSettings({String themeMode = 'system'}) async {
   final FakeSettingsStore store = FakeSettingsStore();
   if (themeMode != 'system') {
     store.documents[AppSettingKeys.appearanceDocument.kind] = SettingsDocument(
@@ -22,10 +20,7 @@ Future<AppSettingsManager> createTestAppSettings({
       revision: 1,
     );
   }
-  final AppSettingsManager settings = AppSettingsManager(
-    store: store,
-    registry: AppSettingKeys.registry,
-  );
+  final AppSettingsManager settings = AppSettingsManager(store: store, registry: AppSettingKeys.registry);
   await settings.initialize();
   return settings;
 }
@@ -41,8 +36,7 @@ Widget testMgReadApp(
       appSettingsProvider.overrideWithValue(settings),
       sourceContentGatewayProvider.overrideWithValue(sourceGateway),
       pluginRuntimeGatewayProvider.overrideWithValue(runtimeGateway),
-      if (diagnostics != null)
-        diagnosticsManagerProvider.overrideWithValue(diagnostics),
+      if (diagnostics != null) diagnosticsManagerProvider.overrideWithValue(diagnostics),
     ],
     child: const MgReadApp(),
   );
@@ -50,29 +44,16 @@ Widget testMgReadApp(
 
 /// Keeps host-widget tests independent from a platform Runtime process.
 final class TestReadyPluginRuntimeGateway implements PluginRuntimeGateway {
-  const TestReadyPluginRuntimeGateway({
-    this.startupRecovery = const PluginRuntimeStartupRecovery(
-      quarantinedCount: 0,
-    ),
-  });
+  const TestReadyPluginRuntimeGateway({this.startupRecovery = const PluginRuntimeStartupRecovery(quarantinedCount: 0)});
 
   final PluginRuntimeStartupRecovery startupRecovery;
 
   @override
-  Stream<RuntimeInitializationProgress> get initialization =>
-      const Stream<RuntimeInitializationProgress>.empty();
+  Stream<RuntimeInitializationProgress> get initialization => const Stream<RuntimeInitializationProgress>.empty();
 
   @override
-  Future<PluginInstallationSize> inspectInstallationSize({
-    required String pluginId,
-    required PluginInstallationSizeScope scope,
-  }) async => PluginInstallationSize(
-    bytes: 0,
-    fileCount: 0,
-    pluginId: pluginId,
-    scope: scope,
-    version: 'test',
-  );
+  Future<PluginInstallationSize> inspectInstallationSize({required String pluginId, required PluginInstallationSizeScope scope}) async =>
+      PluginInstallationSize(bytes: 0, fileCount: 0, pluginId: pluginId, scope: scope, version: 'test');
 
   @override
   Future<bool> importLocalPlugin() async => false;
@@ -81,12 +62,13 @@ final class TestReadyPluginRuntimeGateway implements PluginRuntimeGateway {
   Future<bool> selectDevelopmentDirectory() async => false;
 
   @override
-  Future<PluginCodeDirectoryKind> openCodeDirectory({
-    required String pluginId,
-  }) async => PluginCodeDirectoryKind.installed;
+  Future<PluginCodeDirectoryKind> openCodeDirectory({required String pluginId}) async => PluginCodeDirectoryKind.installed;
 
   @override
   Future<void> openRuntimePrivateDirectory() async {}
+
+  @override
+  Future<PluginRuntimeDebugHttp> setDebugHttpEnabled(bool enabled) async => const PluginRuntimeDebugHttp.disabled();
 
   @override
   Future<PluginRuntimeConnection> inspect() async => PluginRuntimeConnection(
@@ -98,10 +80,7 @@ final class TestReadyPluginRuntimeGateway implements PluginRuntimeGateway {
   );
 
   @override
-  Future<void> setEnabled({
-    required String pluginId,
-    required bool enabled,
-  }) async {}
+  Future<void> setEnabled({required String pluginId, required bool enabled}) async {}
 }
 
 final class _EmptySourceContentGateway implements SourceContentGateway {
@@ -113,19 +92,12 @@ final class _EmptySourceContentGateway implements SourceContentGateway {
   }
 
   @override
-  Future<PluginSearchResult> search({
-    required String pluginId,
-    required String query,
-    String? cursor,
-    int pageSize = 20,
-  }) async => throw StateError('No source is installed in the app testkit.');
+  Future<PluginSearchResult> search({required String pluginId, required String query, String? cursor, int pageSize = 20}) async =>
+      throw StateError('No source is installed in the app testkit.');
 
   @override
-  Future<PluginSearchSuggestionsResult> searchSuggestions({
-    required String pluginId,
-    String? cursor,
-    int pageSize = 20,
-  }) async => throw StateError('No source is installed in the app testkit.');
+  Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) async =>
+      throw StateError('No source is installed in the app testkit.');
 
   @override
   Future<PluginDiscoverResult> discover({
@@ -137,21 +109,14 @@ final class _EmptySourceContentGateway implements SourceContentGateway {
   }) async => throw StateError('No source is installed in the app testkit.');
 
   @override
-  Future<PluginContentDetail> getDetail({
-    required String pluginId,
-    required String id,
-  }) async => throw StateError('No source is installed in the app testkit.');
+  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async =>
+      throw StateError('No source is installed in the app testkit.');
 
   @override
-  Future<PluginChaptersResult> getChapters({
-    required String pluginId,
-    required String id,
-  }) async => throw StateError('No source is installed in the app testkit.');
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async =>
+      throw StateError('No source is installed in the app testkit.');
 
   @override
-  Future<PluginChapterContent> getContent({
-    required String pluginId,
-    required String id,
-    required String chapterId,
-  }) async => throw StateError('No source is installed in the app testkit.');
+  Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async =>
+      throw StateError('No source is installed in the app testkit.');
 }

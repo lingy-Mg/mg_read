@@ -1,8 +1,23 @@
+/// 数据源 Runtime 管理页面。
+///
+/// 职责：
+/// - 展示 Runtime 数据源状态及受控管理操作。
+/// - 在 Debug 构建中提供临时检查页开关和地址复制。
+///
+/// 注意：
+/// - 页面只调用应用层窄端口，不接触 Runtime HTTP 或资源 token。
+/// - Debug listener 的生命周期归 Runtime 所有，页面不持久化开关。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -30,9 +45,7 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final AsyncValue<PluginRuntimeConnection> connection = ref.watch(
-      pluginRuntimeConnectionProvider,
-    );
+    final AsyncValue<PluginRuntimeConnection> connection = ref.watch(pluginRuntimeConnectionProvider);
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -63,14 +76,9 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
               Expanded(
                 child: connection.when(
                   loading: () => const _DataSourceLoading(),
-                  error: (Object _, StackTrace _) => _DataSourceFailure(
-                    onRetry: () =>
-                        ref.invalidate(pluginRuntimeConnectionProvider),
-                  ),
-                  data: (PluginRuntimeConnection value) => _DataSourceContent(
-                    sources: _sourcesFromConnection(value),
-                    onSourcePressed: onSourcePressed,
-                  ),
+                  error: (Object _, StackTrace _) => _DataSourceFailure(onRetry: () => ref.invalidate(pluginRuntimeConnectionProvider)),
+                  data: (PluginRuntimeConnection value) =>
+                      _DataSourceContent(sources: _sourcesFromConnection(value), onSourcePressed: onSourcePressed),
                 ),
               ),
             ],
@@ -86,11 +94,7 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
         title: const Text('数据来源说明'),
-        content: Text(
-          isWindows
-              ? '在这里查看已添加的数据来源，并直接启用或停用它们。Windows 调试时还可以添加开发目录，目录内的数据源会即时生效。'
-              : '在这里查看已添加的数据来源，并直接启用或停用它们。',
-        ),
+        content: Text(isWindows ? '在这里查看已添加的数据来源，并直接启用或停用它们。Windows 调试时还可以添加开发目录，目录内的数据源会即时生效。' : '在这里查看已添加的数据来源，并直接启用或停用它们。'),
         actions: <Widget>[
           if (isWindows)
             TextButton(
@@ -101,32 +105,20 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
               },
               child: const Text('添加开发目录'),
             ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('知道了'),
-          ),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('知道了')),
         ],
       ),
     );
   }
 
-  Future<void> _selectDevelopmentDirectory(
-    BuildContext context,
-    WidgetRef ref,
-  ) async {
+  Future<void> _selectDevelopmentDirectory(BuildContext context, WidgetRef ref) async {
     try {
-      final selected = await ref
-          .read(pluginRuntimeDevelopmentDirectoryProvider.notifier)
-          .selectDirectory();
+      final selected = await ref.read(pluginRuntimeDevelopmentDirectoryProvider.notifier).selectDirectory();
       if (!context.mounted || !selected) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('开发目录已添加并即时生效。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('开发目录已添加并即时生效。')));
     } on Object {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('开发目录添加失败，请检查目录后重试。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('开发目录添加失败，请检查目录后重试。')));
     }
   }
 }
@@ -138,11 +130,7 @@ class _DataSourceLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const AppLoadingState(
-      label: '正在加载数据来源',
-      message: '正在加载数据来源',
-      progressKey: Key('data-source-management-loading'),
-    );
+    return const AppLoadingState(label: '正在加载数据来源', message: '正在加载数据来源', progressKey: Key('data-source-management-loading'));
   }
 }
 
@@ -154,20 +142,13 @@ class _DataSourceFailure extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: TextButton(
-        key: const Key('data-source-management-retry'),
-        onPressed: onRetry,
-        child: const Text('数据来源暂不可用，点击重试'),
-      ),
+      child: TextButton(key: const Key('data-source-management-retry'), onPressed: onRetry, child: const Text('数据来源暂不可用，点击重试')),
     );
   }
 }
 
 class _DataSourceContent extends ConsumerStatefulWidget {
-  const _DataSourceContent({
-    required this.sources,
-    required this.onSourcePressed,
-  });
+  const _DataSourceContent({required this.sources, required this.onSourcePressed});
 
   final List<_DataSourceViewData> sources;
   final ValueChanged<String> onSourcePressed;
@@ -177,31 +158,20 @@ class _DataSourceContent extends ConsumerStatefulWidget {
 }
 
 class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
-  Future<void> _setSourceEnabled(
-    _DataSourceViewData source,
-    bool enabled,
-  ) async {
+  Future<void> _setSourceEnabled(_DataSourceViewData source, bool enabled) async {
     try {
-      await ref
-          .read(pluginRuntimeSourceActionProvider.notifier)
-          .setEnabled(pluginId: source.id, enabled: enabled);
+      await ref.read(pluginRuntimeSourceActionProvider.notifier).setEnabled(pluginId: source.id, enabled: enabled);
     } on Object {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('数据来源状态更新失败，请稍后重试。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据来源状态更新失败，请稍后重试。')));
     }
   }
 
   Future<void> _importDataSource() async {
     try {
-      final imported = await ref
-          .read(pluginRuntimeSourceImportProvider.notifier)
-          .importLocalPlugin();
+      final imported = await ref.read(pluginRuntimeSourceImportProvider.notifier).importLocalPlugin();
       if (!mounted || !imported) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('数据来源已添加。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据来源已添加。')));
     } on Object catch (error) {
       if (!mounted) return;
       await _showImportError(context, AppError.fromUnknown(error));
@@ -212,14 +182,10 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
     try {
       await ref.read(pluginRuntimePrivateDirectoryProvider.notifier).open();
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('已打开 Runtime 私有目录。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已打开 Runtime 私有目录。')));
     } on Object {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Runtime 私有目录打开失败，请稍后重试。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Runtime 私有目录打开失败，请稍后重试。')));
     }
   }
 
@@ -228,30 +194,20 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
         title: const Text('数据来源导入失败'),
-        content: SelectableText(
-          '${_importErrorMessage(error.code)}\n\n错误码：${error.code.wireValue}',
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('知道了'),
-          ),
-        ],
+        content: SelectableText('${_importErrorMessage(error.code)}\n\n错误码：${error.code.wireValue}'),
+        actions: <Widget>[TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('知道了'))],
       ),
     );
   }
 
   String _importErrorMessage(AppErrorCode code) {
     return switch (code) {
-      AppErrorCode.invalidRequest || AppErrorCode.invalidFormat =>
-        '选择的文件不是有效的 MgRead 数据来源包，请确认文件后缀为 .mgplugin，且文件没有损坏。',
+      AppErrorCode.invalidRequest || AppErrorCode.invalidFormat => '选择的文件不是有效的 MgRead 数据来源包，请确认文件后缀为 .mgplugin，且文件没有损坏。',
       AppErrorCode.fileNameInvalid => '选择的文件名称不是 .mgplugin。请重新选择 MgRead 数据来源包。',
       AppErrorCode.fileUnavailable => '手机找不到选择的文件。请把文件复制到手机本地存储后重新选择。',
-      AppErrorCode.fileUnreadable ||
-      AppErrorCode.fileReadFailed => '手机无法读取选择的文件。请检查文件权限，并把文件复制到手机本地存储后重试。',
+      AppErrorCode.fileUnreadable || AppErrorCode.fileReadFailed => '手机无法读取选择的文件。请检查文件权限，并把文件复制到手机本地存储后重试。',
       AppErrorCode.fileTooLarge => '数据来源包超过 32 MB，无法导入。',
-      AppErrorCode.pluginInstallFailed =>
-        '文件已经读取，但数据来源安装失败。请确认这是标准 MgRead .mgplugin 包，并重新导出后再试。',
+      AppErrorCode.pluginInstallFailed => '文件已经读取，但数据来源安装失败。请确认这是标准 MgRead .mgplugin 包，并重新导出后再试。',
       AppErrorCode.diskFull => '手机存储空间不足，清理空间后再试。',
       AppErrorCode.runtimeStartFailed ||
       AppErrorCode.runtimeUnavailable ||
@@ -263,15 +219,9 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
   @override
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    final Set<String> pendingSourceIds = ref.watch(
-      pluginRuntimeSourceActionProvider,
-    );
-    final PluginSourceImportState importState = ref.watch(
-      pluginRuntimeSourceImportProvider,
-    );
-    final int enabledCount = widget.sources
-        .where((_DataSourceViewData source) => source.enabled)
-        .length;
+    final Set<String> pendingSourceIds = ref.watch(pluginRuntimeSourceActionProvider);
+    final PluginSourceImportState importState = ref.watch(pluginRuntimeSourceImportProvider);
+    final int enabledCount = widget.sources.where((_DataSourceViewData source) => source.enabled).length;
     return ListView(
       key: const Key('data-source-management-content'),
       padding: const EdgeInsets.fromLTRB(
@@ -287,13 +237,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
             color: tokens.surface,
             borderRadius: AppRadii.profileList,
             border: Border.all(color: tokens.divider),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: tokens.shadow.withValues(alpha: 0.16),
-                blurRadius: 14,
-                offset: const Offset(0, 5),
-              ),
-            ],
+            boxShadow: <BoxShadow>[BoxShadow(color: tokens.shadow.withValues(alpha: 0.16), blurRadius: 14, offset: const Offset(0, 5))],
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(
@@ -304,10 +248,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
             ),
             child: Column(
               children: <Widget>[
-                _DataSourceSectionHeader(
-                  enabledCount: enabledCount,
-                  sourceCount: widget.sources.length,
-                ),
+                _DataSourceSectionHeader(enabledCount: enabledCount, sourceCount: widget.sources.length),
                 const SizedBox(height: AppSpacing.compact),
                 if (widget.sources.isEmpty)
                   const _DataSourceEmptyState()
@@ -320,16 +261,11 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
                           source: source,
                           isPending: pendingSourceIds.contains(source.id),
                           onPressed: () => widget.onSourcePressed(source.id),
-                          onChanged: (bool enabled) =>
-                              _setSourceEnabled(source, enabled),
+                          onChanged: (bool enabled) => _setSourceEnabled(source, enabled),
                         ),
                         if (index < widget.sources.length - 1)
                           Padding(
-                            padding: const EdgeInsets.only(
-                              left:
-                                  AppSpacing.dataSourceMarkExtent +
-                                  AppSpacing.regular,
-                            ),
+                            padding: const EdgeInsets.only(left: AppSpacing.dataSourceMarkExtent + AppSpacing.regular),
                             child: Divider(height: 1, color: tokens.divider),
                           ),
                       ],
@@ -344,10 +280,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
                   ],
                   const SizedBox(height: AppSpacing.compact),
                 ],
-                _AddDataSourceButton(
-                  isImporting: importState.isImporting,
-                  onPressed: importState.isImporting ? null : _importDataSource,
-                ),
+                _AddDataSourceButton(isImporting: importState.isImporting, onPressed: importState.isImporting ? null : _importDataSource),
                 if (Platform.isWindows) ...<Widget>[
                   const SizedBox(height: AppSpacing.regular),
                   _RuntimePrivateDirectoryButton(
@@ -355,11 +288,81 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
                     onPressed: _openRuntimePrivateDirectory,
                   ),
                 ],
+                if (kDebugMode) ...<Widget>[const SizedBox(height: AppSpacing.regular), const _RuntimeDebugHttpPanel()],
               ],
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Transient Debug-only control for the Runtime-owned LAN inspector.
+class _RuntimeDebugHttpPanel extends ConsumerWidget {
+  const _RuntimeDebugHttpPanel();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AsyncValue<PluginRuntimeDebugHttp> state = ref.watch(pluginRuntimeDebugHttpProvider);
+    final PluginRuntimeDebugHttp value = switch (state) {
+      AsyncData<PluginRuntimeDebugHttp>(:final value) => value,
+      _ => const PluginRuntimeDebugHttp.disabled(),
+    };
+    final AppThemeTokens tokens = AppThemeTokens.of(context);
+    return DecoratedBox(
+      key: const Key('runtime-debug-http-panel'),
+      decoration: BoxDecoration(
+        color: tokens.mutedSurface,
+        borderRadius: AppRadii.detailControl,
+        border: Border.all(color: tokens.divider),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.regular),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Material(
+              color: Colors.transparent,
+              child: SwitchListTile.adaptive(
+                key: const Key('runtime-debug-http-toggle'),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Runtime 调试页面'),
+                subtitle: const Text('仅 Debug：开启后同一网络设备可无认证访问。'),
+                value: value.enabled,
+                onChanged: state.isLoading ? null : (bool enabled) => ref.read(pluginRuntimeDebugHttpProvider.notifier).setEnabled(enabled),
+              ),
+            ),
+            if (state.hasError)
+              Text('启动失败，请检查 Runtime 状态后重试。', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.warning)),
+            for (final String endpoint in value.endpoints)
+              Padding(
+                padding: const EdgeInsets.only(top: AppSpacing.unit),
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: SelectableText(
+                        endpoint,
+                        key: Key('runtime-debug-http-url-$endpoint'),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                    IconButton(
+                      key: Key('runtime-debug-http-copy-$endpoint'),
+                      tooltip: '复制调试地址',
+                      icon: const Icon(Icons.copy_outlined),
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: endpoint));
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('调试地址已复制。')));
+                      },
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -373,9 +376,7 @@ class _DataSourceImportProgress extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final double? fraction = state.fraction?.clamp(0, 1).toDouble();
-    final String percent = fraction == null
-        ? '处理中'
-        : '${(fraction * 100).round()}%';
+    final String percent = fraction == null ? '处理中' : '${(fraction * 100).round()}%';
     return Semantics(
       liveRegion: true,
       label: '${state.message}，$percent',
@@ -387,27 +388,14 @@ class _DataSourceImportProgress extends StatelessWidget {
               Expanded(
                 child: Text(
                   state.message,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: tokens.dataSourceAccent,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.dataSourceAccent, fontWeight: FontWeight.w600),
                 ),
               ),
-              Text(
-                percent,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: tokens.mutedText),
-              ),
+              Text(percent, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
             ],
           ),
           const SizedBox(height: AppSpacing.unit),
-          LinearProgressIndicator(
-            value: fraction,
-            minHeight: 4,
-            backgroundColor: tokens.mutedSurface,
-            color: tokens.dataSourceAccent,
-          ),
+          LinearProgressIndicator(value: fraction, minHeight: 4, backgroundColor: tokens.mutedSurface, color: tokens.dataSourceAccent),
         ],
       ),
     );
@@ -425,26 +413,15 @@ class _DataSourceImportLog extends StatelessWidget {
     return Container(
       key: const Key('data-source-import-log'),
       constraints: const BoxConstraints(maxHeight: 128),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.compact,
-        vertical: AppSpacing.unit,
-      ),
-      decoration: BoxDecoration(
-        color: tokens.mutedSurface,
-        borderRadius: AppRadii.detailControl,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.compact, vertical: AppSpacing.unit),
+      decoration: BoxDecoration(color: tokens.mutedSurface, borderRadius: AppRadii.detailControl),
       child: ListView(
         shrinkWrap: true,
         children: logs
             .map(
               (String log) => Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(
-                  '· $log',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: tokens.mutedText),
-                ),
+                child: Text('· $log', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
               ),
             )
             .toList(growable: false),
@@ -454,10 +431,7 @@ class _DataSourceImportLog extends StatelessWidget {
 }
 
 class _RuntimePrivateDirectoryButton extends StatelessWidget {
-  const _RuntimePrivateDirectoryButton({
-    required this.isOpening,
-    required this.onPressed,
-  });
+  const _RuntimePrivateDirectoryButton({required this.isOpening, required this.onPressed});
 
   final bool isOpening;
   final VoidCallback onPressed;
@@ -467,21 +441,14 @@ class _RuntimePrivateDirectoryButton extends StatelessWidget {
     key: const Key('data-source-open-runtime-directory'),
     onPressed: isOpening ? null : onPressed,
     icon: isOpening
-        ? const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
+        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
         : const Icon(Icons.folder_open_outlined),
     label: Text(isOpening ? '正在打开…' : '打开 Runtime 私有目录'),
   );
 }
 
 class _DataSourceSectionHeader extends StatelessWidget {
-  const _DataSourceSectionHeader({
-    required this.enabledCount,
-    required this.sourceCount,
-  });
+  const _DataSourceSectionHeader({required this.enabledCount, required this.sourceCount});
 
   final int enabledCount;
   final int sourceCount;
@@ -493,14 +460,7 @@ class _DataSourceSectionHeader extends StatelessWidget {
     return Row(
       children: <Widget>[
         Expanded(
-          child: Text(
-            '我的数据来源',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-              height: 1.2,
-              letterSpacing: -0.3,
-            ),
-          ),
+          child: Text('我的数据来源', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700, height: 1.2, letterSpacing: -0.3)),
         ),
         Text(
           '已启用 $enabledCount/$sourceCount',
@@ -525,9 +485,7 @@ class _DataSourceEmptyState extends StatelessWidget {
         child: Text(
           '暂无已安装的数据来源',
           key: const Key('data-source-management-empty'),
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
         ),
       ),
     );
@@ -535,12 +493,7 @@ class _DataSourceEmptyState extends StatelessWidget {
 }
 
 class _DataSourceRow extends StatelessWidget {
-  const _DataSourceRow({
-    required this.source,
-    required this.isPending,
-    required this.onPressed,
-    required this.onChanged,
-  });
+  const _DataSourceRow({required this.source, required this.isPending, required this.onPressed, required this.onChanged});
 
   final _DataSourceViewData source;
   final bool isPending;
@@ -552,8 +505,7 @@ class _DataSourceRow extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Semantics(
-      label:
-          '${source.name}，${source.kindLabel}，${source.enabled ? '已启用' : '未启用'}',
+      label: '${source.name}，${source.kindLabel}，${source.enabled ? '已启用' : '未启用'}',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -564,11 +516,7 @@ class _DataSourceRow extends StatelessWidget {
             height: AppSpacing.dataSourceRowHeight + AppSpacing.compact,
             child: Row(
               children: <Widget>[
-                _DataSourceBrandMark(
-                  sourceId: source.id,
-                  displayName: source.name,
-                  brand: source.brand,
-                ),
+                _DataSourceBrandMark(sourceId: source.id, displayName: source.name, brand: source.brand),
                 const SizedBox(width: AppSpacing.regular),
                 Expanded(
                   child: Column(
@@ -579,30 +527,21 @@ class _DataSourceRow extends StatelessWidget {
                         source.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          height: 1.12,
-                        ),
+                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, height: 1.12),
                       ),
                       const SizedBox(height: AppSpacing.unit),
                       Text(
                         source.description,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: tokens.mutedText,
-                          height: 1.1,
-                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText, height: 1.1),
                       ),
                       const SizedBox(height: AppSpacing.unit),
                       Text(
                         source.kindLabel,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: tokens.mutedText,
-                          height: 1.1,
-                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText, height: 1.1),
                       ),
                     ],
                   ),
@@ -615,16 +554,12 @@ class _DataSourceRow extends StatelessWidget {
                     child: Switch(
                       key: ValueKey<String>('data-source-toggle-${source.id}'),
                       value: source.enabled,
-                      onChanged: isPending || source.isDevelopment
-                          ? null
-                          : onChanged,
+                      onChanged: isPending || source.isDevelopment ? null : onChanged,
                       activeTrackColor: tokens.dataSourceAccent,
                       activeThumbColor: theme.colorScheme.onPrimary,
                       inactiveTrackColor: tokens.mutedSurface,
                       inactiveThumbColor: tokens.surface,
-                      trackOutlineColor: const WidgetStatePropertyAll<Color>(
-                        Colors.transparent,
-                      ),
+                      trackOutlineColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
                     ),
                   ),
                 ),
@@ -638,11 +573,7 @@ class _DataSourceRow extends StatelessWidget {
 }
 
 class _DataSourceBrandMark extends StatelessWidget {
-  const _DataSourceBrandMark({
-    required this.sourceId,
-    required this.displayName,
-    required this.brand,
-  });
+  const _DataSourceBrandMark({required this.sourceId, required this.displayName, required this.brand});
 
   final String sourceId;
   final String displayName;
@@ -651,12 +582,7 @@ class _DataSourceBrandMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (SourceBranding.assetFor(sourceId) != null) {
-      return SourceIcon(
-        sourceId: sourceId,
-        displayName: displayName,
-        size: AppSpacing.dataSourceMarkExtent,
-        borderRadius: 12,
-      );
+      return SourceIcon(sourceId: sourceId, displayName: displayName, size: AppSpacing.dataSourceMarkExtent, borderRadius: 12);
     }
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final ThemeData theme = Theme.of(context);
@@ -667,30 +593,15 @@ class _DataSourceBrandMark extends StatelessWidget {
     };
     final _BrandColors colors = switch (brand) {
       _DataSourceBrand.qidian => _BrandColors(tokens.notification, foreground),
-      _DataSourceBrand.tomato => _BrandColors(
-        tokens.dataSourceAccent,
-        foreground,
-      ),
+      _DataSourceBrand.tomato => _BrandColors(tokens.dataSourceAccent, foreground),
       _DataSourceBrand.qimao => _BrandColors(tokens.dataSourceCat, foreground),
-      _DataSourceBrand.zongheng => _BrandColors(
-        tokens.notification,
-        foreground,
-      ),
-      _DataSourceBrand.jinjiang => _BrandColors(
-        tokens.dataSourceCommunity,
-        foreground,
-      ),
-      _DataSourceBrand.seventeenK => _BrandColors(
-        tokens.dataSourceAccent,
-        foreground,
-      ),
+      _DataSourceBrand.zongheng => _BrandColors(tokens.notification, foreground),
+      _DataSourceBrand.jinjiang => _BrandColors(tokens.dataSourceCommunity, foreground),
+      _DataSourceBrand.seventeenK => _BrandColors(tokens.dataSourceAccent, foreground),
       _DataSourceBrand.generic => _BrandColors(tokens.accentSoft, foreground),
     };
     return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.background,
-        borderRadius: AppRadii.discoveryTile,
-      ),
+      decoration: BoxDecoration(color: colors.background, borderRadius: AppRadii.discoveryTile),
       child: SizedBox(
         width: AppSpacing.dataSourceMarkExtent,
         height: AppSpacing.dataSourceMarkExtent,
@@ -711,42 +622,21 @@ class _BrandGlyph extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return switch (brand) {
-      _DataSourceBrand.qidian => Text(
-        '起',
-        style: _glyphTextStyle(context, color),
-      ),
-      _DataSourceBrand.tomato => CustomPaint(
-        size: const Size.square(AppSpacing.dataSourceMarkExtent),
-        painter: _TomatoMarkPainter(color),
-      ),
-      _DataSourceBrand.qimao => CustomPaint(
-        size: const Size.square(AppSpacing.dataSourceMarkExtent),
-        painter: _CatMarkPainter(color),
-      ),
+      _DataSourceBrand.qidian => Text('起', style: _glyphTextStyle(context, color)),
+      _DataSourceBrand.tomato => CustomPaint(size: const Size.square(AppSpacing.dataSourceMarkExtent), painter: _TomatoMarkPainter(color)),
+      _DataSourceBrand.qimao => CustomPaint(size: const Size.square(AppSpacing.dataSourceMarkExtent), painter: _CatMarkPainter(color)),
       _DataSourceBrand.zongheng => _GridBrandGlyph(color: color),
       _DataSourceBrand.jinjiang => CustomPaint(
         size: const Size.square(AppSpacing.dataSourceMarkExtent),
         painter: _JinjiangMarkPainter(color),
       ),
-      _DataSourceBrand.seventeenK => Text(
-        '17K',
-        style: _glyphTextStyle(context, color),
-      ),
-      _DataSourceBrand.generic => Icon(
-        Icons.extension_rounded,
-        color: color,
-        size: AppSpacing.dataSourceAddIconSize,
-      ),
+      _DataSourceBrand.seventeenK => Text('17K', style: _glyphTextStyle(context, color)),
+      _DataSourceBrand.generic => Icon(Icons.extension_rounded, color: color, size: AppSpacing.dataSourceAddIconSize),
     };
   }
 
   TextStyle? _glyphTextStyle(BuildContext context, Color foreground) {
-    return Theme.of(context).textTheme.titleLarge?.copyWith(
-      color: foreground,
-      fontWeight: FontWeight.w700,
-      height: 1,
-      letterSpacing: -0.8,
-    );
+    return Theme.of(context).textTheme.titleLarge?.copyWith(color: foreground, fontWeight: FontWeight.w700, height: 1, letterSpacing: -0.8);
   }
 }
 
@@ -804,8 +694,7 @@ class _TomatoMarkPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _TomatoMarkPainter oldDelegate) =>
-      oldDelegate.color != color;
+  bool shouldRepaint(covariant _TomatoMarkPainter oldDelegate) => oldDelegate.color != color;
 }
 
 class _CatMarkPainter extends CustomPainter {
@@ -834,29 +723,14 @@ class _CatMarkPainter extends CustomPainter {
     canvas.drawPath(cat, paint);
 
     final Paint eyePaint = Paint()..color = Colors.white;
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(15 * unit, 17 * unit),
-        width: 5 * unit,
-        height: 3 * unit,
-      ),
-      eyePaint,
-    );
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(23 * unit, 17 * unit),
-        width: 5 * unit,
-        height: 3 * unit,
-      ),
-      eyePaint,
-    );
+    canvas.drawOval(Rect.fromCenter(center: Offset(15 * unit, 17 * unit), width: 5 * unit, height: 3 * unit), eyePaint);
+    canvas.drawOval(Rect.fromCenter(center: Offset(23 * unit, 17 * unit), width: 5 * unit, height: 3 * unit), eyePaint);
     canvas.drawCircle(Offset(16 * unit, 17 * unit), unit, paint);
     canvas.drawCircle(Offset(22 * unit, 17 * unit), unit, paint);
   }
 
   @override
-  bool shouldRepaint(covariant _CatMarkPainter oldDelegate) =>
-      oldDelegate.color != color;
+  bool shouldRepaint(covariant _CatMarkPainter oldDelegate) => oldDelegate.color != color;
 }
 
 class _JinjiangMarkPainter extends CustomPainter {
@@ -880,16 +754,11 @@ class _JinjiangMarkPainter extends CustomPainter {
       ..quadraticBezierTo(28 * unit, 25 * unit, 18 * unit, 31 * unit)
       ..quadraticBezierTo(11 * unit, 33 * unit, 7 * unit, 29 * unit);
     canvas.drawPath(leaf, paint);
-    canvas.drawLine(
-      Offset(11 * unit, 28 * unit),
-      Offset(20 * unit, 16 * unit),
-      paint,
-    );
+    canvas.drawLine(Offset(11 * unit, 28 * unit), Offset(20 * unit, 16 * unit), paint);
   }
 
   @override
-  bool shouldRepaint(covariant _JinjiangMarkPainter oldDelegate) =>
-      oldDelegate.color != color;
+  bool shouldRepaint(covariant _JinjiangMarkPainter oldDelegate) => oldDelegate.color != color;
 }
 
 class _AddDataSourceButton extends StatelessWidget {
@@ -927,24 +796,14 @@ class _AddDataSourceButton extends StatelessWidget {
                       SizedBox(
                         width: AppSpacing.dataSourceAddIconSize,
                         height: AppSpacing.dataSourceAddIconSize,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: tokens.dataSourceAccent,
-                        ),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: tokens.dataSourceAccent),
                       )
                     else
-                      Icon(
-                        Icons.add_rounded,
-                        color: tokens.dataSourceAccent,
-                        size: AppSpacing.dataSourceAddIconSize,
-                      ),
+                      Icon(Icons.add_rounded, color: tokens.dataSourceAccent, size: AppSpacing.dataSourceAddIconSize),
                     const SizedBox(width: AppSpacing.compact),
                     Text(
                       isImporting ? '正在添加数据来源…' : '添加数据来源',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: tokens.dataSourceAccent,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(color: tokens.dataSourceAccent, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
@@ -984,34 +843,16 @@ class _BrandColors {
   final Color foreground;
 }
 
-enum _DataSourceBrand {
-  qidian,
-  tomato,
-  qimao,
-  zongheng,
-  jinjiang,
-  seventeenK,
-  generic,
-}
+enum _DataSourceBrand { qidian, tomato, qimao, zongheng, jinjiang, seventeenK, generic }
 
-List<_DataSourceViewData> _sourcesFromConnection(
-  PluginRuntimeConnection connection,
-) {
+List<_DataSourceViewData> _sourcesFromConnection(PluginRuntimeConnection connection) {
   return connection.plugins
-      .where(
-        (PluginRuntimePlugin plugin) =>
-            plugin.contentKinds.contains('novel') ||
-            plugin.contentKinds.contains('manga'),
-      )
+      .where((PluginRuntimePlugin plugin) => plugin.contentKinds.contains('novel') || plugin.contentKinds.contains('manga'))
       .map(
         (PluginRuntimePlugin plugin) => _DataSourceViewData(
           id: plugin.id,
           name: plugin.displayName,
-          description: SourceBranding.description(
-            sourceId: plugin.id,
-            displayName: plugin.displayName,
-            value: plugin.description,
-          ),
+          description: SourceBranding.description(sourceId: plugin.id, displayName: plugin.displayName, value: plugin.description),
           kindLabel: _sourceMetadataLabel(plugin),
           enabled: plugin.enabled,
           brand: _brandForPlugin(plugin),
@@ -1022,10 +863,7 @@ List<_DataSourceViewData> _sourcesFromConnection(
 }
 
 String _contentKindLabel(List<String> contentKinds) {
-  final List<String> labels = <String>[
-    if (contentKinds.contains('novel')) '小说',
-    if (contentKinds.contains('manga')) '漫画',
-  ];
+  final List<String> labels = <String>[if (contentKinds.contains('novel')) '小说', if (contentKinds.contains('manga')) '漫画'];
   return labels.isEmpty ? '数据源' : labels.join(' · ');
 }
 

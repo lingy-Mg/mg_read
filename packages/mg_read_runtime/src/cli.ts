@@ -1,3 +1,14 @@
+/**
+ * Runtime 桌面进程入口。
+ *
+ * 职责：
+ * - 解析平台适配器提供的最小启动参数；
+ * - 启动单个 Runtime Core 并输出受限 ready/progress 记录。
+ *
+ * 注意：
+ * - Debug HTTP 只接受 Debug 平台适配器显式传入的开关；
+ * - 不接收主应用路径、凭据、数据库或任意控制参数。
+ */
 import {
   DesktopRuntime,
   type DesktopRuntimeOptions,
@@ -58,11 +69,14 @@ function parseLaunchOptions(arguments_: readonly string[]): DesktopRuntimeOption
   const dataRoot = values.get("--data-root");
   const bundledPluginRoot = values.get("--bundled-plugin-root");
   const developmentPluginRoot = values.get("--development-plugin-root");
+  const debugHttpEnabled = values.get("--debug-http-enabled");
   const expectedValueCount = 1 +
     (bundledPluginRoot === undefined ? 0 : 1) +
-    (developmentPluginRoot === undefined ? 0 : 1);
+    (developmentPluginRoot === undefined ? 0 : 1) +
+    (debugHttpEnabled === undefined ? 0 : 1);
   if (
     dataRoot === undefined ||
+    (debugHttpEnabled !== undefined && debugHttpEnabled !== "1") ||
     values.size !== expectedValueCount
   ) {
     throw new Error("The desktop Runtime requires its platform-owned data root.");
@@ -71,6 +85,7 @@ function parseLaunchOptions(arguments_: readonly string[]): DesktopRuntimeOption
     dataRoot,
     ...(bundledPluginRoot === undefined ? {} : { bundledPluginRoot }),
     ...(developmentPluginRoot === undefined ? {} : { developmentPluginRoot }),
+    ...(debugHttpEnabled === undefined ? {} : { debugHttpAllowed: true }),
     onProgress: emitProgress,
   };
 }

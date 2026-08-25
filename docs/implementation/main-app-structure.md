@@ -92,7 +92,7 @@ metadata SQL 在 core persistence 的后台 executor 中执行。
 | `features/discovery` | 发现、搜索和不透明 cursor 页面 | 强类型 capability + 可取消 application 用例 |
 | `features/content_detail` | 详情、来源和目录 UI | 消费 Facade 在线投影与 Content Library 本地投影 |
 | `features/downloads` | 下载状态机的 UI 展示和用户动作 | 等待 Accepted 跨边界契约；不自行写 checkpoint 或传输文件 |
-| `features/reader` | 阅读器视图宿主 | 使用主应用 adapter 实现的 DataSource/StateStore 和 reader 公开 API |
+| `features/reader` | 阅读器视图宿主 | 使用主应用 adapter 实现的 DataSource/StateStore 和 reader 公开 API；入口仅消费 `onFirstContentPresented` 完成封面承载面到正文的交接，不新增正文或 Runtime 依赖 |
 | `features/settings` | 设置、诊断和用户操作页面 | 只读 Runtime 投影与 Runtime capability |
 | `shared` | 无业务公共 UI/小工具 | 只有两个以上 feature 复用时才抽取 |
 

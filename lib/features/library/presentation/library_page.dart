@@ -1,3 +1,17 @@
+/// 首页书架页面。
+///
+/// 职责：
+/// - 将书架生命周期状态映射为首页展示和显式用户回调。
+/// - 编排阅读预热、书架删除与隐私可见性变更。
+///
+/// 注意：
+/// - 书架持久化只通过 application 窄用例和 Content Library adapter 执行。
+/// - 页面异步回调在路由离开后不得继续导航。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -5,9 +19,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/library/application/library_book_remover.dart';
+import 'package:mg_read/features/library/application/library_book_removal_operation.dart';
 import 'package:mg_read/features/library/application/library_book_visibility_changer.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/application/library_page_state.dart';
@@ -52,37 +68,24 @@ class LibraryPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AppThemeModeScope themeModeScope = AppThemeModeScope.of(context);
     final LibraryPageState state = ref.watch(libraryPageControllerProvider);
-    final LibraryPageController controller = ref.read(
-      libraryPageControllerProvider.notifier,
-    );
-    final LibraryBookRemover? bookRemover = ref.read(
-      libraryBookRemoverProvider,
-    );
-    final LibraryBookVisibilityChanger? visibilityChanger = ref.read(
-      libraryBookVisibilityChangerProvider,
-    );
-    final ShelfReaderLaunchState readerLaunch = ref.watch(
-      shelfReaderLaunchCoordinatorProvider,
-    );
-    final ShelfReaderLaunchCoordinator readerCoordinator = ref.read(
-      shelfReaderLaunchCoordinatorProvider.notifier,
-    );
+    final LibraryPageController controller = ref.read(libraryPageControllerProvider.notifier);
+    final LibraryBookRemover? bookRemover = ref.read(libraryBookRemoverProvider);
+    final LibraryBookVisibilityChanger? visibilityChanger = ref.read(libraryBookVisibilityChangerProvider);
+    final DiagnosticsManager diagnostics = ref.read(diagnosticsManagerProvider);
+    final ShelfReaderLaunchState readerLaunch = ref.watch(shelfReaderLaunchCoordinatorProvider);
+    final ShelfReaderLaunchCoordinator readerCoordinator = ref.read(shelfReaderLaunchCoordinatorProvider.notifier);
 
     if (state.status == LibraryPageStatus.initialLoading) {
       return const _LibraryLoadingState();
     }
     if (state.overview == null) {
-      return _LibraryFailureState(
-        error: state.error!,
-        onRetry: controller.refresh,
-      );
+      return _LibraryFailureState(error: state.error!, onRetry: controller.refresh);
     }
 
     final LibraryHomeViewData data = state.overview!.isEmpty
         ? previewData ?? LibraryHomeViewData.empty()
         : LibraryHomeViewData.fromLocalOverview(state.overview!);
-    final ValueChanged<AppNavigationDestination>? destinationRequested =
-        onDestinationRequested;
+    final ValueChanged<AppNavigationDestination>? destinationRequested = onDestinationRequested;
     final ValueChanged<String>? readerRequested = onReaderRequested;
     final ValueChanged<String>? bookDetailRequested = onBookDetailRequested;
     void prepareAndOpen(String bookId) {
@@ -96,16 +99,11 @@ class LibraryPage extends ConsumerWidget {
         }
         if (!prepared) {
           if (context.mounted) {
-            final failure = ref
-                .read(shelfReaderLaunchCoordinatorProvider)
-                .failure;
+            final failure = ref.read(shelfReaderLaunchCoordinatorProvider).failure;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(failure?.reason.userMessage ?? '阅读内容准备失败，请稍后重试。'),
-                action: SnackBarAction(
-                  label: '重试',
-                  onPressed: () => prepareAndOpen(bookId),
-                ),
+                action: SnackBarAction(label: '重试', onPressed: () => prepareAndOpen(bookId)),
               ),
             );
           }
@@ -116,6 +114,9 @@ class LibraryPage extends ConsumerWidget {
       }());
     }
 
+    final LibraryBookRemovalOperation? removalOperation = bookRemover == null
+        ? null
+        : LibraryBookRemovalOperation(remover: bookRemover, controller: controller, diagnostics: diagnostics);
     final LibraryHomeCallbacks resolvedCallbacks = callbacks.copyWith(
       onNavigationSelected: destinationRequested == null
           ? callbacks.onNavigationSelected
@@ -146,19 +147,12 @@ class LibraryPage extends ConsumerWidget {
               callbacks.onContinueReading?.call();
               prepareAndOpen(data.continueReading!.bookId);
             },
-      onDeleteBook: bookRemover == null
+      onDeleteBook: removalOperation == null
           ? null
           : (book) async {
               await callbacks.onDeleteBook?.call(book);
               readerCoordinator.invalidate(book.id);
-              controller.beginRemoval(book.id);
-              try {
-                await bookRemover.removeBook(book.id);
-                controller.commitRemoval(book.id);
-              } on Object {
-                controller.rollbackRemoval(book.id);
-                rethrow;
-              }
+              await removalOperation.removeBook(book.id);
             },
       onSetBookPrivate: visibilityChanger == null
           ? null
@@ -166,10 +160,7 @@ class LibraryPage extends ConsumerWidget {
               await callbacks.onSetBookPrivate?.call(book);
               controller.beginRemoval(book.id);
               try {
-                await visibilityChanger.setBookVisibility(
-                  book.id,
-                  LibraryVisibility.private,
-                );
+                await visibilityChanger.setBookVisibility(book.id, LibraryVisibility.private);
                 controller.commitRemoval(book.id);
               } on Object {
                 controller.rollbackRemoval(book.id);
@@ -184,31 +175,19 @@ class LibraryPage extends ConsumerWidget {
             },
     );
     return _ShelfReaderLifecycleHost(
-      warmBookIds: <String>[
-        if (data.continueReading case final current?) current.bookId,
-        for (final book in data.books.take(2)) book.id,
-      ],
+      warmBookIds: <String>[if (data.continueReading case final current?) current.bookId, for (final book in data.books.take(2)) book.id],
       contentGeneration: state.overview!,
       coordinator: readerCoordinator,
       child: LibraryHomeShell(
         data: data,
         callbacks: resolvedCallbacks,
-        preparingBookId:
-            readerLaunch.status == ShelfReaderPreparationStatus.preparing
-            ? readerLaunch.bookId
-            : null,
+        preparingBookId: readerLaunch.status == ShelfReaderPreparationStatus.preparing ? readerLaunch.bookId : null,
         isRefreshing: state.status == LibraryPageStatus.refreshing,
         onRefresh: controller.refresh,
         onToggleTheme: () {
           themeModeScope.onToggleTheme(Theme.of(context).brightness);
         },
-        errorNotice: state.hasFailure
-            ? _LibraryErrorCard(
-                error: state.error!,
-                onRetry: controller.refresh,
-                hasRetainedData: true,
-              )
-            : null,
+        errorNotice: state.hasFailure ? _LibraryErrorCard(error: state.error!, onRetry: controller.refresh, hasRetainedData: true) : null,
       ),
     );
   }
@@ -229,12 +208,10 @@ class _ShelfReaderLifecycleHost extends StatefulWidget {
   final Widget child;
 
   @override
-  State<_ShelfReaderLifecycleHost> createState() =>
-      _ShelfReaderLifecycleHostState();
+  State<_ShelfReaderLifecycleHost> createState() => _ShelfReaderLifecycleHostState();
 }
 
-class _ShelfReaderLifecycleHostState extends State<_ShelfReaderLifecycleHost>
-    with WidgetsBindingObserver {
+class _ShelfReaderLifecycleHostState extends State<_ShelfReaderLifecycleHost> with WidgetsBindingObserver {
   String _warmSignature = '';
 
   @override
@@ -265,9 +242,7 @@ class _ShelfReaderLifecycleHostState extends State<_ShelfReaderLifecycleHost>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached ||
-        state == AppLifecycleState.hidden) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached || state == AppLifecycleState.hidden) {
       widget.coordinator.clearWarmCache();
     }
   }
@@ -325,11 +300,7 @@ class _LibraryFailureState extends StatelessWidget {
 }
 
 class _LibraryErrorCard extends StatelessWidget {
-  const _LibraryErrorCard({
-    required this.error,
-    required this.onRetry,
-    this.hasRetainedData = false,
-  });
+  const _LibraryErrorCard({required this.error, required this.onRetry, this.hasRetainedData = false});
 
   final AppError error;
   final Future<void> Function() onRetry;
@@ -351,27 +322,12 @@ class _LibraryErrorCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(
-                _errorTitle(error),
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: theme.colorScheme.onErrorContainer,
-                ),
-              ),
+              Text(_errorTitle(error), style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onErrorContainer)),
               const SizedBox(height: AppSpacing.compact),
-              Text(
-                _errorDescription(error),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onErrorContainer,
-                ),
-              ),
+              Text(_errorDescription(error), style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onErrorContainer)),
               if (hasRetainedData) ...<Widget>[
                 const SizedBox(height: AppSpacing.compact),
-                Text(
-                  '已保留上次成功加载的数据。',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onErrorContainer,
-                  ),
-                ),
+                Text('已保留上次成功加载的数据。', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onErrorContainer)),
               ],
               if (error.retryable) ...<Widget>[
                 const SizedBox(height: AppSpacing.comfortable),

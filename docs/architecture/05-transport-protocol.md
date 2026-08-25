@@ -12,7 +12,7 @@
 - **WS 控制面**：双向 RPC、响应、错误、事件和取消，只传小型 UTF-8 JSON。
 - **HTTP 数据面**：图片、漫画、字体、`.mgplugin`、下载文件、超限文本及未来音视频的字节流。
 
-两者都只监听 Runtime 在当前启动周期绑定的 loopback 端点。首版不交换令牌、不做请求鉴权；`bootId` 和不可猜测句柄用于生命周期关联与降低误用，不是安全边界。它们由 Runtime 集成包完全封装，**不是** `mg_read` 的公开集成面；主项目只调用版本化、强类型的 `PluginRuntime.invoke(PluginInvocation)`。详见 [ADR-0004](adr/0004-ws-http-transport.md) 与 [ADR-0008](adr/0008-standalone-plugin-runtime-boundary.md)。
+两者都只监听 Runtime 在当前启动周期绑定的 loopback 端点。唯一例外是 [ADR-0023](adr/0023-debug-runtime-http-inspector.md) 的 Debug 检查页：它使用独立 listener，绝不承载 RPC、health 或内部资源路由。首版不交换令牌、不做请求鉴权；`bootId` 和不可猜测句柄用于生命周期关联与降低误用，不是安全边界。它们由 Runtime 集成包完全封装，**不是** `mg_read` 的公开集成面；主项目只调用版本化、强类型的 `PluginRuntime.invoke(PluginInvocation)`。详见 [ADR-0004](adr/0004-ws-http-transport.md) 与 [ADR-0008](adr/0008-standalone-plugin-runtime-boundary.md)。
 
 ### 当前 desktop 实现子集
 

@@ -71,6 +71,10 @@ Node 运行状态由 `runtime.status.v1` 提供一个可扩展的安全快照：
 - 小说/漫画 `DataSource`、`StateStore` 和资源适配由 Runtime 的 Flutter 集成包发布，
   主项目只交给 `novel_reader_ui` 的公开 API。
 
+Debug 构建可经版本化 Facade 显式启用 Runtime-owned HTTP 检查页。它仅返回可复制的调试
+地址，主应用不取得内部端口或资源 token；独立的 LAN listener 不承载控制协议，详细边界见
+[ADR-0023](../../../docs/architecture/adr/0023-debug-runtime-http-inspector.md)。
+
 这不是“把 `RuntimeClient` 换个名字”。公开 Facade 必须屏蔽所有平台和传输细节，不允许
 以可选 `HostPort`、service locator、database/path 参数、callback 或 `host.*` 的形式
 绕过边界。

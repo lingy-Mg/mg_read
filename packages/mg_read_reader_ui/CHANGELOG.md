@@ -1,3 +1,8 @@
+## Unreleased
+
+* Horizontal text reading now pre-paginates one already-prefetched adjacent chapter in bounded Flutter idle tasks and consumes a compatible complete layout without a chapter-boundary wait.
+* Added bounded `ReaderObserver.onChapterPerformance` notifications for adjacent preparation and chapter transitions; existing observers remain source compatible through the default no-op implementation.
+
 ## 0.4.1
 
 * Text readers present the first semantic-anchor page in the first content frame and report it once through `ReaderObserver.onFirstContentPresented`.

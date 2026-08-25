@@ -377,6 +377,10 @@ final class _FakePluginRuntimeGateway implements PluginRuntimeGateway {
   Future<void> openRuntimePrivateDirectory() async {}
 
   @override
+  Future<PluginRuntimeDebugHttp> setDebugHttpEnabled(bool enabled) async =>
+      const PluginRuntimeDebugHttp.disabled();
+
+  @override
   Future<PluginRuntimeConnection> inspect() async {
     calls += 1;
     return result;
@@ -425,6 +429,11 @@ final class _FailingPluginRuntimeGateway implements PluginRuntimeGateway {
 
   @override
   Future<void> openRuntimePrivateDirectory() {
+    throw AppError.fromCode(AppErrorCode.runtimeUnavailable);
+  }
+
+  @override
+  Future<PluginRuntimeDebugHttp> setDebugHttpEnabled(bool enabled) {
     throw AppError.fromCode(AppErrorCode.runtimeUnavailable);
   }
 
@@ -494,6 +503,10 @@ final class _MutablePluginRuntimeGateway implements PluginRuntimeGateway {
 
   @override
   Future<void> openRuntimePrivateDirectory() async {}
+
+  @override
+  Future<PluginRuntimeDebugHttp> setDebugHttpEnabled(bool enabled) async =>
+      const PluginRuntimeDebugHttp.disabled();
 
   @override
   Future<PluginRuntimeConnection> inspect() async => _connection;

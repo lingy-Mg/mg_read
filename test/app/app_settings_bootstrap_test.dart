@@ -1,3 +1,16 @@
+/// 应用启动组合测试。
+///
+/// 职责：
+/// - 验证共享持久化、设置和诊断注入边界。
+/// - 验证慢速首次初始化不会阻止启动界面先挂载。
+///
+/// 注意：
+/// - 测试只替换组合依赖，不启动真实 Runtime 或平台窗口。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:async';
 import 'dart:io';
 
@@ -56,7 +69,7 @@ void main() {
   });
 
   testWidgets(
-    'bootstrap awaits initialize and injects the manager explicitly',
+    'bootstrap mounts a startup surface before settings initialization completes',
     (WidgetTester tester) async {
       final store = FakeSettingsStore()..loadGate = Completer<void>();
       final manager = AppSettingsManager(
@@ -79,7 +92,9 @@ void main() {
 
       await tester.pump();
       expect(manager.state, SettingsState.loading);
-      expect(mounted, isNull);
+      expect(mounted, isNotNull);
+      await tester.pumpWidget(mounted!);
+      expect(find.text('正在启动…'), findsOneWidget);
 
       store.loadGate!.complete();
       await boot;

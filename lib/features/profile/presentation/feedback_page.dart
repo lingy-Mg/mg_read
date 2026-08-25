@@ -1,24 +1,30 @@
+/// 意见反馈页面。
+///
+/// 职责：
+/// - 管理本地表单输入、焦点与轻量交互反馈。
+/// - 以统一的二级页标题栏承载可滚动的反馈内容。
+///
+/// 注意：
+/// - 不在此页面上传文件、发起网络请求或持久化用户输入。
+/// - 标题栏必须固定在内容滚动区域之外，并由安全区和共享页面壳统一定位。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:ui' show PathMetric;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:mg_read/app/app_theme.dart';
-import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_detail_chrome.dart';
+import 'package:mg_read/features/profile/presentation/widgets/feedback_thanks_banner.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
+import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
-/// A local-only feedback form matching the supplied mobile visual reference.
-///
-/// The page deliberately has no file picker, upload, network, persistence, or
-/// account behavior. Those actions remain unavailable until a safe facade is
-/// defined by the owning capability.
 class FeedbackPage extends StatefulWidget {
-  const FeedbackPage({
-    required this.onBackRequested,
-    required this.onDestinationRequested,
-    super.key,
-  });
+  const FeedbackPage({required this.onBackRequested, required this.onDestinationRequested, super.key});
 
   final VoidCallback onBackRequested;
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
@@ -61,67 +67,53 @@ class _FeedbackPageState extends State<FeedbackPage> {
 
   @override
   Widget build(BuildContext context) {
-    final double systemTopInset = MediaQuery.paddingOf(context).top;
-    final double supplementaryTopInset =
-        systemTopInset < AppDetailMetrics.minimumTopInset
-        ? AppDetailMetrics.minimumTopInset - systemTopInset
-        : 0;
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      body: Padding(
-        padding: EdgeInsets.only(top: supplementaryTopInset),
-        child: SafeArea(
-          bottom: false,
-          child: AppSecondaryPageContent(
-            child: SizedBox.expand(
-              child: ListView(
-                key: const Key('feedback-page-content'),
-                controller: _scrollController,
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: EdgeInsets.zero,
-                children: <Widget>[
-                  ProfileDetailTopBar(
-                    title: '意见反馈',
-                    onBack: widget.onBackRequested,
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: AppDetailMetrics.horizontalPadding,
+      body: SafeArea(
+        bottom: false,
+        child: AppSecondaryPageContent(
+          child: Column(
+            children: <Widget>[
+              ProfileDetailTopBar(title: '意见反馈', onBack: widget.onBackRequested),
+              Expanded(
+                child: ListView(
+                  key: const Key('feedback-page-content'),
+                  controller: _scrollController,
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.zero,
+                  children: <Widget>[
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: AppDetailMetrics.horizontalPadding),
+                      child: FeedbackThanksBanner(),
                     ),
-                    child: _FeedbackThanksBanner(),
-                  ),
-                  const SizedBox(height: AppDetailMetrics.feedbackCardTopGap),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppDetailMetrics.horizontalPadding,
+                    const SizedBox(height: AppDetailMetrics.feedbackCardTopGap),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppDetailMetrics.horizontalPadding),
+                      child: _FeedbackFormCard(
+                        contentController: _contentController,
+                        contactController: _contactController,
+                        contentFocusNode: _contentFocusNode,
+                        contactFocusNode: _contactFocusNode,
+                        selectedType: _selectedType,
+                        contentLength: _contentController.text.characters.length,
+                        onTypeSelected: (_FeedbackType value) {
+                          setState(() {
+                            _selectedType = value;
+                          });
+                        },
+                        onAddImage: () => _showMessage('截图选择尚未接入，当前不会访问本地文件。'),
+                        onSubmit: _submit,
+                      ),
                     ),
-                    child: _FeedbackFormCard(
-                      contentController: _contentController,
-                      contactController: _contactController,
-                      contentFocusNode: _contentFocusNode,
-                      contactFocusNode: _contactFocusNode,
-                      selectedType: _selectedType,
-                      contentLength: _contentController.text.characters.length,
-                      onTypeSelected: (_FeedbackType value) {
-                        setState(() {
-                          _selectedType = value;
-                        });
-                      },
-                      onAddImage: () => _showMessage('截图选择尚未接入，当前不会访问本地文件。'),
-                      onSubmit: _submit,
-                    ),
-                  ),
-                  const SizedBox(height: 9),
-                ],
+                    const SizedBox(height: 9),
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
-      bottomNavigationBar: ProfileDetailBottomBar(
-        onSelected: widget.onDestinationRequested,
-      ),
+      bottomNavigationBar: ProfileDetailBottomBar(onSelected: widget.onDestinationRequested),
     );
   }
 
@@ -139,217 +131,6 @@ class _FeedbackPageState extends State<FeedbackPage> {
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
-  }
-}
-
-class _FeedbackThanksBanner extends StatelessWidget {
-  const _FeedbackThanksBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final AppThemeTokens tokens = AppThemeTokens.of(context);
-    return SizedBox(
-      key: const Key('feedback-thanks-banner'),
-      height: AppDetailMetrics.feedbackBannerHeight,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: AppRadii.detailCard,
-          border: Border.all(
-            color: tokens.warning.withValues(alpha: 0.17),
-            width: 0.8,
-          ),
-          gradient: LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: <Color>[
-              Color.alphaBlend(
-                tokens.featureSurface.withValues(alpha: 0.75),
-                tokens.surface,
-              ),
-              Color.alphaBlend(
-                tokens.featureSurface.withValues(alpha: 0.65),
-                tokens.surface,
-              ),
-            ],
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
-          child: Row(
-            children: <Widget>[
-              const SizedBox(
-                width: 82,
-                height: 76,
-                child: _FeedbackIllustration(),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      '感谢您的反馈！',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: theme.colorScheme.onSurface,
-                        fontWeight: FontWeight.w600,
-                        height: 1.25,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '您的每一条建议都对我们非常重要，\n将帮助我们持续改进产品体验。',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: tokens.mutedText,
-                        fontWeight: FontWeight.w400,
-                        height: 1.5,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FeedbackIllustration extends StatelessWidget {
-  const _FeedbackIllustration();
-
-  @override
-  Widget build(BuildContext context) {
-    final AppThemeTokens tokens = AppThemeTokens.of(context);
-    return Semantics(
-      image: true,
-      label: '反馈消息与爱心插画',
-      child: ExcludeSemantics(
-        child: CustomPaint(painter: _FeedbackIllustrationPainter(tokens)),
-      ),
-    );
-  }
-}
-
-class _FeedbackIllustrationPainter extends CustomPainter {
-  const _FeedbackIllustrationPainter(this.tokens);
-
-  final AppThemeTokens tokens;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final Paint shadow = Paint()
-      ..color = tokens.warning.withValues(alpha: 0.09);
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(size.width * 0.49, size.height * 0.84),
-        width: size.width * 0.9,
-        height: size.height * 0.16,
-      ),
-      shadow,
-    );
-
-    final RRect rearBubble = RRect.fromRectAndRadius(
-      Rect.fromLTWH(
-        size.width * 0.42,
-        size.height * 0.31,
-        size.width * 0.44,
-        size.height * 0.42,
-      ),
-      const Radius.circular(8),
-    );
-    canvas.drawRRect(
-      rearBubble,
-      Paint()..color = tokens.accent.withValues(alpha: 0.28),
-    );
-    final Path rearTail = Path()
-      ..moveTo(size.width * 0.68, size.height * 0.7)
-      ..lineTo(size.width * 0.79, size.height * 0.82)
-      ..lineTo(size.width * 0.76, size.height * 0.67)
-      ..close();
-    canvas.drawPath(
-      rearTail,
-      Paint()..color = tokens.accent.withValues(alpha: 0.28),
-    );
-
-    final RRect frontBubble = RRect.fromRectAndRadius(
-      Rect.fromLTWH(
-        size.width * 0.16,
-        size.height * 0.2,
-        size.width * 0.57,
-        size.height * 0.49,
-      ),
-      const Radius.circular(9),
-    );
-    canvas.drawRRect(frontBubble, Paint()..color = tokens.accent);
-    final Path frontTail = Path()
-      ..moveTo(size.width * 0.28, size.height * 0.65)
-      ..lineTo(size.width * 0.3, size.height * 0.82)
-      ..lineTo(size.width * 0.43, size.height * 0.67)
-      ..close();
-    canvas.drawPath(frontTail, Paint()..color = tokens.accent);
-
-    final Path heart = Path()
-      ..moveTo(size.width * 0.44, size.height * 0.56)
-      ..cubicTo(
-        size.width * 0.2,
-        size.height * 0.38,
-        size.width * 0.37,
-        size.height * 0.28,
-        size.width * 0.44,
-        size.height * 0.39,
-      )
-      ..cubicTo(
-        size.width * 0.51,
-        size.height * 0.28,
-        size.width * 0.68,
-        size.height * 0.38,
-        size.width * 0.44,
-        size.height * 0.56,
-      )
-      ..close();
-    canvas.drawPath(heart, Paint()..color = tokens.surface);
-
-    final Paint sparkle = Paint()
-      ..color = tokens.accent.withValues(alpha: 0.42);
-    _drawSparkle(
-      canvas,
-      Offset(size.width * 0.07, size.height * 0.16),
-      5,
-      sparkle,
-    );
-    _drawSparkle(
-      canvas,
-      Offset(size.width * 0.88, size.height * 0.12),
-      5,
-      sparkle,
-    );
-    _drawSparkle(
-      canvas,
-      Offset(size.width * 0.07, size.height * 0.63),
-      3,
-      sparkle,
-    );
-  }
-
-  void _drawSparkle(Canvas canvas, Offset center, double radius, Paint paint) {
-    final Path path = Path()
-      ..moveTo(center.dx, center.dy - radius)
-      ..quadraticBezierTo(center.dx, center.dy, center.dx + radius, center.dy)
-      ..quadraticBezierTo(center.dx, center.dy, center.dx, center.dy + radius)
-      ..quadraticBezierTo(center.dx, center.dy, center.dx - radius, center.dy)
-      ..quadraticBezierTo(center.dx, center.dy, center.dx, center.dy - radius)
-      ..close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _FeedbackIllustrationPainter oldDelegate) {
-    return oldDelegate.tokens != tokens;
   }
 }
 
@@ -386,35 +167,20 @@ class _FeedbackFormCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: tokens.surface,
           borderRadius: AppRadii.detailCard,
-          border: Border.all(
-            color: tokens.mutedText.withValues(alpha: 0.2),
-            width: 0.8,
-          ),
+          border: Border.all(color: tokens.mutedText.withValues(alpha: 0.2), width: 0.8),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppDetailMetrics.feedbackCardPadding,
-            16,
-            AppDetailMetrics.feedbackCardPadding,
-            6,
-          ),
+          padding: const EdgeInsets.fromLTRB(AppDetailMetrics.feedbackCardPadding, 16, AppDetailMetrics.feedbackCardPadding, 6),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               const _FeedbackSectionLabel(title: '反馈类型'),
               const SizedBox(height: 8),
-              _FeedbackTypeSelector(
-                selectedType: selectedType,
-                onSelected: onTypeSelected,
-              ),
+              _FeedbackTypeSelector(selectedType: selectedType, onSelected: onTypeSelected),
               const SizedBox(height: 22),
               const _FeedbackSectionLabel(title: '反馈内容'),
               const SizedBox(height: 6),
-              _FeedbackContentEditor(
-                controller: contentController,
-                focusNode: contentFocusNode,
-                contentLength: contentLength,
-              ),
+              _FeedbackContentEditor(controller: contentController, focusNode: contentFocusNode, contentLength: contentLength),
               const SizedBox(height: 16),
               const _FeedbackSectionLabel(title: '上传截图', optional: true),
               const SizedBox(height: 8),
@@ -422,10 +188,7 @@ class _FeedbackFormCard extends StatelessWidget {
               const SizedBox(height: 15),
               const _FeedbackSectionLabel(title: '联系方式', optional: true),
               const SizedBox(height: 8),
-              _FeedbackContactField(
-                controller: contactController,
-                focusNode: contactFocusNode,
-              ),
+              _FeedbackContactField(controller: contactController, focusNode: contactFocusNode),
               const SizedBox(height: 5),
               const _FeedbackHelperText(),
               const SizedBox(height: 13),
@@ -443,10 +206,7 @@ class _FeedbackFormCard extends StatelessWidget {
 enum _FeedbackType { suggestion, problem, plugin, other }
 
 class _FeedbackTypeSelector extends StatelessWidget {
-  const _FeedbackTypeSelector({
-    required this.selectedType,
-    required this.onSelected,
-  });
+  const _FeedbackTypeSelector({required this.selectedType, required this.onSelected});
 
   final _FeedbackType selectedType;
   final ValueChanged<_FeedbackType> onSelected;
@@ -504,13 +264,7 @@ class _FeedbackTypeSelector extends StatelessWidget {
 }
 
 class _FeedbackTypeButton extends StatelessWidget {
-  const _FeedbackTypeButton({
-    required this.type,
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onPressed,
-  });
+  const _FeedbackTypeButton({required this.type, required this.label, required this.icon, required this.selected, required this.onPressed});
 
   final _FeedbackType type;
   final String label;
@@ -531,16 +285,9 @@ class _FeedbackTypeButton extends StatelessWidget {
         color: Colors.transparent,
         child: Ink(
           decoration: BoxDecoration(
-            color: selected
-                ? tokens.accentSoft.withValues(alpha: 0.72)
-                : tokens.mutedSurface.withValues(alpha: 0.58),
+            color: selected ? tokens.accentSoft.withValues(alpha: 0.72) : tokens.mutedSurface.withValues(alpha: 0.58),
             borderRadius: AppRadii.detailControl,
-            border: Border.all(
-              color: selected
-                  ? tokens.warning
-                  : tokens.mutedText.withValues(alpha: 0.17),
-              width: selected ? 0.9 : 0.7,
-            ),
+            border: Border.all(color: selected ? tokens.warning : tokens.mutedText.withValues(alpha: 0.17), width: selected ? 0.9 : 0.7),
           ),
           child: InkWell(
             key: ValueKey<String>('feedback-type-${type.name}'),
@@ -618,11 +365,7 @@ class _FeedbackSectionLabel extends StatelessWidget {
 }
 
 class _FeedbackContentEditor extends StatelessWidget {
-  const _FeedbackContentEditor({
-    required this.controller,
-    required this.focusNode,
-    required this.contentLength,
-  });
+  const _FeedbackContentEditor({required this.controller, required this.focusNode, required this.contentLength});
 
   final TextEditingController controller;
   final FocusNode focusNode;
@@ -639,10 +382,7 @@ class _FeedbackContentEditor extends StatelessWidget {
         decoration: BoxDecoration(
           color: tokens.surface,
           borderRadius: AppRadii.detailControl,
-          border: Border.all(
-            color: tokens.mutedText.withValues(alpha: 0.23),
-            width: 0.8,
-          ),
+          border: Border.all(color: tokens.mutedText.withValues(alpha: 0.23), width: 0.8),
         ),
         child: Stack(
           children: <Widget>[
@@ -659,9 +399,7 @@ class _FeedbackContentEditor extends StatelessWidget {
                   textAlignVertical: TextAlignVertical.top,
                   keyboardType: TextInputType.multiline,
                   cursorColor: tokens.warning,
-                  inputFormatters: <TextInputFormatter>[
-                    LengthLimitingTextInputFormatter(500),
-                  ],
+                  inputFormatters: <TextInputFormatter>[LengthLimitingTextInputFormatter(500)],
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurface,
                     fontWeight: FontWeight.w400,
@@ -721,9 +459,7 @@ class _FeedbackImageTile extends StatelessWidget {
       width: AppDetailMetrics.feedbackUploadTileExtent,
       height: AppDetailMetrics.feedbackUploadTileExtent,
       child: CustomPaint(
-        painter: _DashedRoundedBorderPainter(
-          color: tokens.mutedText.withValues(alpha: 0.3),
-        ),
+        painter: _DashedRoundedBorderPainter(color: tokens.mutedText.withValues(alpha: 0.3)),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
@@ -733,11 +469,7 @@ class _FeedbackImageTile extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
-                Icon(
-                  Icons.add_photo_alternate_outlined,
-                  color: tokens.mutedText,
-                  size: 31,
-                ),
+                Icon(Icons.add_photo_alternate_outlined, color: tokens.mutedText, size: 31),
                 const SizedBox(height: 7),
                 Text(
                   '添加图片',
@@ -774,10 +506,7 @@ class _DashedRoundedBorderPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final Path borderPath = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(10)),
-      );
+    final Path borderPath = Path()..addRRect(RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(10)));
     final Paint paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
@@ -798,10 +527,7 @@ class _DashedRoundedBorderPainter extends CustomPainter {
 }
 
 class _FeedbackContactField extends StatelessWidget {
-  const _FeedbackContactField({
-    required this.controller,
-    required this.focusNode,
-  });
+  const _FeedbackContactField({required this.controller, required this.focusNode});
 
   final TextEditingController controller;
   final FocusNode focusNode;
@@ -817,10 +543,7 @@ class _FeedbackContactField extends StatelessWidget {
         decoration: BoxDecoration(
           color: tokens.surface,
           borderRadius: AppRadii.detailControl,
-          border: Border.all(
-            color: tokens.mutedText.withValues(alpha: 0.23),
-            width: 0.8,
-          ),
+          border: Border.all(color: tokens.mutedText.withValues(alpha: 0.23), width: 0.8),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -871,12 +594,7 @@ class _FeedbackHelperText extends StatelessWidget {
         alignment: Alignment.centerLeft,
         child: Text(
           '仅用于反馈回复，不会对外公开',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: tokens.mutedText,
-            fontWeight: FontWeight.w400,
-            height: 1.2,
-            letterSpacing: 0,
-          ),
+          style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText, fontWeight: FontWeight.w400, height: 1.2, letterSpacing: 0),
         ),
       ),
     );
@@ -902,10 +620,7 @@ class _FeedbackSubmitButton extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
-            colors: <Color>[
-              Color.lerp(tokens.warning, tokens.surface, 0.075)!,
-              Color.lerp(tokens.warning, tokens.surface, 0.055)!,
-            ],
+            colors: <Color>[Color.lerp(tokens.warning, tokens.surface, 0.075)!, Color.lerp(tokens.warning, tokens.surface, 0.055)!],
           ),
         ),
         child: Material(
@@ -948,12 +663,7 @@ class _FeedbackPrivacyNotice extends StatelessWidget {
           const SizedBox(width: 7),
           Text(
             '我们会严格保护您的隐私信息',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: tokens.mutedText,
-              fontWeight: FontWeight.w400,
-              height: 1.2,
-              letterSpacing: 0,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText, fontWeight: FontWeight.w400, height: 1.2, letterSpacing: 0),
           ),
         ],
       ),

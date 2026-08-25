@@ -1,3 +1,17 @@
+/// 数据源 Runtime 连接与 Debug 检查页应用端口。
+///
+/// 职责：
+/// - 将版本化 Runtime Facade 投影为主应用的窄类型与状态。
+/// - 统一管理数据源操作和仅 Debug 的检查页开关。
+///
+/// 注意：
+/// - 不暴露 Runtime 端口、控制协议、路径或资源 token。
+/// - Debug 检查页状态仅驻留内存，应用重启后必须关闭。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -11,10 +25,7 @@ import 'package:mg_read/core/errors/app_error.dart';
 abstract interface class PluginRuntimeGateway {
   Future<PluginRuntimeConnection> inspect();
 
-  Future<PluginInstallationSize> inspectInstallationSize({
-    required String pluginId,
-    required PluginInstallationSizeScope scope,
-  });
+  Future<PluginInstallationSize> inspectInstallationSize({required String pluginId, required PluginInstallationSizeScope scope});
 
   Stream<RuntimeInitializationProgress> get initialization;
 
@@ -27,28 +38,23 @@ abstract interface class PluginRuntimeGateway {
   Future<PluginCodeDirectoryKind> openCodeDirectory({required String pluginId});
 
   Future<void> openRuntimePrivateDirectory();
+
+  Future<PluginRuntimeDebugHttp> setDebugHttpEnabled(bool enabled);
 }
 
 /// Production adapter over the Runtime-owned, versioned Flutter Facade.
 final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway {
-  MgReadPluginRuntimeGateway({PluginRuntime? runtime})
-    : _runtime = runtime ?? PluginRuntime();
+  MgReadPluginRuntimeGateway({PluginRuntime? runtime}) : _runtime = runtime ?? PluginRuntime();
 
   final PluginRuntime _runtime;
 
   @override
-  Stream<RuntimeInitializationProgress> get initialization =>
-      _runtime.initialization;
+  Stream<RuntimeInitializationProgress> get initialization => _runtime.initialization;
 
   @override
-  Future<PluginInstallationSize> inspectInstallationSize({
-    required String pluginId,
-    required PluginInstallationSizeScope scope,
-  }) async {
+  Future<PluginInstallationSize> inspectInstallationSize({required String pluginId, required PluginInstallationSizeScope scope}) async {
     try {
-      return await _runtime.invoke(
-        PluginInstallationSizeInvocation(pluginId: pluginId, scope: scope),
-      );
+      return await _runtime.invoke(PluginInstallationSizeInvocation(pluginId: pluginId, scope: scope));
     } on PluginRuntimeException catch (error) {
       throw normalizePluginRuntimeError(error);
     } on Object catch (error) {
@@ -71,9 +77,7 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway {
         isHealthy: ping.isHealthy,
         nodeVersion: ping.nodeVersion,
         runtimeVersion: ping.runtimeVersion,
-        startupRecovery: PluginRuntimeStartupRecovery(
-          quarantinedCount: recovery.quarantinedCount,
-        ),
+        startupRecovery: PluginRuntimeStartupRecovery(quarantinedCount: recovery.quarantinedCount),
         plugins: List<PluginRuntimePlugin>.unmodifiable(
           plugins.map(
             (plugin) => PluginRuntimePlugin(
@@ -120,14 +124,9 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway {
   }
 
   @override
-  Future<void> setEnabled({
-    required String pluginId,
-    required bool enabled,
-  }) async {
+  Future<void> setEnabled({required String pluginId, required bool enabled}) async {
     try {
-      await _runtime.invoke(
-        SetPluginEnabledInvocation(pluginId: pluginId, enabled: enabled),
-      );
+      await _runtime.invoke(SetPluginEnabledInvocation(pluginId: pluginId, enabled: enabled));
     } on PluginRuntimeException catch (error) {
       throw normalizePluginRuntimeError(error);
     } on Object catch (error) {
@@ -136,13 +135,9 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway {
   }
 
   @override
-  Future<PluginCodeDirectoryKind> openCodeDirectory({
-    required String pluginId,
-  }) async {
+  Future<PluginCodeDirectoryKind> openCodeDirectory({required String pluginId}) async {
     try {
-      return await _runtime.invoke(
-        OpenPluginCodeDirectoryInvocation(pluginId: pluginId),
-      );
+      return await _runtime.invoke(OpenPluginCodeDirectoryInvocation(pluginId: pluginId));
     } on PluginRuntimeException catch (error) {
       throw normalizePluginRuntimeError(error);
     } on Object catch (error) {
@@ -160,6 +155,22 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway {
       throw AppError.fromUnknown(error);
     }
   }
+
+  @override
+  Future<PluginRuntimeDebugHttp> setDebugHttpEnabled(bool enabled) async {
+    try {
+      final status = await _runtime.setDebugHttpEnabled(enabled);
+      return PluginRuntimeDebugHttp(
+        enabled: status.enabled,
+        endpoints: List<String>.unmodifiable(status.endpoints),
+        startedAt: status.startedAt,
+      );
+    } on PluginRuntimeException catch (error) {
+      throw normalizePluginRuntimeError(error);
+    } on Object catch (error) {
+      throw AppError.fromUnknown(error);
+    }
+  }
 }
 
 /// Narrow application port for the expandable Runtime status projection.
@@ -170,10 +181,8 @@ abstract interface class PluginRuntimeStatusGateway {
   Future<PluginRuntimeStatus> inspect();
 }
 
-final class MgReadPluginRuntimeStatusGateway
-    implements PluginRuntimeStatusGateway {
-  MgReadPluginRuntimeStatusGateway({PluginRuntime? runtime})
-    : _runtime = runtime ?? PluginRuntime();
+final class MgReadPluginRuntimeStatusGateway implements PluginRuntimeStatusGateway {
+  MgReadPluginRuntimeStatusGateway({PluginRuntime? runtime}) : _runtime = runtime ?? PluginRuntime();
 
   final PluginRuntime _runtime;
 
@@ -193,9 +202,7 @@ final class MgReadPluginRuntimeStatusGateway
         ),
         nodeVersion: result.nodeVersion,
         platform: result.platform,
-        plugins: List<PluginRuntimePlugin>.unmodifiable(
-          result.plugins.map(_toPluginRuntimePlugin),
-        ),
+        plugins: List<PluginRuntimePlugin>.unmodifiable(result.plugins.map(_toPluginRuntimePlugin)),
         runtimeVersion: result.runtimeVersion,
         runtimeKind: result.runtimeKind,
         uptime: Duration(milliseconds: result.uptimeMs),
@@ -233,48 +240,78 @@ AppError normalizePluginRuntimeError(PluginRuntimeException error) {
     'runtime_process_exited' ||
     'runtime_process_launch_failed' ||
     'runtime_startup_channel_failed' => AppErrorCode.runtimeStartFailed,
-    'runtime_http_readiness_failed' ||
-    'runtime_invalid_ready_signal' ||
-    'runtime_ready_timeout' => AppErrorCode.runtimeNotReady,
-    'invalid_response' ||
-    'plugin_invalid_response' => AppErrorCode.invalidFormat,
+    'runtime_http_readiness_failed' || 'runtime_invalid_ready_signal' || 'runtime_ready_timeout' => AppErrorCode.runtimeNotReady,
+    'invalid_response' || 'plugin_invalid_response' => AppErrorCode.invalidFormat,
     'file_name_invalid' => AppErrorCode.fileNameInvalid,
     'file_unavailable' => AppErrorCode.fileUnavailable,
     'file_unreadable' => AppErrorCode.fileUnreadable,
     'file_too_large' => AppErrorCode.fileTooLarge,
     'file_read_failed' => AppErrorCode.fileReadFailed,
-    'plugin_install_failed' ||
-    'plugin_import_failed' => AppErrorCode.pluginInstallFailed,
+    'plugin_install_failed' || 'plugin_import_failed' => AppErrorCode.pluginInstallFailed,
     'plugin_load_failed' => AppErrorCode.pluginDamaged,
     'plugin_execution_failed' => AppErrorCode.pluginExecutionFailed,
-    final value when value.startsWith('windows_job_object_') =>
-      AppErrorCode.runtimeStartFailed,
+    final value when value.startsWith('windows_job_object_') => AppErrorCode.runtimeStartFailed,
     _ => AppErrorCode.fromWireValue(error.code),
   };
   return AppError.fromCode(code);
 }
 
 /// Process-scoped public Facade shared by every main-application capability.
-final pluginRuntimeFacadeProvider = Provider<PluginRuntime>(
-  (Ref ref) => PluginRuntime(),
-);
+final pluginRuntimeFacadeProvider = Provider<PluginRuntime>((Ref ref) => PluginRuntime());
 
 final pluginRuntimeGatewayProvider = Provider<PluginRuntimeGateway>(
-  (Ref ref) => MgReadPluginRuntimeGateway(
-    runtime: ref.watch(pluginRuntimeFacadeProvider),
-  ),
+  (Ref ref) => MgReadPluginRuntimeGateway(runtime: ref.watch(pluginRuntimeFacadeProvider)),
 );
 
 final pluginRuntimeStatusGatewayProvider = Provider<PluginRuntimeStatusGateway>(
-  (Ref ref) => MgReadPluginRuntimeStatusGateway(
-    runtime: ref.watch(pluginRuntimeFacadeProvider),
-  ),
+  (Ref ref) => MgReadPluginRuntimeStatusGateway(runtime: ref.watch(pluginRuntimeFacadeProvider)),
 );
 
+/// Debug-only Runtime inspector state. It is deliberately never persisted.
+final pluginRuntimeDebugHttpProvider = NotifierProvider<PluginRuntimeDebugHttpController, AsyncValue<PluginRuntimeDebugHttp>>(
+  PluginRuntimeDebugHttpController.new,
+);
+
+final class PluginRuntimeDebugHttpController extends Notifier<AsyncValue<PluginRuntimeDebugHttp>> {
+  @override
+  AsyncValue<PluginRuntimeDebugHttp> build() => const AsyncData(PluginRuntimeDebugHttp.disabled());
+
+  Future<void> setEnabled(bool enabled) async {
+    if (state.isLoading) return;
+    state = const AsyncLoading<PluginRuntimeDebugHttp>();
+    final diagnostics = ref.read(diagnosticsManagerProvider);
+    final span = diagnostics.startSpan(
+      AppDiagnosticEvents.runtimeFacadeCall,
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'capability': DiagnosticValue.string('runtime.debugHttp.setEnabled.v1'),
+        'resultState': DiagnosticValue.string('loading'),
+      }),
+    );
+    try {
+      final result = await ref.read(pluginRuntimeGatewayProvider).setDebugHttpEnabled(enabled);
+      state = AsyncData(result);
+      span.complete(
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+          'capability': DiagnosticValue.string('runtime.debugHttp.setEnabled.v1'),
+          'resultState': DiagnosticValue.string('success'),
+        }),
+      );
+    } on Object catch (error, stackTrace) {
+      final appError = AppError.fromUnknown(error);
+      state = AsyncError<PluginRuntimeDebugHttp>(appError, stackTrace);
+      span.fail(
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+          'capability': DiagnosticValue.string('runtime.debugHttp.setEnabled.v1'),
+          'errorCode': DiagnosticValue.string(appError.code.wireValue),
+          'resultState': DiagnosticValue.string('failure'),
+        }),
+      );
+    }
+  }
+}
+
 /// One refreshable status snapshot for the dedicated Node Runtime page.
-final pluginRuntimeStatusProvider = FutureProvider<PluginRuntimeStatus>((
-  Ref ref,
-) async {
+final pluginRuntimeStatusProvider = FutureProvider<PluginRuntimeStatus>((Ref ref) async {
   final gateway = ref.watch(pluginRuntimeStatusGatewayProvider);
   final diagnostics = ref.watch(diagnosticsManagerProvider);
   final span = diagnostics.startSpan(
@@ -312,148 +349,110 @@ final pluginRuntimeStatusProvider = FutureProvider<PluginRuntimeStatus>((
 /// The app warms this after its first frame. Keeping the result alive avoids
 /// restarting inspection when a feature is opened later, while concurrent
 /// consumers still share the Runtime Facade's one startup operation.
-final pluginRuntimeConnectionProvider = FutureProvider<PluginRuntimeConnection>(
-  (Ref ref) async {
-    final gateway = ref.watch(pluginRuntimeGatewayProvider);
-    final diagnostics = ref.watch(diagnosticsManagerProvider);
-    final span = diagnostics.startSpan(
-      AppDiagnosticEvents.runtimeFacadeCall,
-      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+final pluginRuntimeConnectionProvider = FutureProvider<PluginRuntimeConnection>((Ref ref) async {
+  final gateway = ref.watch(pluginRuntimeGatewayProvider);
+  final diagnostics = ref.watch(diagnosticsManagerProvider);
+  final span = diagnostics.startSpan(
+    AppDiagnosticEvents.runtimeFacadeCall,
+    attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+      'capability': DiagnosticValue.string('runtime.inspect.v1'),
+      'attempt': DiagnosticValue.int64(1),
+      'resultState': DiagnosticValue.string('loading'),
+    }),
+  );
+  final stopwatch = Stopwatch()..start();
+  try {
+    final result = await gateway.inspect();
+    span.complete(
+      attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
         'capability': DiagnosticValue.string('runtime.inspect.v1'),
         'attempt': DiagnosticValue.int64(1),
-        'resultState': DiagnosticValue.string('loading'),
+        'pluginCount': DiagnosticValue.int64(result.plugins.length),
+        'resultState': DiagnosticValue.string(result.plugins.isEmpty ? 'empty' : 'content'),
       }),
     );
-    final stopwatch = Stopwatch()..start();
-    try {
-      final result = await gateway.inspect();
-      span.complete(
-        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-          'capability': DiagnosticValue.string('runtime.inspect.v1'),
-          'attempt': DiagnosticValue.int64(1),
-          'pluginCount': DiagnosticValue.int64(result.plugins.length),
-          'resultState': DiagnosticValue.string(
-            result.plugins.isEmpty ? 'empty' : 'content',
-          ),
-        }),
-      );
-      stopwatch.stop();
-      reportSlowDiagnostic(
-        diagnostics,
-        subjectComponent: 'feature.plugins',
-        operation: 'runtime.inspect.v1',
-        elapsed: stopwatch.elapsed,
-        threshold: AppDiagnosticThresholds.runtimeFacade,
-        outcome: DiagnosticOutcome.success,
-        traceContext: span.traceContext,
-      );
-      return result;
-    } on Object catch (error, stackTrace) {
-      final appError = AppError.fromUnknown(error);
-      span.fail(
-        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-          'capability': DiagnosticValue.string('runtime.inspect.v1'),
-          'attempt': DiagnosticValue.int64(1),
-          'resultState': DiagnosticValue.string('failure'),
-          'errorCode': DiagnosticValue.string(appError.code.wireValue),
-        }),
-      );
-      stopwatch.stop();
-      reportSlowDiagnostic(
-        diagnostics,
-        subjectComponent: 'feature.plugins',
-        operation: 'runtime.inspect.v1',
-        elapsed: stopwatch.elapsed,
-        threshold: AppDiagnosticThresholds.runtimeFacade,
-        outcome: DiagnosticOutcome.error,
-        traceContext: span.traceContext,
-      );
-      Error.throwWithStackTrace(appError, stackTrace);
-    }
-  },
+    stopwatch.stop();
+    reportSlowDiagnostic(
+      diagnostics,
+      subjectComponent: 'feature.plugins',
+      operation: 'runtime.inspect.v1',
+      elapsed: stopwatch.elapsed,
+      threshold: AppDiagnosticThresholds.runtimeFacade,
+      outcome: DiagnosticOutcome.success,
+      traceContext: span.traceContext,
+    );
+    return result;
+  } on Object catch (error, stackTrace) {
+    final appError = AppError.fromUnknown(error);
+    span.fail(
+      attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+        'capability': DiagnosticValue.string('runtime.inspect.v1'),
+        'attempt': DiagnosticValue.int64(1),
+        'resultState': DiagnosticValue.string('failure'),
+        'errorCode': DiagnosticValue.string(appError.code.wireValue),
+      }),
+    );
+    stopwatch.stop();
+    reportSlowDiagnostic(
+      diagnostics,
+      subjectComponent: 'feature.plugins',
+      operation: 'runtime.inspect.v1',
+      elapsed: stopwatch.elapsed,
+      threshold: AppDiagnosticThresholds.runtimeFacade,
+      outcome: DiagnosticOutcome.error,
+      traceContext: span.traceContext,
+    );
+    Error.throwWithStackTrace(appError, stackTrace);
+  }
+});
+
+final pluginRuntimeSourceDataSizeProvider = FutureProvider.autoDispose.family<PluginInstallationSize, String>(
+  (Ref ref, String pluginId) =>
+      ref.read(pluginRuntimeGatewayProvider).inspectInstallationSize(pluginId: pluginId, scope: PluginInstallationSizeScope.data),
 );
 
-final pluginRuntimeSourceDataSizeProvider = FutureProvider.autoDispose
-    .family<PluginInstallationSize, String>(
-      (Ref ref, String pluginId) => ref
-          .read(pluginRuntimeGatewayProvider)
-          .inspectInstallationSize(
-            pluginId: pluginId,
-            scope: PluginInstallationSizeScope.data,
-          ),
-    );
+final pluginRuntimeSourceArchiveSizeProvider = FutureProvider.autoDispose.family<PluginInstallationSize, String>(
+  (Ref ref, String pluginId) =>
+      ref.read(pluginRuntimeGatewayProvider).inspectInstallationSize(pluginId: pluginId, scope: PluginInstallationSizeScope.archive),
+);
 
-final pluginRuntimeSourceArchiveSizeProvider = FutureProvider.autoDispose
-    .family<PluginInstallationSize, String>(
-      (Ref ref, String pluginId) => ref
-          .read(pluginRuntimeGatewayProvider)
-          .inspectInstallationSize(
-            pluginId: pluginId,
-            scope: PluginInstallationSizeScope.archive,
-          ),
-    );
-
-final pluginRuntimeSourceNpmSizeProvider = FutureProvider.autoDispose
-    .family<PluginInstallationSize, String>(
-      (Ref ref, String pluginId) => ref
-          .read(pluginRuntimeGatewayProvider)
-          .inspectInstallationSize(
-            pluginId: pluginId,
-            scope: PluginInstallationSizeScope.npm,
-          ),
-    );
+final pluginRuntimeSourceNpmSizeProvider = FutureProvider.autoDispose.family<PluginInstallationSize, String>(
+  (Ref ref, String pluginId) =>
+      ref.read(pluginRuntimeGatewayProvider).inspectInstallationSize(pluginId: pluginId, scope: PluginInstallationSizeScope.npm),
+);
 
 /// Serializes real source enable/disable requests and refreshes the shared
 /// Runtime projection only after the Runtime acknowledges the persisted state.
-final pluginRuntimeSourceActionProvider =
-    NotifierProvider<PluginRuntimeSourceActionController, Set<String>>(
-      PluginRuntimeSourceActionController.new,
-    );
+final pluginRuntimeSourceActionProvider = NotifierProvider<PluginRuntimeSourceActionController, Set<String>>(
+  PluginRuntimeSourceActionController.new,
+);
 
 /// Serializes Runtime-owned Windows source-directory actions per plugin.
-final pluginRuntimeSourceDirectoryProvider =
-    NotifierProvider<PluginRuntimeSourceDirectoryController, Set<String>>(
-      PluginRuntimeSourceDirectoryController.new,
-    );
+final pluginRuntimeSourceDirectoryProvider = NotifierProvider<PluginRuntimeSourceDirectoryController, Set<String>>(
+  PluginRuntimeSourceDirectoryController.new,
+);
 
 /// Serializes the Windows-only Runtime private-directory shell action.
-final pluginRuntimePrivateDirectoryProvider =
-    NotifierProvider<PluginRuntimePrivateDirectoryController, bool>(
-      PluginRuntimePrivateDirectoryController.new,
-    );
+final pluginRuntimePrivateDirectoryProvider = NotifierProvider<PluginRuntimePrivateDirectoryController, bool>(
+  PluginRuntimePrivateDirectoryController.new,
+);
 
 /// Imports one user-selected local `.mgplugin` and waits for cold activation.
-final pluginRuntimeSourceImportProvider =
-    NotifierProvider<
-      PluginRuntimeSourceImportController,
-      PluginSourceImportState
-    >(PluginRuntimeSourceImportController.new);
+final pluginRuntimeSourceImportProvider = NotifierProvider<PluginRuntimeSourceImportController, PluginSourceImportState>(
+  PluginRuntimeSourceImportController.new,
+);
 
 final class PluginSourceImportState {
-  const PluginSourceImportState({
-    required this.isImporting,
-    required this.message,
-    this.logs = const <String>[],
-    this.fraction,
-  });
+  const PluginSourceImportState({required this.isImporting, required this.message, this.logs = const <String>[], this.fraction});
 
-  const PluginSourceImportState.idle()
-    : isImporting = false,
-      message = '',
-      logs = const <String>[],
-      fraction = null;
+  const PluginSourceImportState.idle() : isImporting = false, message = '', logs = const <String>[], fraction = null;
 
   final bool isImporting;
   final String message;
   final List<String> logs;
   final double? fraction;
 
-  PluginSourceImportState copyWith({
-    bool? isImporting,
-    List<String>? logs,
-    String? message,
-    double? fraction,
-  }) {
+  PluginSourceImportState copyWith({bool? isImporting, List<String>? logs, String? message, double? fraction}) {
     return PluginSourceImportState(
       isImporting: isImporting ?? this.isImporting,
       logs: logs ?? this.logs,
@@ -463,14 +462,10 @@ final class PluginSourceImportState {
   }
 }
 
-final class PluginRuntimeSourceImportController
-    extends Notifier<PluginSourceImportState> {
+final class PluginRuntimeSourceImportController extends Notifier<PluginSourceImportState> {
   @override
   PluginSourceImportState build() {
-    final subscription = ref
-        .read(pluginRuntimeGatewayProvider)
-        .initialization
-        .listen(_onInitializationProgress);
+    final subscription = ref.read(pluginRuntimeGatewayProvider).initialization.listen(_onInitializationProgress);
     ref.onDispose(() => unawaited(subscription.cancel()));
     return const PluginSourceImportState.idle();
   }
@@ -488,11 +483,7 @@ final class PluginRuntimeSourceImportController
 
   Future<bool> importLocalPlugin() async {
     if (state.isImporting) return false;
-    state = const PluginSourceImportState(
-      isImporting: true,
-      message: '正在打开文件选择器',
-      logs: <String>['正在打开文件选择器'],
-    );
+    state = const PluginSourceImportState(isImporting: true, message: '正在打开文件选择器', logs: <String>['正在打开文件选择器']);
     final diagnostics = ref.read(diagnosticsManagerProvider);
     final span = diagnostics.startSpan(
       AppDiagnosticEvents.runtimeFacadeCall,
@@ -502,27 +493,17 @@ final class PluginRuntimeSourceImportController
       }),
     );
     try {
-      final imported = await ref
-          .read(pluginRuntimeGatewayProvider)
-          .importLocalPlugin();
+      final imported = await ref.read(pluginRuntimeGatewayProvider).importLocalPlugin();
       if (imported) {
-        state = const PluginSourceImportState(
-          isImporting: true,
-          message: '正在刷新数据来源列表',
-          logs: <String>['正在刷新数据来源列表'],
-        );
+        state = const PluginSourceImportState(isImporting: true, message: '正在刷新数据来源列表', logs: <String>['正在刷新数据来源列表']);
         ref.invalidate(pluginRuntimeConnectionProvider);
         ref.invalidate(pluginRuntimeStatusProvider);
         await ref.read(pluginRuntimeConnectionProvider.future);
       }
       span.complete(
         attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-          'capability': DiagnosticValue.string(
-            'runtime.plugins.importLocal.v1',
-          ),
-          'resultState': DiagnosticValue.string(
-            imported ? 'success' : 'cancelled',
-          ),
+          'capability': DiagnosticValue.string('runtime.plugins.importLocal.v1'),
+          'resultState': DiagnosticValue.string(imported ? 'success' : 'cancelled'),
         }),
       );
       return imported;
@@ -530,9 +511,7 @@ final class PluginRuntimeSourceImportController
       final appError = AppError.fromUnknown(error);
       span.fail(
         attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-          'capability': DiagnosticValue.string(
-            'runtime.plugins.importLocal.v1',
-          ),
+          'capability': DiagnosticValue.string('runtime.plugins.importLocal.v1'),
           'resultState': DiagnosticValue.string('failure'),
           'errorCode': DiagnosticValue.string(appError.code.wireValue),
         }),
@@ -565,10 +544,9 @@ List<String> _appendImportLog(List<String> current, String message) {
 }
 
 /// Selects and activates a Windows Debug development-source directory.
-final pluginRuntimeDevelopmentDirectoryProvider =
-    NotifierProvider<PluginRuntimeDevelopmentDirectoryController, bool>(
-      PluginRuntimeDevelopmentDirectoryController.new,
-    );
+final pluginRuntimeDevelopmentDirectoryProvider = NotifierProvider<PluginRuntimeDevelopmentDirectoryController, bool>(
+  PluginRuntimeDevelopmentDirectoryController.new,
+);
 
 final class PluginRuntimeDevelopmentDirectoryController extends Notifier<bool> {
   @override
@@ -578,9 +556,7 @@ final class PluginRuntimeDevelopmentDirectoryController extends Notifier<bool> {
     if (state) return false;
     state = true;
     try {
-      final selected = await ref
-          .read(pluginRuntimeGatewayProvider)
-          .selectDevelopmentDirectory();
+      final selected = await ref.read(pluginRuntimeGatewayProvider).selectDevelopmentDirectory();
       if (selected) {
         ref.invalidate(pluginRuntimeConnectionProvider);
         ref.invalidate(pluginRuntimeStatusProvider);
@@ -597,10 +573,7 @@ final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
   @override
   Set<String> build() => const <String>{};
 
-  Future<void> setEnabled({
-    required String pluginId,
-    required bool enabled,
-  }) async {
+  Future<void> setEnabled({required String pluginId, required bool enabled}) async {
     if (state.contains(pluginId)) return;
     state = Set<String>.unmodifiable(<String>{...state, pluginId});
     final diagnostics = ref.read(diagnosticsManagerProvider);
@@ -612,9 +585,7 @@ final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
       }),
     );
     try {
-      await ref
-          .read(pluginRuntimeGatewayProvider)
-          .setEnabled(pluginId: pluginId, enabled: enabled);
+      await ref.read(pluginRuntimeGatewayProvider).setEnabled(pluginId: pluginId, enabled: enabled);
       ref.invalidate(pluginRuntimeConnectionProvider);
       ref.invalidate(pluginRuntimeStatusProvider);
       await ref.read(pluginRuntimeConnectionProvider.future);
@@ -635,15 +606,12 @@ final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
       );
       Error.throwWithStackTrace(appError, stackTrace);
     } finally {
-      state = Set<String>.unmodifiable(
-        state.where((String value) => value != pluginId),
-      );
+      state = Set<String>.unmodifiable(state.where((String value) => value != pluginId));
     }
   }
 }
 
-final class PluginRuntimeSourceDirectoryController
-    extends Notifier<Set<String>> {
+final class PluginRuntimeSourceDirectoryController extends Notifier<Set<String>> {
   @override
   Set<String> build() => const <String>{};
 
@@ -656,21 +624,15 @@ final class PluginRuntimeSourceDirectoryController
     final span = diagnostics.startSpan(
       AppDiagnosticEvents.runtimeFacadeCall,
       attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-        'capability': DiagnosticValue.string(
-          'runtime.plugins.openCodeDirectory.v1',
-        ),
+        'capability': DiagnosticValue.string('runtime.plugins.openCodeDirectory.v1'),
         'resultState': DiagnosticValue.string('loading'),
       }),
     );
     try {
-      final result = await ref
-          .read(pluginRuntimeGatewayProvider)
-          .openCodeDirectory(pluginId: pluginId);
+      final result = await ref.read(pluginRuntimeGatewayProvider).openCodeDirectory(pluginId: pluginId);
       span.complete(
         attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-          'capability': DiagnosticValue.string(
-            'runtime.plugins.openCodeDirectory.v1',
-          ),
+          'capability': DiagnosticValue.string('runtime.plugins.openCodeDirectory.v1'),
           'resultState': DiagnosticValue.string('success'),
         }),
       );
@@ -679,18 +641,14 @@ final class PluginRuntimeSourceDirectoryController
       final appError = AppError.fromUnknown(error);
       span.fail(
         attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-          'capability': DiagnosticValue.string(
-            'runtime.plugins.openCodeDirectory.v1',
-          ),
+          'capability': DiagnosticValue.string('runtime.plugins.openCodeDirectory.v1'),
           'resultState': DiagnosticValue.string('failure'),
           'errorCode': DiagnosticValue.string(appError.code.wireValue),
         }),
       );
       Error.throwWithStackTrace(appError, stackTrace);
     } finally {
-      state = Set<String>.unmodifiable(
-        state.where((String value) => value != pluginId),
-      );
+      state = Set<String>.unmodifiable(state.where((String value) => value != pluginId));
     }
   }
 }
@@ -711,14 +669,10 @@ final class PluginRuntimePrivateDirectoryController extends Notifier<bool> {
       }),
     );
     try {
-      await ref
-          .read(pluginRuntimeGatewayProvider)
-          .openRuntimePrivateDirectory();
+      await ref.read(pluginRuntimeGatewayProvider).openRuntimePrivateDirectory();
       span.complete(
         attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-          'capability': DiagnosticValue.string(
-            'runtime.openPrivateDirectory.v1',
-          ),
+          'capability': DiagnosticValue.string('runtime.openPrivateDirectory.v1'),
           'resultState': DiagnosticValue.string('success'),
         }),
       );
@@ -726,9 +680,7 @@ final class PluginRuntimePrivateDirectoryController extends Notifier<bool> {
       final appError = AppError.fromUnknown(error);
       span.fail(
         attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-          'capability': DiagnosticValue.string(
-            'runtime.openPrivateDirectory.v1',
-          ),
+          'capability': DiagnosticValue.string('runtime.openPrivateDirectory.v1'),
           'resultState': DiagnosticValue.string('failure'),
           'errorCode': DiagnosticValue.string(appError.code.wireValue),
         }),
@@ -747,9 +699,7 @@ final class PluginRuntimeConnection {
     required this.nodeVersion,
     required this.runtimeVersion,
     required this.plugins,
-    this.startupRecovery = const PluginRuntimeStartupRecovery(
-      quarantinedCount: 0,
-    ),
+    this.startupRecovery = const PluginRuntimeStartupRecovery(quarantinedCount: 0),
   });
 
   final bool isHealthy;
@@ -757,6 +707,17 @@ final class PluginRuntimeConnection {
   final String runtimeVersion;
   final List<PluginRuntimePlugin> plugins;
   final PluginRuntimeStartupRecovery startupRecovery;
+}
+
+/// Main-app projection of the transient Runtime-owned Debug listener.
+final class PluginRuntimeDebugHttp {
+  const PluginRuntimeDebugHttp({required this.enabled, required this.endpoints, required this.startedAt});
+
+  const PluginRuntimeDebugHttp.disabled() : enabled = false, endpoints = const <String>[], startedAt = null;
+
+  final bool enabled;
+  final List<String> endpoints;
+  final String? startedAt;
 }
 
 @immutable

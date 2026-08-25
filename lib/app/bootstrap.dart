@@ -1,9 +1,23 @@
+/// MgRead Flutter 启动组合根。
+///
+/// 职责：
+/// - 先挂载不依赖持久化或 Runtime 的启动界面，确保 Windows 调试冷启动立即创建窗口。
+/// - 在后台完成应用持久化、设置和诊断组合后替换为正式 ProviderScope。
+///
+/// 注意：
+/// - Node Runtime 仍由根应用首帧后的独立预热流程启动。
+/// - 启动期资源失败必须关闭已打开的资源，不能让启动界面持有业务状态。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:async';
 import 'dart:collection';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -57,10 +71,11 @@ typedef AppPersistenceFactory =
 
 /// Starts the Flutter host composition root.
 ///
-/// This boundary owns framework initialization and the application ProviderScope.
-/// Settings are opened on their background SQLite/JSON executors and fully
-/// initialized before the explicitly overridden ProviderScope is mounted.
-/// This boundary never starts the Node Runtime.
+/// This boundary owns framework initialization, the immediate startup surface,
+/// and the application ProviderScope. The startup surface is mounted before
+/// potentially slow first-run SQLite/JSON work so a desktop window always
+/// exists while the explicitly overridden ProviderScope is composed. This
+/// boundary never starts the Node Runtime.
 Future<void> bootstrapMgReadApp({
   AppSettingsManager? settingsManager,
   AppDiagnosticsService? diagnosticsService,
@@ -80,6 +95,10 @@ Future<void> bootstrapMgReadApp({
     );
   }
   WidgetsFlutterBinding.ensureInitialized();
+  // Do this before any application-support lookup or first-run database open.
+  // On Windows, both can take long enough on a cold profile that awaiting them
+  // first leaves the debugger connected but with no native Flutter window.
+  appRunner(const _BootstrapLoadingApp());
   Directory? dataRoot;
   if ((contentLibrary == null && contentLibraryFactory != null) ||
       settingsManager == null ||
@@ -274,6 +293,14 @@ Future<void> bootstrapMgReadApp({
         ),
       ),
     );
+    final deferredDiagnostics = persistentDiagnostics;
+    if (deferredDiagnostics != null) {
+      // A large interrupted TXT history can require compaction. Diagnostics
+      // maintenance must never delay the now-ready application window.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_enforceDeferredDiagnosticsRetention(deferredDiagnostics));
+      });
+    }
     bootstrapSpan.complete(
       attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
         'stage': DiagnosticValue.string('mounted'),
@@ -336,7 +363,22 @@ Future<AppDiagnosticsService> _openDefaultDiagnostics(Directory dataRoot) =>
           ? 'profile'
           : 'debug',
       platform: Platform.operatingSystem,
+      deferStartupMaintenance: true,
     );
+
+/// Runs non-essential diagnostics cleanup after the application is visible.
+Future<void> _enforceDeferredDiagnosticsRetention(
+  AppDiagnosticsService diagnostics,
+) async {
+  try {
+    await diagnostics.enforceRetention(
+      diagnostics.configuration.retentionPolicy,
+    );
+  } catch (_) {
+    // Diagnostics retention is fail-open: it must not surface as an app error
+    // or interfere with the already-mounted product UI.
+  }
+}
 
 /// Bounded, best-effort developer-console output outside the app log queue.
 ///
@@ -437,3 +479,28 @@ LibraryItemSummary _summaryFromLibraryItem(LibraryItem item) =>
       coverUrl: item.coverUrl,
       sourceName: item.sourceName,
     );
+
+/// Minimal first-frame surface with no persistence, provider, or Runtime use.
+///
+/// It is intentionally replaced by the fully composed application once the
+/// background startup Future completes.
+final class _BootstrapLoadingApp extends StatelessWidget {
+  const _BootstrapLoadingApp();
+
+  @override
+  Widget build(BuildContext context) => const MaterialApp(
+    debugShowCheckedModeBanner: false,
+    home: Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('正在启动…'),
+          ],
+        ),
+      ),
+    ),
+  );
+}

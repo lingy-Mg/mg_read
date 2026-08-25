@@ -1,3 +1,15 @@
+/// 个人资料详情页的布局与交互测试。
+///
+/// 职责：
+/// - 验证详情页路由、固定顶部栏和本地反馈交互。
+///
+/// 注意：
+/// - 测试固定浅色 Widget 几何，不宣称设备视觉验收。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
@@ -12,63 +24,45 @@ import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
 import '../../../app/mg_read_app_test_support.dart';
 
 void main() {
-  testWidgets(
-    'profile opens typed about and feedback routes and back returns',
-    (WidgetTester tester) async {
-      await _setViewport(tester, const Size(390, 900));
-      final settings = await createTestAppSettings();
-      addTearDown(settings.close);
-      await tester.pumpWidget(testMgReadApp(settings));
-      await tester.pumpAndSettle();
+  testWidgets('profile opens typed about and feedback routes and back returns', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 900));
+    final settings = await createTestAppSettings();
+    addTearDown(settings.close);
+    await tester.pumpWidget(testMgReadApp(settings));
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('app-nav-profile')));
-      await tester.pumpAndSettle();
-      expect(find.byType(ProfilePage), findsOneWidget);
+    await tester.tap(find.byKey(const Key('app-nav-profile')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfilePage), findsOneWidget);
 
-      final Finder profileScroll = find.byKey(
-        const Key('profile-page-content'),
-      );
-      final Finder profileScrollable = find.descendant(
-        of: profileScroll,
-        matching: find.byType(Scrollable),
-      );
-      final Finder aboutAction = find.byKey(const Key('profile-setting-about'));
-      await tester.scrollUntilVisible(
-        aboutAction,
-        220,
-        scrollable: profileScrollable,
-      );
-      await tester.tap(aboutAction);
-      await tester.pumpAndSettle();
-      expect(find.byType(AboutPage), findsOneWidget);
-      expect(find.text('统一阅读'), findsOneWidget);
+    final Finder profileScroll = find.byKey(const Key('profile-page-content'));
+    final Finder profileScrollable = find.descendant(of: profileScroll, matching: find.byType(Scrollable));
+    final Finder aboutAction = find.byKey(const Key('profile-setting-about'));
+    await tester.scrollUntilVisible(aboutAction, 220, scrollable: profileScrollable);
+    await tester.drag(profileScrollable, const Offset(0, -24));
+    await tester.pumpAndSettle();
+    await tester.tap(aboutAction);
+    await tester.pumpAndSettle();
+    expect(find.byType(AboutPage), findsOneWidget);
+    expect(find.text('统一阅读'), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('profile-detail-back')));
-      await tester.pumpAndSettle();
-      expect(find.byType(ProfilePage), findsOneWidget);
+    await tester.tap(find.byKey(const Key('profile-detail-back')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfilePage), findsOneWidget);
 
-      final Finder feedbackAction = find.byKey(
-        const Key('profile-setting-feedback'),
-      );
-      await tester.scrollUntilVisible(
-        feedbackAction,
-        180,
-        scrollable: profileScrollable,
-      );
-      await tester.tap(feedbackAction);
-      await tester.pumpAndSettle();
-      expect(find.byType(FeedbackPage), findsOneWidget);
-      expect(find.text('感谢您的反馈！'), findsOneWidget);
+    final Finder feedbackAction = find.byKey(const Key('profile-setting-feedback'));
+    await tester.scrollUntilVisible(feedbackAction, 180, scrollable: profileScrollable);
+    await tester.tap(feedbackAction);
+    await tester.pumpAndSettle();
+    expect(find.byType(FeedbackPage), findsOneWidget);
+    expect(find.text('感谢您的反馈！'), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('profile-detail-back')));
-      await tester.pumpAndSettle();
-      expect(find.byType(ProfilePage), findsOneWidget);
-    },
-  );
+    await tester.tap(find.byKey(const Key('profile-detail-back')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfilePage), findsOneWidget);
+  });
 
-  testWidgets('profile opens the on-demand LAN sync page', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('profile opens the on-demand LAN sync page', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     final settings = await createTestAppSettings();
     addTearDown(settings.close);
@@ -82,10 +76,7 @@ void main() {
     await tester.scrollUntilVisible(
       action,
       220,
-      scrollable: find.descendant(
-        of: profileScroll,
-        matching: find.byType(Scrollable),
-      ),
+      scrollable: find.descendant(of: profileScroll, matching: find.byType(Scrollable)),
     );
     await tester.tap(action);
     await tester.pumpAndSettle();
@@ -100,98 +91,79 @@ void main() {
     expect(find.byType(ProfilePage), findsOneWidget);
   });
 
-  testWidgets('about page uses the measured 390 by 900 geometry', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('about page uses the measured 390 by 900 geometry', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_aboutHost());
     await tester.pumpAndSettle();
-    final Rect topBar = tester.getRect(
-      find.byKey(const Key('profile-detail-top-bar')),
-    );
+    final Rect topBar = tester.getRect(find.byKey(const Key('profile-detail-top-bar')));
     final Rect icon = tester.getRect(find.byKey(const Key('about-app-icon')));
-    final Rect card = tester.getRect(
-      find.byKey(const Key('about-settings-card')),
-    );
-    final Rect navigation = tester.getRect(
-      find.byKey(const Key('app-bottom-navigation')),
-    );
+    final Rect card = tester.getRect(find.byKey(const Key('about-settings-card')));
+    final Rect navigation = tester.getRect(find.byKey(const Key('app-bottom-navigation')));
 
-    expect(topBar.top, closeTo(24, 0.1));
-    expect(topBar.height, AppDetailMetrics.topBarHeight);
-    expect(icon.top, closeTo(117, 0.1));
+    expect(topBar.top, closeTo(32, 0.1));
+    expect(topBar.height, AppSpacing.minimumTouchTarget);
+    expect(icon.top, closeTo(109, 0.1));
     expect(icon.size, const Size(106, 106));
     expect(card.left, closeTo(20, 0.1));
     expect(card.width, closeTo(350, 0.1));
     expect(card.height, AppDetailMetrics.aboutCardHeight);
-    expect(card.top, closeTo(364, 0.1));
+    expect(card.top, closeTo(356, 0.1));
     expect(navigation.top, closeTo(824, 0.1));
   });
 
-  testWidgets('feedback page preserves measured banner and form proportions', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('feedback page preserves measured banner and form proportions', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_feedbackHost());
     await tester.pumpAndSettle();
 
-    final Rect banner = tester.getRect(
-      find.byKey(const Key('feedback-thanks-banner')),
-    );
-    final Rect form = tester.getRect(
-      find.byKey(const Key('feedback-form-card')),
-    );
+    final Rect banner = tester.getRect(find.byKey(const Key('feedback-thanks-banner')));
+    final Rect form = tester.getRect(find.byKey(const Key('feedback-form-card')));
 
-    expect(banner, const Rect.fromLTWH(20, 88, 350, 108));
-    expect(form, const Rect.fromLTWH(20, 211, 350, 602));
+    expect(banner, const Rect.fromLTWH(20, 80, 350, 108));
+    expect(form, const Rect.fromLTWH(20, 203, 350, 602));
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'feedback types switch and content is limited to 500 characters',
-    (WidgetTester tester) async {
-      final SemanticsHandle semantics = tester.ensureSemantics();
-      await _setViewport(tester, const Size(390, 900));
-      await tester.pumpWidget(_feedbackHost());
-      await tester.pumpAndSettle();
+  testWidgets('about and feedback keep their title bars fixed while content scrolls', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 600));
+    await tester.pumpWidget(_aboutHost());
+    await tester.pumpAndSettle();
 
-      final Finder suggestion = find.byKey(
-        const Key('feedback-type-suggestion'),
-      );
-      final Finder problem = find.byKey(const Key('feedback-type-problem'));
-      expect(
-        tester.getSemantics(suggestion).flagsCollection.isSelected,
-        Tristate.isTrue,
-      );
+    await tester.drag(find.byKey(const Key('about-page-content')), const Offset(0, -180));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.byKey(const Key('profile-detail-top-bar'))).top, 32);
 
-      await tester.tap(problem);
-      await tester.pump();
-      expect(
-        tester.getSemantics(problem).flagsCollection.isSelected,
-        Tristate.isTrue,
-      );
-      expect(
-        tester.getSemantics(suggestion).flagsCollection.isSelected,
-        Tristate.isFalse,
-      );
+    await tester.pumpWidget(_feedbackHost());
+    await tester.pumpAndSettle();
+    await tester.drag(find.byKey(const Key('feedback-page-content')), const Offset(0, -180));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.byKey(const Key('profile-detail-top-bar'))).top, 32);
+  });
 
-      await tester.enterText(
-        find.byKey(const Key('feedback-content-field')),
-        List<String>.filled(510, '阅').join(),
-      );
-      await tester.pump();
-      final EditableText editor = tester.widget<EditableText>(
-        find.byType(EditableText).first,
-      );
-      expect(editor.controller.text.characters.length, 500);
-      expect(find.text('500/500'), findsOneWidget);
-      semantics.dispose();
-    },
-  );
+  testWidgets('feedback types switch and content is limited to 500 characters', (WidgetTester tester) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    await _setViewport(tester, const Size(390, 900));
+    await tester.pumpWidget(_feedbackHost());
+    await tester.pumpAndSettle();
 
-  testWidgets('feedback actions remain local and never pretend to submit', (
-    WidgetTester tester,
-  ) async {
+    final Finder suggestion = find.byKey(const Key('feedback-type-suggestion'));
+    final Finder problem = find.byKey(const Key('feedback-type-problem'));
+    expect(tester.getSemantics(suggestion).flagsCollection.isSelected, Tristate.isTrue);
+
+    await tester.tap(problem);
+    await tester.pump();
+    expect(tester.getSemantics(problem).flagsCollection.isSelected, Tristate.isTrue);
+    expect(tester.getSemantics(suggestion).flagsCollection.isSelected, Tristate.isFalse);
+
+    await tester.enterText(find.byKey(const Key('feedback-content-field')), List<String>.filled(510, '阅').join());
+    await tester.pump();
+    final EditableText editor = tester.widget<EditableText>(find.byType(EditableText).first);
+    expect(editor.controller.text.characters.length, 500);
+    expect(find.text('500/500'), findsOneWidget);
+    semantics.dispose();
+  });
+
+  testWidgets('feedback actions remain local and never pretend to submit', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_feedbackHost());
     await tester.pumpAndSettle();
@@ -204,34 +176,25 @@ void main() {
     await tester.pump();
     expect(find.text('请先填写反馈内容。'), findsOneWidget);
 
-    await tester.enterText(
-      find.byKey(const Key('feedback-content-field')),
-      '希望增加更清晰的目录筛选。',
-    );
+    await tester.enterText(find.byKey(const Key('feedback-content-field')), '希望增加更清晰的目录筛选。');
     await tester.tap(find.byKey(const Key('feedback-submit')));
     await tester.pump();
     expect(find.text('反馈已保留在当前页面，提交服务尚未接入。'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('profile stays selected in detail navigation semantics', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('profile stays selected in detail navigation semantics', (WidgetTester tester) async {
     final SemanticsHandle semantics = tester.ensureSemantics();
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_aboutHost());
     await tester.pumpAndSettle();
 
-    final SemanticsNode profile = tester.getSemantics(
-      find.byKey(const Key('app-nav-profile')),
-    );
+    final SemanticsNode profile = tester.getSemantics(find.byKey(const Key('app-nav-profile')));
     expect(profile.flagsCollection.isSelected, Tristate.isTrue);
     semantics.dispose();
   });
 
-  testWidgets('profile details stay light-only without header theme actions', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('profile details stay light-only without header theme actions', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     final settings = await createTestAppSettings(themeMode: 'light');
     addTearDown(settings.close);
@@ -246,11 +209,10 @@ void main() {
     await tester.scrollUntilVisible(
       find.byKey(const Key('profile-setting-about')),
       220,
-      scrollable: find.descendant(
-        of: profileScroll,
-        matching: find.byType(Scrollable),
-      ),
+      scrollable: find.descendant(of: profileScroll, matching: find.byType(Scrollable)),
     );
+    await tester.drag(find.descendant(of: profileScroll, matching: find.byType(Scrollable)), const Offset(0, -24));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('profile-setting-about')));
     await tester.pumpAndSettle();
 
@@ -280,10 +242,7 @@ Widget _host({required Widget child}) {
     builder: (BuildContext context, Widget? routedChild) {
       final MediaQueryData mediaQuery = MediaQuery.of(context);
       return MediaQuery(
-        data: mediaQuery.copyWith(
-          padding: const EdgeInsets.only(top: 24),
-          viewPadding: const EdgeInsets.only(top: 24),
-        ),
+        data: mediaQuery.copyWith(padding: const EdgeInsets.only(top: 24), viewPadding: const EdgeInsets.only(top: 24)),
         child: routedChild ?? const SizedBox.shrink(),
       );
     },

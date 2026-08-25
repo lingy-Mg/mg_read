@@ -1,3 +1,17 @@
+/// MgRead 应用主题与全局视觉语义。
+///
+/// 职责：
+/// - 提供颜色、排版、尺寸、圆角和动效 token。
+/// - 集中解析系统“减少动态效果”偏好与可打断时长。
+///
+/// 注意：
+/// - 页面不得建立平行的视觉或动效规格。
+/// - 动效 token 不表示网络或持久化任务的真实进度。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'package:flutter/material.dart';
 
 /// Defines the application-wide visual defaults and semantic UI tokens.
@@ -34,15 +48,19 @@ abstract final class AppTheme {
       coverEmberStart: Color(0xFF5E3527),
       coverEmberEnd: Color(0xFFCA8B40),
     );
-    final ColorScheme colorScheme = ColorScheme.fromSeed(seedColor: tokens.accent, brightness: Brightness.light).copyWith(
-      primary: tokens.accent,
-      onPrimary: Colors.white,
-      primaryContainer: tokens.accentSoft,
-      onPrimaryContainer: const Color(0xFF472706),
-      surface: tokens.surface,
-      onSurface: const Color(0xFF201C18),
-      outlineVariant: tokens.divider,
-    );
+    final ColorScheme colorScheme =
+        ColorScheme.fromSeed(
+          seedColor: tokens.accent,
+          brightness: Brightness.light,
+        ).copyWith(
+          primary: tokens.accent,
+          onPrimary: Colors.white,
+          primaryContainer: tokens.accentSoft,
+          onPrimaryContainer: const Color(0xFF472706),
+          surface: tokens.surface,
+          onSurface: const Color(0xFF201C18),
+          outlineVariant: tokens.divider,
+        );
     return _theme(colorScheme, tokens);
   }
 
@@ -75,20 +93,28 @@ abstract final class AppTheme {
       coverEmberStart: Color(0xFF8A4B36),
       coverEmberEnd: Color(0xFFEBAD56),
     );
-    final ColorScheme colorScheme = ColorScheme.fromSeed(seedColor: tokens.accent, brightness: Brightness.dark).copyWith(
-      primary: tokens.accent,
-      onPrimary: const Color(0xFF352108),
-      primaryContainer: tokens.accentSoft,
-      onPrimaryContainer: const Color(0xFFFFDCB0),
-      surface: tokens.surface,
-      onSurface: const Color(0xFFF5EDE4),
-      outlineVariant: tokens.divider,
-    );
+    final ColorScheme colorScheme =
+        ColorScheme.fromSeed(
+          seedColor: tokens.accent,
+          brightness: Brightness.dark,
+        ).copyWith(
+          primary: tokens.accent,
+          onPrimary: const Color(0xFF352108),
+          primaryContainer: tokens.accentSoft,
+          onPrimaryContainer: const Color(0xFFFFDCB0),
+          surface: tokens.surface,
+          onSurface: const Color(0xFFF5EDE4),
+          outlineVariant: tokens.divider,
+        );
     return _theme(colorScheme, tokens);
   }
 
   static ThemeData _theme(ColorScheme colorScheme, AppThemeTokens tokens) {
-    final ThemeData base = ThemeData(colorScheme: colorScheme, fontFamily: 'packages/novel_reader_ui/MiSans', useMaterial3: true);
+    final ThemeData base = ThemeData(
+      colorScheme: colorScheme,
+      fontFamily: 'packages/novel_reader_ui/MiSans',
+      useMaterial3: true,
+    );
     final TextTheme textTheme = base.textTheme.copyWith(
       displaySmall: base.textTheme.displaySmall?.copyWith(
         fontSize: AppTypography.display,
@@ -96,12 +122,32 @@ abstract final class AppTheme {
         height: 1.18,
         letterSpacing: -0.6,
       ),
-      titleLarge: base.textTheme.titleLarge?.copyWith(fontSize: AppTypography.sectionTitle, fontWeight: FontWeight.w600, height: 1.25),
-      titleMedium: base.textTheme.titleMedium?.copyWith(fontSize: AppTypography.itemTitle, fontWeight: FontWeight.w600, height: 1.3),
-      bodyLarge: base.textTheme.bodyLarge?.copyWith(fontSize: AppTypography.body, height: 1.5),
-      bodyMedium: base.textTheme.bodyMedium?.copyWith(fontSize: AppTypography.secondary, height: 1.45),
-      bodySmall: base.textTheme.bodySmall?.copyWith(fontSize: AppTypography.caption, height: 1.4),
-      labelLarge: base.textTheme.labelLarge?.copyWith(fontSize: AppTypography.action, fontWeight: FontWeight.w600),
+      titleLarge: base.textTheme.titleLarge?.copyWith(
+        fontSize: AppTypography.sectionTitle,
+        fontWeight: FontWeight.w600,
+        height: 1.25,
+      ),
+      titleMedium: base.textTheme.titleMedium?.copyWith(
+        fontSize: AppTypography.itemTitle,
+        fontWeight: FontWeight.w600,
+        height: 1.3,
+      ),
+      bodyLarge: base.textTheme.bodyLarge?.copyWith(
+        fontSize: AppTypography.body,
+        height: 1.5,
+      ),
+      bodyMedium: base.textTheme.bodyMedium?.copyWith(
+        fontSize: AppTypography.secondary,
+        height: 1.45,
+      ),
+      bodySmall: base.textTheme.bodySmall?.copyWith(
+        fontSize: AppTypography.caption,
+        height: 1.4,
+      ),
+      labelLarge: base.textTheme.labelLarge?.copyWith(
+        fontSize: AppTypography.action,
+        fontWeight: FontWeight.w600,
+      ),
     );
 
     return base.copyWith(
@@ -121,7 +167,9 @@ abstract final class AppTheme {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: colorScheme.inverseSurface,
-        contentTextStyle: textTheme.bodyMedium?.copyWith(color: colorScheme.onInverseSurface),
+        contentTextStyle: textTheme.bodyMedium?.copyWith(
+          color: colorScheme.onInverseSurface,
+        ),
       ),
       extensions: <ThemeExtension<dynamic>>[tokens],
     );
@@ -271,7 +319,10 @@ class AppThemeTokens extends ThemeExtension<AppThemeTokens> {
   }
 
   @override
-  AppThemeTokens lerp(covariant ThemeExtension<AppThemeTokens>? other, double t) {
+  AppThemeTokens lerp(
+    covariant ThemeExtension<AppThemeTokens>? other,
+    double t,
+  ) {
     if (other is! AppThemeTokens) {
       return this;
     }
@@ -283,9 +334,17 @@ class AppThemeTokens extends ThemeExtension<AppThemeTokens> {
       divider: Color.lerp(divider, other.divider, t)!,
       mutedText: Color.lerp(mutedText, other.mutedText, t)!,
       accent: Color.lerp(accent, other.accent, t)!,
-      dataSourceAccent: Color.lerp(dataSourceAccent, other.dataSourceAccent, t)!,
+      dataSourceAccent: Color.lerp(
+        dataSourceAccent,
+        other.dataSourceAccent,
+        t,
+      )!,
       dataSourceCat: Color.lerp(dataSourceCat, other.dataSourceCat, t)!,
-      dataSourceCommunity: Color.lerp(dataSourceCommunity, other.dataSourceCommunity, t)!,
+      dataSourceCommunity: Color.lerp(
+        dataSourceCommunity,
+        other.dataSourceCommunity,
+        t,
+      )!,
       accentSoft: Color.lerp(accentSoft, other.accentSoft, t)!,
       notification: Color.lerp(notification, other.notification, t)!,
       success: Color.lerp(success, other.success, t)!,
@@ -298,7 +357,11 @@ class AppThemeTokens extends ThemeExtension<AppThemeTokens> {
       coverDawnEnd: Color.lerp(coverDawnEnd, other.coverDawnEnd, t)!,
       coverOceanStart: Color.lerp(coverOceanStart, other.coverOceanStart, t)!,
       coverOceanEnd: Color.lerp(coverOceanEnd, other.coverOceanEnd, t)!,
-      coverIndigoStart: Color.lerp(coverIndigoStart, other.coverIndigoStart, t)!,
+      coverIndigoStart: Color.lerp(
+        coverIndigoStart,
+        other.coverIndigoStart,
+        t,
+      )!,
       coverIndigoEnd: Color.lerp(coverIndigoEnd, other.coverIndigoEnd, t)!,
       coverEmberStart: Color.lerp(coverEmberStart, other.coverEmberStart, t)!,
       coverEmberEnd: Color.lerp(coverEmberEnd, other.coverEmberEnd, t)!,
@@ -375,7 +438,8 @@ abstract final class AppSpacing {
   static const double profileStatsDividerHeight = section;
   static const double profileStatsDividerThickness = unit / 8;
   static const double profileSyncIconSize = unit * 5;
-  static const double profileContentBottomSafeDistance = bottomNavigationHeight + comfortable;
+  static const double profileContentBottomSafeDistance =
+      bottomNavigationHeight + comfortable;
   static const double compactCardStackBreakpoint = 280;
   static const double discoveryPagePadding = unit * 4;
   static const double discoveryListMaxWidth = 692;
@@ -463,28 +527,60 @@ abstract final class AppRadii {
   static const BorderRadius card = BorderRadius.all(Radius.circular(20));
   static const BorderRadius surface = BorderRadius.all(Radius.circular(12));
   static const BorderRadius control = BorderRadius.all(Radius.circular(12));
-  static const BorderRadius continueReadingAction = BorderRadius.all(Radius.circular(10));
+  static const BorderRadius continueReadingAction = BorderRadius.all(
+    Radius.circular(10),
+  );
   static const BorderRadius bookCover = BorderRadius.all(Radius.circular(6));
   static const BorderRadius profileList = BorderRadius.all(Radius.circular(16));
-  static const BorderRadius discoveryHero = BorderRadius.all(Radius.circular(16));
-  static const BorderRadius discoveryPanel = BorderRadius.all(Radius.circular(12));
-  static const BorderRadius discoveryCover = BorderRadius.all(Radius.circular(6));
-  static const BorderRadius discoveryTile = BorderRadius.all(Radius.circular(8));
-  static const BorderRadius discoveryButton = BorderRadius.all(Radius.circular(9));
+  static const BorderRadius discoveryHero = BorderRadius.all(
+    Radius.circular(16),
+  );
+  static const BorderRadius discoveryPanel = BorderRadius.all(
+    Radius.circular(12),
+  );
+  static const BorderRadius discoveryCover = BorderRadius.all(
+    Radius.circular(6),
+  );
+  static const BorderRadius discoveryTile = BorderRadius.all(
+    Radius.circular(8),
+  );
+  static const BorderRadius discoveryButton = BorderRadius.all(
+    Radius.circular(9),
+  );
   static const BorderRadius detailCard = BorderRadius.all(Radius.circular(14));
-  static const BorderRadius detailControl = BorderRadius.all(Radius.circular(10));
-  static const BorderRadius detailAppIcon = BorderRadius.all(Radius.circular(22));
+  static const BorderRadius detailControl = BorderRadius.all(
+    Radius.circular(10),
+  );
+  static const BorderRadius detailAppIcon = BorderRadius.all(
+    Radius.circular(22),
+  );
   static const BorderRadius pill = BorderRadius.all(Radius.circular(999));
 }
 
-/// Shared motion timings for short, non-disruptive application feedback.
+/// 全局、克制且可打断的动效语义。
+///
+/// 时长只描述视觉过渡，异步请求必须独立维持 loading/错误/内容状态。
 abstract final class AppMotion {
+  static const Duration micro = Duration(milliseconds: 120);
   static const Duration navigationSelection = Duration(milliseconds: 140);
-  static const Duration bottomNavigationIconResponse = Duration(milliseconds: 220);
-  static const Duration bottomNavigationLabelResponse = Duration(milliseconds: 190);
-  static const Duration bottomNavigationPillTravel = Duration(milliseconds: 300);
+  static const Duration short = Duration(milliseconds: 180);
+  static const Duration shortReverse = Duration(milliseconds: 140);
+  static const Duration loadingSettle = Duration(milliseconds: 120);
+  static const Duration bottomNavigationIconResponse = Duration(
+    milliseconds: 220,
+  );
+  static const Duration bottomNavigationLabelResponse = Duration(
+    milliseconds: 190,
+  );
+  static const Duration bottomNavigationPillMinimumTravel = Duration(
+    milliseconds: 180,
+  );
+  static const Duration bottomNavigationPillTravel = Duration(
+    milliseconds: 300,
+  );
   static const Duration bottomNavigationTextureDrift = Duration(seconds: 8);
-  static const Duration destinationTransition = Duration(milliseconds: 180);
+  static const Duration destinationTransition = short;
+  static const Duration destinationReverseTransition = shortReverse;
   static const double bottomNavigationPillOvershoot = 0.045;
   static const double bottomNavigationPillTravelWidthScale = 0.72;
   static const double bottomNavigationPillTravelHeightScale = 0.8;
@@ -496,5 +592,37 @@ abstract final class AppMotion {
   static const double bottomNavigationLabelAlignmentY = 0.58;
   static const Curve navigationCurve = Curves.easeOutCubic;
   static const Curve navigationReverseCurve = Curves.easeInCubic;
+  static const Curve standardCurve = Curves.easeInOutCubic;
   static const Curve bottomNavigationTextureCurve = Curves.easeInOutSine;
+
+  /// Returns whether the platform asks the app to avoid non-essential motion.
+  static bool disablesAnimations(BuildContext context) {
+    return MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+  }
+
+  /// Resolves an implicit or route transition duration for the current policy.
+  static Duration effectiveDuration(BuildContext context, Duration duration) {
+    return disablesAnimations(context) ? Duration.zero : duration;
+  }
+
+  /// Keeps a retargeted controller's remaining travel proportional to distance.
+  ///
+  /// A zero result is deliberately synchronous for reduced-motion users.
+  static Duration interruptedDuration({
+    required Duration fullDuration,
+    required double from,
+    required double to,
+    required bool disableAnimations,
+    Duration minimumDuration = Duration.zero,
+  }) {
+    if (disableAnimations) return Duration.zero;
+    final double distance = (to - from).abs().clamp(0, 1);
+    final int scaledMicroseconds = (fullDuration.inMicroseconds * distance)
+        .round();
+    return Duration(
+      microseconds: scaledMicroseconds < minimumDuration.inMicroseconds
+          ? minimumDuration.inMicroseconds
+          : scaledMicroseconds,
+    );
+  }
 }

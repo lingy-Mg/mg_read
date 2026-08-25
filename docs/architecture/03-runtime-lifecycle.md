@@ -150,6 +150,10 @@ Android 复用相同的 Core、Runtime 自有运行数据、HTTP、WS 和协议�
 Flutter UI Isolate 不创建、泵送或销毁 Javet，也不接收原始插件对象。Javet 的 Java
 交互只用于 Runtime 生命周期桥接，不成为主项目的第二套业务协议。
 
+Android 的 Node loopback 资源 listener 在同一 Runtime 生命周期内由 Android Adapter 的
+HandlerThread 非阻塞泵送；它不创建第二个 VM 或 Worker。仅 Debug 检查页另有可关闭的
+`0.0.0.0` listener，且不能承载内部 RPC，见 [ADR-0023](adr/0023-debug-runtime-http-inspector.md)。
+
 ## 内部 readiness 与协议协商
 
 `GET /health/ready` 仅在以下条件满足时返回成功：

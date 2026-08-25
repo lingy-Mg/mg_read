@@ -1,3 +1,9 @@
+/**
+ * Android Runtime host.
+ *
+ * Owns the single Javet NodeRuntime, its HandlerThread, and the bounded event-loop pump.
+ * Flutter only receives typed capability results through the package bridge.
+ */
 package com.mgread.mgread_plugin_runtime
 
 import android.content.Context
@@ -52,6 +58,23 @@ internal class AndroidRuntimeHost(
     private val handler = android.os.Handler(thread.looper)
     private val disposed = AtomicBoolean(false)
     private var nodeRuntime: NodeRuntime? = null
+    private var eventLoopPumpActive = false
+    private val eventLoopPump = object : Runnable {
+        override fun run() {
+            if (!eventLoopPumpActive || disposed.get()) return
+            val runtime = nodeRuntime
+            if (runtime == null) return
+            runCatching {
+                // The persistent Runtime HTTP listener can receive work after a
+                // Flutter invocation returns. Keep its sole Javet event loop
+                // alive without blocking this HandlerThread's command queue.
+                runtime.await(V8AwaitMode.RunNoWait)
+            }
+            if (eventLoopPumpActive && !disposed.get() && nodeRuntime != null) {
+                handler.postDelayed(this, EVENT_LOOP_PUMP_MILLIS)
+            }
+        }
+    }
     private var runtimeModule: V8Module? = null
     private var progressCallback: V8ValueFunction? = null
     private var pluginModuleLoader: V8ValueFunction? = null
@@ -453,6 +476,8 @@ internal class AndroidRuntimeHost(
     }
 
     private fun stopRuntime() {
+        eventLoopPumpActive = false
+        handler.removeCallbacks(eventLoopPump)
         nodeRuntime?.let {
             runCatching {
                 awaitString("globalThis.__mgreadStopJson()")
@@ -526,6 +551,7 @@ internal class AndroidRuntimeHost(
                 dataRoot: ${JSONObject.quote(dataRoot.path)},
                 pluginImportInboxRoot: ${JSONObject.quote(pluginImportInbox.path)},
                 embedded: true,
+                debugHttpAllowed: ${if (BuildConfig.DEBUG) "true" else "false"},
                 onProgress: (progress) => {
                   try {
                     globalThis.__mgreadReportProgress(JSON.stringify(progress));
@@ -554,6 +580,8 @@ internal class AndroidRuntimeHost(
         """.trimIndent()
         Log.i(TAG, "android_runtime_bootstrap_start")
         awaitString(bootstrap)
+        eventLoopPumpActive = true
+        handler.post(eventLoopPump)
         Log.i(TAG, "android_runtime_bootstrap_complete")
         Log.i(TAG, "android_runtime_ready")
         onProgress(AndroidRuntimeProgress(1, "ready", 1))
@@ -565,21 +593,16 @@ internal class AndroidRuntimeHost(
         if (value !is V8ValuePromise) return value.toString()
         value.use { promise ->
             while (promise.isPending) {
-                // Node's module loader and loopback HTTP server need the
-                // pending libuv tasks to drain; RunNoWait only executes the
-                // current microtask checkpoint and can leave the promise
-                // pending forever on Android.
-                runtime.await(V8AwaitMode.RunTillNoMoreTasks)
-                Thread.yield()
+                // A Runtime HTTP listener is intentionally persistent. Never
+                // drain until no tasks remain: advance one non-blocking turn
+                // and leave the HandlerThread free for its next command.
+                runtime.await(V8AwaitMode.RunNoWait)
+                Thread.sleep(EVENT_LOOP_PUMP_MILLIS)
             }
             if (promise.isRejected) {
                 throw IllegalStateException("Javet promise rejected.")
             }
-            // A fulfilled top-level promise can enqueue the final Node module
-            // continuation that publishes a cold-activated plugin. Drain that
-            // Runtime-owned checkpoint before exposing readiness to Flutter.
-            runtime.await(V8AwaitMode.RunTillNoMoreTasks)
-            Thread.yield()
+            runtime.await(V8AwaitMode.RunNoWait)
             promise.getResult<V8Value>().use { result ->
                 return result.toString()
             }
@@ -654,8 +677,8 @@ internal class AndroidRuntimeHost(
         }
         value.use { promise ->
             while (promise.isPending) {
-                nodeRuntime?.await(V8AwaitMode.RunTillNoMoreTasks)
-                Thread.yield()
+                nodeRuntime?.await(V8AwaitMode.RunNoWait)
+                Thread.sleep(EVENT_LOOP_PUMP_MILLIS)
             }
             if (promise.isRejected) {
                 throw IllegalStateException("Javet module evaluation rejected.")
@@ -851,6 +874,7 @@ internal class AndroidRuntimeHost(
     }
 
     private companion object {
+        const val EVENT_LOOP_PUMP_MILLIS = 10L
         const val MAX_IMPORT_BYTES = 32L * 1024L * 1024L
         const val MAX_TRANSFER_BATCH = 32
         const val TRANSFER_CHUNK_BYTES = 64 * 1024

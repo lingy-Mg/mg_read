@@ -1,3 +1,15 @@
+/// 底部导航共享动效范围测试。
+///
+/// 职责：
+/// - 验证胶囊可重定向、减少动态效果立即收束且 controller 可释放。
+///
+/// 注意：
+/// - 这是共享组件测试，不替代 Android 页面或路由验收。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
@@ -84,18 +96,18 @@ void main() {
     expect(movingIndicator.width, lessThan(initialIndicator.width));
     expect(movingIndicator.height, lessThan(initialIndicator.height));
 
-    await tester.pump(const Duration(milliseconds: 180));
+    await tester.pump(const Duration(milliseconds: 30));
+    expect(
+      tester.getSize(indicator).width,
+      greaterThan(initialIndicator.width),
+    );
+
+    await tester.pump(const Duration(milliseconds: 150));
     expect(_labelOpacity(tester, AppNavigationDestination.home), 1);
     expect(_labelOpacity(tester, AppNavigationDestination.search), 0);
     expect(
       _iconScale(tester, AppNavigationDestination.search),
       AppMotion.bottomNavigationSelectedIconScale,
-    );
-
-    await tester.pump(const Duration(milliseconds: 80));
-    expect(
-      tester.getSize(indicator).width,
-      greaterThan(initialIndicator.width),
     );
 
     await tester.pumpAndSettle();
@@ -239,6 +251,87 @@ void main() {
         0.1,
       ),
     );
+  });
+
+  testWidgets(
+    'settles the capsule and implicit feedback immediately when reduced',
+    (WidgetTester tester) async {
+      AppNavigationDestination selected = AppNavigationDestination.home;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: MediaQuery(
+            data: const MediaQueryData(disableAnimations: true),
+            child: AppBottomNavigationMotionScope(
+              animateTexture: false,
+              child: StatefulBuilder(
+                builder: (BuildContext context, StateSetter setState) {
+                  return Scaffold(
+                    bottomNavigationBar: AppBottomNavigation(
+                      selected: selected,
+                      onSelected: (AppNavigationDestination destination) {
+                        setState(() => selected = destination);
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final Finder indicator = find.byKey(
+        const Key('app-bottom-navigation-moving-indicator'),
+      );
+      await tester.tap(find.byKey(const Key('app-nav-discover')));
+      await tester.pump();
+
+      expect(selected, AppNavigationDestination.discover);
+      expect(
+        tester.getCenter(indicator).dx,
+        closeTo(
+          tester.getCenter(find.byKey(const Key('app-nav-discover'))).dx,
+          0.1,
+        ),
+      );
+      expect(
+        tester
+            .widget<AnimatedAlign>(
+              find.byKey(const Key('app-nav-icon-motion-discover')),
+            )
+            .duration,
+        Duration.zero,
+      );
+    },
+  );
+
+  testWidgets('releases active navigation tickers when its scope is removed', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: AppBottomNavigationMotionScope(
+          animateTexture: false,
+          child: Scaffold(
+            bottomNavigationBar: AppBottomNavigation(
+              selected: AppNavigationDestination.home,
+              onSelected: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('app-nav-profile')));
+    await tester.pump(const Duration(milliseconds: 40));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(tester.binding.transientCallbackCount, 0);
   });
 }
 

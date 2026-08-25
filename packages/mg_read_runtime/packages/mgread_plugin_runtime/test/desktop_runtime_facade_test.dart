@@ -58,6 +58,25 @@ void main() {
     expect(status.plugins, isA<List<InstalledPlugin>>());
   });
 
+  test('Flutter Facade enables and disables the transient Debug inspector', () async {
+    final runtime = PluginRuntime.desktopForTesting(
+      runtimeRepositoryRoot: Directory.current.parent.parent,
+    );
+    addTearDown(runtime.debugDispose);
+
+    final enabled = await runtime.setDebugHttpEnabled(true);
+    expect(enabled.enabled, isTrue);
+    expect(enabled.endpoints, isNotEmpty);
+    final page = await HttpClient().getUrl(Uri.parse(enabled.endpoints.first));
+    final response = await page.close();
+    expect(response.statusCode, 200);
+    await response.drain();
+
+    final disabled = await runtime.setDebugHttpEnabled(false);
+    expect(disabled.enabled, isFalse);
+    expect(disabled.endpoints, isEmpty);
+  });
+
   test(
     'Flutter Facade decodes an empty one-shot plugin recovery summary',
     () async {
@@ -133,6 +152,50 @@ void main() {
         ),
         isNot(contains('test-only shell failure')),
       );
+    },
+  );
+
+  test(
+    'Flutter desktop Supervisor opens a source directory outside Node',
+    () async {
+      final repositoryRoot = Directory.current.parent.parent;
+      final runtimeDataRoot = await _stageInstalledStandardPlugin();
+      final openedDirectories = <String>[];
+      final runtime = PluginRuntime.desktopForTesting(
+        runtimeRepositoryRoot: repositoryRoot,
+        runtimeDataRoot: runtimeDataRoot,
+        directoryLauncher: (Directory directory) async {
+          openedDirectories.add(directory.path);
+        },
+      );
+      addTearDown(() async {
+        await runtime.debugDispose();
+        await runtimeDataRoot.delete(recursive: true);
+      });
+
+      final kind = await runtime.invoke(
+        const OpenPluginCodeDirectoryInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
+        ),
+      );
+
+      if (Platform.isWindows) {
+        expect(kind, PluginCodeDirectoryKind.installed);
+        expect(openedDirectories, hasLength(1));
+        expect(
+          openedDirectories.single,
+          endsWith(
+            <String>[
+              'plugins',
+              'org.mgread.flutter.fixture',
+              'versions',
+              '1.0.0',
+            ].join(Platform.pathSeparator),
+          ),
+        );
+      } else {
+        fail('Desktop source-directory opening is only supported on Windows.');
+      }
     },
   );
 

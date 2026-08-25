@@ -127,6 +127,13 @@ class ReaderLayoutLru {
     return value;
   }
 
+  /// Returns whether a completed layout is present without removing it.
+  bool contains(ReaderLayoutFingerprint key) => _entries.containsKey(key);
+
+  /// Returns whether [pages] fits the bounded character budget.
+  bool canStore(List<ReaderPage> pages) =>
+      _characterCount(pages) <= maxCharacters;
+
   void put(ReaderLayoutFingerprint key, List<ReaderPage> pages) {
     final List<ReaderPage> value = List<ReaderPage>.unmodifiable(pages);
     final int characters = _characterCount(value);

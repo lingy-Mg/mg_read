@@ -17,6 +17,7 @@ import 'dart:collection';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -41,11 +42,16 @@ import 'settings/reader_settings_tokens.dart';
 
 part 'text_reader_session.dart';
 part 'text_reader_pagination.dart';
+part 'text_reader_progress_navigation.dart';
+part 'text_reader_adjacent_pagination.dart';
+part 'text_reader_chapter_prefetch.dart';
 part 'text_reader_comments.dart';
 part 'text_reader_persistence.dart';
 part 'text_reader_content_widgets.dart';
+part 'text_reader_vertical_content_widgets.dart';
 part 'text_reader_chrome_widgets.dart';
 part 'text_reader_library_sheet.dart';
+part 'text_reader_status_widgets.dart';
 
 /// A complete, embeddable text reading surface.
 ///
@@ -104,6 +110,10 @@ class _TextReaderViewState extends State<TextReaderView>
   static const int _primaryMouseButton = 1;
   static const double _inlineCommentHitSize = 48;
   static const double _inlineCommentVisualSize = 30;
+  static final Expando<int> _contentLayoutIdentities = Expando<int>(
+    'reader-content-layout-identity',
+  );
+  static int _nextContentLayoutIdentity = 1;
 
   final TextPaginator _paginator = const TextPaginator();
   static final ReaderLayoutLru _layoutCache = ReaderLayoutLru();
@@ -213,6 +223,15 @@ class _TextReaderViewState extends State<TextReaderView>
   int _fontLoadGeneration = 0;
   int _paginationGeneration = 0;
   int _contentEpoch = 0;
+  bool _currentPaginationComplete = false;
+  int _adjacentPreparationGeneration = 0;
+  int _adjacentOperationId = 0;
+  int _chapterTransitionOperationId = 0;
+  bool _adjacentPreparationActive = false;
+  int _adjacentActiveOperation = 0;
+  Stopwatch? _adjacentPreparationStopwatch;
+  int? _pendingChapterTransitionOperation;
+  Stopwatch? _chapterTransitionStopwatch;
   int _progressiveParagraphCursor = 0;
   List<ReaderPage> _progressivePages = const <ReaderPage>[];
   ReaderPageContinuation? _progressiveContinuation;
@@ -431,6 +450,7 @@ class _TextReaderViewState extends State<TextReaderView>
     final TextScaler? previousScaler = _dependencyTextScaler;
     _dependencyTextScaler = nextScaler;
     if (previousScaler == null || previousScaler == nextScaler) return;
+    _cancelAdjacentPreparation();
     if (_preferences.navigationMode == ReaderNavigationMode.verticalScroll) {
       _scheduleVerticalRestore(paragraphId: _progress?.paragraphId);
     }
@@ -439,6 +459,8 @@ class _TextReaderViewState extends State<TextReaderView>
   @override
   void dispose() {
     _disposed = true;
+    _completeChapterTransition(ReaderChapterPerformanceOutcome.cancelled);
+    _cancelAdjacentPreparation();
     WidgetsBinding.instance.removeObserver(this);
     _fontLoadGeneration++;
     _chapterStateRefreshGeneration++;
@@ -483,6 +505,7 @@ class _TextReaderViewState extends State<TextReaderView>
 
   @override
   void didHaveMemoryPressure() {
+    _cancelAdjacentPreparation();
     _layoutCache.clear();
   }
 
@@ -492,6 +515,7 @@ class _TextReaderViewState extends State<TextReaderView>
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
       _layoutCache.clear();
+      _cancelAdjacentPreparation();
     }
   }
 
@@ -505,9 +529,9 @@ class _TextReaderViewState extends State<TextReaderView>
       child: Theme(
         data: _readerMaterialTheme(palette),
         child: PopScope<void>(
-          canPop: false,
+          canPop: true,
           onPopInvokedWithResult: (bool didPop, void result) {
-            if (!didPop) unawaited(_requestExit());
+            if (didPop) unawaited(_requestExit());
           },
           child: Material(
             color: palette.background,
@@ -662,133 +686,4 @@ class _TextReaderViewState extends State<TextReaderView>
       theme == ReaderThemePreset.night ||
       theme == ReaderThemePreset.deepNight ||
       theme == ReaderThemePreset.charcoal;
-}
-
-class _CenteredStatus extends StatelessWidget {
-  const _CenteredStatus({required this.color, required this.child});
-
-  final Color color;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return DefaultTextStyle(
-      style: TextStyle(color: color, fontSize: 15),
-      child: Center(child: child),
-    );
-  }
-}
-
-class _ReaderEmptyState extends StatelessWidget {
-  const _ReaderEmptyState({
-    required this.icon,
-    required this.message,
-    required this.color,
-  });
-
-  final IconData icon;
-  final String message;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(icon, size: 32, color: color),
-          const SizedBox(height: 10),
-          Text(message, style: TextStyle(color: color, fontSize: 14)),
-        ],
-      ),
-    );
-  }
-}
-
-/// Blocks another turn while a reverse chapter transition finishes measuring
-/// its tail page. The text is deliberately local to this reader-only state.
-class _PreviousChapterTailMask extends StatelessWidget {
-  const _PreviousChapterTailMask({required this.palette});
-
-  final ReaderPalette palette;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: AbsorbPointer(
-        child: ColoredBox(
-          color: palette.background.withValues(alpha: 0.78),
-          child: Center(
-            child: Semantics(
-              label: '正在定位上一章末页',
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  SizedBox.square(
-                    dimension: 28,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: palette.accent,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '正在定位上一章末页',
-                    style: TextStyle(color: palette.secondaryText),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ReaderNotice extends StatelessWidget {
-  const _ReaderNotice({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: SafeArea(
-        child: Align(
-          alignment: const Alignment(0, 0.72),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: const Color(0xE62A2926),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              child: Text(
-                message,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ReaderScrollBehavior extends MaterialScrollBehavior {
-  const _ReaderScrollBehavior();
-
-  @override
-  Set<PointerDeviceKind> get dragDevices => const <PointerDeviceKind>{
-    PointerDeviceKind.touch,
-    PointerDeviceKind.mouse,
-    PointerDeviceKind.stylus,
-    PointerDeviceKind.invertedStylus,
-    PointerDeviceKind.trackpad,
-  };
-}
-
-extension<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
 }

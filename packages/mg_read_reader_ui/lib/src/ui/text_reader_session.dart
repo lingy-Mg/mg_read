@@ -25,6 +25,7 @@ extension _TextReaderSession on _TextReaderViewState {
 
   Future<void> _restart({Future<void>? persistenceCheckpoint}) async {
     _stopAutoReading();
+    _completeChapterTransition(ReaderChapterPerformanceOutcome.cancelled);
     _requestGeneration++;
     final int generation = ++_sessionGeneration;
     _navigationGeneration++;
@@ -35,6 +36,8 @@ extension _TextReaderSession on _TextReaderViewState {
     _chapterCache.clear();
     _chapterLoads.clear();
     _layoutFingerprint = null;
+    _cancelAdjacentPreparation();
+    _currentPaginationComplete = false;
     _contentEpoch++;
     _commentSummaries.clear();
     _commentSummariesLoading = false;
@@ -483,11 +486,13 @@ extension _TextReaderSession on _TextReaderViewState {
       } else {
         _cacheChapter(chapter);
       }
+      _cancelAdjacentPreparation();
       _chapterIndex = targetInfo.index;
       _currentChapterInfo = targetInfo;
       _content = chapter;
       _contentEpoch++;
       _pages = const <ReaderPage>[];
+      _currentPaginationComplete = false;
       _pageIndex = 0;
       _paragraphKeys.clear();
       _awaitingPreviousChapterTail =
@@ -538,13 +543,9 @@ extension _TextReaderSession on _TextReaderViewState {
       if (mounted) setState(() {});
       _publishSnapshot();
       unawaited(_notify(() => observer.onChapterChanged(targetInfo)));
-      if (_firstContentNotificationSent) {
-        await _syncAwake();
-      } else {
-        // Screen-awake is non-essential to the first text frame. Do not let
-        // a platform queue delay chapter presentation during cold start.
-        unawaited(_syncAwake());
-      }
+      // Screen-awake is non-essential to a page turn. A slow platform queue
+      // must never hold the chapter transition or its first readable frame.
+      unawaited(_syncAwake());
       if (!_isCurrent(generation) || session != _sessionGeneration) return;
       if (_preferences.navigationMode == ReaderNavigationMode.verticalScroll) {
         _scheduleVerticalRestore();
@@ -638,80 +639,6 @@ extension _TextReaderSession on _TextReaderViewState {
       characterOffset: last.text.length,
     );
   }
-
-  TextChapterContent? _takeCached(String id) {
-    final TextChapterContent? value = _chapterCache.remove(id);
-    if (value != null) _chapterCache[id] = value;
-    return value;
-  }
-
-  Future<TextChapterContent> _loadChapterContent(
-    TextReaderDataSource dataSource,
-    String bookId,
-    String chapterId, {
-    bool reuseInFlight = true,
-  }) async {
-    final String key = '$bookId\u0000$chapterId';
-    final Future<TextChapterContent>? existing = _chapterLoads[key];
-    if (reuseInFlight && existing != null) return existing;
-    final Future<TextChapterContent> request = dataSource.loadChapterContent(
-      bookId,
-      chapterId,
-    );
-    _chapterLoads[key] = request;
-    try {
-      return await request;
-    } finally {
-      if (identical(_chapterLoads[key], request)) _chapterLoads.remove(key);
-    }
-  }
-
-  void _cacheChapter(TextChapterContent chapter) {
-    _chapterCache.remove(chapter.chapterId);
-    _chapterCache[chapter.chapterId] = chapter;
-    while (_chapterCache.length > _TextReaderViewState._chapterCacheLimit) {
-      _chapterCache.remove(_chapterCache.keys.first);
-    }
-  }
-
-  Future<void> _prefetchNext(int currentIndex) async {
-    final int nextIndex = currentIndex + 1;
-    if (_catalogTotal > 0 && nextIndex >= _catalogTotal) return;
-    final int session = _sessionGeneration;
-    final TextReaderDataSource dataSource = widget.dataSource;
-    final String bookId = widget.bookId;
-    try {
-      final ReaderChapterInfo next = await _chapterInfoAtIndex(nextIndex);
-      if (!_isSessionCurrent(session) ||
-          !identical(dataSource, widget.dataSource) ||
-          bookId != widget.bookId) {
-        return;
-      }
-      if (_chapterCache.containsKey(next.id)) return;
-      final TextChapterContent content = await _loadChapterContent(
-        dataSource,
-        bookId,
-        next.id,
-      );
-      if (!_isSessionCurrent(session) ||
-          !identical(dataSource, widget.dataSource) ||
-          bookId != widget.bookId ||
-          _chapterIndex != currentIndex) {
-        return;
-      }
-      if (content.chapterId != next.id) return;
-      _validateChapter(content, expectedChapterId: next.id);
-      _cacheChapter(content);
-    } catch (_) {
-      // Prefetch is best effort. Foreground loading reports actionable errors.
-    }
-  }
-
-  bool _isCurrent(int generation) =>
-      !_disposed && generation == _requestGeneration;
-
-  bool _isSessionCurrent(int generation) =>
-      !_disposed && generation == _sessionGeneration;
 
   Future<void> _loadPersistedCustomFont() async {
     final int generation = ++_fontLoadGeneration;

@@ -1,3 +1,16 @@
+/**
+ * Runtime Core and its private transports.
+ *
+ * Responsibilities:
+ * - own the Node Runtime lifecycle, private loopback plane and Debug inspector;
+ * - resolve source directories for the Flutter Supervisor without launching
+ *   user-facing shell processes from the Job-managed Node child.
+ *
+ * Boundaries:
+ * - paths in control responses are consumed only by the package Supervisor;
+ * - the optional LAN inspector never exposes control RPC or raw resource URLs;
+ * - the public Flutter Facade exposes typed results and never exposes paths.
+ */
 import { createHash, randomUUID } from "node:crypto";
 import {
   createServer,
@@ -32,6 +45,10 @@ import {
   maxWebSocketOutboundQueueBytes,
   ServerWebSocketSession,
 } from "./websocket.js";
+import { RuntimeDebugHttpServer } from "./debug-http.js";
+import { createRuntimeDebugHttpServer } from "./debug-http-bridge.js";
+import { dispatchDebugHttpSetEnabled } from "./debug-http-control.js";
+import { servePluginTransferResource, serveSourceResource } from "./loopback-resources.js";
 import {
   PluginManager,
   PluginManagerError,
@@ -89,6 +106,7 @@ const RUNTIME_CONTROL_METHOD = Object.freeze({
   diagnosticsSessionDelete: "diagnostics.session.delete.v1",
   diagnosticsSessionsList: "diagnostics.sessions.list.v1",
   diagnosticsStatisticsGet: "diagnostics.statistics.get.v1",
+  debugHttpSetEnabled: "runtime.debugHttp.setEnabled.v1",
   hello: "runtime.hello",
   ping: "runtime.ping",
   status: "runtime.status.v1",
@@ -371,11 +389,11 @@ export interface DesktopRuntimeOptions {
    */
   readonly bundledPluginRoot?: string;
 
-  /** Runtime-owned desktop shell action; only package tests may replace it. */
-  readonly openDirectory?: (directory: string) => Promise<void>;
-
   /** Runtime-owned in-process adapter mode; skips the desktop loopback listener. */
   readonly embedded?: boolean;
+
+  /** Platform build gate for the optional unauthenticated Debug listener. */
+  readonly debugHttpAllowed?: boolean;
 
   /** Safe progress sink used by the platform adapter; never receives paths or raw errors. */
   readonly onProgress?: DesktopRuntimeProgressSink;
@@ -408,7 +426,7 @@ export class DesktopRuntime {
   /** Immutable platform-package seed directory, if this launch supplies one. */
   readonly #bundledPluginRoot: string | undefined;
   readonly #embedded: boolean;
-  readonly #openDirectory: (directory: string) => Promise<void>;
+  readonly #debugHttpAllowed: boolean;
   readonly #onProgress: DesktopRuntimeProgressSink;
 
   /** All currently open RPC sessions, closed before server shutdown. */
@@ -421,6 +439,8 @@ export class DesktopRuntime {
   #startPromise: Promise<DesktopRuntimeReady> | undefined;
   #stopPromise: Promise<void> | undefined;
   #pluginManager: PluginManager | undefined;
+  /** Optional, separately-bound Debug inspector; never carries Runtime RPC. */
+  #debugHttp: RuntimeDebugHttpServer | undefined;
   #diagnostics: RuntimeDiagnosticsService | undefined;
   readonly #webSocketSpans = new Map<ServerWebSocketSession, RuntimeDiagnosticSpan>();
 
@@ -433,7 +453,7 @@ export class DesktopRuntime {
     this.#pluginImportInboxRoot = options.pluginImportInboxRoot;
     this.#bundledPluginRoot = options.bundledPluginRoot;
     this.#embedded = options.embedded ?? false;
-    this.#openDirectory = options.openDirectory ?? openWindowsDirectory;
+    this.#debugHttpAllowed = options.debugHttpAllowed ?? false;
     this.#onProgress = options.onProgress ?? (() => {});
   }
 
@@ -588,38 +608,18 @@ export class DesktopRuntime {
       throw error;
     }
     this.#pluginManager = pluginManager;
+    if (this.#debugHttpAllowed) {
+      this.#debugHttp = createRuntimeDebugHttpServer(
+        this.#bootId,
+        (request) => this.#dispatch(request, new AbortController().signal, undefined),
+      );
+    }
     emitRuntimeDiagnostic({
       code: "plugin_runtime_initialized",
       level: "info",
       message: "The standard Node plugin runtime initialized successfully.",
       type: "diagnostic",
     });
-
-    // Android runs this Core inside Javet's embedded NodeRuntime. It has no
-    // desktop loopback transport, and starting a Node HTTP server here can
-    // leave the Javet event loop waiting forever before bootstrap completes.
-    // Keep the embedded route transport-free; desktop Node owns HTTP/WS.
-    if (this.#embedded) {
-      const ready: DesktopRuntimeReady = Object.freeze({
-        bootId: this.#bootId,
-        host: LOOPBACK_HOST,
-        nodeVersion: process.versions.node,
-        pid: process.pid,
-        port: 0,
-        protocolVersion,
-        runtimeVersion,
-        startedAt: this.#startedAt,
-        type: "ready",
-      });
-      this.#ready = ready;
-      lifecycleSpan?.end("success", {
-        attributes: () => runtimeDiagnosticValue.object({
-          platform: runtimeDiagnosticValue.string(process.platform),
-          stage: runtimeDiagnosticValue.string("ready"),
-        }),
-      });
-      return ready;
-    }
 
     const server = createServer((request, response) => {
       this.#handleHttp(request, response);
@@ -861,6 +861,8 @@ export class DesktopRuntime {
       });
       throw error;
     } finally {
+      await this.#debugHttp?.dispose();
+      this.#debugHttp = undefined;
       await this.#pluginManager?.close();
       this.#pluginManager = undefined;
       await diagnostics?.close();
@@ -916,13 +918,13 @@ export class DesktopRuntime {
     const resourceMatch = /^\/v1\/source-resource\/([A-Za-z0-9_-]{32,128})$/.exec(url.pathname);
     if (resourceMatch !== null) {
       if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); finish(405); return; }
-      void this.#serveSourceResource(resourceMatch[1]!, response, finish);
+      void serveSourceResource(this.#pluginManager, resourceMatch[1]!, response, finish);
       return;
     }
     const transferMatch = /^\/v1\/plugin-transfer\/([A-Za-z0-9_-]{32,128})$/.exec(url.pathname);
     if (transferMatch !== null) {
       if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); finish(405); return; }
-      void this.#servePluginTransferResource(transferMatch[1]!, response, finish);
+      void servePluginTransferResource(this.#pluginManager, transferMatch[1]!, response, finish);
       return;
     }
     if (request.method !== "GET") {
@@ -960,35 +962,6 @@ export class DesktopRuntime {
 
     this.#writeJson(response, 404, { code: "not_found" });
     finish(404);
-  }
-
-  async #serveSourceResource(token: string, response: ServerResponse, finish: (status: number) => void): Promise<void> {
-    try {
-      const result = await this.#pluginManager?.consumeResource(token, new AbortController().signal);
-      if (result === undefined) { response.writeHead(404); response.end(); finish(404); return; }
-      response.writeHead(result.status, { "Cache-Control": "no-store", ...result.headers, "Content-Length": result.body.byteLength });
-      response.end(result.body); finish(result.status);
-    } catch {
-      response.writeHead(404); response.end(); finish(404);
-    }
-  }
-
-  async #servePluginTransferResource(token: string, response: ServerResponse, finish: (status: number, downloadedBytes?: number) => void): Promise<void> {
-    const resource = this.#pluginManager?.consumePluginTransferResource(token);
-    if (resource === undefined) { response.writeHead(404); response.end(); finish(404); return; }
-    try {
-      response.writeHead(200, {
-        "Cache-Control": "no-store",
-        "Content-Length": resource.bytes,
-        "Content-Type": "application/octet-stream",
-        "X-MgRead-Sha256": resource.sha256,
-      });
-      resource.stream.on("error", () => { response.destroy(); finish(500); });
-      resource.stream.pipe(response).on("finish", () => finish(200, resource.bytes));
-    } catch {
-      response.destroy();
-      finish(500);
-    }
   }
 
   /**
@@ -1329,6 +1302,13 @@ export class DesktopRuntime {
         };
         return { result: status };
       }
+      case RUNTIME_CONTROL_METHOD.debugHttpSetEnabled:
+        if (!this.#debugHttpAllowed) {
+          return {
+            error: this.#requestError(request, "method_not_found", "The Runtime method is not implemented."),
+          };
+        }
+        return dispatchDebugHttpSetEnabled(request, this.#debugHttp);
       case RUNTIME_CONTROL_METHOD.pluginsList: {
         if (Object.keys(request.params).length !== 0) {
           return {
@@ -1469,7 +1449,6 @@ export class DesktopRuntime {
     }
   }
 
-  /** Persists a desired enabled state without exposing Runtime storage. */
   async #dispatchPluginEnabled(
     request: RuntimeRequest,
   ): Promise<RuntimeDispatchResult> {
@@ -1596,8 +1575,15 @@ export class DesktopRuntime {
       const manager = this.#pluginManager;
       if (manager === undefined) throw new PluginManagerError("plugin_load_failed");
       const directory = await manager.resolveCodeDirectory(request.params.pluginId);
-      await this.#openDirectory(directory.directory);
-      return { result: { kind: directory.kind } };
+      // The absolute path is an internal Supervisor hand-off only. The
+      // Flutter Facade consumes the kind and opens the path from its own
+      // desktop process, so the application layer never observes it.
+      return {
+        result: {
+          directory: directory.directory,
+          kind: directory.kind,
+        },
+      };
     } catch (error) {
       if (error instanceof PluginManagerError) {
         return {
@@ -2531,21 +2517,4 @@ function pluginManagerErrorMessage(code: PluginManagerError["code"]): string {
     case "timeout":
       return "The plugin request deadline has elapsed.";
   }
-}
-
-/** Opens a verified Runtime-owned folder without sending its path to Flutter. */
-async function openWindowsDirectory(directory: string): Promise<void> {
-  const { spawn } = await import("node:child_process");
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn("explorer.exe", [directory], {
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    child.once("error", reject);
-    child.once("spawn", () => {
-      child.unref();
-      resolve();
-    });
-  });
 }

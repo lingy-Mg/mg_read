@@ -72,6 +72,10 @@ Windows Supervisor 在启动 child 前创建并持有
 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object。正常关闭、Flutter owner 退出或异常释放 Job
 时，内核清理已加入的 Node 及其后代；生产 Core 本身不需要向主项目暴露进程控制。
 
+源码目录操作也遵守该所有权边界：`plugins.openCodeDirectory.v1` 只由 Node Core 解析并返回给
+Runtime package 内部的 Flutter Supervisor，绝对路径不进入主应用 Facade。Explorer 由 Flutter
+owner 在 Job Object 外启动，避免被 Node child 的进程树清理；失败只投影为稳定错误和脱敏诊断。
+
 Windows control 始终监听 `127.0.0.1:0`，由 OS 分配端口，不实现固定或随机端口回退。staging
 将固定 Node 二进制复制为 `MgReadNode.exe` 以便 Windows 排障识别，Node 版本/二进制身份不变，
 也不使用 PATH。child 在 ready 前退出、无 stdout 或启动失败时，Supervisor 以稳定 fatal code
@@ -94,6 +98,13 @@ Runtime 测试独立覆盖 `.mgplugin` 安装器：
 和已安装插件状态，不复制本逻辑。
 
 ## Fixture 与自动化证据
+
+## Debug HTTP 检查页
+
+Debug 构建由 Runtime-owned Facade 显式开关独立 HTTP 检查页。它监听临时 IPv4 LAN 端口，
+只提供页面、状态、插件、搜索、发现和封面 probe 路由；内部 WS、health 与原始资源 URL 仍在
+私有 loopback server。地址仅供复制，不经主应用构造或保存。无认证 LAN 风险与 Release 排除
+由 [ADR-0023](../../../docs/architecture/adr/0023-debug-runtime-http-inspector.md) 固定。
 
 [`protocol/fixtures/standard-node-plugin-v1.json`](../protocol/fixtures/standard-node-plugin-v1.json)
 由 Node 与 Flutter 集成测试共享。当前验证层级：

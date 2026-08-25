@@ -1,3 +1,17 @@
+/// 调试日志查看器的强类型查询与捕获网关。
+///
+/// 职责：
+/// - 将 App 与 Runtime 的受限诊断读取映射为页面数据。
+/// - 按当前来源单独创建和停止有时限的详情捕获会话。
+///
+/// 注意：
+/// - 不读取 Runtime 路径或原始传输，仅调用版本化 Runtime Facade。
+/// - App 与 Runtime 捕获会话互不隐式联动，避免一侧状态阻断另一侧日志。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -71,10 +85,7 @@ final class DiagnosticsViewerAttachment {
 
 @immutable
 final class DiagnosticsViewerEventDetails {
-  const DiagnosticsViewerEventDetails({
-    required this.attributesText,
-    required this.attachments,
-  });
+  const DiagnosticsViewerEventDetails({required this.attributesText, required this.attachments});
 
   final List<DiagnosticsViewerAttachment> attachments;
   final String attributesText;
@@ -92,6 +103,7 @@ final class DiagnosticsViewerEventPage {
 final class DiagnosticsViewerCapture {
   const DiagnosticsViewerCapture({
     required this.mode,
+    required this.source,
     required this.expiresAtUtcMicros,
     this.appSessionId,
     this.runtimeSessionId,
@@ -101,23 +113,19 @@ final class DiagnosticsViewerCapture {
   final String? appSessionId;
   final int expiresAtUtcMicros;
   final DiagnosticsDetailMode mode;
+  final DiagnosticsViewerSource source;
   final String? runtimeSessionId;
   final String? warningCode;
 }
 
 abstract interface class DiagnosticsViewerGateway {
-  Future<DiagnosticsViewerEventPage> listEvents({
-    required DiagnosticsViewerSource source,
-    String? cursor,
-  });
+  Future<DiagnosticsViewerEventPage> listEvents({required DiagnosticsViewerSource source, String? cursor});
 
-  Future<DiagnosticsViewerEventDetails> loadEventDetails(
-    DiagnosticsViewerEvent event,
-  );
+  Future<DiagnosticsViewerEventDetails> loadEventDetails(DiagnosticsViewerEvent event);
 
   Future<String> readAttachmentPreview(DiagnosticsViewerAttachment attachment);
 
-  Future<DiagnosticsViewerCapture> startCapture(DiagnosticsDetailMode mode);
+  Future<DiagnosticsViewerCapture> startCapture({required DiagnosticsDetailMode mode, required DiagnosticsViewerSource source});
 
   Future<void> stopCapture(DiagnosticsViewerCapture capture);
 }
@@ -131,14 +139,8 @@ final diagnosticsViewerGatewayProvider = Provider<DiagnosticsViewerGateway>(
   ),
 );
 
-final class DefaultDiagnosticsViewerGateway
-    implements DiagnosticsViewerGateway {
-  DefaultDiagnosticsViewerGateway(
-    this._appQuery,
-    this._appCapture,
-    this._diagnostics,
-    this._runtime,
-  );
+final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway {
+  DefaultDiagnosticsViewerGateway(this._appQuery, this._appCapture, this._diagnostics, this._runtime);
 
   static const int _previewBytes = 32 * 1024;
   static const Duration _captureDuration = Duration(minutes: 15);
@@ -165,10 +167,7 @@ final class DefaultDiagnosticsViewerGateway
   final PluginRuntime _runtime;
 
   @override
-  Future<DiagnosticsViewerEventPage> listEvents({
-    required DiagnosticsViewerSource source,
-    String? cursor,
-  }) async {
+  Future<DiagnosticsViewerEventPage> listEvents({required DiagnosticsViewerSource source, String? cursor}) async {
     final span = _diagnostics.startSpan(
       AppDiagnosticEvents.viewerOperation,
       attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
@@ -183,9 +182,7 @@ final class DefaultDiagnosticsViewerGateway
         case DiagnosticsViewerSource.app:
           final query = _appQuery;
           if (query == null) {
-            result = const DiagnosticsViewerEventPage(
-              items: <DiagnosticsViewerEvent>[],
-            );
+            result = const DiagnosticsViewerEventPage(items: <DiagnosticsViewerEvent>[]);
           } else {
             final page = await query.listEvents(
               filter: DiagnosticEventFilter(),
@@ -193,20 +190,14 @@ final class DefaultDiagnosticsViewerGateway
               limit: 20,
             );
             result = DiagnosticsViewerEventPage(
-              items: List<DiagnosticsViewerEvent>.unmodifiable(
-                page.items.map(_mapAppEvent),
-              ),
+              items: List<DiagnosticsViewerEvent>.unmodifiable(page.items.map(_mapAppEvent)),
               nextCursor: page.nextCursor?.value,
             );
           }
         case DiagnosticsViewerSource.runtime:
-          final page = await _runtime.invoke(
-            RuntimeDiagnosticsEventsInvocation(cursor: cursor),
-          );
+          final page = await _runtime.invoke(RuntimeDiagnosticsEventsInvocation(cursor: cursor));
           result = DiagnosticsViewerEventPage(
-            items: List<DiagnosticsViewerEvent>.unmodifiable(
-              page.items.map(_mapRuntimeEvent),
-            ),
+            items: List<DiagnosticsViewerEvent>.unmodifiable(page.items.map(_mapRuntimeEvent)),
             nextCursor: page.nextCursor,
           );
       }
@@ -215,9 +206,7 @@ final class DefaultDiagnosticsViewerGateway
           'operation': DiagnosticValue.string('events.list'),
           'source': DiagnosticValue.string(source.name),
           'resultCount': DiagnosticValue.int64(result.items.length),
-          'resultState': DiagnosticValue.string(
-            result.items.isEmpty ? 'empty' : 'content',
-          ),
+          'resultState': DiagnosticValue.string(result.items.isEmpty ? 'empty' : 'content'),
         }),
       );
       return result;
@@ -235,9 +224,7 @@ final class DefaultDiagnosticsViewerGateway
   }
 
   @override
-  Future<DiagnosticsViewerEventDetails> loadEventDetails(
-    DiagnosticsViewerEvent event,
-  ) async {
+  Future<DiagnosticsViewerEventDetails> loadEventDetails(DiagnosticsViewerEvent event) async {
     final span = _diagnostics.startSpan(
       AppDiagnosticEvents.viewerOperation,
       attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
@@ -257,30 +244,17 @@ final class DefaultDiagnosticsViewerGateway
           final attachments = await query.listAttachments(event.eventId);
           result = DiagnosticsViewerEventDetails(
             attributesText: _prettyJson(detail.attributes.toWireValue()),
-            attachments: List<DiagnosticsViewerAttachment>.unmodifiable(
-              attachments.map(_mapAppAttachment),
-            ),
+            attachments: List<DiagnosticsViewerAttachment>.unmodifiable(attachments.map(_mapAppAttachment)),
           );
         case DiagnosticsViewerSource.runtime:
-          final detail = await _runtime.invoke(
-            RuntimeDiagnosticsEventInvocation(event.eventId),
-          );
+          final detail = await _runtime.invoke(RuntimeDiagnosticsEventInvocation(event.eventId));
           if (detail == null) throw StateError('diagnostic_event_not_found');
-          final attachments = await _runtime.invoke(
-            RuntimeDiagnosticsAttachmentsInvocation(event.eventId),
-          );
+          final attachments = await _runtime.invoke(RuntimeDiagnosticsAttachmentsInvocation(event.eventId));
           result = DiagnosticsViewerEventDetails(
             attributesText: _prettyJson(
-              _runtimeValueToJson(
-                detail.attributes ??
-                    const RuntimeDiagnosticObjectValue(
-                      <String, RuntimeDiagnosticValue>{},
-                    ),
-              ),
+              _runtimeValueToJson(detail.attributes ?? const RuntimeDiagnosticObjectValue(<String, RuntimeDiagnosticValue>{})),
             ),
-            attachments: List<DiagnosticsViewerAttachment>.unmodifiable(
-              attachments.map(_mapRuntimeAttachment),
-            ),
+            attachments: List<DiagnosticsViewerAttachment>.unmodifiable(attachments.map(_mapRuntimeAttachment)),
           );
       }
       span.complete(
@@ -306,9 +280,7 @@ final class DefaultDiagnosticsViewerGateway
   }
 
   @override
-  Future<String> readAttachmentPreview(
-    DiagnosticsViewerAttachment attachment,
-  ) async {
+  Future<String> readAttachmentPreview(DiagnosticsViewerAttachment attachment) async {
     final span = _diagnostics.startSpan(
       AppDiagnosticEvents.viewerOperation,
       attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
@@ -330,18 +302,12 @@ final class DefaultDiagnosticsViewerGateway
           )) {
             final remaining = _previewBytes - output.length;
             if (remaining <= 0) break;
-            output.addAll(
-              chunk.length <= remaining ? chunk : chunk.take(remaining),
-            );
+            output.addAll(chunk.length <= remaining ? chunk : chunk.take(remaining));
           }
           bytes = output;
         case DiagnosticsViewerSource.runtime:
           final chunk = await _runtime.invoke(
-            RuntimeDiagnosticsAttachmentReadInvocation(
-              attachmentId: attachment.attachmentId,
-              offset: 0,
-              length: _previewBytes,
-            ),
+            RuntimeDiagnosticsAttachmentReadInvocation(attachmentId: attachment.attachmentId, offset: 0, length: _previewBytes),
           );
           bytes = chunk.bytes;
       }
@@ -369,73 +335,62 @@ final class DefaultDiagnosticsViewerGateway
   }
 
   @override
-  Future<DiagnosticsViewerCapture> startCapture(
-    DiagnosticsDetailMode mode,
-  ) async {
+  Future<DiagnosticsViewerCapture> startCapture({required DiagnosticsDetailMode mode, required DiagnosticsViewerSource source}) async {
     if (mode == DiagnosticsDetailMode.off) {
       throw ArgumentError.value(mode, 'mode', 'Capture mode cannot be off.');
     }
-    final maxBytes = mode == DiagnosticsDetailMode.memoryOnly
-        ? 8 * 1024 * 1024
-        : 64 * 1024 * 1024;
+    final maxBytes = mode == DiagnosticsDetailMode.memoryOnly ? 8 * 1024 * 1024 : 64 * 1024 * 1024;
     final detailStorage = mode == DiagnosticsDetailMode.memoryOnly
         ? DiagnosticDetailStorage.memoryOnly
         : DiagnosticDetailStorage.persistToText;
-    String? appSessionId;
-    String? runtimeSessionId;
-    String? warningCode;
-    Object? appError;
-    Object? runtimeError;
-
-    if (_appCapture case final capture?) {
-      try {
-        final session = await capture.startCapture(
-          DiagnosticCapturePolicy(
-            payloadKind: DiagnosticPayloadKind.contentPayload,
-            detailStorage: detailStorage,
-            duration: _captureDuration,
-            maxStoredBytes: maxBytes,
-            components: _appDetailComponents,
-          ),
-        );
-        appSessionId = session.sessionId;
-      } on Object catch (error) {
-        appError = error;
-      }
+    switch (source) {
+      case DiagnosticsViewerSource.app:
+        final capture = _appCapture;
+        if (capture == null) {
+          throw const DiagnosticsViewerException('app_diagnostics_unavailable');
+        }
+        try {
+          final session = await capture.startCapture(
+            DiagnosticCapturePolicy(
+              payloadKind: DiagnosticPayloadKind.contentPayload,
+              detailStorage: detailStorage,
+              duration: _captureDuration,
+              maxStoredBytes: maxBytes,
+              components: _appDetailComponents,
+            ),
+          );
+          return DiagnosticsViewerCapture(
+            mode: mode,
+            source: source,
+            appSessionId: session.sessionId,
+            expiresAtUtcMicros: DateTime.now().toUtc().add(_captureDuration).microsecondsSinceEpoch,
+          );
+        } on Object catch (error, stackTrace) {
+          Error.throwWithStackTrace(DiagnosticsViewerException(_stableErrorCode(error)), stackTrace);
+        }
+      case DiagnosticsViewerSource.runtime:
+        try {
+          final session = await _runtime.invoke(
+            RuntimeDiagnosticsCaptureStartInvocation(
+              payloadKind: RuntimeDiagnosticPayloadKind.contentPayload,
+              detailStorage: mode == DiagnosticsDetailMode.memoryOnly
+                  ? RuntimeDiagnosticDetailStorage.memoryOnly
+                  : RuntimeDiagnosticDetailStorage.persistToText,
+              duration: _captureDuration,
+              maxStoredBytes: maxBytes,
+              components: _runtimeDetailComponents,
+            ),
+          );
+          return DiagnosticsViewerCapture(
+            mode: mode,
+            source: source,
+            runtimeSessionId: session.sessionId,
+            expiresAtUtcMicros: DateTime.now().toUtc().add(_captureDuration).microsecondsSinceEpoch,
+          );
+        } on Object catch (error, stackTrace) {
+          Error.throwWithStackTrace(DiagnosticsViewerException(_stableErrorCode(error)), stackTrace);
+        }
     }
-
-    try {
-      final session = await _runtime.invoke(
-        RuntimeDiagnosticsCaptureStartInvocation(
-          payloadKind: RuntimeDiagnosticPayloadKind.contentPayload,
-          detailStorage: mode == DiagnosticsDetailMode.memoryOnly
-              ? RuntimeDiagnosticDetailStorage.memoryOnly
-              : RuntimeDiagnosticDetailStorage.persistToText,
-          duration: _captureDuration,
-          maxStoredBytes: maxBytes,
-          components: _runtimeDetailComponents,
-        ),
-      );
-      runtimeSessionId = session.sessionId;
-    } on Object catch (error) {
-      runtimeError = error;
-    }
-
-    if (appSessionId == null && runtimeSessionId == null) {
-      throw runtimeError ?? appError ?? StateError('diagnostics_unavailable');
-    }
-    if (appSessionId == null) warningCode = _stableErrorCode(appError!);
-    if (runtimeSessionId == null) warningCode = _stableErrorCode(runtimeError!);
-    return DiagnosticsViewerCapture(
-      mode: mode,
-      appSessionId: appSessionId,
-      runtimeSessionId: runtimeSessionId,
-      warningCode: warningCode,
-      expiresAtUtcMicros: DateTime.now()
-          .toUtc()
-          .add(_captureDuration)
-          .microsecondsSinceEpoch,
-    );
   }
 
   @override
@@ -450,9 +405,7 @@ final class DefaultDiagnosticsViewerGateway
     }
     if (capture.runtimeSessionId case final sessionId?) {
       try {
-        await _runtime.invoke(
-          RuntimeDiagnosticsCaptureStopInvocation(sessionId),
-        );
+        await _runtime.invoke(RuntimeDiagnosticsCaptureStopInvocation(sessionId));
       } on Object catch (error) {
         firstError ??= error;
       }
@@ -461,41 +414,37 @@ final class DefaultDiagnosticsViewerGateway
   }
 }
 
-DiagnosticsViewerEvent _mapAppEvent(DiagnosticEvent event) =>
-    DiagnosticsViewerEvent(
-      source: DiagnosticsViewerSource.app,
-      eventId: event.eventId,
-      component: event.component,
-      eventName: event.eventName,
-      summary: event.summary,
-      severity: event.severity.name,
-      phase: event.phase.name,
-      outcome: event.outcome?.name,
-      occurredAtUtcMicros: event.occurredAtUtcMicros,
-      durationMicros: event.durationMicros,
-      attachmentCount: event.attachmentCount,
-      capturedBytes: event.capturedBytes,
-    );
+DiagnosticsViewerEvent _mapAppEvent(DiagnosticEvent event) => DiagnosticsViewerEvent(
+  source: DiagnosticsViewerSource.app,
+  eventId: event.eventId,
+  component: event.component,
+  eventName: event.eventName,
+  summary: event.summary,
+  severity: event.severity.name,
+  phase: event.phase.name,
+  outcome: event.outcome?.name,
+  occurredAtUtcMicros: event.occurredAtUtcMicros,
+  durationMicros: event.durationMicros,
+  attachmentCount: event.attachmentCount,
+  capturedBytes: event.capturedBytes,
+);
 
-DiagnosticsViewerEvent _mapRuntimeEvent(RuntimeDiagnosticsEvent event) =>
-    DiagnosticsViewerEvent(
-      source: DiagnosticsViewerSource.runtime,
-      eventId: event.eventId,
-      component: event.component,
-      eventName: event.eventName,
-      summary: event.summary,
-      severity: event.severity.name,
-      phase: event.phase.name,
-      outcome: event.outcome?.name,
-      occurredAtUtcMicros: event.occurredAtUtcMicros,
-      durationMicros: event.durationMicros,
-      attachmentCount: event.attachmentCount,
-      capturedBytes: event.capturedBytes,
-    );
+DiagnosticsViewerEvent _mapRuntimeEvent(RuntimeDiagnosticsEvent event) => DiagnosticsViewerEvent(
+  source: DiagnosticsViewerSource.runtime,
+  eventId: event.eventId,
+  component: event.component,
+  eventName: event.eventName,
+  summary: event.summary,
+  severity: event.severity.name,
+  phase: event.phase.name,
+  outcome: event.outcome?.name,
+  occurredAtUtcMicros: event.occurredAtUtcMicros,
+  durationMicros: event.durationMicros,
+  attachmentCount: event.attachmentCount,
+  capturedBytes: event.capturedBytes,
+);
 
-DiagnosticsViewerAttachment _mapAppAttachment(
-  DiagnosticAttachmentDescriptor attachment,
-) => DiagnosticsViewerAttachment(
+DiagnosticsViewerAttachment _mapAppAttachment(DiagnosticAttachmentDescriptor attachment) => DiagnosticsViewerAttachment(
   source: DiagnosticsViewerSource.app,
   attachmentId: attachment.attachmentId,
   kind: attachment.kind,
@@ -506,9 +455,7 @@ DiagnosticsViewerAttachment _mapAppAttachment(
   truncationReason: attachment.truncationReason,
 );
 
-DiagnosticsViewerAttachment _mapRuntimeAttachment(
-  RuntimeDiagnosticAttachment attachment,
-) => DiagnosticsViewerAttachment(
+DiagnosticsViewerAttachment _mapRuntimeAttachment(RuntimeDiagnosticAttachment attachment) => DiagnosticsViewerAttachment(
   source: DiagnosticsViewerSource.runtime,
   attachmentId: attachment.attachmentId,
   kind: attachment.kind,
@@ -525,21 +472,17 @@ Object? _runtimeValueToJson(RuntimeDiagnosticValue value) => switch (value) {
   RuntimeDiagnosticStringValue(:final value) => value,
   RuntimeDiagnosticInt64Value(:final value) => value,
   RuntimeDiagnosticDoubleValue(:final value) => value,
-  RuntimeDiagnosticListValue(:final items) =>
-    items.map(_runtimeValueToJson).toList(growable: false),
+  RuntimeDiagnosticListValue(:final items) => items.map(_runtimeValueToJson).toList(growable: false),
   RuntimeDiagnosticObjectValue(:final fields) => <String, Object?>{
-    for (final entry in fields.entries)
-      entry.key: _runtimeValueToJson(entry.value),
+    for (final entry in fields.entries) entry.key: _runtimeValueToJson(entry.value),
   },
   RuntimeDiagnosticRedactedValue(:final reason) => '<redacted:$reason>',
   RuntimeDiagnosticTruncatedValue(:final reason, :final originalCount) =>
     '<truncated:$reason${originalCount == null ? '' : ':$originalCount'}>',
-  RuntimeDiagnosticAttachmentReferenceValue(:final attachmentId) =>
-    '<attachment:$attachmentId>',
+  RuntimeDiagnosticAttachmentReferenceValue(:final attachmentId) => '<attachment:$attachmentId>',
 };
 
-String _prettyJson(Object? value) =>
-    const JsonEncoder.withIndent('  ').convert(value);
+String _prettyJson(Object? value) => const JsonEncoder.withIndent('  ').convert(value);
 
 String _stableErrorCode(Object error) {
   if (error is PluginRuntimeException) return error.code;
@@ -547,4 +490,11 @@ String _stableErrorCode(Object error) {
   if (error is ArgumentError) return 'invalid_argument';
   if (error is TimeoutException) return 'timeout';
   return 'internal_error';
+}
+
+/// Stable, user-safe diagnostic viewer failure.
+final class DiagnosticsViewerException implements Exception {
+  const DiagnosticsViewerException(this.code);
+
+  final String code;
 }

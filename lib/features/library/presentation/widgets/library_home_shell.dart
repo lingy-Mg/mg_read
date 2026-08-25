@@ -1,3 +1,17 @@
+/// 首页书架展示壳。
+///
+/// 职责：
+/// - 组合首页书架布局、筛选、刷新与用户反馈。
+/// - 在保留当前 Sliver 滚动身份的前提下编排删除展示过渡。
+///
+/// 注意：
+/// - 不在 build() 中执行持久化；删除由显式回调在动画后提交。
+/// - 当前滚动控制器只由本壳持有并在销毁时释放。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -8,16 +22,13 @@ import 'package:mg_read/features/library/presentation/library_home_view_data.dar
 import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_continue_reading_card.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_controls.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_home_top_bar.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
-import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 
 const _deleteBookAction = LibraryBookListAction(id: 'delete', label: '删除');
-const _setBookPrivateAction = LibraryBookListAction(
-  id: 'set-private',
-  label: '设为隐私',
-);
+const _setBookPrivateAction = LibraryBookListAction(id: 'set-private', label: '设为隐私');
 
 /// The responsive, presentation-only app shell for the library landing page.
 class LibraryHomeShell extends StatefulWidget {
@@ -54,13 +65,12 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   LibraryStatusFilter _filter = LibraryStatusFilter.all;
   String? _actionFeedback;
   double _contentOpacity = 1;
+  final Set<String> _removingBookIds = <String>{};
 
   @override
   void didUpdateWidget(covariant LibraryHomeShell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.isRefreshing &&
-        !widget.isRefreshing &&
-        !identical(oldWidget.data, widget.data)) {
+    if (oldWidget.isRefreshing && !widget.isRefreshing && !identical(oldWidget.data, widget.data)) {
       _contentOpacity = 0.4;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -88,16 +98,11 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
             policy: OrderedTraversalPolicy(),
             child: LayoutBuilder(
               builder: (BuildContext context, BoxConstraints constraints) {
-                final bool useWidePagePadding =
-                    constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
-                final double pagePadding = useWidePagePadding
-                    ? AppSpacing.widePagePadding
-                    : AppSpacing.compactPagePadding;
+                final bool useWidePagePadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
+                final double pagePadding = useWidePagePadding ? AppSpacing.widePagePadding : AppSpacing.compactPagePadding;
                 return Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: AppSpacing.contentMaxWidth,
-                    ),
+                    constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
                     child: RefreshIndicator(
                       onRefresh: widget.onRefresh,
                       child: Scrollbar(
@@ -109,12 +114,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                           physics: const AlwaysScrollableScrollPhysics(),
                           slivers: <Widget>[
                             SliverPadding(
-                              padding: EdgeInsets.fromLTRB(
-                                pagePadding,
-                                AppSpacing.pageHeaderTopPadding,
-                                pagePadding,
-                                AppSpacing.page,
-                              ),
+                              padding: EdgeInsets.fromLTRB(pagePadding, AppSpacing.pageHeaderTopPadding, pagePadding, AppSpacing.page),
                               sliver: _buildContentSlivers(context),
                             ),
                           ],
@@ -130,10 +130,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        child: AppBottomNavigation(
-          selected: AppNavigationDestination.home,
-          onSelected: _handleDestinationSelected,
-        ),
+        child: AppBottomNavigation(selected: AppNavigationDestination.home, onSelected: _handleDestinationSelected),
       ),
     );
   }
@@ -155,15 +152,9 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
               ),
               if (widget.isRefreshing) ...<Widget>[
                 const SizedBox(height: AppSpacing.regular),
-                Semantics(
-                  label: '正在刷新书架',
-                  child: const LinearProgressIndicator(),
-                ),
+                Semantics(label: '正在刷新书架', child: const LinearProgressIndicator()),
               ],
-              if (widget.errorNotice != null) ...<Widget>[
-                const SizedBox(height: AppSpacing.comfortable),
-                widget.errorNotice!,
-              ],
+              if (widget.errorNotice != null) ...<Widget>[const SizedBox(height: AppSpacing.comfortable), widget.errorNotice!],
               if (_actionFeedback != null) ...<Widget>[
                 const SizedBox(height: AppSpacing.comfortable),
                 _ActionFeedbackBanner(
@@ -185,10 +176,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOut,
             sliver: SliverToBoxAdapter(
-              child: KeyedSubtree(
-                key: const Key('library-mobile-layout'),
-                child: _buildCompactContent(context),
-              ),
+              child: KeyedSubtree(key: const Key('library-mobile-layout'), child: _buildCompactContent(context)),
             ),
           )
         else ...<Widget>[
@@ -222,6 +210,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
               onBookAction: _handleBookAction,
               presentation: _listPresentation,
               preparingBookId: widget.preparingBookId,
+              removingBookIds: _removingBookIds,
             ),
           ),
         ],
@@ -243,18 +232,14 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     );
   }
 
-  bool get _isFirstRunEmpty =>
-      !widget.data.isPresentationFixture &&
-      widget.data.continueReading == null &&
-      widget.data.books.isEmpty;
+  bool get _isFirstRunEmpty => !widget.data.isPresentationFixture && widget.data.continueReading == null && widget.data.books.isEmpty;
 
   Widget _buildFirstRunContent(BuildContext context) {
     return _buildLibraryList(context);
   }
 
   Widget _buildReadingSurface(BuildContext context) {
-    final LibraryContinueReadingViewData? continueReading =
-        widget.data.continueReading;
+    final LibraryContinueReadingViewData? continueReading = widget.data.continueReading;
     if (continueReading == null) {
       return const _NoReadingProgressCard();
     }
@@ -286,15 +271,14 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
             onBookAction: _handleBookAction,
             presentation: _listPresentation,
             preparingBookId: widget.preparingBookId,
+            removingBookIds: _removingBookIds,
           ),
       ],
     );
   }
 
   LibraryBookListPresentation get _listPresentation =>
-      _section == LibraryHomeSection.recentUpdates
-      ? LibraryBookListPresentation.recentUpdates
-      : LibraryBookListPresentation.shelf;
+      _section == LibraryHomeSection.recentUpdates ? LibraryBookListPresentation.recentUpdates : LibraryBookListPresentation.shelf;
 
   List<LibraryBookListAction> get _bookActions => <LibraryBookListAction>[
     if (widget.callbacks.onSetBookPrivate != null) _setBookPrivateAction,
@@ -334,8 +318,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   }
 
   List<LibraryBookListItemViewData> get _visibleBooks {
-    final Iterable<LibraryBookListItemViewData> sectionBooks =
-        widget.data.books;
+    final Iterable<LibraryBookListItemViewData> sectionBooks = widget.data.books;
     return sectionBooks.where(_matchesFilter).toList(growable: false);
   }
 
@@ -343,8 +326,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     return switch (_filter) {
       LibraryStatusFilter.all => true,
       LibraryStatusFilter.ongoing => book.status == LibraryBookStatus.ongoing,
-      LibraryStatusFilter.completed =>
-        book.status == LibraryBookStatus.completed,
+      LibraryStatusFilter.completed => book.status == LibraryBookStatus.completed,
       LibraryStatusFilter.local => book.status == LibraryBookStatus.local,
     };
   }
@@ -362,8 +344,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   }
 
   void _handleOpenBook(LibraryBookListItemViewData book) {
-    final ValueChanged<LibraryBookListItemViewData>? callback =
-        widget.callbacks.onOpenBook;
+    final ValueChanged<LibraryBookListItemViewData>? callback = widget.callbacks.onOpenBook;
     if (callback != null) {
       callback(book);
       return;
@@ -372,8 +353,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   }
 
   void _handleBookMore(LibraryBookListItemViewData book) {
-    final ValueChanged<LibraryBookListItemViewData>? callback =
-        widget.callbacks.onBookMore;
+    final ValueChanged<LibraryBookListItemViewData>? callback = widget.callbacks.onBookMore;
     if (callback != null) {
       callback(book);
       return;
@@ -381,10 +361,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     _showUnavailableMessage();
   }
 
-  void _handleBookAction(
-    LibraryBookListItemViewData book,
-    LibraryBookListAction action,
-  ) {
+  void _handleBookAction(LibraryBookListItemViewData book, LibraryBookListAction action) {
     switch (action.id) {
       case 'delete':
         final deleteBook = widget.callbacks.onDeleteBook;
@@ -404,10 +381,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     _showUnavailableMessage();
   }
 
-  Future<void> _setBookPrivate(
-    LibraryBookListItemViewData book,
-    Future<void> Function(LibraryBookListItemViewData) setPrivate,
-  ) async {
+  Future<void> _setBookPrivate(LibraryBookListItemViewData book, Future<void> Function(LibraryBookListItemViewData) setPrivate) async {
     try {
       await setPrivate(book);
       if (!mounted) return;
@@ -432,28 +406,32 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
         title: const Text('删除书籍'),
         content: Text('确定要从书架删除《${book.title}》吗？'),
         actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('删除'),
-          ),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('删除')),
         ],
       ),
     );
     if (!mounted || confirmed != true) return;
 
+    if (!_removingBookIds.add(book.id)) return;
+    setState(() {});
+    final Duration transitionDuration = MediaQuery.disableAnimationsOf(context) ? Duration.zero : AppMotion.destinationTransition;
+    await Future<void>.delayed(transitionDuration);
+    if (!mounted) return;
+
     try {
       await deleteBook(book);
       if (!mounted) return;
       setState(() {
-        _actionFeedback = '已从书架删除《${book.title}》';
+        _removingBookIds.remove(book.id);
       });
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(behavior: SnackBarBehavior.floating, content: Text('已从书架删除《${book.title}》')));
     } catch (_) {
       if (!mounted) return;
       setState(() {
+        _removingBookIds.remove(book.id);
         _actionFeedback = '删除操作未能完成，请稍后刷新。';
       });
     }
@@ -480,15 +458,13 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     if (destination == AppNavigationDestination.home) {
       return;
     }
-    final ValueChanged<AppNavigationDestination>? callback =
-        widget.callbacks.onNavigationSelected;
+    final ValueChanged<AppNavigationDestination>? callback = widget.callbacks.onNavigationSelected;
     if (callback != null) {
       callback(destination);
       return;
     }
     if (destination == AppNavigationDestination.profile) {
-      final VoidCallback? onProfileSelected =
-          widget.callbacks.onProfileSelected;
+      final VoidCallback? onProfileSelected = widget.callbacks.onProfileSelected;
       if (onProfileSelected != null) {
         onProfileSelected();
         return;
@@ -511,139 +487,6 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     setState(() {
       _actionFeedback = '此操作尚未接入真实数据，可由后续功能替换。';
     });
-  }
-}
-
-/// Title and top-level actions shared by the library home layouts.
-class LibraryHomeTopBar extends StatelessWidget {
-  /// Creates the top title, search action, and overflow menu.
-  const LibraryHomeTopBar({
-    required this.onSearch,
-    required this.onReadingHistory,
-    required this.onManageSources,
-    required this.onPrivacyLibrary,
-    this.onToggleTheme,
-    super.key,
-  });
-
-  final VoidCallback onSearch;
-  final VoidCallback? onToggleTheme;
-  final VoidCallback onReadingHistory;
-  final VoidCallback onManageSources;
-  final VoidCallback onPrivacyLibrary;
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final VoidCallback? toggleTheme = onToggleTheme;
-    return SizedBox(
-      height: AppSpacing.pageHeaderHeight,
-      child: Row(
-        children: <Widget>[
-          const Expanded(child: AppPageTitle(title: '首页')),
-          const SizedBox(width: AppSpacing.compact),
-          _LibraryTopBarAction(
-            tooltip: '搜索书籍',
-            onPressed: onSearch,
-            icon: Icons.search_rounded,
-          ),
-          if (AppTheme.darkModeEnabled && toggleTheme != null)
-            Padding(
-              padding: const EdgeInsets.only(left: AppSpacing.compact),
-              child: _LibraryTopBarAction(
-                key: const Key('theme-mode-toggle'),
-                tooltip: theme.brightness == Brightness.dark
-                    ? '切换至浅色模式'
-                    : '切换至深色模式',
-                onPressed: toggleTheme,
-                icon: theme.brightness == Brightness.dark
-                    ? Icons.light_mode_outlined
-                    : Icons.dark_mode_outlined,
-              ),
-            ),
-          const SizedBox(width: AppSpacing.compact),
-          MenuAnchor(
-            menuChildren: <Widget>[
-              MenuItemButton(
-                onPressed: onReadingHistory,
-                child: const Text('阅读记录'),
-              ),
-              MenuItemButton(
-                onPressed: onManageSources,
-                child: const Text('管理数据源'),
-              ),
-              MenuItemButton(
-                onPressed: onPrivacyLibrary,
-                child: const Text('隐私书架'),
-              ),
-            ],
-            builder:
-                (
-                  BuildContext context,
-                  MenuController controller,
-                  Widget? child,
-                ) {
-                  return _LibraryTopBarAction(
-                    tooltip: '更多操作',
-                    onPressed: () {
-                      if (controller.isOpen) {
-                        controller.close();
-                      } else {
-                        controller.open();
-                      }
-                    },
-                    icon: Icons.more_vert_rounded,
-                  );
-                },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LibraryTopBarAction extends StatelessWidget {
-  const _LibraryTopBarAction({
-    required this.tooltip,
-    required this.onPressed,
-    required this.icon,
-    super.key,
-  });
-
-  final String tooltip;
-  final VoidCallback onPressed;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Semantics(
-      button: true,
-      label: tooltip,
-      onTap: onPressed,
-      child: Tooltip(
-        message: tooltip,
-        child: Material(
-          color: Colors.transparent,
-          child: InkResponse(
-            onTap: onPressed,
-            excludeFromSemantics: true,
-            radius: AppSpacing.topBarActionSize / 2,
-            child: SizedBox(
-              width: AppSpacing.topBarActionSize,
-              height: AppSpacing.topBarActionSize,
-              child: Center(
-                child: Icon(
-                  icon,
-                  size: AppSpacing.topBarActionIconSize,
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
@@ -677,18 +520,9 @@ class _ActionFeedbackBanner extends StatelessWidget {
               Icon(Icons.info_outline_rounded, color: tokens.accent),
               const SizedBox(width: AppSpacing.compact),
               Expanded(
-                child: Text(
-                  message,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onPrimaryContainer,
-                  ),
-                ),
+                child: Text(message, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onPrimaryContainer)),
               ),
-              IconButton(
-                tooltip: '关闭提示',
-                onPressed: onDismiss,
-                icon: const Icon(Icons.close_rounded),
-              ),
+              IconButton(tooltip: '关闭提示', onPressed: onDismiss, icon: const Icon(Icons.close_rounded)),
             ],
           ),
         ),
@@ -722,12 +556,7 @@ class _NoReadingProgressCard extends StatelessWidget {
                 children: <Widget>[
                   Text('从书架开始阅读', style: theme.textTheme.titleMedium),
                   const SizedBox(height: AppSpacing.compact),
-                  Text(
-                    '阅读进度接入本地资料后会显示在这里。',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: tokens.mutedText,
-                    ),
-                  ),
+                  Text('阅读进度接入本地资料后会显示在这里。', style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
                 ],
               ),
             ),
@@ -757,36 +586,21 @@ class _NoRecentUpdatesCard extends StatelessWidget {
           borderRadius: AppRadii.surface,
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.section,
-            vertical: AppSpacing.page,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.section, vertical: AppSpacing.page),
           child: Column(
             children: <Widget>[
               SizedBox(
                 width: 144,
                 height: 116,
-                child: ExcludeSemantics(
-                  child: Image.asset(
-                    'assets/illustrations/library_empty_updates.png',
-                    fit: BoxFit.contain,
-                  ),
-                ),
+                child: ExcludeSemantics(child: Image.asset('assets/illustrations/library_empty_updates.png', fit: BoxFit.contain)),
               ),
               const SizedBox(height: AppSpacing.compact),
-              Text(
-                '暂无更新内容',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              Text('暂无更新内容', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
               const SizedBox(height: AppSpacing.compact),
               Text(
                 '添加书源后，你关注的作品会显示在这里',
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: tokens.mutedText,
-                ),
+                style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
               ),
               const SizedBox(height: AppSpacing.comfortable),
               OutlinedButton(onPressed: onDiscover, child: const Text('去发现好书')),
@@ -810,10 +624,7 @@ class _NoMatchingBooks extends StatelessWidget {
       liveRegion: true,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.section),
-        child: Text(
-          '没有符合当前筛选条件的书籍',
-          style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText),
-        ),
+        child: Text('没有符合当前筛选条件的书籍', style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText)),
       ),
     );
   }

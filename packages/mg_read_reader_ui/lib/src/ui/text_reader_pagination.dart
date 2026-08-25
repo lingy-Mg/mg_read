@@ -26,7 +26,7 @@ extension _TextReaderPagination on _TextReaderViewState {
       chapterId: _content!.chapterId,
       contentVersion: _content!.contentVersion,
       sessionId: _content!.contentVersion == null
-          ? Object.hash(_sessionGeneration, _contentEpoch)
+          ? _contentLayoutIdentity(_content!)
           : 0,
       viewport: size,
       safeArea: safe,
@@ -51,6 +51,15 @@ extension _TextReaderPagination on _TextReaderViewState {
           : 0,
       chapterCommentPlaceholder: chapterComments ? 168 : 0,
     );
+  }
+
+  int _contentLayoutIdentity(TextChapterContent content) {
+    final int? existing =
+        _TextReaderViewState._contentLayoutIdentities[content];
+    if (existing != null) return existing;
+    final int identity = _TextReaderViewState._nextContentLayoutIdentity++;
+    _TextReaderViewState._contentLayoutIdentities[content] = identity;
+    return identity;
   }
 
   double _paginationWidth(Size size) => size.width <= 1
@@ -81,6 +90,7 @@ extension _TextReaderPagination on _TextReaderViewState {
     if (cached != null) {
       _layoutFingerprint = fingerprint;
       _pages = cached;
+      _currentPaginationComplete = true;
       _pageIndex = _pageIndexForAnchor(
         cached,
       ).clamp(0, cached.isEmpty ? 0 : cached.length - 1);
@@ -137,6 +147,7 @@ extension _TextReaderPagination on _TextReaderViewState {
     );
     _layoutFingerprint = fingerprint;
     _pages = pages;
+    _currentPaginationComplete = false;
     _pageIndex = _pageIndexForAnchor(
       pages,
     ).clamp(0, pages.isEmpty ? 0 : pages.length - 1);
@@ -292,10 +303,12 @@ extension _TextReaderPagination on _TextReaderViewState {
     }
     _TextReaderViewState._layoutCache.put(fingerprint, pages);
     _pages = pages;
+    _currentPaginationComplete = true;
     _pageIndex = _pageIndexForAnchor(
       pages,
     ).clamp(0, pages.isEmpty ? 0 : pages.length - 1);
     _finishHorizontalPagination();
+    _scheduleAdjacentPreparation();
     if (mounted) setState(() {});
     _publishSnapshot();
   }
@@ -305,10 +318,26 @@ extension _TextReaderPagination on _TextReaderViewState {
   /// that chapter's first page while its tail is still being calculated.
   void _finishHorizontalPagination() {
     _restoreHorizontalPageLater();
-    if (!_awaitingPreviousChapterTail) return;
+    if (!_awaitingPreviousChapterTail) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _completeChapterTransition(
+          ReaderChapterPerformanceOutcome.success,
+          pageCount: _pages.length,
+          paragraphCount: _content?.paragraphs.length ?? 0,
+        );
+      });
+      WidgetsBinding.instance.scheduleFrame();
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_awaitingPreviousChapterTail) return;
       setState(() => _awaitingPreviousChapterTail = false);
+      _completeChapterTransition(
+        ReaderChapterPerformanceOutcome.success,
+        pageCount: _pages.length,
+        paragraphCount: _content?.paragraphs.length ?? 0,
+      );
     });
     WidgetsBinding.instance.scheduleFrame();
   }
@@ -489,6 +518,7 @@ extension _TextReaderPagination on _TextReaderViewState {
   }
 
   Future<bool> _nextChapterInternal() async {
+    _completeChapterTransition(ReaderChapterPerformanceOutcome.cancelled);
     final int navigation = ++_navigationGeneration;
     final int nextIndex = _chapterIndex + 1;
     final int total = _catalogTotal > 0 ? _catalogTotal : _catalog.length;
@@ -497,40 +527,112 @@ extension _TextReaderPagination on _TextReaderViewState {
       _showNotice(ReaderStrings.noNextChapter);
       return false;
     }
+    final int operationId = ++_chapterTransitionOperationId;
+    final Stopwatch transitionStopwatch = Stopwatch()..start();
+    _pendingChapterTransitionOperation = operationId;
+    _chapterTransitionStopwatch = transitionStopwatch;
+    _notifyChapterPerformance(
+      ReaderChapterPerformanceEvent.started(
+        phase: ReaderChapterPerformancePhase.chapterTransition,
+        operationId: operationId,
+        preparationKind: ReaderChapterPreparationKind.pending,
+      ),
+    );
     try {
       final ReaderChapterInfo next = await _chapterInfoAtIndex(nextIndex);
-      if (navigation != _navigationGeneration) return false;
+      if (navigation != _navigationGeneration) {
+        _completeChapterTransition(
+          ReaderChapterPerformanceOutcome.cancelled,
+          expectedOperationId: operationId,
+        );
+        return false;
+      }
       await _openChapter(next.id, preserveAutoReading: true);
-      return _content?.chapterId == next.id && _failure == null;
+      final bool success = _content?.chapterId == next.id && _failure == null;
+      if (!success) {
+        _completeChapterTransition(
+          ReaderChapterPerformanceOutcome.error,
+          expectedOperationId: operationId,
+        );
+      }
+      return success;
     } catch (error) {
-      if (navigation != _navigationGeneration) return false;
+      if (navigation != _navigationGeneration) {
+        _completeChapterTransition(
+          ReaderChapterPerformanceOutcome.cancelled,
+          expectedOperationId: operationId,
+        );
+        return false;
+      }
       _restoreCurrentHorizontalPage();
       await _reportFailure(_asFailure(error, ReaderFailureKind.data));
+      _completeChapterTransition(
+        ReaderChapterPerformanceOutcome.error,
+        expectedOperationId: operationId,
+      );
       return false;
     }
   }
 
   Future<void> _previousChapter() async {
     _stopAutoReading();
+    _completeChapterTransition(ReaderChapterPerformanceOutcome.cancelled);
     final int navigation = ++_navigationGeneration;
     if (_chapterIndex < 0) {
       _showNotice(ReaderStrings.noPreviousChapter);
       return;
     }
+    final int operationId = ++_chapterTransitionOperationId;
+    final Stopwatch transitionStopwatch = Stopwatch()..start();
+    _pendingChapterTransitionOperation = operationId;
+    _chapterTransitionStopwatch = transitionStopwatch;
+    _notifyChapterPerformance(
+      ReaderChapterPerformanceEvent.started(
+        phase: ReaderChapterPerformancePhase.chapterTransition,
+        operationId: operationId,
+        preparationKind: ReaderChapterPreparationKind.pending,
+      ),
+    );
     if (_chapterIndex == 0) {
       _showNotice(ReaderStrings.noPreviousChapter);
+      _completeChapterTransition(
+        ReaderChapterPerformanceOutcome.cancelled,
+        expectedOperationId: operationId,
+      );
       return;
     }
     try {
       final ReaderChapterInfo previous = await _chapterInfoAtIndex(
         _chapterIndex - 1,
       );
-      if (navigation != _navigationGeneration) return;
+      if (navigation != _navigationGeneration) {
+        _completeChapterTransition(
+          ReaderChapterPerformanceOutcome.cancelled,
+          expectedOperationId: operationId,
+        );
+        return;
+      }
       await _openChapter(previous.id, openAtEnd: true);
+      if (_content?.chapterId != previous.id || _failure != null) {
+        _completeChapterTransition(
+          ReaderChapterPerformanceOutcome.error,
+          expectedOperationId: operationId,
+        );
+      }
     } catch (error) {
-      if (navigation != _navigationGeneration) return;
+      if (navigation != _navigationGeneration) {
+        _completeChapterTransition(
+          ReaderChapterPerformanceOutcome.cancelled,
+          expectedOperationId: operationId,
+        );
+        return;
+      }
       _restoreCurrentHorizontalPage();
       await _reportFailure(_asFailure(error, ReaderFailureKind.data));
+      _completeChapterTransition(
+        ReaderChapterPerformanceOutcome.error,
+        expectedOperationId: operationId,
+      );
     }
   }
 
@@ -579,72 +681,5 @@ extension _TextReaderPagination on _TextReaderViewState {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _restoringHorizontalAnchor = false;
     });
-  }
-
-  void _showNotice(String message) {
-    _noticeTimer?.cancel();
-    if (mounted) setState(() => _noticeMessage = message);
-    _noticeTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _noticeMessage = null);
-    });
-  }
-
-  void _onHorizontalPageChanged(int rawIndex) {
-    if (_changingChapter || _pages.isEmpty) return;
-    if (_restoringHorizontalAnchor &&
-        rawIndex > 0 &&
-        rawIndex < _pages.length + 1) {
-      _pageIndex = rawIndex - 1;
-      if (mounted) setState(() {});
-      return;
-    }
-    if (rawIndex == 0) {
-      unawaited(_previousChapter());
-      return;
-    }
-    if (rawIndex == _pages.length + 1) {
-      unawaited(_nextChapter());
-      return;
-    }
-    _pageIndex = rawIndex - 1;
-    _updateProgressFromPage();
-    if (mounted) setState(() {});
-  }
-
-  void _updateProgressFromPage() {
-    if (_pages.isEmpty || _pageIndex >= _pages.length) return;
-    final ReaderPage page = _pages[_pageIndex];
-    if (page.blocks.isEmpty) return;
-    final bool hasChapterTrailing = _pages.last.showsChapterTrailing;
-    final int bodyPageCount = _pages.length - (hasChapterTrailing ? 1 : 0);
-    final int visitedBodyPageCount = (_pageIndex + 1).clamp(0, bodyPageCount);
-    _progress = _progressForAnchor(
-      page.paragraphId,
-      page.characterOffset,
-      chapterFraction: bodyPageCount == 0
-          ? 0
-          : visitedBodyPageCount / bodyPageCount,
-    );
-    _scheduleProgressSave();
-    _publishSnapshot();
-  }
-
-  ReaderProgress _progressForAnchor(
-    String paragraphId,
-    int offset, {
-    required double chapterFraction,
-  }) {
-    final int total = _catalogTotal > 0 ? _catalogTotal : _catalog.length;
-    final double bookFraction = total == 0
-        ? 0
-        : ((_chapterIndex + chapterFraction) / total).clamp(0, 1);
-    return ReaderProgress(
-      chapterId: _content?.chapterId ?? _currentChapter?.id ?? '',
-      paragraphId: paragraphId,
-      characterOffset: offset,
-      chapterIndex: _chapterIndex,
-      chapterFraction: chapterFraction.clamp(0, 1),
-      bookFraction: bookFraction,
-    );
   }
 }

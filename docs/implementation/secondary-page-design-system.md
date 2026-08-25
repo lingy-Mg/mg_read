@@ -10,15 +10,16 @@
 二级页面统一使用 `AppSecondaryPageTopBar`；尚未实现的设置项使用
 `AppSecondaryPlaceholderPage`。页面规则如下：
 
-- 根部使用 `SafeArea(bottom: false)`，顶部栏必须位于安全区内部，不能把顶部栏放在
-  `Scaffold.body` 的裸 `Center` 或 `Column` 中。
-- 顶部栏高度为 `AppDetailMetrics.topBarHeight`（64），标题使用 18 号、600 字重并垂直居中。
-  返回和右侧操作都使用 48 × 48 命中区。
+- 根部使用 `SafeArea(bottom: false)`；安全区后统一由 `AppSecondaryPageContent` 插入
+  `AppSpacing.pageHeaderTopPadding`（8）的顶部节奏，不能再由页面自行补状态栏高度或标题栏间距。
+- 顶部栏高度为 `AppSpacing.minimumTouchTarget`（48），标题使用 18 号、600 字重并垂直居中。
+  返回和右侧操作都使用 48 × 48 命中区；这与“我的”根页的顶部标题中心线保持一致。
 - 页面内容与主导航页共用 `AppSpacing.contentMaxWidth`（1184）；小于 720 时保留手机布局，
   不额外增加外侧边距，720 及以上使用 `AppSpacing.widePagePadding`（32）并居中。设置二级页的
   底部导航使用 `AppBottomNavigation`，保持“我的”选中态。
 - 标题、返回回调和右侧操作是顶部栏的可变参数；页面不得重新定义另一套标题栏尺寸、图标
   命中区或状态栏处理。
+- 标题栏固定在滚动内容之外；加载、错误、空态和长列表只能替换或滚动顶部栏以下的内容。
 - 当前 UI 只验收浅色模式；不新增深色截图或 Golden。
 
 ## 返回行为

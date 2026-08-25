@@ -10,76 +10,51 @@ void main() {
     setUp(() => kit = DiagnosticsTestkit());
     tearDown(() => kit.dispose());
 
-    test(
-      'emits one start and exactly one terminal event for an owner span',
-      () {
-        final span = kit.manager.startSpan(
-          AppDiagnosticEvents.bootstrap,
-          attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-            'stage': DiagnosticValue.string('settings'),
-          }),
-        );
-        final result = span.complete(
-          attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-            'stage': DiagnosticValue.string('mounted'),
-          }),
-        );
+    test('emits one start and exactly one terminal event for an owner span', () {
+      final span = kit.manager.startSpan(
+        AppDiagnosticEvents.bootstrap,
+        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{'stage': DiagnosticValue.string('settings')}),
+      );
+      final result = span.complete(
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{'stage': DiagnosticValue.string('mounted')}),
+      );
 
-        expect(result.accepted, isTrue);
-        expect(kit.sink.events, hasLength(2));
-        expect(kit.sink.events.first.eventName, 'app.bootstrap.start');
-        expect(kit.sink.events.last.eventName, 'app.bootstrap.complete');
-        expect(kit.sink.events.last.outcome, DiagnosticOutcome.success);
-        expect(kit.sink.events.last.durationMicros, isNonNegative);
-        expect(kit.sink.events.last.traceId, kit.sink.events.first.traceId);
-        expect(kit.sink.events.last.spanId, kit.sink.events.first.spanId);
-        expect(() => span.complete(), throwsA(isA<StateError>()));
-      },
-    );
+      expect(result.accepted, isTrue);
+      expect(kit.sink.events, hasLength(2));
+      expect(kit.sink.events.first.eventName, 'app.bootstrap.start');
+      expect(kit.sink.events.last.eventName, 'app.bootstrap.complete');
+      expect(kit.sink.events.last.outcome, DiagnosticOutcome.success);
+      expect(kit.sink.events.last.durationMicros, isNonNegative);
+      expect(kit.sink.events.last.traceId, kit.sink.events.first.traceId);
+      expect(kit.sink.events.last.spanId, kit.sink.events.first.spanId);
+      expect(() => span.complete(), throwsA(isA<StateError>()));
+    });
 
-    test(
-      'closes unfinished spans as incomplete before closing the sink',
-      () async {
-        kit.manager.startSpan(AppDiagnosticEvents.bootstrap);
+    test('closes unfinished spans as incomplete before closing the sink', () async {
+      kit.manager.startSpan(AppDiagnosticEvents.bootstrap);
 
-        await kit.manager.close();
+      await kit.manager.close();
 
-        expect(kit.sink.events.last.outcome, DiagnosticOutcome.incomplete);
-        expect(
-          kit.sink.events.last.flags,
-          contains(DiagnosticEventFlag.incomplete),
-        );
-        expect(kit.sink.closed, isTrue);
-      },
-    );
+      expect(kit.sink.events.last.outcome, DiagnosticOutcome.incomplete);
+      expect(kit.sink.events.last.flags, contains(DiagnosticEventFlag.incomplete));
+      expect(kit.sink.closed, isTrue);
+    });
 
-    test(
-      'propagates trace context through nested asynchronous spans',
-      () async {
-        await kit.manager.runSpan<void>(
-          AppDiagnosticEvents.bootstrap,
-          (_) => kit.manager.runSpan<void>(
-            AppDiagnosticEvents.settingsInitialize,
-            (_) async {},
-          ),
-        );
+    test('propagates trace context through nested asynchronous spans', () async {
+      await kit.manager.runSpan<void>(
+        AppDiagnosticEvents.bootstrap,
+        (_) => kit.manager.runSpan<void>(AppDiagnosticEvents.settingsInitialize, (_) async {}),
+      );
 
-        final parent = kit.sink.events.firstWhere(
-          (event) => event.eventName == 'app.bootstrap.start',
-        );
-        final child = kit.sink.events.firstWhere(
-          (event) => event.eventName == 'settings.initialize.start',
-        );
-        expect(child.traceId, parent.traceId);
-        expect(child.parentSpanId, parent.spanId);
-        expect(child.spanId, isNot(parent.spanId));
-      },
-    );
+      final parent = kit.sink.events.firstWhere((event) => event.eventName == 'app.bootstrap.start');
+      final child = kit.sink.events.firstWhere((event) => event.eventName == 'settings.initialize.start');
+      expect(child.traceId, parent.traceId);
+      expect(child.parentSpanId, parent.spanId);
+      expect(child.spanId, isNot(parent.spanId));
+    });
 
     test('does not evaluate attributes when filtered', () {
-      final filteredKit = DiagnosticsTestkit(
-        minimumSeverity: DiagnosticSeverity.error,
-      );
+      final filteredKit = DiagnosticsTestkit(minimumSeverity: DiagnosticSeverity.error);
       addTearDown(filteredKit.dispose);
       var evaluated = false;
 
@@ -87,9 +62,7 @@ void main() {
         AppDiagnosticEvents.routeChanged,
         attributes: () {
           evaluated = true;
-          return DiagnosticObjectValue(<String, DiagnosticValue>{
-            'toRoute': DiagnosticValue.string('library'),
-          });
+          return DiagnosticObjectValue(<String, DiagnosticValue>{'toRoute': DiagnosticValue.string('library')});
         },
       );
 
@@ -105,10 +78,7 @@ void main() {
         summary: 'Unknown event.',
       );
 
-      expect(
-        () => kit.manager.emit(unknownDefinition),
-        throwsA(isA<DiagnosticSchemaError>()),
-      );
+      expect(() => kit.manager.emit(unknownDefinition), throwsA(isA<DiagnosticSchemaError>()));
       expect(
         () => kit.manager.emit(
           AppDiagnosticEvents.routeChanged,
@@ -124,9 +94,7 @@ void main() {
     test('retains unknown future envelope fields as read-only data', () {
       kit.manager.emit(
         AppDiagnosticEvents.routeChanged,
-        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-          'toRoute': DiagnosticValue.string('library'),
-        }),
+        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{'toRoute': DiagnosticValue.string('library')}),
       );
       const codec = DiagnosticEventCodec();
       final wire = codec.encode(kit.sink.events.single);
@@ -152,9 +120,7 @@ void main() {
 
       final result = manager.emit(
         AppDiagnosticEvents.routeChanged,
-        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-          'toRoute': DiagnosticValue.string('library'),
-        }),
+        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{'toRoute': DiagnosticValue.string('library')}),
       );
 
       expect(result.accepted, isFalse);
@@ -179,22 +145,56 @@ void main() {
     });
 
     test('registry rejects duplicate emitted names', () {
-      final first = DiagnosticEventDefinition.instant(
-        name: 'test.event',
-        component: 'test.component',
-        summary: 'First.',
-      );
-      final second = DiagnosticEventDefinition.instant(
-        name: 'test.event',
-        component: 'test.component',
-        summary: 'Second.',
-      );
+      final first = DiagnosticEventDefinition.instant(name: 'test.event', component: 'test.component', summary: 'First.');
+      final second = DiagnosticEventDefinition.instant(name: 'test.event', component: 'test.component', summary: 'Second.');
 
-      expect(
-        () =>
-            DiagnosticEventRegistry(<DiagnosticEventDefinition>[first, second]),
-        throwsA(isA<DiagnosticSchemaError>()),
+      expect(() => DiagnosticEventRegistry(<DiagnosticEventDefinition>[first, second]), throwsA(isA<DiagnosticSchemaError>()));
+    });
+
+    test('reader chapter performance schema is a bounded owner span', () {
+      final DiagnosticsTestkit kit = DiagnosticsTestkit();
+      addTearDown(kit.dispose);
+      final span = kit.manager.startSpan(
+        AppDiagnosticEvents.readerChapterPerformance,
+        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+          'phase': DiagnosticValue.string('adjacentPreparation'),
+          'preparationKind': DiagnosticValue.string('adjacentIdle'),
+          'cacheHit': DiagnosticValue.boolean(false),
+          'operationId': DiagnosticValue.int64(3),
+        }),
       );
+      span.complete(
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+          'phase': DiagnosticValue.string('adjacentPreparation'),
+          'preparationKind': DiagnosticValue.string('adjacentIdle'),
+          'cacheHit': DiagnosticValue.boolean(false),
+          'operationId': DiagnosticValue.int64(3),
+          'pageCount': DiagnosticValue.int64(2),
+          'paragraphCount': DiagnosticValue.int64(8),
+          'durationMicros': DiagnosticValue.int64(1200),
+        }),
+      );
+      expect(kit.sink.events.map((event) => event.eventName), <String>[
+        'reader.chapter.performance.start',
+        'reader.chapter.performance.complete',
+      ]);
+      expect(kit.sink.events.last.attributes.values.keys, isNot(contains('chapterId')));
+      final String serialized = kit.sink.events.map((event) => '${event.eventName}:${event.attributes.values}').join('\n');
+      for (final canary in <String>[
+        '隐私测试书名',
+        'chapter-secret-id',
+        '正文隐私探针',
+        'https://reader.invalid/private',
+        'Authorization: Bearer secret',
+        'Cookie=session-secret',
+        'credential-secret',
+        'raw exception secret',
+      ]) {
+        expect(serialized, isNot(contains(canary)));
+      }
+      for (final forbiddenKey in <String>['bookId', 'chapterId', 'content', 'url', 'authorization', 'cookie', 'credential', 'exception']) {
+        expect(kit.sink.events.last.attributes.values.keys, isNot(contains(forbiddenKey)));
+      }
     });
   });
 }
@@ -203,20 +203,14 @@ final class _ThrowingDiagnosticEventSink implements DiagnosticEventSink {
   const _ThrowingDiagnosticEventSink();
 
   @override
-  bool isEnabled({
-    required String component,
-    required DiagnosticSeverity severity,
-    required DiagnosticPayloadKind payloadKind,
-  }) => true;
+  bool isEnabled({required String component, required DiagnosticSeverity severity, required DiagnosticPayloadKind payloadKind}) => true;
 
   @override
   bool add(DiagnosticEvent event) => throw StateError('writer unavailable');
 
   @override
-  Future<void> flush({required Duration timeout}) =>
-      Future<void>.error(StateError('writer unavailable'));
+  Future<void> flush({required Duration timeout}) => Future<void>.error(StateError('writer unavailable'));
 
   @override
-  Future<void> close({required Duration timeout}) =>
-      Future<void>.error(StateError('writer unavailable'));
+  Future<void> close({required Duration timeout}) => Future<void>.error(StateError('writer unavailable'));
 }

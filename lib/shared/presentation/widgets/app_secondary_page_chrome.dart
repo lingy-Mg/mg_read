@@ -1,3 +1,17 @@
+/// 应用二级与三级页面的统一顶部栏和内容壳。
+///
+/// 职责：
+/// - 对齐设置、数据源和其他二级页面的安全区、顶部节奏与返回操作。
+/// - 统一窄屏与宽屏的内容宽度，避免各页面自行计算外侧间距。
+///
+/// 注意：
+/// - 调用方只提供标题、操作和内容，不得叠加额外的顶部安全区或标题栏间距。
+/// - 内容壳不负责路由、异步加载或业务状态。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -7,8 +21,8 @@ import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 /// The common title bar for profile-owned secondary pages.
 ///
 /// The bar deliberately owns only presentation chrome. The surrounding page
-/// must place it inside a top [SafeArea] so the title and back action remain
-/// below the Android status bar.
+/// must place it in [AppSecondaryPageContent] inside a top [SafeArea], so it
+/// follows the same eight-dp rhythm as the primary profile header.
 class AppSecondaryPageTopBar extends StatelessWidget {
   const AppSecondaryPageTopBar({
     required this.title,
@@ -30,7 +44,7 @@ class AppSecondaryPageTopBar extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     return SizedBox(
       key: headerKey,
-      height: AppDetailMetrics.topBarHeight,
+      height: AppSpacing.minimumTouchTarget,
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
@@ -51,24 +65,13 @@ class AppSecondaryPageTopBar extends StatelessWidget {
           ),
           Positioned(
             left: AppDetailMetrics.backButtonLeft,
-            top:
-                (AppDetailMetrics.topBarHeight -
-                    AppDetailMetrics.backButtonExtent) /
-                2,
-            child: AppSecondaryPageIconButton(
-              key: backButtonKey,
-              label: '返回',
-              icon: Icons.arrow_back_ios_new_rounded,
-              onPressed: onBack,
-            ),
+            top: (AppSpacing.minimumTouchTarget - AppDetailMetrics.backButtonExtent) / 2,
+            child: AppSecondaryPageIconButton(key: backButtonKey, label: '返回', icon: Icons.arrow_back_ios_new_rounded, onPressed: onBack),
           ),
           if (actions.isNotEmpty)
             Positioned(
               right: AppDetailMetrics.backButtonLeft,
-              top:
-                  (AppDetailMetrics.topBarHeight -
-                      AppDetailMetrics.backButtonExtent) /
-                  2,
+              top: (AppSpacing.minimumTouchTarget - AppDetailMetrics.backButtonExtent) / 2,
               child: Row(mainAxisSize: MainAxisSize.min, children: actions),
             ),
         ],
@@ -79,12 +82,7 @@ class AppSecondaryPageTopBar extends StatelessWidget {
 
 /// A 48dp action slot used by secondary-page title bars.
 class AppSecondaryPageIconButton extends StatelessWidget {
-  const AppSecondaryPageIconButton({
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-    super.key,
-  });
+  const AppSecondaryPageIconButton({required this.label, required this.icon, required this.onPressed, super.key});
 
   final String label;
   final IconData icon;
@@ -105,10 +103,7 @@ class AppSecondaryPageIconButton extends StatelessWidget {
           iconSize: 22,
           color: theme.colorScheme.onSurface,
           padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(
-            width: AppDetailMetrics.backButtonExtent,
-            height: AppDetailMetrics.backButtonExtent,
-          ),
+          constraints: const BoxConstraints.tightFor(width: AppDetailMetrics.backButtonExtent, height: AppDetailMetrics.backButtonExtent),
         ),
       ),
     );
@@ -118,7 +113,8 @@ class AppSecondaryPageIconButton extends StatelessWidget {
 /// Centers secondary-page content while preserving the compact phone layout.
 ///
 /// Individual pages retain ownership of their inner list and card padding.
-/// This shell provides the shared desktop gutter and maximum readable width.
+/// This shell provides the shared top rhythm, desktop gutter and maximum
+/// readable width.
 class AppSecondaryPageContent extends StatelessWidget {
   const AppSecondaryPageContent({required this.child, super.key});
 
@@ -127,17 +123,12 @@ class AppSecondaryPageContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (BuildContext context, BoxConstraints constraints) {
-      final double horizontalPadding =
-          constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint
-          ? AppSpacing.widePagePadding
-          : 0;
+      final double horizontalPadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint ? AppSpacing.widePagePadding : 0;
       return Padding(
-        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+        padding: EdgeInsets.fromLTRB(horizontalPadding, AppSpacing.pageHeaderTopPadding, horizontalPadding, 0),
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: AppSpacing.contentMaxWidth,
-            ),
+            constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
             child: SizedBox(width: double.infinity, child: child),
           ),
         ),
@@ -179,31 +170,21 @@ class AppSecondaryPlaceholderPage extends StatelessWidget {
               Expanded(
                 child: Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(
-                      AppDetailMetrics.horizontalPadding,
-                    ),
+                    padding: const EdgeInsets.all(AppDetailMetrics.horizontalPadding),
                     child: Semantics(
                       container: true,
                       label: '$title，功能建设中',
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: <Widget>[
-                          Icon(
-                            Icons.construction_outlined,
-                            size: 40,
-                            color: tokens.mutedText,
-                          ),
+                          Icon(Icons.construction_outlined, size: 40, color: tokens.mutedText),
                           const SizedBox(height: AppSpacing.regular),
-                          Text(
-                            '功能建设中',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
+                          Text('功能建设中', style: Theme.of(context).textTheme.titleMedium),
                           const SizedBox(height: AppSpacing.unit),
                           Text(
                             description,
                             textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(color: tokens.mutedText),
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
                           ),
                         ],
                       ),
@@ -217,10 +198,7 @@ class AppSecondaryPlaceholderPage extends StatelessWidget {
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        child: AppBottomNavigation(
-          selected: AppNavigationDestination.profile,
-          onSelected: onDestinationSelected,
-        ),
+        child: AppBottomNavigation(selected: AppNavigationDestination.profile, onSelected: onDestinationSelected),
       ),
     );
   }

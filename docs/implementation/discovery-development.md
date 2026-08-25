@@ -31,6 +31,15 @@
 3. Esc 和鼠标侧键与同一返回回调的自动化测试；
 4. 多级嵌套至少覆盖两次打开、两次逐级返回以及加载中返回。
 
+## 层级过渡与减动态
+
+- 顶级、分类/榜单子页及详情页共用 `DiscoveryTopBar` 的安全区、40dp 高度、标题字阶、操作尺寸和左右边距。仅发现顶级显示数据源选择；后续层级仅显示同一栏中的返回、当前标题和必要操作，不能改用另一套二级页 chrome。
+- 点击分类立即开始可中断的 shared-axis/推入式组合过渡。入场结束仍未取得数据时停在稳定 loading；数据提前到达可缩短入场，数据完成后以短过渡显示惰性列表。
+- 层级切换使用稳定的页面存储 key，返回父级时恢复其已保留文档和滚动位置。加载中返回立即反向退出并使请求世代失效。
+- `MediaQuery.disableAnimations` 为真时禁止大位移和缩放，层级瞬时切换；加载、失败、空态和逐级返回语义保持不变。
+- 导航和文档加载共用 `discovery.navigation` owner span，只记录操作类型、请求世代、层级深度、计数和稳定错误码；不得记录 target、书名、书源显示名或其他内容标识。每次 span 只能以 success、error、cancelled、timeout 或 overloaded 之一结束。
+- Android 发现子页使用 root Navigator 上的本地 `MaterialPageRoute`，不新增 GoRouter URL。controller 将不可变栈投影为只读父级快照链，系统可在 Predictive Back 手势开始时预览正确的直接父层；只有手势提交、route 真正 pop 后才调用 controller 的 `goBack`。取消手势不得改变快照栈、请求世代或诊断 span。
+
 代码中涉及导航栈、请求世代或返回优先级的地方，应保留简短注释，说明为什么不能直接调用
 `GoRouter.pop()`。
 

@@ -1,3 +1,17 @@
+/// Runtime 驱动的发现页入口。
+///
+/// 职责：
+/// - 将发现页不可变状态接线到 Runtime 内容渲染器。
+/// - 将详情、书架和来源选择委派给各自应用服务。
+///
+/// 注意：
+/// - 页面不在 build 中进行 IO；内部层级由 controller 栈而非 GoRouter 管理。
+/// - 子页面只接收其层级状态，书源选择仅显示在顶级发现页。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -38,7 +52,6 @@ class DiscoveryDestinationPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(discoveryPageControllerProvider);
     final controller = ref.read(discoveryPageControllerProvider.notifier);
-    final bookshelfMembership = ref.watch(bookshelfMembershipProvider);
 
     final selectedSource = _selectedSource(state);
     if (selectedSource != null &&
@@ -46,60 +59,12 @@ class DiscoveryDestinationPage extends ConsumerWidget {
             state.status == DiscoveryPageStatus.loadingContent ||
             state.status == DiscoveryPageStatus.failure ||
             state.status == DiscoveryPageStatus.empty)) {
-      return RuntimeDiscoveryPage(
-        result: state.result,
-        sourceName: selectedSource.displayName,
+      return _DiscoveryRuntimeLayer(
+        visualDepth: 0,
         onDestinationRequested: onDestinationRequested,
-        onSearchRequested: onSearchRequested == null
-            ? null
-            : () => onSearchRequested!(state.selectedSourceId),
-        onSourcePressed: () => _selectSource(context, state, controller),
-        onTabSelected: (target) => unawaited(controller.selectTab(target)),
-        onCategorySelected: (target) =>
-            unawaited(controller.openCategory(target)),
-        isInBookshelf: (content) => bookshelfMembership.contains(
-          pluginId: state.selectedSourceId!,
-          title: content.title,
-        ),
-        onContentPressed: (content) {
-          final result = state.result;
-          if (result == null) return;
-          final saver = ref.read(discoveryBookshelfSaverProvider);
-          unawaited(
-            showSourceContentDetailSheet(
-              context,
-              gateway: ref.read(sourceContentGatewayProvider),
-              pluginId: state.selectedSourceId!,
-              id: content.id,
-              initialContent: content,
-              initialSourceName: selectedSource.displayName,
-              relatedContents: _discoveryContentSummaries(result),
-              onTextChapterRequested: onTextChapterRequested,
-              shelfState:
-                  bookshelfMembership.contains(
-                    pluginId: state.selectedSourceId!,
-                    title: content.title,
-                  )
-                  ? SourceDetailShelfState.alreadyAdded
-                  : SourceDetailShelfState.canAdd,
-              onAddToShelf: (content) =>
-                  saver.save(source: selectedSource, content: content),
-            ),
-          );
-        },
-        onRefreshRequested: () => unawaited(controller.refresh()),
-        onLoadMore: (collection) => unawaited(controller.loadMore(collection)),
-        canNavigateBack: state.canNavigateBack,
-        onBackRequested: controller.goBack,
-        loadingCollectionId: state.loadingCollectionId,
-        isContentLoading: state.status == DiscoveryPageStatus.loadingContent,
-        contentIsEmpty: state.status == DiscoveryPageStatus.empty,
-        contentFailureMessage: state.status == DiscoveryPageStatus.failure
-            ? _sourceErrorTitle(state.error!)
-            : null,
-        contentFailureCode: state.status == DiscoveryPageStatus.failure
-            ? state.error!.code.wireValue
-            : null,
+        onSearchRequested: onSearchRequested,
+        onSourceManagementRequested: onSourceManagementRequested,
+        onTextChapterRequested: onTextChapterRequested,
       );
     }
 
@@ -151,19 +116,11 @@ class DiscoveryDestinationPage extends ConsumerWidget {
           if (AppTheme.darkModeEnabled)
             IconButton(
               key: const Key('theme-mode-toggle'),
-              tooltip: Theme.of(context).brightness == Brightness.dark
-                  ? '切换至浅色模式'
-                  : '切换至深色模式',
+              tooltip: Theme.of(context).brightness == Brightness.dark ? '切换至浅色模式' : '切换至深色模式',
               onPressed: () {
-                AppThemeModeScope.of(
-                  context,
-                ).onToggleTheme(Theme.of(context).brightness);
+                AppThemeModeScope.of(context).onToggleTheme(Theme.of(context).brightness);
               },
-              icon: Icon(
-                Theme.of(context).brightness == Brightness.dark
-                    ? Icons.light_mode_outlined
-                    : Icons.dark_mode_outlined,
-              ),
+              icon: Icon(Theme.of(context).brightness == Brightness.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
             ),
         ],
       ),
@@ -171,10 +128,7 @@ class DiscoveryDestinationPage extends ConsumerWidget {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 560),
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.section),
-              child: content,
-            ),
+            child: Padding(padding: const EdgeInsets.all(AppSpacing.section), child: content),
           ),
         ),
       ),
@@ -191,25 +145,156 @@ class DiscoveryDestinationPage extends ConsumerWidget {
       ),
     );
   }
+}
 
-  Future<void> _selectSource(
-    BuildContext context,
-    DiscoveryPageState state,
-    DiscoveryPageController controller,
-  ) async {
-    final selected = await showDiscoverySourcePicker(
-      context,
-      sources: state.sources,
-      selectedSourceId: state.selectedSourceId!,
+/// Keeps one visual discovery layer bound to one controller snapshot depth.
+///
+/// A child layer is placed on the root Navigator only for Android's predictive
+/// back preview. The controller remains the authority for document snapshots,
+/// generations and final back commits.
+class _DiscoveryRuntimeLayer extends ConsumerWidget {
+  const _DiscoveryRuntimeLayer({
+    required this.visualDepth,
+    required this.onDestinationRequested,
+    required this.onSearchRequested,
+    required this.onSourceManagementRequested,
+    required this.onTextChapterRequested,
+    this.isPredictiveBackRoute = false,
+  });
+
+  final int visualDepth;
+  final ValueChanged<AppNavigationDestination> onDestinationRequested;
+  final ValueChanged<String?>? onSearchRequested;
+  final VoidCallback? onSourceManagementRequested;
+  final SourceTextChapterRequested? onTextChapterRequested;
+  final bool isPredictiveBackRoute;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(discoveryPageControllerProvider);
+    final controller = ref.read(discoveryPageControllerProvider.notifier);
+    final bookshelfMembership = ref.watch(bookshelfMembershipProvider);
+    final selectedSource = _selectedSource(state);
+    if (selectedSource == null) return const SizedBox.shrink();
+
+    final bool isCoveredByChild = visualDepth < state.navigationDepth;
+    final PluginDiscoveryDocumentResult? displayedResult = isCoveredByChild
+        ? visualDepth < state.retainedParents.length
+              ? state.retainedParents[visualDepth]
+              : state.previousResult
+        : state.result;
+    final bool isActiveLayer = !isCoveredByChild;
+    final bool canNavigateBack = visualDepth > 0;
+
+    return RuntimeDiscoveryPage(
+      result: displayedResult,
+      sourceName: selectedSource.displayName,
+      onDestinationRequested: onDestinationRequested,
+      onSearchRequested: onSearchRequested == null ? null : () => onSearchRequested!(state.selectedSourceId),
+      onSourcePressed: () => unawaited(_selectDiscoverySource(context, state, controller, onSourceManagementRequested)),
+      onTabSelected: (target) => unawaited(controller.selectTab(target)),
+      onCategorySelected: (target) => _pushCategoryRoute(context, ref, controller, target),
+      isInBookshelf: (content) => bookshelfMembership.contains(pluginId: state.selectedSourceId!, title: content.title),
+      onContentPressed: (content) {
+        final result = displayedResult;
+        if (result == null) return;
+        final saver = ref.read(discoveryBookshelfSaverProvider);
+        unawaited(
+          showSourceContentDetailSheet(
+            context,
+            gateway: ref.read(sourceContentGatewayProvider),
+            pluginId: state.selectedSourceId!,
+            id: content.id,
+            initialContent: content,
+            initialSourceName: selectedSource.displayName,
+            relatedContents: _discoveryContentSummaries(result),
+            onTextChapterRequested: onTextChapterRequested,
+            shelfState: bookshelfMembership.contains(pluginId: state.selectedSourceId!, title: content.title)
+                ? SourceDetailShelfState.alreadyAdded
+                : SourceDetailShelfState.canAdd,
+            onAddToShelf: (content) => saver.save(source: selectedSource, content: content),
+          ),
+        );
+      },
+      onRefreshRequested: () => unawaited(controller.refresh()),
+      onLoadMore: (collection) => unawaited(controller.loadMore(collection)),
+      canNavigateBack: canNavigateBack,
+      onBackRequested: isPredictiveBackRoute ? () => Navigator.of(context).pop() : controller.goBack,
+      loadingCollectionId: isActiveLayer ? state.loadingCollectionId : null,
+      navigationDepth: visualDepth,
+      allowsRoutePop: isPredictiveBackRoute,
+      isContentLoading: isActiveLayer && state.status == DiscoveryPageStatus.loadingContent,
+      contentIsEmpty: isActiveLayer && state.status == DiscoveryPageStatus.empty,
+      contentFailureMessage: isActiveLayer && state.status == DiscoveryPageStatus.failure ? _sourceErrorTitle(state.error!) : null,
+      contentFailureCode: isActiveLayer && state.status == DiscoveryPageStatus.failure ? state.error!.code.wireValue : null,
     );
-    switch (selected) {
-      case DiscoverySourceSelected(:final sourceId):
-        await controller.selectSource(sourceId);
-      case DiscoverySourceManagementRequested():
-        onSourceManagementRequested?.call();
-      case null:
-        return;
-    }
+  }
+
+  void _pushCategoryRoute(BuildContext context, WidgetRef ref, DiscoveryPageController controller, String target) {
+    unawaited(controller.openCategory(target));
+    final int childDepth = ref.read(discoveryPageControllerProvider).navigationDepth;
+    if (childDepth <= visualDepth) return;
+    Navigator.of(context, rootNavigator: true).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext routeContext) => _DiscoveryPredictiveBackChildPage(
+          visualDepth: childDepth,
+          onDestinationRequested: onDestinationRequested,
+          onSearchRequested: onSearchRequested,
+          onSourceManagementRequested: onSourceManagementRequested,
+          onTextChapterRequested: onTextChapterRequested,
+        ),
+      ),
+    );
+  }
+}
+
+/// A locally routed child layer that lets Android preview the retained parent.
+class _DiscoveryPredictiveBackChildPage extends ConsumerWidget {
+  const _DiscoveryPredictiveBackChildPage({
+    required this.visualDepth,
+    required this.onDestinationRequested,
+    required this.onSearchRequested,
+    required this.onSourceManagementRequested,
+    required this.onTextChapterRequested,
+  });
+
+  final int visualDepth;
+  final ValueChanged<AppNavigationDestination> onDestinationRequested;
+  final ValueChanged<String?>? onSearchRequested;
+  final VoidCallback? onSourceManagementRequested;
+  final SourceTextChapterRequested? onTextChapterRequested;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => PopScope<void>(
+    canPop: true,
+    onPopInvokedWithResult: (bool didPop, _) {
+      if (didPop) ref.read(discoveryPageControllerProvider.notifier).goBack();
+    },
+    child: _DiscoveryRuntimeLayer(
+      visualDepth: visualDepth,
+      onDestinationRequested: onDestinationRequested,
+      onSearchRequested: onSearchRequested,
+      onSourceManagementRequested: onSourceManagementRequested,
+      onTextChapterRequested: onTextChapterRequested,
+      isPredictiveBackRoute: true,
+    ),
+  );
+}
+
+Future<void> _selectDiscoverySource(
+  BuildContext context,
+  DiscoveryPageState state,
+  DiscoveryPageController controller,
+  VoidCallback? onSourceManagementRequested,
+) async {
+  final selected = await showDiscoverySourcePicker(context, sources: state.sources, selectedSourceId: state.selectedSourceId!);
+  switch (selected) {
+    case DiscoverySourceSelected(:final sourceId):
+      await controller.selectSource(sourceId);
+    case DiscoverySourceManagementRequested():
+      onSourceManagementRequested?.call();
+    case null:
+      return;
   }
 }
 
@@ -222,9 +307,7 @@ PluginSourceDescriptor? _selectedSource(DiscoveryPageState state) {
   return null;
 }
 
-Iterable<PluginContentSummary> _discoveryContentSummaries(
-  PluginDiscoverResult result,
-) sync* {
+Iterable<PluginContentSummary> _discoveryContentSummaries(PluginDiscoverResult result) sync* {
   switch (result) {
     case PluginDiscoveryAppendResult(:final items):
       yield* items.map((item) => item.content);
@@ -233,9 +316,7 @@ Iterable<PluginContentSummary> _discoveryContentSummaries(
   }
 }
 
-Iterable<PluginContentSummary> _documentContentSummaries(
-  Iterable<PluginDiscoveryComponent> components,
-) sync* {
+Iterable<PluginContentSummary> _documentContentSummaries(Iterable<PluginDiscoveryComponent> components) sync* {
   for (final component in components) {
     switch (component) {
       case PluginDiscoveryContentCollectionComponent(:final items):
@@ -277,19 +358,14 @@ class _DiscoveryStateContent extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          if (loading)
-            CircularProgressIndicator(color: tokens.accent)
-          else
-            Icon(icon, size: 48, color: tokens.mutedText),
+          if (loading) CircularProgressIndicator(color: tokens.accent) else Icon(icon, size: 48, color: tokens.mutedText),
           const SizedBox(height: AppSpacing.comfortable),
           Text(title, style: theme.textTheme.titleMedium),
           const SizedBox(height: AppSpacing.compact),
           Text(
             message,
             textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: tokens.mutedText,
-            ),
+            style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
           ),
           if (actionLabel != null && onAction != null) ...<Widget>[
             const SizedBox(height: AppSpacing.comfortable),

@@ -272,9 +272,9 @@ class _ComicReaderViewState extends State<ComicReaderView> {
       ReaderThemePreset.deepNight,
     );
     return PopScope<void>(
-      canPop: false,
+      canPop: true,
       onPopInvokedWithResult: (bool didPop, void result) {
-        if (!didPop) unawaited(_requestExit());
+        if (didPop) unawaited(_requestExit());
       },
       child: MediaQuery.withClampedTextScaling(
         minScaleFactor: .85,

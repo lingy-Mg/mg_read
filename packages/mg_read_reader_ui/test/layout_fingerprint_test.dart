@@ -5,6 +5,22 @@ import 'package:novel_reader_ui/src/pagination/layout_cache.dart';
 import 'package:novel_reader_ui/src/pagination/text_paginator.dart';
 
 void main() {
+  test('chapter performance events are bounded and immutable', () {
+    const ReaderChapterPerformanceEvent event =
+        ReaderChapterPerformanceEvent.success(
+          phase: ReaderChapterPerformancePhase.adjacentPreparation,
+          operationId: 7,
+          duration: Duration(milliseconds: 12),
+          pageCount: 4,
+          paragraphCount: 8,
+        );
+    expect(event.outcome, ReaderChapterPerformanceOutcome.success);
+    expect(event.operationId, 7);
+    expect(event.duration, const Duration(milliseconds: 12));
+    expect(event.pageCount, 4);
+    expect(event.paragraphCount, 8);
+  });
+
   test('every layout-affecting identity change misses the fingerprint', () {
     final ReaderLayoutFingerprint base = _key();
     final List<ReaderLayoutFingerprint> changed = <ReaderLayoutFingerprint>[
@@ -47,6 +63,7 @@ void main() {
       ],
     );
     cache.put(versioned, <ReaderPage>[page]);
+    expect(cache.contains(versioned), isTrue);
     expect(cache.take(_key(contentVersion: 'v1', sessionId: 99)), isNotNull);
 
     final ReaderLayoutFingerprint unknownSession = _key(

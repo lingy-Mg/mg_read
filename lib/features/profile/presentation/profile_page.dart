@@ -1,3 +1,17 @@
+/// “我的”主页面。
+///
+/// 职责：
+/// - 展示用户概览和设置入口，并将路由意图交给应用层。
+/// - 作为设置子页面的顶部节奏基准。
+///
+/// 注意：
+/// - 不在 build() 中读取或写入持久化、Runtime 数据。
+/// - 根页与二级页必须消费同一顶部间距和最小操作命中区 token。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -15,11 +29,6 @@ import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 // only the light theme and therefore does not render a theme action.
 const bool _themeModeActionEnabled = false;
 
-/// The mobile-first profile and settings surface.
-///
-/// It intentionally renders a visual fixture only. Account, notifications,
-/// cloud synchronization, and settings persistence remain separate future
-/// Runtime capabilities and are not inferred by this UI.
 class ProfilePage extends StatefulWidget {
   /// Creates the profile page and delegates root navigation to the app layer.
   const ProfilePage({
@@ -68,9 +77,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    final data = widget.readingStats == null
-        ? ProfileFixtures.preview
-        : ProfileFixtures.preview.withReadingStats(widget.readingStats!);
+    final data = widget.readingStats == null ? ProfileFixtures.preview : ProfileFixtures.preview.withReadingStats(widget.readingStats!);
     return Scaffold(
       body: AppPageBackdrop(
         style: AppPageBackdropStyle.profile,
@@ -78,16 +85,11 @@ class _ProfilePageState extends State<ProfilePage> {
           bottom: false,
           child: LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
-              final bool useWidePagePadding =
-                  constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
-              final double pagePadding = useWidePagePadding
-                  ? AppSpacing.widePagePadding
-                  : AppSpacing.compactPagePadding;
+              final bool useWidePagePadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
+              final double pagePadding = useWidePagePadding ? AppSpacing.widePagePadding : AppSpacing.compactPagePadding;
               return Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: AppSpacing.contentMaxWidth,
-                  ),
+                  constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
                   child: SizedBox(
                     width: double.infinity,
                     child: Scrollbar(
@@ -107,18 +109,14 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                         children: <Widget>[
                           ProfileTopBar(
-                            onToggleTheme: _themeModeActionEnabled
-                                ? () => _handleToggleTheme(context)
-                                : null,
+                            onToggleTheme: _themeModeActionEnabled ? () => _handleToggleTheme(context) : null,
                             onNotifications: _showUnavailableMessage,
                           ),
                           const SizedBox(height: AppSpacing.compact + 2),
                           ProfileOverviewCard(
                             data: data,
                             onEdit: _showUnavailableMessage,
-                            onSyncPressed:
-                                widget.onLanSyncRequested ??
-                                _showUnavailableMessage,
+                            onSyncPressed: widget.onLanSyncRequested ?? _showUnavailableMessage,
                           ),
                           if (_actionFeedback != null) ...<Widget>[
                             const SizedBox(height: AppSpacing.regular),
@@ -134,17 +132,11 @@ class _ProfilePageState extends State<ProfilePage> {
                           const SizedBox(height: AppSpacing.section - 2),
                           _ProfileSectionTitle(title: '设置与管理'),
                           const SizedBox(height: AppSpacing.comfortable / 2),
-                          ProfileSettingsList(
-                            items: ProfileFixtures.preview.settings,
-                            onItemPressed: _handleSettingsItemPressed,
-                          ),
+                          ProfileSettingsList(items: ProfileFixtures.preview.settings, onItemPressed: _handleSettingsItemPressed),
                           const SizedBox(height: AppSpacing.section - 4),
                           _ProfileSectionTitle(title: '关于与其他'),
                           const SizedBox(height: AppSpacing.comfortable / 2),
-                          ProfileSettingsList(
-                            items: ProfileFixtures.preview.about,
-                            onItemPressed: _handleAboutItemPressed,
-                          ),
+                          ProfileSettingsList(items: ProfileFixtures.preview.about, onItemPressed: _handleAboutItemPressed),
                         ],
                       ),
                     ),
@@ -157,10 +149,7 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        child: AppBottomNavigation(
-          selected: AppNavigationDestination.profile,
-          onSelected: _handleDestinationSelected,
-        ),
+        child: AppBottomNavigation(selected: AppNavigationDestination.profile, onSelected: _handleDestinationSelected),
       ),
     );
   }
@@ -178,8 +167,7 @@ class _ProfilePageState extends State<ProfilePage> {
     if (destination == AppNavigationDestination.profile) {
       return;
     }
-    final ValueChanged<AppNavigationDestination>? destinationRequested =
-        widget.onDestinationRequested;
+    final ValueChanged<AppNavigationDestination>? destinationRequested = widget.onDestinationRequested;
     if (destinationRequested != null) {
       destinationRequested(destination);
       return;
@@ -208,8 +196,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _handleSettingsItemPressed(ProfileSettingsItemViewData item) {
-    if (item.id == 'source-management' &&
-        widget.onPluginCenterRequested != null) {
+    if (item.id == 'source-management' && widget.onPluginCenterRequested != null) {
       widget.onPluginCenterRequested!();
       return;
     }
@@ -221,8 +208,7 @@ class _ProfilePageState extends State<ProfilePage> {
       widget.onLanSyncRequested!();
       return;
     }
-    final ValueChanged<String>? onPendingSettingRequested =
-        widget.onPendingSettingRequested;
+    final ValueChanged<String>? onPendingSettingRequested = widget.onPendingSettingRequested;
     if (onPendingSettingRequested != null) {
       onPendingSettingRequested(item.id);
       return;
@@ -234,11 +220,7 @@ class _ProfilePageState extends State<ProfilePage> {
 /// The profile page header with the temporary theme and notification actions.
 class ProfileTopBar extends StatelessWidget {
   /// Creates the title and fixed-size top actions.
-  const ProfileTopBar({
-    required this.onToggleTheme,
-    required this.onNotifications,
-    super.key,
-  });
+  const ProfileTopBar({required this.onToggleTheme, required this.onNotifications, super.key});
 
   final VoidCallback? onToggleTheme;
   final VoidCallback onNotifications;
@@ -247,7 +229,7 @@ class ProfileTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     return SizedBox(
-      height: AppSpacing.pageHeaderHeight,
+      height: AppSpacing.minimumTouchTarget,
       child: Row(
         children: <Widget>[
           const Expanded(child: AppPageTitle(title: '我的')),
@@ -255,21 +237,13 @@ class ProfileTopBar extends StatelessWidget {
           if (onToggleTheme != null) ...<Widget>[
             _ProfileTopBarAction(
               key: const Key('theme-mode-toggle'),
-              tooltip: theme.brightness == Brightness.dark
-                  ? '切换至浅色模式'
-                  : '切换至深色模式',
+              tooltip: theme.brightness == Brightness.dark ? '切换至浅色模式' : '切换至深色模式',
               onPressed: onToggleTheme!,
-              icon: theme.brightness == Brightness.dark
-                  ? Icons.light_mode_outlined
-                  : Icons.dark_mode_outlined,
+              icon: theme.brightness == Brightness.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
             ),
             const SizedBox(width: AppSpacing.compact),
           ],
-          _ProfileTopBarAction(
-            tooltip: '通知',
-            onPressed: onNotifications,
-            icon: Icons.notifications_none_rounded,
-          ),
+          _ProfileTopBarAction(tooltip: '通知', onPressed: onNotifications, icon: Icons.notifications_none_rounded),
         ],
       ),
     );
@@ -288,11 +262,7 @@ class _ProfileTopBarDecoration extends StatelessWidget {
         width: AppSpacing.topBarActionSize,
         height: AppSpacing.topBarActionSize,
         child: Center(
-          child: Icon(
-            Icons.dark_mode_outlined,
-            size: AppSpacing.topBarActionIconSize,
-            color: theme.colorScheme.onSurface,
-          ),
+          child: Icon(Icons.dark_mode_outlined, size: AppSpacing.topBarActionIconSize, color: theme.colorScheme.onSurface),
         ),
       ),
     );
@@ -300,12 +270,7 @@ class _ProfileTopBarDecoration extends StatelessWidget {
 }
 
 class _ProfileTopBarAction extends StatelessWidget {
-  const _ProfileTopBarAction({
-    required this.tooltip,
-    required this.onPressed,
-    required this.icon,
-    super.key,
-  });
+  const _ProfileTopBarAction({required this.tooltip, required this.onPressed, required this.icon, super.key});
 
   final String tooltip;
   final VoidCallback onPressed;
@@ -330,11 +295,7 @@ class _ProfileTopBarAction extends StatelessWidget {
               width: AppSpacing.topBarActionSize,
               height: AppSpacing.topBarActionSize,
               child: Center(
-                child: Icon(
-                  icon,
-                  size: AppSpacing.topBarActionIconSize,
-                  color: theme.colorScheme.onSurface,
-                ),
+                child: Icon(icon, size: AppSpacing.topBarActionIconSize, color: theme.colorScheme.onSurface),
               ),
             ),
           ),
@@ -357,21 +318,14 @@ class _ProfileSectionTitle extends StatelessWidget {
       header: true,
       child: Text(
         title,
-        style: theme.textTheme.titleMedium?.copyWith(
-          color: tokens.mutedText,
-          fontWeight: FontWeight.w500,
-          height: 1.15,
-        ),
+        style: theme.textTheme.titleMedium?.copyWith(color: tokens.mutedText, fontWeight: FontWeight.w500, height: 1.15),
       ),
     );
   }
 }
 
 class _ProfileActionFeedback extends StatelessWidget {
-  const _ProfileActionFeedback({
-    required this.message,
-    required this.onDismiss,
-  });
+  const _ProfileActionFeedback({required this.message, required this.onDismiss});
 
   final String message;
   final VoidCallback onDismiss;
@@ -400,18 +354,9 @@ class _ProfileActionFeedback extends StatelessWidget {
               Icon(Icons.info_outline_rounded, color: tokens.accent),
               const SizedBox(width: AppSpacing.compact),
               Expanded(
-                child: Text(
-                  message,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onPrimaryContainer,
-                  ),
-                ),
+                child: Text(message, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onPrimaryContainer)),
               ),
-              IconButton(
-                tooltip: '关闭提示',
-                onPressed: onDismiss,
-                icon: const Icon(Icons.close_rounded),
-              ),
+              IconButton(tooltip: '关闭提示', onPressed: onDismiss, icon: const Icon(Icons.close_rounded)),
             ],
           ),
         ),

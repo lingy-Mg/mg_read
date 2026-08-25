@@ -123,6 +123,12 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       );
     }
 
+    if (invocation is OpenPluginCodeDirectoryInvocation) {
+      return await _openPluginCodeDirectory(
+        invocation as OpenPluginCodeDirectoryInvocation,
+      ) as T;
+    }
+
     if (invocation is OpenRuntimePrivateDirectoryInvocation) {
       await _openRuntimePrivateDirectory();
       return null as T;
@@ -161,6 +167,45 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       _recordDiagnostic(diagnostic);
       throw _failure(diagnostic.code, diagnostic.message);
     }
+  }
+
+  /// Resolves the source directory in Node, then launches Explorer from the
+  /// Flutter owner so it is outside the Node Windows Job Object.
+  Future<PluginCodeDirectoryKind> _openPluginCodeDirectory(
+    OpenPluginCodeDirectoryInvocation invocation,
+  ) async {
+    await _synchronizeDevelopmentRuntime();
+    final connection = await _ensureStarted();
+    final raw = await connection.request(
+      method: invocation._wireMethod,
+      params: invocation._wireParams,
+      timeout: invocation._timeout,
+    );
+    final result = _jsonObject(raw, 'Plugin code directory result');
+    final directory = result['directory'];
+    final kind = switch (result['kind']) {
+      'development' => PluginCodeDirectoryKind.development,
+      'installed' => PluginCodeDirectoryKind.installed,
+      _ => null,
+    };
+    if (directory is! String || directory.isEmpty || kind == null) {
+      throw const PluginRuntimeException(
+        'invalid_response',
+        'The Runtime returned an invalid plugin code directory result.',
+      );
+    }
+    try {
+      await _bundle.directoryLauncher(Directory(directory));
+    } on Object {
+      const diagnostic = RuntimeDiagnostic(
+        code: 'plugin_code_directory_open_failed',
+        level: RuntimeDiagnosticLevel.error,
+        message: 'The plugin code directory could not be opened.',
+      );
+      _recordDiagnostic(diagnostic);
+      throw _failure(diagnostic.code, diagnostic.message);
+    }
+    return kind;
   }
 
   @override
@@ -608,6 +653,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
           '--use-env-proxy',
           _bundle.entrypoint.path,
           '--data-root=${_bundle.dataRoot.path}',
+          if (kDebugMode) '--debug-http-enabled=1',
           if (_bundle.bundledPluginDirectory != null)
             '--bundled-plugin-root=${_bundle.bundledPluginDirectory!.path}',
           if (_developmentPluginDirectory != null)

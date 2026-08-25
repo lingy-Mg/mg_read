@@ -79,6 +79,20 @@ final class PluginRuntime {
     return _supervisor.invoke(invocation);
   }
 
+  /// Enables or disables the unauthenticated Debug inspector in Debug builds.
+  ///
+  /// This is deliberately transient: callers only receive copyable page URLs,
+  /// never the Runtime's internal control endpoint or resource tokens.
+  Future<RuntimeDebugHttpStatus> setDebugHttpEnabled(bool enabled) {
+    if (!kDebugMode) {
+      throw const PluginRuntimeException(
+        'unsupported',
+        'Runtime Debug HTTP is available in Debug builds only.',
+      );
+    }
+    return invoke(RuntimeDebugHttpInvocation(enabled: enabled));
+  }
+
   /// Opens the platform file picker and imports one local `.mgplugin` source.
   ///
   /// The picker and the hand-off to the Runtime-owned inbox both live inside

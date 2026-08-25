@@ -1,42 +1,22 @@
 part of 'source_content_detail_sheet.dart';
 
 class _DetailHeader extends StatelessWidget {
-  const _DetailHeader({required this.title});
-  final String title;
+  const _DetailHeader();
+
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 52,
-    child: Stack(
-      alignment: Alignment.center,
-      children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 96),
-          child: _AdaptiveSingleLineText(
-            text: title,
-            textKey: const Key('source-detail-header-title'),
-            style:
-                Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700) ??
-                const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            minFontSize: 14,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        Row(
-          children: <Widget>[
-            IconButton(
-              key: const Key('source-detail-back'),
-              tooltip: '返回',
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.arrow_back_ios_new_rounded),
-            ),
-            const Spacer(),
-            IconButton(tooltip: '更多', onPressed: () {}, icon: const Icon(Icons.more_vert_rounded)),
-          ],
-        ),
-      ],
-    ),
+  Widget build(BuildContext context) => DiscoveryTopBar(
+    title: '详情',
+    sourceName: '当前来源',
+    onSourcePressed: () {},
+    onSearchPressed: () {},
+    onToggleTheme: () {},
+    onBackPressed: () => Navigator.of(context).pop(),
+    backButtonKey: const Key('source-detail-back'),
+    barKey: const Key('source-detail-header'),
+    titleKey: const Key('source-detail-header-title'),
+    showSourceSelector: false,
+    showSearchAction: false,
+    trailingActions: <Widget>[DiscoveryTopAction(tooltip: '更多', icon: Icons.more_vert_rounded, onPressed: () {})],
   );
 }
 

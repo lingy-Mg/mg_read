@@ -169,6 +169,70 @@ final class RuntimeMemoryUsage {
   final int rss;
 }
 
+/// Debug-only switch for the Runtime-owned LAN inspector page.
+@immutable
+final class RuntimeDebugHttpInvocation
+    extends PluginInvocation<RuntimeDebugHttpStatus> {
+  const RuntimeDebugHttpInvocation({required this.enabled});
+
+  final bool enabled;
+
+  @override
+  String get _wireMethod => 'runtime.debugHttp.setEnabled.v1';
+
+  @override
+  Map<String, Object?> get _wireParams => <String, Object?>{'enabled': enabled};
+
+  @override
+  RuntimeDebugHttpStatus _decodeResult(Object? value) {
+    final result = _jsonObject(value, 'Runtime Debug HTTP result');
+    final rawEndpoints = result['endpoints'];
+    final enabled = result['enabled'];
+    final startedAt = result['startedAt'];
+    if (enabled is! bool ||
+        startedAt != null && startedAt is! String ||
+        rawEndpoints is! List<Object?> ||
+        rawEndpoints.length > 32 ||
+        rawEndpoints.any((Object? value) => value is! String)) {
+      throw const PluginRuntimeException(
+        'invalid_response',
+        'The Runtime returned an invalid Debug HTTP status.',
+      );
+    }
+    final endpoints = rawEndpoints.cast<String>();
+    if (enabled != endpoints.isNotEmpty || !endpoints.every(_isDebugEndpoint)) {
+      throw const PluginRuntimeException(
+        'invalid_response',
+        'The Runtime returned invalid Debug HTTP endpoints.',
+      );
+    }
+    return RuntimeDebugHttpStatus(
+      enabled: enabled,
+      endpoints: List<String>.unmodifiable(endpoints),
+      startedAt: startedAt as String?,
+    );
+  }
+}
+
+bool _isDebugEndpoint(String value) {
+  final uri = Uri.tryParse(value);
+  return uri != null && uri.scheme == 'http' && uri.path == '/__debug';
+}
+
+/// Safe Debug-only projection of the Runtime-owned inspector listener.
+@immutable
+final class RuntimeDebugHttpStatus {
+  const RuntimeDebugHttpStatus({
+    required this.enabled,
+    required this.endpoints,
+    required this.startedAt,
+  });
+
+  final bool enabled;
+  final List<String> endpoints;
+  final String? startedAt;
+}
+
 /// Lists Runtime-owned installed-plugin projections without exposing paths.
 @immutable
 final class InstalledPluginsInvocation
@@ -255,7 +319,7 @@ final class SetPluginEnabledInvocation
   InstalledPlugin _decodeResult(Object? value) => _decodeInstalledPlugin(value);
 }
 
-/// Opens a source code directory through the Runtime-owned Windows action.
+/// Opens a source code directory through the Flutter desktop Supervisor.
 ///
 /// The result intentionally reveals only whether this was a live development
 /// project or an immutable installed version. It never contains a file path.

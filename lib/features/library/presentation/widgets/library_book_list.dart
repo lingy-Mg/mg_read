@@ -1,25 +1,35 @@
+/// 书架书籍列表。
+///
+/// 职责：
+/// - 为首页、书架和阅读记录提供一致的普通与 Sliver 列表行。
+/// - 保持长列表惰性构建，并承载条目菜单和原位置删除过渡。
+///
+/// 注意：
+/// - 条目移除只改变局部展示高度，不替换父滚动容器或控制器。
+/// - 业务持久化由调用方负责；本组件只转发不可变数据与动作。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_anchored_menu.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_book_removal_transition.dart';
 
 /// One explicit overflow-menu action supplied by the owning library surface.
 @immutable
 final class LibraryBookListAction {
-  const LibraryBookListAction({required this.id, required this.label})
-    : assert(id != ''),
-      assert(label != '');
+  const LibraryBookListAction({required this.id, required this.label}) : assert(id != ''), assert(label != '');
 
   final String id;
   final String label;
 }
 
-typedef LibraryBookListActionSelected =
-    void Function(
-      LibraryBookListItemViewData book,
-      LibraryBookListAction action,
-    );
+typedef LibraryBookListActionSelected = void Function(LibraryBookListItemViewData book, LibraryBookListAction action);
 
 /// Layout switches for the shared compact book-list design.
 ///
@@ -29,39 +39,27 @@ typedef LibraryBookListActionSelected =
 @immutable
 final class LibraryBookListPresentation {
   /// Creates a configurable presentation of the shared book-list row.
-  const LibraryBookListPresentation({
-    this.showActivityLabel = true,
-    this.showOverflowAction = true,
-    this.showAttentionIndicator = false,
-  });
+  const LibraryBookListPresentation({this.showActivityLabel = true, this.showOverflowAction = true, this.showAttentionIndicator = false});
 
   /// The compact row used by the recent-updates section.
-  static const LibraryBookListPresentation recentUpdates =
-      LibraryBookListPresentation(showAttentionIndicator: true);
+  static const LibraryBookListPresentation recentUpdates = LibraryBookListPresentation(showAttentionIndicator: true);
 
   /// The compact row used by the bookshelf section.
-  static const LibraryBookListPresentation shelf =
-      LibraryBookListPresentation();
+  static const LibraryBookListPresentation shelf = LibraryBookListPresentation();
 
   /// The compact row reserved for the reading-history surface.
-  static const LibraryBookListPresentation readingHistory =
-      LibraryBookListPresentation();
+  static const LibraryBookListPresentation readingHistory = LibraryBookListPresentation();
 
   final bool showActivityLabel;
   final bool showOverflowAction;
   final bool showAttentionIndicator;
 
   /// Copies this layout while replacing selected visibility switches.
-  LibraryBookListPresentation copyWith({
-    bool? showActivityLabel,
-    bool? showOverflowAction,
-    bool? showAttentionIndicator,
-  }) {
+  LibraryBookListPresentation copyWith({bool? showActivityLabel, bool? showOverflowAction, bool? showAttentionIndicator}) {
     return LibraryBookListPresentation(
       showActivityLabel: showActivityLabel ?? this.showActivityLabel,
       showOverflowAction: showOverflowAction ?? this.showOverflowAction,
-      showAttentionIndicator:
-          showAttentionIndicator ?? this.showAttentionIndicator,
+      showAttentionIndicator: showAttentionIndicator ?? this.showAttentionIndicator,
     );
   }
 }
@@ -81,9 +79,11 @@ class LibraryBookList extends StatelessWidget {
     this.presentation = LibraryBookListPresentation.recentUpdates,
     this.showDividers = true,
     this.preparingBookId,
+    Iterable<String> removingBookIds = const <String>[],
     super.key,
   }) : books = List<LibraryBookListItemViewData>.unmodifiable(books),
-       actions = List<LibraryBookListAction>.unmodifiable(actions);
+       actions = List<LibraryBookListAction>.unmodifiable(actions),
+       removingBookIds = Set<String>.unmodifiable(removingBookIds);
 
   final List<LibraryBookListItemViewData> books;
   final ValueChanged<LibraryBookListItemViewData> onOpenBook;
@@ -93,6 +93,7 @@ class LibraryBookList extends StatelessWidget {
   final LibraryBookListPresentation presentation;
   final bool showDividers;
   final String? preparingBookId;
+  final Set<String> removingBookIds;
 
   @override
   Widget build(BuildContext context) {
@@ -110,6 +111,7 @@ class LibraryBookList extends StatelessWidget {
           showDivider: showDividers && index < books.length - 1,
           dividerColor: tokens.divider,
           isPreparing: books[index].id == preparingBookId,
+          isRemoving: removingBookIds.contains(books[index].id),
         ),
       ),
     );
@@ -131,9 +133,11 @@ class LibraryBookSliverList extends StatelessWidget {
     this.presentation = LibraryBookListPresentation.recentUpdates,
     this.showDividers = true,
     this.preparingBookId,
+    Iterable<String> removingBookIds = const <String>[],
     super.key,
   }) : books = List<LibraryBookListItemViewData>.unmodifiable(books),
-       actions = List<LibraryBookListAction>.unmodifiable(actions);
+       actions = List<LibraryBookListAction>.unmodifiable(actions),
+       removingBookIds = Set<String>.unmodifiable(removingBookIds);
 
   final List<LibraryBookListItemViewData> books;
   final ValueChanged<LibraryBookListItemViewData> onOpenBook;
@@ -143,22 +147,27 @@ class LibraryBookSliverList extends StatelessWidget {
   final LibraryBookListPresentation presentation;
   final bool showDividers;
   final String? preparingBookId;
+  final Set<String> removingBookIds;
 
   @override
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return SliverList(
       delegate: SliverChildBuilderDelegate(
-        (BuildContext context, int index) => _LibraryBookListRow(
-          book: books[index],
-          onOpenBook: onOpenBook,
-          onBookMore: onBookMore,
-          actions: actions,
-          onBookAction: onBookAction,
-          presentation: presentation,
-          showDivider: showDividers && index < books.length - 1,
-          dividerColor: tokens.divider,
-          isPreparing: books[index].id == preparingBookId,
+        (BuildContext context, int index) => KeyedSubtree(
+          key: ValueKey<String>(books[index].id),
+          child: _LibraryBookListRow(
+            book: books[index],
+            onOpenBook: onOpenBook,
+            onBookMore: onBookMore,
+            actions: actions,
+            onBookAction: onBookAction,
+            presentation: presentation,
+            showDivider: showDividers && index < books.length - 1,
+            dividerColor: tokens.divider,
+            isPreparing: books[index].id == preparingBookId,
+            isRemoving: removingBookIds.contains(books[index].id),
+          ),
         ),
         childCount: books.length,
       ),
@@ -177,6 +186,7 @@ class _LibraryBookListRow extends StatelessWidget {
     required this.showDivider,
     required this.dividerColor,
     required this.isPreparing,
+    required this.isRemoving,
   });
 
   final LibraryBookListItemViewData book;
@@ -188,33 +198,30 @@ class _LibraryBookListRow extends StatelessWidget {
   final bool showDivider;
   final Color dividerColor;
   final bool isPreparing;
+  final bool isRemoving;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: <Widget>[
-        LibraryBookListItem(
-          data: book,
-          onOpen: () => onOpenBook(book),
-          onMore: onBookMore == null ? null : () => onBookMore!(book),
-          actions: actions,
-          onAction: onBookAction == null
-              ? null
-              : (action) => onBookAction!(book, action),
-          presentation: presentation,
-          isPreparing: isPreparing,
-        ),
-        if (showDivider)
-          Padding(
-            padding: const EdgeInsets.only(
-              left:
-                  AppSpacing.listCoverWidth +
-                  AppSpacing.compact +
-                  AppSpacing.unit,
-            ),
-            child: Divider(height: 1, thickness: 1, color: dividerColor),
+    return LibraryBookRemovalTransition(
+      isRemoving: isRemoving,
+      child: Column(
+        children: <Widget>[
+          LibraryBookListItem(
+            data: book,
+            onOpen: () => onOpenBook(book),
+            onMore: onBookMore == null ? null : () => onBookMore!(book),
+            actions: actions,
+            onAction: onBookAction == null ? null : (action) => onBookAction!(book, action),
+            presentation: presentation,
+            isPreparing: isPreparing,
           ),
-      ],
+          if (showDivider)
+            Padding(
+              padding: const EdgeInsets.only(left: AppSpacing.listCoverWidth + AppSpacing.compact + AppSpacing.unit),
+              child: Divider(height: 1, thickness: 1, color: dividerColor),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -245,8 +252,7 @@ class LibraryBookListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    final bool showAttentionIndicator =
-        presentation.showAttentionIndicator && data.hasAttentionIndicator;
+    final bool showAttentionIndicator = presentation.showAttentionIndicator && data.hasAttentionIndicator;
     final String semanticLabel = _bookListItemLabel(
       title: data.title,
       subtitle: data.subtitle,
@@ -264,9 +270,7 @@ class LibraryBookListItem extends StatelessWidget {
           borderRadius: AppRadii.surface,
           onTap: onOpen,
           child: Padding(
-            padding: const EdgeInsets.symmetric(
-              vertical: AppSpacing.bookListVerticalPadding,
-            ),
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.bookListVerticalPadding),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
@@ -325,24 +329,15 @@ class LibraryMetadataTag extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final (Color background, Color foreground) = switch (data.tone) {
       LibraryMetadataTone.neutral => (tokens.mutedSurface, tokens.mutedText),
-      LibraryMetadataTone.accent => (
-        tokens.accentSoft,
-        Color.lerp(tokens.mutedText, tokens.accent, 0.45)!,
-      ),
-      LibraryMetadataTone.success => (
-        tokens.success.withValues(alpha: 0.16),
-        tokens.success,
-      ),
+      LibraryMetadataTone.accent => (tokens.accentSoft, Color.lerp(tokens.mutedText, tokens.accent, 0.45)!),
+      LibraryMetadataTone.success => (tokens.success.withValues(alpha: 0.16), tokens.success),
     };
 
     return Semantics(
       label: data.label,
       child: ExcludeSemantics(
         child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: AppRadii.pill,
-          ),
+          decoration: BoxDecoration(color: background, borderRadius: AppRadii.pill),
           child: SizedBox(
             height: AppSpacing.metadataTagHeight,
             child: Padding(
@@ -352,11 +347,7 @@ class LibraryMetadataTag extends StatelessWidget {
                 alignment: Alignment.center,
                 child: Text(
                   data.label,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: foreground,
-                    fontWeight: FontWeight.w400,
-                    height: 1,
-                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(color: foreground, fontWeight: FontWeight.w400, height: 1),
                 ),
               ),
             ),
@@ -387,10 +378,7 @@ class _BookListDetails extends StatelessWidget {
             data.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              height: 1.18,
-            ),
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, height: 1.18),
           ),
         ),
         if (data.subtitle != null)
@@ -402,11 +390,7 @@ class _BookListDetails extends StatelessWidget {
               data.subtitle!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: tokens.mutedText,
-                fontWeight: FontWeight.w400,
-                height: 1.2,
-              ),
+              style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText, fontWeight: FontWeight.w400, height: 1.2),
             ),
           ),
         if (data.tags.isNotEmpty)
@@ -417,12 +401,7 @@ class _BookListDetails extends StatelessWidget {
             child: Wrap(
               spacing: AppSpacing.compact,
               runSpacing: AppSpacing.unit,
-              children: data.tags
-                  .map(
-                    (LibraryMetadataTagViewData tag) =>
-                        LibraryMetadataTag(data: tag),
-                  )
-                  .toList(growable: false),
+              children: data.tags.map((LibraryMetadataTagViewData tag) => LibraryMetadataTag(data: tag)).toList(growable: false),
             ),
           ),
       ],
@@ -455,12 +434,8 @@ class _BookListTrailing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool showMoreAction =
-        presentation.showOverflowAction &&
-        (onMore != null || (actions.isNotEmpty && onAction != null));
-    final String? activityLabel = presentation.showActivityLabel
-        ? data.activityLabel
-        : null;
+    final bool showMoreAction = presentation.showOverflowAction && (onMore != null || (actions.isNotEmpty && onAction != null));
+    final String? activityLabel = presentation.showActivityLabel ? data.activityLabel : null;
 
     return SizedBox(
       width: AppSpacing.bookListTrailingWidth,
@@ -470,61 +445,41 @@ class _BookListTrailing extends StatelessWidget {
           if (isPreparing)
             const Align(
               alignment: Alignment.centerRight,
-              child: SizedBox.square(
-                dimension: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+              child: SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
             ),
           if (!isPreparing && activityLabel != null)
             Positioned(
               top: AppSpacing.section,
               left: 0,
-              right: showMoreAction ? AppSpacing.section + AppSpacing.unit : 0,
+              right: showMoreAction ? AppSpacing.minimumTouchTarget + AppSpacing.compact : 0,
               child: Text(
                 activityLabel,
                 textAlign: TextAlign.end,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: tokens.mutedText,
-                  fontWeight: FontWeight.w400,
-                  height: 1.2,
-                ),
+                style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText, fontWeight: FontWeight.w400, height: 1.2),
               ),
             ),
           if (!isPreparing && showMoreAction)
             Align(
               alignment: Alignment.topRight,
               child: SizedBox(
-                width: AppSpacing.section,
-                height: AppSpacing.section,
+                width: AppSpacing.minimumTouchTarget,
+                height: AppSpacing.minimumTouchTarget,
                 child: actions.isNotEmpty && onAction != null
-                    ? MenuAnchor(
-                        menuChildren: <Widget>[
-                          for (final action in actions)
-                            MenuItemButton(
-                              onPressed: () => onAction!(action),
-                              child: Text(action.label),
-                            ),
+                    ? LibraryAnchoredMenu(
+                        tooltip: '书籍更多操作',
+                        menuKey: Key('library-book-overflow-menu-${data.id}'),
+                        actions: <LibraryAnchoredMenuAction>[
+                          for (final action in actions) LibraryAnchoredMenuAction(label: action.label, onSelected: () => onAction!(action)),
                         ],
-                        builder:
-                            (
-                              BuildContext context,
-                              MenuController controller,
-                              Widget? child,
-                            ) => IconButton(
-                              tooltip: '书籍更多操作',
-                              onPressed: () {
-                                if (controller.isOpen) {
-                                  controller.close();
-                                } else {
-                                  controller.open();
-                                }
-                              },
-                              padding: EdgeInsets.zero,
-                              iconSize: 16,
-                              icon: const Icon(Icons.more_vert_rounded),
-                            ),
+                        triggerBuilder: (BuildContext context, VoidCallback onPressed) => IconButton(
+                          tooltip: '书籍更多操作',
+                          onPressed: onPressed,
+                          padding: EdgeInsets.zero,
+                          iconSize: 16,
+                          icon: const Icon(Icons.more_vert_rounded),
+                        ),
                       )
                     : IconButton(
                         tooltip: '书籍更多操作',
@@ -543,14 +498,8 @@ class _BookListTrailing extends StatelessWidget {
                 label: '有更新',
                 child: ExcludeSemantics(
                   child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: tokens.notification,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const SizedBox(
-                      width: AppSpacing.unreadDotSize,
-                      height: AppSpacing.unreadDotSize,
-                    ),
+                    decoration: BoxDecoration(color: tokens.notification, shape: BoxShape.circle),
+                    child: const SizedBox(width: AppSpacing.unreadDotSize, height: AppSpacing.unreadDotSize),
                   ),
                 ),
               ),
@@ -561,12 +510,7 @@ class _BookListTrailing extends StatelessWidget {
   }
 }
 
-String _bookListItemLabel({
-  required String title,
-  String? subtitle,
-  String? activityLabel,
-  bool hasAttentionIndicator = false,
-}) {
+String _bookListItemLabel({required String title, String? subtitle, String? activityLabel, bool hasAttentionIndicator = false}) {
   final List<String> parts = <String>[title];
   if (subtitle != null && subtitle.isNotEmpty) {
     parts.add(subtitle);

@@ -402,12 +402,8 @@ test("source resource URLs are reusable, bounded, and forward binary responses",
   assert.equal((await fetch(`${resourceUrl}x`)).status, 404);
 });
 
-test("desktop Runtime opens only the installed source directory through its owned shell action", async (t) => {
-  const opened = [];
-  const runtime = await createRuntime(t, {
-    installFixture: true,
-    openDirectory: async (directory) => opened.push(directory),
-  });
+test("desktop Runtime resolves the installed source directory for its Flutter Supervisor", async (t) => {
+  const runtime = await createRuntime(t, { installFixture: true });
   const ready = await runtime.start();
   const socket = await openRuntimeSocket(ready);
   t.after(() => socket.close());
@@ -422,14 +418,11 @@ test("desktop Runtime opens only the installed source directory through its owne
   if (process.platform !== "win32") {
     assert.equal(response.type, "error");
     assert.equal(response.error.code, "unsupported");
-    assert.deepEqual(opened, []);
     return;
   }
   assert.equal(response.type, "response");
-  assert.deepEqual(response.result, { kind: "installed" });
-  assert.equal(opened.length, 1);
-  assert.match(opened[0], /plugins[\\/]org\.mgread\.runtime\.fixture[\\/]versions[\\/]1\.0\.0$/);
-  assert.notEqual(JSON.stringify(response), JSON.stringify(opened[0]));
+  assert.equal(response.result.kind, "installed");
+  assert.match(response.result.directory, /plugins[\\/]org\.mgread\.runtime\.fixture[\\/]versions[\\/]1\.0\.0$/);
 });
 
 test("desktop Runtime reports and clears private plugin caches without paths", async (t) => {

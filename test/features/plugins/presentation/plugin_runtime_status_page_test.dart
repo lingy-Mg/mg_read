@@ -1,3 +1,15 @@
+/// 数据源管理二级页面测试。
+///
+/// 职责：
+/// - 验证数据源设置页的内容、状态和共享顶部栏几何。
+///
+/// 注意：
+/// - 仅覆盖 Widget 层契约，不替代 Runtime 或 Android 验收。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -11,23 +23,14 @@ import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page
 import 'plugin_runtime_status_page_fixture.dart';
 
 void main() {
-  testWidgets('matches the compact six-source management reference layout', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('matches the compact six-source management reference layout', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 690));
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          pluginRuntimeConnectionProvider.overrideWith(
-            (Ref ref) async => dataSourceManagementFixture,
-          ),
-        ],
+        overrides: [pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => dataSourceManagementFixture)],
         child: MaterialApp(
           theme: AppTheme.light(),
-          home: PluginRuntimeStatusPage(
-            onBackRequested: () {},
-            onDestinationRequested: (_) {},
-          ),
+          home: PluginRuntimeStatusPage(onBackRequested: () {}, onDestinationRequested: (_) {}),
         ),
       ),
     );
@@ -38,104 +41,59 @@ void main() {
     expect(find.text('阅文集团旗下原创文学平台'), findsOneWidget);
     expect(find.text('已启用 4/6'), findsOneWidget);
     expect(find.text('数据来源分组'), findsNothing);
-    expect(
-      find.byKey(const Key('data-source-management-card')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('data-source-management-card')), findsOneWidget);
     expect(find.byKey(const Key('data-source-add')), findsOneWidget);
     if (Platform.isWindows) {
-      expect(
-        find.byKey(const Key('data-source-open-runtime-directory')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('data-source-open-runtime-directory')), findsOneWidget);
     }
-    expect(
-      find.byKey(const Key('data-source-toggle-org.mgread.qidian')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('data-source-toggle-org.mgread.17k')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('data-source-toggle-org.mgread.qidian')), findsOneWidget);
+    expect(find.byKey(const Key('data-source-toggle-org.mgread.17k')), findsOneWidget);
     expect(find.text('首页'), findsNothing);
     expect(find.text('发现'), findsNothing);
     expect(find.text('书架'), findsNothing);
     expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
     expect(find.byIcon(Icons.help_outline), findsOneWidget);
 
-    final Rect topBar = tester.getRect(
-      find.byKey(const Key('data-source-top-bar')),
-    );
-    final Rect card = tester.getRect(
-      find.byKey(const Key('data-source-management-card')),
-    );
-    expect(topBar.top, closeTo(0, 0.1));
-    expect(topBar.height, AppDetailMetrics.topBarHeight);
-    expect(
-      card.top,
-      closeTo(AppDetailMetrics.topBarHeight + AppSpacing.regular, 0.1),
-    );
+    final Rect topBar = tester.getRect(find.byKey(const Key('data-source-top-bar')));
+    final Rect card = tester.getRect(find.byKey(const Key('data-source-management-card')));
+    expect(topBar.top, closeTo(AppSpacing.pageHeaderTopPadding, 0.1));
+    expect(topBar.height, AppSpacing.minimumTouchTarget);
+    expect(card.top, closeTo(AppSpacing.pageHeaderTopPadding + AppSpacing.minimumTouchTarget + AppSpacing.regular, 0.1));
     expect(card.left, closeTo(AppDetailMetrics.horizontalPadding, 0.1));
-    expect(
-      card.width,
-      closeTo(390 - AppDetailMetrics.horizontalPadding * 2, 0.1),
-    );
+    expect(card.width, closeTo(390 - AppDetailMetrics.horizontalPadding * 2, 0.1));
 
-    final Rect firstSource = tester.getRect(
-      find.byKey(const Key('data-source-org.mgread.qidian')),
-    );
-    final Rect lastSource = tester.getRect(
-      find.byKey(const Key('data-source-org.mgread.17k')),
-    );
-    expect(
-      firstSource.height,
-      AppSpacing.dataSourceRowHeight + AppSpacing.compact,
-    );
+    final Rect firstSource = tester.getRect(find.byKey(const Key('data-source-org.mgread.qidian')));
+    final Rect lastSource = tester.getRect(find.byKey(const Key('data-source-org.mgread.17k')));
+    expect(firstSource.height, AppSpacing.dataSourceRowHeight + AppSpacing.compact);
     expect(lastSource.bottom, greaterThan(firstSource.bottom));
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('places the data-source header below the Android top inset', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('places the data-source header below the Android top inset', (WidgetTester tester) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          pluginRuntimeConnectionProvider.overrideWith(
-            (Ref ref) async => dataSourceManagementFixture,
-          ),
-        ],
+        overrides: [pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => dataSourceManagementFixture)],
         child: MaterialApp(
           theme: AppTheme.light(),
           builder: (BuildContext context, Widget? child) {
             final MediaQueryData mediaQuery = MediaQuery.of(context);
             return MediaQuery(
-              data: mediaQuery.copyWith(
-                padding: const EdgeInsets.only(top: 24),
-                viewPadding: const EdgeInsets.only(top: 24),
-              ),
+              data: mediaQuery.copyWith(padding: const EdgeInsets.only(top: 24), viewPadding: const EdgeInsets.only(top: 24)),
               child: child ?? const SizedBox.shrink(),
             );
           },
-          home: PluginRuntimeStatusPage(
-            onBackRequested: () {},
-            onDestinationRequested: (_) {},
-          ),
+          home: PluginRuntimeStatusPage(onBackRequested: () {}, onDestinationRequested: (_) {}),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    final Rect topBar = tester.getRect(
-      find.byKey(const Key('data-source-top-bar')),
-    );
-    expect(topBar.top, 24);
-    expect(topBar.height, AppDetailMetrics.topBarHeight);
+    final Rect topBar = tester.getRect(find.byKey(const Key('data-source-top-bar')));
+    expect(topBar.top, 24 + AppSpacing.pageHeaderTopPadding);
+    expect(topBar.height, AppSpacing.minimumTouchTarget);
   });
 
-  testWidgets('marks a development source as live and keeps it immutable', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('marks a development source as live and keeps it immutable', (WidgetTester tester) async {
     const developmentSource = PluginRuntimeConnection(
       isHealthy: true,
       nodeVersion: '24.16.0',
@@ -156,42 +114,27 @@ void main() {
     await _setViewport(tester, const Size(390, 690));
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          pluginRuntimeConnectionProvider.overrideWith(
-            (Ref ref) async => developmentSource,
-          ),
-        ],
+        overrides: [pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => developmentSource)],
         child: MaterialApp(
           theme: AppTheme.light(),
-          home: PluginRuntimeStatusPage(
-            onBackRequested: () {},
-            onDestinationRequested: (_) {},
-          ),
+          home: PluginRuntimeStatusPage(onBackRequested: () {}, onDestinationRequested: (_) {}),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('小说 · 开发源（即时生效）'), findsOneWidget);
-    final toggle = tester.widget<Switch>(
-      find.byKey(const Key('data-source-toggle-org.mgread.discovery-demo')),
-    );
+    final toggle = tester.widget<Switch>(find.byKey(const Key('data-source-toggle-org.mgread.discovery-demo')));
     expect(toggle.value, isTrue);
     expect(toggle.onChanged, isNull);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('opens a selected data source detail intent', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('opens a selected data source detail intent', (WidgetTester tester) async {
     String? selected;
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          pluginRuntimeConnectionProvider.overrideWith(
-            (Ref ref) async => dataSourceManagementFixture,
-          ),
-        ],
+        overrides: [pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => dataSourceManagementFixture)],
         child: MaterialApp(
           theme: AppTheme.light(),
           home: PluginRuntimeStatusPage(

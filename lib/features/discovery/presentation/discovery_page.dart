@@ -3,6 +3,7 @@
 /// 职责：
 /// - 编排发现页的顶部导航、内容区和底部导航。
 /// - 将用户操作转交给显式回调，不直接访问 Runtime 或持久化。
+/// - 组合顶级、列表层级和详情页共用的发现页顶部栏。
 ///
 /// 注意：
 /// - 不要在 build() 中执行网络、Runtime 或磁盘 IO。
@@ -21,10 +22,13 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_top_action.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
+
+export 'widgets/discovery_top_action.dart';
 
 part 'discovery_content_sections.dart';
 
@@ -214,6 +218,13 @@ class DiscoveryTopBar extends StatelessWidget {
     required this.onToggleTheme,
     this.title = '发现',
     this.onRefreshPressed,
+    this.onBackPressed,
+    this.showSourceSelector = true,
+    this.showSearchAction = true,
+    this.trailingActions = const <Widget>[],
+    this.backButtonKey,
+    this.barKey,
+    this.titleKey,
     super.key,
   });
 
@@ -223,25 +234,43 @@ class DiscoveryTopBar extends StatelessWidget {
   final VoidCallback onToggleTheme;
   final String title;
   final VoidCallback? onRefreshPressed;
+  final VoidCallback? onBackPressed;
+  final bool showSourceSelector;
+  final bool showSearchAction;
+  final List<Widget> trailingActions;
+  final Key? backButtonKey;
+  final Key? barKey;
+  final Key? titleKey;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     return SizedBox(
+      key: barKey,
       height: AppSpacing.discoveryHeaderHeight,
       child: Stack(
         alignment: Alignment.center,
         children: <Widget>[
           Positioned(
-            left: AppSpacing.discoveryHeaderInset,
+            left: onBackPressed == null ? AppSpacing.discoveryHeaderInset : AppSpacing.topBarActionSize + AppSpacing.discoveryHeaderInset,
             top: 0,
             bottom: 0,
-            child: Center(child: AppPageTitle(title: title)),
+            child: Center(
+              child: AppPageTitle(key: titleKey, title: title),
+            ),
           ),
-          Align(
-            alignment: Alignment.center,
-            child: DiscoverySourceSelector(sourceName: sourceName, onPressed: onSourcePressed),
-          ),
+          if (onBackPressed != null)
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: DiscoveryTopAction(key: backButtonKey, tooltip: '返回上一级', icon: Icons.arrow_back_rounded, onPressed: onBackPressed!),
+            ),
+          if (showSourceSelector)
+            Align(
+              alignment: Alignment.center,
+              child: DiscoverySourceSelector(sourceName: sourceName, onPressed: onSourcePressed),
+            ),
           Positioned(
             right: 0,
             top: 0,
@@ -249,6 +278,7 @@ class DiscoveryTopBar extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
+                ...trailingActions,
                 if (AppTheme.darkModeEnabled) ...<Widget>[
                   DiscoveryTopAction(
                     key: const Key('theme-mode-toggle'),
@@ -267,12 +297,13 @@ class DiscoveryTopBar extends StatelessWidget {
                   ),
                   const SizedBox(width: AppSpacing.unit),
                 ],
-                DiscoveryTopAction(
-                  key: const Key('discovery-search-action'),
-                  tooltip: '搜索书籍',
-                  icon: Icons.search_rounded,
-                  onPressed: onSearchPressed,
-                ),
+                if (showSearchAction)
+                  DiscoveryTopAction(
+                    key: const Key('discovery-search-action'),
+                    tooltip: '搜索书籍',
+                    icon: Icons.search_rounded,
+                    onPressed: onSearchPressed,
+                  ),
               ],
             ),
           ),
@@ -334,39 +365,6 @@ class DiscoverySourceSelector extends StatelessWidget {
                   Icon(Icons.arrow_drop_down_rounded, size: 16, color: theme.colorScheme.onSurface),
                 ],
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class DiscoveryTopAction extends StatelessWidget {
-  const DiscoveryTopAction({required this.tooltip, required this.icon, required this.onPressed, super.key});
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Semantics(
-      button: true,
-      label: tooltip,
-      onTap: onPressed,
-      child: Tooltip(
-        message: tooltip,
-        child: Material(
-          color: Colors.transparent,
-          child: InkResponse(
-            onTap: onPressed,
-            excludeFromSemantics: true,
-            radius: AppSpacing.topBarActionSize / 2,
-            child: SizedBox.square(
-              dimension: AppSpacing.topBarActionSize,
-              child: Icon(icon, size: 21, color: theme.colorScheme.onSurface),
             ),
           ),
         ),

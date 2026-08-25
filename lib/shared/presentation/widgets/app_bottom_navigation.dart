@@ -1,274 +1,24 @@
+/// MgRead 底部导航的静态外观与短时选中反馈。
+///
+/// 职责：
+/// - 渲染四个主目的地与共享胶囊。
+/// - 消费 MotionScope 的状态，不拥有跨路由 controller。
+///
+/// 注意：
+/// - 跨路由移动、减少动态效果和资源释放属于 sibling MotionScope。
+/// - 本模块不处理导航路由或业务状态。
+///
+/// TODO:
+/// - 无。
+library;
+
+export 'package:mg_read/shared/presentation/motion/app_bottom_navigation_motion_scope.dart';
+
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
-
-/// Keeps the bottom-navigation indicator moving across top-level route swaps.
-///
-/// Root destinations each own their page scaffold, so this scope lives above
-/// the router content and lets outgoing and incoming bars render one shared
-/// capsule position while the route itself cross-fades.
-class AppBottomNavigationMotionScope extends StatefulWidget {
-  /// Creates a process-local motion scope for bottom navigation instances.
-  const AppBottomNavigationMotionScope({
-    required this.child,
-    this.initialDestination,
-    this.animateTexture = true,
-    super.key,
-  });
-
-  final Widget child;
-  final AppNavigationDestination? initialDestination;
-
-  /// Whether the decorative texture is allowed to play its ambient motion.
-  final bool animateTexture;
-
-  static _AppBottomNavigationMotionScopeState? _maybeOf(BuildContext context) {
-    return context
-        .dependOnInheritedWidgetOfExactType<
-          _AppBottomNavigationMotionInherited
-        >()
-        ?.state;
-  }
-
-  @override
-  State<AppBottomNavigationMotionScope> createState() =>
-      _AppBottomNavigationMotionScopeState();
-}
-
-class _AppBottomNavigationMotionScopeState
-    extends State<AppBottomNavigationMotionScope>
-    with TickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final AnimationController _textureController;
-  Animation<double> _position = const AlwaysStoppedAnimation<double>(0);
-  Animation<double> _pillWidthScale = const AlwaysStoppedAnimation<double>(1);
-  Animation<double> _pillHeightScale = const AlwaysStoppedAnimation<double>(1);
-  late final Animation<double> _texturePhase;
-  AppNavigationDestination? _origin;
-  AppNavigationDestination? _target;
-  bool _textureMotionEnabled = false;
-  bool _textureMovingForward = true;
-
-  Listenable get animation => _controller;
-  Listenable get textureAnimation => _textureController;
-  double get texturePhase => _texturePhase.value;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: AppMotion.bottomNavigationPillTravel,
-      vsync: this,
-    );
-    _textureController = AnimationController(
-      duration: AppMotion.bottomNavigationTextureDrift,
-      vsync: this,
-    );
-    _texturePhase = CurvedAnimation(
-      parent: _textureController,
-      curve: AppMotion.bottomNavigationTextureCurve,
-      reverseCurve: AppMotion.bottomNavigationTextureCurve,
-    );
-    final AppNavigationDestination? initial = widget.initialDestination;
-    if (initial != null) {
-      _setImmediate(initial);
-    }
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _syncTextureMotion();
-  }
-
-  @override
-  void didUpdateWidget(covariant AppBottomNavigationMotionScope oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.animateTexture != widget.animateTexture) {
-      _syncTextureMotion();
-    }
-  }
-
-  double positionFor(AppNavigationDestination fallback) {
-    return _target == null ? fallback.index.toDouble() : _position.value;
-  }
-
-  AppNavigationDestination visualSelectionFor(
-    AppNavigationDestination fallback,
-  ) {
-    final AppNavigationDestination target = _target ?? fallback;
-    if (_controller.isAnimating &&
-        _controller.value < AppMotion.bottomNavigationSelectionHandoff) {
-      return _origin ?? target;
-    }
-    return target;
-  }
-
-  double get pillWidthScale => _pillWidthScale.value;
-  double get pillHeightScale => _pillHeightScale.value;
-
-  void ensureDestination(AppNavigationDestination destination) {
-    if (_target == null) {
-      _setImmediate(destination);
-      return;
-    }
-    // During a route cross-fade the outgoing bar still reports its old
-    // selection. It must not pull the shared capsule back from the new target.
-    if (!_controller.isAnimating && _target != destination) {
-      animateTo(destination);
-    }
-  }
-
-  void animateTo(AppNavigationDestination destination) {
-    final double target = destination.index.toDouble();
-    final double current = _position.value;
-    if (_target == destination) return;
-
-    final AppNavigationDestination currentVisual = visualSelectionFor(
-      _target ?? destination,
-    );
-    final double currentWidthScale = _pillWidthScale.value;
-    final double currentHeightScale = _pillHeightScale.value;
-    _controller.stop();
-    _origin = currentVisual;
-    _target = destination;
-    final double direction = target >= current ? 1 : -1;
-    final double overshoot =
-        target + direction * AppMotion.bottomNavigationPillOvershoot;
-    _position = TweenSequence<double>(<TweenSequenceItem<double>>[
-      TweenSequenceItem<double>(
-        tween: ConstantTween<double>(current),
-        weight: 14,
-      ),
-      TweenSequenceItem<double>(
-        tween: Tween<double>(
-          begin: current,
-          end: overshoot,
-        ).chain(CurveTween(curve: Curves.easeOutCubic)),
-        weight: 70,
-      ),
-      TweenSequenceItem<double>(
-        tween: Tween<double>(
-          begin: overshoot,
-          end: target,
-        ).chain(CurveTween(curve: Curves.easeOutCubic)),
-        weight: 16,
-      ),
-    ]).animate(_controller);
-    _pillWidthScale = _pillScaleSequence(
-      begin: currentWidthScale,
-      travelling: AppMotion.bottomNavigationPillTravelWidthScale,
-      arrival: AppMotion.bottomNavigationPillArrivalWidthScale,
-    ).animate(_controller);
-    _pillHeightScale = _pillScaleSequence(
-      begin: currentHeightScale,
-      travelling: AppMotion.bottomNavigationPillTravelHeightScale,
-      arrival: AppMotion.bottomNavigationPillArrivalHeightScale,
-    ).animate(_controller);
-    _controller.forward(from: 0);
-    _playTextureMotion();
-  }
-
-  void _syncTextureMotion() {
-    final bool shouldAnimate =
-        widget.animateTexture && !MediaQuery.disableAnimationsOf(context);
-    if (_textureMotionEnabled == shouldAnimate) return;
-
-    _textureMotionEnabled = shouldAnimate;
-    if (shouldAnimate) {
-      _playTextureMotion();
-      return;
-    }
-
-    _textureController
-      ..stop()
-      ..value = 0.5;
-  }
-
-  void _playTextureMotion() {
-    if (!_textureMotionEnabled) return;
-
-    if (_textureMovingForward) {
-      _textureController.forward();
-    } else {
-      _textureController.reverse();
-    }
-    _textureMovingForward = !_textureMovingForward;
-  }
-
-  TweenSequence<double> _pillScaleSequence({
-    required double begin,
-    required double travelling,
-    required double arrival,
-  }) {
-    return TweenSequence<double>(<TweenSequenceItem<double>>[
-      TweenSequenceItem<double>(
-        tween: Tween<double>(
-          begin: begin,
-          end: travelling,
-        ).chain(CurveTween(curve: Curves.easeInOutCubic)),
-        weight: 18,
-      ),
-      TweenSequenceItem<double>(
-        tween: ConstantTween<double>(travelling),
-        weight: 45,
-      ),
-      TweenSequenceItem<double>(
-        tween: Tween<double>(
-          begin: travelling,
-          end: arrival,
-        ).chain(CurveTween(curve: Curves.easeOutCubic)),
-        weight: 25,
-      ),
-      TweenSequenceItem<double>(
-        tween: Tween<double>(
-          begin: arrival,
-          end: 1,
-        ).chain(CurveTween(curve: Curves.easeOutCubic)),
-        weight: 12,
-      ),
-    ]);
-  }
-
-  void _setImmediate(AppNavigationDestination destination) {
-    _controller.stop();
-    _origin = destination;
-    _target = destination;
-    _position = AlwaysStoppedAnimation<double>(destination.index.toDouble());
-    _pillWidthScale = const AlwaysStoppedAnimation<double>(1);
-    _pillHeightScale = const AlwaysStoppedAnimation<double>(1);
-  }
-
-  @override
-  void dispose() {
-    _textureController.dispose();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return _AppBottomNavigationMotionInherited(
-      state: this,
-      child: widget.child,
-    );
-  }
-}
-
-class _AppBottomNavigationMotionInherited extends InheritedWidget {
-  const _AppBottomNavigationMotionInherited({
-    required this.state,
-    required super.child,
-  });
-
-  final _AppBottomNavigationMotionScopeState state;
-
-  @override
-  bool updateShouldNotify(_AppBottomNavigationMotionInherited oldWidget) {
-    return oldWidget.state != state;
-  }
-}
+import 'package:mg_read/shared/presentation/motion/app_bottom_navigation_motion_scope.dart';
 
 /// Bottom destinations for the mobile-first root feature surfaces.
 class AppBottomNavigation extends StatelessWidget {
@@ -287,8 +37,8 @@ class AppBottomNavigation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final _AppBottomNavigationMotionScopeState? motion =
-        AppBottomNavigationMotionScope._maybeOf(context);
+    final AppBottomNavigationMotion? motion =
+        AppBottomNavigationMotionScope.maybeOf(context);
     if (motion == null) {
       return AppBottomNavigationMotionScope(
         initialDestination: selected,
@@ -322,11 +72,11 @@ class _AppBottomNavigationContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final _AppBottomNavigationMotionScopeState motion =
-        AppBottomNavigationMotionScope._maybeOf(context)!;
+    final AppBottomNavigationMotion motion =
+        AppBottomNavigationMotionScope.maybeOf(context)!;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (motion.mounted) motion.ensureDestination(selected);
+      if (motion.isMounted) motion.ensureDestination(selected);
     });
 
     final ThemeData theme = Theme.of(context);
@@ -610,10 +360,13 @@ class _AppNavigationItem extends StatelessWidget {
                   key: ValueKey<String>(
                     'app-nav-icon-motion-${destination.name}',
                   ),
-                  duration: AppMotion.bottomNavigationIconResponse,
+                  duration: AppMotion.effectiveDuration(
+                    context,
+                    AppMotion.bottomNavigationIconResponse,
+                  ),
                   curve: visuallySelected
-                      ? Curves.easeOutBack
-                      : AppMotion.navigationCurve,
+                      ? AppMotion.navigationCurve
+                      : AppMotion.navigationReverseCurve,
                   alignment: visuallySelected
                       ? Alignment.center
                       : const Alignment(
@@ -621,17 +374,23 @@ class _AppNavigationItem extends StatelessWidget {
                           AppMotion.bottomNavigationUnselectedIconAlignmentY,
                         ),
                   child: AnimatedScale(
-                    duration: AppMotion.bottomNavigationIconResponse,
+                    duration: AppMotion.effectiveDuration(
+                      context,
+                      AppMotion.bottomNavigationIconResponse,
+                    ),
                     curve: visuallySelected
-                        ? Curves.easeOutBack
-                        : AppMotion.navigationCurve,
+                        ? AppMotion.navigationCurve
+                        : AppMotion.navigationReverseCurve,
                     scale: visuallySelected
                         ? AppMotion.bottomNavigationSelectedIconScale
                         : 1,
                     child: Transform.translate(
                       offset: data.opticalOffset,
                       child: AnimatedSwitcher(
-                        duration: AppMotion.navigationSelection,
+                        duration: AppMotion.effectiveDuration(
+                          context,
+                          AppMotion.navigationSelection,
+                        ),
                         switchInCurve: AppMotion.navigationCurve,
                         switchOutCurve: AppMotion.navigationReverseCurve,
                         transitionBuilder:
@@ -667,25 +426,37 @@ class _AppNavigationItem extends StatelessWidget {
                       key: ValueKey<String>(
                         'app-nav-label-motion-${destination.name}',
                       ),
-                      duration: AppMotion.bottomNavigationLabelResponse,
+                      duration: AppMotion.effectiveDuration(
+                        context,
+                        AppMotion.bottomNavigationLabelResponse,
+                      ),
                       curve: visuallySelected
                           ? AppMotion.navigationCurve
-                          : Curves.easeOutBack,
+                          : AppMotion.navigationReverseCurve,
                       offset: visuallySelected
                           ? const Offset(0, 0.28)
                           : Offset.zero,
                       child: AnimatedScale(
-                        duration: AppMotion.bottomNavigationLabelResponse,
+                        duration: AppMotion.effectiveDuration(
+                          context,
+                          AppMotion.bottomNavigationLabelResponse,
+                        ),
                         curve: visuallySelected
                             ? AppMotion.navigationCurve
-                            : Curves.easeOutBack,
+                            : AppMotion.navigationReverseCurve,
                         scale: visuallySelected ? 0.82 : 1,
                         child: AnimatedOpacity(
-                          duration: AppMotion.bottomNavigationLabelResponse,
+                          duration: AppMotion.effectiveDuration(
+                            context,
+                            AppMotion.bottomNavigationLabelResponse,
+                          ),
                           curve: AppMotion.navigationCurve,
                           opacity: visuallySelected ? 0 : 1,
                           child: AnimatedDefaultTextStyle(
-                            duration: AppMotion.navigationSelection,
+                            duration: AppMotion.effectiveDuration(
+                              context,
+                              AppMotion.navigationSelection,
+                            ),
                             curve: AppMotion.navigationCurve,
                             style: labelStyle,
                             child: Text(data.label),

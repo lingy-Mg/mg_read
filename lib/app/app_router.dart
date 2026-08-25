@@ -1,3 +1,17 @@
+/// MgRead 声明式路由与顶层页面过渡。
+///
+/// 职责：
+/// - 将稳定路由参数映射为页面。
+/// - 仅为顶层目的地提供可被返回打断的空间过渡。
+///
+/// 注意：
+/// - 路由不携带可变依赖或内容正文。
+/// - 系统减少动态效果时过渡必须立即完成。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -27,7 +41,7 @@ import 'package:mg_read/features/profile/application/profile_reading_stats_loade
 import 'package:mg_read/features/profile/presentation/profile_setting_placeholder_page.dart';
 import 'package:mg_read/features/reader/presentation/reader_destination_page.dart';
 import 'package:mg_read/features/reader/data/transient_source_text_reader.dart';
-import 'package:mg_read/features/reader/presentation/reader_host_page.dart';
+import 'package:mg_read/features/reader/presentation/reader_entry_transition.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
 part 'app_router.g.dart';
@@ -142,13 +156,20 @@ void _goToDestination(
 }
 
 Page<void> _topLevelDestinationPage({
+  required BuildContext context,
   required GoRouterState state,
   required Widget child,
 }) {
   return CustomTransitionPage<void>(
     key: state.pageKey,
-    transitionDuration: AppMotion.destinationTransition,
-    reverseTransitionDuration: AppMotion.destinationTransition,
+    transitionDuration: AppMotion.effectiveDuration(
+      context,
+      AppMotion.destinationTransition,
+    ),
+    reverseTransitionDuration: AppMotion.effectiveDuration(
+      context,
+      AppMotion.destinationReverseTransition,
+    ),
     child: child,
     transitionsBuilder:
         (
@@ -180,6 +201,7 @@ class LibraryRoute extends GoRouteData with $LibraryRoute {
   @override
   Page<void> buildPage(BuildContext context, GoRouterState state) {
     return _topLevelDestinationPage(
+      context: context,
       state: state,
       child: LibraryPage(
         onDestinationRequested: (AppNavigationDestination destination) {
@@ -221,6 +243,7 @@ class SearchRoute extends GoRouteData with $SearchRoute {
   @override
   Page<void> buildPage(BuildContext context, GoRouterState state) {
     return _topLevelDestinationPage(
+      context: context,
       state: state,
       child: SearchPage(
         initialSourceId: sourceId,
@@ -253,6 +276,7 @@ class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
   @override
   Page<void> buildPage(BuildContext context, GoRouterState state) {
     return _topLevelDestinationPage(
+      context: context,
       state: state,
       child: DiscoveryDestinationPage(
         onDestinationRequested: (AppNavigationDestination destination) {
@@ -305,7 +329,7 @@ Future<void> _openTransientSourceTextReader(
   );
   await navigator.push<void>(
     MaterialPageRoute<void>(
-      builder: (BuildContext routeContext) => ReaderHostPage(
+      builder: (BuildContext routeContext) => ReaderEntryTransition(
         request: session.createLaunchRequest(
           initialChapterId: chapter.id,
           observer: _DismissReaderObserver(navigator),
@@ -322,12 +346,10 @@ final class _DismissReaderObserver extends ReaderObserver {
 
   @override
   Future<void> onExitRequested(ReaderProgress? progress) async {
-    // TextReaderView uses PopScope(canPop: false) to funnel system back
-    // gestures through its async progress flush. Once that callback reaches
-    // the host, maybePop() would be intercepted by the same PopScope again.
-    // This is now an explicit, already-guarded exit request, so pop the route
-    // programmatically instead of re-entering the interception path.
-    if (_navigator.mounted) _navigator.pop();
+    // Reader exits are funneled to the host through this callback, including
+    // predictive-back completions. Guard pop to avoid double-navigation if the
+    // reader route is already popped elsewhere.
+    if (_navigator.mounted && _navigator.canPop()) _navigator.pop();
   }
 }
 
@@ -357,6 +379,7 @@ class ProfileRoute extends GoRouteData with $ProfileRoute {
   @override
   Page<void> buildPage(BuildContext context, GoRouterState state) {
     return _topLevelDestinationPage(
+      context: context,
       state: state,
       child: Consumer(
         builder: (BuildContext context, WidgetRef ref, Widget? child) {

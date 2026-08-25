@@ -7,6 +7,7 @@
 /// 注意：
 /// - 不要在 build() 中执行 Runtime、网络或磁盘 IO。
 /// - 异步加载必须由页面状态持有请求世代，并保留稳定 Key 与书架乐观更新语义。
+/// - 详情只复用发现页顶部栏，不显示顶级书源选择。
 ///
 /// TODO:
 /// - 无。
@@ -23,6 +24,7 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
+import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
 
 part 'source_content_detail_sections.dart';
@@ -94,7 +96,6 @@ class _AdaptiveSingleLineText extends StatelessWidget {
     required this.style,
     required this.minFontSize,
     this.textAlign,
-    this.textKey,
     this.maxLines = 1,
     this.overflow = TextOverflow.ellipsis,
   });
@@ -103,7 +104,6 @@ class _AdaptiveSingleLineText extends StatelessWidget {
   final TextStyle style;
   final double minFontSize;
   final TextAlign? textAlign;
-  final Key? textKey;
   final int maxLines;
   final TextOverflow overflow;
 
@@ -116,7 +116,6 @@ class _AdaptiveSingleLineText extends StatelessWidget {
         if (constraints.maxWidth <= 0) {
           return Text(
             text,
-            key: textKey,
             style: style.copyWith(fontSize: baseFontSize * minScale),
             maxLines: maxLines,
             overflow: overflow,
@@ -136,7 +135,6 @@ class _AdaptiveSingleLineText extends StatelessWidget {
         final effectiveScale = neededScale.clamp(minScale, 1.0);
         return Text(
           text,
-          key: textKey,
           textAlign: textAlign,
           maxLines: maxLines,
           overflow: overflow,
@@ -212,66 +210,76 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
           );
     return Scaffold(
       body: SafeArea(
-        child: FutureBuilder<_SourceDetailBundle>(
-          future: _detailFuture,
-          initialData: previewBundle,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              if (snapshot.hasData) {
-                return AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 260),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  child: _SourceDetailView(
-                    key: const ValueKey<String>('source-detail-preview'),
-                    bundle: snapshot.requireData,
-                    gateway: widget.gateway,
-                    relatedContents: widget.relatedContents,
-                    isRefreshing: true,
-                    onTextChapterRequested: widget.onTextChapterRequested,
-                    onAddToShelf: widget.onAddToShelf,
-                    shelfState: widget.shelfState,
-                    onExternalUrlRequested: widget.onExternalUrlRequested,
-                  ),
-                );
-              }
-              return Center(
-                child: Semantics(label: '正在加载内容详情与目录', child: CircularProgressIndicator()),
-              );
-            }
-            if (snapshot.hasError) {
-              if (previewBundle != null) {
-                return _SourceDetailView(
-                  key: const ValueKey<String>('source-detail-preview-error'),
-                  bundle: previewBundle,
-                  gateway: widget.gateway,
-                  relatedContents: widget.relatedContents,
-                  isRefreshing: false,
-                  onTextChapterRequested: widget.onTextChapterRequested,
-                  onAddToShelf: widget.onAddToShelf,
-                  shelfState: widget.shelfState,
-                  onExternalUrlRequested: widget.onExternalUrlRequested,
-                );
-              }
-              return _DetailFailure(error: AppError.fromUnknown(snapshot.error!));
-            }
-            return AnimatedSwitcher(
-              duration: const Duration(milliseconds: 260),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              child: _SourceDetailView(
-                key: const ValueKey<String>('source-detail-loaded'),
-                bundle: snapshot.requireData,
-                gateway: widget.gateway,
-                relatedContents: widget.relatedContents,
-                isRefreshing: false,
-                onTextChapterRequested: widget.onTextChapterRequested,
-                onAddToShelf: widget.onAddToShelf,
-                shelfState: widget.shelfState,
-                onExternalUrlRequested: widget.onExternalUrlRequested,
+        child: Column(
+          children: <Widget>[
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: AppSpacing.discoveryPagePadding, vertical: AppSpacing.pageHeaderTopPadding),
+              child: _DetailHeader(),
+            ),
+            Expanded(
+              child: FutureBuilder<_SourceDetailBundle>(
+                future: _detailFuture,
+                initialData: previewBundle,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    if (snapshot.hasData) {
+                      return AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 260),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        child: _SourceDetailView(
+                          key: const ValueKey<String>('source-detail-preview'),
+                          bundle: snapshot.requireData,
+                          gateway: widget.gateway,
+                          relatedContents: widget.relatedContents,
+                          isRefreshing: true,
+                          onTextChapterRequested: widget.onTextChapterRequested,
+                          onAddToShelf: widget.onAddToShelf,
+                          shelfState: widget.shelfState,
+                          onExternalUrlRequested: widget.onExternalUrlRequested,
+                        ),
+                      );
+                    }
+                    return Center(
+                      child: Semantics(label: '正在加载内容详情与目录', child: CircularProgressIndicator()),
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    if (previewBundle != null) {
+                      return _SourceDetailView(
+                        key: const ValueKey<String>('source-detail-preview-error'),
+                        bundle: previewBundle,
+                        gateway: widget.gateway,
+                        relatedContents: widget.relatedContents,
+                        isRefreshing: false,
+                        onTextChapterRequested: widget.onTextChapterRequested,
+                        onAddToShelf: widget.onAddToShelf,
+                        shelfState: widget.shelfState,
+                        onExternalUrlRequested: widget.onExternalUrlRequested,
+                      );
+                    }
+                    return _DetailFailure(error: AppError.fromUnknown(snapshot.error!));
+                  }
+                  return AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 260),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    child: _SourceDetailView(
+                      key: const ValueKey<String>('source-detail-loaded'),
+                      bundle: snapshot.requireData,
+                      gateway: widget.gateway,
+                      relatedContents: widget.relatedContents,
+                      isRefreshing: false,
+                      onTextChapterRequested: widget.onTextChapterRequested,
+                      onAddToShelf: widget.onAddToShelf,
+                      shelfState: widget.shelfState,
+                      onExternalUrlRequested: widget.onExternalUrlRequested,
+                    ),
+                  );
+                },
               ),
-            );
-          },
+            ),
+          ],
         ),
       ),
     );
@@ -417,9 +425,13 @@ class _SourceDetailBody extends StatelessWidget {
     final recommendationCandidates = _recommendationCandidates(relatedContents, excludedId: content.id);
     return ListView(
       key: const Key('source-content-detail-sheet'),
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.discoveryPagePadding,
+        AppSpacing.section,
+        AppSpacing.discoveryPagePadding,
+        AppSpacing.page,
+      ),
       children: <Widget>[
-        _DetailHeader(title: content.title),
         if (isRefreshing)
           Padding(
             padding: const EdgeInsets.only(top: 2, bottom: 8),
@@ -432,7 +444,7 @@ class _SourceDetailBody extends StatelessWidget {
               ],
             ),
           ),
-        const SizedBox(height: 20),
+        const SizedBox(height: AppSpacing.section),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[

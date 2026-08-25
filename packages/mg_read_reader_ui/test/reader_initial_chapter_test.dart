@@ -1,8 +1,24 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 void main() {
+  late SchedulingStrategy schedulingStrategy;
+
+  setUp(() {
+    schedulingStrategy = SchedulerBinding.instance.schedulingStrategy;
+    SchedulerBinding.instance.schedulingStrategy =
+        ({required int priority, required SchedulerBinding scheduler}) => true;
+  });
+
+  tearDown(() {
+    SchedulerBinding.instance.schedulingStrategy = schedulingStrategy;
+  });
+
   testWidgets('opens the first chapter when no reading progress exists', (
     WidgetTester tester,
   ) async {
@@ -173,6 +189,8 @@ void main() {
       anchor.characterOffset,
     );
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
   });
 
   testWidgets('previous chapter opens at its tail after progressive layout', (
@@ -194,26 +212,21 @@ void main() {
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 500));
     });
-    await tester.pumpAndSettle();
     for (var index = 0; index < 8; index++) {
       await tester.pump(const Duration(milliseconds: 16));
     }
-
-    await controller.nextChapter();
-    await tester.pumpAndSettle();
+    await tester.runAsync(controller.nextChapter);
     for (var index = 0; index < 8; index++) {
       await tester.pump(const Duration(milliseconds: 16));
     }
     expect(controller.snapshot.chapter?.id, 'chapter-2');
-
-    await controller.previousChapter();
+    await tester.runAsync(controller.previousChapter);
     await tester.pump();
     expect(find.text('正在定位上一章末页'), findsOneWidget);
 
     for (var index = 0; index < 12; index++) {
       await tester.pump(const Duration(milliseconds: 16));
     }
-    await tester.pumpAndSettle();
 
     expect(controller.snapshot.chapter?.id, 'chapter-1');
     expect(controller.snapshot.progress?.paragraphId, 'chapter-1-tail');
@@ -235,6 +248,124 @@ void main() {
     );
     expect(find.text('正在定位上一章末页'), findsNothing);
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 16));
+  });
+
+  testWidgets('idle adjacent layout hit crosses without a boundary spinner', (
+    WidgetTester tester,
+  ) async {
+    final controller = TextReaderController();
+    final observer = _PerformanceObserver();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TextReaderView(
+          controller: controller,
+          bookId: 'adjacent-hit',
+          dataSource: const _PreviousChapterDataSource(),
+          stateStore: const _EmptyStateStore(),
+          observer: observer,
+        ),
+      ),
+    );
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+    });
+    for (var index = 0; index < 12; index++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    unawaited(controller.nextChapter());
+    await tester.pump();
+    expect(controller.snapshot.chapter?.id, 'chapter-2');
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    await tester.pump(const Duration(milliseconds: 16));
+    final transitions = observer.events
+        .where(
+          (event) =>
+              event.phase == ReaderChapterPerformancePhase.chapterTransition,
+        )
+        .toList();
+    expect(
+      transitions.map((event) => event.outcome),
+      <ReaderChapterPerformanceOutcome>[
+        ReaderChapterPerformanceOutcome.started,
+        ReaderChapterPerformanceOutcome.success,
+      ],
+    );
+    expect(transitions.last.cacheHit, isTrue);
+    expect(
+      observer.events
+          .where(
+            (event) =>
+                event.phase ==
+                ReaderChapterPerformancePhase.adjacentPreparation,
+          )
+          .map((event) => event.outcome),
+      <ReaderChapterPerformanceOutcome>[
+        ReaderChapterPerformanceOutcome.started,
+        ReaderChapterPerformanceOutcome.success,
+      ],
+    );
+  });
+
+  testWidgets('delayed adjacent content keeps the transition spinner', (
+    WidgetTester tester,
+  ) async {
+    final controller = TextReaderController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TextReaderView(
+          controller: controller,
+          bookId: 'adjacent-miss',
+          dataSource: const _DelayedAdjacentDataSource(),
+          stateStore: const _EmptyStateStore(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pump();
+    await tester.drag(
+      find.byKey(const ValueKey<String>('reader-content-surface')),
+      const Offset(-700, 0),
+    );
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(controller.snapshot.chapter?.id, 'chapter-1');
+    expect(find.byType(CircularProgressIndicator), findsWidgets);
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+    });
+    for (var index = 0; index < 4; index++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await tester.pumpAndSettle();
+    expect(controller.snapshot.chapter?.id, 'chapter-2');
+  });
+
+  testWidgets('vertical scrolling does not start adjacent text pagination', (
+    WidgetTester tester,
+  ) async {
+    final observer = _PerformanceObserver();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TextReaderView(
+          bookId: 'vertical-no-adjacent-layout',
+          dataSource: const _PreviousChapterDataSource(),
+          stateStore: const _VerticalStateStore(),
+          observer: observer,
+        ),
+      ),
+    );
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    for (var index = 0; index < 20; index += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(observer.adjacentOutcomes, isEmpty);
+    await tester.pumpWidget(const SizedBox());
   });
 }
 
@@ -245,6 +376,24 @@ final class _FirstFrameObserver extends ReaderObserver {
   void onFirstContentPresented(ReaderFirstContentPresentation presentation) {
     presentations.add(presentation);
   }
+}
+
+class _PerformanceObserver extends ReaderObserver {
+  final List<ReaderChapterPerformanceEvent> events =
+      <ReaderChapterPerformanceEvent>[];
+
+  @override
+  void onChapterPerformance(ReaderChapterPerformanceEvent event) {
+    events.add(event);
+  }
+
+  List<ReaderChapterPerformanceOutcome> get adjacentOutcomes => events
+      .where(
+        (event) =>
+            event.phase == ReaderChapterPerformancePhase.adjacentPreparation,
+      )
+      .map((event) => event.outcome)
+      .toList(growable: false);
 }
 
 class _InitialChapterDataSource implements TextReaderDataSource {
@@ -317,6 +466,17 @@ class _EmptyStateStore implements TextReaderStateStore {
   Future<void> saveProgress(String bookId, ReaderProgress progress) async {}
 }
 
+final class _VerticalStateStore extends _EmptyStateStore {
+  const _VerticalStateStore();
+
+  @override
+  Future<TextReaderPreferences?> loadPreferences() async =>
+      const TextReaderPreferences(
+        keepScreenOn: false,
+        navigationMode: ReaderNavigationMode.verticalScroll,
+      );
+}
+
 final class _AnchoredStateStore extends _EmptyStateStore {
   const _AnchoredStateStore();
 
@@ -374,7 +534,7 @@ final class _DenseChapterDataSource extends _InitialChapterDataSource {
   );
 }
 
-final class _PreviousChapterDataSource implements TextReaderDataSource {
+class _PreviousChapterDataSource implements TextReaderDataSource {
   const _PreviousChapterDataSource();
 
   static const String tail = '第一章末尾标记';
@@ -415,7 +575,7 @@ final class _PreviousChapterDataSource implements TextReaderDataSource {
   Future<TextChapterContent> loadChapterContent(
     String bookId,
     String chapterId,
-  ) async => switch (chapterId) {
+  ) => SynchronousFuture<TextChapterContent>(switch (chapterId) {
     'chapter-1' => TextChapterContent(
       chapterId: chapterId,
       title: '第一章',
@@ -436,5 +596,29 @@ final class _PreviousChapterDataSource implements TextReaderDataSource {
       ],
     ),
     _ => throw StateError('Unknown chapter.'),
-  };
+  });
+}
+
+final class _DelayedAdjacentDataSource extends _PreviousChapterDataSource {
+  const _DelayedAdjacentDataSource();
+
+  @override
+  Future<TextChapterContent> loadChapterContent(
+    String bookId,
+    String chapterId,
+  ) async {
+    if (chapterId == 'chapter-1') {
+      return TextChapterContent(
+        chapterId: chapterId,
+        title: '第一章',
+        paragraphs: <TextParagraph>[
+          TextParagraph(id: 'chapter-1-body', text: '第一章短正文'),
+        ],
+      );
+    }
+    if (chapterId == 'chapter-2') {
+      await Future<void>.delayed(const Duration(milliseconds: 280));
+    }
+    return super.loadChapterContent(bookId, chapterId);
+  }
 }

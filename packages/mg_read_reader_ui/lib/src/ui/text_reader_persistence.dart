@@ -163,6 +163,7 @@ extension _TextReaderPersistence on _TextReaderViewState {
     if (_disposed) return;
     final ReaderProgress? anchor = _progress;
     final TextReaderPreferences normalized = value.normalized();
+    _cancelAdjacentPreparation();
     final bool commentsChanged =
         normalized.showBookComments != _preferences.showBookComments ||
         normalized.showChapterComments != _preferences.showChapterComments ||
@@ -210,12 +211,16 @@ extension _TextReaderPersistence on _TextReaderViewState {
     final bool foreground = normalized == ReaderLifecycleState.foreground;
     _foreground = foreground;
     if (!foreground) {
+      _cancelAdjacentPreparation();
       _stopAutoReading();
       _commitPreferencePreview();
       unawaited(_releaseAwake());
       unawaited(_flushProgress());
     } else {
       unawaited(_syncAwake());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_disposed) _scheduleAdjacentPreparation();
+      });
     }
     final ReaderObserver observer = _observer;
     final ReaderProgress? progress = _progress;
@@ -335,11 +340,9 @@ extension _TextReaderPersistence on _TextReaderViewState {
   }
 
   Future<void> _notify(FutureOr<void> Function() callback) {
-    return Future<void>.sync(callback).catchError((
-      Object error,
-      StackTrace stackTrace,
-    ) {
-      debugPrint('novel_reader_ui observer error: $error\n$stackTrace');
+    return Future<void>.sync(callback).catchError((Object _, StackTrace _) {
+      // Host observer failures are isolated and must not expose raw exception
+      // text or change the reading result.
     });
   }
 

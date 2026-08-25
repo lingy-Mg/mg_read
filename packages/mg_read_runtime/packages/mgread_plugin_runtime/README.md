@@ -106,9 +106,10 @@ Windows Debug 由本 package 在仓库内解析 `plugins/sources` 并把该内�
 项目不复制进 assets。package/lock 或已构建输出变化后，Facade 在下一次调用前回收旧 Node/VM，
 再启动唯一的新 Runtime。Release 不启用该路径。
 
-`OpenPluginCodeDirectoryInvocation` 仅在 Windows 桌面端由 Runtime 打开目录：development 结果
-打开工作区项目，安装来源打开当前 immutable version 副本。Facade 只返回这两种类型，绝不返回
-绝对路径；安装副本不是即时开发加载入口。
+`OpenPluginCodeDirectoryInvocation` 仅在 Windows 桌面端由 Flutter Supervisor 打开目录：Runtime
+只负责解析 development 工作区项目或当前 immutable version 副本，随后由 Flutter owner 在
+Node Job Object 外启动 Explorer。Facade 只返回这两种类型，绝不返回绝对路径；安装副本不是
+即时开发加载入口。
 
 `OpenRuntimePrivateDirectoryInvocation` 仅在 Windows 由 Flutter desktop Supervisor 打开 Runtime
 私有数据根，不让受 Job Object 管理的 Node child 创建 Explorer；Facade 不返回路径；Android 返回稳定的

@@ -11,10 +11,12 @@ export {
   runtimeCompatibility,
 } from "./runtime-version.js";
 export { DesktopRuntime } from "./desktop-runtime.js";
+export { RuntimeDebugHttpServer } from "./debug-http.js";
 export type {
   DesktopRuntimeOptions,
   DesktopRuntimeReady,
 } from "./desktop-runtime.js";
+export type { RuntimeDebugHttpStatus } from "./debug-http.js";
 export type { RuntimeCompatibilityMatrix } from "./runtime-version.js";
 export {
   createPluginArchive,

@@ -19,17 +19,13 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_list_tag.dart';
 
 void main() {
-  testWidgets('keeps discovery list tags compact and centered', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('keeps discovery list tags compact and centered', (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
         home: const Scaffold(
           body: Center(
-            child: Wrap(
-              children: <Widget>[DiscoveryListTag(label: '东方玄幻')],
-            ),
+            child: Wrap(children: <Widget>[DiscoveryListTag(label: '东方玄幻')]),
           ),
         ),
       ),

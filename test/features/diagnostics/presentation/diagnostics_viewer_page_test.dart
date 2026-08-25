@@ -1,66 +1,54 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/diagnostics/application/diagnostics_viewer_gateway.dart';
 import 'package:mg_read/features/diagnostics/presentation/diagnostics_viewer_page.dart';
 
+import '../../../core/diagnostics/persistent_diagnostics_testkit.dart';
+
 void main() {
-  testWidgets(
-    'opens bounded memory capture and reads details only after expansion',
-    (WidgetTester tester) async {
-      await _setViewport(tester, const Size(800, 1200));
-      final gateway = _FakeDiagnosticsViewerGateway();
-      await tester.pumpWidget(_host(gateway));
-      await tester.pumpAndSettle();
+  testWidgets('opens bounded memory capture and reads details only after expansion', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(800, 1200));
+    final gateway = _FakeDiagnosticsViewerGateway();
+    await tester.pumpWidget(_host(gateway));
+    await tester.pumpAndSettle();
 
-      expect(gateway.startedModes, <DiagnosticsDetailMode>[
-        DiagnosticsDetailMode.memoryOnly,
-      ]);
-      expect(find.text('实时详情 · 仅内存'), findsOneWidget);
-      expect(find.text('app.bootstrap.success'), findsOneWidget);
-      expect(gateway.detailReads, 0);
-      expect(gateway.previewReads, 0);
+    expect(gateway.startedModes, <DiagnosticsDetailMode>[DiagnosticsDetailMode.memoryOnly]);
+    expect(find.text('实时详情 · 仅内存'), findsOneWidget);
+    expect(find.text('app.bootstrap.success'), findsOneWidget);
+    expect(gateway.detailReads, 0);
+    expect(gateway.previewReads, 0);
 
-      await tester.tap(find.text('app.bootstrap.success'));
-      await tester.pumpAndSettle();
-      expect(gateway.detailReads, 1);
-      expect(find.text('结构化字段'), findsOneWidget);
-      expect(find.text('详情附件'), findsOneWidget);
+    await tester.tap(find.text('app.bootstrap.success'));
+    await tester.pumpAndSettle();
+    expect(gateway.detailReads, 1);
+    expect(find.text('结构化字段'), findsOneWidget);
+    expect(find.text('详情附件'), findsOneWidget);
 
-      final previewButton = find.text('纯文本预览前 32 KiB');
-      await tester.ensureVisible(previewButton);
-      await tester.tap(previewButton);
-      await tester.pumpAndSettle();
-      expect(gateway.previewReads, 1);
-      expect(find.text('<html>safe preview</html>'), findsOneWidget);
+    final previewButton = find.text('纯文本预览前 32 KiB');
+    await tester.ensureVisible(previewButton);
+    await tester.tap(previewButton);
+    await tester.pumpAndSettle();
+    expect(gateway.previewReads, 1);
+    expect(find.text('<html>safe preview</html>'), findsOneWidget);
 
-      final persistMode = find.text('保存详情 TXT');
-      await tester.ensureVisible(persistMode);
-      await tester.tap(persistMode);
-      await tester.pumpAndSettle();
-      expect(gateway.startedModes, <DiagnosticsDetailMode>[
-        DiagnosticsDetailMode.memoryOnly,
-        DiagnosticsDetailMode.persistToText,
-      ]);
-      expect(gateway.stoppedModes, <DiagnosticsDetailMode>[
-        DiagnosticsDetailMode.memoryOnly,
-      ]);
-      expect(find.text('详细日志 · TXT'), findsOneWidget);
+    final persistMode = find.text('保存详情 TXT');
+    await tester.ensureVisible(persistMode);
+    await tester.tap(persistMode);
+    await tester.pumpAndSettle();
+    expect(gateway.startedModes, <DiagnosticsDetailMode>[DiagnosticsDetailMode.memoryOnly, DiagnosticsDetailMode.persistToText]);
+    expect(gateway.stoppedModes, <DiagnosticsDetailMode>[DiagnosticsDetailMode.memoryOnly]);
+    expect(find.text('详细日志 · TXT'), findsOneWidget);
 
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump();
-      expect(gateway.stoppedModes, <DiagnosticsDetailMode>[
-        DiagnosticsDetailMode.memoryOnly,
-        DiagnosticsDetailMode.persistToText,
-      ]);
-    },
-  );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    expect(gateway.stoppedModes, <DiagnosticsDetailMode>[DiagnosticsDetailMode.memoryOnly, DiagnosticsDetailMode.persistToText]);
+  });
 
-  testWidgets('keeps app and Runtime event feeds separately pageable', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('keeps app and Runtime event feeds separately pageable', (WidgetTester tester) async {
     final gateway = _FakeDiagnosticsViewerGateway();
     await tester.pumpWidget(_host(gateway));
     await tester.pumpAndSettle();
@@ -71,6 +59,19 @@ void main() {
     expect(find.text('runtime.core.ready'), findsOneWidget);
     expect(gateway.requestedSources, contains(DiagnosticsViewerSource.app));
     expect(gateway.requestedSources, contains(DiagnosticsViewerSource.runtime));
+    expect(gateway.startedSources, <DiagnosticsViewerSource>[DiagnosticsViewerSource.app, DiagnosticsViewerSource.runtime]);
+  });
+
+  test('starts an App capture without requiring the Runtime Facade', () async {
+    final kit = await PersistentDiagnosticsTestkit.open();
+    addTearDown(kit.dispose);
+    final gateway = DefaultDiagnosticsViewerGateway(kit.service, kit.service, kit.service.manager, PluginRuntime());
+
+    final capture = await gateway.startCapture(mode: DiagnosticsDetailMode.memoryOnly, source: DiagnosticsViewerSource.app);
+
+    expect(capture.appSessionId, isNotNull);
+    expect(capture.runtimeSessionId, isNull);
+    await gateway.stopCapture(capture);
   });
 }
 
@@ -89,27 +90,21 @@ Widget _host(DiagnosticsViewerGateway gateway) {
     overrides: [diagnosticsViewerGatewayProvider.overrideWithValue(gateway)],
     child: MaterialApp(
       theme: AppTheme.light(),
-      home: DiagnosticsViewerPage(
-        onBackRequested: () {},
-        onDestinationRequested: (_) {},
-      ),
+      home: DiagnosticsViewerPage(onBackRequested: () {}, onDestinationRequested: (_) {}),
     ),
   );
 }
 
 final class _FakeDiagnosticsViewerGateway implements DiagnosticsViewerGateway {
   final List<DiagnosticsDetailMode> startedModes = <DiagnosticsDetailMode>[];
+  final List<DiagnosticsViewerSource> startedSources = <DiagnosticsViewerSource>[];
   final List<DiagnosticsDetailMode> stoppedModes = <DiagnosticsDetailMode>[];
-  final List<DiagnosticsViewerSource> requestedSources =
-      <DiagnosticsViewerSource>[];
+  final List<DiagnosticsViewerSource> requestedSources = <DiagnosticsViewerSource>[];
   var detailReads = 0;
   var previewReads = 0;
 
   @override
-  Future<DiagnosticsViewerEventPage> listEvents({
-    required DiagnosticsViewerSource source,
-    String? cursor,
-  }) async {
+  Future<DiagnosticsViewerEventPage> listEvents({required DiagnosticsViewerSource source, String? cursor}) async {
     requestedSources.add(source);
     final isApp = source == DiagnosticsViewerSource.app;
     return DiagnosticsViewerEventPage(
@@ -133,9 +128,7 @@ final class _FakeDiagnosticsViewerGateway implements DiagnosticsViewerGateway {
   }
 
   @override
-  Future<DiagnosticsViewerEventDetails> loadEventDetails(
-    DiagnosticsViewerEvent event,
-  ) async {
+  Future<DiagnosticsViewerEventDetails> loadEventDetails(DiagnosticsViewerEvent event) async {
     detailReads += 1;
     return DiagnosticsViewerEventDetails(
       attributesText: '{\n  "stage": "ready"\n}',
@@ -154,20 +147,18 @@ final class _FakeDiagnosticsViewerGateway implements DiagnosticsViewerGateway {
   }
 
   @override
-  Future<String> readAttachmentPreview(
-    DiagnosticsViewerAttachment attachment,
-  ) async {
+  Future<String> readAttachmentPreview(DiagnosticsViewerAttachment attachment) async {
     previewReads += 1;
     return '<html>safe preview</html>';
   }
 
   @override
-  Future<DiagnosticsViewerCapture> startCapture(
-    DiagnosticsDetailMode mode,
-  ) async {
+  Future<DiagnosticsViewerCapture> startCapture({required DiagnosticsDetailMode mode, required DiagnosticsViewerSource source}) async {
     startedModes.add(mode);
+    startedSources.add(source);
     return DiagnosticsViewerCapture(
       mode: mode,
+      source: source,
       appSessionId: 'app_capture_0000001',
       runtimeSessionId: 'runtime_capture_01',
       expiresAtUtcMicros: 1_800_000_900_000_000,

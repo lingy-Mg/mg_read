@@ -144,10 +144,167 @@ class ReaderObserver {
     ReaderFirstContentPresentation presentation,
   ) {}
 
+  /// Reports bounded adjacent layout and chapter-transition performance.
+  ///
+  /// Events contain only stable phase/outcome, counts and duration. They do
+  /// not expose book, chapter, URL, paragraph text, or raw exceptions.
+  FutureOr<void> onChapterPerformance(ReaderChapterPerformanceEvent event) {}
+
   /// Requests that the host close or otherwise leave the reader.
   ///
   /// The reader never pops the host navigator itself.
   FutureOr<void> onExitRequested(ReaderProgress? progress) {}
+}
+
+/// The reader performance operation represented by [ReaderChapterPerformanceEvent].
+enum ReaderChapterPerformancePhase {
+  /// Incremental idle pagination for one adjacent chapter.
+  adjacentPreparation,
+
+  /// A user-visible transition across a chapter boundary.
+  chapterTransition,
+}
+
+/// Terminal state of a reader performance operation.
+enum ReaderChapterPerformanceOutcome {
+  /// The operation has started and has no terminal result yet.
+  started,
+
+  /// The operation completed successfully.
+  success,
+
+  /// The operation failed without exposing raw exception data.
+  error,
+
+  /// The operation was invalidated before completion.
+  cancelled,
+}
+
+/// How work for a chapter performance operation was prepared.
+enum ReaderChapterPreparationKind {
+  /// Work has started but its eventual preparation path is not known yet.
+  pending,
+
+  /// The adjacent chapter is being paginated by bounded idle tasks.
+  adjacentIdle,
+
+  /// The visible chapter must be paginated on the foreground path.
+  foregroundLayout,
+
+  /// A complete compatible layout was consumed from the bounded cache.
+  cachedLayout,
+}
+
+/// Immutable, bounded timing notification for adjacent preparation or a turn.
+@immutable
+class ReaderChapterPerformanceEvent {
+  /// Creates an immutable bounded performance event.
+  const ReaderChapterPerformanceEvent({
+    required this.phase,
+    required this.outcome,
+    required this.operationId,
+    this.duration = Duration.zero,
+    this.pageCount = 0,
+    this.paragraphCount = 0,
+    this.preparationKind = ReaderChapterPreparationKind.pending,
+    this.cacheHit = false,
+  });
+
+  /// Creates the unique start event for an operation.
+  const ReaderChapterPerformanceEvent.started({
+    required ReaderChapterPerformancePhase phase,
+    required int operationId,
+    int paragraphCount = 0,
+    ReaderChapterPreparationKind preparationKind =
+        ReaderChapterPreparationKind.pending,
+  }) : this(
+         phase: phase,
+         outcome: ReaderChapterPerformanceOutcome.started,
+         operationId: operationId,
+         paragraphCount: paragraphCount,
+         preparationKind: preparationKind,
+       );
+
+  /// Creates the successful terminal event for an operation.
+  const ReaderChapterPerformanceEvent.success({
+    required ReaderChapterPerformancePhase phase,
+    required int operationId,
+    Duration duration = Duration.zero,
+    int pageCount = 0,
+    int paragraphCount = 0,
+    ReaderChapterPreparationKind preparationKind =
+        ReaderChapterPreparationKind.foregroundLayout,
+    bool cacheHit = false,
+  }) : this(
+         phase: phase,
+         outcome: ReaderChapterPerformanceOutcome.success,
+         operationId: operationId,
+         duration: duration,
+         pageCount: pageCount,
+         paragraphCount: paragraphCount,
+         preparationKind: preparationKind,
+         cacheHit: cacheHit,
+       );
+
+  /// Creates the failed terminal event for an operation.
+  const ReaderChapterPerformanceEvent.error({
+    required ReaderChapterPerformancePhase phase,
+    required int operationId,
+    Duration duration = Duration.zero,
+    int paragraphCount = 0,
+    ReaderChapterPreparationKind preparationKind =
+        ReaderChapterPreparationKind.foregroundLayout,
+    bool cacheHit = false,
+  }) : this(
+         phase: phase,
+         outcome: ReaderChapterPerformanceOutcome.error,
+         operationId: operationId,
+         duration: duration,
+         paragraphCount: paragraphCount,
+         preparationKind: preparationKind,
+         cacheHit: cacheHit,
+       );
+
+  /// Creates the cancelled terminal event for an operation.
+  const ReaderChapterPerformanceEvent.cancelled({
+    required ReaderChapterPerformancePhase phase,
+    required int operationId,
+    Duration duration = Duration.zero,
+    ReaderChapterPreparationKind preparationKind =
+        ReaderChapterPreparationKind.foregroundLayout,
+    bool cacheHit = false,
+  }) : this(
+         phase: phase,
+         outcome: ReaderChapterPerformanceOutcome.cancelled,
+         operationId: operationId,
+         duration: duration,
+         preparationKind: preparationKind,
+         cacheHit: cacheHit,
+       );
+
+  /// Whether this operation prepares an adjacent layout or changes chapter.
+  final ReaderChapterPerformancePhase phase;
+
+  /// Start or the unique terminal outcome of the operation.
+  final ReaderChapterPerformanceOutcome outcome;
+
+  /// Session-local correlation identifier; it contains no content identity.
+  final int operationId;
+
+  /// Bounded elapsed time reported by a terminal event.
+  final Duration duration;
+
+  /// Number of complete pages produced or consumed, when known.
+  final int pageCount;
+
+  /// Number of paragraphs considered, when known.
+  final int paragraphCount;
+
+  /// Preparation path used by the operation.
+  final ReaderChapterPreparationKind preparationKind;
+
+  /// Whether a compatible complete layout was consumed from the cache.
+  final bool cacheHit;
 }
 
 /// How the first visible text page became available.
