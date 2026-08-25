@@ -17,18 +17,40 @@ test('live source completes category, search, detail, catalog, and content flow'
     http: { fetch },
     log: { debug() {}, info() {}, warn() {}, error() {} },
     app: { runtimeVersion: 'live-test', nodeVersion: process.versions.node, pluginApi: 1 },
-    plugin: { id: 'org.mgread.aisishuwu', version: '0.2.2' },
+    plugin: { id: 'org.mgread.aisishuwu', version: '0.2.7' },
   });
 
   const categories = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });
   assert.equal(categories.kind, 'document');
-  const target = categories.document.components[0].children[1].categories[0].target;
+  const featured = categories.document.components.find((component) => component.id === 'source-featured-section');
+  assert.equal(featured?.type, 'section');
+  assert.equal(featured?.children[0].layout, 'carousel');
+  assert.ok(featured?.children[0].items.length > 1);
+  const categorySection = categories.document.components.find((component) => component.id === 'source-categories-section');
+  assert.equal(categorySection?.type, 'section');
+  const target = categorySection.children[1].categories[0].target;
 
   const discovery = await plugin.discover({ target, cursor: null, collectionId: null, pageSize: 5 });
   assert.equal(discovery.kind, 'document');
   const book = discovery.document.components[0].children[0].items[0].content;
   assert.match(book.id, /^novel:\d+$/u);
   assert.match(book.coverUrl ?? '', /^https?:\/\//u);
+
+  for (const rankingTarget of ['ranking:day', 'ranking:week', 'ranking:month', 'ranking:total']) {
+    const ranking = await plugin.discover({
+      target: rankingTarget,
+      cursor: null,
+      collectionId: null,
+      pageSize: 5,
+    });
+    assert.equal(ranking.kind, 'document');
+    const collection = ranking.document.components[0].children[0];
+    assert.equal(collection.layout, 'list');
+    assert.ok(collection.items.length > 0);
+    assert.ok(collection.items.every((item) => item.rank === null));
+    assert.match(collection.items[0].content.coverUrl ?? '', /^https?:\/\//u);
+    assert.ok((collection.items[0].content.description ?? '').trim().length > 0);
+  }
 
   const search = await plugin.search({ query: '修仙', cursor: null, pageSize: 5 });
   assert.ok(search.items.length > 0);

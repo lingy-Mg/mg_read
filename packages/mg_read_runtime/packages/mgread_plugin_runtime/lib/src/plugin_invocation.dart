@@ -197,6 +197,39 @@ final class InstalledPluginsInvocation
   }
 }
 
+/// Consumes the path-free summary of sources isolated during this Runtime start.
+@immutable
+final class PluginStartupRecoveryInvocation
+    extends PluginInvocation<PluginStartupRecovery> {
+  const PluginStartupRecoveryInvocation();
+
+  @override
+  String get _wireMethod => 'plugins.recovery.consume.v1';
+
+  @override
+  Map<String, Object?> get _wireParams => const <String, Object?>{};
+
+  @override
+  PluginStartupRecovery _decodeResult(Object? value) {
+    final result = _jsonObject(value, 'Plugin startup recovery');
+    final quarantinedCount = result['quarantinedCount'];
+    if (quarantinedCount is! int || quarantinedCount < 0) {
+      throw const PluginRuntimeException(
+        'invalid_response',
+        'The Runtime returned an invalid plugin recovery summary.',
+      );
+    }
+    return PluginStartupRecovery(quarantinedCount: quarantinedCount);
+  }
+}
+
+@immutable
+final class PluginStartupRecovery {
+  const PluginStartupRecovery({required this.quarantinedCount});
+
+  final int quarantinedCount;
+}
+
 /// Persists a source's desired enabled state in the Runtime-owned plugin store.
 @immutable
 final class SetPluginEnabledInvocation

@@ -14,6 +14,7 @@ import 'package:mg_read/features/discovery/presentation/discovery_destination_pa
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
 import 'package:mg_read/features/library/presentation/private_library_page.dart';
+import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_health_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_detail_page.dart';
@@ -377,6 +378,11 @@ class ProfileRoute extends GoRouteData with $ProfileRoute {
             onPluginCacheRequested: () {
               const PluginCacheRoute().push(context);
             },
+            onLanSyncRequested: () {
+              const ProfileSettingPlaceholderRoute(
+                settingId: 'data-backup',
+              ).push(context);
+            },
             onPendingSettingRequested: (String settingId) {
               ProfileSettingPlaceholderRoute(
                 settingId: settingId,
@@ -551,6 +557,14 @@ class ProfileSettingPlaceholderRoute extends GoRouteData
 
   @override
   Widget build(BuildContext context, GoRouterState state) {
+    if (settingId == 'data-backup') {
+      return LanSyncPage(
+        onBackRequested: () => _returnToProfile(context),
+        onDestinationRequested: (AppNavigationDestination destination) {
+          _goToDestination(context, destination);
+        },
+      );
+    }
     return ProfileSettingPlaceholderPage(
       settingId: settingId,
       onBackRequested: () => _returnToProfile(context),

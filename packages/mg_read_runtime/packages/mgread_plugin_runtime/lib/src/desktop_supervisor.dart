@@ -327,6 +327,165 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   }
 
   @override
+  Future<Stream<List<int>>> exportPluginArchive(
+    PluginTransferArchive archive,
+  ) async {
+    if (_disposed) {
+      throw const PluginRuntimeException(
+        'runtime_unavailable',
+        'The desktop Runtime has been closed.',
+      );
+    }
+    await _synchronizeDevelopmentRuntime();
+    final connection = await _ensureStarted();
+    final raw = await connection.request(
+      method: 'plugins.transfer.export.v1',
+      params: <String, Object?>{
+        'id': archive.pluginId,
+        'version': archive.version,
+      },
+      timeout: const Duration(minutes: 2),
+    );
+    final result = _jsonObject(raw, 'Plugin transfer export result');
+    final token = result['token'];
+    final returned = _decodePluginTransferArchive(result);
+    if (token is! String ||
+        returned.pluginId != archive.pluginId ||
+        returned.version != archive.version ||
+        returned.bytes != archive.bytes ||
+        returned.sha256 != archive.sha256) {
+      throw const PluginRuntimeException(
+        'plugin_transfer_checksum_mismatch',
+        'The Runtime transfer archive identity did not match the request.',
+      );
+    }
+    return connection.readTransferResource(
+      expectedBytes: returned.bytes,
+      token: token,
+    );
+  }
+
+  @override
+  Future<List<PluginTransferImportResult>> importPluginArchives(
+    List<({PluginTransferArchive archive, Stream<List<int>> bytes})> archives,
+  ) async {
+    if (_disposed) {
+      throw const PluginRuntimeException(
+        'runtime_unavailable',
+        'The desktop Runtime has been closed.',
+      );
+    }
+    if (archives.isEmpty || archives.length > maxPluginTransferBatch) {
+      throw const PluginRuntimeException(
+        'plugin_transfer_batch_too_large',
+        'The plugin transfer batch is invalid.',
+      );
+    }
+    var total = 0;
+    for (final item in archives) {
+      if (item.archive.bytes <= 0 ||
+          item.archive.bytes > maxPluginTransferBytes) {
+        throw const PluginRuntimeException(
+          'plugin_transfer_archive_too_large',
+          'The plugin transfer archive is too large.',
+        );
+      }
+      total += item.archive.bytes;
+      if (total > maxPluginTransferBatchBytes) {
+        throw const PluginRuntimeException(
+          'plugin_transfer_batch_too_large',
+          'The plugin transfer batch is too large.',
+        );
+      }
+    }
+    final inbox = Directory(
+      _joinPath(<String>[_bundle.dataRoot.path, 'import-inbox']),
+    );
+    final connection = await _ensureStarted();
+    final planRaw = await connection.request(
+      method: 'plugins.transfer.plan.v1',
+      params: <String, Object?>{
+        'archives': archives.map((item) => item.archive.toJson()).toList(),
+      },
+      timeout: const Duration(minutes: 2),
+    );
+    final plan = PluginTransferPlanInvocation(
+      archives: [for (final item in archives) item.archive],
+    )._decodeResult(planRaw);
+    if (plan.any(
+      (item) =>
+          item.action == PluginTransferPlanAction.receiverNewer ||
+          item.action == PluginTransferPlanAction.same ||
+          item.action == PluginTransferPlanAction.unavailable,
+    )) {
+      throw const PluginRuntimeException(
+        'invalid_request',
+        'The plugin transfer would downgrade or replace an equal Runtime version.',
+      );
+    }
+    await inbox.create(recursive: true);
+    _controlledRestarting = true;
+    final temporaryFiles = <File>[];
+    try {
+      for (final item in archives) {
+        final stem =
+            'transfer-${item.archive.pluginId}-${item.archive.version}-${DateTime.now().microsecondsSinceEpoch}';
+        final target = File(_joinPath(<String>[inbox.path, '$stem.mgplugin']));
+        final temporary = File('${target.path}.part');
+        temporaryFiles.add(temporary);
+        var copied = 0;
+        final sink = temporary.openWrite();
+        try {
+          await for (final chunk in item.bytes) {
+            copied += chunk.length;
+            if (copied > item.archive.bytes ||
+                copied > maxPluginTransferBytes) {
+              throw const PluginRuntimeException(
+                'plugin_transfer_size_mismatch',
+                'The plugin transfer archive exceeded its declared size.',
+              );
+            }
+            sink.add(chunk);
+          }
+        } finally {
+          await sink.close();
+        }
+        if (copied != item.archive.bytes) {
+          throw const PluginRuntimeException(
+            'plugin_transfer_size_mismatch',
+            'The plugin transfer archive was truncated.',
+          );
+        }
+        await temporary.rename(target.path);
+      }
+      await connection.request(
+        method: 'plugins.transfer.verify.v1',
+        params: <String, Object?>{
+          'archives': archives.map((item) => item.archive.toJson()).toList(),
+        },
+        timeout: const Duration(minutes: 2),
+      );
+      await _restartForPluginImport();
+      await _ensureStarted();
+      return <PluginTransferImportResult>[
+        for (final item in archives)
+          PluginTransferImportResult(
+            pluginId: item.archive.pluginId,
+            status: PluginTransferImportStatus.installed,
+            version: item.archive.version,
+          ),
+      ];
+    } finally {
+      _controlledRestarting = false;
+      for (final file in temporaryFiles) {
+        try {
+          if (await file.exists()) await file.delete();
+        } on Object {}
+      }
+    }
+  }
+
+  @override
   Future<void> importLocalPlugin(String sourcePath) async {
     if (_disposed) {
       throw const PluginRuntimeException(

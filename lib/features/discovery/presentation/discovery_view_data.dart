@@ -60,6 +60,8 @@ final class DiscoveryHeroViewData {
     required this.description,
     required this.metadata,
     required this.coverVariant,
+    this.coverBytes,
+    this.heat,
   });
 
   final String title;
@@ -67,6 +69,8 @@ final class DiscoveryHeroViewData {
   final String? description;
   final String? metadata;
   final DiscoveryCoverVariant coverVariant;
+  final List<int>? coverBytes;
+  final String? heat;
 }
 
 @immutable

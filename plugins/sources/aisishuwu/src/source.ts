@@ -13,6 +13,7 @@ import type {
   ContentSummary,
   DiscoverRequest,
   DiscoverResult,
+  DiscoveryComponent,
   MgReadPluginContext,
   SearchRequest,
   SearchResult,
@@ -45,6 +46,35 @@ interface CatalogChapter {
   readonly url: URL;
 }
 
+interface RankingRule {
+  readonly id: string;
+  readonly title: string;
+  readonly path: string;
+}
+
+const rankingRules = Object.freeze([
+  Object.freeze({
+    id: 'day',
+    title: '本日排行',
+    path: '/other/rank_hits/order/hits_day.html',
+  }),
+  Object.freeze({
+    id: 'week',
+    title: '本周排行',
+    path: '/other/rank_hits/order/hits_week.html',
+  }),
+  Object.freeze({
+    id: 'month',
+    title: '本月排行',
+    path: '/other/rank_hits/order/hits_month.html',
+  }),
+  Object.freeze({
+    id: 'total',
+    title: '总排行',
+    path: '/other/rank_hits/order/hits.html',
+  }),
+] satisfies readonly RankingRule[]);
+
 // Discovery cards are intentionally stale-while-revalidate: their title and
 // cover change rarely, so an expired projection renders first and refreshes for
 // the following visit. Search remains on the normal, shorter refresh policy.
@@ -76,6 +106,14 @@ const catalogHtmlCachePolicy = Object.freeze({
 const hotSearchHtmlCachePolicy = Object.freeze({
   namespace: 'hot-search',
   staleAfterMs: 24 * 60 * 60 * 1000,
+} satisfies HtmlCachePolicy);
+const rankingDescriptionMaxCharacters = 80;
+const rankingTagLimit = 4;
+const rankingAttributeLimit = 2;
+const discoveryHomeHtmlCachePolicy = Object.freeze({
+  namespace: 'discovery-home',
+  staleAfterMs: 60 * 60 * 1000,
+  serveStaleWhileRevalidate: true,
 } satisfies HtmlCachePolicy);
 
 function loadCheerio(): Promise<typeof import('cheerio/slim')> {
@@ -121,34 +159,83 @@ export class AliceBookHouseSource {
 
   async discover(request: DiscoverRequest): Promise<DiscoverResult> {
     if (request.target === null) {
-      return Object.freeze({
-        kind: 'document' as const,
-        document: Object.freeze({ components: Object.freeze([
-          Object.freeze({
-            type: 'section' as const,
-            id: 'source-categories-section',
-            title: '分类',
-            subtitle: null,
-            children: Object.freeze([
-              Object.freeze({ type: 'text' as const, id: 'source-categories-hint', text: '选择分类后查看书籍。' }),
+      const featured = await this.#loadHomeFeatured();
+      const components: DiscoveryComponent[] = [];
+      if (featured.length !== 0) {
+        components.push(Object.freeze({
+          type: 'section' as const,
+          id: 'source-featured-section',
+          title: '重磅推荐',
+          subtitle: null,
+          children: Object.freeze([Object.freeze({
+            type: 'contentCollection' as const,
+            id: 'source-featured-books',
+            layout: 'carousel' as const,
+            items: Object.freeze(featured.map((content) => Object.freeze({
+              content,
+              rank: null,
+              metric: discoveryMetric(content),
+              recommendation: null,
+            }))),
+            continuation: null,
+          })]),
+        }));
+      }
+      components.push(
+        Object.freeze({
+          type: 'section' as const,
+          id: 'source-categories-section',
+          title: '分类',
+          subtitle: null,
+          children: Object.freeze([
+            Object.freeze({ type: 'text' as const, id: 'source-categories-hint', text: '选择分类后查看书籍。' }),
+            Object.freeze({
+              type: 'categoryCollection' as const,
+              id: 'source-categories',
+              layout: 'grid' as const,
+              categories: Object.freeze(this.#categories.map((category) =>
               Object.freeze({
-                type: 'categoryCollection' as const,
-                id: 'source-categories',
-                layout: 'grid' as const,
-                categories: Object.freeze(this.#categories.map((category) =>
+                id: `category:${category.id}`,
+                title: category.title,
+                target: `category:${category.id}`,
+                count: null,
+                url: null,
+              }),
+              )),
+            }),
+          ]),
+        }),
+        Object.freeze({
+          type: 'section' as const,
+          id: 'source-rankings-section',
+          title: '排行',
+          subtitle: null,
+          children: Object.freeze([
+            Object.freeze({
+              type: 'categoryCollection' as const,
+              id: 'source-rankings',
+              layout: 'list' as const,
+              categories: Object.freeze(rankingRules.map((ranking) =>
                 Object.freeze({
-                  id: `category:${category.id}`,
-                  title: category.title,
-                  target: `category:${category.id}`,
+                  id: `ranking:${ranking.id}`,
+                  title: ranking.title,
+                  target: `ranking:${ranking.id}`,
                   count: null,
                   url: null,
                 }),
-                )),
-              }),
-            ]),
-          }),
-        ]) }),
+              )),
+            }),
+          ]),
+        }),
+      );
+      return Object.freeze({
+        kind: 'document' as const,
+        document: Object.freeze({ components: Object.freeze(components) }),
       });
+    }
+
+    if (request.target.startsWith('ranking:')) {
+      return this.#discoverRanking(request);
     }
 
     const category = this.#decodeCategoryTarget(request.target);
@@ -200,6 +287,53 @@ export class AliceBookHouseSource {
             layout: 'list' as const,
             items: discoveryItems,
             continuation,
+          })]),
+        }),
+      ]) }),
+    });
+  }
+
+  async #discoverRanking(request: DiscoverRequest): Promise<DiscoverResult> {
+    const target = request.target;
+    if (target === null) throw new Error('Ranking target is required.');
+    const ranking = this.#decodeRankingTarget(target);
+    if (request.cursor !== null || request.collectionId !== null) {
+      throw new Error('Ranking results do not support continuation.');
+    }
+    const pageUrl = new URL(ranking.path, this.#baseUrl);
+    const items = await this.#parseList(
+      await this.#getHtml(pageUrl, undefined, discoveryListingHtmlCachePolicy),
+      pageUrl,
+    );
+    // A ranking target is a source list page, not a paged ranking widget. Keep
+    // every item returned by that page, while adding the same cover and rich
+    // fields used by category rows. The compact projection keeps the complete
+    // page below Runtime's inline discovery-result budget; opening a book
+    // still loads its full, unabridged detail on demand.
+    const visible = await this.#withRankingDetails(items);
+    const collectionId = `ranking-books:${ranking.id}`;
+    const discoveryItems = Object.freeze(
+      visible.map((content) => Object.freeze({
+        content,
+        rank: null,
+        metric: discoveryMetric(content),
+        recommendation: null,
+      })),
+    );
+    return Object.freeze({
+      kind: 'document' as const,
+      document: Object.freeze({ components: Object.freeze([
+        Object.freeze({
+          type: 'section' as const,
+          id: `ranking-results-section:${ranking.id}`,
+          title: ranking.title,
+          subtitle: null,
+          children: Object.freeze([Object.freeze({
+            type: 'contentCollection' as const,
+            id: collectionId,
+            layout: 'list' as const,
+            items: discoveryItems,
+            continuation: null,
           })]),
         }),
       ]) }),
@@ -305,7 +439,7 @@ export class AliceBookHouseSource {
             updatedAt: latestUpdatedAt,
           });
 
-    const coverUrl = this.#proxyCoverUrl(this.#coverUrl($, detailUrl));
+    const coverUrl = this.#coverUrl($, detailUrl);
     const contentId = `novel:${novelId}`;
     this.#coverUrls.set(contentId, coverUrl);
     this.#chapterCounts.set(contentId, stats.chapterCount);
@@ -494,6 +628,48 @@ export class AliceBookHouseSource {
     return Object.freeze(queries);
   }
 
+  async #loadHomeFeatured(): Promise<readonly ContentSummary[]> {
+    try {
+      const homeUrl = new URL('/', this.#baseUrl);
+      const items = await this.#parseHomeFeatured(
+        await this.#getHtml(homeUrl, undefined, discoveryHomeHtmlCachePolicy),
+        homeUrl,
+      );
+      return await this.#withDiscoveryDetails(items.slice(0, 10));
+    } catch {
+      this.context.log.debug('source_discovery_home_unavailable');
+      return Object.freeze([]);
+    }
+  }
+
+  async #parseHomeFeatured(
+    html: string,
+    pageUrl: URL,
+  ): Promise<readonly ContentSummary[]> {
+    const cheerio = await loadCheerio();
+    const $ = cheerio.load(html);
+    const title = $('h2, .title').filter((_, element) =>
+      compactSourceText($(element).text()).includes('重磅推荐'),
+    ).first();
+    if (title.length === 0) return Object.freeze([]);
+    const section = title.closest('.hot-box').length !== 0
+      ? title.closest('.hot-box')
+      : title.closest('.inner');
+    const seen = new Set<string>();
+    const roots = section.find('.hot-data').toArray();
+    const books = roots.flatMap((element) => this.#parseBookElement($, element, pageUrl, seen));
+    // The site currently wraps several recommendation cards in one
+    // `.hot-data` container. Parse each novel link as well so one wrapper
+    // never collapses the whole recommendation group into its first book.
+    const linkedBooks = section.find('a[href*="/novel/"]')
+      .toArray()
+      .flatMap((element) => this.#parseBookElement($, element, pageUrl, seen));
+    return Object.freeze([
+      ...books,
+      ...linkedBooks,
+    ]);
+  }
+
   #parseBookElement(
     $: cheerio.CheerioAPI,
     element: Element,
@@ -501,9 +677,11 @@ export class AliceBookHouseSource {
     seen: Set<string>,
   ): readonly ContentSummary[] {
     const root = $(element);
-    const link = root.is('a[href*="/novel/"]')
-      ? root
-      : root.find('a[href*="/novel/"]').first();
+    const links = root.is('a[href*="/novel/"]')
+      ? [root]
+      : root.find('a[href*="/novel/"]').toArray().map((candidate) => $(candidate));
+    const link = links.find((candidate) => textOrNull(candidate.text()) !== null) ?? links[0];
+    if (link === undefined) return [];
     const href = link.attr('href');
     const title = textOrNull(link.text());
     if (href === undefined || title === null) return [];
@@ -543,7 +721,7 @@ export class AliceBookHouseSource {
         author,
         description,
         category,
-        coverUrl: this.#proxyCoverUrl(_publicCoverUrl(coverCandidate, pageUrl)),
+        coverUrl: _publicCoverUrl(coverCandidate, pageUrl),
         latestChapter,
       }),
     ];
@@ -684,6 +862,41 @@ export class AliceBookHouseSource {
     return Object.freeze(hydrated);
   }
 
+  async #withRankingDetails(
+    contents: readonly ContentSummary[],
+  ): Promise<readonly ContentSummary[]> {
+    const hydrated = new Array<ContentSummary>(contents.length);
+    let nextIndex = 0;
+    const worker = async (): Promise<void> => {
+      while (nextIndex < contents.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        const content = contents[index]!;
+        try {
+          const detail = await this.#getDiscoveryDetail({ id: content.id });
+          const merged = mergeDiscoverySummary(content, detail);
+          hydrated[index] = Object.freeze({
+            ...merged,
+            description: merged.description === null
+              ? null
+              : merged.description.slice(0, rankingDescriptionMaxCharacters),
+            tags: Object.freeze(merged.tags.slice(0, rankingTagLimit)),
+            attributes: Object.freeze(merged.attributes.slice(0, rankingAttributeLimit)),
+          });
+        } catch {
+          hydrated[index] = await this.#withCover(content);
+        }
+      }
+    };
+    await Promise.all(
+      Array.from(
+        { length: Math.min(4, contents.length) },
+        () => worker(),
+      ),
+    );
+    return Object.freeze(hydrated);
+  }
+
   async #getDiscoveryDetail(request: ContentReferenceRequest): Promise<ContentDetail> {
     const cached = this.#details.get(request.id);
     if (cached !== undefined && cached.expiresAtMs >= Date.now()) return cached.value;
@@ -713,7 +926,7 @@ export class AliceBookHouseSource {
       const $ = cheerio.load(
         await this.#getHtml(detailUrl, detailUrl, detailHtmlCachePolicy),
       );
-      const coverUrl = this.#proxyCoverUrl(this.#coverUrl($, detailUrl));
+      const coverUrl = this.#coverUrl($, detailUrl);
       this.#coverUrls.set(content.id, coverUrl);
       return coverUrl === null
           ? content
@@ -722,13 +935,6 @@ export class AliceBookHouseSource {
       this.#coverUrls.set(content.id, null);
       return content;
     }
-  }
-
-  #proxyCoverUrl(url: string | null): string | null {
-    if (url === null) return null;
-    // Runtime always provides the proxy. The fallback only keeps isolated
-    // parser fixtures usable; a packaged source never receives it.
-    return this.context.resource?.proxy({ url }) ?? url;
   }
 
   #sourceUrl(value: string, base: URL): URL {
@@ -762,6 +968,13 @@ export class AliceBookHouseSource {
     const category = this.#categories.find((candidate) => candidate.id === id);
     if (category === undefined) throw new Error('Category target is invalid.');
     return category;
+  }
+
+  #decodeRankingTarget(target: string): RankingRule {
+    const id = target.startsWith('ranking:') ? target.slice('ranking:'.length) : '';
+    const ranking = rankingRules.find((candidate) => candidate.id === id);
+    if (ranking === undefined) throw new Error('Ranking target is invalid.');
+    return ranking;
   }
 }
 

@@ -22,6 +22,7 @@ export type PluginDiagnosticCode =
   | "plugin_load_failed"
   | "plugin_load_started"
   | "plugin_log_emitted"
+  | "plugin_quarantined"
   | "plugin_runtime_initialized"
   | "plugin_uninstall_completed";
 

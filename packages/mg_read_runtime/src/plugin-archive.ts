@@ -52,12 +52,24 @@ interface ArchiveSourceFile {
   readonly path: string;
 }
 
+export interface PluginArchiveCreateOptions {
+  readonly versionOverride?: string;
+}
+
 /** Creates a deterministic `.mgplugin` ZIP containing one standard Node project. */
 export async function createPluginArchive(
   projectRoot: string,
   targetFile: string,
+  options: PluginArchiveCreateOptions = {},
 ): Promise<void> {
-  const files = await collectProjectFiles(resolve(projectRoot));
+  if (options.versionOverride !== undefined &&
+      !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(options.versionOverride)) {
+    throw new PluginArchiveError("plugin_archive_invalid");
+  }
+  const files = await collectProjectFiles(
+    resolve(projectRoot),
+    options.versionOverride,
+  );
   if (files.length === 0 || files.length > MAX_ENTRY_COUNT) {
     throw new PluginArchiveError("plugin_archive_limit_exceeded");
   }
@@ -303,7 +315,10 @@ function isSymlink(externalAttributes: number): boolean {
   return (unixMode & 0o170000) === 0o120000;
 }
 
-async function collectProjectFiles(projectRoot: string): Promise<ArchiveSourceFile[]> {
+async function collectProjectFiles(
+  projectRoot: string,
+  versionOverride?: string,
+): Promise<ArchiveSourceFile[]> {
   const allowedRootFiles = new Set([
     "package.json",
     "package-lock.json",
@@ -329,7 +344,11 @@ async function collectProjectFiles(projectRoot: string): Promise<ArchiveSourceFi
         continue;
       }
       files.push({
-        bytes: await readFile(resolve(projectRoot, entry.name)),
+        bytes: overrideProjectVersion(
+          entry.name,
+          await readFile(resolve(projectRoot, entry.name)),
+          versionOverride,
+        ),
         path: normalizeArchiveEntryPath(entry.name),
       });
       continue;
@@ -345,6 +364,37 @@ async function collectProjectFiles(projectRoot: string): Promise<ArchiveSourceFi
     throw new PluginArchiveError("plugin_archive_invalid");
   }
   return files;
+}
+
+function overrideProjectVersion(
+  path: string,
+  bytes: Buffer,
+  versionOverride?: string,
+): Buffer {
+  if (versionOverride === undefined ||
+      (path !== "package.json" && path !== "package-lock.json")) {
+    return bytes;
+  }
+  let value: Record<string, unknown>;
+  try {
+    value = JSON.parse(bytes.toString("utf8")) as Record<string, unknown>;
+  } catch {
+    throw new PluginArchiveError("plugin_archive_invalid");
+  }
+  value.version = versionOverride;
+  if (path === "package-lock.json") {
+    const packages = value.packages;
+    if (typeof packages !== "object" || packages === null ||
+        !("" in packages)) {
+      throw new PluginArchiveError("plugin_archive_invalid");
+    }
+    const root = (packages as Record<string, unknown>)[""];
+    if (typeof root !== "object" || root === null) {
+      throw new PluginArchiveError("plugin_archive_invalid");
+    }
+    (root as Record<string, unknown>).version = versionOverride;
+  }
+  return Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
 async function collectDirectory(

@@ -130,6 +130,80 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
             "pickAndImportLocalPlugin" -> {
                 openPluginPicker(result)
             }
+            "beginPluginTransfer" -> {
+                val pluginId = call.argument<String>("pluginId")
+                val version = call.argument<String>("version")
+                val bytes = call.argument<Number>("bytes")?.toLong()
+                val sha256 = call.argument<String>("sha256")
+                if (pluginId.isNullOrBlank() || version.isNullOrBlank() || bytes == null || sha256.isNullOrBlank()) {
+                    result.error("invalid_request", "The plugin transfer metadata is invalid.", null)
+                    return
+                }
+                host.beginPluginTransfer(pluginId, version, bytes, sha256) { error, id ->
+                    mainHandler.post {
+                        if (error == null) result.success(id) else result.error(error.code, error.message, null)
+                    }
+                }
+            }
+            "beginPluginTransferExport" -> {
+                val pluginId = call.argument<String>("pluginId")
+                val version = call.argument<String>("version")
+                if (pluginId.isNullOrBlank() || version.isNullOrBlank()) {
+                    result.error("invalid_request", "The plugin export metadata is invalid.", null)
+                    return
+                }
+                host.beginPluginTransferExport(pluginId, version) { error, metadata ->
+                    mainHandler.post {
+                        if (error == null) result.success(metadata) else result.error(error.code, error.message, null)
+                    }
+                }
+            }
+            "readPluginTransferExportChunk" -> {
+                val id = call.argument<String>("id")
+                if (id.isNullOrBlank()) {
+                    result.error("invalid_request", "The plugin export session is invalid.", null)
+                    return
+                }
+                host.readPluginTransferExportChunk(id) { error, chunk ->
+                    mainHandler.post {
+                        if (error == null) result.success(chunk) else result.error(error.code, error.message, null)
+                    }
+                }
+            }
+            "cancelPluginTransferExport" -> {
+                val id = call.argument<String>("id")
+                if (id.isNullOrBlank()) {
+                    result.error("invalid_request", "The plugin export session is invalid.", null)
+                    return
+                }
+                host.cancelPluginTransferExport(id)
+                result.success(null)
+            }
+            "writePluginTransferChunk" -> {
+                val id = call.argument<String>("id")
+                val chunk = call.argument<ByteArray>("chunk")
+                if (id.isNullOrBlank() || chunk == null) {
+                    result.error("invalid_request", "The plugin transfer chunk is invalid.", null)
+                    return
+                }
+                host.writePluginTransferChunk(id, chunk) { error ->
+                    mainHandler.post {
+                        if (error == null) result.success(null) else result.error(error.code, error.message, null)
+                    }
+                }
+            }
+            "finishPluginTransferBatch" -> {
+                val ids = call.argument<List<String>>("ids")
+                if (ids.isNullOrEmpty()) {
+                    result.error("invalid_request", "The plugin transfer batch is invalid.", null)
+                    return
+                }
+                host.finishPluginTransferBatch(ids) { error ->
+                    mainHandler.post {
+                        if (error == null) result.success(null) else result.error(error.code, error.message, null)
+                    }
+                }
+            }
             "dispose" -> {
                 host.dispose()
                 result.success(null)

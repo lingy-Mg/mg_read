@@ -6,7 +6,6 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
-import 'package:mg_read/features/discovery/presentation/widgets/discovery_bookshelf_badge.dart';
 
 /// Shared compact content row used by discovery and source search results.
 class DiscoveryContentListItem extends StatelessWidget {
@@ -48,15 +47,21 @@ class DiscoveryContentListItem extends StatelessWidget {
         );
         final coverHeight =
             coverWidth * AppSpacing.discoveryListCoverAspectRatio;
-        final titleStyle = theme.textTheme.titleMedium;
-        final metadataStyle = theme.textTheme.bodyMedium?.copyWith(
+        final titleStyle = theme.textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+        );
+        final secondaryTextStyle = theme.textTheme.bodySmall;
+        final metadataStyle = theme.textTheme.bodySmall?.copyWith(
           color: tokens.mutedText,
         );
+        final rowBackground = isInBookshelf
+            ? tokens.featureSurface.withValues(alpha: 0.48)
+            : tokens.surface;
         return Semantics(
           button: true,
-          label: '查看 ${content.title}',
+          label: '查看 ${content.title}${isInBookshelf ? '，已在书架' : ''}',
           child: Material(
-            color: tokens.surface,
+            color: rowBackground,
             child: InkWell(
               key: ValueKey<String>('$keyPrefix-${content.id}'),
               onTap: onPressed,
@@ -99,16 +104,12 @@ class DiscoveryContentListItem extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: titleStyle,
                             ),
-                            if (isInBookshelf) ...<Widget>[
-                              const SizedBox(height: AppSpacing.unit),
-                              const DiscoveryBookshelfBadge(),
-                            ],
                             const SizedBox(height: AppSpacing.unit),
                             Text(
                               _authorAndCategory(content),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium,
+                              style: secondaryTextStyle,
                             ),
                             if (tags.isNotEmpty) ...<Widget>[
                               const SizedBox(height: AppSpacing.unit),
@@ -126,7 +127,7 @@ class DiscoveryContentListItem extends StatelessWidget {
                                 description,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodyMedium,
+                                style: secondaryTextStyle,
                               ),
                             ],
                             const Spacer(),

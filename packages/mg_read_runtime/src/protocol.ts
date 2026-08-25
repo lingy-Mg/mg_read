@@ -29,6 +29,11 @@ export type RuntimeErrorCode =
   | "plugin_invalid_response"
   | "plugin_load_failed"
   | "plugin_not_found"
+  | "plugin_transfer_archive_missing"
+  | "plugin_transfer_archive_too_large"
+  | "plugin_transfer_batch_too_large"
+  | "plugin_transfer_checksum_mismatch"
+  | "plugin_transfer_size_mismatch"
   | "timeout"
   | "unsupported"
   | "version_incompatible";

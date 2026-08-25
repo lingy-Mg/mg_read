@@ -435,6 +435,7 @@ String _statusLabel(PluginRuntimePlugin source) => switch (source.status) {
   'disabled' => '已停用',
   'pending' => '等待冷激活',
   'damaged' => '数据源不可用',
+  'quarantined' => '已隔离（加载失败）',
   _ => '状态未知',
 };
 

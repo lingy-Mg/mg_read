@@ -1,4 +1,4 @@
-import * as cheerio from 'cheerio/slim';
+import * as cheerio from 'cheerio';
 import type { Element } from 'domhandler';
 import type {
   ChapterContent, ChaptersRequest, ChaptersResult, ContentAttribute, ContentDetail,
@@ -21,7 +21,7 @@ const detailPolicy = Object.freeze({ namespace: 'detail', staleAfterMs: 60 * 60 
 const discoveryDetailPolicy = Object.freeze({ namespace: 'detail', staleAfterMs: 60 * 60 * 1000, serveStaleWhileRevalidate: true } satisfies HtmlCachePolicy);
 const hotSearchPolicy = Object.freeze({ namespace: 'hot-search', staleAfterMs: 24 * 60 * 60 * 1000 } satisfies HtmlCachePolicy);
 
-function loadCheerio(): Promise<typeof import('cheerio/slim')> { return Promise.resolve(cheerio); }
+function loadCheerio(): Promise<typeof import('cheerio')> { return Promise.resolve(cheerio); }
 
 export class ShuduguSource {
   readonly #baseUrl: URL;

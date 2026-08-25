@@ -263,6 +263,7 @@ test("development projects load in place without creating an installed version",
   await createDevelopmentPlugin(projectRoot, "第一版");
 
   const manager = new PluginManager(dataRoot, { developmentPluginRoot: developmentRoot });
+  t.after(() => manager.close());
   await manager.initialize();
   const firstList = await manager.listInstalled();
   assert.equal(firstList.length, 1);
@@ -276,6 +277,32 @@ test("development projects load in place without creating an installed version",
   const directory = await manager.resolveCodeDirectory("org.example.live-source");
   assert.equal(directory.kind, "development");
   assert.equal(directory.directory, projectRoot);
+
+  const exportable = await manager.listExportableArchives();
+  assert.equal(exportable.length, 1);
+  assert.equal(exportable[0].id, "org.example.live-source");
+  assert.match(exportable[0].version, /^0\.1\.1-devsync\.\d+$/);
+  const resourceMetadata = await manager.createPluginTransferResource(
+    exportable[0].id,
+    exportable[0].version,
+  );
+  const resource = manager.consumePluginTransferResource(resourceMetadata.token);
+  assert.ok(resource);
+  const chunks = [];
+  for await (const chunk of resource.stream) chunks.push(chunk);
+  const receivedArchive = join(root, "received-development.mgplugin");
+  await writeFile(receivedArchive, Buffer.concat(chunks));
+  const extracted = join(root, "received-development");
+  await extractPluginArchive(receivedArchive, extracted);
+  const transferredPackage = JSON.parse(
+    await readFile(join(extracted, "package.json"), "utf8"),
+  );
+  const transferredLock = JSON.parse(
+    await readFile(join(extracted, "package-lock.json"), "utf8"),
+  );
+  assert.equal(transferredPackage.version, exportable[0].version);
+  assert.equal(transferredLock.version, exportable[0].version);
+  assert.equal(transferredLock.packages[""].version, exportable[0].version);
 
   const first = await manager.search(
     "org.example.live-source",
@@ -734,6 +761,74 @@ test("a legacy default-export pending update fails and keeps current active", as
     events.filter((event) => event.code === "plugin_load_completed").length,
     1,
   );
+});
+
+test("a broken current source is quarantined without blocking other sources", async (t) => {
+  const dataRoot = await temporaryDirectory(t, "mgread-plugin-quarantine-");
+  const installer = new PluginInstaller(dataRoot);
+  await installer.installProject(fixtureRoot);
+
+  const brokenRoot = join(dataRoot, "broken-project");
+  await cp(fixtureRoot, brokenRoot, { recursive: true });
+  const packageJson = JSON.parse(await readFile(join(brokenRoot, "package.json"), "utf8"));
+  const lockfile = JSON.parse(await readFile(join(brokenRoot, "package-lock.json"), "utf8"));
+  packageJson.name = "@mgread-plugin/broken-fixture";
+  packageJson.mgread.id = "org.mgread.runtime.broken";
+  packageJson.mgread.displayName = "Broken fixture";
+  lockfile.name = packageJson.name;
+  lockfile.packages[""].name = packageJson.name;
+  await Promise.all([
+    writeFile(join(brokenRoot, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`),
+    writeFile(join(brokenRoot, "package-lock.json"), `${JSON.stringify(lockfile, null, 2)}\n`),
+    writeFile(join(brokenRoot, "dist", "index.mjs"), "export const broken = ;\n"),
+  ]);
+  await installer.installProject(brokenRoot);
+
+  const manager = new PluginManager(dataRoot);
+  await manager.initialize();
+  const first = await manager.listInstalled();
+  const broken = first.find((item) => item.id === "org.mgread.runtime.broken");
+  assert.equal(broken?.enabled, false);
+  assert.equal(broken?.status, "quarantined");
+  assert.equal(
+    (await manager.search(
+      "org.mgread.runtime.fixture",
+      { query: "隔离后仍可用", cursor: null, pageSize: 20 },
+      new AbortController().signal,
+      String(Date.now() + 5_000),
+    )).items[0].title,
+    "标准插件：隔离后仍可用",
+  );
+  assert.deepEqual(await manager.consumeStartupRecovery(), { quarantinedCount: 1 });
+  assert.deepEqual(await manager.consumeStartupRecovery(), { quarantinedCount: 0 });
+
+  const marker = join(dataRoot, "plugins", "org.mgread.runtime.broken", "quarantined");
+  assert.equal((await readFile(marker, "utf8")).trim(), "1.0.0");
+  const restarted = new PluginManager(dataRoot);
+  await restarted.initialize();
+  assert.equal(
+    (await restarted.listInstalled()).find((item) => item.id === "org.mgread.runtime.broken")?.status,
+    "quarantined",
+  );
+  assert.deepEqual(await restarted.consumeStartupRecovery(), { quarantinedCount: 0 });
+
+  packageJson.version = "2.0.0";
+  lockfile.version = "2.0.0";
+  lockfile.packages[""].version = "2.0.0";
+  await Promise.all([
+    writeFile(join(brokenRoot, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`),
+    writeFile(join(brokenRoot, "package-lock.json"), `${JSON.stringify(lockfile, null, 2)}\n`),
+    cp(join(fixtureRoot, "dist", "index.mjs"), join(brokenRoot, "dist", "index.mjs")),
+  ]);
+  await installer.installProject(brokenRoot);
+  const recovered = new PluginManager(dataRoot);
+  await recovered.initialize();
+  const recoveredSource = (await recovered.listInstalled()).find(
+    (item) => item.id === "org.mgread.runtime.broken",
+  );
+  assert.equal(recoveredSource?.status, "active");
+  assert.equal(recoveredSource?.activeVersion, "2.0.0");
+  assert.equal(await fileExists(marker), false);
 });
 
 test("plugin calls give cancel and timeout exactly one terminal event", async (t) => {

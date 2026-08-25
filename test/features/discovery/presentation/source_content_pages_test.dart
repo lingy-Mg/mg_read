@@ -34,6 +34,10 @@ void main() {
       expect(find.text('第一本'), findsWidgets);
       expect(find.text('分类一'), findsOneWidget);
       expect(
+        find.byKey(const Key('discovery-source-selector')),
+        findsOneWidget,
+      );
+      expect(
         find.byKey(const Key('runtime-discovery-load-more-books')),
         findsOneWidget,
       );
@@ -42,6 +46,55 @@ void main() {
       expect(selectedTarget, 'category:1');
     },
   );
+
+  testWidgets('adds compact vertical spacing between list categories', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: RuntimeDiscoveryPage(
+          result: _documentResult(
+            categoryLayout: PluginDiscoveryCategoryLayout.list,
+            categories: const <PluginDiscoveryCategory>[
+              PluginDiscoveryCategory(
+                id: 'category-1',
+                title: '排行一',
+                target: 'ranking:1',
+                count: null,
+                url: null,
+              ),
+              PluginDiscoveryCategory(
+                id: 'category-2',
+                title: '排行二',
+                target: 'ranking:2',
+                count: null,
+                url: null,
+              ),
+            ],
+          ),
+          onDestinationRequested: (_) {},
+          onSourcePressed: () {},
+          onTabSelected: (_) {},
+          onCategorySelected: (_) {},
+          onContentPressed: (_) {},
+          onRefreshRequested: () {},
+          onLoadMore: (_) {},
+          canNavigateBack: false,
+          onBackRequested: () {},
+          loadingCollectionId: null,
+        ),
+      ),
+    );
+
+    final first = tester.getRect(
+      find.byKey(const Key('runtime-discovery-category-category-1')),
+    );
+    final second = tester.getRect(
+      find.byKey(const Key('runtime-discovery-category-category-2')),
+    );
+    expect(second.top - first.bottom, AppSpacing.compact);
+  });
 
   testWidgets('renders a back control only for a retained navigation stack', (
     tester,
@@ -60,6 +113,7 @@ void main() {
           onContentPressed: (_) {},
           onRefreshRequested: () => refreshPressed = true,
           onLoadMore: (_) {},
+          isInBookshelf: (_) => true,
           canNavigateBack: true,
           onBackRequested: () => backPressed = true,
           loadingCollectionId: null,
@@ -84,9 +138,23 @@ void main() {
       ),
       findsNothing,
     );
+    expect(find.byKey(const Key('discovery-source-selector')), findsOneWidget);
     expect(find.byKey(const Key('discovery-refresh-action')), findsOneWidget);
     expect(find.text('刷新'), findsNothing);
     expect(find.byType(DiscoveryEditorsChoiceCard), findsNothing);
+    expect(find.text('已在书架'), findsNothing);
+    final itemFinder = find.byKey(
+      const ValueKey<String>('runtime-discovery-item-book:1'),
+    );
+    final itemMaterial = tester.widget<Material>(
+      find.ancestor(of: itemFinder, matching: find.byType(Material)).first,
+    );
+    expect(
+      itemMaterial.color,
+      AppThemeTokens.of(
+        tester.element(itemFinder),
+      ).featureSurface.withValues(alpha: 0.48),
+    );
 
     await tester.tap(find.byKey(const Key('discovery-refresh-action')));
     expect(refreshPressed, isTrue);
@@ -122,7 +190,19 @@ void main() {
   });
 }
 
-PluginDiscoveryDocumentResult _documentResult() =>
+PluginDiscoveryDocumentResult _documentResult({
+  PluginDiscoveryCategoryLayout categoryLayout =
+      PluginDiscoveryCategoryLayout.grid,
+  List<PluginDiscoveryCategory> categories = const <PluginDiscoveryCategory>[
+    PluginDiscoveryCategory(
+      id: 'category-1',
+      title: '分类一',
+      target: 'category:1',
+      count: 0,
+      url: null,
+    ),
+  ],
+}) =>
     PluginDiscoveryDocumentResult(
       pluginId: 'org.example.source',
       sourceName: '示例书源',
@@ -159,16 +239,8 @@ PluginDiscoveryDocumentResult _documentResult() =>
                   ),
                   PluginDiscoveryCategoryCollectionComponent(
                     id: 'categories',
-                    layout: PluginDiscoveryCategoryLayout.grid,
-                    categories: const <PluginDiscoveryCategory>[
-                      PluginDiscoveryCategory(
-                        id: 'category-1',
-                        title: '分类一',
-                        target: 'category:1',
-                        count: 0,
-                        url: null,
-                      ),
-                    ],
+                    layout: categoryLayout,
+                    categories: categories,
                   ),
                 ],
               ),

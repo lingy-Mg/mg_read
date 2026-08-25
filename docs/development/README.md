@@ -18,7 +18,7 @@
 | 阅读器 UI / 排版 / 交互 | 阅读器 [AGENTS](../../packages/mg_read_reader_ui/AGENTS.md)、[UI 规范](../../packages/mg_read_reader_ui/docs/UI_DESIGN.md) | 开发指南、相关 Widget/分页实现 |
 | 日志、trace、关键链路、性能埋点 | [诊断接入规范](diagnostics-instrumentation.md)、[日志专题](../architecture/14-global-diagnostics-logging.md)、[ADR-0016](../architecture/adr/0016-segmented-text-diagnostics.md) | `lib/core/diagnostics/README.md`、Runtime 性能快照、受影响 registry/tests |
 | 测试、CI、发布、平台验收 | [workflow](workflow.md) | [可靠性与测试](../architecture/08-reliability-observability-testing.md)、[平台发布](../architecture/09-platform-release-future-capabilities.md)、子项目命令 |
-| 架构/ADR 变更 | [架构入口](../architecture/README.md)、[ADR 索引](../architecture/adr/README.md)、相关 Accepted ADR 全文 | 被取代 ADR 和历史专题仅用于理解迁移原因 |
+| 架构/ADR 变更 | [架构入口](../architecture/README.md)、[ADR 索引](../architecture/adr/README.md)、相关 Accepted ADR 全文 | 被取代 ADR 和历史专题仅用于理解迁移原因；局域网同步另读 [专题](../architecture/21-lan-sync.md)、ADR-0021 与 ADR-0022 |
 | 文档、规划、AI 指令 | [文档维护](documentation.md)、[文档中心](../README.md)、[当前规划](../planning/README.md) | 只读受影响专题和引用它的入口 |
 
 ## 读取停止条件

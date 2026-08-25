@@ -378,9 +378,6 @@ abstract final class AppSpacing {
   static const double compactLayoutBreakpoint = 720;
   static const double continueReadingCoverWidth = unit * 28;
   static const double continueReadingCoverHeight = unit * 40;
-  static const double continueReadingCoverLayerOffset = unit;
-  static const double continueReadingCoverShadowBlur = unit * 3;
-  static const double continueReadingCoverShadowDrop = unit;
   static const double continueReadingCardHeight = unit * 30;
   static const double continueReadingCardTopInset = unit * 5;
   static const double continueReadingCardCoverOverlap = unit * 7;
@@ -420,8 +417,8 @@ abstract final class AppSpacing {
   static const double compactCardStackBreakpoint = 280;
   static const double discoveryPagePadding = unit * 4;
   static const double discoveryListMaxWidth = 692;
-  static const double discoveryListCoverMinWidth = unit * 21;
-  static const double discoveryListCoverMaxWidth = unit * 27;
+  static const double discoveryListCoverMinWidth = unit * 23;
+  static const double discoveryListCoverMaxWidth = unit * 28;
   static const double discoveryListCoverAspectRatio = 1.3;
   static const double discoveryListTagHeight = unit * 5;
   static const double discoveryHeaderInset = unit;

@@ -5,6 +5,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
+import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
@@ -183,6 +184,44 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('renders the recommendation carousel responsively', (
+    WidgetTester tester,
+  ) async {
+    final books = <DiscoveryHeroViewData>[
+      const DiscoveryHeroViewData(
+        title: '自适应推荐书',
+        category: '科幻',
+        description: '这是一段推荐简介，用于验证窄屏和宽屏下的截断与布局。',
+        metadata: '作者 · 爱丽丝书屋',
+        coverVariant: DiscoveryCoverVariant.gothic,
+        heat: '1.2万',
+      ),
+      const DiscoveryHeroViewData(
+        title: '第二本推荐书',
+        category: '经典',
+        description: '第二本推荐内容。',
+        metadata: '作者二',
+        coverVariant: DiscoveryCoverVariant.abyss,
+        heat: '9800',
+      ),
+    ];
+
+    await _setViewport(tester, const Size(320, 320));
+    await tester.pumpWidget(_hostCarousel(books));
+    await tester.pump();
+    expect(find.byType(DiscoveryCarouselHeroCard), findsOneWidget);
+    expect(find.byKey(const Key('discovery-carousel-books')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await _setViewport(tester, const Size(1280, 320));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.getRect(find.byKey(const Key('discovery-carousel-books'))).width,
+      greaterThan(600),
+    );
+  });
 }
 
 Widget _host({
@@ -207,6 +246,19 @@ Widget _host({
     home: DiscoveryPage(
       onDestinationRequested: onDestinationRequested ?? (_) {},
       onToggleTheme: onToggleTheme ?? () {},
+    ),
+  );
+}
+
+Widget _hostCarousel(List<DiscoveryHeroViewData> books) {
+  return MaterialApp(
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.light(),
+    home: Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: DiscoveryCarouselBooks(books: books, onBookPressed: (_) {}),
+      ),
     ),
   );
 }

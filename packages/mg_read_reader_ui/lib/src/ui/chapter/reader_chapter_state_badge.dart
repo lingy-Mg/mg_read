@@ -9,6 +9,7 @@ abstract final class ReaderChapterStateStrings {
   static const downloading = '下载中';
   static const failed = '下载失败';
   static const read = '已读';
+  static const unread = '未读';
   static const loading = '状态加载中';
   static const retry = '重试加载章节状态';
 
@@ -100,44 +101,44 @@ class ReaderChapterStateBadge extends StatelessWidget {
       if (!loading && availabilityStyle.$1 != null) availabilityStyle.$1!,
       if (wordCount != null && wordCount! >= 0)
         ReaderChapterStateStrings.wordCount(wordCount!),
-      if (hasBeenRead) ReaderChapterStateStrings.read,
+      hasBeenRead
+          ? ReaderChapterStateStrings.read
+          : ReaderChapterStateStrings.unread,
     ];
     if (semantics.isEmpty) return const SizedBox.shrink();
-    final Widget content = ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 48),
-      child: Wrap(
-        spacing: 7,
-        runSpacing: 3,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: <Widget>[
-          if (loading)
-            const SizedBox.square(
-              dimension: 16,
-              child: CircularProgressIndicator(strokeWidth: 1.8),
-            )
-          else if (availabilityStyle.$2 != null)
-            Icon(availabilityStyle.$2, size: 16, color: availabilityStyle.$3),
-          if (!loading && availabilityStyle.$1 != null)
-            Text(
-              availabilityStyle.$1!,
-              style: TextStyle(
-                color: availabilityStyle.$3,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
+    final Widget content = Wrap(
+      spacing: 7,
+      runSpacing: 2,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: <Widget>[
+        if (loading)
+          const SizedBox.square(
+            dimension: 14,
+            child: CircularProgressIndicator(strokeWidth: 1.6),
+          )
+        else if (availabilityStyle.$2 != null)
+          Icon(availabilityStyle.$2, size: 15, color: availabilityStyle.$3),
+        if (!loading && availabilityStyle.$1 != null)
+          Text(
+            availabilityStyle.$1!,
+            style: TextStyle(
+              color: availabilityStyle.$3,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
             ),
-          if (wordCount != null && wordCount! >= 0)
-            Text(
-              ReaderChapterStateStrings.wordCount(wordCount!),
-              style: TextStyle(color: palette.secondaryText, fontSize: 12),
-            ),
-          if (hasBeenRead)
-            Text(
-              ReaderChapterStateStrings.read,
-              style: TextStyle(color: palette.secondaryText, fontSize: 12),
-            ),
-        ],
-      ),
+          ),
+        if (wordCount != null && wordCount! >= 0)
+          Text(
+            ReaderChapterStateStrings.wordCount(wordCount!),
+            style: TextStyle(color: palette.secondaryText, fontSize: 11.5),
+          ),
+        Text(
+          hasBeenRead
+              ? ReaderChapterStateStrings.read
+              : ReaderChapterStateStrings.unread,
+          style: TextStyle(color: palette.secondaryText, fontSize: 11.5),
+        ),
+      ],
     );
     if (availability != ReaderChapterAvailability.failed || onRetry == null) {
       return Semantics(

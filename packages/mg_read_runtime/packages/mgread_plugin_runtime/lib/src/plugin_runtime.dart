@@ -14,6 +14,12 @@ abstract interface class _RuntimeSupervisor {
 
   Future<bool> pickAndImportLocalPlugin();
 
+  Future<Stream<List<int>>> exportPluginArchive(PluginTransferArchive archive);
+
+  Future<List<PluginTransferImportResult>> importPluginArchives(
+    List<({PluginTransferArchive archive, Stream<List<int>> bytes})> archives,
+  );
+
   Future<void> setDevelopmentDirectory(String path);
 
   Stream<RuntimeDiagnostic> get diagnostics;
@@ -108,6 +114,25 @@ final class PluginRuntime {
     }
     await _supervisor.importLocalPlugin(path);
     return true;
+  }
+
+  /// Streams one Runtime-owned archive without exposing a path, handle, port,
+  /// or control-plane payload to the application.
+  Future<Stream<List<int>>> exportPluginArchive(
+    PluginTransferArchive archive,
+  ) => _supervisor.exportPluginArchive(archive);
+
+  /// Accepts a bounded batch and performs one Runtime cold activation.
+  Future<List<PluginTransferImportResult>> importPluginArchives(
+    List<({PluginTransferArchive archive, Stream<List<int>> bytes})> archives,
+  ) {
+    if (archives.length > maxPluginTransferBatch) {
+      throw const PluginRuntimeException(
+        'plugin_transfer_batch_too_large',
+        'The plugin transfer batch is too large.',
+      );
+    }
+    return _supervisor.importPluginArchives(archives);
   }
 
   /// Selects a Windows Debug development-source directory.

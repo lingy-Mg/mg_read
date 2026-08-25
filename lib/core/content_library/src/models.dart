@@ -51,6 +51,14 @@ final class LibraryItem {
     this.visibility = LibraryVisibility.normal,
     this.coverUrl,
     this.sourceName,
+    this.sourceUrl,
+    this.description,
+    this.wordCount,
+    this.chapterCount,
+    this.statusLabel,
+    this.latestChapterTitle,
+    this.latestChapterUrl,
+    this.labels = const <String>[],
     this.source,
   });
   final LibraryItemId id;
@@ -67,6 +75,14 @@ final class LibraryItem {
   final LibraryVisibility visibility;
   final Uri? coverUrl;
   final String? sourceName;
+  final Uri? sourceUrl;
+  final String? description;
+  final int? wordCount;
+  final int? chapterCount;
+  final String? statusLabel;
+  final String? latestChapterTitle;
+  final Uri? latestChapterUrl;
+  final List<String> labels;
 
   /// Stable source identity needed to resolve a shelf item for reading.
   ///
@@ -161,6 +177,14 @@ final class BookshelfAddRequest {
     required this.remoteContentId,
     this.coverUrl,
     this.sourceName,
+    this.sourceUrl,
+    this.description,
+    this.wordCount,
+    this.chapterCount,
+    this.statusLabel,
+    this.latestChapterTitle,
+    this.latestChapterUrl,
+    this.labels = const <String>[],
   }) : assert(title != ''),
        assert(pluginId != ''),
        assert(pluginVersion != ''),
@@ -174,7 +198,203 @@ final class BookshelfAddRequest {
   final String remoteContentId;
   final Uri? coverUrl;
   final String? sourceName;
+  final Uri? sourceUrl;
+  final String? description;
+  final int? wordCount;
+  final int? chapterCount;
+  final String? statusLabel;
+  final String? latestChapterTitle;
+  final Uri? latestChapterUrl;
+  final List<String> labels;
 }
+
+/// Stable source identity used by the app-owned LAN sync contract.
+final class LibrarySyncIdentity {
+  const LibrarySyncIdentity({
+    required this.pluginId,
+    required this.remoteContentId,
+  });
+
+  final String pluginId;
+  final String remoteContentId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LibrarySyncIdentity &&
+      other.pluginId == pluginId &&
+      other.remoteContentId == remoteContentId;
+
+  @override
+  int get hashCode => Object.hash(pluginId, remoteContentId);
+}
+
+/// A progress value in a sync snapshot.  The local [LibraryItemId] is
+/// deliberately omitted; the receiver remaps it from source identity.
+final class LibrarySyncReadingProgress {
+  const LibrarySyncReadingProgress({
+    required this.chapterId,
+    required this.paragraphId,
+    required this.characterOffset,
+    required this.chapterIndex,
+    required this.chapterFraction,
+    required this.bookFraction,
+    required this.updatedAtUtc,
+    this.totalReadingSeconds = 0,
+  });
+
+  final String chapterId;
+  final String paragraphId;
+  final int characterOffset;
+  final int chapterIndex;
+  final double chapterFraction;
+  final double bookFraction;
+  final DateTime updatedAtUtc;
+  final int totalReadingSeconds;
+
+  LibrarySyncReadingProgress.fromLocal(LibraryReadingProgress progress)
+    : this(
+        chapterId: progress.chapterId,
+        paragraphId: progress.paragraphId,
+        characterOffset: progress.characterOffset,
+        chapterIndex: progress.chapterIndex,
+        chapterFraction: progress.chapterFraction,
+        bookFraction: progress.bookFraction,
+        updatedAtUtc: progress.updatedAtUtc,
+        totalReadingSeconds: progress.totalReadingSeconds,
+      );
+
+  LibraryReadingProgress toLocal(LibraryItemId itemId) =>
+      LibraryReadingProgress(
+        itemId: itemId,
+        chapterId: chapterId,
+        paragraphId: paragraphId,
+        characterOffset: characterOffset,
+        chapterIndex: chapterIndex,
+        chapterFraction: chapterFraction,
+        bookFraction: bookFraction,
+        updatedAtUtc: updatedAtUtc,
+        totalReadingSeconds: totalReadingSeconds,
+      );
+}
+
+/// Version-1, metadata-only LAN sync item.
+final class LibrarySyncItem {
+  const LibrarySyncItem({
+    required this.pluginId,
+    required this.producerPluginVersion,
+    required this.remoteContentId,
+    required this.kind,
+    required this.title,
+    this.author,
+    this.coverUrl,
+    this.sourceName,
+    this.progress,
+  });
+
+  final String pluginId;
+  final String producerPluginVersion;
+  final String remoteContentId;
+  final ContentKind kind;
+  final String title;
+  final String? author;
+  final Uri? coverUrl;
+  final String? sourceName;
+  final LibrarySyncReadingProgress? progress;
+
+  LibrarySyncIdentity get identity =>
+      LibrarySyncIdentity(pluginId: pluginId, remoteContentId: remoteContentId);
+}
+
+/// Version-1 sync snapshot.  It contains no catalog, content, cover bytes or
+/// deletion records.  [skippedSourceLessItems] is an export-side count only.
+final class LibrarySyncSnapshot {
+  const LibrarySyncSnapshot({
+    required this.items,
+    this.version = 1,
+    this.skippedSourceLessItems = 0,
+  });
+
+  final int version;
+  final List<LibrarySyncItem> items;
+  final int skippedSourceLessItems;
+}
+
+enum LibrarySyncBlockedReason { missingPlugin, invalidEntry }
+
+final class LibrarySyncBlockedItem {
+  const LibrarySyncBlockedItem({required this.item, required this.reason});
+
+  final LibrarySyncItem item;
+  final LibrarySyncBlockedReason reason;
+}
+
+final class LibrarySyncConflict {
+  const LibrarySyncConflict({
+    required this.identity,
+    required this.local,
+    required this.sender,
+    required this.expectedLocalRevision,
+    this.localProgress,
+  });
+
+  final LibrarySyncIdentity identity;
+  final LibraryItem local;
+  final LibrarySyncItem sender;
+  final int expectedLocalRevision;
+  final LibrarySyncReadingProgress? localProgress;
+}
+
+final class LibrarySyncPreview {
+  const LibrarySyncPreview({
+    required this.snapshot,
+    required this.newItems,
+    required this.conflicts,
+    required this.blocked,
+    this.skippedSourceLessItems = 0,
+  });
+
+  final LibrarySyncSnapshot snapshot;
+  final List<LibrarySyncItem> newItems;
+  final List<LibrarySyncConflict> conflicts;
+  final List<LibrarySyncBlockedItem> blocked;
+  final int skippedSourceLessItems;
+}
+
+enum LibrarySyncConflictChoice { smartMerge, useSender, keepLocal }
+
+enum LibrarySyncResultCode { applied, staleRevision, invalidRequest }
+
+final class LibrarySyncApplyResult {
+  const LibrarySyncApplyResult({
+    required this.code,
+    this.addedItems = 0,
+    this.updatedItems = 0,
+    this.progressApplied = 0,
+    this.skippedItems = 0,
+    this.blockedItems = 0,
+  });
+
+  final LibrarySyncResultCode code;
+  final int addedItems;
+  final int updatedItems;
+  final int progressApplied;
+  final int skippedItems;
+  final int blockedItems;
+}
+
+// Descriptive aliases keep the public contract discoverable for callers that
+// prefer the feature-qualified names while retaining the compact v1 names.
+typedef ContentLibrarySyncIdentity = LibrarySyncIdentity;
+typedef ContentLibrarySyncReadingProgress = LibrarySyncReadingProgress;
+typedef ContentLibrarySyncItem = LibrarySyncItem;
+typedef ContentLibrarySyncSnapshot = LibrarySyncSnapshot;
+typedef ContentLibrarySyncBlockedReason = LibrarySyncBlockedReason;
+typedef ContentLibrarySyncBlockedItem = LibrarySyncBlockedItem;
+typedef ContentLibrarySyncConflict = LibrarySyncConflict;
+typedef ContentLibrarySyncPreview = LibrarySyncPreview;
+typedef ContentLibrarySyncConflictChoice = LibrarySyncConflictChoice;
+typedef ContentLibrarySyncResultCode = LibrarySyncResultCode;
+typedef ContentLibrarySyncApplyResult = LibrarySyncApplyResult;
 
 final class SourceBinding {
   const SourceBinding({
@@ -201,6 +421,7 @@ final class CatalogEntry {
     required this.kind,
     required this.contentStatus,
     this.wordCount,
+    this.chapterUrl,
     this.hasExplicitRemoteIdentity = true,
     this.contentReference,
   });
@@ -211,6 +432,7 @@ final class CatalogEntry {
   final int index;
   final ContentKind? kind;
   final int? wordCount;
+  final Uri? chapterUrl;
   final String? contentReference;
 
   /// Whether this entry was written with the lossless remote identity field.
@@ -231,6 +453,7 @@ final class SourceNovelCatalogChapter {
     required this.title,
     required this.index,
     this.wordCount,
+    this.chapterUrl,
   }) : assert(remoteIdentity != ''),
        assert(title != ''),
        assert(index >= 0),
@@ -240,6 +463,7 @@ final class SourceNovelCatalogChapter {
   final String title;
   final int index;
   final int? wordCount;
+  final Uri? chapterUrl;
 }
 
 final class Page<T> {

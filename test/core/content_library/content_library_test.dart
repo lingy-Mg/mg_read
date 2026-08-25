@@ -522,6 +522,105 @@ void main() {
             .text,
         '缓存正文',
       );
+      expect(refreshedEntry.wordCount, '缓存正文'.length);
+    },
+  );
+
+  test(
+    'sync previews and transactionally applies shelf metadata and progress',
+    () async {
+      final item = await library.bookshelf.addFromSource(
+        const BookshelfAddRequest(
+          title: '旧标题',
+          author: '作者',
+          kind: ContentKind.novel,
+          pluginId: 'fixture',
+          pluginVersion: '1.0.0',
+          remoteContentId: 'sync-book',
+        ),
+      );
+      await library.readingProgress.save(
+        LibraryReadingProgress(
+          itemId: item.id,
+          chapterId: 'old',
+          paragraphId: 'p',
+          characterOffset: 1,
+          chapterIndex: 0,
+          chapterFraction: 0.1,
+          bookFraction: 0.1,
+          updatedAtUtc: DateTime.utc(2026, 8, 24),
+        ),
+      );
+      final sender = LibrarySyncItem(
+        pluginId: 'fixture',
+        producerPluginVersion: '2.0.0',
+        remoteContentId: 'sync-book',
+        kind: ContentKind.novel,
+        title: '新标题',
+        author: '新作者',
+        progress: LibrarySyncReadingProgress(
+          chapterId: 'new',
+          paragraphId: 'p2',
+          characterOffset: 2,
+          chapterIndex: 1,
+          chapterFraction: 0.2,
+          bookFraction: 0.2,
+          updatedAtUtc: DateTime.utc(2026, 8, 25),
+        ),
+      );
+      final incoming = LibrarySyncSnapshot(items: [sender]);
+      final preview = await library.sync.preview(
+        incoming,
+        availablePluginIds: const {'fixture'},
+      );
+      expect(preview.newItems, isEmpty);
+      expect(preview.conflicts, hasLength(1));
+      final result = await library.sync.apply(
+        incoming,
+        preview: preview,
+        choices: {
+          preview.conflicts.single.identity:
+              LibrarySyncConflictChoice.smartMerge,
+        },
+      );
+      expect(result.code, LibrarySyncResultCode.applied);
+      expect(result.updatedItems, 1);
+      expect(result.progressApplied, 1);
+      expect((await library.getLibraryItem(item.id))!.title, '新标题');
+      expect((await library.readingProgress.load(item.id))!.chapterId, 'new');
+    },
+  );
+
+  test(
+    'sync reports missing plugins as blocked without writing them',
+    () async {
+      final incoming = LibrarySyncSnapshot(
+        items: const [
+          LibrarySyncItem(
+            pluginId: 'not-installed',
+            producerPluginVersion: '1.0.0',
+            remoteContentId: 'missing-plugin-book',
+            kind: ContentKind.novel,
+            title: '书',
+          ),
+        ],
+      );
+      final preview = await library.sync.preview(
+        incoming,
+        availablePluginIds: const {'fixture'},
+      );
+      expect(
+        preview.blocked.single.reason,
+        LibrarySyncBlockedReason.missingPlugin,
+      );
+      final result = await library.sync.apply(
+        incoming,
+        preview: preview,
+        choices: const {},
+      );
+      expect(result.code, LibrarySyncResultCode.applied);
+      expect(result.blockedItems, 1);
+      expect((await library.listLibrary(const LibraryQuery())).items, isEmpty);
     },
   );
 }

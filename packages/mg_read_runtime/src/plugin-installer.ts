@@ -209,8 +209,12 @@ export class PluginInstaller {
   async setEnabled(pluginId: string, enabled: boolean): Promise<void> {
     assertPluginId(pluginId);
     const marker = resolve(this.#dataRoot, "plugins", pluginId, "disabled");
+    const quarantine = resolve(this.#dataRoot, "plugins", pluginId, "quarantined");
     if (enabled) {
       await rm(marker, { force: true });
+      // Explicit user re-enable is also an explicit retry request. A later
+      // valid cold-activated update clears this marker on its own.
+      await rm(quarantine, { force: true });
       return;
     }
     await atomicWrite(marker, "1\n");

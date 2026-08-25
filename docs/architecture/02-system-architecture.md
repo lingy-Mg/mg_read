@@ -141,6 +141,9 @@ Content Library 经主应用窄端口持久化。资源结果是 Runtime 管理�
   结果，由主应用 adapter 决定是否提交。
 - 下载 checkpoint、缓存和跨边界文件提交尚需单独 Accepted ADR；不得从旧 Runtime Store 设计
   或临时 `host.*` 回调推导实现。
+- 前台局域网同步由 [ADR-0021](adr/0021-foreground-lan-sync.md) 与
+  [ADR-0022](adr/0022-lan-sync-qr-development-source-transfer.md) 约束：主应用拥有书架/进度快照，
+  Runtime 仅以 path-free 有界流提供其拥有的插件归档。
 - 未来 WebView、文件选择、通知和媒体等能力的跨平台实现或明确 `unsupported`；不得
   通过回调把未实现能力转移给主项目。
 
@@ -151,6 +154,7 @@ Content Library 经主应用窄端口持久化。资源结果是 Runtime 管理�
 | 插件安装、版本、启用、插件私有 data/cache/Cookie、Runtime 诊断 | Runtime | 通过 Facade 查询、触发 capability、显示投影 |
 | 书架、来源绑定、目录、正文对象、阅读进度、书签 | 主应用 AppPersistence/ContentLibrary | 通过 feature 窄端口读写和渲染 |
 | 下载 checkpoint、跨边界缓存/文件提交 | 未完全决策 | 实施前新增 Accepted ADR 与强类型契约 |
+| 前台局域网同步 | 主应用快照；Runtime 插件归档流 | 遵守 ADR-0021/0022，不交换 Runtime 路径或二维码内容 |
 | Runtime 生命周期、协议、内部连接 | Runtime | 只接收稳定就绪/失败/诊断结果 |
 | 路由、主题、窗口与短期页面状态 | Flutter 主项目 | 唯一所有者 |
 

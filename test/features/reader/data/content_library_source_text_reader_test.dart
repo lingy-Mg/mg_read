@@ -37,18 +37,23 @@ void main() {
           title: '测试书',
           contentKind: PluginContentKind.novel,
           author: '测试作者',
-          url: null,
+          url: Uri.parse('https://source.example/books/book-1'),
           coverUrl: null,
-          description: null,
+          description: '测试简介',
           language: null,
           status: PluginContentStatus.ongoing,
           access: PluginAccessKind.unknown,
-          wordCount: null,
+          wordCount: 123456,
           chapterCount: 2,
           publishedAt: null,
           updatedAt: null,
-          latestChapter: null,
-          categories: const <String>[],
+          latestChapter: PluginLatestChapter(
+            id: 'chapter-2',
+            title: '第二章',
+            url: Uri.parse('https://source.example/books/book-1/chapter-2'),
+            updatedAt: null,
+          ),
+          categories: const <String>['玄幻'],
           tags: const <String>[],
           attributes: const <PluginContentAttribute>[],
         ),
@@ -64,6 +69,23 @@ void main() {
       expect(gateway.requestedCatalogCount, 1);
       expect(gateway.requestedDetailCount, 0);
       expect(firstRequest.extensions.chapterStateCapability, isNotNull);
+      final bookInfo = await firstRequest.dataSource.loadBookInfo(
+        item.id.value,
+      );
+      expect(bookInfo.description, '测试简介');
+      expect(bookInfo.sourceName, '示例书源');
+      expect(
+        bookInfo.sourceUrl,
+        Uri.parse('https://source.example/books/book-1'),
+      );
+      expect(bookInfo.wordCount, 123456);
+      expect(bookInfo.chapterCount, 2);
+      expect(bookInfo.statusLabel, '连载');
+      expect(bookInfo.latestChapterTitle, '第二章');
+      expect(
+        bookInfo.latestChapterUrl,
+        Uri.parse('https://source.example/books/book-1/chapter-2'),
+      );
       expect(await library.listAllCatalog(item.id), hasLength(2));
       expect(
         (await firstRequest.dataSource.loadChapterContent(
@@ -71,6 +93,13 @@ void main() {
           'chapter-1',
         )).paragraphs.single.text,
         '第一段。',
+      );
+      expect(
+        (await firstRequest.dataSource.loadChapterContent(
+          item.id.value,
+          'chapter-1',
+        )).chapterUrl,
+        'https://source.example/books/book-1/chapter-1',
       );
       expect(gateway.requestedContentChapterIds, <String>['chapter-1']);
       expect(
@@ -244,6 +273,50 @@ void main() {
       expect(gateway.requestedCatalogCount, 1);
       expect(gateway.requestedContentChapterIds, <String>['chapter-1']);
       expect(await library.listAllCatalog(item.id), hasLength(2));
+    },
+  );
+
+  test(
+    'starts reading after catalog and body persistence without waiting for detail',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'mg-read-reader-prefetch-detail-',
+      );
+      final library = await ContentLibrary.open(dataRoot: root);
+      addTearDown(() async {
+        await library.close();
+        await root.delete(recursive: true);
+      });
+      final item = await library.bookshelf.addFromSource(
+        const BookshelfAddRequest(
+          title: '详情延迟不阻塞阅读',
+          author: null,
+          kind: ContentKind.novel,
+          pluginId: 'org.example.source',
+          pluginVersion: '1.0.0',
+          remoteContentId: 'book-delayed-detail',
+        ),
+      );
+      final gateway = _GatedDetailGateway();
+      final prefetcher = ContentLibrarySourcePrefetcher(library, gateway);
+      final reader = ContentLibrarySourceTextReader(
+        library,
+        gateway,
+        prefetcher,
+      );
+
+      prefetcher.start(item);
+      await gateway.detailRequested.future;
+
+      final request = await reader
+          .launch(item.id.value)
+          .timeout(const Duration(seconds: 1));
+
+      expect(request.bookId, item.id.value);
+      expect(await library.listAllCatalog(item.id), hasLength(2));
+      expect(gateway.requestedContentChapterIds, <String>['chapter-1']);
+      gateway.releaseDetail();
+      await prefetcher.waitFor(item.id.value);
     },
   );
 
@@ -424,6 +497,24 @@ final class _FailOnceCatalogGateway extends _FakeGateway {
   }
 }
 
+final class _GatedDetailGateway extends _FakeGateway {
+  final detailRequested = Completer<void>();
+  final _detailRelease = Completer<void>();
+
+  void releaseDetail() => _detailRelease.complete();
+
+  @override
+  Future<PluginContentDetail> getDetail({
+    required String pluginId,
+    required String id,
+  }) async {
+    requestedDetailCount += 1;
+    if (!detailRequested.isCompleted) detailRequested.complete();
+    await _detailRelease.future;
+    return super.getDetail(pluginId: pluginId, id: id);
+  }
+}
+
 final class _FakeGateway implements SourceContentGateway {
   var requestedCatalogCount = 0;
   final requestedContentChapterIds = <String>[];
@@ -439,8 +530,19 @@ final class _FakeGateway implements SourceContentGateway {
       pluginId: pluginId,
       sourceName: '示例书源',
       items: <PluginChapterSummary>[
-        _chapter('chapter-1', '第一章', 0, wordCount: 1234),
-        _chapter('chapter-2', '第二章', 1),
+        _chapter(
+          'chapter-1',
+          '第一章',
+          0,
+          wordCount: 1234,
+          url: 'https://source.example/books/book-1/chapter-1',
+        ),
+        _chapter(
+          'chapter-2',
+          '第二章',
+          1,
+          url: 'https://source.example/books/book-1/chapter-2',
+        ),
       ],
     );
   }
@@ -484,12 +586,17 @@ final class _FakeGateway implements SourceContentGateway {
         language: 'zh-CN',
         status: PluginContentStatus.ongoing,
         access: PluginAccessKind.free,
-        wordCount: null,
+        wordCount: 123456,
         chapterCount: 2,
         publishedAt: null,
         updatedAt: null,
-        latestChapter: null,
-        categories: const <String>[],
+        latestChapter: PluginLatestChapter(
+          id: 'chapter-2',
+          title: '第二章',
+          url: Uri.parse('https://source.example/books/book-1/chapter-2'),
+          updatedAt: null,
+        ),
+        categories: const <String>['玄幻'],
         tags: const <String>[],
         attributes: const <PluginContentAttribute>[],
       ),
@@ -532,11 +639,12 @@ PluginChapterSummary _chapter(
   String title,
   int order, {
   int? wordCount,
+  String? url,
 }) => PluginChapterSummary(
   id: id,
   title: title,
   order: order,
-  url: null,
+  url: url == null ? null : Uri.parse(url),
   volumeTitle: null,
   wordCount: wordCount,
   updatedAt: null,

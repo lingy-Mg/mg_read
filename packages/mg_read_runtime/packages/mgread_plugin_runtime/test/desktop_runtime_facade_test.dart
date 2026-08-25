@@ -59,6 +59,26 @@ void main() {
   });
 
   test(
+    'Flutter Facade decodes an empty one-shot plugin recovery summary',
+    () async {
+      final runtime = PluginRuntime.desktopForTesting(
+        runtimeRepositoryRoot: Directory.current.parent.parent,
+      );
+      addTearDown(runtime.debugDispose);
+
+      final first = await runtime.invoke(
+        const PluginStartupRecoveryInvocation(),
+      );
+      final second = await runtime.invoke(
+        const PluginStartupRecoveryInvocation(),
+      );
+
+      expect(first.quarantinedCount, 0);
+      expect(second.quarantinedCount, 0);
+    },
+  );
+
+  test(
     'Flutter desktop Supervisor opens the private Runtime directory outside Node',
     () async {
       final repositoryRoot = Directory.current.parent.parent;
@@ -299,6 +319,19 @@ void main() {
       expect(plugins.single.status, 'development');
       expect(first.items.single.title, '第一版：测试');
       expect(runtime.debugDesktopProcessStartCount, 1);
+
+      final exportable = await runtime.invoke(
+        const PluginTransferListInvocation(),
+      );
+      expect(exportable, hasLength(1));
+      expect(exportable.single.pluginId, 'org.example.flutter-live');
+      expect(exportable.single.version, startsWith('0.1.1-devsync.'));
+      final archive = await runtime.exportPluginArchive(exportable.single);
+      var transferredBytes = 0;
+      await for (final chunk in archive) {
+        transferredBytes += chunk.length;
+      }
+      expect(transferredBytes, exportable.single.bytes);
 
       await _writeDevelopmentPlugin(developmentRoot, '第二版');
       final second = await runtime.invoke(

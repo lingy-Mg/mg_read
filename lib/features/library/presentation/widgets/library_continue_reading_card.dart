@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
-import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
 
@@ -116,7 +115,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
                 Positioned(
                   left: 0,
                   top: 0,
-                  child: _ContinueReadingCoverTreatment(
+                  child: LibraryBookCover(
                     title: data.title,
                     variant: data.coverVariant,
                     coverBytes: data.coverBytes,
@@ -194,107 +193,6 @@ class _ContinueReadingDetails extends StatelessWidget {
           isPreparing: isPreparing,
         ),
       ],
-    );
-  }
-}
-
-/// Gives the prominent cover a little physical depth without altering its
-/// source artwork or the shared cover component used by the book list.
-class _ContinueReadingCoverTreatment extends StatelessWidget {
-  const _ContinueReadingCoverTreatment({
-    required this.title,
-    required this.variant,
-    required this.width,
-    required this.height,
-    this.assetPath,
-    this.coverBytes,
-  });
-
-  final String title;
-  final LibraryCoverVariant variant;
-  final double width;
-  final double height;
-  final String? assetPath;
-  final List<int>? coverBytes;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppThemeTokens tokens = AppThemeTokens.of(context);
-    final BorderRadius radius = AppRadii.bookCover;
-    final double layerOffset = AppSpacing.continueReadingCoverLayerOffset;
-
-    return SizedBox(
-      width: width + layerOffset,
-      height: height + layerOffset,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: <Widget>[
-          Positioned(
-            left: layerOffset,
-            top: layerOffset,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: radius,
-                color: tokens.accentSoft.withValues(alpha: 0.72),
-                border: Border.all(
-                  color: tokens.surface.withValues(alpha: 0.72),
-                ),
-              ),
-              child: SizedBox(width: width, height: height),
-            ),
-          ),
-          DecoratedBox(
-            position: DecorationPosition.foreground,
-            decoration: BoxDecoration(
-              borderRadius: radius,
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: tokens.shadow.withValues(alpha: 0.72),
-                  blurRadius: AppSpacing.continueReadingCoverShadowBlur,
-                  offset: const Offset(
-                    0,
-                    AppSpacing.continueReadingCoverShadowDrop,
-                  ),
-                ),
-              ],
-              border: Border.all(color: tokens.surface.withValues(alpha: 0.82)),
-            ),
-            child: ClipRRect(
-              borderRadius: radius,
-              child: Stack(
-                children: <Widget>[
-                  LibraryBookCover(
-                    title: title,
-                    variant: variant,
-                    coverBytes: coverBytes,
-                    assetPath: assetPath,
-                    width: width,
-                    height: height,
-                  ),
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: <Color>[
-                              Colors.white.withValues(alpha: 0.08),
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.16),
-                            ],
-                            stops: const <double>[0, 0.42, 1],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

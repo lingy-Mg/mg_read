@@ -23,6 +23,8 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.net.URI
+import java.security.MessageDigest
+import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -55,6 +57,18 @@ internal class AndroidRuntimeHost(
     private var pluginModuleLoader: V8ValueFunction? = null
     private val pluginModules = mutableListOf<V8Module>()
     private var runtimeRoot: File? = null
+    private var dataRoot: File? = null
+    private data class TransferSession(
+        val target: File,
+        val temporary: File,
+        val expectedBytes: Long,
+        val expectedSha256: String,
+        var receivedBytes: Long = 0,
+        val digest: MessageDigest = MessageDigest.getInstance("SHA-256"),
+    )
+    private val transferSessions = mutableMapOf<String, TransferSession>()
+    private data class ExportSession(val file: File, var offset: Long = 0)
+    private val exportSessions = mutableMapOf<String, ExportSession>()
 
     fun invoke(
         method: String,
@@ -253,6 +267,169 @@ internal class AndroidRuntimeHost(
         return File(sourcePath)
     }
 
+    fun beginPluginTransfer(
+        pluginId: String,
+        version: String,
+        expectedBytes: Long,
+        expectedSha256: String,
+        callback: (AndroidRuntimeError?, String?) -> Unit,
+    ) {
+        if (disposed.get()) {
+            callback(AndroidRuntimeError("runtime_unavailable", "Android Runtime is closed."), null)
+            return
+        }
+        handler.post {
+            try {
+                check(pluginId.matches(Regex("[a-z0-9][a-z0-9.-]{0,127}"))) { "invalid_request" }
+                check(version.matches(Regex("\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?"))) { "invalid_request" }
+                check(expectedBytes in 1..MAX_IMPORT_BYTES) { "file_too_large" }
+                check(expectedSha256.matches(Regex("[a-f0-9]{64}"))) { "invalid_request" }
+                check(transferSessions.size < MAX_TRANSFER_BATCH) { "transfer_batch_too_large" }
+                val inbox = File(context.filesDir, "mgread-runtime/import-inbox").apply { mkdirs() }
+                val id = UUID.randomUUID().toString().replace("-", "")
+                val target = File(inbox, "transfer-$pluginId-$version-$id.mgplugin")
+                val temporary = File(target.path + ".part")
+                transferSessions[id] = TransferSession(target, temporary, expectedBytes, expectedSha256)
+                callback(null, id)
+            } catch (error: Throwable) {
+                callback(AndroidRuntimeError(
+                    if (error.message == "file_too_large") "plugin_transfer_archive_too_large" else "invalid_request",
+                    "Android Runtime could not begin plugin transfer.",
+                ), null)
+            }
+        }
+    }
+
+    fun beginPluginTransferExport(
+        pluginId: String,
+        version: String,
+        callback: (AndroidRuntimeError?, Map<String, Any?>?) -> Unit,
+    ) {
+        handler.post {
+            try {
+                ensureStarted()
+                check(pluginId.matches(Regex("[a-z0-9][a-z0-9.-]{0,127}"))) { "invalid_request" }
+                check(version.matches(Regex("\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?"))) { "invalid_request" }
+                val file = File(dataRoot ?: error("runtime_unavailable"), "plugin-archives/$pluginId/$version.mgplugin")
+                check(file.isFile) { "plugin_transfer_archive_missing" }
+                check(file.length() in 1..MAX_IMPORT_BYTES) { "plugin_transfer_archive_too_large" }
+                val digest = MessageDigest.getInstance("SHA-256")
+                file.inputStream().use { input ->
+                    val buffer = ByteArray(TRANSFER_CHUNK_BYTES)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        digest.update(buffer, 0, read)
+                    }
+                }
+                val id = UUID.randomUUID().toString().replace("-", "")
+                exportSessions[id] = ExportSession(file)
+                callback(null, mapOf("id" to id, "bytes" to file.length(), "sha256" to digest.digest().joinToString("") { byte -> "%02x".format(byte) }))
+            } catch (error: Throwable) {
+                callback(AndroidRuntimeError(error.message ?: "invalid_request", "Android Runtime could not export the plugin archive."), null)
+            }
+        }
+    }
+
+    fun readPluginTransferExportChunk(
+        id: String,
+        callback: (AndroidRuntimeError?, ByteArray?) -> Unit,
+    ) {
+        handler.post {
+            try {
+                val session = exportSessions[id] ?: error("invalid_request")
+                val remaining = session.file.length() - session.offset
+                if (remaining <= 0) {
+                    exportSessions.remove(id)
+                    callback(null, ByteArray(0))
+                    return@post
+                }
+                val count = minOf(remaining, TRANSFER_CHUNK_BYTES.toLong()).toInt()
+                val output = ByteArray(count)
+                session.file.inputStream().use { input ->
+                    check(input.skip(session.offset) == session.offset) { "plugin_transfer_archive_missing" }
+                    var read = 0
+                    while (read < count) {
+                        val next = input.read(output, read, count - read)
+                        if (next < 0) break
+                        read += next
+                    }
+                    check(read == count) { "plugin_transfer_archive_missing" }
+                }
+                session.offset += count
+                callback(null, output)
+            } catch (error: Throwable) {
+                exportSessions.remove(id)
+                callback(AndroidRuntimeError(error.message ?: "invalid_request", "Android Runtime could not read the plugin archive."), null)
+            }
+        }
+    }
+
+    fun cancelPluginTransferExport(id: String) {
+        handler.post { exportSessions.remove(id) }
+    }
+
+    fun writePluginTransferChunk(
+        id: String,
+        chunk: ByteArray,
+        callback: (AndroidRuntimeError?) -> Unit,
+    ) {
+        handler.post {
+            val session = transferSessions[id]
+            if (session == null) {
+                callback(AndroidRuntimeError("invalid_request", "Android plugin transfer session is unavailable."))
+                return@post
+            }
+            try {
+                check(chunk.size <= TRANSFER_CHUNK_BYTES) { "invalid_request" }
+                check(session.receivedBytes + chunk.size <= session.expectedBytes) { "plugin_transfer_size_mismatch" }
+                session.temporary.parentFile?.mkdirs()
+                FileOutputStream(session.temporary, true).use { output -> output.write(chunk) }
+                session.digest.update(chunk)
+                session.receivedBytes += chunk.size
+                callback(null)
+            } catch (error: Throwable) {
+                callback(AndroidRuntimeError(
+                    if (error.message == "plugin_transfer_size_mismatch") "plugin_transfer_size_mismatch" else "disk_full",
+                    "Android Runtime could not accept the plugin transfer chunk.",
+                ))
+            }
+        }
+    }
+
+    fun finishPluginTransferBatch(
+        ids: List<String>,
+        callback: (AndroidRuntimeError?) -> Unit,
+    ) {
+        handler.post {
+            try {
+                check(ids.isNotEmpty() && ids.size <= MAX_TRANSFER_BATCH) { "transfer_batch_too_large" }
+                ids.forEach { id ->
+                    val session = transferSessions[id] ?: error("invalid_request")
+                    check(session.receivedBytes == session.expectedBytes) { "plugin_transfer_size_mismatch" }
+                    val actual = session.digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+                    check(actual == session.expectedSha256) { "plugin_transfer_checksum_mismatch" }
+                    check(session.temporary.renameTo(session.target)) { "disk_full" }
+                }
+                ids.forEach { transferSessions.remove(it) }
+                restartRuntime()
+                ensureStarted()
+                callback(null)
+            } catch (error: Throwable) {
+                ids.forEach { id -> transferSessions.remove(id)?.temporary?.delete() }
+                runCatching { stopRuntime() }
+                val code = when (error.message) {
+                    "plugin_transfer_size_mismatch" -> "plugin_transfer_size_mismatch"
+                    "plugin_transfer_checksum_mismatch" -> "plugin_transfer_checksum_mismatch"
+                    "transfer_batch_too_large" -> "plugin_transfer_batch_too_large"
+                    "disk_full" -> "disk_full"
+                    else -> "plugin_transfer_failed"
+                }
+                callback(AndroidRuntimeError(code, "Android Runtime could not finalize plugin transfer."))
+            }
+        }
+    }
+
     fun dispose() {
         if (!disposed.compareAndSet(false, true)) return
         Log.i(TAG, "android_runtime_dispose_start")
@@ -311,6 +488,7 @@ internal class AndroidRuntimeHost(
         nodeRuntime = runtime
         runtimeRoot = root
         val dataRoot = File(context.filesDir, "mgread-runtime/data").apply { mkdirs() }
+        this.dataRoot = dataRoot
         val pluginImportInbox = File(
             context.filesDir,
             "mgread-runtime/import-inbox",
@@ -458,10 +636,7 @@ internal class AndroidRuntimeHost(
                         pluginModules += module
                         return module.namespace
                     } catch (error: Throwable) {
-                Log.e(
-                    TAG,
-                    "android_runtime_plugin_module_load_failed type=${error::class.java.simpleName} message=${error.message?.take(240)}",
-                )
+                        Log.e(TAG, "android_runtime_plugin_module_load_failed type=${error::class.java.simpleName}")
                         runCatching { module.close() }
                         throw error
                     }
@@ -577,12 +752,13 @@ internal class AndroidRuntimeHost(
                 return builtIn.resolve(runtime, moduleName, referrer)
             }
             val referrerFile = referrer?.resourceName?.let(::File)
-            val candidate = when {
+            val requestedPath = when {
                 moduleName.startsWith("file:") -> File(URI(moduleName))
                 moduleName.startsWith("/") -> File(moduleName)
                 referrerFile != null -> File(referrerFile.parentFile, moduleName)
                 else -> File(root, moduleName)
-            }.canonicalFile.takeIf { it.isFile }
+            }.canonicalFile
+            val candidate = resolveFile(requestedPath)
                 ?: resolvePackage(moduleName, referrerFile)
                 ?: return null
             return runtime.getExecutor(moduleSource(candidate))
@@ -676,6 +852,8 @@ internal class AndroidRuntimeHost(
 
     private companion object {
         const val MAX_IMPORT_BYTES = 32L * 1024L * 1024L
+        const val MAX_TRANSFER_BATCH = 32
+        const val TRANSFER_CHUNK_BYTES = 64 * 1024
         const val PROGRESS_REPORT_BYTES = 64L * 1024L
         const val TAG = "MgReadAndroidRuntime"
     }

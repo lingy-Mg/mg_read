@@ -41,6 +41,11 @@ PluginRuntime.invoke<T>(PluginInvocation<T>) -> Future<T>
 和 Content Library 经自身强类型端口持久化。下载跨边界能力需等待新 Accepted ADR。主项目
 不得拼接 raw method 字符串或直接使用 wire envelope。
 
+书源冷加载的模块、导出或 `activate` 失败只会隔离该书源的当前版本：Runtime 持久化其
+版本化隔离标记、继续启动其他书源，并经 `plugins.recovery.consume.v1` 返回本次启动的隔离
+数量。该强类型、一次性摘要不返回书源代码、异常、路径、URL、请求内容或凭据；有效的新
+冷激活版本会清除自身隔离标记。
+
 插件私有缓存清理由 `plugins.cache.usage.v1`、`plugins.cache.clear.v1` 与
 `plugins.cache.clearAll.v1` 三个强类型 Facade capability 表达。它们只返回数据源 ID、逻辑
 字节数及每项 `cleared/failed` 终态；Runtime 仍独占 cache 目录、文件句柄与底层失败细节，
@@ -99,6 +104,8 @@ Runtime 仓库必须拥有并测试：
   诊断。主应用业务数据与 Content Library 不在此数据根。
 - 本地或内置 `.mgplugin` 的原始备份保存在 Runtime 自有 `plugin-archives/<pluginId>/`，
   不作为主应用业务数据，也不经 Facade 暴露路径或文件句柄。
+- Windows Debug development 项目只可在用户显式局域网发送时由 Runtime 生成有界临时标准归档；
+  工作区路径和临时文件不穿透 Facade，接收端仍走 installed 安装与冷激活。
 - 下载 checkpoint、内容缓存和跨边界原子提交在新 Accepted ADR/Facade 契约完成前保持未实现
   或 `unsupported`，不能从旧 Runtime Store 规划直接恢复。
 - 未来 WebView、通知、媒体和其他平台能力的 Runtime 自有实现，或明确、稳定的

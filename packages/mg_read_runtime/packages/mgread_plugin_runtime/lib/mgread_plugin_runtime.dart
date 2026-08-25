@@ -22,6 +22,7 @@ part 'src/android_supervisor.dart';
 part 'src/plugin_content_invocation.dart';
 part 'src/runtime_initialization.dart';
 part 'src/plugin_invocation.dart';
+part 'src/plugin_transfer_invocation.dart';
 part 'src/plugin_runtime.dart';
 part 'src/runtime_diagnostics_invocation.dart';
 part 'src/runtime_error.dart';

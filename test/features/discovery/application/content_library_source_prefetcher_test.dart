@@ -44,6 +44,24 @@ void main() {
         'chapter:2',
       ]);
       expect(catalog.first.contentStatus, 'ready');
+      final hydrated = await library.getLibraryItem(item.id);
+      expect(hydrated?.title, '远程详情书名');
+      expect(hydrated?.description, '简介');
+      expect(
+        hydrated?.sourceUrl,
+        Uri.parse('https://source.example/book-prefetch'),
+      );
+      expect(hydrated?.wordCount, 123456);
+      expect(hydrated?.statusLabel, '连载');
+      expect(hydrated?.latestChapterTitle, '第二章');
+      expect(
+        hydrated?.latestChapterUrl,
+        Uri.parse('https://source.example/book-prefetch/chapter-2'),
+      );
+      expect(
+        catalog.first.chapterUrl,
+        Uri.parse('https://source.example/book-prefetch/chapter:1'),
+      );
       expect(
         await library.openContent(catalog.first.id),
         isA<NovelChapterContent>(),
@@ -175,23 +193,28 @@ final class _PrefetchGateway implements SourceContentGateway {
         title: '远程详情书名',
         contentKind: PluginContentKind.novel,
         author: '远程作者',
-        url: null,
+        url: Uri.parse('https://source.example/book-prefetch'),
         coverUrl: null,
         description: '简介',
         language: 'zh-CN',
         status: PluginContentStatus.ongoing,
         access: PluginAccessKind.free,
-        wordCount: null,
+        wordCount: 123456,
         chapterCount: 2,
         publishedAt: null,
         updatedAt: null,
-        latestChapter: null,
-        categories: const <String>[],
+        latestChapter: PluginLatestChapter(
+          id: 'chapter:2',
+          title: '第二章',
+          url: Uri.parse('https://source.example/book-prefetch/chapter-2'),
+          updatedAt: null,
+        ),
+        categories: const <String>['玄幻'],
         tags: const <String>[],
         attributes: const <PluginContentAttribute>[],
       ),
       aliases: const <String>[],
-      catalogUrl: null,
+      catalogUrl: Uri.parse('https://source.example/book-prefetch'),
     );
   }
 
@@ -289,7 +312,7 @@ PluginChapterSummary _chapter(String id, String title, int order) =>
       id: id,
       title: title,
       order: order,
-      url: null,
+      url: Uri.parse('https://source.example/book-prefetch/$id'),
       volumeTitle: null,
       wordCount: null,
       updatedAt: null,

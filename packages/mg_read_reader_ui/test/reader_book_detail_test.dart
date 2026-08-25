@@ -29,6 +29,11 @@ void main() {
 
     await tester.tap(find.text('目录'));
     await tester.pumpAndSettle();
+    expect(find.text('已下载'), findsOneWidget);
+    expect(find.text('已读'), findsOneWidget);
+    expect(find.text('未下载'), findsOneWidget);
+    expect(find.text('未读'), findsOneWidget);
+    expect(find.text('1200 字'), findsOneWidget);
     await tester.tap(find.text('书籍详情'));
     await tester.pumpAndSettle();
 
@@ -44,10 +49,21 @@ void main() {
 final class _DetailDataSource implements TextReaderDataSource {
   const _DetailDataSource();
 
-  static const ReaderChapterInfo _chapter = ReaderChapterInfo(
+  static const ReaderChapterInfo _downloadedChapter = ReaderChapterInfo(
     id: 'chapter-1',
     title: '第一章',
     index: 0,
+    availability: ReaderChapterAvailability.downloaded,
+    wordCount: 1200,
+    hasBeenRead: true,
+  );
+
+  static const ReaderChapterInfo _unreadChapter = ReaderChapterInfo(
+    id: 'chapter-2',
+    title: '第二章',
+    index: 1,
+    availability: ReaderChapterAvailability.notDownloaded,
+    wordCount: 900,
   );
 
   @override
@@ -71,15 +87,16 @@ final class _DetailDataSource implements TextReaderDataSource {
     String? cursor,
     int pageSize = 100,
   }) async => ChapterCatalogPage(
-    items: <ReaderChapterInfo>[_chapter],
-    total: 1,
+    items: const <ReaderChapterInfo>[_downloadedChapter, _unreadChapter],
+    total: 2,
     hasMore: false,
   );
 
   @override
   Future<ReaderChapterInfo> loadChapterAtIndex(String bookId, int index) async {
-    if (index != 0) throw RangeError.index(index, const <int>[0]);
-    return _chapter;
+    if (index == 0) return _downloadedChapter;
+    if (index == 1) return _unreadChapter;
+    throw RangeError.index(index, const <int>[0, 1]);
   }
 
   @override

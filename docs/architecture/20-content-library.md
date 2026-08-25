@@ -15,6 +15,9 @@ AppPersistence
 
 `ContentLibrary` 向 feature/reader 提供异步强类型仓储；内部 PluginSourceData（pluginId、版本、dataVersion、opaque JSON）不从公开 barrel 导出。普通 JSON 禁止正文、Base64、二进制与绝对路径。首版仅 novel/manga；未知类型只读。漫画文件按漫画 LibraryItemId 分目录，移除漫画时删除整个目录。
 
+前台局域网同步依 [ADR-0021](adr/0021-foreground-lan-sync.md) 只交换由本专题/主应用持有的书架与
+阅读进度快照，并逐本由用户选择冲突结果；不交换离线正文、设置、书签或删除操作。
+
 书架小说加入后由共享预取器通过 Runtime Facade 单次取得经解码的完整目录，再以稳定远端章节
 ID 原子切换一次本地 catalog snapshot；Reader 若与预取并发则等待同一任务，预取失败后可同步
 重试一次。已有完整 catalog 不因重开阅读器被覆盖；远端详情章节数大于本地时，视为开发期半目录

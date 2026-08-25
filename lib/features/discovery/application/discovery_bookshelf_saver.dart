@@ -64,6 +64,18 @@ final class ContentLibraryDiscoveryBookshelfSaver
         remoteContentId: content.id,
         coverUrl: content.coverUrl,
         sourceName: source.displayName,
+        sourceUrl: content.url,
+        description: content.description,
+        wordCount: content.wordCount,
+        chapterCount: content.chapterCount,
+        statusLabel: _statusLabel(content.status),
+        latestChapterTitle: content.latestChapter?.title,
+        latestChapterUrl: content.latestChapter?.url,
+        labels: <String>[
+          ...content.categories,
+          ...content.tags,
+          for (final attribute in content.attributes) attribute.value,
+        ],
       ),
     );
     if (await membership?.containsWhenReady(
@@ -84,6 +96,13 @@ final class ContentLibraryDiscoveryBookshelfSaver
     }
   }
 }
+
+String? _statusLabel(PluginContentStatus status) => switch (status) {
+  PluginContentStatus.ongoing => '连载',
+  PluginContentStatus.completed => '已完结',
+  PluginContentStatus.hiatus => '暂停更新',
+  PluginContentStatus.unknown => null,
+};
 
 /// Test-only default: real app composition overrides this with Content Library.
 final discoveryBookshelfSaverProvider = Provider<DiscoveryBookshelfSaver>(

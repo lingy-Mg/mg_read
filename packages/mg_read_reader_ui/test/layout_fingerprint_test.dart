@@ -93,6 +93,51 @@ void main() {
     },
   );
 
+  test('a bounded batch continues filling the preceding page', () {
+    final TextPaginator paginator = const TextPaginator();
+    final TextStyle titleStyle = const TextStyle(fontSize: 22, height: 1.35);
+    final TextStyle bodyStyle = const TextStyle(fontSize: 16, height: 1.5);
+    final List<TextParagraph> paragraphs = List<TextParagraph>.generate(
+      9,
+      (int index) => TextParagraph(id: 'p$index', text: '第 $index 段。'),
+    );
+
+    final ReaderPaginationBatch first = paginator.paginateBatch(
+      chapter: TextChapterContent(
+        chapterId: 'chapter-1',
+        title: '第一章',
+        paragraphs: paragraphs.take(8).toList(),
+      ),
+      width: 300,
+      height: 390,
+      titleStyle: titleStyle,
+      bodyStyle: bodyStyle,
+      paragraphSpacing: 8,
+      finish: false,
+    );
+    expect(first.pages, isEmpty);
+    expect(first.continuation.blocks, hasLength(8));
+
+    final ReaderPaginationBatch last = paginator.paginateBatch(
+      chapter: TextChapterContent(
+        chapterId: 'chapter-1',
+        title: '第一章',
+        paragraphs: <TextParagraph>[paragraphs.last],
+      ),
+      width: 300,
+      height: 390,
+      titleStyle: titleStyle,
+      bodyStyle: bodyStyle,
+      paragraphSpacing: 8,
+      includeChapterTitle: false,
+      continuation: first.continuation,
+      finish: true,
+    );
+
+    expect(last.pages, hasLength(1));
+    expect(last.pages.single.blocks, hasLength(9));
+  });
+
   test('anchor-first pagination does not visit preceding paragraphs', () {
     final List<String> visited = <String>[];
     final TextPaginator paginator = TextPaginator(

@@ -27,6 +27,8 @@
 | [ADR-0018](0018-recursive-discovery-document.md) | 预发布递归发现组件树与集合定向分页 |
 | [ADR-0019](0019-development-plugin-live-loading.md) | installed 冷激活、Windows development 即时加载与 Android 测试安装 |
 | [ADR-0020](0020-complete-source-catalog.md) | 书源目录单次完整返回、5000 条/2 MiB 边界与 WS 大响应例外 |
+| [ADR-0021](0021-foreground-lan-sync.md) | Windows/Android 前台点对点局域网同步与有限范围 |
+| [ADR-0022](0022-lan-sync-qr-development-source-transfer.md) | 局域网二维码连接与 Windows Debug 开发书源显式传输 |
 | [ADR-0100](0100-app-owned-content-library.md) | 应用拥有 Content Library 三层持久化 |
 
 ## Superseded / 历史

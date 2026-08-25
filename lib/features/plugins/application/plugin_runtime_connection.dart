@@ -62,13 +62,18 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway {
       final results = await Future.wait<Object>(<Future<Object>>[
         _runtime.invoke(const RuntimePingInvocation()),
         _runtime.invoke(const InstalledPluginsInvocation()),
+        _runtime.invoke(const PluginStartupRecoveryInvocation()),
       ]);
       final ping = results[0] as RuntimePingResult;
       final plugins = results[1] as List<InstalledPlugin>;
+      final recovery = results[2] as PluginStartupRecovery;
       return PluginRuntimeConnection(
         isHealthy: ping.isHealthy,
         nodeVersion: ping.nodeVersion,
         runtimeVersion: ping.runtimeVersion,
+        startupRecovery: PluginRuntimeStartupRecovery(
+          quarantinedCount: recovery.quarantinedCount,
+        ),
         plugins: List<PluginRuntimePlugin>.unmodifiable(
           plugins.map(
             (plugin) => PluginRuntimePlugin(
@@ -699,9 +704,7 @@ final class PluginRuntimePrivateDirectoryController extends Notifier<bool> {
     final span = diagnostics.startSpan(
       AppDiagnosticEvents.runtimeFacadeCall,
       attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-        'capability': DiagnosticValue.string(
-          'runtime.openPrivateDirectory.v1',
-        ),
+        'capability': DiagnosticValue.string('runtime.openPrivateDirectory.v1'),
         'resultState': DiagnosticValue.string('loading'),
       }),
     );
@@ -742,12 +745,23 @@ final class PluginRuntimeConnection {
     required this.nodeVersion,
     required this.runtimeVersion,
     required this.plugins,
+    this.startupRecovery = const PluginRuntimeStartupRecovery(
+      quarantinedCount: 0,
+    ),
   });
 
   final bool isHealthy;
   final String nodeVersion;
   final String runtimeVersion;
   final List<PluginRuntimePlugin> plugins;
+  final PluginRuntimeStartupRecovery startupRecovery;
+}
+
+@immutable
+final class PluginRuntimeStartupRecovery {
+  const PluginRuntimeStartupRecovery({required this.quarantinedCount});
+
+  final int quarantinedCount;
 }
 
 @immutable

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -656,6 +657,7 @@ class DiscoveryHeroCard extends StatelessWidget {
                     child: DiscoveryBookCover(
                       title: data.title,
                       variant: data.coverVariant,
+                      coverBytes: data.coverBytes,
                       width: AppSpacing.discoveryHeroCoverWidth,
                       height: AppSpacing.discoveryHeroCoverHeight,
                     ),
@@ -831,6 +833,304 @@ class DiscoveryPopularBooks extends StatelessWidget {
               ),
             )
             .toList(growable: false),
+      ),
+    );
+  }
+}
+
+class DiscoveryCarouselBooks extends StatefulWidget {
+  const DiscoveryCarouselBooks({
+    required this.books,
+    required this.onBookPressed,
+    super.key,
+  });
+
+  final List<DiscoveryHeroViewData> books;
+  final ValueChanged<DiscoveryHeroViewData> onBookPressed;
+
+  @override
+  State<DiscoveryCarouselBooks> createState() => _DiscoveryCarouselBooksState();
+}
+
+class _DiscoveryCarouselBooksState extends State<DiscoveryCarouselBooks> {
+  late final PageController _pageController;
+  Timer? _autoPlayTimer;
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+    _startAutoPlay();
+  }
+
+  @override
+  void didUpdateWidget(covariant DiscoveryCarouselBooks oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.books.length != widget.books.length) {
+      _currentIndex = 0;
+      if (_pageController.hasClients) _pageController.jumpToPage(0);
+      _autoPlayTimer?.cancel();
+      _startAutoPlay();
+    }
+  }
+
+  @override
+  void dispose() {
+    _autoPlayTimer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _startAutoPlay() {
+    if (widget.books.length < 2) return;
+    _autoPlayTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted || !_pageController.hasClients) return;
+      setState(() {
+        _currentIndex = (_currentIndex + 1) % widget.books.length;
+      });
+      _pageController.animateToPage(
+        _currentIndex,
+        duration: const Duration(milliseconds: 360),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.books.isEmpty) return const SizedBox.shrink();
+    return Semantics(
+      container: true,
+      label: '重磅推荐轮播，共 ${widget.books.length} 本',
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final height = constraints.maxWidth < 360 ? 156.0 : 184.0;
+          return SizedBox(
+            key: const Key('discovery-carousel-books'),
+            height: height,
+            child: Stack(
+              children: <Widget>[
+                PageView.builder(
+                  controller: _pageController,
+                  itemCount: widget.books.length,
+                  onPageChanged: (index) => setState(() {
+                    _currentIndex = index;
+                  }),
+                  itemBuilder: (context, index) {
+                    final book = widget.books[index];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 1),
+                      child: DiscoveryCarouselHeroCard(
+                        data: book,
+                        onPressed: () => widget.onBookPressed(book),
+                      ),
+                    );
+                  },
+                ),
+                if (widget.books.length > 1)
+                  Positioned(
+                    right: 18,
+                    bottom: 10,
+                    child: _DiscoveryCarouselIndicator(
+                      count: widget.books.length,
+                      activeIndex: _currentIndex,
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class DiscoveryCarouselHeroCard extends StatelessWidget {
+  const DiscoveryCarouselHeroCard({
+    required this.data,
+    required this.onPressed,
+    super.key,
+  });
+
+  final DiscoveryHeroViewData data;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final AppThemeTokens tokens = AppThemeTokens.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 360;
+        final coverWidth = compact
+            ? 84.0
+            : (constraints.maxWidth * 0.23).clamp(88.0, 112.0);
+        final coverHeight = coverWidth * 1.42;
+        return Semantics(
+          button: true,
+          label: '打开书籍：${data.title}',
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              key: const Key('discovery-carousel-hero-card'),
+              onTap: onPressed,
+              borderRadius: AppRadii.discoveryHero,
+              child: Ink(
+                decoration: BoxDecoration(
+                  borderRadius: AppRadii.discoveryHero,
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: <Color>[
+                      tokens.featureSurface,
+                      tokens.accentSoft.withValues(alpha: 0.72),
+                    ],
+                  ),
+                  border: Border.all(
+                    color: tokens.accent.withValues(alpha: 0.15),
+                  ),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: compact ? 12 : 16,
+                    vertical: compact ? 12 : 14,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: <Widget>[
+                      DiscoveryBookCover(
+                        title: data.title,
+                        coverBytes: data.coverBytes,
+                        variant: data.coverVariant,
+                        width: coverWidth,
+                        height: coverHeight,
+                      ),
+                      SizedBox(width: compact ? 12 : 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Expanded(
+                                  child: Text(
+                                    data.title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.15,
+                                    ),
+                                  ),
+                                ),
+                                if (data.category != null) ...<Widget>[
+                                  const SizedBox(width: 8),
+                                  DiscoveryTag(label: data.category!),
+                                ],
+                              ],
+                            ),
+                            if (data.metadata != null) ...<Widget>[
+                              const SizedBox(height: 6),
+                              Text(
+                                data.metadata!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: tokens.mutedText,
+                                ),
+                              ),
+                            ],
+                            if (data.description != null) ...<Widget>[
+                              const SizedBox(height: 8),
+                              Text(
+                                data.description!,
+                                maxLines: compact ? 2 : 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(
+                                    alpha: 0.78,
+                                  ),
+                                  height: 1.35,
+                                ),
+                              ),
+                            ],
+                            if (data.heat != null) ...<Widget>[
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  Icon(
+                                    Icons.local_fire_department_rounded,
+                                    size: 16,
+                                    color: tokens.notification,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    data.heat!,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: tokens.mutedText,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DiscoveryCarouselIndicator extends StatelessWidget {
+  const _DiscoveryCarouselIndicator({
+    required this.count,
+    required this.activeIndex,
+  });
+
+  final int count;
+  final int activeIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppThemeTokens tokens = AppThemeTokens.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tokens.surface.withValues(alpha: 0.78),
+        borderRadius: AppRadii.pill,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            for (var index = 0; index < count; index++) ...<Widget>[
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: index == activeIndex ? 12 : 5,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: index == activeIndex
+                      ? tokens.accent
+                      : tokens.mutedText.withValues(alpha: 0.34),
+                  borderRadius: AppRadii.pill,
+                ),
+              ),
+              if (index != count - 1) const SizedBox(width: 4),
+            ],
+          ],
+        ),
       ),
     );
   }

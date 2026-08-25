@@ -171,6 +171,10 @@ ADR，首版不实现。通过本地 inbox 或内置归档安装的原始 `.mgpl
 Runtime 私有的 `plugin-archives/<pluginId>/<version>.mgplugin`；平台 inbox 仍是一次性移交区，
 安装完成后可以清理，而原始备份不经过主应用 Facade。
 
+前台局域网同步遵守 [ADR-0021](adr/0021-foreground-lan-sync.md)：Runtime 归档只能经 Runtime
+提供的 path-free、有界流发送，用于缺失插件安装或版本升级；Flutter 不接收路径、不扫描归档目录。
+同步不携带离线 npm 依赖包，依赖按标准 npm 规则正常下载。
+
 ## 插件入口与 MgRead 上下文
 
 标准入口使用命名导出：
@@ -270,6 +274,11 @@ Windows Debug 直接发现仓库 `plugins/sources/*` 中已经构建的标准项
 投影。平台适配器在每次 Facade 调用前检查 package/lock 与 `dist/assets/packages` 的有界指纹；
 变化后先完整回收旧 Node/VM，再启动唯一新 Runtime。开发者使用来源自己的 watch/build 命令更新
 `dist/`。Release 不发现工作区路径。完整边界见 ADR-0019。
+
+唯一例外是用户显式发起局域网发送：Runtime 可按
+[ADR-0022](adr/0022-lan-sync-qr-development-source-transfer.md) 生成 Runtime 私有临时标准归档，
+传到手机后仍作为 installed 插件安装。该动作不改变日常开发的工作区直读，也不修改项目
+package/lock 或把路径交给 Flutter。
 
 Android 测试不使用该路径：测试脚本在 Windows 验证并打包归档，经 ADB 放入 Debug 应用私有
 inbox，再由 Runtime 正式 installer 在冷初始化前安装。

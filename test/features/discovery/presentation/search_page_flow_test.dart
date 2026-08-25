@@ -108,7 +108,7 @@ void main() {
 
       await tester.tap(find.text('诡秘之主').first);
       await tester.pumpAndSettle();
-      expect(find.text('已在书架'), findsOneWidget);
+      expect(find.text('已在书架'), findsNothing);
 
       await tester.tap(find.text('真实搜索结果').first);
       await tester.pumpAndSettle();

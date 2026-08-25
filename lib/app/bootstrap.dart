@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app.dart';
 import 'package:mg_read/app/app_diagnostics_boundary.dart';
@@ -24,6 +25,8 @@ import 'package:mg_read/features/library/data/content_library_book_visibility_ch
 import 'package:mg_read/features/library/data/content_library_book_detail_launcher.dart';
 import 'package:mg_read/features/library/data/content_library_overview_loader.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
+import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
+import 'package:mg_read/features/lan_sync/data/mg_read_lan_sync_gateway.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
 import 'package:mg_read/features/discovery/application/content_library_source_prefetcher.dart';
@@ -184,6 +187,13 @@ Future<void> bootstrapMgReadApp({
           if (persistentContentLibrary != null)
             profileReadingStatsLoaderProvider.overrideWithValue(
               ContentLibraryProfileReadingStatsLoader(persistentContentLibrary),
+            ),
+          if (persistentContentLibrary != null)
+            lanSyncGatewayProvider.overrideWith(
+              (ref) => MgReadLanSyncGateway(
+                persistentContentLibrary!,
+                PluginRuntime(),
+              ),
             ),
           if (persistentContentLibrary != null)
             bookshelfMembershipLoaderProvider.overrideWithValue(

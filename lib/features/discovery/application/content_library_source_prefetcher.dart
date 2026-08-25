@@ -125,6 +125,9 @@ final class ContentLibrarySourcePrefetcher {
         // The reader can retry a missing first chapter on demand.
       }
 
+      // Catalog and first body are the reading readiness boundary.  Detail is
+      // a best-effort shelf projection and must not keep a shelf tap waiting
+      // after the first readable chapter is already durable.
       if (!readable.isCompleted) readable.complete();
 
       final detail = await detailFuture;
@@ -143,6 +146,20 @@ final class ContentLibrarySourcePrefetcher {
             sourceName: detail.sourceName.isEmpty
                 ? item.sourceName
                 : detail.sourceName,
+            sourceUrl:
+                detail.catalogUrl ?? detail.summary.url ?? item.sourceUrl,
+            description: detail.summary.description,
+            wordCount: detail.summary.wordCount,
+            chapterCount: detail.summary.chapterCount,
+            statusLabel: _statusLabel(detail.summary.status),
+            latestChapterTitle: detail.summary.latestChapter?.title,
+            latestChapterUrl: detail.summary.latestChapter?.url,
+            labels: <String>[
+              ...detail.summary.categories,
+              ...detail.summary.tags,
+              for (final attribute in detail.summary.attributes)
+                attribute.value,
+            ],
           ),
         );
       }
@@ -192,8 +209,16 @@ final class ContentLibrarySourcePrefetcher {
         title: chapters.elementAt(index).title,
         index: index,
         wordCount: chapters.elementAt(index).wordCount,
+        chapterUrl: chapters.elementAt(index).url,
       ),
   ];
+
+  String? _statusLabel(PluginContentStatus status) => switch (status) {
+    PluginContentStatus.ongoing => '连载',
+    PluginContentStatus.completed => '已完结',
+    PluginContentStatus.hiatus => '暂停更新',
+    PluginContentStatus.unknown => null,
+  };
 
   DiagnosticObjectValue _attributes({
     required int catalogCount,

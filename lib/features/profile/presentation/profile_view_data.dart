@@ -5,8 +5,8 @@ import 'package:mg_read/features/profile/domain/profile_reading_stats.dart';
 /// Immutable, presentation-only data for the profile and settings screen.
 ///
 /// This projection intentionally contains no account identity, Runtime Store,
-/// cloud state, or persistence behavior. The current values are a disclosed
-/// visual fixture until the corresponding Runtime capabilities exist.
+/// account identity or cloud state. The current identity values remain a
+/// disclosed visual fixture; the sync action itself is wired separately.
 @immutable
 final class ProfileViewData {
   /// Creates one display-ready profile projection.
@@ -124,8 +124,8 @@ abstract final class ProfileFixtures {
       ProfileStatViewData(label: '阅读书籍', value: '48 本'),
       ProfileStatViewData(label: '书架收藏', value: '136 本'),
     ],
-    syncLabel: '云端同步正常',
-    lastSyncLabel: '上次同步：刚刚',
+    syncLabel: '局域网同步',
+    lastSyncLabel: '仅在你主动操作时传输',
     settings: <ProfileSettingsItemViewData>[
       ProfileSettingsItemViewData(
         id: 'reading-settings',
@@ -159,11 +159,9 @@ abstract final class ProfileFixtures {
       ),
       ProfileSettingsItemViewData(
         id: 'data-backup',
-        title: '数据备份与同步',
-        description: '云端备份，跨设备同步',
+        title: '局域网同步',
+        description: '同一网络传输数据源、书架与进度',
         icon: ProfileSettingsIcon.backup,
-        trailingLabel: '已开启',
-        isAccentTrailingLabel: true,
       ),
       ProfileSettingsItemViewData(
         id: 'clear-cache',

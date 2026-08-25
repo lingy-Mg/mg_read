@@ -51,6 +51,7 @@
 | [14 全局日志](14-global-diagnostics-logging.md) | 权威专题 | 日志、trace、隐私、查看器、性能 |
 | [15 插件内容 API v1](15-plugin-content-contract.md) | 权威契约 | discover/search/detail/chapters/content |
 | [20 Content Library](20-content-library.md) | 权威专题 | 书架、目录、正文、漫画文件对象 |
+| [21 前台局域网同步](21-lan-sync.md) | 权威专题 | 前台 Windows/Android 点对点、二维码与开发书源同步边界 |
 | [ADR 索引](adr/README.md) | 权威 | 改决策或调查冲突 |
 
 ## 历史专题：默认不读

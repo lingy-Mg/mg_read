@@ -8,6 +8,8 @@ wire envelope。
 final runtime = PluginRuntime();
 final ping = await runtime.invoke(const RuntimePingInvocation());
 final plugins = await runtime.invoke(const InstalledPluginsInvocation());
+final exportable = await runtime.invoke(const PluginTransferListInvocation());
+final plan = await runtime.invoke(PluginTransferPlanInvocation(archives: exportable));
 final sourceDirectoryKind = await runtime.invoke(
   const OpenPluginCodeDirectoryInvocation(
     pluginId: 'org.example.source',
@@ -58,6 +60,14 @@ final capture = await runtime.invoke(
 );
 await runtime.invoke(RuntimeDiagnosticsCaptureStopInvocation(capture.sessionId));
 ```
+
+Plugin transfer is Runtime-owned and bounded: each archive is at most 32 MiB,
+each batch at most 32 archives and 512 MiB. Archive metadata is path-free;
+export returns an ephemeral byte stream and import accepts streams, verifies
+declared size and SHA-256 in the package-owned adapter, then performs one cold
+activation. Windows Debug development sources are exported only for an explicit
+LAN-sync request as temporary standard archives; equal installed versions and
+downgrades remain excluded.
 
 内容类型不猜默认值：协议中每个 nullable 键都必须存在并编码为具体值或 JSON `null`，集合固定
 为数组且无值时返回 `[]`，非负计数中的 `0` 保留为真实零值。缺键、`undefined`、空白字符串、

@@ -28,6 +28,7 @@ final class ContentLibrary {
   late final ContentRepository content = ContentRepository._(this);
   late final ReadingProgressRepository readingProgress =
       ReadingProgressRepository._(this);
+  late final LibrarySyncRepository sync = LibrarySyncRepository._(this);
   late final CoverRepository covers = CoverRepository._(this);
   static Future<ContentLibrary> open({
     required Directory dataRoot,
@@ -84,6 +85,19 @@ final class ContentLibrary {
     remoteChapterId: remoteChapterId,
     text: text,
   );
+
+  Future<LibrarySyncSnapshot> createSyncSnapshot() => sync.createSnapshot();
+
+  Future<LibrarySyncPreview> previewSyncSnapshot(
+    LibrarySyncSnapshot snapshot, {
+    required Set<String> availablePluginIds,
+  }) => sync.preview(snapshot, availablePluginIds: availablePluginIds);
+
+  Future<LibrarySyncApplyResult> applySyncSnapshot(
+    LibrarySyncSnapshot snapshot, {
+    required LibrarySyncPreview preview,
+    required Map<LibrarySyncIdentity, LibrarySyncConflictChoice> choices,
+  }) => sync.apply(snapshot, preview: preview, choices: choices);
 
   /// Opens a novel against one immutable active catalog snapshot.
   ///
@@ -273,6 +287,17 @@ final class BookshelfRepository {
         'remoteBookId': request.remoteContentId,
         if (request.coverUrl != null) 'coverUrl': request.coverUrl.toString(),
         if (request.sourceName != null) 'sourceName': request.sourceName,
+        if (request.sourceUrl != null)
+          'sourceUrl': request.sourceUrl.toString(),
+        if (request.description != null) 'description': request.description,
+        if (request.wordCount != null) 'wordCount': request.wordCount,
+        if (request.chapterCount != null) 'chapterCount': request.chapterCount,
+        if (request.statusLabel != null) 'statusLabel': request.statusLabel,
+        if (request.latestChapterTitle != null)
+          'latestChapterTitle': request.latestChapterTitle,
+        if (request.latestChapterUrl != null)
+          'latestChapterUrl': request.latestChapterUrl.toString(),
+        if (request.labels.isNotEmpty) 'labels': request.labels,
       },
     ),
   );
@@ -475,6 +500,502 @@ final class BookshelfRepository {
       previous: record,
     ); /* objects remain unless a later bounded maintenance pass proves no references */
   }
+}
+
+/// Typed, metadata-only LAN synchronization for source-bound shelf items.
+///
+/// This repository intentionally has no import/export format or persistence
+/// envelope API.  The caller supplies already typed snapshots and plugin
+/// availability; all writes are owned by [ContentLibrary].
+final class LibrarySyncRepository {
+  LibrarySyncRepository._(this._library);
+  final ContentLibrary _library;
+
+  Future<LibrarySyncSnapshot> createSnapshot() => _library._trace(
+    operation: 'syncSnapshotCreate',
+    itemCount: 100,
+    action: _createSnapshot,
+    resultCount: (result) => result.items.length,
+    resultState: (result) => result.items.isEmpty ? 'empty' : 'content',
+  );
+
+  Future<LibrarySyncSnapshot> _createSnapshot() async {
+    final page = await _library.bookshelf.list(const LibraryQuery(limit: 100));
+    final items = <LibrarySyncItem>[];
+    var skipped = 0;
+    for (final item in page.items) {
+      final source = item.source;
+      if (source == null) {
+        skipped++;
+        continue;
+      }
+      final localProgress = await _library.readingProgress.load(item.id);
+      items.add(
+        LibrarySyncItem(
+          pluginId: source.pluginId,
+          producerPluginVersion: source.pluginVersion,
+          remoteContentId: source.remoteContentId,
+          kind: item.kind,
+          title: item.title,
+          author: item.author,
+          coverUrl: item.coverUrl,
+          sourceName: item.sourceName,
+          progress: localProgress == null
+              ? null
+              : LibrarySyncReadingProgress.fromLocal(localProgress),
+        ),
+      );
+    }
+    return LibrarySyncSnapshot(
+      items: List<LibrarySyncItem>.unmodifiable(items),
+      skippedSourceLessItems: skipped,
+    );
+  }
+
+  Future<LibrarySyncPreview> preview(
+    LibrarySyncSnapshot snapshot, {
+    required Set<String> availablePluginIds,
+  }) => _library._trace(
+    operation: 'syncPreview',
+    itemCount: snapshot.items.length,
+    action: () => _preview(snapshot, availablePluginIds),
+    resultCount: (result) =>
+        result.newItems.length +
+        result.conflicts.length +
+        result.blocked.length,
+    resultState: (result) => result.blocked.isEmpty ? 'ready' : 'blocked',
+  );
+
+  Future<LibrarySyncPreview> _preview(
+    LibrarySyncSnapshot snapshot,
+    Set<String> availablePluginIds,
+  ) async {
+    final page = await _library.bookshelf.list(const LibraryQuery(limit: 100));
+    final localByIdentity = <LibrarySyncIdentity, LibraryItem>{};
+    for (final item in page.items) {
+      final source = item.source;
+      if (source != null) {
+        localByIdentity[LibrarySyncIdentity(
+              pluginId: source.pluginId,
+              remoteContentId: source.remoteContentId,
+            )] =
+            item;
+      }
+    }
+    final progress = await _library.readingProgress.loadMany(
+      localByIdentity.values.map((item) => item.id),
+    );
+    final progressById = <String, LibraryReadingProgress>{
+      for (final value in progress) value.itemId.value: value,
+    };
+    final newItems = <LibrarySyncItem>[];
+    final conflicts = <LibrarySyncConflict>[];
+    final blocked = <LibrarySyncBlockedItem>[];
+    final seen = <LibrarySyncIdentity>{};
+    if (snapshot.version != 1 || snapshot.items.length > 100) {
+      return LibrarySyncPreview(
+        snapshot: snapshot,
+        newItems: const <LibrarySyncItem>[],
+        conflicts: const <LibrarySyncConflict>[],
+        blocked: List<LibrarySyncBlockedItem>.unmodifiable(
+          snapshot.items.map(
+            (item) => LibrarySyncBlockedItem(
+              item: item,
+              reason: LibrarySyncBlockedReason.invalidEntry,
+            ),
+          ),
+        ),
+        skippedSourceLessItems: snapshot.skippedSourceLessItems,
+      );
+    }
+    for (final item in snapshot.items) {
+      if (!_validItem(item) || !seen.add(item.identity)) {
+        blocked.add(
+          LibrarySyncBlockedItem(
+            item: item,
+            reason: LibrarySyncBlockedReason.invalidEntry,
+          ),
+        );
+        continue;
+      }
+      if (!availablePluginIds.contains(item.pluginId)) {
+        blocked.add(
+          LibrarySyncBlockedItem(
+            item: item,
+            reason: LibrarySyncBlockedReason.missingPlugin,
+          ),
+        );
+        continue;
+      }
+      final local = localByIdentity[item.identity];
+      if (local == null) {
+        newItems.add(item);
+        continue;
+      }
+      final localProgress = progressById[local.id.value];
+      if (_sameSyncProjection(local, item, localProgress)) continue;
+      conflicts.add(
+        LibrarySyncConflict(
+          identity: item.identity,
+          local: local,
+          sender: item,
+          expectedLocalRevision: local.revision,
+          localProgress: localProgress == null
+              ? null
+              : LibrarySyncReadingProgress.fromLocal(localProgress),
+        ),
+      );
+    }
+    return LibrarySyncPreview(
+      snapshot: snapshot,
+      newItems: List<LibrarySyncItem>.unmodifiable(newItems),
+      conflicts: List<LibrarySyncConflict>.unmodifiable(conflicts),
+      blocked: List<LibrarySyncBlockedItem>.unmodifiable(blocked),
+      skippedSourceLessItems: snapshot.skippedSourceLessItems,
+    );
+  }
+
+  Future<LibrarySyncApplyResult> apply(
+    LibrarySyncSnapshot snapshot, {
+    required LibrarySyncPreview preview,
+    required Map<LibrarySyncIdentity, LibrarySyncConflictChoice> choices,
+  }) => _library._trace(
+    operation: 'syncApply',
+    itemCount: snapshot.items.length,
+    action: () => _apply(snapshot, preview: preview, choices: choices),
+    resultCount: (result) => result.addedItems + result.updatedItems,
+    resultState: (result) => result.code.name,
+  );
+
+  Future<LibrarySyncApplyResult> _apply(
+    LibrarySyncSnapshot snapshot, {
+    required LibrarySyncPreview preview,
+    required Map<LibrarySyncIdentity, LibrarySyncConflictChoice> choices,
+  }) async {
+    if (!_validSnapshot(snapshot) || !identical(preview.snapshot, snapshot)) {
+      return const LibrarySyncApplyResult(
+        code: LibrarySyncResultCode.invalidRequest,
+      );
+    }
+    final conflictIdentities = preview.conflicts
+        .map((item) => item.identity)
+        .toSet();
+    if (choices.keys.any((key) => !conflictIdentities.contains(key)) ||
+        choices.length != conflictIdentities.length ||
+        preview.blocked.any((item) => !_validItem(item.item))) {
+      return const LibrarySyncApplyResult(
+        code: LibrarySyncResultCode.invalidRequest,
+      );
+    }
+    final blockedIdentities = preview.blocked
+        .map((item) => item.item.identity)
+        .toSet();
+    final validItems = _validSnapshotItems(snapshot)
+        .where((item) => !blockedIdentities.contains(item.identity))
+        .toList(growable: false);
+    final page = await _library.bookshelf.list(const LibraryQuery(limit: 100));
+    if (page.items.length + preview.newItems.length > 100) {
+      return const LibrarySyncApplyResult(
+        code: LibrarySyncResultCode.invalidRequest,
+      );
+    }
+    try {
+      return await _library._persistence.metadataRecords.transaction(() async {
+        final records = await _library._persistence.metadataRecords.list(
+          const RecordQuery(recordKind: _itemKind, scope: _scope, limit: 100),
+        );
+        final localRecords = <LibrarySyncIdentity, RecordEnvelope>{};
+        for (final record in records.records) {
+          final item = _item(record);
+          final source = item.source;
+          if (source != null) {
+            localRecords[LibrarySyncIdentity(
+                  pluginId: source.pluginId,
+                  remoteContentId: source.remoteContentId,
+                )] =
+                record;
+          }
+        }
+        for (final conflict in preview.conflicts) {
+          final record = localRecords[conflict.identity];
+          if (record == null ||
+              record.revision != conflict.expectedLocalRevision) {
+            throw const _SyncStaleRevision();
+          }
+        }
+        final progressRecords = await _library._persistence.metadataRecords
+            .listByIdentityKeys(
+              recordKind: _readingProgressKind,
+              scope: _scope,
+              identityKeys: localRecords.values.map((record) => record.id),
+            );
+        final progressById = <String, RecordEnvelope>{
+          for (final record in progressRecords)
+            if (record.identityKey != null) record.identityKey!: record,
+        };
+        var added = 0;
+        var updated = 0;
+        var progressApplied = 0;
+        for (final sender in validItems) {
+          final identity = sender.identity;
+          var record = localRecords[identity];
+          LibrarySyncConflict? conflict;
+          for (final value in preview.conflicts) {
+            if (value.identity == identity) {
+              conflict = value;
+              break;
+            }
+          }
+          final isNew = record == null;
+          if (record == null) {
+            final itemId = _id();
+            final itemRecord = await _library._persistence.metadataRecords
+                .create(
+                  RecordDraft(
+                    id: itemId,
+                    recordKind: _itemKind,
+                    scope: _scope,
+                    identityKey: _syncIdentityKey(identity),
+                    orderKey: itemId,
+                    stateKey: 'active',
+                    document: _syncItemDocument(sender),
+                  ),
+                );
+            await _library._persistence.metadataRecords.create(
+              RecordDraft(
+                id: _id(),
+                recordKind: _bindingKind,
+                scope: _scope,
+                parentId: itemId,
+                identityKey: _syncIdentityKey(identity),
+                orderKey: '0',
+                stateKey: 'available',
+                document: {'itemId': itemId, 'plugin': _syncPlugin(sender)},
+              ),
+            );
+            record = itemRecord;
+            localRecords[identity] = itemRecord;
+            added++;
+          } else if (conflict != null &&
+              choices[identity] != LibrarySyncConflictChoice.keepLocal) {
+            final merged = _syncItemDocument(sender, previous: record.document);
+            if (!_sameDocumentProjection(record.document, merged)) updated++;
+            record = await _library._persistence.metadataRecords.update(
+              previous: record,
+              document: merged,
+            );
+            localRecords[identity] = record;
+          }
+          final choice = choices[identity];
+          final incomingProgress = sender.progress;
+          final currentProgress = progressById[record.id];
+          final shouldApplyProgress =
+              incomingProgress != null &&
+              (isNew ||
+                  choice == LibrarySyncConflictChoice.useSender ||
+                  (choice == LibrarySyncConflictChoice.smartMerge &&
+                      (currentProgress == null ||
+                          incomingProgress.updatedAtUtc.isAfter(
+                            _progressDate(currentProgress),
+                          ))));
+          if (shouldApplyProgress) {
+            final localProgress = incomingProgress.toLocal(
+              LibraryItemId(record.id),
+            );
+            final document = _readingProgressDocument(localProgress);
+            if (currentProgress == null) {
+              final progressRecord = await _library._persistence.metadataRecords
+                  .create(
+                    RecordDraft(
+                      id: _id(),
+                      recordKind: _readingProgressKind,
+                      scope: _scope,
+                      parentId: record.id,
+                      identityKey: record.id,
+                      orderKey: _timestampOrderKey(localProgress.updatedAtUtc),
+                      stateKey: 'active',
+                      document: document,
+                    ),
+                  );
+              progressById[record.id] = progressRecord;
+            } else {
+              progressById[record.id] = await _library
+                  ._persistence
+                  .metadataRecords
+                  .update(previous: currentProgress, document: document);
+            }
+            progressApplied++;
+          }
+        }
+        return LibrarySyncApplyResult(
+          code: LibrarySyncResultCode.applied,
+          addedItems: added,
+          updatedItems: updated,
+          progressApplied: progressApplied,
+          skippedItems: snapshot.skippedSourceLessItems,
+          blockedItems: preview.blocked.length,
+        );
+      });
+    } on _SyncStaleRevision {
+      return const LibrarySyncApplyResult(
+        code: LibrarySyncResultCode.staleRevision,
+      );
+    } on PersistenceConflictError {
+      return const LibrarySyncApplyResult(
+        code: LibrarySyncResultCode.staleRevision,
+      );
+    }
+  }
+}
+
+final class _SyncStaleRevision implements Exception {
+  const _SyncStaleRevision();
+}
+
+typedef ContentLibrarySyncRepository = LibrarySyncRepository;
+
+bool _validSnapshot(LibrarySyncSnapshot snapshot) =>
+    snapshot.version == 1 &&
+    snapshot.skippedSourceLessItems >= 0 &&
+    snapshot.skippedSourceLessItems <= 100 &&
+    snapshot.items.length <= 100 &&
+    _validSnapshotItems(snapshot).length == snapshot.items.length;
+
+List<LibrarySyncItem> _validSnapshotItems(LibrarySyncSnapshot snapshot) {
+  final seen = <LibrarySyncIdentity>{};
+  final result = <LibrarySyncItem>[];
+  for (final item in snapshot.items) {
+    if (!_validItem(item) || !seen.add(item.identity)) continue;
+    result.add(item);
+  }
+  return result;
+}
+
+bool _validItem(LibrarySyncItem item) =>
+    _safeSyncString(item.pluginId) &&
+    _safeSyncString(item.producerPluginVersion) &&
+    _safeSyncString(item.remoteContentId) &&
+    _safeSyncString(item.title) &&
+    (item.author == null || _safeSyncString(item.author!)) &&
+    (item.sourceName == null || _safeSyncString(item.sourceName!)) &&
+    (item.coverUrl == null || _safeSyncString(item.coverUrl.toString())) &&
+    (item.progress == null || _validProgress(item.progress!));
+
+bool _safeSyncString(String value) =>
+    value.isNotEmpty && value.length <= 32768 && !value.contains('\u0000');
+
+bool _validProgress(LibrarySyncReadingProgress value) =>
+    _safeSyncString(value.chapterId) &&
+    _safeSyncString(value.paragraphId) &&
+    value.characterOffset >= 0 &&
+    value.chapterIndex >= 0 &&
+    value.chapterFraction.isFinite &&
+    value.chapterFraction >= 0 &&
+    value.chapterFraction <= 1 &&
+    value.bookFraction.isFinite &&
+    value.bookFraction >= 0 &&
+    value.bookFraction <= 1 &&
+    value.totalReadingSeconds >= 0;
+
+bool _sameSyncProjection(
+  LibraryItem local,
+  LibrarySyncItem sender,
+  LibraryReadingProgress? localProgress,
+) {
+  final source = local.source;
+  if (source == null ||
+      source.pluginId != sender.pluginId ||
+      source.remoteContentId != sender.remoteContentId ||
+      local.kind != sender.kind ||
+      local.title != sender.title ||
+      local.author != sender.author ||
+      local.coverUrl?.toString() != sender.coverUrl?.toString() ||
+      local.sourceName != sender.sourceName) {
+    return false;
+  }
+  final incoming = sender.progress;
+  if (localProgress == null || incoming == null) {
+    return localProgress == null && incoming == null;
+  }
+  return _sameProgress(localProgress, incoming);
+}
+
+bool _sameProgress(
+  LibraryReadingProgress local,
+  LibrarySyncReadingProgress incoming,
+) =>
+    local.chapterId == incoming.chapterId &&
+    local.paragraphId == incoming.paragraphId &&
+    local.characterOffset == incoming.characterOffset &&
+    local.chapterIndex == incoming.chapterIndex &&
+    local.chapterFraction == incoming.chapterFraction &&
+    local.bookFraction == incoming.bookFraction &&
+    local.updatedAtUtc.toUtc() == incoming.updatedAtUtc.toUtc() &&
+    local.totalReadingSeconds == incoming.totalReadingSeconds;
+
+String _syncIdentityKey(LibrarySyncIdentity identity) =>
+    '${identity.pluginId}:${identity.remoteContentId}';
+
+Map<String, Object?> _syncPlugin(LibrarySyncItem item) => <String, Object?>{
+  'pluginId': item.pluginId,
+  'producerPluginVersion': item.producerPluginVersion,
+  'dataVersion': 1,
+  'data': <String, Object?>{'remoteBookId': item.remoteContentId},
+};
+
+Map<String, Object?> _syncItemDocument(
+  LibrarySyncItem item, {
+  Map<String, Object?>? previous,
+}) {
+  final document = <String, Object?>{
+    ...?previous,
+    'title': item.title,
+    'kind': item.kind.code,
+    'plugin': _syncPlugin(item),
+  };
+  if (item.author == null) {
+    document.remove('author');
+  } else {
+    document['author'] = item.author;
+  }
+  final summary = previous == null
+      ? <String, Object?>{}
+      : _summaryFromDocument(previous);
+  _setSyncSummary(summary, 'coverUrl', item.coverUrl?.toString());
+  _setSyncSummary(summary, 'sourceName', item.sourceName);
+  document['summary'] = summary;
+  return document;
+}
+
+void _setSyncSummary(Map<String, Object?> summary, String key, String? value) {
+  if (value == null || value.isEmpty) {
+    summary.remove(key);
+  } else {
+    summary[key] = value;
+  }
+}
+
+bool _sameDocumentProjection(
+  Map<String, Object?> previous,
+  Map<String, Object?> next,
+) {
+  final oldSummary = _summaryFromDocument(previous);
+  final newSummary = _summaryFromDocument(next);
+  return previous['title'] == next['title'] &&
+      previous['author'] == next['author'] &&
+      previous['kind'] == next['kind'] &&
+      oldSummary['coverUrl'] == newSummary['coverUrl'] &&
+      oldSummary['sourceName'] == newSummary['sourceName'] &&
+      (previous['plugin'] as Map?)?['producerPluginVersion'] ==
+          (next['plugin'] as Map?)?['producerPluginVersion'];
+}
+
+DateTime _progressDate(RecordEnvelope record) {
+  final value = record.document['updatedAtUtc'];
+  return value is String
+      ? DateTime.tryParse(value)?.toUtc() ??
+            DateTime.fromMillisecondsSinceEpoch(0)
+      : DateTime.fromMillisecondsSinceEpoch(0);
 }
 
 /// App-owned, cross-feature persistence for regenerable source covers.
@@ -816,9 +1337,13 @@ final class CatalogRepository {
             'title': input.title,
             'kind': input.kindCode,
             if (input.index != null) 'index': input.index,
-            if (input.wordCount != null) 'wordCount': input.wordCount,
+            if (input.chapterUrl != null)
+              'chapterUrl': input.chapterUrl.toString(),
             'plugin': _plugin(input.source),
             'contentStatus': 'missing',
+            if (input.wordCount != null) 'wordCount': input.wordCount,
+            if (input.wordCount == null && previous?.wordCount != null)
+              'wordCount': previous!.wordCount,
             if (previous != null && previous.contentStatus == 'ready')
               'contentStatus': 'ready',
           },
@@ -1046,6 +1571,7 @@ final class CatalogRepository {
           source: ingest,
           index: chapter.index,
           wordCount: chapter.wordCount,
+          chapterUrl: chapter.chapterUrl,
         ),
       ),
     );
@@ -1110,6 +1636,7 @@ final class CatalogRepository {
           source: ingest,
           index: chapter.index,
           wordCount: chapter.wordCount,
+          chapterUrl: chapter.chapterUrl,
         ),
       ),
     );
@@ -1171,6 +1698,7 @@ final class ContentRepository {
     required CatalogEntryId entryId,
     required String text,
     required ContentLibraryIngest source,
+    int? wordCount,
   }) async {
     final objectId = _id();
     await _library._persistence.contentObjects.put(
@@ -1180,7 +1708,7 @@ final class ContentRepository {
       generation: 1,
       payload: text,
     );
-    await _attach(entryId, objectId, 'novel', source);
+    await _attach(entryId, objectId, 'novel', source, wordCount: wordCount);
   }
 
   Future<void> _cacheNovelChapter({
@@ -1226,6 +1754,7 @@ final class ContentRepository {
         dataVersion: 1,
         opaqueData: <String, Object?>{'remoteBookId': source.remoteContentId},
       ),
+      wordCount: text.length,
     );
   }
 
@@ -1253,13 +1782,17 @@ final class ContentRepository {
     CatalogEntryId id,
     String objectId,
     String kind,
-    ContentLibraryIngest source,
-  ) async {
+    ContentLibraryIngest source, {
+    int? wordCount,
+  }) async {
     final record = await _library._persistence.metadataRecords.read(
       id: id.value,
       scope: _scope,
     );
     if (record == null) throw StateError('Missing catalog entry.');
+    final Map<String, Object?> contentMetadata = wordCount == null
+        ? const <String, Object?>{}
+        : <String, Object?>{'wordCount': wordCount};
     await _library._persistence.metadataRecords.update(
       previous: record,
       document: {
@@ -1268,6 +1801,7 @@ final class ContentRepository {
         'contentKind': kind,
         'contentStatus': 'ready',
         'contentPlugin': _plugin(source),
+        ...contentMetadata,
       },
     );
   }
@@ -1344,11 +1878,13 @@ final class IngestCatalogEntry {
     required this.source,
     this.index,
     this.wordCount,
+    this.chapterUrl,
   });
   final String? id;
   final String remoteIdentity, title, orderKey, kindCode;
   final ContentLibraryIngest source;
   final int? index, wordCount;
+  final Uri? chapterUrl;
 }
 
 final class IngestMangaPage {
@@ -1436,6 +1972,14 @@ LibraryItem _item(RecordEnvelope r) => LibraryItem(
   revision: r.revision,
   coverUrl: _uriFromSummary(r.document, 'coverUrl'),
   sourceName: _stringFromSummary(r.document, 'sourceName'),
+  sourceUrl: _uriFromSummary(r.document, 'sourceUrl'),
+  description: _stringFromSummary(r.document, 'description'),
+  wordCount: _intFromSummary(r.document, 'wordCount'),
+  chapterCount: _intFromSummary(r.document, 'chapterCount'),
+  statusLabel: _stringFromSummary(r.document, 'statusLabel'),
+  latestChapterTitle: _stringFromSummary(r.document, 'latestChapterTitle'),
+  latestChapterUrl: _uriFromSummary(r.document, 'latestChapterUrl'),
+  labels: _stringListFromSummary(r.document, 'labels'),
   source: _itemSource(r.document['plugin']),
   visibility: _visibilityFromDocument(r.document),
 );
@@ -1445,13 +1989,29 @@ LibraryVisibility _visibilityFromDocument(Map<String, Object?> document) =>
 
 Map<String, Object?> _shelfSummary(ContentLibraryIngest source) {
   final summary = <String, Object?>{};
-  final coverUrl = source.opaqueData['coverUrl'];
-  final sourceName = source.opaqueData['sourceName'];
-  if (coverUrl is String && coverUrl.isNotEmpty) {
-    summary['coverUrl'] = coverUrl;
+  final stringKeys = <String>[
+    'coverUrl',
+    'sourceName',
+    'sourceUrl',
+    'description',
+    'statusLabel',
+    'latestChapterTitle',
+    'latestChapterUrl',
+  ];
+  for (final key in stringKeys) {
+    final value = source.opaqueData[key];
+    if (value is String && value.isNotEmpty) summary[key] = value;
   }
-  if (sourceName is String && sourceName.isNotEmpty) {
-    summary['sourceName'] = sourceName;
+  for (final key in ['wordCount', 'chapterCount']) {
+    final value = source.opaqueData[key];
+    if (value is int && value >= 0) summary[key] = value;
+  }
+  final labels = source.opaqueData['labels'];
+  if (labels is List<Object?>) {
+    final values = labels.whereType<String>().where(
+      (value) => value.isNotEmpty,
+    );
+    if (values.isNotEmpty) summary['labels'] = values.toList(growable: false);
   }
   return summary;
 }
@@ -1471,6 +2031,24 @@ String? _stringFromSummary(Map<String, Object?> document, String key) {
 Uri? _uriFromSummary(Map<String, Object?> document, String key) {
   final value = _stringFromSummary(document, key);
   return value == null ? null : Uri.tryParse(value);
+}
+
+Uri? _uriFromValue(Object? value) {
+  if (value is! String || value.isEmpty) return null;
+  return Uri.tryParse(value);
+}
+
+int? _intFromSummary(Map<String, Object?> document, String key) {
+  final value = _summaryFromDocument(document)[key];
+  return value is int && value >= 0 ? value : null;
+}
+
+List<String> _stringListFromSummary(Map<String, Object?> document, String key) {
+  final value = _summaryFromDocument(document)[key];
+  if (value is! List<Object?>) return const <String>[];
+  return List<String>.unmodifiable(
+    value.whereType<String>().where((item) => item.isNotEmpty),
+  );
 }
 
 LibraryItemSource? _itemSource(Object? rawPlugin) {
@@ -1550,6 +2128,7 @@ CatalogEntry _entry(RecordEnvelope r) => CatalogEntry(
   kind: ContentKind.fromCode(r.document['kind'] as String),
   contentStatus: r.document['contentStatus'] as String? ?? 'missing',
   wordCount: r.document['wordCount'] as int?,
+  chapterUrl: _uriFromValue(r.document['chapterUrl']),
   hasExplicitRemoteIdentity: r.document['remoteIdentity'] is String,
   contentReference: r.document['contentReference'] as String?,
 );

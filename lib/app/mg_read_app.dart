@@ -9,6 +9,8 @@ import 'package:mg_read/app/app_fatal_error_reporter.dart';
 import 'package:mg_read/app/app_runtime_fatal_error_observer.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
+import 'package:mg_read/app/data_source_system_error_dialog_host.dart';
+import 'package:mg_read/app/data_source_system_error_reporter.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
@@ -41,7 +43,12 @@ class _MgReadAppState extends ConsumerState<MgReadApp> {
 
   Future<void> _warmPluginRuntime() async {
     try {
-      await ref.read(pluginRuntimeConnectionProvider.future);
+      final connection = await ref.read(pluginRuntimeConnectionProvider.future);
+      ref
+          .read(dataSourceSystemErrorReporterProvider)
+          .reportQuarantinedSources(
+            quarantinedCount: connection.startupRecovery.quarantinedCount,
+          );
       await ref.read(availablePluginSourcesProvider.future);
     } on Object catch (error, stackTrace) {
       // The provider preserves the stable failure for feature UI to render.
@@ -71,15 +78,18 @@ class _MgReadAppState extends ConsumerState<MgReadApp> {
       themeMode: ThemeMode.light,
       routerConfig: router,
       builder: (BuildContext context, Widget? child) {
-        return AppFatalErrorDialogHost(
-          reporter: ref.watch(fatalErrorReporterProvider),
-          child: AppBottomNavigationMotionScope(
-            child: AppBackNavigationScope(
-              onBackRequested: popApplicationRoute,
-              child: AppThemeModeScope(
-                themeMode: ThemeMode.light,
-                onToggleTheme: _toggleTheme,
-                child: child ?? const SizedBox.shrink(),
+        return DataSourceSystemErrorDialogHost(
+          reporter: ref.watch(dataSourceSystemErrorReporterProvider),
+          child: AppFatalErrorDialogHost(
+            reporter: ref.watch(fatalErrorReporterProvider),
+            child: AppBottomNavigationMotionScope(
+              child: AppBackNavigationScope(
+                onBackRequested: popApplicationRoute,
+                child: AppThemeModeScope(
+                  themeMode: ThemeMode.light,
+                  onToggleTheme: _toggleTheme,
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
             ),
           ),

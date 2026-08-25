@@ -8,6 +8,7 @@ import { AliceBookHouseSource } from '../dist/source.js';
 import * as plugin from '../dist/index.mjs';
 
 test('list results retain an HTTP(S) cover from the source card', async () => {
+  let proxyCalls = 0;
   const source = new AliceBookHouseSource(
     {
       dataDir: 'data',
@@ -27,7 +28,10 @@ test('list results retain an HTTP(S) cover from the source card', async () => {
           `),
       },
       resource: {
-        proxy: () => 'http://127.0.0.1:1234/v1/source-resource/opaque',
+        proxy: () => {
+          proxyCalls += 1;
+          return 'http://127.0.0.1:1234/v1/source-resource/opaque';
+        },
       },
       log: { debug() {}, info() {}, warn() {}, error() {} },
       app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
@@ -45,8 +49,93 @@ test('list results retain an HTTP(S) cover from the source card', async () => {
 
   assert.equal(
     result.document.components[0].children[0].items[0].content.coverUrl,
-    'http://127.0.0.1:1234/v1/source-resource/opaque',
+    'https://cdn.example.com/covers/42.jpg',
   );
+  assert.equal(proxyCalls, 0);
+});
+
+test('discovery home exposes source rankings and ranking targets return the full list page', async () => {
+  const source = new AliceBookHouseSource(
+    {
+      dataDir: 'data',
+      cacheDir: 'cache',
+      http: {
+        fetch: async (input) => {
+          const url = new URL(input);
+          if (url.pathname.startsWith('/other/rank_hits/')) {
+            return new Response(`
+              <article class="list-group-item"><a href="/novel/1.html">排行一</a><a href="/lists/71.html">科幻</a></article>
+              <article class="list-group-item"><a href="/novel/2.html">排行二</a><a href="/lists/71.html">科幻</a></article>
+              <article class="list-group-item"><a href="/novel/3.html">排行三</a><a href="/lists/71.html">科幻</a></article>
+            `);
+          }
+          if (url.pathname.startsWith('/novel/')) {
+            const novelId = url.pathname.match(/\/(\d+)\.html/u)?.[1] ?? '0';
+            const title = novelId === '11' ? '推荐一' : novelId === '12' ? '推荐二' : `排行书${novelId}`;
+            return new Response(`
+              <h1 class="novel_title">${title}</h1>
+              <div class="novel_info"><a href="/lists/71.html">科幻</a><span>字数：12345</span></div>
+              <section class="pic"><img src="https://cdn.example.com/${novelId}.jpg"></section>
+              <div class="jianjie"><p>这是排行页详情。</p></div>
+            `);
+          }
+          if (url.pathname === '/') {
+            return new Response(`
+              <div class="hot-box">
+                <div class="hot-title"><h2>重磅推荐</h2></div>
+                <div class="hot-data">
+                  <a href="/novel/11.html"><img src="https://cdn.example.com/11.jpg"></a><a href="/novel/11.html">推荐一</a>
+                  <a href="/novel/12.html"><img src="https://cdn.example.com/12.jpg"></a><a href="/novel/12.html">推荐二</a>
+                </div>
+              </div>
+            `);
+          }
+          throw new Error('Unexpected source request.');
+        },
+      },
+      log: { debug() {}, info() {}, warn() {}, error() {} },
+      app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
+      plugin: { id: 'org.mgread.aisishuwu', version: '0.2.7' },
+    },
+    { origin: 'https://www.alicesw.com', categories: [{ id: '71', title: '科幻' }] },
+  );
+
+  const home = await source.discover({
+    target: null,
+    cursor: null,
+    collectionId: null,
+    pageSize: 20,
+  });
+  assert.equal(home.kind, 'document');
+  assert.deepEqual(
+    home.document.components.map((component) => component.id),
+    ['source-featured-section', 'source-categories-section', 'source-rankings-section'],
+  );
+  const featuredCollection = home.document.components[0].children[0];
+  assert.equal(featuredCollection.layout, 'carousel');
+  assert.deepEqual(
+    featuredCollection.items.map((item) => item.content.title),
+    ['推荐一', '推荐二'],
+  );
+  const rankingSection = home.document.components[2];
+  assert.deepEqual(
+    rankingSection.children[0].categories.map((category) => category.target),
+    ['ranking:day', 'ranking:week', 'ranking:month', 'ranking:total'],
+  );
+
+  const first = await source.discover({
+    target: 'ranking:day',
+    cursor: null,
+    collectionId: null,
+    pageSize: 2,
+  });
+  assert.equal(first.kind, 'document');
+  const collection = first.document.components[0].children[0];
+  assert.equal(collection.layout, 'list');
+  assert.deepEqual(collection.items.map((item) => item.rank), [null, null, null]);
+  assert.equal(collection.continuation, null);
+  assert.equal(collection.items[0].content.coverUrl, 'https://cdn.example.com/1.jpg');
+  assert.equal(collection.items[0].content.description, '这是排行页详情。');
 });
 
 test('detail results retain a lazy-loaded cover from the source page', async () => {
@@ -73,7 +162,7 @@ test('detail results retain a lazy-loaded cover from the source page', async () 
   assert.equal(detail.coverUrl, 'https://cdn.example.com/covers/42.jpg');
 });
 
-test('Runtime proxy replaces an Alice cover URL and rejects off-origin resources', async () => {
+test('Alice cover results retain their source HTTPS URL when a Runtime proxy is available', async () => {
   let proxyRequest;
   let fetchCount = 0;
   const context = {
@@ -86,8 +175,8 @@ test('Runtime proxy replaces an Alice cover URL and rejects off-origin resources
   };
   const source = new AliceBookHouseSource(context, { origin: 'https://www.alicesw.com', categories: [] });
   const detail = await source.getDetail({ id: 'novel:42' });
-  assert.equal(detail.coverUrl, 'http://127.0.0.1:1234/v1/source-resource/opaque');
-  assert.deepEqual(proxyRequest, { url: 'https://www.alicesw.com/covers/42.jpg' });
+  assert.equal(detail.coverUrl, 'https://www.alicesw.com/covers/42.jpg');
+  assert.equal(proxyRequest, undefined);
 
   await plugin.activate(context);
   const result = await plugin.resource({ url: 'https://evil.example/covers/42.jpg' });

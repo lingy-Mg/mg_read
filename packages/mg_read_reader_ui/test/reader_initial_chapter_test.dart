@@ -116,6 +116,126 @@ void main() {
       expect(store.lastProgress?.characterOffset, 6);
     },
   );
+
+  testWidgets('re-paginates at a new viewport and keeps its semantic anchor', (
+    WidgetTester tester,
+  ) async {
+    final controller = TextReaderController();
+    const ReaderProgress anchor = ReaderProgress(
+      chapterId: 'chapter-1',
+      paragraphId: 'paragraph-1',
+      characterOffset: 120,
+    );
+
+    Widget readerAt(Size size) => MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: SizedBox(
+            width: size.width,
+            height: size.height,
+            child: TextReaderView(
+              key: const ValueKey<String>('resizable-reader'),
+              bookId: 'resizable-book',
+              controller: controller,
+              dataSource: const _DenseChapterDataSource(),
+              stateStore: const _FixedProgressStateStore(anchor),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(readerAt(const Size(360, 560)));
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    });
+    await tester.pumpAndSettle();
+    for (var index = 0; index < 5; index++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(controller.snapshot.progress?.paragraphId, anchor.paragraphId);
+    expect(
+      controller.snapshot.progress?.characterOffset,
+      anchor.characterOffset,
+    );
+
+    await tester.pumpWidget(readerAt(const Size(520, 720)));
+    await tester.pumpAndSettle();
+    for (var index = 0; index < 5; index++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+
+    expect(controller.snapshot.isReady, isTrue);
+    expect(controller.snapshot.progress?.chapterId, anchor.chapterId);
+    expect(controller.snapshot.progress?.paragraphId, anchor.paragraphId);
+    expect(
+      controller.snapshot.progress?.characterOffset,
+      anchor.characterOffset,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('previous chapter opens at its tail after progressive layout', (
+    WidgetTester tester,
+  ) async {
+    final controller = TextReaderController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TextReaderView(
+            bookId: 'previous-chapter-book',
+            controller: controller,
+            dataSource: const _PreviousChapterDataSource(),
+            stateStore: const _EmptyStateStore(),
+          ),
+        ),
+      ),
+    );
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    });
+    await tester.pumpAndSettle();
+    for (var index = 0; index < 8; index++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+
+    await controller.nextChapter();
+    await tester.pumpAndSettle();
+    for (var index = 0; index < 8; index++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(controller.snapshot.chapter?.id, 'chapter-2');
+
+    await controller.previousChapter();
+    await tester.pump();
+    expect(find.text('正在定位上一章末页'), findsOneWidget);
+
+    for (var index = 0; index < 12; index++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await tester.pumpAndSettle();
+
+    expect(controller.snapshot.chapter?.id, 'chapter-1');
+    expect(controller.snapshot.progress?.paragraphId, 'chapter-1-tail');
+    expect(
+      controller.snapshot.progress?.characterOffset,
+      _PreviousChapterDataSource.tail.length,
+    );
+    final tail = find.textContaining(_PreviousChapterDataSource.tail);
+    expect(tail, findsOneWidget);
+    expect(
+      tester
+          .getRect(tail)
+          .overlaps(
+            tester.getRect(
+              find.byKey(const ValueKey<String>('reader-content-surface')),
+            ),
+          ),
+      isTrue,
+    );
+    expect(find.text('正在定位上一章末页'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 final class _FirstFrameObserver extends ReaderObserver {
@@ -127,7 +247,7 @@ final class _FirstFrameObserver extends ReaderObserver {
   }
 }
 
-final class _InitialChapterDataSource implements TextReaderDataSource {
+class _InitialChapterDataSource implements TextReaderDataSource {
   const _InitialChapterDataSource();
 
   static const ReaderChapterInfo _chapter = ReaderChapterInfo(
@@ -224,4 +344,97 @@ final class _ClampedStateStore extends _EmptyStateStore {
   Future<void> saveProgress(String bookId, ReaderProgress progress) async {
     lastProgress = progress;
   }
+}
+
+final class _FixedProgressStateStore extends _EmptyStateStore {
+  const _FixedProgressStateStore(this.progress);
+
+  final ReaderProgress progress;
+
+  @override
+  Future<ReaderProgress?> loadProgress(String bookId) async => progress;
+}
+
+final class _DenseChapterDataSource extends _InitialChapterDataSource {
+  const _DenseChapterDataSource();
+
+  @override
+  Future<TextChapterContent> loadChapterContent(
+    String bookId,
+    String chapterId,
+  ) async => TextChapterContent(
+    chapterId: 'chapter-1',
+    title: '第一章',
+    paragraphs: <TextParagraph>[
+      TextParagraph(
+        id: 'paragraph-1',
+        text: List<String>.filled(700, '正文').join(),
+      ),
+    ],
+  );
+}
+
+final class _PreviousChapterDataSource implements TextReaderDataSource {
+  const _PreviousChapterDataSource();
+
+  static const String tail = '第一章末尾标记';
+  static const ReaderChapterInfo _first = ReaderChapterInfo(
+    id: 'chapter-1',
+    title: '第一章',
+    index: 0,
+  );
+  static const ReaderChapterInfo _second = ReaderChapterInfo(
+    id: 'chapter-2',
+    title: '第二章',
+    index: 1,
+  );
+
+  @override
+  Future<ReaderBookInfo> loadBookInfo(String bookId) async =>
+      ReaderBookInfo(id: bookId, title: '跨章测试书');
+
+  @override
+  Future<ChapterCatalogPage> loadChapterCatalog(
+    String bookId, {
+    String? cursor,
+    int pageSize = 100,
+  }) async => ChapterCatalogPage(
+    items: <ReaderChapterInfo>[_first, _second],
+    total: 2,
+    hasMore: false,
+  );
+
+  @override
+  Future<ReaderChapterInfo> loadChapterAtIndex(String bookId, int index) async {
+    if (index == 0) return _first;
+    if (index == 1) return _second;
+    throw RangeError.index(index, const <int>[0, 1]);
+  }
+
+  @override
+  Future<TextChapterContent> loadChapterContent(
+    String bookId,
+    String chapterId,
+  ) async => switch (chapterId) {
+    'chapter-1' => TextChapterContent(
+      chapterId: chapterId,
+      title: '第一章',
+      paragraphs: <TextParagraph>[
+        for (var index = 0; index < 8; index++)
+          TextParagraph(
+            id: 'chapter-1-$index',
+            text: List<String>.filled(80, '正文').join(),
+          ),
+        const TextParagraph(id: 'chapter-1-tail', text: tail),
+      ],
+    ),
+    'chapter-2' => TextChapterContent(
+      chapterId: 'chapter-2',
+      title: '第二章',
+      paragraphs: <TextParagraph>[
+        TextParagraph(id: 'chapter-2-body', text: '第二章正文'),
+      ],
+    ),
+    _ => throw StateError('Unknown chapter.'),
+  };
 }

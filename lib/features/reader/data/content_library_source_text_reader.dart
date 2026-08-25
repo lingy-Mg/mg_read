@@ -36,7 +36,7 @@ final class ContentLibrarySourceTextReader
   }) async {
     final itemId = LibraryItemId(libraryItemId);
     var session = await _library.openNovelReaderSession(itemId);
-    final item = session?.item ?? await _library.getLibraryItem(itemId);
+    var item = session?.item ?? await _library.getLibraryItem(itemId);
     if (item == null) {
       throw _failure(
         ReaderLaunchFailureReason.shelfItemMissing,
@@ -57,12 +57,13 @@ final class ContentLibrarySourceTextReader
       );
     }
 
-    if (session == null && _prefetcher?.hasInFlight(item.id.value) == true) {
+    if (_prefetcher?.hasInFlight(item.id.value) == true) {
       try {
         await _prefetcher!.prepareForReading(item);
       } on Object {
         // A failed background warm-up is retried through the typed gateway.
       }
+      item = await _library.getLibraryItem(item.id) ?? item;
       session = await _library.openNovelReaderSession(item.id);
     }
     if (session == null) return _launchLiveSession(item, source, observer);
@@ -202,6 +203,7 @@ final class ContentLibrarySourceTextReader
               title: chapter.title,
               index: chapter.order,
               wordCount: chapter.wordCount,
+              chapterUrl: chapter.url,
             ),
           )
           .toList(growable: false),
@@ -528,16 +530,16 @@ final class _SessionTextReaderDataSource implements TextReaderDataSource {
       id: bookId,
       title: item.title,
       author: item.author,
-      description: null,
+      description: item.description,
       sourceName: item.sourceName ?? '书架缓存',
-      sourceUrl: null,
+      sourceUrl: item.sourceUrl,
       coverUrl: item.coverUrl,
-      wordCount: null,
-      chapterCount: session.catalogCount,
-      statusLabel: null,
-      latestChapterTitle: null,
-      latestChapterUrl: null,
-      labels: const <String>[],
+      wordCount: item.wordCount,
+      chapterCount: item.chapterCount ?? session.catalogCount,
+      statusLabel: item.statusLabel,
+      latestChapterTitle: item.latestChapterTitle,
+      latestChapterUrl: item.latestChapterUrl,
+      labels: item.labels,
       sourceKind: sourceKind,
     );
   }
@@ -582,6 +584,7 @@ final class _SessionTextReaderDataSource implements TextReaderDataSource {
       title: content.title ?? entry?.title ?? chapterId,
       paragraphs: _readerParagraphs(chapterId, content.text ?? ''),
       contentVersion: content.updatedAt?.toUtc().toIso8601String(),
+      chapterUrl: entry?.chapterUrl?.toString(),
     );
   }
 

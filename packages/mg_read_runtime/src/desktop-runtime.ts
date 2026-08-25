@@ -69,6 +69,11 @@ import {
   PluginContentValidationError,
   type PluginContentOperation,
 } from "./plugin-content.js";
+import {
+  PluginTransferError,
+  type PluginTransferArchive,
+  MAX_PLUGIN_TRANSFER_BATCH,
+} from "./plugin-transfer.js";
 
 const LOOPBACK_HOST = "127.0.0.1";
 const MAX_INLINE_BYTES = maxWebSocketControlFrameBytes;
@@ -92,8 +97,13 @@ const RUNTIME_CONTROL_METHOD = Object.freeze({
   pluginsCacheUsage: "plugins.cache.usage.v1",
   pluginsInstallationUsage: "plugins.installation.usage.v1",
   pluginsList: "plugins.list.v1",
+  pluginsRecoveryConsume: "plugins.recovery.consume.v1",
   pluginsOpenCodeDirectory: "plugins.openCodeDirectory.v1",
   pluginsSetEnabled: "plugins.setEnabled.v1",
+  pluginsTransferList: "plugins.transfer.list.v1",
+  pluginsTransferPlan: "plugins.transfer.plan.v1",
+  pluginsTransferExport: "plugins.transfer.export.v1",
+  pluginsTransferVerify: "plugins.transfer.verify.v1",
   sourceDiscover: "source.discover.v1",
   sourceSearch: "source.search.v1",
   sourceSearchSuggestions: "source.searchSuggestions.v1",
@@ -189,8 +199,13 @@ const RUNTIME_CONTROL_CAPABILITIES = Object.freeze([
   RUNTIME_CONTROL_METHOD.pluginsCacheClear,
   RUNTIME_CONTROL_METHOD.pluginsCacheClearAll,
   RUNTIME_CONTROL_METHOD.pluginsList,
+  RUNTIME_CONTROL_METHOD.pluginsRecoveryConsume,
   RUNTIME_CONTROL_METHOD.pluginsOpenCodeDirectory,
   RUNTIME_CONTROL_METHOD.pluginsSetEnabled,
+  RUNTIME_CONTROL_METHOD.pluginsTransferList,
+  RUNTIME_CONTROL_METHOD.pluginsTransferPlan,
+  RUNTIME_CONTROL_METHOD.pluginsTransferExport,
+  RUNTIME_CONTROL_METHOD.pluginsTransferVerify,
   RUNTIME_CONTROL_METHOD.sourceDiscover,
   RUNTIME_CONTROL_METHOD.sourceSearch,
   RUNTIME_CONTROL_METHOD.sourceSearchSuggestions,
@@ -535,9 +550,9 @@ export class DesktopRuntime {
       definition: runtimeDiagnosticEvents.pluginLoad,
       ...(lifecycleSpan === undefined ? {} : { parent: lifecycleSpan.trace }),
     });
-      const pluginManager = new PluginManager(this.#dataRoot, {
-        embedded: this.#embedded,
-        ...(this.#developmentPluginRoot === undefined
+    const pluginManager = new PluginManager(this.#dataRoot, {
+      embedded: this.#embedded,
+      ...(this.#developmentPluginRoot === undefined
         ? {}
         : { developmentPluginRoot: this.#developmentPluginRoot }),
       events: emitPluginManagerDiagnostic,
@@ -573,40 +588,40 @@ export class DesktopRuntime {
       throw error;
     }
     this.#pluginManager = pluginManager;
-      emitRuntimeDiagnostic({
-        code: "plugin_runtime_initialized",
-        level: "info",
-        message: "The standard Node plugin runtime initialized successfully.",
-        type: "diagnostic",
+    emitRuntimeDiagnostic({
+      code: "plugin_runtime_initialized",
+      level: "info",
+      message: "The standard Node plugin runtime initialized successfully.",
+      type: "diagnostic",
+    });
+
+    // Android runs this Core inside Javet's embedded NodeRuntime. It has no
+    // desktop loopback transport, and starting a Node HTTP server here can
+    // leave the Javet event loop waiting forever before bootstrap completes.
+    // Keep the embedded route transport-free; desktop Node owns HTTP/WS.
+    if (this.#embedded) {
+      const ready: DesktopRuntimeReady = Object.freeze({
+        bootId: this.#bootId,
+        host: LOOPBACK_HOST,
+        nodeVersion: process.versions.node,
+        pid: process.pid,
+        port: 0,
+        protocolVersion,
+        runtimeVersion,
+        startedAt: this.#startedAt,
+        type: "ready",
       });
+      this.#ready = ready;
+      lifecycleSpan?.end("success", {
+        attributes: () => runtimeDiagnosticValue.object({
+          platform: runtimeDiagnosticValue.string(process.platform),
+          stage: runtimeDiagnosticValue.string("ready"),
+        }),
+      });
+      return ready;
+    }
 
-      // Android runs this Core inside Javet's embedded NodeRuntime. It has no
-      // desktop loopback transport, and starting a Node HTTP server here can
-      // leave the Javet event loop waiting forever before bootstrap completes.
-      // Keep the embedded route transport-free; desktop Node owns HTTP/WS.
-      if (this.#embedded) {
-        const ready: DesktopRuntimeReady = Object.freeze({
-          bootId: this.#bootId,
-          host: LOOPBACK_HOST,
-          nodeVersion: process.versions.node,
-          pid: process.pid,
-          port: 0,
-          protocolVersion,
-          runtimeVersion,
-          startedAt: this.#startedAt,
-          type: "ready",
-        });
-        this.#ready = ready;
-        lifecycleSpan?.end("success", {
-          attributes: () => runtimeDiagnosticValue.object({
-            platform: runtimeDiagnosticValue.string(process.platform),
-            stage: runtimeDiagnosticValue.string("ready"),
-          }),
-        });
-        return ready;
-      }
-
-      const server = createServer((request, response) => {
+    const server = createServer((request, response) => {
       this.#handleHttp(request, response);
     });
     server.on("upgrade", (request, socket, head) => {
@@ -846,6 +861,8 @@ export class DesktopRuntime {
       });
       throw error;
     } finally {
+      await this.#pluginManager?.close();
+      this.#pluginManager = undefined;
       await diagnostics?.close();
       this.#diagnostics = undefined;
     }
@@ -882,11 +899,11 @@ export class DesktopRuntime {
       }),
       definition: runtimeDiagnosticEvents.http,
     });
-    const finish = (statusCode: number): void => {
+    const finish = (statusCode: number, downloadedBytes = 0): void => {
       span?.end("success", {
         attributes: () => runtimeDiagnosticValue.object({
           bodyMicros: runtimeDiagnosticValue.int64(0n),
-          downloadBytes: runtimeDiagnosticValue.int64(0n),
+          downloadBytes: runtimeDiagnosticValue.int64(BigInt(downloadedBytes)),
           method: runtimeDiagnosticValue.string(method),
           origin: runtimeDiagnosticValue.string("http://loopback"),
           redirectCount: runtimeDiagnosticValue.int64(0n),
@@ -900,6 +917,12 @@ export class DesktopRuntime {
     if (resourceMatch !== null) {
       if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); finish(405); return; }
       void this.#serveSourceResource(resourceMatch[1]!, response, finish);
+      return;
+    }
+    const transferMatch = /^\/v1\/plugin-transfer\/([A-Za-z0-9_-]{32,128})$/.exec(url.pathname);
+    if (transferMatch !== null) {
+      if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); finish(405); return; }
+      void this.#servePluginTransferResource(transferMatch[1]!, response, finish);
       return;
     }
     if (request.method !== "GET") {
@@ -947,6 +970,24 @@ export class DesktopRuntime {
       response.end(result.body); finish(result.status);
     } catch {
       response.writeHead(404); response.end(); finish(404);
+    }
+  }
+
+  async #servePluginTransferResource(token: string, response: ServerResponse, finish: (status: number, downloadedBytes?: number) => void): Promise<void> {
+    const resource = this.#pluginManager?.consumePluginTransferResource(token);
+    if (resource === undefined) { response.writeHead(404); response.end(); finish(404); return; }
+    try {
+      response.writeHead(200, {
+        "Cache-Control": "no-store",
+        "Content-Length": resource.bytes,
+        "Content-Type": "application/octet-stream",
+        "X-MgRead-Sha256": resource.sha256,
+      });
+      resource.stream.on("error", () => { response.destroy(); finish(500); });
+      resource.stream.pipe(response).on("finish", () => finish(200, resource.bytes));
+    } catch {
+      response.destroy();
+      finish(500);
     }
   }
 
@@ -1301,6 +1342,28 @@ export class DesktopRuntime {
         const plugins = await this.#pluginManager?.listInstalled();
         return { result: plugins ?? [] };
       }
+      case RUNTIME_CONTROL_METHOD.pluginsRecoveryConsume: {
+        if (Object.keys(request.params).length !== 0) {
+          return {
+            error: this.#requestError(
+              request,
+              "invalid_request",
+              "The plugin recovery query accepts no parameters.",
+            ),
+          };
+        }
+        const manager = this.#pluginManager;
+        if (manager === undefined) {
+          return {
+            error: this.#requestError(
+              request,
+              "plugin_load_failed",
+              "The plugin recovery summary is unavailable.",
+            ),
+          };
+        }
+        return { result: await manager.consumeStartupRecovery() };
+      }
       case RUNTIME_CONTROL_METHOD.pluginsOpenCodeDirectory:
         return this.#dispatchPluginOpenCodeDirectory(request);
       case RUNTIME_CONTROL_METHOD.pluginsCacheUsage:
@@ -1313,6 +1376,14 @@ export class DesktopRuntime {
         return this.#dispatchPluginCacheClearAll(request);
       case RUNTIME_CONTROL_METHOD.pluginsSetEnabled:
         return this.#dispatchPluginEnabled(request);
+      case RUNTIME_CONTROL_METHOD.pluginsTransferList:
+        return this.#dispatchPluginTransferList(request);
+      case RUNTIME_CONTROL_METHOD.pluginsTransferPlan:
+        return this.#dispatchPluginTransferPlan(request);
+      case RUNTIME_CONTROL_METHOD.pluginsTransferExport:
+        return this.#dispatchPluginTransferExport(request);
+      case RUNTIME_CONTROL_METHOD.pluginsTransferVerify:
+        return this.#dispatchPluginTransferVerify(request);
       case RUNTIME_CONTROL_METHOD.sourceDiscover:
         return this.#dispatchPluginContent(
           request,
@@ -1439,6 +1510,61 @@ export class DesktopRuntime {
         ),
       };
     }
+  }
+
+  async #dispatchPluginTransferList(request: RuntimeRequest): Promise<RuntimeDispatchResult> {
+    if (Object.keys(request.params).length !== 0) {
+      return { error: this.#requestError(request, "invalid_request", "The plugin transfer list request is invalid.") };
+    }
+    try {
+      const manager = this.#pluginManager;
+      if (manager === undefined) throw new PluginTransferError("plugin_not_found");
+      return { result: await manager.listExportableArchives() };
+    } catch (error) { return this.#pluginTransferFailure(request, error); }
+  }
+
+  async #dispatchPluginTransferPlan(request: RuntimeRequest): Promise<RuntimeDispatchResult> {
+    const raw = request.params.archives;
+    if (!Array.isArray(raw) || raw.length > MAX_PLUGIN_TRANSFER_BATCH || Object.keys(request.params).length !== 1) {
+      return { error: this.#requestError(request, "invalid_request", "The plugin transfer plan request is invalid.") };
+    }
+    try {
+      const manager = this.#pluginManager;
+      if (manager === undefined) throw new PluginTransferError("plugin_not_found");
+      return { result: await manager.planPluginTransfer(raw as PluginTransferArchive[]) };
+    } catch (error) { return this.#pluginTransferFailure(request, error); }
+  }
+
+  async #dispatchPluginTransferExport(request: RuntimeRequest): Promise<RuntimeDispatchResult> {
+    const id = request.params.id;
+    const version = request.params.version;
+    if (Object.keys(request.params).length !== 2 || typeof id !== "string" || typeof version !== "string") {
+      return { error: this.#requestError(request, "invalid_request", "The plugin transfer export request is invalid.") };
+    }
+    try {
+      const manager = this.#pluginManager;
+      if (manager === undefined) throw new PluginTransferError("plugin_not_found");
+      const resource = await manager.createPluginTransferResource(id, version);
+      return { result: { ...resource.archive, token: resource.token } };
+    } catch (error) { return this.#pluginTransferFailure(request, error); }
+  }
+
+  async #dispatchPluginTransferVerify(request: RuntimeRequest): Promise<RuntimeDispatchResult> {
+    const raw = request.params.archives;
+    if (!Array.isArray(raw) || Object.keys(request.params).length !== 1) {
+      return { error: this.#requestError(request, "invalid_request", "The plugin transfer verification request is invalid.") };
+    }
+    try {
+      const manager = this.#pluginManager;
+      if (manager === undefined) throw new PluginTransferError("plugin_not_found");
+      await manager.verifyPluginTransferInbox(raw as PluginTransferArchive[]);
+      return { result: { verified: true } };
+    } catch (error) { return this.#pluginTransferFailure(request, error); }
+  }
+
+  #pluginTransferFailure(request: RuntimeRequest, error: unknown): RuntimeDispatchFailure {
+    const code = error instanceof PluginTransferError ? error.code : "internal";
+    return { error: this.#requestError(request, code as RuntimeErrorCode, "The plugin transfer request could not be completed.") };
   }
 
   /** Opens an internal source directory and returns only its stable kind. */
@@ -2369,6 +2495,7 @@ function emitPluginManagerDiagnostic(event: PluginManagerEvent): void {
     plugin_load_failed: "A standard Node plugin could not be loaded.",
     plugin_load_started: "A standard Node plugin load started.",
     plugin_log_emitted: "A plugin emitted a redacted diagnostic event.",
+    plugin_quarantined: "A broken plugin source was isolated during startup.",
     plugin_uninstall_completed: "A pending plugin uninstall completed.",
   };
   emitRuntimeDiagnostic({

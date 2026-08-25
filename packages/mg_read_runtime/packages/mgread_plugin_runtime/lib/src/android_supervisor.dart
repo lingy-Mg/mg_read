@@ -182,6 +182,172 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
   }
 
   @override
+  Future<Stream<List<int>>> exportPluginArchive(
+    PluginTransferArchive archive,
+  ) async {
+    try {
+      final metadata = await _androidRuntimeChannel.invokeMethod<Object?>(
+        'beginPluginTransferExport',
+        <String, Object?>{
+          'pluginId': archive.pluginId,
+          'version': archive.version,
+        },
+      );
+      final item = _jsonObject(metadata, 'Android plugin transfer export');
+      if (item['id'] is! String ||
+          item['bytes'] != archive.bytes ||
+          item['sha256'] != archive.sha256) {
+        throw const PluginRuntimeException(
+          'plugin_transfer_checksum_mismatch',
+          'Android Runtime returned an invalid transfer archive.',
+        );
+      }
+      final id = item['id'] as String;
+      return _readAndroidExport(id, archive.bytes);
+    } on PlatformException catch (error) {
+      throw PluginRuntimeException(
+        error.code,
+        'The Android Runtime could not export the plugin archive.',
+      );
+    }
+  }
+
+  Stream<List<int>> _readAndroidExport(String id, int expectedBytes) async* {
+    var received = 0;
+    try {
+      while (received < expectedBytes) {
+        final chunk = await _androidRuntimeChannel.invokeMethod<Uint8List>(
+          'readPluginTransferExportChunk',
+          <String, Object?>{'id': id},
+        );
+        if (chunk == null ||
+            chunk.isEmpty ||
+            received + chunk.length > expectedBytes) {
+          throw const PluginRuntimeException(
+            'plugin_transfer_size_mismatch',
+            'The Android Runtime transfer archive was truncated.',
+          );
+        }
+        received += chunk.length;
+        yield chunk;
+      }
+      if (received != expectedBytes) {
+        throw const PluginRuntimeException(
+          'plugin_transfer_size_mismatch',
+          'The Android Runtime transfer archive was truncated.',
+        );
+      }
+    } finally {
+      if (received < expectedBytes) {
+        await _androidRuntimeChannel.invokeMethod<void>(
+          'cancelPluginTransferExport',
+          <String, Object?>{'id': id},
+        );
+      }
+    }
+  }
+
+  @override
+  Future<List<PluginTransferImportResult>> importPluginArchives(
+    List<({PluginTransferArchive archive, Stream<List<int>> bytes})> archives,
+  ) async {
+    if (archives.isEmpty || archives.length > maxPluginTransferBatch) {
+      throw const PluginRuntimeException(
+        'plugin_transfer_batch_too_large',
+        'The plugin transfer batch is invalid.',
+      );
+    }
+    var total = 0;
+    final ids = <String>[];
+    try {
+      final plan = await invoke(
+        PluginTransferPlanInvocation(
+          archives: [for (final item in archives) item.archive],
+        ),
+      );
+      if (plan.any(
+        (item) =>
+            item.action == PluginTransferPlanAction.receiverNewer ||
+            item.action == PluginTransferPlanAction.same ||
+            item.action == PluginTransferPlanAction.unavailable,
+      )) {
+        throw const PluginRuntimeException(
+          'invalid_request',
+          'The plugin transfer would downgrade or replace an equal Runtime version.',
+        );
+      }
+      for (final item in archives) {
+        if (item.archive.bytes <= 0 ||
+            item.archive.bytes > maxPluginTransferBytes) {
+          throw const PluginRuntimeException(
+            'plugin_transfer_archive_too_large',
+            'The plugin transfer archive is too large.',
+          );
+        }
+        total += item.archive.bytes;
+        if (total > maxPluginTransferBatchBytes) {
+          throw const PluginRuntimeException(
+            'plugin_transfer_batch_too_large',
+            'The plugin transfer batch is too large.',
+          );
+        }
+        final id = await _androidRuntimeChannel
+            .invokeMethod<String>('beginPluginTransfer', <String, Object?>{
+              'bytes': item.archive.bytes,
+              'pluginId': item.archive.pluginId,
+              'sha256': item.archive.sha256,
+              'version': item.archive.version,
+            });
+        if (id == null || id.isEmpty) {
+          throw const PluginRuntimeException(
+            'runtime_no_response',
+            'Android Runtime returned no transfer session.',
+          );
+        }
+        ids.add(id);
+        var copied = 0;
+        await for (final chunk in item.bytes) {
+          copied += chunk.length;
+          if (copied > item.archive.bytes) {
+            throw const PluginRuntimeException(
+              'plugin_transfer_size_mismatch',
+              'The plugin transfer archive exceeded its declared size.',
+            );
+          }
+          await _androidRuntimeChannel.invokeMethod<void>(
+            'writePluginTransferChunk',
+            <String, Object?>{'chunk': Uint8List.fromList(chunk), 'id': id},
+          );
+        }
+        if (copied != item.archive.bytes) {
+          throw const PluginRuntimeException(
+            'plugin_transfer_size_mismatch',
+            'The plugin transfer archive was truncated.',
+          );
+        }
+      }
+      await _androidRuntimeChannel.invokeMethod<void>(
+        'finishPluginTransferBatch',
+        <String, Object?>{'ids': ids},
+      );
+      _started = false;
+      return <PluginTransferImportResult>[
+        for (final item in archives)
+          PluginTransferImportResult(
+            pluginId: item.archive.pluginId,
+            status: PluginTransferImportStatus.installed,
+            version: item.archive.version,
+          ),
+      ];
+    } on PlatformException catch (error) {
+      throw PluginRuntimeException(
+        error.code,
+        'The Android Runtime could not import the plugin transfer.',
+      );
+    }
+  }
+
+  @override
   Future<void> importLocalPlugin(String sourcePath) async {
     if (_disposed) {
       throw const PluginRuntimeException(

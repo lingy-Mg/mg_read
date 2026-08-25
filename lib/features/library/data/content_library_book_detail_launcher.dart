@@ -44,18 +44,25 @@ final class ContentLibraryBookDetailLauncher
         title: item.title,
         contentKind: PluginContentKind.novel,
         author: item.author,
-        url: null,
+        url: item.sourceUrl,
         coverUrl: item.coverUrl,
-        description: null,
+        description: item.description,
         language: null,
-        status: PluginContentStatus.unknown,
+        status: _statusFromLabel(item.statusLabel),
         access: PluginAccessKind.unknown,
-        wordCount: null,
-        chapterCount: catalog.length,
+        wordCount: item.wordCount,
+        chapterCount: item.chapterCount ?? catalog.length,
         publishedAt: null,
         updatedAt: null,
-        latestChapter: null,
-        categories: const <String>[],
+        latestChapter: item.latestChapterTitle == null
+            ? null
+            : PluginLatestChapter(
+                id: null,
+                title: item.latestChapterTitle!,
+                url: item.latestChapterUrl,
+                updatedAt: null,
+              ),
+        categories: item.labels,
         tags: const <String>[],
         attributes: const <PluginContentAttribute>[],
       ),
@@ -68,7 +75,7 @@ final class ContentLibraryBookDetailLauncher
               id: entry.remoteIdentity,
               title: entry.title,
               order: entry.index,
-              url: null,
+              url: entry.chapterUrl,
               volumeTitle: null,
               wordCount: entry.wordCount,
               updatedAt: null,
@@ -101,6 +108,13 @@ final class ContentLibraryBookDetailLauncher
       );
     }
   }
+
+  PluginContentStatus _statusFromLabel(String? label) => switch (label) {
+    '连载' => PluginContentStatus.ongoing,
+    '已完结' => PluginContentStatus.completed,
+    '暂停更新' => PluginContentStatus.hiatus,
+    _ => PluginContentStatus.unknown,
+  };
 
   LibraryBookDetailFailure _failure(
     LibraryBookDetailFailureReason reason,

@@ -50,6 +50,40 @@ class ReaderPage {
   int get characterOffset => blocks.isEmpty ? 0 : blocks.first.startOffset;
 }
 
+/// Uncommitted page state carried between bounded pagination batches.
+///
+/// A batch boundary is only a scheduling boundary. It must never become a
+/// visible page boundary while there is still room for another line.
+@immutable
+class ReaderPageContinuation {
+  ReaderPageContinuation({
+    required List<ReaderPageBlock> blocks,
+    required this.usedHeight,
+    required this.showsTitle,
+  }) : blocks = List.unmodifiable(blocks);
+
+  final List<ReaderPageBlock> blocks;
+  final double usedHeight;
+  final bool showsTitle;
+
+  bool get isEmpty => blocks.isEmpty && !showsTitle;
+}
+
+/// Result of one bounded pagination batch.
+@immutable
+class ReaderPaginationBatch {
+  ReaderPaginationBatch({
+    required List<ReaderPage> pages,
+    required this.continuation,
+  }) : pages = List.unmodifiable(pages);
+
+  /// Fully filled pages produced by this batch.
+  final List<ReaderPage> pages;
+
+  /// The still-fillable final page, if the caller has more text to process.
+  final ReaderPageContinuation continuation;
+}
+
 class TextPaginator {
   const TextPaginator({this.onBatchPaginated, this.onParagraphVisited});
 
@@ -77,22 +111,78 @@ class TextPaginator {
     int paragraphBaseOffset = 0,
     String? stopAfterParagraphId,
     int stopAfterCharacterOffset = 0,
+  }) => paginateBatch(
+    chapter: chapter,
+    width: width,
+    height: height,
+    titleStyle: titleStyle,
+    bodyStyle: bodyStyle,
+    paragraphSpacing: paragraphSpacing,
+    firstLineIndent: firstLineIndent,
+    textDirection: textDirection,
+    textScaler: textScaler,
+    paragraphTrailingWidth: paragraphTrailingWidth,
+    paragraphTrailingHeight: paragraphTrailingHeight,
+    chapterTrailingHeight: chapterTrailingHeight,
+    includeChapterTitle: includeChapterTitle,
+    maximumPages: maximumPages,
+    paragraphBaseOffset: paragraphBaseOffset,
+    stopAfterParagraphId: stopAfterParagraphId,
+    stopAfterCharacterOffset: stopAfterCharacterOffset,
+    finish: true,
+  ).pages;
+
+  /// Paginates one bounded group of paragraphs without turning its end into a
+  /// page break. Pass the returned [ReaderPaginationBatch.continuation] to the
+  /// next group and set [finish] only for the final group.
+  ReaderPaginationBatch paginateBatch({
+    required TextChapterContent chapter,
+    required double width,
+    required double height,
+    required TextStyle titleStyle,
+    required TextStyle bodyStyle,
+    required double paragraphSpacing,
+    int firstLineIndent = 2,
+    TextDirection textDirection = TextDirection.ltr,
+    TextScaler textScaler = TextScaler.noScaling,
+    double paragraphTrailingWidth = 0,
+    double paragraphTrailingHeight = 0,
+    double chapterTrailingHeight = 0,
+    bool includeChapterTitle = true,
+    int? maximumPages,
+    int paragraphBaseOffset = 0,
+    String? stopAfterParagraphId,
+    int stopAfterCharacterOffset = 0,
+    ReaderPageContinuation? continuation,
+    bool finish = false,
   }) {
-    if (width <= 0 || height <= 0) return const <ReaderPage>[];
+    if (width <= 0 || height <= 0) {
+      return ReaderPaginationBatch(
+        pages: const <ReaderPage>[],
+        continuation: ReaderPageContinuation(
+          blocks: const <ReaderPageBlock>[],
+          usedHeight: 0,
+          showsTitle: false,
+        ),
+      );
+    }
 
     final List<ReaderPage> pages = <ReaderPage>[];
-    List<ReaderPageBlock> blocks = <ReaderPageBlock>[];
-    var usedHeight = includeChapterTitle
-        ? _measure(
-                chapter.title,
-                width,
-                titleStyle,
-                textDirection,
-                textScaler,
-              ).height +
-              28
-        : 0.0;
-    var showsTitle = includeChapterTitle;
+    List<ReaderPageBlock> blocks =
+        continuation?.blocks.toList() ?? <ReaderPageBlock>[];
+    var usedHeight =
+        continuation?.usedHeight ??
+        (includeChapterTitle
+            ? _measure(
+                    chapter.title,
+                    width,
+                    titleStyle,
+                    textDirection,
+                    textScaler,
+                  ).height +
+                  28
+            : 0.0);
+    var showsTitle = continuation?.showsTitle ?? includeChapterTitle;
     var reachedAnchor = false;
     var reachedPageLimit = false;
 
@@ -301,11 +391,12 @@ class TextPaginator {
       if (reachedAnchor || reachedPageLimit) break;
     }
 
-    if (blocks.isNotEmpty || pages.isEmpty) commitPage();
+    if (finish && (blocks.isNotEmpty || pages.isEmpty)) commitPage();
     final double resolvedChapterTrailingHeight = chapterTrailingHeight
         .clamp(0, height)
         .toDouble();
-    if (!reachedAnchor &&
+    if (finish &&
+        !reachedAnchor &&
         !reachedPageLimit &&
         resolvedChapterTrailingHeight > 0) {
       pages.add(
@@ -317,7 +408,14 @@ class TextPaginator {
       );
     }
     onBatchPaginated?.call();
-    return List.unmodifiable(pages);
+    return ReaderPaginationBatch(
+      pages: pages,
+      continuation: ReaderPageContinuation(
+        blocks: blocks,
+        usedHeight: usedHeight,
+        showsTitle: showsTitle,
+      ),
+    );
   }
 
   int pageIndexForAnchor(

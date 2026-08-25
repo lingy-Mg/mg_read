@@ -23,6 +23,12 @@ import { PluginInstaller } from "./plugin-installer.js";
 import { pluginApiVersion } from "./plugin-package.js";
 import { runtimeVersion } from "./runtime-version.js";
 import {
+  PluginTransferManager,
+  type PluginTransferArchive,
+  type PluginTransferPlanItem,
+  type PluginTransferResource,
+} from "./plugin-transfer.js";
+import {
   type PluginChapterContent,
   type PluginChaptersRequest,
   type PluginChaptersResult,
@@ -55,6 +61,7 @@ export type PluginManagerEventCode =
   | "plugin_load_failed"
   | "plugin_load_started"
   | "plugin_log_emitted"
+  | "plugin_quarantined"
   | "plugin_uninstall_completed";
 
 export interface PluginManagerEvent {
@@ -93,7 +100,12 @@ export interface InstalledPluginSnapshot extends JsonObject {
   readonly id: string;
   readonly name: string;
   readonly pendingVersion: string | null;
-  readonly status: "active" | "damaged" | "development" | "disabled" | "pending";
+  readonly status: "active" | "damaged" | "development" | "disabled" | "pending" | "quarantined";
+}
+
+/** One-shot, path-free summary of sources isolated during this cold start. */
+export interface PluginStartupRecoverySummary extends JsonObject {
+  readonly quarantinedCount: number;
 }
 
 /** A path-free projection of cache bytes owned by one Runtime plugin. */
@@ -219,8 +231,10 @@ export class PluginManager {
   readonly #installedLoaded = new Map<string, LoadedPlugin>();
   readonly #developmentLoaded = new Map<string, DevelopmentPlugin>();
   readonly #cacheOperationTails = new Map<string, Promise<void>>();
+  readonly #pluginTransfer: PluginTransferManager;
   readonly #developmentInvocationTails = new Map<string, Promise<void>>();
   #initializePromise: Promise<void> | undefined;
+  #startupQuarantinedCount = 0;
   #installedSnapshots: readonly InstalledPluginSnapshot[] = Object.freeze([]);
   #developmentSnapshots: readonly InstalledPluginSnapshot[] = Object.freeze([]);
   #developmentRefreshTail: Promise<void> = Promise.resolve();
@@ -241,11 +255,20 @@ export class PluginManager {
       : resolve(options.developmentPluginRoot);
     this.#events = options.events ?? (() => {});
     this.#http = options.http ?? { fetch: (input, init) => fetch(input, init) };
+    this.#pluginTransfer = new PluginTransferManager(this.#dataRoot);
   }
 
   /** Scans pending/current pointers exactly once before Runtime readiness. */
   initialize(): Promise<void> {
     return (this.#initializePromise ??= this.#initialize());
+  }
+
+  /** Returns and clears the safe recovery summary for this Runtime process. */
+  async consumeStartupRecovery(): Promise<PluginStartupRecoverySummary> {
+    await this.initialize();
+    const quarantinedCount = this.#startupQuarantinedCount;
+    this.#startupQuarantinedCount = 0;
+    return Object.freeze({ quarantinedCount });
   }
 
   setResourceOrigin(origin: string): void { this.#resourceOrigin = origin; }
@@ -291,6 +314,46 @@ export class PluginManager {
     await this.initialize();
     await this.#refreshDevelopmentPlugins();
     return this.#combinedSnapshots();
+  }
+
+  /** Lists retained archives plus explicit, temporary development exports. */
+  async listExportableArchives(): Promise<readonly PluginTransferArchive[]> {
+    await this.initialize();
+    await this.#refreshDevelopmentPlugins();
+    return this.#pluginTransfer.listExportable(
+      this.#installedSnapshots,
+      [...this.#developmentLoaded.values()].map((plugin) => ({
+        id: plugin.loaded.descriptor.id,
+        projectRoot: plugin.projectRoot,
+        version: plugin.loaded.descriptor.version,
+      })),
+    );
+  }
+
+  async close(): Promise<void> {
+    await this.#pluginTransfer.dispose();
+  }
+
+  /** Compares sender SemVer against this Runtime's installed versions. */
+  async planPluginTransfer(
+    incoming: readonly PluginTransferArchive[],
+  ): Promise<readonly PluginTransferPlanItem[]> {
+    await this.initialize();
+    return this.#pluginTransfer.plan(incoming, this.#installedSnapshots);
+  }
+
+  /** Creates a one-shot Runtime-private resource for bounded archive streaming. */
+  async createPluginTransferResource(id: string, version: string): Promise<{ readonly token: string; readonly archive: PluginTransferArchive }> {
+    await this.initialize();
+    return this.#pluginTransfer.createResource(id, version);
+  }
+
+  async verifyPluginTransferInbox(incoming: readonly PluginTransferArchive[]): Promise<void> {
+    return this.#pluginTransfer.verifyInbox(incoming);
+  }
+
+  consumePluginTransferResource(token: string): PluginTransferResource | undefined {
+    return this.#pluginTransfer.consumeResource(token);
   }
 
   /**
@@ -965,6 +1028,7 @@ export class PluginManager {
     const disabled = await exists(resolve(pluginRoot, "disabled"));
     const current = await readVersionPointer(resolve(pluginRoot, "current"));
     const pending = await readVersionPointer(resolve(pluginRoot, "pending"));
+    const quarantined = await readVersionPointer(resolve(pluginRoot, "quarantined"));
     let descriptor = await this.#readDescriptor(pluginRoot, pending ?? current);
     if (disabled) {
       return snapshotFrom(descriptor, pluginId, current, pending, false, "disabled");
@@ -978,25 +1042,54 @@ export class PluginManager {
         }
         await atomicWrite(resolve(pluginRoot, "current"), `${pending}\n`);
         await rm(resolve(pluginRoot, "pending"), { force: true });
+        await rm(resolve(pluginRoot, "quarantined"), { force: true });
         this.#installedLoaded.set(pluginId, loaded);
         descriptor = loaded.descriptor;
         return snapshotFrom(descriptor, pluginId, pending, null, true, "active");
       } catch {
         await atomicWrite(resolve(pluginRoot, "failed"), `${pending}\n`);
         await rm(resolve(pluginRoot, "pending"), { force: true });
+        if (current === null) {
+          await this.#quarantine(pluginId, pluginRoot, pending);
+          return snapshotFrom(descriptor, pluginId, null, null, false, "quarantined");
+        }
       }
     }
 
     if (current !== null) {
+      if (quarantined === current) {
+        return snapshotFrom(descriptor, pluginId, current, null, false, "quarantined");
+      }
       try {
         const loaded = await this.#loadVersion(pluginId, pluginRoot, current);
         this.#installedLoaded.set(pluginId, loaded);
         return snapshotFrom(loaded.descriptor, pluginId, current, null, true, "active");
       } catch {
-        return snapshotFrom(descriptor, pluginId, current, null, true, "damaged");
+        await this.#quarantine(pluginId, pluginRoot, current);
+        return snapshotFrom(descriptor, pluginId, current, null, false, "quarantined");
       }
     }
+    if (quarantined !== null) {
+      return snapshotFrom(descriptor, pluginId, null, null, false, "quarantined");
+    }
     return snapshotFrom(descriptor, pluginId, null, pending, true, pending ? "pending" : "damaged");
+  }
+
+  async #quarantine(
+    pluginId: string,
+    pluginRoot: string,
+    version: string,
+  ): Promise<void> {
+    const marker = resolve(pluginRoot, "quarantined");
+    const alreadyQuarantined = await readVersionPointer(marker);
+    if (alreadyQuarantined === version) return;
+    await atomicWrite(marker, `${version}\n`);
+    this.#startupQuarantinedCount += 1;
+    this.#events({
+      code: "plugin_quarantined",
+      outcome: "error",
+      pluginId,
+    });
   }
 
   async #loadVersion(
@@ -1112,10 +1205,13 @@ export class PluginManager {
       const loader = (globalThis as {
         __mgreadLoadPluginModule?: (path: string) => Record<string, unknown>;
       }).__mgreadLoadPluginModule;
-      if (typeof loader !== "function") {
-        throw new PluginManagerError("plugin_load_failed");
+      if (typeof loader === "function") {
+        return loader(entryPath);
       }
-      return loader(entryPath);
+      // Node-only embedded Core tests intentionally exercise the Android
+      // dispatch path without Javet. They have no native resolver, so retain
+      // ordinary Node loading there; real Android always installs the loader.
+      return createRequire(entryPath)(entryPath) as Record<string, unknown>;
     }
     return createRequire(entryPath)(entryPath) as Record<string, unknown>;
   }

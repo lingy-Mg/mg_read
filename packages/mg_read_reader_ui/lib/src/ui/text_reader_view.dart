@@ -76,7 +76,7 @@ class _TextReaderViewState extends State<TextReaderView>
   // TextPainter measures fractional line heights, while RenderParagraph rounds
   // their painted extent to device pixels. Keep a small reserve so a page that
   // exactly fits during pagination cannot overflow by a rounding pixel.
-  static const double _horizontalPageLayoutSafety = 30;
+  static const double _horizontalPageLayoutSafety = 2;
   static const double _mouseTapSlop = 18;
   // PointerEvent.buttons uses a bit mask; 1 denotes the primary mouse button.
   static const int _primaryMouseButton = 1;
@@ -168,6 +168,7 @@ class _TextReaderViewState extends State<TextReaderView>
   String? _lastProgressBookId;
   bool _preferencesPreviewDirty = false;
   bool _changingChapter = false;
+  bool _awaitingPreviousChapterTail = false;
   bool _disposed = false;
   bool _autoScrolling = false;
   bool _restoringVerticalAnchor = false;
@@ -191,6 +192,7 @@ class _TextReaderViewState extends State<TextReaderView>
   int _contentEpoch = 0;
   int _progressiveParagraphCursor = 0;
   List<ReaderPage> _progressivePages = const <ReaderPage>[];
+  ReaderPageContinuation? _progressiveContinuation;
   bool _firstContentNotificationScheduled = false;
   bool _firstContentNotificationSent = false;
   Duration _firstContentLayoutDuration = Duration.zero;
@@ -526,6 +528,7 @@ class _TextReaderViewState extends State<TextReaderView>
     _chapterIndex = -1;
     _pageIndex = 0;
     _changingChapter = false;
+    _awaitingPreviousChapterTail = false;
     _controlsVisible = false;
     _sliderPreview = null;
     _noticeMessage = null;
@@ -956,6 +959,9 @@ class _TextReaderViewState extends State<TextReaderView>
       _pages = const <ReaderPage>[];
       _pageIndex = 0;
       _paragraphKeys.clear();
+      _awaitingPreviousChapterTail =
+          openAtEnd &&
+          _preferences.navigationMode == ReaderNavigationMode.horizontalPages;
 
       final ReaderProgress? saved = _progress;
       final TextParagraph first = chapter.paragraphs.isEmpty
@@ -1023,6 +1029,7 @@ class _TextReaderViewState extends State<TextReaderView>
         return;
       }
       _stopAutoReading();
+      _awaitingPreviousChapterTail = false;
       final ReaderFailure failure = _asFailure(error, ReaderFailureKind.data);
       _failure = failure;
       if (mounted) setState(() {});
@@ -1333,7 +1340,7 @@ class _TextReaderViewState extends State<TextReaderView>
       ).clamp(0, cached.isEmpty ? 0 : cached.length - 1);
       _firstContentPreparation = ReaderPaginationPreparation.cachedFirstPage;
       _firstContentLayoutDuration = stopwatch.elapsed;
-      _restoreHorizontalPageLater();
+      _finishHorizontalPagination();
       return;
     }
     final ReaderProgress? anchor = _progress;
@@ -1392,6 +1399,7 @@ class _TextReaderViewState extends State<TextReaderView>
     final int generation = ++_paginationGeneration;
     _progressiveParagraphCursor = 0;
     _progressivePages = const <ReaderPage>[];
+    _progressiveContinuation = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || generation != _paginationGeneration) return;
       _paginateRemaining(size, fingerprint, generation);
@@ -1485,7 +1493,7 @@ class _TextReaderViewState extends State<TextReaderView>
       final bool hasChapterComments =
           widget.extensions.commentFeed != null &&
           _preferences.showChapterComments;
-      final List<ReaderPage> batchPages = _paginator.paginate(
+      final ReaderPaginationBatch batch = _paginator.paginateBatch(
         chapter: TextChapterContent(
           chapterId: content.chapterId,
           title: content.title,
@@ -1510,11 +1518,14 @@ class _TextReaderViewState extends State<TextReaderView>
         chapterTrailingHeight: hasChapterComments && end == paragraphCount
             ? 168
             : 0,
+        continuation: _progressiveContinuation,
+        finish: end == paragraphCount,
       );
       _progressivePages = List<ReaderPage>.unmodifiable(<ReaderPage>[
         ..._progressivePages,
-        ...batchPages,
+        ...batch.pages,
       ]);
+      _progressiveContinuation = batch.continuation;
       _progressiveParagraphCursor = paragraphCount == 0 ? 0 : end;
     }
     if (_progressiveParagraphCursor < paragraphCount) {
@@ -1536,8 +1547,22 @@ class _TextReaderViewState extends State<TextReaderView>
     _pageIndex = _pageIndexForAnchor(
       pages,
     ).clamp(0, pages.isEmpty ? 0 : pages.length - 1);
+    _finishHorizontalPagination();
     if (mounted) setState(() {});
     _publishSnapshot();
+  }
+
+  /// Moves the page view only after the completed layout has resolved the
+  /// semantic end anchor. This prevents a previous-chapter turn from exposing
+  /// that chapter's first page while its tail is still being calculated.
+  void _finishHorizontalPagination() {
+    _restoreHorizontalPageLater();
+    if (!_awaitingPreviousChapterTail) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_awaitingPreviousChapterTail) return;
+      setState(() => _awaitingPreviousChapterTail = false);
+    });
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   void _restoreHorizontalPageLater() {
@@ -1770,6 +1795,7 @@ class _TextReaderViewState extends State<TextReaderView>
     _chapterIndex = -1;
     _pageIndex = 0;
     _pages = const <ReaderPage>[];
+    _awaitingPreviousChapterTail = false;
     _paragraphKeys.clear();
     _progress = const ReaderProgress.bookPreview();
     _changingChapter = false;
@@ -2960,6 +2986,8 @@ class _TextReaderViewState extends State<TextReaderView>
                             ),
                           ),
                           if (_content != null) _buildChrome(),
+                          if (_awaitingPreviousChapterTail)
+                            _PreviousChapterTailMask(palette: palette),
                           if (_noticeMessage != null)
                             _ReaderNotice(message: _noticeMessage!),
                         ],
@@ -4636,14 +4664,23 @@ class _TextReaderViewState extends State<TextReaderView>
             final bool hasBeenRead = refreshedState == null
                 ? chapter.hasBeenRead
                 : refreshedState.hasBeenRead;
-            final bool isLocal =
-                _book?.sourceKind == ReaderBookSourceKind.local;
             final bool stateLoading =
                 _chapterAccessCoordinator?.snapshot.loading == true;
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 560),
                 child: ListTile(
+                  key: ValueKey<String>('reader-catalog-${chapter.id}'),
+                  dense: true,
+                  visualDensity: const VisualDensity(vertical: -1),
+                  minVerticalPadding: 4,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  tileColor: index.isEven
+                      ? _palette.accent.withValues(alpha: .035)
+                      : null,
                   selected: chapter.id == _content?.chapterId,
                   selectedColor: _palette.accent,
                   selectedTileColor: _palette.accent.withValues(alpha: .08),
@@ -4664,51 +4701,24 @@ class _TextReaderViewState extends State<TextReaderView>
                     chapter.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14),
                   ),
-                  subtitle:
-                      !isLocal &&
-                          !stateLoading &&
-                          availability == ReaderChapterAvailability.unknown
-                      ? ConstrainedBox(
-                          constraints: const BoxConstraints(minHeight: 48),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              hasBeenRead
-                                  ? '${ReaderStrings.chapterStateUnknown} · ${ReaderChapterStateStrings.read}'
-                                  : ReaderStrings.chapterStateUnknown,
-                              style: TextStyle(
-                                color: _palette.secondaryText,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        )
-                      : ReaderChapterStateBadge(
-                          availability: isLocal
-                              ? ReaderChapterAvailability.unknown
-                              : availability,
-                          wordCount:
-                              isLocal ||
-                                  availability ==
-                                      ReaderChapterAvailability.downloaded
-                              ? wordCount
-                              : null,
-                          hasBeenRead: hasBeenRead,
-                          loading:
-                              !isLocal &&
-                              stateLoading &&
-                              refreshedState == null,
-                          palette: _palette,
-                          onRetry:
-                              availability == ReaderChapterAvailability.failed
-                              ? () => unawaited(
-                                  _refreshLoadedChapterStates(
-                                    chapterId: chapter.id,
-                                  ),
-                                )
-                              : null,
-                        ),
+                  subtitle: ReaderChapterStateBadge(
+                    availability: availability,
+                    wordCount:
+                        !stateLoading &&
+                            availability == ReaderChapterAvailability.downloaded
+                        ? wordCount
+                        : null,
+                    hasBeenRead: hasBeenRead,
+                    loading: stateLoading && refreshedState == null,
+                    palette: _palette,
+                    onRetry: availability == ReaderChapterAvailability.failed
+                        ? () => unawaited(
+                            _refreshLoadedChapterStates(chapterId: chapter.id),
+                          )
+                        : null,
+                  ),
                   onTap: () {
                     if (!_isRouteSessionCurrent(
                       routeSession,
@@ -4958,6 +4968,47 @@ class _ReaderEmptyState extends StatelessWidget {
           const SizedBox(height: 10),
           Text(message, style: TextStyle(color: color, fontSize: 14)),
         ],
+      ),
+    );
+  }
+}
+
+/// Blocks another turn while a reverse chapter transition finishes measuring
+/// its tail page. The text is deliberately local to this reader-only state.
+class _PreviousChapterTailMask extends StatelessWidget {
+  const _PreviousChapterTailMask({required this.palette});
+
+  final ReaderPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: AbsorbPointer(
+        child: ColoredBox(
+          color: palette.background.withValues(alpha: 0.78),
+          child: Center(
+            child: Semantics(
+              label: '正在定位上一章末页',
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  SizedBox.square(
+                    dimension: 28,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: palette.accent,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '正在定位上一章末页',
+                    style: TextStyle(color: palette.secondaryText),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

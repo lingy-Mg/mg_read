@@ -96,7 +96,7 @@ void main() {
     expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsOneWidget);
   });
 
-  testWidgets('uses the compact token between a trailing label and chevron', (
+  testWidgets('shows LAN sync as an explicit on-demand action', (
     WidgetTester tester,
   ) async {
     await _setViewport(tester, const Size(390, 900));
@@ -112,19 +112,15 @@ void main() {
     final Finder backupRow = find.byKey(
       const Key('profile-setting-data-backup'),
     );
-    final Finder trailingLabel = find.descendant(
-      of: backupRow,
-      matching: find.text('已开启'),
-    );
-    final Finder chevron = find.descendant(
-      of: backupRow,
-      matching: find.byIcon(Icons.chevron_right_rounded),
-    );
-
     expect(
-      tester.getRect(chevron).left - tester.getRect(trailingLabel).right,
-      closeTo(AppSpacing.compact, 0.1),
+      find.descendant(of: backupRow, matching: find.text('局域网同步')),
+      findsOneWidget,
     );
+    expect(
+      find.descendant(of: backupRow, matching: find.text('同一网络传输数据源、书架与进度')),
+      findsOneWidget,
+    );
+    expect(find.text('已开启'), findsNothing);
   });
 
   testWidgets('delegates a destination selection to the app layer', (

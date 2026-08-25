@@ -29,6 +29,7 @@ class ProfilePage extends StatefulWidget {
     this.onFeedbackRequested,
     this.onPluginCenterRequested,
     this.onPluginCacheRequested,
+    this.onLanSyncRequested,
     this.onPendingSettingRequested,
     this.onDiagnosticsRequested,
     this.readingStats,
@@ -44,6 +45,7 @@ class ProfilePage extends StatefulWidget {
   final VoidCallback? onFeedbackRequested;
   final VoidCallback? onPluginCenterRequested;
   final VoidCallback? onPluginCacheRequested;
+  final VoidCallback? onLanSyncRequested;
   final ValueChanged<String>? onPendingSettingRequested;
   final VoidCallback? onDiagnosticsRequested;
 
@@ -111,7 +113,9 @@ class _ProfilePageState extends State<ProfilePage> {
                           ProfileOverviewCard(
                             data: data,
                             onEdit: _showUnavailableMessage,
-                            onSyncPressed: _showUnavailableMessage,
+                            onSyncPressed:
+                                widget.onLanSyncRequested ??
+                                _showUnavailableMessage,
                           ),
                           if (_actionFeedback != null) ...<Widget>[
                             const SizedBox(height: AppSpacing.regular),
@@ -208,6 +212,10 @@ class _ProfilePageState extends State<ProfilePage> {
     }
     if (item.id == 'clear-cache' && widget.onPluginCacheRequested != null) {
       widget.onPluginCacheRequested!();
+      return;
+    }
+    if (item.id == 'data-backup' && widget.onLanSyncRequested != null) {
+      widget.onLanSyncRequested!();
       return;
     }
     final ValueChanged<String>? onPendingSettingRequested =

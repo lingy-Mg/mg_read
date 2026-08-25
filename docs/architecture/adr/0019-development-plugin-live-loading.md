@@ -6,6 +6,9 @@
 - 替代：[ADR-0006](0006-cold-plugin-activation.md)
 - 细化：[ADR-0015](0015-standard-node-plugin-projects.md)
 
+后续 [ADR-0022](0022-lan-sync-qr-development-source-transfer.md) 增加了一个不改变日常直读循环的
+显式例外：用户发起局域网发送时，Runtime 可生成临时标准归档供手机安装。
+
 ## 背景
 
 不可变安装版本需要事务、回滚和稳定模块生命周期，因此不能覆盖或热换当前版本。但 Windows

@@ -9,7 +9,6 @@ import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
-import 'package:mg_read/features/discovery/presentation/widgets/discovery_bookshelf_badge.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
@@ -499,9 +498,7 @@ class _ContentCollection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final popularItems = <DiscoveryBookViewData, PluginDiscoveryContentItem>{
-      for (final item in component.items) _popularData(item): item,
-    };
+    final heroItems = component.items.map(_heroData).toList(growable: false);
     final rankedItems =
         <DiscoveryRankedBookViewData, PluginDiscoveryContentItem>{
           for (final item in component.items) _rankedData(item): item,
@@ -527,9 +524,12 @@ class _ContentCollection extends StatelessWidget {
           ...cards.skip(1),
         ],
       ),
-      PluginDiscoveryContentLayout.carousel => DiscoveryPopularBooks(
-        books: popularItems.keys.toList(growable: false),
-        onBookPressed: (book) => onContentPressed(popularItems[book]!.content),
+      PluginDiscoveryContentLayout.carousel => DiscoveryCarouselBooks(
+        books: heroItems,
+        onBookPressed: (book) {
+          final index = heroItems.indexOf(book);
+          if (index >= 0) onContentPressed(component.items[index].content);
+        },
       ),
       PluginDiscoveryContentLayout.ranking => SizedBox(
         height: AppSpacing.discoveryBoardHeight,
@@ -622,7 +622,13 @@ class _CategoryCollection extends StatelessWidget {
       ),
       PluginDiscoveryCategoryLayout.list => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: children,
+        children: <Widget>[
+          for (var index = 0; index < children.length; index++) ...<Widget>[
+            children[index],
+            if (index < children.length - 1)
+              const SizedBox(height: AppSpacing.compact),
+          ],
+        ],
       ),
     };
   }
@@ -635,13 +641,10 @@ DiscoveryHeroViewData _heroData(PluginDiscoveryContentItem item) =>
       description: item.recommendation ?? item.content.description,
       metadata: item.content.author,
       coverVariant: _coverVariant(item.content.id),
-    );
-
-DiscoveryBookViewData _popularData(PluginDiscoveryContentItem item) =>
-    DiscoveryBookViewData(
-      title: item.content.title,
-      author: item.content.author,
-      coverVariant: _coverVariant(item.content.id),
+      coverBytes: item.content.coverBytes,
+      heat: item.metric == null
+          ? null
+          : '${item.metric!.label} ${item.metric!.value}',
     );
 
 DiscoveryRankedBookViewData _rankedData(PluginDiscoveryContentItem item) =>
@@ -718,119 +721,127 @@ class _DiscoveryBookCard extends StatelessWidget {
         );
         final coverHeight =
             coverWidth * AppSpacing.discoveryListCoverAspectRatio;
-        final titleStyle = theme.textTheme.titleMedium;
-        final metadataStyle = theme.textTheme.bodyMedium?.copyWith(
+        final titleStyle = theme.textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+        );
+        final secondaryTextStyle = theme.textTheme.bodySmall;
+        final metadataStyle = theme.textTheme.bodySmall?.copyWith(
           color: tokens.mutedText,
         );
-        return Material(
-          color: tokens.surface,
-          child: InkWell(
-            key: ValueKey<String>('runtime-discovery-item-${content.id}'),
-            onTap: onPressed,
-            child: Container(
-              constraints: BoxConstraints(minHeight: coverHeight),
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.regular),
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: tokens.divider, width: 0.8),
+        final rowBackground = isInBookshelf
+            ? tokens.featureSurface.withValues(alpha: 0.48)
+            : tokens.surface;
+        return Semantics(
+          button: true,
+          label: '查看 ${content.title}${isInBookshelf ? '，已在书架' : ''}',
+          child: Material(
+            color: rowBackground,
+            child: InkWell(
+              key: ValueKey<String>('runtime-discovery-item-${content.id}'),
+              onTap: onPressed,
+              child: Container(
+                constraints: BoxConstraints(minHeight: coverHeight),
+                padding: const EdgeInsets.symmetric(
+                  vertical: AppSpacing.regular,
                 ),
-              ),
-              child: IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    if (showRank && item.rank != null) ...<Widget>[
-                      Text('${item.rank}', style: theme.textTheme.titleMedium),
-                      const SizedBox(width: AppSpacing.compact),
-                    ],
-                    DiscoveryBookCover(
-                      title: content.title,
-                      coverBytes: content.coverBytes,
-                      variant: _coverVariant(content.id),
-                      width: coverWidth,
-                      height: coverHeight,
-                    ),
-                    const SizedBox(width: AppSpacing.regular),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            content.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: titleStyle,
-                          ),
-                          if (isInBookshelf) ...<Widget>[
-                            const SizedBox(height: AppSpacing.unit),
-                            const DiscoveryBookshelfBadge(),
-                          ],
-                          const SizedBox(height: AppSpacing.unit),
-                          Text(
-                            _authorAndCategory(content),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium,
-                          ),
-                          if (tags.isNotEmpty) ...<Widget>[
-                            const SizedBox(height: AppSpacing.unit),
-                            Wrap(
-                              spacing: AppSpacing.compact,
-                              runSpacing: AppSpacing.unit,
-                              children: tags
-                                  .map((tag) => _DiscoveryListTag(label: tag))
-                                  .toList(growable: false),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: tokens.divider, width: 0.8),
+                  ),
+                ),
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      if (showRank && item.rank != null) ...<Widget>[
+                        Text('${item.rank}', style: titleStyle),
+                        const SizedBox(width: AppSpacing.compact),
+                      ],
+                      DiscoveryBookCover(
+                        title: content.title,
+                        coverBytes: content.coverBytes,
+                        variant: _coverVariant(content.id),
+                        width: coverWidth,
+                        height: coverHeight,
+                      ),
+                      const SizedBox(width: AppSpacing.regular),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              content.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: titleStyle,
                             ),
-                          ],
-                          if (description != null) ...<Widget>[
                             const SizedBox(height: AppSpacing.unit),
                             Text(
-                              description,
-                              maxLines: 2,
+                              _authorAndCategory(content),
+                              maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium,
+                              style: secondaryTextStyle,
+                            ),
+                            if (tags.isNotEmpty) ...<Widget>[
+                              const SizedBox(height: AppSpacing.unit),
+                              Wrap(
+                                spacing: AppSpacing.compact,
+                                runSpacing: AppSpacing.unit,
+                                children: tags
+                                    .map((tag) => _DiscoveryListTag(label: tag))
+                                    .toList(growable: false),
+                              ),
+                            ],
+                            if (description != null) ...<Widget>[
+                              const SizedBox(height: AppSpacing.unit),
+                              Text(
+                                description,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: secondaryTextStyle,
+                              ),
+                            ],
+                            const Spacer(),
+                            Row(
+                              children: <Widget>[
+                                Expanded(
+                                  child: Text(
+                                    _bookMetadata(content),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: metadataStyle,
+                                  ),
+                                ),
+                                if (item.metric != null) ...<Widget>[
+                                  const SizedBox(width: AppSpacing.compact),
+                                  Padding(
+                                    padding: const EdgeInsets.only(
+                                      right: AppSpacing.comfortable,
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: <Widget>[
+                                        Icon(
+                                          Icons.local_fire_department_rounded,
+                                          size: 16,
+                                          color: tokens.notification,
+                                        ),
+                                        const SizedBox(width: AppSpacing.unit),
+                                        Text(
+                                          '${item.metric!.value}${item.metric!.label}',
+                                          style: metadataStyle,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ],
-                          const Spacer(),
-                          Row(
-                            children: <Widget>[
-                              Expanded(
-                                child: Text(
-                                  _bookMetadata(content),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: metadataStyle,
-                                ),
-                              ),
-                              if (item.metric != null) ...<Widget>[
-                                const SizedBox(width: AppSpacing.compact),
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                    right: AppSpacing.comfortable,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: <Widget>[
-                                      Icon(
-                                        Icons.local_fire_department_rounded,
-                                        size: 16,
-                                        color: tokens.notification,
-                                      ),
-                                      const SizedBox(width: AppSpacing.unit),
-                                      Text(
-                                        '${item.metric!.value}${item.metric!.label}',
-                                        style: metadataStyle,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

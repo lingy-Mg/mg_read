@@ -267,6 +267,8 @@ wait、实际工作、first-byte/first-result 和端到端耗时。
 
 - `secret` 永不持久化；`content` 只在选定来源的显式调试会话捕获。
 - URL 只保存 origin、route 模板、query key 名或不可逆受控摘要；不保存 query value。
+- 局域网同步诊断不得记录 IP、六位比较码、token、书名、作者、remote ID、归档字节、路径或
+  原始错误；仅保留有界阶段、计数、大小、耗时和稳定错误码。
 - 常规导出只含关键事件 TXT，不含详情。包含 content detail 必须由用户二次选择范围、显示
   预计大小并再次脱敏。
 - HTML 只以文本/安全语法树显示，禁止 WebView 执行；JSON/tree renderer 不执行脚本、URL、
@@ -286,6 +288,7 @@ wait、实际工作、first-byte/first-result 和端到端耗时。
 | TXT diagnostics | writer/batch/rotate/recover/drop/retention | queue high-water、append、segment/detail bytes |
 | 书架/目录/阅读器 | refresh/page/fetch/cache/launch/first-frame/commit/exit | first content、parse/paginate/layout |
 | 下载/缓存/文件 | 状态迁移、checkpoint/verify/commit/cleanup | 时间窗吞吐、Range、retry、quota |
+| 前台局域网同步 | discovery/handshake/transfer/commit/terminal | 阶段耗时、条目/字节计数、稳定结果码 |
 | 崩溃边界 | Flutter/isolate/Node/Javet/child fatal 与恢复 | 阶段、fingerprint、last trace |
 
 日志系统记录自身故障时必须走非递归健康计数器，并在恢复后合并成单个事件，禁止失败日志再

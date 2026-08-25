@@ -546,6 +546,22 @@ abstract final class AppDiagnosticEvents {
         },
       );
 
+  static final DiagnosticEventDefinition lanSyncSession =
+      DiagnosticEventDefinition.span(
+        name: 'lan.sync.session',
+        component: 'feature.lan-sync',
+        summary: 'Foreground local-network synchronization session.',
+        fields: <String, DiagnosticFieldDefinition>{
+          'role': _string,
+          'stage': _string,
+          'pluginCount': _int64,
+          'itemCount': _int64,
+          'bytes': _int64,
+          'resultState': _string,
+          'errorCode': _string,
+        },
+      );
+
   static final DiagnosticEventDefinition writerState =
       DiagnosticEventDefinition.instant(
         name: 'diagnostics.writer.state',
@@ -689,6 +705,7 @@ abstract final class AppDiagnosticEvents {
         readerLaunchStage,
         readerPrefetch,
         runtimeFacadeCall,
+        lanSyncSession,
         performanceSlow,
         writerState,
         eventsDropped,

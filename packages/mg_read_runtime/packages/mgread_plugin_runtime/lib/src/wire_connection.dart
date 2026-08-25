@@ -178,6 +178,73 @@ final class _WireConnection {
     }
   }
 
+  /// Reads a Runtime-owned binary resource through the private loopback data
+  /// plane. This helper is intentionally unreachable from the public Facade.
+  Future<Stream<List<int>>> readTransferResource({
+    required String token,
+    required int expectedBytes,
+  }) async {
+    if (_closed ||
+        token.isEmpty ||
+        expectedBytes <= 0 ||
+        expectedBytes > maxPluginTransferBytes) {
+      throw const PluginRuntimeException(
+        'invalid_request',
+        'The Runtime transfer resource request is invalid.',
+      );
+    }
+    final client = HttpClient()..connectionTimeout = _controlTimeout;
+    final request = await client.getUrl(
+      Uri(
+        scheme: 'http',
+        host: _ready.host,
+        port: _ready.port,
+        path: '/v1/plugin-transfer/$token',
+      ),
+    );
+    request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
+    final response = await request.close().timeout(_controlTimeout);
+    if (response.statusCode != HttpStatus.ok ||
+        response.contentLength != expectedBytes) {
+      client.close(force: true);
+      throw const PluginRuntimeException(
+        'plugin_transfer_size_mismatch',
+        'The Runtime returned an invalid transfer resource.',
+      );
+    }
+    var received = 0;
+    return response.transform<List<int>>(
+      StreamTransformer<List<int>, List<int>>.fromHandlers(
+        handleData: (chunk, sink) {
+          received += chunk.length;
+          if (received > expectedBytes) {
+            sink.addError(
+              const PluginRuntimeException(
+                'plugin_transfer_size_mismatch',
+                'The Runtime transfer resource exceeded its declared size.',
+              ),
+            );
+            client.close(force: true);
+            return;
+          }
+          sink.add(chunk);
+        },
+        handleDone: (sink) {
+          client.close();
+          if (received != expectedBytes) {
+            sink.addError(
+              const PluginRuntimeException(
+                'plugin_transfer_size_mismatch',
+                'The Runtime transfer resource was truncated.',
+              ),
+            );
+          }
+          sink.close();
+        },
+      ),
+    );
+  }
+
   /// Stops receiving replies, fails pending calls, then attempts a clean close.
   Future<void> close() async {
     if (_closed) {
