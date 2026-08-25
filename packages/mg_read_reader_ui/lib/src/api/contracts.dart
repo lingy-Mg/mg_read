@@ -136,11 +136,53 @@ class ReaderObserver {
   /// Called for a recoverable [failure] that did not crash the reader.
   FutureOr<void> onFailure(ReaderFailure failure) {}
 
+  /// Called exactly once after the first real text frame is presented.
+  ///
+  /// The notification contains only semantic position and layout metadata;
+  /// page numbers and pixel offsets are intentionally not exposed.
+  FutureOr<void> onFirstContentPresented(
+    ReaderFirstContentPresentation presentation,
+  ) {}
+
   /// Requests that the host close or otherwise leave the reader.
   ///
   /// The reader never pops the host navigator itself.
   FutureOr<void> onExitRequested(ReaderProgress? progress) {}
 }
+
+/// How the first visible text page became available.
+enum ReaderPaginationPreparation { firstPage, cachedFirstPage }
+
+/// Immutable metadata for the first real text frame of a reader session.
+@immutable
+class ReaderFirstContentPresentation {
+  const ReaderFirstContentPresentation({
+    required this.anchor,
+    required this.paginationPreparation,
+    required this.layoutDuration,
+  });
+
+  /// Semantic position represented by the first visible content frame.
+  final ReaderProgress? anchor;
+
+  /// Whether the first page was measured or came from the bounded cache.
+  final ReaderPaginationPreparation paginationPreparation;
+
+  /// Time spent synchronously preparing the first visible page.
+  final Duration layoutDuration;
+
+  /// Alias for callers that prefer the explicit semantic terminology.
+  ReaderProgress? get semanticAnchor => anchor;
+
+  /// Alias for callers that use readiness terminology.
+  ReaderPaginationPreparation get paginationReadiness => paginationPreparation;
+
+  /// Duration in milliseconds for telemetry-oriented callers.
+  int get layoutDurationMilliseconds => layoutDuration.inMilliseconds;
+}
+
+/// Backward-compatible descriptive alias for first-frame metadata.
+typedef ReaderFirstContentPresented = ReaderFirstContentPresentation;
 
 @immutable
 /// Optional capabilities that can be registered without changing core data APIs.

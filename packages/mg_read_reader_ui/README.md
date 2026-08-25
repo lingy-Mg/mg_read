@@ -1,6 +1,6 @@
 # novel_reader_ui
 
-一个可嵌入 Flutter App 的文本与漫画阅读器插件。`0.4.0` 在完整文本阅读能力上新增宿主托管的章节下载状态与外部字体仓库公共契约，并提供独立的 `Comic*` 纵向渐进阅读 API。Android 和 Windows 继续负责阅读期间的系统能力。
+一个可嵌入 Flutter App 的文本与漫画阅读器插件。`0.4.1` 在完整文本阅读能力上新增首帧语义锚点通知和严格布局指纹缓存，并保留宿主托管的章节下载状态、外部字体仓库与独立的 `Comic*` 纵向渐进阅读 API。Android 和 Windows 继续负责阅读期间的系统能力。
 
 > 字体声明：本项目内嵌未经修改的 **MiSans VF** 作为默认阅读字体。MiSans 的字体软件及相关
 > 知识产权属于许可方小米科技有限责任公司；嵌入使用须在软件中注明 MiSans，且不得改编字体
@@ -73,6 +73,8 @@ class AppReaderDataSource implements TextReaderDataSource {
 ```
 
 每个 `TextParagraph` 必须有稳定且非空的 ID。阅读位置和书签使用 `chapterId + paragraphId + characterOffset` 保存，因此改变字体或窗口尺寸后仍能恢复到相同语义位置。
+
+正文首帧完成真实布局并绘制后，`ReaderObserver.onFirstContentPresented` 恰好通知一次。回调的 `ReaderFirstContentPresentation` 只携带语义锚点、首帧分页准备类型和布局耗时，不暴露页码或像素偏移。
 
 阅读器默认进入索引 `-1` 的书籍信息预览，不加载任何章节正文。`loadChapterAtIndex` 用于全书进度条随机定位章节，不会为了跳转顺序遍历所有目录页。
 

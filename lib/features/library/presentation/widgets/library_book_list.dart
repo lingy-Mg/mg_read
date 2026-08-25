@@ -80,6 +80,7 @@ class LibraryBookList extends StatelessWidget {
     this.onBookAction,
     this.presentation = LibraryBookListPresentation.recentUpdates,
     this.showDividers = true,
+    this.preparingBookId,
     super.key,
   }) : books = List<LibraryBookListItemViewData>.unmodifiable(books),
        actions = List<LibraryBookListAction>.unmodifiable(actions);
@@ -91,6 +92,7 @@ class LibraryBookList extends StatelessWidget {
   final LibraryBookListActionSelected? onBookAction;
   final LibraryBookListPresentation presentation;
   final bool showDividers;
+  final String? preparingBookId;
 
   @override
   Widget build(BuildContext context) {
@@ -107,6 +109,7 @@ class LibraryBookList extends StatelessWidget {
           presentation: presentation,
           showDivider: showDividers && index < books.length - 1,
           dividerColor: tokens.divider,
+          isPreparing: books[index].id == preparingBookId,
         ),
       ),
     );
@@ -127,6 +130,7 @@ class LibraryBookSliverList extends StatelessWidget {
     this.onBookAction,
     this.presentation = LibraryBookListPresentation.recentUpdates,
     this.showDividers = true,
+    this.preparingBookId,
     super.key,
   }) : books = List<LibraryBookListItemViewData>.unmodifiable(books),
        actions = List<LibraryBookListAction>.unmodifiable(actions);
@@ -138,6 +142,7 @@ class LibraryBookSliverList extends StatelessWidget {
   final LibraryBookListActionSelected? onBookAction;
   final LibraryBookListPresentation presentation;
   final bool showDividers;
+  final String? preparingBookId;
 
   @override
   Widget build(BuildContext context) {
@@ -153,6 +158,7 @@ class LibraryBookSliverList extends StatelessWidget {
           presentation: presentation,
           showDivider: showDividers && index < books.length - 1,
           dividerColor: tokens.divider,
+          isPreparing: books[index].id == preparingBookId,
         ),
         childCount: books.length,
       ),
@@ -170,6 +176,7 @@ class _LibraryBookListRow extends StatelessWidget {
     required this.presentation,
     required this.showDivider,
     required this.dividerColor,
+    required this.isPreparing,
   });
 
   final LibraryBookListItemViewData book;
@@ -180,6 +187,7 @@ class _LibraryBookListRow extends StatelessWidget {
   final LibraryBookListPresentation presentation;
   final bool showDivider;
   final Color dividerColor;
+  final bool isPreparing;
 
   @override
   Widget build(BuildContext context) {
@@ -194,6 +202,7 @@ class _LibraryBookListRow extends StatelessWidget {
               ? null
               : (action) => onBookAction!(book, action),
           presentation: presentation,
+          isPreparing: isPreparing,
         ),
         if (showDivider)
           Padding(
@@ -220,6 +229,7 @@ class LibraryBookListItem extends StatelessWidget {
     this.actions = const <LibraryBookListAction>[],
     this.onAction,
     this.presentation = LibraryBookListPresentation.recentUpdates,
+    this.isPreparing = false,
     super.key,
   });
 
@@ -229,6 +239,7 @@ class LibraryBookListItem extends StatelessWidget {
   final List<LibraryBookListAction> actions;
   final ValueChanged<LibraryBookListAction>? onAction;
   final LibraryBookListPresentation presentation;
+  final bool isPreparing;
 
   @override
   Widget build(BuildContext context) {
@@ -245,6 +256,8 @@ class LibraryBookListItem extends StatelessWidget {
 
     return Semantics(
       container: true,
+      liveRegion: isPreparing,
+      label: isPreparing ? '正在准备阅读内容' : null,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -288,6 +301,7 @@ class LibraryBookListItem extends StatelessWidget {
                   showAttentionIndicator: showAttentionIndicator,
                   theme: theme,
                   tokens: tokens,
+                  isPreparing: isPreparing,
                 ),
               ],
             ),
@@ -426,6 +440,7 @@ class _BookListTrailing extends StatelessWidget {
     required this.showAttentionIndicator,
     required this.theme,
     required this.tokens,
+    required this.isPreparing,
   });
 
   final LibraryBookListItemViewData data;
@@ -436,6 +451,7 @@ class _BookListTrailing extends StatelessWidget {
   final bool showAttentionIndicator;
   final ThemeData theme;
   final AppThemeTokens tokens;
+  final bool isPreparing;
 
   @override
   Widget build(BuildContext context) {
@@ -451,7 +467,15 @@ class _BookListTrailing extends StatelessWidget {
       height: AppSpacing.listCoverHeight,
       child: Stack(
         children: <Widget>[
-          if (activityLabel != null)
+          if (isPreparing)
+            const Align(
+              alignment: Alignment.centerRight,
+              child: SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          if (!isPreparing && activityLabel != null)
             Positioned(
               top: AppSpacing.section,
               left: 0,
@@ -468,7 +492,7 @@ class _BookListTrailing extends StatelessWidget {
                 ),
               ),
             ),
-          if (showMoreAction)
+          if (!isPreparing && showMoreAction)
             Align(
               alignment: Alignment.topRight,
               child: SizedBox(
@@ -511,7 +535,7 @@ class _BookListTrailing extends StatelessWidget {
                       ),
               ),
             ),
-          if (showAttentionIndicator)
+          if (!isPreparing && showAttentionIndicator)
             Positioned(
               top: AppSpacing.section + AppSpacing.unit,
               right: AppSpacing.compact,

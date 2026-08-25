@@ -103,7 +103,7 @@ export class ShuduguSource {
       id: this.#chapterId(this.#sourceUrl(latestHref, url)), title: latestTitle,
       url: this.#sourceUrl(latestHref, url).toString(), updatedAt,
     });
-    const coverUrl = publicHttpUrl(item.find('img').first().attr('src'), url);
+    const coverUrl = this.#proxyCoverUrl(item.find('img').first().attr('src'), url);
     const chapters = this.#parseCatalog($, url);
     const detail = Object.freeze({
       ...this.#summary({ id, title, author, category, coverUrl, description, status, wordCount,
@@ -174,7 +174,7 @@ export class ShuduguSource {
     const author = textOrNull(root.find('.itemtxt a').filter((_, candidate) => /^作者[：:]/u.test($(candidate).text())).first().text().replace(/^作者[：:]/u, ''));
     const latest = root.find('.itemtxt ul li a').last(); const latestTitle = textOrNull(latest.text()); const latestHref = latest.attr('href');
     const latestChapter = latestTitle === null || latestHref === undefined ? null : Object.freeze({ id: this.#chapterId(this.#sourceUrl(latestHref, pageUrl)), title: latestTitle, url: this.#sourceUrl(latestHref, pageUrl).toString(), updatedAt: null });
-    return [this.#summary({ id, title, author, category: textOrNull(spans[1]), coverUrl: publicHttpUrl(root.find('img').first().attr('src'), pageUrl), description: null, status: parseStatus(spans[0]), wordCount: null, chapterCount: null, latestChapter, updatedAt: null })];
+    return [this.#summary({ id, title, author, category: textOrNull(spans[1]), coverUrl: this.#proxyCoverUrl(root.find('img').first().attr('src'), pageUrl), description: null, status: parseStatus(spans[0]), wordCount: null, chapterCount: null, latestChapter, updatedAt: null })];
   }
   #summary(input: { readonly id: string; readonly title: string; readonly author: string | null; readonly category: string | null; readonly coverUrl: string | null; readonly description: string | null; readonly status: ContentStatus; readonly wordCount: number | null; readonly chapterCount: number | null; readonly latestChapter: ContentSummary['latestChapter']; readonly updatedAt: string | null }): ContentSummary {
     return Object.freeze({ id: `novel:${input.id}`, title: input.title, contentKind: 'novel', author: input.author, url: new URL(`/${input.id}/`, this.#baseUrl).toString(), coverUrl: input.coverUrl, description: input.description, language: 'zh-CN', status: input.status, access: 'free', wordCount: input.wordCount, chapterCount: input.chapterCount, publishedAt: null, updatedAt: input.updatedAt, latestChapter: input.latestChapter, categories: input.category === null ? Object.freeze([]) : Object.freeze([input.category]), tags: Object.freeze([]), attributes: Object.freeze([]) });
@@ -190,6 +190,10 @@ export class ShuduguSource {
   #category(target: string): SourceRules['categories'][number] { const id = target.startsWith('category:') ? target.slice(9) : ''; const result = this.#categories.find((category) => category.id === id); if (result === undefined) throw new Error('Category target is invalid.'); return result; }
   #categoryUrl(id: string, page: number): URL { return new URL(page === 1 ? `/${id}/` : `/${id}/${page}.html`, this.#baseUrl); }
   #sourceUrl(value: string, base: URL): URL { const url = new URL(value, base); if (url.origin !== this.#baseUrl.origin || url.protocol !== 'https:') throw new Error('Source URL is invalid.'); return url; }
+  #proxyCoverUrl(value: string | undefined, base: URL): string | null {
+    const url = publicHttpUrl(value, base);
+    return url === null ? null : this.context.resource.proxy({ url });
+  }
   #chapterId(url: URL): string { if (!/^\/\d+\/\d+(?:-\d+)?\.html$/u.test(url.pathname)) throw new Error('Chapter URL is invalid.'); return `chapter:${Buffer.from(url.pathname).toString('base64url')}`; }
   #decodeChapterId(id: string): URL { if (!id.startsWith('chapter:')) throw new Error('Chapter ID is invalid.'); const path = Buffer.from(id.slice(8), 'base64url').toString('utf8'); return this.#sourceUrl(path, this.#baseUrl); }
 }

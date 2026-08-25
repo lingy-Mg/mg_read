@@ -492,6 +492,9 @@ abstract final class AppDiagnosticEvents {
         fields: <String, DiagnosticFieldDefinition>{
           'readerMode': _string,
           'sourceKind': _string,
+          'pathCategory': _string,
+          'cacheHit': _boolean,
+          'windowClass': _string,
           'resultState': _string,
           'errorCode': _string,
         },
@@ -504,6 +507,11 @@ abstract final class AppDiagnosticEvents {
         summary: 'Reader launch stage timing.',
         fields: <String, DiagnosticFieldDefinition>{
           'stage': _string,
+          'pathCategory': _string,
+          'cacheHit': _boolean,
+          'itemCount': _int64,
+          'durationMicros': _int64,
+          'windowClass': _string,
           'resultState': _string,
           'errorCode': _string,
         },

@@ -7,7 +7,7 @@ import * as plugin from '../dist/index.mjs';
 
 test('live source completes category, search, detail, catalog and content', { timeout: 60000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'mgread-shudugu-live-')); t.after(() => rm(root, { recursive: true, force: true }));
-  await plugin.activate({ dataDir: join(root, 'data'), cacheDir: join(root, 'cache'), http: { fetch }, log: { debug() {}, info() {}, warn() {}, error() {} }, app: { runtimeVersion: 'live', nodeVersion: process.versions.node, pluginApi: 1 }, plugin: { id: 'org.mgread.shudugu', version: '0.1.1' } });
+  await plugin.activate({ dataDir: join(root, 'data'), cacheDir: join(root, 'cache'), http: { fetch }, resource: { proxy: () => 'http://127.0.0.1:1234/v1/source-resource/opaque' }, log: { debug() {}, info() {}, warn() {}, error() {} }, app: { runtimeVersion: 'live', nodeVersion: process.versions.node, pluginApi: 1 }, plugin: { id: 'org.mgread.shudugu', version: '0.1.1' } });
   const categories = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });
   assert.equal(categories.kind, 'document');
   const category = categories.document.components.find((item) => item.type === 'section')?.children.find((item) => item.type === 'categoryCollection');

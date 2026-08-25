@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart';
+import 'package:mg_read/app/app_fatal_error_reporter.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 
 /// Installs process-level Flutter and root-isolate error observation without
 /// persisting raw exception text, stack frames, arguments or paths.
 final class AppDiagnosticsErrorBoundary {
   AppDiagnosticsErrorBoundary._({
-    required this._diagnostics,
+    required this._reporter,
+    required this._ownsReporter,
     required this._previousFlutterHandler,
     required this._previousPlatformHandler,
   }) {
@@ -15,61 +17,51 @@ final class AppDiagnosticsErrorBoundary {
     PlatformDispatcher.instance.onError = _platformHandler;
   }
 
-  final DiagnosticsManager _diagnostics;
+  final AppFatalErrorReporter _reporter;
+  final bool _ownsReporter;
   final FlutterExceptionHandler? _previousFlutterHandler;
   final bool Function(Object, StackTrace)? _previousPlatformHandler;
   late final FlutterExceptionHandler _flutterHandler;
   late final bool Function(Object, StackTrace) _platformHandler;
   bool _disposed = false;
 
-  static AppDiagnosticsErrorBoundary install(DiagnosticsManager diagnostics) =>
-      AppDiagnosticsErrorBoundary._(
-        diagnostics: diagnostics,
-        previousFlutterHandler: FlutterError.onError,
-        previousPlatformHandler: PlatformDispatcher.instance.onError,
-      );
+  static AppDiagnosticsErrorBoundary install(
+    DiagnosticsManager diagnostics, {
+    AppFatalErrorReporter? fatalReporter,
+  }) => AppDiagnosticsErrorBoundary._(
+    reporter: fatalReporter ?? AppFatalErrorReporter(diagnostics),
+    ownsReporter: fatalReporter == null,
+    previousFlutterHandler: FlutterError.onError,
+    previousPlatformHandler: PlatformDispatcher.instance.onError,
+  );
 
   void _handleFlutterError(FlutterErrorDetails details) {
-    _emit(
+    _reporter.reportUnhandled(
       boundary: 'flutter-framework',
       errorCode: 'unhandled_flutter_error',
       stackTrace: details.stack ?? StackTrace.empty,
       fatal: false,
     );
-    _previousFlutterHandler?.call(details);
+    try {
+      _previousFlutterHandler?.call(details);
+    } catch (_) {
+      // A previous observer cannot re-open the uncaught error path.
+    }
   }
 
   bool _handlePlatformError(Object error, StackTrace stackTrace) {
-    _emit(
+    _reporter.reportUnhandled(
       boundary: 'platform-dispatcher',
       errorCode: 'unhandled_platform_error',
       stackTrace: stackTrace,
       fatal: true,
     );
-    return _previousPlatformHandler?.call(error, stackTrace) ?? false;
-  }
-
-  void _emit({
-    required String boundary,
-    required String errorCode,
-    required StackTrace stackTrace,
-    required bool fatal,
-  }) {
     try {
-      _diagnostics.emit(
-        AppDiagnosticEvents.unhandledError,
-        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-          'boundary': DiagnosticValue.string(boundary),
-          'errorCode': DiagnosticValue.string(errorCode),
-          'stackFingerprint': DiagnosticValue.string(
-            _diagnostics.privacyPolicy.stackFingerprint(stackTrace),
-          ),
-          'fatal': DiagnosticValue.boolean(fatal),
-        }),
-      );
+      _previousPlatformHandler?.call(error, stackTrace);
     } catch (_) {
-      // Diagnostics is fail-open even while handling another failure.
+      // A previous observer cannot re-open the uncaught error path.
     }
+    return true;
   }
 
   void dispose() {
@@ -81,5 +73,6 @@ final class AppDiagnosticsErrorBoundary {
     if (identical(PlatformDispatcher.instance.onError, _platformHandler)) {
       PlatformDispatcher.instance.onError = _previousPlatformHandler;
     }
+    if (_ownsReporter) _reporter.dispose();
   }
 }

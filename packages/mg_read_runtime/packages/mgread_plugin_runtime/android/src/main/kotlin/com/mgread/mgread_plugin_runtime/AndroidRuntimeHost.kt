@@ -66,21 +66,38 @@ internal class AndroidRuntimeHost(
             return
         }
         handler.post {
+            var phase = "starting"
             try {
                 Log.i(TAG, "android_runtime_invoke_start")
                 ensureStarted()
+                phase = "invoking"
                 val paramsJson = JSONObject(params).toString()
                 val script = "globalThis.__mgreadInvokeJson(${JSONObject.quote(method)}," +
                     "${JSONObject.quote(paramsJson)},$deadlineUnixMs)"
                 val result = awaitString(script)
+                if (result.isBlank() || result == "undefined" || result == "null") {
+                    callback(
+                        AndroidRuntimeError(
+                            "runtime_no_response",
+                            "Android Runtime did not return a capability result.",
+                        ),
+                        null,
+                    )
+                    return@post
+                }
                 Log.i(TAG, "android_runtime_invoke_complete bytes=${result.length}")
                 callback(null, result)
             } catch (_: Throwable) {
                 runCatching { stopRuntime() }
-                Log.e(TAG, "android_runtime_invoke_failed code=runtime_start_failed")
+                val code = if (phase == "starting") {
+                    "runtime_start_failed"
+                } else {
+                    "runtime_invocation_failed"
+                }
+                Log.e(TAG, "android_runtime_invoke_failed code=$code")
                 callback(
                     AndroidRuntimeError(
-                        "runtime_start_failed",
+                        code,
                         "Android Runtime could not complete the capability call.",
                     ),
                     null,

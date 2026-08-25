@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_diagnostics_boundary.dart';
+import 'package:mg_read/app/app_fatal_error_reporter.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 
 import '../core/diagnostics/diagnostics_testkit.dart';
@@ -11,12 +12,20 @@ void main() {
   test('framework boundary stores only stable error metadata', () async {
     const secretCanary = 'Bearer SECRET-CANARY?token=private';
     final kit = DiagnosticsTestkit();
+    final reporter = AppFatalErrorReporter(kit.manager);
+    final reports = <AppFatalDiagnosticReport>[];
+    final subscription = reporter.reports.listen(reports.add);
     final previousHandler = FlutterError.onError;
     FlutterError.onError = (_) {};
-    final boundary = AppDiagnosticsErrorBoundary.install(kit.manager);
+    final boundary = AppDiagnosticsErrorBoundary.install(
+      kit.manager,
+      fatalReporter: reporter,
+    );
     addTearDown(() async {
       boundary.dispose();
       FlutterError.onError = previousHandler;
+      await subscription.cancel();
+      reporter.dispose();
       await kit.dispose();
     });
 
@@ -39,5 +48,6 @@ void main() {
     );
     expect(encoded, isNot(contains(secretCanary)));
     expect(encoded, isNot(contains('C:\\private')));
+    expect(reports, isEmpty);
   });
 }

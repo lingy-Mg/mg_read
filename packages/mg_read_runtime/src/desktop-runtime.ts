@@ -2366,6 +2366,8 @@ function pluginManagerErrorMessage(code: PluginManagerError["code"]): string {
       return "The plugin request is invalid.";
     case "plugin_disabled":
       return "The requested plugin is disabled.";
+    case "plugin_execution_failed":
+      return "The plugin could not complete the requested operation.";
     case "plugin_invalid_response":
       return "The plugin returned an invalid response.";
     case "plugin_load_failed":

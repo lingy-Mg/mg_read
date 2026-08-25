@@ -85,6 +85,95 @@ final class ContentLibrary {
     text: text,
   );
 
+  /// Opens a novel against one immutable active catalog snapshot.
+  ///
+  /// The returned session never follows a later catalog refresh; callers can
+  /// therefore keep chapter identity stable while a background refresh runs.
+  Future<NovelReaderSession?> openNovelReaderSession(LibraryItemId itemId) =>
+      _trace(
+        operation: 'novelReaderSessionOpen',
+        contentKind: ContentKind.novel.code,
+        itemCount: 1,
+        action: () => _openNovelReaderSession(itemId),
+        resultCount: (result) => result == null ? 0 : 1,
+        resultState: (result) => result == null ? 'empty' : 'content',
+      );
+
+  Future<NovelReaderSession?> _openNovelReaderSession(
+    LibraryItemId itemId,
+  ) async {
+    final record = await _persistence.metadataRecords.read(
+      id: itemId.value,
+      scope: _scope,
+    );
+    if (record == null || record.recordKind != _itemKind) return null;
+    final item = _item(record);
+    if (item.kind != ContentKind.novel) return null;
+    final snapshot = record.document['activeSnapshotId'];
+    if (snapshot is! String || snapshot.isEmpty) return null;
+    final progressFuture = readingProgress._load(itemId);
+    final firstEntry = await _persistence.metadataRecords.list(
+      RecordQuery(
+        recordKind: _entryKind,
+        scope: _scope,
+        parentId: itemId.value,
+        stateKey: 'pending:$snapshot',
+        limit: 1,
+      ),
+    );
+    if (firstEntry.records.isEmpty) {
+      await progressFuture;
+      return null;
+    }
+    final storedBinding = firstEntry.records.single.document['bindingId'];
+    SourceBindingId bindingId;
+    if (storedBinding is String && storedBinding.isNotEmpty) {
+      bindingId = SourceBindingId(storedBinding);
+    } else {
+      final bindings = await _persistence.metadataRecords.list(
+        RecordQuery(
+          recordKind: _bindingKind,
+          scope: _scope,
+          parentId: itemId.value,
+          limit: 1,
+        ),
+      );
+      if (bindings.records.isEmpty) return null;
+      bindingId = SourceBindingId(bindings.records.single.id);
+    }
+    final storedCatalogCount = record.document['catalogCount'];
+    var catalogCount = storedCatalogCount is int
+        ? storedCatalogCount
+        : await _persistence.metadataRecords.count(
+            RecordQuery(
+              recordKind: _entryKind,
+              scope: _scope,
+              parentId: itemId.value,
+              stateKey: 'pending:$snapshot',
+              limit: 1,
+            ),
+          );
+    if (storedCatalogCount is! int) {
+      try {
+        await _persistence.metadataRecords.update(
+          previous: record,
+          document: {...record.document, 'catalogCount': catalogCount},
+        );
+      } on PersistenceConflictError {
+        // A concurrent snapshot switch owns the newer item revision.
+      }
+    }
+    final progress = await progressFuture;
+    return NovelReaderSession._(
+      library: this,
+      item: item,
+      progress: progress,
+      catalogCount: catalogCount,
+      snapshot: snapshot,
+      bindingId: bindingId,
+    );
+  }
+
   Future<T> _trace<T>({
     required String operation,
     String? contentKind,
@@ -534,6 +623,96 @@ final class ReadingProgressRepository {
   }
 }
 
+/// A bounded novel-reading view over an immutable catalog snapshot.
+///
+/// The snapshot and binding identifiers are implementation details. All
+/// chapter access is consequently routed through typed projections rather
+/// than persistence records or dynamic documents.
+final class NovelReaderSession {
+  NovelReaderSession._({
+    required this._library,
+    required this.item,
+    required this.progress,
+    required this.catalogCount,
+    required this._snapshot,
+    required this._bindingId,
+  });
+
+  final ContentLibrary _library;
+  final LibraryItem item;
+  final LibraryReadingProgress? progress;
+  final int catalogCount;
+  final String _snapshot;
+  final SourceBindingId _bindingId;
+
+  Future<CatalogEntry?> itemAtIndex(int index) {
+    if (index < 0 || index >= catalogCount) return Future.value(null);
+    return _library.catalog._findInSnapshot(
+      itemId: item.id,
+      snapshot: _snapshot,
+      bindingId: _bindingId,
+      orderKey: _catalogOrderKey(index),
+    );
+  }
+
+  Future<CatalogEntry?> itemByRemoteIdentity(String remoteIdentity) {
+    if (remoteIdentity.isEmpty) return Future.value(null);
+    return _library.catalog._findInSnapshot(
+      itemId: item.id,
+      snapshot: _snapshot,
+      bindingId: _bindingId,
+      remoteIdentity: remoteIdentity,
+    );
+  }
+
+  Future<Page<CatalogEntry>> page({String? after, int limit = 100}) {
+    return _library.catalog._pageInSnapshot(
+      itemId: item.id,
+      snapshot: _snapshot,
+      after: after,
+      limit: limit,
+    );
+  }
+
+  /// Resolves saved semantic progress without loading the whole catalog.
+  /// If its remote chapter was removed, the saved numeric index is used as a
+  /// bounded fallback and may return null when the new catalog is shorter.
+  Future<CatalogEntry?> resolveProgressEntry() async {
+    final saved = progress;
+    if (saved == null) return null;
+    final byIdentity = await itemByRemoteIdentity(saved.chapterId);
+    return byIdentity ?? itemAtIndex(saved.chapterIndex);
+  }
+
+  /// Reads content through the entry's already-known immutable object reference.
+  Future<ReadableContent?> readContent(CatalogEntry entry) =>
+      _library.content._openReference(
+        contentReference: entry.contentReference,
+        kind: entry.kind,
+      );
+
+  /// Commits a novel body to this session's target entry only.
+  Future<void> cacheChapter({
+    required CatalogEntry entry,
+    required String text,
+  }) => _library.content._cacheNovelChapterForEntry(
+    item: item,
+    entry: entry,
+    text: text,
+  );
+
+  Future<void> saveProgress(LibraryReadingProgress value) {
+    if (value.itemId.value != item.id.value) {
+      return Future<void>.error(
+        ArgumentError.value(value.itemId, 'progress.itemId'),
+      );
+    }
+    return _library.readingProgress.save(value);
+  }
+}
+
+String _catalogOrderKey(int index) => index.toString().padLeft(12, '0');
+
 final class CatalogRepository {
   CatalogRepository._(this._library);
   final ContentLibrary _library;
@@ -626,7 +805,9 @@ final class CatalogRepository {
           scope: _scope,
           parentId: itemId.value,
           identityKey: '${bindingId.value}:${input.remoteIdentity}',
-          orderKey: input.orderKey,
+          orderKey: input.index == null
+              ? input.orderKey
+              : _catalogOrderKey(input.index!),
           stateKey: 'pending:$snapshot',
           document: {
             'bindingId': bindingId.value,
@@ -675,7 +856,100 @@ final class CatalogRepository {
     if (item == null) throw StateError('Missing item.');
     await _library._persistence.metadataRecords.update(
       previous: item,
-      document: {...item.document, 'activeSnapshotId': snapshot},
+      document: {
+        ...item.document,
+        'activeSnapshotId': snapshot,
+        'catalogCount': ordinal,
+      },
+    );
+  }
+
+  Future<CatalogEntry?> _findInSnapshot({
+    required LibraryItemId itemId,
+    required String snapshot,
+    required SourceBindingId bindingId,
+    String? remoteIdentity,
+    String? orderKey,
+  }) async {
+    final identityKey = remoteIdentity == null
+        ? null
+        : '${bindingId.value}:$remoteIdentity';
+    final page = await _library._persistence.metadataRecords.list(
+      RecordQuery(
+        recordKind: _entryKind,
+        scope: _scope,
+        parentId: itemId.value,
+        stateKey: 'pending:$snapshot',
+        identityKey: identityKey,
+        orderKey: orderKey,
+        limit: 1,
+      ),
+    );
+    return page.records.isEmpty ? null : _entry(page.records.single);
+  }
+
+  Future<CatalogEntry?> _activeEntryByRemoteIdentity(
+    LibraryItemId itemId,
+    String remoteIdentity,
+  ) async {
+    final item = await _library._persistence.metadataRecords.read(
+      id: itemId.value,
+      scope: _scope,
+    );
+    final snapshot = item?.document['activeSnapshotId'];
+    if (snapshot is! String || snapshot.isEmpty) return null;
+    final bindings = await _library._persistence.metadataRecords.list(
+      RecordQuery(
+        recordKind: _bindingKind,
+        scope: _scope,
+        parentId: itemId.value,
+        limit: 1,
+      ),
+    );
+    if (bindings.records.isEmpty) return null;
+    var bindingId = SourceBindingId(bindings.records.single.id);
+    final firstEntry = await _library._persistence.metadataRecords.list(
+      RecordQuery(
+        recordKind: _entryKind,
+        scope: _scope,
+        parentId: itemId.value,
+        stateKey: 'pending:$snapshot',
+        limit: 1,
+      ),
+    );
+    if (firstEntry.records.isNotEmpty) {
+      final storedBinding = firstEntry.records.single.document['bindingId'];
+      if (storedBinding is String && storedBinding.isNotEmpty) {
+        bindingId = SourceBindingId(storedBinding);
+      }
+    }
+    return _findInSnapshot(
+      itemId: itemId,
+      snapshot: snapshot,
+      bindingId: bindingId,
+      remoteIdentity: remoteIdentity,
+    );
+  }
+
+  Future<Page<CatalogEntry>> _pageInSnapshot({
+    required LibraryItemId itemId,
+    required String snapshot,
+    required String? after,
+    required int limit,
+  }) async {
+    final page = await _library._persistence.metadataRecords.list(
+      RecordQuery(
+        recordKind: _entryKind,
+        scope: _scope,
+        parentId: itemId.value,
+        stateKey: 'pending:$snapshot',
+        after: _cursor(after),
+        limit: limit,
+      ),
+    );
+    return Page(
+      items: page.records.map(_entry).toList(growable: false),
+      nextCursor: _cursorText(page.nextCursor),
     );
   }
 
@@ -914,20 +1188,37 @@ final class ContentRepository {
     required String remoteChapterId,
     required String text,
   }) async {
-    final entries = await _library.catalog._listAll(itemId);
-    final entry = entries.where(
-      (value) => value.remoteIdentity == remoteChapterId,
-    );
-    if (entry.length != 1) {
-      throw StateError('The cached catalog does not contain the chapter.');
-    }
     final item = await _library.getLibraryItem(itemId);
     final source = item?.source;
+    if (source == null) {
+      throw StateError('The cached catalog does not contain the chapter.');
+    }
+    final catalog = await _library.catalog._activeEntryByRemoteIdentity(
+      itemId,
+      remoteChapterId,
+    );
+    if (catalog == null) {
+      throw StateError('The cached catalog does not contain the chapter.');
+    }
+    await _cacheNovelChapterForEntry(item: item!, entry: catalog, text: text);
+  }
+
+  Future<void> _cacheNovelChapterForEntry({
+    required LibraryItem item,
+    required CatalogEntry entry,
+    required String text,
+  }) async {
+    if (item.kind != ContentKind.novel ||
+        entry.itemId.value != item.id.value ||
+        entry.kind != ContentKind.novel) {
+      throw ArgumentError.value(entry, 'entry');
+    }
+    final source = item.source;
     if (source == null) {
       throw StateError('The shelf item has no source identity.');
     }
     await _putNovel(
-      entryId: entry.single.id,
+      entryId: entry.id,
       text: text,
       source: ContentLibraryIngest(
         pluginId: source.pluginId,
@@ -987,35 +1278,59 @@ final class ContentRepository {
       scope: _scope,
     );
     final objectId = record?.document['contentReference'];
-    final kind = record?.document['contentKind'];
-    if (objectId is! String || kind is! String) return null;
+    final kindCode = record?.document['contentKind'];
+    if (objectId is! String || kindCode is! String) return null;
+    return _openReference(
+      contentReference: objectId,
+      kind: ContentKind.fromCode(kindCode),
+      kindCode: kindCode,
+    );
+  }
+
+  Future<ReadableContent?> _openReference({
+    required String? contentReference,
+    required ContentKind? kind,
+    String? kindCode,
+  }) async {
+    if (contentReference == null || contentReference.isEmpty) return null;
+    final objectId = contentReference;
+    final code = kindCode ?? kind?.code;
+    if (code == null) return const UnsupportedContent(kindCode: 'unknown');
     final object = await _library._persistence.contentObjects.read(objectId);
     if (object == null) return const UnsupportedContent(kindCode: 'missing');
-    if (kind == 'novel') return NovelChapterContent(text: object.payload);
-    if (kind != 'manga') return UnsupportedContent(kindCode: kind);
-    final decoded = jsonDecode(object.payload) as Map<String, dynamic>;
-    final pages = (decoded['pages'] as List)
-        .map((raw) {
-          final p = raw as Map<String, dynamic>;
-          final policy = PersistencePolicy.values.byName(p['policy'] as String);
-          return MangaPage(
-            pageId: p['pageId'] as String,
-            order: p['order'] as int,
-            resource: policy == PersistencePolicy.sessionOnly
-                ? SourceResource.sessionOnly()
-                : (policy == PersistencePolicy.refreshable
-                      ? SourceResource.refreshable(
-                          Uri.parse(p['url'] as String),
-                          DateTime.parse(p['expiresAtUtc'] as String),
-                        )
-                      : SourceResource.durable(Uri.parse(p['url'] as String))),
-            downloadedAssetId: p['assetId'] is String
-                ? ContentAssetId(p['assetId'] as String)
-                : null,
-          );
-        })
-        .toList(growable: false);
-    return MangaChapterContent(pages: pages);
+    if (code == 'novel') return NovelChapterContent(text: object.payload);
+    if (code != 'manga') return UnsupportedContent(kindCode: code);
+    try {
+      final decoded = jsonDecode(object.payload) as Map<String, dynamic>;
+      final pages = (decoded['pages'] as List)
+          .map((raw) {
+            final p = raw as Map<String, dynamic>;
+            final policy = PersistencePolicy.values.byName(
+              p['policy'] as String,
+            );
+            return MangaPage(
+              pageId: p['pageId'] as String,
+              order: p['order'] as int,
+              resource: policy == PersistencePolicy.sessionOnly
+                  ? SourceResource.sessionOnly()
+                  : (policy == PersistencePolicy.refreshable
+                        ? SourceResource.refreshable(
+                            Uri.parse(p['url'] as String),
+                            DateTime.parse(p['expiresAtUtc'] as String),
+                          )
+                        : SourceResource.durable(
+                            Uri.parse(p['url'] as String),
+                          )),
+              downloadedAssetId: p['assetId'] is String
+                  ? ContentAssetId(p['assetId'] as String)
+                  : null,
+            );
+          })
+          .toList(growable: false);
+      return MangaChapterContent(pages: pages);
+    } on Object {
+      return const UnsupportedContent(kindCode: 'corrupt');
+    }
   }
 }
 

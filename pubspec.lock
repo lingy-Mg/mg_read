@@ -517,7 +517,7 @@ packages:
       path: "packages/mg_read_runtime/packages/mgread_plugin_runtime"
       relative: true
     source: path
-    version: "0.3.0-standard.0"
+    version: "0.3.0-standard.2"
   mime:
     dependency: transitive
     description:
@@ -548,7 +548,7 @@ packages:
       path: "packages/mg_read_reader_ui"
       relative: true
     source: path
-    version: "0.4.0"
+    version: "0.4.1"
   objective_c:
     dependency: transitive
     description:

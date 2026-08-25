@@ -37,6 +37,15 @@ void main() {
     expect(card.width, closeTo(350, 0.1));
     expect(card.height, AppSpacing.profileCardHeight);
     expect(firstSettingsRow.height, AppSpacing.profileSettingsRowHeight);
+
+    final Finder firstSettingsIcon = find.descendant(
+      of: find.byType(ProfileSettingsRow).first,
+      matching: find.byType(Icon),
+    );
+    expect(
+      tester.widget<Icon>(firstSettingsIcon.first).size,
+      AppSpacing.profileSettingsIconSize,
+    );
   });
 
   testWidgets('uses the reference text hierarchy and selected profile nav', (
@@ -85,6 +94,37 @@ void main() {
     await tester.tap(find.byKey(const Key('profile-setting-reading-settings')));
     await tester.pumpAndSettle();
     expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsOneWidget);
+  });
+
+  testWidgets('uses the compact token between a trailing label and chevron', (
+    WidgetTester tester,
+  ) async {
+    await _setViewport(tester, const Size(390, 900));
+    await tester.pumpWidget(_host());
+    await tester.pumpAndSettle();
+
+    await tester.drag(
+      find.byKey(const Key('profile-page-content')),
+      const Offset(0, -360),
+    );
+    await tester.pumpAndSettle();
+
+    final Finder backupRow = find.byKey(
+      const Key('profile-setting-data-backup'),
+    );
+    final Finder trailingLabel = find.descendant(
+      of: backupRow,
+      matching: find.text('已开启'),
+    );
+    final Finder chevron = find.descendant(
+      of: backupRow,
+      matching: find.byIcon(Icons.chevron_right_rounded),
+    );
+
+    expect(
+      tester.getRect(chevron).left - tester.getRect(trailingLabel).right,
+      closeTo(AppSpacing.compact, 0.1),
+    );
   });
 
   testWidgets('delegates a destination selection to the app layer', (

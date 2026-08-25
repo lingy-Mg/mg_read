@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
@@ -8,15 +10,15 @@ import 'package:mg_read/features/discovery/application/content_library_source_pr
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
 import 'package:mg_read/features/reader/application/reader_launch_failure.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
+import 'package:mg_read/features/reader/application/shelf_reader_launch_coordinator.dart';
 import 'package:mg_read/features/reader/data/content_library_text_reader_state_store.dart';
-import 'package:mg_read/features/reader/data/transient_source_text_reader.dart';
 
 /// Opens a shelf novel with app-owned reading state and a typed source gateway.
 ///
-/// A newly added title persists its complete remote catalog before the reader
-/// asks for text. This makes every chapter identity available to the app-owned
-/// body cache on the first read and on later launches.
-final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
+/// Shelf launches use the app-owned immutable catalog snapshot and only ask the
+/// source gateway for the selected chapter when its local body is unavailable.
+final class ContentLibrarySourceTextReader
+    implements LibraryReaderLauncher, LocalShelfReaderPrewarmer {
   const ContentLibrarySourceTextReader(
     this._library,
     this._gateway, [
@@ -32,7 +34,9 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
     String libraryItemId, {
     ReaderObserver? observer,
   }) async {
-    final item = await _library.getLibraryItem(LibraryItemId(libraryItemId));
+    final itemId = LibraryItemId(libraryItemId);
+    var session = await _library.openNovelReaderSession(itemId);
+    final item = session?.item ?? await _library.getLibraryItem(itemId);
     if (item == null) {
       throw _failure(
         ReaderLaunchFailureReason.shelfItemMissing,
@@ -53,50 +57,118 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
       );
     }
 
-    await _prefetcher?.waitFor(item.id.value);
-    final catalog = await _library.listAllCatalog(item.id);
-    if (catalog.isEmpty ||
-        catalog.any((entry) => !entry.hasExplicitRemoteIdentity)) {
-      // Legacy snapshots did not persist the remote chapter ID separately
-      // from the binding key. Refresh them before constructing the reader so
-      // a source ID containing ':' cannot reach the reader truncated.
-      return _launchLiveSession(item, source, observer);
+    if (session == null && _prefetcher?.hasInFlight(item.id.value) == true) {
+      try {
+        await _prefetcher!.prepareForReading(item);
+      } on Object {
+        // A failed background warm-up is retried through the typed gateway.
+      }
+      session = await _library.openNovelReaderSession(item.id);
     }
-    final localCatalog = _asSourceCatalog(
-      source,
-      item.sourceName ?? '书架缓存',
-      catalog,
-    );
-    final detail = await _resolveDetail(
+    if (session == null) return _launchLiveSession(item, source, observer);
+    return _launchLocalSession(
       item,
       source,
-      chapterCount: catalog.length,
+      session,
+      observer,
+      waitForWarm: session.resolveProgressEntry,
     );
-    if ((detail.summary.chapterCount ?? catalog.length) > catalog.length) {
-      return _launchLiveSession(item, source, observer, detail: detail);
+  }
+
+  @override
+  Future<ReaderLaunchRequest?> warmLocal(String libraryItemId) async {
+    final session = await _library.openNovelReaderSession(
+      LibraryItemId(libraryItemId),
+    );
+    if (session == null) return null;
+    final item = session.item;
+    if (item.source == null) return null;
+    final target =
+        await session.resolveProgressEntry() ?? await session.itemAtIndex(0);
+    if (target == null) return null;
+    final content = await session.readContent(target);
+    if (content is! NovelChapterContent) return null;
+    return _buildSessionRequest(
+      item: item,
+      source: item.source!,
+      session: session,
+      observer: null,
+      initialEntry: target,
+      initialContent: content,
+      preparationKind: ReaderLaunchPreparationKind.memory,
+    );
+  }
+
+  Future<ReaderLaunchRequest> _launchLocalSession(
+    LibraryItem item,
+    LibraryItemSource source,
+    NovelReaderSession session,
+    ReaderObserver? observer, {
+    required Future<CatalogEntry?> Function() waitForWarm,
+  }) async {
+    var target = await waitForWarm();
+    target ??= await session.itemAtIndex(0);
+    if (target == null) {
+      return _launchLiveSession(item, source, observer);
     }
-    final chapterAccess = _CachedNovelChapterAccess(
-      library: _library,
-      gateway: _gateway,
+    var content = await session.readContent(target);
+    var preparationKind = ReaderLaunchPreparationKind.persistent;
+    var networkPreparationElapsed = Duration.zero;
+    if (content is! NovelChapterContent) {
+      final networkStopwatch = Stopwatch()..start();
+      var reusedInFlight = false;
+      if (_prefetcher?.hasInFlight(item.id.value) == true) {
+        try {
+          await _prefetcher!.prepareForReading(item);
+          content = await session.readContent(target);
+          reusedInFlight = content is NovelChapterContent;
+        } on Object {
+          // Continue with the targeted chapter request below.
+        }
+      }
+      if (!reusedInFlight) {
+        final remote = await _resolve(
+          ReaderLaunchFailureReason.sourceContentKind,
+          () => _gateway.getContent(
+            pluginId: source.pluginId,
+            id: source.remoteContentId,
+            chapterId: target!.remoteIdentity,
+          ),
+        );
+        if (remote.contentKind != PluginContentKind.novel ||
+            remote.text == null) {
+          throw _failure(
+            ReaderLaunchFailureReason.sourceContentKind,
+            AppErrorCode.unsupported,
+          );
+        }
+        try {
+          await session.cacheChapter(entry: target, text: remote.text!);
+        } on Object {
+          // The validated remote body remains usable when persistence is down.
+        }
+        content = NovelChapterContent(text: remote.text!);
+      }
+      preparationKind = ReaderLaunchPreparationKind.network;
+      networkStopwatch.stop();
+      networkPreparationElapsed = networkStopwatch.elapsed;
+    }
+    final preparedContent = content;
+    if (preparedContent is! NovelChapterContent) {
+      throw _failure(
+        ReaderLaunchFailureReason.sourceContentKind,
+        AppErrorCode.notFound,
+      );
+    }
+    return _buildSessionRequest(
       item: item,
       source: source,
-      catalog: catalog,
-    );
-    final stateStore = ContentLibraryTextReaderStateStore(
-      _library,
-      itemId: item.id,
-    );
-    final session = TransientSourceTextReader(
-      detail: detail,
-      catalog: localCatalog,
-      loadChapterContent: chapterAccess.load,
-      bookId: item.id.value,
-    );
-    return session.createLaunchRequest(
-      initialChapterId: localCatalog.items.first.id,
-      observer: _TimedReaderObserver(stateStore, observer),
-      stateStore: stateStore,
-      extensions: ReaderExtensions(chapterStateCapability: chapterAccess),
+      session: session,
+      observer: observer,
+      initialEntry: target,
+      initialContent: preparedContent,
+      preparationKind: preparationKind,
+      networkPreparationElapsed: networkPreparationElapsed,
     );
   }
 
@@ -105,9 +177,9 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
   Future<ReaderLaunchRequest> _launchLiveSession(
     LibraryItem item,
     LibraryItemSource source,
-    ReaderObserver? observer, {
-    PluginContentDetail? detail,
-  }) async {
+    ReaderObserver? observer,
+  ) async {
+    final networkStopwatch = Stopwatch()..start();
     final remoteCatalog = await _resolve(
       ReaderLaunchFailureReason.sourceCatalog,
       () => _gateway.getChapters(
@@ -121,14 +193,7 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
         AppErrorCode.notFound,
       );
     }
-    final resolvedDetail =
-        detail ??
-        await _resolveDetail(
-          item,
-          source,
-          chapterCount: remoteCatalog.items.length,
-        );
-    final catalog = await _library.syncNovelCatalog(
+    await _library.syncNovelCatalog(
       itemId: item.id,
       chapters: remoteCatalog.items
           .map(
@@ -141,131 +206,96 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher {
           )
           .toList(growable: false),
     );
-    final chapterAccess = _CachedNovelChapterAccess(
-      library: _library,
-      gateway: _gateway,
+    final localSession = await _library.openNovelReaderSession(item.id);
+    if (localSession == null) {
+      throw StateError('Catalog snapshot was not committed.');
+    }
+    final initialEntry =
+        await localSession.resolveProgressEntry() ??
+        await localSession.itemAtIndex(0);
+    if (initialEntry == null) throw StateError('Catalog snapshot is empty.');
+    final initialContent = await _resolve(
+      ReaderLaunchFailureReason.sourceContentKind,
+      () => _gateway.getContent(
+        pluginId: source.pluginId,
+        id: source.remoteContentId,
+        chapterId: initialEntry.remoteIdentity,
+      ),
+    );
+    if (initialContent.contentKind != PluginContentKind.novel ||
+        initialContent.text == null) {
+      throw _failure(
+        ReaderLaunchFailureReason.sourceContentKind,
+        AppErrorCode.unsupported,
+      );
+    }
+    networkStopwatch.stop();
+    try {
+      await localSession.cacheChapter(
+        entry: initialEntry,
+        text: initialContent.text!,
+      );
+    } on Object {
+      // The fetched body is still passed to the reader if the cache is down.
+    }
+    return _buildSessionRequest(
       item: item,
       source: source,
-      catalog: catalog,
+      session: localSession,
+      observer: observer,
+      initialEntry: initialEntry,
+      initialContent: NovelChapterContent(text: initialContent.text!),
+      preparationKind: ReaderLaunchPreparationKind.network,
+      networkPreparationElapsed: networkStopwatch.elapsed,
+    );
+  }
+
+  ReaderLaunchRequest _buildSessionRequest({
+    required LibraryItem item,
+    required LibraryItemSource source,
+    required NovelReaderSession session,
+    required ReaderObserver? observer,
+    required CatalogEntry initialEntry,
+    required NovelChapterContent initialContent,
+    required ReaderLaunchPreparationKind preparationKind,
+    Duration networkPreparationElapsed = Duration.zero,
+  }) {
+    final chapterAccess = _SessionNovelChapterAccess(
+      session: session,
+      item: item,
+      source: source,
+      gateway: _gateway,
+      initialEntry: initialEntry,
+      initialContent: initialContent,
+    );
+    final dataSource = _SessionTextReaderDataSource(
+      item: item,
+      session: session,
+      chapterAccess: chapterAccess,
+      sourceKind: preparationKind == ReaderLaunchPreparationKind.network
+          ? ReaderBookSourceKind.remote
+          : ReaderBookSourceKind.local,
     );
     final stateStore = ContentLibraryTextReaderStateStore(
       _library,
       itemId: item.id,
+      initialProgress: session.progress,
+      progressAlreadyLoaded: true,
     );
-    final session = TransientSourceTextReader(
-      detail: resolvedDetail,
-      catalog: remoteCatalog,
-      loadChapterContent: chapterAccess.load,
+    return ReaderLaunchRequest(
       bookId: item.id.value,
-    );
-    return session.createLaunchRequest(
-      initialChapterId: remoteCatalog.items.first.id,
-      observer: _TimedReaderObserver(stateStore, observer),
+      dataSource: dataSource,
       stateStore: stateStore,
+      observer: _TimedReaderObserver(stateStore, observer),
       extensions: ReaderExtensions(chapterStateCapability: chapterAccess),
+      estimatedWarmBytes: utf8.encode(initialContent.text).length,
+      preparationKind: preparationKind,
+      networkPreparationElapsed:
+          preparationKind == ReaderLaunchPreparationKind.network
+          ? networkPreparationElapsed
+          : Duration.zero,
     );
   }
-
-  Future<PluginContentDetail> _resolveDetail(
-    LibraryItem item,
-    LibraryItemSource source, {
-    required int chapterCount,
-  }) async {
-    final fallback = _localDetail(item, source, chapterCount: chapterCount);
-    try {
-      final remote = await _gateway.getDetail(
-        pluginId: source.pluginId,
-        id: source.remoteContentId,
-      );
-      final summary = remote.summary;
-      return PluginContentDetail(
-        pluginId: remote.pluginId,
-        sourceName: remote.sourceName.isEmpty
-            ? fallback.sourceName
-            : remote.sourceName,
-        summary: PluginContentSummary(
-          id: summary.id,
-          title: summary.title.isEmpty ? fallback.summary.title : summary.title,
-          contentKind: summary.contentKind,
-          author: summary.author ?? fallback.summary.author,
-          url: summary.url,
-          coverUrl: summary.coverUrl ?? fallback.summary.coverUrl,
-          description: summary.description,
-          language: summary.language,
-          status: summary.status,
-          access: summary.access,
-          wordCount: summary.wordCount,
-          chapterCount: summary.chapterCount ?? chapterCount,
-          publishedAt: summary.publishedAt,
-          updatedAt: summary.updatedAt,
-          latestChapter: summary.latestChapter,
-          categories: summary.categories,
-          tags: summary.tags,
-          attributes: summary.attributes,
-        ),
-        aliases: remote.aliases,
-        catalogUrl: remote.catalogUrl ?? summary.url,
-      );
-    } on Object {
-      // A shelf must remain readable when refreshing optional presentation
-      // metadata fails; the local projection still carries title and source.
-      return fallback;
-    }
-  }
-
-  PluginContentDetail _localDetail(
-    LibraryItem item,
-    LibraryItemSource source, {
-    required int chapterCount,
-  }) => PluginContentDetail(
-    pluginId: source.pluginId,
-    sourceName: item.sourceName ?? '书架缓存',
-    summary: PluginContentSummary(
-      id: source.remoteContentId,
-      title: item.title,
-      contentKind: PluginContentKind.novel,
-      author: item.author,
-      url: null,
-      coverUrl: item.coverUrl,
-      description: null,
-      language: null,
-      status: PluginContentStatus.unknown,
-      access: PluginAccessKind.unknown,
-      wordCount: null,
-      chapterCount: chapterCount,
-      publishedAt: null,
-      updatedAt: null,
-      latestChapter: null,
-      categories: const <String>[],
-      tags: const <String>[],
-      attributes: const <PluginContentAttribute>[],
-    ),
-    aliases: const <String>[],
-    catalogUrl: null,
-  );
-
-  PluginChaptersResult _asSourceCatalog(
-    LibraryItemSource source,
-    String sourceName,
-    List<CatalogEntry> catalog,
-  ) => PluginChaptersResult(
-    pluginId: source.pluginId,
-    sourceName: sourceName,
-    items: <PluginChapterSummary>[
-      for (final entry in catalog)
-        PluginChapterSummary(
-          id: entry.remoteIdentity,
-          title: entry.title,
-          order: entry.index,
-          url: null,
-          volumeTitle: null,
-          wordCount: entry.wordCount,
-          updatedAt: null,
-          isLocked: null,
-          attributes: const <PluginContentAttribute>[],
-        ),
-    ],
-  );
 
   Future<T> _resolve<T>(
     ReaderLaunchFailureReason reason,
@@ -298,6 +328,7 @@ final class _TimedReaderObserver extends ReaderObserver {
 
   @override
   Future<void> onSessionStarted(String bookId) async {
+    _stateStore.startSession();
     await _delegate?.onSessionStarted(bookId);
   }
 
@@ -322,6 +353,13 @@ final class _TimedReaderObserver extends ReaderObserver {
   }
 
   @override
+  Future<void> onFirstContentPresented(
+    ReaderFirstContentPresentation presentation,
+  ) async {
+    await _delegate?.onFirstContentPresented(presentation);
+  }
+
+  @override
   Future<void> onFailure(ReaderFailure failure) async {
     await _delegate?.onFailure(failure);
   }
@@ -333,22 +371,24 @@ final class _TimedReaderObserver extends ReaderObserver {
 }
 
 /// Host-side cache and mutable state exposed through the reader's public API.
-final class _CachedNovelChapterAccess implements ReaderChapterStateCapability {
-  _CachedNovelChapterAccess({
-    required this.library,
-    required this.gateway,
+final class _SessionNovelChapterAccess implements ReaderChapterStateCapability {
+  _SessionNovelChapterAccess({
+    required this.session,
     required this.item,
     required this.source,
-    required List<CatalogEntry> catalog,
-  }) : _entryByRemoteId = Map<String, CatalogEntry>.unmodifiable({
-         for (final entry in catalog) entry.remoteIdentity: entry,
-       });
+    required this.gateway,
+    required CatalogEntry initialEntry,
+    required NovelChapterContent initialContent,
+  }) {
+    _memoryByRemoteId[initialEntry.remoteIdentity] = initialContent.text;
+    _cachedChapterIds.add(initialEntry.remoteIdentity);
+  }
 
-  final ContentLibrary library;
-  final SourceContentGateway gateway;
+  final NovelReaderSession session;
   final LibraryItem item;
   final LibraryItemSource source;
-  final Map<String, CatalogEntry> _entryByRemoteId;
+  final SourceContentGateway gateway;
+  final Map<String, String> _memoryByRemoteId = <String, String>{};
   final Set<String> _readChapterIds = <String>{};
   final Set<String> _cachedChapterIds = <String>{};
   final Set<String> _failedChapterIds = <String>{};
@@ -364,22 +404,16 @@ final class _CachedNovelChapterAccess implements ReaderChapterStateCapability {
   }
 
   Future<PluginChapterContent> _loadAndCache(String chapterId) async {
-    final entry = _entryByRemoteId[chapterId];
+    final entry = await session.itemByRemoteIdentity(chapterId);
     if (entry == null) {
       throw ArgumentError.value(chapterId, 'chapterId', 'Unknown chapter.');
     }
-    final cached = await library.openContent(entry.id);
+    final memory = _memoryByRemoteId[chapterId];
+    if (memory != null) return _pluginContent(entry, memory);
+    final cached = await session.readContent(entry);
     if (cached case NovelChapterContent(:final text)) {
-      return PluginChapterContent(
-        pluginId: source.pluginId,
-        sourceName: item.sourceName ?? '书架缓存',
-        contentKind: PluginContentKind.novel,
-        chapterId: chapterId,
-        title: entry.title,
-        updatedAt: null,
-        text: text,
-        pages: const <PluginMangaPage>[],
-      );
+      _memoryByRemoteId[chapterId] = text;
+      return _pluginContent(entry, text);
     }
     try {
       final remote = await gateway.getContent(
@@ -394,15 +428,12 @@ final class _CachedNovelChapterAccess implements ReaderChapterStateCapability {
       // The validated remote text is already usable. A cache-write failure
       // must not turn it into a reader failure.
       try {
-        await library.cacheNovelChapter(
-          itemId: item.id,
-          remoteChapterId: chapterId,
-          text: remote.text!,
-        );
+        await session.cacheChapter(entry: entry, text: remote.text!);
         _cachedChapterIds.add(chapterId);
       } on Object {
         // Keep reading; a later request can retry the cache write.
       }
+      _memoryByRemoteId[chapterId] = remote.text!;
       _failedChapterIds.remove(chapterId);
       return remote;
     } on Object {
@@ -411,25 +442,43 @@ final class _CachedNovelChapterAccess implements ReaderChapterStateCapability {
     }
   }
 
+  PluginChapterContent _pluginContent(CatalogEntry entry, String text) =>
+      PluginChapterContent(
+        pluginId: source.pluginId,
+        sourceName: item.sourceName ?? '书架缓存',
+        contentKind: PluginContentKind.novel,
+        chapterId: entry.remoteIdentity,
+        title: entry.title,
+        updatedAt: null,
+        text: text,
+        pages: const <PluginMangaPage>[],
+      );
+
   @override
   Future<Map<String, ReaderChapterState>> loadChapterStates(
     String bookId,
     List<String> chapterIds,
   ) async {
     _requireBook(bookId);
-    final progress = await library.readingProgress.load(item.id);
-    return <String, ReaderChapterState>{
-      for (final chapterId in chapterIds)
-        if (_entryByRemoteId[chapterId] case final entry?)
-          chapterId: ReaderChapterState(
-            chapterId: chapterId,
-            availability: _availability(entry),
-            wordCount: entry.wordCount,
-            hasBeenRead:
-                _readChapterIds.contains(chapterId) ||
-                (progress != null && entry.index <= progress.chapterIndex),
-          ),
-    };
+    final progress = session.progress;
+    final entries = await Future.wait(
+      chapterIds.map(session.itemByRemoteIdentity),
+    );
+    final states = <String, ReaderChapterState>{};
+    for (var index = 0; index < chapterIds.length; index += 1) {
+      final entry = entries[index];
+      if (entry == null) continue;
+      final chapterId = chapterIds[index];
+      states[chapterId] = ReaderChapterState(
+        chapterId: chapterId,
+        availability: _availability(entry),
+        wordCount: entry.wordCount,
+        hasBeenRead:
+            _readChapterIds.contains(chapterId) ||
+            (progress != null && entry.index <= progress.chapterIndex),
+      );
+    }
+    return states;
   }
 
   @override
@@ -457,4 +506,115 @@ final class _CachedNovelChapterAccess implements ReaderChapterStateCapability {
       throw ArgumentError.value(bookId, 'bookId', 'Unexpected reader book ID.');
     }
   }
+}
+
+final class _SessionTextReaderDataSource implements TextReaderDataSource {
+  const _SessionTextReaderDataSource({
+    required this.item,
+    required this.session,
+    required this.chapterAccess,
+    required this.sourceKind,
+  });
+
+  final LibraryItem item;
+  final NovelReaderSession session;
+  final _SessionNovelChapterAccess chapterAccess;
+  final ReaderBookSourceKind sourceKind;
+
+  @override
+  Future<ReaderBookInfo> loadBookInfo(String bookId) async {
+    _requireBook(bookId);
+    return ReaderBookInfo(
+      id: bookId,
+      title: item.title,
+      author: item.author,
+      description: null,
+      sourceName: item.sourceName ?? '书架缓存',
+      sourceUrl: null,
+      coverUrl: item.coverUrl,
+      wordCount: null,
+      chapterCount: session.catalogCount,
+      statusLabel: null,
+      latestChapterTitle: null,
+      latestChapterUrl: null,
+      labels: const <String>[],
+      sourceKind: sourceKind,
+    );
+  }
+
+  @override
+  Future<ChapterCatalogPage> loadChapterCatalog(
+    String bookId, {
+    String? cursor,
+    int pageSize = 100,
+  }) async {
+    _requireBook(bookId);
+    final page = await session.page(
+      after: cursor,
+      limit: pageSize.clamp(1, 500),
+    );
+    return ChapterCatalogPage(
+      items: [for (final entry in page.items) _chapterInfo(entry)],
+      total: session.catalogCount,
+      hasMore: page.nextCursor != null,
+      nextCursor: page.nextCursor,
+    );
+  }
+
+  @override
+  Future<ReaderChapterInfo> loadChapterAtIndex(String bookId, int index) async {
+    _requireBook(bookId);
+    final entry = await session.itemAtIndex(index);
+    if (entry == null) throw RangeError.index(index, session.catalogCount);
+    return _chapterInfo(entry);
+  }
+
+  @override
+  Future<TextChapterContent> loadChapterContent(
+    String bookId,
+    String chapterId,
+  ) async {
+    _requireBook(bookId);
+    final content = await chapterAccess.load(chapterId);
+    final entry = await session.itemByRemoteIdentity(chapterId);
+    return TextChapterContent(
+      chapterId: chapterId,
+      title: content.title ?? entry?.title ?? chapterId,
+      paragraphs: _readerParagraphs(chapterId, content.text ?? ''),
+      contentVersion: content.updatedAt?.toUtc().toIso8601String(),
+    );
+  }
+
+  ReaderChapterInfo _chapterInfo(CatalogEntry entry) => ReaderChapterInfo(
+    id: entry.remoteIdentity,
+    title: entry.title,
+    index: entry.index,
+    availability: entry.contentStatus == 'ready'
+        ? ReaderChapterAvailability.downloaded
+        : ReaderChapterAvailability.notDownloaded,
+    wordCount: entry.wordCount,
+  );
+
+  void _requireBook(String bookId) {
+    if (bookId != item.id.value) {
+      throw ArgumentError.value(bookId, 'bookId');
+    }
+  }
+}
+
+List<TextParagraph> _readerParagraphs(String chapterId, String text) {
+  final paragraphs = <TextParagraph>[];
+  for (final line in text.split(RegExp(r'\r?\n\s*\r?\n'))) {
+    final value = line.trim();
+    if (value.isEmpty) continue;
+    paragraphs.add(
+      TextParagraph(
+        id: '$chapterId:paragraph:${paragraphs.length}',
+        text: value,
+      ),
+    );
+  }
+  return paragraphs.isEmpty
+      ? <TextParagraph>[TextParagraph(id: '$chapterId:paragraph:0', text: '')]
+      : paragraphs;
 }

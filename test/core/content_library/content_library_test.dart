@@ -352,4 +352,176 @@ void main() {
     );
     expect(await directory.exists(), isFalse);
   });
+
+  test('opens a bounded novel session with targeted chapter queries', () async {
+    final item = await library.bookshelf.add(
+      title: '会话书',
+      kind: ContentKind.novel,
+      source: source,
+    );
+    await library.catalog.ensureNovelCatalog(
+      itemId: item.id,
+      chapters: const [
+        SourceNovelCatalogChapter(remoteIdentity: 'one', title: '一', index: 0),
+        SourceNovelCatalogChapter(remoteIdentity: 'two', title: '二', index: 1),
+      ],
+    );
+    final session = await library.openNovelReaderSession(item.id);
+    expect(session, isNotNull);
+    expect(session!.catalogCount, 2);
+    expect((await session.itemAtIndex(1))!.remoteIdentity, 'two');
+    expect((await session.itemByRemoteIdentity('one'))!.index, 0);
+    expect((await session.page(limit: 1)).items, hasLength(1));
+
+    final progress = LibraryReadingProgress(
+      itemId: item.id,
+      chapterId: 'removed',
+      paragraphId: 'p',
+      characterOffset: 0,
+      chapterIndex: 1,
+      chapterFraction: 0,
+      bookFraction: 0.5,
+      updatedAtUtc: DateTime.utc(2026, 8, 24),
+    );
+    await session.saveProgress(progress);
+    await library.catalog.syncNovelCatalog(
+      itemId: item.id,
+      chapters: const [
+        SourceNovelCatalogChapter(remoteIdentity: 'one', title: '一', index: 0),
+        SourceNovelCatalogChapter(remoteIdentity: 'new', title: '新', index: 1),
+      ],
+    );
+    final reopened = await library.openNovelReaderSession(item.id);
+    expect((await reopened!.resolveProgressEntry())!.remoteIdentity, 'new');
+  });
+
+  test(
+    'session remains on its snapshot while a refresh replaces the catalog',
+    () async {
+      final item = await library.bookshelf.add(
+        title: '快照书',
+        kind: ContentKind.novel,
+        source: source,
+      );
+      await library.catalog.ensureNovelCatalog(
+        itemId: item.id,
+        chapters: const [
+          SourceNovelCatalogChapter(
+            remoteIdentity: 'old',
+            title: '旧',
+            index: 0,
+          ),
+        ],
+      );
+      final session = await library.openNovelReaderSession(item.id);
+      final refresh = library.catalog.syncNovelCatalog(
+        itemId: item.id,
+        chapters: const [
+          SourceNovelCatalogChapter(
+            remoteIdentity: 'fresh',
+            title: '新',
+            index: 0,
+          ),
+        ],
+      );
+      expect((await session!.itemAtIndex(0))!.remoteIdentity, 'old');
+      await refresh;
+      expect(
+        (await (await library.openNovelReaderSession(
+          item.id,
+        ))!.itemAtIndex(0))!.remoteIdentity,
+        'fresh',
+      );
+    },
+  );
+
+  test(
+    'legacy snapshot count is read once and bad content references are safe',
+    () async {
+      final item = await library.bookshelf.add(
+        title: '旧数据书',
+        kind: ContentKind.novel,
+        source: source,
+      );
+      await library.catalog.ensureNovelCatalog(
+        itemId: item.id,
+        chapters: const [
+          SourceNovelCatalogChapter(
+            remoteIdentity: 'legacy',
+            title: '旧',
+            index: 0,
+          ),
+        ],
+      );
+      await library.close();
+      final store = await PersistenceRecordStore.open(
+        dataRoot: root,
+        registry: RecordDocumentRegistry(contentLibraryRecordDocumentCodecs),
+      );
+      final record = await store.read(
+        id: item.id.value,
+        scope: const ScopeKey(kind: 'content_library', id: 'default'),
+      );
+      final document = Map<String, Object?>.from(record!.document)
+        ..remove('catalogCount');
+      await store.update(previous: record, document: document);
+      await store.close();
+      library = await ContentLibrary.open(dataRoot: root);
+
+      final session = await library.openNovelReaderSession(item.id);
+      expect(session!.catalogCount, 1);
+      expect(await session.itemByRemoteIdentity('missing'), isNull);
+      expect(
+        await session.readContent(
+          CatalogEntry(
+            id: const CatalogEntryId('bad'),
+            itemId: item.id,
+            bindingId: const SourceBindingId('binding'),
+            remoteIdentity: 'bad',
+            title: '坏引用',
+            orderKey: '000000000000',
+            index: 0,
+            kind: ContentKind.novel,
+            contentStatus: 'ready',
+            contentReference: 'missing-object',
+          ),
+        ),
+        isA<UnsupportedContent>(),
+      );
+    },
+  );
+
+  test(
+    'session cache targets one chapter without listing the catalog',
+    () async {
+      final item = await library.bookshelf.add(
+        title: '定向缓存书',
+        kind: ContentKind.novel,
+        source: source,
+      );
+      await library.catalog.ensureNovelCatalog(
+        itemId: item.id,
+        chapters: const [
+          SourceNovelCatalogChapter(
+            remoteIdentity: 'target',
+            title: '目标',
+            index: 0,
+          ),
+        ],
+      );
+      final session = await library.openNovelReaderSession(item.id);
+      final entry = await session!.itemAtIndex(0);
+      await session.cacheChapter(entry: entry!, text: '缓存正文');
+      final refreshedEntry = await session.itemByRemoteIdentity('target');
+      expect(
+        await session.readContent(refreshedEntry!),
+        isA<NovelChapterContent>(),
+      );
+      expect(
+        ((await session.readContent(refreshedEntry)) as NovelChapterContent)
+            .text,
+        '缓存正文',
+      );
+    },
+  );
 }

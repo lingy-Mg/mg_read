@@ -145,6 +145,7 @@ final class PluginRuntime {
     Directory? runtimeDataRoot,
     Directory? developmentPluginRoot,
     Future<void> Function(Directory directory)? directoryLauncher,
+    Duration? testExitAfterReady,
   }) {
     return PluginRuntime._(
       _DesktopRuntimeSupervisor(
@@ -155,6 +156,7 @@ final class PluginRuntime {
           runtimeDataRoot: runtimeDataRoot,
           developmentPluginDirectory: developmentPluginRoot,
           directoryLauncher: directoryLauncher,
+          testExitAfterReady: testExitAfterReady,
         ),
       ),
     );
@@ -168,6 +170,13 @@ final class PluginRuntime {
   /// broadcast stream does not replay earlier records; use [latestDiagnostics]
   /// to obtain the current bounded snapshot before subscribing.
   Stream<RuntimeDiagnostic> get diagnostics => _supervisor.diagnostics;
+
+  /// Emits a terminal Runtime diagnostic when the owned Node child cannot
+  /// start or exits unexpectedly. The next explicit capability invocation is
+  /// allowed to perform one orderly cold restart; this stream never exposes
+  /// process, port, raw stderr, or filesystem details.
+  Stream<RuntimeDiagnostic> get fatalDiagnostics =>
+      diagnostics.where((diagnostic) => diagnostic.isFatal);
 
   /// Reports bounded Runtime-owned initialization progress when available.
   Stream<RuntimeInitializationProgress> get initialization =>

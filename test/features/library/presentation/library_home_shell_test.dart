@@ -53,6 +53,31 @@ void main() {
     );
   });
 
+  testWidgets('shows preparation only on the selected shelf entry', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(_host(preparingBookId: 'fixture-heavenly-path'));
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    final preparingRow = find.byWidgetPredicate(
+      (Widget widget) =>
+          widget is LibraryBookListItem &&
+          widget.data.id == 'fixture-heavenly-path' &&
+          widget.isPreparing,
+    );
+    expect(preparingRow, findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is LibraryBookListItem &&
+            widget.data.id != 'fixture-heavenly-path' &&
+            widget.isPreparing,
+      ),
+      findsNothing,
+    );
+  });
+
   testWidgets('exposes data-source management from the top-right menu', (
     WidgetTester tester,
   ) async {
@@ -571,6 +596,7 @@ Widget _host({
   LibraryHomeCallbacks callbacks = const LibraryHomeCallbacks(),
   VoidCallback? onToggleTheme,
   LibraryHomeViewData? data,
+  String? preparingBookId,
 }) {
   return MaterialApp(
     theme: AppTheme.light(),
@@ -582,6 +608,7 @@ Widget _host({
       isRefreshing: false,
       onRefresh: () async {},
       onToggleTheme: onToggleTheme,
+      preparingBookId: preparingBookId,
     ),
   );
 }

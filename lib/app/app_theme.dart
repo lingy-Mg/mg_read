@@ -172,6 +172,7 @@ abstract final class AppTypography {
   static const double pageTitle = 24;
   static const double sectionTitle = 18;
   static const double itemTitle = 16;
+  static const double continueReadingTitleMinimum = 12;
   static const double body = 14;
   static const double secondary = 13;
   static const double caption = 11;
@@ -377,6 +378,9 @@ abstract final class AppSpacing {
   static const double compactLayoutBreakpoint = 720;
   static const double continueReadingCoverWidth = unit * 26;
   static const double continueReadingCoverHeight = unit * 38;
+  static const double continueReadingCardHeight = unit * 30;
+  static const double continueReadingCardVerticalInset = unit * 4;
+  static const double continueReadingCardCoverOverlap = unit * 8;
   static const double continueReadingVerticalPadding = 17;
   static const double continueReadingActionWidth = unit * 32;
   static const double continueReadingActionHeight = unit * 8;
@@ -408,7 +412,7 @@ abstract final class AppSpacing {
   static const double profileStatsTop = unit * 22;
   static const double profileEditWidth = unit * 15;
   static const double profileSettingsRowHeight = unit * 13 - 1;
-  static const double profileSettingsIconSize = unit * 5 + 2;
+  static const double profileSettingsIconSize = unit * 6;
   static const double profileSettingsLeadingWidth = unit * 9;
   static const double compactCardStackBreakpoint = 280;
   static const double discoveryPagePadding = unit * 4;
@@ -539,6 +543,7 @@ abstract final class AppMotion {
   static const Duration bottomNavigationPillTravel = Duration(
     milliseconds: 420,
   );
+  static const Duration bottomNavigationTextureDrift = Duration(seconds: 8);
   static const Duration destinationTransition = Duration(milliseconds: 220);
   static const double bottomNavigationPillOvershoot = 0.045;
   static const double bottomNavigationPillTravelWidthScale = 0.72;
@@ -551,4 +556,5 @@ abstract final class AppMotion {
   static const double bottomNavigationLabelAlignmentY = 0.58;
   static const Curve navigationCurve = Curves.easeOutCubic;
   static const Curve navigationReverseCurve = Curves.easeInCubic;
+  static const Curve bottomNavigationTextureCurve = Curves.easeInOutSine;
 }

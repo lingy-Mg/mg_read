@@ -20,6 +20,9 @@ const _maxDiagnosticEntries = 32;
 /// Maximum accepted message length from a structured child diagnostic record.
 const _maxStructuredDiagnosticMessageLength = 256;
 
+/// Hard cap for the pre-boot, Runtime-owned fallback evidence channel.
+const _maxPreBootFallbackBytes = 16 * 1024;
+
 /// Receives a safe diagnostic after the monitor validates the child record.
 typedef _RuntimeDiagnosticSink = void Function(RuntimeDiagnostic diagnostic);
 
@@ -29,6 +32,9 @@ typedef _RuntimeInitializationSink =
 
 /// Reports child termination together with whether readiness was already seen.
 typedef _RuntimeProcessExitSink = void Function(int exitCode, bool wasReady);
+
+/// Reports a startup terminal before the Node diagnostics service exists.
+typedef _RuntimePreBootFatalSink = void Function(String code, String phase);
 
 /// Creates a Facade-safe startup exception with the current diagnostic snapshot.
 typedef _RuntimeStartupFailureFactory =
@@ -49,6 +55,7 @@ final class _DesktopRuntimeBundle {
     required this.directoryLauncher,
     required this.entrypoint,
     required this.nodeExecutable,
+    required this.testExitAfterReady,
     required this.workingDirectory,
   });
 
@@ -69,6 +76,9 @@ final class _DesktopRuntimeBundle {
 
   /// Exact packaged Node executable; never resolved from the ambient PATH.
   final File nodeExecutable;
+
+  /// Test-only crash fixture delay; production bundles always leave this null.
+  final Duration? testExitAfterReady;
 
   /// Bundle root used as the child process current working directory.
   final Directory workingDirectory;
@@ -119,8 +129,9 @@ final class _DesktopRuntimeBundle {
       directoryLauncher: _openWithWindowsExplorer,
       entrypoint: File(_joinPath(<String>[bundleRoot.path, 'dist', 'cli.js'])),
       nodeExecutable: File(
-        _joinPath(<String>[bundleRoot.path, 'node', 'node.exe']),
+        _joinPath(<String>[bundleRoot.path, 'node', 'MgReadNode.exe']),
       ),
+      testExitAfterReady: null,
       workingDirectory: bundleRoot,
     );
   }
@@ -136,6 +147,7 @@ final class _DesktopRuntimeBundle {
     Directory? runtimeDataRoot,
     Directory? developmentPluginDirectory,
     _DesktopDirectoryLauncher? directoryLauncher,
+    Duration? testExitAfterReady,
   }) {
     return _DesktopRuntimeBundle(
       dataRoot:
@@ -165,6 +177,7 @@ final class _DesktopRuntimeBundle {
               'node.exe',
             ]),
           ),
+      testExitAfterReady: testExitAfterReady,
       workingDirectory: runtimeRepositoryRoot,
     );
   }
@@ -229,6 +242,12 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   /// Memoized startup operation; concurrent invokes must await this one future.
   Future<_WireConnection>? _startup;
 
+  /// Monotonic timestamp for bounded, pre-boot failure timing evidence.
+  DateTime? _startupStartedAt;
+
+  /// Serializes bounded fallback appends without introducing another service.
+  Future<void> _preBootFallbackWrites = Future<void>.value();
+
   /// Serializes debug fingerprint checks and clean one-VM-at-a-time restarts.
   Future<void> _developmentSynchronization = Future<void>.value();
   String? _developmentFingerprint;
@@ -273,8 +292,13 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
         timeout: invocation._timeout,
       );
       return invocation._decodeResult(result);
-    } on Object {
-      if (_developmentPluginDirectory != null) _startup = null;
+    } on PluginRuntimeException catch (error) {
+      // Source/capability errors must not restart the healthy singleton. A
+      // disconnected bridge is terminal and can restart only on a later call.
+      if (error.code == 'transport_disconnected') {
+        _connection = null;
+        _startup = null;
+      }
       rethrow;
     }
   }
@@ -565,6 +589,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   /// Every failure tears down the partial child tree before a safe Facade error
   /// is exposed to Flutter.
   Future<_WireConnection> _start() async {
+    _startupStartedAt = DateTime.now();
     try {
       await _assertBundleAvailable();
 
@@ -583,6 +608,9 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
             '--bundled-plugin-root=${_bundle.bundledPluginDirectory!.path}',
           if (_developmentPluginDirectory != null)
             '--development-plugin-root=${_developmentPluginDirectory!.path}',
+          if (_bundle.testExitAfterReady != null)
+            '--test-exit-after-ready-millis='
+                '${_bundle.testExitAfterReady!.inMilliseconds}',
         ],
         environment: _allowlistedEnvironment(),
         includeParentEnvironment: false,
@@ -602,6 +630,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
         onDiagnostic: _recordDiagnostic,
         onProgress: _recordInitializationProgress,
         onExit: _handleProcessExit,
+        onPreBootFatal: _recordPreBootFatal,
         startupFailure: _failure,
       );
       _monitor = monitor;
@@ -612,45 +641,45 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       await connection.hello();
       _connection = connection;
       return connection;
-    } on PluginRuntimeException {
+    } on PluginRuntimeException catch (error) {
+      if (!_diagnostics.any(
+        (diagnostic) => diagnostic.code == error.code && diagnostic.isFatal,
+      )) {
+        _recordFatal(error.code, error.message);
+      }
+      _recordPreBootFatal(error.code, 'startup');
       await _stopFailedStart();
-      rethrow;
+      _startup = null;
+      throw _failure(error.code, error.message);
     } on WindowsJobObjectException catch (error) {
-      _recordDiagnostic(
-        RuntimeDiagnostic(
-          code: error.code,
-          level: RuntimeDiagnosticLevel.error,
-          message: error.message,
-        ),
-      );
+      _recordFatal(error.code, error.message);
       await _stopFailedStart();
+      _startup = null;
+      _recordPreBootFatal(error.code, 'processOwnership');
       throw _failure(
         error.code,
         'The desktop Runtime could not be started with required process ownership.',
       );
     } on ProcessException {
-      _recordDiagnostic(
-        const RuntimeDiagnostic(
-          code: 'runtime_process_launch_failed',
-          level: RuntimeDiagnosticLevel.error,
-          message:
-              'The packaged desktop Runtime process could not be launched.',
-        ),
+      _recordFatal(
+        'runtime_process_launch_failed',
+        'The packaged desktop Runtime process could not be launched.',
       );
       await _stopFailedStart();
+      _startup = null;
+      _recordPreBootFatal('runtime_process_launch_failed', 'launch');
       throw _failure(
         'runtime_process_launch_failed',
         'The packaged desktop Runtime process could not be launched.',
       );
     } on Object {
-      _recordDiagnostic(
-        const RuntimeDiagnostic(
-          code: 'runtime_start_failed',
-          level: RuntimeDiagnosticLevel.error,
-          message: 'The desktop Runtime failed during startup.',
-        ),
+      _recordFatal(
+        'runtime_start_failed',
+        'The desktop Runtime failed during startup.',
       );
       await _stopFailedStart();
+      _startup = null;
+      _recordPreBootFatal('runtime_start_failed', 'startup');
       throw _failure(
         'runtime_start_failed',
         'The desktop Runtime could not be started.',
@@ -713,19 +742,63 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
 
   /// Converts a post-ready child exit into a safe transport failure/diagnostic.
   void _handleProcessExit(int exitCode, bool wasReady) {
-    if (!wasReady) {
-      return;
-    }
+    if (!wasReady) return;
     _connection?.markProcessExited();
+    _connection = null;
+    _startup = null;
+    _process = null;
+    _closeJobObject();
     if (!_disposed && !_developmentRestarting && !_controlledRestarting) {
-      _recordDiagnostic(
-        RuntimeDiagnostic(
-          code: 'runtime_process_exited',
-          level: RuntimeDiagnosticLevel.error,
-          message:
-              'The desktop Runtime process exited unexpectedly (exit code $exitCode).',
-        ),
+      _recordFatal(
+        'runtime_process_exited',
+        'The desktop Runtime process exited unexpectedly.',
       );
+    }
+  }
+
+  /// Appends only bounded, safe startup evidence before Node diagnostics opens.
+  ///
+  /// This channel deliberately has no exception, stderr, path, request, or
+  /// plugin fields. A write failure is observational and cannot alter startup.
+  void _recordPreBootFatal(String code, String phase) {
+    final startedAt = _startupStartedAt;
+    final elapsedMillis = startedAt == null
+        ? 0
+        : DateTime.now().difference(startedAt).inMilliseconds.clamp(0, 60000);
+    final fingerprint =
+        '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}'
+        '-${Random.secure().nextInt(1 << 32).toRadixString(36)}';
+    final line = jsonEncode(<String, Object?>{
+      'v': 1,
+      'code': code,
+      'phase': phase,
+      'fingerprint': fingerprint,
+      'elapsedMillis': elapsedMillis,
+    });
+    final previous = _preBootFallbackWrites;
+    _preBootFallbackWrites = previous.then((_) => _appendPreBootFallback(line));
+    unawaited(_preBootFallbackWrites);
+  }
+
+  Future<void> _appendPreBootFallback(String line) async {
+    try {
+      final directory = Directory(
+        _joinPath(<String>[_bundle.dataRoot.path, 'diagnostics']),
+      );
+      await directory.create(recursive: true);
+      final file = File(
+        _joinPath(<String>[directory.path, 'desktop-fatal-fallback.txt']),
+      );
+      final bytes = utf8.encode('$line\n');
+      if (bytes.length > _maxPreBootFallbackBytes) return;
+      final length = await file.exists() ? await file.length() : 0;
+      if (length + bytes.length > _maxPreBootFallbackBytes) {
+        await file.writeAsBytes(bytes, flush: true);
+      } else {
+        await file.writeAsBytes(bytes, mode: FileMode.append, flush: true);
+      }
+    } on Object {
+      // The fallback channel is strictly best effort and must not recurse.
     }
   }
 
@@ -890,6 +963,16 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       _diagnosticController.add(diagnostic);
     }
   }
+
+  void _recordFatal(String code, String message) {
+    _recordDiagnostic(
+      RuntimeDiagnostic(
+        code: code,
+        level: RuntimeDiagnosticLevel.fatal,
+        message: message,
+      ),
+    );
+  }
 }
 
 /// Converts the owned child's stdout/stderr/exit events into safe lifecycle data.
@@ -902,10 +985,12 @@ final class _RuntimeChildMonitor {
     required _RuntimeDiagnosticSink onDiagnostic,
     required _RuntimeInitializationSink onProgress,
     required _RuntimeProcessExitSink onExit,
+    required _RuntimePreBootFatalSink onPreBootFatal,
     required _RuntimeStartupFailureFactory startupFailure,
   }) : _onDiagnostic = onDiagnostic,
        _onProgress = onProgress,
        _onExit = onExit,
+       _onPreBootFatal = onPreBootFatal,
        _startupFailure = startupFailure {
     _stdoutSubscription = _process.stdout
         .transform(utf8.decoder)
@@ -945,6 +1030,9 @@ final class _RuntimeChildMonitor {
 
   /// Informs the supervisor whether exit occurred before or after readiness.
   final _RuntimeProcessExitSink _onExit;
+
+  /// Records privacy-safe fallback evidence while no Core TXT store exists.
+  final _RuntimePreBootFatalSink _onPreBootFatal;
 
   /// Owned direct child whose stdout, stderr, and exit state are monitored.
   final Process _process;
@@ -1005,6 +1093,7 @@ final class _RuntimeChildMonitor {
         if (diagnostic != null) {
           _record(diagnostic.diagnostic);
           if (diagnostic.isFatal) {
+            _onPreBootFatal(diagnostic.diagnostic.code, 'startup');
             _failStartup(
               'runtime_start_failed',
               'The desktop Runtime reported a startup failure.',
@@ -1063,6 +1152,7 @@ final class _RuntimeChildMonitor {
     }
     _record(diagnostic.diagnostic);
     if (!_readyReceived && diagnostic.isFatal) {
+      _onPreBootFatal(diagnostic.diagnostic.code, 'startup');
       _failStartup(
         'runtime_start_failed',
         'The desktop Runtime reported a startup failure.',
@@ -1079,7 +1169,7 @@ final class _RuntimeChildMonitor {
       _record(
         RuntimeDiagnostic(
           code: 'runtime_exited_before_ready',
-          level: RuntimeDiagnosticLevel.error,
+          level: RuntimeDiagnosticLevel.fatal,
           message:
               'The desktop Runtime exited before it became ready (exit code $exitCode).',
         ),
@@ -1088,6 +1178,7 @@ final class _RuntimeChildMonitor {
         'runtime_exited_before_ready',
         'The desktop Runtime exited before it became ready.',
       );
+      _onPreBootFatal('runtime_exited_before_ready', 'startup');
     }
     _onExit(exitCode, _readyReceived);
   }
@@ -1166,7 +1257,7 @@ _StructuredDiagnostic? _parseStructuredDiagnostic(String line) {
     }
     final fatal = type == 'fatal';
     final level = fatal
-        ? RuntimeDiagnosticLevel.error
+        ? RuntimeDiagnosticLevel.fatal
         : switch (value['level']) {
             'info' => RuntimeDiagnosticLevel.info,
             'warning' => RuntimeDiagnosticLevel.warning,

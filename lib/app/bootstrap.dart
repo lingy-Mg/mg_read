@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:mg_read/app/app.dart';
 import 'package:mg_read/app/app_diagnostics_boundary.dart';
+import 'package:mg_read/app/app_fatal_error_reporter.dart';
 import 'package:mg_read/app/app_settings_lifecycle.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
@@ -104,7 +105,11 @@ Future<void> bootstrapMgReadApp({
         registry: AppDiagnosticEvents.registry,
         source: DiagnosticSource.app,
       );
-  final errorBoundary = AppDiagnosticsErrorBoundary.install(diagnostics);
+  final fatalErrorReporter = AppFatalErrorReporter(diagnostics);
+  final errorBoundary = AppDiagnosticsErrorBoundary.install(
+    diagnostics,
+    fatalReporter: fatalErrorReporter,
+  );
   ContentLibrary? persistentContentLibrary = contentLibrary;
   AppPersistence? sharedPersistence;
   AppSettingsManager? manager = settingsManager;
@@ -154,6 +159,7 @@ Future<void> bootstrapMgReadApp({
         overrides: [
           appSettingsProvider.overrideWithValue(resolvedManager),
           diagnosticsManagerProvider.overrideWithValue(diagnostics),
+          fatalErrorReporterProvider.overrideWithValue(fatalErrorReporter),
           diagnosticsQueryProvider.overrideWithValue(persistentDiagnostics),
           diagnosticsCaptureProvider.overrideWithValue(persistentDiagnostics),
           diagnosticsMaintenanceProvider.overrideWithValue(
@@ -247,6 +253,7 @@ Future<void> bootstrapMgReadApp({
           diagnostics: diagnostics,
           closeDiagnostics: persistentDiagnostics?.close ?? diagnostics.close,
           disposeDiagnosticsBoundary: errorBoundary.dispose,
+          disposeFatalErrorReporter: fatalErrorReporter.dispose,
           closeContentLibrary: persistentContentLibrary == null
               ? null
               : () => _closePersistenceResources(
@@ -290,6 +297,7 @@ Future<void> bootstrapMgReadApp({
       traceContext: bootstrapSpan.traceContext,
     );
     errorBoundary.dispose();
+    fatalErrorReporter.dispose();
     await manager?.close();
     await persistentContentLibrary?.close();
     await sharedPersistence?.close();

@@ -13,11 +13,15 @@ class AppBottomNavigationMotionScope extends StatefulWidget {
   const AppBottomNavigationMotionScope({
     required this.child,
     this.initialDestination,
+    this.animateTexture = true,
     super.key,
   });
 
   final Widget child;
   final AppNavigationDestination? initialDestination;
+
+  /// Whether the decorative texture is allowed to play its ambient motion.
+  final bool animateTexture;
 
   static _AppBottomNavigationMotionScopeState? _maybeOf(BuildContext context) {
     return context
@@ -34,15 +38,21 @@ class AppBottomNavigationMotionScope extends StatefulWidget {
 
 class _AppBottomNavigationMotionScopeState
     extends State<AppBottomNavigationMotionScope>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _controller;
+  late final AnimationController _textureController;
   Animation<double> _position = const AlwaysStoppedAnimation<double>(0);
   Animation<double> _pillWidthScale = const AlwaysStoppedAnimation<double>(1);
   Animation<double> _pillHeightScale = const AlwaysStoppedAnimation<double>(1);
+  late final Animation<double> _texturePhase;
   AppNavigationDestination? _origin;
   AppNavigationDestination? _target;
+  bool _textureMotionEnabled = false;
+  bool _textureMovingForward = true;
 
   Listenable get animation => _controller;
+  Listenable get textureAnimation => _textureController;
+  double get texturePhase => _texturePhase.value;
 
   @override
   void initState() {
@@ -51,9 +61,32 @@ class _AppBottomNavigationMotionScopeState
       duration: AppMotion.bottomNavigationPillTravel,
       vsync: this,
     );
+    _textureController = AnimationController(
+      duration: AppMotion.bottomNavigationTextureDrift,
+      vsync: this,
+    );
+    _texturePhase = CurvedAnimation(
+      parent: _textureController,
+      curve: AppMotion.bottomNavigationTextureCurve,
+      reverseCurve: AppMotion.bottomNavigationTextureCurve,
+    );
     final AppNavigationDestination? initial = widget.initialDestination;
     if (initial != null) {
       _setImmediate(initial);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncTextureMotion();
+  }
+
+  @override
+  void didUpdateWidget(covariant AppBottomNavigationMotionScope oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.animateTexture != widget.animateTexture) {
+      _syncTextureMotion();
     }
   }
 
@@ -134,6 +167,34 @@ class _AppBottomNavigationMotionScopeState
       arrival: AppMotion.bottomNavigationPillArrivalHeightScale,
     ).animate(_controller);
     _controller.forward(from: 0);
+    _playTextureMotion();
+  }
+
+  void _syncTextureMotion() {
+    final bool shouldAnimate =
+        widget.animateTexture && !MediaQuery.disableAnimationsOf(context);
+    if (_textureMotionEnabled == shouldAnimate) return;
+
+    _textureMotionEnabled = shouldAnimate;
+    if (shouldAnimate) {
+      _playTextureMotion();
+      return;
+    }
+
+    _textureController
+      ..stop()
+      ..value = 0.5;
+  }
+
+  void _playTextureMotion() {
+    if (!_textureMotionEnabled) return;
+
+    if (_textureMovingForward) {
+      _textureController.forward();
+    } else {
+      _textureController.reverse();
+    }
+    _textureMovingForward = !_textureMovingForward;
   }
 
   TweenSequence<double> _pillScaleSequence({
@@ -181,6 +242,7 @@ class _AppBottomNavigationMotionScopeState
 
   @override
   void dispose() {
+    _textureController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -230,6 +292,7 @@ class AppBottomNavigation extends StatelessWidget {
     if (motion == null) {
       return AppBottomNavigationMotionScope(
         initialDestination: selected,
+        animateTexture: false,
         child: _AppBottomNavigationContent(
           selected: selected,
           onSelected: onSelected,
@@ -317,12 +380,25 @@ class _AppBottomNavigationContent extends StatelessWidget {
                     ),
                     IgnorePointer(
                       key: const Key('app-bottom-navigation-texture'),
-                      child: CustomPaint(
-                        painter: _AppBottomNavigationTexturePainter(
-                          lineColor: tokens.accent.withValues(alpha: 0.075),
-                          washColor: tokens.featureSurface.withValues(
-                            alpha: 0.22,
-                          ),
+                      child: RepaintBoundary(
+                        child: AnimatedBuilder(
+                          animation: motion.textureAnimation,
+                          builder: (BuildContext context, Widget? child) {
+                            return CustomPaint(
+                              key: const Key(
+                                'app-bottom-navigation-texture-paint',
+                              ),
+                              painter: _AppBottomNavigationTexturePainter(
+                                lineColor: tokens.accent.withValues(
+                                  alpha: 0.075,
+                                ),
+                                washColor: tokens.featureSurface.withValues(
+                                  alpha: 0.22,
+                                ),
+                                phase: motion.texturePhase,
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),
@@ -405,13 +481,17 @@ class _AppBottomNavigationTexturePainter extends CustomPainter {
   const _AppBottomNavigationTexturePainter({
     required this.lineColor,
     required this.washColor,
+    required this.phase,
   });
 
   final Color lineColor;
   final Color washColor;
+  final double phase;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final double horizontalDrift = (phase - 0.5) * AppSpacing.unit;
+    final double verticalDrift = (0.5 - phase) * (AppSpacing.unit / 2);
     final Paint wash = Paint()
       ..color = washColor
       ..style = PaintingStyle.fill;
@@ -424,6 +504,8 @@ class _AppBottomNavigationTexturePainter extends CustomPainter {
       ..strokeWidth = AppSpacing.unit / 4
       ..strokeCap = StrokeCap.round;
 
+    canvas.save();
+    canvas.translate(horizontalDrift, verticalDrift);
     canvas.drawOval(
       Rect.fromCenter(
         center: Offset(size.width * 0.12, size.height * 1.08),
@@ -466,12 +548,14 @@ class _AppBottomNavigationTexturePainter extends CustomPainter {
         ..drawPath(leftPage, line)
         ..drawPath(rightPage, line);
     }
+    canvas.restore();
   }
 
   @override
   bool shouldRepaint(covariant _AppBottomNavigationTexturePainter oldDelegate) {
     return oldDelegate.lineColor != lineColor ||
-        oldDelegate.washColor != washColor;
+        oldDelegate.washColor != washColor ||
+        oldDelegate.phase != phase;
   }
 }
 

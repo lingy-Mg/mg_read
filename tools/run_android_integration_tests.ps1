@@ -12,7 +12,10 @@ param(
     [switch]$All,
 
     [ValidateRange(1, 3600)]
-    [int]$TimeoutSeconds = 600
+    [int]$TimeoutSeconds = 600,
+
+    [ValidateSet('debug', 'profile')]
+    [string]$BuildMode = 'debug'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,8 +25,10 @@ $androidApplicationId = 'com.mgread.mg_read'
 $runtimeNodeRoot = Join-Path $projectRoot 'packages/mg_read_runtime/tools/node-v24.16.0-win-x64'
 $runtimeNpm = Join-Path $runtimeNodeRoot 'npm.cmd'
 
-$deviceState = (& $adb.Source -s $DeviceId get-state).Trim()
-if ($LASTEXITCODE -ne 0 -or $deviceState -ne 'device') {
+$deviceStateOutput = & $adb.Source -s $DeviceId get-state 2>$null | Out-String
+$deviceStateExitCode = $LASTEXITCODE
+$deviceState = $deviceStateOutput.Trim()
+if ($deviceStateExitCode -ne 0 -or $deviceState -ne 'device') {
     throw "Android emulator '$DeviceId' is not connected and ready. Start it yourself, then rerun this command."
 }
 
@@ -118,16 +123,18 @@ try {
             deviceId = $DeviceId
             avdName = $avdName
             target = $testTarget
+            buildMode = $BuildMode
             startedAt = (Get-Date).ToUniversalTime().ToString('o')
             status = 'running'
         }
 
         Write-Host "Running Android Integration Test on user-provided $DeviceId ($avdName): $testTarget"
-        & flutter build apk --debug --target $testTarget --no-pub
+        $buildModeFlag = "--$BuildMode"
+        & flutter build apk $buildModeFlag --target $testTarget --no-pub
         if ($LASTEXITCODE -ne 0) {
             throw "Android Integration Test APK build failed for '$testTarget'."
         }
-        $testApk = Join-Path $projectRoot 'build/app/outputs/flutter-apk/app-debug.apk'
+        $testApk = Join-Path $projectRoot "build/app/outputs/flutter-apk/app-$BuildMode.apk"
         & $adb.Source -s $DeviceId install -r -t $testApk
         if ($LASTEXITCODE -ne 0) {
             throw "Android Integration Test APK installation failed for '$testTarget'."
@@ -156,13 +163,19 @@ try {
                 throw "The temporary ADB plugin '$($pluginArtifact.Name)' could not be removed."
             }
         }
-        & flutter drive `
-            --device-id $DeviceId `
-            --target $testTarget `
-            --driver test_driver/android_integration_test.dart `
-            --use-application-binary $testApk `
-            --timeout $TimeoutSeconds `
-            --no-pub
+        $driveArguments = @(
+            'drive',
+            '--device-id', $DeviceId,
+            '--target', $testTarget,
+            '--driver', 'test_driver/android_integration_test.dart',
+            '--use-application-binary', $testApk,
+            '--timeout', $TimeoutSeconds,
+            '--no-pub'
+        )
+        if ($BuildMode -eq 'profile') {
+            $driveArguments += '--profile'
+        }
+        & flutter @driveArguments
         $commandExitCode = $LASTEXITCODE
         $result.exitCode = $commandExitCode
         $result.completedAt = (Get-Date).ToUniversalTime().ToString('o')

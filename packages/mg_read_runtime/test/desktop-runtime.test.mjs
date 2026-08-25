@@ -172,6 +172,21 @@ test("desktop Runtime binds only loopback HTTP health gates", async (t) => {
   });
 });
 
+test("desktop Runtime uses distinct OS-assigned loopback ports without fallback selection", async (t) => {
+  const first = await createRuntime(t);
+  const second = await createRuntime(t);
+  const [firstReady, secondReady] = await Promise.all([
+    first.start(),
+    second.start(),
+  ]);
+
+  assert.equal(firstReady.host, "127.0.0.1");
+  assert.equal(secondReady.host, "127.0.0.1");
+  assert.ok(firstReady.port > 0);
+  assert.ok(secondReady.port > 0);
+  assert.notEqual(firstReady.port, secondReady.port);
+});
+
 test("desktop Runtime completes hello, ping and stable protocol errors over WebSocket", async (t) => {
   const runtime = await createRuntime(t);
   const ready = await runtime.start();

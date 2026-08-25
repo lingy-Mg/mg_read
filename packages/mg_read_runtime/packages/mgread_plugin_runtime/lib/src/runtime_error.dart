@@ -14,6 +14,10 @@ enum RuntimeDiagnosticLevel {
 
   /// Startup or lifecycle failure that prevents the requested operation.
   error,
+
+  /// A terminal Runtime failure. The next Facade invocation may perform one
+  /// orderly cold restart; callers can surface global fatal UI immediately.
+  fatal,
 }
 
 /// A safe, Runtime-owned diagnostic record.
@@ -37,6 +41,9 @@ final class RuntimeDiagnostic {
 
   /// Safe bounded text suitable for direct user-visible diagnostics.
   final String message;
+
+  /// Whether this record represents a terminal Runtime lifecycle failure.
+  bool get isFatal => level == RuntimeDiagnosticLevel.fatal;
 }
 
 /// A stable, safe Runtime failure exposed by the Flutter-facing Facade.

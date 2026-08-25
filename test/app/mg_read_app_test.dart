@@ -135,11 +135,10 @@ void main() {
     await tester.tap(find.byType(LibraryBookListItem).first);
     await tester.pumpAndSettle();
 
-    expect(find.text('暂时无法开始阅读'), findsOneWidget);
-    expect(
-      find.text('诊断代码：reader_launch_source_detail_timeout'),
-      findsOneWidget,
-    );
+    expect(find.byType(LibraryPage), findsOneWidget);
+    expect(find.text('无法从书源获取这本书的详情。'), findsOneWidget);
+    expect(find.text('重试'), findsOneWidget);
+    expect(find.text('暂时无法开始阅读'), findsNothing);
   });
 
   testWidgets('route and reader diagnostics never persist route parameters', (
@@ -170,7 +169,7 @@ void main() {
         (event) =>
             event.eventName == 'reader.launch.stage.start' &&
             event.attributes.values['stage'] ==
-                DiagnosticStringValue('requestBuild'),
+                DiagnosticStringValue('mapping'),
       ),
       isNotEmpty,
     );

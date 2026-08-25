@@ -73,6 +73,12 @@ await runtime.invoke(RuntimeDiagnosticsCaptureStopInvocation(capture.sessionId))
 Facade 将失败投影为稳定 `PluginRuntimeException.code` 和有界诊断，不转发 raw stderr、路径、
 插件文本或进程控制。
 
+`fatalDiagnostics` 只发布 Node 启动失败或意外退出等终端 Runtime 状态，供应用显示全局 fatal
+提示；它仍只含稳定 code 和安全文案。ready 前尚不存在 Node TXT diagnostics 时，Supervisor 在
+Runtime 私有根写入 16 KiB 封顶的 `desktop-fatal-fallback.txt`，其中仅有 code、phase、opaque
+fingerprint 和耗时，不含路径、stderr、异常、请求或插件数据。不会自动重试；仅下一次显式
+capability 调用会有序冷启动唯一 Runtime。
+
 `PluginRuntime.desktopForTesting` 与 `debug*` 成员只用于本仓库 testkit。测试专用临时 data
 root 用来预置标准插件版本，不是生产依赖注入接口，也不能由主项目调用。
 
@@ -82,7 +88,8 @@ Windows 通过受管 Node 子进程重启完成冷激活，Android 通过专用 
 Runtime 实例完成冷激活。
 
 发布 Windows package 前由 Runtime 仓库执行 `npm run stage:flutter-windows`，把固定
-`node.exe`、Node LICENSE 和编译 Core 放入本 package 的递归资产布局。Android Javet、macOS 和最终应用包内
+`MgReadNode.exe`、Node LICENSE 和编译 Core 放入本 package 的递归资产布局；该文件是原 Node
+二进制的改名副本，不使用 PATH 或全局 Node。Android Javet、macOS 和最终应用包内
 运行需要各自验收，desktop 源码测试不替代这些门禁。
 
 Windows Debug 由本 package 在仓库内解析 `plugins/sources` 并把该内部目录交给 Runtime；书源

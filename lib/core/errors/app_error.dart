@@ -9,6 +9,7 @@ enum AppErrorCode {
   pluginNotFound('plugin_not_found', false),
   pluginDisabled('plugin_disabled', false),
   pluginDamaged('plugin_damaged', false),
+  pluginExecutionFailed('plugin_execution_failed', false),
   methodNotFound('method_not_found', false),
   unsupported('unsupported', false),
   invalidRequest('invalid_request', false),
@@ -136,6 +137,7 @@ final class AppError implements Exception {
       AppErrorCode.pluginNotFound ||
       AppErrorCode.pluginDisabled ||
       AppErrorCode.pluginDamaged => AppErrorCategory.pluginUnavailable,
+      AppErrorCode.pluginExecutionFailed => AppErrorCategory.unknownSafe,
       AppErrorCode.interactionRequired => AppErrorCategory.interactionRequired,
       AppErrorCode.notFound ||
       AppErrorCode.rangeNotSatisfiable => AppErrorCategory.contentUnavailable,

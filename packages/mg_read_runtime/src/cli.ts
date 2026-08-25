@@ -75,6 +75,34 @@ function parseLaunchOptions(arguments_: readonly string[]): DesktopRuntimeOption
   };
 }
 
+/**
+ * Consumes a testkit-only crash trigger before parsing the production launch
+ * contract. It is accepted exclusively by the package-owned Dart test bundle
+ * and is never supplied by application code or the public Facade.
+ */
+function takeTestExitAfterReadyMillis(arguments_: readonly string[]): {
+  readonly launchArguments: readonly string[];
+  readonly testExitAfterReadyMillis: number | undefined;
+} {
+  let testExitAfterReadyMillis: number | undefined;
+  const launchArguments: string[] = [];
+  for (const argument of arguments_) {
+    if (!argument.startsWith("--test-exit-after-ready-millis=")) {
+      launchArguments.push(argument);
+      continue;
+    }
+    if (testExitAfterReadyMillis !== undefined) {
+      throw new Error("The desktop Runtime received invalid launch options.");
+    }
+    const value = Number(argument.slice("--test-exit-after-ready-millis=".length));
+    if (!Number.isSafeInteger(value) || value <= 0 || value > 60_000) {
+      throw new Error("The desktop Runtime received invalid launch options.");
+    }
+    testExitAfterReadyMillis = value;
+  }
+  return { launchArguments, testExitAfterReadyMillis };
+}
+
 /** Idempotently stops the one Core owned by this executable process. */
 async function stopRuntime(): Promise<void> {
   if (stopping) {
@@ -127,9 +155,15 @@ function startupFailureCode(error: unknown): RuntimeFatalDiagnosticCode {
 
 /** Starts the Core and writes its sole stdout readiness record. */
 async function main(): Promise<void> {
-  runtime = new DesktopRuntime(parseLaunchOptions(process.argv.slice(2)));
+  const { launchArguments, testExitAfterReadyMillis } = takeTestExitAfterReadyMillis(
+    process.argv.slice(2),
+  );
+  runtime = new DesktopRuntime(parseLaunchOptions(launchArguments));
   const ready = await runtime.start();
   process.stdout.write(`${JSON.stringify(ready)}\n`);
+  if (testExitAfterReadyMillis !== undefined) {
+    setTimeout(() => process.exit(86), testExitAfterReadyMillis).unref();
+  }
 }
 
 // Signal, exception, and rejection handlers intentionally route through the

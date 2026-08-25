@@ -2,6 +2,7 @@ export interface MgReadPluginContext {
   readonly dataDir: string;
   readonly cacheDir: string;
   readonly http: { fetch(input: string | URL, init?: RequestInit): Promise<Response> };
+  readonly resource: { proxy(request: Record<string, unknown>): string };
   readonly log: { debug(event: string): void; info(event: string): void; warn(event: string): void; error(event: string): void };
   readonly app: { readonly runtimeVersion: string; readonly nodeVersion: string; readonly pluginApi: number };
   readonly plugin: { readonly id: string; readonly version: string };

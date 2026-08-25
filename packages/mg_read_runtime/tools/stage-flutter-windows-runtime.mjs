@@ -24,7 +24,7 @@ const assetsRoot = resolve(
   "windows-x64",
 );
 const stagedNodeDirectory = resolve(assetsRoot, "node");
-const stagedNodeExecutable = resolve(stagedNodeDirectory, "node.exe");
+const stagedNodeExecutable = resolve(stagedNodeDirectory, "MgReadNode.exe");
 const stagedNodeLicense = resolve(stagedNodeDirectory, "LICENSE");
 const stagedDist = resolve(assetsRoot, "dist");
 const stagedDefaultPluginsDirectory = resolve(assetsRoot, "default-plugins");

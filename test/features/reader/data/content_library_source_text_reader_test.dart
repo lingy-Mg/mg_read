@@ -11,6 +11,7 @@ import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver
 import 'package:mg_read/features/discovery/application/content_library_source_prefetcher.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/reader/application/reader_launch_failure.dart';
+import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/reader/data/content_library_source_text_reader.dart';
 
 void main() {
@@ -61,7 +62,7 @@ void main() {
       final firstRequest = await reader.launch(item.id.value);
       expect(firstRequest.bookId, item.id.value);
       expect(gateway.requestedCatalogCount, 1);
-      expect(gateway.requestedDetailCount, 1);
+      expect(gateway.requestedDetailCount, 0);
       expect(firstRequest.extensions.chapterStateCapability, isNotNull);
       expect(await library.listAllCatalog(item.id), hasLength(2));
       expect(
@@ -76,6 +77,13 @@ void main() {
         (await library.listAllCatalog(item.id)).first.contentStatus,
         'ready',
       );
+      final warmCatalogCount = gateway.requestedCatalogCount;
+      final warmDetailCount = gateway.requestedDetailCount;
+      final warm = await reader.warmLocal(item.id.value);
+      expect(warm, isNotNull);
+      expect(warm!.preparationKind, ReaderLaunchPreparationKind.memory);
+      expect(gateway.requestedCatalogCount, warmCatalogCount);
+      expect(gateway.requestedDetailCount, warmDetailCount);
       final hydrated = await library.getLibraryItem(item.id);
       expect(hydrated?.revision, greaterThan(item.revision));
       expect(await firstRequest.stateStore.loadProgress(item.id.value), isNull);
@@ -105,8 +113,13 @@ void main() {
         '第一段。',
       );
       expect(gateway.requestedCatalogCount, 1);
-      expect(gateway.requestedDetailCount, 2);
-      expect(gateway.requestedContentChapterIds, <String>['chapter-1']);
+      // Local launch uses the immutable session snapshot and shelf metadata;
+      // optional remote detail is not fetched again.
+      expect(gateway.requestedDetailCount, 0);
+      expect(gateway.requestedContentChapterIds, <String>[
+        'chapter-1',
+        'chapter-2',
+      ]);
     },
   );
 
@@ -229,6 +242,7 @@ void main() {
 
       expect(request.bookId, item.id.value);
       expect(gateway.requestedCatalogCount, 1);
+      expect(gateway.requestedContentChapterIds, <String>['chapter-1']);
       expect(await library.listAllCatalog(item.id), hasLength(2));
     },
   );
@@ -311,8 +325,10 @@ void main() {
       ).launch(item.id.value);
 
       expect(request.bookId, item.id.value);
-      expect(gateway.requestedCatalogCount, 1);
-      expect(await library.listAllCatalog(item.id), hasLength(2));
+      // Local launch does not repair a partial snapshot by fetching detail or
+      // a complete remote catalog.
+      expect(gateway.requestedCatalogCount, 0);
+      expect(await library.listAllCatalog(item.id), hasLength(1));
     },
   );
 }

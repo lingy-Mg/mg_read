@@ -74,6 +74,7 @@ export class PluginManagerError extends Error {
       | "cancelled"
       | "invalid_request"
       | "plugin_disabled"
+      | "plugin_execution_failed"
       | "plugin_invalid_response"
       | "plugin_load_failed"
       | "plugin_not_found"
@@ -679,7 +680,10 @@ export class PluginManager {
       if (error instanceof PluginContentValidationError) {
         throw new PluginManagerError("plugin_invalid_response");
       }
-      throw new PluginManagerError("plugin_invalid_response");
+      // Plugin code may reject for a source-side, module, or upstream reason.
+      // Preserve that recoverable category without retaining its error text,
+      // stack, request data, or response content in diagnostics.
+      throw new PluginManagerError("plugin_execution_failed");
     }
   }
 

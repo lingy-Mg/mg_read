@@ -77,6 +77,7 @@ final class RecordQuery {
     this.parentId,
     this.stateKey,
     this.identityKey,
+    this.orderKey,
     this.after,
     this.limit = 100,
   }) : assert(limit > 0 && limit <= 1000);
@@ -86,6 +87,9 @@ final class RecordQuery {
   final String? parentId;
   final String? stateKey;
   final String? identityKey;
+
+  /// Exact order projection filter used by typed repositories for point reads.
+  final String? orderKey;
   final RecordCursor? after;
   final int limit;
 }

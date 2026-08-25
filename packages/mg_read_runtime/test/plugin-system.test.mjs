@@ -779,6 +779,31 @@ test("plugin calls give cancel and timeout exactly one terminal event", async (t
   );
 });
 
+test("plugin execution failures stay distinct from invalid plugin responses", async (t) => {
+  const dataRoot = await temporaryDirectory(t, "mgread-plugin-execution-failure-");
+  const project = await createDelayedPlugin(join(dataRoot, "project"));
+  await new PluginInstaller(dataRoot).installProject(project);
+  const events = [];
+  const manager = new PluginManager(dataRoot, {
+    events: (event) => events.push(event),
+  });
+  await manager.initialize();
+
+  await assert.rejects(
+    manager.getDetail(
+      "org.example.delayed",
+      { id: "opaque:secret-canary-not-diagnostic" },
+      new AbortController().signal,
+      String(Date.now() + 5_000),
+    ),
+    (error) => error?.code === "plugin_execution_failed",
+  );
+  assert.equal(
+    events.filter((event) => event.code === "plugin_invocation_failed").length,
+    1,
+  );
+});
+
 test("an unavailable optional dependency is skipped without changing install success", async (t) => {
   const dataRoot = await temporaryDirectory(t, "mgread-plugin-optional-");
   const integrity = `sha512-${Buffer.alloc(64).toString("base64")}`;

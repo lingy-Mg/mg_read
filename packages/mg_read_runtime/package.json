@@ -1,6 +1,6 @@
 {
   "name": "mg_read_runtime",
-  "version": "0.3.0-standard.0",
+  "version": "0.3.0-standard.2",
   "private": true,
   "description": "MgRead standalone Plugin Runtime baseline: complete runtime ownership, shared protocol, and future Flutter-facing facade.",
   "type": "module",

@@ -13,6 +13,7 @@ void main() {
     () async {
       const disabledEventCount = 50000;
       const enabledEventCount = 20000;
+      const captureEventCount = 5000;
       final disabledSink = RecordingDiagnosticEventSink(
         minimumSeverity: DiagnosticSeverity.fatal,
       );
@@ -74,10 +75,48 @@ void main() {
           );
           call.stop();
           enabledLatencies.add(call.elapsedMicroseconds);
+          if ((index + 1) % 2000 == 0) {
+            await service.manager.flush(timeout: const Duration(seconds: 5));
+          }
         }
         final rssAfterAdmission = ProcessInfo.currentRss;
         await service.manager.flush(timeout: const Duration(seconds: 15));
         enabledTotal.stop();
+        final storageBeforeCapture = await service.getStatistics();
+        await service.startCapture(
+          DiagnosticCapturePolicy(
+            payloadKind: DiagnosticPayloadKind.safeStructured,
+            duration: const Duration(minutes: 1),
+            maxStoredBytes: 1024 * 1024,
+            detailStorage: DiagnosticDetailStorage.memoryOnly,
+            components: const <String>{'feature.reader'},
+          ),
+        );
+        final captureLatencies = <int>[];
+        final captureTotal = Stopwatch()..start();
+        for (var index = 0; index < captureEventCount; index += 1) {
+          final call = Stopwatch()..start();
+          final span = service.manager.startSpan(
+            AppDiagnosticEvents.readerLaunchStage,
+            attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+              'stage': DiagnosticValue.string('firstContentFrame'),
+              'resultState': DiagnosticValue.string('started'),
+            }),
+          );
+          span.complete(
+            attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+              'stage': DiagnosticValue.string('firstContentFrame'),
+              'resultState': DiagnosticValue.string('success'),
+            }),
+          );
+          call.stop();
+          captureLatencies.add(call.elapsedMicroseconds);
+          if ((index + 1) % 1000 == 0) {
+            await service.manager.flush(timeout: const Duration(seconds: 5));
+          }
+        }
+        await service.manager.flush(timeout: const Duration(seconds: 15));
+        captureTotal.stop();
         final rssAfterFlush = ProcessInfo.currentRss;
         final writer = service.writerStatistics;
         final storage = await service.getStatistics();
@@ -89,6 +128,10 @@ void main() {
           'enabled': _latencyReport(
             enabledLatencies,
             enabledTotal.elapsedMicroseconds,
+          ),
+          'explicitCapture': _latencyReport(
+            captureLatencies,
+            captureTotal.elapsedMicroseconds,
           ),
           'writer': <String, Object?>{
             'accepted': writer.acceptedEvents,
@@ -108,6 +151,9 @@ void main() {
             'detailTextBytes': storage.detailTextBytes,
             'memoryDetailBytes': storage.memoryDetailBytes,
             'physicalBytes': storage.physicalStoredBytes,
+            'captureTextGrowth':
+                storage.physicalStoredBytes -
+                storageBeforeCapture.physicalStoredBytes,
           },
           'memory': <String, Object?>{
             'rssBefore': rssBefore,
@@ -126,6 +172,7 @@ void main() {
         expect(writer.queueHighWater, lessThanOrEqualTo(8192));
         expect(writer.queueByteHighWater, lessThanOrEqualTo(8 * 1024 * 1024));
         expect(writer.writerErrors, 0, reason: writer.lastWriterFailureType);
+        expect(writer.droppedEvents, 0);
         expect(writer.eventEncodingOffloaded, isTrue);
         expect(storage.physicalStoredBytes, lessThan(64 * 1024 * 1024));
       } finally {

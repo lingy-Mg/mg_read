@@ -51,7 +51,13 @@ class ReaderPage {
 }
 
 class TextPaginator {
-  const TextPaginator();
+  const TextPaginator({this.onBatchPaginated, this.onParagraphVisited});
+
+  /// Optional diagnostic hook invoked once for each bounded paginate call.
+  final void Function()? onBatchPaginated;
+
+  /// Optional paragraph-visit hook used by bounded layout diagnostics.
+  final void Function(String paragraphId)? onParagraphVisited;
 
   List<ReaderPage> paginate({
     required TextChapterContent chapter,
@@ -66,32 +72,58 @@ class TextPaginator {
     double paragraphTrailingWidth = 0,
     double paragraphTrailingHeight = 0,
     double chapterTrailingHeight = 0,
+    bool includeChapterTitle = true,
+    int? maximumPages,
+    int paragraphBaseOffset = 0,
+    String? stopAfterParagraphId,
+    int stopAfterCharacterOffset = 0,
   }) {
     if (width <= 0 || height <= 0) return const <ReaderPage>[];
 
     final List<ReaderPage> pages = <ReaderPage>[];
     List<ReaderPageBlock> blocks = <ReaderPageBlock>[];
-    var usedHeight = _measure(
-      chapter.title,
-      width,
-      titleStyle,
-      textDirection,
-      textScaler,
-    ).height;
-    usedHeight += 28;
-    var showsTitle = true;
+    var usedHeight = includeChapterTitle
+        ? _measure(
+                chapter.title,
+                width,
+                titleStyle,
+                textDirection,
+                textScaler,
+              ).height +
+              28
+        : 0.0;
+    var showsTitle = includeChapterTitle;
+    var reachedAnchor = false;
+    var reachedPageLimit = false;
+
+    bool containsAnchor(ReaderPageBlock block) =>
+        stopAfterParagraphId != null &&
+        block.paragraphId == stopAfterParagraphId &&
+        stopAfterCharacterOffset >= block.startOffset &&
+        stopAfterCharacterOffset <= block.endOffset;
 
     void commitPage() {
       if (blocks.isEmpty && pages.isNotEmpty) return;
       pages.add(ReaderPage(blocks: blocks, showsTitle: showsTitle));
+      if (pages.last.blocks.any(containsAnchor)) reachedAnchor = true;
+      if (maximumPages != null && pages.length >= maximumPages) {
+        reachedPageLimit = true;
+      }
       blocks = <ReaderPageBlock>[];
       usedHeight = 0;
       showsTitle = false;
     }
 
-    for (final TextParagraph paragraph in chapter.paragraphs) {
+    for (
+      var paragraphIndex = 0;
+      paragraphIndex < chapter.paragraphs.length && !reachedPageLimit;
+      paragraphIndex++
+    ) {
+      final TextParagraph paragraph = chapter.paragraphs[paragraphIndex];
+      onParagraphVisited?.call(paragraph.id);
       // Never trim source text: offsets are semantic positions in the exact
       // host-provided paragraph, not positions in a display-only copy.
+      final int baseOffset = paragraphIndex == 0 ? paragraphBaseOffset : 0;
       final String source = paragraph.text;
       final double trailingWidth = paragraphTrailingWidth
           .clamp(0, width)
@@ -111,7 +143,7 @@ class TextPaginator {
           ReaderPageBlock(
             paragraphId: paragraph.id,
             text: '',
-            startOffset: 0,
+            startOffset: baseOffset,
             isParagraphStart: true,
             isParagraphEnd: true,
             paragraphTrailingWidth: trailingWidth,
@@ -119,17 +151,21 @@ class TextPaginator {
           ),
         );
         usedHeight += requiredHeight;
+        if (containsAnchor(blocks.last)) {
+          commitPage();
+          break;
+        }
         continue;
       }
 
       var offset = 0;
-      while (offset < source.length) {
+      while (offset < source.length && !reachedPageLimit) {
         var available = height - usedHeight;
         if (available < _minimumLineHeight(bodyStyle) && blocks.isNotEmpty) {
           commitPage();
           available = height;
         }
-        final bool paragraphStart = offset == 0;
+        final bool paragraphStart = offset == 0 && baseOffset == 0;
         int end = _largestFittingEnd(
           source: source,
           start: offset,
@@ -197,7 +233,7 @@ class TextPaginator {
             ReaderPageBlock(
               paragraphId: paragraph.id,
               text: source.substring(offset, forcedEnd),
-              startOffset: offset,
+              startOffset: offset + baseOffset,
               isParagraphStart: paragraphStart,
               isParagraphEnd: paragraphEnd,
               paragraphTrailingWidth: paragraphEnd ? trailingWidth : 0,
@@ -205,6 +241,11 @@ class TextPaginator {
             ),
           );
           offset = forcedEnd;
+          if (containsAnchor(blocks.last)) {
+            commitPage();
+            reachedAnchor = true;
+            break;
+          }
           commitPage();
           continue;
         }
@@ -235,7 +276,7 @@ class TextPaginator {
           ReaderPageBlock(
             paragraphId: paragraph.id,
             text: chunk,
-            startOffset: offset,
+            startOffset: offset + baseOffset,
             isParagraphStart: paragraphStart,
             isParagraphEnd: paragraphEnd,
             paragraphTrailingWidth: paragraphEnd ? trailingWidth : 0,
@@ -245,19 +286,28 @@ class TextPaginator {
         usedHeight += chunkHeight;
         offset = end;
 
+        if (containsAnchor(blocks.last)) {
+          commitPage();
+          reachedAnchor = true;
+          break;
+        }
+
         if (paragraphEnd) {
           usedHeight += paragraphSpacing;
         } else {
           commitPage();
         }
       }
+      if (reachedAnchor || reachedPageLimit) break;
     }
 
     if (blocks.isNotEmpty || pages.isEmpty) commitPage();
     final double resolvedChapterTrailingHeight = chapterTrailingHeight
         .clamp(0, height)
         .toDouble();
-    if (resolvedChapterTrailingHeight > 0) {
+    if (!reachedAnchor &&
+        !reachedPageLimit &&
+        resolvedChapterTrailingHeight > 0) {
       pages.add(
         ReaderPage(
           blocks: const <ReaderPageBlock>[],
@@ -266,6 +316,7 @@ class TextPaginator {
         ),
       );
     }
+    onBatchPaginated?.call();
     return List.unmodifiable(pages);
   }
 

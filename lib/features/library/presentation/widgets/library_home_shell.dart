@@ -26,6 +26,7 @@ class LibraryHomeShell extends StatefulWidget {
     required this.data,
     required this.onRefresh,
     required this.isRefreshing,
+    this.preparingBookId,
     this.errorNotice,
     this.onToggleTheme,
     this.callbacks = const LibraryHomeCallbacks(),
@@ -35,6 +36,7 @@ class LibraryHomeShell extends StatefulWidget {
   final LibraryHomeViewData data;
   final Future<void> Function() onRefresh;
   final bool isRefreshing;
+  final String? preparingBookId;
   final Widget? errorNotice;
 
   /// Temporarily switches the app's light/dark mode when provided.
@@ -219,6 +221,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
               actions: _bookActions,
               onBookAction: _handleBookAction,
               presentation: _listPresentation,
+              preparingBookId: widget.preparingBookId,
             ),
           ),
         ],
@@ -257,6 +260,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     }
     return LibraryContinueReadingCard(
       data: continueReading,
+      isPreparing: widget.preparingBookId == continueReading.bookId,
       onContinueReading: _handleContinueReading,
       onReadingHistory: _handleReadingHistory,
     );
@@ -282,6 +286,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
             actions: _bookActions,
             onBookAction: _handleBookAction,
             presentation: _listPresentation,
+            preparingBookId: widget.preparingBookId,
           ),
       ],
     );

@@ -11,12 +11,14 @@ class LibraryContinueReadingCard extends StatelessWidget {
     required this.data,
     required this.onContinueReading,
     required this.onReadingHistory,
+    this.isPreparing = false,
     super.key,
   });
 
   final LibraryContinueReadingViewData data;
   final VoidCallback onContinueReading;
   final VoidCallback onReadingHistory;
+  final bool isPreparing;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +29,10 @@ class LibraryContinueReadingCard extends StatelessWidget {
       width: double.infinity,
       child: Semantics(
         container: true,
-        label: '继续阅读，${data.title}，${data.chapter}',
+        label: isPreparing
+            ? '继续阅读，${data.title}，${data.chapter}，正在准备阅读内容'
+            : '继续阅读，${data.title}，${data.chapter}',
+        liveRegion: isPreparing,
         child: DecoratedBox(
           decoration: BoxDecoration(borderRadius: AppRadii.card),
           child: ClipRRect(
@@ -93,6 +98,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
                             child: _ContinueReadingDetails(
                               data: data,
                               onContinueReading: onContinueReading,
+                              isPreparing: isPreparing,
                             ),
                           );
 
@@ -191,10 +197,12 @@ class _ContinueReadingDetails extends StatelessWidget {
   const _ContinueReadingDetails({
     required this.data,
     required this.onContinueReading,
+    required this.isPreparing,
   });
 
   final LibraryContinueReadingViewData data;
   final VoidCallback onContinueReading;
+  final bool isPreparing;
 
   @override
   Widget build(BuildContext context) {
@@ -264,16 +272,23 @@ class _ContinueReadingDetails extends StatelessWidget {
           ),
         ),
         const Spacer(),
-        _ContinueReadingAction(onPressed: onContinueReading),
+        _ContinueReadingAction(
+          onPressed: onContinueReading,
+          isPreparing: isPreparing,
+        ),
       ],
     );
   }
 }
 
 class _ContinueReadingAction extends StatelessWidget {
-  const _ContinueReadingAction({required this.onPressed});
+  const _ContinueReadingAction({
+    required this.onPressed,
+    required this.isPreparing,
+  });
 
   final VoidCallback onPressed;
+  final bool isPreparing;
 
   @override
   Widget build(BuildContext context) {
@@ -297,17 +312,25 @@ class _ContinueReadingAction extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             key: const Key('continue-reading-cta'),
-            onTap: onPressed,
+            onTap: isPreparing ? null : onPressed,
             borderRadius: AppRadii.continueReadingAction,
             child: Center(
-              child: Text(
-                '继续阅读',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: theme.colorScheme.onPrimary,
-                  fontWeight: FontWeight.w500,
-                  height: 1.2,
-                ),
-              ),
+              child: isPreparing
+                  ? SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.onPrimary,
+                      ),
+                    )
+                  : Text(
+                      '继续阅读',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: theme.colorScheme.onPrimary,
+                        fontWeight: FontWeight.w500,
+                        height: 1.2,
+                      ),
+                    ),
             ),
           ),
         ),

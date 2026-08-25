@@ -9,7 +9,21 @@ import 'package:mg_read/features/library/application/library_page_controller.dar
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
 import 'package:mg_read/features/reader/application/reader_launch_failure.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
+import 'package:mg_read/features/reader/application/shelf_reader_launch_coordinator.dart';
 import 'package:mg_read/features/reader/presentation/reader_host_page.dart';
+
+DiagnosticObjectValue _stageAttributes(
+  String stage,
+  String resultState, {
+  String? errorCode,
+  Duration? duration,
+}) => DiagnosticObjectValue(<String, DiagnosticValue>{
+  'stage': DiagnosticValue.string(stage),
+  'resultState': DiagnosticValue.string(resultState),
+  if (duration != null)
+    'durationMicros': DiagnosticValue.int64(duration.inMicroseconds),
+  if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
+});
 
 /// Resolves a stable shelf ID into the reader's data source and state store.
 class ReaderDestinationPage extends ConsumerStatefulWidget {
@@ -25,18 +39,32 @@ class ReaderDestinationPage extends ConsumerStatefulWidget {
 
 class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
   late final DiagnosticsManager _diagnostics;
+  late final LibraryReaderLauncher _launcher;
+  late final LibraryPageController _libraryPageController;
+  late final ShelfReaderLaunchCoordinator _shelfCoordinator;
   DiagnosticSpanHandle? _launchSpan;
   Stopwatch? _launchStopwatch;
   NavigatorState? _navigator;
   ReaderLaunchRequest? _request;
+  DiagnosticSpanHandle? _readerMountStage;
   Object? _error;
   var _generation = 0;
+  var _usesShelfCoordinator = false;
 
   @override
   void initState() {
     super.initState();
     _diagnostics = ref.read(diagnosticsManagerProvider);
-    unawaited(_resolve());
+    _launcher = ref.read(libraryReaderLauncherProvider);
+    _libraryPageController = ref.read(libraryPageControllerProvider.notifier);
+    _shelfCoordinator = ref.read(shelfReaderLaunchCoordinatorProvider.notifier);
+    final prepared = _shelfCoordinator.takePrepared(widget.bookId);
+    if (prepared != null) {
+      _usesShelfCoordinator = true;
+      _installRequest(prepared, _coordinatedStageReporter(_shelfCoordinator));
+    } else {
+      unawaited(_resolve());
+    }
   }
 
   @override
@@ -58,35 +86,11 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
     });
     try {
       final request = await stageReporter.measure(
-        'requestBuild',
-        () => ref
-            .read(libraryReaderLauncherProvider)
-            .launch(
-              widget.bookId,
-              observer: _ReaderLaunchObserver(
-                handleSessionStarted: _completeLaunch,
-                handleFailure: _failLaunchFromReader,
-                delegate: _ReaderExitObserver(_leaveReader),
-              ),
-            ),
+        'mapping',
+        () => _launcher.launch(widget.bookId),
       );
       if (!mounted || generation != _generation) return;
-      setState(
-        () => _request = ReaderLaunchRequest(
-          bookId: request.bookId,
-          dataSource: _MeasuredTextReaderDataSource(
-            request.dataSource,
-            stageReporter,
-          ),
-          stateStore: _MeasuredTextReaderStateStore(
-            request.stateStore,
-            stageReporter,
-          ),
-          observer: request.observer,
-          controller: request.controller,
-          extensions: request.extensions,
-        ),
-      );
+      _installRequest(request, stageReporter);
     } on Object catch (error) {
       _failLaunch(error);
       if (!mounted || generation != _generation) return;
@@ -101,11 +105,88 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
     }
     // The shelf refresh is reconciliation work after navigation. It must not
     // hold the reader route open when persistence or another loader is slow.
-    unawaited(ref.read(libraryPageControllerProvider.notifier).refresh());
+    unawaited(_libraryPageController.refresh());
     return Future<void>.value();
   }
 
-  void _completeLaunch() {
+  _ReaderLaunchStageReporter _coordinatedStageReporter(
+    ShelfReaderLaunchCoordinator coordinator,
+  ) => _ReaderLaunchStageReporter(
+    diagnostics: _diagnostics,
+    parentTraceContext: null,
+    startExternalStage: (String stage) =>
+        coordinator.startStage(widget.bookId, stage),
+  );
+
+  void _installRequest(
+    ReaderLaunchRequest request,
+    _ReaderLaunchStageReporter stageReporter,
+  ) {
+    final coordinator = _shelfCoordinator;
+    final mappingStage = _usesShelfCoordinator
+        ? coordinator.startStage(widget.bookId, 'mapping')
+        : null;
+    final mountStage = _usesShelfCoordinator
+        ? coordinator.startStage(widget.bookId, 'readerMount')
+        : null;
+    _readerMountStage = mountStage;
+    _request = ReaderLaunchRequest(
+      bookId: request.bookId,
+      dataSource: _MeasuredTextReaderDataSource(
+        request.dataSource,
+        stageReporter,
+      ),
+      stateStore: _MeasuredTextReaderStateStore(
+        request.stateStore,
+        stageReporter,
+      ),
+      observer: _ReaderLaunchObserver(
+        handleFirstContentPresented: _completeLaunch,
+        handleFailure: _failLaunchFromReader,
+        delegate: _ReaderObserverChain(<ReaderObserver>[
+          ?request.observer,
+          _ReaderExitObserver(_leaveReader),
+        ]),
+      ),
+      controller: request.controller,
+      extensions: request.extensions,
+      estimatedWarmBytes: request.estimatedWarmBytes,
+      preparationKind: request.preparationKind,
+      networkPreparationElapsed: request.networkPreparationElapsed,
+    );
+    mappingStage?.complete(attributes: _stageAttributes('mapping', 'success'));
+    if (mounted) setState(() {});
+  }
+
+  void _completeLaunch(ReaderFirstContentPresentation presentation) {
+    final coordinator = _shelfCoordinator;
+    if (_usesShelfCoordinator) {
+      final layoutStage = coordinator.startStage(
+        widget.bookId,
+        'firstPageLayout',
+      );
+      layoutStage?.complete(
+        attributes: _stageAttributes(
+          'firstPageLayout',
+          'success',
+          duration: presentation.layoutDuration,
+        ),
+      );
+      final frameStage = coordinator.startStage(
+        widget.bookId,
+        'firstContentFrame',
+      );
+      frameStage?.complete(
+        attributes: _stageAttributes('firstContentFrame', 'success'),
+      );
+      coordinator.completeFirstContent(
+        widget.bookId,
+        preparationKind: presentation.paginationPreparation.name,
+        firstPageLayout: presentation.layoutDuration,
+        windowClass: _windowClass(),
+      );
+      return;
+    }
     final span = _launchSpan;
     final stopwatch = _launchStopwatch;
     if (span == null || stopwatch == null || span.isEnded) return;
@@ -129,6 +210,10 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
   }
 
   void _failLaunchFromReader(ReaderFailure failure) {
+    if (_usesShelfCoordinator) {
+      _shelfCoordinator.failFromReader(widget.bookId, 'reader_failure');
+      return;
+    }
     _finishLaunch(
       outcome: DiagnosticOutcome.error,
       resultState: 'failure',
@@ -197,17 +282,39 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
 
   @override
   void dispose() {
-    _finishLaunch(
-      outcome: DiagnosticOutcome.cancelled,
-      resultState: 'disposedBeforeFirstReadable',
-    );
+    if (_usesShelfCoordinator) {
+      _shelfCoordinator.cancel(
+        widget.bookId,
+        resultState: 'disposedBeforeFirstContent',
+      );
+    } else {
+      _finishLaunch(
+        outcome: DiagnosticOutcome.cancelled,
+        resultState: 'disposedBeforeFirstReadable',
+      );
+    }
     super.dispose();
+  }
+
+  String _windowClass() {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width < 520) return 'compact';
+    if (width < 720) return 'medium';
+    return 'expanded';
   }
 
   @override
   Widget build(BuildContext context) {
     final request = _request;
-    if (request != null) return ReaderHostPage(request: request);
+    if (request != null) {
+      final mountStage = _readerMountStage;
+      if (mountStage != null && !mountStage.isEnded) {
+        mountStage.complete(
+          attributes: _stageAttributes('readerMount', 'success'),
+        );
+      }
+      return ReaderHostPage(request: request);
+    }
     final error = _error;
     if (error != null) {
       final failure = ReaderLaunchFailure.fromError(error);
@@ -252,42 +359,36 @@ final class _ReaderLaunchStageReporter {
   const _ReaderLaunchStageReporter({
     required this.diagnostics,
     required this.parentTraceContext,
+    this.startExternalStage,
   });
 
   final DiagnosticsManager diagnostics;
   final DiagnosticTraceContext? parentTraceContext;
+  final DiagnosticSpanHandle? Function(String stage)? startExternalStage;
 
   Future<T> measure<T>(String stage, Future<T> Function() action) async {
     if (diagnostics.isClosed) return action();
-    DiagnosticSpanHandle? span;
+    DiagnosticSpanHandle? span = startExternalStage?.call(stage);
     try {
-      span = diagnostics.startSpan(
+      span ??= diagnostics.startSpan(
         AppDiagnosticEvents.readerLaunchStage,
         parentContext: parentTraceContext,
-        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-          'stage': DiagnosticValue.string(stage),
-          'resultState': DiagnosticValue.string('started'),
-        }),
+        attributes: () => _stageAttributes(stage, 'started'),
       );
     } on Object {
       return action();
     }
     try {
       final result = await action();
-      span.complete(
-        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-          'stage': DiagnosticValue.string(stage),
-          'resultState': DiagnosticValue.string('success'),
-        }),
-      );
+      span.complete(attributes: _stageAttributes(stage, 'success'));
       return result;
     } on Object {
       span.fail(
-        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-          'stage': DiagnosticValue.string(stage),
-          'resultState': DiagnosticValue.string('failure'),
-          'errorCode': DiagnosticValue.string('reader_stage_failed'),
-        }),
+        attributes: _stageAttributes(
+          stage,
+          'failure',
+          errorCode: 'reader_stage_failed',
+        ),
       );
       rethrow;
     }
@@ -302,7 +403,7 @@ final class _MeasuredTextReaderDataSource implements TextReaderDataSource {
 
   @override
   Future<ReaderBookInfo> loadBookInfo(String bookId) =>
-      _stages.measure('bookInfo', () => _delegate.loadBookInfo(bookId));
+      _stages.measure('metadata', () => _delegate.loadBookInfo(bookId));
 
   @override
   Future<ChapterCatalogPage> loadChapterCatalog(
@@ -310,7 +411,7 @@ final class _MeasuredTextReaderDataSource implements TextReaderDataSource {
     String? cursor,
     int pageSize = 100,
   }) => _stages.measure(
-    'catalogPage',
+    'catalogTarget',
     () => _delegate.loadChapterCatalog(
       bookId,
       cursor: cursor,
@@ -321,7 +422,7 @@ final class _MeasuredTextReaderDataSource implements TextReaderDataSource {
   @override
   Future<ReaderChapterInfo> loadChapterAtIndex(String bookId, int index) =>
       _stages.measure(
-        'chapterAtIndex',
+        'catalogTarget',
         () => _delegate.loadChapterAtIndex(bookId, index),
       );
 
@@ -330,7 +431,7 @@ final class _MeasuredTextReaderDataSource implements TextReaderDataSource {
     String bookId,
     String chapterId,
   ) => _stages.measure(
-    'chapterContent',
+    'localContent',
     () => _delegate.loadChapterContent(bookId, chapterId),
   );
 }
@@ -343,7 +444,7 @@ final class _MeasuredTextReaderStateStore implements TextReaderStateStore {
 
   @override
   Future<ReaderProgress?> loadProgress(String bookId) =>
-      _stages.measure('progressLoad', () => _delegate.loadProgress(bookId));
+      _stages.measure('progress', () => _delegate.loadProgress(bookId));
 
   @override
   Future<TextReaderPreferences?> loadPreferences() =>
@@ -380,21 +481,90 @@ final class _ReaderExitObserver extends ReaderObserver {
       _onExitRequested(progress);
 }
 
+final class _ReaderObserverChain extends ReaderObserver {
+  _ReaderObserverChain(Iterable<ReaderObserver> observers)
+    : _observers = List<ReaderObserver>.unmodifiable(observers);
+
+  final List<ReaderObserver> _observers;
+
+  @override
+  Future<void> onSessionStarted(String bookId) async {
+    for (final observer in _observers) {
+      await observer.onSessionStarted(bookId);
+    }
+  }
+
+  @override
+  Future<void> onFirstContentPresented(
+    ReaderFirstContentPresentation presentation,
+  ) async {
+    for (final observer in _observers) {
+      await observer.onFirstContentPresented(presentation);
+    }
+  }
+
+  @override
+  Future<void> onSessionEnded(String bookId, ReaderProgress? progress) async {
+    for (final observer in _observers) {
+      await observer.onSessionEnded(bookId, progress);
+    }
+  }
+
+  @override
+  Future<void> onLifecycleChanged(
+    ReaderLifecycleState state,
+    ReaderProgress? progress,
+  ) async {
+    for (final observer in _observers) {
+      await observer.onLifecycleChanged(state, progress);
+    }
+  }
+
+  @override
+  Future<void> onChapterChanged(ReaderChapterInfo chapter) async {
+    for (final observer in _observers) {
+      await observer.onChapterChanged(chapter);
+    }
+  }
+
+  @override
+  Future<void> onFailure(ReaderFailure failure) async {
+    for (final observer in _observers) {
+      await observer.onFailure(failure);
+    }
+  }
+
+  @override
+  Future<void> onExitRequested(ReaderProgress? progress) async {
+    for (final observer in _observers) {
+      await observer.onExitRequested(progress);
+    }
+  }
+}
+
 final class _ReaderLaunchObserver extends ReaderObserver {
   const _ReaderLaunchObserver({
-    required this.handleSessionStarted,
+    required this.handleFirstContentPresented,
     required this.handleFailure,
     required this.delegate,
   });
 
-  final void Function() handleSessionStarted;
+  final void Function(ReaderFirstContentPresentation presentation)
+  handleFirstContentPresented;
   final void Function(ReaderFailure failure) handleFailure;
   final ReaderObserver delegate;
 
   @override
   Future<void> onSessionStarted(String bookId) async {
-    handleSessionStarted();
     await delegate.onSessionStarted(bookId);
+  }
+
+  @override
+  Future<void> onFirstContentPresented(
+    ReaderFirstContentPresentation presentation,
+  ) async {
+    handleFirstContentPresented(presentation);
+    await delegate.onFirstContentPresented(presentation);
   }
 
   @override

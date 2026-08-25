@@ -1,3 +1,8 @@
+## 0.4.1
+
+* Text readers present the first semantic-anchor page in the first content frame and report it once through `ReaderObserver.onFirstContentPresented`.
+* Layout pagination uses a bounded, version-aware LRU fingerprint covering viewport, insets, scale, fonts, typography, comments, and direction; unknown content versions remain session-scoped.
+
 ## 0.4.0
 
 * Added source-kind and optional chapter availability, word-count, and read-state metadata without breaking existing constant constructors.

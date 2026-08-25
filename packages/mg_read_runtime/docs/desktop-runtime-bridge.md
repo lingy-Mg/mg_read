@@ -72,6 +72,13 @@ Windows Supervisor 在启动 child 前创建并持有
 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object。正常关闭、Flutter owner 退出或异常释放 Job
 时，内核清理已加入的 Node 及其后代；生产 Core 本身不需要向主项目暴露进程控制。
 
+Windows control 始终监听 `127.0.0.1:0`，由 OS 分配端口，不实现固定或随机端口回退。staging
+将固定 Node 二进制复制为 `MgReadNode.exe` 以便 Windows 排障识别，Node 版本/二进制身份不变，
+也不使用 PATH。child 在 ready 前退出、无 stdout 或启动失败时，Supervisor 以稳定 fatal code
+完成 Facade，并将仅含 code、phase、opaque fingerprint、耗时的记录追加到 Runtime 私有的 16 KiB
+封顶 fallback TXT；没有 stderr、路径、异常、请求或插件内容。ready 后 child 退出同样作为 fatal
+Facade diagnostic 发布；当前连接结束，且仅下一次显式调用有序冷启动唯一 Runtime，不做循环重试。
+
 ## 安装与依赖恢复
 
 Runtime 测试独立覆盖 `.mgplugin` 安装器：
@@ -95,7 +102,7 @@ Runtime 测试独立覆盖 `.mgplugin` 安装器：
 | --- | --- | --- |
 | Package/installer/manager | `node --test test/plugin-system.test.mjs` | package/lock、archive、依赖资源、SRI、hardlink/copy、optional、冷激活/回退、取消/超时、GC |
 | Desktop Core | `node --test test/desktop-runtime.test.mjs` | ready、health、hello/ping/list、五个 source capability、shutdown、并发、背压、稳定错误 |
-| Flutter ↔ Node | `npm run test:flutter-desktop` | singleton、真实 Process.start、Job Object、128 并发、完整内容链路、错误投影 |
+| Flutter ↔ Node | `npm run test:flutter-desktop` | singleton、真实 Process.start、Job Object、128 并发、完整内容链路、fatal 退出/无 stdout fallback、错误投影 |
 | 官方模板 | `cd ../../../templates/mg_read_plugin_template && npm run verify` | tsc、多文件模块、本地 package/资源、命名 API、确定性 `.mgplugin` |
 | 性能 | `npm run benchmark:plugin` | diagnostics off/on 的 p50/p95/p99、吞吐、heap、磁盘、queue/drop |
 
@@ -104,7 +111,7 @@ duration 和受控计数；不记录 keyword、结果内容、Cookie、token、�
 
 ## 发布边界
 
-`npm run stage:flutter-windows` 只把编译 Core、固定 `node.exe` 和 Node LICENSE 放入 Flutter
+`npm run stage:flutter-windows` 只把编译 Core、固定 `MgReadNode.exe` 和 Node LICENSE 放入 Flutter
 package 自身资产目录；`pubspec.yaml` 显式列出 `node/`、`dist/` 与 `dist/diagnostics/`，不能依赖
 Flutter 目录资产的非递归行为。主项目不提供路径。Windows Debug 主应用构建已验证这些资产会
 进入 `flutter_assets/packages/mgread_plugin_runtime/`，且包内 Node 能完成 ready/hello/shutdown

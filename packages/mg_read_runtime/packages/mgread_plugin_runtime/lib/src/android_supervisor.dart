@@ -71,10 +71,13 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
           .timeout(timeout);
       if (encoded == null) {
         throw const PluginRuntimeException(
-          'invalid_response',
+          'runtime_no_response',
           'The Android Runtime returned no result.',
         );
       }
+      // A non-null bridge payload proves the owned Runtime started, even when
+      // that payload is later rejected by the typed wire decoder.
+      _started = true;
       final decoded = jsonDecode(encoded);
       if (decoded is! Map<Object?, Object?>) {
         throw const PluginRuntimeException(
@@ -94,7 +97,6 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
         throw PluginRuntimeException(code, message);
       }
       final result = invocation._decodeResult(decoded['result']);
-      _started = true;
       _recordDiagnostic(
         const RuntimeDiagnostic(
           code: 'runtime_facade_invoke_completed',

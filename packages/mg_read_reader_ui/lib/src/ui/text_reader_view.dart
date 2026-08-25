@@ -12,6 +12,7 @@ import '../api/models.dart';
 import '../core/auto_reading_coordinator.dart';
 import '../core/chapter_access_coordinator.dart';
 import '../pagination/text_paginator.dart';
+import '../pagination/layout_cache.dart';
 import '../platform/reader_platform.dart';
 import '../platform/screen_awake_coordinator.dart';
 import 'comments/reader_comment_strings.dart';
@@ -62,13 +63,15 @@ class TextReaderView extends StatefulWidget {
   State<TextReaderView> createState() => _TextReaderViewState();
 }
 
-class _TextReaderViewState extends State<TextReaderView> {
+class _TextReaderViewState extends State<TextReaderView>
+    with WidgetsBindingObserver {
   static const Duration _saveDelay = Duration(milliseconds: 800);
   static const int _chapterCacheLimit = 2;
   static const int _commentSummaryBatchSize = 100;
   static const int _chapterStateBatchSize = 100;
   static const int _paragraphKeyCacheLimit = 256;
   static const int _verticalRestoreMeasureBatchSize = 128;
+  static const int _progressiveParagraphBatchSize = 8;
   static const double _pageFooterBottomInset = 10;
   // TextPainter measures fractional line heights, while RenderParagraph rounds
   // their painted extent to device pixels. Keep a small reserve so a page that
@@ -81,6 +84,7 @@ class _TextReaderViewState extends State<TextReaderView> {
   static const double _inlineCommentVisualSize = 30;
 
   final TextPaginator _paginator = const TextPaginator();
+  static final ReaderLayoutLru _layoutCache = ReaderLayoutLru();
   final Object _awakeHolder = Object();
   final Object _controllerBindingOwner = Object();
   final FocusNode _focusNode = FocusNode(debugLabel: 'TextReader');
@@ -135,8 +139,7 @@ class _TextReaderViewState extends State<TextReaderView> {
   TextReaderPreferences _preferences = TextReaderPreferences.defaults;
   ReaderProgress? _progress;
   ReaderFailure? _failure;
-  Size? _layoutSize;
-  TextScaler? _layoutTextScaler;
+  ReaderLayoutFingerprint? _layoutFingerprint;
   int _chapterIndex = -1;
   int _pageIndex = 0;
   int _requestGeneration = 0;
@@ -184,6 +187,15 @@ class _TextReaderViewState extends State<TextReaderView> {
   String? _runtimeFontFamily;
   ReaderFontDescriptor? _runtimeFontDescriptor;
   int _fontLoadGeneration = 0;
+  int _paginationGeneration = 0;
+  int _contentEpoch = 0;
+  int _progressiveParagraphCursor = 0;
+  List<ReaderPage> _progressivePages = const <ReaderPage>[];
+  bool _firstContentNotificationScheduled = false;
+  bool _firstContentNotificationSent = false;
+  Duration _firstContentLayoutDuration = Duration.zero;
+  ReaderPaginationPreparation _firstContentPreparation =
+      ReaderPaginationPreparation.firstPage;
 
   ReaderObserver get _observer => widget.observer ?? const ReaderObserver();
   ReaderPalette get _palette => ReaderPalette.fromPreset(_preferences.theme);
@@ -209,6 +221,7 @@ class _TextReaderViewState extends State<TextReaderView> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _ownsController = widget.controller == null;
     _controller = widget.controller ?? TextReaderController();
     _autoReadingCoordinator = ReaderAutoReadingCoordinator(
@@ -378,11 +391,9 @@ class _TextReaderViewState extends State<TextReaderView> {
     )) {
       _runtimeFontFamily = null;
       _runtimeFontDescriptor = null;
-      _layoutSize = null;
       unawaited(_loadPersistedCustomFont());
     }
     if (oldWidget.extensions.commentFeed != widget.extensions.commentFeed) {
-      _layoutSize = null;
       if (mounted) setState(() {});
       unawaited(_refreshCommentSummaries());
     }
@@ -395,7 +406,6 @@ class _TextReaderViewState extends State<TextReaderView> {
     final TextScaler? previousScaler = _dependencyTextScaler;
     _dependencyTextScaler = nextScaler;
     if (previousScaler == null || previousScaler == nextScaler) return;
-    _layoutSize = null;
     if (_preferences.navigationMode == ReaderNavigationMode.verticalScroll) {
       _scheduleVerticalRestore(paragraphId: _progress?.paragraphId);
     }
@@ -404,6 +414,7 @@ class _TextReaderViewState extends State<TextReaderView> {
   @override
   void dispose() {
     _disposed = true;
+    WidgetsBinding.instance.removeObserver(this);
     _fontLoadGeneration++;
     _chapterStateRefreshGeneration++;
     _chapterAccessCoordinator
@@ -445,6 +456,20 @@ class _TextReaderViewState extends State<TextReaderView> {
     super.dispose();
   }
 
+  @override
+  void didHaveMemoryPressure() {
+    _layoutCache.clear();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _layoutCache.clear();
+    }
+  }
+
   void _bindController() {
     _controller.bind(
       owner: _controllerBindingOwner,
@@ -476,6 +501,8 @@ class _TextReaderViewState extends State<TextReaderView> {
     _saveTimer?.cancel();
     _chapterCache.clear();
     _chapterLoads.clear();
+    _layoutFingerprint = null;
+    _contentEpoch++;
     _commentSummaries.clear();
     _commentSummariesLoading = false;
     _commentSummariesFailed = false;
@@ -494,8 +521,6 @@ class _TextReaderViewState extends State<TextReaderView> {
     _pages = const <ReaderPage>[];
     _progress = null;
     _failure = null;
-    _layoutSize = null;
-    _layoutTextScaler = null;
     _runtimeFontFamily = null;
     _runtimeFontDescriptor = null;
     _chapterIndex = -1;
@@ -507,6 +532,10 @@ class _TextReaderViewState extends State<TextReaderView> {
     _wheelDelta = 0;
     _wheelResetTimer?.cancel();
     _loading = true;
+    _firstContentNotificationScheduled = false;
+    _firstContentNotificationSent = false;
+    _firstContentLayoutDuration = Duration.zero;
+    _firstContentPreparation = ReaderPaginationPreparation.firstPage;
     if (mounted) setState(() {});
     unawaited(_releaseAwake());
     if (persistenceCheckpoint != null) await persistenceCheckpoint;
@@ -537,18 +566,12 @@ class _TextReaderViewState extends State<TextReaderView> {
       );
       final Future<TextReaderPreferences> preferencesFuture =
           _safeLoadPreferences(generation, observer);
-      final Future<List<ReaderBookmark>> bookmarksFuture = _safeLoadBookmarks(
-        generation,
-        observer,
-      );
-
       final List<dynamic> results = await Future.wait<dynamic>(
         <Future<dynamic>>[
           bookFuture,
           catalogFuture,
           progressFuture,
           preferencesFuture,
-          bookmarksFuture,
         ],
       );
       if (!_isSessionCurrent(generation)) return;
@@ -568,7 +591,9 @@ class _TextReaderViewState extends State<TextReaderView> {
       if (!_isNightTheme(_preferences.theme)) {
         _lastNonNightTheme = _preferences.theme;
       }
-      _bookmarks = results[4] as List<ReaderBookmark>;
+      // Bookmark/state/comment work is deliberately deferred until after the
+      // first real text frame so it cannot compete with first-page layout.
+      _bookmarks = const <ReaderBookmark>[];
 
       if (_progress!.isBookPreview) {
         _content = null;
@@ -590,11 +615,17 @@ class _TextReaderViewState extends State<TextReaderView> {
       _loading = false;
       _failure = null;
       if (mounted) setState(() {});
-      await _syncAwake();
+      _scheduleFirstContentPresentation(generation);
+      if (_firstContentNotificationSent) {
+        await _syncAwake();
+      } else {
+        // Screen-awake is non-essential to the first text frame. Do not let
+        // a platform queue delay chapter presentation during cold start.
+        unawaited(_syncAwake());
+      }
       if (!_isSessionCurrent(generation)) return;
       unawaited(_notify(() => observer.onSessionStarted(bookId)));
       _publishSnapshot();
-      unawaited(_refreshCommentSummaries());
     } catch (error) {
       if (!_isSessionCurrent(generation)) return;
       final ReaderFailure failure = _asFailure(error, ReaderFailureKind.data);
@@ -672,6 +703,44 @@ class _TextReaderViewState extends State<TextReaderView> {
         );
       }
       return const <ReaderBookmark>[];
+    }
+  }
+
+  void _scheduleFirstContentPresentation(int generation) {
+    if (_firstContentNotificationScheduled || _firstContentNotificationSent) {
+      return;
+    }
+    _firstContentNotificationScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _disposed || _content == null) return;
+      _firstContentNotificationSent = true;
+      final ReaderObserver observer = _observer;
+      final ReaderFirstContentPresentation presentation =
+          ReaderFirstContentPresentation(
+            anchor: _progress,
+            paginationPreparation: _firstContentPreparation,
+            layoutDuration: _firstContentLayoutDuration,
+          );
+      unawaited(_notify(() => observer.onFirstContentPresented(presentation)));
+      unawaited(_finishDeferredFirstFrameWork(generation));
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
+  Future<void> _finishDeferredFirstFrameWork(int generation) async {
+    if (!_isSessionCurrent(generation)) return;
+    final List<ReaderBookmark> bookmarks = await _safeLoadBookmarks(
+      generation,
+      _observer,
+    );
+    if (!_isSessionCurrent(generation)) return;
+    _bookmarks = bookmarks;
+    if (mounted) setState(() {});
+    if (_content != null && _currentChapterInfo != null) {
+      _scheduleProgressSave(immediate: true);
+      unawaited(_prefetchNext(_currentChapterInfo!.index));
+      unawaited(_refreshCommentSummaries());
+      unawaited(_recordChapterOpened(_content!.chapterId));
     }
   }
 
@@ -883,8 +952,8 @@ class _TextReaderViewState extends State<TextReaderView> {
       _chapterIndex = targetInfo.index;
       _currentChapterInfo = targetInfo;
       _content = chapter;
+      _contentEpoch++;
       _pages = const <ReaderPage>[];
-      _layoutSize = null;
       _pageIndex = 0;
       _paragraphKeys.clear();
 
@@ -927,19 +996,28 @@ class _TextReaderViewState extends State<TextReaderView> {
           chapterFraction: fraction,
         );
       }
+      _progress = _normalizeSemanticAnchor(_progress);
       _failure = null;
       if (mounted) setState(() {});
       _publishSnapshot();
       unawaited(_notify(() => observer.onChapterChanged(targetInfo)));
-      await _syncAwake();
+      if (_firstContentNotificationSent) {
+        await _syncAwake();
+      } else {
+        // Screen-awake is non-essential to the first text frame. Do not let
+        // a platform queue delay chapter presentation during cold start.
+        unawaited(_syncAwake());
+      }
       if (!_isCurrent(generation) || session != _sessionGeneration) return;
-      _scheduleProgressSave(immediate: true);
-      if (!openAtEnd) unawaited(_prefetchNext(targetInfo.index));
       if (_preferences.navigationMode == ReaderNavigationMode.verticalScroll) {
         _scheduleVerticalRestore();
       }
-      unawaited(_refreshCommentSummaries());
-      unawaited(_recordChapterOpened(chapterId));
+      if (_firstContentNotificationSent) {
+        _scheduleProgressSave(immediate: true);
+        if (!openAtEnd) unawaited(_prefetchNext(targetInfo.index));
+        unawaited(_refreshCommentSummaries());
+        unawaited(_recordChapterOpened(chapterId));
+      }
     } catch (error) {
       if (!_isCurrent(generation) || navigation != _navigationGeneration) {
         return;
@@ -978,6 +1056,49 @@ class _TextReaderViewState extends State<TextReaderView> {
         );
       }
     }
+  }
+
+  ReaderProgress? _normalizeSemanticAnchor(ReaderProgress? progress) {
+    final TextChapterContent? content = _content;
+    if (progress == null || content == null || content.paragraphs.isEmpty) {
+      return progress;
+    }
+    final TextParagraph? exact = content.paragraphs
+        .where(
+          (TextParagraph paragraph) => paragraph.id == progress.paragraphId,
+        )
+        .firstOrNull;
+    if (exact != null) {
+      return progress.copyWith(
+        paragraphId: exact.id,
+        characterOffset: progress.characterOffset.clamp(0, exact.text.length),
+      );
+    }
+    final int totalCharacters = content.paragraphs.fold<int>(
+      0,
+      (int sum, TextParagraph paragraph) => sum + paragraph.text.length,
+    );
+    if (totalCharacters <= 0) {
+      final TextParagraph first = content.paragraphs.first;
+      return progress.copyWith(paragraphId: first.id, characterOffset: 0);
+    }
+    var target = (progress.chapterFraction.clamp(0, 1) * totalCharacters)
+        .floor()
+        .clamp(0, totalCharacters);
+    for (final TextParagraph paragraph in content.paragraphs) {
+      if (target <= paragraph.text.length) {
+        return progress.copyWith(
+          paragraphId: paragraph.id,
+          characterOffset: target.clamp(0, paragraph.text.length),
+        );
+      }
+      target -= paragraph.text.length;
+    }
+    final TextParagraph last = content.paragraphs.last;
+    return progress.copyWith(
+      paragraphId: last.id,
+      characterOffset: last.text.length,
+    );
   }
 
   TextChapterContent? _takeCached(String id) {
@@ -1063,7 +1184,6 @@ class _TextReaderViewState extends State<TextReaderView> {
         setState(() {
           _runtimeFontFamily = null;
           _runtimeFontDescriptor = null;
-          _layoutSize = null;
         });
       }
       return;
@@ -1089,7 +1209,6 @@ class _TextReaderViewState extends State<TextReaderView> {
       setState(() {
         _runtimeFontFamily = runtimeFamily;
         _runtimeFontDescriptor = descriptor;
-        _layoutSize = null;
       });
       if (_preferences.navigationMode == ReaderNavigationMode.verticalScroll) {
         _scheduleVerticalRestore(paragraphId: anchor?.paragraphId);
@@ -1105,7 +1224,6 @@ class _TextReaderViewState extends State<TextReaderView> {
         setState(() {
           _runtimeFontFamily = null;
           _runtimeFontDescriptor = null;
-          _layoutSize = null;
         });
       }
       await _reportFailure(
@@ -1128,7 +1246,6 @@ class _TextReaderViewState extends State<TextReaderView> {
     setState(() {
       _runtimeFontFamily = runtimeFamily;
       _runtimeFontDescriptor = descriptor;
-      _layoutSize = null;
     });
     if (_preferences.navigationMode == ReaderNavigationMode.verticalScroll) {
       _scheduleVerticalRestore(paragraphId: anchor?.paragraphId);
@@ -1138,28 +1255,61 @@ class _TextReaderViewState extends State<TextReaderView> {
   void _ensurePagination(Size size) {
     if (_content == null ||
         _preferences.navigationMode != ReaderNavigationMode.horizontalPages ||
-        size.isEmpty ||
-        (_layoutSize == size && _layoutTextScaler == _textScaler)) {
+        size.isEmpty) {
       return;
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted ||
-          (_layoutSize == size && _layoutTextScaler == _textScaler)) {
-        return;
-      }
-      _paginate(size);
-    });
+    final ReaderLayoutFingerprint fingerprint = _layoutFingerprintFor(size);
+    if (_layoutFingerprint == fingerprint) return;
+    _paginateFirstPage(size, fingerprint);
   }
 
-  void _paginate(Size size) {
-    final TextChapterContent? content = _content;
-    if (content == null) return;
+  ReaderLayoutFingerprint _layoutFingerprintFor(Size size) {
     final EdgeInsets safe = MediaQuery.paddingOf(context);
-    final double width = size.width <= 1
-        ? size.width
-        : (size.width -
-                  (_preferences.horizontalPadding * 2).clamp(0, size.width - 1))
-              .clamp(1, size.width);
+    final bool paragraphComments =
+        widget.extensions.commentFeed != null &&
+        _preferences.showParagraphComments;
+    final bool chapterComments =
+        widget.extensions.commentFeed != null &&
+        _preferences.showChapterComments;
+    return ReaderLayoutFingerprint(
+      chapterId: _content!.chapterId,
+      contentVersion: _content!.contentVersion,
+      sessionId: _content!.contentVersion == null
+          ? Object.hash(_sessionGeneration, _contentEpoch)
+          : 0,
+      viewport: size,
+      safeArea: safe,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+      textScale: _textScaler.scale(1),
+      fontVersion:
+          '${_preferences.font.name}:${_preferences.customFontId ?? ''}:${_runtimeFontDescriptor?.version ?? ''}:${_runtimeFontFamily ?? ''}',
+      layoutSettings:
+          '${_preferences.navigationMode.name}:${_preferences.pageAnimation.name}:${_preferences.firstLineIndent}:${_preferences.horizontalPadding}:${_preferences.topPadding}:${_preferences.bottomPadding}',
+      textDirection: Directionality.of(context),
+      fontSize: _preferences.fontSize,
+      fontWeight: _preferences.fontWeight,
+      letterSpacing: _preferences.letterSpacing,
+      lineHeight: _preferences.lineHeight,
+      paragraphSpacing: _preferences.paragraphSpacing,
+      firstLineIndent: _preferences.firstLineIndent,
+      horizontalPadding: _preferences.horizontalPadding,
+      topPadding: _preferences.topPadding,
+      bottomPadding: _preferences.bottomPadding,
+      paragraphCommentPlaceholder: paragraphComments
+          ? _inlineCommentHitSize
+          : 0,
+      chapterCommentPlaceholder: chapterComments ? 168 : 0,
+    );
+  }
+
+  double _paginationWidth(Size size) => size.width <= 1
+      ? size.width
+      : (size.width -
+                (_preferences.horizontalPadding * 2).clamp(0, size.width - 1))
+            .clamp(1, size.width);
+
+  double _paginationHeight(Size size) {
+    final EdgeInsets safe = MediaQuery.paddingOf(context);
     final double rawHeight =
         size.height -
         safe.top -
@@ -1167,12 +1317,112 @@ class _TextReaderViewState extends State<TextReaderView> {
         _preferences.topPadding -
         _preferences.bottomPadding -
         _horizontalPageLayoutSafety;
-    final double height = size.height <= 1
-        ? size.height
-        : rawHeight.clamp(1, size.height);
+    return size.height <= 1 ? size.height : rawHeight.clamp(1, size.height);
+  }
+
+  void _paginateFirstPage(Size size, ReaderLayoutFingerprint fingerprint) {
+    final TextChapterContent? content = _content;
+    if (content == null) return;
+    final Stopwatch stopwatch = Stopwatch()..start();
+    final List<ReaderPage>? cached = _layoutCache.take(fingerprint);
+    if (cached != null) {
+      _layoutFingerprint = fingerprint;
+      _pages = cached;
+      _pageIndex = _pageIndexForAnchor(
+        cached,
+      ).clamp(0, cached.isEmpty ? 0 : cached.length - 1);
+      _firstContentPreparation = ReaderPaginationPreparation.cachedFirstPage;
+      _firstContentLayoutDuration = stopwatch.elapsed;
+      _restoreHorizontalPageLater();
+      return;
+    }
+    final ReaderProgress? anchor = _progress;
+    final int anchorIndex = anchor == null
+        ? 0
+        : content.paragraphs
+              .indexWhere(
+                (TextParagraph paragraph) => paragraph.id == anchor.paragraphId,
+              )
+              .clamp(
+                0,
+                content.paragraphs.isEmpty ? 0 : content.paragraphs.length - 1,
+              );
+    final int anchorOffset = anchor == null || content.paragraphs.isEmpty
+        ? 0
+        : anchor.characterOffset.clamp(
+            0,
+            content.paragraphs[anchorIndex].text.length,
+          );
+    final int viewEnd = (anchorIndex + _progressiveParagraphBatchSize + 1)
+        .clamp(0, content.paragraphs.length);
+    final List<TextParagraph> firstView = <TextParagraph>[];
+    for (var index = anchorIndex; index < viewEnd; index++) {
+      final TextParagraph paragraph = content.paragraphs[index];
+      firstView.add(
+        index == anchorIndex && anchorOffset > 0
+            ? TextParagraph(
+                id: paragraph.id,
+                text: paragraph.text.substring(anchorOffset),
+              )
+            : paragraph,
+      );
+    }
+    final List<ReaderPage> pages = _paginateContent(
+      size,
+      TextChapterContent(
+        chapterId: content.chapterId,
+        title: content.title,
+        paragraphs: firstView,
+        contentVersion: content.contentVersion,
+      ),
+      fingerprint,
+      stopAtAnchor: false,
+      maximumPages: 1,
+      paragraphBaseOffset: anchorOffset,
+      includeChapterTitle: anchorIndex == 0 && anchorOffset == 0,
+    );
+    _layoutFingerprint = fingerprint;
+    _pages = pages;
+    _pageIndex = _pageIndexForAnchor(
+      pages,
+    ).clamp(0, pages.isEmpty ? 0 : pages.length - 1);
+    _firstContentPreparation = ReaderPaginationPreparation.firstPage;
+    _firstContentLayoutDuration = stopwatch.elapsed;
+    _restoreHorizontalPageLater();
+    final int generation = ++_paginationGeneration;
+    _progressiveParagraphCursor = 0;
+    _progressivePages = const <ReaderPage>[];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || generation != _paginationGeneration) return;
+      _paginateRemaining(size, fingerprint, generation);
+    });
+  }
+
+  int _pageIndexForAnchor(List<ReaderPage> pages) {
+    final ReaderProgress? anchor = _progress;
+    return anchor == null
+        ? 0
+        : _paginator.pageIndexForAnchor(
+            pages,
+            anchor.paragraphId,
+            anchor.characterOffset,
+          );
+  }
+
+  List<ReaderPage> _paginateContent(
+    Size size,
+    TextChapterContent content,
+    ReaderLayoutFingerprint fingerprint, {
+    required bool stopAtAnchor,
+    int? maximumPages,
+    int paragraphBaseOffset = 0,
+    bool includeChapterTitle = true,
+  }) {
+    final double width = _paginationWidth(size);
+    final double height = _paginationHeight(size);
     final TextStyle bodyStyle = _bodyTextStyle;
     try {
-      final List<ReaderPage> pages = _paginator.paginate(
+      return _paginator.paginate(
         chapter: content,
         width: width,
         height: height,
@@ -1182,6 +1432,9 @@ class _TextReaderViewState extends State<TextReaderView> {
         firstLineIndent: _preferences.firstLineIndent,
         textDirection: Directionality.of(context),
         textScaler: _textScaler,
+        maximumPages: maximumPages,
+        paragraphBaseOffset: paragraphBaseOffset,
+        includeChapterTitle: includeChapterTitle,
         paragraphTrailingWidth:
             widget.extensions.commentFeed != null &&
                 _preferences.showParagraphComments
@@ -1197,31 +1450,103 @@ class _TextReaderViewState extends State<TextReaderView> {
                 _preferences.showChapterComments
             ? 168
             : 0,
+        stopAfterParagraphId: stopAtAnchor ? _progress?.paragraphId : null,
+        stopAfterCharacterOffset: _progress?.characterOffset ?? 0,
       );
-      final ReaderProgress? anchor = _progress;
-      final int pageIndex = anchor == null
-          ? 0
-          : _paginator.pageIndexForAnchor(
-              pages,
-              anchor.paragraphId,
-              anchor.characterOffset,
-            );
-      setState(() {
-        _layoutSize = size;
-        _layoutTextScaler = _textScaler;
-        _pages = pages;
-        _pageIndex = pageIndex.clamp(0, pages.isEmpty ? 0 : pages.length - 1);
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_pageController.hasClients) return;
-        _restoreHorizontalPageWithoutProgress(_pageIndex + 1);
-      });
-      _publishSnapshot();
     } catch (error) {
       final ReaderFailure failure = _asFailure(error, ReaderFailureKind.layout);
-      setState(() => _failure = failure);
+      if (mounted) setState(() => _failure = failure);
       unawaited(_reportFailure(failure));
+      return const <ReaderPage>[];
     }
+  }
+
+  void _paginateRemaining(
+    Size size,
+    ReaderLayoutFingerprint fingerprint,
+    int generation,
+  ) {
+    if (!mounted ||
+        generation != _paginationGeneration ||
+        _layoutFingerprint != fingerprint) {
+      return;
+    }
+    final TextChapterContent content = _content!;
+    final int paragraphCount = content.paragraphs.length;
+    final int start = _progressiveParagraphCursor;
+    final int end = (start + _progressiveParagraphBatchSize).clamp(
+      0,
+      paragraphCount,
+    );
+    if (start < end || paragraphCount == 0) {
+      final bool hasParagraphComments =
+          widget.extensions.commentFeed != null &&
+          _preferences.showParagraphComments;
+      final bool hasChapterComments =
+          widget.extensions.commentFeed != null &&
+          _preferences.showChapterComments;
+      final List<ReaderPage> batchPages = _paginator.paginate(
+        chapter: TextChapterContent(
+          chapterId: content.chapterId,
+          title: content.title,
+          paragraphs: content.paragraphs.sublist(start, end),
+          contentVersion: content.contentVersion,
+        ),
+        width: _paginationWidth(size),
+        height: _paginationHeight(size),
+        titleStyle: _titleTextStyle,
+        bodyStyle: _bodyTextStyle,
+        paragraphSpacing: _preferences.paragraphSpacing,
+        firstLineIndent: _preferences.firstLineIndent,
+        textDirection: Directionality.of(context),
+        textScaler: _textScaler,
+        includeChapterTitle: start == 0,
+        paragraphTrailingWidth: hasParagraphComments
+            ? _inlineCommentHitSize
+            : 0,
+        paragraphTrailingHeight: hasParagraphComments
+            ? _inlineCommentHitSize
+            : 0,
+        chapterTrailingHeight: hasChapterComments && end == paragraphCount
+            ? 168
+            : 0,
+      );
+      _progressivePages = List<ReaderPage>.unmodifiable(<ReaderPage>[
+        ..._progressivePages,
+        ...batchPages,
+      ]);
+      _progressiveParagraphCursor = paragraphCount == 0 ? 0 : end;
+    }
+    if (_progressiveParagraphCursor < paragraphCount) {
+      WidgetsBinding.instance.scheduleFrameCallback((_) {
+        if (mounted && generation == _paginationGeneration) {
+          _paginateRemaining(size, fingerprint, generation);
+        }
+      });
+      WidgetsBinding.instance.scheduleFrame();
+      return;
+    }
+    final List<ReaderPage> pages = _progressivePages;
+    if (generation != _paginationGeneration ||
+        _layoutFingerprint != fingerprint) {
+      return;
+    }
+    _layoutCache.put(fingerprint, pages);
+    _pages = pages;
+    _pageIndex = _pageIndexForAnchor(
+      pages,
+    ).clamp(0, pages.isEmpty ? 0 : pages.length - 1);
+    if (mounted) setState(() {});
+    _publishSnapshot();
+  }
+
+  void _restoreHorizontalPageLater() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pageController.hasClients) return;
+      _restoreHorizontalPageWithoutProgress(_pageIndex + 1);
+      _publishSnapshot();
+    });
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   TextStyle get _bodyTextStyle => TextStyle(
@@ -1445,8 +1770,6 @@ class _TextReaderViewState extends State<TextReaderView> {
     _chapterIndex = -1;
     _pageIndex = 0;
     _pages = const <ReaderPage>[];
-    _layoutSize = null;
-    _layoutTextScaler = null;
     _paragraphKeys.clear();
     _progress = const ReaderProgress.bookPreview();
     _changingChapter = false;
@@ -2379,22 +2702,6 @@ class _TextReaderViewState extends State<TextReaderView> {
     if (_disposed) return;
     final ReaderProgress? anchor = _progress;
     final TextReaderPreferences normalized = value.normalized();
-    final bool layoutChanged =
-        normalized.font != _preferences.font ||
-        normalized.customFontId != _preferences.customFontId ||
-        normalized.fontSize != _preferences.fontSize ||
-        normalized.fontWeight != _preferences.fontWeight ||
-        normalized.letterSpacing != _preferences.letterSpacing ||
-        normalized.lineHeight != _preferences.lineHeight ||
-        normalized.paragraphSpacing != _preferences.paragraphSpacing ||
-        normalized.firstLineIndent != _preferences.firstLineIndent ||
-        normalized.horizontalPadding != _preferences.horizontalPadding ||
-        normalized.topPadding != _preferences.topPadding ||
-        normalized.bottomPadding != _preferences.bottomPadding ||
-        normalized.navigationMode != _preferences.navigationMode ||
-        normalized.showParagraphComments !=
-            _preferences.showParagraphComments ||
-        normalized.showChapterComments != _preferences.showChapterComments;
     final bool commentsChanged =
         normalized.showBookComments != _preferences.showBookComments ||
         normalized.showChapterComments != _preferences.showChapterComments ||
@@ -2409,7 +2716,6 @@ class _TextReaderViewState extends State<TextReaderView> {
     }
     setState(() {
       _preferences = normalized;
-      if (layoutChanged) _layoutSize = null;
     });
     _preferencesPreviewDirty = !persist;
     final Future<void> awakeUpdate = _syncAwake();
@@ -2765,6 +3071,7 @@ class _TextReaderViewState extends State<TextReaderView> {
                 Align(
                   alignment: Alignment.centerLeft,
                   child: IconButton(
+                    key: const ValueKey<String>('reader-back-action'),
                     tooltip: ReaderStrings.back,
                     onPressed: _requestExit,
                     icon: const Icon(Icons.arrow_back_ios_new_rounded),
@@ -2904,6 +3211,7 @@ class _TextReaderViewState extends State<TextReaderView> {
           },
         );
     return GestureDetector(
+      key: const ValueKey<String>('reader-content-surface'),
       behavior: HitTestBehavior.translucent,
       supportedDevices: const <PointerDeviceKind>{
         PointerDeviceKind.touch,
@@ -3271,6 +3579,7 @@ class _TextReaderViewState extends State<TextReaderView> {
     final int nextChapterIndex =
         chapterSummaryIndex + (showChapterComments ? 1 : 0);
     return GestureDetector(
+      key: const ValueKey<String>('reader-content-surface'),
       behavior: HitTestBehavior.translucent,
       onTapUp: (_) {
         _stopAutoReading();
@@ -3438,6 +3747,7 @@ class _TextReaderViewState extends State<TextReaderView> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: IconButton(
+                  key: const ValueKey<String>('reader-back-action'),
                   tooltip: ReaderStrings.back,
                   onPressed: _requestExit,
                   icon: const Icon(Icons.arrow_back_ios_new_rounded),

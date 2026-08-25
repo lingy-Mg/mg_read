@@ -239,6 +239,7 @@ AppError normalizePluginRuntimeError(PluginRuntimeException error) {
     'plugin_install_failed' ||
     'plugin_import_failed' => AppErrorCode.pluginInstallFailed,
     'plugin_load_failed' => AppErrorCode.pluginDamaged,
+    'plugin_execution_failed' => AppErrorCode.pluginExecutionFailed,
     final value when value.startsWith('windows_job_object_') =>
       AppErrorCode.runtimeStartFailed,
     _ => AppErrorCode.fromWireValue(error.code),

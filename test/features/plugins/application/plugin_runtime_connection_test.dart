@@ -126,6 +126,20 @@ void main() {
     expect(error.toString(), isNot(contains('payload details')));
   });
 
+  test('plugin execution failures remain non-fatal and safely classified', () {
+    final error = normalizePluginRuntimeError(
+      const PluginRuntimeException(
+        'plugin_execution_failed',
+        'Plugin source exception details must not escape.',
+      ),
+    );
+
+    expect(error.code, AppErrorCode.pluginExecutionFailed);
+    expect(error.retryable, isFalse);
+    expect(error.category, AppErrorCategory.unknownSafe);
+    expect(error.toString(), isNot(contains('exception details')));
+  });
+
   test(
     'source enable action persists then refreshes the Runtime projection',
     () async {

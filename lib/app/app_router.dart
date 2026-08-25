@@ -32,7 +32,7 @@ import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 part 'app_router.g.dart';
 
 /// Owns imperative overlays that cannot use a route-builder [BuildContext].
-final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(
+final GlobalKey<NavigatorState> appRootNavigatorKey = GlobalKey<NavigatorState>(
   debugLabel: 'mgReadRootNavigator',
 );
 
@@ -42,7 +42,7 @@ final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(
 /// it handled back without changing the GoRouter location, so the global
 /// keyboard and mouse handlers must use `maybePop` instead of `router.pop()`.
 Future<bool> popApplicationRoute() async {
-  final NavigatorState? navigator = _rootNavigatorKey.currentState;
+  final NavigatorState? navigator = appRootNavigatorKey.currentState;
   if (navigator == null) return false;
   return navigator.maybePop();
 }
@@ -51,7 +51,7 @@ Future<bool> popApplicationRoute() async {
 final appRouterProvider = Provider<GoRouter>((Ref ref) {
   final diagnostics = ref.watch(diagnosticsManagerProvider);
   final GoRouter router = GoRouter(
-    navigatorKey: _rootNavigatorKey,
+    navigatorKey: appRootNavigatorKey,
     routes: $appRoutes,
     errorBuilder: (BuildContext context, GoRouterState state) {
       return const _UnknownRoutePage();
@@ -284,7 +284,7 @@ Future<void> _openTransientSourceTextReader(
   required PluginChaptersResult firstCatalogPage,
   required PluginChapterSummary chapter,
 }) async {
-  final navigator = _rootNavigatorKey.currentState;
+  final navigator = appRootNavigatorKey.currentState;
   if (navigator == null) {
     throw StateError('The application navigator is not ready.');
   }

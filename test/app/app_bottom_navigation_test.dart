@@ -14,6 +14,7 @@ void main() {
       MaterialApp(
         theme: AppTheme.light(),
         home: AppBottomNavigationMotionScope(
+          animateTexture: false,
           child: StatefulBuilder(
             builder: (BuildContext context, StateSetter setState) {
               return Scaffold(
@@ -122,6 +123,69 @@ void main() {
     expect(_labelOpacity(tester, AppNavigationDestination.profile), 0);
   });
 
+  testWidgets('gently drifts the decorative texture when motion is enabled', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: AppBottomNavigationMotionScope(
+          child: Scaffold(
+            bottomNavigationBar: AppBottomNavigation(
+              selected: AppNavigationDestination.home,
+              onSelected: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final Finder texturePaint = find.byKey(
+      const Key('app-bottom-navigation-texture-paint'),
+    );
+    final CustomPaint initialTexture = tester.widget<CustomPaint>(texturePaint);
+    await tester.pump(const Duration(seconds: 4));
+
+    expect(
+      tester.widget<CustomPaint>(texturePaint).painter,
+      isNot(same(initialTexture.painter)),
+    );
+  });
+
+  testWidgets('keeps the decorative texture still when motion is disabled', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: AppBottomNavigationMotionScope(
+            child: Scaffold(
+              bottomNavigationBar: AppBottomNavigation(
+                selected: AppNavigationDestination.home,
+                onSelected: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final Finder texturePaint = find.byKey(
+      const Key('app-bottom-navigation-texture-paint'),
+    );
+    final CustomPainter? initialPainter = tester
+        .widget<CustomPaint>(texturePaint)
+        .painter;
+    await tester.pump(const Duration(seconds: 4));
+
+    expect(
+      tester.widget<CustomPaint>(texturePaint).painter,
+      same(initialPainter),
+    );
+  });
+
   testWidgets('retargets rapid taps from the current capsule position', (
     WidgetTester tester,
   ) async {
@@ -132,6 +196,7 @@ void main() {
         theme: AppTheme.light(),
         home: AppBottomNavigationMotionScope(
           initialDestination: selected,
+          animateTexture: false,
           child: StatefulBuilder(
             builder: (BuildContext context, StateSetter setState) {
               return Scaffold(

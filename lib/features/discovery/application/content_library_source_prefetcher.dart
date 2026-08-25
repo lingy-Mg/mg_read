@@ -22,6 +22,7 @@ final class ContentLibrarySourcePrefetcher {
   final SourceContentGateway _gateway;
   final DiagnosticsManager? _diagnostics;
   final Map<String, Future<void>> _active = <String, Future<void>>{};
+  final Map<String, Completer<void>> _readable = <String, Completer<void>>{};
 
   /// Starts one deduplicated warm-up without blocking the add-to-shelf UI.
   void start(LibraryItem item) {
@@ -29,7 +30,13 @@ final class ContentLibrarySourcePrefetcher {
     if (source == null || item.kind != ContentKind.novel) return;
     final key = item.id.value;
     if (_active.containsKey(key)) return;
-    final task = _run(item, source);
+    final readable = Completer<void>();
+    // A best-effort warm-up may fail before any reader is waiting. Keep the
+    // error available to an explicit prepareForReading caller while handling
+    // the otherwise-unobserved completer future.
+    unawaited(readable.future.catchError((Object error, StackTrace stack) {}));
+    _readable[key] = readable;
+    final task = _run(item, source, readable);
     _active[key] = task;
     unawaited(
       task.then<void>(
@@ -41,11 +48,26 @@ final class ContentLibrarySourcePrefetcher {
     );
   }
 
+  /// Reuses an in-flight add-to-shelf warm-up only until a readable body is
+  /// available. Optional detail projection work continues in the background.
+  Future<void> prepareForReading(LibraryItem item) {
+    start(item);
+    return _readable[item.id.value]?.future ?? Future<void>.value();
+  }
+
+  bool hasInFlight(String libraryItemId) =>
+      _active.containsKey(libraryItemId) ||
+      _readable.containsKey(libraryItemId);
+
   /// Waits for an already-started warm-up, mainly for host lifecycle tests.
   Future<void> waitFor(String libraryItemId) =>
       _active[libraryItemId] ?? Future<void>.value();
 
-  Future<void> _run(LibraryItem item, LibraryItemSource source) async {
+  Future<void> _run(
+    LibraryItem item,
+    LibraryItemSource source,
+    Completer<void> readable,
+  ) async {
     final diagnostics = _diagnostics;
     final span = diagnostics?.startSpan(
       AppDiagnosticEvents.readerPrefetch,
@@ -63,6 +85,9 @@ final class ContentLibrarySourcePrefetcher {
         id: source.remoteContentId,
       );
       if (catalogResult.items.isEmpty) {
+        if (!readable.isCompleted) {
+          readable.completeError(StateError('Source catalog is empty.'));
+        }
         span?.complete(
           attributes: _attributes(
             catalogCount: 0,
@@ -100,6 +125,8 @@ final class ContentLibrarySourcePrefetcher {
         // The reader can retry a missing first chapter on demand.
       }
 
+      if (!readable.isCompleted) readable.complete();
+
       final detail = await detailFuture;
       if (detail != null) {
         await _library.bookshelf.addFromSource(
@@ -127,6 +154,9 @@ final class ContentLibrarySourcePrefetcher {
         ),
       );
     } on Object {
+      if (!readable.isCompleted) {
+        readable.completeError(StateError('Reader preparation failed.'));
+      }
       span?.fail(
         attributes: _attributes(
           catalogCount: catalogCount,
@@ -137,6 +167,8 @@ final class ContentLibrarySourcePrefetcher {
       );
       // This is intentionally best effort. A later reader launch retries the
       // source and preserves whatever catalog/body data already committed.
+    } finally {
+      _readable.remove(item.id.value);
     }
   }
 

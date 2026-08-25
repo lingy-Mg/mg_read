@@ -363,9 +363,12 @@ void main() {
         await runtime.debugDispose();
       });
 
-      final error = await _captureRuntimeFailure(
-        runtime.invoke(const RuntimePingInvocation()),
-      );
+      late PluginRuntimeException error;
+      for (var attempt = 0; attempt < 96; attempt += 1) {
+        error = await _captureRuntimeFailure(
+          runtime.invoke(const RuntimePingInvocation()),
+        );
+      }
       await Future<void>.delayed(Duration.zero);
 
       expect(error.code, 'runtime_node_executable_missing');
@@ -433,6 +436,89 @@ void main() {
         error.diagnostics.map((diagnostic) => diagnostic.code),
         contains('test_startup_failure'),
       );
+    },
+  );
+
+  test(
+    'a child exit before ready becomes a fatal Facade diagnostic and bounded fallback TXT',
+    () async {
+      final repositoryRoot = Directory.current.parent.parent;
+      final runtimeDataRoot = await Directory.systemTemp.createTemp(
+        'mgread-runtime-preboot-fallback-',
+      );
+      final runtime = PluginRuntime.desktopForTesting(
+        runtimeRepositoryRoot: repositoryRoot,
+        runtimeDataRoot: runtimeDataRoot,
+        entrypointOverride: File(
+          <String>[
+            repositoryRoot.path,
+            'packages',
+            'mgread_plugin_runtime',
+            'test',
+            'fixtures',
+            'exit-before-ready.mjs',
+          ].join(Platform.pathSeparator),
+        ),
+      );
+      addTearDown(() async {
+        await runtime.debugDispose();
+        await runtimeDataRoot.delete(recursive: true);
+      });
+
+      final error = await _captureRuntimeFailure(
+        runtime.invoke(const RuntimePingInvocation()),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final fallback = File(
+        <String>[
+          runtimeDataRoot.path,
+          'diagnostics',
+          'desktop-fatal-fallback.txt',
+        ].join(Platform.pathSeparator),
+      );
+      final contents = await fallback.readAsString();
+
+      expect(error.code, 'runtime_exited_before_ready');
+      expect(
+        error.diagnostics
+            .singleWhere((item) => item.code == error.code)
+            .isFatal,
+        isTrue,
+      );
+      expect(contents, contains('"code":"runtime_exited_before_ready"'));
+      expect(contents, contains('"phase":"startup"'));
+      expect(contents, contains('"fingerprint":'));
+      expect(contents, isNot(contains(runtimeDataRoot.path)));
+      expect(contents, isNot(contains('exit-before-ready.mjs')));
+      expect((await fallback.length()), lessThanOrEqualTo(16 * 1024));
+    },
+  );
+
+  test(
+    'a post-ready child exit emits a fatal diagnostic and only restarts on the next invocation',
+    () async {
+      final runtime = PluginRuntime.desktopForTesting(
+        runtimeRepositoryRoot: Directory.current.parent.parent,
+        testExitAfterReady: const Duration(milliseconds: 250),
+      );
+      final fatalDiagnostics = <RuntimeDiagnostic>[];
+      final subscription = runtime.fatalDiagnostics.listen(
+        fatalDiagnostics.add,
+      );
+      addTearDown(() async {
+        await subscription.cancel();
+        await runtime.debugDispose();
+      });
+
+      await runtime.invoke(const RuntimePingInvocation());
+      await _waitForDiagnosticCodes(fatalDiagnostics, const <String>[
+        'runtime_process_exited',
+      ]);
+      expect(fatalDiagnostics.single.isFatal, isTrue);
+      expect(runtime.debugDesktopProcessStartCount, 1);
+
+      await runtime.invoke(const RuntimePingInvocation());
+      expect(runtime.debugDesktopProcessStartCount, 2);
     },
   );
 }

@@ -25,6 +25,7 @@ export type RuntimeErrorCode =
   | "method_not_found"
   | "overloaded"
   | "plugin_disabled"
+  | "plugin_execution_failed"
   | "plugin_invalid_response"
   | "plugin_load_failed"
   | "plugin_not_found"

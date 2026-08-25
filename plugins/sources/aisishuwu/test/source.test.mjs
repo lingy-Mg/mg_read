@@ -26,6 +26,9 @@ test('list results retain an HTTP(S) cover from the source card', async () => {
             </article>
           `),
       },
+      resource: {
+        proxy: () => 'http://127.0.0.1:1234/v1/source-resource/opaque',
+      },
       log: { debug() {}, info() {}, warn() {}, error() {} },
       app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
       plugin: { id: 'org.mgread.aisishuwu', version: '0.2.2' },
@@ -42,7 +45,7 @@ test('list results retain an HTTP(S) cover from the source card', async () => {
 
   assert.equal(
     result.document.components[0].children[0].items[0].content.coverUrl,
-    'https://cdn.example.com/covers/42.jpg',
+    'http://127.0.0.1:1234/v1/source-resource/opaque',
   );
 });
 

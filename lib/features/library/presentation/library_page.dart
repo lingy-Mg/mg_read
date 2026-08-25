@@ -13,6 +13,7 @@ import 'package:mg_read/features/library/application/library_page_controller.dar
 import 'package:mg_read/features/library/application/library_page_state.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
+import 'package:mg_read/features/reader/application/shelf_reader_launch_coordinator.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 
@@ -60,6 +61,12 @@ class LibraryPage extends ConsumerWidget {
     final LibraryBookVisibilityChanger? visibilityChanger = ref.read(
       libraryBookVisibilityChangerProvider,
     );
+    final ShelfReaderLaunchState readerLaunch = ref.watch(
+      shelfReaderLaunchCoordinatorProvider,
+    );
+    final ShelfReaderLaunchCoordinator readerCoordinator = ref.read(
+      shelfReaderLaunchCoordinatorProvider.notifier,
+    );
 
     if (state.status == LibraryPageStatus.initialLoading) {
       return const _LibraryLoadingState();
@@ -78,6 +85,37 @@ class LibraryPage extends ConsumerWidget {
         onDestinationRequested;
     final ValueChanged<String>? readerRequested = onReaderRequested;
     final ValueChanged<String>? bookDetailRequested = onBookDetailRequested;
+    void prepareAndOpen(String bookId) {
+      final callback = readerRequested;
+      if (callback == null) return;
+      unawaited(() async {
+        final prepared = await readerCoordinator.prepare(bookId);
+        if (!context.mounted) {
+          readerCoordinator.cancel(bookId, resultState: 'shelfDisposed');
+          return;
+        }
+        if (!prepared) {
+          if (context.mounted) {
+            final failure = ref
+                .read(shelfReaderLaunchCoordinatorProvider)
+                .failure;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(failure?.reason.userMessage ?? '阅读内容准备失败，请稍后重试。'),
+                action: SnackBarAction(
+                  label: '重试',
+                  onPressed: () => prepareAndOpen(bookId),
+                ),
+              ),
+            );
+          }
+          return;
+        }
+        if (!readerCoordinator.claimNavigation(bookId)) return;
+        callback(bookId);
+      }());
+    }
+
     final LibraryHomeCallbacks resolvedCallbacks = callbacks.copyWith(
       onNavigationSelected: destinationRequested == null
           ? callbacks.onNavigationSelected
@@ -96,7 +134,7 @@ class LibraryPage extends ConsumerWidget {
                 ? callbacks.onOpenBook
                 : (book) {
                     callbacks.onOpenBook?.call(book);
-                    readerRequested(book.id);
+                    prepareAndOpen(book.id);
                   }
           : (book) {
               callbacks.onOpenBook?.call(book);
@@ -106,12 +144,13 @@ class LibraryPage extends ConsumerWidget {
           ? callbacks.onContinueReading
           : () {
               callbacks.onContinueReading?.call();
-              readerRequested(data.continueReading!.bookId);
+              prepareAndOpen(data.continueReading!.bookId);
             },
       onDeleteBook: bookRemover == null
           ? null
           : (book) async {
               await callbacks.onDeleteBook?.call(book);
+              readerCoordinator.invalidate(book.id);
               controller.beginRemoval(book.id);
               try {
                 await bookRemover.removeBook(book.id);
@@ -144,23 +183,108 @@ class LibraryPage extends ConsumerWidget {
               onPrivacyLibraryRequested!();
             },
     );
-    return LibraryHomeShell(
-      data: data,
-      callbacks: resolvedCallbacks,
-      isRefreshing: state.status == LibraryPageStatus.refreshing,
-      onRefresh: controller.refresh,
-      onToggleTheme: () {
-        themeModeScope.onToggleTheme(Theme.of(context).brightness);
-      },
-      errorNotice: state.hasFailure
-          ? _LibraryErrorCard(
-              error: state.error!,
-              onRetry: controller.refresh,
-              hasRetainedData: true,
-            )
-          : null,
+    return _ShelfReaderLifecycleHost(
+      warmBookIds: <String>[
+        if (data.continueReading case final current?) current.bookId,
+        for (final book in data.books.take(2)) book.id,
+      ],
+      contentGeneration: state.overview!,
+      coordinator: readerCoordinator,
+      child: LibraryHomeShell(
+        data: data,
+        callbacks: resolvedCallbacks,
+        preparingBookId:
+            readerLaunch.status == ShelfReaderPreparationStatus.preparing
+            ? readerLaunch.bookId
+            : null,
+        isRefreshing: state.status == LibraryPageStatus.refreshing,
+        onRefresh: controller.refresh,
+        onToggleTheme: () {
+          themeModeScope.onToggleTheme(Theme.of(context).brightness);
+        },
+        errorNotice: state.hasFailure
+            ? _LibraryErrorCard(
+                error: state.error!,
+                onRetry: controller.refresh,
+                hasRetainedData: true,
+              )
+            : null,
+      ),
     );
   }
+}
+
+/// Bridges app lifecycle and memory pressure to the process-local warm LRU.
+class _ShelfReaderLifecycleHost extends StatefulWidget {
+  const _ShelfReaderLifecycleHost({
+    required this.warmBookIds,
+    required this.contentGeneration,
+    required this.coordinator,
+    required this.child,
+  });
+
+  final List<String> warmBookIds;
+  final Object contentGeneration;
+  final ShelfReaderLaunchCoordinator coordinator;
+  final Widget child;
+
+  @override
+  State<_ShelfReaderLifecycleHost> createState() =>
+      _ShelfReaderLifecycleHostState();
+}
+
+class _ShelfReaderLifecycleHostState extends State<_ShelfReaderLifecycleHost>
+    with WidgetsBindingObserver {
+  String _warmSignature = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _scheduleWarm();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ShelfReaderLifecycleHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.contentGeneration, widget.contentGeneration)) {
+      widget.coordinator.clearWarmCache();
+      _warmSignature = '';
+    }
+    _scheduleWarm();
+  }
+
+  void _scheduleWarm() {
+    final signature = widget.warmBookIds.join('\u0000');
+    if (signature == _warmSignature) return;
+    _warmSignature = signature;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(widget.coordinator.warm(widget.warmBookIds));
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      widget.coordinator.clearWarmCache();
+    }
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    widget.coordinator.clearWarmCache();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class _LibraryLoadingState extends StatelessWidget {

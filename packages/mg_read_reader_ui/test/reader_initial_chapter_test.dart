@@ -19,13 +19,112 @@ void main() {
         ),
       ),
     );
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    });
     await tester.pumpAndSettle();
 
     expect(controller.snapshot.isReady, isTrue);
     expect(controller.snapshot.chapter?.id, 'chapter-1');
     expect(controller.snapshot.progress?.chapterIndex, 0);
     expect(find.text('开始阅读'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
   });
+
+  testWidgets('presents real first text once without an intermediate loader', (
+    WidgetTester tester,
+  ) async {
+    final _FirstFrameObserver observer = _FirstFrameObserver();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TextReaderView(
+            bookId: 'first-frame-book',
+            dataSource: const _InitialChapterDataSource(),
+            stateStore: const _AnchoredStateStore(),
+            observer: observer,
+          ),
+        ),
+      ),
+    );
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    });
+    await tester.pumpAndSettle();
+
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pumpAndSettle();
+    for (var index = 0; index < 5; index++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.textContaining('第一章正文。'), findsOneWidget);
+    expect(find.text('正在打开书籍…'), findsNothing);
+    expect(observer.presentations, hasLength(1));
+    expect(observer.presentations.single.anchor, isNotNull);
+    expect(observer.presentations.single.anchor?.characterOffset, 3);
+  });
+
+  testWidgets(
+    'clamps a stale offset and keeps the semantic anchor after scale',
+    (WidgetTester tester) async {
+      final _ClampedStateStore store = _ClampedStateStore();
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(1)),
+          child: MaterialApp(
+            home: Scaffold(
+              body: TextReaderView(
+                bookId: 'anchor-book',
+                dataSource: const _InitialChapterDataSource(),
+                stateStore: store,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      });
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.pumpAndSettle();
+      for (var index = 0; index < 5; index++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(store.lastProgress?.paragraphId, 'paragraph-1');
+      expect(store.lastProgress?.characterOffset, 6);
+
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+          child: MaterialApp(
+            home: Scaffold(
+              body: TextReaderView(
+                bookId: 'anchor-book',
+                dataSource: const _InitialChapterDataSource(),
+                stateStore: store,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.pumpAndSettle();
+      expect(store.lastProgress?.paragraphId, 'paragraph-1');
+      expect(store.lastProgress?.characterOffset, 6);
+    },
+  );
+}
+
+final class _FirstFrameObserver extends ReaderObserver {
+  final List<ReaderFirstContentPresentation> presentations =
+      <ReaderFirstContentPresentation>[];
+  @override
+  void onFirstContentPresented(ReaderFirstContentPresentation presentation) {
+    presentations.add(presentation);
+  }
 }
 
 final class _InitialChapterDataSource implements TextReaderDataSource {
@@ -71,7 +170,7 @@ final class _InitialChapterDataSource implements TextReaderDataSource {
   );
 }
 
-final class _EmptyStateStore implements TextReaderStateStore {
+class _EmptyStateStore implements TextReaderStateStore {
   const _EmptyStateStore();
 
   @override
@@ -79,7 +178,8 @@ final class _EmptyStateStore implements TextReaderStateStore {
       const <ReaderBookmark>[];
 
   @override
-  Future<TextReaderPreferences?> loadPreferences() async => null;
+  Future<TextReaderPreferences?> loadPreferences() async =>
+      const TextReaderPreferences(keepScreenOn: false);
 
   @override
   Future<ReaderProgress?> loadProgress(String bookId) async => null;
@@ -95,4 +195,33 @@ final class _EmptyStateStore implements TextReaderStateStore {
 
   @override
   Future<void> saveProgress(String bookId, ReaderProgress progress) async {}
+}
+
+final class _AnchoredStateStore extends _EmptyStateStore {
+  const _AnchoredStateStore();
+
+  @override
+  Future<ReaderProgress?> loadProgress(String bookId) async =>
+      const ReaderProgress(
+        chapterId: 'chapter-1',
+        paragraphId: 'paragraph-1',
+        characterOffset: 3,
+      );
+}
+
+final class _ClampedStateStore extends _EmptyStateStore {
+  ReaderProgress? lastProgress;
+
+  @override
+  Future<ReaderProgress?> loadProgress(String bookId) async =>
+      const ReaderProgress(
+        chapterId: 'chapter-1',
+        paragraphId: 'paragraph-1',
+        characterOffset: 999,
+      );
+
+  @override
+  Future<void> saveProgress(String bookId, ReaderProgress progress) async {
+    lastProgress = progress;
+  }
 }

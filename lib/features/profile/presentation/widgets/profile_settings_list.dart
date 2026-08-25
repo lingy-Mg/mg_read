@@ -145,7 +145,7 @@ class ProfileSettingsRow extends StatelessWidget {
                       ),
                     ),
                   ],
-                  const SizedBox(width: AppSpacing.unit),
+                  const SizedBox(width: AppSpacing.compact),
                   Icon(
                     Icons.chevron_right_rounded,
                     color: tokens.mutedText,

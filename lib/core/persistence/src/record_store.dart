@@ -89,6 +89,9 @@ final class PersistenceRecordStore {
       await database.customStatement(
         'CREATE INDEX IF NOT EXISTS metadata_records_state_order ON metadata_records(record_kind, scope_kind, scope_id, state_key, order_key, record_id)',
       );
+      await database.customStatement(
+        'CREATE INDEX IF NOT EXISTS metadata_records_parent_state_order ON metadata_records(record_kind, scope_kind, scope_id, parent_id, state_key, order_key, record_id)',
+      );
       return PersistenceRecordStore._(
         database,
         registry,
@@ -153,6 +156,14 @@ final class PersistenceRecordStore {
     count: query.limit,
     action: () => _list(query),
     resultCount: (result) => result.records.length,
+  );
+
+  /// Counts matching records without decoding their versioned documents.
+  /// Typed repositories use this for legacy snapshot metadata compatibility.
+  Future<int> count(RecordQuery query) => _instrument(
+    operation: 'count',
+    recordKind: query.recordKind,
+    action: () => _count(query),
   );
 
   /// Reads records for a bounded set of identity keys with one SQL statement.
@@ -340,6 +351,7 @@ final class PersistenceRecordStore {
     addNullable('parent_id', query.parentId);
     addNullable('state_key', query.stateKey);
     addNullable('identity_key', query.identityKey);
+    addNullable('order_key', query.orderKey);
     if (query.after case final after?) {
       where.add(
         '(COALESCE(order_key, \'\') > ? OR (COALESCE(order_key, \'\') = ? AND record_id > ?))',
@@ -369,6 +381,33 @@ final class PersistenceRecordStore {
           ? RecordCursor(orderKey: tail.orderKey ?? '', id: tail.id)
           : null,
     );
+  }
+
+  Future<int> _count(RecordQuery query) async {
+    _ensureOpen();
+    final where = <String>['record_kind = ?', 'scope_kind = ?', 'scope_id = ?'];
+    final variables = <Variable<Object>>[
+      Variable.withString(query.recordKind),
+      Variable.withString(query.scope.kind),
+      Variable.withString(query.scope.id),
+    ];
+    void addNullable(String column, String? value) {
+      if (value == null) return;
+      where.add('$column = ?');
+      variables.add(Variable.withString(value));
+    }
+
+    addNullable('parent_id', query.parentId);
+    addNullable('state_key', query.stateKey);
+    addNullable('identity_key', query.identityKey);
+    addNullable('order_key', query.orderKey);
+    final rows = await _database
+        .customSelect(
+          'SELECT COUNT(*) AS record_count FROM metadata_records WHERE ${where.join(' AND ')}',
+          variables: variables,
+        )
+        .get();
+    return rows.single.data['record_count'] as int;
   }
 
   Future<List<RecordEnvelope>> _listByIdentityKeys({

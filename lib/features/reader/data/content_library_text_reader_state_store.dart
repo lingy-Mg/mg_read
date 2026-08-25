@@ -8,7 +8,17 @@ import 'package:mg_read/core/content_library/content_library.dart';
 /// user-data contracts are added to Content Library. The progress record is
 /// durable and uses the reader's chapter/paragraph/character anchor.
 final class ContentLibraryTextReaderStateStore implements TextReaderStateStore {
-  ContentLibraryTextReaderStateStore(this._library, {required this.itemId});
+  ContentLibraryTextReaderStateStore(
+    this._library, {
+    required this.itemId,
+    LibraryReadingProgress? initialProgress,
+    bool progressAlreadyLoaded = false,
+  }) {
+    if (progressAlreadyLoaded) {
+      _durableProgress = Future<LibraryReadingProgress?>.value(initialProgress);
+      _initialReadingSeconds = initialProgress?.totalReadingSeconds ?? 0;
+    }
+  }
 
   final ContentLibrary _library;
   final LibraryItemId itemId;
@@ -54,6 +64,8 @@ final class ContentLibraryTextReaderStateStore implements TextReaderStateStore {
   }
 
   /// Counts only time while the reader is in the foreground.
+  void startSession() => _foregroundReading.start();
+
   void onLifecycleChanged(ReaderLifecycleState state) {
     if (state == ReaderLifecycleState.foreground) {
       _foregroundReading.start();
@@ -101,7 +113,6 @@ final class ContentLibraryTextReaderStateStore implements TextReaderStateStore {
       progress,
     ) {
       _initialReadingSeconds = progress?.totalReadingSeconds ?? 0;
-      _foregroundReading.start();
       return progress;
     });
   }

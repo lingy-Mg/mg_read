@@ -258,7 +258,7 @@ export class AliceBookHouseSource {
             updatedAt: latestUpdatedAt,
           });
 
-    const coverUrl = await this.#proxyCoverUrl(this.#coverUrl($, detailUrl));
+    const coverUrl = this.#proxyCoverUrl(this.#coverUrl($, detailUrl));
     const contentId = `novel:${novelId}`;
     this.#coverUrls.set(contentId, coverUrl);
     this.#chapterCounts.set(contentId, stats.chapterCount);
@@ -460,7 +460,7 @@ export class AliceBookHouseSource {
         author,
         description,
         category,
-        coverUrl: _publicCoverUrl(coverCandidate, pageUrl),
+        coverUrl: this.#proxyCoverUrl(_publicCoverUrl(coverCandidate, pageUrl)),
         latestChapter,
       }),
     ];
@@ -616,7 +616,7 @@ export class AliceBookHouseSource {
       const $ = cheerio.load(
         await this.#getHtml(detailUrl, detailUrl, detailHtmlCachePolicy),
       );
-      const coverUrl = await this.#proxyCoverUrl(this.#coverUrl($, detailUrl));
+      const coverUrl = this.#proxyCoverUrl(this.#coverUrl($, detailUrl));
       this.#coverUrls.set(content.id, coverUrl);
       return coverUrl === null
           ? content
@@ -627,10 +627,10 @@ export class AliceBookHouseSource {
     }
   }
 
-  async #proxyCoverUrl(url: string | null): Promise<string | null> {
+  #proxyCoverUrl(url: string | null): string | null {
     if (url === null) return null;
-    // Offline fixtures may omit the optional proxy capability; production
-    // Runtime contexts always provide it.
+    // Runtime always provides the proxy. The fallback only keeps isolated
+    // parser fixtures usable; a packaged source never receives it.
     return this.context.resource?.proxy({ url }) ?? url;
   }
 
