@@ -16,6 +16,7 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
   const root = await mkdtemp(join(tmpdir(), 'mgread-shudugu-hot-search-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   let homeCalls = 0;
+  let detailCalls = 0;
   const state = context(async (input) => {
     const requestUrl = new URL(input);
     const path = requestUrl.pathname;
@@ -25,7 +26,10 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
       homeCalls += 1;
       return new Response(`<div class="container"><h2><a href="/zuixin/">最新更新</a></h2><div class="item"><a href="/51/"><div class="itemtxt"><h3><a href="/51/">不应作为热门词</a></h3></div></div></div><div class="container"><h2><a href="/paihang/">阅读排行</a></h2><ul class="list top clear"><li><p><a href="/51/">排行热书</a></p></li><li><p><a href="/52/">第二排行热书</a></p></li></ul></div>`);
     }
-    if (path === '/51/') return new Response(detail);
+    if (path === '/51/') {
+      detailCalls += 1;
+      return new Response(detail);
+    }
     if (path === '/51/101.html') return new Response('<div class="container"><div class="submenu"><h1>测试书 > 第一章</h1></div><div class="con"><p>正文 canary</p></div></div>');
     if (path === '/51/102.html') return new Response('<div class="container"><div class="con"><p>第二章</p></div></div>');
     return new Response('not found', { status: 404 });
@@ -50,6 +54,9 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
   assert.deepEqual(suggestions.items.map((item) => item.query), ['排行热书', '第二排行热书']);
   assert.deepEqual(cachedSuggestions, suggestions);
   assert.equal(homeCalls, 1);
+  // Search hydration, opening the detail, then adding to the shelf's catalog
+  // all reuse the same parsed detail page during this Runtime session.
+  assert.equal(detailCalls, 1);
   assert.ok(state.events.includes('source_search_completed'));
   await assert.rejects(plugin.search({ query: 'secret-canary-do-not-log', cursor: null, pageSize: 10 }), /Source operation failed/u);
   assert.ok(state.events.includes('source_search_failed'));

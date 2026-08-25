@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/shudugu",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "MgRead standard Node content-source plugin for 速读谷.",
   "type": "module",
@@ -9,14 +9,18 @@
   "packageManager": "npm@11.13.0",
   "engines": { "node": ">=24 <25", "npm": "11.13.0" },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "sync:cache": "node ../../../tools/sync_plugin_html_cache.mjs shudugu",
+    "build": "npm run sync:cache && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/contract.test.mjs test/source.test.mjs",
     "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
     "pack:plugin": "npm run build && node tools/mgread.mjs pack",
     "verify": "npm run typecheck && npm test && npm run pack:plugin"
   },
-  "dependencies": { "cheerio": "1.1.0" },
+  "dependencies": {
+    "@mgread/plugin-html-cache": "file:./packages/mgread-plugin-html-cache",
+    "cheerio": "1.1.0"
+  },
   "devDependencies": {
     "@types/node": "24.13.3",
     "typescript": "5.9.3"

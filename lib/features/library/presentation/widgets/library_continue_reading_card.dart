@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
 
@@ -10,38 +11,56 @@ class LibraryContinueReadingCard extends StatelessWidget {
   const LibraryContinueReadingCard({
     required this.data,
     required this.onContinueReading,
-    required this.onReadingHistory,
     this.isPreparing = false,
     super.key,
   });
 
   final LibraryContinueReadingViewData data;
   final VoidCallback onContinueReading;
-  final VoidCallback onReadingHistory;
   final bool isPreparing;
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
 
-    return SizedBox(
-      width: double.infinity,
-      child: Semantics(
-        container: true,
-        label: isPreparing
-            ? '继续阅读，${data.title}，${data.chapter}，正在准备阅读内容'
-            : '继续阅读，${data.title}，${data.chapter}',
-        liveRegion: isPreparing,
-        child: DecoratedBox(
-          decoration: BoxDecoration(borderRadius: AppRadii.card),
-          child: ClipRRect(
-            borderRadius: AppRadii.card,
+    return Semantics(
+      container: true,
+      label: isPreparing ? '继续阅读，${data.title}，正在准备阅读内容' : '继续阅读，${data.title}',
+      liveRegion: isPreparing,
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final bool compact =
+              constraints.maxWidth < AppSpacing.compactCardStackBreakpoint;
+          final double coverWidth = compact
+              ? AppSpacing.continueReadingCoverWidth - AppSpacing.section
+              : AppSpacing.continueReadingCoverWidth;
+          final double coverHeight = compact
+              ? AppSpacing.continueReadingCoverHeight - AppSpacing.section * 2
+              : AppSpacing.continueReadingCoverHeight;
+          final double cardHeight = compact
+              ? AppSpacing.continueReadingCardHeight - AppSpacing.regular
+              : AppSpacing.continueReadingCardHeight;
+          final double cardTop = compact
+              ? AppSpacing.continueReadingCardTopInset - AppSpacing.compact
+              : AppSpacing.continueReadingCardTopInset;
+          final double cardLeft =
+              coverWidth - AppSpacing.continueReadingCardCoverOverlap;
+
+          return SizedBox(
+            height: coverHeight,
+            width: double.infinity,
             child: Stack(
+              clipBehavior: Clip.none,
               children: <Widget>[
-                Positioned.fill(
+                Positioned(
+                  key: const Key('continue-reading-surface'),
+                  left: cardLeft,
+                  right: 0,
+                  top: cardTop,
+                  height: cardHeight,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
+                      borderRadius: AppRadii.card,
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -51,143 +70,65 @@ class LibraryContinueReadingCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                  ),
-                ),
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: Opacity(
-                      opacity: 0.72,
-                      child: Image.asset(
-                        'assets/illustrations/home/continue_reading_backdrop.png',
-                        fit: BoxFit.cover,
-                        alignment: Alignment.centerRight,
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: CustomPaint(
-                      painter: _ContinueReadingTexturePainter(
-                        color: tokens.accent.withValues(alpha: 0.07),
-                      ),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.compactPagePadding,
-                    vertical: AppSpacing.continueReadingVerticalPadding,
-                  ),
-                  child: LayoutBuilder(
-                    builder:
-                        (BuildContext context, BoxConstraints constraints) {
-                          final bool stacked =
-                              constraints.maxWidth <
-                              AppSpacing.compactCardStackBreakpoint;
-                          final Widget cover = LibraryBookCover(
-                            title: data.title,
-                            variant: data.coverVariant,
-                            coverBytes: data.coverBytes,
-                            assetPath: data.coverAssetPath,
-                            width: AppSpacing.continueReadingCoverWidth,
-                            height: AppSpacing.continueReadingCoverHeight,
-                          );
-                          final Widget details = SizedBox(
-                            height: AppSpacing.continueReadingCoverHeight,
+                    child: ClipRRect(
+                      borderRadius: AppRadii.card,
+                      child: Stack(
+                        children: <Widget>[
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: Opacity(
+                                opacity: 0.72,
+                                child: Image.asset(
+                                  'assets/illustrations/home/continue_reading_backdrop.png',
+                                  fit: BoxFit.cover,
+                                  alignment: Alignment.centerRight,
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: CustomPaint(
+                                painter: _ContinueReadingTexturePainter(
+                                  color: tokens.accent.withValues(alpha: 0.07),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: EdgeInsets.only(
+                              left: coverWidth - cardLeft + AppSpacing.regular,
+                              right: AppSpacing.comfortable,
+                              top: AppSpacing.compact,
+                              bottom: AppSpacing.compact,
+                            ),
                             child: _ContinueReadingDetails(
                               data: data,
                               onContinueReading: onContinueReading,
                               isPreparing: isPreparing,
                             ),
-                          );
-
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              SizedBox(
-                                height:
-                                    AppSpacing.section + AppSpacing.unit / 2,
-                                child: Row(
-                                  children: <Widget>[
-                                    Expanded(
-                                      child: Text(
-                                        '继续阅读',
-                                        style: theme.textTheme.titleLarge
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w500,
-                                              height: 1.2,
-                                              letterSpacing: -0.1,
-                                            ),
-                                      ),
-                                    ),
-                                    TextButton(
-                                      onPressed: onReadingHistory,
-                                      style: TextButton.styleFrom(
-                                        backgroundColor: tokens.surface
-                                            .withValues(alpha: 0.52),
-                                        foregroundColor: tokens.warning,
-                                        minimumSize: Size.zero,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal:
-                                              AppSpacing.unit +
-                                              AppSpacing.unit / 2,
-                                          vertical: AppSpacing.unit,
-                                        ),
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                        shape: const StadiumBorder(),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: <Widget>[
-                                          Text(
-                                            '阅读记录',
-                                            style: theme.textTheme.bodySmall
-                                                ?.copyWith(
-                                                  color: tokens.warning,
-                                                  fontWeight: FontWeight.w400,
-                                                  height: 1,
-                                                ),
-                                          ),
-                                          const SizedBox(
-                                            width: AppSpacing.unit / 2,
-                                          ),
-                                          const Icon(
-                                            Icons.chevron_right_rounded,
-                                            size: 14,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: AppSpacing.compact),
-                              if (stacked) ...<Widget>[
-                                Center(child: cover),
-                                const SizedBox(height: AppSpacing.regular),
-                                details,
-                              ] else
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: <Widget>[
-                                    cover,
-                                    const SizedBox(
-                                      width: AppSpacing.comfortable,
-                                    ),
-                                    Expanded(child: details),
-                                  ],
-                                ),
-                            ],
-                          );
-                        },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  child: _ContinueReadingCoverTreatment(
+                    title: data.title,
+                    variant: data.coverVariant,
+                    coverBytes: data.coverBytes,
+                    assetPath: data.coverAssetPath,
+                    width: coverWidth,
+                    height: coverHeight,
                   ),
                 ),
               ],
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -213,25 +154,12 @@ class _ContinueReadingDetails extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(
-          data.title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+        _AdaptiveSingleLineTitle(
+          title: data.title,
           style: theme.textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w500,
             height: 1.16,
             letterSpacing: -0.2,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.unit),
-        Text(
-          data.chapter,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: tokens.warning,
-            fontWeight: FontWeight.w400,
-            height: 1.2,
           ),
         ),
         const Spacer(),
@@ -260,17 +188,6 @@ class _ContinueReadingDetails extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: AppSpacing.compact),
-        Text(
-          data.lastReadLabel,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: tokens.mutedText,
-            fontWeight: FontWeight.w400,
-            height: 1.2,
-          ),
-        ),
         const Spacer(),
         _ContinueReadingAction(
           onPressed: onContinueReading,
@@ -278,6 +195,159 @@ class _ContinueReadingDetails extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+/// Gives the prominent cover a little physical depth without altering its
+/// source artwork or the shared cover component used by the book list.
+class _ContinueReadingCoverTreatment extends StatelessWidget {
+  const _ContinueReadingCoverTreatment({
+    required this.title,
+    required this.variant,
+    required this.width,
+    required this.height,
+    this.assetPath,
+    this.coverBytes,
+  });
+
+  final String title;
+  final LibraryCoverVariant variant;
+  final double width;
+  final double height;
+  final String? assetPath;
+  final List<int>? coverBytes;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppThemeTokens tokens = AppThemeTokens.of(context);
+    final BorderRadius radius = AppRadii.bookCover;
+    final double layerOffset = AppSpacing.continueReadingCoverLayerOffset;
+
+    return SizedBox(
+      width: width + layerOffset,
+      height: height + layerOffset,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          Positioned(
+            left: layerOffset,
+            top: layerOffset,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: radius,
+                color: tokens.accentSoft.withValues(alpha: 0.72),
+                border: Border.all(
+                  color: tokens.surface.withValues(alpha: 0.72),
+                ),
+              ),
+              child: SizedBox(width: width, height: height),
+            ),
+          ),
+          DecoratedBox(
+            position: DecorationPosition.foreground,
+            decoration: BoxDecoration(
+              borderRadius: radius,
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: tokens.shadow.withValues(alpha: 0.72),
+                  blurRadius: AppSpacing.continueReadingCoverShadowBlur,
+                  offset: const Offset(
+                    0,
+                    AppSpacing.continueReadingCoverShadowDrop,
+                  ),
+                ),
+              ],
+              border: Border.all(color: tokens.surface.withValues(alpha: 0.82)),
+            ),
+            child: ClipRRect(
+              borderRadius: radius,
+              child: Stack(
+                children: <Widget>[
+                  LibraryBookCover(
+                    title: title,
+                    variant: variant,
+                    coverBytes: coverBytes,
+                    assetPath: assetPath,
+                    width: width,
+                    height: height,
+                  ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: <Color>[
+                              Colors.white.withValues(alpha: 0.08),
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.16),
+                            ],
+                            stops: const <double>[0, 0.42, 1],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdaptiveSingleLineTitle extends StatelessWidget {
+  const _AdaptiveSingleLineTitle({required this.title, required this.style});
+
+  final String title;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    final TextStyle resolvedStyle = style ?? DefaultTextStyle.of(context).style;
+    final TextScaler textScaler = MediaQuery.textScalerOf(context);
+
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double baseFontSize =
+            resolvedStyle.fontSize ?? AppTypography.sectionTitle;
+        double fontSize = baseFontSize;
+        while (fontSize > AppTypography.continueReadingTitleMinimum &&
+            _titleWidth(
+                  context: context,
+                  style: resolvedStyle.copyWith(fontSize: fontSize),
+                  textScaler: textScaler,
+                ) >
+                constraints.maxWidth) {
+          fontSize -= 1;
+        }
+
+        return Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textScaler: textScaler,
+          style: resolvedStyle.copyWith(fontSize: fontSize),
+        );
+      },
+    );
+  }
+
+  double _titleWidth({
+    required BuildContext context,
+    required TextStyle style,
+    required TextScaler textScaler,
+  }) {
+    final TextPainter painter = TextPainter(
+      text: TextSpan(text: title, style: style),
+      textDirection: Directionality.of(context),
+      textScaler: textScaler,
+      maxLines: 1,
+    )..layout();
+    return painter.width;
   }
 }
 

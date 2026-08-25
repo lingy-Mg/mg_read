@@ -535,8 +535,9 @@ export class DesktopRuntime {
       definition: runtimeDiagnosticEvents.pluginLoad,
       ...(lifecycleSpan === undefined ? {} : { parent: lifecycleSpan.trace }),
     });
-    const pluginManager = new PluginManager(this.#dataRoot, {
-      ...(this.#developmentPluginRoot === undefined
+      const pluginManager = new PluginManager(this.#dataRoot, {
+        embedded: this.#embedded,
+        ...(this.#developmentPluginRoot === undefined
         ? {}
         : { developmentPluginRoot: this.#developmentPluginRoot }),
       events: emitPluginManagerDiagnostic,
@@ -572,14 +573,40 @@ export class DesktopRuntime {
       throw error;
     }
     this.#pluginManager = pluginManager;
-    emitRuntimeDiagnostic({
-      code: "plugin_runtime_initialized",
-      level: "info",
-      message: "The standard Node plugin runtime initialized successfully.",
-      type: "diagnostic",
-    });
+      emitRuntimeDiagnostic({
+        code: "plugin_runtime_initialized",
+        level: "info",
+        message: "The standard Node plugin runtime initialized successfully.",
+        type: "diagnostic",
+      });
 
-    const server = createServer((request, response) => {
+      // Android runs this Core inside Javet's embedded NodeRuntime. It has no
+      // desktop loopback transport, and starting a Node HTTP server here can
+      // leave the Javet event loop waiting forever before bootstrap completes.
+      // Keep the embedded route transport-free; desktop Node owns HTTP/WS.
+      if (this.#embedded) {
+        const ready: DesktopRuntimeReady = Object.freeze({
+          bootId: this.#bootId,
+          host: LOOPBACK_HOST,
+          nodeVersion: process.versions.node,
+          pid: process.pid,
+          port: 0,
+          protocolVersion,
+          runtimeVersion,
+          startedAt: this.#startedAt,
+          type: "ready",
+        });
+        this.#ready = ready;
+        lifecycleSpan?.end("success", {
+          attributes: () => runtimeDiagnosticValue.object({
+            platform: runtimeDiagnosticValue.string(process.platform),
+            stage: runtimeDiagnosticValue.string("ready"),
+          }),
+        });
+        return ready;
+      }
+
+      const server = createServer((request, response) => {
       this.#handleHttp(request, response);
     });
     server.on("upgrade", (request, socket, head) => {

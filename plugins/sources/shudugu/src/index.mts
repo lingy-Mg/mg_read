@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import type {
   ChapterContent, ChaptersRequest, ChaptersResult, ContentDetail, ContentReferenceRequest,
   ContentRequest, DiscoverRequest, DiscoverResult, MgReadPluginContext, SearchRequest,
@@ -8,10 +7,32 @@ import { ShuduguSource, type SourceRules } from './source.js';
 
 let context: MgReadPluginContext | undefined;
 let source: ShuduguSource | undefined;
+const sourceRules = Object.freeze({
+  origin: 'https://www.shudugu.org',
+  categories: Object.freeze([
+    { id: 'dushi', title: '都市小说' },
+    { id: 'xuanhuan', title: '玄幻小说' },
+    { id: 'qing', title: '轻小说' },
+    { id: 'xianxia', title: '仙侠小说' },
+    { id: 'lishi', title: '历史小说' },
+    { id: 'kehuan', title: '科幻小说' },
+    { id: 'zhutianwuxian', title: '诸天无限' },
+    { id: 'youxi', title: '游戏小说' },
+    { id: 'qihuan', title: '奇幻小说' },
+    { id: 'xuanyi', title: '悬疑小说' },
+    { id: 'tiyu', title: '体育小说' },
+    { id: 'guanchang', title: '官场小说' },
+    { id: 'junshi', title: '军事小说' },
+    { id: 'wuxia', title: '武侠小说' },
+    { id: 'xiangcun', title: '乡村小说' },
+    { id: 'xianshi', title: '现实小说' },
+    { id: 'yanqing', title: '言情小说' },
+  ]),
+} satisfies SourceRules);
 
 export async function activate(nextContext: MgReadPluginContext): Promise<void> {
   context = nextContext;
-  source = new ShuduguSource(nextContext, JSON.parse(await readFile(new URL('../assets/rules.json', import.meta.url), 'utf8')) as SourceRules);
+  source = new ShuduguSource(nextContext, sourceRules);
   nextContext.log.info('source_activated');
 }
 export async function discover(request: DiscoverRequest): Promise<DiscoverResult> { return invoke('discover', () => requireSource().discover(request)); }

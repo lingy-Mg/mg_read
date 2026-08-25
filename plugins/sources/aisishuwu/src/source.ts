@@ -1,4 +1,4 @@
-import type * as cheerio from 'cheerio';
+import * as cheerio from 'cheerio/slim';
 import type { Element } from 'domhandler';
 
 import type {
@@ -29,8 +29,14 @@ export interface SourceRules {
 
 interface CatalogPage {
   readonly chapters: readonly CatalogChapter[];
+  readonly expiresAtMs: number;
   readonly nextPage: number | null;
   readonly totalCount: number | null;
+}
+
+interface CachedProjection<T> {
+  readonly expiresAtMs: number;
+  readonly value: T;
 }
 
 interface CatalogChapter {
@@ -39,27 +45,41 @@ interface CatalogChapter {
   readonly url: URL;
 }
 
-let cheerioModule: Promise<typeof import('cheerio')> | undefined;
-
-const listingHtmlCachePolicy = Object.freeze({
+// Discovery cards are intentionally stale-while-revalidate: their title and
+// cover change rarely, so an expired projection renders first and refreshes for
+// the following visit. Search remains on the normal, shorter refresh policy.
+const discoveryListingHtmlCachePolicy = Object.freeze({
   namespace: 'listing',
+  staleAfterMs: 60 * 60 * 1000,
+  serveStaleWhileRevalidate: true,
+} satisfies HtmlCachePolicy);
+const searchListingHtmlCachePolicy = Object.freeze({
+  namespace: 'search',
   staleAfterMs: 10 * 60 * 1000,
 } satisfies HtmlCachePolicy);
 const detailHtmlCachePolicy = Object.freeze({
   namespace: 'detail',
   staleAfterMs: 60 * 60 * 1000,
+  // A detail screen must never render an over-one-hour source projection.
+  allowStaleOnError: false,
+} satisfies HtmlCachePolicy);
+const discoveryDetailHtmlCachePolicy = Object.freeze({
+  namespace: 'detail',
+  staleAfterMs: 60 * 60 * 1000,
+  serveStaleWhileRevalidate: true,
 } satisfies HtmlCachePolicy);
 const catalogHtmlCachePolicy = Object.freeze({
   namespace: 'catalog',
   staleAfterMs: 60 * 60 * 1000,
+  allowStaleOnError: false,
 } satisfies HtmlCachePolicy);
 const hotSearchHtmlCachePolicy = Object.freeze({
   namespace: 'hot-search',
   staleAfterMs: 24 * 60 * 60 * 1000,
 } satisfies HtmlCachePolicy);
 
-function loadCheerio(): Promise<typeof import('cheerio')> {
-  return (cheerioModule ??= import('cheerio'));
+function loadCheerio(): Promise<typeof import('cheerio/slim')> {
+  return Promise.resolve(cheerio);
 }
 
 /**
@@ -73,6 +93,11 @@ export class AliceBookHouseSource {
   readonly #coverUrls = new Map<string, string | null>();
   readonly #chapterCounts = new Map<string, number | null>();
   readonly #catalogPages = new Map<string, CatalogPage>();
+  readonly #catalogResults = new Map<string, CachedProjection<ChaptersResult>>();
+  readonly #catalogRequests = new Map<string, Promise<ChaptersResult>>();
+  readonly #details = new Map<string, CachedProjection<ContentDetail>>();
+  readonly #discoveryDetailRequests = new Map<string, Promise<ContentDetail>>();
+  readonly #detailRequests = new Map<string, Promise<ContentDetail>>();
   readonly #htmlCache: PluginHtmlCache;
 
   constructor(
@@ -131,7 +156,7 @@ export class AliceBookHouseSource {
     const pageUrl = new URL(`/lists/${category.id}.html`, this.#baseUrl);
     pageUrl.searchParams.set('page', String(page));
     const items = await this.#parseList(
-      await this.#getHtml(pageUrl, undefined, listingHtmlCachePolicy),
+      await this.#getHtml(pageUrl, undefined, discoveryListingHtmlCachePolicy),
       pageUrl,
     );
     const visible = await this.#withDiscoveryDetails(
@@ -188,7 +213,7 @@ export class AliceBookHouseSource {
     searchUrl.searchParams.set('f', '_all');
     searchUrl.searchParams.set('p', String(page));
     const items = await this.#parseList(
-      await this.#getHtml(searchUrl, undefined, listingHtmlCachePolicy),
+      await this.#getHtml(searchUrl, undefined, searchListingHtmlCachePolicy),
       searchUrl,
     );
 
@@ -227,11 +252,33 @@ export class AliceBookHouseSource {
   }
 
   async getDetail(request: ContentReferenceRequest): Promise<ContentDetail> {
+    const cached = this.#details.get(request.id);
+    if (cached !== undefined && cached.expiresAtMs >= Date.now()) return cached.value;
+    const inFlight = this.#detailRequests.get(request.id);
+    if (inFlight !== undefined) return inFlight;
+    const pending = this.#loadDetail(request);
+    this.#detailRequests.set(request.id, pending);
+    void pending.then(
+      () => this.#detailRequests.delete(request.id),
+      () => this.#detailRequests.delete(request.id),
+    );
+    return pending;
+  }
+
+  async #loadDetail(
+    request: ContentReferenceRequest,
+    cachePolicy: HtmlCachePolicy = detailHtmlCachePolicy,
+  ): Promise<ContentDetail> {
     const novelId = decodeNovelId(request.id);
     const detailUrl = new URL(`/novel/${novelId}.html`, this.#baseUrl);
     const cheerio = await loadCheerio();
+    const cachedHtml = await this.#getHtmlResult(
+      detailUrl,
+      detailUrl,
+      cachePolicy,
+    );
     const $ = cheerio.load(
-      await this.#getHtml(detailUrl, detailUrl, detailHtmlCachePolicy),
+      cachedHtml.body,
     );
     const title = requiredText($('.novel_title').first().text());
     const info = $('.novel_info').first();
@@ -262,7 +309,7 @@ export class AliceBookHouseSource {
     const contentId = `novel:${novelId}`;
     this.#coverUrls.set(contentId, coverUrl);
     this.#chapterCounts.set(contentId, stats.chapterCount);
-    return Object.freeze({
+    const detail = Object.freeze({
       ...this.#summary({
         novelId,
         title,
@@ -281,17 +328,41 @@ export class AliceBookHouseSource {
       aliases: Object.freeze([]),
       catalogUrl: new URL(`/other/chapters/id/${novelId}.html`, this.#baseUrl).toString(),
     });
+    // Discovery hydration and the immediately opened detail route share this
+    // parsed object. Its expiry is the underlying HTML's expiry, never a new
+    // hour measured from parsing, so detail freshness remains strict.
+    this.#details.set(request.id, Object.freeze({
+      expiresAtMs: cachedHtml.storedAtMs + cachePolicy.staleAfterMs,
+      value: detail,
+    }));
+    return detail;
   }
 
   async getChapters(request: ChaptersRequest): Promise<ChaptersResult> {
+    const cached = this.#catalogResults.get(request.id);
+    if (cached !== undefined && cached.expiresAtMs >= Date.now()) return cached.value;
+    const inFlight = this.#catalogRequests.get(request.id);
+    if (inFlight !== undefined) return inFlight;
+    const pending = this.#loadChapters(request);
+    this.#catalogRequests.set(request.id, pending);
+    void pending.then(
+      () => this.#catalogRequests.delete(request.id),
+      () => this.#catalogRequests.delete(request.id),
+    );
+    return pending;
+  }
+
+  async #loadChapters(request: ChaptersRequest): Promise<ChaptersResult> {
     const novelId = decodeNovelId(request.id);
     const chapters: CatalogChapter[] = [];
     const seenChapterIds = new Set<string>();
     const seenPages = new Set<number>();
+    let expiresAtMs = Number.MAX_SAFE_INTEGER;
     let page: number | null = 1;
     while (page !== null) {
       if (!seenPages.add(page)) throw new Error('Catalog page repeated.');
       const catalog = await this.#catalogPage(novelId, page);
+      expiresAtMs = Math.min(expiresAtMs, catalog.expiresAtMs);
       for (const chapter of catalog.chapters) {
         if (seenChapterIds.has(chapter.id)) continue;
         seenChapterIds.add(chapter.id);
@@ -300,7 +371,7 @@ export class AliceBookHouseSource {
       page = catalog.nextPage;
     }
 
-    return Object.freeze({
+    const result = Object.freeze({
       items: Object.freeze(
         chapters.map((chapter, index) =>
           Object.freeze({
@@ -317,6 +388,10 @@ export class AliceBookHouseSource {
         ),
       ),
     });
+    // Adding to the shelf can ask for the catalog immediately after detail.
+    // Keep the fully parsed result, including page aggregation, for that route.
+    this.#catalogResults.set(request.id, Object.freeze({ expiresAtMs, value: result }));
+    return result;
   }
 
   async getContent(request: ContentRequest): Promise<ChapterContent> {
@@ -358,6 +433,14 @@ export class AliceBookHouseSource {
     referer?: URL,
     cachePolicy?: HtmlCachePolicy,
   ): Promise<string> {
+    return (await this.#getHtmlResult(url, referer, cachePolicy)).body;
+  }
+
+  async #getHtmlResult(
+    url: URL,
+    referer?: URL,
+    cachePolicy?: HtmlCachePolicy,
+  ): Promise<{ readonly body: string; readonly storedAtMs: number }> {
     const request = async (): Promise<string> => {
       this.context.log.debug('source_http_fetch_started');
       const response = await this.context.http.fetch(url, {
@@ -373,8 +456,8 @@ export class AliceBookHouseSource {
       return response.text();
     };
     return cachePolicy === undefined
-      ? request()
-      : this.#htmlCache.getOrFetch(url, cachePolicy, request);
+      ? Object.freeze({ body: await request(), storedAtMs: Date.now() })
+      : this.#htmlCache.getOrFetchResult(url, cachePolicy, request);
   }
 
   async #parseList(html: string, pageUrl: URL): Promise<readonly ContentSummary[]> {
@@ -506,13 +589,12 @@ export class AliceBookHouseSource {
   async #catalogPage(novelId: string, page: number): Promise<CatalogPage> {
     const cacheKey = `${novelId}:${page}`;
     const cached = this.#catalogPages.get(cacheKey);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined && cached.expiresAtMs >= Date.now()) return cached;
 
     const catalogUrl = this.#catalogPageUrl(novelId, page);
     const cheerio = await loadCheerio();
-    const $ = cheerio.load(
-      await this.#getHtml(catalogUrl, catalogUrl, catalogHtmlCachePolicy),
-    );
+    const cachedHtml = await this.#getHtmlResult(catalogUrl, catalogUrl, catalogHtmlCachePolicy);
+    const $ = cheerio.load(cachedHtml.body);
     const seen = new Set<string>();
     const chapters = $('.mulu_list a[href*="/book/"], a[href*="/book/"]')
       .toArray()
@@ -528,6 +610,7 @@ export class AliceBookHouseSource {
       });
     const result = Object.freeze({
       chapters: Object.freeze(chapters),
+      expiresAtMs: cachedHtml.storedAtMs + catalogHtmlCachePolicy.staleAfterMs,
       nextPage: findNextCatalogPage($, catalogUrl, novelId, page),
       totalCount: parseCatalogTotalCount($),
     });
@@ -585,7 +668,7 @@ export class AliceBookHouseSource {
         nextIndex += 1;
         const content = contents[index]!;
         try {
-          const detail = await this.getDetail({ id: content.id });
+          const detail = await this.#getDiscoveryDetail({ id: content.id });
           hydrated[index] = mergeDiscoverySummary(content, detail);
         } catch {
           hydrated[index] = await this.#withCover(content);
@@ -599,6 +682,20 @@ export class AliceBookHouseSource {
       ),
     );
     return Object.freeze(hydrated);
+  }
+
+  async #getDiscoveryDetail(request: ContentReferenceRequest): Promise<ContentDetail> {
+    const cached = this.#details.get(request.id);
+    if (cached !== undefined && cached.expiresAtMs >= Date.now()) return cached.value;
+    const inFlight = this.#discoveryDetailRequests.get(request.id);
+    if (inFlight !== undefined) return inFlight;
+    const pending = this.#loadDetail(request, discoveryDetailHtmlCachePolicy);
+    this.#discoveryDetailRequests.set(request.id, pending);
+    void pending.then(
+      () => this.#discoveryDetailRequests.delete(request.id),
+      () => this.#discoveryDetailRequests.delete(request.id),
+    );
+    return pending;
   }
 
   async #withCover(content: ContentSummary): Promise<ContentSummary> {

@@ -209,6 +209,7 @@ export interface PluginResourceResponse {
 /** Cold-start loader for standard Node projects in one shared VM/module cache. */
 export class PluginManager {
   readonly #dataRoot: string;
+  readonly #embedded: boolean;
   readonly #developmentPluginRoot: string | undefined;
   readonly #events: PluginManagerEventSink;
   readonly #http: PluginRuntimeHttpClient;
@@ -228,11 +229,13 @@ export class PluginManager {
     runtimeDataRoot: string,
     options: {
       readonly developmentPluginRoot?: string;
+      readonly embedded?: boolean;
       readonly events?: PluginManagerEventSink;
       readonly http?: PluginRuntimeHttpClient;
     } = {},
   ) {
     this.#dataRoot = resolve(runtimeDataRoot);
+    this.#embedded = options.embedded ?? false;
     this.#developmentPluginRoot = options.developmentPluginRoot === undefined
       ? undefined
       : resolve(options.developmentPluginRoot);
@@ -788,8 +791,7 @@ export class PluginManager {
     });
     try {
       const entryPath = resolveInside(projectRoot, descriptor.entry);
-      const requireFromEntry = createRequire(entryPath);
-      const imported = requireFromEntry(entryPath) as Record<string, unknown>;
+      const imported = await this.#loadModule(entryPath);
       const candidate = normalizePluginModule(imported);
       if (candidate === undefined) throw new PluginManagerError("plugin_load_failed");
       await candidate.activate(await this.#createContext(descriptor));
@@ -1014,7 +1016,7 @@ export class PluginManager {
       // await through require(). This preserves ordinary Node resolution while
       // avoiding the Javet dynamic-import callback path on Android.
       const entryPath = resolveInside(versionRoot, project.descriptor.entry);
-      const imported = createRequire(entryPath)(entryPath) as Record<string, unknown>;
+      const imported = await this.#loadModule(entryPath);
       const candidate = normalizePluginModule(imported);
       if (candidate === undefined) {
         throw new PluginManagerError("plugin_load_failed");
@@ -1100,6 +1102,22 @@ export class PluginManager {
       }),
       plugin: Object.freeze({ id: descriptor.id, version: descriptor.version }),
     });
+  }
+
+  async #loadModule(entryPath: string): Promise<Record<string, unknown>> {
+    if (this.#embedded) {
+      // Javet owns the V8 module resolver on Android. Ask that resolver to
+      // compile the plugin module so installed files and their dependencies
+      // stay in the same VM/module cache as the Runtime Core.
+      const loader = (globalThis as {
+        __mgreadLoadPluginModule?: (path: string) => Record<string, unknown>;
+      }).__mgreadLoadPluginModule;
+      if (typeof loader !== "function") {
+        throw new PluginManagerError("plugin_load_failed");
+      }
+      return loader(entryPath);
+    }
+    return createRequire(entryPath)(entryPath) as Record<string, unknown>;
   }
 
   async #readDescriptor(

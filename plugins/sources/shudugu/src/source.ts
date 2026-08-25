@@ -1,4 +1,4 @@
-import type * as cheerio from 'cheerio';
+import * as cheerio from 'cheerio/slim';
 import type { Element } from 'domhandler';
 import type {
   ChapterContent, ChaptersRequest, ChaptersResult, ContentAttribute, ContentDetail,
@@ -11,19 +11,26 @@ import { nonBlank } from './utils.js';
 
 export interface SourceRules { readonly origin: string; readonly categories: readonly { readonly id: string; readonly title: string }[]; }
 interface CatalogChapter { readonly id: string; readonly title: string; readonly url: URL; }
-let cheerioModule: Promise<typeof import('cheerio')> | undefined;
-const listingPolicy = Object.freeze({ namespace: 'listing', staleAfterMs: 10 * 60 * 1000 } satisfies HtmlCachePolicy);
-const detailPolicy = Object.freeze({ namespace: 'detail', staleAfterMs: 60 * 60 * 1000 } satisfies HtmlCachePolicy);
+interface CachedProjection<T> { readonly expiresAtMs: number; readonly value: T; }
+// Discovery cards may use a stale projection immediately and refresh it for the
+// next visit. Detail and shelf data are deliberately strict: no value older
+// than one hour is returned after a failed refresh.
+const discoveryListingPolicy = Object.freeze({ namespace: 'listing', staleAfterMs: 60 * 60 * 1000, serveStaleWhileRevalidate: true } satisfies HtmlCachePolicy);
+const searchListingPolicy = Object.freeze({ namespace: 'search', staleAfterMs: 10 * 60 * 1000 } satisfies HtmlCachePolicy);
+const detailPolicy = Object.freeze({ namespace: 'detail', staleAfterMs: 60 * 60 * 1000, allowStaleOnError: false } satisfies HtmlCachePolicy);
+const discoveryDetailPolicy = Object.freeze({ namespace: 'detail', staleAfterMs: 60 * 60 * 1000, serveStaleWhileRevalidate: true } satisfies HtmlCachePolicy);
 const hotSearchPolicy = Object.freeze({ namespace: 'hot-search', staleAfterMs: 24 * 60 * 60 * 1000 } satisfies HtmlCachePolicy);
 
-function loadCheerio(): Promise<typeof import('cheerio')> { return (cheerioModule ??= import('cheerio')); }
+function loadCheerio(): Promise<typeof import('cheerio/slim')> { return Promise.resolve(cheerio); }
 
 export class ShuduguSource {
   readonly #baseUrl: URL;
   readonly #categories: readonly SourceRules['categories'][number][];
   readonly #cache: PluginHtmlCache;
-  readonly #catalogs = new Map<string, readonly CatalogChapter[]>();
-  readonly #details = new Map<string, ContentDetail>();
+  readonly #catalogs = new Map<string, CachedProjection<ChaptersResult>>();
+  readonly #details = new Map<string, CachedProjection<ContentDetail>>();
+  readonly #discoveryDetailRequests = new Map<string, Promise<ContentDetail>>();
+  readonly #detailRequests = new Map<string, Promise<ContentDetail>>();
   constructor(private readonly context: MgReadPluginContext, rules: SourceRules) {
     this.#baseUrl = new URL(rules.origin);
     if (this.#baseUrl.protocol !== 'https:' || this.#baseUrl.pathname !== '/') throw new Error('Source origin is invalid.');
@@ -48,7 +55,7 @@ export class ShuduguSource {
     const category = this.#category(request.target);
     const page = decodePage(request.cursor, 'category-page');
     const url = this.#categoryUrl(category.id, page);
-    const books = await this.#parseList(await this.#getHtml(url, listingPolicy), url);
+    const books = await this.#parseList(await this.#getHtml(url, discoveryListingPolicy), url);
     const visible = await this.#withDetails(books.slice(0, boundedPageSize(request.pageSize)));
     const collectionId = `category-books:${category.id}`;
     const continuation = books.length >= boundedPageSize(request.pageSize)
@@ -69,7 +76,7 @@ export class ShuduguSource {
     const url = new URL('/i/sor.aspx', this.#baseUrl);
     url.searchParams.set('key', request.query);
     if (page > 1) url.searchParams.set('page', String(page));
-    const html = await this.#getHtml(url, listingPolicy);
+    const html = await this.#getHtml(url, searchListingPolicy);
     const books = await this.#parseList(html, url);
     const size = boundedPageSize(request.pageSize);
     return Object.freeze({ items: await this.#withDetails(books.slice(0, size)), nextCursor: null, totalCount: parseSearchTotal(html) });
@@ -83,10 +90,22 @@ export class ShuduguSource {
   }
 
   async getDetail(request: ContentReferenceRequest): Promise<ContentDetail> {
+    const cached = this.#details.get(request.id);
+    if (cached !== undefined && cached.expiresAtMs >= Date.now()) return cached.value;
+    const inFlight = this.#detailRequests.get(request.id);
+    if (inFlight !== undefined) return inFlight;
+    const pending = this.#loadDetail(request);
+    this.#detailRequests.set(request.id, pending);
+    void pending.then(() => this.#detailRequests.delete(request.id), () => this.#detailRequests.delete(request.id));
+    return pending;
+  }
+
+  async #loadDetail(request: ContentReferenceRequest, cachePolicy: HtmlCachePolicy = detailPolicy): Promise<ContentDetail> {
     const id = decodeNovelId(request.id);
     const url = new URL(`/${id}/`, this.#baseUrl);
     const cheerio = await loadCheerio();
-    const $ = cheerio.load(await this.#getHtml(url, detailPolicy));
+    const cachedHtml = await this.#getHtmlResult(url, cachePolicy);
+    const $ = cheerio.load(cachedHtml.body);
     const item = $('.item').first();
     const title = required(item.find('.itemtxt h1 a, .itemtxt h3 a').first().text());
     const spans = item.find('.itemtxt p span').toArray().map((element) => required($(element).text()));
@@ -110,19 +129,29 @@ export class ShuduguSource {
         chapterCount: chapters.length, latestChapter, updatedAt }),
       aliases: Object.freeze([]), catalogUrl: url.toString(),
     });
-    this.#details.set(request.id, detail);
-    this.#catalogs.set(id, chapters);
+    const expiresAtMs = cachedHtml.storedAtMs + cachePolicy.staleAfterMs;
+    // The source places detail and catalog on one page. Discovery's hydration
+    // therefore satisfies both the later detail route and add-to-shelf catalog
+    // request without another HTTP fetch or HTML parse.
+    this.#details.set(request.id, Object.freeze({ expiresAtMs, value: detail }));
+    this.#catalogs.set(request.id, Object.freeze({
+      expiresAtMs,
+      value: Object.freeze({ items: Object.freeze(chapters.map((chapter, index) => Object.freeze({
+        id: chapter.id, title: chapter.title, order: index, url: chapter.url.toString(), volumeTitle: null,
+        wordCount: null, updatedAt: null, isLocked: false, attributes: Object.freeze([]),
+      }))) }),
+    }));
     return detail;
   }
 
   async getChapters(request: ChaptersRequest): Promise<ChaptersResult> {
-    const id = decodeNovelId(request.id);
-    let chapters = this.#catalogs.get(id);
-    if (chapters === undefined) { chapters = (await this.getDetail({ id: request.id })).chapterCount === null ? [] : this.#catalogs.get(id) ?? []; }
-    return Object.freeze({ items: Object.freeze(chapters.map((chapter, index) => Object.freeze({
-      id: chapter.id, title: chapter.title, order: index, url: chapter.url.toString(), volumeTitle: null,
-      wordCount: null, updatedAt: null, isLocked: false, attributes: Object.freeze([]),
-    }))) });
+    decodeNovelId(request.id);
+    const cached = this.#catalogs.get(request.id);
+    if (cached !== undefined && cached.expiresAtMs >= Date.now()) return cached.value;
+    await this.getDetail({ id: request.id });
+    const loaded = this.#catalogs.get(request.id);
+    if (loaded === undefined) throw new Error('Source catalog was not loaded.');
+    return loaded.value;
   }
 
   async getContent(request: ContentRequest): Promise<ChapterContent> {
@@ -140,13 +169,18 @@ export class ShuduguSource {
   }
 
   async #getHtml(url: URL, policy?: HtmlCachePolicy): Promise<string> {
+    return (await this.#getHtmlResult(url, policy)).body;
+  }
+  async #getHtmlResult(url: URL, policy?: HtmlCachePolicy): Promise<{ readonly body: string; readonly storedAtMs: number }> {
     const request = async (): Promise<string> => {
       this.context.log.debug('source_http_fetch_started');
       const response = await this.context.http.fetch(url, { headers: { Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'zh-CN,zh;q=0.9' } });
       if (!response.ok) throw new Error(`Source request failed with HTTP ${response.status}.`);
       return response.text();
     };
-    return policy === undefined ? request() : this.#cache.getOrFetch(url, policy, request);
+    return policy === undefined
+      ? Object.freeze({ body: await request(), storedAtMs: Date.now() })
+      : this.#cache.getOrFetchResult(url, policy, request);
   }
 
   async #parseList(html: string, pageUrl: URL): Promise<readonly ContentSummary[]> {
@@ -181,8 +215,18 @@ export class ShuduguSource {
   }
   async #withDetails(books: readonly ContentSummary[]): Promise<readonly ContentSummary[]> {
     const result = new Array<ContentSummary>(books.length); let next = 0;
-    const worker = async (): Promise<void> => { while (next < books.length) { const index = next++; const book = books[index]!; try { const detail = await this.getDetail({ id: book.id }); result[index] = Object.freeze({ ...book, author: detail.author, url: detail.url, coverUrl: detail.coverUrl, description: detail.description, language: detail.language, status: detail.status, access: detail.access, wordCount: detail.wordCount, chapterCount: detail.chapterCount, publishedAt: detail.publishedAt, updatedAt: detail.updatedAt, latestChapter: detail.latestChapter, categories: detail.categories, tags: detail.tags, attributes: detail.attributes }); } catch { result[index] = book; } } };
+    const worker = async (): Promise<void> => { while (next < books.length) { const index = next++; const book = books[index]!; try { const detail = await this.#getDiscoveryDetail({ id: book.id }); result[index] = Object.freeze({ ...book, author: detail.author, url: detail.url, coverUrl: detail.coverUrl, description: detail.description, language: detail.language, status: detail.status, access: detail.access, wordCount: detail.wordCount, chapterCount: detail.chapterCount, publishedAt: detail.publishedAt, updatedAt: detail.updatedAt, latestChapter: detail.latestChapter, categories: detail.categories, tags: detail.tags, attributes: detail.attributes }); } catch { result[index] = book; } } };
     await Promise.all(Array.from({ length: Math.min(4, books.length) }, () => worker())); return Object.freeze(result);
+  }
+  async #getDiscoveryDetail(request: ContentReferenceRequest): Promise<ContentDetail> {
+    const cached = this.#details.get(request.id);
+    if (cached !== undefined && cached.expiresAtMs >= Date.now()) return cached.value;
+    const inFlight = this.#discoveryDetailRequests.get(request.id);
+    if (inFlight !== undefined) return inFlight;
+    const pending = this.#loadDetail(request, discoveryDetailPolicy);
+    this.#discoveryDetailRequests.set(request.id, pending);
+    void pending.then(() => this.#discoveryDetailRequests.delete(request.id), () => this.#discoveryDetailRequests.delete(request.id));
+    return pending;
   }
   #parseCatalog($: cheerio.CheerioAPI, base: URL): readonly CatalogChapter[] {
     const seen = new Set<string>(); return Object.freeze($('#list a[href]').toArray().flatMap((element) => { const title = textOrNull($(element).text()); const href = $(element).attr('href'); if (title === null || href === undefined) return []; const url = this.#sourceUrl(href, base); const id = this.#chapterId(url); if (seen.has(id)) return []; seen.add(id); return [Object.freeze({ id, title, url })]; }));

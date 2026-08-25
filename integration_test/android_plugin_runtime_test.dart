@@ -35,7 +35,7 @@ void main() {
       (plugin) => plugin.id == 'org.mgread.aisishuwu',
     );
     expect(aisishuwu.status, 'active');
-    expect(aisishuwu.activeVersion, '0.2.2');
+    expect(aisishuwu.activeVersion, '0.2.3');
     final demo = plugins.singleWhere(
       (plugin) => plugin.id == 'org.mgread.discovery-demo',
     );

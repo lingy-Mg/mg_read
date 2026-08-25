@@ -262,7 +262,6 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       data: continueReading,
       isPreparing: widget.preparingBookId == continueReading.bookId,
       onContinueReading: _handleContinueReading,
-      onReadingHistory: _handleReadingHistory,
     );
   }
 

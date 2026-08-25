@@ -380,6 +380,8 @@ test('public API completes the opaque content chain with safe diagnostic phases'
   const events = [];
   const secret = 'credential-canary-do-not-log';
   const chapterBody = 'chapter-body-canary-do-not-log';
+  let detailFetches = 0;
+  let catalogFetches = 0;
   const list = `
     <article class="list-group-item">
       <a href="/novel/42.html">测试书名</a>
@@ -410,12 +412,14 @@ test('public API completes the opaque content chain with safe diagnostic phases'
           return new Response(list);
         }
         if (url.pathname === '/novel/42.html') {
+          detailFetches += 1;
           return new Response(`
             <h1 class="novel_title">测试书名</h1>
             <div class="novel_info"><p>作 者：<a href="/search.html?f=author">测试作者</a></p></div>
           `);
         }
         if (url.pathname === '/other/chapters/id/42.html') {
+          catalogFetches += 1;
           return new Response('<ul class="mulu_list"><li><a href="/book/42/first.html">第一章</a></li></ul>');
         }
         if (url.pathname === '/book/42/first.html') {
@@ -469,6 +473,12 @@ test('public API completes the opaque content chain with safe diagnostic phases'
   assert.equal(detail.id, contentId);
   assert.equal(content.chapterId, chapters.items[0].id);
   assert.equal(content.text, chapterBody);
+  // Discovery already parsed the detail page. Reopening the detail reuses that
+  // projection, and a repeated shelf catalog read reuses the full aggregation.
+  assert.equal(detailFetches, 1);
+  assert.equal(catalogFetches, 1);
+  await plugin.getChapters({ id: contentId });
+  assert.equal(catalogFetches, 1);
   for (const operation of ['discover', 'search', 'search_suggestions', 'get_detail', 'get_chapters', 'get_content']) {
     assert.ok(events.includes(`source_${operation}_started`));
     assert.ok(events.includes(`source_${operation}_validated`));

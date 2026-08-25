@@ -10,7 +10,9 @@ const packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'ut
 if (packageJson?.mgread?.schemaVersion !== 1 || packageJson?.mgread?.pluginApi !== 1 || !packageJson.main?.startsWith('dist/')) throw new Error('Invalid MgRead package.');
 const files = [];
 for (const name of ['package.json', 'package-lock.json', 'README.md', 'LICENSE']) files.push({ path: name, bytes: await readFile(resolve(root, name)) });
-for (const directory of ['dist', 'assets', 'tools']) await collect(directory);
+// Local `file:./packages/...` dependencies are part of the standard plugin
+// archive. Runtime recreates node_modules from the lockfile after install.
+for (const directory of ['dist', 'assets', 'packages', 'tools']) await collect(directory);
 files.sort((a, b) => a.path.localeCompare(b.path));
 const archive = zip(files); const targetDir = resolve(root, 'artifacts'); const target = resolve(targetDir, `${packageJson.mgread.id}-${packageJson.version}.mgplugin`);
 await mkdir(targetDir, { recursive: true }); await rm(target, { force: true }); await writeFile(target, archive, { mode: 0o444 });

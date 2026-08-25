@@ -14,7 +14,6 @@ import com.caoccao.javet.interop.callback.JavetCallbackContext
 import com.caoccao.javet.interop.callback.JavetCallbackType
 import com.caoccao.javet.interop.NodeRuntime
 import com.caoccao.javet.interop.V8Host
-import com.caoccao.javet.interop.options.NodeRuntimeOptions
 import com.caoccao.javet.values.V8Value
 import com.caoccao.javet.values.reference.IV8Module
 import com.caoccao.javet.values.reference.V8Module
@@ -53,6 +52,8 @@ internal class AndroidRuntimeHost(
     private var nodeRuntime: NodeRuntime? = null
     private var runtimeModule: V8Module? = null
     private var progressCallback: V8ValueFunction? = null
+    private var pluginModuleLoader: V8ValueFunction? = null
+    private val pluginModules = mutableListOf<V8Module>()
     private var runtimeRoot: File? = null
 
     fun invoke(
@@ -282,6 +283,10 @@ internal class AndroidRuntimeHost(
             it.setStopping(true)
             progressCallback?.close()
             progressCallback = null
+            pluginModuleLoader?.close()
+            pluginModuleLoader = null
+            pluginModules.forEach { module -> runCatching { module.close() } }
+            pluginModules.clear()
             runtimeModule?.close()
             runtimeModule = null
             it.close()
@@ -310,6 +315,7 @@ internal class AndroidRuntimeHost(
             context.filesDir,
             "mgread-runtime/import-inbox",
         ).apply { mkdirs() }
+        installPluginModuleLoader(runtime, dataRoot)
         check(awaitString("Promise.resolve('android-runtime-probe')") == "android-runtime-probe")
         Log.i(TAG, "android_runtime_promise_probe_complete")
         val module = try {
@@ -331,10 +337,9 @@ internal class AndroidRuntimeHost(
         runtime.getGlobalObject().set("__mgreadDesktopRuntime", module.namespace)
         runtimeModule = module
         Log.i(TAG, "android_runtime_module_complete")
-        // The Runtime Core was compiled through Javet's resolver. Its later
-        // plugin import() calls must use Node's standard package loader so the
-        // installed project's normal node_modules and package exports apply.
-        (runtime.runtimeOptions as NodeRuntimeOptions).setBuiltInModuleResolution(true)
+        // Android uses Javet's V8 resolver rather than Node's desktop module
+        // loader. Keep it active so installed plugin files and dependencies
+        // are compiled through AndroidModuleResolver in this same VM.
         Log.i(TAG, "android_runtime_plugin_module_loader_ready")
         val bootstrap = """
             (async () => {
@@ -425,6 +430,46 @@ internal class AndroidRuntimeHost(
         val callback = runtime.createV8ValueFunction(callbackContext)
         runtime.getGlobalObject().set("__mgreadReportProgress", callback)
         progressCallback = callback
+    }
+
+    /** Compiles installed plugin ESM through the same Javet resolver as Core. */
+    private fun installPluginModuleLoader(runtime: NodeRuntime, dataRoot: File) {
+        val callbackContext = JavetCallbackContext(
+            "__mgreadLoadPluginModule",
+            JavetCallbackType.DirectCallNoThisAndResult,
+            object : IJavetDirectCallable.NoThisAndResult<Exception> {
+                override fun call(vararg values: V8Value): V8Value {
+                    val requestedPath = values.firstOrNull()?.toString()
+                        ?: throw IllegalArgumentException("plugin_module_path_missing")
+                    val dataRootPath = dataRoot.canonicalFile
+                    val modulePath = File(requestedPath).canonicalFile
+                    check(
+                        modulePath.path == dataRootPath.path ||
+                            modulePath.path.startsWith(dataRootPath.path + File.separator),
+                    ) { "plugin_module_path_invalid" }
+                    check(modulePath.isFile) { "plugin_module_missing" }
+                    val module = runtime.getExecutor(modulePath)
+                        .setResourceName(modulePath.path)
+                        .setModule(true)
+                        .compileV8Module()
+                    try {
+                        check(module.instantiate()) { "plugin_module_instantiate_failed" }
+                        awaitCompletion(module.evaluate<V8Value>())
+                        pluginModules += module
+                        return module.namespace
+                    } catch (error: Throwable) {
+                Log.e(
+                    TAG,
+                    "android_runtime_plugin_module_load_failed type=${error::class.java.simpleName} message=${error.message?.take(240)}",
+                )
+                        runCatching { module.close() }
+                        throw error
+                    }
+                }
+            },
+        )
+        pluginModuleLoader = runtime.createV8ValueFunction(callbackContext)
+        runtime.getGlobalObject().set("__mgreadLoadPluginModule", pluginModuleLoader)
     }
 
     private fun awaitCompletion(value: V8Value) {
@@ -537,15 +582,95 @@ internal class AndroidRuntimeHost(
                 moduleName.startsWith("/") -> File(moduleName)
                 referrerFile != null -> File(referrerFile.parentFile, moduleName)
                 else -> File(root, moduleName)
-            }.canonicalFile
-            if (!candidate.isFile) {
-                Log.e(TAG, "android_runtime_module_resolve_missing")
-                return null
-            }
-            return runtime.getExecutor(candidate.readText())
+            }.canonicalFile.takeIf { it.isFile }
+                ?: resolvePackage(moduleName, referrerFile)
+                ?: return null
+            return runtime.getExecutor(moduleSource(candidate))
                 .setResourceName(candidate.path)
                 .setModule(true)
                 .compileV8Module()
+        }
+
+        private fun resolvePackage(moduleName: String, referrerFile: File?): File? {
+            if (moduleName.startsWith(".") || moduleName.startsWith("/")) return null
+            val segments = moduleName.split('/')
+            val packageName = if (segments.firstOrNull() == "@" || moduleName.startsWith("@")) {
+                if (segments.size < 2) return null
+                "${segments[0]}/${segments[1]}"
+            } else {
+                segments.firstOrNull() ?: return null
+            }
+            val subpathStart = packageName.count { it == '/' } + 1
+            val subpath = segments.drop(subpathStart).joinToString("/")
+            var directory = referrerFile?.parentFile
+            while (directory != null) {
+                val packageRoot = File(directory, "node_modules/$packageName")
+                if (packageRoot.isDirectory) {
+                    val packageJson = File(packageRoot, "package.json")
+                    val metadata = if (packageJson.isFile) {
+                        runCatching { JSONObject(packageJson.readText()) }.getOrNull()
+                    } else {
+                        null
+                    }
+                    val declaredEntry = if (subpath.isNotEmpty()) {
+                        val exportTarget = metadata
+                            ?.optJSONObject("exports")
+                            ?.opt("./$subpath")
+                            ?.let(::resolveExportTarget)
+                        File(packageRoot, exportTarget ?: subpath)
+                    } else {
+                        val moduleEntry = metadata?.optString("module")?.takeIf { it.isNotEmpty() }
+                        val mainEntry = metadata?.optString("main")?.takeIf { it.isNotEmpty() }
+                        File(packageRoot, moduleEntry ?: mainEntry ?: "index.js")
+                    }
+                    resolveFile(declaredEntry)?.let { return it }
+                    if (subpath.isEmpty()) {
+                        resolveFile(File(packageRoot, "index.js"))?.let { return it }
+                    }
+                }
+                directory = directory.parentFile
+            }
+            Log.e(TAG, "android_runtime_module_resolve_missing")
+            return null
+        }
+
+        private fun resolveExportTarget(value: Any): String? {
+            if (value is String) return value
+            if (value !is JSONObject) return null
+            for (condition in listOf("import", "default", "node")) {
+                val nested = value.opt(condition)
+                if (nested != null && nested !== JSONObject.NULL) {
+                    resolveExportTarget(nested)?.let { return it }
+                }
+            }
+            return null
+        }
+
+        private fun resolveFile(candidate: File): File? {
+            val canonical = candidate.canonicalFile
+            if (canonical.isFile) return canonical
+            if (canonical.extension.isEmpty()) {
+                for (extension in listOf(".js", ".mjs", ".json")) {
+                    val withExtension = File(canonical.path + extension)
+                    if (withExtension.isFile) return withExtension.canonicalFile
+                }
+                val index = File(canonical, "index.js")
+                if (index.isFile) return index.canonicalFile
+            }
+            return null
+        }
+
+        /** boolbase is the lone CommonJS leaf in Cheerio's ESM dependency graph. */
+        private fun moduleSource(candidate: File): String {
+            if (!candidate.path.replace(File.separatorChar, '/').endsWith("/node_modules/boolbase/index.js")) {
+                return candidate.readText()
+            }
+            return """
+                const module = { exports: {} };
+                const exports = module.exports;
+                ${candidate.readText()}
+                export default module.exports;
+            """.trimIndent()
         }
     }
 

@@ -13,7 +13,7 @@ import type {
   SearchSuggestionsRequest,
   SearchSuggestionsResult,
 } from './mgread-api.js';
-import type { AliceBookHouseSource, SourceRules } from './source.js';
+import { AliceBookHouseSource, type SourceRules } from './source.js';
 
 let source: AliceBookHouseSource | undefined;
 
@@ -159,13 +159,9 @@ async function invoke<T>(
 
 async function loadSource(activeContext: MgReadPluginContext): Promise<AliceBookHouseSource> {
   if (source !== undefined) return source;
-  const [{ readFile }, { AliceBookHouseSource }] = await Promise.all([
-    import('node:fs/promises'),
-    import('./source.js'),
-  ]);
-  const rules = JSON.parse(
-    await readFile(new URL('../assets/rules.json', import.meta.url), 'utf8'),
-  ) as SourceRules;
-  source = new AliceBookHouseSource(activeContext, rules);
+  source = new AliceBookHouseSource(activeContext, {
+    origin: 'https://www.alicesw.com',
+    categories: categoryRules,
+  } satisfies SourceRules);
   return source;
 }

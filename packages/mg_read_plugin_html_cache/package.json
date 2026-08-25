@@ -1,0 +1,16 @@
+{
+  "name": "@mgread/plugin-html-cache",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reusable bounded HTML cache for MgRead standard Node source plugins.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    }
+  },
+  "engines": {
+    "node": ">=24 <25"
+  }
+}

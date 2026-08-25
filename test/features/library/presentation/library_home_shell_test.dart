@@ -10,7 +10,6 @@ import 'package:mg_read/features/library/presentation/library_book_list_view_dat
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
-import 'package:mg_read/features/library/presentation/widgets/library_continue_reading_card.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_controls.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
@@ -239,14 +238,6 @@ void main() {
         matching: find.text('首页'),
       ),
     );
-    final Text continueCardTitle = tester.widget<Text>(
-      find
-          .descendant(
-            of: find.byType(LibraryContinueReadingCard),
-            matching: find.text('继续阅读'),
-          )
-          .first,
-    );
     final Text updateTitle = tester.widget<Text>(
       find
           .descendant(
@@ -266,8 +257,6 @@ void main() {
 
     expect(pageTitle.style?.fontSize, AppTypography.pageTitle);
     expect(pageTitle.style?.fontWeight, FontWeight.w600);
-    expect(continueCardTitle.style?.fontSize, 18);
-    expect(continueCardTitle.style?.fontWeight, FontWeight.w500);
     expect(updateTitle.style?.fontSize, 16);
     expect(updateTitle.style?.fontWeight, FontWeight.w600);
     expect(selectedSection.style?.fontSize, 16);
@@ -429,7 +418,7 @@ void main() {
   );
 
   testWidgets(
-    'keeps filters beside the section navigation and the reading action on the cover baseline',
+    'keeps filters beside the section navigation and the reading action inside the raised-cover card',
     (WidgetTester tester) async {
       await _setViewport(tester, const Size(390, 844));
       await tester.pumpWidget(_host());
@@ -454,7 +443,55 @@ void main() {
       expect(filters.left, greaterThan(sectionNavigation.right));
       expect(filters.center.dy, closeTo(headingRow.center.dy, 0.1));
       expect(filters.right, closeTo(headingRow.right, 0.1));
-      expect(continueAction.bottom, closeTo(continueCover.bottom, 0.1));
+      expect(continueAction.bottom, lessThan(continueCover.bottom));
+    },
+  );
+
+  testWidgets(
+    'raises the cover beyond the shorter card and keeps a long title to one line',
+    (WidgetTester tester) async {
+      await _setViewport(tester, const Size(390, 844));
+      const String longTitle = '这是一本足够长到需要在极窄空间里自动缩小并最终省略的继续阅读书籍标题';
+      final data = LibraryHomeViewData(
+        isPresentationFixture: true,
+        continueReading: const LibraryContinueReadingViewData(
+          bookId: 'long-title',
+          title: longTitle,
+          chapter: '第999章 不应显示',
+          lastReadLabel: '上次阅读 不应显示',
+          progress: 0.72,
+          coverVariant: LibraryCoverVariant.dusk,
+        ),
+        books: const <LibraryBookListItemViewData>[],
+      );
+      await tester.pumpWidget(_host(data: data));
+      await tester.pumpAndSettle();
+
+      final Rect surface = tester.getRect(
+        find.byKey(const Key('continue-reading-surface')),
+      );
+      final Rect cover = tester.getRect(find.byType(LibraryBookCover).first);
+      final Text title = tester.widget<Text>(
+        find.byWidgetPredicate(
+          (Widget widget) =>
+              widget is Text &&
+              widget.data == longTitle &&
+              widget.maxLines == 1,
+        ),
+      );
+
+      expect(surface.height, AppSpacing.continueReadingCardHeight);
+      expect(cover.height, greaterThan(surface.height));
+      expect(cover.top, lessThan(surface.top));
+      expect(cover.bottom, greaterThan(surface.bottom));
+      expect(cover.left, lessThan(surface.left));
+      expect(find.text('继续阅读'), findsOneWidget);
+      expect(find.text('阅读记录'), findsNothing);
+      expect(find.text('第999章 不应显示'), findsNothing);
+      expect(find.text('上次阅读 不应显示'), findsNothing);
+      expect(title.maxLines, 1);
+      expect(title.overflow, TextOverflow.ellipsis);
+      expect(title.style?.fontSize, lessThan(AppTypography.sectionTitle));
     },
   );
 

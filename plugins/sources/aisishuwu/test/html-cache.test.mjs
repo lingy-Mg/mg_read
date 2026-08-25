@@ -45,6 +45,66 @@ test('uses stale data only as an offline fallback after the refresh window', asy
   );
 });
 
+test('serves an expired discovery projection first and refreshes it once in the background', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'mgread-aisishuwu-cache-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  let now = 0;
+  let refreshes = 0;
+  const cache = new PluginHtmlCache(root, { now: () => now });
+  const policy = { namespace: 'discovery', staleAfterMs: 10, serveStaleWhileRevalidate: true };
+  const url = new URL('https://www.alicesw.com/lists/71.html');
+
+  await cache.getOrFetch(url, policy, async () => '<html>old</html>');
+  now = 11;
+  assert.equal(await cache.getOrFetch(url, policy, async () => {
+    refreshes += 1;
+    return '<html>new</html>';
+  }), '<html>old</html>');
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  assert.equal(refreshes, 1);
+  assert.equal(await cache.getOrFetch(url, policy, async () => '<html>unexpected</html>'), '<html>new</html>');
+});
+
+test('does not use expired detail data when a strict refresh fails', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'mgread-aisishuwu-cache-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  let now = 0;
+  const cache = new PluginHtmlCache(root, { now: () => now });
+  const policy = { namespace: 'detail', staleAfterMs: 10, allowStaleOnError: false };
+  const url = new URL('https://www.alicesw.com/novel/52801.html');
+  await cache.getOrFetch(url, policy, async () => '<html>old detail</html>');
+  now = 11;
+  await assert.rejects(cache.getOrFetch(url, policy, async () => { throw new Error('offline'); }), /offline/u);
+});
+
+test('a strict detail request joins an active discovery refresh for the same HTML', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'mgread-aisishuwu-cache-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  let now = 0;
+  let release;
+  let started;
+  const refreshStarted = new Promise((resolve) => { started = resolve; });
+  const refreshReleased = new Promise((resolve) => { release = resolve; });
+  const cache = new PluginHtmlCache(root, { now: () => now });
+  const url = new URL('https://www.alicesw.com/novel/52801.html');
+  await cache.getOrFetch(url, { namespace: 'detail', staleAfterMs: 10 }, async () => '<html>old</html>');
+  now = 11;
+  await cache.getOrFetch(url, { namespace: 'detail', staleAfterMs: 10, serveStaleWhileRevalidate: true }, async () => {
+    started();
+    await refreshReleased;
+    return '<html>fresh</html>';
+  });
+  await refreshStarted;
+  let strictFetches = 0;
+  const strict = cache.getOrFetch(url, { namespace: 'detail', staleAfterMs: 10, allowStaleOnError: false }, async () => {
+    strictFetches += 1;
+    return '<html>unexpected</html>';
+  });
+  release();
+  assert.equal(await strict, '<html>fresh</html>');
+  assert.equal(strictFetches, 0);
+});
+
 test('does not write when Runtime did not provide an absolute cache directory', async () => {
   let calls = 0;
   const cache = new PluginHtmlCache('relative-cache');
