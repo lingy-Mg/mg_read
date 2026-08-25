@@ -1,3 +1,15 @@
+/// Content Library 的封面、阅读进度与阅读会话仓储。
+///
+/// 职责：
+/// - 经主应用持久化层读写可再生封面和语义阅读进度。
+/// - 为阅读器提供绑定到不可变目录快照的强类型会话。
+///
+/// 注意：
+/// - 全局封面写入在持久化边界内按 LRU 上限维护，调用方不访问路径或自行清理。
+/// - 会话不得越过 active snapshot；异步访问保持在 ContentLibrary 所有权内。
+///
+/// TODO:
+/// - 无。
 part of 'content_library.dart';
 
 final class CoverRepository {
@@ -21,8 +33,12 @@ final class CoverRepository {
     bytes: bytes.length,
     action: () async {
       _validateCover(bytes, mimeType);
-      await _library._persistence.fileObjects.commitGlobalCoverBytes(coverKey: _storageKey(key), bytes: bytes, mimeType: mimeType);
-      await _library._persistence.fileObjects.pruneGlobalCovers(maxBytes: _coverCacheMaxBytes);
+      await _library._persistence.fileObjects.commitGlobalCoverBytes(
+        coverKey: _storageKey(key),
+        bytes: bytes,
+        mimeType: mimeType,
+        maxBytes: _coverCacheMaxBytes,
+      );
     },
   );
 }

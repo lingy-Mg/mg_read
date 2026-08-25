@@ -45,7 +45,7 @@ import {
   maxWebSocketOutboundQueueBytes,
   ServerWebSocketSession,
 } from "./websocket.js";
-import { RuntimeDebugHttpServer } from "./debug-http.js";
+import { RuntimeDebugHttpServer, RuntimeDebugLogBuffer } from "./debug-http.js";
 import { createRuntimeDebugHttpServer } from "./debug-http-bridge.js";
 import { dispatchDebugHttpSetEnabled } from "./debug-http-control.js";
 import { servePluginTransferResource, serveSourceResource } from "./loopback-resources.js";
@@ -55,26 +55,7 @@ import {
   type PluginManagerEvent,
 } from "./plugin-manager.js";
 import { PluginInstaller } from "./plugin-installer.js";
-import { emitRuntimeDiagnostic } from "./runtime-diagnostics.js";
-import {
-  runtimeDiagnosticValue,
-  type RuntimeDiagnosticDetailStorage,
-  type RuntimeDiagnosticEvent,
-  type RuntimeDiagnosticOutcome,
-  type RuntimeDiagnosticPage,
-  type RuntimeDiagnosticPayloadKind,
-  type RuntimeDiagnosticSessionState,
-  type RuntimeDiagnosticSeverity,
-  type RuntimeDiagnosticTraceContext,
-} from "./diagnostics/contracts.js";
-import { RuntimeDiagnosticsHttpClient } from "./diagnostics/http.js";
-import {
-  type RuntimeDiagnosticSpan,
-} from "./diagnostics/manager.js";
-import { fingerprintRuntimeStack } from "./diagnostics/privacy.js";
-import { runtimeDiagnosticEvents } from "./diagnostics/registry.js";
-import { RuntimeDiagnosticsService } from "./diagnostics/service.js";
-import { RuntimeDiagnosticsError } from "./diagnostics/service.js";
+import { emitRuntimeDiagnostic, observeRuntimeDiagnostics } from "./runtime-diagnostics.js";
 import {
   parseChaptersParams,
   parseContentParams,
@@ -82,7 +63,6 @@ import {
   parseDiscoverParams,
   parseSearchParams,
   parseSearchSuggestionsParams,
-  pluginContentResultCount,
   PluginContentValidationError,
   type PluginContentOperation,
 } from "./plugin-content.js";
@@ -96,16 +76,6 @@ const LOOPBACK_HOST = "127.0.0.1";
 const MAX_INLINE_BYTES = maxWebSocketControlFrameBytes;
 const MAX_INFLIGHT_REQUESTS_PER_CONNECTION = 256;
 const RUNTIME_CONTROL_METHOD = Object.freeze({
-  diagnosticsAttachmentRead: "diagnostics.attachment.read.v1",
-  diagnosticsAttachmentsList: "diagnostics.attachments.list.v1",
-  diagnosticsCaptureStart: "diagnostics.capture.start.v1",
-  diagnosticsCaptureStop: "diagnostics.capture.stop.v1",
-  diagnosticsEventGet: "diagnostics.event.get.v1",
-  diagnosticsEventsList: "diagnostics.events.list.v1",
-  diagnosticsRetentionEnforce: "diagnostics.retention.enforce.v1",
-  diagnosticsSessionDelete: "diagnostics.session.delete.v1",
-  diagnosticsSessionsList: "diagnostics.sessions.list.v1",
-  diagnosticsStatisticsGet: "diagnostics.statistics.get.v1",
   debugHttpSetEnabled: "runtime.debugHttp.setEnabled.v1",
   hello: "runtime.hello",
   ping: "runtime.ping",
@@ -200,16 +170,6 @@ function isMissingFile(error: unknown): error is NodeJS.ErrnoException {
 }
 
 const RUNTIME_CONTROL_CAPABILITIES = Object.freeze([
-  RUNTIME_CONTROL_METHOD.diagnosticsSessionsList,
-  RUNTIME_CONTROL_METHOD.diagnosticsEventsList,
-  RUNTIME_CONTROL_METHOD.diagnosticsEventGet,
-  RUNTIME_CONTROL_METHOD.diagnosticsAttachmentsList,
-  RUNTIME_CONTROL_METHOD.diagnosticsAttachmentRead,
-  RUNTIME_CONTROL_METHOD.diagnosticsCaptureStart,
-  RUNTIME_CONTROL_METHOD.diagnosticsCaptureStop,
-  RUNTIME_CONTROL_METHOD.diagnosticsSessionDelete,
-  RUNTIME_CONTROL_METHOD.diagnosticsRetentionEnforce,
-  RUNTIME_CONTROL_METHOD.diagnosticsStatisticsGet,
   RUNTIME_CONTROL_METHOD.ping,
   RUNTIME_CONTROL_METHOD.status,
   RUNTIME_CONTROL_METHOD.pluginsCacheUsage,
@@ -256,10 +216,6 @@ type InFlightRequestsBySession = Map<
 
 interface RuntimeInFlightRequest {
   readonly cancellation: AbortController;
-  readonly enqueuedAt: bigint;
-  readonly method: string;
-  readonly requestBytes: number;
-  readonly span?: RuntimeDiagnosticSpan;
 }
 
 /** Shape returned by the two loopback health endpoints. */
@@ -441,9 +397,9 @@ export class DesktopRuntime {
   #pluginManager: PluginManager | undefined;
   /** Optional, separately-bound Debug inspector; never carries Runtime RPC. */
   #debugHttp: RuntimeDebugHttpServer | undefined;
-  #diagnostics: RuntimeDiagnosticsService | undefined;
-  readonly #webSocketSpans = new Map<ServerWebSocketSession, RuntimeDiagnosticSpan>();
-
+  /** Transient tail for the Debug inspector; never persisted to disk. */
+  readonly #debugLogs = new RuntimeDebugLogBuffer();
+  #removeDebugDiagnosticObserver: (() => void) | undefined;
   constructor(options: DesktopRuntimeOptions = {}) {
     this.#port = options.port ?? 0;
     this.#dataRoot =
@@ -455,6 +411,15 @@ export class DesktopRuntime {
     this.#embedded = options.embedded ?? false;
     this.#debugHttpAllowed = options.debugHttpAllowed ?? false;
     this.#onProgress = options.onProgress ?? (() => {});
+    this.#removeDebugDiagnosticObserver = observeRuntimeDiagnostics((record) => {
+      if (!this.#debugHttp?.status().enabled) return;
+      this.#debugLogs.append({
+        code: record.code,
+        level: record.level === "warning" ? "warn" : record.level ?? "info",
+        message: record.message,
+        source: "runtime",
+      });
+    });
   }
 
   /**
@@ -501,7 +466,6 @@ export class DesktopRuntime {
     const dispatched = await this.#dispatch(
       request,
       new AbortController().signal,
-      undefined,
     );
     return "error" in dispatched
       ? { error: dispatched.error, ok: false }
@@ -529,89 +493,29 @@ export class DesktopRuntime {
     }
 
     try {
-      this.#diagnostics = await RuntimeDiagnosticsService.open({
-        dataRoot: this.#dataRoot,
-      });
-    } catch {
-      emitRuntimeDiagnostic({
-        code: "runtime_diagnostics_store_failed",
-        level: "warning",
-        message: "The Runtime diagnostics store is unavailable; Runtime operation will continue.",
-        type: "diagnostic",
-      });
-    }
-    const lifecycleSpan = this.#diagnostics?.manager.startSpan({
-      attributes: () => runtimeDiagnosticValue.object({
-        platform: runtimeDiagnosticValue.string(process.platform),
-        stage: runtimeDiagnosticValue.string("starting"),
-      }),
-      definition: runtimeDiagnosticEvents.lifecycle,
-    });
-
-    try {
       await this.#installPluginInbox();
       await this.#seedBundledPlugins();
     } catch (error) {
-      lifecycleSpan?.end("error", {
-        attributes: () => runtimeDiagnosticValue.object({
-          errorCode: runtimeDiagnosticValue.string("plugin_provisioning_failed"),
-          stage: runtimeDiagnosticValue.string("pluginProvisioning"),
-        }),
-        severity: "error",
-      });
-      await this.#diagnostics?.manager.flush();
       throw error;
     }
-
-    const pluginLoadSpan = this.#diagnostics?.manager.startSpan({
-      attributes: () => runtimeDiagnosticValue.object({
-        operation: runtimeDiagnosticValue.string("coldInitialize"),
-      }),
-      definition: runtimeDiagnosticEvents.pluginLoad,
-      ...(lifecycleSpan === undefined ? {} : { parent: lifecycleSpan.trace }),
-    });
     const pluginManager = new PluginManager(this.#dataRoot, {
       embedded: this.#embedded,
       ...(this.#developmentPluginRoot === undefined
         ? {}
         : { developmentPluginRoot: this.#developmentPluginRoot }),
-      events: emitPluginManagerDiagnostic,
-      ...(this.#diagnostics === undefined
-        ? {}
-        : { http: new RuntimeDiagnosticsHttpClient(this.#diagnostics) }),
+      events: (event) => this.#handlePluginManagerEvent(event),
     });
     try {
       await pluginManager.initialize();
-      const plugins = await pluginManager.listInstalled();
-      pluginLoadSpan?.end("success", {
-        attributes: () => runtimeDiagnosticValue.object({
-          operation: runtimeDiagnosticValue.string("coldInitialize"),
-          pluginCount: runtimeDiagnosticValue.int64(BigInt(plugins.length)),
-        }),
-      });
     } catch (error) {
-      pluginLoadSpan?.end("error", {
-        attributes: () => runtimeDiagnosticValue.object({
-          errorCode: runtimeDiagnosticValue.string("plugin_initialize_failed"),
-          operation: runtimeDiagnosticValue.string("coldInitialize"),
-        }),
-        severity: "error",
-      });
-      lifecycleSpan?.end("error", {
-        attributes: () => runtimeDiagnosticValue.object({
-          errorCode: runtimeDiagnosticValue.string("plugin_initialize_failed"),
-          stage: runtimeDiagnosticValue.string("pluginInitialize"),
-        }),
-        severity: "error",
-      });
-      await this.#diagnostics?.manager.flush();
       throw error;
     }
     this.#pluginManager = pluginManager;
     if (this.#debugHttpAllowed) {
       this.#debugHttp = createRuntimeDebugHttpServer(
         this.#bootId,
-        (request) => this.#dispatch(request, new AbortController().signal, undefined),
+        this.#debugLogs,
+        (request) => this.#dispatch(request, new AbortController().signal),
       );
     }
     emitRuntimeDiagnostic({
@@ -647,26 +551,11 @@ export class DesktopRuntime {
     } catch (error) {
       this.#server = undefined;
       server.close();
-      lifecycleSpan?.end("error", {
-        attributes: () => runtimeDiagnosticValue.object({
-          errorCode: runtimeDiagnosticValue.string("loopback_bind_failed"),
-          stage: runtimeDiagnosticValue.string("loopbackBind"),
-        }),
-        severity: "error",
-      });
-      await this.#diagnostics?.manager.flush();
       throw error;
     }
 
     const address = server.address();
     if (address === null || typeof address === "string") {
-      lifecycleSpan?.end("error", {
-        attributes: () => runtimeDiagnosticValue.object({
-          errorCode: runtimeDiagnosticValue.string("loopback_address_invalid"),
-          stage: runtimeDiagnosticValue.string("ready"),
-        }),
-        severity: "error",
-      });
       throw new Error("Runtime did not expose a TCP loopback address.");
     }
 
@@ -683,12 +572,6 @@ export class DesktopRuntime {
     });
     pluginManager.setResourceOrigin(`http://${LOOPBACK_HOST}:${address.port}`);
     this.#ready = ready;
-    lifecycleSpan?.end("success", {
-      attributes: () => runtimeDiagnosticValue.object({
-        platform: runtimeDiagnosticValue.string(process.platform),
-        stage: runtimeDiagnosticValue.string("ready"),
-      }),
-    });
     return ready;
   }
 
@@ -729,35 +612,9 @@ export class DesktopRuntime {
       ) {
         continue;
       }
-      const archiveBytes = (await stat(archive.path)).size;
-      const installSpan = this.#diagnostics?.manager.startSpan({
-        attributes: () => runtimeDiagnosticValue.object({
-          operation: runtimeDiagnosticValue.string("bundledSeed"),
-        }),
-        definition: runtimeDiagnosticEvents.pluginInstall,
-      });
       try {
-        const result = await installer.installArchive(archive.path);
-        installSpan?.end("success", {
-          attributes: () => runtimeDiagnosticValue.object({
-            archiveBytes: runtimeDiagnosticValue.int64(BigInt(archiveBytes)),
-            fileCount: runtimeDiagnosticValue.int64(
-              BigInt(result.copiedFiles + result.hardlinkedFiles),
-            ),
-            operation: runtimeDiagnosticValue.string("bundledSeed"),
-            pendingActivation: runtimeDiagnosticValue.boolean(
-              result.pendingActivation,
-            ),
-          }),
-        });
+        await installer.installArchive(archive.path);
       } catch (error) {
-        installSpan?.end("error", {
-          attributes: () => runtimeDiagnosticValue.object({
-            errorCode: runtimeDiagnosticValue.string("bundled_plugin_seed_failed"),
-            operation: runtimeDiagnosticValue.string("bundledSeed"),
-          }),
-          severity: "error",
-        });
         throw error;
       }
     }
@@ -780,51 +637,36 @@ export class DesktopRuntime {
       if (!metadata.isFile() || metadata.size > 32 * 1024 * 1024) {
         throw new Error("Runtime plugin import archive is over budget.");
       }
-      const installSpan = this.#diagnostics?.manager.startSpan({
-        attributes: () => runtimeDiagnosticValue.object({
-          operation: runtimeDiagnosticValue.string("platformInbox"),
-        }),
-        definition: runtimeDiagnosticEvents.pluginInstall,
-      });
       try {
-        const result = await installer.installArchive(archivePath);
-        installSpan?.end("success", {
-          attributes: () => runtimeDiagnosticValue.object({
-            archiveBytes: runtimeDiagnosticValue.int64(BigInt(metadata.size)),
-            fileCount: runtimeDiagnosticValue.int64(
-              BigInt(result.copiedFiles + result.hardlinkedFiles),
-            ),
-            operation: runtimeDiagnosticValue.string("platformInbox"),
-            pendingActivation: runtimeDiagnosticValue.boolean(
-              result.pendingActivation,
-            ),
-          }),
-        });
+        await installer.installArchive(archivePath);
         await rm(archivePath, { force: true });
       } catch (error) {
         await rm(archivePath, { force: true }).catch(() => {});
-        installSpan?.end("error", {
-          attributes: () => runtimeDiagnosticValue.object({
-            errorCode: runtimeDiagnosticValue.string("plugin_import_failed"),
-            operation: runtimeDiagnosticValue.string("platformInbox"),
-          }),
-          severity: "error",
-        });
         throw error;
       }
     }
   }
 
+  /** Mirrors plugin ctx.log only while the separately enabled Debug listener is live. */
+  #handlePluginManagerEvent(event: PluginManagerEvent): void {
+    if (
+      event.code === "plugin_log_emitted" &&
+      event.logMessage !== undefined &&
+      this.#debugHttp?.status().enabled
+    ) {
+      this.#debugLogs.append({
+        level: event.logLevel ?? "info",
+        message: event.logMessage,
+        source: "plugin",
+        ...(event.pluginId === undefined ? {} : { pluginId: event.pluginId }),
+      });
+    }
+    emitPluginManagerDiagnostic(event);
+  }
+
   /** Performs ordered shutdown so handlers cannot outlive their transport. */
   async #stop(): Promise<void> {
     const server = this.#server;
-    const diagnostics = this.#diagnostics;
-    const shutdownSpan = diagnostics?.manager.startSpan({
-      attributes: () => runtimeDiagnosticValue.object({
-        stage: runtimeDiagnosticValue.string("shutdown"),
-      }),
-      definition: runtimeDiagnosticEvents.lifecycle,
-    });
     try {
       if (server !== undefined) {
         for (const session of [...this.#sessions]) {
@@ -846,75 +688,23 @@ export class DesktopRuntime {
         });
         this.#server = undefined;
       }
-      shutdownSpan?.end("success", {
-        attributes: () => runtimeDiagnosticValue.object({
-          stage: runtimeDiagnosticValue.string("stopped"),
-        }),
-      });
     } catch (error) {
-      shutdownSpan?.end("error", {
-        attributes: () => runtimeDiagnosticValue.object({
-          errorCode: runtimeDiagnosticValue.string("shutdown_failed"),
-          stage: runtimeDiagnosticValue.string("shutdown"),
-        }),
-        severity: "error",
-      });
       throw error;
     } finally {
       await this.#debugHttp?.dispose();
       this.#debugHttp = undefined;
+      this.#debugLogs.clear();
+      this.#removeDebugDiagnosticObserver?.();
+      this.#removeDebugDiagnosticObserver = undefined;
       await this.#pluginManager?.close();
       this.#pluginManager = undefined;
-      await diagnostics?.close();
-      this.#diagnostics = undefined;
     }
-  }
-
-  /** Persists only a fingerprint and stable code before fatal cleanup. */
-  async recordFatal(errorCode: string, failure: unknown): Promise<void> {
-    const diagnostics = this.#diagnostics;
-    diagnostics?.manager.emit({
-      attributes: () => runtimeDiagnosticValue.object({
-        errorCode: runtimeDiagnosticValue.string(errorCode),
-        recovery: runtimeDiagnosticValue.string("shutdown"),
-        stackFingerprint: runtimeDiagnosticValue.string(
-          fingerprintRuntimeStack(failure),
-        ),
-        stage: runtimeDiagnosticValue.string("uncaughtBoundary"),
-      }),
-      definition: runtimeDiagnosticEvents.fatal,
-      severity: "fatal",
-    });
-    await diagnostics?.manager.flush();
   }
 
   /** Serves no-store liveness/readiness checks on the Runtime loopback plane. */
   #handleHttp(request: IncomingMessage, response: ServerResponse): void {
     const url = new URL(request.url ?? "/", `http://${LOOPBACK_HOST}`);
-    const route = internalHttpRoute(url.pathname);
-    const method = stableHttpMethod(request.method);
-    const span = this.#diagnostics?.manager.startSpan({
-      attributes: () => runtimeDiagnosticValue.object({
-        method: runtimeDiagnosticValue.string(method),
-        origin: runtimeDiagnosticValue.string("http://loopback"),
-        route: runtimeDiagnosticValue.string(route),
-      }),
-      definition: runtimeDiagnosticEvents.http,
-    });
-    const finish = (statusCode: number, downloadedBytes = 0): void => {
-      span?.end("success", {
-        attributes: () => runtimeDiagnosticValue.object({
-          bodyMicros: runtimeDiagnosticValue.int64(0n),
-          downloadBytes: runtimeDiagnosticValue.int64(BigInt(downloadedBytes)),
-          method: runtimeDiagnosticValue.string(method),
-          origin: runtimeDiagnosticValue.string("http://loopback"),
-          redirectCount: runtimeDiagnosticValue.int64(0n),
-          route: runtimeDiagnosticValue.string(route),
-          statusCode: runtimeDiagnosticValue.int64(BigInt(statusCode)),
-          ttfbMicros: runtimeDiagnosticValue.int64(0n),
-        }),
-      });
-    };
+    const finish = (_statusCode: number, _downloadedBytes = 0): void => {};
     const resourceMatch = /^\/v1\/source-resource\/([A-Za-z0-9_-]{32,128})$/.exec(url.pathname);
     if (resourceMatch !== null) {
       if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); finish(405); return; }
@@ -974,25 +764,11 @@ export class DesktopRuntime {
     const url = new URL(request.url ?? "/", `http://${LOOPBACK_HOST}`);
     const key = request.headers["sec-websocket-key"];
     const upgrade = request.headers.upgrade;
-    const upgradeSpan = this.#diagnostics?.manager.startSpan({
-      attributes: () => runtimeDiagnosticValue.object({
-        operation: runtimeDiagnosticValue.string("upgrade"),
-      }),
-      definition: runtimeDiagnosticEvents.websocket,
-    });
-
     if (
       url.pathname !== RUNTIME_RPC_PATH ||
       typeof key !== "string" ||
       upgrade?.toLowerCase() !== "websocket"
     ) {
-      upgradeSpan?.end("error", {
-        attributes: () => runtimeDiagnosticValue.object({
-          errorCode: runtimeDiagnosticValue.string("upgrade_invalid"),
-          operation: runtimeDiagnosticValue.string("upgrade"),
-        }),
-        severity: "warn",
-      });
       this.#rejectUpgrade(socket, 400, "Invalid Runtime WebSocket upgrade.");
       return;
     }
@@ -1012,20 +788,11 @@ export class DesktopRuntime {
     );
 
     let session: ServerWebSocketSession | undefined;
-    let sessionSpan: RuntimeDiagnosticSpan | undefined;
     session = new ServerWebSocketSession(socket, {
       onClosed: () => {
         if (session !== undefined) {
           this.#sessions.delete(session);
           this.#abortSessionRequests(session);
-          if (sessionSpan !== undefined && !sessionSpan.isEnded) {
-            sessionSpan.end("success", {
-              attributes: () => runtimeDiagnosticValue.object({
-                operation: runtimeDiagnosticValue.string("session"),
-              }),
-            });
-          }
-          this.#webSocketSpans.delete(session);
         }
       },
       onText: (text) => {
@@ -1036,18 +803,6 @@ export class DesktopRuntime {
     });
     this.#sessions.add(session);
     this.#inFlightRequests.set(session, new Map());
-    upgradeSpan?.end("success", {
-      attributes: () => runtimeDiagnosticValue.object({
-        operation: runtimeDiagnosticValue.string("upgrade"),
-      }),
-    });
-    sessionSpan = this.#diagnostics?.manager.startSpan({
-      attributes: () => runtimeDiagnosticValue.object({
-        operation: runtimeDiagnosticValue.string("session"),
-      }),
-      definition: runtimeDiagnosticEvents.websocket,
-    });
-    if (sessionSpan !== undefined) this.#webSocketSpans.set(session, sessionSpan);
 
     if (head.length > 0) {
       session.receive(head);
@@ -1088,26 +843,7 @@ export class DesktopRuntime {
     if (requests === undefined || session.isClosed) {
       return;
     }
-    const method = diagnosticControlMethod(request.method);
-    const requestBytes = Buffer.byteLength(text, "utf8");
-    const span = this.#diagnostics?.manager.startSpan({
-      attributes: () => runtimeDiagnosticValue.object({
-        method: runtimeDiagnosticValue.string(method),
-        queueDepth: runtimeDiagnosticValue.int64(BigInt(requests.size)),
-        requestBytes: runtimeDiagnosticValue.int64(BigInt(requestBytes)),
-      }),
-      definition: runtimeDiagnosticEvents.control,
-      traceId: normalizeDiagnosticTraceId(request.traceId),
-    });
     if (requests.has(request.id)) {
-      span?.end("error", {
-        attributes: () => runtimeDiagnosticValue.object({
-          errorCode: runtimeDiagnosticValue.string("duplicate_request"),
-          method: runtimeDiagnosticValue.string(method),
-          requestBytes: runtimeDiagnosticValue.int64(BigInt(requestBytes)),
-        }),
-        severity: "warn",
-      });
       this.#sendProtocolError(
         session,
         this.#requestError(
@@ -1119,15 +855,6 @@ export class DesktopRuntime {
       return;
     }
     if (requests.size >= MAX_INFLIGHT_REQUESTS_PER_CONNECTION) {
-      span?.end("overloaded", {
-        attributes: () => runtimeDiagnosticValue.object({
-          errorCode: runtimeDiagnosticValue.string("inflight_limit"),
-          method: runtimeDiagnosticValue.string(method),
-          queueDepth: runtimeDiagnosticValue.int64(BigInt(requests.size)),
-          requestBytes: runtimeDiagnosticValue.int64(BigInt(requestBytes)),
-        }),
-        severity: "warn",
-      });
       this.#sendProtocolError(
         session,
         this.#requestError(
@@ -1140,13 +867,7 @@ export class DesktopRuntime {
     }
 
     const cancellation = new AbortController();
-    const inFlight = Object.freeze({
-      cancellation,
-      enqueuedAt: process.hrtime.bigint(),
-      method,
-      requestBytes,
-      ...(span === undefined ? {} : { span }),
-    });
+    const inFlight = Object.freeze({ cancellation });
     requests.set(request.id, inFlight);
     void this.#dispatchAsync(session, request, inFlight);
   }
@@ -1160,7 +881,6 @@ export class DesktopRuntime {
     // frames instead of a request-response lock serializing the connection.
     await Promise.resolve();
     if (inFlight.cancellation.signal.aborted || session.isClosed) {
-      this.#finishControlSpan(inFlight, request, "cancelled", "cancelled");
       return;
     }
 
@@ -1169,7 +889,6 @@ export class DesktopRuntime {
       result = await this.#dispatch(
         request,
         inFlight.cancellation.signal,
-        inFlight.span?.trace,
       );
     } catch {
       result = {
@@ -1187,27 +906,13 @@ export class DesktopRuntime {
     }
     requests.delete(request.id);
     if (inFlight.cancellation.signal.aborted || session.isClosed) {
-      this.#finishControlSpan(inFlight, request, "cancelled", "cancelled");
       return;
     }
 
     if ("error" in result) {
-      this.#finishControlSpan(
-        inFlight,
-        request,
-        controlOutcome(result.error.code),
-        result.error.code,
-      );
       this.#sendProtocolError(session, result.error);
       return;
     }
-    this.#finishControlSpan(
-      inFlight,
-      request,
-      "success",
-      undefined,
-      Buffer.byteLength(JSON.stringify(result.result), "utf8"),
-    );
     this.#sendJson(session, makeResponse(this.#bootId, request, result.result));
   }
 
@@ -1221,7 +926,6 @@ export class DesktopRuntime {
   async #dispatch(
     request: RuntimeRequest,
     cancellation: AbortSignal,
-    controlTrace?: RuntimeDiagnosticTraceContext,
   ): Promise<RuntimeDispatchResult> {
     if (cancellation.aborted) {
       return {
@@ -1308,7 +1012,13 @@ export class DesktopRuntime {
             error: this.#requestError(request, "method_not_found", "The Runtime method is not implemented."),
           };
         }
-        return dispatchDebugHttpSetEnabled(request, this.#debugHttp);
+        {
+          const outcome = await dispatchDebugHttpSetEnabled(request, this.#debugHttp);
+          if ("result" in outcome && request.params.enabled === false) {
+            this.#debugLogs.clear();
+          }
+          return outcome;
+        }
       case RUNTIME_CONTROL_METHOD.pluginsList: {
         if (Object.keys(request.params).length !== 0) {
           return {
@@ -1369,54 +1079,37 @@ export class DesktopRuntime {
           request,
           cancellation,
           "discover",
-          controlTrace,
         );
       case RUNTIME_CONTROL_METHOD.sourceSearch:
         return this.#dispatchPluginContent(
           request,
           cancellation,
           "search",
-          controlTrace,
         );
       case RUNTIME_CONTROL_METHOD.sourceSearchSuggestions:
         return this.#dispatchPluginContent(
           request,
           cancellation,
           "searchSuggestions",
-          controlTrace,
         );
       case RUNTIME_CONTROL_METHOD.sourceGetDetail:
         return this.#dispatchPluginContent(
           request,
           cancellation,
           "getDetail",
-          controlTrace,
         );
       case RUNTIME_CONTROL_METHOD.sourceGetChapters:
         return this.#dispatchPluginContent(
           request,
           cancellation,
           "getChapters",
-          controlTrace,
         );
       case RUNTIME_CONTROL_METHOD.sourceGetContent:
         return this.#dispatchPluginContent(
           request,
           cancellation,
           "getContent",
-          controlTrace,
         );
-      case RUNTIME_CONTROL_METHOD.diagnosticsSessionsList:
-      case RUNTIME_CONTROL_METHOD.diagnosticsEventsList:
-      case RUNTIME_CONTROL_METHOD.diagnosticsEventGet:
-      case RUNTIME_CONTROL_METHOD.diagnosticsAttachmentsList:
-      case RUNTIME_CONTROL_METHOD.diagnosticsAttachmentRead:
-      case RUNTIME_CONTROL_METHOD.diagnosticsCaptureStart:
-      case RUNTIME_CONTROL_METHOD.diagnosticsCaptureStop:
-      case RUNTIME_CONTROL_METHOD.diagnosticsSessionDelete:
-      case RUNTIME_CONTROL_METHOD.diagnosticsRetentionEnforce:
-      case RUNTIME_CONTROL_METHOD.diagnosticsStatisticsGet:
-        return this.#dispatchDiagnostics(request);
       case RUNTIME_CONTROL_METHOD.shutdown:
         if (
           request.idempotencyKey === undefined ||
@@ -1719,217 +1412,6 @@ export class DesktopRuntime {
     return RUNTIME_CONTROL_CAPABILITIES;
   }
 
-  /** Versioned, bounded diagnostics query/capture Facade implementation. */
-  async #dispatchDiagnostics(request: RuntimeRequest): Promise<RuntimeDispatchResult> {
-    const diagnostics = this.#diagnostics;
-    if (diagnostics === undefined) {
-      return {
-        error: this.#requestError(
-          request,
-          "diagnostics_unavailable",
-          "Runtime diagnostics are currently unavailable.",
-        ),
-      };
-    }
-    try {
-      switch (request.method) {
-        case RUNTIME_CONTROL_METHOD.diagnosticsSessionsList: {
-          if (!hasOnlyKeys(request.params, ["cursor", "limit", "states"])) {
-            return this.#invalidDiagnosticsRequest(request);
-          }
-          const limit = readPageLimit(request.params.limit, 100);
-          const states = readEnumSet(
-            request.params.states,
-            runtimeDiagnosticSessionStates,
-            16,
-          );
-          const cursor = readOptionalCursor(request.params.cursor);
-          const page = await diagnostics.listSessions(
-            states === undefined ? {} : { states },
-            cursor,
-            limit,
-          );
-          return { result: toJsonValue(page) };
-        }
-        case RUNTIME_CONTROL_METHOD.diagnosticsEventsList: {
-          if (!hasOnlyKeys(request.params, [
-            "components",
-            "cursor",
-            "eventNames",
-            "limit",
-            "minimumSeverity",
-            "occurredAfterUtcMicros",
-            "occurredBeforeUtcMicros",
-            "sessionId",
-            "traceId",
-          ])) {
-            return this.#invalidDiagnosticsRequest(request);
-          }
-          const limit = Math.min(readPageLimit(request.params.limit, 20), 20);
-          const components = readStringSet(request.params.components, 32);
-          const eventNames = readStringSet(request.params.eventNames, 32);
-          const minimumSeverity = readOptionalEnum(
-            request.params.minimumSeverity,
-            runtimeDiagnosticSeverities,
-          );
-          const filter = {
-            ...(components === undefined ? {} : { components }),
-            ...(eventNames === undefined ? {} : { eventNames }),
-            ...(minimumSeverity === undefined ? {} : { minimumSeverity }),
-            ...(readOptionalSafeInteger(request.params.occurredAfterUtcMicros) === undefined
-              ? {}
-              : { occurredAfterUtcMicros: readOptionalSafeInteger(request.params.occurredAfterUtcMicros)! }),
-            ...(readOptionalSafeInteger(request.params.occurredBeforeUtcMicros) === undefined
-              ? {}
-              : { occurredBeforeUtcMicros: readOptionalSafeInteger(request.params.occurredBeforeUtcMicros)! }),
-            ...(readOptionalOpaqueId(request.params.sessionId) === undefined
-              ? {}
-              : { sessionId: readOptionalOpaqueId(request.params.sessionId)! }),
-            ...(readOptionalOpaqueId(request.params.traceId) === undefined
-              ? {}
-              : { traceId: readOptionalOpaqueId(request.params.traceId)! }),
-          };
-          const page = await diagnostics.listEvents(
-            filter,
-            readOptionalCursor(request.params.cursor),
-            limit,
-          );
-          return { result: toJsonValue(compactEventPage(page)) };
-        }
-        case RUNTIME_CONTROL_METHOD.diagnosticsEventGet: {
-          if (!hasOnlyKeys(request.params, ["eventId"])) {
-            return this.#invalidDiagnosticsRequest(request);
-          }
-          const eventId = readRequiredOpaqueId(request.params.eventId);
-          return { result: toJsonValue((await diagnostics.getEvent(eventId)) ?? null) };
-        }
-        case RUNTIME_CONTROL_METHOD.diagnosticsAttachmentsList: {
-          if (!hasOnlyKeys(request.params, ["eventId"])) {
-            return this.#invalidDiagnosticsRequest(request);
-          }
-          const attachments = await diagnostics.listAttachments(
-            readRequiredOpaqueId(request.params.eventId),
-          );
-          return { result: toJsonValue(attachments.slice(0, 64)) };
-        }
-        case RUNTIME_CONTROL_METHOD.diagnosticsAttachmentRead: {
-          if (!hasOnlyKeys(request.params, ["attachmentId", "length", "offset"])) {
-            return this.#invalidDiagnosticsRequest(request);
-          }
-          const length = readRequiredSafeInteger(request.params.length);
-          const offset = readRequiredSafeInteger(request.params.offset);
-          if (length <= 0 || length > 32 * 1024 || offset < 0) {
-            return this.#invalidDiagnosticsRequest(request);
-          }
-          const chunk = await diagnostics.readAttachment(
-            readRequiredOpaqueId(request.params.attachmentId),
-            { length, offset },
-          );
-          return { result: toJsonValue(chunk) };
-        }
-        case RUNTIME_CONTROL_METHOD.diagnosticsCaptureStart: {
-          if (!hasOnlyKeys(request.params, [
-            "components",
-            "detailStorage",
-            "durationMillis",
-            "maxStoredBytes",
-            "origins",
-            "payloadKind",
-          ])) {
-            return this.#invalidDiagnosticsRequest(request);
-          }
-          const payloadKind = readOptionalEnum(
-            request.params.payloadKind,
-            runtimeDiagnosticPayloadKinds,
-          );
-          if (payloadKind === undefined) return this.#invalidDiagnosticsRequest(request);
-          const detailStorage = request.params.detailStorage === undefined
-            ? "persistToText"
-            : readOptionalEnum(request.params.detailStorage, runtimeDiagnosticDetailStorage);
-          if (detailStorage === undefined) return this.#invalidDiagnosticsRequest(request);
-          const durationMillis = readRequiredSafeInteger(request.params.durationMillis);
-          const maxStoredBytes = readRequiredSafeInteger(request.params.maxStoredBytes);
-          if (
-            durationMillis <= 0 || durationMillis > 60 * 60 * 1_000 ||
-            maxStoredBytes <= 0 || maxStoredBytes > 256 * 1024 * 1024
-          ) {
-            return this.#invalidDiagnosticsRequest(request);
-          }
-          const session = await diagnostics.startCapture({
-            components: readStringSet(request.params.components, 32) ?? new Set(),
-            detailStorage,
-            durationMillis,
-            maxStoredBytes,
-            origins: readOriginSet(request.params.origins, 32),
-            payloadKind,
-          });
-          return { result: toJsonValue(session) };
-        }
-        case RUNTIME_CONTROL_METHOD.diagnosticsCaptureStop: {
-          if (!hasOnlyKeys(request.params, ["sessionId"])) {
-            return this.#invalidDiagnosticsRequest(request);
-          }
-          await diagnostics.stopCapture(readRequiredOpaqueId(request.params.sessionId));
-          return { result: { stopped: true } };
-        }
-        case RUNTIME_CONTROL_METHOD.diagnosticsSessionDelete: {
-          if (!hasOnlyKeys(request.params, ["sessionId"])) {
-            return this.#invalidDiagnosticsRequest(request);
-          }
-          return {
-            result: toJsonValue(
-              await diagnostics.deleteSession(readRequiredOpaqueId(request.params.sessionId)),
-            ),
-          };
-        }
-        case RUNTIME_CONTROL_METHOD.diagnosticsRetentionEnforce:
-          if (Object.keys(request.params).length !== 0) {
-            return this.#invalidDiagnosticsRequest(request);
-          }
-          return { result: toJsonValue(await diagnostics.enforceRetention()) };
-        case RUNTIME_CONTROL_METHOD.diagnosticsStatisticsGet:
-          if (Object.keys(request.params).length !== 0) {
-            return this.#invalidDiagnosticsRequest(request);
-          }
-          return { result: toJsonValue(await diagnostics.getStorageStatistics()) };
-      }
-    } catch (error) {
-      if (
-        error instanceof RuntimeDiagnosticsError &&
-        error.code === "capture_mode_unsupported"
-      ) {
-        return {
-          error: this.#requestError(
-            request,
-            "capture_mode_unsupported",
-            "Restricted raw capture is unavailable until its security gate is implemented.",
-          ),
-        };
-      }
-      if (error instanceof TypeError || error instanceof RangeError) {
-        return this.#invalidDiagnosticsRequest(request);
-      }
-      return {
-        error: this.#requestError(
-          request,
-          "internal",
-          "The Runtime diagnostics operation could not be completed.",
-        ),
-      };
-    }
-    return this.#invalidDiagnosticsRequest(request);
-  }
-
-  #invalidDiagnosticsRequest(request: RuntimeRequest): RuntimeDispatchFailure {
-    return {
-      error: this.#requestError(
-        request,
-        "invalid_request",
-        "The Runtime diagnostics request is invalid.",
-      ),
-    };
-  }
-
   /**
    * Invokes one standard Node plugin named export through a bounded v1 schema.
    */
@@ -1937,15 +1419,7 @@ export class DesktopRuntime {
     request: RuntimeRequest,
     cancellation: AbortSignal,
     operation: PluginContentOperation,
-    controlTrace?: RuntimeDiagnosticTraceContext,
   ): Promise<RuntimeDispatchResult> {
-    const span = this.#diagnostics?.manager.startSpan({
-      attributes: () => runtimeDiagnosticValue.object({
-        operation: runtimeDiagnosticValue.string(operation),
-      }),
-      definition: runtimeDiagnosticEvents.pluginInvoke,
-      ...(controlTrace === undefined ? {} : { parent: controlTrace }),
-    });
     try {
       const manager = this.#pluginManager;
       if (manager === undefined) throw new PluginManagerError("plugin_load_failed");
@@ -1958,7 +1432,6 @@ export class DesktopRuntime {
             parsed.request,
             cancellation,
             request.deadlineUnixMs,
-            span?.trace,
           );
           break;
         }
@@ -1969,7 +1442,6 @@ export class DesktopRuntime {
             parsed.request,
             cancellation,
             request.deadlineUnixMs,
-            span?.trace,
           );
           break;
         }
@@ -1980,7 +1452,6 @@ export class DesktopRuntime {
             parsed.request,
             cancellation,
             request.deadlineUnixMs,
-            span?.trace,
           );
           break;
         }
@@ -1991,7 +1462,6 @@ export class DesktopRuntime {
             parsed.request,
             cancellation,
             request.deadlineUnixMs,
-            span?.trace,
           );
           break;
         }
@@ -2002,7 +1472,6 @@ export class DesktopRuntime {
             parsed.request,
             cancellation,
             request.deadlineUnixMs,
-            span?.trace,
           );
           break;
         }
@@ -2013,32 +1482,13 @@ export class DesktopRuntime {
             parsed.request,
             cancellation,
             request.deadlineUnixMs,
-            span?.trace,
           );
           break;
         }
       }
-      span?.end("success", {
-        attributes: () => runtimeDiagnosticValue.object({
-          operation: runtimeDiagnosticValue.string(operation),
-          resultBytes: runtimeDiagnosticValue.int64(
-            BigInt(Buffer.byteLength(JSON.stringify(result), "utf8")),
-          ),
-          resultCount: runtimeDiagnosticValue.int64(
-            BigInt(pluginContentResultCount(result)),
-          ),
-        }),
-      });
       return { result: result };
     } catch (error) {
       if (error instanceof PluginContentValidationError) {
-        span?.end("error", {
-          attributes: () => runtimeDiagnosticValue.object({
-            errorCode: runtimeDiagnosticValue.string("invalid_request"),
-            operation: runtimeDiagnosticValue.string(operation),
-          }),
-          severity: "warn",
-        });
         return {
           error: this.#requestError(
             request,
@@ -2048,13 +1498,6 @@ export class DesktopRuntime {
         };
       }
       if (error instanceof PluginManagerError) {
-        span?.end(controlOutcome(error.code), {
-          attributes: () => runtimeDiagnosticValue.object({
-            errorCode: runtimeDiagnosticValue.string(error.code),
-            operation: runtimeDiagnosticValue.string(operation),
-          }),
-          severity: error.code === "cancelled" ? "info" : "warn",
-        });
         return {
           error: this.#requestError(
             request,
@@ -2064,13 +1507,6 @@ export class DesktopRuntime {
         };
       }
       if (cancellation.aborted) {
-        span?.end("cancelled", {
-          attributes: () => runtimeDiagnosticValue.object({
-            errorCode: runtimeDiagnosticValue.string("cancelled"),
-            operation: runtimeDiagnosticValue.string(operation),
-          }),
-          severity: "info",
-        });
         return {
           error: this.#requestError(
             request,
@@ -2080,13 +1516,6 @@ export class DesktopRuntime {
         };
       }
       if (Number(request.deadlineUnixMs) <= Date.now()) {
-        span?.end("timeout", {
-          attributes: () => runtimeDiagnosticValue.object({
-            errorCode: runtimeDiagnosticValue.string("timeout"),
-            operation: runtimeDiagnosticValue.string(operation),
-          }),
-          severity: "warn",
-        });
         return {
           error: this.#requestError(
             request,
@@ -2095,13 +1524,6 @@ export class DesktopRuntime {
           ),
         };
       }
-      span?.end("error", {
-        attributes: () => runtimeDiagnosticValue.object({
-          errorCode: runtimeDiagnosticValue.string("internal"),
-          operation: runtimeDiagnosticValue.string(operation),
-        }),
-        severity: "error",
-      });
       return {
         error: this.#requestError(
           request,
@@ -2158,19 +1580,6 @@ export class DesktopRuntime {
     }
     requests?.delete(targetId);
     inFlight.cancellation.abort();
-    if (inFlight.span !== undefined && !inFlight.span.isEnded) {
-      inFlight.span.end("cancelled", {
-        attributes: () => runtimeDiagnosticValue.object({
-          errorCode: runtimeDiagnosticValue.string("cancelled"),
-          method: runtimeDiagnosticValue.string(inFlight.method),
-          queueWaitMicros: runtimeDiagnosticValue.int64(
-            BigInt(elapsedMicros(inFlight.enqueuedAt)),
-          ),
-          requestBytes: runtimeDiagnosticValue.int64(BigInt(inFlight.requestBytes)),
-        }),
-        severity: "info",
-      });
-    }
   }
 
   /** Releases all cancellation state when one session closes. */
@@ -2182,19 +1591,6 @@ export class DesktopRuntime {
     }
     for (const inFlight of requests.values()) {
       inFlight.cancellation.abort();
-      if (inFlight.span !== undefined && !inFlight.span.isEnded) {
-        inFlight.span.end("cancelled", {
-          attributes: () => runtimeDiagnosticValue.object({
-            errorCode: runtimeDiagnosticValue.string("session_closed"),
-            method: runtimeDiagnosticValue.string(inFlight.method),
-            queueWaitMicros: runtimeDiagnosticValue.int64(
-              BigInt(elapsedMicros(inFlight.enqueuedAt)),
-            ),
-            requestBytes: runtimeDiagnosticValue.int64(BigInt(inFlight.requestBytes)),
-          }),
-          severity: "info",
-        });
-      }
     }
     requests.clear();
   }
@@ -2204,40 +1600,6 @@ export class DesktopRuntime {
     for (const session of this.#inFlightRequests.keys()) {
       this.#abortSessionRequests(session);
     }
-  }
-
-  #finishControlSpan(
-    inFlight: RuntimeInFlightRequest,
-    request: RuntimeRequest,
-    outcome: RuntimeDiagnosticOutcome,
-    errorCode?: string,
-    responseBytes?: number,
-  ): void {
-    const span = inFlight.span;
-    if (span === undefined || span.isEnded) return;
-    const severity = outcome === "error"
-      ? "error"
-      : outcome === "cancelled"
-        ? "info"
-        : outcome === "timeout" || outcome === "overloaded"
-          ? "warn"
-          : undefined;
-    span.end(outcome, {
-      attributes: () => runtimeDiagnosticValue.object({
-        ...(errorCode === undefined
-          ? {}
-          : { errorCode: runtimeDiagnosticValue.string(errorCode) }),
-        method: runtimeDiagnosticValue.string(diagnosticControlMethod(request.method)),
-        queueWaitMicros: runtimeDiagnosticValue.int64(
-          BigInt(elapsedMicros(inFlight.enqueuedAt)),
-        ),
-        requestBytes: runtimeDiagnosticValue.int64(BigInt(inFlight.requestBytes)),
-        ...(responseBytes === undefined
-          ? {}
-          : { responseBytes: runtimeDiagnosticValue.int64(BigInt(responseBytes)) }),
-      }),
-      ...(severity === undefined ? {} : { severity }),
-    });
   }
 
   /** Creates an error tied to a request that was already fully validated. */
@@ -2264,209 +1626,6 @@ export class DesktopRuntime {
     });
     response.end(payload);
   }
-}
-
-function diagnosticControlMethod(method: string): string {
-  return Object.values(RUNTIME_CONTROL_METHOD).includes(
-    method as (typeof RUNTIME_CONTROL_METHOD)[keyof typeof RUNTIME_CONTROL_METHOD],
-  )
-    ? method
-    : "unknown";
-}
-
-function normalizeDiagnosticTraceId(traceId: string): string {
-  if (/^[A-Za-z0-9_-]{16,128}$/.test(traceId)) return traceId;
-  return `trace-${createHash("sha256").update(traceId, "utf8").digest("hex").slice(0, 32)}`;
-}
-
-function controlOutcome(code: RuntimeErrorCode | PluginManagerError["code"]): RuntimeDiagnosticOutcome {
-  switch (code) {
-    case "cancelled":
-      return "cancelled";
-    case "timeout":
-      return "timeout";
-    case "overloaded":
-      return "overloaded";
-    default:
-      return "error";
-  }
-}
-
-function internalHttpRoute(pathname: string): string {
-  if (pathname === "/health/live") return "/health/live";
-  if (pathname === "/health/ready") return "/health/ready";
-  if (pathname === RUNTIME_RPC_PATH) return RUNTIME_RPC_PATH;
-  return "/other";
-}
-
-function stableHttpMethod(method: string | undefined): string {
-  const normalized = (method ?? "UNKNOWN").toUpperCase();
-  return /^[A-Z]{1,16}$/.test(normalized) ? normalized : "OTHER";
-}
-
-function elapsedMicros(startedAt: bigint): number {
-  return Number((process.hrtime.bigint() - startedAt) / 1_000n);
-}
-
-const runtimeDiagnosticSeverities = Object.freeze(new Set<RuntimeDiagnosticSeverity>([
-  "trace",
-  "debug",
-  "info",
-  "warn",
-  "error",
-  "fatal",
-]));
-const runtimeDiagnosticSessionStates = Object.freeze(new Set<RuntimeDiagnosticSessionState>([
-  "active",
-  "ended",
-  "expired",
-  "deleting",
-  "deleted",
-]));
-const runtimeDiagnosticPayloadKinds = Object.freeze(new Set<RuntimeDiagnosticPayloadKind>([
-  "metadataOnly",
-  "safeStructured",
-  "contentPayload",
-  "restrictedRaw",
-]));
-const runtimeDiagnosticDetailStorage = Object.freeze(new Set<RuntimeDiagnosticDetailStorage>([
-  "memoryOnly",
-  "persistToText",
-]));
-
-function hasOnlyKeys(value: JsonObject, allowed: readonly string[]): boolean {
-  const accepted = new Set(allowed);
-  return Object.keys(value).every((key) => accepted.has(key));
-}
-
-function readPageLimit(value: JsonValue | undefined, fallback: number): number {
-  if (value === undefined) return fallback;
-  const limit = readRequiredSafeInteger(value);
-  if (limit <= 0 || limit > 200) throw new RangeError("Invalid diagnostics page limit.");
-  return limit;
-}
-
-function readRequiredSafeInteger(value: JsonValue | undefined): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
-    throw new TypeError("Diagnostics field must be a safe integer.");
-  }
-  return value;
-}
-
-function readOptionalSafeInteger(value: JsonValue | undefined): number | undefined {
-  return value === undefined ? undefined : readRequiredSafeInteger(value);
-}
-
-function readRequiredOpaqueId(value: JsonValue | undefined): string {
-  const id = readOptionalOpaqueId(value);
-  if (id === undefined) throw new TypeError("Diagnostics identifier is required.");
-  return id;
-}
-
-function readOptionalOpaqueId(value: JsonValue | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(value)) {
-    throw new TypeError("Invalid diagnostics identifier.");
-  }
-  return value;
-}
-
-function readOptionalCursor(value: JsonValue | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || !/^[A-Za-z0-9_-]{8,512}$/.test(value)) {
-    throw new TypeError("Invalid diagnostics cursor.");
-  }
-  return value;
-}
-
-function readOptionalEnum<T extends string>(
-  value: JsonValue | undefined,
-  values: ReadonlySet<T>,
-): T | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || !values.has(value as T)) {
-    throw new TypeError("Invalid diagnostics enum value.");
-  }
-  return value as T;
-}
-
-function readEnumSet<T extends string>(
-  value: JsonValue | undefined,
-  values: ReadonlySet<T>,
-  maximumItems: number,
-): ReadonlySet<T> | undefined {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value) || value.length > maximumItems) {
-    throw new TypeError("Invalid diagnostics enum list.");
-  }
-  const result = new Set<T>();
-  for (const item of value) {
-    if (typeof item !== "string" || !values.has(item as T)) {
-      throw new TypeError("Invalid diagnostics enum list item.");
-    }
-    result.add(item as T);
-  }
-  return result;
-}
-
-function readStringSet(
-  value: JsonValue | undefined,
-  maximumItems: number,
-): ReadonlySet<string> | undefined {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value) || value.length > maximumItems) {
-    throw new TypeError("Invalid diagnostics string list.");
-  }
-  const result = new Set<string>();
-  for (const item of value) {
-    if (typeof item !== "string" || item.length === 0 || item.length > 256) {
-      throw new TypeError("Invalid diagnostics string list item.");
-    }
-    result.add(item);
-  }
-  return result;
-}
-
-function readOriginSet(
-  value: JsonValue | undefined,
-  maximumItems: number,
-): ReadonlySet<string> {
-  const strings = readStringSet(value, maximumItems) ?? new Set<string>();
-  const origins = new Set<string>();
-  for (const item of strings) {
-    const url = new URL(item);
-    if (
-      (url.protocol !== "http:" && url.protocol !== "https:") ||
-      url.origin !== item ||
-      url.username.length > 0 ||
-      url.password.length > 0
-    ) {
-      throw new TypeError("Diagnostics capture origin is invalid.");
-    }
-    origins.add(item);
-  }
-  return origins;
-}
-
-function compactEventPage(
-  page: RuntimeDiagnosticPage<RuntimeDiagnosticEvent>,
-): JsonObject {
-  const items = page.items.map((event) => {
-    const { attributes: _attributes, ...projection } = event;
-    return projection;
-  });
-  return {
-    items: toJsonValue(items) as readonly JsonValue[],
-    ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
-  };
-}
-
-function toJsonValue(value: unknown): JsonValue {
-  const encoded = JSON.stringify(value);
-  if (encoded === undefined || Buffer.byteLength(encoded, "utf8") > MAX_INLINE_BYTES - 4_096) {
-    throw new RangeError("Runtime diagnostics response exceeds its inline budget.");
-  }
-  return JSON.parse(encoded) as JsonValue;
 }
 
 /** Emits only stable plugin lifecycle codes; plugin log text is discarded. */

@@ -37,7 +37,7 @@ PluginRuntime.invoke<T>(PluginInvocation<T>) -> Future<T>
 ```
 
 `PluginInvocation` 包含稳定的插件 ID、版本化 capability、强类型参数、取消语义和结果
-类型。它可以表达插件管理、发现、搜索、详情、目录、诊断和资源访问；主应用书架、阅读状态
+类型。它可以表达插件管理、发现、搜索、详情、目录和资源访问；主应用书架、阅读状态
 和 Content Library 经自身强类型端口持久化。下载跨边界能力需等待新 Accepted ADR。主项目
 不得拼接 raw method 字符串或直接使用 wire envelope。
 
@@ -66,7 +66,7 @@ Node 运行状态由 `runtime.status.v1` 提供一个可扩展的安全快照：
   和 WS hello。
 - 资源结果以 Runtime 管理的强类型资源对象返回；主项目不构造/猜测 loopback URL、请求
   头、`bootId`、handle TTL 或 Range。
-- Runtime 将稳定错误、进度和脱敏诊断投影为 Facade 类型；主项目不处理内部连接重试、
+- Runtime 将稳定错误、进度和少量启动/终止诊断投影为 Facade 类型；主项目不处理内部连接重试、
   端口、事件序号或进程状态机。
 - 小说/漫画 `DataSource`、`StateStore` 和资源适配由 Runtime 的 Flutter 集成包发布，
   主项目只交给 `novel_reader_ui` 的公开 API。
@@ -99,13 +99,13 @@ Runtime 仓库必须拥有并测试：
 - Android Javet Adapter、专用线程、事件循环泵送、异常/关闭 watchdog；Windows/macOS
   固定 Node 子进程、允许列表环境、包内路径、签名/公证集成和启动/终止。
 - 单 Node VM、标准 ESM/CommonJS 加载、Plugin API、`ctx.http`、有界调度、限流、取消、deadline、
-  冷激活、更新、回滚和诊断。
+  冷激活、更新、回滚和轻量日志。
 - 内部 WS 控制面、loopback HTTP 数据面、ready/hello、资源句柄、Range、背压、重连
   和协议 fixture。它们是实现，不是主项目 API。
 - `.mgplugin` 本地导入/官方仓库、package/lock/依赖校验、不可变版本目录和插件启停。需要用户交互的文件选择
   必须由 Runtime 的集成包实现，不由主项目提供服务。
-- Runtime 自有受控数据根：插件安装版本、插件私有 data/cache、Cookie、临时资源、运行状态和
-  诊断。主应用业务数据与 Content Library 不在此数据根。
+- Runtime 自有受控数据根：插件安装版本、插件私有 data/cache、Cookie、临时资源和运行状态。
+  主应用业务数据与 Content Library 不在此数据根；Runtime 不为日志创建持久目录。
 - 本地或内置 `.mgplugin` 的原始备份保存在 Runtime 自有 `plugin-archives/<pluginId>/`，
   不作为主应用业务数据，也不经 Facade 暴露路径或文件句柄。
 - Windows Debug development 项目只可在用户显式局域网发送时由 Runtime 生成有界临时标准归档；
@@ -119,8 +119,8 @@ Runtime 仓库必须拥有并测试：
 
 Runtime 是以下操作数据的唯一权威：
 
-- 插件安装、版本、启用、待激活、回滚和诊断；
-- 插件作用域 data/cache/KV、Cookie、临时资源和脱敏运行诊断；
+- 插件安装、版本、启用、待激活和回滚；
+- 插件作用域 data/cache/KV、Cookie 和临时资源；
 - Node/Javet/desktop 生命周期、内部连接和当前启动周期状态。
 
 主应用是书架、来源绑定、目录快照、正文/漫画对象、阅读进度和书签的唯一业务权威。Runtime
@@ -135,11 +135,10 @@ Runtime 操作数据后端不得使用 Node native addon，也不得复用主应
 `NO_PROXY`；Windows 还读取用户 Internet Settings 的手工代理，不启动额外 helper 进程。PAC/
 WPAD 必须按每个目标 URL 解析，尚未实现该 resolver 前不得将其错误降级成固定全局代理。
 
-Runtime 诊断是上述业务 Store 选型之外的有界运行证据，并固定遵守主项目 ADR-0016：关键
-事件只批量追加到 UTF-8 分段 `.txt`；不创建日志 SQLite/WAL/二进制索引。默认路径只记录
-脱敏元数据，绝不读取或复制 HTTP body。只有显式调试会话命中 component/origin allowlist
-时，JSON/HTML/文本详情才进入有界内存 spool；`memoryOnly` 在会话结束时清空，只有
-`persistToText` 写入短期详情 TXT。查询只经版本化 Facade 返回 opaque ID/cursor/range。
+Runtime 遵守 ADR-0024：不再创建结构化事件、span、capture、附件、历史查询或
+`diagnostics/events` 分段文件。Debug 检查页只在显式启用期间保留进程内有界实时日志尾部，
+关闭即清空；Flutter Supervisor 只保留少量稳定启动/终止诊断与有界 fatal fallback。两条路径
+都不读取或复制 HTTP body、HTML、JSON、正文、凭据、路径或原始异常，也不成为业务结果前提。
 
 ## 不变量
 

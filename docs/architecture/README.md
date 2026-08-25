@@ -21,7 +21,7 @@
    JSON/Base64，主应用只消费强类型 Facade。
 7. 阅读器插件不联网、不内置业务数据库；主应用 adapter 提供内容和状态，进度/书签保留语义
    锚点。
-8. 全局诊断只持久化为有界 UTF-8 分段 TXT；默认不读取或保存 body、正文、凭据和复杂对象。
+8. App 诊断只持久化为有界 UTF-8 分段 TXT；Runtime 只保留瞬时简单日志，不写事件文件。
 9. installed 更新在下次 Runtime 冷激活；仅 Windows Debug development 可在回收旧 VM 后重启
    唯一 Runtime，不在同一 VM 内热换模块。
 10. Android、Windows、macOS 分别验收。Windows 源码证据不能证明 Android/Javet、macOS 或最终
@@ -48,7 +48,7 @@
 | [10 主应用持久化](10-app-persistence-design.md) | 权威专题 | metadata persistence |
 | [11 主应用持久化验收](11-app-persistence-acceptance.md) | 验收规范 | persistence 测试与平台证据 |
 | [12 全局设置](12-global-settings.md) | 实现规范 | settings manager/adapter |
-| [14 全局日志](14-global-diagnostics-logging.md) | 权威专题 | 日志、trace、隐私、查看器、性能 |
+| [14 日志与诊断边界](14-global-diagnostics-logging.md) | 权威专题 | App 持久诊断、Runtime 瞬时日志、隐私与查看方式 |
 | [15 插件内容 API v1](15-plugin-content-contract.md) | 权威契约 | discover/search/detail/chapters/content |
 | [20 Content Library](20-content-library.md) | 权威专题 | 书架、目录、正文、漫画文件对象 |
 | [21 前台局域网同步](21-lan-sync.md) | 权威专题 | 前台 Windows/Android 点对点、二维码与开发书源同步边界 |

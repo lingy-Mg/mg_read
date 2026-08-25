@@ -122,31 +122,3 @@ class DiagnosticsViewerModeChip extends StatelessWidget {
   Widget build(BuildContext context) =>
       ChoiceChip(label: Text(label), selected: selected, onSelected: enabled ? (_) => onSelected() : null);
 }
-
-/// Selects the physically separate App and Runtime diagnostic data sources.
-class DiagnosticsViewerSourceSelector extends StatelessWidget {
-  const DiagnosticsViewerSourceSelector({required this.source, required this.onSelected, super.key});
-
-  final DiagnosticsViewerSource source;
-  final ValueChanged<DiagnosticsViewerSource> onSelected;
-
-  @override
-  Widget build(BuildContext context) => SegmentedButton<DiagnosticsViewerSource>(
-    key: const Key('diagnostics-source-selector'),
-    showSelectedIcon: false,
-    segments: const <ButtonSegment<DiagnosticsViewerSource>>[
-      ButtonSegment<DiagnosticsViewerSource>(
-        value: DiagnosticsViewerSource.app,
-        icon: Icon(Icons.phone_android_rounded),
-        label: Text('应用'),
-      ),
-      ButtonSegment<DiagnosticsViewerSource>(
-        value: DiagnosticsViewerSource.runtime,
-        icon: Icon(Icons.extension_rounded),
-        label: Text('Runtime'),
-      ),
-    ],
-    selected: <DiagnosticsViewerSource>{source},
-    onSelectionChanged: (selection) => onSelected(selection.single),
-  );
-}

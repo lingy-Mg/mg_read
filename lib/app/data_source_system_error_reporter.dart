@@ -8,7 +8,7 @@ import 'package:mg_read/core/diagnostics/diagnostics.dart';
 /// Safe, copyable projection of sources isolated during Runtime startup.
 ///
 /// It deliberately omits source identifiers, exception text, paths, URLs,
-/// code and request data. The Runtime diagnostics store owns any safe detail.
+/// code and request data. Runtime simple logs never own or persist request detail.
 final class DataSourceSystemDiagnosticReport {
   const DataSourceSystemDiagnosticReport({
     required this.errorCode,

@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/aisishuwu",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
   "description": "MgRead standard Node content-source plugin for the user-provided Alice Book House rules.",
   "type": "module",
@@ -14,7 +14,7 @@
     "npm": "11.13.0"
   },
   "scripts": {
-    "sync:cache": "node ../../../tools/sync_plugin_html_cache.mjs aisishuwu",
+    "sync:cache": "node ../../../tools/sync_plugin_cache.mjs aisishuwu",
     "build": "npm run sync:cache && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/contract.test.mjs test/html-cache.test.mjs test/source.test.mjs",
@@ -23,7 +23,7 @@
     "verify": "npm run typecheck && npm test && npm run pack:plugin"
   },
   "dependencies": {
-    "@mgread/plugin-html-cache": "file:./packages/mgread-plugin-html-cache",
+    "@mgread/plugin-cache": "file:./packages/mgread-plugin-cache",
     "cheerio": "1.1.0"
   },
   "devDependencies": {

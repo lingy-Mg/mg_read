@@ -1,7 +1,11 @@
-/** @deprecated Source code should import the packaged cache library directly. */
+/** Re-exports the packaged generic cache boundary for this source. */
 export {
+  PluginCache,
   PluginHtmlCache,
+  type CachedResult,
   type CachedHtmlResult,
+  type PluginCachePolicy,
   type HtmlCachePolicy,
+  type PluginCacheOptions,
   type PluginHtmlCacheOptions,
-} from '@mgread/plugin-html-cache';
+} from '@mgread/plugin-cache';

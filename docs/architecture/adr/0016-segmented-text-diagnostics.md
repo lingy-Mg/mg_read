@@ -1,11 +1,14 @@
 # ADR-0016：分段 TXT 日志与显式调试详情捕获
 
-- 状态：Accepted
+- 状态：Accepted（仅 App；Runtime 部分被 ADR-0024 取代）
 - 日期：2026-08-14
 - 决策者：MgRead 项目
 - 替代：[ADR-0014](0014-tiered-diagnostics-storage.md)
 - 依赖：[ADR-0004](0004-ws-http-transport.md)、
   [ADR-0011](0011-app-owned-versioned-persistence.md)
+
+> Runtime 的分段事件、capture、附件和历史查询已被
+> [ADR-0024](0024-runtime-transient-simple-logging.md) 删除；下文 Runtime 内容仅保留历史原因。
 
 ## 背景
 

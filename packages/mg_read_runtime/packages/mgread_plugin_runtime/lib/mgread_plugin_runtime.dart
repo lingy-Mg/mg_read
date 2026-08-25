@@ -34,7 +34,6 @@ part 'src/runtime_initialization.dart';
 part 'src/plugin_invocation.dart';
 part 'src/plugin_transfer_invocation.dart';
 part 'src/plugin_runtime.dart';
-part 'src/runtime_diagnostics_invocation.dart';
 part 'src/runtime_error.dart';
 part 'src/wire_connection.dart';
 part 'src/windows_system_proxy.dart';

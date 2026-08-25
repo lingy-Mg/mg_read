@@ -46,9 +46,9 @@ Windows Debug development 书源只在用户显式开始发送时由 Runtime 临
 ## 平台与诊断
 
 Android targetSdk 36 使用 `INTERNET`；targetSdk 37 的本地网络权限是未来兼容事项。同步的每个
-用户操作与跨边界调用都使用单一 owner span，并遵守 [ADR-0016](adr/0016-segmented-text-diagnostics.md)：
-只记录阶段、计数、大小、耗时、稳定结果/错误码和脱敏版本投影。IP、比较码、token、书名、作者、
-remote ID、归档字节、路径和原始错误永不进入诊断。
+App 用户操作使用单一 owner span 并遵守 ADR-0016；Runtime 只按 ADR-0024 输出瞬时简单日志。
+两者都只允许阶段、计数、大小、耗时、稳定结果/错误码和脱敏版本投影。IP、比较码、token、书名、
+作者、remote ID、归档字节、路径和原始错误永不进入日志。
 
 二维码渲染精确固定 `qr_flutter 4.1.0`，为 BSD-3、纯 Flutter 且覆盖当前发布平台；Android 扫码
 精确固定 `mobile_scanner 7.4.0`，同为 BSD-3，并使用包内 ML Kit，避免首次扫码依赖临时下载，

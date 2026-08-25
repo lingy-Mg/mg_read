@@ -1,3 +1,10 @@
+/**
+ * 爱丽丝书屋书源实现。
+ *
+ * 职责：解析发现、搜索、详情、目录和正文，并复用插件私有的 HTML/投影缓存。
+ * 注意：发现页允许过期详情投影立即返回并后台刷新；用户打开详情和目录仍遵守一小时严格新鲜度。
+ * TODO: - 无。
+ */
 import * as cheerio from 'cheerio/slim';
 import type { Element } from 'domhandler';
 
@@ -20,7 +27,7 @@ import type {
   SearchSuggestionsRequest,
   SearchSuggestionsResult,
 } from './mgread-api.js';
-import { PluginHtmlCache, type HtmlCachePolicy } from './html-cache.js';
+import { PluginCache, type CachedResult, type HtmlCachePolicy } from './html-cache.js';
 import { nonBlank } from './utils.js';
 import {
   boundedPageSize,
@@ -116,6 +123,9 @@ const discoveryDetailHtmlCachePolicy = Object.freeze({
   staleAfterMs: 60 * 60 * 1000,
   serveStaleWhileRevalidate: true,
 } satisfies HtmlCachePolicy);
+const detailProjectionCachePolicy = Object.freeze({ namespace: 'detail-projection-v1', staleAfterMs: 60 * 60 * 1000, allowStaleOnError: false } satisfies HtmlCachePolicy);
+const discoveryDetailProjectionCachePolicy = Object.freeze({ namespace: 'detail-projection-v1', staleAfterMs: 60 * 60 * 1000, serveStaleWhileRevalidate: true } satisfies HtmlCachePolicy);
+const catalogProjectionCachePolicy = Object.freeze({ namespace: 'catalog-projection-v1', staleAfterMs: 60 * 60 * 1000, allowStaleOnError: false } satisfies HtmlCachePolicy);
 const catalogHtmlCachePolicy = Object.freeze({
   namespace: 'catalog',
   staleAfterMs: 60 * 60 * 1000,
@@ -154,7 +164,7 @@ export class AliceBookHouseSource {
   readonly #details = new Map<string, CachedProjection<ContentDetail>>();
   readonly #discoveryDetailRequests = new Map<string, Promise<ContentDetail>>();
   readonly #detailRequests = new Map<string, Promise<ContentDetail>>();
-  readonly #htmlCache: PluginHtmlCache;
+  readonly #htmlCache: PluginCache;
 
   constructor(
     private readonly context: MgReadPluginContext,
@@ -172,7 +182,7 @@ export class AliceBookHouseSource {
         return Object.freeze({ id: category.id, title: category.title });
       }),
     );
-    this.#htmlCache = new PluginHtmlCache(context.cacheDir);
+    this.#htmlCache = new PluginCache(context.cacheDir);
   }
 
   async discover(request: DiscoverRequest): Promise<DiscoverResult> {
@@ -408,7 +418,7 @@ export class AliceBookHouseSource {
     if (cached !== undefined && cached.expiresAtMs >= Date.now()) return cached.value;
     const inFlight = this.#detailRequests.get(request.id);
     if (inFlight !== undefined) return inFlight;
-    const pending = this.#loadDetail(request);
+    const pending = this.#loadCachedDetail(request, detailProjectionCachePolicy, detailHtmlCachePolicy);
     this.#detailRequests.set(request.id, pending);
     void pending.then(
       () => this.#detailRequests.delete(request.id),
@@ -495,7 +505,7 @@ export class AliceBookHouseSource {
     if (cached !== undefined && cached.expiresAtMs >= Date.now()) return cached.value;
     const inFlight = this.#catalogRequests.get(request.id);
     if (inFlight !== undefined) return inFlight;
-    const pending = this.#loadChapters(request);
+    const pending = this.#loadCachedChapters(request);
     this.#catalogRequests.set(request.id, pending);
     void pending.then(
       () => this.#catalogRequests.delete(request.id),
@@ -609,7 +619,7 @@ export class AliceBookHouseSource {
     };
     return cachePolicy === undefined
       ? Object.freeze({ body: await request(), storedAtMs: Date.now() })
-      : this.#htmlCache.getOrFetchResult(url, cachePolicy, request);
+      : this.#htmlCache.getOrFetchTextResult(url, cachePolicy, request).then((result) => Object.freeze({ body: result.value, storedAtMs: result.storedAtMs }));
   }
 
   async #parseList(html: string, pageUrl: URL): Promise<readonly ContentSummary[]> {
@@ -920,13 +930,53 @@ export class AliceBookHouseSource {
     if (cached !== undefined && cached.expiresAtMs >= Date.now()) return cached.value;
     const inFlight = this.#discoveryDetailRequests.get(request.id);
     if (inFlight !== undefined) return inFlight;
-    const pending = this.#loadDetail(request, discoveryDetailHtmlCachePolicy);
+    const pending = this.#loadCachedDetail(request, discoveryDetailProjectionCachePolicy, discoveryDetailHtmlCachePolicy);
     this.#discoveryDetailRequests.set(request.id, pending);
     void pending.then(
       () => this.#discoveryDetailRequests.delete(request.id),
       () => this.#discoveryDetailRequests.delete(request.id),
     );
     return pending;
+  }
+
+  async #loadCachedDetail(
+    request: ContentReferenceRequest,
+    projectionPolicy: HtmlCachePolicy,
+    htmlPolicy: HtmlCachePolicy,
+  ): Promise<ContentDetail> {
+    const cached = this.#details.get(request.id);
+    if (cached !== undefined && cached.expiresAtMs >= Date.now()) return cached.value;
+    const result = await this.#htmlCache.getOrFetchJsonResult(
+      `detail:${request.id}`,
+      projectionPolicy,
+      async (): Promise<CachedResult<ContentDetail>> => {
+        const detail = await this.#loadDetail(request, htmlPolicy);
+        const stored = this.#details.get(request.id);
+        return Object.freeze({ value: detail, storedAtMs: stored === undefined ? Date.now() : stored.expiresAtMs - htmlPolicy.staleAfterMs });
+      },
+      decodeDetail,
+    );
+    this.#details.set(request.id, Object.freeze({ expiresAtMs: result.storedAtMs + projectionPolicy.staleAfterMs, value: result.value }));
+    this.#coverUrls.set(request.id, result.value.coverUrl);
+    this.#chapterCounts.set(request.id, result.value.chapterCount);
+    return result.value;
+  }
+
+  async #loadCachedChapters(request: ChaptersRequest): Promise<ChaptersResult> {
+    const cached = this.#catalogResults.get(request.id);
+    if (cached !== undefined && cached.expiresAtMs >= Date.now()) return cached.value;
+    const result = await this.#htmlCache.getOrFetchJsonResult(
+      `catalog:${request.id}`,
+      catalogProjectionCachePolicy,
+      async (): Promise<CachedResult<ChaptersResult>> => {
+        const catalog = await this.#loadChapters(request);
+        const stored = this.#catalogResults.get(request.id);
+        return Object.freeze({ value: catalog, storedAtMs: stored === undefined ? Date.now() : stored.expiresAtMs - catalogProjectionCachePolicy.staleAfterMs });
+      },
+      decodeCatalog,
+    );
+    this.#catalogResults.set(request.id, Object.freeze({ expiresAtMs: result.storedAtMs + catalogProjectionCachePolicy.staleAfterMs, value: result.value }));
+    return result.value;
   }
 
   async #withCover(content: ContentSummary): Promise<ContentSummary> {
@@ -994,4 +1044,19 @@ export class AliceBookHouseSource {
     if (ranking === undefined) throw new Error('Ranking target is invalid.');
     return ranking;
   }
+}
+
+function decodeDetail(value: unknown): ContentDetail | undefined {
+  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.title !== 'string' || value.contentKind !== 'novel' || !Array.isArray(value.aliases) || !(typeof value.catalogUrl === 'string' || value.catalogUrl === null)) return undefined;
+  return value as unknown as ContentDetail;
+}
+
+function decodeCatalog(value: unknown): ChaptersResult | undefined {
+  if (!isRecord(value) || !Array.isArray(value.items)) return undefined;
+  if (!value.items.every((item) => isRecord(item) && typeof item.id === 'string' && typeof item.title === 'string' && Number.isSafeInteger(item.order))) return undefined;
+  return value as unknown as ChaptersResult;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

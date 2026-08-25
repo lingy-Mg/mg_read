@@ -1,3 +1,17 @@
+/// Content Library 的持久化与边界测试。
+///
+/// 职责：
+/// - 验证书架、目录、正文、封面与阅读进度的应用自有持久化语义。
+/// - 覆盖全局封面缓存的 LRU 上限与路径隔离。
+///
+/// 注意：
+/// - 每个用例使用独立临时目录，不能依赖真实应用数据或网络。
+/// - 文件对象测试只经公开仓储 API，不暴露生产路径。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +19,8 @@ import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/content_library/src/content_library.dart';
 import 'package:mg_read/core/content_library/src/models.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
+
+import '../diagnostics/diagnostics_testkit.dart';
 
 void main() {
   late Directory root;
@@ -135,6 +151,78 @@ void main() {
       LibraryRemovalPolicy.removeFromShelfKeepContent,
     );
     expect(await library.bookshelf.readCover(item.id), isNull);
+  });
+
+  test(
+    'keeps global covers within the byte cap using least-recently-used eviction',
+    () async {
+      final fileRoot = await Directory.systemTemp.createTemp(
+        'mg-read-global-cover-files-',
+      );
+      final files = await FileObjectStore.open(fileRoot);
+      addTearDown(() async {
+        await files.close();
+        await fileRoot.delete(recursive: true);
+      });
+      final first = '1'.padLeft(64, '0');
+      final second = '2'.padLeft(64, '0');
+      final third = '3'.padLeft(64, '0');
+
+      await files.commitGlobalCoverBytes(
+        coverKey: first,
+        bytes: const <int>[1, 1, 1, 1],
+        mimeType: 'image/png',
+        maxBytes: 8,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      await files.commitGlobalCoverBytes(
+        coverKey: second,
+        bytes: const <int>[2, 2, 2, 2],
+        mimeType: 'image/png',
+        maxBytes: 8,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      expect(await files.readGlobalCoverBytes(first), <int>[1, 1, 1, 1]);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      await files.commitGlobalCoverBytes(
+        coverKey: third,
+        bytes: const <int>[3, 3, 3, 3],
+        mimeType: 'image/png',
+        maxBytes: 8,
+      );
+
+      expect(await files.readGlobalCoverBytes(second), isNull);
+      expect(await files.readGlobalCoverBytes(first), <int>[1, 1, 1, 1]);
+      expect(await files.readGlobalCoverBytes(third), <int>[3, 3, 3, 3]);
+    },
+  );
+
+  test('saves a global cover without a separate pruning persistence operation', () async {
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    await library.close();
+    library = await ContentLibrary.open(
+      dataRoot: root,
+      diagnostics: diagnostics.manager,
+    );
+
+    await library.covers.save(
+      key: CoverKey(
+        pluginId: 'fixture',
+        pluginVersion: '1.0.0',
+        remoteContentId: 'diagnostic-cover',
+        coverUrl: Uri.parse('https://covers.example/diagnostic-cover.png'),
+      ),
+      bytes: const <int>[1, 2, 3, 4],
+      mimeType: 'image/png',
+    );
+
+    expect(
+      diagnostics.sink.events.where(
+        (event) => event.eventName.startsWith('persistence.operation.'),
+      ),
+      hasLength(2),
+    );
   });
 
   test(

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/diagnostics/application/diagnostics_viewer_gateway.dart';
@@ -48,29 +47,25 @@ void main() {
     expect(gateway.stoppedModes, <DiagnosticsDetailMode>[DiagnosticsDetailMode.memoryOnly, DiagnosticsDetailMode.persistToText]);
   });
 
-  testWidgets('keeps app and Runtime event feeds separately pageable', (WidgetTester tester) async {
+  testWidgets('shows only the App event feed after Runtime history removal', (WidgetTester tester) async {
     final gateway = _FakeDiagnosticsViewerGateway();
     await tester.pumpWidget(_host(gateway));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Runtime'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('runtime.core.ready'), findsOneWidget);
+    expect(find.text('Runtime'), findsNothing);
+    expect(find.text('app.bootstrap.success'), findsOneWidget);
     expect(gateway.requestedSources, contains(DiagnosticsViewerSource.app));
-    expect(gateway.requestedSources, contains(DiagnosticsViewerSource.runtime));
-    expect(gateway.startedSources, <DiagnosticsViewerSource>[DiagnosticsViewerSource.app, DiagnosticsViewerSource.runtime]);
+    expect(gateway.startedSources, <DiagnosticsViewerSource>[DiagnosticsViewerSource.app]);
   });
 
   test('starts an App capture without requiring the Runtime Facade', () async {
     final kit = await PersistentDiagnosticsTestkit.open();
     addTearDown(kit.dispose);
-    final gateway = DefaultDiagnosticsViewerGateway(kit.service, kit.service, kit.service.manager, PluginRuntime());
+    final gateway = DefaultDiagnosticsViewerGateway(kit.service, kit.service, kit.service.manager);
 
     final capture = await gateway.startCapture(mode: DiagnosticsDetailMode.memoryOnly, source: DiagnosticsViewerSource.app);
 
     expect(capture.appSessionId, isNotNull);
-    expect(capture.runtimeSessionId, isNull);
     await gateway.stopCapture(capture);
   });
 }
@@ -106,22 +101,21 @@ final class _FakeDiagnosticsViewerGateway implements DiagnosticsViewerGateway {
   @override
   Future<DiagnosticsViewerEventPage> listEvents({required DiagnosticsViewerSource source, String? cursor}) async {
     requestedSources.add(source);
-    final isApp = source == DiagnosticsViewerSource.app;
     return DiagnosticsViewerEventPage(
       items: <DiagnosticsViewerEvent>[
         DiagnosticsViewerEvent(
           source: source,
-          eventId: isApp ? 'app_event_00000001' : 'runtime_event_0001',
-          component: isApp ? 'app.bootstrap' : 'runtime.core',
-          eventName: isApp ? 'app.bootstrap.success' : 'runtime.core.ready',
-          summary: isApp ? 'Application started.' : 'Runtime ready.',
+          eventId: 'app_event_00000001',
+          component: 'app.bootstrap',
+          eventName: 'app.bootstrap.success',
+          summary: 'Application started.',
           severity: 'info',
           phase: 'terminal',
           outcome: 'success',
           occurredAtUtcMicros: 1_800_000_000_000_000,
           durationMicros: 1200,
-          attachmentCount: isApp ? 1 : 0,
-          capturedBytes: isApp ? 25 : 0,
+          attachmentCount: 1,
+          capturedBytes: 25,
         ),
       ],
     );
@@ -160,7 +154,6 @@ final class _FakeDiagnosticsViewerGateway implements DiagnosticsViewerGateway {
       mode: mode,
       source: source,
       appSessionId: 'app_capture_0000001',
-      runtimeSessionId: 'runtime_capture_01',
       expiresAtUtcMicros: 1_800_000_900_000_000,
     );
   }

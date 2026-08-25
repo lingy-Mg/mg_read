@@ -1,12 +1,11 @@
 /// 调试日志查看器的强类型查询与捕获网关。
 ///
 /// 职责：
-/// - 将 App 与 Runtime 的受限诊断读取映射为页面数据。
-/// - 按当前来源单独创建和停止有时限的详情捕获会话。
+/// - 将 App 的受限诊断读取映射为页面数据。
+/// - 创建和停止有时限的 App 详情捕获会话。
 ///
 /// 注意：
-/// - 不读取 Runtime 路径或原始传输，仅调用版本化 Runtime Facade。
-/// - App 与 Runtime 捕获会话互不隐式联动，避免一侧状态阻断另一侧日志。
+/// - Runtime 的旧结构化事件 Facade 已移除；实时日志由 Runtime Debug 检查页提供。
 ///
 /// TODO:
 /// - 无。
@@ -17,11 +16,9 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
-
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 
-enum DiagnosticsViewerSource { app, runtime }
+enum DiagnosticsViewerSource { app }
 
 enum DiagnosticsDetailMode { off, memoryOnly, persistToText }
 
@@ -106,7 +103,6 @@ final class DiagnosticsViewerCapture {
     required this.source,
     required this.expiresAtUtcMicros,
     this.appSessionId,
-    this.runtimeSessionId,
     this.warningCode,
   });
 
@@ -114,7 +110,6 @@ final class DiagnosticsViewerCapture {
   final int expiresAtUtcMicros;
   final DiagnosticsDetailMode mode;
   final DiagnosticsViewerSource source;
-  final String? runtimeSessionId;
   final String? warningCode;
 }
 
@@ -135,12 +130,11 @@ final diagnosticsViewerGatewayProvider = Provider<DiagnosticsViewerGateway>(
     ref.watch(diagnosticsQueryProvider),
     ref.watch(diagnosticsCaptureProvider),
     ref.watch(diagnosticsManagerProvider),
-    PluginRuntime(),
   ),
 );
 
 final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway {
-  DefaultDiagnosticsViewerGateway(this._appQuery, this._appCapture, this._diagnostics, this._runtime);
+  DefaultDiagnosticsViewerGateway(this._appQuery, this._appCapture, this._diagnostics);
 
   static const int _previewBytes = 32 * 1024;
   static const Duration _captureDuration = Duration(minutes: 15);
@@ -152,19 +146,9 @@ final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway 
     'feature.plugins',
     'feature.reader',
   };
-  static const Set<String> _runtimeDetailComponents = <String>{
-    'runtime.control',
-    'runtime.core',
-    'runtime.diagnostics',
-    'runtime.http',
-    'runtime.plugin',
-    'runtime.transport',
-  };
-
   final DiagnosticsCapture? _appCapture;
   final DiagnosticsQuery? _appQuery;
   final DiagnosticsManager _diagnostics;
-  final PluginRuntime _runtime;
 
   @override
   Future<DiagnosticsViewerEventPage> listEvents({required DiagnosticsViewerSource source, String? cursor}) async {
@@ -194,12 +178,6 @@ final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway 
               nextCursor: page.nextCursor?.value,
             );
           }
-        case DiagnosticsViewerSource.runtime:
-          final page = await _runtime.invoke(RuntimeDiagnosticsEventsInvocation(cursor: cursor));
-          result = DiagnosticsViewerEventPage(
-            items: List<DiagnosticsViewerEvent>.unmodifiable(page.items.map(_mapRuntimeEvent)),
-            nextCursor: page.nextCursor,
-          );
       }
       span.complete(
         attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
@@ -245,16 +223,6 @@ final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway 
           result = DiagnosticsViewerEventDetails(
             attributesText: _prettyJson(detail.attributes.toWireValue()),
             attachments: List<DiagnosticsViewerAttachment>.unmodifiable(attachments.map(_mapAppAttachment)),
-          );
-        case DiagnosticsViewerSource.runtime:
-          final detail = await _runtime.invoke(RuntimeDiagnosticsEventInvocation(event.eventId));
-          if (detail == null) throw StateError('diagnostic_event_not_found');
-          final attachments = await _runtime.invoke(RuntimeDiagnosticsAttachmentsInvocation(event.eventId));
-          result = DiagnosticsViewerEventDetails(
-            attributesText: _prettyJson(
-              _runtimeValueToJson(detail.attributes ?? const RuntimeDiagnosticObjectValue(<String, RuntimeDiagnosticValue>{})),
-            ),
-            attachments: List<DiagnosticsViewerAttachment>.unmodifiable(attachments.map(_mapRuntimeAttachment)),
           );
       }
       span.complete(
@@ -305,11 +273,6 @@ final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway 
             output.addAll(chunk.length <= remaining ? chunk : chunk.take(remaining));
           }
           bytes = output;
-        case DiagnosticsViewerSource.runtime:
-          final chunk = await _runtime.invoke(
-            RuntimeDiagnosticsAttachmentReadInvocation(attachmentId: attachment.attachmentId, offset: 0, length: _previewBytes),
-          );
-          bytes = chunk.bytes;
       }
       final preview = utf8.decode(bytes, allowMalformed: true);
       span.complete(
@@ -368,28 +331,6 @@ final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway 
         } on Object catch (error, stackTrace) {
           Error.throwWithStackTrace(DiagnosticsViewerException(_stableErrorCode(error)), stackTrace);
         }
-      case DiagnosticsViewerSource.runtime:
-        try {
-          final session = await _runtime.invoke(
-            RuntimeDiagnosticsCaptureStartInvocation(
-              payloadKind: RuntimeDiagnosticPayloadKind.contentPayload,
-              detailStorage: mode == DiagnosticsDetailMode.memoryOnly
-                  ? RuntimeDiagnosticDetailStorage.memoryOnly
-                  : RuntimeDiagnosticDetailStorage.persistToText,
-              duration: _captureDuration,
-              maxStoredBytes: maxBytes,
-              components: _runtimeDetailComponents,
-            ),
-          );
-          return DiagnosticsViewerCapture(
-            mode: mode,
-            source: source,
-            runtimeSessionId: session.sessionId,
-            expiresAtUtcMicros: DateTime.now().toUtc().add(_captureDuration).microsecondsSinceEpoch,
-          );
-        } on Object catch (error, stackTrace) {
-          Error.throwWithStackTrace(DiagnosticsViewerException(_stableErrorCode(error)), stackTrace);
-        }
     }
   }
 
@@ -403,34 +344,12 @@ final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway 
         firstError = error;
       }
     }
-    if (capture.runtimeSessionId case final sessionId?) {
-      try {
-        await _runtime.invoke(RuntimeDiagnosticsCaptureStopInvocation(sessionId));
-      } on Object catch (error) {
-        firstError ??= error;
-      }
-    }
     if (firstError != null) throw firstError;
   }
 }
 
 DiagnosticsViewerEvent _mapAppEvent(DiagnosticEvent event) => DiagnosticsViewerEvent(
   source: DiagnosticsViewerSource.app,
-  eventId: event.eventId,
-  component: event.component,
-  eventName: event.eventName,
-  summary: event.summary,
-  severity: event.severity.name,
-  phase: event.phase.name,
-  outcome: event.outcome?.name,
-  occurredAtUtcMicros: event.occurredAtUtcMicros,
-  durationMicros: event.durationMicros,
-  attachmentCount: event.attachmentCount,
-  capturedBytes: event.capturedBytes,
-);
-
-DiagnosticsViewerEvent _mapRuntimeEvent(RuntimeDiagnosticsEvent event) => DiagnosticsViewerEvent(
-  source: DiagnosticsViewerSource.runtime,
   eventId: event.eventId,
   component: event.component,
   eventName: event.eventName,
@@ -455,37 +374,9 @@ DiagnosticsViewerAttachment _mapAppAttachment(DiagnosticAttachmentDescriptor att
   truncationReason: attachment.truncationReason,
 );
 
-DiagnosticsViewerAttachment _mapRuntimeAttachment(RuntimeDiagnosticAttachment attachment) => DiagnosticsViewerAttachment(
-  source: DiagnosticsViewerSource.runtime,
-  attachmentId: attachment.attachmentId,
-  kind: attachment.kind,
-  mediaType: attachment.mediaType,
-  captureState: attachment.captureState.name,
-  rawByteLength: attachment.rawByteLength,
-  storedByteLength: attachment.storedByteLength,
-  truncationReason: attachment.truncationReason,
-);
-
-Object? _runtimeValueToJson(RuntimeDiagnosticValue value) => switch (value) {
-  RuntimeDiagnosticNullValue() => null,
-  RuntimeDiagnosticBoolValue(:final value) => value,
-  RuntimeDiagnosticStringValue(:final value) => value,
-  RuntimeDiagnosticInt64Value(:final value) => value,
-  RuntimeDiagnosticDoubleValue(:final value) => value,
-  RuntimeDiagnosticListValue(:final items) => items.map(_runtimeValueToJson).toList(growable: false),
-  RuntimeDiagnosticObjectValue(:final fields) => <String, Object?>{
-    for (final entry in fields.entries) entry.key: _runtimeValueToJson(entry.value),
-  },
-  RuntimeDiagnosticRedactedValue(:final reason) => '<redacted:$reason>',
-  RuntimeDiagnosticTruncatedValue(:final reason, :final originalCount) =>
-    '<truncated:$reason${originalCount == null ? '' : ':$originalCount'}>',
-  RuntimeDiagnosticAttachmentReferenceValue(:final attachmentId) => '<attachment:$attachmentId>',
-};
-
 String _prettyJson(Object? value) => const JsonEncoder.withIndent('  ').convert(value);
 
 String _stableErrorCode(Object error) {
-  if (error is PluginRuntimeException) return error.code;
   if (error is StateError) return 'invalid_state';
   if (error is ArgumentError) return 'invalid_argument';
   if (error is TimeoutException) return 'timeout';

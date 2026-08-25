@@ -1,10 +1,24 @@
+/**
+ * Runtime 轻量生命周期与 Debug 实时日志广播。
+ *
+ * 职责：
+ * - 向 Supervisor stderr 输出受控的启动与生命周期摘要；
+ * - 在进程内将同一摘要广播给已启用的 Debug 实时日志缓冲区。
+ *
+ * 注意：
+ * - 不持久化事件、异常原文、插件正文或绝对路径；
+ * - 观察者失败不得改变 Runtime 业务结果。
+ *
+ * TODO:
+ * - 无。
+ */
+
 /** Severities permitted in the structured, Flutter-safe diagnostic stream. */
 export type RuntimeDiagnosticLevel = "error" | "info" | "warning";
 
 /** Fixed lifecycle diagnostic identifiers emitted by the desktop executable. */
 export type RuntimeLifecycleDiagnosticCode =
   | "runtime_loopback_bind_failed"
-  | "runtime_diagnostics_store_failed"
   | "runtime_node_version_incompatible"
   | "runtime_shutdown_failed"
   | "runtime_start_failed"
@@ -49,6 +63,15 @@ export interface RuntimeDiagnosticRecord {
   readonly type: "diagnostic" | "fatal";
 }
 
+/** In-process Debug observers; failures are ignored so logs never affect Runtime work. */
+export type RuntimeDiagnosticObserver = (record: RuntimeDiagnosticRecord) => void;
+const runtimeDiagnosticObservers = new Set<RuntimeDiagnosticObserver>();
+
+export function observeRuntimeDiagnostics(observer: RuntimeDiagnosticObserver): () => void {
+  runtimeDiagnosticObservers.add(observer);
+  return () => runtimeDiagnosticObservers.delete(observer);
+}
+
 /**
  * Writes one reviewed diagnostic record to stderr.
  *
@@ -58,5 +81,12 @@ export interface RuntimeDiagnosticRecord {
  * environment values, or raw request parameters.
  */
 export function emitRuntimeDiagnostic(record: RuntimeDiagnosticRecord): void {
+  for (const observer of runtimeDiagnosticObservers) {
+    try {
+      observer(record);
+    } catch {
+      // A Debug listener is never permitted to change the producer outcome.
+    }
+  }
   process.stderr.write(`${JSON.stringify(record)}\n`);
 }

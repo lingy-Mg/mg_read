@@ -151,7 +151,7 @@ Content Library 经主应用窄端口持久化。资源结果是 Runtime 管理�
 
 | 数据 | 唯一权威拥有者 | 主项目可做什么 |
 | --- | --- | --- |
-| 插件安装、版本、启用、插件私有 data/cache/Cookie、Runtime 诊断 | Runtime | 通过 Facade 查询、触发 capability、显示投影 |
+| 插件安装、版本、启用、插件私有 data/cache/Cookie、Runtime 临时状态 | Runtime | 通过 Facade 查询或触发 capability；实时日志只在 Debug 检查页查看 |
 | 书架、来源绑定、目录、正文对象、阅读进度、书签 | 主应用 AppPersistence/ContentLibrary | 通过 feature 窄端口读写和渲染 |
 | 下载 checkpoint、跨边界缓存/文件提交 | 未完全决策 | 实施前新增 Accepted ADR 与强类型契约 |
 | 前台局域网同步 | 主应用快照；Runtime 插件归档流 | 遵守 ADR-0021/0022，不交换 Runtime 路径或二维码内容 |

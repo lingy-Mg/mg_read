@@ -40,7 +40,7 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
   static const int _maximumRetainedPreviews = 8;
 
   late final DiagnosticsViewerGateway _gateway;
-  DiagnosticsViewerSource _source = DiagnosticsViewerSource.app;
+  static const DiagnosticsViewerSource _source = DiagnosticsViewerSource.app;
   List<DiagnosticsViewerEvent> _events = const <DiagnosticsViewerEvent>[];
   final Map<String, DiagnosticsViewerEventDetails> _details = <String, DiagnosticsViewerEventDetails>{};
   final Set<String> _loadingDetails = <String>{};
@@ -109,8 +109,6 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
                               onModeSelected: _changeCaptureMode,
                             ),
                             const SizedBox(height: AppSpacing.regular),
-                            DiagnosticsViewerSourceSelector(source: _source, onSelected: _selectSource),
-                            const SizedBox(height: AppSpacing.regular),
                             if (_loading)
                               const Padding(
                                 padding: EdgeInsets.all(AppSpacing.page),
@@ -165,19 +163,6 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
         onPreview: _loadPreview,
       ),
     );
-  }
-
-  Future<void> _selectSource(DiagnosticsViewerSource source) async {
-    if (_source == source) return;
-    setState(() {
-      _source = source;
-      _expandedEvent = null;
-    });
-    await _loadEvents(reset: true);
-    final capture = _capture;
-    if (capture != null) {
-      await _changeCaptureMode(capture.mode);
-    }
   }
 
   Future<void> _loadEvents({required bool reset}) async {

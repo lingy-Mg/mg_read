@@ -46,19 +46,6 @@ final detail = await runtime.invoke(
   ),
 );
 
-final events = await runtime.invoke(
-  const RuntimeDiagnosticsEventsInvocation(),
-);
-final capture = await runtime.invoke(
-  RuntimeDiagnosticsCaptureStartInvocation(
-    payloadKind: RuntimeDiagnosticPayloadKind.contentPayload,
-    detailStorage: RuntimeDiagnosticDetailStorage.memoryOnly,
-    duration: const Duration(minutes: 15),
-    maxStoredBytes: 8 * 1024 * 1024,
-    components: const <String>{'runtime.http', 'runtime.plugin'},
-  ),
-);
-await runtime.invoke(RuntimeDiagnosticsCaptureStopInvocation(capture.sessionId));
 ```
 
 Plugin transfer is Runtime-owned and bounded: each archive is at most 32 MiB,
@@ -73,9 +60,9 @@ downgrades remain excluded.
 为数组且无值时返回 `[]`，非负计数中的 `0` 保留为真实零值。缺键、`undefined`、空白字符串、
 错误枚举或把数组写成 `null` 都会被 Runtime/Facade 拒绝为稳定格式错误。
 
-诊断 Facade 只返回稳定 ID、cursor、受控字段和最大 32 KiB 的 range chunk。默认 Runtime 日志
-仅写关键元数据 TXT；上述显式 capture 才允许详情进入有界内存，只有
-`persistToText` 会创建独立详情 TXT。
+Runtime 不再发布结构化诊断事件、capture 或历史查询 Facade，也不创建 `diagnostics/events`
+分段文件。Debug 检查页只保留进程内有界实时日志尾部；Supervisor 继续提供少量稳定启动/终止
+诊断，不保存插件正文、HTTP body 或复杂事件对象。
 
 首次调用由 package 内 Supervisor 自动启动固定 Runtime；生产构造器不接受数据根、Node 路径
 或主项目 callback。Windows Supervisor 先创建带

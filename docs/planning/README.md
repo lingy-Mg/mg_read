@@ -7,7 +7,8 @@
 
 - 根 Flutter 应用已有 Riverpod 组合根、类型化路由、主题、主导航、书架/发现/搜索/插件状态/
   调试日志/个人页和阅读器宿主相关切片。
-- 主应用已有 metadata persistence、全局 settings、Content Library 基础与分段 TXT diagnostics；
+- 主应用已有 metadata persistence、全局 settings、Content Library 基础与 App 分段 TXT diagnostics；
+  Runtime 复杂事件系统已删除，只保留 Debug 瞬时简单日志；
   具体能力和限制以各实现说明与测试为准。
 - Runtime 在 Windows x64 源码/Flutter testkit 中已有固定 Node 24.16.0、ready/HTTP/WS、Job
   Object、标准插件安装/冷激活、插件列表和五个 `source.*.v1` 内容能力证据。

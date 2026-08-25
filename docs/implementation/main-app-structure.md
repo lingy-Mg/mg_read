@@ -86,7 +86,7 @@ metadata SQL 在 core persistence 的后台 executor 中执行。
 | --- | --- | --- |
 | `app` | 启动 UI 组合、全局主题、类型化路由 | 按功能页面添加 route；仅传稳定 ID 或轻量值 |
 | `core/errors` | Runtime 稳定错误码到 UI 的安全映射 | `AppError` 不保留原始异常或敏感 details |
-| `core/diagnostics` | 脱敏 Runtime 诊断的 UI 模型 | 只消费 Facade snapshot，不查询 Store |
+| `core/diagnostics` | App-owned 诊断模型与持久化端口 | 不读取 Runtime 数据根；Runtime 实时日志由 Debug 检查页查看 |
 | `features/library` | 书架页面投影和用户动作 | 通过主应用 Content Library 窄端口读取/更新；在线刷新经 Facade adapter |
 | `features/plugins` | 插件中心 UI | 通过 capability 显示安装、启停、更新、回滚状态 |
 | `features/discovery` | 发现、搜索和不透明 cursor 页面 | 强类型 capability + 可取消 application 用例 |

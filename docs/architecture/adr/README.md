@@ -23,13 +23,14 @@
 | [ADR-0007](0007-direct-distribution.md) | 首版 Android/Windows/macOS 站外分发 |
 | [ADR-0011](0011-app-owned-versioned-persistence.md) | 主应用权威持久化与版本化 metadata records |
 | [ADR-0015](0015-standard-node-plugin-projects.md) | 标准 Node 插件、npm lockfile 与依赖对象仓 |
-| [ADR-0016](0016-segmented-text-diagnostics.md) | 分段 TXT 日志与显式调试详情捕获 |
+| [ADR-0016](0016-segmented-text-diagnostics.md) | App 分段 TXT 日志与显式调试详情捕获；Runtime 部分已被 ADR-0024 取代 |
 | [ADR-0018](0018-recursive-discovery-document.md) | 预发布递归发现组件树与集合定向分页 |
 | [ADR-0019](0019-development-plugin-live-loading.md) | installed 冷激活、Windows development 即时加载与 Android 测试安装 |
 | [ADR-0020](0020-complete-source-catalog.md) | 书源目录单次完整返回、5000 条/2 MiB 边界与 WS 大响应例外 |
 | [ADR-0021](0021-foreground-lan-sync.md) | Windows/Android 前台点对点局域网同步与有限范围 |
 | [ADR-0022](0022-lan-sync-qr-development-source-transfer.md) | 局域网二维码连接与 Windows Debug 开发书源显式传输 |
 | [ADR-0023](0023-debug-runtime-http-inspector.md) | Debug Runtime HTTP 检查页与受控 LAN 例外 |
+| [ADR-0024](0024-runtime-transient-simple-logging.md) | Runtime 仅保留瞬时简单日志，不持久化复杂事件 |
 | [ADR-0100](0100-app-owned-content-library.md) | 应用拥有 Content Library 三层持久化 |
 
 ## Superseded / 历史

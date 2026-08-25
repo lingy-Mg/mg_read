@@ -1041,11 +1041,11 @@ export class PluginManager {
       mkdir(dataDir, { recursive: true }),
       mkdir(cacheDir, { recursive: true }),
     ]);
-    const emitLog = (_event: string): void => {
-      // Plugin text is intentionally discarded at this boundary. The stable
-      // event proves a log occurred without persisting user input or secrets.
+    const emitLog = (logLevel: NonNullable<PluginManagerEvent["logLevel"]>, logMessage: string): void => {
       this.#events({
         code: "plugin_log_emitted",
+        logLevel,
+        logMessage,
         outcome: "success",
         pluginId: descriptor.id,
       });
@@ -1087,10 +1087,10 @@ export class PluginManager {
       }),
       resource: Object.freeze({ proxy: (request: JsonObject) => this.createResourceUrl(descriptor.id, request) }),
       log: Object.freeze({
-        debug: emitLog,
-        error: emitLog,
-        info: emitLog,
-        warn: emitLog,
+        debug: (message: string) => emitLog("debug", message),
+        error: (message: string) => emitLog("error", message),
+        info: (message: string) => emitLog("info", message),
+        warn: (message: string) => emitLog("warn", message),
       }),
       plugin: Object.freeze({ id: descriptor.id, version: descriptor.version }),
     });

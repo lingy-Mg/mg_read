@@ -95,8 +95,8 @@ plugins/sources/<source-id>/      实际标准 Node 书源
   callback、`HostPort` 或 `host.*`。
 - 主应用 `AppPersistence` 是应用业务数据权威：metadata、Content Library 正文对象和受控
   文件对象均由主应用拥有。Runtime 不得打开主应用 SQLite 或获得绝对路径。
-- Runtime 可在自己的数据根保存插件安装版本、插件私有 data/cache、Cookie、临时运行状态和
-  Runtime 诊断；这些不能成为书架、目录、阅读进度、书签等主应用业务权威。
+- Runtime 可在自己的数据根保存插件安装版本、插件私有 data/cache、Cookie 和临时运行状态；
+  瞬时简单日志不写入数据根，也不能成为书架、目录、阅读进度、书签等主应用业务权威。
 - Runtime 返回的插件结果只有经过公开 Facade 和主应用强类型 adapter 才能写入
   `ContentLibrary`。当前未发布的宿主提交/下载协议不得用 raw transport 或临时回调补齐。
 - 插件使用标准 Node.js 24 项目：`package.json.mgread` 是唯一元数据，`package-lock.json` v3
@@ -130,24 +130,23 @@ plugins/sources/<source-id>/      实际标准 Node 书源
 
 ## 日志、隐私与可诊断性
 
-- 全局诊断遵守 [ADR-0016](docs/architecture/adr/0016-segmented-text-diagnostics.md) 和
-  [日志专题](docs/architecture/14-global-diagnostics-logging.md)：只持久化有界 UTF-8 分段 TXT，
-  不创建日志 SQLite/WAL/二进制索引。
+- App 诊断遵守 [ADR-0016](docs/architecture/adr/0016-segmented-text-diagnostics.md)，只持久化有界
+  UTF-8 分段 TXT；Runtime 遵守 [ADR-0024](docs/architecture/adr/0024-runtime-transient-simple-logging.md)，
+  只提供有界瞬时简单日志，不创建结构化事件、capture、附件或 `diagnostics/events`。
 - 默认日志不得读取、构造、复制或保存 HTTP body、HTML、大 JSON、小说正文、图片内容、用户
   输入、书名/作者、Authorization、Cookie、token、credential、原始异常或绝对路径。
-- 详情仅在显式、有时限/字节/来源 allowlist 的调试会话中惰性捕获；禁用时 supplier/getter/
-  serializer 不得执行。日志失败或压力不得改变业务结果。
-- 每个用户操作、跨边界调用和长任务只有一个 owner span：一个 start，恰好一个 success/error/
-  cancelled/timeout/overloaded 终态。高频帧、滚动、chunk、条目只做有界聚合。
-- 新增或修改用户操作、异步加载、缓存、持久化、Runtime Facade 或后台任务时，必须同步接入或更新
-  全局诊断：先复用/注册版本化 schema，再仅通过注入的窄 `DiagnosticsManager` 记录。非 Release 的
+- App 详情仅在显式、有时限/字节/来源 allowlist 的调试会话中惰性捕获；禁用时 supplier/getter/
+  serializer 不得执行。任何日志失败或压力不得改变业务结果。
+- App 每个用户操作和长任务只有一个 owner span：一个 start，恰好一个 success/error/cancelled/
+  timeout/overloaded 终态。高频帧、滚动、chunk、条目只做有界聚合。
+- 新增或修改 App 用户操作、异步加载、缓存、持久化或后台任务时，必须同步接入或更新 App 诊断：
+  先复用/注册版本化 schema，再仅通过注入的窄 `DiagnosticsManager` 记录。非 Release 的
   VS Code Debug Console 只能由中心镜像自动输出人可读摘要，完整 envelope 仅在 TXT/查看器中保留，
   feature/Widget 不得自行写控制台。
   交付前必须有受影响链路的 span/终态、隐私 canary 和失败不影响业务的测试证据；完整步骤见
   [诊断接入规范](docs/development/diagnostics-instrumentation.md)。
-- 修改插件 capability 时，Flutter Facade、Runtime control、插件 invocation、插件 `ctx.log` 和
-  `ctx.http` 必须保持同 trace 的可诊断链，并有 success 与适用的 timeout/cancel/error、secret/
-  content canary 测试。插件禁止 `console.*` 或自行写日志文件。
+- 修改插件 capability 时，验证 Runtime 瞬时日志不持久化、失败不影响业务，并覆盖 secret/content
+  canary。插件仅用 `ctx.log` 写简单日志，禁止 `console.*` 或自行写日志文件。
 - 新生产代码不得直接使用 `print`、`debugPrint`、`developer.log`、`console.*` 或自建日志文件。
 
 详细事件矩阵、字段预算、性能基线和查看器规则不常驻本文件；只有诊断或关键链路任务才按开发

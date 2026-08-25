@@ -11,7 +11,7 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { RuntimeDebugHttpServer } from "./debug-http.js";
+import { RuntimeDebugHttpServer, type RuntimeDebugLogBuffer } from "./debug-http.js";
 import type { JsonObject, JsonValue, RuntimeRequest } from "./protocol.js";
 import { protocolVersion } from "./runtime-version.js";
 
@@ -22,6 +22,7 @@ type RuntimeDebugDispatch = (request: RuntimeRequest) => Promise<
 
 export function createRuntimeDebugHttpServer(
   bootId: string,
+  logs: RuntimeDebugLogBuffer,
   dispatch: RuntimeDebugDispatch,
 ): RuntimeDebugHttpServer {
   const invoke = async (method: string, params: JsonObject): Promise<JsonValue> => {
@@ -39,7 +40,11 @@ export function createRuntimeDebugHttpServer(
     return outcome.result;
   };
   return new RuntimeDebugHttpServer({
+    chapters: (params) => invoke("source.getChapters.v1", params),
+    content: (params) => invoke("source.getContent.v1", params),
+    detail: (params) => invoke("source.getDetail.v1", params),
     discover: (params) => invoke("source.discover.v1", params),
+    logs: (after, limit) => logs.page(after, limit),
     plugins: () => invoke("plugins.list.v1", {}),
     search: (params) => invoke("source.search.v1", params),
     status: async () => {

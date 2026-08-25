@@ -66,11 +66,10 @@
 
 ## 结构化日志与指标
 
-日志采用 [ADR-0014](adr/0014-tiered-diagnostics-storage.md) 固定的三层模型：小型 event
-envelope、可关联 span/event、独立 attachment object。Runtime 负责插件、Store、通信、
-HTTP 和平台诊断；主项目记录 UI/路由/应用持久化诊断。两边不共享数据库或文件，由未来
-查看器通过强类型 query port、Runtime Facade 和 trace 联合展示。完整字段、附件、动态值、
-保留、故障和性能设计见[全局日志与诊断数据系统](14-global-diagnostics-logging.md)。
+App 结构化诊断遵守 ADR-0016，记录 UI/路由/应用持久化的小型 event/span 和显式详情；Runtime
+遵守 ADR-0024，只在 Debug listener 启用时保留有界内存简单日志，不写事件文件、不发布历史
+查询或 capture Facade。两边不共享数据库或文件。完整边界见
+[日志与诊断边界](14-global-diagnostics-logging.md)。
 
 普通事件允许 UTC 时间、固定 component/event、脱敏来源生命周期、`traceId`、技术
 request/job ID、plugin ID、capability、队列类别、耗时、聚合字节、稳定结果码与版本投影。

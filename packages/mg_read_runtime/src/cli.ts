@@ -141,11 +141,9 @@ async function stopRuntime(): Promise<void> {
 async function failRuntime(
   code: RuntimeFatalDiagnosticCode,
   message: string,
-  failure?: unknown,
 ): Promise<void> {
   if (!fatalReported) {
     fatalReported = true;
-    await runtime?.recordFatal(code, failure).catch(() => undefined);
     emitDiagnostic({ code, message, type: "fatal" });
   }
   process.exitCode = 1;
@@ -189,18 +187,16 @@ process.once("SIGINT", () => {
 process.once("SIGTERM", () => {
   void stopRuntime();
 });
-process.on("uncaughtException", (error: unknown) => {
+process.on("uncaughtException", (_error: unknown) => {
   void failRuntime(
     "runtime_uncaught_exception",
     "The desktop Runtime stopped after an unexpected internal failure.",
-    error,
   );
 });
-process.on("unhandledRejection", (reason: unknown) => {
+process.on("unhandledRejection", (_reason: unknown) => {
   void failRuntime(
     "runtime_unhandled_rejection",
     "The desktop Runtime stopped after an unhandled internal rejection.",
-    reason,
   );
 });
 
@@ -208,6 +204,5 @@ void main().catch((error: unknown) => {
   void failRuntime(
     startupFailureCode(error),
     "The desktop Runtime failed before it became ready.",
-    error,
   );
 });

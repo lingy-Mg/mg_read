@@ -45,15 +45,15 @@ Android Integration Test 使用另一条路线：Windows 固定工具链先验�
 installer。它不扫描 Windows 目录，也不把 inbox 暴露给主应用。
 
 `ctx` 当前包含 Runtime-owned `dataDir`、`cacheDir`、传播 signal/deadline 的 `http.fetch`、
-丢弃自由文本的结构化 `log`、只读 `app` 和 `plugin`。插件安装树视为只读。
+只在 Debug listener 启用时进入有界内存尾部的简单 `log`、只读 `app` 和 `plugin`。插件安装树
+视为只读，日志关闭即清空且不写盘。
 
 ## 内部控制面
 
 默认方法：
 
 - `runtime.hello`：版本和控制面上限协商；
-- `diagnostics.*.v1`：Runtime-owned 有界查询、捕获、清理与统计；
-- `runtime.ping`：诊断健康投影；
+- `runtime.ping`：轻量健康投影；
 - `plugins.list.v1`：当前插件状态列表；
 - `plugins.setEnabled.v1`：持久化启用状态，并在当前进程立即门禁内容调用；
 - `source.discover.v1`：插件定义受限递归组件 document，或对指定内容集合的 append；
@@ -115,15 +115,14 @@ Debug 构建由 Runtime-owned Facade 显式开关独立 HTTP 检查页。它监�
 | Desktop Core | `node --test test/desktop-runtime.test.mjs` | ready、health、hello/ping/list、五个 source capability、shutdown、并发、背压、稳定错误 |
 | Flutter ↔ Node | `npm run test:flutter-desktop` | singleton、真实 Process.start、Job Object、128 并发、完整内容链路、fatal 退出/无 stdout fallback、错误投影 |
 | 官方模板 | `cd ../../../templates/mg_read_plugin_template && npm run verify` | tsc、多文件模块、本地 package/资源、命名 API、确定性 `.mgplugin` |
-| 性能 | `npm run benchmark:plugin` | diagnostics off/on 的 p50/p95/p99、吞吐、heap、磁盘、queue/drop |
 
-测试根均为临时目录，不读取真实用户数据。诊断只保留稳定 lifecycle code、component、outcome、
-duration 和受控计数；不记录 keyword、结果内容、Cookie、token、路径、异常文本或插件日志文本。
+测试根均为临时目录，不读取真实用户数据。Runtime 只保留稳定 lifecycle code 和 Debug 有界内存
+简单日志；不记录 keyword、结果内容、Cookie、token、路径、异常文本、HTTP body 或复杂对象。
 
 ## 发布边界
 
 `npm run stage:flutter-windows` 只把编译 Core、固定 `MgReadNode.exe` 和 Node LICENSE 放入 Flutter
-package 自身资产目录；`pubspec.yaml` 显式列出 `node/`、`dist/` 与 `dist/diagnostics/`，不能依赖
+package 自身资产目录；`pubspec.yaml` 显式列出 `node/` 与 `dist/`，不能依赖
 Flutter 目录资产的非递归行为。主项目不提供路径。Windows Debug 主应用构建已验证这些资产会
 进入 `flutter_assets/packages/mgread_plugin_runtime/`，且包内 Node 能完成 ready/hello/shutdown
 应答；这仍不是隐藏窗口、安装器、签名或 Release 包验收。对应平台交付前仍需分别完成 Windows

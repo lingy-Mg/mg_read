@@ -14,7 +14,7 @@ monorepo 根 [AGENTS.md](../../AGENTS.md) 始终适用。本文件只补充 Runt
 - package/lock/安装/冷激活：读根
   [标准插件专题](../../docs/architecture/04-plugin-sdk-packaging-registry.md) 与相关 ADR。
 - Flutter Facade：读 [package README](packages/mgread_plugin_runtime/README.md)。
-- 性能或诊断：读 [性能快照](docs/standard-plugin-performance-baseline.md)、根日志专题和受影响测试。
+- 性能或日志：读根日志专题、Runtime 契约和受影响测试。
 
 不要同时预加载这些文件。旧 `agent.md` 仅是兼容跳转，不是第二份规则。
 
@@ -28,7 +28,7 @@ monorepo 根 [AGENTS.md](../../AGENTS.md) 始终适用。本文件只补充 Runt
 - 生产 Facade 不接受 main-app 数据库/路径、Cookie、文件服务、callback、HostPort、平台通道或
   raw transport 注入；不暴露 executable、PID、端口、ready、bootId、WS/HTTP URL 或 envelope。
 - Runtime 自有数据根可以保存插件不可变版本、插件私有 data/cache、Cookie、临时资源、运行
-  状态和 Runtime diagnostics。它不得保存主应用书架、目录、正文、阅读进度或书签的业务权威，
+  状态。它不得保存主应用书架、目录、正文、阅读进度或书签的业务权威，
   也不得打开主应用 SQLite/文件对象。
 - 下载 checkpoint、缓存和跨边界文件提交没有新 Accepted ADR/强类型契约前保持未实现或稳定
   `unsupported`；不得恢复旧 Runtime Store 全权方案，也不得临时增加 `host.*` 回调。
@@ -48,12 +48,11 @@ monorepo 根 [AGENTS.md](../../AGENTS.md) 始终适用。本文件只补充 Runt
 
 ## 日志与插件调用
 
-- Runtime diagnostics 只持久化有界分段 TXT。默认不读取/复制 body、HTML、JSON、正文、URL
-  query、用户输入、凭据、Cookie、token、路径或 raw exception。
-- 每个 control request 与 plugin invocation 有唯一 owner span、queue wait、执行时长和恰好一个
-  终态。插件脚本使用 `ctx.log` 记录小型阶段事件，网络只走 `ctx.http`。
-- capability 修改必须验证 Facade、control、plugin invocation、script 和 HTTP 的 trace 关联，
-  覆盖 success 与适用的 timeout/cancel/error，并放置 secret/content canary。
+- Runtime 不持久化结构化事件、span、capture、附件或历史查询数据，也不创建
+  `diagnostics/events`。插件脚本使用 `ctx.log` 产生简单日志，网络只走 `ctx.http`。
+- Debug 检查页只在启用期间保留有界内存实时日志；Supervisor 只保留少量稳定启动/终止诊断。
+  两者都不得读取/复制 body、HTML、JSON、正文、URL query、凭据、路径或 raw exception。
+- capability 修改验证轻量日志失败不改变业务结果，并保留 secret/content canary。
 
 ## Windows 固定工具链
 

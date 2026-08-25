@@ -41,7 +41,7 @@
     ".mocks.dart"
   ],
   "legacyBaseline": {
-    "packages/mg_read_runtime/src/desktop-runtime.ts": 2391,
+    "packages/mg_read_runtime/src/desktop-runtime.ts": 1577,
     "packages/mg_read_runtime/src/plugin-manager.ts": 1081
   },
   "legacyRationale": {

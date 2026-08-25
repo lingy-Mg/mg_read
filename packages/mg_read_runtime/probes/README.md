@@ -3,8 +3,7 @@
 当前 Windows x64 主机已执行 desktop Node Core、标准插件和 Flutter Facade 探针：固定 Node
 子进程、`127.0.0.1:0`、stdout ready、HTTP readiness、WS hello/ping/list/search、并发 Facade
 调用共享一个子进程、有序关闭，以及标准 package/lock 安装、冷激活与依赖复用。证据命令是
-`npm test`、`npm run check:no-native-addons`、`npm run test:flutter-desktop` 与
-`npm run benchmark:plugin`；具体范围见
+`npm test`、`npm run check:no-native-addons` 与 `npm run test:flutter-desktop`；具体范围见
 [`docs/desktop-runtime-bridge.md`](../docs/desktop-runtime-bridge.md)。
 
 这不是 Android/Javet、macOS package、未来资源/下载能力或全部业务协议验收。
