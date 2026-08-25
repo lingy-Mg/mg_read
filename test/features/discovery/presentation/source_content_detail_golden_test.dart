@@ -38,7 +38,7 @@ void main() {
     );
     expect(
       tester.getTopLeft(find.byKey(const Key('source-detail-cover'))).dy,
-      100,
+      92,
     );
     expect(find.byKey(const Key('source-detail-header-title')), findsOneWidget);
     expect(find.text('爱潜水的乌贼'), findsWidgets);
@@ -102,6 +102,10 @@ void main() {
         matching: _detailVerticalScrollableFinder(),
       ),
     );
+    await tester.ensureVisible(
+      find.byKey(const Key('source-detail-load-more-chapters')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('source-detail-load-more-chapters')));
     await tester.pumpAndSettle();
 
@@ -120,12 +124,40 @@ void main() {
     await tester.pump();
 
     expect(find.text('变身绝色女神（ai加料）'), findsWidgets);
-    expect(find.text('正在补充详情…'), findsOneWidget);
+    expect(find.text('加载中'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const Key('source-detail-start-reading')),
+          )
+          .onPressed,
+      isNull,
+    );
 
     gateway.complete();
     await tester.pumpAndSettle();
     expect(find.text('来源页面已验证的作品简介。'), findsOneWidget);
-    expect(find.text('正在补充详情…'), findsNothing);
+    expect(find.text('加载中'), findsNothing);
+  });
+
+  testWidgets('uses a compact shimmering detail skeleton before a summary exists', (
+    tester,
+  ) async {
+    await _setViewport(tester, const Size(390, 900));
+    final gateway = _DelayedDetailGateway();
+    await tester.pumpWidget(
+      _DetailGoldenHost(gateway: gateway, includeInitialContent: false),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const Key('source-detail-loading')), findsOneWidget);
+    expect(find.text('加载中'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    gateway.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('来源页面已验证的作品简介。'), findsOneWidget);
   });
 }
 
@@ -135,10 +167,15 @@ Finder _detailVerticalScrollableFinder() => find.byWidgetPredicate(
 );
 
 class _DetailGoldenHost extends StatelessWidget {
-  const _DetailGoldenHost({this.gateway, this.useReference = false});
+  const _DetailGoldenHost({
+    this.gateway,
+    this.useReference = false,
+    this.includeInitialContent = true,
+  });
 
   final _GoldenDetailGateway? gateway;
   final bool useReference;
+  final bool includeInitialContent;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -157,14 +194,19 @@ class _DetailGoldenHost extends StatelessWidget {
     },
     home: _DetailEntry(
       gateway: gateway ?? _GoldenDetailGateway(useReference: useReference),
+      includeInitialContent: includeInitialContent,
     ),
   );
 }
 
 class _DetailEntry extends StatefulWidget {
-  const _DetailEntry({required this.gateway});
+  const _DetailEntry({
+    required this.gateway,
+    required this.includeInitialContent,
+  });
 
   final _GoldenDetailGateway gateway;
+  final bool includeInitialContent;
 
   @override
   State<_DetailEntry> createState() => _DetailEntryState();
@@ -182,8 +224,12 @@ class _DetailEntryState extends State<_DetailEntry> {
           gateway: widget.gateway,
           pluginId: widget.gateway.pluginId,
           id: widget.gateway.bookId,
-          initialContent: widget.gateway.detail.summary,
-          initialSourceName: widget.gateway.detail.sourceName,
+          initialContent: widget.includeInitialContent
+              ? widget.gateway.detail.summary
+              : null,
+          initialSourceName: widget.includeInitialContent
+              ? widget.gateway.detail.sourceName
+              : null,
           relatedContents: widget.gateway.recommendations,
           onExternalUrlRequested: (_) async => true,
         ),

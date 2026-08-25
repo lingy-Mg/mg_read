@@ -323,3 +323,37 @@ test("development projects load in place without creating an installed version",
   assert.equal(first.items[0].title, "第一版：测试");
 
 });
+
+test("a development project shadows an installed archive with the same ID without double activation", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-development-shadow-");
+  const dataRoot = join(root, "runtime-data");
+  const developmentRoot = join(root, "sources");
+  const projectRoot = join(developmentRoot, "same-source");
+  await new PluginInstaller(dataRoot).installProject(fixtureRoot);
+  await createDevelopmentPlugin(projectRoot, "开发覆盖");
+  const developmentPackage = JSON.parse(await readFile(join(projectRoot, "package.json"), "utf8"));
+  developmentPackage.mgread.id = "org.mgread.runtime.fixture";
+  await writeFile(join(projectRoot, "package.json"), `${JSON.stringify(developmentPackage, null, 2)}\n`);
+
+  const events = [];
+  const development = new PluginManager(dataRoot, {
+    developmentPluginRoot: developmentRoot,
+    events: (event) => events.push(event),
+  });
+  t.after(() => development.close());
+  await development.initialize();
+  const active = await development.listInstalled();
+  assert.equal(active.length, 1);
+  assert.equal(active[0].id, "org.mgread.runtime.fixture");
+  assert.equal(active[0].status, "development");
+  assert.equal(events.filter((event) => event.code === "plugin_load_started").length, 1);
+
+  await development.close();
+  await rm(projectRoot, { force: true, recursive: true });
+  const installed = new PluginManager(dataRoot);
+  t.after(() => installed.close());
+  await installed.initialize();
+  const fallback = await installed.listInstalled();
+  assert.equal(fallback.length, 1);
+  assert.equal(fallback[0].status, "active");
+});

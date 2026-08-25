@@ -6,7 +6,7 @@
 ///
 /// 注意：
 /// - 阅读器不拥有网络、数据库或宿主路由；数据和退出请求通过公开契约交互。
-/// - 设置弹层打开时，所有底层阅读手势必须被锁定，避免 Windows 自定义翻页路径绕过滚动物理。
+/// - 设置弹层打开时，根层输入锁会拦截底层阅读手势；点击正文区域只关闭设置。
 ///
 /// TODO:
 /// - 无。
@@ -585,6 +585,8 @@ class _TextReaderViewState extends State<TextReaderView>
                             ),
                           ),
                           if (_content != null) _buildChrome(),
+                          if (_readerSettingsVisible)
+                            _buildSettingsInteractionLock(),
                           if (_awaitingPreviousChapterTail)
                             _PreviousChapterTailMask(palette: palette),
                           if (_noticeMessage != null)

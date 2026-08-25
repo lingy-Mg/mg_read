@@ -278,6 +278,7 @@ class LibraryBookListItem extends StatelessWidget {
                   title: data.title,
                   variant: data.coverVariant,
                   coverBytes: data.coverBytes,
+                  coverRequest: data.coverRequest,
                   assetPath: data.coverAssetPath,
                   width: AppSpacing.listCoverWidth,
                   height: AppSpacing.listCoverHeight,

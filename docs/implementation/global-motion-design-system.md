@@ -56,6 +56,7 @@ controller 必须从当前值重新定向，返回或下一次用户操作不得
 | 选择切换 | `navigationSelection`（140 ms） | 紧凑的选中/取消选中。 |
 | 短过渡 | `short`（180 ms） / `shortReverse`（140 ms） | 路由、面板或显隐；返回比前进更快。 |
 | loading 收束 | `loadingSettle`（120 ms） | 仅在数据已经就绪后收束视觉状态。 |
+| loading 闪亮提示 | `loadingShimmer`（980 ms） | 仅用于尚未取得数据的小面积骨架；遵从减少动态效果且不可见时停止。 |
 | 导航胶囊 | `bottomNavigation*` | 既有顶层导航专用 token，不推广为普通页面效果。 |
 | 连续装饰 | `bottomNavigationTextureDrift`（8 s）与 `bottomNavigationTextureCurve` | 仅低频背景纹理，必须可停止。 |
 

@@ -84,6 +84,8 @@ class DiscoveryContentListItem extends StatelessWidget {
                       DiscoveryBookCover(
                         title: content.title,
                         coverBytes: content.coverBytes,
+                        remoteContentId: content.id,
+                        coverUrl: content.coverUrl,
                         variant: variant,
                         width: coverWidth,
                         height: coverHeight,

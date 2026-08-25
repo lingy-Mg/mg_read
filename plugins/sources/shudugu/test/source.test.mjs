@@ -77,3 +77,21 @@ test('resource proxy rejects foreign URLs without fetching them', async () => {
   assert.equal(result.body.byteLength, 0);
   assert.equal(fetchCount, 0);
 });
+
+test('reuses a fresh parsed detail projection after a source restart', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'mgread-shudugu-projection-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let fetches = 0;
+  const cacheDir = join(root, 'cache');
+  await plugin.activate(context(async () => {
+    fetches += 1;
+    return new Response(detail);
+  }, cacheDir).value);
+  const first = await plugin.getDetail({ id: 'novel:51' });
+  await plugin.activate(context(async () => {
+    throw new Error('A fresh projection must avoid source HTTP after restart.');
+  }, cacheDir).value);
+  const restarted = await plugin.getDetail({ id: 'novel:51' });
+  assert.equal(restarted.title, first.title);
+  assert.equal(fetches, 1);
+});

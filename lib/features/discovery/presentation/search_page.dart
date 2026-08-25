@@ -1,3 +1,17 @@
+/// 搜索目标页面。
+///
+/// 职责：
+/// - 协调搜索输入、历史、书源选择与结果展示。
+/// - 为搜索结果封面提供共享的异步书源身份。
+///
+/// 注意：
+/// - 首次进入不主动搜索；封面加载不得延迟搜索结果主体。
+/// - 控制器负责异步状态，页面不直接读取 Runtime 或持久化。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -19,6 +33,7 @@ import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
+import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 /// Search destination. Runtime data remains outside this presentation shell.
 class SearchPage extends ConsumerStatefulWidget {
@@ -52,11 +67,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   void initState() {
     super.initState();
     _queryController.addListener(_onQueryChanged);
-    ref.listenManual<SearchPageState>(
-      searchPageControllerProvider,
-      (_, next) => _applyInitialSource(next),
-      fireImmediately: true,
-    );
+    ref.listenManual<SearchPageState>(searchPageControllerProvider, (_, next) => _applyInitialSource(next), fireImmediately: true);
     unawaited(_loadHistory());
   }
 
@@ -73,9 +84,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   @override
   Widget build(BuildContext context) {
     final SearchPageState state = ref.watch(searchPageControllerProvider);
-    final SearchPageController controller = ref.read(
-      searchPageControllerProvider.notifier,
-    );
+    final SearchPageController controller = ref.read(searchPageControllerProvider.notifier);
     final bookshelfMembership = ref.watch(bookshelfMembershipProvider);
     final PluginSearchResult? displayedResult = state.result;
     return Scaffold(
@@ -85,9 +94,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           bottom: false,
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: AppSpacing.searchPageContentMaxWidth,
-              ),
+              constraints: const BoxConstraints(maxWidth: AppSpacing.searchPageContentMaxWidth),
               child: ListView(
                 key: const Key('search-page-scroll'),
                 controller: _scrollController,
@@ -100,10 +107,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                 children: <Widget>[
                   SizedBox(
                     height: AppSpacing.pageHeaderHeight,
-                    child: _SearchPageHeader(
-                      onSourceManagementRequested:
-                          widget.onSourceManagementRequested,
-                    ),
+                    child: _SearchPageHeader(onSourceManagementRequested: widget.onSourceManagementRequested),
                   ),
                   const SizedBox(height: AppSpacing.compact),
                   _SearchTopBar(
@@ -116,67 +120,53 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   const SizedBox(height: AppSpacing.compact),
                   SearchSuggestionSections(
                     history: List<String>.unmodifiable(_history),
-                    onHistorySelected: (String value) =>
-                        _selectSuggestion(value, controller),
+                    onHistorySelected: (String value) => _selectSuggestion(value, controller),
                     onHistoryCleared: _clearHistory,
-                    onHotSearchSelected: (String value) =>
-                        _selectSuggestion(value, controller),
+                    onHotSearchSelected: (String value) => _selectSuggestion(value, controller),
                     hotSearches: state.hotSearches,
-                    onHotSearchRefreshed: () =>
-                        unawaited(controller.refreshSuggestions()),
+                    onHotSearchRefreshed: () => unawaited(controller.refreshSuggestions()),
                   ),
                   const SizedBox(height: AppSpacing.regular),
-                  SearchResultsSection(
-                    result: displayedResult,
-                    status: state.status,
-                    query: state.query,
-                    error: state.error,
-                    isInBookshelf: (content) {
-                      final pluginId = state.selectedSourceId;
-                      return pluginId != null &&
-                          bookshelfMembership.contains(
+                  BookCoverSourceScope(
+                    pluginId: state.selectedSourceId ?? 'unavailable',
+                    child: SearchResultsSection(
+                      result: displayedResult,
+                      status: state.status,
+                      query: state.query,
+                      error: state.error,
+                      isInBookshelf: (content) {
+                        final pluginId = state.selectedSourceId;
+                        return pluginId != null && bookshelfMembership.contains(pluginId: pluginId, title: content.title);
+                      },
+                      onContentPressed: (PluginContentSummary content) {
+                        final String? pluginId = state.selectedSourceId;
+                        if (pluginId == null) return;
+                        final source = state.sources.firstWhere((source) => source.id == pluginId);
+                        unawaited(
+                          showSourceContentDetailSheet(
+                            context,
+                            gateway: ref.read(sourceContentGatewayProvider),
                             pluginId: pluginId,
-                            title: content.title,
-                          );
-                    },
-                    onContentPressed: (PluginContentSummary content) {
-                      final String? pluginId = state.selectedSourceId;
-                      if (pluginId == null) return;
-                      final source = state.sources.firstWhere(
-                        (source) => source.id == pluginId,
-                      );
-                      unawaited(
-                        showSourceContentDetailSheet(
-                          context,
-                          gateway: ref.read(sourceContentGatewayProvider),
-                          pluginId: pluginId,
-                          id: content.id,
-                          initialContent: content,
-                          initialSourceName: source.displayName,
-                          relatedContents:
-                              displayedResult?.items ??
-                              const <PluginContentSummary>[],
-                          onTextChapterRequested: widget.onTextChapterRequested,
-                          shelfState:
-                              bookshelfMembership.contains(
-                                pluginId: pluginId,
-                                title: content.title,
-                              )
-                              ? SourceDetailShelfState.alreadyAdded
-                              : SourceDetailShelfState.canAdd,
-                          onAddToShelf: (content) => ref
-                              .read(discoveryBookshelfSaverProvider)
-                              .save(source: source, content: content),
-                        ),
-                      );
-                    },
-                    onRetry: () {
-                      if (state.sources.isEmpty) {
-                        unawaited(controller.retrySources());
-                      } else {
-                        _search(controller);
-                      }
-                    },
+                            id: content.id,
+                            initialContent: content,
+                            initialSourceName: source.displayName,
+                            relatedContents: displayedResult?.items ?? const <PluginContentSummary>[],
+                            onTextChapterRequested: widget.onTextChapterRequested,
+                            shelfState: bookshelfMembership.contains(pluginId: pluginId, title: content.title)
+                                ? SourceDetailShelfState.alreadyAdded
+                                : SourceDetailShelfState.canAdd,
+                            onAddToShelf: (content) => ref.read(discoveryBookshelfSaverProvider).save(source: source, content: content),
+                          ),
+                        );
+                      },
+                      onRetry: () {
+                        if (state.sources.isEmpty) {
+                          unawaited(controller.retrySources());
+                        } else {
+                          _search(controller);
+                        }
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -209,11 +199,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       if (preferredSourceId != null &&
           state.sources.any((source) => source.id == preferredSourceId) &&
           state.selectedSourceId != preferredSourceId) {
-        unawaited(
-          ref
-              .read(searchPageControllerProvider.notifier)
-              .selectSource(preferredSourceId),
-        );
+        unawaited(ref.read(searchPageControllerProvider.notifier).selectSource(preferredSourceId));
         return;
       }
     }
@@ -226,9 +212,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       return;
     }
     _queryFocusNode.unfocus();
-    _replaceHistory(
-      <String>[query, ..._history.where((item) => item != query)].take(5),
-    );
+    _replaceHistory(<String>[query, ..._history.where((item) => item != query)].take(5));
     unawaited(controller.search(query));
   }
 
@@ -271,10 +255,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     }
     if (_historyWasCleared) return;
 
-    final merged = <String>[
-      ..._history,
-      ...loaded.where((item) => !_history.contains(item)),
-    ].take(5).toList();
+    final merged = <String>[..._history, ...loaded.where((item) => !_history.contains(item))].take(5).toList();
     if (_sameHistory(merged, _history)) return;
     setState(() {
       _history
@@ -365,9 +346,7 @@ class _SearchTopBar extends StatelessWidget {
                   ),
                   filled: true,
                   fillColor: tokens.mutedSurface,
-                  contentPadding: const EdgeInsets.symmetric(
-                    vertical: AppSpacing.compact,
-                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.compact),
                   border: OutlineInputBorder(
                     borderRadius: AppRadii.pill,
                     borderSide: BorderSide(color: tokens.divider),
@@ -385,11 +364,7 @@ class _SearchTopBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: AppSpacing.unit),
-          TextButton(
-            key: const Key('source-search-submit'),
-            onPressed: isSearching ? null : onSearch,
-            child: const Text('搜索'),
-          ),
+          TextButton(key: const Key('source-search-submit'), onPressed: isSearching ? null : onSearch, child: const Text('搜索')),
         ],
       ),
     );
@@ -405,11 +380,7 @@ class _SearchFieldProgress extends StatelessWidget {
     child: ExcludeSemantics(
       child: Center(
         key: Key('source-search-field-progress'),
-        child: SizedBox(
-          width: AppSpacing.comfortable,
-          height: AppSpacing.comfortable,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
+        child: SizedBox(width: AppSpacing.comfortable, height: AppSpacing.comfortable, child: CircularProgressIndicator(strokeWidth: 2)),
       ),
     ),
   );
@@ -426,10 +397,7 @@ class _SearchPageHeader extends ConsumerWidget {
     final controller = ref.read(searchPageControllerProvider.notifier);
     final selectedSource = state.selectedSourceId == null
         ? null
-        : state.sources.cast<PluginSourceDescriptor?>().firstWhere(
-            (source) => source?.id == state.selectedSourceId,
-            orElse: () => null,
-          );
+        : state.sources.cast<PluginSourceDescriptor?>().firstWhere((source) => source?.id == state.selectedSourceId, orElse: () => null);
     return Stack(
       alignment: Alignment.center,
       children: <Widget>[
@@ -445,9 +413,7 @@ class _SearchPageHeader extends ConsumerWidget {
             key: const Key('search-source-selector-widget'),
             selectorKey: const Key('search-source-selector'),
             sourceName: selectedSource?.displayName ?? '选择数据源',
-            onPressed: state.selectedSourceId == null
-                ? () {}
-                : () => _showPicker(context, state, controller),
+            onPressed: state.selectedSourceId == null ? () {} : () => _showPicker(context, state, controller),
             label: '选择搜索数据源',
           ),
         ),
@@ -455,16 +421,8 @@ class _SearchPageHeader extends ConsumerWidget {
     );
   }
 
-  Future<void> _showPicker(
-    BuildContext context,
-    SearchPageState state,
-    SearchPageController controller,
-  ) async {
-    final selected = await showDiscoverySourcePicker(
-      context,
-      sources: state.sources,
-      selectedSourceId: state.selectedSourceId!,
-    );
+  Future<void> _showPicker(BuildContext context, SearchPageState state, SearchPageController controller) async {
+    final selected = await showDiscoverySourcePicker(context, sources: state.sources, selectedSourceId: state.selectedSourceId!);
     switch (selected) {
       case DiscoverySourceSelected(:final sourceId):
         await controller.selectSource(sourceId);

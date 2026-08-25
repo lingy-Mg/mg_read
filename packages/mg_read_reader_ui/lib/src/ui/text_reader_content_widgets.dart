@@ -3,6 +3,21 @@ part of 'text_reader_view.dart';
 // ignore_for_file: invalid_use_of_protected_member
 
 extension _TextReaderContentWidgets on _TextReaderViewState {
+  /// 覆盖正文并阻止设置弹层之外的输入继续传给阅读器。
+  ///
+  /// 该层位于 Navigator 的设置路由之下，因此不会拦截设置面板本身；
+  /// 仅在弹层透明区域的事件继续命中阅读器时作为最终输入锁和关闭入口。
+  Widget _buildSettingsInteractionLock() {
+    return Positioned.fill(
+      child: GestureDetector(
+        key: const ValueKey<String>('reader-settings-interaction-lock'),
+        behavior: HitTestBehavior.opaque,
+        excludeFromSemantics: true,
+        onTap: _dismissReaderSettingsFromReader,
+      ),
+    );
+  }
+
   ThemeData _readerMaterialTheme(ReaderPalette palette) {
     final ColorScheme scheme =
         ColorScheme.fromSeed(

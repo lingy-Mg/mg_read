@@ -1,16 +1,26 @@
+/// 书架首页的展示数据。
+///
+/// 职责：
+/// - 将书架概览投影为页面和列表组件需要的不可变数据。
+/// - 为可解析的来源封面构造异步请求身份。
+///
+/// 注意：
+/// - 页面构建不得在此处触发封面、Runtime 或持久化读取。
+/// - 无来源身份的封面由组件使用本地降级插画。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'package:flutter/foundation.dart';
 
 import 'package:mg_read/features/library/domain/library_overview.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
+import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
-/// Immutable, presentation-only data for the library home screen.
-///
-/// This type deliberately does not know about a Runtime Facade implementation,
-/// Runtime Store, database, source URLs, or reader state. A later application
-/// adapter can map a local overview into this shape without making widgets
-/// infrastructure-aware.
+/// 书架首页的不可变展示数据。
 @immutable
 final class LibraryHomeViewData {
   /// Creates one display-ready home projection.
@@ -36,10 +46,10 @@ final class LibraryHomeViewData {
               chapter: '第${(current.readingChapterIndex ?? 0) + 1}章',
               progress: current.readingProgress!,
               lastReadLabel: '上次阅读',
-              coverVariant: LibraryCoverVariant
-                  .values[currentIndex % LibraryCoverVariant.values.length],
+              coverVariant: LibraryCoverVariant.values[currentIndex % LibraryCoverVariant.values.length],
               coverUrl: current.coverUrl,
               coverBytes: current.coverBytes,
+              coverRequest: _coverRequest(current),
             ),
       books: overview.items.asMap().entries.map(
         (entry) => LibraryBookListItemViewData(
@@ -48,8 +58,8 @@ final class LibraryHomeViewData {
           subtitle: _librarySubtitle(entry.value),
           coverUrl: entry.value.coverUrl,
           coverBytes: entry.value.coverBytes,
-          coverVariant: LibraryCoverVariant
-              .values[entry.key % LibraryCoverVariant.values.length],
+          coverRequest: _coverRequest(entry.value),
+          coverVariant: LibraryCoverVariant.values[entry.key % LibraryCoverVariant.values.length],
           status: LibraryBookStatus.local,
         ),
       ),
@@ -57,11 +67,8 @@ final class LibraryHomeViewData {
   }
 
   /// Creates the first-run state from a successfully read, empty bookshelf.
-  factory LibraryHomeViewData.empty() => LibraryHomeViewData(
-    isPresentationFixture: false,
-    continueReading: null,
-    books: const <LibraryBookListItemViewData>[],
-  );
+  factory LibraryHomeViewData.empty() =>
+      LibraryHomeViewData(isPresentationFixture: false, continueReading: null, books: const <LibraryBookListItemViewData>[]);
 
   /// Whether the projection is an explicit UI fixture rather than user data.
   final bool isPresentationFixture;
@@ -77,11 +84,27 @@ final class LibraryHomeViewData {
   final int? availableSourceCount;
 }
 
+BookCoverRequest? _coverRequest(LibraryItemSummary item) {
+  final pluginId = item.coverPluginId;
+  final pluginVersion = item.coverPluginVersion;
+  final remoteContentId = item.coverRemoteContentId;
+  final coverUrl = item.coverUrl;
+  if (pluginId == null || pluginVersion == null || remoteContentId == null || coverUrl == null) {
+    return null;
+  }
+  return BookCoverRequest(
+    pluginId: pluginId,
+    pluginVersion: pluginVersion,
+    remoteContentId: remoteContentId,
+    coverUrl: coverUrl,
+    legacyLibraryItemId: item.id,
+  );
+}
+
 String? _librarySubtitle(LibraryItemSummary item) {
   final parts = <String>[
     if (item.author != null && item.author!.isNotEmpty) item.author!,
-    if (item.sourceName != null && item.sourceName!.isNotEmpty)
-      item.sourceName!,
+    if (item.sourceName != null && item.sourceName!.isNotEmpty) item.sourceName!,
   ];
   return parts.isEmpty ? null : parts.join(' · ');
 }
@@ -99,6 +122,7 @@ final class LibraryContinueReadingViewData {
     required this.coverVariant,
     this.coverUrl,
     this.coverBytes,
+    this.coverRequest,
     this.coverAssetPath,
   }) : assert(bookId != ''),
        assert(title != ''),
@@ -114,6 +138,7 @@ final class LibraryContinueReadingViewData {
   final LibraryCoverVariant coverVariant;
   final Uri? coverUrl;
   final List<int>? coverBytes;
+  final BookCoverRequest? coverRequest;
   final String? coverAssetPath;
 }
 
@@ -183,8 +208,7 @@ final class LibraryHomeCallbacks {
       onBookMore: onBookMore ?? this.onBookMore,
       onDeleteBook: onDeleteBook ?? this.onDeleteBook,
       onSetBookPrivate: onSetBookPrivate ?? this.onSetBookPrivate,
-      onPrivacyLibraryRequested:
-          onPrivacyLibraryRequested ?? this.onPrivacyLibraryRequested,
+      onPrivacyLibraryRequested: onPrivacyLibraryRequested ?? this.onPrivacyLibraryRequested,
       onManageSources: onManageSources ?? this.onManageSources,
       onDiscover: onDiscover ?? this.onDiscover,
       onImportLocal: onImportLocal ?? this.onImportLocal,
@@ -215,23 +239,13 @@ abstract final class LibraryHomeFixtures {
         subtitle: '第1268章 不可名状的低语',
         activityLabel: '1小时前',
         coverVariant: LibraryCoverVariant.dusk,
-        coverAssetPath:
-            'assets/fixtures/home_covers/lord_of_mysteries_small.png',
+        coverAssetPath: 'assets/fixtures/home_covers/lord_of_mysteries_small.png',
         status: LibraryBookStatus.ongoing,
         hasAttentionIndicator: true,
         tags: const <LibraryMetadataTagViewData>[
-          LibraryMetadataTagViewData(
-            label: '起点中文网',
-            tone: LibraryMetadataTone.accent,
-          ),
-          LibraryMetadataTagViewData(
-            label: '高质量',
-            tone: LibraryMetadataTone.neutral,
-          ),
-          LibraryMetadataTagViewData(
-            label: '稳定',
-            tone: LibraryMetadataTone.neutral,
-          ),
+          LibraryMetadataTagViewData(label: '起点中文网', tone: LibraryMetadataTone.accent),
+          LibraryMetadataTagViewData(label: '高质量', tone: LibraryMetadataTone.neutral),
+          LibraryMetadataTagViewData(label: '稳定', tone: LibraryMetadataTone.neutral),
         ],
       ),
       LibraryBookListItemViewData(
@@ -244,14 +258,8 @@ abstract final class LibraryHomeFixtures {
         status: LibraryBookStatus.ongoing,
         hasAttentionIndicator: true,
         tags: const <LibraryMetadataTagViewData>[
-          LibraryMetadataTagViewData(
-            label: '纵横中文网',
-            tone: LibraryMetadataTone.accent,
-          ),
-          LibraryMetadataTagViewData(
-            label: '优质',
-            tone: LibraryMetadataTone.neutral,
-          ),
+          LibraryMetadataTagViewData(label: '纵横中文网', tone: LibraryMetadataTone.accent),
+          LibraryMetadataTagViewData(label: '优质', tone: LibraryMetadataTone.neutral),
         ],
       ),
       LibraryBookListItemViewData(
@@ -264,14 +272,8 @@ abstract final class LibraryHomeFixtures {
         status: LibraryBookStatus.completed,
         hasAttentionIndicator: true,
         tags: const <LibraryMetadataTagViewData>[
-          LibraryMetadataTagViewData(
-            label: '17K小说网',
-            tone: LibraryMetadataTone.accent,
-          ),
-          LibraryMetadataTagViewData(
-            label: '稳定',
-            tone: LibraryMetadataTone.neutral,
-          ),
+          LibraryMetadataTagViewData(label: '17K小说网', tone: LibraryMetadataTone.accent),
+          LibraryMetadataTagViewData(label: '稳定', tone: LibraryMetadataTone.neutral),
         ],
       ),
       LibraryBookListItemViewData(
@@ -283,14 +285,8 @@ abstract final class LibraryHomeFixtures {
         coverAssetPath: 'assets/fixtures/home_covers/deep_space.png',
         status: LibraryBookStatus.local,
         tags: const <LibraryMetadataTagViewData>[
-          LibraryMetadataTagViewData(
-            label: '飞卢小说网',
-            tone: LibraryMetadataTone.accent,
-          ),
-          LibraryMetadataTagViewData(
-            label: '优质',
-            tone: LibraryMetadataTone.neutral,
-          ),
+          LibraryMetadataTagViewData(label: '飞卢小说网', tone: LibraryMetadataTone.accent),
+          LibraryMetadataTagViewData(label: '优质', tone: LibraryMetadataTone.neutral),
         ],
       ),
       LibraryBookListItemViewData(
@@ -299,18 +295,11 @@ abstract final class LibraryHomeFixtures {
         subtitle: '第312章 新的契约',
         activityLabel: '3天前更新',
         coverVariant: LibraryCoverVariant.ember,
-        coverAssetPath:
-            'assets/fixtures/home_covers/circle_of_inevitability.png',
+        coverAssetPath: 'assets/fixtures/home_covers/circle_of_inevitability.png',
         status: LibraryBookStatus.completed,
         tags: const <LibraryMetadataTagViewData>[
-          LibraryMetadataTagViewData(
-            label: '番茄小说',
-            tone: LibraryMetadataTone.accent,
-          ),
-          LibraryMetadataTagViewData(
-            label: '稳定',
-            tone: LibraryMetadataTone.neutral,
-          ),
+          LibraryMetadataTagViewData(label: '番茄小说', tone: LibraryMetadataTone.accent),
+          LibraryMetadataTagViewData(label: '稳定', tone: LibraryMetadataTone.neutral),
         ],
       ),
     ],

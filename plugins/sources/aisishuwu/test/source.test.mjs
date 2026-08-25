@@ -584,3 +584,22 @@ test('public API completes the opaque content chain with safe diagnostic phases'
   assert.ok(events.includes('source_search_failed'));
   assert.doesNotMatch(events.join('\n'), new RegExp(`${secret}|${chapterBody}`, 'u'));
 });
+
+test('reuses a fresh parsed detail projection after a source restart', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'mgread-aisishuwu-projection-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  let fetches = 0;
+  const create = (fetch) => new AliceBookHouseSource({
+    dataDir: join(root, 'data'), cacheDir: join(root, 'cache'), http: { fetch },
+    resource: { proxy: () => 'http://127.0.0.1:1234/v1/source-resource/opaque' },
+    log: { debug() {}, info() {}, warn() {}, error() {} },
+    app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
+    plugin: { id: 'org.mgread.aisishuwu', version: '0.2.8' },
+  }, { origin: 'https://www.alicesw.com', categories: [{ id: '71', title: '科幻' }] });
+  const html = '<h1 class="novel_title">重启缓存书</h1><div class="novel_info"><a href="/lists/71.html">科幻</a></div>';
+  const first = create(async () => { fetches += 1; return new Response(html); });
+  const detail = await first.getDetail({ id: 'novel:42' });
+  const restarted = create(async () => { throw new Error('A fresh projection must avoid source HTTP after restart.'); });
+  assert.equal((await restarted.getDetail({ id: 'novel:42' })).title, detail.title);
+  assert.equal(fetches, 1);
+});

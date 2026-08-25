@@ -645,9 +645,7 @@ export class PluginManager {
       if (error instanceof PluginContentValidationError) {
         throw new PluginManagerError("plugin_invalid_response");
       }
-      // Plugin code may reject for a source-side, module, or upstream reason.
-      // Preserve that recoverable category without retaining its error text,
-      // stack, request data, or response content in diagnostics.
+      // Plugin code rejection is recoverable but never retains error text, stacks, request data, or response content.
       throw new PluginManagerError("plugin_execution_failed");
     }
   }
@@ -655,6 +653,7 @@ export class PluginManager {
   async #initialize(): Promise<void> {
     const pluginsRoot = resolve(this.#dataRoot, "plugins");
     await mkdir(pluginsRoot, { recursive: true });
+    await this.#refreshDevelopmentPlugins();
     const snapshots: InstalledPluginSnapshot[] = [];
     const entries = await readdir(pluginsRoot, { withFileTypes: true });
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
@@ -669,10 +668,11 @@ export class PluginManager {
         });
         continue;
       }
+      // The imported version remains a cold-start fallback, but must not share activation or private state with its development source.
+      if (this.#developmentLoaded.has(entry.name)) continue;
       snapshots.push(await this.#initializePlugin(entry.name, pluginRoot));
     }
     this.#installedSnapshots = Object.freeze(snapshots);
-    await this.#refreshDevelopmentPlugins();
   }
 
   #refreshDevelopmentPlugins(): Promise<void> {

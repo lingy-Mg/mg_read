@@ -53,6 +53,10 @@ void main() {
     expect(find.text('书架'), findsNothing);
     expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
     expect(find.byIcon(Icons.help_outline), findsOneWidget);
+    if (Platform.isWindows) {
+      expect(find.byKey(const Key('data-source-development-directory-panel')), findsOneWidget);
+      expect(find.textContaining('不要选择单个书源目录'), findsOneWidget);
+    }
 
     final Rect topBar = tester.getRect(find.byKey(const Key('data-source-top-bar')));
     final Rect card = tester.getRect(find.byKey(const Key('data-source-management-card')));
@@ -124,6 +128,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('小说 · 开发源（即时生效）'), findsOneWidget);
+    expect(find.byKey(const Key('data-source-development-badge-org.mgread.discovery-demo')), findsOneWidget);
     final toggle = tester.widget<Switch>(find.byKey(const Key('data-source-toggle-org.mgread.discovery-demo')));
     expect(toggle.value, isTrue);
     expect(toggle.onChanged, isNull);

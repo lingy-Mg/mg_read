@@ -433,13 +433,11 @@ extension _TextReaderPagination on _TextReaderViewState {
     _stopAutoReading();
     final Size? size = context.size;
     if (size == null || size.width <= 0) return;
-    if (_preferences.singleHandMode) {
+    final double fraction = localPosition.dx / size.width;
+    if (_preferences.singleHandMode && (fraction < 0.3 || fraction > 0.7)) {
       _pageTurnForward = true;
       unawaited(_nextPage());
-      return;
-    }
-    final double fraction = localPosition.dx / size.width;
-    if (fraction < 0.3) {
+    } else if (fraction < 0.3) {
       _pageTurnForward = false;
       unawaited(_previousPage());
     } else if (fraction > 0.7) {

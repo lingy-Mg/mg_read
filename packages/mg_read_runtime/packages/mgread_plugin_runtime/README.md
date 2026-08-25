@@ -91,7 +91,8 @@ Runtime 实例完成冷激活。
 
 Windows Debug 由本 package 在仓库内解析 `plugins/sources` 并把该内部目录交给 Runtime；书源
 项目不复制进 assets。package/lock 或已构建输出变化后，Facade 在下一次调用前回收旧 Node/VM，
-再启动唯一的新 Runtime。Release 不启用该路径。
+再启动唯一的新 Runtime。同一插件 ID 同时存在开发项目和已安装包时，只加载并展示开发项目；
+已安装包保留为移除开发项目后的冷启动回退，不会并行执行或写入同一插件私有状态。Release 不启用该路径。
 
 `OpenPluginCodeDirectoryInvocation` 仅在 Windows 桌面端由 Flutter Supervisor 打开目录：Runtime
 只负责解析 development 工作区项目或当前 immutable version 副本，随后由 Flutter owner 在

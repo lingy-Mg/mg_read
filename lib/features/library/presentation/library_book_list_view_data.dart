@@ -1,10 +1,22 @@
+/// 书架列表的展示数据。
+///
+/// 职责：
+/// - 向多个书架列表组件提供不可变的行数据与封面请求。
+/// - 保持展示模型与 Runtime、存储和网络实现解耦。
+///
+/// 注意：
+/// - 封面请求由组件异步解析，构造展示数据不得等待图片。
+/// - 业务动作只由页面通过显式回调处理。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'package:flutter/foundation.dart';
 
-/// Immutable, display-ready data shared by update, shelf, and history lists.
-///
-/// This model deliberately contains only presentation data. Feature adapters
-/// remain responsible for mapping Runtime-facing book, update, or history
-/// records into this compact visual contract.
+import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
+
+/// 更新、书架和阅读记录列表共用的不可变展示数据。
 @immutable
 final class LibraryBookListItemViewData {
   /// Creates one display-ready book-list row.
@@ -15,12 +27,12 @@ final class LibraryBookListItemViewData {
     required this.status,
     this.coverUrl,
     this.coverBytes,
+    this.coverRequest,
     this.coverAssetPath,
     this.subtitle,
     this.activityLabel,
     this.hasAttentionIndicator = false,
-    Iterable<LibraryMetadataTagViewData> tags =
-        const <LibraryMetadataTagViewData>[],
+    Iterable<LibraryMetadataTagViewData> tags = const <LibraryMetadataTagViewData>[],
   }) : assert(id != ''),
        assert(title != ''),
        tags = List<LibraryMetadataTagViewData>.unmodifiable(tags);
@@ -36,6 +48,9 @@ final class LibraryBookListItemViewData {
 
   /// Cover bytes loaded from the app-owned persistent cover object.
   final List<int>? coverBytes;
+
+  /// Background source-cover request; it never delays list data rendering.
+  final BookCoverRequest? coverRequest;
 
   /// Context-specific secondary text, such as the latest or last-read chapter.
   final String? subtitle;
@@ -62,8 +77,7 @@ final class LibraryBookListItemViewData {
 @immutable
 final class LibraryMetadataTagViewData {
   /// Creates one immutable source or availability tag.
-  const LibraryMetadataTagViewData({required this.label, required this.tone})
-    : assert(label != '');
+  const LibraryMetadataTagViewData({required this.label, required this.tone}) : assert(label != '');
 
   final String label;
   final LibraryMetadataTone tone;

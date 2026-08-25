@@ -7,28 +7,22 @@
 package com.mgread.mgread_plugin_runtime
 
 import android.content.Context
-import android.content.res.AssetManager
 import android.net.Uri
+import android.content.pm.ApplicationInfo
 import android.provider.OpenableColumns
 import android.util.Log
 import com.caoccao.javet.enums.V8AwaitMode
-import com.caoccao.javet.interop.V8Runtime
 import com.caoccao.javet.interop.callback.IJavetDirectCallable
-import com.caoccao.javet.interop.callback.IV8ModuleResolver
-import com.caoccao.javet.interop.callback.JavetBuiltInModuleResolver
 import com.caoccao.javet.interop.callback.JavetCallbackContext
 import com.caoccao.javet.interop.callback.JavetCallbackType
 import com.caoccao.javet.interop.NodeRuntime
 import com.caoccao.javet.interop.V8Host
 import com.caoccao.javet.values.V8Value
-import com.caoccao.javet.values.reference.IV8Module
 import com.caoccao.javet.values.reference.V8Module
 import com.caoccao.javet.values.reference.V8ValueFunction
 import com.caoccao.javet.values.reference.V8ValuePromise
 import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
-import java.net.URI
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -500,7 +494,7 @@ internal class AndroidRuntimeHost(
         if (nodeRuntime != null) return
         Log.i(TAG, "android_runtime_start")
         val root = File(context.filesDir, "mgread-runtime/android").apply { mkdirs() }
-        ensureRuntimeAssets(root)
+        AndroidRuntimeAssetExtractor(context, assetRoot, onProgress).ensure(root)
         val dist = File(root, "dist/desktop-runtime.js")
         check(dist.isFile) { "Android Runtime assets are missing." }
         Log.i(TAG, "android_runtime_node_create_start")
@@ -551,7 +545,7 @@ internal class AndroidRuntimeHost(
                 dataRoot: ${JSONObject.quote(dataRoot.path)},
                 pluginImportInboxRoot: ${JSONObject.quote(pluginImportInbox.path)},
                 embedded: true,
-                debugHttpAllowed: ${if (BuildConfig.DEBUG) "true" else "false"},
+                debugHttpAllowed: ${isDebuggableBuild()},
                 onProgress: (progress) => {
                   try {
                     globalThis.__mgreadReportProgress(JSON.stringify(progress));
@@ -608,6 +602,10 @@ internal class AndroidRuntimeHost(
             }
         }
     }
+
+    /** Uses the host application flag so this library does not depend on generated BuildConfig. */
+    private fun isDebuggableBuild(): Boolean =
+        context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
 
     private fun installProgressCallback(runtime: NodeRuntime) {
         val callbackContext = JavetCallbackContext(
@@ -684,192 +682,6 @@ internal class AndroidRuntimeHost(
                 throw IllegalStateException("Javet module evaluation rejected.")
             }
             promise.getResult<V8Value>().use { }
-        }
-    }
-
-    private fun copyAssets(
-        assetPath: String,
-        target: File,
-        progress: ((Long) -> Unit)? = null,
-    ) {
-        val manager: AssetManager = context.assets
-        val children = manager.list(assetPath) ?: emptyArray()
-        if (children.isEmpty()) {
-            target.parentFile?.mkdirs()
-            manager.open(assetPath).use { input ->
-                FileOutputStream(target).use { output ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        output.write(buffer, 0, read)
-                        progress?.invoke(read.toLong())
-                    }
-                }
-            }
-            return
-        }
-        target.mkdirs()
-        for (child in children) {
-            copyAssets("$assetPath/$child", File(target, child), progress)
-        }
-    }
-
-    /**
-     * Keeps the immutable package Runtime separate from user-owned Runtime data.
-     * A matching package version reuses the existing extracted files; a changed
-     * version replaces only this asset mirror before Node starts.
-     */
-    private fun ensureRuntimeAssets(root: File) {
-        val bundledVersion = context.assets.open("$assetRoot/runtime-version.txt")
-            .bufferedReader()
-            .use { it.readText().trim() }
-        check(bundledVersion.isNotEmpty()) { "Android Runtime asset version is missing." }
-        val marker = File(root, ".runtime-asset-version")
-        if (marker.isFile && marker.readText().trim() == bundledVersion) {
-            Log.i(TAG, "android_runtime_assets_reused")
-            onProgress(AndroidRuntimeProgress(1, "assets_reused", 1))
-            return
-        }
-
-        Log.i(TAG, "android_runtime_assets_replace_start")
-        if (root.exists() && !root.deleteRecursively()) {
-            throw IllegalStateException("Android Runtime asset directory cannot be replaced.")
-        }
-        check(root.mkdirs() || root.isDirectory) { "Android Runtime asset directory is unavailable." }
-        val totalBytes = measureAssetBytes(assetRoot)
-        var copiedBytes = 0L
-        onProgress(AndroidRuntimeProgress(0, "assets_copying", totalBytes))
-        copyAssets(assetRoot, root) { copied ->
-            copiedBytes += copied
-            onProgress(AndroidRuntimeProgress(copiedBytes, "assets_copying", totalBytes))
-        }
-        val temporaryMarker = File(root, ".runtime-asset-version.next")
-        temporaryMarker.writeText("$bundledVersion\n")
-        check(temporaryMarker.renameTo(marker)) { "Android Runtime asset version cannot be committed." }
-        Log.i(TAG, "android_runtime_assets_replace_complete")
-        onProgress(AndroidRuntimeProgress(totalBytes, "assets_copied", totalBytes))
-    }
-
-    private fun measureAssetBytes(assetPath: String): Long {
-        val manager: AssetManager = context.assets
-        val children = manager.list(assetPath) ?: emptyArray()
-        if (children.isEmpty()) {
-            return manager.open(assetPath).use { it.available().toLong() }
-        }
-        return children.sumOf { child -> measureAssetBytes("$assetPath/$child") }
-    }
-
-    /** Resolves the compiled Runtime's file ESM graph inside the extracted asset root. */
-    private class AndroidModuleResolver(
-        private val root: File,
-    ) : IV8ModuleResolver {
-        private val builtIn = JavetBuiltInModuleResolver()
-
-        override fun resolve(
-            runtime: V8Runtime,
-            moduleName: String,
-            referrer: IV8Module?,
-        ): IV8Module? {
-            if (moduleName.startsWith("node:")) {
-                return builtIn.resolve(runtime, moduleName, referrer)
-            }
-            val referrerFile = referrer?.resourceName?.let(::File)
-            val requestedPath = when {
-                moduleName.startsWith("file:") -> File(URI(moduleName))
-                moduleName.startsWith("/") -> File(moduleName)
-                referrerFile != null -> File(referrerFile.parentFile, moduleName)
-                else -> File(root, moduleName)
-            }.canonicalFile
-            val candidate = resolveFile(requestedPath)
-                ?: resolvePackage(moduleName, referrerFile)
-                ?: return null
-            return runtime.getExecutor(moduleSource(candidate))
-                .setResourceName(candidate.path)
-                .setModule(true)
-                .compileV8Module()
-        }
-
-        private fun resolvePackage(moduleName: String, referrerFile: File?): File? {
-            if (moduleName.startsWith(".") || moduleName.startsWith("/")) return null
-            val segments = moduleName.split('/')
-            val packageName = if (segments.firstOrNull() == "@" || moduleName.startsWith("@")) {
-                if (segments.size < 2) return null
-                "${segments[0]}/${segments[1]}"
-            } else {
-                segments.firstOrNull() ?: return null
-            }
-            val subpathStart = packageName.count { it == '/' } + 1
-            val subpath = segments.drop(subpathStart).joinToString("/")
-            var directory = referrerFile?.parentFile
-            while (directory != null) {
-                val packageRoot = File(directory, "node_modules/$packageName")
-                if (packageRoot.isDirectory) {
-                    val packageJson = File(packageRoot, "package.json")
-                    val metadata = if (packageJson.isFile) {
-                        runCatching { JSONObject(packageJson.readText()) }.getOrNull()
-                    } else {
-                        null
-                    }
-                    val declaredEntry = if (subpath.isNotEmpty()) {
-                        val exportTarget = metadata
-                            ?.optJSONObject("exports")
-                            ?.opt("./$subpath")
-                            ?.let(::resolveExportTarget)
-                        File(packageRoot, exportTarget ?: subpath)
-                    } else {
-                        val moduleEntry = metadata?.optString("module")?.takeIf { it.isNotEmpty() }
-                        val mainEntry = metadata?.optString("main")?.takeIf { it.isNotEmpty() }
-                        File(packageRoot, moduleEntry ?: mainEntry ?: "index.js")
-                    }
-                    resolveFile(declaredEntry)?.let { return it }
-                    if (subpath.isEmpty()) {
-                        resolveFile(File(packageRoot, "index.js"))?.let { return it }
-                    }
-                }
-                directory = directory.parentFile
-            }
-            Log.e(TAG, "android_runtime_module_resolve_missing")
-            return null
-        }
-
-        private fun resolveExportTarget(value: Any): String? {
-            if (value is String) return value
-            if (value !is JSONObject) return null
-            for (condition in listOf("import", "default", "node")) {
-                val nested = value.opt(condition)
-                if (nested != null && nested !== JSONObject.NULL) {
-                    resolveExportTarget(nested)?.let { return it }
-                }
-            }
-            return null
-        }
-
-        private fun resolveFile(candidate: File): File? {
-            val canonical = candidate.canonicalFile
-            if (canonical.isFile) return canonical
-            if (canonical.extension.isEmpty()) {
-                for (extension in listOf(".js", ".mjs", ".json")) {
-                    val withExtension = File(canonical.path + extension)
-                    if (withExtension.isFile) return withExtension.canonicalFile
-                }
-                val index = File(canonical, "index.js")
-                if (index.isFile) return index.canonicalFile
-            }
-            return null
-        }
-
-        /** boolbase is the lone CommonJS leaf in Cheerio's ESM dependency graph. */
-        private fun moduleSource(candidate: File): String {
-            if (!candidate.path.replace(File.separatorChar, '/').endsWith("/node_modules/boolbase/index.js")) {
-                return candidate.readText()
-            }
-            return """
-                const module = { exports: {} };
-                const exports = module.exports;
-                ${candidate.readText()}
-                export default module.exports;
-            """.trimIndent()
         }
     }
 

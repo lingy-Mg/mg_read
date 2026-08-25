@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { PluginHtmlCache } from '../dist/html-cache.js';
+import { PluginCache, PluginHtmlCache } from '../dist/html-cache.js';
 
 test('stores only below the supplied cache root and serves a fresh hit', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'mgread-aisishuwu-cache-'));
@@ -176,11 +176,30 @@ test('treats corrupted files as a cache miss without escaping the cache root', a
   const url = new URL('https://www.alicesw.com/lists/71.html');
   const cache = new PluginHtmlCache(root);
   await cache.getOrFetch(url, policy, async () => '<html>first</html>');
-  const cacheRoot = join(root, 'html-cache-v1');
+  const cacheRoot = join(root, 'plugin-cache-v2');
   const [entry] = await readdir(cacheRoot);
   await writeFile(join(cacheRoot, entry), 'not-json', 'utf8');
   assert.equal(
     await new PluginHtmlCache(root).getOrFetch(url, policy, async () => '<html>recovered</html>'),
     '<html>recovered</html>',
   );
+});
+
+test('persists a decoded detail projection across a new source process', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'mgread-aisishuwu-cache-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  let fetches = 0;
+  const policy = { namespace: 'detail-projection-v1', staleAfterMs: 10 * 60 * 1000 };
+  const decode = (value) => value !== null && typeof value === 'object' && typeof value.id === 'string' ? value : undefined;
+  const first = new PluginCache(root);
+  assert.deepEqual(await first.getOrFetchJson('detail:novel:42', policy, async () => {
+    fetches += 1;
+    return { value: { id: 'novel:42', title: 'first' }, storedAtMs: Date.now() };
+  }, decode), { id: 'novel:42', title: 'first' });
+  const restarted = new PluginCache(root);
+  assert.deepEqual(await restarted.getOrFetchJson('detail:novel:42', policy, async () => {
+    fetches += 1;
+    return { value: { id: 'novel:42', title: 'second' }, storedAtMs: Date.now() };
+  }, decode), { id: 'novel:42', title: 'first' });
+  assert.equal(fetches, 1);
 });

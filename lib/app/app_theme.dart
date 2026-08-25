@@ -566,6 +566,7 @@ abstract final class AppMotion {
   static const Duration short = Duration(milliseconds: 180);
   static const Duration shortReverse = Duration(milliseconds: 140);
   static const Duration loadingSettle = Duration(milliseconds: 120);
+  static const Duration loadingShimmer = Duration(milliseconds: 980);
   static const Duration bottomNavigationIconResponse = Duration(
     milliseconds: 220,
   );

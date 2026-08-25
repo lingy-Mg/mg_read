@@ -46,14 +46,15 @@
 ## 封面持久化（所有新增组件必遵守）
 
 发现页所有来源封面，包括榜单、推荐、分类、轮播、列表、详情相关推荐以及未来新增组件，
-必须遵守[全局封面持久化规范](cover-persistence.md)。统一流程是 application/data 层先读取
-`ContentLibrary.covers`，未命中才请求并写回；Widget 只接收 `coverBytes`，不得直接使用
-`Image.network`、`NetworkImage`、`HttpClient` 或 Persistence。
+必须遵守[全局封面持久化规范](cover-persistence.md)。内容网关只返回书籍主体和封面来源身份；
+共享封面 Provider 在组件首次显示后先读取 `ContentLibrary.covers`，未命中才请求并写回。Widget
+只能消费该 Provider 给出的 bytes、加载态或占位态，不得直接使用 `Image.network`、`NetworkImage`、
+`HttpClient` 或 Persistence。
 
 新增发现组件合入前必须逐项确认：
 
-1. 来源内容经过 `SourceContentGateway` 的封面 hydration，组件复用 `DiscoveryBookCover`；
-2. 本地命中不会重复请求，首次成功请求会写入全局缓存；
+1. 来源内容经过 `SourceContentGateway` 返回封面来源身份，组件复用 `DiscoveryBookCover`；
+2. 页面主体先显示，封面加载中显示明确加载态；本地命中不会重复请求，首次成功请求会写入全局缓存；
 3. 缺图、坏图和网络失败只显示占位图，不阻断发现内容；
-4. 测试覆盖命中、写入复用和失败占位；
+4. 测试覆盖命中、写入复用、加载态和失败占位；
 5. 若组件增加新的内容投影或封面入口，同步更新全局规范和本清单。

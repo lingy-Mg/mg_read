@@ -26,8 +26,10 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
+import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 part 'source_content_detail_sections.dart';
+part 'source_content_detail_loading.dart';
 
 typedef SourceTextChapterRequested =
     Future<void> Function({
@@ -128,7 +130,7 @@ class _AdaptiveSingleLineText extends StatelessWidget {
           text: TextSpan(text: text, style: style),
           maxLines: maxLines,
           textDirection: Directionality.of(context),
-          textScaleFactor: MediaQuery.textScaleFactorOf(context),
+          textScaler: MediaQuery.textScalerOf(context),
         )..layout(maxWidth: double.infinity);
 
         final neededScale = painter.width <= 0 ? 1 : constraints.maxWidth / painter.width;
@@ -208,47 +210,65 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
             detail: _previewDetail(pluginId: widget.pluginId, content: widget.initialContent!, sourceName: widget.initialSourceName),
             chapters: widget.initialCatalog ?? _emptyChapters(pluginId: widget.pluginId, sourceName: widget.initialSourceName),
           );
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: <Widget>[
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: AppSpacing.discoveryPagePadding, vertical: AppSpacing.pageHeaderTopPadding),
-              child: _DetailHeader(),
-            ),
-            Expanded(
-              child: FutureBuilder<_SourceDetailBundle>(
-                future: _detailFuture,
-                initialData: previewBundle,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done) {
-                    if (snapshot.hasData) {
-                      return AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 260),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        child: _SourceDetailView(
-                          key: const ValueKey<String>('source-detail-preview'),
-                          bundle: snapshot.requireData,
+    return BookCoverSourceScope(
+      pluginId: widget.pluginId,
+      child: Scaffold(
+        body: SafeArea(
+          child: Column(
+            children: <Widget>[
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: AppSpacing.discoveryPagePadding, vertical: AppSpacing.pageHeaderTopPadding),
+                child: _DetailHeader(),
+              ),
+              Expanded(
+                child: FutureBuilder<_SourceDetailBundle>(
+                  future: _detailFuture,
+                  initialData: previewBundle,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      if (snapshot.hasData) {
+                        return AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 260),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          child: _SourceDetailView(
+                            key: const ValueKey<String>('source-detail-preview'),
+                            bundle: snapshot.requireData,
+                            gateway: widget.gateway,
+                            relatedContents: widget.relatedContents,
+                            isRefreshing: true,
+                            onTextChapterRequested: widget.onTextChapterRequested,
+                            onAddToShelf: widget.onAddToShelf,
+                            shelfState: widget.shelfState,
+                            onExternalUrlRequested: widget.onExternalUrlRequested,
+                          ),
+                        );
+                      }
+                      return _SourceDetailLoadingView(initialContent: widget.initialContent, shelfState: widget.shelfState);
+                    }
+                    if (snapshot.hasError) {
+                      if (previewBundle != null) {
+                        return _SourceDetailView(
+                          key: const ValueKey<String>('source-detail-preview-error'),
+                          bundle: previewBundle,
                           gateway: widget.gateway,
                           relatedContents: widget.relatedContents,
-                          isRefreshing: true,
+                          isRefreshing: false,
                           onTextChapterRequested: widget.onTextChapterRequested,
                           onAddToShelf: widget.onAddToShelf,
                           shelfState: widget.shelfState,
                           onExternalUrlRequested: widget.onExternalUrlRequested,
-                        ),
-                      );
+                        );
+                      }
+                      return _DetailFailure(error: AppError.fromUnknown(snapshot.error!));
                     }
-                    return Center(
-                      child: Semantics(label: '正在加载内容详情与目录', child: CircularProgressIndicator()),
-                    );
-                  }
-                  if (snapshot.hasError) {
-                    if (previewBundle != null) {
-                      return _SourceDetailView(
-                        key: const ValueKey<String>('source-detail-preview-error'),
-                        bundle: previewBundle,
+                    return AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      child: _SourceDetailView(
+                        key: const ValueKey<String>('source-detail-loaded'),
+                        bundle: snapshot.requireData,
                         gateway: widget.gateway,
                         relatedContents: widget.relatedContents,
                         isRefreshing: false,
@@ -256,30 +276,13 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                         onAddToShelf: widget.onAddToShelf,
                         shelfState: widget.shelfState,
                         onExternalUrlRequested: widget.onExternalUrlRequested,
-                      );
-                    }
-                    return _DetailFailure(error: AppError.fromUnknown(snapshot.error!));
-                  }
-                  return AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 260),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    child: _SourceDetailView(
-                      key: const ValueKey<String>('source-detail-loaded'),
-                      bundle: snapshot.requireData,
-                      gateway: widget.gateway,
-                      relatedContents: widget.relatedContents,
-                      isRefreshing: false,
-                      onTextChapterRequested: widget.onTextChapterRequested,
-                      onAddToShelf: widget.onAddToShelf,
-                      shelfState: widget.shelfState,
-                      onExternalUrlRequested: widget.onExternalUrlRequested,
-                    ),
-                  );
-                },
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -427,24 +430,11 @@ class _SourceDetailBody extends StatelessWidget {
       key: const Key('source-content-detail-sheet'),
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.discoveryPagePadding,
-        AppSpacing.section,
+        AppSpacing.regular,
         AppSpacing.discoveryPagePadding,
         AppSpacing.page,
       ),
       children: <Widget>[
-        if (isRefreshing)
-          Padding(
-            padding: const EdgeInsets.only(top: 2, bottom: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: tokens.accent)),
-                const SizedBox(width: 8),
-                Text('正在补充详情…', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
-              ],
-            ),
-          ),
-        const SizedBox(height: AppSpacing.section),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -456,6 +446,8 @@ class _SourceDetailBody extends StatelessWidget {
                 key: const Key('source-detail-cover'),
                 title: content.title,
                 coverBytes: content.coverBytes,
+                remoteContentId: content.id,
+                coverUrl: content.coverUrl,
                 variant: _coverVariant(content.id),
                 width: 112,
                 height: 174,
@@ -507,7 +499,7 @@ class _SourceDetailBody extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: AppSpacing.section),
         Row(
           children: <Widget>[
             Expanded(
@@ -546,7 +538,7 @@ class _SourceDetailBody extends StatelessWidget {
             Expanded(
               child: FilledButton(
                 key: const Key('source-detail-start-reading'),
-                onPressed: firstChapter == null
+                onPressed: isRefreshing || firstChapter == null
                     ? null
                     : () => unawaited(
                         _openTextChapter(
@@ -561,29 +553,34 @@ class _SourceDetailBody extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(54),
                   backgroundColor: tokens.accent,
+                  disabledBackgroundColor: tokens.accent,
+                  disabledForegroundColor: tokens.surface,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
-                child: const Text('开始阅读'),
+                child: isRefreshing ? const _DetailLoadingButtonLabel() : const Text('开始阅读'),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: AppSpacing.section),
         Divider(color: tokens.divider, height: 1),
-        const SizedBox(height: 24),
+        const SizedBox(height: AppSpacing.comfortable),
         Text('简介', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: AppSpacing.compact),
-        Text(
-          content.description ?? '正在获取作品简介…',
-          maxLines: 3,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText, height: 1.65),
-        ),
+        if (isRefreshing && content.description == null)
+          const _DetailShimmerBlock(height: 68)
+        else
+          Text(
+            content.description ?? '暂无作品简介',
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText, height: 1.65),
+          ),
         if (attributes.isNotEmpty) ...<Widget>[
           const SizedBox(height: 14),
           Wrap(spacing: 10, runSpacing: 6, children: attributes.map((value) => _DetailTag(label: value.value)).toList(growable: false)),
         ],
-        const SizedBox(height: 24),
+        const SizedBox(height: AppSpacing.section),
         Divider(color: tokens.divider, height: 1),
         if (content.latestChapter != null)
           _ExternalRow(
@@ -604,11 +601,11 @@ class _SourceDetailBody extends StatelessWidget {
           onOpenUrl: _openUrl,
         ),
         if (recommendationCandidates.isNotEmpty) ...<Widget>[
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.section),
           Divider(color: tokens.divider, height: 1),
-          const SizedBox(height: 22),
+          const SizedBox(height: AppSpacing.comfortable),
           _RecommendationsSection(candidates: recommendationCandidates),
-          const SizedBox(height: 20),
+          const SizedBox(height: AppSpacing.regular),
           Material(
             color: tokens.accentSoft.withValues(alpha: .52),
             borderRadius: BorderRadius.circular(14),
@@ -629,11 +626,17 @@ class _SourceDetailBody extends StatelessWidget {
             ),
           ),
         ],
-        const SizedBox(height: 28),
+        const SizedBox(height: AppSpacing.section),
         Divider(color: tokens.divider, height: 1),
-        const SizedBox(height: 20),
+        const SizedBox(height: AppSpacing.comfortable),
         Text('目录', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-        Text(chapterTotal == null ? '暂无章节' : '共 $chapterTotal 章', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+        if (isRefreshing && bundle.chapters.items.isEmpty) ...<Widget>[
+          const SizedBox(height: AppSpacing.compact),
+          const _DetailShimmerBlock(height: 12, widthFactor: .22),
+          const SizedBox(height: AppSpacing.comfortable),
+          const _DetailLoadingChapterRows(),
+        ] else
+          Text(chapterTotal == null ? '暂无章节' : '共 $chapterTotal 章', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
         for (final chapter in bundle.chapters.items.take(visibleChapterCount))
           _ChapterRow(
             chapter: chapter,

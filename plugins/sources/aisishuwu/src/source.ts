@@ -28,6 +28,14 @@ import type {
   SearchSuggestionsResult,
 } from './mgread-api.js';
 import { PluginCache, type CachedResult, type HtmlCachePolicy } from './html-cache.js';
+import {
+  catalogHtmlCachePolicy, catalogProjectionCachePolicy, detailHtmlCachePolicy,
+  detailProjectionCachePolicy, discoveryDetailHtmlCachePolicy,
+  discoveryDetailProjectionCachePolicy, discoveryHomeHtmlCachePolicy,
+  discoveryListingHtmlCachePolicy, hotSearchHtmlCachePolicy,
+  rankingAttributeLimit, rankingDescriptionMaxCharacters, rankingRules,
+  rankingTagLimit, searchListingHtmlCachePolicy, type RankingRule,
+} from './source-cache-policy.js';
 import { nonBlank } from './utils.js';
 import {
   boundedPageSize,
@@ -70,79 +78,6 @@ interface CatalogChapter {
   readonly title: string;
   readonly url: URL;
 }
-
-interface RankingRule {
-  readonly id: string;
-  readonly title: string;
-  readonly path: string;
-}
-
-const rankingRules = Object.freeze([
-  Object.freeze({
-    id: 'day',
-    title: '本日排行',
-    path: '/other/rank_hits/order/hits_day.html',
-  }),
-  Object.freeze({
-    id: 'week',
-    title: '本周排行',
-    path: '/other/rank_hits/order/hits_week.html',
-  }),
-  Object.freeze({
-    id: 'month',
-    title: '本月排行',
-    path: '/other/rank_hits/order/hits_month.html',
-  }),
-  Object.freeze({
-    id: 'total',
-    title: '总排行',
-    path: '/other/rank_hits/order/hits.html',
-  }),
-] satisfies readonly RankingRule[]);
-
-// Discovery cards are intentionally stale-while-revalidate: their title and
-// cover change rarely, so an expired projection renders first and refreshes for
-// the following visit. Search remains on the normal, shorter refresh policy.
-const discoveryListingHtmlCachePolicy = Object.freeze({
-  namespace: 'listing',
-  staleAfterMs: 60 * 60 * 1000,
-  serveStaleWhileRevalidate: true,
-} satisfies HtmlCachePolicy);
-const searchListingHtmlCachePolicy = Object.freeze({
-  namespace: 'search',
-  staleAfterMs: 10 * 60 * 1000,
-} satisfies HtmlCachePolicy);
-const detailHtmlCachePolicy = Object.freeze({
-  namespace: 'detail',
-  staleAfterMs: 60 * 60 * 1000,
-  // A detail screen must never render an over-one-hour source projection.
-  allowStaleOnError: false,
-} satisfies HtmlCachePolicy);
-const discoveryDetailHtmlCachePolicy = Object.freeze({
-  namespace: 'detail',
-  staleAfterMs: 60 * 60 * 1000,
-  serveStaleWhileRevalidate: true,
-} satisfies HtmlCachePolicy);
-const detailProjectionCachePolicy = Object.freeze({ namespace: 'detail-projection-v1', staleAfterMs: 60 * 60 * 1000, allowStaleOnError: false } satisfies HtmlCachePolicy);
-const discoveryDetailProjectionCachePolicy = Object.freeze({ namespace: 'detail-projection-v1', staleAfterMs: 60 * 60 * 1000, serveStaleWhileRevalidate: true } satisfies HtmlCachePolicy);
-const catalogProjectionCachePolicy = Object.freeze({ namespace: 'catalog-projection-v1', staleAfterMs: 60 * 60 * 1000, allowStaleOnError: false } satisfies HtmlCachePolicy);
-const catalogHtmlCachePolicy = Object.freeze({
-  namespace: 'catalog',
-  staleAfterMs: 60 * 60 * 1000,
-  allowStaleOnError: false,
-} satisfies HtmlCachePolicy);
-const hotSearchHtmlCachePolicy = Object.freeze({
-  namespace: 'hot-search',
-  staleAfterMs: 24 * 60 * 60 * 1000,
-} satisfies HtmlCachePolicy);
-const rankingDescriptionMaxCharacters = 80;
-const rankingTagLimit = 4;
-const rankingAttributeLimit = 2;
-const discoveryHomeHtmlCachePolicy = Object.freeze({
-  namespace: 'discovery-home',
-  staleAfterMs: 60 * 60 * 1000,
-  serveStaleWhileRevalidate: true,
-} satisfies HtmlCachePolicy);
 
 function loadCheerio(): Promise<typeof import('cheerio/slim')> {
   return Promise.resolve(cheerio);

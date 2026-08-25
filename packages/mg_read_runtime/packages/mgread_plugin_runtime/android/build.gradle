@@ -1,3 +1,9 @@
+/**
+ * MgRead Android Runtime library build configuration.
+ *
+ * Owns Android API and JVM compatibility for the Flutter-facing Runtime.
+ * Kotlin Gradle Plugin remains required while the host keeps built-in Kotlin disabled.
+ */
 plugins {
     id 'com.android.library'
     id 'org.jetbrains.kotlin.android'

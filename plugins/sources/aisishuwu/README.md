@@ -29,14 +29,16 @@ npm.cmd run test:live
 必须刷新成功，不能用旧详情静默回退。搜索建议使用首页“热门推荐小说”缓存 24 小时；正文和任何下载内容不落盘。
 发现阶段已解析的详情会复用于随后打开详情和入书架，目录聚合也会在有效期内复用，避免重复网络与解析。
 
-缓存实现来自本地 `@mgread/plugin-html-cache` 包，不发布 npm。`npm run build` 会从仓库的
-`packages/mg_read_plugin_html_cache/` 同步其随书源发布的副本；`mgread pack` 自动把这个
+缓存实现来自本地 `@mgread/plugin-cache` 包，不发布 npm。它同时保存 HTML 与经过校验的详情/目录
+投影：列表为获取封面补详情时，即使投影过期也优先返回旧投影并单飞后台刷新；用户主动打开详情或目录
+仍要求一小时内的新数据。`npm run build` 会从仓库的 `packages/mg_read_plugin_cache/` 同步其随书源发布的副本；`mgread pack` 自动把这个
 `packages/` 依赖收入 `.mgplugin`，Runtime 安装时按 lockfile 恢复普通 `node_modules`，无需联网。
 每个条目最多 1 MiB，总量最多 100 MiB，按最近访问时间淘汰。HTTP 失败响应、超限内容、损坏条目均不缓存。
 
-缓存仅写入 Runtime 注入的绝对 `ctx.cacheDir/html-cache-v1/`，其上层已经是
-`plugin-cache/<plugin-id>/`。键为 URL 的 SHA-256 摘要，缓存文件不含原始 URL；插件绝不读取、
-创建或删除 `ctx.cacheDir` 之外的文件。缓存读写、损坏与清理失败都会降级为缓存未命中，不能让
+缓存仅写入 Runtime 注入的绝对 `ctx.cacheDir/plugin-cache-v2/`，其上层已经是
+`plugin-cache/<plugin-id>/`。HTML 使用 URL、详情/目录投影使用不透明内容 ID 的 SHA-256 摘要；缓存
+文件不含原始 URL 或书籍身份值。插件绝不读取、创建或删除 `ctx.cacheDir` 之外的文件。缓存读写、
+损坏与清理失败都会降级为缓存未命中，不能让
 书源调用失败。主程序未来只能经 Runtime 的强类型接口统计或清理该目录，不能取得路径或文件句柄。
 
 `npm run pack:plugin` 输出确定性 `.mgplugin` 到忽略的 `artifacts/`。安装后于下一次 Runtime

@@ -221,6 +221,8 @@ class _RecommendationCard extends StatelessWidget {
         DiscoveryBookCover(
           title: content.title,
           coverBytes: content.coverBytes,
+          remoteContentId: content.id,
+          coverUrl: content.coverUrl,
           variant: _coverVariant(content.id),
           width: 96,
           height: 140,

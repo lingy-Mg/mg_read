@@ -1,18 +1,27 @@
+/// 继续阅读卡片。
+///
+/// 职责：
+/// - 展示当前阅读条目及其独立加载的封面。
+/// - 通过显式回调通知页面继续阅读。
+///
+/// 注意：
+/// - 封面状态不得阻塞卡片正文或继续阅读操作。
+/// - 不访问持久化、Runtime 或路由实现。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
 
-/// Prominent current-reading card driven only by a display view-model.
+/// 仅由展示模型驱动的突出当前阅读卡片。
 class LibraryContinueReadingCard extends StatelessWidget {
   /// Creates the current-reading card for [data].
-  const LibraryContinueReadingCard({
-    required this.data,
-    required this.onContinueReading,
-    this.isPreparing = false,
-    super.key,
-  });
+  const LibraryContinueReadingCard({required this.data, required this.onContinueReading, this.isPreparing = false, super.key});
 
   final LibraryContinueReadingViewData data;
   final VoidCallback onContinueReading;
@@ -28,8 +37,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
       liveRegion: isPreparing,
       child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
-          final bool compact =
-              constraints.maxWidth < AppSpacing.compactCardStackBreakpoint;
+          final bool compact = constraints.maxWidth < AppSpacing.compactCardStackBreakpoint;
           final double coverWidth = compact
               ? AppSpacing.continueReadingCoverWidth - AppSpacing.section
               : AppSpacing.continueReadingCoverWidth;
@@ -42,8 +50,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
           final double cardTop = compact
               ? AppSpacing.continueReadingCardTopInset - AppSpacing.compact
               : AppSpacing.continueReadingCardTopInset;
-          final double cardLeft =
-              coverWidth - AppSpacing.continueReadingCardCoverOverlap;
+          final double cardLeft = coverWidth - AppSpacing.continueReadingCardCoverOverlap;
 
           return SizedBox(
             height: coverHeight,
@@ -63,10 +70,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: <Color>[
-                          tokens.featureSurface,
-                          tokens.surface.withValues(alpha: 0.94),
-                        ],
+                        colors: <Color>[tokens.featureSurface, tokens.surface.withValues(alpha: 0.94)],
                       ),
                     ),
                     child: ClipRRect(
@@ -87,11 +91,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
                           ),
                           Positioned.fill(
                             child: IgnorePointer(
-                              child: CustomPaint(
-                                painter: _ContinueReadingTexturePainter(
-                                  color: tokens.accent.withValues(alpha: 0.07),
-                                ),
-                              ),
+                              child: CustomPaint(painter: _ContinueReadingTexturePainter(color: tokens.accent.withValues(alpha: 0.07))),
                             ),
                           ),
                           Padding(
@@ -101,11 +101,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
                               top: AppSpacing.compact,
                               bottom: AppSpacing.compact,
                             ),
-                            child: _ContinueReadingDetails(
-                              data: data,
-                              onContinueReading: onContinueReading,
-                              isPreparing: isPreparing,
-                            ),
+                            child: _ContinueReadingDetails(data: data, onContinueReading: onContinueReading, isPreparing: isPreparing),
                           ),
                         ],
                       ),
@@ -119,6 +115,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
                     title: data.title,
                     variant: data.coverVariant,
                     coverBytes: data.coverBytes,
+                    coverRequest: data.coverRequest,
                     assetPath: data.coverAssetPath,
                     width: coverWidth,
                     height: coverHeight,
@@ -134,11 +131,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
 }
 
 class _ContinueReadingDetails extends StatelessWidget {
-  const _ContinueReadingDetails({
-    required this.data,
-    required this.onContinueReading,
-    required this.isPreparing,
-  });
+  const _ContinueReadingDetails({required this.data, required this.onContinueReading, required this.isPreparing});
 
   final LibraryContinueReadingViewData data;
   final VoidCallback onContinueReading;
@@ -155,11 +148,7 @@ class _ContinueReadingDetails extends StatelessWidget {
       children: <Widget>[
         _AdaptiveSingleLineTitle(
           title: data.title,
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w500,
-            height: 1.16,
-            letterSpacing: -0.2,
-          ),
+          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w500, height: 1.16, letterSpacing: -0.2),
         ),
         const Spacer(),
         Row(
@@ -167,9 +156,7 @@ class _ContinueReadingDetails extends StatelessWidget {
             Flexible(
               fit: FlexFit.loose,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: AppSpacing.continueReadingProgressWidth,
-                ),
+                constraints: const BoxConstraints(maxWidth: AppSpacing.continueReadingProgressWidth),
                 child: SizedBox(
                   width: AppSpacing.continueReadingProgressWidth,
                   child: ReadingProgressBar(progress: data.progress),
@@ -179,19 +166,12 @@ class _ContinueReadingDetails extends StatelessWidget {
             const SizedBox(width: AppSpacing.continueReadingProgressValueGap),
             Text(
               '$percentage%',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: tokens.accent,
-                fontWeight: FontWeight.w400,
-                height: 1.1,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: tokens.accent, fontWeight: FontWeight.w400, height: 1.1),
             ),
           ],
         ),
         const Spacer(),
-        _ContinueReadingAction(
-          onPressed: onContinueReading,
-          isPreparing: isPreparing,
-        ),
+        _ContinueReadingAction(onPressed: onContinueReading, isPreparing: isPreparing),
       ],
     );
   }
@@ -210,8 +190,7 @@ class _AdaptiveSingleLineTitle extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        final double baseFontSize =
-            resolvedStyle.fontSize ?? AppTypography.sectionTitle;
+        final double baseFontSize = resolvedStyle.fontSize ?? AppTypography.sectionTitle;
         double fontSize = baseFontSize;
         while (fontSize > AppTypography.continueReadingTitleMinimum &&
             _titleWidth(
@@ -234,11 +213,7 @@ class _AdaptiveSingleLineTitle extends StatelessWidget {
     );
   }
 
-  double _titleWidth({
-    required BuildContext context,
-    required TextStyle style,
-    required TextScaler textScaler,
-  }) {
+  double _titleWidth({required BuildContext context, required TextStyle style, required TextScaler textScaler}) {
     final TextPainter painter = TextPainter(
       text: TextSpan(text: title, style: style),
       textDirection: Directionality.of(context),
@@ -250,10 +225,7 @@ class _AdaptiveSingleLineTitle extends StatelessWidget {
 }
 
 class _ContinueReadingAction extends StatelessWidget {
-  const _ContinueReadingAction({
-    required this.onPressed,
-    required this.isPreparing,
-  });
+  const _ContinueReadingAction({required this.onPressed, required this.isPreparing});
 
   final VoidCallback onPressed;
   final bool isPreparing;
@@ -262,11 +234,7 @@ class _ContinueReadingAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    final Color actionStart = Color.lerp(
-      tokens.accent,
-      tokens.mutedText,
-      0.17,
-    )!;
+    final Color actionStart = Color.lerp(tokens.accent, tokens.mutedText, 0.17)!;
     final Color actionEnd = Color.lerp(tokens.accent, tokens.mutedText, 0.21)!;
     return SizedBox(
       width: AppSpacing.continueReadingActionWidth,
@@ -284,13 +252,7 @@ class _ContinueReadingAction extends StatelessWidget {
             borderRadius: AppRadii.continueReadingAction,
             child: Center(
               child: isPreparing
-                  ? SizedBox.square(
-                      dimension: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: theme.colorScheme.onPrimary,
-                      ),
-                    )
+                  ? SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary))
                   : Text(
                       '继续阅读',
                       style: theme.textTheme.labelLarge?.copyWith(
@@ -326,13 +288,7 @@ class _ContinueReadingTexturePainter extends CustomPainter {
     final double baseRadius = size.height * 0.58;
     canvas.drawCircle(center, baseRadius, line);
     canvas.drawCircle(center, baseRadius * 0.72, line);
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: baseRadius * 1.22),
-      3.68,
-      1.82,
-      false,
-      line,
-    );
+    canvas.drawArc(Rect.fromCircle(center: center, radius: baseRadius * 1.22), 3.68, 1.82, false, line);
 
     final Path lowerWash = Path()
       ..moveTo(size.width * 0.34, size.height)
@@ -351,8 +307,7 @@ class _ContinueReadingTexturePainter extends CustomPainter {
 /// A readable and semantic progress indicator for the continue-reading card.
 class ReadingProgressBar extends StatelessWidget {
   /// Creates a linear indicator for a normalized [progress] value.
-  const ReadingProgressBar({required this.progress, super.key})
-    : assert(progress >= 0 && progress <= 1);
+  const ReadingProgressBar({required this.progress, super.key}) : assert(progress >= 0 && progress <= 1);
 
   final double progress;
 
@@ -369,11 +324,7 @@ class ReadingProgressBar extends StatelessWidget {
           borderRadius: AppRadii.pill,
           child: SizedBox(
             height: AppSpacing.readingProgressHeight,
-            child: LinearProgressIndicator(
-              value: progress,
-              color: tokens.accent,
-              backgroundColor: tokens.accent.withValues(alpha: 0.14),
-            ),
+            child: LinearProgressIndicator(value: progress, color: tokens.accent, backgroundColor: tokens.accent.withValues(alpha: 0.14)),
           ),
         ),
       ),
