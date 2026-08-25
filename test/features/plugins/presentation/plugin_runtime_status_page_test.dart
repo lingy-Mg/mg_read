@@ -35,6 +35,7 @@ void main() {
 
     expect(find.text('管理数据来源'), findsOneWidget);
     expect(find.text('我的数据来源'), findsOneWidget);
+    expect(find.text('阅文集团旗下原创文学平台'), findsOneWidget);
     expect(find.text('已启用 4/6'), findsOneWidget);
     expect(find.text('数据来源分组'), findsNothing);
     expect(
@@ -86,7 +87,10 @@ void main() {
     final Rect lastSource = tester.getRect(
       find.byKey(const Key('data-source-org.mgread.17k')),
     );
-    expect(firstSource.height, AppSpacing.dataSourceRowHeight);
+    expect(
+      firstSource.height,
+      AppSpacing.dataSourceRowHeight + AppSpacing.compact,
+    );
     expect(lastSource.bottom, greaterThan(firstSource.bottom));
     expect(tester.takeException(), isNull);
   });

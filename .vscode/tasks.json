@@ -107,7 +107,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        "$ErrorActionPreference = 'Stop'; $source = Join-Path '${workspaceFolder}' 'build/app/outputs/flutter-apk/app-release.apk'; $destination = Join-Path '${workspaceFolder}' 'build/mg_read-release.apk'; if (-not (Test-Path -LiteralPath $source)) { throw \"找不到 APK：$source\" }; New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null; Copy-Item -LiteralPath $source -Destination $destination -Force; Write-Host \"APK 已复制到：$destination\""
+        "$ErrorActionPreference = 'Stop'; $source = Join-Path '${workspaceFolder}' 'build/app/outputs/flutter-apk/app-release.apk'; $destination = Join-Path '${workspaceFolder}' 'build/mg_read-release.apk'; if (-not (Test-Path -LiteralPath $source)) { throw \"找不到 APK：$source\" }; New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null; Copy-Item -LiteralPath $source -Destination $destination -Force; Write-Host \"APK 已复制到：$destination\"; Start-Process -FilePath 'explorer.exe' -ArgumentList ('/select,\"' + $destination + '\"')"
       ],
       "presentation": {
         "reveal": "always",
@@ -134,6 +134,10 @@
     },
     {
       "label": "构建：Windows（Release）",
+      "dependsOn": [
+        "准备：Windows Runtime 资源"
+      ],
+      "dependsOrder": "sequence",
       "type": "process",
       "command": "flutter",
       "args": [
@@ -150,6 +154,25 @@
       "problemMatcher": []
     },
     {
+      "label": "准备：Windows Runtime 资源",
+      "type": "process",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$ErrorActionPreference = 'Stop'; $runtimeRoot = Join-Path '${workspaceFolder}' 'packages/mg_read_runtime'; $nodeBin = Join-Path $runtimeRoot 'tools/node-v24.16.0-win-x64'; $env:PATH = $nodeBin + ';' + $env:PATH; Push-Location $runtimeRoot; try { & (Join-Path $nodeBin 'npm.cmd') run stage:flutter-windows; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } } finally { Pop-Location }"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "整理：Windows 到根目录 build",
       "type": "process",
       "command": "powershell",
@@ -158,7 +181,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        "$ErrorActionPreference = 'Stop'; $source = Join-Path '${workspaceFolder}' 'build/windows/x64/runner/Release'; $destination = Join-Path '${workspaceFolder}' 'build/mg_read-windows-release'; if (-not (Test-Path -LiteralPath $source)) { throw \"找不到 Windows Release 目录：$source\" }; New-Item -ItemType Directory -Force -Path $destination | Out-Null; Copy-Item -Path (Join-Path $source '*') -Destination $destination -Recurse -Force; Write-Host \"Windows Release 已复制到：$destination\""
+        "$ErrorActionPreference = 'Stop'; $source = Join-Path '${workspaceFolder}' 'build/windows/x64/runner/Release'; $destination = Join-Path '${workspaceFolder}' 'build/mg_read-windows-release'; if (-not (Test-Path -LiteralPath $source)) { throw \"找不到 Windows Release 目录：$source\" }; New-Item -ItemType Directory -Force -Path $destination | Out-Null; Copy-Item -Path (Join-Path $source '*') -Destination $destination -Recurse -Force; $executable = Join-Path $destination 'mg_read.exe'; if (-not (Test-Path -LiteralPath $executable)) { throw \"找不到 Windows 可执行文件：$executable\" }; Write-Host \"Windows Release 已复制到：$destination\"; Start-Process -FilePath 'explorer.exe' -ArgumentList ('/select,\"' + $executable + '\"')"
       ],
       "presentation": {
         "reveal": "always",

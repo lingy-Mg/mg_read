@@ -6,6 +6,7 @@ import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
+import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 
 final lanSyncControllerProvider =
     NotifierProvider.autoDispose<LanSyncController, LanSyncViewState>(
@@ -17,7 +18,7 @@ final class LanSyncViewState {
     this.role,
     this.phase = LanSyncPhase.idle,
     this.message = '选择发送或接收开始同步',
-    this.connectionAddress,
+    this.connectionOffer,
     this.pairingCode,
     this.peers = const <LanSyncPeer>[],
     this.manifest,
@@ -31,7 +32,7 @@ final class LanSyncViewState {
   final LanSyncRole? role;
   final LanSyncPhase phase;
   final String message;
-  final String? connectionAddress;
+  final LanSyncConnectionOffer? connectionOffer;
   final String? pairingCode;
   final List<LanSyncPeer> peers;
   final LanSyncManifest? manifest;
@@ -98,14 +99,18 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
       }
       _sender = sender;
       _senderSubscription = sender.events.listen(_onSenderEvent);
-      final firstAddress = sender.addresses.isEmpty
+      final connectionOffer = sender.addresses.isEmpty
           ? null
-          : '${sender.sessionId}@${sender.addresses.first}:${sender.port}';
+          : LanSyncConnectionOffer(
+              sessionId: sender.sessionId,
+              port: sender.port,
+              addresses: sender.addresses,
+            );
       state = LanSyncViewState(
         role: LanSyncRole.sender,
         phase: LanSyncPhase.waitingForPeer,
         message: '等待接收设备连接',
-        connectionAddress: firstAddress,
+        connectionOffer: connectionOffer,
         manifest: manifest,
         totalBytes: manifest.plugins
             .where((item) => item.transferable)
@@ -161,6 +166,24 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
   }
 
   Future<void> connectPeer(LanSyncPeer peer) async {
+    await _connectPeers(<LanSyncPeer>[peer]);
+  }
+
+  Future<void> connectOffer(LanSyncConnectionOffer offer) async {
+    final expiresAt = DateTime.now().toUtc().add(lanSyncSessionLifetime);
+    await _connectPeers(<LanSyncPeer>[
+      for (final address in offer.addresses)
+        LanSyncPeer(
+          sessionId: offer.sessionId,
+          label: '二维码中的发送设备',
+          address: address,
+          port: offer.port,
+          expiresAtUtc: expiresAt,
+        ),
+    ]);
+  }
+
+  Future<void> _connectPeers(List<LanSyncPeer> peers) async {
     if (state.role != LanSyncRole.receiver) return;
     final generation = ++_generation;
     await _discoverySubscription?.cancel();
@@ -171,10 +194,12 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     state = LanSyncViewState(
       role: LanSyncRole.receiver,
       phase: LanSyncPhase.preparing,
-      message: '正在连接发送设备',
+      message: peers.length == 1 ? '正在连接发送设备' : '正在并发测试 ${peers.length} 个局域网地址',
     );
     try {
-      final receiver = await LanSyncReceiverConnection.connect(peer);
+      final receiver = peers.length == 1
+          ? await LanSyncReceiverConnection.connect(peers.single)
+          : await LanSyncReceiverConnection.connectAny(peers);
       if (!_isCurrent(generation)) {
         await receiver.close();
         return;
@@ -185,7 +210,7 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
         phase: LanSyncPhase.pairing,
         message: '请核对两台设备显示的确认码',
         pairingCode: receiver.pairingCode,
-        peers: <LanSyncPeer>[peer],
+        peers: <LanSyncPeer>[receiver.peer],
       );
     } on Object {
       if (_isCurrent(generation)) _fail('lan_sync_connect_failed');
@@ -193,23 +218,12 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
   }
 
   Future<void> connectManual(String value) async {
-    final match = RegExp(
-      r'^([A-Za-z0-9_-]{8,128})@([0-9.]+):([0-9]{1,5})$',
-    ).firstMatch(value.trim());
-    final port = match == null ? null : int.tryParse(match.group(3)!);
-    if (match == null || port == null || port < 1 || port > 65535) {
+    final offer = LanSyncConnectionOffer.tryParseManual(value);
+    if (offer == null) {
       _fail('lan_sync_manual_address_invalid', keepRole: true);
       return;
     }
-    await connectPeer(
-      LanSyncPeer(
-        sessionId: match.group(1)!,
-        label: '手动输入的设备',
-        address: match.group(2)!,
-        port: port,
-        expiresAtUtc: DateTime.now().toUtc().add(lanSyncSessionLifetime),
-      ),
-    );
+    await connectOffer(offer);
   }
 
   void confirmSenderPairing() => _sender?.confirmPairing();
@@ -362,7 +376,7 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
           role: LanSyncRole.sender,
           phase: LanSyncPhase.pairing,
           message: '请核对接收设备上的确认码',
-          connectionAddress: state.connectionAddress,
+          connectionOffer: state.connectionOffer,
           pairingCode: code,
           manifest: state.manifest,
           totalBytes: state.totalBytes,
@@ -372,7 +386,7 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
           role: LanSyncRole.sender,
           phase: LanSyncPhase.transferring,
           message: '正在发送插件与书架清单',
-          connectionAddress: state.connectionAddress,
+          connectionOffer: state.connectionOffer,
           manifest: state.manifest,
           transferredBytes: completedBytes,
           totalBytes: totalBytes,

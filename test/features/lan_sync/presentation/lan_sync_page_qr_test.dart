@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
+import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
 
 void main() {
@@ -41,9 +42,13 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
-        home: const Scaffold(
+        home: Scaffold(
           body: LanSyncConnectionQrCard(
-            address: 'session_12345678@192.168.1.20:47231',
+            offer: LanSyncConnectionOffer(
+              sessionId: 'session_12345678',
+              port: 47231,
+              addresses: <String>['192.168.1.20', '10.10.0.8'],
+            ),
           ),
         ),
       ),
@@ -52,6 +57,8 @@ void main() {
 
     expect(find.byKey(const Key('lan-sync-sender-qr')), findsOneWidget);
     expect(find.byKey(const Key('lan-sync-sender-address')), findsOneWidget);
+    expect(find.byKey(const Key('lan-sync-sender-address-1')), findsOneWidget);
+    expect(find.textContaining('并发测试并自动选择'), findsOneWidget);
     debugDefaultTargetPlatformOverride = null;
   });
 }

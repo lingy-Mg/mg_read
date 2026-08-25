@@ -149,6 +149,7 @@ class _TextReaderViewState extends State<TextReaderView>
   int _verticalRestoreGeneration = 0;
   bool _loading = true;
   bool _controlsVisible = false;
+  bool _readerSettingsVisible = false;
   bool _foreground = true;
   ReaderLifecycleState _lifecycleState = ReaderLifecycleState.foreground;
   ReaderPlatformCapabilities _platformCapabilities =
@@ -2858,6 +2859,11 @@ class _TextReaderViewState extends State<TextReaderView>
     _publishSnapshot();
   }
 
+  void _setReaderSettingsVisible(bool value) {
+    if (_readerSettingsVisible == value || !mounted) return;
+    setState(() => _readerSettingsVisible = value);
+  }
+
   void _publishSnapshot() {
     _controller.updateSnapshot(
       TextReaderSnapshot(
@@ -3293,7 +3299,7 @@ class _TextReaderViewState extends State<TextReaderView>
             },
             child: PageView.builder(
               controller: _pageController,
-              physics: _usesDirectPageTurns
+              physics: _readerSettingsVisible || _usesDirectPageTurns
                   ? const NeverScrollableScrollPhysics()
                   : const PageScrollPhysics(),
               itemCount: _pages.length + 2,
@@ -3318,7 +3324,11 @@ class _TextReaderViewState extends State<TextReaderView>
       MediaQuery.disableAnimationsOf(context);
 
   void _handlePointerSignal(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent || _changingChapter) return;
+    if (_readerSettingsVisible ||
+        event is! PointerScrollEvent ||
+        _changingChapter) {
+      return;
+    }
     final double delta =
         event.scrollDelta.dy.abs() >= event.scrollDelta.dx.abs()
         ? event.scrollDelta.dy
@@ -3636,6 +3646,9 @@ class _TextReaderViewState extends State<TextReaderView>
               );
               return ListView.builder(
                 controller: _verticalController,
+                physics: _readerSettingsVisible
+                    ? const NeverScrollableScrollPhysics()
+                    : null,
                 padding: EdgeInsets.fromLTRB(
                   _preferences.horizontalPadding,
                   _preferences.topPadding,
@@ -4850,6 +4863,7 @@ class _TextReaderViewState extends State<TextReaderView>
 
   void _showSettingsSheet() {
     _stopAutoReading();
+    _setReaderSettingsVisible(true);
     final int routeSession = _sessionGeneration;
     final String routeBookId = widget.bookId;
     final TextReaderStateStore routeStore = widget.stateStore;
@@ -4912,6 +4926,7 @@ class _TextReaderViewState extends State<TextReaderView>
           _showLibrarySheet(initialIndex: 2);
         },
         onDismissed: () {
+          _setReaderSettingsVisible(false);
           if (routeIsCurrent()) _commitPreferencePreview();
         },
       ),

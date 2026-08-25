@@ -29,6 +29,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.shudugu",
     "displayName": "速读谷",
+    "description": "轻量快速的网络小说书源，提供分类发现、搜索、详情、目录与正文阅读。",
     "pluginApi": 1,
     "contentKinds": ["novel"]
   }

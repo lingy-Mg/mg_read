@@ -4,6 +4,67 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 void main() {
   testWidgets(
+    'reader settings locks the reader and barrier closes every settings page',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TextReaderView(
+              bookId: 'settings-interaction-book',
+              dataSource: const _SettingsSemanticsDataSource(),
+              stateStore: const _SettingsSemanticsStateStore(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(TextReaderView));
+      await tester.pumpAndSettle();
+
+      final Finder settings = find.byKey(const Key('reader-toolbar-settings'));
+      await tester.tap(settings);
+      await tester.pumpAndSettle();
+
+      final Finder readerSurface = find.byKey(
+        const ValueKey<String>('reader-content-surface'),
+      );
+      final Finder readerScrollable = find.descendant(
+        of: readerSurface,
+        matching: find.byType(Scrollable),
+      );
+      expect(readerScrollable, findsOneWidget);
+      final ScrollableState locked = tester.state<ScrollableState>(
+        readerScrollable,
+      );
+      expect(
+        locked.position.physics.shouldAcceptUserOffset(locked.position),
+        isFalse,
+      );
+
+      final Finder settingsSheet = find.byWidgetPredicate(
+        (Widget widget) =>
+            widget.runtimeType.toString() == 'ReaderSettingsSheet',
+      );
+      final double sheetTop = tester.getTopLeft(settingsSheet).dy;
+      await tester.tapAt(Offset(20, sheetTop - 8));
+      await tester.pumpAndSettle();
+      expect(settingsSheet, findsNothing);
+
+      await tester.tap(settings);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('更多'));
+      await tester.pumpAndSettle();
+      expect(find.text('自动阅读速度'), findsOneWidget);
+
+      final double subpageTop = tester.getTopLeft(settingsSheet).dy;
+      await tester.tapAt(Offset(20, subpageTop - 8));
+      await tester.pumpAndSettle();
+      expect(settingsSheet, findsNothing);
+      expect(find.text('自动阅读速度'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'repeatedly opening and dismissing reader settings keeps semantics valid',
     (WidgetTester tester) async {
       final SemanticsHandle semantics = tester.ensureSemantics();

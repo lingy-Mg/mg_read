@@ -8,6 +8,7 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
+import 'package:mg_read/shared/presentation/source_branding.dart';
 
 /// Runtime-backed details for one data source, without exposing Runtime paths.
 class PluginRuntimeSourceDetailPage extends ConsumerWidget {
@@ -113,19 +114,11 @@ class _DetailContent extends ConsumerWidget {
               children: <Widget>[
                 Row(
                   children: <Widget>[
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: tokens.accentSoft,
-                        borderRadius: AppRadii.discoveryTile,
-                      ),
-                      child: SizedBox(
-                        width: AppSpacing.dataSourceMarkExtent,
-                        height: AppSpacing.dataSourceMarkExtent,
-                        child: Icon(
-                          Icons.extension_rounded,
-                          color: tokens.dataSourceAccent,
-                        ),
-                      ),
+                    SourceIcon(
+                      sourceId: source.id,
+                      displayName: source.displayName,
+                      size: AppSpacing.dataSourceMarkExtent,
+                      borderRadius: 12,
                     ),
                     const SizedBox(width: AppSpacing.regular),
                     Expanded(
@@ -149,6 +142,37 @@ class _DetailContent extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.comfortable),
+                DecoratedBox(
+                  key: const Key('data-source-detail-description'),
+                  decoration: BoxDecoration(
+                    color: tokens.featureSurface,
+                    borderRadius: AppRadii.discoveryTile,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.regular),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          '数据源简介',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: AppSpacing.unit),
+                        Text(
+                          SourceBranding.description(
+                            sourceId: source.id,
+                            displayName: source.displayName,
+                            value: source.description,
+                          ),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: tokens.mutedText, height: 1.45),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.compact),
                 _DetailField(label: '名称', value: source.displayName),
                 _DetailField(
                   label: '来源方式',

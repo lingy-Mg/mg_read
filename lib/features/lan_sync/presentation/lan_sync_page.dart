@@ -159,7 +159,7 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
         ),
       ],
       LanSyncPhase.waitingForPeer => <Widget>[
-        LanSyncConnectionQrCard(address: state.connectionAddress),
+        LanSyncConnectionQrCard(offer: state.connectionOffer),
         const SizedBox(height: AppSpacing.regular),
         const _HintCard(message: '保持本页打开。若 Windows 防火墙询问，请只允许专用网络访问。'),
         const SizedBox(height: AppSpacing.regular),
@@ -267,8 +267,8 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
       ),
     );
     if (!mounted || payload == null) return;
-    final address = LanSyncQrPayload.decode(payload);
-    if (address != null) await notifier.connectManual(address);
+    final offer = LanSyncQrPayload.decode(payload);
+    if (offer != null) await notifier.connectOffer(offer);
   }
 
   Future<void> _cancel() =>
@@ -419,12 +419,12 @@ class _StatusCard extends StatelessWidget {
 }
 
 class LanSyncConnectionQrCard extends StatelessWidget {
-  const LanSyncConnectionQrCard({required this.address, super.key});
-  final String? address;
+  const LanSyncConnectionQrCard({required this.offer, super.key});
+  final LanSyncConnectionOffer? offer;
 
   @override
   Widget build(BuildContext context) {
-    final value = address;
+    final value = offer;
     final colorScheme = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
@@ -460,6 +460,14 @@ class LanSyncConnectionQrCard extends StatelessWidget {
             else
               const Text('未找到可用的私有 IPv4 地址'),
             const SizedBox(height: AppSpacing.regular),
+            if (value != null) ...<Widget>[
+              Text(
+                '二维码包含 ${value.addresses.length} 个可用地址，接收端会并发测试并自动选择。',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: AppSpacing.regular),
+            ],
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -468,13 +476,31 @@ class LanSyncConnectionQrCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.unit),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SelectableText(
-                value ?? '未找到可用的私有 IPv4 地址',
-                key: const Key('lan-sync-sender-address'),
-              ),
-            ),
+            if (value == null)
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('未找到可用的私有 IPv4 地址'),
+              )
+            else
+              for (var index = 0; index < value.manualAddresses.length; index++)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      bottom: index == value.manualAddresses.length - 1
+                          ? 0
+                          : AppSpacing.unit,
+                    ),
+                    child: SelectableText(
+                      value.manualAddresses[index],
+                      key: Key(
+                        index == 0
+                            ? 'lan-sync-sender-address'
+                            : 'lan-sync-sender-address-$index',
+                      ),
+                    ),
+                  ),
+                ),
           ],
         ),
       ),

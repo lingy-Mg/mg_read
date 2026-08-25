@@ -74,9 +74,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('已安装数据源'), findsOneWidget);
+    expect(find.text('数据源简介'), findsOneWidget);
+    expect(find.text('已安装书源简介。'), findsOneWidget);
     expect(find.text('Runtime 已安装版本'), findsOneWidget);
     expect(find.text('已启用'), findsOneWidget);
-    expect(find.byKey(const Key('data-source-installation-size-card')), findsOneWidget);
+    expect(
+      find.byKey(const Key('data-source-installation-size-card')),
+      findsOneWidget,
+    );
     expect(find.text('安装后大小'), findsOneWidget);
     expect(find.textContaining('整个书源：0 B'), findsOneWidget);
     expect(find.textContaining('原始安装包'), findsOneWidget);
@@ -112,6 +117,7 @@ const _developmentConnection = PluginRuntimeConnection(
     PluginRuntimePlugin(
       activeVersion: '0.1.0',
       contentKinds: <String>['novel'],
+      description: '即时开发书源简介。',
       displayName: '即时书源',
       enabled: true,
       id: 'org.example.live-source',
@@ -130,6 +136,7 @@ const _installedConnection = PluginRuntimeConnection(
     PluginRuntimePlugin(
       activeVersion: '1.0.0',
       contentKinds: <String>['novel'],
+      description: '已安装书源简介。',
       displayName: '已安装书源',
       enabled: true,
       id: 'org.example.installed',

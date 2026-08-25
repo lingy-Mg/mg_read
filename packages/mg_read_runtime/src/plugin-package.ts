@@ -31,6 +31,7 @@ export class PluginPackageError extends Error {
 /** Validated public metadata read only from package.json. */
 export interface PluginPackageDescriptor {
   readonly contentKinds: readonly PluginContentKind[];
+  readonly description?: string;
   readonly displayName: string;
   readonly entry: string;
   readonly id: string;
@@ -193,6 +194,7 @@ function parsePackageJson(
   }
   const id = mgread.id;
   const displayName = mgread.displayName;
+  const description = mgread.description;
   const schemaVersion = mgread.schemaVersion;
   const api = mgread.pluginApi;
   const contentKinds = mgread.contentKinds;
@@ -204,6 +206,10 @@ function parsePackageJson(
     typeof displayName !== "string" ||
     displayName.trim().length === 0 ||
     displayName.length > 128 ||
+    (description !== undefined &&
+      (typeof description !== "string" ||
+        description.trim().length === 0 ||
+        description.length > 240)) ||
     !Array.isArray(contentKinds) ||
     contentKinds.length === 0 ||
     contentKinds.some((kind) => kind !== "novel" && kind !== "manga") ||
@@ -224,6 +230,7 @@ function parsePackageJson(
 
   return Object.freeze({
     contentKinds: Object.freeze([...contentKinds] as PluginContentKind[]),
+    ...(description === undefined ? {} : { description }),
     displayName,
     entry: normalizedEntry,
     id,

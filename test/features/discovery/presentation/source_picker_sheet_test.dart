@@ -11,6 +11,7 @@ void main() {
     PluginSourceDescriptor(
       id: 'org.mgread.aisishuwu',
       displayName: '爱丽丝书屋',
+      description: '专注原创网络小说的综合书源。',
       contentKinds: const <PluginContentKind>[PluginContentKind.novel],
     ),
     PluginSourceDescriptor(
@@ -50,6 +51,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('选择数据来源'), findsOneWidget);
+    expect(find.text('专注原创网络小说的综合书源。'), findsOneWidget);
     expect(find.byIcon(Icons.check_rounded), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('discovery-source-picker-search')),

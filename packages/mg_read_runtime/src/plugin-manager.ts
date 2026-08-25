@@ -95,6 +95,7 @@ export class PluginManagerError extends Error {
 export interface InstalledPluginSnapshot extends JsonObject {
   readonly activeVersion: string | null;
   readonly contentKinds: readonly string[];
+  readonly description: string | null;
   readonly displayName: string;
   readonly enabled: boolean;
   readonly id: string;
@@ -498,6 +499,7 @@ export class PluginManager {
     const updated = Object.freeze({
       activeVersion: current.activeVersion,
       contentKinds: current.contentKinds,
+      description: current.description,
       displayName: current.displayName,
       enabled,
       id: current.id,
@@ -1282,6 +1284,7 @@ function snapshotFrom(
   return Object.freeze({
     activeVersion,
     contentKinds: Object.freeze(descriptor?.contentKinds ?? []),
+    description: descriptor?.description ?? null,
     displayName: descriptor?.displayName ?? pluginId,
     enabled,
     id: pluginId,

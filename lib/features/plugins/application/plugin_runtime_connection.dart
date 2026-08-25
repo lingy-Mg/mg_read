@@ -79,6 +79,7 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway {
             (plugin) => PluginRuntimePlugin(
               activeVersion: plugin.activeVersion,
               contentKinds: plugin.contentKinds,
+              description: plugin.description,
               displayName: plugin.displayName,
               enabled: plugin.enabled,
               id: plugin.id,
@@ -211,6 +212,7 @@ PluginRuntimePlugin _toPluginRuntimePlugin(InstalledPlugin plugin) {
   return PluginRuntimePlugin(
     activeVersion: plugin.activeVersion,
     contentKinds: plugin.contentKinds,
+    description: plugin.description,
     displayName: plugin.displayName,
     enabled: plugin.enabled,
     id: plugin.id,
@@ -817,10 +819,12 @@ final class PluginRuntimePlugin {
     required this.name,
     required this.pendingVersion,
     required this.status,
+    this.description,
   });
 
   final String? activeVersion;
   final List<String> contentKinds;
+  final String? description;
   final String displayName;
   final bool enabled;
   final String id;

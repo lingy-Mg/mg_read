@@ -5,6 +5,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
+import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 
 typedef LanSyncPluginStreamOpener =
     Future<Stream<List<int>>> Function(LanSyncPluginDescriptor plugin);
@@ -252,11 +253,11 @@ final class LanSyncSenderService {
         'code': code,
       });
       _events.add(LanSyncSenderPairing(code));
-      final remoteConfirmFuture = connection.readControl().timeout(
-        lanSyncHandshakeTimeout,
-      );
-      await _localConfirmation.future.timeout(lanSyncHandshakeTimeout);
-      final remoteConfirm = await remoteConfirmFuture;
+      final confirmations = await Future.wait<Object?>(<Future<Object?>>[
+        connection.readControl().timeout(lanSyncHandshakeTimeout),
+        _localConfirmation.future.timeout(lanSyncHandshakeTimeout),
+      ]);
+      final remoteConfirm = confirmations.first! as Map<String, Object?>;
       if (remoteConfirm['type'] != 'confirm' || remoteConfirm['code'] != code) {
         throw const LanSyncTransportException('lan_sync_pairing_rejected');
       }
@@ -380,40 +381,89 @@ final class LanSyncReceiverConnection {
   bool _closed = false;
   LanSyncManifest? _manifest;
 
-  static Future<LanSyncReceiverConnection> connect(LanSyncPeer peer) async {
-    if (!_isEligibleAddressText(peer.address)) {
+  static Future<LanSyncReceiverConnection> connect(
+    LanSyncPeer peer, {
+    Duration timeout = lanSyncHandshakeTimeout,
+  }) async {
+    if (!isLanSyncPrivateIpv4(peer.address)) {
       throw const LanSyncTransportException('lan_sync_address_not_private');
     }
-    final socket = await Socket.connect(
-      peer.address,
-      peer.port,
-      timeout: lanSyncHandshakeTimeout,
-    );
-    final connection = LanSyncFramedConnection(socket);
-    final clientNonce = _randomToken(16);
-    await connection.sendControl(<String, Object?>{
-      'type': 'hello',
-      'protocolVersion': lanSyncProtocolVersion,
-      'sessionId': peer.sessionId,
-      'clientNonce': clientNonce,
-    });
-    final pair = await connection.readControl().timeout(
-      lanSyncHandshakeTimeout,
-    );
-    if (pair['type'] != 'pair' ||
-        !_isNonce(pair['serverNonce']) ||
-        pair['code'] is! String) {
-      await connection.close();
-      throw const LanSyncTransportException('lan_sync_handshake_invalid');
+    LanSyncFramedConnection? connection;
+    try {
+      final socket = await Socket.connect(
+        peer.address,
+        peer.port,
+        timeout: timeout,
+      );
+      connection = LanSyncFramedConnection(socket);
+      final clientNonce = _randomToken(16);
+      await connection.sendControl(<String, Object?>{
+        'type': 'hello',
+        'protocolVersion': lanSyncProtocolVersion,
+        'sessionId': peer.sessionId,
+        'clientNonce': clientNonce,
+      });
+      final pair = await connection.readControl().timeout(timeout);
+      if (pair['type'] != 'pair' ||
+          !_isNonce(pair['serverNonce']) ||
+          pair['code'] is! String) {
+        throw const LanSyncTransportException('lan_sync_handshake_invalid');
+      }
+      final expected = _pairingCode(
+        '${peer.sessionId}|$clientNonce|${pair['serverNonce']}',
+      );
+      if (pair['code'] != expected) {
+        throw const LanSyncTransportException('lan_sync_pairing_invalid');
+      }
+      return LanSyncReceiverConnection._(connection, expected, peer);
+    } on Object {
+      await connection?.close();
+      rethrow;
     }
-    final expected = _pairingCode(
-      '${peer.sessionId}|$clientNonce|${pair['serverNonce']}',
-    );
-    if (pair['code'] != expected) {
-      await connection.close();
-      throw const LanSyncTransportException('lan_sync_pairing_invalid');
+  }
+
+  static Future<LanSyncReceiverConnection> connectAny(
+    Iterable<LanSyncPeer> peers,
+  ) async {
+    final candidates = <LanSyncPeer>[];
+    final endpoints = <String>{};
+    for (final peer in peers) {
+      if (endpoints.add('${peer.address}:${peer.port}')) candidates.add(peer);
     }
-    return LanSyncReceiverConnection._(connection, expected, peer);
+    if (candidates.isEmpty ||
+        candidates.length > lanSyncMaxQrCandidateAddresses) {
+      throw const LanSyncTransportException('lan_sync_connect_failed');
+    }
+
+    final result = Completer<LanSyncReceiverConnection>();
+    var remaining = candidates.length;
+    for (final peer in candidates) {
+      unawaited(() async {
+        try {
+          final connection = await connect(
+            peer,
+            timeout: const Duration(seconds: 5),
+          );
+          if (!result.isCompleted) {
+            result.complete(connection);
+          } else {
+            await connection.close();
+          }
+        } on Object {
+          remaining--;
+          if (remaining == 0 && !result.isCompleted) {
+            result.completeError(
+              const LanSyncTransportException('lan_sync_connect_failed'),
+            );
+          }
+        }
+      }());
+    }
+    return result.future.timeout(
+      const Duration(seconds: 6),
+      onTimeout: () =>
+          throw const LanSyncTransportException('lan_sync_connect_failed'),
+    );
   }
 
   Future<LanSyncManifest> confirmAndReadManifest() async {
@@ -703,38 +753,86 @@ final class LanSyncFramedConnection {
 }
 
 Future<List<String>> _eligibleAddresses() async {
-  final result = <String>[];
+  final candidates = <LanSyncNetworkAddress>[];
   for (final interface in await NetworkInterface.list(
     type: InternetAddressType.IPv4,
     includeLoopback: false,
   )) {
     for (final address in interface.addresses) {
-      if (_isEligiblePeer(address)) result.add(address.address);
+      candidates.add(
+        LanSyncNetworkAddress(
+          interfaceName: interface.name,
+          address: address.address,
+        ),
+      );
     }
   }
-  result.sort();
-  return List.unmodifiable(result);
+  return selectLanSyncCandidateAddresses(candidates);
 }
 
 bool _isEligiblePeer(InternetAddress address) =>
     address.type == InternetAddressType.IPv4 &&
-    _isEligibleAddressText(address.address);
+    isLanSyncPrivateIpv4(address.address);
 
-bool _isEligibleAddressText(String address) {
-  final parts = address.split('.').map(int.tryParse).toList(growable: false);
-  if (parts.length != 4 ||
-      parts.any((part) => part == null || part < 0 || part > 255)) {
-    return false;
-  }
-  final a = parts[0]!;
-  final b = parts[1]!;
-  return a == 10 ||
-      (a == 172 && b >= 16 && b <= 31) ||
-      (a == 192 && b == 168) ||
-      (a == 169 && b == 254) ||
-      (a == 100 && b >= 64 && b <= 127) ||
-      (a == 127);
+final class LanSyncNetworkAddress {
+  const LanSyncNetworkAddress({
+    required this.interfaceName,
+    required this.address,
+  });
+
+  final String interfaceName;
+  final String address;
 }
+
+List<String> selectLanSyncCandidateAddresses(
+  Iterable<LanSyncNetworkAddress> candidates,
+) {
+  final result = <String>{};
+  for (final candidate in candidates) {
+    if (_isUsableLanInterface(candidate.interfaceName) &&
+        isLanSyncPrivateIpv4(candidate.address)) {
+      result.add(candidate.address);
+    }
+  }
+  final sorted = result.toList(growable: false)
+    ..sort((left, right) {
+      final rank = _addressRank(left).compareTo(_addressRank(right));
+      return rank != 0 ? rank : left.compareTo(right);
+    });
+  return List.unmodifiable(sorted.take(lanSyncMaxQrCandidateAddresses));
+}
+
+bool _isUsableLanInterface(String name) {
+  final normalized = name.toLowerCase();
+  const excludedFragments = <String>[
+    'vethernet',
+    'virtual',
+    'hyper-v',
+    'wsl',
+    'docker',
+    'vmware',
+    'virtualbox',
+    'vbox',
+    'tailscale',
+    'zerotier',
+    'wireguard',
+    'wintun',
+    'vpn',
+    'loopback',
+    'tunnel',
+    'teredo',
+    'isatap',
+    '虚拟',
+    '隧道',
+  ];
+  return !excludedFragments.any(normalized.contains);
+}
+
+int _addressRank(String address) => switch (address.split('.').first) {
+  '192' => 0,
+  '10' => 1,
+  _ => 2,
+};
 
 String _randomToken(int bytes) {
   final random = Random.secure();

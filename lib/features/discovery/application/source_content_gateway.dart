@@ -18,11 +18,13 @@ final class PluginSourceDescriptor {
     required this.id,
     required this.displayName,
     required Iterable<PluginContentKind> contentKinds,
+    this.description,
     this.pluginVersion = 'unknown',
   }) : contentKinds = List<PluginContentKind>.unmodifiable(contentKinds);
 
   final String id;
   final String displayName;
+  final String? description;
   final String pluginVersion;
   final List<PluginContentKind> contentKinds;
 }
@@ -102,6 +104,7 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
                 (plugin) => PluginSourceDescriptor(
                   id: plugin.id,
                   displayName: plugin.displayName,
+                  description: plugin.description,
                   pluginVersion: plugin.activeVersion!,
                   contentKinds: plugin.contentKinds.map(_contentKind),
                 ),

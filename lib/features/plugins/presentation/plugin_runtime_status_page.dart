@@ -9,6 +9,7 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
+import 'package:mg_read/shared/presentation/source_branding.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
@@ -560,10 +561,14 @@ class _DataSourceRow extends StatelessWidget {
           onTap: onPressed,
           borderRadius: AppRadii.discoveryTile,
           child: SizedBox(
-            height: AppSpacing.dataSourceRowHeight,
+            height: AppSpacing.dataSourceRowHeight + AppSpacing.compact,
             child: Row(
               children: <Widget>[
-                _DataSourceBrandMark(brand: source.brand),
+                _DataSourceBrandMark(
+                  sourceId: source.id,
+                  displayName: source.name,
+                  brand: source.brand,
+                ),
                 const SizedBox(width: AppSpacing.regular),
                 Expanded(
                   child: Column(
@@ -581,8 +586,20 @@ class _DataSourceRow extends StatelessWidget {
                       ),
                       const SizedBox(height: AppSpacing.unit),
                       Text(
+                        source.description,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: tokens.mutedText,
+                          height: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.unit),
+                      Text(
                         source.kindLabel,
-                        style: theme.textTheme.bodyMedium?.copyWith(
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
                           color: tokens.mutedText,
                           height: 1.1,
                         ),
@@ -621,12 +638,26 @@ class _DataSourceRow extends StatelessWidget {
 }
 
 class _DataSourceBrandMark extends StatelessWidget {
-  const _DataSourceBrandMark({required this.brand});
+  const _DataSourceBrandMark({
+    required this.sourceId,
+    required this.displayName,
+    required this.brand,
+  });
 
+  final String sourceId;
+  final String displayName;
   final _DataSourceBrand brand;
 
   @override
   Widget build(BuildContext context) {
+    if (SourceBranding.assetFor(sourceId) != null) {
+      return SourceIcon(
+        sourceId: sourceId,
+        displayName: displayName,
+        size: AppSpacing.dataSourceMarkExtent,
+        borderRadius: 12,
+      );
+    }
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final ThemeData theme = Theme.of(context);
     final Color foreground = switch (brand) {
@@ -930,6 +961,7 @@ class _DataSourceViewData {
   const _DataSourceViewData({
     required this.id,
     required this.name,
+    required this.description,
     required this.kindLabel,
     required this.enabled,
     required this.brand,
@@ -938,6 +970,7 @@ class _DataSourceViewData {
 
   final String id;
   final String name;
+  final String description;
   final String kindLabel;
   final bool enabled;
   final _DataSourceBrand brand;
@@ -974,6 +1007,11 @@ List<_DataSourceViewData> _sourcesFromConnection(
         (PluginRuntimePlugin plugin) => _DataSourceViewData(
           id: plugin.id,
           name: plugin.displayName,
+          description: SourceBranding.description(
+            sourceId: plugin.id,
+            displayName: plugin.displayName,
+            value: plugin.description,
+          ),
           kindLabel: _sourceMetadataLabel(plugin),
           enabled: plugin.enabled,
           brand: _brandForPlugin(plugin),

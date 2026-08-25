@@ -1,7 +1,7 @@
 name: mg_read
 description: "Main Flutter application for MgRead."
 publish_to: 'none'
-version: 0.5.0+82
+version: 0.5.4+86
 
 environment:
   sdk: ^3.12.2
@@ -36,6 +36,8 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/mg_read_logo.png
+    - assets/data_sources/aisishuwu.png
+    - assets/data_sources/shudugu.png
     - assets/profile/profile-traveler-avatar.png
     - assets/illustrations/library_first_run_books.png
     - assets/illustrations/library_first_run_books_v2.png

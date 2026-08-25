@@ -42,7 +42,10 @@ Future<void> showReaderSettingsSheet({
     context: context,
     isScrollControlled: true,
     isDismissible: true,
-    enableDrag: true,
+    // Settings are dismissed by tapping the modal barrier or using the
+    // platform back action. Do not let a vertical drag move the reader or
+    // dismiss the settings surface accidentally.
+    enableDrag: false,
     useSafeArea: false,
     backgroundColor: Colors.transparent,
     barrierColor: ReaderSettingsTokens.sheetBarrier(palette),

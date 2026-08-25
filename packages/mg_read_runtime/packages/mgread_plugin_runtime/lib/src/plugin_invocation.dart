@@ -570,6 +570,7 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
   final id = item['id'];
   final name = item['name'];
   final displayName = item['displayName'];
+  final description = item['description'];
   final activeVersion = item['activeVersion'];
   final pendingVersion = item['pendingVersion'];
   final enabled = item['enabled'];
@@ -578,6 +579,7 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
   if (id is! String ||
       name is! String ||
       displayName is! String ||
+      (description != null && description is! String) ||
       (activeVersion != null && activeVersion is! String) ||
       (pendingVersion != null && pendingVersion is! String) ||
       enabled is! bool ||
@@ -592,6 +594,7 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
   return InstalledPlugin(
     activeVersion: activeVersion as String?,
     contentKinds: List<String>.unmodifiable(kinds.cast<String>()),
+    description: description as String?,
     displayName: displayName,
     enabled: enabled,
     id: id,
@@ -613,10 +616,12 @@ final class InstalledPlugin {
     required this.name,
     required this.pendingVersion,
     required this.status,
+    this.description,
   });
 
   final String? activeVersion;
   final List<String> contentKinds;
+  final String? description;
   final String displayName;
   final bool enabled;
   final String id;

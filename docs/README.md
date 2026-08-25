@@ -95,5 +95,5 @@
 
 ## 维护入口
 
-文档编辑规则见 [documentation.md](development/documentation.md)。新增或移动文档时必须更新
-本页或相应任务路由，但不要同时在多个入口复制同一段规范。
+文档、文件头以及新增或移动文档的统一维护规则见
+[documentation.md](development/documentation.md)。

@@ -1,46 +1,133 @@
+const int lanSyncMaxQrCandidateAddresses = 16;
+
+final class LanSyncConnectionOffer {
+  LanSyncConnectionOffer({
+    required this.sessionId,
+    required this.port,
+    required Iterable<String> addresses,
+  }) : addresses = List.unmodifiable(_normalizeAddresses(addresses)) {
+    if (!_isSessionId(sessionId)) {
+      throw ArgumentError.value(sessionId, 'sessionId', 'Invalid session ID.');
+    }
+    if (port < 1 || port > 65535) {
+      throw ArgumentError.value(port, 'port', 'Invalid TCP port.');
+    }
+    if (this.addresses.isEmpty) {
+      throw ArgumentError.value(
+        addresses,
+        'addresses',
+        'At least one private LAN IPv4 address is required.',
+      );
+    }
+  }
+
+  final String sessionId;
+  final int port;
+  final List<String> addresses;
+
+  List<String> get manualAddresses => List.unmodifiable(
+    addresses.map((address) => '$sessionId@$address:$port'),
+  );
+
+  static LanSyncConnectionOffer? tryParseManual(String value) {
+    final match = RegExp(
+      r'^([A-Za-z0-9_-]{8,128})@([0-9.]+):([0-9]{1,5})$',
+    ).firstMatch(value.trim());
+    final port = match == null ? null : int.tryParse(match.group(3)!);
+    final address = match?.group(2);
+    if (match == null ||
+        port == null ||
+        port < 1 ||
+        port > 65535 ||
+        address == null ||
+        !isLanSyncPrivateIpv4(address)) {
+      return null;
+    }
+    return LanSyncConnectionOffer(
+      sessionId: match.group(1)!,
+      port: port,
+      addresses: <String>[address],
+    );
+  }
+}
+
 final class LanSyncQrPayload {
   const LanSyncQrPayload._();
 
   static const String _scheme = 'mgread';
   static const String _host = 'lan-sync';
-  static const String _versionPath = '/v1';
+  static const String _versionPath = '/v2';
+  static const int _maxPayloadLength = 2048;
 
-  static String encode(String connectionAddress) {
-    if (!_isConnectionAddress(connectionAddress)) {
-      throw ArgumentError.value(
-        connectionAddress,
-        'connectionAddress',
-        'Must be a bounded MgRead LAN sync connection address.',
-      );
-    }
-    return Uri(
-      scheme: _scheme,
-      host: _host,
-      path: _versionPath,
-      queryParameters: <String, String>{'address': connectionAddress},
-    ).toString();
-  }
+  static String encode(LanSyncConnectionOffer offer) => Uri(
+    scheme: _scheme,
+    host: _host,
+    path: _versionPath,
+    queryParameters: <String, String>{
+      'session': offer.sessionId,
+      'port': offer.port.toString(),
+      'addresses': offer.addresses.join(','),
+    },
+  ).toString();
 
-  static String? decode(String payload) {
-    if (payload.length > 512) return null;
+  static LanSyncConnectionOffer? decode(String payload) {
+    if (payload.length > _maxPayloadLength) return null;
     final uri = Uri.tryParse(payload.trim());
     if (uri == null ||
         uri.scheme != _scheme ||
         uri.host != _host ||
         uri.path != _versionPath ||
         uri.fragment.isNotEmpty ||
-        uri.queryParameters.length != 1) {
+        uri.queryParameters.length != 3) {
       return null;
     }
-    final address = uri.queryParameters['address'];
-    return address != null && _isConnectionAddress(address) ? address : null;
+    final sessionId = uri.queryParameters['session'];
+    final port = int.tryParse(uri.queryParameters['port'] ?? '');
+    final rawAddresses = uri.queryParameters['addresses'];
+    if (sessionId == null ||
+        !_isSessionId(sessionId) ||
+        port == null ||
+        port < 1 ||
+        port > 65535 ||
+        rawAddresses == null) {
+      return null;
+    }
+    final addresses = rawAddresses.split(',');
+    if (addresses.isEmpty ||
+        addresses.length > lanSyncMaxQrCandidateAddresses ||
+        addresses.toSet().length != addresses.length ||
+        addresses.any((address) => !isLanSyncPrivateIpv4(address))) {
+      return null;
+    }
+    return LanSyncConnectionOffer(
+      sessionId: sessionId,
+      port: port,
+      addresses: addresses,
+    );
   }
 }
 
-bool _isConnectionAddress(String value) {
-  final match = RegExp(
-    r'^([A-Za-z0-9_-]{8,128})@([0-9.]+):([0-9]{1,5})$',
-  ).firstMatch(value);
-  final port = match == null ? null : int.tryParse(match.group(3)!);
-  return match != null && port != null && port >= 1 && port <= 65535;
+bool isLanSyncPrivateIpv4(String address) {
+  final parts = address.split('.').map(int.tryParse).toList(growable: false);
+  if (parts.length != 4 ||
+      parts.any((part) => part == null || part < 0 || part > 255)) {
+    return false;
+  }
+  final a = parts[0]!;
+  final b = parts[1]!;
+  return a == 10 || (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168);
 }
+
+List<String> _normalizeAddresses(Iterable<String> addresses) {
+  final normalized = addresses.toSet().toList(growable: false);
+  if (normalized.length > lanSyncMaxQrCandidateAddresses ||
+      normalized.any((address) => !isLanSyncPrivateIpv4(address))) {
+    throw ArgumentError.value(addresses, 'addresses', 'Invalid LAN addresses.');
+  }
+  return normalized;
+}
+
+bool _isSessionId(String value) =>
+    value.length >= 8 &&
+    value.length <= 128 &&
+    RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(value);

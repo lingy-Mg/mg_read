@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/shared/presentation/source_branding.dart';
 
 /// Result returned by the discovery source picker.
 sealed class DiscoverySourcePickerResult {
@@ -297,9 +298,6 @@ class _SourcePickerRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = AppThemeTokens.of(context);
-    final kinds = source.contentKinds
-        .map((kind) => kind.name == 'novel' ? '小说' : '漫画')
-        .join(' · ');
     return Semantics(
       button: true,
       selected: selected,
@@ -312,8 +310,8 @@ class _SourcePickerRow extends StatelessWidget {
           onTap: onPressed,
           borderRadius: const BorderRadius.all(Radius.circular(8)),
           child: Container(
-            height: 37,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            height: 68,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               borderRadius: const BorderRadius.all(Radius.circular(8)),
               border: Border.all(
@@ -324,14 +322,18 @@ class _SourcePickerRow extends StatelessWidget {
             ),
             child: Row(
               children: <Widget>[
-                _SourceMonogram(source: source),
+                SourceIcon(
+                  sourceId: source.id,
+                  displayName: source.displayName,
+                  size: 44,
+                  borderRadius: 9,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      const SizedBox(height: 4),
                       Text(
                         source.displayName,
                         maxLines: 1,
@@ -341,12 +343,18 @@ class _SourcePickerRow extends StatelessWidget {
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                      const SizedBox(height: 1),
+                      const SizedBox(height: 3),
                       Text(
-                        _sourceSubtitle(source, kinds),
+                        SourceBranding.description(
+                          sourceId: source.id,
+                          displayName: source.displayName,
+                          value: source.description,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: tokens.mutedText,
-                          height: 1.05,
+                          height: 1.1,
                         ),
                       ),
                     ],
@@ -360,83 +368,6 @@ class _SourcePickerRow extends StatelessWidget {
       ),
     );
   }
-}
-
-class _SourceMonogram extends StatelessWidget {
-  const _SourceMonogram({required this.source});
-
-  final PluginSourceDescriptor source;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppThemeTokens.of(context);
-    final _SourceMark mark = _sourceMark(source.displayName, tokens);
-    return Container(
-      width: 28,
-      height: 28,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[mark.color, mark.color.withValues(alpha: 0.72)],
-        ),
-        borderRadius: const BorderRadius.all(Radius.circular(6)),
-      ),
-      child: Text(
-        mark.glyph,
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: mark.glyph.length > 1
-              ? AppTypography.caption
-              : AppTypography.itemTitle,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-String _sourceSubtitle(PluginSourceDescriptor source, String kinds) =>
-    switch (source.displayName) {
-      '起点中文网' => '阅文集团旗下原创文学平台',
-      '番茄小说' => '今日头条旗下免费小说平台',
-      '七猫中文网' => '海量正版小说，永久免费阅读',
-      '纵横中文网' => '精品原创小说阅读平台',
-      '晋江文学城' => '女性向原创文学网站',
-      '17K 小说网' => '中文在线旗下阅读平台',
-      '潇湘书院' => '专注女性原创小说平台',
-      '飞卢小说网' => '原创小说首发网站',
-      '豆瓣阅读' => '优质原创作品阅读平台',
-      '书旗小说' => '阿里文学旗下阅读平台',
-      '刺猬猫阅读' => '二次元小说阅读平台',
-      '掌阅精选' => '掌阅科技旗下阅读平台',
-      _ => '$kinds内容来源 · 已启用',
-    };
-
-_SourceMark _sourceMark(String name, AppThemeTokens tokens) {
-  return switch (name) {
-    '起点中文网' => _SourceMark(tokens.notification, '起'),
-    '番茄小说' => _SourceMark(tokens.warning, '番'),
-    '七猫中文网' => _SourceMark(tokens.warning, '猫'),
-    '纵横中文网' => _SourceMark(tokens.notification, '纵'),
-    '晋江文学城' => _SourceMark(tokens.success, '晋'),
-    '17K 小说网' => _SourceMark(tokens.accent, '17K'),
-    '潇湘书院' => _SourceMark(tokens.coverIndigoEnd, '潇'),
-    '飞卢小说网' => _SourceMark(tokens.success, '飞'),
-    '豆瓣阅读' => _SourceMark(tokens.coverOceanEnd, '豆'),
-    '书旗小说' => _SourceMark(tokens.success, '书'),
-    '刺猬猫阅读' => _SourceMark(tokens.warning, '猫'),
-    '掌阅精选' => _SourceMark(tokens.coverDawnEnd, '阅'),
-    _ => _SourceMark(tokens.accent, name.isEmpty ? '源' : name.characters.first),
-  };
-}
-
-class _SourceMark {
-  const _SourceMark(this.color, this.glyph);
-
-  final Color color;
-  final String glyph;
 }
 
 class _SourceSelectionIndicator extends StatelessWidget {
