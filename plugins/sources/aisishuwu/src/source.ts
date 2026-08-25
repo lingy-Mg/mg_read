@@ -22,6 +22,24 @@ import type {
 } from './mgread-api.js';
 import { PluginHtmlCache, type HtmlCachePolicy } from './html-cache.js';
 import { nonBlank } from './utils.js';
+import {
+  boundedPageSize,
+  compactSourceText,
+  decodeNovelId,
+  decodePageCursor,
+  discoveryMetric,
+  encodePageCursor,
+  findNextCatalogPage,
+  mergeDiscoverySummary,
+  novelIdFromUrl,
+  parseCatalogTotalCount,
+  parseDetailStats,
+  parseSourceDate,
+  parseTags,
+  publicCoverUrl,
+  requiredText,
+  textOrNull,
+} from './source-parsing.js';
 
 export interface SourceRules {
   readonly origin: string;
@@ -721,7 +739,7 @@ export class AliceBookHouseSource {
         author,
         description,
         category,
-        coverUrl: _publicCoverUrl(coverCandidate, pageUrl),
+        coverUrl: publicCoverUrl(coverCandidate, pageUrl),
         latestChapter,
       }),
     ];
@@ -804,7 +822,7 @@ export class AliceBookHouseSource {
 
   #coverUrl($: cheerio.CheerioAPI, detailUrl: URL): string | null {
     const cover = $('.pic img, img.fengmian2').first();
-    return _publicCoverUrl(
+    return publicCoverUrl(
       $('meta[property="og:image"]').attr('content') ??
           cover.attr('data-src') ??
           cover.attr('data-original') ??
@@ -976,224 +994,4 @@ export class AliceBookHouseSource {
     if (ranking === undefined) throw new Error('Ranking target is invalid.');
     return ranking;
   }
-}
-
-function mergeDiscoverySummary(
-  summary: ContentSummary,
-  detail: ContentDetail,
-): ContentSummary {
-  return Object.freeze({
-    ...summary,
-    author: summary.author ?? detail.author,
-    coverUrl: summary.coverUrl ?? detail.coverUrl,
-    description: summary.description ?? detail.description,
-    status: summary.status === 'unknown' ? detail.status : summary.status,
-    access: summary.access === 'unknown' ? detail.access : summary.access,
-    wordCount: summary.wordCount ?? detail.wordCount,
-    chapterCount: summary.chapterCount ?? detail.chapterCount,
-    updatedAt: summary.updatedAt ?? detail.updatedAt,
-    latestChapter: summary.latestChapter ?? detail.latestChapter,
-    categories: summary.categories.length === 0
-        ? detail.categories
-        : summary.categories,
-    tags: summary.tags.length === 0 ? detail.tags : summary.tags,
-    attributes: summary.attributes.length === 0
-        ? detail.attributes
-        : summary.attributes,
-  });
-}
-
-function discoveryMetric(content: ContentSummary): {
-  readonly label: string;
-  readonly value: string;
-} | null {
-  const heat = content.attributes.find((attribute) => attribute.key === 'heat');
-  if (heat === undefined) return null;
-  return Object.freeze({
-    label: heat.label,
-    value: displayCount(heat.value),
-  });
-}
-
-function displayCount(value: string): string {
-  const count = Number(value);
-  if (!Number.isFinite(count)) return value;
-  if (count >= 100000000) return `${trimCount(count / 100000000)}亿`;
-  if (count >= 10000) return `${trimCount(count / 10000)}万`;
-  return String(Math.round(count));
-}
-
-function trimCount(value: number): string {
-  return value.toFixed(1).replace(/\.0$/u, '');
-}
-
-function requiredText(value: string | undefined): string {
-  const text = textOrNull(value);
-  if (text === null) throw new Error('A required source field was empty.');
-  return text;
-}
-
-function textOrNull(value: string | undefined): string | null {
-  return nonBlank(value);
-}
-
-function novelIdFromUrl(url: URL): string | null {
-  return /^\/novel\/(\d+)\.html$/u.exec(url.pathname)?.[1] ?? null;
-}
-
-function decodeNovelId(id: string): string {
-  const match = /^novel:(\d+)$/u.exec(id);
-  if (match?.[1] === undefined) throw new Error('Novel ID is invalid.');
-  return match[1];
-}
-
-function decodePageCursor(cursor: string | null, scope: string): number {
-  if (cursor === null) return 1;
-  const match = new RegExp(`^${scope}:(\\d+)$`, 'u').exec(cursor);
-  const value = match?.[1] === undefined ? Number.NaN : Number(match[1]);
-  if (!Number.isSafeInteger(value) || value < 1) throw new Error('Cursor is invalid.');
-  return value;
-}
-
-function encodePageCursor(scope: string, value: number): string {
-  return `${scope}:${value}`;
-}
-
-function boundedPageSize(value: number): number {
-  if (!Number.isSafeInteger(value) || value < 1) {
-    throw new Error('Chapter page size is invalid.');
-  }
-  return Math.min(value, 100);
-}
-
-function parseDetailStats($info: cheerio.Cheerio<Element>): {
-  readonly wordCount: number | null;
-  readonly chapterCount: number | null;
-  readonly status: ContentStatus;
-  readonly attributes: readonly ContentAttribute[];
-} {
-  const rows = new Map<string, string>();
-  $info.find('p').each((_, element) => {
-    const raw = compactSourceText($info.find(element).text());
-    const separator = raw.indexOf('：');
-    if (separator <= 0) return;
-    rows.set(raw.slice(0, separator), raw);
-  });
-  const heatAndFavorites = rows.get('热度') ?? '';
-  const wordAndChapters = rows.get('字数') ?? '';
-  const heat = parseLabeledCount(heatAndFavorites, '热度');
-  const favorites = parseLabeledCount(heatAndFavorites, '收藏');
-  const wordCount = parseLabeledCount(wordAndChapters, '字数');
-  const chapterCount = parseLabeledCount(wordAndChapters, '章节');
-  const attributes: ContentAttribute[] = [];
-  if (heat !== null) {
-    attributes.push(
-      Object.freeze({ key: 'heat', label: '热度', value: String(heat) }),
-    );
-  }
-  if (favorites !== null) {
-    attributes.push(
-      Object.freeze({ key: 'favorites', label: '收藏', value: String(favorites) }),
-    );
-  }
-  return Object.freeze({
-    wordCount,
-    chapterCount,
-    status: parseContentStatus(rows.get('状态')),
-    attributes: Object.freeze(attributes),
-  });
-}
-
-function parseTags($: cheerio.CheerioAPI): readonly string[] {
-  const tags = $('.tags_list a[href*="f=tag"], .tags_list a[href*="f%3Dtag"]')
-    .toArray()
-    .flatMap((element) => {
-      const tag = textOrNull($(element).clone().find('em, span').remove().end().text());
-      return tag === null ? [] : [tag];
-    });
-  return Object.freeze([...new Set(tags)].slice(0, 20));
-}
-
-function parseContentStatus(value: string | undefined): ContentStatus {
-  const normalized = compactSourceText(value ?? '');
-  if (/(?:连载|更新中)/u.test(normalized)) return 'ongoing';
-  if (/(?:已)?完结/u.test(normalized)) return 'completed';
-  if (/(?:暂停|断更|停更)/u.test(normalized)) return 'hiatus';
-  return 'unknown';
-}
-
-function parseLabeledCount(value: string, label: string): number | null {
-  const match = new RegExp(`${label}[：:]?([0-9]+(?:\\.[0-9]+)?)([万亿]?)`, 'u').exec(
-    compactSourceText(value),
-  );
-  if (match?.[1] === undefined) return null;
-  const number = Number(match[1]);
-  const multiplier = match[2] === '万' ? 10000 : match[2] === '亿' ? 100000000 : 1;
-  const result = Math.round(number * multiplier);
-  return Number.isSafeInteger(result) && result >= 0 ? result : null;
-}
-
-function compactSourceText(value: string): string {
-  return value.replace(/\s+/gu, '').trim();
-}
-
-function parseSourceDate(value: string): string | null {
-  const match = /(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/u.exec(value);
-  if (match === null) return null;
-  const iso = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:00+08:00`;
-  return Number.isNaN(Date.parse(iso)) ? null : new Date(iso).toISOString();
-}
-
-function parseCatalogTotalCount($: cheerio.CheerioAPI): number | null {
-  const text = compactSourceText($('.book_newchap .tit, .mulu_title, .catalog_title').first().text());
-  const match = /全(\d+)章/u.exec(text);
-  if (match?.[1] === undefined) return null;
-  const count = Number(match[1]);
-  return Number.isSafeInteger(count) && count >= 0 ? count : null;
-}
-
-function findNextCatalogPage(
-  $: cheerio.CheerioAPI,
-  catalogUrl: URL,
-  novelId: string,
-  currentPage: number,
-): number | null {
-  const next = $('.pagination a[href], .page a[href], .pages a[href], a[rel="next"]')
-    .toArray()
-    .find((element) => /^(?:下一页|下页|next|›|»|>)$/iu.test(compactSourceText($(element).text())) || $(element).attr('rel') === 'next');
-  const href = next === undefined ? undefined : $(next).attr('href');
-  if (href === undefined) return null;
-  try {
-    const url = new URL(href, catalogUrl);
-    if (url.origin !== catalogUrl.origin || !url.pathname.endsWith(`/id/${novelId}.html`)) {
-      return null;
-    }
-    const value = Number(url.searchParams.get('page') ?? url.searchParams.get('p'));
-    return Number.isSafeInteger(value) && value > currentPage ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Cover URLs are display metadata, unlike navigation URLs. CDN origins are
- * allowed, but credentials and non-HTTP schemes are never exposed. */
-function publicHttpUrl(value: string, base: URL): string | null {
-  try {
-    const url = new URL(value, base);
-    if (
-      (url.protocol !== 'http:' && url.protocol !== 'https:') ||
-      url.username.length !== 0 ||
-      url.password.length !== 0
-    ) {
-      return null;
-    }
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
-function _publicCoverUrl(value: string | undefined, base: URL): string | null {
-  const normalized = textOrNull(value);
-  return normalized === null ? null : publicHttpUrl(normalized, base);
 }

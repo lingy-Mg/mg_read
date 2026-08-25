@@ -40,7 +40,7 @@ class ProfileOverviewCard extends StatelessWidget {
                 tokens.surface.withValues(alpha: 0.95),
               ],
             ),
-            border: Border.all(color: tokens.divider),
+            border: Border.all(color: tokens.divider.withValues(alpha: 0.72)),
           ),
           child: ClipRRect(
             borderRadius: AppRadii.card,
@@ -52,16 +52,16 @@ class ProfileOverviewCard extends StatelessWidget {
                     children: <Widget>[
                       Positioned(
                         top: AppSpacing.comfortable - 1,
-                        left: AppSpacing.compactPagePadding,
+                        left: AppSpacing.profileCardHorizontalPadding,
                         child: const _ProfileAvatar(),
                       ),
                       Positioned(
                         top: AppSpacing.profileNameTop,
                         left:
-                            AppSpacing.compactPagePadding +
+                            AppSpacing.profileCardHorizontalPadding +
                             AppSpacing.profileAvatarSize +
                             AppSpacing.comfortable,
-                        right: 92,
+                        right: AppSpacing.profileEditReservedWidth,
                         child: _ProfileName(
                           data: data,
                           theme: theme,
@@ -71,10 +71,10 @@ class ProfileOverviewCard extends StatelessWidget {
                       Positioned(
                         top: AppSpacing.profileMottoTop,
                         left:
-                            AppSpacing.compactPagePadding +
+                            AppSpacing.profileCardHorizontalPadding +
                             AppSpacing.profileAvatarSize +
                             AppSpacing.comfortable,
-                        right: AppSpacing.comfortable,
+                        right: AppSpacing.profileCardHorizontalPadding,
                         child: Text(
                           data.motto,
                           maxLines: 1,
@@ -88,7 +88,7 @@ class ProfileOverviewCard extends StatelessWidget {
                       ),
                       Positioned(
                         top: AppSpacing.comfortable + AppSpacing.unit,
-                        right: AppSpacing.comfortable,
+                        right: AppSpacing.profileCardHorizontalPadding,
                         child: _ProfileEditButton(onPressed: onEdit),
                       ),
                       Positioned(
@@ -107,8 +107,12 @@ class ProfileOverviewCard extends StatelessWidget {
                 Expanded(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: tokens.featureSurface.withValues(alpha: 0.72),
-                      border: Border(top: BorderSide(color: tokens.divider)),
+                      color: tokens.featureSurface.withValues(alpha: 0.52),
+                      border: Border(
+                        top: BorderSide(
+                          color: tokens.divider.withValues(alpha: 0.72),
+                        ),
+                      ),
                     ),
                     child: _ProfileSyncRow(
                       data: data,
@@ -242,11 +246,16 @@ class _ProfileEditButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: Ink(
-          width: AppSpacing.profileEditWidth,
-          height: AppSpacing.sectionControlHeight,
+          height: AppSpacing.profileEditHeight,
+          padding: const EdgeInsets.only(
+            left: AppSpacing.regular,
+            right: AppSpacing.compact,
+            top: AppSpacing.compact - 2,
+            bottom: AppSpacing.compact - 2,
+          ),
           decoration: BoxDecoration(
             color: tokens.accentSoft.withValues(alpha: 0.8),
-            borderRadius: AppRadii.control,
+            borderRadius: AppRadii.pill,
           ),
           child: InkWell(
             onTap: onPressed,
@@ -257,13 +266,17 @@ class _ProfileEditButton extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     '编辑资料',
-                    style: theme.textTheme.bodySmall?.copyWith(
+                    style: theme.textTheme.bodyMedium?.copyWith(
                       color: tokens.warning,
                       fontWeight: FontWeight.w500,
                       height: 1,
                     ),
                   ),
-                  const Icon(Icons.chevron_right_rounded, size: 14),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: tokens.mutedText,
+                    size: AppSpacing.profileChevronSize,
+                  ),
                 ],
               ),
             ),
@@ -318,11 +331,11 @@ class _ProfileStats extends StatelessWidget {
               ),
               if (index < data.stats.length - 1)
                 SizedBox(
-                  height: AppSpacing.section,
+                  height: AppSpacing.profileStatsDividerHeight,
                   child: VerticalDivider(
                     width: 1,
-                    thickness: 1,
-                    color: tokens.divider,
+                    thickness: AppSpacing.profileStatsDividerThickness,
+                    color: tokens.divider.withValues(alpha: 0.62),
                   ),
                 ),
             ],
@@ -357,14 +370,14 @@ class _ProfileSyncRow extends StatelessWidget {
           onTap: onPressed,
           child: Padding(
             padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.comfortable,
+              horizontal: AppSpacing.profileCardHorizontalPadding,
             ),
             child: Row(
               children: <Widget>[
                 Icon(
                   Icons.cloud_done_outlined,
                   color: tokens.warning,
-                  size: 24,
+                  size: AppSpacing.profileSyncIconSize,
                 ),
                 const SizedBox(width: AppSpacing.compact),
                 Expanded(
@@ -389,7 +402,7 @@ class _ProfileSyncRow extends StatelessWidget {
                 Icon(
                   Icons.chevron_right_rounded,
                   color: tokens.mutedText,
-                  size: 20,
+                  size: AppSpacing.profileChevronSize,
                 ),
               ],
             ),

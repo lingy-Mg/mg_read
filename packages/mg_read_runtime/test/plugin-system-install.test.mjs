@@ -1,0 +1,325 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import {
+  cp,
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
+import test from "node:test";
+
+import {
+  createPluginArchive,
+  DependencyStore,
+  extractPluginArchive,
+  PluginArchiveError,
+  PluginInstaller,
+  PluginManager,
+  PluginPackageError,
+  readPluginProject,
+} from "../dist/index.js";
+import {
+  PluginContentValidationError,
+  parseChaptersParams,
+  validateChaptersResult,
+  validateContentResult,
+  validateDetailResult,
+  validateDiscoverResult,
+  validateSearchResult,
+} from "../dist/plugin-content.js";
+
+import {
+  createDelayedPlugin,
+  createDevelopmentPlugin,
+  createRegistryPlugin,
+  fileExists,
+  makeNpmTarball,
+  replaceAllAscii,
+  writeTarOctal,
+  writeTarString,
+} from "./plugin-system-fixtures.mjs";
+
+const fixtureRoot = fileURLToPath(
+  new URL("./fixtures/standard-plugin/", import.meta.url),
+);
+
+async function temporaryDirectory(t, prefix) {
+  const root = await mkdtemp(join(tmpdir(), prefix));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  return root;
+}
+test("standard project uses package.json metadata and npm lockfile only", async () => {
+  const project = await readPluginProject(fixtureRoot);
+  assert.equal(project.descriptor.id, "org.mgread.runtime.fixture");
+  assert.equal(project.descriptor.entry, "dist/index.mjs");
+  assert.deepEqual(project.descriptor.contentKinds, ["novel"]);
+  assert.deepEqual(project.dependencies, [
+    {
+      installPath: "node_modules/local-helper",
+      kind: "local",
+      optional: false,
+      resolved: "packages/local-helper",
+      sourcePath: "packages/local-helper",
+      version: "1.0.0",
+    },
+  ]);
+});
+
+test("legacy manifest-only projects are rejected without a compatibility path", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-legacy-plugin-");
+  await writeFile(
+    join(root, "manifest.json"),
+    '{"id":"org.example.legacy","entry":"dist/index.mjs"}\n',
+  );
+  await assert.rejects(
+    readPluginProject(root),
+    (error) =>
+      error instanceof PluginPackageError &&
+      error.code === "plugin_package_legacy_unsupported",
+  );
+});
+
+test("mgplugin is deterministic, excludes node_modules and rejects traversal", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-plugin-archive-");
+  const first = join(root, "first.mgplugin");
+  const second = join(root, "second.mgplugin");
+  await createPluginArchive(fixtureRoot, first);
+  await createPluginArchive(fixtureRoot, second);
+  assert.deepEqual(await readFile(first), await readFile(second));
+
+  const extracted = join(root, "extracted");
+  const paths = await extractPluginArchive(first, extracted);
+  assert.ok(paths.includes("package.json"));
+  assert.ok(paths.includes("package-lock.json"));
+  assert.ok(paths.includes("assets/rules.json"));
+  assert.ok(paths.includes("packages/local-helper/index.js"));
+  assert.equal(paths.some((path) => path.includes("node_modules")), false);
+  await readPluginProject(extracted);
+
+  const malicious = Buffer.from(await readFile(first));
+  replaceAllAscii(malicious, "package.json", "../evil.json");
+  const maliciousFile = join(root, "malicious.mgplugin");
+  await writeFile(maliciousFile, malicious);
+  await assert.rejects(
+    extractPluginArchive(maliciousFile, join(root, "unsafe")),
+    (error) =>
+      error instanceof PluginArchiveError &&
+      error.code === "plugin_archive_unsafe_path",
+  );
+});
+
+test("installer hardlinks local packages and manager cold-activates named exports", async (t) => {
+  const dataRoot = await temporaryDirectory(t, "mgread-plugin-install-");
+  const installEvents = [];
+  const installer = new PluginInstaller(dataRoot, {
+    events: (event) => installEvents.push(event),
+  });
+  const installed = await installer.installProject(fixtureRoot);
+  assert.equal(installed.pendingActivation, true);
+  assert.equal(installed.reusedVersion, false);
+  assert.ok(installed.hardlinkedFiles >= 2);
+  assert.equal(installed.copiedFiles, 0);
+  assert.deepEqual(
+    installEvents.map((event) => event.code),
+    ["plugin_install_started", "plugin_install_completed"],
+  );
+
+  const pluginRoot = join(
+    dataRoot,
+    "plugins",
+    "org.mgread.runtime.fixture",
+  );
+  assert.equal((await readFile(join(pluginRoot, "pending"), "utf8")).trim(), "1.0.0");
+  const source = await stat(
+    join(pluginRoot, "versions", "1.0.0", "packages", "local-helper", "index.js"),
+    { bigint: true },
+  );
+  const installedDependency = await stat(
+    join(pluginRoot, "versions", "1.0.0", "node_modules", "local-helper", "index.js"),
+    { bigint: true },
+  );
+  assert.equal(source.ino, installedDependency.ino);
+
+  const managerEvents = [];
+  const manager = new PluginManager(dataRoot, {
+    events: (event) => managerEvents.push(event),
+  });
+  await manager.initialize();
+  const plugins = await manager.listInstalled();
+  assert.equal(plugins.length, 1);
+  assert.equal(plugins[0].status, "active");
+  assert.equal(plugins[0].activeVersion, "1.0.0");
+  assert.equal(await fileExists(join(pluginRoot, "pending")), false);
+
+  const search = await manager.search(
+    "org.mgread.runtime.fixture",
+    { query: "测试", cursor: null, pageSize: 20 },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
+  );
+  assert.equal(search.items[0].title, "标准插件：测试");
+  assert.equal(search.items[0].author, "org.mgread.runtime.fixture");
+  assert.equal(search.items[0].wordCount, 123456);
+  assert.equal(search.items[0].coverUrl, null);
+  assert.deepEqual(search.items[0].tags, []);
+  assert.equal(search.nextCursor, null);
+  assert.equal(search.sourceName, "Runtime 标准测试书源");
+  const suggestions = await manager.searchSuggestions(
+    "org.mgread.runtime.fixture",
+    { cursor: null, pageSize: 20 },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
+  );
+  assert.deepEqual(suggestions.items, []);
+  assert.equal(suggestions.nextCursor, null);
+  assert.equal(suggestions.sourceName, "Runtime 标准测试书源");
+  const discovery = await manager.discover(
+    "org.mgread.runtime.fixture",
+    { target: null, cursor: null, collectionId: null, pageSize: 20 },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
+  );
+  const detail = await manager.getDetail(
+    "org.mgread.runtime.fixture",
+    { id: search.items[0].id },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
+  );
+  const chapters = await manager.getChapters(
+    "org.mgread.runtime.fixture",
+    { id: search.items[0].id },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
+  );
+  const content = await manager.getContent(
+    "org.mgread.runtime.fixture",
+    { id: search.items[0].id, chapterId: chapters.items[0].id },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
+  );
+  assert.equal(
+    discovery.document.components[1].children[0].items[0].content.title,
+    "标准插件：发现",
+  );
+  assert.equal(detail.catalogUrl, null);
+  assert.equal(chapters.items[0].order, 0);
+  assert.equal(content.text, "标准插件正文。");
+
+  const disabled = await manager.setEnabled(
+    "org.mgread.runtime.fixture",
+    false,
+  );
+  assert.equal(disabled.enabled, false);
+  assert.equal(disabled.status, "disabled");
+  await assert.rejects(
+    manager.search(
+      "org.mgread.runtime.fixture",
+      { query: "测试", cursor: null, pageSize: 20 },
+      new AbortController().signal,
+      String(Date.now() + 5_000),
+    ),
+    (error) => error?.code === "plugin_disabled",
+  );
+  const enabled = await manager.setEnabled(
+    "org.mgread.runtime.fixture",
+    true,
+  );
+  assert.equal(enabled.enabled, true);
+  assert.equal(enabled.status, "active");
+  assert.equal(
+    (await manager.search(
+      "org.mgread.runtime.fixture",
+      { query: "恢复", cursor: null, pageSize: 20 },
+      new AbortController().signal,
+      String(Date.now() + 5_000),
+    )).items[0].title,
+    "标准插件：恢复",
+  );
+  assert.deepEqual(
+    JSON.parse(
+      await readFile(
+        join(dataRoot, "plugin-data", "org.mgread.runtime.fixture", "activated.json"),
+        "utf8",
+      ),
+    ),
+    { pluginApi: 1 },
+  );
+  assert.equal(
+    managerEvents.filter((event) => event.code === "plugin_load_started").length,
+    1,
+  );
+  assert.equal(
+    managerEvents.filter((event) => event.code === "plugin_load_completed").length,
+    1,
+  );
+  assert.equal(
+    managerEvents.filter((event) => event.code === "plugin_invocation_completed").length,
+    7,
+  );
+});
+
+test("development projects load in place without creating an installed version", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-development-plugin-");
+  const dataRoot = join(root, "runtime-data");
+  const developmentRoot = join(root, "sources");
+  const projectRoot = join(developmentRoot, "live-source");
+  await createDevelopmentPlugin(projectRoot, "第一版");
+
+  const manager = new PluginManager(dataRoot, { developmentPluginRoot: developmentRoot });
+  t.after(() => manager.close());
+  await manager.initialize();
+  const firstList = await manager.listInstalled();
+  assert.equal(firstList.length, 1);
+  assert.equal(firstList[0].status, "development");
+  assert.equal(firstList[0].activeVersion, "0.1.0");
+  assert.equal(
+    await fileExists(join(dataRoot, "plugins", "org.example.live-source")),
+    false,
+  );
+
+  const directory = await manager.resolveCodeDirectory("org.example.live-source");
+  assert.equal(directory.kind, "development");
+  assert.equal(directory.directory, projectRoot);
+
+  const exportable = await manager.listExportableArchives();
+  assert.equal(exportable.length, 1);
+  assert.equal(exportable[0].id, "org.example.live-source");
+  assert.match(exportable[0].version, /^0\.1\.1-devsync\.\d+$/);
+  const resourceMetadata = await manager.createPluginTransferResource(
+    exportable[0].id,
+    exportable[0].version,
+  );
+  const resource = manager.consumePluginTransferResource(resourceMetadata.token);
+  assert.ok(resource);
+  const chunks = [];
+  for await (const chunk of resource.stream) chunks.push(chunk);
+  const receivedArchive = join(root, "received-development.mgplugin");
+  await writeFile(receivedArchive, Buffer.concat(chunks));
+  const extracted = join(root, "received-development");
+  await extractPluginArchive(receivedArchive, extracted);
+  const transferredPackage = JSON.parse(
+    await readFile(join(extracted, "package.json"), "utf8"),
+  );
+  const transferredLock = JSON.parse(
+    await readFile(join(extracted, "package-lock.json"), "utf8"),
+  );
+  assert.equal(transferredPackage.version, exportable[0].version);
+  assert.equal(transferredLock.version, exportable[0].version);
+  assert.equal(transferredLock.packages[""].version, exportable[0].version);
+
+  const first = await manager.search(
+    "org.example.live-source",
+    { query: "测试", cursor: null, pageSize: 20 },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
+  );
+  assert.equal(first.items[0].title, "第一版：测试");
+
+});

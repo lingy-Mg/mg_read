@@ -371,7 +371,7 @@ class _AppBottomNavigationContent extends StatelessWidget {
                           colors: <Color>[
                             tokens.surface,
                             Color.alphaBlend(
-                              tokens.accentSoft.withValues(alpha: 0.52),
+                              tokens.accentSoft.withValues(alpha: 0.32),
                               tokens.surface,
                             ),
                           ],
@@ -390,10 +390,10 @@ class _AppBottomNavigationContent extends StatelessWidget {
                               ),
                               painter: _AppBottomNavigationTexturePainter(
                                 lineColor: tokens.accent.withValues(
-                                  alpha: 0.075,
+                                  alpha: 0.04,
                                 ),
                                 washColor: tokens.featureSurface.withValues(
-                                  alpha: 0.22,
+                                  alpha: 0.12,
                                 ),
                                 phase: motion.texturePhase,
                               ),

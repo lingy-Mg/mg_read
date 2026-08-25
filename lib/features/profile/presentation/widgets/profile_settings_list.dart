@@ -23,7 +23,7 @@ class ProfileSettingsList extends StatelessWidget {
       decoration: BoxDecoration(
         color: tokens.surface,
         borderRadius: AppRadii.profileList,
-        border: Border.all(color: tokens.divider),
+        border: Border.all(color: tokens.divider.withValues(alpha: 0.72)),
       ),
       child: ClipRRect(
         borderRadius: AppRadii.profileList,
@@ -39,13 +39,14 @@ class ProfileSettingsList extends StatelessWidget {
                 ),
                 if (index < items.length - 1)
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.regular,
+                    padding: const EdgeInsets.only(
+                      left: AppSpacing.profileSettingsDividerStart,
+                      right: AppSpacing.profileSettingsTrailingRight,
                     ),
                     child: Divider(
                       height: 1,
-                      thickness: 1,
-                      color: tokens.divider,
+                      thickness: AppSpacing.profileStatsDividerThickness,
+                      color: tokens.divider.withValues(alpha: 0.72),
                     ),
                   ),
               ],
@@ -89,12 +90,12 @@ class ProfileSettingsRow extends StatelessWidget {
             height: AppSpacing.profileSettingsRowHeight,
             child: Padding(
               padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.regular,
+                horizontal: AppSpacing.profileSettingsTrailingRight,
               ),
               child: Row(
                 children: <Widget>[
                   SizedBox(
-                    width: AppSpacing.profileSettingsLeadingWidth,
+                    width: AppSpacing.profileSettingsIconSlot,
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: Icon(
@@ -104,6 +105,7 @@ class ProfileSettingsRow extends StatelessWidget {
                       ),
                     ),
                   ),
+                  const SizedBox(width: AppSpacing.profileSettingsIconTextGap),
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -114,11 +116,11 @@ class ProfileSettingsRow extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w500,
-                            height: 1.05,
+                            fontWeight: FontWeight.w600,
+                            height: 1.15,
                           ),
                         ),
-                        const SizedBox(height: AppSpacing.unit),
+                        const SizedBox(height: AppSpacing.unit / 2),
                         Text(
                           item.description,
                           maxLines: 1,
@@ -126,7 +128,7 @@ class ProfileSettingsRow extends StatelessWidget {
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: tokens.mutedText,
                             fontWeight: FontWeight.w400,
-                            height: 1.05,
+                            height: 1.25,
                           ),
                         ),
                       ],
@@ -149,7 +151,7 @@ class ProfileSettingsRow extends StatelessWidget {
                   Icon(
                     Icons.chevron_right_rounded,
                     color: tokens.mutedText,
-                    size: 20,
+                    size: AppSpacing.profileChevronSize,
                   ),
                 ],
               ),

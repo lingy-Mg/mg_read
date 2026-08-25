@@ -1,3 +1,17 @@
+/// 应用诊断 TXT 持久化库。
+///
+/// 职责：
+/// - 写入、恢复和查询有界分段诊断记录。
+/// - 管理详情附件、保留策略和旧日志清理。
+///
+/// 注意：
+/// - 诊断失败不得影响业务结果，也不得形成 SQLite/WAL 索引。
+/// - 默认只保存元数据；正文、凭据和原始异常不得进入持久化内容。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -8,42 +22,8 @@ import 'package:mg_read/core/diagnostics/src/diagnostic_ports.dart';
 
 import 'diagnostic_text_detail_store.dart';
 
-final class DiagnosticStoredCaptureSession {
-  DiagnosticStoredCaptureSession({
-    required this.session,
-    required this.maxStoredBytes,
-    required Set<String> components,
-    required Set<String> origins,
-    required this.isDefault,
-    required this.detailStorage,
-  }) : components = Set<String>.unmodifiable(components),
-       origins = Set<String>.unmodifiable(origins);
-
-  final DiagnosticSession session;
-  final int maxStoredBytes;
-  final Set<String> components;
-  final Set<String> origins;
-  final bool isDefault;
-  final DiagnosticDetailStorage detailStorage;
-
-  int get remainingBytes {
-    final remaining = maxStoredBytes - session.storedBytes;
-    return remaining > 0 ? remaining : 0;
-  }
-}
-
-final class DiagnosticCommittedAttachment {
-  const DiagnosticCommittedAttachment({
-    required this.descriptor,
-    required this.objectKey,
-  });
-
-  final DiagnosticAttachmentDescriptor descriptor;
-
-  /// Opaque internal detail key. The legacy name remains private to this
-  /// package so callers cannot infer a filesystem path.
-  final String? objectKey;
-}
+part 'diagnostics_persistence_models.dart';
+part 'diagnostics_persistence_text.dart';
 
 /// App-owned segmented TXT diagnostics store.
 ///
@@ -51,12 +31,7 @@ final class DiagnosticCommittedAttachment {
 /// in-memory catalog is rebuilt in an isolate at startup and is never a second
 /// persistent index.
 final class DiagnosticsPersistence {
-  DiagnosticsPersistence._(
-    this.diagnosticsRoot,
-    this.eventsRoot,
-    this.detailStore,
-    this._clock,
-  );
+  DiagnosticsPersistence._(this.diagnosticsRoot, this.eventsRoot, this.detailStore, this._clock);
 
   static const int textFormatVersion = 1;
   static const int maxWriteBatchSize = 128;
@@ -71,8 +46,7 @@ final class DiagnosticsPersistence {
   final Map<String, _RunRecord> _runs = <String, _RunRecord>{};
   final Map<String, _SessionRecord> _sessions = <String, _SessionRecord>{};
   final Map<String, DiagnosticEvent> _events = <String, DiagnosticEvent>{};
-  final Map<String, _AttachmentRecord> _attachments =
-      <String, _AttachmentRecord>{};
+  final Map<String, _AttachmentRecord> _attachments = <String, _AttachmentRecord>{};
   final Map<String, int> _segmentSequenceByRun = <String, int>{};
   Future<void> _writeTail = Future<void>.value();
   File? _activeSegment;
@@ -90,32 +64,14 @@ final class DiagnosticsPersistence {
     DateTime Function() clock = _utcNow,
     int detailMemoryBytes = DiagnosticTextDetailStore.defaultMaxMemoryBytes,
   }) async {
-    final diagnosticsRoot = Directory(
-      '${dataRoot.path}${Platform.pathSeparator}diagnostics',
-    );
-    final eventsRoot = Directory(
-      '${diagnosticsRoot.path}${Platform.pathSeparator}events',
-    );
-    await Future.wait(<Future<void>>[
-      diagnosticsRoot.create(recursive: true),
-      eventsRoot.create(recursive: true),
-    ]);
+    final diagnosticsRoot = Directory('${dataRoot.path}${Platform.pathSeparator}diagnostics');
+    final eventsRoot = Directory('${diagnosticsRoot.path}${Platform.pathSeparator}events');
+    await Future.wait(<Future<void>>[diagnosticsRoot.create(recursive: true), eventsRoot.create(recursive: true)]);
     await _removeLegacyDatabaseArtifacts(diagnosticsRoot);
-    final detailStore = await DiagnosticTextDetailStore.open(
-      diagnosticsRoot,
-      maxMemoryBytes: detailMemoryBytes,
-    );
-    final store = DiagnosticsPersistence._(
-      diagnosticsRoot,
-      eventsRoot,
-      detailStore,
-      clock,
-    );
+    final detailStore = await DiagnosticTextDetailStore.open(diagnosticsRoot, maxMemoryBytes: detailMemoryBytes);
+    final store = DiagnosticsPersistence._(diagnosticsRoot, eventsRoot, detailStore, clock);
     try {
-      final loaded = await Isolate.run(
-        _DiagnosticTextLoadTask(eventsRoot.path).call,
-        debugName: 'mg-read-diagnostics-text-rebuild',
-      );
+      final loaded = await Isolate.run(_DiagnosticTextLoadTask(eventsRoot.path).call, debugName: 'mg-read-diagnostics-text-rebuild');
       store._lastEncoderWorkerIsolateId = loaded.workerIsolateId;
       for (final entry in loaded.segmentBytes.entries) {
         store._updateSegmentSequence(entry.key);
@@ -141,11 +97,7 @@ final class DiagnosticsPersistence {
     _ensureOpen();
     validateDiagnosticOpaqueId(sourceRunId, 'sourceRunId');
     final now = _clock().toUtc().microsecondsSinceEpoch;
-    final run = _RunRecord(
-      sourceRunId: sourceRunId,
-      source: source,
-      startedAtUtcMicros: now,
-    );
+    final run = _RunRecord(sourceRunId: sourceRunId, source: source, startedAtUtcMicros: now);
     final session = _SessionRecord(
       sessionId: sourceRunId,
       sourceRunId: sourceRunId,
@@ -163,10 +115,7 @@ final class DiagnosticsPersistence {
       if (_runs.containsKey(sourceRunId)) {
         throw StateError('Diagnostic run already exists.');
       }
-      await _appendRecords(sourceRunId, <Map<String, Object?>>[
-        _runStartRecord(run),
-        _sessionStartRecord(session),
-      ]);
+      await _appendRecords(sourceRunId, <Map<String, Object?>>[_runStartRecord(run), _sessionStartRecord(session)]);
       _runs[sourceRunId] = run;
       _sessions[sourceRunId] = session;
     });
@@ -180,17 +129,13 @@ final class DiagnosticsPersistence {
       if (run == null || run.endedAtUtcMicros != null) return;
       final records = <Map<String, Object?>>[];
       for (final session in _sessions.values.where(
-        (item) =>
-            item.sourceRunId == sourceRunId &&
-            item.state == DiagnosticSessionState.active,
+        (item) => item.sourceRunId == sourceRunId && item.state == DiagnosticSessionState.active,
       )) {
         records.add(_sessionEndRecord(session.sessionId, now, 'ended'));
       }
       records.add(_runEndRecord(sourceRunId, now, 'ended'));
       await _appendRecords(sourceRunId, records);
-      for (final session in _sessions.values.where(
-        (item) => item.sourceRunId == sourceRunId,
-      )) {
+      for (final session in _sessions.values.where((item) => item.sourceRunId == sourceRunId)) {
         if (session.state == DiagnosticSessionState.active) {
           session
             ..state = DiagnosticSessionState.ended
@@ -210,16 +155,9 @@ final class DiagnosticsPersistence {
       throw ArgumentError('At most $maxWriteBatchSize events may be written.');
     }
     final storedEvents = events
-        .map(
-          (event) => event.captureSessionId == null
-              ? event.copyWith(captureSessionId: event.sourceRunId)
-              : event,
-        )
+        .map((event) => event.captureSessionId == null ? event.copyWith(captureSessionId: event.sourceRunId) : event)
         .toList(growable: false);
-    final encoded = await Isolate.run(
-      _DiagnosticEventEncodeTask(storedEvents).call,
-      debugName: 'mg-read-diagnostics-text-encode',
-    );
+    final encoded = await Isolate.run(_DiagnosticEventEncodeTask(storedEvents).call, debugName: 'mg-read-diagnostics-text-encode');
     _lastEncoderWorkerIsolateId = encoded.workerIsolateId;
     await _exclusive(() async {
       for (final event in storedEvents) {
@@ -266,8 +204,7 @@ final class DiagnosticsPersistence {
               (session) =>
                   anchor == null ||
                   session.startedAtUtcMicros < anchor.$1 ||
-                  (session.startedAtUtcMicros == anchor.$1 &&
-                      session.sessionId.compareTo(anchor.$2) < 0),
+                  (session.startedAtUtcMicros == anchor.$1 && session.sessionId.compareTo(anchor.$2) < 0),
             )
             .toList(growable: false)
           ..sort(_compareSessionsDescending);
@@ -276,9 +213,7 @@ final class DiagnosticsPersistence {
     final tail = page.isEmpty ? null : page.last;
     return DiagnosticPage<DiagnosticSession>(
       items: page,
-      nextCursor: hasMore && tail != null
-          ? _encodeCursor('sessions', tail.startedAtUtcMicros, tail.sessionId)
-          : null,
+      nextCursor: hasMore && tail != null ? _encodeCursor('sessions', tail.startedAtUtcMicros, tail.sessionId) : null,
     );
   }
 
@@ -298,8 +233,7 @@ final class DiagnosticsPersistence {
               (event) =>
                   anchor == null ||
                   event.occurredAtUtcMicros < anchor.$1 ||
-                  (event.occurredAtUtcMicros == anchor.$1 &&
-                      event.eventId.compareTo(anchor.$2) < 0),
+                  (event.occurredAtUtcMicros == anchor.$1 && event.eventId.compareTo(anchor.$2) < 0),
             )
             .toList(growable: false)
           ..sort(_compareEventsDescending);
@@ -308,9 +242,7 @@ final class DiagnosticsPersistence {
     final tail = page.isEmpty ? null : page.last;
     return DiagnosticPage<DiagnosticEvent>(
       items: page,
-      nextCursor: hasMore && tail != null
-          ? _encodeCursor('events', tail.occurredAtUtcMicros, tail.eventId)
-          : null,
+      nextCursor: hasMore && tail != null ? _encodeCursor('events', tail.occurredAtUtcMicros, tail.eventId) : null,
     );
   }
 
@@ -321,9 +253,7 @@ final class DiagnosticsPersistence {
     return _events[eventId];
   }
 
-  Future<DiagnosticStoredCaptureSession?> getCaptureSession(
-    String sessionId,
-  ) async {
+  Future<DiagnosticStoredCaptureSession?> getCaptureSession(String sessionId) async {
     _ensureOpen();
     validateDiagnosticOpaqueId(sessionId, 'sessionId');
     await _writeTail;
@@ -357,9 +287,7 @@ final class DiagnosticsPersistence {
       if (_sessions.containsKey(sessionId)) {
         throw StateError('Diagnostic capture session already exists.');
       }
-      await _appendRecords(sourceRunId, <Map<String, Object?>>[
-        _sessionStartRecord(session),
-      ]);
+      await _appendRecords(sourceRunId, <Map<String, Object?>>[_sessionStartRecord(session)]);
       _sessions[sessionId] = session;
     });
     return session.toPublic();
@@ -373,20 +301,13 @@ final class DiagnosticsPersistence {
       if (session == null || session.state != DiagnosticSessionState.active) {
         return;
       }
-      await _appendRecords(session.sourceRunId, <Map<String, Object?>>[
-        _sessionEndRecord(sessionId, now, 'ended'),
-      ]);
+      await _appendRecords(session.sourceRunId, <Map<String, Object?>>[_sessionEndRecord(sessionId, now, 'ended')]);
       session
         ..state = DiagnosticSessionState.ended
         ..endedAtUtcMicros = now;
       if (session.detailStorage == DiagnosticDetailStorage.memoryOnly) {
         final keys = _attachments.values
-            .where(
-              (item) =>
-                  _events[item.descriptor.eventId]?.captureSessionId ==
-                      sessionId &&
-                  !item.persisted,
-            )
+            .where((item) => _events[item.descriptor.eventId]?.captureSessionId == sessionId && !item.persisted)
             .map((item) => item.detailKey)
             .whereType<String>();
         await detailStore.clearMemoryDetails(keys);
@@ -404,14 +325,8 @@ final class DiagnosticsPersistence {
       final event = _events[descriptor.eventId];
       if (event == null) throw StateError('Attachment event does not exist.');
       final session = _sessions[event.captureSessionId!];
-      final record = _AttachmentRecord(
-        descriptor: descriptor,
-        detailKey: objectKey,
-        persisted: objectKey != null && persisted,
-      );
-      await _appendRecords(event.sourceRunId, <Map<String, Object?>>[
-        _attachmentRecord(record),
-      ]);
+      final record = _AttachmentRecord(descriptor: descriptor, detailKey: objectKey, persisted: objectKey != null && persisted);
+      await _appendRecords(event.sourceRunId, <Map<String, Object?>>[_attachmentRecord(record)]);
       _attachments[descriptor.attachmentId] = record;
       _events[event.eventId] = _eventWithAttachment(event, descriptor);
       final run = _runs[event.sourceRunId];
@@ -429,27 +344,17 @@ final class DiagnosticsPersistence {
     });
   }
 
-  Future<List<DiagnosticAttachmentDescriptor>> listAttachments(
-    String eventId,
-  ) async {
+  Future<List<DiagnosticAttachmentDescriptor>> listAttachments(String eventId) async {
     _ensureOpen();
     validateDiagnosticOpaqueId(eventId, 'eventId');
     await _writeTail;
     final result =
-        _attachments.values
-            .where((item) => item.descriptor.eventId == eventId)
-            .map((item) => item.descriptor)
-            .toList(growable: false)
-          ..sort(
-            (left, right) => left.attachmentId.compareTo(right.attachmentId),
-          );
+        _attachments.values.where((item) => item.descriptor.eventId == eventId).map((item) => item.descriptor).toList(growable: false)
+          ..sort((left, right) => left.attachmentId.compareTo(right.attachmentId));
     return result;
   }
 
-  Stream<List<int>> openAttachment(
-    String attachmentId, {
-    DiagnosticByteRange? range,
-  }) async* {
+  Stream<List<int>> openAttachment(String attachmentId, {DiagnosticByteRange? range}) async* {
     _ensureOpen();
     validateDiagnosticOpaqueId(attachmentId, 'attachmentId');
     await _writeTail;
@@ -467,12 +372,8 @@ final class DiagnosticsPersistence {
   Future<void> recoverInterruptedState() async {
     _ensureOpen();
     final now = _clock().toUtc().microsecondsSinceEpoch;
-    final activeSessions = _sessions.values
-        .where((item) => item.state == DiagnosticSessionState.active)
-        .toList(growable: false);
-    final activeRuns = _runs.values
-        .where((item) => item.state == 'active')
-        .toList(growable: false);
+    final activeSessions = _sessions.values.where((item) => item.state == DiagnosticSessionState.active).toList(growable: false);
+    final activeRuns = _runs.values.where((item) => item.state == 'active').toList(growable: false);
     if (activeSessions.isEmpty && activeRuns.isEmpty) {
       await detailStore.cleanStaging();
       return;
@@ -480,14 +381,10 @@ final class DiagnosticsPersistence {
     await _exclusive(() async {
       final byRun = <String, List<Map<String, Object?>>>{};
       for (final session in activeSessions) {
-        byRun
-            .putIfAbsent(session.sourceRunId, () => <Map<String, Object?>>[])
-            .add(_sessionEndRecord(session.sessionId, now, 'ended'));
+        byRun.putIfAbsent(session.sourceRunId, () => <Map<String, Object?>>[]).add(_sessionEndRecord(session.sessionId, now, 'ended'));
       }
       for (final run in activeRuns) {
-        byRun
-            .putIfAbsent(run.sourceRunId, () => <Map<String, Object?>>[])
-            .add(_runEndRecord(run.sourceRunId, now, 'incomplete'));
+        byRun.putIfAbsent(run.sourceRunId, () => <Map<String, Object?>>[]).add(_runEndRecord(run.sourceRunId, now, 'incomplete'));
       }
       for (final entry in byRun.entries) {
         await _appendRecords(entry.key, entry.value);
@@ -508,19 +405,14 @@ final class DiagnosticsPersistence {
 
   Future<void> reconcileDetails() async {
     _ensureOpen();
-    final referenced = _attachments.values
-        .where((item) => item.persisted && item.detailKey != null)
-        .map((item) => item.detailKey!)
-        .toSet();
+    final referenced = _attachments.values.where((item) => item.persisted && item.detailKey != null).map((item) => item.detailKey!).toSet();
     final stored = await detailStore.listDetailKeys();
     for (final key in stored.difference(referenced)) {
       await detailStore.delete(key);
     }
   }
 
-  Future<DiagnosticMaintenanceResult> enforceRetention(
-    DiagnosticRetentionPolicy policy,
-  ) async {
+  Future<DiagnosticMaintenanceResult> enforceRetention(DiagnosticRetentionPolicy policy) async {
     _ensureOpen();
     policy.validate();
     return _exclusive(() async {
@@ -528,29 +420,13 @@ final class DiagnosticsPersistence {
       final targets = <String>{};
       for (final session in _sessions.values) {
         if (session.state == DiagnosticSessionState.active) continue;
-        final anchor = session.isDefault
-            ? session.startedAtUtcMicros
-            : session.endedAtUtcMicros ?? session.startedAtUtcMicros;
-        final age = session.isDefault
-            ? policy.regularEventAge
-            : policy.captureAge;
+        final anchor = session.isDefault ? session.startedAtUtcMicros : session.endedAtUtcMicros ?? session.startedAtUtcMicros;
+        final age = session.isDefault ? policy.regularEventAge : policy.captureAge;
         if (anchor <= now - age.inMicroseconds) targets.add(session.sessionId);
       }
-      _addByteTrimTargets(
-        targets,
-        sessions: _sessions.values.where((item) => item.isDefault),
-        byteLimit: policy.regularEventBytes,
-      );
-      _addByteTrimTargets(
-        targets,
-        sessions: _sessions.values.where((item) => !item.isDefault),
-        byteLimit: policy.captureBytes,
-      );
-      _addByteTrimTargets(
-        targets,
-        sessions: _sessions.values,
-        byteLimit: policy.globalHardBytes,
-      );
+      _addByteTrimTargets(targets, sessions: _sessions.values.where((item) => item.isDefault), byteLimit: policy.regularEventBytes);
+      _addByteTrimTargets(targets, sessions: _sessions.values.where((item) => !item.isDefault), byteLimit: policy.captureBytes);
+      _addByteTrimTargets(targets, sessions: _sessions.values, byteLimit: policy.globalHardBytes);
       var deletedSessions = 0;
       var deletedEvents = 0;
       var deletedDetails = 0;
@@ -606,8 +482,7 @@ final class DiagnosticsPersistence {
       eventTextBytes: eventBytes,
       detailTextBytes: details.detailTextBytes,
       memoryDetailBytes: details.memoryDetailBytes,
-      logicalStoredBytes:
-          eventBytes + details.detailTextBytes + details.memoryDetailBytes,
+      logicalStoredBytes: eventBytes + details.detailTextBytes + details.memoryDetailBytes,
     );
   }
 
@@ -641,18 +516,10 @@ final class DiagnosticsPersistence {
     return completer.future;
   }
 
-  Future<void> _appendRecords(
-    String sourceRunId,
-    List<Map<String, Object?>> records,
-  ) => _appendEncodedLines(
-    sourceRunId,
-    records.map(jsonEncode).toList(growable: false),
-  );
+  Future<void> _appendRecords(String sourceRunId, List<Map<String, Object?>> records) =>
+      _appendEncodedLines(sourceRunId, records.map(jsonEncode).toList(growable: false));
 
-  Future<void> _appendEncodedLines(
-    String sourceRunId,
-    List<String> lines,
-  ) async {
+  Future<void> _appendEncodedLines(String sourceRunId, List<String> lines) async {
     File? bufferedFile;
     var bufferedBytes = 0;
     var buffer = StringBuffer();
@@ -660,20 +527,14 @@ final class DiagnosticsPersistence {
     Future<void> flushBuffer() async {
       final file = bufferedFile;
       if (file == null || bufferedBytes == 0) return;
-      await file.writeAsString(
-        buffer.toString(),
-        mode: FileMode.append,
-        flush: false,
-      );
+      await file.writeAsString(buffer.toString(), mode: FileMode.append, flush: false);
       buffer = StringBuffer();
       bufferedBytes = 0;
     }
 
     for (final line in lines) {
       final encodedBytes = utf8.encode('$line\n').length;
-      if (_activeSegment == null ||
-          _activeSegmentRunId != sourceRunId ||
-          _activeSegmentBytes + encodedBytes > maxSegmentBytes) {
+      if (_activeSegment == null || _activeSegmentRunId != sourceRunId || _activeSegmentBytes + encodedBytes > maxSegmentBytes) {
         await flushBuffer();
         await _activateNextSegment(sourceRunId);
       }
@@ -735,19 +596,13 @@ final class DiagnosticsPersistence {
         final session = _sessions[record['sessionId']];
         if (session != null) {
           session
-            ..state = _enumByName(
-              DiagnosticSessionState.values,
-              record['state'] as String? ?? 'ended',
-              'session state',
-            )
+            ..state = _enumByName(DiagnosticSessionState.values, record['state'] as String? ?? 'ended', 'session state')
             ..endedAtUtcMicros = record['endedAtUtcMicros'] as int?;
         }
       case 'event':
         final envelope = record['event'];
         if (envelope is! Map) return;
-        final event = _eventCodec.decode(
-          envelope.map((key, value) => MapEntry(key.toString(), value)),
-        );
+        final event = _eventCodec.decode(envelope.map((key, value) => MapEntry(key.toString(), value)));
         _events[event.eventId] = event;
         final lineBytes = utf8.encode('${jsonEncode(record)}\n').length;
         final run = _runs[event.sourceRunId];
@@ -765,21 +620,12 @@ final class DiagnosticsPersistence {
       case 'attachment':
         final value = record['descriptor'];
         if (value is! Map) return;
-        var descriptor = _descriptorFromMap(
-          value.map((key, item) => MapEntry(key.toString(), item)),
-        );
+        var descriptor = _descriptorFromMap(value.map((key, item) => MapEntry(key.toString(), item)));
         final persisted = record['persisted'] == true;
         if (fromDisk && !persisted && descriptor.storedByteLength > 0) {
-          descriptor = _descriptorWithFailure(
-            descriptor,
-            'memoryDetailExpired',
-          );
+          descriptor = _descriptorWithFailure(descriptor, 'memoryDetailExpired');
         }
-        final attachment = _AttachmentRecord(
-          descriptor: descriptor,
-          detailKey: record['detailKey'] as String?,
-          persisted: persisted,
-        );
+        final attachment = _AttachmentRecord(descriptor: descriptor, detailKey: record['detailKey'] as String?, persisted: persisted);
         _attachments[descriptor.attachmentId] = attachment;
         final event = _events[descriptor.eventId];
         if (event != null) {
@@ -790,8 +636,7 @@ final class DiagnosticsPersistence {
               ..attachmentCount += 1
               ..storedBytes += descriptor.storedByteLength;
           }
-          final session =
-              _sessions[event.captureSessionId ?? event.sourceRunId];
+          final session = _sessions[event.captureSessionId ?? event.sourceRunId];
           if (session != null) {
             session
               ..attachmentCount += 1
@@ -801,33 +646,19 @@ final class DiagnosticsPersistence {
     }
   }
 
-  Future<DiagnosticMaintenanceResult> _deleteSessionInternal(
-    String sessionId,
-  ) async {
+  Future<DiagnosticMaintenanceResult> _deleteSessionInternal(String sessionId) async {
     final session = _sessions[sessionId];
     if (session == null) {
-      return const DiagnosticMaintenanceResult(
-        deletedSessions: 0,
-        deletedEvents: 0,
-        deletedObjects: 0,
-        reclaimedBytes: 0,
-      );
+      return const DiagnosticMaintenanceResult(deletedSessions: 0, deletedEvents: 0, deletedObjects: 0, reclaimedBytes: 0);
     }
     if (session.state == DiagnosticSessionState.active) {
       throw StateError('An active diagnostic session cannot be deleted.');
     }
     final sessionIds = session.isDefault
-        ? _sessions.values
-              .where((item) => item.sourceRunId == session.sourceRunId)
-              .map((item) => item.sessionId)
-              .toSet()
+        ? _sessions.values.where((item) => item.sourceRunId == session.sourceRunId).map((item) => item.sessionId).toSet()
         : <String>{sessionId};
     final eventIds = _events.values
-        .where(
-          (event) => session.isDefault
-              ? event.sourceRunId == session.sourceRunId
-              : event.captureSessionId == sessionId,
-        )
+        .where((event) => session.isDefault ? event.sourceRunId == session.sourceRunId : event.captureSessionId == sessionId)
         .map((event) => event.eventId)
         .toSet();
     final attachmentIds = _attachments.values
@@ -859,19 +690,9 @@ final class DiagnosticsPersistence {
     );
   }
 
-  void _addByteTrimTargets(
-    Set<String> targets, {
-    required Iterable<_SessionRecord> sessions,
-    required int byteLimit,
-  }) {
-    final ended =
-        sessions
-            .where((item) => item.state != DiagnosticSessionState.active)
-            .toList(growable: false)
-          ..sort(
-            (left, right) =>
-                left.startedAtUtcMicros.compareTo(right.startedAtUtcMicros),
-          );
+  void _addByteTrimTargets(Set<String> targets, {required Iterable<_SessionRecord> sessions, required int byteLimit}) {
+    final ended = sessions.where((item) => item.state != DiagnosticSessionState.active).toList(growable: false)
+      ..sort((left, right) => left.startedAtUtcMicros.compareTo(right.startedAtUtcMicros));
     var total = sessions.fold<int>(0, (sum, item) => sum + item.storedBytes);
     for (final session in ended) {
       if (total <= byteLimit) break;
@@ -881,62 +702,32 @@ final class DiagnosticsPersistence {
 
   Future<void> _compactCatalog() async {
     final records = <Map<String, Object?>>[];
-    final runs = _runs.values.toList(growable: false)
-      ..sort(
-        (left, right) =>
-            left.startedAtUtcMicros.compareTo(right.startedAtUtcMicros),
-      );
+    final runs = _runs.values.toList(growable: false)..sort((left, right) => left.startedAtUtcMicros.compareTo(right.startedAtUtcMicros));
     for (final run in runs) {
       records.add(_runStartRecord(run));
-      final sessions =
-          _sessions.values
-              .where((item) => item.sourceRunId == run.sourceRunId)
-              .toList(growable: false)
-            ..sort(
-              (left, right) =>
-                  left.startedAtUtcMicros.compareTo(right.startedAtUtcMicros),
-            );
+      final sessions = _sessions.values.where((item) => item.sourceRunId == run.sourceRunId).toList(growable: false)
+        ..sort((left, right) => left.startedAtUtcMicros.compareTo(right.startedAtUtcMicros));
       for (final session in sessions) {
         records.add(_sessionStartRecord(session));
       }
-      final events =
-          _events.values
-              .where((item) => item.sourceRunId == run.sourceRunId)
-              .toList(growable: false)
-            ..sort(
-              (left, right) =>
-                  left.sourceSequence.compareTo(right.sourceSequence),
-            );
+      final events = _events.values.where((item) => item.sourceRunId == run.sourceRunId).toList(growable: false)
+        ..sort((left, right) => left.sourceSequence.compareTo(right.sourceSequence));
       for (final event in events) {
         records.add(_eventRecord(_withoutAttachmentProjection(event)));
-        final attachments = _attachments.values.where(
-          (item) => item.descriptor.eventId == event.eventId,
-        );
+        final attachments = _attachments.values.where((item) => item.descriptor.eventId == event.eventId);
         records.addAll(attachments.map(_attachmentRecord));
       }
       for (final session in sessions) {
         if (session.endedAtUtcMicros != null) {
-          records.add(
-            _sessionEndRecord(
-              session.sessionId,
-              session.endedAtUtcMicros!,
-              session.state.name,
-            ),
-          );
+          records.add(_sessionEndRecord(session.sessionId, session.endedAtUtcMicros!, session.state.name));
         }
       }
       if (run.endedAtUtcMicros != null) {
-        records.add(
-          _runEndRecord(run.sourceRunId, run.endedAtUtcMicros!, run.state),
-        );
+        records.add(_runEndRecord(run.sourceRunId, run.endedAtUtcMicros!, run.state));
       }
     }
     final result = await Isolate.run(
-      _DiagnosticTextRewriteTask(
-        diagnosticsRoot.path,
-        records,
-        maxSegmentBytes,
-      ).call,
+      _DiagnosticTextRewriteTask(diagnosticsRoot.path, records, maxSegmentBytes).call,
       debugName: 'mg-read-diagnostics-text-compact',
     );
     _lastEncoderWorkerIsolateId = result.workerIsolateId;
@@ -956,43 +747,35 @@ final class DiagnosticsPersistence {
     if (filter.states.isNotEmpty && !filter.states.contains(session.state)) {
       return false;
     }
-    if (filter.startedAfterUtcMicros case final value?
-        when session.startedAtUtcMicros < value) {
+    if (filter.startedAfterUtcMicros case final value? when session.startedAtUtcMicros < value) {
       return false;
     }
-    if (filter.startedBeforeUtcMicros case final value?
-        when session.startedAtUtcMicros > value) {
+    if (filter.startedBeforeUtcMicros case final value? when session.startedAtUtcMicros > value) {
       return false;
     }
     return true;
   }
 
   bool _matchesEvent(DiagnosticEvent event, DiagnosticEventFilter filter) {
-    if (filter.sessionId case final value?
-        when event.captureSessionId != value) {
+    if (filter.sessionId case final value? when event.captureSessionId != value) {
       return false;
     }
     if (filter.traceId case final value? when event.traceId != value) {
       return false;
     }
-    if (filter.minimumSeverity case final value?
-        when event.severity.index < value.index) {
+    if (filter.minimumSeverity case final value? when event.severity.index < value.index) {
       return false;
     }
-    if (filter.components.isNotEmpty &&
-        !filter.components.contains(event.component)) {
+    if (filter.components.isNotEmpty && !filter.components.contains(event.component)) {
       return false;
     }
-    if (filter.eventNames.isNotEmpty &&
-        !filter.eventNames.contains(event.eventName)) {
+    if (filter.eventNames.isNotEmpty && !filter.eventNames.contains(event.eventName)) {
       return false;
     }
-    if (filter.occurredAfterUtcMicros case final value?
-        when event.occurredAtUtcMicros < value) {
+    if (filter.occurredAfterUtcMicros case final value? when event.occurredAtUtcMicros < value) {
       return false;
     }
-    if (filter.occurredBeforeUtcMicros case final value?
-        when event.occurredAtUtcMicros > value) {
+    if (filter.occurredBeforeUtcMicros case final value? when event.occurredAtUtcMicros > value) {
       return false;
     }
     return true;
@@ -1008,501 +791,3 @@ final class DiagnosticsPersistence {
     if (_closed) throw StateError('DiagnosticsPersistence is closed.');
   }
 }
-
-final class _RunRecord {
-  _RunRecord({
-    required this.sourceRunId,
-    required this.source,
-    required this.startedAtUtcMicros,
-  });
-
-  final String sourceRunId;
-  final DiagnosticSource source;
-  final int startedAtUtcMicros;
-  int? endedAtUtcMicros;
-  String state = 'active';
-  int eventCount = 0;
-  int attachmentCount = 0;
-  int storedBytes = 0;
-}
-
-final class _SessionRecord {
-  _SessionRecord({
-    required this.sessionId,
-    required this.sourceRunId,
-    required this.source,
-    required this.startedAtUtcMicros,
-    required this.expiresAtUtcMicros,
-    required this.payloadKind,
-    required this.maxStoredBytes,
-    required Set<String> components,
-    required Set<String> origins,
-    required this.isDefault,
-    required this.detailStorage,
-  }) : components = Set<String>.unmodifiable(components),
-       origins = Set<String>.unmodifiable(origins);
-
-  final String sessionId;
-  final String sourceRunId;
-  final DiagnosticSource source;
-  final int startedAtUtcMicros;
-  final int? expiresAtUtcMicros;
-  final DiagnosticPayloadKind payloadKind;
-  final int maxStoredBytes;
-  final Set<String> components;
-  final Set<String> origins;
-  final bool isDefault;
-  final DiagnosticDetailStorage detailStorage;
-  int? endedAtUtcMicros;
-  DiagnosticSessionState state = DiagnosticSessionState.active;
-  int eventCount = 0;
-  int attachmentCount = 0;
-  int storedBytes = 0;
-
-  DiagnosticSession toPublic() => DiagnosticSession(
-    sessionId: sessionId,
-    source: source,
-    sourceRunId: sourceRunId,
-    startedAtUtcMicros: startedAtUtcMicros,
-    endedAtUtcMicros: endedAtUtcMicros,
-    expiresAtUtcMicros: expiresAtUtcMicros,
-    state: state,
-    payloadKind: payloadKind,
-    eventCount: eventCount,
-    attachmentCount: attachmentCount,
-    storedBytes: storedBytes,
-  );
-
-  DiagnosticStoredCaptureSession toStored() => DiagnosticStoredCaptureSession(
-    session: toPublic(),
-    maxStoredBytes: maxStoredBytes,
-    components: components,
-    origins: origins,
-    isDefault: isDefault,
-    detailStorage: detailStorage,
-  );
-}
-
-final class _AttachmentRecord {
-  const _AttachmentRecord({
-    required this.descriptor,
-    required this.detailKey,
-    required this.persisted,
-  });
-
-  final DiagnosticAttachmentDescriptor descriptor;
-  final String? detailKey;
-  final bool persisted;
-}
-
-final class _DiagnosticEncodedEvents {
-  const _DiagnosticEncodedEvents(this.lines, this.workerIsolateId);
-
-  final List<String> lines;
-  final int workerIsolateId;
-}
-
-final class _DiagnosticEventEncodeTask {
-  const _DiagnosticEventEncodeTask(this.events);
-
-  final List<DiagnosticEvent> events;
-
-  _DiagnosticEncodedEvents call() {
-    const codec = DiagnosticEventCodec();
-    return _DiagnosticEncodedEvents(
-      events
-          .map(
-            (event) => jsonEncode(<String, Object?>{
-              'textFormatVersion': DiagnosticsPersistence.textFormatVersion,
-              'recordType': 'event',
-              'event': codec.encode(event),
-            }),
-          )
-          .toList(growable: false),
-      Isolate.current.hashCode,
-    );
-  }
-}
-
-final class _DiagnosticTextLoadResult {
-  const _DiagnosticTextLoadResult({
-    required this.records,
-    required this.segmentBytes,
-    required this.workerIsolateId,
-  });
-
-  final List<Map<String, Object?>> records;
-  final Map<String, int> segmentBytes;
-  final int workerIsolateId;
-}
-
-final class _DiagnosticTextLoadTask {
-  const _DiagnosticTextLoadTask(this.eventsPath);
-
-  final String eventsPath;
-
-  _DiagnosticTextLoadResult call() {
-    final root = Directory(eventsPath);
-    final files =
-        root
-            .listSync(followLinks: false)
-            .whereType<File>()
-            .where((file) => file.path.endsWith('.txt'))
-            .toList(growable: false)
-          ..sort((left, right) => left.path.compareTo(right.path));
-    final records = <Map<String, Object?>>[];
-    final segmentBytes = <String, int>{};
-    for (final file in files) {
-      var bytes = file.readAsBytesSync();
-      final lastNewline = bytes.lastIndexOf(0x0a);
-      final completeLength = lastNewline < 0 ? 0 : lastNewline + 1;
-      if (completeLength != bytes.length) {
-        final handle = file.openSync(mode: FileMode.writeOnlyAppend);
-        handle.truncateSync(completeLength);
-        handle.closeSync();
-        bytes = bytes.sublist(0, completeLength);
-      }
-      final name = file.uri.pathSegments.last;
-      segmentBytes[name] = completeLength;
-      if (bytes.isEmpty) continue;
-      final text = utf8.decode(bytes, allowMalformed: false);
-      for (final line in const LineSplitter().convert(text)) {
-        if (line.isEmpty) continue;
-        try {
-          final value = jsonDecode(line);
-          if (value is Map) {
-            records.add(
-              value.map((key, item) => MapEntry(key.toString(), item)),
-            );
-          }
-        } on FormatException {
-          // A malformed complete line is isolated; later records stay usable.
-        }
-      }
-    }
-    return _DiagnosticTextLoadResult(
-      records: records,
-      segmentBytes: segmentBytes,
-      workerIsolateId: Isolate.current.hashCode,
-    );
-  }
-}
-
-final class _DiagnosticTextRewriteResult {
-  const _DiagnosticTextRewriteResult(this.segmentNames, this.workerIsolateId);
-
-  final List<String> segmentNames;
-  final int workerIsolateId;
-}
-
-final class _DiagnosticTextRewriteTask {
-  const _DiagnosticTextRewriteTask(
-    this.diagnosticsPath,
-    this.records,
-    this.maxSegmentBytes,
-  );
-
-  final String diagnosticsPath;
-  final List<Map<String, Object?>> records;
-  final int maxSegmentBytes;
-
-  _DiagnosticTextRewriteResult call() {
-    final separator = Platform.pathSeparator;
-    final events = Directory('$diagnosticsPath${separator}events');
-    final staging = Directory('$diagnosticsPath${separator}staging');
-    staging.createSync(recursive: true);
-    final staged = <File>[];
-    var segment = 1;
-    var currentBytes = 0;
-    var current = File(
-      '${staging.path}${separator}rewrite-${segment.toString().padLeft(6, '0')}.partial.txt',
-    );
-    for (final record in records) {
-      final line = '${jsonEncode(record)}\n';
-      final bytes = utf8.encode(line).length;
-      if (currentBytes > 0 && currentBytes + bytes > maxSegmentBytes) {
-        staged.add(current);
-        segment += 1;
-        currentBytes = 0;
-        current = File(
-          '${staging.path}${separator}rewrite-${segment.toString().padLeft(6, '0')}.partial.txt',
-        );
-      }
-      current.writeAsStringSync(line, mode: FileMode.append, flush: false);
-      currentBytes += bytes;
-    }
-    if (current.existsSync()) staged.add(current);
-    for (final entity in events.listSync(followLinks: false)) {
-      if (entity is File && entity.path.endsWith('.txt')) entity.deleteSync();
-    }
-    final names = <String>[];
-    for (var index = 0; index < staged.length; index += 1) {
-      final name =
-          'run-compacted-${(index + 1).toString().padLeft(6, '0')}.txt';
-      staged[index].renameSync('${events.path}$separator$name');
-      names.add(name);
-    }
-    return _DiagnosticTextRewriteResult(names, Isolate.current.hashCode);
-  }
-}
-
-Map<String, Object?> _baseRecord(String recordType) => <String, Object?>{
-  'textFormatVersion': DiagnosticsPersistence.textFormatVersion,
-  'recordType': recordType,
-};
-
-Map<String, Object?> _runStartRecord(_RunRecord run) => <String, Object?>{
-  ..._baseRecord('run.start'),
-  'sourceRunId': run.sourceRunId,
-  'source': run.source.name,
-  'startedAtUtcMicros': run.startedAtUtcMicros,
-};
-
-Map<String, Object?> _runEndRecord(
-  String sourceRunId,
-  int endedAtUtcMicros,
-  String state,
-) => <String, Object?>{
-  ..._baseRecord('run.end'),
-  'sourceRunId': sourceRunId,
-  'endedAtUtcMicros': endedAtUtcMicros,
-  'state': state,
-};
-
-Map<String, Object?> _sessionStartRecord(_SessionRecord session) =>
-    <String, Object?>{
-      ..._baseRecord('session.start'),
-      'sessionId': session.sessionId,
-      'sourceRunId': session.sourceRunId,
-      'source': session.source.name,
-      'startedAtUtcMicros': session.startedAtUtcMicros,
-      'expiresAtUtcMicros': session.expiresAtUtcMicros,
-      'payloadKind': session.payloadKind.name,
-      'maxStoredBytes': session.maxStoredBytes,
-      'components': session.components.toList(growable: false)..sort(),
-      'origins': session.origins.toList(growable: false)..sort(),
-      'isDefault': session.isDefault,
-      'detailStorage': session.detailStorage.name,
-    };
-
-Map<String, Object?> _sessionEndRecord(
-  String sessionId,
-  int endedAtUtcMicros,
-  String state,
-) => <String, Object?>{
-  ..._baseRecord('session.end'),
-  'sessionId': sessionId,
-  'endedAtUtcMicros': endedAtUtcMicros,
-  'state': state,
-};
-
-Map<String, Object?> _eventRecord(DiagnosticEvent event) => <String, Object?>{
-  ..._baseRecord('event'),
-  'event': const DiagnosticEventCodec().encode(event),
-};
-
-Map<String, Object?> _attachmentRecord(_AttachmentRecord attachment) =>
-    <String, Object?>{
-      ..._baseRecord('attachment'),
-      'descriptor': _descriptorToMap(attachment.descriptor),
-      'detailKey': attachment.detailKey,
-      'persisted': attachment.persisted,
-    };
-
-_RunRecord _runFromRecord(Map<String, Object?> record) => _RunRecord(
-  sourceRunId: record['sourceRunId'] as String,
-  source: _enumByName(
-    DiagnosticSource.values,
-    record['source'] as String,
-    'source',
-  ),
-  startedAtUtcMicros: record['startedAtUtcMicros'] as int,
-);
-
-_SessionRecord _sessionFromRecord(Map<String, Object?> record) =>
-    _SessionRecord(
-      sessionId: record['sessionId'] as String,
-      sourceRunId: record['sourceRunId'] as String,
-      source: _enumByName(
-        DiagnosticSource.values,
-        record['source'] as String,
-        'source',
-      ),
-      startedAtUtcMicros: record['startedAtUtcMicros'] as int,
-      expiresAtUtcMicros: record['expiresAtUtcMicros'] as int?,
-      payloadKind: _enumByName(
-        DiagnosticPayloadKind.values,
-        record['payloadKind'] as String,
-        'payload kind',
-      ),
-      maxStoredBytes: record['maxStoredBytes'] as int,
-      components: _stringSet(record['components']),
-      origins: _stringSet(record['origins']),
-      isDefault: record['isDefault'] == true,
-      detailStorage: _enumByName(
-        DiagnosticDetailStorage.values,
-        record['detailStorage'] as String? ?? 'persistToText',
-        'detail storage',
-      ),
-    );
-
-Map<String, Object?> _descriptorToMap(
-  DiagnosticAttachmentDescriptor descriptor,
-) => <String, Object?>{
-  'attachmentId': descriptor.attachmentId,
-  'eventId': descriptor.eventId,
-  'kind': descriptor.kind,
-  'mediaType': descriptor.mediaType,
-  'charset': descriptor.charset,
-  'formatId': descriptor.formatId,
-  'formatVersion': descriptor.formatVersion,
-  'schemaId': descriptor.schemaId,
-  'schemaVersion': descriptor.schemaVersion,
-  'privacyClass': descriptor.privacyClass.name,
-  'captureState': descriptor.captureState.name,
-  'rawByteLength': descriptor.rawByteLength,
-  'storedByteLength': descriptor.storedByteLength,
-  'sha256': descriptor.sha256,
-  'storageCodec': descriptor.storageCodec.name,
-  'redactionVersion': descriptor.redactionVersion,
-  'truncationReason': descriptor.truncationReason,
-};
-
-DiagnosticAttachmentDescriptor _descriptorFromMap(Map<String, Object?> value) =>
-    DiagnosticAttachmentDescriptor(
-      attachmentId: value['attachmentId'] as String,
-      eventId: value['eventId'] as String,
-      kind: value['kind'] as String,
-      mediaType: value['mediaType'] as String,
-      charset: value['charset'] as String?,
-      formatId: value['formatId'] as String,
-      formatVersion: value['formatVersion'] as int,
-      schemaId: value['schemaId'] as String?,
-      schemaVersion: value['schemaVersion'] as int?,
-      privacyClass: _enumByName(
-        DiagnosticPrivacyClass.values,
-        value['privacyClass'] as String,
-        'privacy class',
-      ),
-      captureState: _enumByName(
-        DiagnosticCaptureState.values,
-        value['captureState'] as String,
-        'capture state',
-      ),
-      rawByteLength: value['rawByteLength'] as int,
-      storedByteLength: value['storedByteLength'] as int,
-      sha256: value['sha256'] as String?,
-      storageCodec: _enumByName(
-        DiagnosticStorageCodec.values,
-        value['storageCodec'] as String,
-        'storage codec',
-      ),
-      redactionVersion: value['redactionVersion'] as int,
-      truncationReason: value['truncationReason'] as String?,
-    );
-
-DiagnosticAttachmentDescriptor _descriptorWithFailure(
-  DiagnosticAttachmentDescriptor descriptor,
-  String reason,
-) => DiagnosticAttachmentDescriptor(
-  attachmentId: descriptor.attachmentId,
-  eventId: descriptor.eventId,
-  kind: descriptor.kind,
-  mediaType: descriptor.mediaType,
-  charset: descriptor.charset,
-  formatId: descriptor.formatId,
-  formatVersion: descriptor.formatVersion,
-  schemaId: descriptor.schemaId,
-  schemaVersion: descriptor.schemaVersion,
-  privacyClass: descriptor.privacyClass,
-  captureState: DiagnosticCaptureState.failed,
-  rawByteLength: descriptor.rawByteLength,
-  storedByteLength: 0,
-  storageCodec: descriptor.storageCodec,
-  redactionVersion: descriptor.redactionVersion,
-  truncationReason: reason,
-);
-
-DiagnosticEvent _eventWithAttachment(
-  DiagnosticEvent event,
-  DiagnosticAttachmentDescriptor descriptor,
-) => event.copyWith(
-  attachmentCount: event.attachmentCount + 1,
-  capturedBytes: event.capturedBytes + descriptor.storedByteLength,
-  flags: <DiagnosticEventFlag>{
-    ...event.flags,
-    if (descriptor.captureState == DiagnosticCaptureState.truncated)
-      DiagnosticEventFlag.truncated,
-    if (descriptor.captureState == DiagnosticCaptureState.policyBlocked ||
-        descriptor.captureState == DiagnosticCaptureState.pressureDropped)
-      DiagnosticEventFlag.droppedPayload,
-  },
-);
-
-DiagnosticEvent _withoutAttachmentProjection(DiagnosticEvent event) =>
-    event.copyWith(attachmentCount: 0, capturedBytes: 0);
-
-Set<String> _stringSet(Object? value) {
-  if (value is! List) return const <String>{};
-  return value.whereType<String>().toSet();
-}
-
-int _compareSessionsDescending(
-  DiagnosticSession left,
-  DiagnosticSession right,
-) {
-  final time = right.startedAtUtcMicros.compareTo(left.startedAtUtcMicros);
-  return time != 0 ? time : right.sessionId.compareTo(left.sessionId);
-}
-
-int _compareEventsDescending(DiagnosticEvent left, DiagnosticEvent right) {
-  final time = right.occurredAtUtcMicros.compareTo(left.occurredAtUtcMicros);
-  return time != 0 ? time : right.eventId.compareTo(left.eventId);
-}
-
-DiagnosticCursor _encodeCursor(String kind, int micros, String id) {
-  final bytes = utf8.encode(jsonEncode(<Object?>[kind, micros, id]));
-  return DiagnosticCursor(base64UrlEncode(bytes).replaceAll('=', ''));
-}
-
-(int, String) _decodeCursor(DiagnosticCursor cursor, String kind) {
-  final padding = '=' * ((4 - cursor.value.length % 4) % 4);
-  final value = jsonDecode(
-    utf8.decode(base64Url.decode('${cursor.value}$padding')),
-  );
-  if (value is! List ||
-      value.length != 3 ||
-      value[0] != kind ||
-      value[1] is! int ||
-      value[2] is! String) {
-    throw const FormatException('Diagnostic cursor is invalid.');
-  }
-  return (value[1] as int, value[2] as String);
-}
-
-T _enumByName<T extends Enum>(List<T> values, String name, String field) {
-  for (final value in values) {
-    if (value.name == name) return value;
-  }
-  throw FormatException('Unknown diagnostic $field: $name.');
-}
-
-Future<void> _removeLegacyDatabaseArtifacts(Directory root) async {
-  for (final name in <String>[
-    'index.sqlite',
-    'index.sqlite-wal',
-    'index.sqlite-shm',
-    'index.db',
-    'index.db-wal',
-    'index.db-shm',
-  ]) {
-    final file = File('${root.path}${Platform.pathSeparator}$name');
-    if (await file.exists()) await file.delete();
-  }
-  for (final name in <String>['objects', 'exports']) {
-    final directory = Directory('${root.path}${Platform.pathSeparator}$name');
-    if (await directory.exists()) await directory.delete(recursive: true);
-  }
-}
-
-DateTime _utcNow() => DateTime.now().toUtc();

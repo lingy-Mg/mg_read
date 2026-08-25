@@ -1,0 +1,15 @@
+name: Source file size
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  source-file-size:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enforce source file-size policy
+        shell: pwsh
+        run: ./tools/check_source_file_sizes.ps1

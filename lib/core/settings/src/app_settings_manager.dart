@@ -1,3 +1,17 @@
+/// 应用全局设置管理器。
+///
+/// 职责：
+/// - 提供内存优先的设置读取、事务修改和状态通知。
+/// - 串行化持久化、冲突合并、重试和后台命令。
+///
+/// 注意：
+/// - 热读取不得触发磁盘 IO；持久化必须异步且可恢复。
+/// - 关闭、重试和 isolate 回调不得覆盖较新的本地事务。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:async';
 import 'dart:isolate';
 import 'dart:math' as math;
@@ -10,35 +24,8 @@ import 'settings_registry.dart';
 import 'settings_status.dart';
 import 'settings_store.dart';
 
-typedef SettingsStoreFactory = Future<SettingsStore> Function();
-typedef SettingsClock = DateTime Function();
-
-final class SettingsPersistencePolicy {
-  const SettingsPersistencePolicy({
-    this.debounce = const Duration(milliseconds: 300),
-    this.retryBaseDelay = const Duration(milliseconds: 300),
-    this.retryMaxDelay = const Duration(seconds: 5),
-    this.maxConflictRetries = 3,
-    this.flushRetryAttempts = 3,
-    this.closeTimeout = const Duration(seconds: 2),
-  });
-
-  final Duration debounce;
-  final Duration retryBaseDelay;
-  final Duration retryMaxDelay;
-  final int maxConflictRetries;
-  final int flushRetryAttempts;
-  final Duration closeTimeout;
-}
-
-final class SettingsReadOnlyException implements Exception {
-  const SettingsReadOnlyException(this.documentKind);
-
-  final String documentKind;
-
-  @override
-  String toString() => 'SettingsReadOnlyException($documentKind)';
-}
+part 'app_settings_contract.dart';
+part 'app_settings_mutations.dart';
 
 final class AppSettingsManager {
   factory AppSettingsManager({
@@ -56,8 +43,7 @@ final class AppSettingsManager {
     if (registry != null && keys != null) {
       throw ArgumentError('Provide SettingsRegistry or keys, not both.');
     }
-    final effectiveRegistry =
-        registry ?? SettingsRegistry.fromKeys(keys ?? const []);
+    final effectiveRegistry = registry ?? SettingsRegistry.fromKeys(keys ?? const []);
     return AppSettingsManager._(
       store: store,
       storeFactory: storeFactory,
@@ -76,10 +62,7 @@ final class AppSettingsManager {
     required this._clock,
     required this._diagnostics,
   }) : _registry = registry,
-       _documents = {
-         for (final definition in registry.documents.values)
-           definition.kind: _RuntimeDocument(definition),
-       },
+       _documents = {for (final definition in registry.documents.values) definition.kind: _RuntimeDocument(definition)},
        _commandReceiver = ReceivePort('mg-read-settings-owner') {
     _commandReceiver.listen(_handleBackgroundCommand);
     _snapshot = SettingsSnapshot.withDefaults(registry.defaultValues);
@@ -94,12 +77,9 @@ final class AppSettingsManager {
   final DiagnosticsManager? _diagnostics;
   final Map<String, _RuntimeDocument> _documents;
   final ReceivePort _commandReceiver;
-  final StreamController<SettingsSnapshot> _changes =
-      StreamController<SettingsSnapshot>.broadcast(sync: true);
-  final StreamController<SettingsChangeEvent> _changeEvents =
-      StreamController<SettingsChangeEvent>.broadcast(sync: true);
-  final StreamController<SettingsStatus> _statusChanges =
-      StreamController<SettingsStatus>.broadcast(sync: true);
+  final StreamController<SettingsSnapshot> _changes = StreamController<SettingsSnapshot>.broadcast(sync: true);
+  final StreamController<SettingsChangeEvent> _changeEvents = StreamController<SettingsChangeEvent>.broadcast(sync: true);
+  final StreamController<SettingsStatus> _statusChanges = StreamController<SettingsStatus>.broadcast(sync: true);
 
   late SettingsSnapshot _snapshot;
   SettingsState _state = SettingsState.loading;
@@ -120,8 +100,7 @@ final class AppSettingsManager {
   Stream<SettingsChangeEvent> get changeEvents => _changeEvents.stream;
   Stream<SettingsStatus> get statusChanges => _statusChanges.stream;
   SendPort get backgroundCommandPort => _commandReceiver.sendPort;
-  BackgroundSettingsClient get backgroundClient =>
-      BackgroundSettingsClient(backgroundCommandPort);
+  BackgroundSettingsClient get backgroundClient => BackgroundSettingsClient(backgroundCommandPort);
 
   T get<T>(SettingKey<T> key) {
     _requireRegisteredKey(key);
@@ -136,9 +115,7 @@ final class AppSettingsManager {
     }
     final span = _diagnostics?.startSpan(
       AppDiagnosticEvents.settingsInitialize,
-      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-        'settingCount': DiagnosticValue.int64(_registry.keys.length),
-      }),
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{'settingCount': DiagnosticValue.int64(_registry.keys.length)}),
     );
     SettingsStore? newlyOpenedStore;
     try {
@@ -147,9 +124,7 @@ final class AppSettingsManager {
         if (_isClosingOrClosed) {
           await _closeLateStore(newlyOpenedStore);
           span?.cancel(
-            attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-              'errorCode': DiagnosticValue.string('settings_closing'),
-            }),
+            attributes: DiagnosticObjectValue(<String, DiagnosticValue>{'errorCode': DiagnosticValue.string('settings_closing')}),
           );
           return;
         }
@@ -157,11 +132,7 @@ final class AppSettingsManager {
       }
       final loaded = await _store!.loadAll(_registry.documents.values);
       if (_state != SettingsState.loading) {
-        span?.cancel(
-          attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-            'errorCode': DiagnosticValue.string('state_changed'),
-          }),
-        );
+        span?.cancel(attributes: DiagnosticObjectValue(<String, DiagnosticValue>{'errorCode': DiagnosticValue.string('state_changed')}));
         return;
       }
       final seen = <String>{};
@@ -172,49 +143,36 @@ final class AppSettingsManager {
         }
         _loadDocument(_documents[document.kind]!, document);
       }
-      _snapshot = SettingsSnapshot.withDefaults(_registry.defaultValues)
-          .replaceGroups({
-            for (final entry in _documents.entries)
-              entry.key: entry.value.decodedValues,
-          });
+      _snapshot = SettingsSnapshot.withDefaults(
+        _registry.defaultValues,
+      ).replaceGroups({for (final entry in _documents.entries) entry.key: entry.value.decodedValues});
       _state = SettingsState.ready;
       _recomputeOperationalState();
       span?.complete(
-        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-          'settingCount': DiagnosticValue.int64(_registry.keys.length),
-        }),
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{'settingCount': DiagnosticValue.int64(_registry.keys.length)}),
       );
     } catch (_) {
       if (_isClosingOrClosed) {
         if (newlyOpenedStore != null && !identical(newlyOpenedStore, _store)) {
           await _closeLateStore(newlyOpenedStore);
         }
-        span?.cancel(
-          attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-            'errorCode': DiagnosticValue.string('settings_closing'),
-          }),
-        );
+        span?.cancel(attributes: DiagnosticObjectValue(<String, DiagnosticValue>{'errorCode': DiagnosticValue.string('settings_closing')}));
         return;
       }
       _state = SettingsState.failed;
       _globalErrorCode = 'initialization_failed';
       span?.fail(
-        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-          'errorCode': DiagnosticValue.string('initialization_failed'),
-        }),
+        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{'errorCode': DiagnosticValue.string('initialization_failed')}),
       );
     }
     _emitStatus(recomputeState: false);
   }
 
-  Future<void> set<T>(SettingKey<T> key, T value) =>
-      transaction((editor) => editor.set(key, value));
+  Future<void> set<T>(SettingKey<T> key, T value) => transaction((editor) => editor.set(key, value));
 
-  Future<void> reset<T>(SettingKey<T> key) =>
-      transaction((editor) => editor.reset(key));
+  Future<void> reset<T>(SettingKey<T> key) => transaction((editor) => editor.reset(key));
 
-  Future<void> resetGroup(String documentKind) =>
-      transaction((editor) => editor.resetGroup(documentKind));
+  Future<void> resetGroup(String documentKind) => transaction((editor) => editor.resetGroup(documentKind));
 
   Future<void> transaction(
     void Function(SettingsTransaction editor) action, {
@@ -249,24 +207,21 @@ final class AppSettingsManager {
         diagnostics.runSpanSync<(int, int, String)>(
           AppDiagnosticEvents.settingsMutation,
           (_) => apply(),
-          startAttributes: () =>
-              DiagnosticObjectValue(<String, DiagnosticValue>{
-                'operation': DiagnosticValue.string('transaction'),
-                'source': DiagnosticValue.string(source.name),
-              }),
-          successAttributes: (result) =>
-              DiagnosticObjectValue(<String, DiagnosticValue>{
-                'operation': DiagnosticValue.string(result.$3),
-                'keyCount': DiagnosticValue.int64(result.$1),
-                'documentCount': DiagnosticValue.int64(result.$2),
-                'source': DiagnosticValue.string(source.name),
-              }),
-          errorAttributes: (_) =>
-              DiagnosticObjectValue(<String, DiagnosticValue>{
-                'operation': DiagnosticValue.string('transaction'),
-                'source': DiagnosticValue.string(source.name),
-                'errorCode': DiagnosticValue.string('mutation_rejected'),
-              }),
+          startAttributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+            'operation': DiagnosticValue.string('transaction'),
+            'source': DiagnosticValue.string(source.name),
+          }),
+          successAttributes: (result) => DiagnosticObjectValue(<String, DiagnosticValue>{
+            'operation': DiagnosticValue.string(result.$3),
+            'keyCount': DiagnosticValue.int64(result.$1),
+            'documentCount': DiagnosticValue.int64(result.$2),
+            'source': DiagnosticValue.string(source.name),
+          }),
+          errorAttributes: (_) => DiagnosticObjectValue(<String, DiagnosticValue>{
+            'operation': DiagnosticValue.string('transaction'),
+            'source': DiagnosticValue.string(source.name),
+            'errorCode': DiagnosticValue.string('mutation_rejected'),
+          }),
         );
       }
       return Future<void>.value();
@@ -327,16 +282,11 @@ final class AppSettingsManager {
     return decoded;
   }
 
-  void _applyMutations(
-    List<_SettingsMutation> operations, {
-    required SettingsChangeSource source,
-  }) {
+  void _applyMutations(List<_SettingsMutation> operations, {required SettingsChangeSource source}) {
     if (operations.isEmpty) {
       return;
     }
-    final affectedKinds = {
-      for (final operation in operations) operation.documentKind,
-    };
+    final affectedKinds = {for (final operation in operations) operation.documentKind};
     for (final kind in affectedKinds) {
       final document = _documents[kind]!;
       if (document.readOnly) {
@@ -350,33 +300,23 @@ final class AppSettingsManager {
     for (final operation in operations) {
       final kind = operation.documentKind;
       final document = _documents[kind]!;
-      final rawGroup = raw.putIfAbsent(
-        kind,
-        () => Map<String, Object?>.of(document.values),
-      );
-      final decodedGroup = decoded.putIfAbsent(
-        kind,
-        () => Map<String, Object?>.of(document.decodedValues),
-      );
+      final rawGroup = raw.putIfAbsent(kind, () => Map<String, Object?>.of(document.values));
+      final decodedGroup = decoded.putIfAbsent(kind, () => Map<String, Object?>.of(document.decodedValues));
       final changed = changedByKind.putIfAbsent(kind, () => <String>{});
       switch (operation) {
         case _SetMutation(:final key, :final value, :final encoded):
-          if (!rawGroup.containsKey(key.id) ||
-              !_jsonEquals(rawGroup[key.id], encoded)) {
+          if (!rawGroup.containsKey(key.id) || !_jsonEquals(rawGroup[key.id], encoded)) {
             rawGroup[key.id] = encoded;
             decodedGroup[key.id] = value;
             changed.add(key.id);
           }
         case _ResetMutation(:final key):
-          if (rawGroup.remove(key.id) != null ||
-              decodedGroup.remove(key.id) != null ||
-              document.values.containsKey(key.id)) {
+          if (rawGroup.remove(key.id) != null || decodedGroup.remove(key.id) != null || document.values.containsKey(key.id)) {
             changed.add(key.id);
           }
         case _ResetGroupMutation(:final documentKind):
           for (final key in _registry.keysForDocument(documentKind)) {
-            if (rawGroup.containsKey(key.id) ||
-                decodedGroup.containsKey(key.id)) {
+            if (rawGroup.containsKey(key.id) || decodedGroup.containsKey(key.id)) {
               rawGroup.remove(key.id);
               decodedGroup.remove(key.id);
               changed.add(key.id);
@@ -396,11 +336,7 @@ final class AppSettingsManager {
       document.values = raw[kind]!;
       document.decodedValues = decoded[kind]!;
       document.generation++;
-      document.patch = _buildPatch(
-        document.persistedValues,
-        document.values,
-        _registry.keysForDocument(kind),
-      );
+      document.patch = _buildPatch(document.persistedValues, document.values, _registry.keysForDocument(kind));
       if (document.patch.isEmpty) {
         document.persistedGeneration = document.generation;
         document.transientErrorCode = null;
@@ -418,12 +354,7 @@ final class AppSettingsManager {
     }
     _snapshot = _snapshot.replaceGroups(replacements);
     _emitStatus();
-    final event = SettingsChangeEvent(
-      snapshot: _snapshot,
-      changedKeyIds: changedKeys,
-      source: source,
-      changedAtUtc: _clock().toUtc(),
-    );
+    final event = SettingsChangeEvent(snapshot: _snapshot, changedKeyIds: changedKeys, source: source, changedAtUtc: _clock().toUtc());
     if (!_streamsClosed) {
       _changes.add(_snapshot);
       _changeEvents.add(event);
@@ -446,10 +377,7 @@ final class AppSettingsManager {
     document.timer?.cancel();
     final multiplier = math.pow(2, math.max(0, document.retryCount - 1));
     final requested = _policy.retryBaseDelay.inMilliseconds * multiplier;
-    final milliseconds = math.min(
-      requested.round(),
-      _policy.retryMaxDelay.inMilliseconds,
-    );
+    final milliseconds = math.min(requested.round(), _policy.retryMaxDelay.inMilliseconds);
     document.timer = Timer(Duration(milliseconds: milliseconds), () {
       document.timer = null;
       _dueKinds.add(document.definition.kind);
@@ -483,8 +411,7 @@ final class AppSettingsManager {
   }
 
   Future<void> _persistKinds(Set<String> kinds) async {
-    var documents = [for (final kind in kinds) _documents[kind]!]
-      ..removeWhere((document) => !document.dirty || document.readOnly);
+    var documents = [for (final kind in kinds) _documents[kind]!]..removeWhere((document) => !document.dirty || document.readOnly);
     if (documents.isEmpty || _store == null) {
       return;
     }
@@ -535,25 +462,19 @@ final class AppSettingsManager {
         }
         for (final capture in captures) {
           final result = byKind[capture.document.definition.kind];
-          if (result == null ||
-              result.id != capture.document.definition.id ||
-              result.revision == null) {
+          if (result == null || result.id != capture.document.definition.id || result.revision == null) {
             throw const SettingsStoreFailure('invalid_write_result');
           }
           _applyWriteSuccess(capture, result);
         }
         _emitStatus();
-        final revisions = saved
-            .map((document) => document.revision ?? 0)
-            .toList(growable: false);
+        final revisions = saved.map((document) => document.revision ?? 0).toList(growable: false);
         span?.complete(
           attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
             'settingKey': DiagnosticValue.string('batch'),
             'documentCount': DiagnosticValue.int64(captures.length),
             'attempt': DiagnosticValue.int64(conflictAttempt + 1),
-            'revision': DiagnosticValue.int64(
-              revisions.isEmpty ? 0 : revisions.reduce(math.max),
-            ),
+            'revision': DiagnosticValue.int64(revisions.isEmpty ? 0 : revisions.reduce(math.max)),
           }),
         );
         report(DiagnosticOutcome.success);
@@ -632,11 +553,7 @@ final class AppSettingsManager {
   void _applyWriteSuccess(_WriteCapture capture, SettingsDocument result) {
     final document = capture.document;
     final newBase = Map<String, Object?>.of(result.values);
-    final remainingPatch = _buildPatch(
-      newBase,
-      document.values,
-      _registry.keysForDocument(document.definition.kind),
-    );
+    final remainingPatch = _buildPatch(newBase, document.values, _registry.keysForDocument(document.definition.kind));
     document.revision = result.revision;
     document.persistedValues = newBase;
     document.values = _applyPatch(newBase, remainingPatch);
@@ -650,16 +567,13 @@ final class AppSettingsManager {
     if (remainingPatch.isEmpty) {
       document.timer?.cancel();
       document.timer = null;
-    } else if (document.timer == null &&
-        !_dueKinds.contains(document.definition.kind)) {
+    } else if (document.timer == null && !_dueKinds.contains(document.definition.kind)) {
       _scheduleDebounce(document);
     }
   }
 
   Future<void> _reloadAndMerge(List<_RuntimeDocument> documents) async {
-    final loaded = await _store!.loadAll([
-      for (final document in documents) document.definition,
-    ]);
+    final loaded = await _store!.loadAll([for (final document in documents) document.definition]);
     final byKind = {for (final document in loaded) document.kind: document};
     final replacements = <String, Map<String, Object?>>{};
     final changedKeys = <String>{};
@@ -699,18 +613,10 @@ final class AppSettingsManager {
         );
         continue;
       }
-      document.patch = _buildPatch(
-        base,
-        document.values,
-        _registry.keysForDocument(document.definition.kind),
-      );
+      document.patch = _buildPatch(base, document.values, _registry.keysForDocument(document.definition.kind));
       replacements[document.definition.kind] = document.decodedValues;
       for (final key in _registry.keysForDocument(document.definition.kind)) {
-        if (!_presenceAndValueEqual(
-          oldDecoded,
-          document.decodedValues,
-          key.id,
-        )) {
+        if (!_presenceAndValueEqual(oldDecoded, document.decodedValues, key.id)) {
           changedKeys.add(key.id);
         }
       }
@@ -740,8 +646,7 @@ final class AppSettingsManager {
     required Set<String> changedKeys,
     Map<String, Object?>? oldDecoded,
   }) {
-    final previousDecoded =
-        oldDecoded ?? Map<String, Object?>.of(document.decodedValues);
+    final previousDecoded = oldDecoded ?? Map<String, Object?>.of(document.decodedValues);
     final safePersisted = Map<String, Object?>.of(persistedValues);
     document.revision = revision;
     document.persistedValues = safePersisted;
@@ -793,9 +698,7 @@ final class AppSettingsManager {
       }
       _ensureWorker();
       await _waitForWorker();
-      if (!_documents.values.any(
-        (document) => document.dirty && !document.readOnly,
-      )) {
+      if (!_documents.values.any((document) => document.dirty && !document.readOnly)) {
         break;
       }
     }
@@ -860,11 +763,7 @@ final class AppSettingsManager {
     _emitStatus(recomputeState: false);
     _streamsClosed = true;
     try {
-      await Future.wait([
-        _changes.close(),
-        _changeEvents.close(),
-        _statusChanges.close(),
-      ]).timeout(_policy.closeTimeout);
+      await Future.wait([_changes.close(), _changeEvents.close(), _statusChanges.close()]).timeout(_policy.closeTimeout);
     } on TimeoutException {
       _globalErrorCode = 'close_stream_timeout';
       _status = _buildStatus();
@@ -874,8 +773,7 @@ final class AppSettingsManager {
     }
   }
 
-  bool get _isClosingOrClosed =>
-      _state == SettingsState.closing || _state == SettingsState.closed;
+  bool get _isClosingOrClosed => _state == SettingsState.closing || _state == SettingsState.closed;
 
   Future<void> _closeLateStore(SettingsStore store) async {
     try {
@@ -934,10 +832,7 @@ final class AppSettingsManager {
             throw ArgumentError('Unknown settings command.');
         }
       }
-      _applyMutations(
-        mutations,
-        source: SettingsChangeSource.backgroundIsolate,
-      );
+      _applyMutations(mutations, source: SettingsChangeSource.backgroundIsolate);
       reply.send(const <Object?>[true]);
     } catch (error) {
       reply?.send(<Object?>[false, _safeCommandErrorCode(error)]);
@@ -978,9 +873,7 @@ final class AppSettingsManager {
         _state == SettingsState.closed) {
       return;
     }
-    _state = _documents.values.any((document) => document.degraded)
-        ? SettingsState.degraded
-        : SettingsState.ready;
+    _state = _documents.values.any((document) => document.degraded) ? SettingsState.degraded : SettingsState.ready;
   }
 
   void _emitStatus({bool recomputeState = true}) {
@@ -1015,180 +908,3 @@ final class AppSettingsManager {
     lastErrorCode: _globalErrorCode,
   );
 }
-
-final class SettingsTransaction {
-  SettingsTransaction._(this._registry);
-
-  final SettingsRegistry _registry;
-  final List<_SettingsMutation> _operations = [];
-
-  void set<T>(SettingKey<T> key, T value) {
-    final registered = _requireRegisteredKey(key);
-    registered.validateValue(value);
-    final encoded = registered.encodeValue(value);
-    validateSettingsEncodedValue(encoded);
-    final canonicalValue = registered.decodeValue(encoded);
-    registered.validateValue(canonicalValue);
-    _operations.add(
-      _SetMutation(registered, registered.freezeValue(canonicalValue), encoded),
-    );
-  }
-
-  void reset<T>(SettingKey<T> key) {
-    final registered = _requireRegisteredKey(key);
-    _operations.add(_ResetMutation(registered));
-  }
-
-  void resetGroup(String kind) {
-    _registry.requireDocument(kind);
-    _operations.add(_ResetGroupMutation(kind));
-  }
-
-  SettingKey<T> _requireRegisteredKey<T>(SettingKey<T> key) {
-    final registered = _registry.requireKey(key.id);
-    if (!identical(registered, key)) {
-      throw ArgumentError.value(key.id, 'key', 'Use the registered key.');
-    }
-    return registered as SettingKey<T>;
-  }
-}
-
-final class _RuntimeDocument {
-  _RuntimeDocument(this.definition);
-
-  final SettingsDocumentDefinition definition;
-  Map<String, Object?> persistedValues = {};
-  Map<String, Object?> values = {};
-  Map<String, Object?> decodedValues = {};
-  Map<String, _PatchValue> patch = {};
-  int? revision;
-  int generation = 0;
-  int persistedGeneration = 0;
-  int retryCount = 0;
-  bool inFlight = false;
-  String? permanentErrorCode;
-  String? transientErrorCode;
-  Timer? timer;
-
-  bool get dirty => patch.isNotEmpty;
-  bool get persisted => !dirty && !inFlight;
-  bool get readOnly => permanentErrorCode != null;
-  bool get degraded => permanentErrorCode != null || transientErrorCode != null;
-  String? get lastErrorCode => permanentErrorCode ?? transientErrorCode;
-}
-
-sealed class _SettingsMutation {
-  _SettingsMutation(this.documentKind);
-  final String documentKind;
-}
-
-final class _SetMutation extends _SettingsMutation {
-  _SetMutation(this.key, this.value, this.encoded) : super(key.documentKind);
-  final SettingKey<dynamic> key;
-  final Object? value;
-  final Object? encoded;
-}
-
-final class _ResetMutation extends _SettingsMutation {
-  _ResetMutation(this.key) : super(key.documentKind);
-  final SettingKey<dynamic> key;
-}
-
-final class _ResetGroupMutation extends _SettingsMutation {
-  _ResetGroupMutation(super.documentKind);
-}
-
-final class _PatchValue {
-  const _PatchValue.present(this.value) : isPresent = true;
-  const _PatchValue.absent() : isPresent = false, value = null;
-  final bool isPresent;
-  final Object? value;
-}
-
-final class _WriteCapture {
-  const _WriteCapture({
-    required this.document,
-    required this.generation,
-    required this.revision,
-    required this.values,
-  });
-  final _RuntimeDocument document;
-  final int generation;
-  final int? revision;
-  final Map<String, Object?> values;
-}
-
-Map<String, _PatchValue> _buildPatch(
-  Map<String, Object?> base,
-  Map<String, Object?> current,
-  Iterable<SettingKey<dynamic>> keys,
-) {
-  final patch = <String, _PatchValue>{};
-  for (final key in keys) {
-    if (_presenceAndValueEqual(base, current, key.id)) {
-      continue;
-    }
-    patch[key.id] = current.containsKey(key.id)
-        ? _PatchValue.present(current[key.id])
-        : const _PatchValue.absent();
-  }
-  return patch;
-}
-
-Map<String, Object?> _applyPatch(
-  Map<String, Object?> base,
-  Map<String, _PatchValue> patch,
-) {
-  final merged = Map<String, Object?>.of(base);
-  for (final entry in patch.entries) {
-    if (entry.value.isPresent) {
-      merged[entry.key] = entry.value.value;
-    } else {
-      merged.remove(entry.key);
-    }
-  }
-  return merged;
-}
-
-bool _presenceAndValueEqual(
-  Map<String, Object?> left,
-  Map<String, Object?> right,
-  String key,
-) {
-  final leftContains = left.containsKey(key);
-  final rightContains = right.containsKey(key);
-  return leftContains == rightContains &&
-      (!leftContains || _jsonEquals(left[key], right[key]));
-}
-
-bool _jsonEquals(Object? left, Object? right) {
-  if (identical(left, right) || left == right) {
-    return true;
-  }
-  if (left is List && right is List) {
-    if (left.length != right.length) {
-      return false;
-    }
-    for (var index = 0; index < left.length; index++) {
-      if (!_jsonEquals(left[index], right[index])) {
-        return false;
-      }
-    }
-    return true;
-  }
-  if (left is Map && right is Map) {
-    if (left.length != right.length) {
-      return false;
-    }
-    for (final entry in left.entries) {
-      if (!right.containsKey(entry.key) ||
-          !_jsonEquals(entry.value, right[entry.key])) {
-        return false;
-      }
-    }
-    return true;
-  }
-  return false;
-}
-
-DateTime _utcNow() => DateTime.now().toUtc();

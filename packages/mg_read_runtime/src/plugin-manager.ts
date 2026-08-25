@@ -1,3 +1,17 @@
+/**
+ * Runtime 插件管理器。
+ *
+ * 职责：
+ * - 在唯一 Node VM 中管理插件冷激活、开发刷新与内容调用。
+ * - 维护受限插件上下文、资源代理、缓存和传输队列。
+ *
+ * 注意：
+ * - 不暴露路径、端口、PID 或 raw transport 给 Flutter。
+ * - 已安装插件只在 Runtime 冷启动激活；取消和超时必须只有一个终态。
+ *
+ * TODO:
+ * - 将剩余 VM 编排方法继续下沉到显式内部端口。
+ */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createRequire } from "node:module";
@@ -51,173 +65,56 @@ import {
   validateSearchSuggestionsResult,
 } from "./plugin-content.js";
 
-export type PluginManagerEventCode =
-  | "plugin_disabled"
-  | "plugin_enabled"
-  | "plugin_invocation_completed"
-  | "plugin_invocation_failed"
-  | "plugin_invocation_started"
-  | "plugin_load_completed"
-  | "plugin_load_failed"
-  | "plugin_load_started"
-  | "plugin_log_emitted"
-  | "plugin_quarantined"
-  | "plugin_uninstall_completed";
+import {
+  PluginManagerError,
+  type PluginCacheClearItem,
+  type PluginCacheClearResult,
+  type PluginCacheUsage,
+  type PluginCodeDirectory,
+  type PluginInstallationUsage,
+  type PluginResourceResponse,
+  type PluginStartupRecoverySummary,
+  type DevelopmentPlugin,
+  type InstalledPluginSnapshot,
+  type LoadedPlugin,
+  type LoadedPluginModule,
+  type MgReadPluginContext,
+  type PluginContentFunction,
+  type PluginInvocationScope,
+  type PluginManagerEvent,
+  type PluginManagerEventSink,
+  type PluginRuntimeHttpClient,
+  type PluginRuntimeTraceContext,
+} from "./plugin-manager-contract.js";
+import {
+  atomicWrite,
+  collectDevelopmentFiles,
+  developmentProjectFingerprint,
+  enabledStatus,
+  exists,
+  isMissingPath,
+  isPluginId,
+  normalizePluginModule,
+  readVersionPointer,
+  snapshotFrom,
+} from "./plugin-manager-files.js";
 
-export interface PluginManagerEvent {
-  readonly code: PluginManagerEventCode;
-  readonly durationMs?: number;
-  readonly operation?: PluginContentOperation;
-  readonly outcome: "error" | "started" | "success";
-  readonly pluginId?: string;
-}
-
-export type PluginManagerEventSink = (event: PluginManagerEvent) => void;
-
-/** Stable plugin capability failure consumed by the Runtime dispatch owner. */
-export class PluginManagerError extends Error {
-  constructor(
-    readonly code:
-      | "cancelled"
-      | "invalid_request"
-      | "plugin_disabled"
-      | "plugin_execution_failed"
-      | "plugin_invalid_response"
-      | "plugin_load_failed"
-      | "plugin_not_found"
-      | "timeout",
-  ) {
-    super("The Runtime plugin capability could not be completed.");
-    this.name = "PluginManagerError";
-  }
-}
-
-export interface InstalledPluginSnapshot extends JsonObject {
-  readonly activeVersion: string | null;
-  readonly contentKinds: readonly string[];
-  readonly description: string | null;
-  readonly displayName: string;
-  readonly enabled: boolean;
-  readonly id: string;
-  readonly name: string;
-  readonly pendingVersion: string | null;
-  readonly status: "active" | "damaged" | "development" | "disabled" | "pending" | "quarantined";
-}
-
-/** One-shot, path-free summary of sources isolated during this cold start. */
-export interface PluginStartupRecoverySummary extends JsonObject {
-  readonly quarantinedCount: number;
-}
-
-/** A path-free projection of cache bytes owned by one Runtime plugin. */
-export interface PluginCacheUsage extends JsonObject {
-  readonly bytes: number;
-  readonly pluginId: string;
-}
-
-/** Path-free size projection for one immutable installed source version. */
-export interface PluginInstallationUsage extends JsonObject {
-  readonly bytes: number;
-  readonly fileCount: number;
-  readonly pluginId: string;
-  readonly scope: "archive" | "data" | "npm";
-  readonly version: string;
-}
-
-/** Runtime-internal code directory selected without exposing it to Flutter. */
-export interface PluginCodeDirectory {
-  readonly directory: string;
-  readonly kind: "development" | "installed";
-}
-
-/** A stable terminal result for one Runtime-owned cache clear attempt. */
-export interface PluginCacheClearItem extends JsonObject {
-  readonly bytesBefore: number;
-  readonly bytesRemaining: number;
-  readonly pluginId: string;
-  readonly status: "cleared" | "failed";
-}
-
-/** Bounded batch result for one or all plugin cache clear requests. */
-export interface PluginCacheClearResult extends JsonObject {
-  readonly items: readonly PluginCacheClearItem[];
-}
-
-interface MgReadPluginContext {
-  readonly app: {
-    readonly nodeVersion: string;
-    readonly pluginApi: number;
-    readonly runtimeVersion: string;
-  };
-  readonly cacheDir: string;
-  readonly dataDir: string;
-  readonly http: {
-    fetch(input: string | URL, init?: RequestInit): Promise<Response>;
-  };
-  readonly resource: { proxy(request: JsonObject): string };
-  readonly log: {
-    debug(event: string): void;
-    error(event: string): void;
-    info(event: string): void;
-    warn(event: string): void;
-  };
-  readonly plugin: {
-    readonly id: string;
-    readonly version: string;
-  };
-}
-
-type PluginContentFunction = (
-  request: JsonObject,
-) => Promise<unknown> | unknown;
-
-interface LoadedPluginModule {
-  activate: (context: MgReadPluginContext) => Promise<void> | void;
-  discover: PluginContentFunction;
-  getChapters: PluginContentFunction;
-  getContent: PluginContentFunction;
-  getDetail: PluginContentFunction;
-  search: PluginContentFunction;
-  searchSuggestions: PluginContentFunction;
-  resource: PluginContentFunction;
-}
-
-interface LoadedPlugin {
-  readonly descriptor: PluginPackageDescriptor;
-  readonly module: LoadedPluginModule;
-}
-
-interface DevelopmentPlugin {
-  readonly fingerprint: string;
-  readonly loaded: LoadedPlugin;
-  readonly projectRoot: string;
-}
-
-interface PluginInvocationScope {
-  readonly deadlineUnixMs: string;
-  readonly signal: AbortSignal;
-  readonly trace?: PluginRuntimeTraceContext;
-}
-
-export interface PluginRuntimeTraceContext {
-  readonly parentSpanId?: string;
-  readonly spanId: string;
-  readonly traceId: string;
-}
-
-export interface PluginRuntimeHttpClient {
-  fetch(
-    input: string | URL,
-    init: RequestInit,
-    trace?: PluginRuntimeTraceContext,
-  ): Promise<Response>;
-}
-
-export interface PluginResourceResponse {
-  readonly status: number;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly body: Uint8Array;
-}
+export {
+  PluginManagerError,
+  type InstalledPluginSnapshot,
+  type PluginCacheClearItem,
+  type PluginCacheClearResult,
+  type PluginCacheUsage,
+  type PluginCodeDirectory,
+  type PluginInstallationUsage,
+  type PluginManagerEvent,
+  type PluginManagerEventCode,
+  type PluginManagerEventSink,
+  type PluginResourceResponse,
+  type PluginRuntimeHttpClient,
+  type PluginRuntimeTraceContext,
+  type PluginStartupRecoverySummary,
+} from "./plugin-manager-contract.js";
 
 /** Cold-start loader for standard Node projects in one shared VM/module cache. */
 export class PluginManager {
@@ -1236,156 +1133,4 @@ export class PluginManager {
       throw new PluginManagerError("timeout");
     }
   }
-}
-
-function normalizePluginModule(imported: Record<string, unknown>): LoadedPluginModule | undefined {
-  const activate = imported.activate;
-  const discover = imported.discover;
-  const search = imported.search;
-  const searchSuggestions = imported.searchSuggestions;
-  const resource = imported.resource;
-  const getDetail = imported.getDetail;
-  const getChapters = imported.getChapters;
-  const getContent = imported.getContent;
-  if (
-    typeof activate !== "function" ||
-    typeof discover !== "function" ||
-    typeof search !== "function" ||
-    typeof getDetail !== "function" ||
-    typeof getChapters !== "function" ||
-    typeof getContent !== "function"
-  ) {
-    return undefined;
-  }
-  return Object.freeze({
-    activate: activate as LoadedPluginModule["activate"],
-    discover: discover as PluginContentFunction,
-    getChapters: getChapters as PluginContentFunction,
-    getContent: getContent as PluginContentFunction,
-    getDetail: getDetail as PluginContentFunction,
-    search: search as PluginContentFunction,
-    // Popular search is an opt-in v1 extension. Older source packages remain
-    // valid and project an empty source-owned list rather than local defaults.
-    searchSuggestions: typeof searchSuggestions === "function"
-      ? searchSuggestions as PluginContentFunction
-      : () => ({ items: [], nextCursor: null }),
-    resource: typeof resource === "function" ? resource as PluginContentFunction : async () => ({ status: 404, body: "" }),
-  });
-}
-
-function snapshotFrom(
-  descriptor: PluginPackageDescriptor | undefined,
-  pluginId: string,
-  activeVersion: string | null,
-  pendingVersion: string | null,
-  enabled: boolean,
-  status: InstalledPluginSnapshot["status"],
-): InstalledPluginSnapshot {
-  return Object.freeze({
-    activeVersion,
-    contentKinds: Object.freeze(descriptor?.contentKinds ?? []),
-    description: descriptor?.description ?? null,
-    displayName: descriptor?.displayName ?? pluginId,
-    enabled,
-    id: pluginId,
-    name: descriptor?.name ?? pluginId,
-    pendingVersion,
-    status,
-  });
-}
-
-function enabledStatus(
-  snapshot: InstalledPluginSnapshot,
-): InstalledPluginSnapshot["status"] {
-  if (snapshot.activeVersion !== null) return "active";
-  if (snapshot.pendingVersion !== null) return "pending";
-  return "damaged";
-}
-
-async function developmentProjectFingerprint(projectRoot: string): Promise<string> {
-  const paths = ["package.json", "package-lock.json"];
-  for (const directory of ["dist", "assets", "packages"]) {
-    await collectDevelopmentFiles(projectRoot, directory, paths);
-  }
-  paths.sort((left, right) => left.localeCompare(right));
-  if (paths.length > 4_096) throw new PluginManagerError("plugin_load_failed");
-  const hash = createHash("sha256");
-  let totalBytes = 0;
-  for (const path of paths) {
-    const bytes = await readFile(resolve(projectRoot, path));
-    totalBytes += bytes.byteLength;
-    if (totalBytes > 32 * 1024 * 1024) {
-      throw new PluginManagerError("plugin_load_failed");
-    }
-    hash.update(path.replaceAll("\\", "/"));
-    hash.update("\0");
-    hash.update(bytes);
-    hash.update("\0");
-  }
-  return hash.digest("hex");
-}
-
-async function collectDevelopmentFiles(
-  projectRoot: string,
-  relativeDirectory: string,
-  paths: string[],
-): Promise<void> {
-  const directory = resolve(projectRoot, relativeDirectory);
-  let entries;
-  try {
-    entries = await readdir(directory, { withFileTypes: true });
-  } catch (error) {
-    if (isMissingPath(error) && relativeDirectory !== "dist") return;
-    throw error;
-  }
-  for (const entry of entries) {
-    const child = `${relativeDirectory}/${entry.name}`;
-    if (entry.isDirectory()) {
-      await collectDevelopmentFiles(projectRoot, child, paths);
-    } else if (entry.isFile()) {
-      paths.push(child);
-    } else {
-      throw new PluginManagerError("plugin_load_failed");
-    }
-  }
-}
-
-function isMissingPath(error: unknown): error is NodeJS.ErrnoException {
-  return typeof error === "object" && error !== null && "code" in error &&
-    (error as NodeJS.ErrnoException).code === "ENOENT";
-}
-
-async function readVersionPointer(path: string): Promise<string | null> {
-  try {
-    const value = (await readFile(path, "utf8")).trim();
-    return /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/.test(value)
-      ? value
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-async function atomicWrite(path: string, value: string): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  const temporary = `${path}.next-${randomUUID()}`;
-  await writeFile(temporary, value, { flag: "wx", mode: 0o600 });
-  try {
-    await rename(temporary, path);
-  } finally {
-    await rm(temporary, { force: true }).catch(() => {});
-  }
-}
-
-async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isPluginId(value: string): boolean {
-  return /^[a-z0-9]+(?:[.-][a-z0-9]+)+$/.test(value);
 }

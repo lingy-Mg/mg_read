@@ -18,6 +18,11 @@ class AppPageBackdrop extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final bool isLight = Theme.of(context).brightness == Brightness.light;
+    final double opacity = isLight
+        ? style == AppPageBackdropStyle.profile
+              ? 0.16
+              : 0.32
+        : 0.08;
 
     return ColoredBox(
       color: tokens.pageBackground,
@@ -27,7 +32,7 @@ class AppPageBackdrop extends StatelessWidget {
           ExcludeSemantics(
             child: IgnorePointer(
               child: Opacity(
-                opacity: isLight ? 0.32 : 0.08,
+                opacity: opacity,
                 child: Image.asset(
                   _assetPathFor(style),
                   fit: BoxFit.cover,

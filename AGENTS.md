@@ -155,6 +155,21 @@ plugins/sources/<source-id>/      实际标准 Node 书源
 
 ## 依赖、Git 与交付
 
+## 源码文件规模
+
+- 手写源码按非空物理行统计：700 行起必须评估并优先按职责拆分，1000 行是硬上限。除非有可复核的性能、
+  生命周期或语言可见性约束，否则不得继续增长；例外必须说明原因和下一步拆分入口。
+- 每次代码修改执行 `pwsh -File tools/check_source_file_sizes.ps1`。`tools/source_file_size_policy.json` 的
+  遗留基线只能下降；新文件或已脱离基线的文件不得达到 1000 行。不得用无语义的 `part`、`utils`、`helpers`
+  或按行分片规避规则；完整拆分原则见 `docs/development/source-file-governance.md`。
+- 遗留基线只用于已存在且存在可验证 Runtime/性能/语言私有状态边界的协调器；必须配对
+  `legacyRationale`，写明为什么当前不能安全拆开及下一次真实拆分入口。它不是永久白名单、不能增长、
+  不能用于新文件，也不能替代职责拆分。
+- 新建或按职责重构的 Dart library 文件，首段必须使用中文 `///` 模块说明，依次表达名称、职责、注意和
+  TODO；说明后紧跟 `library;`，再写 import。职责说明必须可验证，注意项必须包含该模块实际的边界或异步/
+  生命周期约束；没有已知待办时写 `TODO: - 无。`。`part` 与生成文件不新增此声明。TS/JS 等没有 `library;`
+  语法的模块使用同等 JSDoc，不伪造 Dart 指令。
+
 - 新增依赖前查当时官方文档，说明必要性、精确版本、维护状态、Android/Windows/macOS 支持、
   许可证和包体影响。版本必须精确固定。
 - 保留所有无关脏改动。禁止 `reset --hard`、restore/checkout 覆盖、`git add -A`、

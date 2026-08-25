@@ -92,6 +92,9 @@ class _ProfilePageState extends State<ProfilePage> {
                     width: double.infinity,
                     child: Scrollbar(
                       controller: _scrollController,
+                      thumbVisibility: false,
+                      thickness: AppSpacing.unit - 1,
+                      radius: const Radius.circular(AppSpacing.unit - 1),
                       child: ListView(
                         key: const Key('profile-page-content'),
                         controller: _scrollController,
@@ -100,7 +103,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           pagePadding,
                           AppSpacing.pageHeaderTopPadding,
                           pagePadding,
-                          AppSpacing.page,
+                          AppSpacing.profileContentBottomSafeDistance,
                         ),
                         children: <Widget>[
                           ProfileTopBar(
@@ -130,14 +133,14 @@ class _ProfilePageState extends State<ProfilePage> {
                           ],
                           const SizedBox(height: AppSpacing.section - 2),
                           _ProfileSectionTitle(title: '设置与管理'),
-                          const SizedBox(height: AppSpacing.unit / 2),
+                          const SizedBox(height: AppSpacing.comfortable / 2),
                           ProfileSettingsList(
                             items: ProfileFixtures.preview.settings,
                             onItemPressed: _handleSettingsItemPressed,
                           ),
-                          const SizedBox(height: AppSpacing.compact - 2),
+                          const SizedBox(height: AppSpacing.section - 4),
                           _ProfileSectionTitle(title: '关于与其他'),
-                          const SizedBox(height: AppSpacing.compact - 2),
+                          const SizedBox(height: AppSpacing.comfortable / 2),
                           ProfileSettingsList(
                             items: ProfileFixtures.preview.about,
                             onItemPressed: _handleAboutItemPressed,
@@ -356,7 +359,7 @@ class _ProfileSectionTitle extends StatelessWidget {
         title,
         style: theme.textTheme.titleMedium?.copyWith(
           color: tokens.mutedText,
-          fontWeight: FontWeight.w400,
+          fontWeight: FontWeight.w500,
           height: 1.15,
         ),
       ),

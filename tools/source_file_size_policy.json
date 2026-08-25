@@ -1,0 +1,51 @@
+{
+  "hardLimit": 1000,
+  "warningLimit": 700,
+  "extensions": [
+    ".dart",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".mjs",
+    ".cjs",
+    ".kt",
+    ".kts",
+    ".java",
+    ".swift",
+    ".m",
+    ".mm",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".cs",
+    ".ps1",
+    ".sh"
+  ],
+  "excludedPathSegments": [
+    ".dart_tool",
+    "build",
+    "dist",
+    "node_modules",
+    "artifacts",
+    "coverage",
+    ".git"
+  ],
+  "excludedPathPrefixes": [
+    "packages/mg_read_runtime/tools/node-v"
+  ],
+  "generatedSuffixes": [
+    ".g.dart",
+    ".freezed.dart",
+    ".gen.dart",
+    ".mocks.dart"
+  ],
+  "legacyBaseline": {
+    "packages/mg_read_runtime/src/desktop-runtime.ts": 2418,
+    "packages/mg_read_runtime/src/plugin-manager.ts": 1081
+  },
+  "legacyRationale": {
+    "packages/mg_read_runtime/src/desktop-runtime.ts": "The singleton's HTTP, WebSocket, control-dispatch, shutdown and owner-span state share ECMAScript private fields. A further split requires an explicit internal command port and protocol-characterization suite; it must not be a cosmetic extraction.",
+    "packages/mg_read_runtime/src/plugin-manager.ts": "Installed activation, development refresh and invocation cancellation share the single VM's private queues and AsyncLocalStorage. The remaining coordinator must next be split through explicit internal ports without changing cold activation or terminal-event semantics."
+  }
+}

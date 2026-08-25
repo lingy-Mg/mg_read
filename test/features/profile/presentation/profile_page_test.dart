@@ -38,6 +38,19 @@ void main() {
     expect(card.height, AppSpacing.profileCardHeight);
     expect(firstSettingsRow.height, AppSpacing.profileSettingsRowHeight);
 
+    final ListView profileContent = tester.widget<ListView>(
+      find.byKey(const Key('profile-page-content')),
+    );
+    expect(
+      (profileContent.padding! as EdgeInsets).bottom,
+      AppSpacing.profileContentBottomSafeDistance,
+    );
+    final Scrollbar scrollbar = tester.widget<Scrollbar>(
+      find.byType(Scrollbar),
+    );
+    expect(scrollbar.thumbVisibility, isFalse);
+    expect(scrollbar.thickness, AppSpacing.unit - 1);
+
     final Finder firstSettingsIcon = find.descendant(
       of: find.byType(ProfileSettingsRow).first,
       matching: find.byType(Icon),
@@ -45,6 +58,18 @@ void main() {
     expect(
       tester.widget<Icon>(firstSettingsIcon.first).size,
       AppSpacing.profileSettingsIconSize,
+    );
+    final Finder firstSettingsChevron = find.descendant(
+      of: find.byType(ProfileSettingsRow).first,
+      matching: find.byIcon(Icons.chevron_right_rounded),
+    );
+    expect(
+      tester.widget<Icon>(firstSettingsChevron),
+      isA<Icon>().having(
+        (Icon icon) => icon.size,
+        'chevron size',
+        AppSpacing.profileChevronSize,
+      ),
     );
   });
 
@@ -72,7 +97,7 @@ void main() {
     expect(pageTitle.style?.fontSize, AppSpacing.pageTitleSize);
     expect(pageTitle.style?.fontWeight, FontWeight.w600);
     expect(settingTitle.style?.fontSize, 16);
-    expect(settingTitle.style?.fontWeight, FontWeight.w500);
+    expect(settingTitle.style?.fontWeight, FontWeight.w600);
     expect(settingDescription.style?.fontSize, 13);
     expect(settingDescription.style?.fontWeight, FontWeight.w400);
     expect(profileSemantics.flagsCollection.isSelected, Tristate.isTrue);

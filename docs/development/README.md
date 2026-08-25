@@ -20,6 +20,7 @@
 | 测试、CI、发布、平台验收 | [workflow](workflow.md) | [可靠性与测试](../architecture/08-reliability-observability-testing.md)、[平台发布](../architecture/09-platform-release-future-capabilities.md)、子项目命令 |
 | 架构/ADR 变更 | [架构入口](../architecture/README.md)、[ADR 索引](../architecture/adr/README.md)、相关 Accepted ADR 全文 | 被取代 ADR 和历史专题仅用于理解迁移原因；局域网同步另读 [专题](../architecture/21-lan-sync.md)、ADR-0021 与 ADR-0022 |
 | 文档、规划、AI 指令 | [文档维护](documentation.md)、[文档中心](../README.md)、[当前规划](../planning/README.md) | 只读受影响专题和引用它的入口 |
+| 源码拆分、文件规模治理 | [源码文件规模治理](source-file-governance.md)、[workflow](workflow.md) | 对应模块的最近 `AGENTS.md`、公开契约与测试 |
 
 ## 读取停止条件
 

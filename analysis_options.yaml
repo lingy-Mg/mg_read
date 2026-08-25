@@ -7,3 +7,8 @@ analyzer:
   exclude:
     - packages/**
     - templates/**
+
+
+
+formatter:
+  page_width: 140
