@@ -88,6 +88,66 @@ final class _SourceDetailBundle {
   final PluginChaptersResult chapters;
 }
 
+class _AdaptiveSingleLineText extends StatelessWidget {
+  const _AdaptiveSingleLineText({
+    required this.text,
+    required this.style,
+    required this.minFontSize,
+    this.textAlign,
+    this.textKey,
+    this.maxLines = 1,
+    this.overflow = TextOverflow.ellipsis,
+  });
+
+  final String text;
+  final TextStyle style;
+  final double minFontSize;
+  final TextAlign? textAlign;
+  final Key? textKey;
+  final int maxLines;
+  final TextOverflow overflow;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final baseFontSize = style.fontSize ?? 16;
+        final minScale = minFontSize / baseFontSize;
+        if (constraints.maxWidth <= 0) {
+          return Text(
+            text,
+            key: textKey,
+            style: style.copyWith(fontSize: baseFontSize * minScale),
+            maxLines: maxLines,
+            overflow: overflow,
+            softWrap: false,
+            textAlign: textAlign,
+          );
+        }
+
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: style),
+          maxLines: maxLines,
+          textDirection: Directionality.of(context),
+          textScaleFactor: MediaQuery.textScaleFactorOf(context),
+        )..layout(maxWidth: double.infinity);
+
+        final neededScale = painter.width <= 0 ? 1 : constraints.maxWidth / painter.width;
+        final effectiveScale = neededScale.clamp(minScale, 1.0);
+        return Text(
+          text,
+          key: textKey,
+          textAlign: textAlign,
+          maxLines: maxLines,
+          overflow: overflow,
+          softWrap: false,
+          style: style.copyWith(fontSize: baseFontSize * effectiveScale),
+        );
+      },
+    );
+  }
+}
+
 PluginContentDetail _previewDetail({required String pluginId, required PluginContentSummary content, required String? sourceName}) =>
     PluginContentDetail(
       pluginId: pluginId,
@@ -359,7 +419,7 @@ class _SourceDetailBody extends StatelessWidget {
       key: const Key('source-content-detail-sheet'),
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
       children: <Widget>[
-        _DetailHeader(title: content.title, sourceUrl: content.url, onOpenUrl: _openUrl),
+        _DetailHeader(title: content.title),
         if (isRefreshing)
           Padding(
             padding: const EdgeInsets.only(top: 2, bottom: 8),
@@ -394,16 +454,23 @@ class _SourceDetailBody extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(
-                    content.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700, height: 1.15),
+                  SizedBox(
+                    width: double.infinity,
+                    child: _AdaptiveSingleLineText(
+                      text: content.title,
+                      style:
+                          theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700, height: 1.15) ??
+                          const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, height: 1.15),
+                      minFontSize: 18,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.left,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: <Widget>[
-                      Icon(Icons.person_outline_rounded, size: 20, color: tokens.mutedText),
+                      Text('作者:', style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText)),
                       const SizedBox(width: AppSpacing.unit),
                       Expanded(
                         child: Text(
@@ -417,18 +484,12 @@ class _SourceDetailBody extends StatelessWidget {
                   ),
                   if (labels.isNotEmpty) ...<Widget>[
                     const SizedBox(height: 14),
-                    Wrap(spacing: 10, runSpacing: 6, children: labels.map((value) => _DetailTag(label: value)).toList(growable: false)),
+                    Wrap(spacing: 6, runSpacing: 4, children: labels.map((value) => _DetailTag(label: value)).toList(growable: false)),
                   ],
                   const SizedBox(height: 14),
                   Divider(color: tokens.divider, height: 1),
                   _DetailStats(content: content),
                   Divider(color: tokens.divider, height: 1),
-                  _ExternalRow(
-                    key: const Key('source-detail-source-url'),
-                    label: '来源频道：${detail.sourceName}',
-                    url: content.url,
-                    onOpenUrl: _openUrl,
-                  ),
                 ],
               ),
             ),

@@ -8,7 +8,8 @@ import 'package:mg_read/features/discovery/application/discovery_page_state.dart
 import 'package:mg_read/features/discovery/application/discovery_source_selection_store.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 
-/// Keeps the first resolved discovery document for the lifetime of the app.
+/// Keeps the first resolved discovery document for the lifetime of the app and
+/// owns cancellation of in-flight category navigation.
 ///
 /// Top-level destination navigation removes the discovery widget from the
 /// tree. This controller must therefore outlive that widget so returning to
@@ -24,6 +25,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   late DiscoverySourceSelectionStore _sourceSelectionStore;
   final List<_DiscoveryNavigationEntry> _stack = <_DiscoveryNavigationEntry>[];
   int _latestGeneration = 0;
+  int? _pendingCategoryGeneration;
   bool _disposed = false;
 
   @override
@@ -80,6 +82,14 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   }
 
   void goBack() {
+    if (_pendingCategoryGeneration != null && _stack.isNotEmpty) {
+      // The pending category has not been committed to the stack yet. Return
+      // to the retained parent snapshot and discard its eventual result.
+      ++_latestGeneration;
+      _pendingCategoryGeneration = null;
+      _publish(_stack.last.document);
+      return;
+    }
     if (_stack.length < 2) return;
     // A pending category request must not repopulate a page after the user
     // has already returned to its parent document.
@@ -183,6 +193,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   }) async {
     final requestGeneration = generation ?? ++_latestGeneration;
     final availableSources = sources ?? state.sources;
+    _pendingCategoryGeneration = push ? requestGeneration : null;
     state = DiscoveryPageState.loadingContent(
       sources: availableSources,
       selectedSourceId: pluginId,
@@ -195,8 +206,10 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       );
       if (!_isCurrent(requestGeneration) ||
           result is! PluginDiscoveryDocumentResult) {
+        _clearPendingCategory(requestGeneration);
         return;
       }
+      _clearPendingCategory(requestGeneration);
       final entry = _DiscoveryNavigationEntry(target: target, document: result);
       if (resetStack || _stack.isEmpty) {
         _stack
@@ -216,6 +229,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       if (!_isCurrent(requestGeneration)) {
         return;
       }
+      _clearPendingCategory(requestGeneration);
       final current = _stack.lastOrNull;
       if (current != null && state.selectedSourceId == pluginId) {
         _publish(current.document);
@@ -247,6 +261,12 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
 
   bool _isCurrent(int generation) =>
       !_disposed && generation == _latestGeneration;
+
+  void _clearPendingCategory(int generation) {
+    if (_pendingCategoryGeneration == generation) {
+      _pendingCategoryGeneration = null;
+    }
+  }
 }
 
 final class _DiscoveryNavigationEntry {

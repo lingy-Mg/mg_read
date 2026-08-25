@@ -1,10 +1,8 @@
 part of 'source_content_detail_sheet.dart';
 
 class _DetailHeader extends StatelessWidget {
-  const _DetailHeader({required this.title, required this.sourceUrl, required this.onOpenUrl});
+  const _DetailHeader({required this.title});
   final String title;
-  final Uri? sourceUrl;
-  final Future<void> Function(BuildContext context, Uri? url) onOpenUrl;
   @override
   Widget build(BuildContext context) => SizedBox(
     height: 52,
@@ -13,13 +11,16 @@ class _DetailHeader extends StatelessWidget {
       children: <Widget>[
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 96),
-          child: Text(
-            title,
-            key: const Key('source-detail-header-title'),
+          child: _AdaptiveSingleLineText(
+            text: title,
+            textKey: const Key('source-detail-header-title'),
+            style:
+                Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700) ??
+                const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            minFontSize: 14,
+            textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
         ),
         Row(
@@ -31,12 +32,6 @@ class _DetailHeader extends StatelessWidget {
               icon: const Icon(Icons.arrow_back_ios_new_rounded),
             ),
             const Spacer(),
-            IconButton(
-              key: const Key('source-detail-open-source-url'),
-              tooltip: '在浏览器打开来源',
-              onPressed: sourceUrl == null ? null : () => unawaited(onOpenUrl(context, sourceUrl)),
-              icon: const Icon(Icons.ios_share_rounded),
-            ),
             IconButton(tooltip: '更多', onPressed: () {}, icon: const Icon(Icons.more_vert_rounded)),
           ],
         ),
@@ -238,20 +233,30 @@ class _RecommendationCard extends StatelessWidget {
   final PluginContentSummary content;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: <Widget>[
-      DiscoveryBookCover(title: content.title, coverBytes: content.coverBytes, variant: _coverVariant(content.id), width: 96, height: 140),
-      const SizedBox(height: 7),
-      Text(content.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyMedium),
-      const SizedBox(height: 2),
-      Text(
-        content.author ?? '作者未知',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppThemeTokens.of(context).mutedText),
-      ),
-    ],
+  Widget build(BuildContext context) => SizedBox(
+    width: 96,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        DiscoveryBookCover(
+          title: content.title,
+          coverBytes: content.coverBytes,
+          variant: _coverVariant(content.id),
+          width: 96,
+          height: 140,
+        ),
+        const SizedBox(height: 7),
+        Text(content.title, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: Theme.of(context).textTheme.bodyMedium),
+        const SizedBox(height: 2),
+        Text(
+          content.author ?? '作者未知',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          softWrap: false,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppThemeTokens.of(context).mutedText),
+        ),
+      ],
+    ),
   );
 }
 

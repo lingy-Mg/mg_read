@@ -34,19 +34,15 @@ abstract final class AppTheme {
       coverEmberStart: Color(0xFF5E3527),
       coverEmberEnd: Color(0xFFCA8B40),
     );
-    final ColorScheme colorScheme =
-        ColorScheme.fromSeed(
-          seedColor: tokens.accent,
-          brightness: Brightness.light,
-        ).copyWith(
-          primary: tokens.accent,
-          onPrimary: Colors.white,
-          primaryContainer: tokens.accentSoft,
-          onPrimaryContainer: const Color(0xFF472706),
-          surface: tokens.surface,
-          onSurface: const Color(0xFF201C18),
-          outlineVariant: tokens.divider,
-        );
+    final ColorScheme colorScheme = ColorScheme.fromSeed(seedColor: tokens.accent, brightness: Brightness.light).copyWith(
+      primary: tokens.accent,
+      onPrimary: Colors.white,
+      primaryContainer: tokens.accentSoft,
+      onPrimaryContainer: const Color(0xFF472706),
+      surface: tokens.surface,
+      onSurface: const Color(0xFF201C18),
+      outlineVariant: tokens.divider,
+    );
     return _theme(colorScheme, tokens);
   }
 
@@ -79,28 +75,20 @@ abstract final class AppTheme {
       coverEmberStart: Color(0xFF8A4B36),
       coverEmberEnd: Color(0xFFEBAD56),
     );
-    final ColorScheme colorScheme =
-        ColorScheme.fromSeed(
-          seedColor: tokens.accent,
-          brightness: Brightness.dark,
-        ).copyWith(
-          primary: tokens.accent,
-          onPrimary: const Color(0xFF352108),
-          primaryContainer: tokens.accentSoft,
-          onPrimaryContainer: const Color(0xFFFFDCB0),
-          surface: tokens.surface,
-          onSurface: const Color(0xFFF5EDE4),
-          outlineVariant: tokens.divider,
-        );
+    final ColorScheme colorScheme = ColorScheme.fromSeed(seedColor: tokens.accent, brightness: Brightness.dark).copyWith(
+      primary: tokens.accent,
+      onPrimary: const Color(0xFF352108),
+      primaryContainer: tokens.accentSoft,
+      onPrimaryContainer: const Color(0xFFFFDCB0),
+      surface: tokens.surface,
+      onSurface: const Color(0xFFF5EDE4),
+      outlineVariant: tokens.divider,
+    );
     return _theme(colorScheme, tokens);
   }
 
   static ThemeData _theme(ColorScheme colorScheme, AppThemeTokens tokens) {
-    final ThemeData base = ThemeData(
-      colorScheme: colorScheme,
-      fontFamily: 'packages/novel_reader_ui/MiSans',
-      useMaterial3: true,
-    );
+    final ThemeData base = ThemeData(colorScheme: colorScheme, fontFamily: 'packages/novel_reader_ui/MiSans', useMaterial3: true);
     final TextTheme textTheme = base.textTheme.copyWith(
       displaySmall: base.textTheme.displaySmall?.copyWith(
         fontSize: AppTypography.display,
@@ -108,32 +96,12 @@ abstract final class AppTheme {
         height: 1.18,
         letterSpacing: -0.6,
       ),
-      titleLarge: base.textTheme.titleLarge?.copyWith(
-        fontSize: AppTypography.sectionTitle,
-        fontWeight: FontWeight.w600,
-        height: 1.25,
-      ),
-      titleMedium: base.textTheme.titleMedium?.copyWith(
-        fontSize: AppTypography.itemTitle,
-        fontWeight: FontWeight.w600,
-        height: 1.3,
-      ),
-      bodyLarge: base.textTheme.bodyLarge?.copyWith(
-        fontSize: AppTypography.body,
-        height: 1.5,
-      ),
-      bodyMedium: base.textTheme.bodyMedium?.copyWith(
-        fontSize: AppTypography.secondary,
-        height: 1.45,
-      ),
-      bodySmall: base.textTheme.bodySmall?.copyWith(
-        fontSize: AppTypography.caption,
-        height: 1.4,
-      ),
-      labelLarge: base.textTheme.labelLarge?.copyWith(
-        fontSize: AppTypography.action,
-        fontWeight: FontWeight.w600,
-      ),
+      titleLarge: base.textTheme.titleLarge?.copyWith(fontSize: AppTypography.sectionTitle, fontWeight: FontWeight.w600, height: 1.25),
+      titleMedium: base.textTheme.titleMedium?.copyWith(fontSize: AppTypography.itemTitle, fontWeight: FontWeight.w600, height: 1.3),
+      bodyLarge: base.textTheme.bodyLarge?.copyWith(fontSize: AppTypography.body, height: 1.5),
+      bodyMedium: base.textTheme.bodyMedium?.copyWith(fontSize: AppTypography.secondary, height: 1.45),
+      bodySmall: base.textTheme.bodySmall?.copyWith(fontSize: AppTypography.caption, height: 1.4),
+      labelLarge: base.textTheme.labelLarge?.copyWith(fontSize: AppTypography.action, fontWeight: FontWeight.w600),
     );
 
     return base.copyWith(
@@ -153,9 +121,7 @@ abstract final class AppTheme {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: colorScheme.inverseSurface,
-        contentTextStyle: textTheme.bodyMedium?.copyWith(
-          color: colorScheme.onInverseSurface,
-        ),
+        contentTextStyle: textTheme.bodyMedium?.copyWith(color: colorScheme.onInverseSurface),
       ),
       extensions: <ThemeExtension<dynamic>>[tokens],
     );
@@ -176,6 +142,7 @@ abstract final class AppTypography {
   static const double body = 14;
   static const double secondary = 13;
   static const double caption = 11;
+  static const double discoveryListTag = 10;
   static const double action = 14;
 }
 
@@ -304,10 +271,7 @@ class AppThemeTokens extends ThemeExtension<AppThemeTokens> {
   }
 
   @override
-  AppThemeTokens lerp(
-    covariant ThemeExtension<AppThemeTokens>? other,
-    double t,
-  ) {
+  AppThemeTokens lerp(covariant ThemeExtension<AppThemeTokens>? other, double t) {
     if (other is! AppThemeTokens) {
       return this;
     }
@@ -319,17 +283,9 @@ class AppThemeTokens extends ThemeExtension<AppThemeTokens> {
       divider: Color.lerp(divider, other.divider, t)!,
       mutedText: Color.lerp(mutedText, other.mutedText, t)!,
       accent: Color.lerp(accent, other.accent, t)!,
-      dataSourceAccent: Color.lerp(
-        dataSourceAccent,
-        other.dataSourceAccent,
-        t,
-      )!,
+      dataSourceAccent: Color.lerp(dataSourceAccent, other.dataSourceAccent, t)!,
       dataSourceCat: Color.lerp(dataSourceCat, other.dataSourceCat, t)!,
-      dataSourceCommunity: Color.lerp(
-        dataSourceCommunity,
-        other.dataSourceCommunity,
-        t,
-      )!,
+      dataSourceCommunity: Color.lerp(dataSourceCommunity, other.dataSourceCommunity, t)!,
       accentSoft: Color.lerp(accentSoft, other.accentSoft, t)!,
       notification: Color.lerp(notification, other.notification, t)!,
       success: Color.lerp(success, other.success, t)!,
@@ -342,11 +298,7 @@ class AppThemeTokens extends ThemeExtension<AppThemeTokens> {
       coverDawnEnd: Color.lerp(coverDawnEnd, other.coverDawnEnd, t)!,
       coverOceanStart: Color.lerp(coverOceanStart, other.coverOceanStart, t)!,
       coverOceanEnd: Color.lerp(coverOceanEnd, other.coverOceanEnd, t)!,
-      coverIndigoStart: Color.lerp(
-        coverIndigoStart,
-        other.coverIndigoStart,
-        t,
-      )!,
+      coverIndigoStart: Color.lerp(coverIndigoStart, other.coverIndigoStart, t)!,
       coverIndigoEnd: Color.lerp(coverIndigoEnd, other.coverIndigoEnd, t)!,
       coverEmberStart: Color.lerp(coverEmberStart, other.coverEmberStart, t)!,
       coverEmberEnd: Color.lerp(coverEmberEnd, other.coverEmberEnd, t)!,
@@ -423,15 +375,14 @@ abstract final class AppSpacing {
   static const double profileStatsDividerHeight = section;
   static const double profileStatsDividerThickness = unit / 8;
   static const double profileSyncIconSize = unit * 5;
-  static const double profileContentBottomSafeDistance =
-      bottomNavigationHeight + comfortable;
+  static const double profileContentBottomSafeDistance = bottomNavigationHeight + comfortable;
   static const double compactCardStackBreakpoint = 280;
   static const double discoveryPagePadding = unit * 4;
   static const double discoveryListMaxWidth = 692;
   static const double discoveryListCoverMinWidth = unit * 23;
   static const double discoveryListCoverMaxWidth = unit * 28;
   static const double discoveryListCoverAspectRatio = 1.3;
-  static const double discoveryListTagHeight = unit * 5;
+  static const double discoveryListTagHeight = 18;
   static const double discoveryHeaderInset = unit;
   static const double discoveryHeaderHeight = pageHeaderHeight;
   static const double discoveryTabsHeight = unit * 8;
@@ -512,50 +463,28 @@ abstract final class AppRadii {
   static const BorderRadius card = BorderRadius.all(Radius.circular(20));
   static const BorderRadius surface = BorderRadius.all(Radius.circular(12));
   static const BorderRadius control = BorderRadius.all(Radius.circular(12));
-  static const BorderRadius continueReadingAction = BorderRadius.all(
-    Radius.circular(10),
-  );
+  static const BorderRadius continueReadingAction = BorderRadius.all(Radius.circular(10));
   static const BorderRadius bookCover = BorderRadius.all(Radius.circular(6));
   static const BorderRadius profileList = BorderRadius.all(Radius.circular(16));
-  static const BorderRadius discoveryHero = BorderRadius.all(
-    Radius.circular(16),
-  );
-  static const BorderRadius discoveryPanel = BorderRadius.all(
-    Radius.circular(12),
-  );
-  static const BorderRadius discoveryCover = BorderRadius.all(
-    Radius.circular(6),
-  );
-  static const BorderRadius discoveryTile = BorderRadius.all(
-    Radius.circular(8),
-  );
-  static const BorderRadius discoveryButton = BorderRadius.all(
-    Radius.circular(9),
-  );
+  static const BorderRadius discoveryHero = BorderRadius.all(Radius.circular(16));
+  static const BorderRadius discoveryPanel = BorderRadius.all(Radius.circular(12));
+  static const BorderRadius discoveryCover = BorderRadius.all(Radius.circular(6));
+  static const BorderRadius discoveryTile = BorderRadius.all(Radius.circular(8));
+  static const BorderRadius discoveryButton = BorderRadius.all(Radius.circular(9));
   static const BorderRadius detailCard = BorderRadius.all(Radius.circular(14));
-  static const BorderRadius detailControl = BorderRadius.all(
-    Radius.circular(10),
-  );
-  static const BorderRadius detailAppIcon = BorderRadius.all(
-    Radius.circular(22),
-  );
+  static const BorderRadius detailControl = BorderRadius.all(Radius.circular(10));
+  static const BorderRadius detailAppIcon = BorderRadius.all(Radius.circular(22));
   static const BorderRadius pill = BorderRadius.all(Radius.circular(999));
 }
 
 /// Shared motion timings for short, non-disruptive application feedback.
 abstract final class AppMotion {
-  static const Duration navigationSelection = Duration(milliseconds: 180);
-  static const Duration bottomNavigationIconResponse = Duration(
-    milliseconds: 300,
-  );
-  static const Duration bottomNavigationLabelResponse = Duration(
-    milliseconds: 260,
-  );
-  static const Duration bottomNavigationPillTravel = Duration(
-    milliseconds: 420,
-  );
+  static const Duration navigationSelection = Duration(milliseconds: 140);
+  static const Duration bottomNavigationIconResponse = Duration(milliseconds: 220);
+  static const Duration bottomNavigationLabelResponse = Duration(milliseconds: 190);
+  static const Duration bottomNavigationPillTravel = Duration(milliseconds: 300);
   static const Duration bottomNavigationTextureDrift = Duration(seconds: 8);
-  static const Duration destinationTransition = Duration(milliseconds: 220);
+  static const Duration destinationTransition = Duration(milliseconds: 180);
   static const double bottomNavigationPillOvershoot = 0.045;
   static const double bottomNavigationPillTravelWidthScale = 0.72;
   static const double bottomNavigationPillTravelHeightScale = 0.8;

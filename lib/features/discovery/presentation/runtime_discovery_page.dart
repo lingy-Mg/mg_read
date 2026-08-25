@@ -1,3 +1,17 @@
+/// 运行时发现页。
+///
+/// 职责：
+/// - 渲染来源提供的发现内容、分类和内容列表。
+/// - 转发分类、搜索、详情和导航操作。
+///
+/// 注意：
+/// - 页面只渲染已由 application 层准备好的数据，不在 build() 中执行 IO。
+/// - 分类列表标签需与复用的发现内容列表项保持一致的视觉规格。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -9,6 +23,7 @@ import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_list_tag.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
@@ -59,16 +74,13 @@ class RuntimeDiscoveryPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final result = this.result;
-    final components =
-        result?.document.components ?? const <PluginDiscoveryComponent>[];
+    final components = result?.document.components ?? const <PluginDiscoveryComponent>[];
     final resolvedSourceName = sourceName ?? result?.sourceName ?? '当前来源';
     return CallbackShortcuts(
       // Discovery owns an in-page navigation stack. Keep Escape on the same
       // callback as the visible back button and PopScope; do not pop the
       // outer GoRouter destination while a category stack still exists.
-      bindings: <ShortcutActivator, VoidCallback>{
-        const SingleActivator(LogicalKeyboardKey.escape): onBackRequested,
-      },
+      bindings: <ShortcutActivator, VoidCallback>{const SingleActivator(LogicalKeyboardKey.escape): onBackRequested},
       child: Focus(
         autofocus: true,
         child: PopScope(
@@ -81,32 +93,21 @@ class RuntimeDiscoveryPage extends StatelessWidget {
               bottom: false,
               child: LayoutBuilder(
                 builder: (BuildContext context, BoxConstraints constraints) {
-                  final bool useWidePagePadding =
-                      constraints.maxWidth >=
-                      AppSpacing.compactLayoutBreakpoint;
+                  final bool useWidePagePadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
                   final double pagePadding = canNavigateBack
                       ? AppSpacing.regular
                       : useWidePagePadding
                       ? AppSpacing.widePagePadding
                       : AppSpacing.discoveryPagePadding;
                   return Align(
-                    alignment: canNavigateBack
-                        ? Alignment.topLeft
-                        : Alignment.topCenter,
+                    alignment: canNavigateBack ? Alignment.topLeft : Alignment.topCenter,
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
-                        maxWidth: canNavigateBack
-                            ? AppSpacing.discoveryListMaxWidth
-                            : AppSpacing.contentMaxWidth,
+                        maxWidth: canNavigateBack ? AppSpacing.discoveryListMaxWidth : AppSpacing.contentMaxWidth,
                       ),
                       child: ListView(
                         key: const Key('runtime-discovery-content'),
-                        padding: EdgeInsets.fromLTRB(
-                          pagePadding,
-                          AppSpacing.pageHeaderTopPadding,
-                          pagePadding,
-                          AppSpacing.page,
-                        ),
+                        padding: EdgeInsets.fromLTRB(pagePadding, AppSpacing.pageHeaderTopPadding, pagePadding, AppSpacing.page),
                         children: <Widget>[
                           Row(
                             children: <Widget>[
@@ -119,19 +120,11 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                 ),
                               Expanded(
                                 child: DiscoveryTopBar(
-                                  title: canNavigateBack
-                                      ? _nestedPageTitle(components) ?? '发现'
-                                      : '发现',
+                                  title: canNavigateBack ? _nestedPageTitle(components) ?? '发现' : '发现',
                                   sourceName: resolvedSourceName,
                                   onSourcePressed: onSourcePressed,
-                                  onSearchPressed:
-                                      onSearchRequested ??
-                                      () => onDestinationRequested(
-                                        AppNavigationDestination.search,
-                                      ),
-                                  onToggleTheme: () => AppThemeModeScope.of(
-                                    context,
-                                  ).onToggleTheme(Theme.of(context).brightness),
+                                  onSearchPressed: onSearchRequested ?? () => onDestinationRequested(AppNavigationDestination.search),
+                                  onToggleTheme: () => AppThemeModeScope.of(context).onToggleTheme(Theme.of(context).brightness),
                                   onRefreshPressed: onRefreshRequested,
                                 ),
                               ),
@@ -139,9 +132,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                           ),
                           if (result == null)
                             Padding(
-                              padding: const EdgeInsets.only(
-                                top: AppSpacing.section,
-                              ),
+                              padding: const EdgeInsets.only(top: AppSpacing.section),
                               child: _DiscoveryContentState(
                                 isLoading: isContentLoading,
                                 isEmpty: contentIsEmpty,
@@ -209,29 +200,18 @@ class _DiscoveryContentState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
-      return const AppLoadingState(
-        key: Key('discovery-loading-content'),
-        label: '正在加载发现内容',
-        message: '插件正在生成分区、榜单和分类。',
-      );
+      return const AppLoadingState(key: Key('discovery-loading-content'), label: '正在加载发现内容', message: '插件正在生成分区、榜单和分类。');
     }
     return Column(
       key: Key(isEmpty ? 'discovery-empty' : 'discovery-failure'),
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Icon(
-          isEmpty ? Icons.inbox_outlined : Icons.error_outline_rounded,
-          size: 40,
-          color: AppThemeTokens.of(context).mutedText,
-        ),
+        Icon(isEmpty ? Icons.inbox_outlined : Icons.error_outline_rounded, size: 40, color: AppThemeTokens.of(context).mutedText),
         const SizedBox(height: AppSpacing.regular),
         Text(failureMessage ?? '当前来源没有发现内容。'),
         if (failureCode != null) ...<Widget>[
           const SizedBox(height: AppSpacing.unit),
-          Text(
-            '稳定错误码：$failureCode',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+          Text('稳定错误码：$failureCode', style: Theme.of(context).textTheme.bodySmall),
         ],
         const SizedBox(height: AppSpacing.regular),
         TextButton(onPressed: onRetry, child: const Text('刷新')),
@@ -265,73 +245,33 @@ class _DiscoveryComponentRenderer extends StatelessWidget {
   Widget build(BuildContext context) => KeyedSubtree(
     key: ValueKey<String>('runtime-discovery-component-${component.id}'),
     child: switch (component) {
-      PluginDiscoveryTabsComponent(:final tabs, :final selectedTabId) =>
-        _TabsComponent(
-          component: PluginDiscoveryTabsComponent(
-            id: component.id,
-            tabs: tabs,
-            selectedTabId: selectedTabId,
-          ),
-          onSelected: onTabSelected,
-        ),
-      PluginDiscoverySectionComponent(
-        :final title,
-        :final subtitle,
-        :final children,
-      ) =>
-        _SectionComponent(
-          component: PluginDiscoverySectionComponent(
-            id: component.id,
-            title: title,
-            subtitle: subtitle,
-            children: children,
-          ),
-          hideTitle: hideSectionTitle,
-          child: _ChildrenComponent(children: children, renderer: this),
-        ),
-      PluginDiscoveryGroupComponent(:final layout, :final children) =>
-        _GroupComponent(
-          component: PluginDiscoveryGroupComponent(
-            id: component.id,
-            layout: layout,
-            children: children,
-          ),
-          renderer: this,
-        ),
-      PluginDiscoveryContentCollectionComponent(
-        :final layout,
-        :final items,
-        :final continuation,
-      ) =>
-        _ContentCollection(
-          component: PluginDiscoveryContentCollectionComponent(
-            id: component.id,
-            layout: layout,
-            items: items,
-            continuation: continuation,
-          ),
-          onContentPressed: onContentPressed,
-          onLoadMore: onLoadMore,
-          isLoading: loadingCollectionId == component.id,
-          isInBookshelf: isInBookshelf,
-        ),
-      PluginDiscoveryCategoryCollectionComponent(
-        :final layout,
-        :final categories,
-      ) =>
-        _CategoryCollection(
-          component: PluginDiscoveryCategoryCollectionComponent(
-            id: component.id,
-            layout: layout,
-            categories: categories,
-          ),
-          onSelected: onCategorySelected,
-        ),
+      PluginDiscoveryTabsComponent(:final tabs, :final selectedTabId) => _TabsComponent(
+        component: PluginDiscoveryTabsComponent(id: component.id, tabs: tabs, selectedTabId: selectedTabId),
+        onSelected: onTabSelected,
+      ),
+      PluginDiscoverySectionComponent(:final title, :final subtitle, :final children) => _SectionComponent(
+        component: PluginDiscoverySectionComponent(id: component.id, title: title, subtitle: subtitle, children: children),
+        hideTitle: hideSectionTitle,
+        child: _ChildrenComponent(children: children, renderer: this),
+      ),
+      PluginDiscoveryGroupComponent(:final layout, :final children) => _GroupComponent(
+        component: PluginDiscoveryGroupComponent(id: component.id, layout: layout, children: children),
+        renderer: this,
+      ),
+      PluginDiscoveryContentCollectionComponent(:final layout, :final items, :final continuation) => _ContentCollection(
+        component: PluginDiscoveryContentCollectionComponent(id: component.id, layout: layout, items: items, continuation: continuation),
+        onContentPressed: onContentPressed,
+        onLoadMore: onLoadMore,
+        isLoading: loadingCollectionId == component.id,
+        isInBookshelf: isInBookshelf,
+      ),
+      PluginDiscoveryCategoryCollectionComponent(:final layout, :final categories) => _CategoryCollection(
+        component: PluginDiscoveryCategoryCollectionComponent(id: component.id, layout: layout, categories: categories),
+        onSelected: onCategorySelected,
+      ),
       PluginDiscoveryTextComponent(:final text) => Text(
         text,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: AppThemeTokens.of(context).mutedText,
-        ),
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppThemeTokens.of(context).mutedText),
       ),
       PluginDiscoveryDividerComponent() => const Divider(),
     },
@@ -395,11 +335,7 @@ class _TabsComponent extends StatelessWidget {
 }
 
 class _SectionComponent extends StatelessWidget {
-  const _SectionComponent({
-    required this.component,
-    required this.child,
-    required this.hideTitle,
-  });
+  const _SectionComponent({required this.component, required this.child, required this.hideTitle});
 
   final PluginDiscoverySectionComponent component;
   final Widget child;
@@ -409,21 +345,13 @@ class _SectionComponent extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: <Widget>[
-      if (!hideTitle)
-        Semantics(
-          header: true,
-          child: Text(
-            component.title,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-        ),
+      if (!hideTitle) Semantics(header: true, child: Text(component.title, style: Theme.of(context).textTheme.titleMedium)),
       if (!hideTitle) const SizedBox(height: AppSpacing.compact),
       if (component.subtitle != null) ...<Widget>[
         const SizedBox(height: AppSpacing.unit),
         Text(component.subtitle!, style: Theme.of(context).textTheme.bodySmall),
       ],
-      if (hideTitle && component.subtitle == null)
-        const SizedBox(height: AppSpacing.unit),
+      if (hideTitle && component.subtitle == null) const SizedBox(height: AppSpacing.unit),
       child,
     ],
   );
@@ -452,28 +380,17 @@ class _GroupComponent extends StatelessWidget {
         )
         .toList(growable: false);
     return switch (component.layout) {
-      PluginDiscoveryGroupLayout.vertical => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: children,
-      ),
+      PluginDiscoveryGroupLayout.vertical => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
       PluginDiscoveryGroupLayout.horizontal => SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: children,
-        ),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: children),
       ),
       PluginDiscoveryGroupLayout.grid => LayoutBuilder(
         builder: (context, constraints) => Wrap(
           spacing: AppSpacing.compact,
           runSpacing: AppSpacing.compact,
           children: children
-              .map(
-                (child) => SizedBox(
-                  width: (constraints.maxWidth - AppSpacing.compact) / 2,
-                  child: child,
-                ),
-              )
+              .map((child) => SizedBox(width: (constraints.maxWidth - AppSpacing.compact) / 2, child: child))
               .toList(growable: false),
         ),
       ),
@@ -499,10 +416,9 @@ class _ContentCollection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final heroItems = component.items.map(_heroData).toList(growable: false);
-    final rankedItems =
-        <DiscoveryRankedBookViewData, PluginDiscoveryContentItem>{
-          for (final item in component.items) _rankedData(item): item,
-        };
+    final rankedItems = <DiscoveryRankedBookViewData, PluginDiscoveryContentItem>{
+      for (final item in component.items) _rankedData(item): item,
+    };
     final cards = component.items
         .map(
           (item) => _DiscoveryBookCard(
@@ -517,10 +433,7 @@ class _ContentCollection extends StatelessWidget {
       PluginDiscoveryContentLayout.featured => Column(
         children: <Widget>[
           if (component.items.isNotEmpty)
-            DiscoveryHeroCard(
-              data: _heroData(component.items.first),
-              onPressed: () => onContentPressed(component.items.first.content),
-            ),
+            DiscoveryHeroCard(data: _heroData(component.items.first), onPressed: () => onContentPressed(component.items.first.content)),
           ...cards.skip(1),
         ],
       ),
@@ -537,9 +450,7 @@ class _ContentCollection extends StatelessWidget {
           title: '排行榜',
           books: rankedItems.keys.toList(growable: false),
           onPressed: (book) => onContentPressed(rankedItems[book]!.content),
-          onMorePressed: component.continuation == null
-              ? () {}
-              : () => onLoadMore(component),
+          onMorePressed: component.continuation == null ? () {} : () => onLoadMore(component),
         ),
       ),
       PluginDiscoveryContentLayout.list => Column(children: cards),
@@ -551,9 +462,7 @@ class _ContentCollection extends StatelessWidget {
         if (component.continuation != null) ...<Widget>[
           const SizedBox(height: AppSpacing.compact),
           OutlinedButton(
-            key: ValueKey<String>(
-              'runtime-discovery-load-more-${component.id}',
-            ),
+            key: ValueKey<String>('runtime-discovery-load-more-${component.id}'),
             onPressed: isLoading ? null : () => onLoadMore(component),
             child: Text(isLoading ? '正在加载' : '加载更多'),
           ),
@@ -564,21 +473,15 @@ class _ContentCollection extends StatelessWidget {
 }
 
 class _CategoryCollection extends StatelessWidget {
-  const _CategoryCollection({
-    required this.component,
-    required this.onSelected,
-  });
+  const _CategoryCollection({required this.component, required this.onSelected});
 
   final PluginDiscoveryCategoryCollectionComponent component;
   final ValueChanged<String> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final viewData = component.categories
-        .map(_categoryData)
-        .toList(growable: false);
-    if (component.layout == PluginDiscoveryCategoryLayout.grid &&
-        component.categories.length <= 8) {
+    final viewData = component.categories.map(_categoryData).toList(growable: false);
+    if (component.layout == PluginDiscoveryCategoryLayout.grid && component.categories.length <= 8) {
       return SizedBox(
         height: AppSpacing.discoveryBoardHeight,
         child: DiscoveryCategoryBoard(
@@ -604,19 +507,13 @@ class _CategoryCollection extends StatelessWidget {
     return switch (component.layout) {
       PluginDiscoveryCategoryLayout.grid => LayoutBuilder(
         builder: (context, constraints) {
-          final int columnCount = discoveryAdaptiveColumnCount(
-            constraints.maxWidth,
-            children.length,
-          );
+          final int columnCount = discoveryAdaptiveColumnCount(constraints.maxWidth, children.length);
           final double gap = AppSpacing.compact;
-          final double itemWidth =
-              (constraints.maxWidth - gap * (columnCount - 1)) / columnCount;
+          final double itemWidth = (constraints.maxWidth - gap * (columnCount - 1)) / columnCount;
           return Wrap(
             spacing: gap,
             runSpacing: gap,
-            children: children
-                .map((child) => SizedBox(width: itemWidth, child: child))
-                .toList(growable: false),
+            children: children.map((child) => SizedBox(width: itemWidth, child: child)).toList(growable: false),
           );
         },
       ),
@@ -625,8 +522,7 @@ class _CategoryCollection extends StatelessWidget {
         children: <Widget>[
           for (var index = 0; index < children.length; index++) ...<Widget>[
             children[index],
-            if (index < children.length - 1)
-              const SizedBox(height: AppSpacing.compact),
+            if (index < children.length - 1) const SizedBox(height: AppSpacing.compact),
           ],
         ],
       ),
@@ -634,48 +530,36 @@ class _CategoryCollection extends StatelessWidget {
   }
 }
 
-DiscoveryHeroViewData _heroData(PluginDiscoveryContentItem item) =>
-    DiscoveryHeroViewData(
-      title: item.content.title,
-      category: item.content.categories.firstOrNull,
-      description: item.recommendation ?? item.content.description,
-      metadata: item.content.author,
-      coverVariant: _coverVariant(item.content.id),
-      coverBytes: item.content.coverBytes,
-      heat: item.metric == null
-          ? null
-          : '${item.metric!.label} ${item.metric!.value}',
-    );
+DiscoveryHeroViewData _heroData(PluginDiscoveryContentItem item) => DiscoveryHeroViewData(
+  title: item.content.title,
+  category: item.content.categories.firstOrNull,
+  description: item.recommendation ?? item.content.description,
+  metadata: item.content.author,
+  coverVariant: _coverVariant(item.content.id),
+  coverBytes: item.content.coverBytes,
+  heat: item.metric == null ? null : '${item.metric!.label} ${item.metric!.value}',
+);
 
-DiscoveryRankedBookViewData _rankedData(PluginDiscoveryContentItem item) =>
-    DiscoveryRankedBookViewData(
-      rank: item.rank,
-      title: item.content.title,
-      author: item.content.author,
-      heat: item.metric?.value,
-      coverVariant: _coverVariant(item.content.id),
-    );
+DiscoveryRankedBookViewData _rankedData(PluginDiscoveryContentItem item) => DiscoveryRankedBookViewData(
+  rank: item.rank,
+  title: item.content.title,
+  author: item.content.author,
+  heat: item.metric?.value,
+  coverVariant: _coverVariant(item.content.id),
+);
 
-DiscoveryCategoryViewData _categoryData(PluginDiscoveryCategory category) =>
-    DiscoveryCategoryViewData(
-      title: category.title,
-      count: category.count == null ? null : '${category.count} 本',
-      icon:
-          DiscoveryCategoryIcon.values[category.id.codeUnits.fold<int>(
-                0,
-                (sum, value) => sum + value,
-              ) %
-              DiscoveryCategoryIcon.values.length],
-      target: category.target,
-    );
+DiscoveryCategoryViewData _categoryData(PluginDiscoveryCategory category) => DiscoveryCategoryViewData(
+  title: category.title,
+  count: category.count == null ? null : '${category.count} 本',
+  icon: DiscoveryCategoryIcon.values[category.id.codeUnits.fold<int>(0, (sum, value) => sum + value) % DiscoveryCategoryIcon.values.length],
+  target: category.target,
+);
 
 String? _nestedPageTitle(List<PluginDiscoveryComponent> components) {
   for (final component in components) {
     final title = switch (component) {
       PluginDiscoverySectionComponent(:final title) => title,
-      PluginDiscoveryGroupComponent(:final children) => _nestedPageTitle(
-        children,
-      ),
+      PluginDiscoveryGroupComponent(:final children) => _nestedPageTitle(children),
       _ => null,
     };
     if (title != null && title.trim().isNotEmpty) return title;
@@ -688,12 +572,7 @@ extension on List<String> {
 }
 
 class _DiscoveryBookCard extends StatelessWidget {
-  const _DiscoveryBookCard({
-    required this.item,
-    required this.onPressed,
-    required this.showRank,
-    required this.isInBookshelf,
-  });
+  const _DiscoveryBookCard({required this.item, required this.onPressed, required this.showRank, required this.isInBookshelf});
 
   final PluginDiscoveryContentItem item;
   final VoidCallback onPressed;
@@ -705,32 +584,19 @@ class _DiscoveryBookCard extends StatelessWidget {
     final content = item.content;
     final theme = Theme.of(context);
     final tokens = AppThemeTokens.of(context);
-    final tags = <String>[
-      ...content.categories,
-      ...content.tags,
-    ].take(3).toList(growable: false);
+    final tags = <String>[...content.categories, ...content.tags].take(3).toList(growable: false);
     final description = item.recommendation ?? content.description;
     return LayoutBuilder(
       builder: (context, constraints) {
         final coverWidth = math.min(
           AppSpacing.discoveryListCoverMaxWidth,
-          math.max(
-            AppSpacing.discoveryListCoverMinWidth,
-            constraints.maxWidth * 0.16,
-          ),
+          math.max(AppSpacing.discoveryListCoverMinWidth, constraints.maxWidth * 0.16),
         );
-        final coverHeight =
-            coverWidth * AppSpacing.discoveryListCoverAspectRatio;
-        final titleStyle = theme.textTheme.titleSmall?.copyWith(
-          fontWeight: FontWeight.w600,
-        );
+        final coverHeight = coverWidth * AppSpacing.discoveryListCoverAspectRatio;
+        final titleStyle = theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600);
         final secondaryTextStyle = theme.textTheme.bodySmall;
-        final metadataStyle = theme.textTheme.bodySmall?.copyWith(
-          color: tokens.mutedText,
-        );
-        final rowBackground = isInBookshelf
-            ? tokens.featureSurface.withValues(alpha: 0.48)
-            : tokens.surface;
+        final metadataStyle = theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText);
+        final rowBackground = isInBookshelf ? tokens.featureSurface.withValues(alpha: 0.48) : tokens.surface;
         return Semantics(
           button: true,
           label: '查看 ${content.title}${isInBookshelf ? '，已在书架' : ''}',
@@ -741,13 +607,9 @@ class _DiscoveryBookCard extends StatelessWidget {
               onTap: onPressed,
               child: Container(
                 constraints: BoxConstraints(minHeight: coverHeight),
-                padding: const EdgeInsets.symmetric(
-                  vertical: AppSpacing.regular,
-                ),
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.regular),
                 decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: tokens.divider, width: 0.8),
-                  ),
+                  border: Border(bottom: BorderSide(color: tokens.divider, width: 0.8)),
                 ),
                 child: IntrinsicHeight(
                   child: Row(
@@ -769,68 +631,37 @@ class _DiscoveryBookCard extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
-                            Text(
-                              content.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: titleStyle,
-                            ),
+                            Text(content.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
                             const SizedBox(height: AppSpacing.unit),
-                            Text(
-                              _authorAndCategory(content),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: secondaryTextStyle,
-                            ),
+                            Text(_authorAndCategory(content), maxLines: 1, overflow: TextOverflow.ellipsis, style: secondaryTextStyle),
                             if (tags.isNotEmpty) ...<Widget>[
                               const SizedBox(height: AppSpacing.unit),
                               Wrap(
                                 spacing: AppSpacing.compact,
                                 runSpacing: AppSpacing.unit,
-                                children: tags
-                                    .map((tag) => _DiscoveryListTag(label: tag))
-                                    .toList(growable: false),
+                                children: tags.map((tag) => DiscoveryListTag(label: tag)).toList(growable: false),
                               ),
                             ],
                             if (description != null) ...<Widget>[
                               const SizedBox(height: AppSpacing.unit),
-                              Text(
-                                description,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: secondaryTextStyle,
-                              ),
+                              Text(description, maxLines: 2, overflow: TextOverflow.ellipsis, style: secondaryTextStyle),
                             ],
                             const Spacer(),
                             Row(
                               children: <Widget>[
                                 Expanded(
-                                  child: Text(
-                                    _bookMetadata(content),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: metadataStyle,
-                                  ),
+                                  child: Text(_bookMetadata(content), maxLines: 1, overflow: TextOverflow.ellipsis, style: metadataStyle),
                                 ),
                                 if (item.metric != null) ...<Widget>[
                                   const SizedBox(width: AppSpacing.compact),
                                   Padding(
-                                    padding: const EdgeInsets.only(
-                                      right: AppSpacing.comfortable,
-                                    ),
+                                    padding: const EdgeInsets.only(right: AppSpacing.comfortable),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: <Widget>[
-                                        Icon(
-                                          Icons.local_fire_department_rounded,
-                                          size: 16,
-                                          color: tokens.notification,
-                                        ),
+                                        Icon(Icons.local_fire_department_rounded, size: 16, color: tokens.notification),
                                         const SizedBox(width: AppSpacing.unit),
-                                        Text(
-                                          '${item.metric!.value}${item.metric!.label}',
-                                          style: metadataStyle,
-                                        ),
+                                        Text('${item.metric!.value}${item.metric!.label}', style: metadataStyle),
                                       ],
                                     ),
                                   ),
@@ -852,46 +683,16 @@ class _DiscoveryBookCard extends StatelessWidget {
   }
 }
 
-class _DiscoveryListTag extends StatelessWidget {
-  const _DiscoveryListTag({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppThemeTokens.of(context);
-    return Container(
-      height: AppSpacing.discoveryListTagHeight,
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.regular),
-      decoration: BoxDecoration(
-        color: tokens.accentSoft.withValues(alpha: 0.62),
-        borderRadius: AppRadii.pill,
-      ),
-      child: Text(
-        label,
-        style: Theme.of(
-          context,
-        ).textTheme.bodySmall?.copyWith(color: tokens.accent),
-      ),
-    );
-  }
-}
-
 String _authorAndCategory(PluginContentSummary content) {
   return <String>[
-    if (content.author != null && content.author!.trim().isNotEmpty)
-      content.author!,
+    if (content.author != null && content.author!.trim().isNotEmpty) content.author!,
     if (content.categories.isNotEmpty) content.categories.first,
   ].join(' · ');
 }
 
 String _bookMetadata(PluginContentSummary content) {
-  final updateLabel = _attributeValue(
-    content.attributes,
-    'discoveryUpdatedLabel',
-  );
-  final resolvedUpdateLabel =
-      updateLabel ?? _relativeUpdateLabel(content.updatedAt);
+  final updateLabel = _attributeValue(content.attributes, 'discoveryUpdatedLabel');
+  final resolvedUpdateLabel = updateLabel ?? _relativeUpdateLabel(content.updatedAt);
   return <String>[
     if (content.chapterCount != null) '${content.chapterCount}章',
     _statusLabel(content.status),
@@ -915,10 +716,7 @@ String _statusLabel(PluginContentStatus value) => switch (value) {
   PluginContentStatus.unknown => '未知',
 };
 
-String? _attributeValue(
-  Iterable<PluginContentAttribute> attributes,
-  String key,
-) {
+String? _attributeValue(Iterable<PluginContentAttribute> attributes, String key) {
   for (final attribute in attributes) {
     if (attribute.key == key) return attribute.value;
   }
@@ -927,6 +725,5 @@ String? _attributeValue(
 
 DiscoveryCoverVariant _coverVariant(String id) {
   final checksum = id.codeUnits.fold<int>(0, (value, unit) => value + unit);
-  return DiscoveryCoverVariant.values[checksum %
-      DiscoveryCoverVariant.values.length];
+  return DiscoveryCoverVariant.values[checksum % DiscoveryCoverVariant.values.length];
 }

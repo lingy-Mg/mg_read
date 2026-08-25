@@ -22,5 +22,12 @@
       "tooltip": "构建 Windows x64 Release 应用并复制到根目录 build"
     }
   ],
-  "cmake.ignoreCMakeListsMissing": true
+  "cmake.ignoreCMakeListsMissing": true,
+
+
+  // 所有保存都允许触发 Flutter Hot Reload
+  "dart.flutterHotReloadOnSave": "all",
+    // 关键：使用文件系统监听，而不是 VS Code 的保存事件
+  // Codex / Claude Code / 外部脚本修改 .dart 文件后也能触发
+  "dart.previewHotReloadOnSaveWatcher": true
 }

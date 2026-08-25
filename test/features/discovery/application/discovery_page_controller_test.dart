@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/features/discovery/application/discovery_page_controller.dart';
@@ -162,6 +164,53 @@ void main() {
       expect(_collection(state.result!).id, 'home-books');
     },
   );
+
+  test('returns to the parent while discarding a pending category request', () async {
+    final gateway = _TreeGateway()..categoryGate = Completer<void>();
+    final container = ProviderContainer(
+      overrides: [
+        sourceContentGatewayProvider.overrideWithValue(gateway),
+        discoverySourceSelectionStoreProvider.overrideWithValue(
+          _MemoryDiscoverySourceSelectionStore(null),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    final listener = container.listen<DiscoveryPageState>(
+      discoveryPageControllerProvider,
+      (_, _) {},
+      fireImmediately: true,
+    );
+    addTearDown(listener.close);
+
+    await _waitUntil(
+      () =>
+          container.read(discoveryPageControllerProvider).status ==
+          DiscoveryPageStatus.loaded,
+    );
+    final controller = container.read(
+      discoveryPageControllerProvider.notifier,
+    );
+    final pending = controller.openCategory('category:fantasy');
+    await _waitUntil(
+      () =>
+          container.read(discoveryPageControllerProvider).status ==
+          DiscoveryPageStatus.loadingContent,
+    );
+
+    var state = container.read(discoveryPageControllerProvider);
+    expect(state.canNavigateBack, isTrue);
+    controller.goBack();
+    state = container.read(discoveryPageControllerProvider);
+    expect(state.status, DiscoveryPageStatus.loaded);
+    expect(state.canNavigateBack, isFalse);
+    expect(_collection(state.result!).id, 'home-books');
+
+    gateway.categoryGate!.complete();
+    await pending;
+    state = container.read(discoveryPageControllerProvider);
+    expect(_collection(state.result!).id, 'home-books');
+  });
 }
 
 Future<void> _waitUntil(bool Function() predicate) async {
@@ -183,6 +232,7 @@ final class _TreeGateway implements SourceContentGateway {
   static const alternatePluginId = 'org.mgread.alternate-tree-test';
   int documentRequestCount = 0;
   final List<String> documentPluginIds = <String>[];
+  Completer<void>? categoryGate;
 
   @override
   Future<List<PluginSourceDescriptor>> listSources() async =>
@@ -222,6 +272,9 @@ final class _TreeGateway implements SourceContentGateway {
     documentRequestCount++;
     documentPluginIds.add(pluginId);
     final isCategory = target == 'category:fantasy';
+    if (isCategory) {
+      await categoryGate?.future;
+    }
     return PluginDiscoveryDocumentResult(
       pluginId: pluginId,
       sourceName: '树测试书源',
