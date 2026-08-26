@@ -13,13 +13,13 @@
  * - None.
  */
 import assert from "node:assert/strict";
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { RuntimeDebugHttpServer, RuntimeDebugLogBuffer } from "../dist/debug-http.js";
+import { RuntimeDebugHttpServer, RuntimeDebugLogBuffer, runtimeDebugHttpPort } from "../dist/debug-http.js";
 import { DesktopRuntime } from "../dist/desktop-runtime.js";
 
 async function startImageServer() {
@@ -75,6 +75,7 @@ test("Debug inspector is transient, isolates control routes, and redacts cover t
   assert.equal(enabled.enabled, true);
   const base = enabled.endpoints.find((value) => value.startsWith("http://127.0.0.1:"));
   assert.ok(base);
+  assert.equal(new URL(base).port, String(runtimeDebugHttpPort));
 
   const page = await fetch(base);
   assert.equal(page.status, 200);
@@ -122,7 +123,37 @@ test("Debug inspector is transient, isolates control routes, and redacts cover t
   assert.deepEqual([...new Uint8Array(await probe.arrayBuffer())], [137, 80, 78, 71]);
 
   const disabled = await inspector.setEnabled(false);
-  assert.deepEqual(disabled, { enabled: false, endpoints: [], startedAt: null });
+  assert.deepEqual(disabled, { configuredEnabled: false, enabled: false, endpoints: [], startedAt: null });
+});
+
+test("Runtime persists the Debug preference and restores the fixed listener", async (t) => {
+  const dataRoot = await mkdtemp(join(tmpdir(), "mgread-debug-preference-"));
+  let runtime = new DesktopRuntime({ dataRoot, debugHttpAllowed: true });
+  t.after(async () => {
+    await runtime.stop();
+    await rm(dataRoot, { force: true, recursive: true });
+  });
+
+  await runtime.start();
+  const enabled = await runtime.invokeEmbedded("runtime.debugHttp.setEnabled.v1", { enabled: true });
+  assert.equal(enabled.ok, true);
+  assert.equal(enabled.result.configuredEnabled, true);
+  assert.equal(enabled.result.enabled, true);
+  assert.match(enabled.result.endpoints[0], new RegExp(`:${runtimeDebugHttpPort}/__debug$`));
+  assert.deepEqual(
+    JSON.parse(await readFile(join(dataRoot, "runtime-settings", "debug-http.json"), "utf8")),
+    { enabled: true },
+  );
+
+  await runtime.stop();
+  runtime = new DesktopRuntime({ dataRoot, debugHttpAllowed: true });
+  await runtime.start();
+  const restored = await runtime.invokeEmbedded("runtime.debugHttp.status.v1", {});
+  assert.equal(restored.ok, true);
+  assert.equal(restored.result.configuredEnabled, true);
+  assert.equal(restored.result.enabled, true);
+  assert.match(restored.result.endpoints[0], new RegExp(`:${runtimeDebugHttpPort}/__debug$`));
+  await assert.rejects(access(join(dataRoot, "diagnostics")), (error) => error?.code === "ENOENT");
 });
 
 test("Runtime rejects Debug listener control without the platform Debug build gate", async (t) => {

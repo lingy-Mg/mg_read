@@ -28,6 +28,7 @@ final class DataSourceManagementRowData {
     required this.enabled,
     required this.brand,
     required this.isDevelopment,
+    this.iconUrl,
   });
 
   final String id;
@@ -37,6 +38,7 @@ final class DataSourceManagementRowData {
   final bool enabled;
   final DataSourceBrand brand;
   final bool isDevelopment;
+  final String? iconUrl;
 }
 
 class DataSourceManagementRow extends StatelessWidget {
@@ -74,6 +76,7 @@ class DataSourceManagementRow extends StatelessWidget {
                   displayName: source.name,
                   brand: source.brand,
                   isDevelopment: source.isDevelopment,
+                  iconUrl: source.iconUrl,
                 ),
                 const SizedBox(width: AppSpacing.regular),
                 Expanded(
@@ -143,18 +146,38 @@ DataSourceBrand dataSourceBrandFor(String displayName) {
 }
 
 class _DataSourceBrandMark extends StatelessWidget {
-  const _DataSourceBrandMark({required this.sourceId, required this.displayName, required this.brand, required this.isDevelopment});
+  const _DataSourceBrandMark({
+    required this.sourceId,
+    required this.displayName,
+    required this.brand,
+    required this.isDevelopment,
+    required this.iconUrl,
+  });
 
   final String sourceId;
   final String displayName;
   final DataSourceBrand brand;
   final bool isDevelopment;
+  final String? iconUrl;
 
   @override
   Widget build(BuildContext context) {
-    final Widget mark = SourceBranding.assetFor(sourceId) != null
+    final Widget fallback = SourceBranding.assetFor(sourceId) != null
         ? SourceIcon(sourceId: sourceId, displayName: displayName, size: AppSpacing.dataSourceMarkExtent, borderRadius: 12)
         : _GeneratedBrandMark(brand: brand);
+    final Uri? iconUri = Uri.tryParse(iconUrl ?? '');
+    final Widget mark = iconUri != null && (iconUri.scheme == 'http' || iconUri.scheme == 'https')
+        ? ClipRRect(
+            borderRadius: AppRadii.discoveryTile,
+            child: Image.network(
+              iconUri.toString(),
+              width: AppSpacing.dataSourceMarkExtent,
+              height: AppSpacing.dataSourceMarkExtent,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => fallback,
+            ),
+          )
+        : fallback;
     if (!isDevelopment) return mark;
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final ThemeData theme = Theme.of(context);

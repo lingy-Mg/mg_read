@@ -1,3 +1,7 @@
+/**
+ * Runtime Node 测试的标准插件、依赖包与归档 fixture 工具。
+ * 注意：开发传输工具只在当前测试进程的同一 Node VM 内运行。
+ */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
@@ -64,6 +68,7 @@ export async function createRegistryPlugin(
       schemaVersion: 1,
       id,
       displayName: `Fixture ${id}`,
+      packageMode: "archive",
       pluginApi: 1,
       contentKinds: ["novel"],
     },
@@ -151,7 +156,10 @@ export function getContent() { throw new Error("unused"); }
 }
 
 export async function createDevelopmentPlugin(root, prefix) {
-  await mkdir(join(root, "dist"), { recursive: true });
+  await Promise.all([
+    mkdir(join(root, "dist"), { recursive: true }),
+    mkdir(join(root, "tools"), { recursive: true }),
+  ]);
   const packageJson = {
     name: "@mgread-plugin/live-source",
     version: "0.1.0",
@@ -162,6 +170,7 @@ export async function createDevelopmentPlugin(root, prefix) {
       schemaVersion: 1,
       id: "org.example.live-source",
       displayName: "Live source",
+      packageMode: "archive",
       pluginApi: 1,
       contentKinds: ["novel"],
     },
@@ -207,6 +216,23 @@ export function getContent(request) { return { contentKind: "novel", chapterId: 
     writeFile(join(root, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`),
     writeFile(join(root, "package-lock.json"), `${JSON.stringify(lock, null, 2)}\n`),
     writeFile(join(root, "dist", "index.mjs"), entry),
+    writeFile(
+      join(root, "tools", "mgread.mjs"),
+      `import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createPluginArchive } from ${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)};
+export async function buildPluginArtifact({ versionOverride }) {
+  const temp = await mkdtemp(join(tmpdir(), "mgread-dev-tool-"));
+  const path = join(temp, "plugin.mgplugin");
+  try {
+    await createPluginArchive(fileURLToPath(new URL("..", import.meta.url)), path, { versionOverride });
+    return { bytes: await readFile(path), fileName: "plugin.mgplugin", format: "archive" };
+  } finally { await rm(temp, { force: true, recursive: true }); }
+}
+`,
+    ),
   ]);
   return root;
 }

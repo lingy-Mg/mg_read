@@ -113,7 +113,6 @@ class _FeedbackPageState extends State<FeedbackPage> {
           ),
         ),
       ),
-      bottomNavigationBar: ProfileDetailBottomBar(onSelected: widget.onDestinationRequested),
     );
   }
 

@@ -174,17 +174,19 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                   },
                 ),
               ),
-              bottomNavigationBar: SafeArea(
-                top: false,
-                child: AppBottomNavigation(
-                  selected: AppNavigationDestination.discover,
-                  onSelected: (destination) {
-                    if (destination != AppNavigationDestination.discover) {
-                      onDestinationRequested(destination);
-                    }
-                  },
-                ),
-              ),
+              bottomNavigationBar: isNestedPage
+                  ? null
+                  : SafeArea(
+                      top: false,
+                      child: AppBottomNavigation(
+                        selected: AppNavigationDestination.discover,
+                        onSelected: (destination) {
+                          if (destination != AppNavigationDestination.discover) {
+                            onDestinationRequested(destination);
+                          }
+                        },
+                      ),
+                    ),
             ),
           ),
         ),

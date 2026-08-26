@@ -20,6 +20,7 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_book_list_action.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_continue_reading_card.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_controls.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_top_bar.dart';
@@ -28,7 +29,7 @@ import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
 
 const _deleteBookAction = LibraryBookListAction(id: 'delete', label: '删除');
-const _setBookPrivateAction = LibraryBookListAction(id: 'set-private', label: '设为隐私');
+const _setBookPrivateAction = LibraryBookListAction(id: 'set-private', label: '隐私');
 
 /// The responsive, presentation-only app shell for the library landing page.
 class LibraryHomeShell extends StatefulWidget {
@@ -205,6 +206,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
             sliver: LibraryBookSliverList(
               books: books,
               onOpenBook: _handleOpenBook,
+              onBookLongPress: _handleBookLongPress,
               onBookMore: _handleBookMore,
               actions: _bookActions,
               onBookAction: _handleBookAction,
@@ -266,6 +268,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
           LibraryBookList(
             books: books,
             onOpenBook: _handleOpenBook,
+            onBookLongPress: _handleBookLongPress,
             onBookMore: _handleBookMore,
             actions: _bookActions,
             onBookAction: _handleBookAction,
@@ -361,6 +364,15 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     _showUnavailableMessage();
   }
 
+  void _handleBookLongPress(LibraryBookListItemViewData book) {
+    final ValueChanged<LibraryBookListItemViewData>? callback = widget.callbacks.onBookLongPress;
+    if (callback != null) {
+      callback(book);
+      return;
+    }
+    _showUnavailableMessage();
+  }
+
   void _handleBookAction(LibraryBookListItemViewData book, LibraryBookListAction action) {
     switch (action.id) {
       case 'delete':
@@ -382,15 +394,25 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   }
 
   Future<void> _setBookPrivate(LibraryBookListItemViewData book, Future<void> Function(LibraryBookListItemViewData) setPrivate) async {
+    if (!_removingBookIds.add(book.id)) return;
+    setState(() {});
+    final Duration transitionDuration = MediaQuery.disableAnimationsOf(context) ? Duration.zero : AppMotion.destinationTransition;
+    await Future<void>.delayed(transitionDuration);
+    if (!mounted) return;
+
     try {
       await setPrivate(book);
       if (!mounted) return;
       setState(() {
-        _actionFeedback = '已将《${book.title}》设为隐私书籍';
+        _removingBookIds.remove(book.id);
       });
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(behavior: SnackBarBehavior.floating, content: Text('已将《${book.title}》设为隐私书籍')));
     } catch (_) {
       if (!mounted) return;
       setState(() {
+        _removingBookIds.remove(book.id);
         _actionFeedback = '隐私设置未能完成，请稍后刷新。';
       });
     }

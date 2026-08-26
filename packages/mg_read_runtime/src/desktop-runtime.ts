@@ -18,7 +18,6 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import type { Duplex } from "node:stream";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -45,16 +44,25 @@ import {
   maxWebSocketOutboundQueueBytes,
   ServerWebSocketSession,
 } from "./websocket.js";
-import { RuntimeDebugHttpServer, RuntimeDebugLogBuffer } from "./debug-http.js";
+import { RuntimeDebugHttpServer, RuntimeDebugLogBuffer, type RuntimeDebugHttpStatus } from "./debug-http.js";
 import { createRuntimeDebugHttpServer } from "./debug-http-bridge.js";
-import { dispatchDebugHttpSetEnabled } from "./debug-http-control.js";
-import { servePluginTransferResource, serveSourceResource } from "./loopback-resources.js";
+import { readDebugHttpEnabled } from "./debug-http-control.js";
+import { RuntimeDebugHttpSettings } from "./debug-http-settings.js";
+import { servePluginIconResource, servePluginTransferResource, serveSourceResource } from "./loopback-resources.js";
 import {
   PluginManager,
   PluginManagerError,
   type PluginManagerEvent,
 } from "./plugin-manager.js";
-import { PluginInstaller } from "./plugin-installer.js";
+import { installPluginArtifactInbox, seedBundledPluginArtifacts } from "./plugin-artifact-inbox.js";
+import { dispatchPluginEnabled, dispatchPluginUninstall } from "./plugin-uninstall-dispatch.js";
+import {
+  dispatchPluginDevelopmentPackage,
+  dispatchPluginTransferExport,
+  dispatchPluginTransferList,
+  dispatchPluginTransferPlan,
+  dispatchPluginTransferVerify,
+} from "./desktop-plugin-transfer-dispatch.js";
 import { emitRuntimeDiagnostic, observeRuntimeDiagnostics } from "./runtime-diagnostics.js";
 import {
   parseChaptersParams,
@@ -66,16 +74,12 @@ import {
   PluginContentValidationError,
   type PluginContentOperation,
 } from "./plugin-content.js";
-import {
-  PluginTransferError,
-  type PluginTransferArchive,
-  MAX_PLUGIN_TRANSFER_BATCH,
-} from "./plugin-transfer.js";
 
 const LOOPBACK_HOST = "127.0.0.1";
 const MAX_INLINE_BYTES = maxWebSocketControlFrameBytes;
 const MAX_INFLIGHT_REQUESTS_PER_CONNECTION = 256;
 const RUNTIME_CONTROL_METHOD = Object.freeze({
+  debugHttpStatus: "runtime.debugHttp.status.v1",
   debugHttpSetEnabled: "runtime.debugHttp.setEnabled.v1",
   hello: "runtime.hello",
   ping: "runtime.ping",
@@ -87,11 +91,13 @@ const RUNTIME_CONTROL_METHOD = Object.freeze({
   pluginsList: "plugins.list.v1",
   pluginsRecoveryConsume: "plugins.recovery.consume.v1",
   pluginsOpenCodeDirectory: "plugins.openCodeDirectory.v1",
+  pluginsDevelopmentPackage: "plugins.development.package.v1",
   pluginsSetEnabled: "plugins.setEnabled.v1",
-  pluginsTransferList: "plugins.transfer.list.v1",
-  pluginsTransferPlan: "plugins.transfer.plan.v1",
-  pluginsTransferExport: "plugins.transfer.export.v1",
-  pluginsTransferVerify: "plugins.transfer.verify.v1",
+  pluginsUninstall: "plugins.uninstall.v1",
+  pluginsTransferList: "plugins.transfer.list.v2",
+  pluginsTransferPlan: "plugins.transfer.plan.v2",
+  pluginsTransferExport: "plugins.transfer.export.v2",
+  pluginsTransferVerify: "plugins.transfer.verify.v2",
   sourceDiscover: "source.discover.v1",
   sourceSearch: "source.search.v1",
   sourceSearchSuggestions: "source.searchSuggestions.v1",
@@ -100,74 +106,6 @@ const RUNTIME_CONTROL_METHOD = Object.freeze({
   sourceGetContent: "source.getContent.v1",
   shutdown: "runtime.shutdown",
 } as const);
-
-interface BundledPluginArchive {
-  readonly path: string;
-  readonly pluginId: string;
-  readonly version: string;
-}
-
-interface BundledPluginMarkers {
-  readonly currentVersion: string | null;
-  readonly disabled: boolean;
-  readonly pendingVersion: string | null;
-  readonly uninstallPending: boolean;
-}
-
-function parseBundledPluginArchive(
-  name: string,
-  root: string,
-): BundledPluginArchive {
-  const match = /^([a-z0-9][a-z0-9.-]*)-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.mgplugin$/.exec(name);
-  if (match === null) {
-    throw new Error("Runtime bundled plugin archive name is invalid.");
-  }
-  return Object.freeze({
-    path: resolve(root, name),
-    pluginId: match[1]!,
-    version: match[2]!,
-  });
-}
-
-async function readBundledPluginMarkers(pluginRoot: string): Promise<BundledPluginMarkers> {
-  let names: ReadonlySet<string>;
-  try {
-    names = new Set(
-      (await readdir(pluginRoot, { withFileTypes: true })).map((entry) => entry.name),
-    );
-  } catch (error) {
-    if (isMissingFile(error)) {
-      return Object.freeze({
-        currentVersion: null,
-        disabled: false,
-        pendingVersion: null,
-        uninstallPending: false,
-      });
-    }
-    throw error;
-  }
-  return Object.freeze({
-    currentVersion: await readVersionMarker(pluginRoot, "current", names),
-    disabled: names.has("disabled"),
-    pendingVersion: await readVersionMarker(pluginRoot, "pending", names),
-    uninstallPending: names.has("uninstall-pending"),
-  });
-}
-
-async function readVersionMarker(
-  pluginRoot: string,
-  name: string,
-  names: ReadonlySet<string>,
-): Promise<string | null> {
-  if (!names.has(name)) return null;
-  const value = (await readFile(resolve(pluginRoot, name), "utf8")).trim();
-  return value.length === 0 ? null : value;
-}
-
-function isMissingFile(error: unknown): error is NodeJS.ErrnoException {
-  return typeof error === "object" && error !== null &&
-    "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT";
-}
 
 const RUNTIME_CONTROL_CAPABILITIES = Object.freeze([
   RUNTIME_CONTROL_METHOD.ping,
@@ -179,7 +117,9 @@ const RUNTIME_CONTROL_CAPABILITIES = Object.freeze([
   RUNTIME_CONTROL_METHOD.pluginsList,
   RUNTIME_CONTROL_METHOD.pluginsRecoveryConsume,
   RUNTIME_CONTROL_METHOD.pluginsOpenCodeDirectory,
+  RUNTIME_CONTROL_METHOD.pluginsDevelopmentPackage,
   RUNTIME_CONTROL_METHOD.pluginsSetEnabled,
+  RUNTIME_CONTROL_METHOD.pluginsUninstall,
   RUNTIME_CONTROL_METHOD.pluginsTransferList,
   RUNTIME_CONTROL_METHOD.pluginsTransferPlan,
   RUNTIME_CONTROL_METHOD.pluginsTransferExport,
@@ -383,6 +323,7 @@ export class DesktopRuntime {
   readonly #bundledPluginRoot: string | undefined;
   readonly #embedded: boolean;
   readonly #debugHttpAllowed: boolean;
+  readonly #debugHttpSettings: RuntimeDebugHttpSettings;
   readonly #onProgress: DesktopRuntimeProgressSink;
 
   /** All currently open RPC sessions, closed before server shutdown. */
@@ -397,6 +338,7 @@ export class DesktopRuntime {
   #pluginManager: PluginManager | undefined;
   /** Optional, separately-bound Debug inspector; never carries Runtime RPC. */
   #debugHttp: RuntimeDebugHttpServer | undefined;
+  #debugHttpConfiguredEnabled = false;
   /** Transient tail for the Debug inspector; never persisted to disk. */
   readonly #debugLogs = new RuntimeDebugLogBuffer();
   #removeDebugDiagnosticObserver: (() => void) | undefined;
@@ -410,6 +352,7 @@ export class DesktopRuntime {
     this.#bundledPluginRoot = options.bundledPluginRoot;
     this.#embedded = options.embedded ?? false;
     this.#debugHttpAllowed = options.debugHttpAllowed ?? false;
+    this.#debugHttpSettings = new RuntimeDebugHttpSettings(this.#dataRoot);
     this.#onProgress = options.onProgress ?? (() => {});
     this.#removeDebugDiagnosticObserver = observeRuntimeDiagnostics((record) => {
       if (!this.#debugHttp?.status().enabled) return;
@@ -493,8 +436,8 @@ export class DesktopRuntime {
     }
 
     try {
-      await this.#installPluginInbox();
-      await this.#seedBundledPlugins();
+      await installPluginArtifactInbox(this.#dataRoot, this.#pluginImportInboxRoot, this.#onProgress);
+      await seedBundledPluginArtifacts(this.#dataRoot, this.#bundledPluginRoot, this.#onProgress);
     } catch (error) {
       throw error;
     }
@@ -517,6 +460,19 @@ export class DesktopRuntime {
         this.#debugLogs,
         (request) => this.#dispatch(request, new AbortController().signal),
       );
+      this.#debugHttpConfiguredEnabled = await this.#debugHttpSettings.readEnabled();
+      if (this.#debugHttpConfiguredEnabled) {
+        try {
+          await this.#debugHttp.setEnabled(true);
+        } catch {
+          emitRuntimeDiagnostic({
+            code: "runtime_debug_http_port_unavailable",
+            level: "warning",
+            message: "The fixed Debug inspector port was unavailable.",
+            type: "diagnostic",
+          });
+        }
+      }
     }
     emitRuntimeDiagnostic({
       code: "plugin_runtime_initialized",
@@ -575,78 +531,6 @@ export class DesktopRuntime {
     return ready;
   }
 
-  /**
-   * Reconciles Runtime-owned default packages at a cold start.
-   *
-   * Each archive is considered independently: a newly bundled default becomes
-   * available even when another default is already installed, while explicit
-   * disable/uninstall markers remain authoritative. A newer packaged default
-   * follows the normal pending-version transaction, preventing pre-release
-   * protocol migrations from leaving a stale bundled source behind.
-   */
-  async #seedBundledPlugins(): Promise<void> {
-    const bundledPluginRoot = this.#bundledPluginRoot;
-    if (bundledPluginRoot === undefined) return;
-
-    const pluginsRoot = resolve(this.#dataRoot, "plugins");
-    await mkdir(pluginsRoot, { recursive: true });
-    const archives = (await readdir(bundledPluginRoot, { withFileTypes: true }))
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".mgplugin"))
-      .map((entry) => parseBundledPluginArchive(entry.name, bundledPluginRoot))
-      .sort((left, right) => left.path.localeCompare(right.path));
-    if (archives.length === 0) {
-      throw new Error("Runtime bundled plugin assets are unavailable.");
-    }
-
-    const installer = new PluginInstaller(this.#dataRoot, {
-      onProgress: this.#onProgress,
-    });
-    for (const archive of archives) {
-      const markers = await readBundledPluginMarkers(
-        resolve(pluginsRoot, archive.pluginId),
-      );
-      if (markers.disabled || markers.uninstallPending) continue;
-      if (
-        markers.currentVersion === archive.version ||
-        markers.pendingVersion === archive.version
-      ) {
-        continue;
-      }
-      try {
-        await installer.installArchive(archive.path);
-      } catch (error) {
-        throw error;
-      }
-    }
-  }
-
-  async #installPluginInbox(): Promise<void> {
-    const inboxRoot = this.#pluginImportInboxRoot;
-    if (inboxRoot === undefined) return;
-    await mkdir(inboxRoot, { recursive: true });
-    const archives = (await readdir(inboxRoot, { withFileTypes: true }))
-      .filter((entry) => entry.isFile() && /^[a-zA-Z0-9._-]+\.mgplugin$/.test(entry.name))
-      .sort((left, right) => left.name.localeCompare(right.name));
-    if (archives.length > 32) throw new Error("Runtime plugin import inbox is over budget.");
-    const installer = new PluginInstaller(this.#dataRoot, {
-      onProgress: this.#onProgress,
-    });
-    for (const archive of archives) {
-      const archivePath = resolve(inboxRoot, archive.name);
-      const metadata = await stat(archivePath);
-      if (!metadata.isFile() || metadata.size > 32 * 1024 * 1024) {
-        throw new Error("Runtime plugin import archive is over budget.");
-      }
-      try {
-        await installer.installArchive(archivePath);
-        await rm(archivePath, { force: true });
-      } catch (error) {
-        await rm(archivePath, { force: true }).catch(() => {});
-        throw error;
-      }
-    }
-  }
-
   /** Mirrors plugin ctx.log only while the separately enabled Debug listener is live. */
   #handlePluginManagerEvent(event: PluginManagerEvent): void {
     if (
@@ -662,6 +546,16 @@ export class DesktopRuntime {
       });
     }
     emitPluginManagerDiagnostic(event);
+  }
+
+  /** Projects the durable preference separately from the current listener state. */
+  #debugHttpStatus(): RuntimeDebugHttpStatus {
+    return this.#debugHttp?.status(this.#debugHttpConfiguredEnabled) ?? Object.freeze({
+      configuredEnabled: this.#debugHttpConfiguredEnabled,
+      enabled: false,
+      endpoints: Object.freeze([]),
+      startedAt: null,
+    });
   }
 
   /** Performs ordered shutdown so handlers cannot outlive their transport. */
@@ -711,7 +605,13 @@ export class DesktopRuntime {
       void serveSourceResource(this.#pluginManager, resourceMatch[1]!, response, finish);
       return;
     }
-    const transferMatch = /^\/v1\/plugin-transfer\/([A-Za-z0-9_-]{32,128})$/.exec(url.pathname);
+    const iconMatch = /^\/v1\/plugin-icon\/([A-Za-z0-9_-]{32,128})$/.exec(url.pathname);
+    if (iconMatch !== null) {
+      if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); finish(405); return; }
+      void servePluginIconResource(this.#pluginManager, iconMatch[1]!, response, finish);
+      return;
+    }
+    const transferMatch = /^\/v2\/plugin-artifact\/([A-Za-z0-9_-]{32,128})$/.exec(url.pathname);
     if (transferMatch !== null) {
       if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); finish(405); return; }
       void servePluginTransferResource(this.#pluginManager, transferMatch[1]!, response, finish);
@@ -1013,12 +913,45 @@ export class DesktopRuntime {
           };
         }
         {
-          const outcome = await dispatchDebugHttpSetEnabled(request, this.#debugHttp);
-          if ("result" in outcome && request.params.enabled === false) {
-            this.#debugLogs.clear();
+          const enabled = readDebugHttpEnabled(request);
+          if (typeof enabled !== "boolean") return enabled;
+          try {
+            await this.#debugHttpSettings.writeEnabled(enabled);
+            this.#debugHttpConfiguredEnabled = enabled;
+            if (!enabled) {
+              await this.#debugHttp?.setEnabled(false);
+              this.#debugLogs.clear();
+            } else {
+              try {
+                await this.#debugHttp?.setEnabled(true);
+              } catch {
+                // The durable preference remains enabled so the next Runtime
+                // start retries the fixed listener without breaking Runtime work.
+              }
+            }
+            return { result: this.#debugHttpStatus() };
+          } catch {
+            return {
+              error: this.#requestError(
+                request,
+                "internal",
+                "The Runtime Debug HTTP setting could not be saved.",
+              ),
+            };
           }
-          return outcome;
         }
+      case RUNTIME_CONTROL_METHOD.debugHttpStatus:
+        if (!this.#debugHttpAllowed) {
+          return {
+            error: this.#requestError(request, "method_not_found", "The Runtime method is not implemented."),
+          };
+        }
+        if (Object.keys(request.params).length !== 0) {
+          return {
+            error: this.#requestError(request, "invalid_request", "The Debug HTTP status query accepts no parameters."),
+          };
+        }
+        return { result: this.#debugHttpStatus() };
       case RUNTIME_CONTROL_METHOD.pluginsList: {
         if (Object.keys(request.params).length !== 0) {
           return {
@@ -1056,6 +989,8 @@ export class DesktopRuntime {
       }
       case RUNTIME_CONTROL_METHOD.pluginsOpenCodeDirectory:
         return this.#dispatchPluginOpenCodeDirectory(request);
+      case RUNTIME_CONTROL_METHOD.pluginsDevelopmentPackage:
+        return dispatchPluginDevelopmentPackage(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.pluginsCacheUsage:
         return this.#dispatchPluginCacheUsage(request);
       case RUNTIME_CONTROL_METHOD.pluginsInstallationUsage:
@@ -1065,15 +1000,17 @@ export class DesktopRuntime {
       case RUNTIME_CONTROL_METHOD.pluginsCacheClearAll:
         return this.#dispatchPluginCacheClearAll(request);
       case RUNTIME_CONTROL_METHOD.pluginsSetEnabled:
-        return this.#dispatchPluginEnabled(request);
+        return dispatchPluginEnabled(request, this.#pluginManager, this.#requestError.bind(this));
+      case RUNTIME_CONTROL_METHOD.pluginsUninstall:
+        return dispatchPluginUninstall(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.pluginsTransferList:
-        return this.#dispatchPluginTransferList(request);
+        return dispatchPluginTransferList(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.pluginsTransferPlan:
-        return this.#dispatchPluginTransferPlan(request);
+        return dispatchPluginTransferPlan(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.pluginsTransferExport:
-        return this.#dispatchPluginTransferExport(request);
+        return dispatchPluginTransferExport(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.pluginsTransferVerify:
-        return this.#dispatchPluginTransferVerify(request);
+        return dispatchPluginTransferVerify(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.sourceDiscover:
         return this.#dispatchPluginContent(
           request,
@@ -1140,103 +1077,6 @@ export class DesktopRuntime {
           ),
         };
     }
-  }
-
-  async #dispatchPluginEnabled(
-    request: RuntimeRequest,
-  ): Promise<RuntimeDispatchResult> {
-    const pluginId = request.params.pluginId;
-    const enabled = request.params.enabled;
-    if (
-      Object.keys(request.params).length !== 2 ||
-      typeof pluginId !== "string" ||
-      typeof enabled !== "boolean"
-    ) {
-      return {
-        error: this.#requestError(
-          request,
-          "invalid_request",
-          "The source enable request is invalid.",
-        ),
-      };
-    }
-    try {
-      const manager = this.#pluginManager;
-      if (manager === undefined) throw new PluginManagerError("plugin_load_failed");
-      return { result: await manager.setEnabled(pluginId, enabled) };
-    } catch (error) {
-      if (!(error instanceof PluginManagerError)) {
-        return {
-          error: this.#requestError(
-            request,
-            "internal",
-            "The source enable request could not be completed.",
-          ),
-        };
-      }
-      return {
-        error: this.#requestError(
-          request,
-          error.code,
-          pluginManagerErrorMessage(error.code),
-        ),
-      };
-    }
-  }
-
-  async #dispatchPluginTransferList(request: RuntimeRequest): Promise<RuntimeDispatchResult> {
-    if (Object.keys(request.params).length !== 0) {
-      return { error: this.#requestError(request, "invalid_request", "The plugin transfer list request is invalid.") };
-    }
-    try {
-      const manager = this.#pluginManager;
-      if (manager === undefined) throw new PluginTransferError("plugin_not_found");
-      return { result: await manager.listExportableArchives() };
-    } catch (error) { return this.#pluginTransferFailure(request, error); }
-  }
-
-  async #dispatchPluginTransferPlan(request: RuntimeRequest): Promise<RuntimeDispatchResult> {
-    const raw = request.params.archives;
-    if (!Array.isArray(raw) || raw.length > MAX_PLUGIN_TRANSFER_BATCH || Object.keys(request.params).length !== 1) {
-      return { error: this.#requestError(request, "invalid_request", "The plugin transfer plan request is invalid.") };
-    }
-    try {
-      const manager = this.#pluginManager;
-      if (manager === undefined) throw new PluginTransferError("plugin_not_found");
-      return { result: await manager.planPluginTransfer(raw as PluginTransferArchive[]) };
-    } catch (error) { return this.#pluginTransferFailure(request, error); }
-  }
-
-  async #dispatchPluginTransferExport(request: RuntimeRequest): Promise<RuntimeDispatchResult> {
-    const id = request.params.id;
-    const version = request.params.version;
-    if (Object.keys(request.params).length !== 2 || typeof id !== "string" || typeof version !== "string") {
-      return { error: this.#requestError(request, "invalid_request", "The plugin transfer export request is invalid.") };
-    }
-    try {
-      const manager = this.#pluginManager;
-      if (manager === undefined) throw new PluginTransferError("plugin_not_found");
-      const resource = await manager.createPluginTransferResource(id, version);
-      return { result: { ...resource.archive, token: resource.token } };
-    } catch (error) { return this.#pluginTransferFailure(request, error); }
-  }
-
-  async #dispatchPluginTransferVerify(request: RuntimeRequest): Promise<RuntimeDispatchResult> {
-    const raw = request.params.archives;
-    if (!Array.isArray(raw) || Object.keys(request.params).length !== 1) {
-      return { error: this.#requestError(request, "invalid_request", "The plugin transfer verification request is invalid.") };
-    }
-    try {
-      const manager = this.#pluginManager;
-      if (manager === undefined) throw new PluginTransferError("plugin_not_found");
-      await manager.verifyPluginTransferInbox(raw as PluginTransferArchive[]);
-      return { result: { verified: true } };
-    } catch (error) { return this.#pluginTransferFailure(request, error); }
-  }
-
-  #pluginTransferFailure(request: RuntimeRequest, error: unknown): RuntimeDispatchFailure {
-    const code = error instanceof PluginTransferError ? error.code : "internal";
-    return { error: this.#requestError(request, code as RuntimeErrorCode, "The plugin transfer request could not be completed.") };
   }
 
   /** Opens an internal source directory and returns only its stable kind. */
@@ -1641,6 +1481,7 @@ function emitPluginManagerDiagnostic(event: PluginManagerEvent): void {
     plugin_load_started: "A standard Node plugin load started.",
     plugin_log_emitted: "A plugin emitted a redacted diagnostic event.",
     plugin_quarantined: "A broken plugin source was isolated during startup.",
+    plugin_uninstall_scheduled: "A plugin source was scheduled for removal at the next cold start.",
     plugin_uninstall_completed: "A pending plugin uninstall completed.",
   };
   emitRuntimeDiagnostic({

@@ -10,8 +10,8 @@
 - `support/`：无业务测试辅助、受控 fake 和 fixture builders；不得放真实正文、凭据、Cookie 或生产数据库内容。
 
 Runtime Store、文件恢复、wire client、调度或平台 Runtime 测试仍属于 `mg_read_runtime`。主应用
-persistence 则按[独立验收规范](../docs/architecture/11-app-persistence-acceptance.md)在临时数据根中
-单独执行，不依赖 Widget、Node、网络或真实用户数据。
+persistence 按[核心持久化边界](../docs/core.md#主应用持久化与-content-library)在临时数据根中单独
+执行，不依赖 Widget、Node、网络或真实用户数据。
 
 全局 settings 只从注册 document IDs 批读 metadata store；`test/core/settings/` 必须覆盖即时
 内存、合流/节流、flush/close、失败重试、CAS merge、unknown/null、future/corruption 和重开。

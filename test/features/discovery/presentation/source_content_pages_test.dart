@@ -45,6 +45,7 @@ void main() {
     expect(find.text('分类一'), findsOneWidget);
     expect(find.byKey(const Key('discovery-source-selector')), findsOneWidget);
     expect(find.byKey(const Key('runtime-discovery-load-more-books')), findsOneWidget);
+    expect(find.byKey(const Key('app-bottom-navigation')), findsOneWidget);
 
     await tester.tap(find.text('分类一'));
     expect(selectedTarget, 'category:1');
@@ -111,6 +112,7 @@ void main() {
     expect(find.byKey(const Key('runtime-discovery-nested-header')), findsOneWidget);
     expect(find.byType(DiscoveryTopBar), findsOneWidget);
     expect(find.byKey(const Key('discovery-source-selector')), findsNothing);
+    expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
     expect(find.text('刷新'), findsNothing);
     expect(find.byType(DiscoveryEditorsChoiceCard), findsNothing);
     expect(find.text('已在书架'), findsNothing);

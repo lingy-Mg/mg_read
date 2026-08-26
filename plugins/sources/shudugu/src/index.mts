@@ -1,3 +1,9 @@
+/**
+ * 速读谷标准插件入口。
+ *
+ * 职责：保存激活上下文和书源实例，并将 Plugin API capability 转发给书源实现。
+ * 注意：必须先 activate；解析、缓存和站点规则由 source.ts 拥有，本文件不复制实现。
+ */
 import type {
   ChapterContent, ChaptersRequest, ChaptersResult, ContentDetail, ContentReferenceRequest,
   ContentRequest, DiscoverRequest, DiscoverResult, MgReadPluginContext, SearchRequest,
@@ -73,5 +79,3 @@ async function invoke<T>(operation: Operation, action: () => Promise<T>): Promis
     throw new Error('Source operation failed.');
   }
 }
-
-

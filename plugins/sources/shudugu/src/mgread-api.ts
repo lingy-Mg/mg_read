@@ -1,3 +1,9 @@
+/**
+ * 速读谷编译期使用的 MgRead Plugin API 类型。
+ *
+ * 职责：声明 capability 请求、结果和宿主上下文的静态形状。
+ * 注意：本文件不做运行时校验，也不拥有 wire 协议；返回值仍由 Runtime 在边界统一校验。
+ */
 export interface MgReadPluginContext {
   readonly dataDir: string;
   readonly cacheDir: string;

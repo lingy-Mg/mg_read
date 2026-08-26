@@ -1,4 +1,9 @@
-import { readFile } from 'node:fs/promises';
+/**
+ * 官方模板的 Plugin API v1 入口。
+ *
+ * 职责：导出内容能力并在激活时装配已由构建器内联的示例规则。
+ * 注意：入口只保存 Runtime 注入上下文，不读取发布 sidecar 或启动额外执行单元。
+ */
 
 import type {
   ChapterContent,
@@ -15,6 +20,7 @@ import type {
   SearchSuggestionsRequest,
   SearchSuggestionsResult,
 } from './mgread-api.js';
+import rules from './rules.json' with { type: 'json' };
 import { createLocalExampleSource } from './source.js';
 import { requireActivated } from './utils.js';
 
@@ -29,9 +35,6 @@ let source: ReturnType<typeof createLocalExampleSource> | undefined;
  */
 export async function activate(nextContext: MgReadPluginContext): Promise<void> {
   context = nextContext;
-  const rules = JSON.parse(
-    await readFile(new URL('../assets/rules.json', import.meta.url), 'utf8'),
-  ) as { readonly titlePrefix?: unknown };
   if (typeof rules.titlePrefix !== 'string' || rules.titlePrefix.length === 0) {
     throw new Error('Template rules are invalid.');
   }

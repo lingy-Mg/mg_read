@@ -17,7 +17,7 @@
     "sync:cache": "node ../../../tools/sync_plugin_cache.mjs aisishuwu",
     "build": "npm run sync:cache && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test test/contract.test.mjs test/html-cache.test.mjs test/source.test.mjs",
+    "test": "npm run build && node --test test/contract.test.mjs test/html-cache.test.mjs test/packaging.test.mjs test/source.test.mjs",
     "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
     "pack:plugin": "npm run build && node tools/mgread.mjs pack",
     "verify": "npm run typecheck && npm test && npm run pack:plugin"
@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "24.13.3",
+    "esbuild": "0.28.2",
     "typescript": "5.9.3"
   },
   "mgread": {
@@ -36,6 +37,8 @@
     "displayName": "\u7231\u4e3d\u4e1d\u4e66\u5c4b",
     "description": "专注原创网络小说的综合书源，覆盖分类、排行、搜索与章节阅读。",
     "pluginApi": 1,
+    "packageMode": "single-file",
+    "icon": "assets/icon.png",
     "contentKinds": [
       "novel"
     ]

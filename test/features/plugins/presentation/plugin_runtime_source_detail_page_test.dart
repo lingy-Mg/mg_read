@@ -43,16 +43,26 @@ void main() {
     expect(find.text('工作区开源书源'), findsOneWidget);
     expect(find.text('开发中（即时生效）'), findsOneWidget);
     if (Platform.isWindows) {
+      expect(find.byKey(const Key('data-source-detail-package-development')), findsOneWidget);
       expect(find.text('打开开发项目文件夹'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('data-source-detail-open-directory')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('data-source-detail-open-directory')));
       await tester.pumpAndSettle();
       expect(gateway.openedPluginIds, <String>['org.example.live-source']);
       expect(find.textContaining('下一次来源调用时生效'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('data-source-detail-package-development')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('data-source-detail-package-development')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(gateway.packagedPluginIds, <String>['org.example.live-source']);
     }
   });
 
   testWidgets('labels installed source code as a non-live Runtime copy', (WidgetTester tester) async {
-    await tester.pumpWidget(_host(_DirectoryGateway(_installedConnection), 'org.example.installed'));
+    final gateway = _DirectoryGateway(_installedConnection);
+    await tester.pumpWidget(_host(gateway, 'org.example.installed'));
     await tester.pumpAndSettle();
 
     expect(find.text('已安装数据源'), findsOneWidget);
@@ -66,6 +76,15 @@ void main() {
     expect(find.textContaining('原始安装包'), findsOneWidget);
     expect(find.textContaining('数据文件'), findsOneWidget);
     expect(find.textContaining('npm 包'), findsOneWidget);
+    await tester.drag(find.byKey(const Key('data-source-detail-content')), const Offset(0, -400));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('data-source-detail-remove')));
+    await tester.pumpAndSettle();
+    expect(find.text('删除数据源？'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('data-source-detail-remove-confirm')));
+    await tester.pumpAndSettle();
+    expect(gateway.scheduledUninstallPluginIds, <String>['org.example.installed']);
+    expect(find.textContaining('已安排删除'), findsOneWidget);
     if (Platform.isWindows) {
       await tester.drag(find.byKey(const Key('data-source-detail-content')), const Offset(0, -400));
       await tester.pumpAndSettle();
@@ -125,6 +144,8 @@ final class _DirectoryGateway implements PluginRuntimeGateway {
 
   final PluginRuntimeConnection connection;
   final List<String> openedPluginIds = <String>[];
+  final List<String> packagedPluginIds = <String>[];
+  final List<String> scheduledUninstallPluginIds = <String>[];
 
   @override
   Stream<RuntimeInitializationProgress> get initialization => const Stream<RuntimeInitializationProgress>.empty();
@@ -140,6 +161,12 @@ final class _DirectoryGateway implements PluginRuntimeGateway {
   Future<bool> importLocalPlugin() async => false;
 
   @override
+  Future<String?> packageDevelopmentPlugin({required String pluginId}) async {
+    packagedPluginIds.add(pluginId);
+    return '$pluginId-0.1.0.mgplugin.js';
+  }
+
+  @override
   Future<PluginCodeDirectoryKind> openCodeDirectory({required String pluginId}) async {
     openedPluginIds.add(pluginId);
     return connection.plugins.single.status == 'development' ? PluginCodeDirectoryKind.development : PluginCodeDirectoryKind.installed;
@@ -152,8 +179,16 @@ final class _DirectoryGateway implements PluginRuntimeGateway {
   Future<PluginRuntimeDebugHttp> setDebugHttpEnabled(bool enabled) async => const PluginRuntimeDebugHttp.disabled();
 
   @override
+  Future<PluginRuntimeDebugHttp> inspectDebugHttp() async => const PluginRuntimeDebugHttp.disabled();
+
+  @override
   Future<bool> selectDevelopmentDirectory() async => false;
 
   @override
   Future<void> setEnabled({required String pluginId, required bool enabled}) async {}
+
+  @override
+  Future<void> scheduleUninstall({required String pluginId}) async {
+    scheduledUninstallPluginIds.add(pluginId);
+  }
 }

@@ -23,12 +23,17 @@ import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/library/application/library_book_remover.dart';
+import 'package:mg_read/features/library/application/library_book_detail_failure.dart';
+import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
 import 'package:mg_read/features/library/application/library_book_removal_operation.dart';
 import 'package:mg_read/features/library/application/library_book_visibility_changer.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/application/library_page_state.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
+import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
+import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
 import 'package:mg_read/features/reader/application/shelf_reader_launch_coordinator.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
@@ -46,6 +51,8 @@ class LibraryPage extends ConsumerWidget {
     this.onReaderRequested,
     this.onBookDetailRequested,
     this.onPrivacyLibraryRequested,
+    this.onReadingHistoryRequested,
+    this.onManageSourcesRequested,
     super.key,
   });
 
@@ -63,6 +70,12 @@ class LibraryPage extends ConsumerWidget {
 
   /// Lets the app route own navigation to the private bookshelf.
   final VoidCallback? onPrivacyLibraryRequested;
+
+  /// Lets the app route own navigation to the reading-history page.
+  final VoidCallback? onReadingHistoryRequested;
+
+  /// Lets the app route own navigation to data-source management.
+  final VoidCallback? onManageSourcesRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -88,6 +101,8 @@ class LibraryPage extends ConsumerWidget {
     final ValueChanged<AppNavigationDestination>? destinationRequested = onDestinationRequested;
     final ValueChanged<String>? readerRequested = onReaderRequested;
     final ValueChanged<String>? bookDetailRequested = onBookDetailRequested;
+    final LibraryBookDetailLauncher? detailLauncher = ref.read(libraryBookDetailLauncherProvider);
+    final SourceContentGateway sourceGateway = ref.read(sourceContentGatewayProvider);
     void prepareAndOpen(String bookId) {
       final callback = readerRequested;
       if (callback == null) return;
@@ -117,7 +132,54 @@ class LibraryPage extends ConsumerWidget {
     final LibraryBookRemovalOperation? removalOperation = bookRemover == null
         ? null
         : LibraryBookRemovalOperation(remover: bookRemover, controller: controller, diagnostics: diagnostics);
-    final LibraryHomeCallbacks resolvedCallbacks = callbacks.copyWith(
+    late LibraryHomeCallbacks resolvedCallbacks;
+    Future<void> openBookDetail(LibraryBookListItemViewData book) async {
+      final externalCallback = bookDetailRequested;
+      if (externalCallback != null) {
+        externalCallback(book.id);
+        return;
+      }
+      if (detailLauncher == null) {
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('书籍详情暂不可用。')));
+        return;
+      }
+      late final LibraryBookDetailLaunchData detail;
+      try {
+        detail = await detailLauncher.load(book.id);
+      } on Object catch (error) {
+        if (!context.mounted) return;
+        final failure = LibraryBookDetailFailure.fromError(error);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(failure.reason.userMessage)));
+        return;
+      }
+      if (!context.mounted) return;
+      await showSourceContentDetailSheet(
+        context,
+        gateway: sourceGateway,
+        pluginId: detail.pluginId,
+        id: detail.remoteContentId,
+        initialContent: detail.initialContent,
+        initialCatalog: detail.initialCatalog,
+        initialSourceName: detail.sourceName,
+        shelfState: SourceDetailShelfState.alreadyAdded,
+        useModalBottomSheet: true,
+        onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter}) async {
+          prepareAndOpen(book.id);
+        },
+        onShelfAction: (SourceShelfAction action) async {
+          switch (action) {
+            case SourceShelfAction.setPrivate:
+              await resolvedCallbacks.onSetBookPrivate?.call(book);
+            case SourceShelfAction.cancelPrivate:
+              break;
+            case SourceShelfAction.delete:
+              await resolvedCallbacks.onDeleteBook?.call(book);
+          }
+        },
+      );
+    }
+
+    resolvedCallbacks = callbacks.copyWith(
       onNavigationSelected: destinationRequested == null
           ? callbacks.onNavigationSelected
           : (AppNavigationDestination destination) {
@@ -141,6 +203,7 @@ class LibraryPage extends ConsumerWidget {
               callbacks.onOpenBook?.call(book);
               bookDetailRequested(book.id);
             },
+      onBookLongPress: callbacks.onBookLongPress ?? openBookDetail,
       onContinueReading: readerRequested == null || data.continueReading == null
           ? callbacks.onContinueReading
           : () {
@@ -172,6 +235,18 @@ class LibraryPage extends ConsumerWidget {
           : () {
               callbacks.onPrivacyLibraryRequested?.call();
               onPrivacyLibraryRequested!();
+            },
+      onReadingHistory: onReadingHistoryRequested == null
+          ? callbacks.onReadingHistory
+          : () {
+              callbacks.onReadingHistory?.call();
+              onReadingHistoryRequested!();
+            },
+      onManageSources: onManageSourcesRequested == null
+          ? callbacks.onManageSources
+          : () {
+              callbacks.onManageSources?.call();
+              onManageSourcesRequested!();
             },
     );
     return _ShelfReaderLifecycleHost(

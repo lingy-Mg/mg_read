@@ -1,3 +1,16 @@
+/// 局域网同步 v2 领域模型测试。
+///
+/// 职责：
+/// - 验证 manifest 与插件 artifact 格式的严格 JSON 往返。
+/// - 验证字段、大小和重复项边界。
+///
+/// 注意：
+/// - 仅验证纯模型，不替代真实局域网传输。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
@@ -10,8 +23,8 @@ void main() {
           id: 'source.example',
           version: '1.2.3',
           bytes: 128,
-          sha256:
-              'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          artifactFormat: LanSyncPluginArtifactFormat.singleFile,
+          sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
           transferable: true,
         ),
       ],
@@ -40,54 +53,45 @@ void main() {
     final decoded = LanSyncManifest.fromJson(manifest.toJson());
 
     expect(decoded.plugins.single.id, 'source.example');
+    expect(decoded.plugins.single.artifactFormat, LanSyncPluginArtifactFormat.singleFile);
     expect(decoded.shelfItems.single.identity, 'source.example\u001fbook-1');
     expect(decoded.shelfItems.single.progress?.chapterIndex, 1);
     expect(decoded.skippedShelfItems, 1);
   });
 
-  test(
-    'rejects malformed hashes, inconsistent sizes and duplicate plugins',
-    () {
-      Map<String, Object?> plugin({
-        String id = 'source.example',
-        String sha256 =
-            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        int bytes = 1,
-        bool transferable = true,
-      }) => <String, Object?>{
-        'id': id,
-        'version': '1.0.0',
-        'bytes': bytes,
-        'sha256': sha256,
-        'transferable': transferable,
-      };
+  test('rejects malformed hashes, inconsistent sizes and duplicate plugins', () {
+    Map<String, Object?> plugin({
+      String id = 'source.example',
+      String sha256 = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      int bytes = 1,
+      bool transferable = true,
+    }) => <String, Object?>{
+      'id': id,
+      'version': '1.0.0',
+      'bytes': bytes,
+      'artifactFormat': 'archive',
+      'sha256': sha256,
+      'transferable': transferable,
+    };
 
-      expect(
-        () => LanSyncPluginDescriptor.fromJson(plugin(sha256: 'secret')),
-        throwsFormatException,
-      );
-      expect(
-        () => LanSyncPluginDescriptor.fromJson(
-          plugin(bytes: 0, transferable: true),
-        ),
-        throwsFormatException,
-      );
-      expect(
-        () => LanSyncManifest.fromJson(<String, Object?>{
-          'schemaVersion': 1,
-          'plugins': <Object?>[plugin(), plugin()],
-          'shelfItems': <Object?>[],
-          'skippedShelfItems': 0,
-        }),
-        throwsFormatException,
-      );
-    },
-  );
+    expect(() => LanSyncPluginDescriptor.fromJson(plugin(sha256: 'secret')), throwsFormatException);
+    expect(() => LanSyncPluginDescriptor.fromJson(plugin()..['artifactFormat'] = 'zip'), throwsFormatException);
+    expect(() => LanSyncPluginDescriptor.fromJson(plugin(bytes: 0, transferable: true)), throwsFormatException);
+    expect(
+      () => LanSyncManifest.fromJson(<String, Object?>{
+        'schemaVersion': 2,
+        'plugins': <Object?>[plugin(), plugin()],
+        'shelfItems': <Object?>[],
+        'skippedShelfItems': 0,
+      }),
+      throwsFormatException,
+    );
+  });
 
   test('rejects content bodies and oversized batches by schema shape', () {
     expect(
       () => LanSyncManifest.fromJson(<String, Object?>{
-        'schemaVersion': 1,
+        'schemaVersion': 2,
         'plugins': <Object?>[],
         'shelfItems': <Object?>[
           <String, Object?>{
@@ -112,5 +116,29 @@ void main() {
       }),
       throwsFormatException,
     );
+  });
+
+  test('selects only the shelf items checked by the receiver', () {
+    final first = LanSyncShelfItem(
+      pluginId: 'source.example',
+      pluginVersion: '1.0.0',
+      remoteContentId: 'book-1',
+      contentKind: 'novel',
+      title: '第一本',
+    );
+    final second = LanSyncShelfItem(
+      pluginId: 'source.example',
+      pluginVersion: '1.0.0',
+      remoteContentId: 'book-2',
+      contentKind: 'novel',
+      title: '第二本',
+    );
+    final selected = LanSyncManifest(
+      plugins: const <LanSyncPluginDescriptor>[],
+      shelfItems: <LanSyncShelfItem>[first, second],
+      skippedShelfItems: 0,
+    ).selectShelfItems(<String>{first.identity});
+
+    expect(selected.shelfItems.map((item) => item.identity), <String>[first.identity]);
   });
 }

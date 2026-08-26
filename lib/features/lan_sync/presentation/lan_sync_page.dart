@@ -1,9 +1,22 @@
+/// 局域网同步设置页面。
+///
+/// 职责：
+/// - 展示同步角色、连接、预览和导入阶段。
+/// - 在离开页面前取消进行中的同步操作。
+///
+/// 注意：
+/// - 页面不显示主导航栏；它始终是“我的”下的子级页面。
+/// - 业务状态和网络操作仅由 LanSyncController 管理。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -11,15 +24,12 @@ import 'package:mg_read/features/lan_sync/application/lan_sync_controller.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
-import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
+import 'lan_sync_qr_scanner_page.dart';
+
 class LanSyncPage extends ConsumerStatefulWidget {
-  const LanSyncPage({
-    required this.onBackRequested,
-    required this.onDestinationRequested,
-    super.key,
-  });
+  const LanSyncPage({required this.onBackRequested, required this.onDestinationRequested, super.key});
 
   final VoidCallback onBackRequested;
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
@@ -29,8 +39,7 @@ class LanSyncPage extends ConsumerStatefulWidget {
 }
 
 class _LanSyncPageState extends ConsumerState<LanSyncPage> {
-  final TextEditingController _manualAddressController =
-      TextEditingController();
+  final TextEditingController _manualAddressController = TextEditingController();
 
   @override
   void dispose() {
@@ -57,11 +66,7 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
           child: AppSecondaryPageContent(
             child: Column(
               children: <Widget>[
-                AppSecondaryPageTopBar(
-                  title: '局域网同步',
-                  onBack: () => unawaited(_back()),
-                  backButtonKey: const Key('lan-sync-back'),
-                ),
+                AppSecondaryPageTopBar(title: '局域网同步', onBack: () => unawaited(_back()), backButtonKey: const Key('lan-sync-back')),
                 Expanded(
                   child: ListView(
                     key: const Key('lan-sync-content'),
@@ -74,36 +79,18 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
                     children: <Widget>[
                       const _TrustNotice(),
                       const SizedBox(height: AppSpacing.regular),
-                      if (state.phase == LanSyncPhase.idle ||
-                          state.phase == LanSyncPhase.cancelled)
+                      if (state.phase == LanSyncPhase.idle || state.phase == LanSyncPhase.cancelled)
                         _RoleChooser(
-                          onSend: () => ref
-                              .read(lanSyncControllerProvider.notifier)
-                              .startSending(),
-                          onReceive: () => ref
-                              .read(lanSyncControllerProvider.notifier)
-                              .startReceiving(),
-                          onScan: _supportsQrScanner
-                              ? () => unawaited(_scanAndReceive())
-                              : null,
+                          onSend: () => ref.read(lanSyncControllerProvider.notifier).startSending(),
+                          onReceive: () => ref.read(lanSyncControllerProvider.notifier).startReceiving(),
+                          onScan: _supportsQrScanner ? () => unawaited(_scanAndReceive()) : null,
                         )
-                      else ...<Widget>[
-                        _StatusCard(state: state),
-                        const SizedBox(height: AppSpacing.regular),
-                        ..._phaseContent(state),
-                      ],
+                      else ...<Widget>[_StatusCard(state: state), const SizedBox(height: AppSpacing.regular), ..._phaseContent(state)],
                     ],
                   ),
                 ),
               ],
             ),
-          ),
-        ),
-        bottomNavigationBar: SafeArea(
-          top: false,
-          child: AppBottomNavigation(
-            selected: AppNavigationDestination.profile,
-            onSelected: widget.onDestinationRequested,
           ),
         ),
       ),
@@ -122,8 +109,7 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
           ),
           const SizedBox(height: AppSpacing.regular),
         ],
-        if (state.peers.isEmpty)
-          const _HintCard(message: '暂未发现设备，可等待广播或手动输入发送端地址。'),
+        if (state.peers.isEmpty) const _HintCard(message: '暂未发现设备，可等待广播或手动输入发送端地址。'),
         for (final peer in state.peers)
           Card(
             child: ListTile(
@@ -132,20 +118,14 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
               title: Text(peer.label),
               subtitle: Text(peer.endpoint),
               trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => ref
-                  .read(lanSyncControllerProvider.notifier)
-                  .connectPeer(peer),
+              onTap: () => ref.read(lanSyncControllerProvider.notifier).connectPeer(peer),
             ),
           ),
         const SizedBox(height: AppSpacing.regular),
         TextField(
           key: const Key('lan-sync-manual-address'),
           controller: _manualAddressController,
-          decoration: const InputDecoration(
-            labelText: '手动连接地址',
-            hintText: '会话ID@192.168.1.2:端口',
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(labelText: '手动连接地址', hintText: '会话ID@192.168.1.2:端口', border: OutlineInputBorder()),
           autocorrect: false,
           enableSuggestions: false,
           onSubmitted: (_) => _connectManual(),
@@ -168,50 +148,46 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
       LanSyncPhase.pairing => <Widget>[
         _PairingCard(code: state.pairingCode ?? '------'),
         const SizedBox(height: AppSpacing.regular),
-        FilledButton.icon(
-          key: const Key('lan-sync-confirm-pairing'),
-          onPressed: state.role == LanSyncRole.sender
-              ? () => ref
-                    .read(lanSyncControllerProvider.notifier)
-                    .confirmSenderPairing()
-              : () => ref
-                    .read(lanSyncControllerProvider.notifier)
-                    .confirmReceiverPairing(),
-          icon: const Icon(Icons.check_circle_outline_rounded),
-          label: const Text('两台设备显示一致，确认连接'),
-        ),
+        if (state.role == LanSyncRole.receiver)
+          FilledButton.icon(
+            key: const Key('lan-sync-confirm-pairing'),
+            onPressed: () => ref.read(lanSyncControllerProvider.notifier).confirmReceiverPairing(),
+            icon: const Icon(Icons.check_circle_outline_rounded),
+            label: const Text('确认连接并查看同步内容'),
+          )
+        else
+          const _HintCard(message: '发送方无需确认，等待接收方核对确认码并选择内容。'),
         const SizedBox(height: AppSpacing.compact),
         _CancelButton(onPressed: _cancel),
       ],
       LanSyncPhase.previewing when state.preview != null => <Widget>[
         _PreviewSummary(state: state),
         const SizedBox(height: AppSpacing.regular),
+        _SyncContentSelection(
+          manifest: state.manifest!,
+          preview: state.preview!,
+          onSelectAll: (selected) => ref.read(lanSyncControllerProvider.notifier).chooseAllContent(selected),
+          onPluginChanged: (pluginId, selected) => ref.read(lanSyncControllerProvider.notifier).choosePlugin(pluginId, selected),
+          onShelfItemChanged: (identity, selected) => ref.read(lanSyncControllerProvider.notifier).chooseShelfItem(identity, selected),
+        ),
+        const SizedBox(height: AppSpacing.regular),
         for (final conflict in state.preview!.conflicts)
           _ConflictCard(
             conflict: conflict,
-            onChanged: (choice) => ref
-                .read(lanSyncControllerProvider.notifier)
-                .chooseConflict(conflict.identity, choice),
+            onChanged: (choice) => ref.read(lanSyncControllerProvider.notifier).chooseConflict(conflict.identity, choice),
           ),
         FilledButton.icon(
           key: const Key('lan-sync-begin-import'),
-          onPressed: () =>
-              ref.read(lanSyncControllerProvider.notifier).beginImport(),
+          onPressed: state.preview!.hasSelection ? () => ref.read(lanSyncControllerProvider.notifier).beginImport() : null,
           icon: const Icon(Icons.sync_rounded),
           label: const Text('开始导入'),
         ),
         const SizedBox(height: AppSpacing.compact),
         _CancelButton(onPressed: _cancel),
       ],
-      LanSyncPhase.preparing ||
-      LanSyncPhase.previewing ||
-      LanSyncPhase.transferring ||
-      LanSyncPhase.applying => <Widget>[
+      LanSyncPhase.preparing || LanSyncPhase.previewing || LanSyncPhase.transferring || LanSyncPhase.applying => <Widget>[
         if (state.progress case final progress?)
-          LinearProgressIndicator(
-            key: const Key('lan-sync-progress'),
-            value: progress,
-          )
+          LinearProgressIndicator(key: const Key('lan-sync-progress'), value: progress)
         else
           const LinearProgressIndicator(key: Key('lan-sync-progress')),
         const SizedBox(height: AppSpacing.regular),
@@ -219,8 +195,7 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
       ],
       LanSyncPhase.completed => <Widget>[
         if (state.result case final result?) _ResultCard(result: result),
-        if (state.role == LanSyncRole.sender)
-          const _HintCard(message: '接收设备正在完成本地安装与书架写入。'),
+        if (state.role == LanSyncRole.sender) const _HintCard(message: '接收设备正在完成本地安装与书架写入。'),
         const SizedBox(height: AppSpacing.regular),
         FilledButton(
           key: const Key('lan-sync-finish'),
@@ -242,37 +217,28 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
   }
 
   void _connectManual() {
-    ref
-        .read(lanSyncControllerProvider.notifier)
-        .connectManual(_manualAddressController.text);
+    ref.read(lanSyncControllerProvider.notifier).connectManual(_manualAddressController.text);
   }
 
-  bool get _supportsQrScanner =>
-      defaultTargetPlatform == TargetPlatform.android;
+  bool get _supportsQrScanner => defaultTargetPlatform == TargetPlatform.android;
 
   Future<void> _scanAndReceive({bool startDiscovery = true}) async {
     final notifier = ref.read(lanSyncControllerProvider.notifier);
     if (startDiscovery) {
       await notifier.startReceiving();
-      if (!mounted ||
-          ref.read(lanSyncControllerProvider).phase !=
-              LanSyncPhase.discovering) {
+      if (!mounted || ref.read(lanSyncControllerProvider).phase != LanSyncPhase.discovering) {
         return;
       }
     }
-    final payload = await Navigator.of(context).push<String>(
-      MaterialPageRoute<String>(
-        fullscreenDialog: true,
-        builder: (_) => const _LanSyncQrScannerPage(),
-      ),
-    );
+    final payload = await Navigator.of(
+      context,
+    ).push<String>(MaterialPageRoute<String>(fullscreenDialog: true, builder: (_) => const LanSyncQrScannerPage()));
     if (!mounted || payload == null) return;
     final offer = LanSyncQrPayload.decode(payload);
     if (offer != null) await notifier.connectOffer(offer);
   }
 
-  Future<void> _cancel() =>
-      ref.read(lanSyncControllerProvider.notifier).cancel();
+  Future<void> _cancel() => ref.read(lanSyncControllerProvider.notifier).cancel();
 }
 
 class _TrustNotice extends StatelessWidget {
@@ -294,9 +260,7 @@ class _TrustNotice extends StatelessWidget {
           children: <Widget>[
             Icon(Icons.wifi_rounded),
             SizedBox(width: AppSpacing.compact),
-            Expanded(
-              child: Text('仅在可信的家庭或办公局域网使用。首版传输不加密，不会发送 Cookie、凭据、正文或封面文件。'),
-            ),
+            Expanded(child: Text('仅在可信的家庭或办公局域网使用。首版传输不加密，不会发送 Cookie、凭据、正文或封面文件。')),
           ],
         ),
       ),
@@ -305,11 +269,7 @@ class _TrustNotice extends StatelessWidget {
 }
 
 class _RoleChooser extends StatelessWidget {
-  const _RoleChooser({
-    required this.onSend,
-    required this.onReceive,
-    this.onScan,
-  });
+  const _RoleChooser({required this.onSend, required this.onReceive, this.onScan});
   final VoidCallback onSend;
   final VoidCallback onReceive;
   final VoidCallback? onScan;
@@ -347,13 +307,7 @@ class _RoleChooser extends StatelessWidget {
 }
 
 class _RoleCard extends StatelessWidget {
-  const _RoleCard({
-    required this.icon,
-    required this.title,
-    required this.description,
-    required this.onTap,
-    super.key,
-  });
+  const _RoleCard({required this.icon, required this.title, required this.description, required this.onTap, super.key});
   final IconData icon;
   final String title;
   final String description;
@@ -398,10 +352,7 @@ class _StatusCard extends StatelessWidget {
     child: Card(
       child: ListTile(
         leading: state.busy
-            ? const SizedBox.square(
-                dimension: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
+            ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))
             : Icon(
                 state.phase == LanSyncPhase.completed
                     ? Icons.check_circle_rounded
@@ -410,12 +361,33 @@ class _StatusCard extends StatelessWidget {
                     : Icons.sync_rounded,
               ),
         title: Text(state.message),
-        subtitle: state.transferredBytes > 0
-            ? Text('${_formatBytes(state.transferredBytes)} 已传输')
-            : null,
+        subtitle: _StatusDetail(state: state),
       ),
     ),
   );
+}
+
+class _StatusDetail extends StatelessWidget {
+  const _StatusDetail({required this.state});
+
+  final LanSyncViewState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final transferred = state.transferredBytes > 0 ? '${_formatBytes(state.transferredBytes)} 已接收' : null;
+    final detail = switch (state.message) {
+      '正在传输插件' => '正在从发送端接收插件文件。',
+      '正在校验并保存插件' => '文件已到齐，正在校验完整性并写入受控入箱。',
+      '正在完成插件安装' => '正在让数据源 Runtime 冷启动并确认插件可用。',
+      '正在写入书架和阅读进度' => '插件已处理，正在单事务写入选中的书架和进度。',
+      _ => null,
+    };
+    if (transferred == null && detail == null) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[if (transferred != null) Text(transferred), if (detail != null) Text(detail)],
+    );
+  }
 }
 
 class LanSyncConnectionQrCard extends StatelessWidget {
@@ -449,9 +421,7 @@ class LanSyncConnectionQrCard extends StatelessWidget {
                         size: 220,
                         backgroundColor: colorScheme.surface,
                         eyeStyle: QrEyeStyle(color: colorScheme.onSurface),
-                        dataModuleStyle: QrDataModuleStyle(
-                          color: colorScheme.onSurface,
-                        ),
+                        dataModuleStyle: QrDataModuleStyle(color: colorScheme.onSurface),
                       ),
                     ),
                   ),
@@ -470,137 +440,23 @@ class LanSyncConnectionQrCard extends StatelessWidget {
             ],
             Align(
               alignment: Alignment.centerLeft,
-              child: Text(
-                '手动连接地址',
-                style: Theme.of(context).textTheme.labelLarge,
-              ),
+              child: Text('手动连接地址', style: Theme.of(context).textTheme.labelLarge),
             ),
             const SizedBox(height: AppSpacing.unit),
             if (value == null)
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text('未找到可用的私有 IPv4 地址'),
-              )
+              const Align(alignment: Alignment.centerLeft, child: Text('未找到可用的私有 IPv4 地址'))
             else
               for (var index = 0; index < value.manualAddresses.length; index++)
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Padding(
-                    padding: EdgeInsets.only(
-                      bottom: index == value.manualAddresses.length - 1
-                          ? 0
-                          : AppSpacing.unit,
-                    ),
+                    padding: EdgeInsets.only(bottom: index == value.manualAddresses.length - 1 ? 0 : AppSpacing.unit),
                     child: SelectableText(
                       value.manualAddresses[index],
-                      key: Key(
-                        index == 0
-                            ? 'lan-sync-sender-address'
-                            : 'lan-sync-sender-address-$index',
-                      ),
+                      key: Key(index == 0 ? 'lan-sync-sender-address' : 'lan-sync-sender-address-$index'),
                     ),
                   ),
                 ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LanSyncQrScannerPage extends StatefulWidget {
-  const _LanSyncQrScannerPage();
-
-  @override
-  State<_LanSyncQrScannerPage> createState() => _LanSyncQrScannerPageState();
-}
-
-class _LanSyncQrScannerPageState extends State<_LanSyncQrScannerPage> {
-  late final MobileScannerController _controller = MobileScannerController(
-    formats: const <BarcodeFormat>[BarcodeFormat.qrCode],
-    detectionSpeed: DetectionSpeed.noDuplicates,
-  );
-  bool _handled = false;
-  String _message = '将发送端二维码放入取景框';
-
-  @override
-  void dispose() {
-    unawaited(_controller.dispose());
-    super.dispose();
-  }
-
-  void _onDetect(BarcodeCapture capture) {
-    if (_handled) return;
-    for (final barcode in capture.barcodes) {
-      final payload = barcode.rawValue;
-      if (payload == null) continue;
-      if (LanSyncQrPayload.decode(payload) == null) {
-        if (mounted) setState(() => _message = '这不是 MgRead 局域网同步二维码');
-        continue;
-      }
-      _handled = true;
-      unawaited(_finish(payload));
-      return;
-    }
-  }
-
-  Future<void> _finish(String payload) async {
-    await _controller.stop();
-    if (mounted) Navigator.of(context).pop(payload);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('扫描同步二维码'),
-        leading: IconButton(
-          key: const Key('lan-sync-scanner-close'),
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.close_rounded),
-          tooltip: '关闭扫码',
-        ),
-      ),
-      body: Semantics(
-        label: '局域网同步二维码扫描器',
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            MobileScanner(
-              key: const Key('lan-sync-qr-scanner'),
-              controller: _controller,
-              onDetect: _onDetect,
-              errorBuilder: (context, error) => ColoredBox(
-                color: colorScheme.surface,
-                child: const Center(child: Text('无法使用相机，请检查相机权限')),
-              ),
-            ),
-            Center(
-              child: IgnorePointer(
-                child: Container(
-                  width: 248,
-                  height: 248,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: colorScheme.primary, width: 3),
-                    borderRadius: AppRadii.control,
-                  ),
-                ),
-              ),
-            ),
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: SafeArea(
-                minimum: const EdgeInsets.all(AppSpacing.regular),
-                child: Card(
-                  color: colorScheme.surface,
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.regular),
-                    child: Text(_message, textAlign: TextAlign.center),
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -623,10 +479,7 @@ class _PairingCard extends StatelessWidget {
           Text(
             code,
             key: const Key('lan-sync-pairing-code'),
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              letterSpacing: 5,
-            ),
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700, letterSpacing: 5),
           ),
         ],
       ),
@@ -652,12 +505,147 @@ class _PreviewSummary extends StatelessWidget {
             Text('新增书架：${preview.newItemCount} 本'),
             Text('需要确认：${preview.conflicts.length} 本'),
             Text('缺少可用数据源：${preview.blockedItemCount} 本'),
-            Text('建议安装或升级：${preview.recommendedPluginIds.length} 个数据源'),
+            Text('已选择：${preview.selectedShelfItemIds.length} 本书，${preview.selectedPluginIds.length} 个数据源'),
           ],
         ),
       ),
     );
   }
+}
+
+class _SyncContentSelection extends StatelessWidget {
+  const _SyncContentSelection({
+    required this.manifest,
+    required this.preview,
+    required this.onSelectAll,
+    required this.onPluginChanged,
+    required this.onShelfItemChanged,
+  });
+
+  final LanSyncManifest manifest;
+  final LanSyncImportPreview preview;
+  final ValueChanged<bool> onSelectAll;
+  final void Function(String pluginId, bool selected) onPluginChanged;
+  final void Function(String identity, bool selected) onShelfItemChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectablePluginCount = preview.recommendedPluginIds.length;
+    final selectedCount = preview.selectedPluginIds.length + preview.selectedShelfItemIds.length;
+    final totalCount = selectablePluginCount + manifest.shelfItems.length;
+    final allSelected = totalCount > 0 && selectedCount == totalCount;
+    final noneSelected = selectedCount == 0;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.compact),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: AppSpacing.regular),
+              child: Text('选择同步内容'),
+            ),
+            CheckboxListTile(
+              key: const Key('lan-sync-select-all'),
+              value: allSelected
+                  ? true
+                  : noneSelected
+                  ? false
+                  : null,
+              tristate: true,
+              onChanged: (value) => onSelectAll(value != true),
+              title: Text('全选同步内容（$selectedCount/$totalCount）'),
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
+            if (manifest.shelfItems.isNotEmpty) ...<Widget>[
+              const Divider(height: 1),
+              _SelectionSectionTitle(label: '书架内容'),
+              for (var index = 0; index < manifest.shelfItems.length; index++)
+                _ShelfSelectionTile(
+                  key: Key('lan-sync-shelf-item-$index'),
+                  item: manifest.shelfItems[index],
+                  selected: preview.selectedShelfItemIds.contains(manifest.shelfItems[index].identity),
+                  onChanged: (selected) => onShelfItemChanged(manifest.shelfItems[index].identity, selected),
+                ),
+            ],
+            if (manifest.plugins.isNotEmpty) ...<Widget>[
+              const Divider(height: 1),
+              _SelectionSectionTitle(label: '数据源插件'),
+              for (final plugin in manifest.plugins)
+                _PluginSelectionTile(
+                  key: Key('lan-sync-plugin-${plugin.id}'),
+                  plugin: plugin,
+                  plan: preview.pluginPlans[plugin.id],
+                  selected: preview.selectedPluginIds.contains(plugin.id),
+                  onChanged: preview.recommendedPluginIds.contains(plugin.id) ? (selected) => onPluginChanged(plugin.id, selected) : null,
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectionSectionTitle extends StatelessWidget {
+  const _SelectionSectionTitle({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(AppSpacing.regular, AppSpacing.compact, AppSpacing.regular, AppSpacing.unit),
+    child: Text(label, style: Theme.of(context).textTheme.labelLarge),
+  );
+}
+
+class _ShelfSelectionTile extends StatelessWidget {
+  const _ShelfSelectionTile({required this.item, required this.selected, required this.onChanged, super.key});
+  final LanSyncShelfItem item;
+  final bool selected;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => CheckboxListTile(
+    value: selected,
+    onChanged: (value) {
+      if (value != null) onChanged(value);
+    },
+    title: Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+    subtitle: Text(item.author ?? item.sourceName ?? '书架内容'),
+    controlAffinity: ListTileControlAffinity.leading,
+  );
+}
+
+class _PluginSelectionTile extends StatelessWidget {
+  const _PluginSelectionTile({required this.plugin, required this.plan, required this.selected, required this.onChanged, super.key});
+  final LanSyncPluginDescriptor plugin;
+  final LanSyncPluginPlanState? plan;
+  final bool selected;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) => CheckboxListTile(
+    value: onChanged == null ? false : selected,
+    onChanged: onChanged == null
+        ? null
+        : (value) {
+            if (value != null) onChanged!(value);
+          },
+    title: Text(plugin.displayName ?? plugin.id, maxLines: 2, overflow: TextOverflow.ellipsis),
+    subtitle: Text(_pluginSelectionDescription(plugin, plan)),
+    controlAffinity: ListTileControlAffinity.leading,
+  );
+}
+
+String _pluginSelectionDescription(LanSyncPluginDescriptor plugin, LanSyncPluginPlanState? plan) {
+  final planText = switch (plan) {
+    LanSyncPluginPlanState.missing => '缺少，将安装',
+    LanSyncPluginPlanState.upgrade => '可升级',
+    LanSyncPluginPlanState.sameVersion => '版本相同，跳过',
+    LanSyncPluginPlanState.receiverNewer => '本机版本较新，跳过',
+    LanSyncPluginPlanState.unavailable || null => '没有可传输文件',
+  };
+  return '$planText · ${plugin.version}';
 }
 
 class _ConflictCard extends StatelessWidget {
@@ -672,33 +660,18 @@ class _ConflictCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            conflict.senderTitle,
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
+          Text(conflict.senderTitle, style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: AppSpacing.unit),
           Text('本机：${conflict.localTitle}'),
           const SizedBox(height: AppSpacing.compact),
           DropdownButtonFormField<LanSyncConflictChoice>(
             key: Key('lan-sync-conflict-${conflict.identity.hashCode}'),
             initialValue: conflict.choice,
-            decoration: const InputDecoration(
-              labelText: '处理方式',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(labelText: '处理方式', border: OutlineInputBorder()),
             items: const <DropdownMenuItem<LanSyncConflictChoice>>[
-              DropdownMenuItem(
-                value: LanSyncConflictChoice.smartMerge,
-                child: Text('智能合并'),
-              ),
-              DropdownMenuItem(
-                value: LanSyncConflictChoice.useSender,
-                child: Text('使用发送端'),
-              ),
-              DropdownMenuItem(
-                value: LanSyncConflictChoice.keepLocal,
-                child: Text('保留本机'),
-              ),
+              DropdownMenuItem(value: LanSyncConflictChoice.smartMerge, child: Text('智能合并')),
+              DropdownMenuItem(value: LanSyncConflictChoice.useSender, child: Text('使用发送端')),
+              DropdownMenuItem(value: LanSyncConflictChoice.keepLocal, child: Text('保留本机')),
             ],
             onChanged: (value) {
               if (value != null) onChanged(value);
@@ -727,9 +700,7 @@ class _ResultCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.compact),
           Text('书架新增 ${result.added}，更新 ${result.updated}'),
           Text('保留本机 ${result.keptLocal}，无法导入 ${result.blocked}'),
-          Text(
-            '插件安装 ${result.pluginInstalled}，跳过 ${result.pluginSkipped}，失败 ${result.pluginFailed}',
-          ),
+          Text('插件安装 ${result.pluginInstalled}，跳过 ${result.pluginSkipped}，失败 ${result.pluginFailed}'),
         ],
       ),
     ),
@@ -743,10 +714,7 @@ class _HintCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Card(
-    child: ListTile(
-      leading: Icon(error ? Icons.error_outline_rounded : Icons.info_outline),
-      title: Text(message),
-    ),
+    child: ListTile(leading: Icon(error ? Icons.error_outline_rounded : Icons.info_outline), title: Text(message)),
   );
 }
 
@@ -755,11 +723,7 @@ class _CancelButton extends StatelessWidget {
   final VoidCallback onPressed;
 
   @override
-  Widget build(BuildContext context) => OutlinedButton(
-    key: const Key('lan-sync-cancel'),
-    onPressed: onPressed,
-    child: const Text('取消同步'),
-  );
+  Widget build(BuildContext context) => OutlinedButton(key: const Key('lan-sync-cancel'), onPressed: onPressed, child: const Text('取消同步'));
 }
 
 String _formatBytes(int bytes) {

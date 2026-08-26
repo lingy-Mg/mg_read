@@ -1,11 +1,13 @@
 part of 'source_content_detail_sheet.dart';
 
 class _DetailHeader extends StatelessWidget {
-  const _DetailHeader();
+  const _DetailHeader({required this.isModalSheet});
+
+  final bool isModalSheet;
 
   @override
   Widget build(BuildContext context) => DiscoveryTopBar(
-    title: '详情',
+    title: isModalSheet ? '书籍详情' : '详情',
     sourceName: '当前来源',
     onSourcePressed: () {},
     onSearchPressed: () {},
@@ -16,7 +18,9 @@ class _DetailHeader extends StatelessWidget {
     titleKey: const Key('source-detail-header-title'),
     showSourceSelector: false,
     showSearchAction: false,
-    trailingActions: <Widget>[DiscoveryTopAction(tooltip: '更多', icon: Icons.more_vert_rounded, onPressed: () {})],
+    trailingActions: isModalSheet
+        ? <Widget>[]
+        : <Widget>[DiscoveryTopAction(tooltip: '更多', icon: Icons.more_vert_rounded, onPressed: () {})],
   );
 }
 
@@ -52,6 +56,81 @@ class _DetailStats extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _ShelfActionRow extends StatefulWidget {
+  const _ShelfActionRow({required this.shelfState, required this.onAction});
+
+  final SourceDetailShelfState shelfState;
+  final SourceShelfActionRequested onAction;
+
+  @override
+  State<_ShelfActionRow> createState() => _ShelfActionRowState();
+}
+
+class _ShelfActionRowState extends State<_ShelfActionRow> {
+  bool _isRunning = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppThemeTokens.of(context);
+    final bool isPrivate = widget.shelfState == SourceDetailShelfState.private;
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: OutlinedButton.icon(
+            key: const Key('source-detail-privacy-action'),
+            onPressed: _isRunning ? null : () => _run(isPrivate ? SourceShelfAction.cancelPrivate : SourceShelfAction.setPrivate),
+            icon: Icon(isPrivate ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+            label: Text(isPrivate ? '取消隐私' : '隐私'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: tokens.mutedText,
+              side: BorderSide(color: tokens.divider),
+            ),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.compact),
+        Expanded(
+          child: OutlinedButton.icon(
+            key: const Key('source-detail-delete-action'),
+            onPressed: _isRunning ? null : () => _confirmDelete(context),
+            icon: const Icon(Icons.delete_outline_rounded),
+            label: const Text('删除'),
+            style: OutlinedButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除书籍'),
+        content: const Text('确定要从书架删除这本书吗？'),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('删除')),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) await _run(SourceShelfAction.delete);
+  }
+
+  Future<void> _run(SourceShelfAction action) async {
+    if (_isRunning) return;
+    setState(() => _isRunning = true);
+    try {
+      await widget.onAction(action);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } on Object {
+      if (!mounted) return;
+      setState(() => _isRunning = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('操作未能完成，请稍后重试。')));
+    }
   }
 }
 

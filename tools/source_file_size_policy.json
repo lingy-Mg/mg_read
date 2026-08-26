@@ -41,11 +41,11 @@
     ".mocks.dart"
   ],
   "legacyBaseline": {
-    "packages/mg_read_runtime/src/desktop-runtime.ts": 1577,
-    "packages/mg_read_runtime/src/plugin-manager.ts": 1081
+    "packages/mg_read_runtime/src/desktop-runtime.ts": 1433,
+    "packages/mg_read_runtime/src/plugin-manager.ts": 1053
   },
   "legacyRationale": {
-    "packages/mg_read_runtime/src/desktop-runtime.ts": "The singleton's HTTP, WebSocket, control-dispatch, shutdown and owner-span state share ECMAScript private fields. A further split requires an explicit internal command port and protocol-characterization suite; it must not be a cosmetic extraction.",
-    "packages/mg_read_runtime/src/plugin-manager.ts": "Installed activation, development refresh and invocation cancellation share the single VM's private queues and AsyncLocalStorage. The remaining coordinator must next be split through explicit internal ports without changing cold activation or terminal-event semantics."
+    "packages/mg_read_runtime/src/desktop-runtime.ts": "Artifact inbox, bundled seed coordination, artifact transfer and source state dispatch moved to dedicated modules. The remaining HTTP, WebSocket, cache/source-content control, shutdown and owner-span state shares ECMAScript private fields; the next split is a cache/source-content dispatch port with protocol characterization.",
+    "packages/mg_read_runtime/src/plugin-manager.ts": "Icon resources, installation usage and artifact-transfer coordination moved to dedicated modules. Installed activation, development refresh and invocation cancellation still share the single VM queues and AsyncLocalStorage; the next split is an explicit activation port."
   }
 }

@@ -86,8 +86,8 @@ class _SourceDetailLoadingView extends StatelessWidget {
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: null,
-                icon: Icon(shelfState == SourceDetailShelfState.alreadyAdded ? Icons.bookmark_added_outlined : Icons.library_add_outlined),
-                label: Text(shelfState == SourceDetailShelfState.alreadyAdded ? '已在书架' : '加入书架'),
+                icon: Icon(shelfState != SourceDetailShelfState.canAdd ? Icons.bookmark_added_outlined : Icons.library_add_outlined),
+                label: Text(shelfState != SourceDetailShelfState.canAdd ? '已在书架' : '加入书架'),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(54),
                   disabledForegroundColor: tokens.mutedText,

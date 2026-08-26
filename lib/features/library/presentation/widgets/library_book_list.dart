@@ -18,16 +18,9 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_anchored_menu.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_book_list_action.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_removal_transition.dart';
-
-/// One explicit overflow-menu action supplied by the owning library surface.
-@immutable
-final class LibraryBookListAction {
-  const LibraryBookListAction({required this.id, required this.label}) : assert(id != ''), assert(label != '');
-
-  final String id;
-  final String label;
-}
+import 'package:mg_read/features/library/presentation/widgets/library_book_swipe_actions.dart';
 
 typedef LibraryBookListActionSelected = void Function(LibraryBookListItemViewData book, LibraryBookListAction action);
 
@@ -39,26 +32,42 @@ typedef LibraryBookListActionSelected = void Function(LibraryBookListItemViewDat
 @immutable
 final class LibraryBookListPresentation {
   /// Creates a configurable presentation of the shared book-list row.
-  const LibraryBookListPresentation({this.showActivityLabel = true, this.showOverflowAction = true, this.showAttentionIndicator = false});
+  const LibraryBookListPresentation({
+    this.showActivityLabel = true,
+    this.showOverflowAction = true,
+    this.showSwipeActions = false,
+    this.showAttentionIndicator = false,
+  });
 
   /// The compact row used by the recent-updates section.
-  static const LibraryBookListPresentation recentUpdates = LibraryBookListPresentation(showAttentionIndicator: true);
+  static const LibraryBookListPresentation recentUpdates = LibraryBookListPresentation(
+    showOverflowAction: false,
+    showSwipeActions: true,
+    showAttentionIndicator: true,
+  );
 
   /// The compact row used by the bookshelf section.
-  static const LibraryBookListPresentation shelf = LibraryBookListPresentation();
+  static const LibraryBookListPresentation shelf = LibraryBookListPresentation(showOverflowAction: false, showSwipeActions: true);
 
   /// The compact row reserved for the reading-history surface.
   static const LibraryBookListPresentation readingHistory = LibraryBookListPresentation();
 
   final bool showActivityLabel;
   final bool showOverflowAction;
+  final bool showSwipeActions;
   final bool showAttentionIndicator;
 
   /// Copies this layout while replacing selected visibility switches.
-  LibraryBookListPresentation copyWith({bool? showActivityLabel, bool? showOverflowAction, bool? showAttentionIndicator}) {
+  LibraryBookListPresentation copyWith({
+    bool? showActivityLabel,
+    bool? showOverflowAction,
+    bool? showSwipeActions,
+    bool? showAttentionIndicator,
+  }) {
     return LibraryBookListPresentation(
       showActivityLabel: showActivityLabel ?? this.showActivityLabel,
       showOverflowAction: showOverflowAction ?? this.showOverflowAction,
+      showSwipeActions: showSwipeActions ?? this.showSwipeActions,
       showAttentionIndicator: showAttentionIndicator ?? this.showAttentionIndicator,
     );
   }
@@ -73,6 +82,7 @@ class LibraryBookList extends StatelessWidget {
   LibraryBookList({
     required Iterable<LibraryBookListItemViewData> books,
     required this.onOpenBook,
+    this.onBookLongPress,
     this.onBookMore,
     Iterable<LibraryBookListAction> actions = const <LibraryBookListAction>[],
     this.onBookAction,
@@ -87,6 +97,7 @@ class LibraryBookList extends StatelessWidget {
 
   final List<LibraryBookListItemViewData> books;
   final ValueChanged<LibraryBookListItemViewData> onOpenBook;
+  final ValueChanged<LibraryBookListItemViewData>? onBookLongPress;
   final ValueChanged<LibraryBookListItemViewData>? onBookMore;
   final List<LibraryBookListAction> actions;
   final LibraryBookListActionSelected? onBookAction;
@@ -104,6 +115,7 @@ class LibraryBookList extends StatelessWidget {
         (int index) => _LibraryBookListRow(
           book: books[index],
           onOpenBook: onOpenBook,
+          onBookLongPress: onBookLongPress,
           onBookMore: onBookMore,
           actions: actions,
           onBookAction: onBookAction,
@@ -127,6 +139,7 @@ class LibraryBookSliverList extends StatelessWidget {
   LibraryBookSliverList({
     required Iterable<LibraryBookListItemViewData> books,
     required this.onOpenBook,
+    this.onBookLongPress,
     this.onBookMore,
     Iterable<LibraryBookListAction> actions = const <LibraryBookListAction>[],
     this.onBookAction,
@@ -141,6 +154,7 @@ class LibraryBookSliverList extends StatelessWidget {
 
   final List<LibraryBookListItemViewData> books;
   final ValueChanged<LibraryBookListItemViewData> onOpenBook;
+  final ValueChanged<LibraryBookListItemViewData>? onBookLongPress;
   final ValueChanged<LibraryBookListItemViewData>? onBookMore;
   final List<LibraryBookListAction> actions;
   final LibraryBookListActionSelected? onBookAction;
@@ -159,6 +173,7 @@ class LibraryBookSliverList extends StatelessWidget {
           child: _LibraryBookListRow(
             book: books[index],
             onOpenBook: onOpenBook,
+            onBookLongPress: onBookLongPress,
             onBookMore: onBookMore,
             actions: actions,
             onBookAction: onBookAction,
@@ -179,6 +194,7 @@ class _LibraryBookListRow extends StatelessWidget {
   const _LibraryBookListRow({
     required this.book,
     required this.onOpenBook,
+    required this.onBookLongPress,
     required this.onBookMore,
     required this.actions,
     required this.onBookAction,
@@ -191,6 +207,7 @@ class _LibraryBookListRow extends StatelessWidget {
 
   final LibraryBookListItemViewData book;
   final ValueChanged<LibraryBookListItemViewData> onOpenBook;
+  final ValueChanged<LibraryBookListItemViewData>? onBookLongPress;
   final ValueChanged<LibraryBookListItemViewData>? onBookMore;
   final List<LibraryBookListAction> actions;
   final LibraryBookListActionSelected? onBookAction;
@@ -202,19 +219,24 @@ class _LibraryBookListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Widget row = LibraryBookListItem(
+      data: book,
+      onOpen: () => onOpenBook(book),
+      onLongPress: onBookLongPress == null ? null : () => onBookLongPress!(book),
+      onMore: onBookMore == null ? null : () => onBookMore!(book),
+      actions: actions,
+      onAction: onBookAction == null ? null : (action) => onBookAction!(book, action),
+      presentation: presentation,
+      isPreparing: isPreparing,
+    );
+    final Widget interactiveRow = presentation.showSwipeActions && actions.isNotEmpty && onBookAction != null
+        ? LibraryBookSwipeActions(actions: actions, onAction: (action) => onBookAction!(book, action), child: row)
+        : row;
     return LibraryBookRemovalTransition(
       isRemoving: isRemoving,
       child: Column(
         children: <Widget>[
-          LibraryBookListItem(
-            data: book,
-            onOpen: () => onOpenBook(book),
-            onMore: onBookMore == null ? null : () => onBookMore!(book),
-            actions: actions,
-            onAction: onBookAction == null ? null : (action) => onBookAction!(book, action),
-            presentation: presentation,
-            isPreparing: isPreparing,
-          ),
+          interactiveRow,
           if (showDivider)
             Padding(
               padding: const EdgeInsets.only(left: AppSpacing.listCoverWidth + AppSpacing.compact + AppSpacing.unit),
@@ -232,6 +254,7 @@ class LibraryBookListItem extends StatelessWidget {
   const LibraryBookListItem({
     required this.data,
     required this.onOpen,
+    this.onLongPress,
     this.onMore,
     this.actions = const <LibraryBookListAction>[],
     this.onAction,
@@ -242,6 +265,7 @@ class LibraryBookListItem extends StatelessWidget {
 
   final LibraryBookListItemViewData data;
   final VoidCallback onOpen;
+  final VoidCallback? onLongPress;
   final VoidCallback? onMore;
   final List<LibraryBookListAction> actions;
   final ValueChanged<LibraryBookListAction>? onAction;
@@ -269,6 +293,7 @@ class LibraryBookListItem extends StatelessWidget {
         child: InkWell(
           borderRadius: AppRadii.surface,
           onTap: onOpen,
+          onLongPress: onLongPress,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.bookListVerticalPadding),
             child: Row(

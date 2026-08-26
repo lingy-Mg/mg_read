@@ -9,6 +9,7 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
     final int routeSession = _sessionGeneration;
     final String routeBookId = widget.bookId;
     final TextReaderStateStore routeStore = widget.stateStore;
+    _centeredCatalogChapterId = null;
     bool sheetRefreshStarted = false;
     showModalBottomSheet<void>(
       context: context,
@@ -408,6 +409,7 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
     String routeBookId,
     TextReaderStateStore routeStore,
   ) {
+    final String? currentChapterId = _content?.chapterId;
     Widget buildList() => StatefulBuilder(
       builder: (BuildContext context, StateSetter setSheetState) {
         if (_catalog.isEmpty && !_catalogHasMore && !_catalogLoading) {
@@ -416,6 +418,16 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
             message: ReaderStrings.noChapters,
             color: _palette.secondaryText,
           );
+        }
+        if (currentChapterId != null && _centeredCatalogChapterId != currentChapterId) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _centerCurrentCatalogChapterInView(
+              sheetContext: sheetContext,
+              routeSession: routeSession,
+              routeBookId: routeBookId,
+              routeStore: routeStore,
+            );
+          });
         }
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
@@ -455,6 +467,11 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
               );
             }
             final ReaderChapterInfo chapter = _catalog[index];
+            final bool isCurrentChapter = chapter.id == currentChapterId;
+            final GlobalKey chapterItemKey = _catalogItemKeys.putIfAbsent(
+              chapter.id,
+              () => GlobalKey(),
+            );
             final ReaderChapterState? refreshedState =
                 _chapterAccessCoordinator?.snapshot.states[chapter.id];
             final ReaderChapterAvailability availability =
@@ -473,7 +490,7 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 560),
                 child: ListTile(
-                  key: ValueKey<String>('reader-catalog-${chapter.id}'),
+                  key: chapterItemKey,
                   dense: true,
                   visualDensity: const VisualDensity(vertical: -1),
                   minVerticalPadding: 4,
@@ -481,22 +498,30 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                     horizontal: 10,
                     vertical: 4,
                   ),
-                  tileColor: index.isEven
+                  tileColor: isCurrentChapter
+                      ? _palette.accent.withValues(alpha: .14)
+                      : index.isEven
                       ? _palette.accent.withValues(alpha: .035)
                       : null,
-                  selected: chapter.id == _content?.chapterId,
+                  selected: isCurrentChapter,
                   selectedColor: _palette.accent,
-                  selectedTileColor: _palette.accent.withValues(alpha: .08),
+                  selectedTileColor: _palette.accent.withValues(alpha: .15),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(14)),
+                  ),
                   leading: SizedBox(
                     width: 34,
                     child: Text(
                       '${chapter.index + 1}',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: chapter.id == _content?.chapterId
+                        color: isCurrentChapter
                             ? _palette.accent
                             : _palette.secondaryText,
-                        fontSize: 12,
+                        fontSize: isCurrentChapter ? 12.5 : 12,
+                        fontWeight: isCurrentChapter
+                            ? FontWeight.w700
+                            : FontWeight.w500,
                       ),
                     ),
                   ),
@@ -504,8 +529,21 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                     chapter.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 14),
+                    style: TextStyle(
+                      fontSize: isCurrentChapter ? 14.5 : 14,
+                      fontWeight: isCurrentChapter
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                      color: isCurrentChapter ? _palette.accent : null,
+                    ),
                   ),
+                  trailing: isCurrentChapter
+                      ? Icon(
+                          Icons.play_arrow_rounded,
+                          size: 16,
+                          color: _palette.accent,
+                        )
+                      : null,
                   subtitle: ReaderChapterStateBadge(
                     availability: availability,
                     wordCount:
@@ -546,6 +584,38 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
     return AnimatedBuilder(
       animation: coordinator,
       builder: (BuildContext context, Widget? child) => buildList(),
+    );
+  }
+
+  void _centerCurrentCatalogChapterInView({
+    required BuildContext sheetContext,
+    required int routeSession,
+    required String routeBookId,
+    required TextReaderStateStore routeStore,
+  }) {
+    if (!_isRouteSessionCurrent(
+      routeSession,
+      routeBookId,
+      store: routeStore,
+    )) {
+      return;
+    }
+    final String? chapterId = _content?.chapterId;
+    if (chapterId == null || chapterId == _centeredCatalogChapterId) {
+      return;
+    }
+    final BuildContext? chapterItemContext = _catalogItemKeys[chapterId]
+        ?.currentContext;
+    if (chapterItemContext == null || !sheetContext.mounted) return;
+    if (Scrollable.maybeOf(chapterItemContext) == null) return;
+    _centeredCatalogChapterId = chapterId;
+    unawaited(
+      Scrollable.ensureVisible(
+        chapterItemContext,
+        alignment: 0.5,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      ),
     );
   }
 

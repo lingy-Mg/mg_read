@@ -199,7 +199,7 @@ final class _WireConnection {
         scheme: 'http',
         host: _ready.host,
         port: _ready.port,
-        path: '/v1/plugin-transfer/$token',
+        path: '/v2/plugin-artifact/$token',
       ),
     );
     request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');

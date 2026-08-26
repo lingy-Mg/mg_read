@@ -45,6 +45,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AboutPage), findsOneWidget);
     expect(find.text('统一阅读'), findsOneWidget);
+    expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
 
     await tester.tap(find.byKey(const Key('profile-detail-back')));
     await tester.pumpAndSettle();
@@ -56,6 +57,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(FeedbackPage), findsOneWidget);
     expect(find.text('感谢您的反馈！'), findsOneWidget);
+    expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
 
     await tester.tap(find.byKey(const Key('profile-detail-back')));
     await tester.pumpAndSettle();
@@ -85,6 +87,7 @@ void main() {
     expect(find.text('发送数据'), findsOneWidget);
     expect(find.text('接收数据'), findsOneWidget);
     expect(find.textContaining('首版传输不加密'), findsOneWidget);
+    expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
 
     await tester.tap(find.byKey(const Key('lan-sync-back')));
     await tester.pumpAndSettle();
@@ -98,7 +101,6 @@ void main() {
     final Rect topBar = tester.getRect(find.byKey(const Key('profile-detail-top-bar')));
     final Rect icon = tester.getRect(find.byKey(const Key('about-app-icon')));
     final Rect card = tester.getRect(find.byKey(const Key('about-settings-card')));
-    final Rect navigation = tester.getRect(find.byKey(const Key('app-bottom-navigation')));
 
     expect(topBar.top, closeTo(32, 0.1));
     expect(topBar.height, AppSpacing.minimumTouchTarget);
@@ -108,7 +110,7 @@ void main() {
     expect(card.width, closeTo(350, 0.1));
     expect(card.height, AppDetailMetrics.aboutCardHeight);
     expect(card.top, closeTo(356, 0.1));
-    expect(navigation.top, closeTo(824, 0.1));
+    expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
   });
 
   testWidgets('feedback page preserves measured banner and form proportions', (WidgetTester tester) async {
@@ -183,15 +185,15 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('profile stays selected in detail navigation semantics', (WidgetTester tester) async {
-    final SemanticsHandle semantics = tester.ensureSemantics();
+  testWidgets('profile detail pages omit the primary navigation bar', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_aboutHost());
     await tester.pumpAndSettle();
 
-    final SemanticsNode profile = tester.getSemantics(find.byKey(const Key('app-nav-profile')));
-    expect(profile.flagsCollection.isSelected, Tristate.isTrue);
-    semantics.dispose();
+    expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
+    await tester.pumpWidget(_feedbackHost());
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
   });
 
   testWidgets('profile details stay light-only without header theme actions', (WidgetTester tester) async {

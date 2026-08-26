@@ -23,8 +23,7 @@ import com.caoccao.javet.values.reference.V8ValueFunction
 import com.caoccao.javet.values.reference.V8ValuePromise
 import org.json.JSONObject
 import java.io.File
-import java.security.MessageDigest
-import java.util.UUID
+import java.io.FileOutputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -52,6 +51,7 @@ internal class AndroidRuntimeHost(
     private val handler = android.os.Handler(thread.looper)
     private val disposed = AtomicBoolean(false)
     private var nodeRuntime: NodeRuntime? = null
+    private var coreStarted = false
     private var eventLoopPumpActive = false
     private val eventLoopPump = object : Runnable {
         override fun run() {
@@ -75,17 +75,7 @@ internal class AndroidRuntimeHost(
     private val pluginModules = mutableListOf<V8Module>()
     private var runtimeRoot: File? = null
     private var dataRoot: File? = null
-    private data class TransferSession(
-        val target: File,
-        val temporary: File,
-        val expectedBytes: Long,
-        val expectedSha256: String,
-        var receivedBytes: Long = 0,
-        val digest: MessageDigest = MessageDigest.getInstance("SHA-256"),
-    )
-    private val transferSessions = mutableMapOf<String, TransferSession>()
-    private data class ExportSession(val file: File, var offset: Long = 0)
-    private val exportSessions = mutableMapOf<String, ExportSession>()
+    private val artifactTransfer = AndroidPluginArtifactTransfer(context)
 
     fun invoke(
         method: String,
@@ -120,7 +110,7 @@ internal class AndroidRuntimeHost(
                 Log.i(TAG, "android_runtime_invoke_complete bytes=${result.length}")
                 callback(null, result)
             } catch (_: Throwable) {
-                runCatching { stopRuntime() }
+                recoverCoreAfterFailedActivation()
                 val code = if (phase == "starting") {
                     "runtime_start_failed"
                 } else {
@@ -151,18 +141,14 @@ internal class AndroidRuntimeHost(
             var phase = "validate"
             try {
                 val sourceName = selectedFileName(sourcePath)
-                check(
-                    !isContentUri(sourcePath) ||
-                        sourceName.endsWith(".mgplugin", ignoreCase = true),
-                ) {
-                    "file_name_invalid"
-                }
+                val artifactFormat = artifactFormatForName(sourceName)
+                    ?: error("file_name_invalid")
                 val inbox = File(context.filesDir, "mgread-runtime/import-inbox").apply {
                     mkdirs()
                 }
                 val target = File(
                     inbox,
-                    "import-${System.currentTimeMillis()}.mgplugin",
+                    "import-${System.currentTimeMillis()}${artifactSuffix(artifactFormat)}",
                 )
                 val temporaryFile = File(target.path + ".part")
                 temporary = temporaryFile
@@ -176,12 +162,11 @@ internal class AndroidRuntimeHost(
                 check(temporaryFile.renameTo(target)) { "disk_full" }
                 phase = "runtime_start"
                 onProgress(AndroidRuntimeProgress(0, "plugin_installing", 0))
-                restartRuntime()
-                ensureStarted()
+                restartCore()
                 callback(null)
             } catch (error: Throwable) {
                 temporary?.delete()
-                runCatching { stopRuntime() }
+                recoverCoreAfterFailedActivation()
                 val code = when {
                     error.message == "file_name_invalid" -> "file_name_invalid"
                     error.message == "file_unavailable" -> "file_unavailable"
@@ -289,6 +274,7 @@ internal class AndroidRuntimeHost(
         version: String,
         expectedBytes: Long,
         expectedSha256: String,
+        format: String,
         callback: (AndroidRuntimeError?, String?) -> Unit,
     ) {
         if (disposed.get()) {
@@ -297,20 +283,18 @@ internal class AndroidRuntimeHost(
         }
         handler.post {
             try {
-                check(pluginId.matches(Regex("[a-z0-9][a-z0-9.-]{0,127}"))) { "invalid_request" }
-                check(version.matches(Regex("\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?"))) { "invalid_request" }
-                check(expectedBytes in 1..MAX_IMPORT_BYTES) { "file_too_large" }
-                check(expectedSha256.matches(Regex("[a-f0-9]{64}"))) { "invalid_request" }
-                check(transferSessions.size < MAX_TRANSFER_BATCH) { "transfer_batch_too_large" }
-                val inbox = File(context.filesDir, "mgread-runtime/import-inbox").apply { mkdirs() }
-                val id = UUID.randomUUID().toString().replace("-", "")
-                val target = File(inbox, "transfer-$pluginId-$version-$id.mgplugin")
-                val temporary = File(target.path + ".part")
-                transferSessions[id] = TransferSession(target, temporary, expectedBytes, expectedSha256)
+                Log.i(TAG, "android_plugin_transfer_receive_started bytes=$expectedBytes")
+                val id = artifactTransfer.beginImport(
+                    pluginId = pluginId,
+                    version = version,
+                    expectedBytes = expectedBytes,
+                    expectedSha256 = expectedSha256,
+                    format = format,
+                )
                 callback(null, id)
             } catch (error: Throwable) {
                 callback(AndroidRuntimeError(
-                    if (error.message == "file_too_large") "plugin_transfer_archive_too_large" else "invalid_request",
+                    if (error.message == "file_too_large") "plugin_transfer_artifact_too_large" else "invalid_request",
                     "Android Runtime could not begin plugin transfer.",
                 ), null)
             }
@@ -320,30 +304,23 @@ internal class AndroidRuntimeHost(
     fun beginPluginTransferExport(
         pluginId: String,
         version: String,
+        format: String,
         callback: (AndroidRuntimeError?, Map<String, Any?>?) -> Unit,
     ) {
         handler.post {
             try {
                 ensureStarted()
-                check(pluginId.matches(Regex("[a-z0-9][a-z0-9.-]{0,127}"))) { "invalid_request" }
-                check(version.matches(Regex("\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?"))) { "invalid_request" }
-                val file = File(dataRoot ?: error("runtime_unavailable"), "plugin-archives/$pluginId/$version.mgplugin")
-                check(file.isFile) { "plugin_transfer_archive_missing" }
-                check(file.length() in 1..MAX_IMPORT_BYTES) { "plugin_transfer_archive_too_large" }
-                val digest = MessageDigest.getInstance("SHA-256")
-                file.inputStream().use { input ->
-                    val buffer = ByteArray(TRANSFER_CHUNK_BYTES)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        digest.update(buffer, 0, read)
-                    }
-                }
-                val id = UUID.randomUUID().toString().replace("-", "")
-                exportSessions[id] = ExportSession(file)
-                callback(null, mapOf("id" to id, "bytes" to file.length(), "sha256" to digest.digest().joinToString("") { byte -> "%02x".format(byte) }))
+                callback(
+                    null,
+                    artifactTransfer.beginExport(
+                        dataRoot = dataRoot ?: error("runtime_unavailable"),
+                        pluginId = pluginId,
+                        version = version,
+                        format = format,
+                    ),
+                )
             } catch (error: Throwable) {
-                callback(AndroidRuntimeError(error.message ?: "invalid_request", "Android Runtime could not export the plugin archive."), null)
+                callback(AndroidRuntimeError(error.message ?: "invalid_request", "Android Runtime could not export the plugin artifact."), null)
             }
         }
     }
@@ -354,36 +331,16 @@ internal class AndroidRuntimeHost(
     ) {
         handler.post {
             try {
-                val session = exportSessions[id] ?: error("invalid_request")
-                val remaining = session.file.length() - session.offset
-                if (remaining <= 0) {
-                    exportSessions.remove(id)
-                    callback(null, ByteArray(0))
-                    return@post
-                }
-                val count = minOf(remaining, TRANSFER_CHUNK_BYTES.toLong()).toInt()
-                val output = ByteArray(count)
-                session.file.inputStream().use { input ->
-                    check(input.skip(session.offset) == session.offset) { "plugin_transfer_archive_missing" }
-                    var read = 0
-                    while (read < count) {
-                        val next = input.read(output, read, count - read)
-                        if (next < 0) break
-                        read += next
-                    }
-                    check(read == count) { "plugin_transfer_archive_missing" }
-                }
-                session.offset += count
-                callback(null, output)
+                callback(null, artifactTransfer.readExportChunk(id))
             } catch (error: Throwable) {
-                exportSessions.remove(id)
-                callback(AndroidRuntimeError(error.message ?: "invalid_request", "Android Runtime could not read the plugin archive."), null)
+                artifactTransfer.cancelExport(id)
+                callback(AndroidRuntimeError(error.message ?: "invalid_request", "Android Runtime could not read the plugin artifact."), null)
             }
         }
     }
 
     fun cancelPluginTransferExport(id: String) {
-        handler.post { exportSessions.remove(id) }
+        handler.post { artifactTransfer.cancelExport(id) }
     }
 
     fun writePluginTransferChunk(
@@ -392,18 +349,8 @@ internal class AndroidRuntimeHost(
         callback: (AndroidRuntimeError?) -> Unit,
     ) {
         handler.post {
-            val session = transferSessions[id]
-            if (session == null) {
-                callback(AndroidRuntimeError("invalid_request", "Android plugin transfer session is unavailable."))
-                return@post
-            }
             try {
-                check(chunk.size <= TRANSFER_CHUNK_BYTES) { "invalid_request" }
-                check(session.receivedBytes + chunk.size <= session.expectedBytes) { "plugin_transfer_size_mismatch" }
-                session.temporary.parentFile?.mkdirs()
-                FileOutputStream(session.temporary, true).use { output -> output.write(chunk) }
-                session.digest.update(chunk)
-                session.receivedBytes += chunk.size
+                artifactTransfer.writeImportChunk(id, chunk)
                 callback(null)
             } catch (error: Throwable) {
                 callback(AndroidRuntimeError(
@@ -420,21 +367,15 @@ internal class AndroidRuntimeHost(
     ) {
         handler.post {
             try {
-                check(ids.isNotEmpty() && ids.size <= MAX_TRANSFER_BATCH) { "transfer_batch_too_large" }
-                ids.forEach { id ->
-                    val session = transferSessions[id] ?: error("invalid_request")
-                    check(session.receivedBytes == session.expectedBytes) { "plugin_transfer_size_mismatch" }
-                    val actual = session.digest.digest().joinToString("") { byte -> "%02x".format(byte) }
-                    check(actual == session.expectedSha256) { "plugin_transfer_checksum_mismatch" }
-                    check(session.temporary.renameTo(session.target)) { "disk_full" }
-                }
-                ids.forEach { transferSessions.remove(it) }
-                restartRuntime()
-                ensureStarted()
+                Log.i(TAG, "android_plugin_transfer_finalize_started")
+                artifactTransfer.finishImportBatch(ids)
+                Log.i(TAG, "android_plugin_transfer_artifacts_verified")
+                restartCore()
+                Log.i(TAG, "android_plugin_transfer_finalize_complete")
                 callback(null)
             } catch (error: Throwable) {
-                ids.forEach { id -> transferSessions.remove(id)?.temporary?.delete() }
-                runCatching { stopRuntime() }
+                artifactTransfer.cancelImports(ids)
+                recoverCoreAfterFailedActivation()
                 val code = when (error.message) {
                     "plugin_transfer_size_mismatch" -> "plugin_transfer_size_mismatch"
                     "plugin_transfer_checksum_mismatch" -> "plugin_transfer_checksum_mismatch"
@@ -442,6 +383,7 @@ internal class AndroidRuntimeHost(
                     "disk_full" -> "disk_full"
                     else -> "plugin_transfer_failed"
                 }
+                Log.e(TAG, "android_plugin_transfer_finalize_failed code=$code")
                 callback(AndroidRuntimeError(code, "Android Runtime could not finalize plugin transfer."))
             }
         }
@@ -463,10 +405,45 @@ internal class AndroidRuntimeHost(
         thread.quitSafely()
     }
 
-    private fun restartRuntime() {
+    /**
+     * Cold-activates installed sources without tearing down Javet's sole Node VM.
+     *
+     * Javet owns native process state below [NodeRuntime]. Recreating that VM
+     * immediately after a transfer can terminate the Android process on some
+     * devices. A fresh DesktopRuntime Core still re-reads the inbox and builds
+     * a new PluginManager, so pending immutable artifacts are never hot-loaded.
+     */
+    private fun restartCore() {
+        if (nodeRuntime == null) {
+            ensureStarted()
+            return
+        }
+        eventLoopPumpActive = false
+        handler.removeCallbacks(eventLoopPump)
+        awaitString("globalThis.__mgreadStopJson()")
+        coreStarted = false
+        clearPluginModules()
+        awaitString("globalThis.__mgreadStartCoreJson()")
+        coreStarted = true
+        eventLoopPumpActive = true
+        handler.post(eventLoopPump)
+        Log.i(TAG, "android_runtime_core_restarted_for_plugin_import")
+    }
+
+    /** Restores a usable Core after the inbox has discarded one bad artifact. */
+    private fun recoverCoreAfterFailedActivation() {
         if (nodeRuntime == null) return
-        stopRuntime()
-        Log.i(TAG, "android_runtime_restarted_for_plugin_import")
+        eventLoopPumpActive = false
+        handler.removeCallbacks(eventLoopPump)
+        coreStarted = false
+        runCatching { awaitString("globalThis.__mgreadStopJson()") }
+        clearPluginModules()
+        if (runCatching { awaitString("globalThis.__mgreadStartCoreJson()") }.isSuccess) {
+            coreStarted = true
+            Log.i(TAG, "android_runtime_core_recovered_after_plugin_import_failure")
+        }
+        eventLoopPumpActive = true
+        handler.post(eventLoopPump)
     }
 
     private fun stopRuntime() {
@@ -481,17 +458,20 @@ internal class AndroidRuntimeHost(
             progressCallback = null
             pluginModuleLoader?.close()
             pluginModuleLoader = null
-            pluginModules.forEach { module -> runCatching { module.close() } }
-            pluginModules.clear()
+            clearPluginModules()
             runtimeModule?.close()
             runtimeModule = null
             it.close()
         }
         nodeRuntime = null
+        coreStarted = false
     }
 
     private fun ensureStarted() {
-        if (nodeRuntime != null) return
+        if (nodeRuntime != null) {
+            if (!coreStarted) restartCore()
+            return
+        }
         Log.i(TAG, "android_runtime_start")
         val root = File(context.filesDir, "mgread-runtime/android").apply { mkdirs() }
         AndroidRuntimeAssetExtractor(context, assetRoot, onProgress).ensure(root)
@@ -541,39 +521,45 @@ internal class AndroidRuntimeHost(
         val bootstrap = """
             (async () => {
               const { DesktopRuntime } = globalThis.__mgreadDesktopRuntime;
-              const core = new DesktopRuntime({
-                dataRoot: ${JSONObject.quote(dataRoot.path)},
-                pluginImportInboxRoot: ${JSONObject.quote(pluginImportInbox.path)},
-                embedded: true,
-                debugHttpAllowed: ${isDebuggableBuild()},
-                onProgress: (progress) => {
-                  try {
-                    globalThis.__mgreadReportProgress(JSON.stringify(progress));
-                  } catch (_) {
-                    // Progress is observational and must not change Runtime results.
-                  }
-                },
-              });
-              await core.start();
-              const hello = await core.invokeEmbedded('runtime.hello', {});
-              if (!hello.ok) throw new Error('runtime_hello_failed');
-              globalThis.__mgreadCore = core;
+              globalThis.__mgreadStartCoreJson = async () => {
+                const core = new DesktopRuntime({
+                  dataRoot: ${JSONObject.quote(dataRoot.path)},
+                  pluginImportInboxRoot: ${JSONObject.quote(pluginImportInbox.path)},
+                  embedded: true,
+                  debugHttpAllowed: ${isDebuggableBuild()},
+                  onProgress: (progress) => {
+                    try {
+                      globalThis.__mgreadReportProgress(JSON.stringify(progress));
+                    } catch (_) {
+                      // Progress is observational and must not change Runtime results.
+                    }
+                  },
+                });
+                await core.start();
+                const hello = await core.invokeEmbedded('runtime.hello', {});
+                if (!hello.ok) throw new Error('runtime_hello_failed');
+                globalThis.__mgreadCore = core;
+                return JSON.stringify({ ok: true });
+              };
               globalThis.__mgreadInvokeJson = async (method, paramsJson, deadline) => {
                 try {
-                  return JSON.stringify(await core.invokeEmbedded(method, JSON.parse(paramsJson), deadline));
+                  return JSON.stringify(await globalThis.__mgreadCore.invokeEmbedded(method, JSON.parse(paramsJson), deadline));
                 } catch (_) {
                   return JSON.stringify({ ok: false, error: { code: 'internal', message: 'Android Runtime invocation failed.' } });
                 }
               };
               globalThis.__mgreadStopJson = async () => {
-                await core.stop();
+                const core = globalThis.__mgreadCore;
+                if (core) await core.stop();
+                globalThis.__mgreadCore = undefined;
                 return JSON.stringify({ ok: true });
               };
-              return JSON.stringify({ ok: true });
+              return globalThis.__mgreadStartCoreJson();
             })()
         """.trimIndent()
         Log.i(TAG, "android_runtime_bootstrap_start")
         awaitString(bootstrap)
+        coreStarted = true
         eventLoopPumpActive = true
         handler.post(eventLoopPump)
         Log.i(TAG, "android_runtime_bootstrap_complete")
@@ -668,6 +654,12 @@ internal class AndroidRuntimeHost(
         runtime.getGlobalObject().set("__mgreadLoadPluginModule", pluginModuleLoader)
     }
 
+    /** Releases modules loaded by the previous Core before cold activation. */
+    private fun clearPluginModules() {
+        pluginModules.forEach { module -> runCatching { module.close() } }
+        pluginModules.clear()
+    }
+
     private fun awaitCompletion(value: V8Value) {
         if (value !is V8ValuePromise) {
             value.close()
@@ -688,9 +680,19 @@ internal class AndroidRuntimeHost(
     private companion object {
         const val EVENT_LOOP_PUMP_MILLIS = 10L
         const val MAX_IMPORT_BYTES = 32L * 1024L * 1024L
-        const val MAX_TRANSFER_BATCH = 32
-        const val TRANSFER_CHUNK_BYTES = 64 * 1024
         const val PROGRESS_REPORT_BYTES = 64L * 1024L
         const val TAG = "MgReadAndroidRuntime"
+    }
+
+    private fun artifactFormatForName(name: String): String? = when {
+        name.endsWith(".mgplugin.js", ignoreCase = true) -> "singleFile"
+        name.endsWith(".mgplugin", ignoreCase = true) -> "archive"
+        else -> null
+    }
+
+    private fun artifactSuffix(format: String): String = when (format) {
+        "singleFile" -> ".mgplugin.js"
+        "archive" -> ".mgplugin"
+        else -> error("invalid_request")
     }
 }

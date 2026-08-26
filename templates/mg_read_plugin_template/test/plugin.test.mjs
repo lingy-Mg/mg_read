@@ -1,3 +1,10 @@
+/**
+ * 官方模板的离线内容契约测试。
+ *
+ * 职责：验证命名导出、显式空值语义和标准项目元数据。
+ * 注意：测试只使用本地固定数据，不访问真实书源。
+ */
+
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -21,7 +28,7 @@ test('standard named exports activate and use multi-file/local-package resources
       error: (event) => events.push(event),
     },
     app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
-    plugin: { id: 'org.example.source', version: '0.1.1' },
+    plugin: { id: 'org.example.source', version: '0.1.2' },
   });
 
   const search = await plugin.search({ query: '示例', cursor: null, pageSize: 20 });
@@ -76,6 +83,7 @@ test('package metadata is single-source and legacy files stay absent', async () 
   const lock = JSON.parse(await readFile(new URL('../package-lock.json', import.meta.url), 'utf8'));
   assert.equal(packageJson.mgread.schemaVersion, 1);
   assert.equal(packageJson.mgread.pluginApi, 1);
+  assert.equal(packageJson.mgread.packageMode, 'single-file');
   assert.equal(packageJson.mgread.displayName, '示例书源');
   assert.equal(lock.lockfileVersion, 3);
   assert.equal(lock.packages[''].dependencies['@mgread-plugin/example-parser'], 'file:./packages/example-parser');

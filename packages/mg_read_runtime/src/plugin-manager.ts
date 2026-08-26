@@ -34,14 +34,20 @@ import {
   resolveInside,
 } from "./plugin-package.js";
 import { PluginInstaller } from "./plugin-installer.js";
+import { PluginIconResources } from "./plugin-icon-resources.js";
+import { measureInstallationTree, retainedArtifactPath } from "./plugin-installation-usage.js";
+import {
+  createDevelopmentPackageArtifactResource,
+  listExportablePluginArtifacts,
+} from "./plugin-manager-artifact-transfer.js";
 import { pluginApiVersion } from "./plugin-package.js";
 import { runtimeVersion } from "./runtime-version.js";
 import {
-  PluginTransferManager,
-  type PluginTransferArchive,
+  PluginArtifactTransferManager,
+  type PluginTransferArtifact,
   type PluginTransferPlanItem,
   type PluginTransferResource,
-} from "./plugin-transfer.js";
+} from "./plugin-artifact-transfer.js";
 import {
   type PluginChapterContent,
   type PluginChaptersRequest,
@@ -72,6 +78,7 @@ import {
   type PluginCacheUsage,
   type PluginCodeDirectory,
   type PluginInstallationUsage,
+  type PluginIconResource,
   type PluginResourceResponse,
   type PluginStartupRecoverySummary,
   type DevelopmentPlugin,
@@ -90,13 +97,14 @@ import {
   atomicWrite,
   collectDevelopmentFiles,
   developmentProjectFingerprint,
-  enabledStatus,
   exists,
   isMissingPath,
   isPluginId,
   normalizePluginModule,
+  removePluginStorage,
   readVersionPointer,
   snapshotFrom,
+  withEnabledPluginSnapshot,
 } from "./plugin-manager-files.js";
 
 export {
@@ -124,12 +132,13 @@ export class PluginManager {
   readonly #events: PluginManagerEventSink;
   readonly #http: PluginRuntimeHttpClient;
   readonly #resources = new Map<string, { pluginId: string; request: JsonObject }>();
+  readonly #pluginIcons: PluginIconResources;
   #resourceOrigin = "http://127.0.0.1";
   readonly #invocationScope = new AsyncLocalStorage<PluginInvocationScope>();
   readonly #installedLoaded = new Map<string, LoadedPlugin>();
   readonly #developmentLoaded = new Map<string, DevelopmentPlugin>();
   readonly #cacheOperationTails = new Map<string, Promise<void>>();
-  readonly #pluginTransfer: PluginTransferManager;
+  readonly #pluginTransfer: PluginArtifactTransferManager;
   readonly #developmentInvocationTails = new Map<string, Promise<void>>();
   #initializePromise: Promise<void> | undefined;
   #startupQuarantinedCount = 0;
@@ -153,7 +162,8 @@ export class PluginManager {
       : resolve(options.developmentPluginRoot);
     this.#events = options.events ?? (() => {});
     this.#http = options.http ?? { fetch: (input, init) => fetch(input, init) };
-    this.#pluginTransfer = new PluginTransferManager(this.#dataRoot);
+    this.#pluginTransfer = new PluginArtifactTransferManager(this.#dataRoot);
+    this.#pluginIcons = new PluginIconResources(this.#dataRoot);
   }
 
   /** Scans pending/current pointers exactly once before Runtime readiness. */
@@ -211,21 +221,15 @@ export class PluginManager {
   async listInstalled(): Promise<readonly InstalledPluginSnapshot[]> {
     await this.initialize();
     await this.#refreshDevelopmentPlugins();
-    return this.#combinedSnapshots();
+    return Object.freeze(await Promise.all(this.#combinedSnapshots().map((snapshot) =>
+      this.#pluginIcons.project(snapshot, this.#developmentLoaded, this.#resourceOrigin))));
   }
 
-  /** Lists retained archives plus explicit, temporary development exports. */
-  async listExportableArchives(): Promise<readonly PluginTransferArchive[]> {
+  /** Lists retained artifacts plus explicit, temporary development exports. */
+  async listExportableArtifacts(): Promise<readonly PluginTransferArtifact[]> {
     await this.initialize();
     await this.#refreshDevelopmentPlugins();
-    return this.#pluginTransfer.listExportable(
-      this.#installedSnapshots,
-      [...this.#developmentLoaded.values()].map((plugin) => ({
-        id: plugin.loaded.descriptor.id,
-        projectRoot: plugin.projectRoot,
-        version: plugin.loaded.descriptor.version,
-      })),
-    );
+    return listExportablePluginArtifacts(this.#pluginTransfer, this.#installedSnapshots, this.#developmentLoaded.values());
   }
 
   async close(): Promise<void> {
@@ -233,25 +237,31 @@ export class PluginManager {
   }
 
   /** Compares sender SemVer against this Runtime's installed versions. */
-  async planPluginTransfer(
-    incoming: readonly PluginTransferArchive[],
-  ): Promise<readonly PluginTransferPlanItem[]> {
+  async planPluginTransfer(incoming: readonly PluginTransferArtifact[]): Promise<readonly PluginTransferPlanItem[]> { await this.initialize(); return this.#pluginTransfer.plan(incoming, this.#installedSnapshots); }
+
+  /** Creates a one-shot Runtime-private resource for bounded artifact streaming. */
+  async createPluginTransferResource(id: string, version: string): Promise<{ readonly token: string; readonly artifact: PluginTransferArtifact }> { await this.initialize(); return this.#pluginTransfer.createResource(id, version); }
+
+  /** Packages one loaded Windows Debug development source without exposing its path. */
+  async createDevelopmentPackageResource(pluginId: string): Promise<{ readonly artifact: PluginTransferArtifact; readonly fileName: string; readonly token: string }> {
     await this.initialize();
-    return this.#pluginTransfer.plan(incoming, this.#installedSnapshots);
+    await this.#refreshDevelopmentPlugins();
+    if (!isPluginId(pluginId)) throw new PluginManagerError("invalid_request");
+    const development = this.#developmentLoaded.get(pluginId);
+    if (development === undefined) throw new PluginManagerError("plugin_not_found");
+    return createDevelopmentPackageArtifactResource(this.#pluginTransfer, development);
   }
 
-  /** Creates a one-shot Runtime-private resource for bounded archive streaming. */
-  async createPluginTransferResource(id: string, version: string): Promise<{ readonly token: string; readonly archive: PluginTransferArchive }> {
-    await this.initialize();
-    return this.#pluginTransfer.createResource(id, version);
-  }
-
-  async verifyPluginTransferInbox(incoming: readonly PluginTransferArchive[]): Promise<void> {
+  async verifyPluginTransferInbox(incoming: readonly PluginTransferArtifact[]): Promise<void> {
     return this.#pluginTransfer.verifyInbox(incoming);
   }
 
   consumePluginTransferResource(token: string): PluginTransferResource | undefined {
     return this.#pluginTransfer.consumeResource(token);
+  }
+
+  async consumePluginIconResource(token: string): Promise<PluginIconResource | undefined> {
+    return this.#pluginIcons.consume(token);
   }
 
   /**
@@ -304,7 +314,7 @@ export class PluginManager {
    *
    * Data excludes every `node_modules` directory; npm includes the complete
    * materialized dependency tree; archive reports the retained original
-   * `.mgplugin`. Only byte/file totals cross the Facade.
+   * `.mgplugin.js` or `.mgplugin`. Only totals cross the Facade.
    */
   async measureInstallationUsage(
     pluginId: string,
@@ -330,16 +340,11 @@ export class PluginManager {
       version,
     );
     const root = scope === "archive"
-      ? resolve(
-        this.#dataRoot,
-        "plugin-archives",
-        pluginId,
-        `${version}.mgplugin`,
-      )
+      ? await retainedArtifactPath(this.#dataRoot, pluginId, version)
       : scope === "npm"
         ? resolve(versionRoot, "node_modules")
         : versionRoot;
-    const result = await this.#installationBytesAt(root, scope);
+    const result = await measureInstallationTree(root, scope);
     return Object.freeze({
       bytes: result.bytes,
       fileCount: result.fileCount,
@@ -378,10 +383,7 @@ export class PluginManager {
    * Persists one source's enabled state and immediately gates dispatch in this
    * Runtime process without unloading or recreating the shared Node VM.
    */
-  async setEnabled(
-    pluginId: string,
-    enabled: boolean,
-  ): Promise<InstalledPluginSnapshot> {
+  async setEnabled(pluginId: string, enabled: boolean): Promise<InstalledPluginSnapshot> {
     await this.initialize();
     if (!isPluginId(pluginId)) throw new PluginManagerError("invalid_request");
     await this.#refreshDevelopmentPlugins();
@@ -392,29 +394,33 @@ export class PluginManager {
     if (index < 0) throw new PluginManagerError("plugin_not_found");
 
     await new PluginInstaller(this.#dataRoot).setEnabled(pluginId, enabled);
-    const current = this.#installedSnapshots[index]!;
-    const updated = Object.freeze({
-      activeVersion: current.activeVersion,
-      contentKinds: current.contentKinds,
-      description: current.description,
-      displayName: current.displayName,
-      enabled,
-      id: current.id,
-      name: current.name,
-      pendingVersion: current.pendingVersion,
-      status: enabled ? enabledStatus(current) : "disabled",
-    } satisfies InstalledPluginSnapshot);
-    this.#installedSnapshots = Object.freeze([
-      ...this.#installedSnapshots.slice(0, index),
-      updated,
-      ...this.#installedSnapshots.slice(index + 1),
-    ]);
+    const { snapshots, updated } = withEnabledPluginSnapshot(this.#installedSnapshots, index, enabled);
+    this.#installedSnapshots = snapshots;
     this.#events({
       code: enabled ? "plugin_enabled" : "plugin_disabled",
       outcome: "success",
       pluginId,
     });
-    return updated;
+    return this.#pluginIcons.project(updated, this.#developmentLoaded, this.#resourceOrigin);
+  }
+
+  /** Schedules removal of one installed source for the next Runtime cold start. */
+  async scheduleUninstall(pluginId: string): Promise<void> {
+    await this.initialize();
+    if (!isPluginId(pluginId)) throw new PluginManagerError("invalid_request");
+    await this.#refreshDevelopmentPlugins();
+    if (this.#developmentLoaded.has(pluginId)) {
+      throw new PluginManagerError("invalid_request");
+    }
+    if (!this.#installedSnapshots.some((item) => item.id === pluginId)) {
+      throw new PluginManagerError("plugin_not_found");
+    }
+    await new PluginInstaller(this.#dataRoot).scheduleUninstall(pluginId);
+    this.#events({
+      code: "plugin_uninstall_scheduled",
+      outcome: "success",
+      pluginId,
+    });
   }
 
   async discover(
@@ -660,7 +666,7 @@ export class PluginManager {
       if (!entry.isDirectory() || !isPluginId(entry.name)) continue;
       const pluginRoot = resolve(pluginsRoot, entry.name);
       if (await exists(resolve(pluginRoot, "uninstall-pending"))) {
-        await rm(pluginRoot, { force: true, recursive: true });
+        await removePluginStorage(this.#dataRoot, entry.name);
         this.#events({
           code: "plugin_uninstall_completed",
           outcome: "success",
@@ -882,38 +888,6 @@ export class PluginManager {
       if (!Number.isSafeInteger(total)) throw new PluginManagerError("plugin_load_failed");
     }
     return total;
-  }
-
-  async #installationBytesAt(
-    path: string,
-    scope: "archive" | "data" | "npm",
-  ): Promise<{ readonly bytes: number; readonly fileCount: number }> {
-    let metadata;
-    try {
-      metadata = await lstat(path);
-    } catch (error) {
-      if (isMissingPath(error)) return { bytes: 0, fileCount: 0 };
-      throw error;
-    }
-    if (!metadata.isDirectory()) {
-      return { bytes: metadata.size, fileCount: 1 };
-    }
-    const entries = await readdir(path, { withFileTypes: true });
-    let bytes = 0;
-    let fileCount = 0;
-    for (const entry of entries) {
-      if (scope === "data" && entry.name === "node_modules") continue;
-      const child = await this.#installationBytesAt(
-        resolve(path, entry.name),
-        scope,
-      );
-      bytes += child.bytes;
-      fileCount += child.fileCount;
-      if (!Number.isSafeInteger(bytes) || !Number.isSafeInteger(fileCount)) {
-        throw new PluginManagerError("plugin_load_failed");
-      }
-    }
-    return { bytes, fileCount };
   }
 
   #cacheDirectory(pluginId: string): string {

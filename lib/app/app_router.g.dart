@@ -9,6 +9,7 @@ part of 'app_router.dart';
 List<RouteBase> get $appRoutes => [
   $libraryRoute,
   $privateLibraryRoute,
+  $readingHistoryRoute,
   $searchRoute,
   $discoveryRoute,
   $profileRoute,
@@ -53,6 +54,33 @@ mixin $PrivateLibraryRoute on GoRouteData {
 
   @override
   String get location => GoRouteData.$location('/private-library');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+RouteBase get $readingHistoryRoute => GoRouteData.$route(
+  path: '/reading-history',
+  hasOverriddenOnExit: false,
+  factory: $ReadingHistoryRoute._fromState,
+);
+
+mixin $ReadingHistoryRoute on GoRouteData {
+  static ReadingHistoryRoute _fromState(GoRouterState state) =>
+      const ReadingHistoryRoute();
+
+  @override
+  String get location => GoRouteData.$location('/reading-history');
 
   @override
   void go(BuildContext context) => context.go(location);

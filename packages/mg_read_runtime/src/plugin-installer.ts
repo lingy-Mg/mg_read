@@ -1,3 +1,9 @@
+/**
+ * Runtime 双 artifact 安装器。
+ * 职责：将 archive/single-file 归一化为同一不可变版本树并维护 pending/依赖事务。
+ * 注意：安装不执行插件代码、npm 或 lifecycle script，原始 artifact 仅保存在 Runtime 私有目录。
+ * TODO: - 无。
+ */
 import { randomUUID } from "node:crypto";
 import {
   access,
@@ -27,6 +33,11 @@ import {
   createPluginArchive,
   extractPluginArchive,
 } from "./plugin-archive.js";
+import {
+  createPluginSingleFile,
+  materializePluginSingleFile,
+  type PluginArtifactFormat,
+} from "./plugin-single-file.js";
 import {
   dependencyObjectName,
   type LockedPluginDependency,
@@ -89,16 +100,18 @@ export class PluginInstaller {
 
   readonly #onProgress: DesktopRuntimeProgressSink;
 
-  async #preserveOriginalArchive(
-    archiveFile: string,
+  async #preserveOriginalArtifact(
+    artifactFile: string,
     descriptor: PluginPackageDescriptor,
+    format: PluginArtifactFormat,
   ): Promise<void> {
     const archiveRoot = resolve(
       this.#dataRoot,
       "plugin-archives",
       descriptor.id,
     );
-    const target = resolve(archiveRoot, `${descriptor.version}.mgplugin`);
+    const extension = format === "singleFile" ? ".mgplugin.js" : ".mgplugin";
+    const target = resolve(archiveRoot, `${descriptor.version}${extension}`);
     try {
       await access(target);
       return;
@@ -109,10 +122,10 @@ export class PluginInstaller {
     await mkdir(archiveRoot, { recursive: true });
     const temporary = resolve(
       archiveRoot,
-      `.${descriptor.version}-${randomUUID()}.mgplugin.part`,
+      `.${descriptor.version}-${randomUUID()}${extension}.part`,
     );
     try {
-      await copyFile(archiveFile, temporary, fsConstants.COPYFILE_EXCL);
+      await copyFile(artifactFile, temporary, fsConstants.COPYFILE_EXCL);
       try {
         await rename(temporary, target);
       } catch (error) {
@@ -124,8 +137,22 @@ export class PluginInstaller {
     }
   }
 
+  async installArtifact(artifactFile: string): Promise<PluginInstallResult> {
+    if (artifactFile.endsWith(".mgplugin.js")) return this.#installArtifact(artifactFile, "singleFile");
+    if (artifactFile.endsWith(".mgplugin")) return this.#installArtifact(artifactFile, "archive");
+    throw new PluginPackageError("plugin_package_invalid");
+  }
+
   /** Installs a `.mgplugin` as an immutable version and writes `pending`. */
   async installArchive(archiveFile: string): Promise<PluginInstallResult> {
+    return this.#installArtifact(archiveFile, "archive");
+  }
+
+  async installSingleFile(artifactFile: string): Promise<PluginInstallResult> {
+    return this.#installArtifact(artifactFile, "singleFile");
+  }
+
+  async #installArtifact(artifactFile: string, format: PluginArtifactFormat): Promise<PluginInstallResult> {
     const startedAt = performance.now();
     this.#events({ code: "plugin_install_started", outcome: "started" });
     const stagingRoot = resolve(
@@ -141,19 +168,33 @@ export class PluginInstaller {
         stage: "plugin_installing",
         totalBytes: 0,
       });
-      await extractPluginArchive(archiveFile, stagingRoot);
+      if (format === "singleFile") await materializePluginSingleFile(artifactFile, stagingRoot);
+      else await extractPluginArchive(artifactFile, stagingRoot);
       const project = await readPluginProject(stagingRoot);
+      const requiresNpmDependencies = format !== "singleFile";
+      // A single-file artifact materializes into an empty dependency graph.
+      // Local install and LAN-sync therefore share the same npm-free behavior.
+      if (!requiresNpmDependencies && project.dependencies.length !== 0) {
+        throw new PluginPackageError("plugin_lock_invalid");
+      }
       this.#reportProgress({
         completedBytes: 0,
-        detail: `已读取 package.json 和 package-lock.json，共 ${project.dependencies.length} 个 npm 依赖`,
+        detail: requiresNpmDependencies
+          ? `已读取 package.json 和 package-lock.json，共 ${project.dependencies.length} 个 npm 依赖`
+          : "已验证单文件数据来源，npm 依赖已打包，无需安装",
         stage: "plugin_installing",
-        totalBytes: Math.max(project.dependencies.length, 1),
+        totalBytes: requiresNpmDependencies ? Math.max(project.dependencies.length, 1) : 1,
       });
       // The platform inbox is only a hand-off queue and is deleted after the
       // install completes. Keep the validated input archive in Runtime-owned
       // storage for later recovery/export without crossing the Facade.
-      await this.#preserveOriginalArchive(archiveFile, project.descriptor);
-      const result = await this.#commitProject(stagingRoot, project.descriptor, project.dependencies);
+      await this.#preserveOriginalArtifact(artifactFile, project.descriptor, format);
+      const result = await this.#commitProject(
+        stagingRoot,
+        project.descriptor,
+        project.dependencies,
+        requiresNpmDependencies,
+      );
       this.#events({
         code: "plugin_install_completed",
         copiedFiles: result.copiedFiles,
@@ -182,11 +223,17 @@ export class PluginInstaller {
       "staging",
       `plugin-pack-${randomUUID()}`,
     );
-    const archive = resolve(stagingDirectory, "plugin.mgplugin");
     await mkdir(stagingDirectory, { recursive: true });
     try {
-      await createPluginArchive(projectRoot, archive);
-      return await this.installArchive(archive);
+      const project = await readPluginProject(projectRoot);
+      if (project.descriptor.packageMode === "single-file") {
+        const artifact = resolve(stagingDirectory, "plugin.mgplugin.js");
+        await createPluginSingleFile(projectRoot, artifact);
+        return await this.installSingleFile(artifact);
+      }
+      const artifact = resolve(stagingDirectory, "plugin.mgplugin");
+      await createPluginArchive(projectRoot, artifact);
+      return await this.installArchive(artifact);
     } finally {
       await rm(stagingDirectory, { force: true, recursive: true }).catch(() => {});
     }
@@ -272,6 +319,7 @@ export class PluginInstaller {
     stagingRoot: string,
     descriptor: PluginPackageDescriptor,
     dependencies: readonly LockedPluginDependency[],
+    requiresNpmDependencies: boolean,
   ): Promise<PluginInstallResult> {
     const pluginRoot = resolve(this.#dataRoot, "plugins", descriptor.id);
     const versionsRoot = resolve(pluginRoot, "versions");
@@ -280,7 +328,9 @@ export class PluginInstaller {
       await stat(finalVersionRoot);
       this.#reportProgress({
         completedBytes: 1,
-        detail: "数据来源版本已存在，复用已安装的 npm 依赖",
+        detail: requiresNpmDependencies
+          ? "数据来源版本已存在，复用已安装的 npm 依赖"
+          : "单文件数据来源版本已存在，无需安装 npm 依赖",
         stage: "plugin_installing",
         totalBytes: 1,
       });
@@ -302,7 +352,7 @@ export class PluginInstaller {
     let skippedOptionalDependencies = 0;
     const dependencyTotal = Math.max(dependencies.length, 1);
     let dependencyIndex = 0;
-    for (const dependency of dependencies) {
+    for (const dependency of requiresNpmDependencies ? dependencies : []) {
       dependencyIndex += 1;
       const destination = resolveInside(stagingRoot, dependency.installPath);
       try {
@@ -368,7 +418,9 @@ export class PluginInstaller {
     await atomicWrite(resolve(pluginRoot, "pending"), `${descriptor.version}\n`);
     this.#reportProgress({
       completedBytes: dependencyTotal,
-      detail: "npm 依赖恢复完成，正在完成数据来源安装",
+      detail: requiresNpmDependencies
+        ? "npm 依赖恢复完成，正在完成数据来源安装"
+        : "单文件数据来源安装完成，无需安装 npm 依赖",
       stage: "plugin_installing",
       totalBytes: dependencyTotal,
     });

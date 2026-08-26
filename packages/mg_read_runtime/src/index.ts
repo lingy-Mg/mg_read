@@ -28,13 +28,33 @@ export {
   pluginApiVersion,
   pluginPackageSchemaVersion,
   PluginPackageError,
+  parsePluginPackageDescriptor,
   readPluginProject,
 } from "./plugin-package.js";
 export type {
   LockedPluginDependency,
   PluginPackageDescriptor,
+  PluginPackageMode,
   ValidatedPluginProject,
 } from "./plugin-package.js";
+export {
+  createPluginSingleFile,
+  materializePluginSingleFile,
+  MAX_PLUGIN_ARTIFACT_BYTES,
+  MAX_PLUGIN_ICON_BYTES,
+  MAX_PLUGIN_SINGLE_FILE_HEADER_BYTES,
+  parsePluginSingleFile,
+  PLUGIN_SINGLE_FILE_PREFIX,
+  PluginSingleFileError,
+} from "./plugin-single-file.js";
+export type {
+  ParsedSingleFilePlugin,
+  PluginArtifactFormat,
+  PluginSingleFileCreateOptions,
+  SingleFilePluginDescriptor,
+  SingleFilePluginEnvelope,
+  SingleFilePluginIcon,
+} from "./plugin-single-file.js";
 export {
   DependencyStore,
   DependencyStoreError,

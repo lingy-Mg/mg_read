@@ -51,6 +51,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
               ? AppSpacing.continueReadingCardTopInset - AppSpacing.compact
               : AppSpacing.continueReadingCardTopInset;
           final double cardLeft = coverWidth - AppSpacing.continueReadingCardCoverOverlap;
+          final double detailsHorizontalInset = coverWidth - cardLeft + AppSpacing.regular;
 
           return SizedBox(
             height: coverHeight,
@@ -96,8 +97,8 @@ class LibraryContinueReadingCard extends StatelessWidget {
                           ),
                           Padding(
                             padding: EdgeInsets.only(
-                              left: coverWidth - cardLeft + AppSpacing.regular,
-                              right: AppSpacing.comfortable,
+                              left: detailsHorizontalInset,
+                              right: AppSpacing.regular,
                               top: AppSpacing.compact,
                               bottom: AppSpacing.compact,
                             ),
@@ -146,9 +147,14 @@ class _ContinueReadingDetails extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        _AdaptiveSingleLineTitle(
-          title: data.title,
-          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w500, height: 1.16, letterSpacing: -0.2),
+        SizedBox(
+          width: double.infinity,
+          child: Center(
+            child: _AdaptiveSingleLineTitle(
+              title: data.title,
+              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w500, height: 1.16, letterSpacing: -0.2),
+            ),
+          ),
         ),
         const Spacer(),
         Row(
@@ -171,7 +177,10 @@ class _ContinueReadingDetails extends StatelessWidget {
           ],
         ),
         const Spacer(),
-        _ContinueReadingAction(onPressed: onContinueReading, isPreparing: isPreparing),
+        Align(
+          alignment: Alignment.center,
+          child: _ContinueReadingAction(onPressed: onContinueReading, isPreparing: isPreparing),
+        ),
       ],
     );
   }

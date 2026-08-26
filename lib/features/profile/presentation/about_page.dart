@@ -121,7 +121,6 @@ class AboutPage extends StatelessWidget {
           ),
         ),
       ),
-      bottomNavigationBar: ProfileDetailBottomBar(onSelected: onDestinationRequested),
     );
   }
 

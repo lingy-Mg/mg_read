@@ -19,6 +19,15 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
   late final StreamSubscription<dynamic> _progressSubscription =
       _androidRuntimeProgressChannel.receiveBroadcastStream().listen(
         _onNativeProgress,
+        onError: (Object _, StackTrace __) {
+          _recordDiagnostic(
+            const RuntimeDiagnostic(
+              code: 'runtime_progress_channel_failed',
+              level: RuntimeDiagnosticLevel.warning,
+              message: 'The Android Runtime progress channel failed.',
+            ),
+          );
+        },
       );
   bool _disposed = false;
   bool _started = false;
@@ -182,34 +191,45 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
   }
 
   @override
-  Future<Stream<List<int>>> exportPluginArchive(
-    PluginTransferArchive archive,
+  Future<Stream<List<int>>> exportPluginArtifact(
+    PluginTransferArtifact artifact,
   ) async {
     try {
-      final metadata = await _androidRuntimeChannel.invokeMethod<Object?>(
-        'beginPluginTransferExport',
-        <String, Object?>{
-          'pluginId': archive.pluginId,
-          'version': archive.version,
-        },
-      );
+      final metadata = await _androidRuntimeChannel
+          .invokeMethod<Object?>('beginPluginTransferExport', <String, Object?>{
+            'format': artifact.format.name,
+            'pluginId': artifact.pluginId,
+            'version': artifact.version,
+          });
       final item = _jsonObject(metadata, 'Android plugin transfer export');
       if (item['id'] is! String ||
-          item['bytes'] != archive.bytes ||
-          item['sha256'] != archive.sha256) {
+          item['bytes'] != artifact.bytes ||
+          item['format'] != artifact.format.name ||
+          item['sha256'] != artifact.sha256) {
         throw const PluginRuntimeException(
           'plugin_transfer_checksum_mismatch',
-          'Android Runtime returned an invalid transfer archive.',
+          'Android Runtime returned an invalid transfer artifact.',
         );
       }
       final id = item['id'] as String;
-      return _readAndroidExport(id, archive.bytes);
+      return _readAndroidExport(id, artifact.bytes);
     } on PlatformException catch (error) {
       throw PluginRuntimeException(
         error.code,
-        'The Android Runtime could not export the plugin archive.',
+        'The Android Runtime could not export the plugin artifact.',
       );
     }
+  }
+
+  @override
+  Future<PluginDevelopmentPackage> packageDevelopmentPlugin(
+    String pluginId,
+    String directoryPath,
+  ) {
+    throw const PluginRuntimeException(
+      'unsupported',
+      'Development source packaging is available on Windows only.',
+    );
   }
 
   Stream<List<int>> _readAndroidExport(String id, int expectedBytes) async* {
@@ -225,7 +245,7 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
             received + chunk.length > expectedBytes) {
           throw const PluginRuntimeException(
             'plugin_transfer_size_mismatch',
-            'The Android Runtime transfer archive was truncated.',
+            'The Android Runtime transfer artifact was truncated.',
           );
         }
         received += chunk.length;
@@ -234,7 +254,7 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
       if (received != expectedBytes) {
         throw const PluginRuntimeException(
           'plugin_transfer_size_mismatch',
-          'The Android Runtime transfer archive was truncated.',
+          'The Android Runtime transfer artifact was truncated.',
         );
       }
     } finally {
@@ -248,10 +268,11 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
   }
 
   @override
-  Future<List<PluginTransferImportResult>> importPluginArchives(
-    List<({PluginTransferArchive archive, Stream<List<int>> bytes})> archives,
+  Future<List<PluginTransferImportResult>> importPluginArtifacts(
+    List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
+    artifacts,
   ) async {
-    if (archives.isEmpty || archives.length > maxPluginTransferBatch) {
+    if (artifacts.isEmpty || artifacts.length > maxPluginTransferBatch) {
       throw const PluginRuntimeException(
         'plugin_transfer_batch_too_large',
         'The plugin transfer batch is invalid.',
@@ -262,7 +283,7 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
     try {
       final plan = await invoke(
         PluginTransferPlanInvocation(
-          archives: [for (final item in archives) item.archive],
+          artifacts: [for (final item in artifacts) item.artifact],
         ),
       );
       if (plan.any(
@@ -276,15 +297,15 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
           'The plugin transfer would downgrade or replace an equal Runtime version.',
         );
       }
-      for (final item in archives) {
-        if (item.archive.bytes <= 0 ||
-            item.archive.bytes > maxPluginTransferBytes) {
+      for (final item in artifacts) {
+        if (item.artifact.bytes <= 0 ||
+            item.artifact.bytes > maxPluginTransferBytes) {
           throw const PluginRuntimeException(
-            'plugin_transfer_archive_too_large',
-            'The plugin transfer archive is too large.',
+            'plugin_transfer_artifact_too_large',
+            'The plugin transfer artifact is too large.',
           );
         }
-        total += item.archive.bytes;
+        total += item.artifact.bytes;
         if (total > maxPluginTransferBatchBytes) {
           throw const PluginRuntimeException(
             'plugin_transfer_batch_too_large',
@@ -293,10 +314,11 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
         }
         final id = await _androidRuntimeChannel
             .invokeMethod<String>('beginPluginTransfer', <String, Object?>{
-              'bytes': item.archive.bytes,
-              'pluginId': item.archive.pluginId,
-              'sha256': item.archive.sha256,
-              'version': item.archive.version,
+              'bytes': item.artifact.bytes,
+              'format': item.artifact.format.name,
+              'pluginId': item.artifact.pluginId,
+              'sha256': item.artifact.sha256,
+              'version': item.artifact.version,
             });
         if (id == null || id.isEmpty) {
           throw const PluginRuntimeException(
@@ -308,10 +330,10 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
         var copied = 0;
         await for (final chunk in item.bytes) {
           copied += chunk.length;
-          if (copied > item.archive.bytes) {
+          if (copied > item.artifact.bytes) {
             throw const PluginRuntimeException(
               'plugin_transfer_size_mismatch',
-              'The plugin transfer archive exceeded its declared size.',
+              'The plugin transfer artifact exceeded its declared size.',
             );
           }
           await _androidRuntimeChannel.invokeMethod<void>(
@@ -319,10 +341,10 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
             <String, Object?>{'chunk': Uint8List.fromList(chunk), 'id': id},
           );
         }
-        if (copied != item.archive.bytes) {
+        if (copied != item.artifact.bytes) {
           throw const PluginRuntimeException(
             'plugin_transfer_size_mismatch',
-            'The plugin transfer archive was truncated.',
+            'The plugin transfer artifact was truncated.',
           );
         }
       }
@@ -332,11 +354,11 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
       );
       _started = false;
       return <PluginTransferImportResult>[
-        for (final item in archives)
+        for (final item in artifacts)
           PluginTransferImportResult(
-            pluginId: item.archive.pluginId,
+            pluginId: item.artifact.pluginId,
             status: PluginTransferImportStatus.installed,
-            version: item.archive.version,
+            version: item.artifact.version,
           ),
       ];
     } on PlatformException catch (error) {

@@ -7,6 +7,7 @@
 /// 注意：
 /// - 调用方只提供标题、操作和内容，不得叠加额外的顶部安全区或标题栏间距。
 /// - 内容壳不负责路由、异步加载或业务状态。
+/// - 二级及更深页面不得显示主导航栏。
 ///
 /// TODO:
 /// - 无。
@@ -16,7 +17,6 @@ import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
-import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 
 /// The common title bar for profile-owned secondary pages.
 ///
@@ -195,10 +195,6 @@ class AppSecondaryPlaceholderPage extends StatelessWidget {
             ],
           ),
         ),
-      ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: AppBottomNavigation(selected: AppNavigationDestination.profile, onSelected: onDestinationSelected),
       ),
     );
   }

@@ -135,11 +135,12 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 val version = call.argument<String>("version")
                 val bytes = call.argument<Number>("bytes")?.toLong()
                 val sha256 = call.argument<String>("sha256")
-                if (pluginId.isNullOrBlank() || version.isNullOrBlank() || bytes == null || sha256.isNullOrBlank()) {
+                val format = call.argument<String>("format")
+                if (pluginId.isNullOrBlank() || version.isNullOrBlank() || bytes == null || sha256.isNullOrBlank() || format.isNullOrBlank()) {
                     result.error("invalid_request", "The plugin transfer metadata is invalid.", null)
                     return
                 }
-                host.beginPluginTransfer(pluginId, version, bytes, sha256) { error, id ->
+                host.beginPluginTransfer(pluginId, version, bytes, sha256, format) { error, id ->
                     mainHandler.post {
                         if (error == null) result.success(id) else result.error(error.code, error.message, null)
                     }
@@ -148,11 +149,12 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
             "beginPluginTransferExport" -> {
                 val pluginId = call.argument<String>("pluginId")
                 val version = call.argument<String>("version")
-                if (pluginId.isNullOrBlank() || version.isNullOrBlank()) {
+                val format = call.argument<String>("format")
+                if (pluginId.isNullOrBlank() || version.isNullOrBlank() || format.isNullOrBlank()) {
                     result.error("invalid_request", "The plugin export metadata is invalid.", null)
                     return
                 }
-                host.beginPluginTransferExport(pluginId, version) { error, metadata ->
+                host.beginPluginTransferExport(pluginId, version, format) { error, metadata ->
                     mainHandler.post {
                         if (error == null) result.success(metadata) else result.error(error.code, error.message, null)
                     }
@@ -268,10 +270,16 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
         }
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            // Android providers do not agree on a MIME type for .mgplugin.
-            // Accept the provider's URI and let Runtime validate the filename
-            // and archive contents after it has been copied.
-            type = "*/*"
+            type = "application/octet-stream"
+            putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf(
+                    "application/javascript",
+                    "text/javascript",
+                    "application/zip",
+                    "application/octet-stream",
+                ),
+            )
         }
         pendingPickerResult = result
         try {

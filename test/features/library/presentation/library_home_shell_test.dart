@@ -11,6 +11,7 @@ import 'package:mg_read/features/library/presentation/library_home_view_data.dar
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_removal_transition.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_book_swipe_actions.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_controls.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_top_bar.dart';
@@ -53,6 +54,16 @@ void main() {
     );
   });
 
+  testWidgets('opens the book-detail intent from a long press', (WidgetTester tester) async {
+    LibraryBookListItemViewData? selectedBook;
+    await tester.pumpWidget(_host(callbacks: LibraryHomeCallbacks(onBookLongPress: (book) => selectedBook = book)));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.byType(LibraryBookListItem).first);
+
+    expect(selectedBook?.id, 'fixture-lord-of-mysteries');
+  });
+
   testWidgets('exposes data-source management from the top-right menu', (WidgetTester tester) async {
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
@@ -77,7 +88,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('书籍更多操作').first);
+    await tester.drag(find.byType(LibraryBookListItem).first, const Offset(-220, 0));
     await tester.pumpAndSettle();
 
     expect(find.text('删除'), findsOneWidget);
@@ -113,7 +124,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('书籍更多操作').first);
+    await tester.drag(find.byType(LibraryBookListItem).first, const Offset(-220, 0));
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除'));
     await tester.pumpAndSettle();
@@ -160,7 +171,7 @@ void main() {
     expect(find.byKey(const Key('library-top-overflow-menu')), findsNothing);
   });
 
-  testWidgets('offers privacy actions from book and home overflow menus', (WidgetTester tester) async {
+  testWidgets('offers privacy actions from book swipe actions and home overflow menu', (WidgetTester tester) async {
     LibraryBookListItemViewData? privateBook;
     var privateShelfOpenCount = 0;
     await tester.pumpWidget(
@@ -177,13 +188,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('书籍更多操作').first);
+    await tester.drag(find.byType(LibraryBookListItem).first, const Offset(-220, 0));
     await tester.pumpAndSettle();
-    expect(find.text('设为隐私'), findsOneWidget);
-    await tester.tap(find.text('设为隐私'));
+    expect(find.text('隐私'), findsOneWidget);
+    await tester.tap(find.text('隐私'));
     await tester.pumpAndSettle();
     expect(privateBook?.id, 'fixture-lord-of-mysteries');
     expect(find.textContaining('设为隐私书籍'), findsOneWidget);
+    expect(tester.widget<SnackBar>(find.byType(SnackBar)).behavior, SnackBarBehavior.floating);
 
     await tester.tap(find.byTooltip('更多操作'));
     await tester.pumpAndSettle();
@@ -435,29 +447,29 @@ void main() {
 
   testWidgets('aligns compact row metadata with the cover and stacks the trailing controls', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 844));
-    await tester.pumpWidget(_host());
+    await tester.pumpWidget(_host(callbacks: LibraryHomeCallbacks(onDeleteBook: (_) async {})));
     await tester.pumpAndSettle();
 
     final Finder firstCover = find.byType(LibraryBookCover).at(1);
     final Finder firstTile = find.byType(LibraryBookListItem).first;
     final Finder firstMetadataTag = find.byType(LibraryMetadataTag).first;
-    final Finder firstMoreAction = find.byTooltip('书籍更多操作').first;
+    final Finder firstSwipeActions = find.byType(LibraryBookSwipeActions).first;
     final Finder firstUnreadDot = find.byWidgetPredicate((Widget widget) => widget is Semantics && widget.properties.label == '有更新').first;
     final Finder firstUpdatedLabel = find.text('1小时前');
 
     final Rect cover = tester.getRect(firstCover);
     final Rect tile = tester.getRect(firstTile);
     final Rect tag = tester.getRect(firstMetadataTag);
-    final Rect moreAction = tester.getRect(firstMoreAction);
+    final Rect swipeActions = tester.getRect(firstSwipeActions);
     final Rect unreadDot = tester.getRect(firstUnreadDot);
     final Rect updatedLabel = tester.getRect(firstUpdatedLabel);
 
     expect(tag.height, AppSpacing.metadataTagHeight);
     expect((cover.bottom - tag.bottom).abs(), lessThanOrEqualTo(4));
     expect(tile.height, closeTo(cover.height + AppSpacing.bookListVerticalPadding * 2, 0.1));
-    expect(updatedLabel.right, lessThan(moreAction.left));
-    expect(moreAction.size, const Size.square(AppSpacing.minimumTouchTarget));
-    expect(unreadDot.right, lessThanOrEqualTo(moreAction.right));
+    expect(updatedLabel.right, lessThanOrEqualTo(swipeActions.right));
+    expect(swipeActions.width, greaterThan(AppSpacing.minimumTouchTarget));
+    expect(unreadDot.right, lessThanOrEqualTo(swipeActions.right));
     expect(updatedLabel.center.dy, closeTo(unreadDot.center.dy, 2));
   });
 

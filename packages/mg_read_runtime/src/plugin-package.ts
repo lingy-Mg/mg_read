@@ -1,4 +1,11 @@
-import { access, readFile } from "node:fs/promises";
+/**
+ * 标准插件项目元数据与 lockfile 校验。
+ *
+ * 职责：解析 package.json.mgread v1，校验 Node 24 项目与 lockfile v3。
+ * 注意：packageMode 仅决定发布 artifact，development 始终保持标准项目加载。
+ * TODO: - 无。
+ */
+import { access, lstat, readFile } from "node:fs/promises";
 import { isAbsolute, resolve, sep } from "node:path";
 
 import { expectedNodeVersion } from "./runtime-version.js";
@@ -11,6 +18,7 @@ export const pluginApiVersion = 1;
 
 /** Content kinds accepted in package.json.mgread v1. */
 export type PluginContentKind = "manga" | "novel";
+export type PluginPackageMode = "archive" | "single-file";
 
 /** Stable failure raised while validating a standard Node plugin project. */
 export class PluginPackageError extends Error {
@@ -35,7 +43,9 @@ export interface PluginPackageDescriptor {
   readonly displayName: string;
   readonly entry: string;
   readonly id: string;
+  readonly icon?: string;
   readonly name: string;
+  readonly packageMode: PluginPackageMode;
   readonly pluginApi: typeof pluginApiVersion;
   readonly projectRoot: string;
   readonly version: string;
@@ -84,11 +94,19 @@ export async function readPluginProject(
     packagePath,
     "plugin_package_invalid",
   );
-  const descriptor = parsePackageJson(packageJson, normalizedRoot);
+  const descriptor = parsePluginPackageDescriptor(packageJson, normalizedRoot);
   try {
     await access(resolve(normalizedRoot, ...descriptor.entry.split("/")));
   } catch {
     throw new PluginPackageError("plugin_entry_missing");
+  }
+  if (descriptor.icon !== undefined) {
+    try {
+      const icon = await lstat(resolveInside(normalizedRoot, descriptor.icon));
+      if (!icon.isFile() || icon.isSymbolicLink() || icon.size <= 0 || icon.size > 256 * 1024) throw new Error("invalid icon");
+    } catch {
+      throw new PluginPackageError("plugin_package_invalid");
+    }
   }
 
   const lock = await readJsonObject(
@@ -171,7 +189,7 @@ async function readJsonObject(
   }
 }
 
-function parsePackageJson(
+export function parsePluginPackageDescriptor(
   packageJson: Record<string, unknown>,
   projectRoot: string,
 ): PluginPackageDescriptor {
@@ -186,6 +204,7 @@ function parsePackageJson(
     typeof version !== "string" ||
     !isExactSemver(version) ||
     typeof entry !== "string" ||
+    packageJson.type !== "module" ||
     !isRecord(engines) ||
     !isSupportedNodeRange(engines.node) ||
     !isRecord(mgread)
@@ -198,6 +217,8 @@ function parsePackageJson(
   const schemaVersion = mgread.schemaVersion;
   const api = mgread.pluginApi;
   const contentKinds = mgread.contentKinds;
+  const packageMode = mgread.packageMode ?? "single-file";
+  const icon = mgread.icon;
   if (
     schemaVersion !== pluginPackageSchemaVersion ||
     api !== pluginApiVersion ||
@@ -213,7 +234,9 @@ function parsePackageJson(
     !Array.isArray(contentKinds) ||
     contentKinds.length === 0 ||
     contentKinds.some((kind) => kind !== "novel" && kind !== "manga") ||
-    new Set(contentKinds).size !== contentKinds.length
+    new Set(contentKinds).size !== contentKinds.length ||
+    (packageMode !== "single-file" && packageMode !== "archive") ||
+    (icon !== undefined && !isSupportedIconPath(icon))
   ) {
     throw new PluginPackageError("plugin_package_invalid");
   }
@@ -234,11 +257,23 @@ function parsePackageJson(
     displayName,
     entry: normalizedEntry,
     id,
+    ...(icon === undefined ? {} : { icon }),
     name,
+    packageMode,
     pluginApi: pluginApiVersion,
     projectRoot,
     version,
   });
+}
+
+function isSupportedIconPath(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    const normalized = normalizePluginRelativePath(value);
+    return normalized.startsWith("assets/") && /\.(?:jpe?g|png|webp)$/i.test(normalized);
+  } catch {
+    return false;
+  }
 }
 
 function parseLockfile(

@@ -58,6 +58,7 @@ async function temporaryDirectory(t, prefix) {
 test("standard project uses package.json metadata and npm lockfile only", async () => {
   const project = await readPluginProject(fixtureRoot);
   assert.equal(project.descriptor.id, "org.mgread.runtime.fixture");
+  assert.equal(project.descriptor.packageMode, "archive");
   assert.equal(project.descriptor.entry, "dist/index.mjs");
   assert.deepEqual(project.descriptor.contentKinds, ["novel"]);
   assert.deepEqual(project.dependencies, [
@@ -115,13 +116,15 @@ test("mgplugin is deterministic, excludes node_modules and rejects traversal", a
   );
 });
 
-test("installer hardlinks local packages and manager cold-activates named exports", async (t) => {
+test("mgplugin archive restores npm packages and manager cold-activates named exports", async (t) => {
   const dataRoot = await temporaryDirectory(t, "mgread-plugin-install-");
+  const artifact = join(dataRoot, "source.mgplugin");
+  await createPluginArchive(fixtureRoot, artifact);
   const installEvents = [];
   const installer = new PluginInstaller(dataRoot, {
     events: (event) => installEvents.push(event),
   });
-  const installed = await installer.installProject(fixtureRoot);
+  const installed = await installer.installArtifact(artifact);
   assert.equal(installed.pendingActivation, true);
   assert.equal(installed.reusedVersion, false);
   assert.ok(installed.hardlinkedFiles >= 2);
@@ -288,7 +291,7 @@ test("development projects load in place without creating an installed version",
   assert.equal(directory.kind, "development");
   assert.equal(directory.directory, projectRoot);
 
-  const exportable = await manager.listExportableArchives();
+  const exportable = await manager.listExportableArtifacts();
   assert.equal(exportable.length, 1);
   assert.equal(exportable[0].id, "org.example.live-source");
   assert.match(exportable[0].version, /^0\.1\.1-devsync\.\d+$/);
@@ -314,6 +317,29 @@ test("development projects load in place without creating an installed version",
   assert.equal(transferredLock.version, exportable[0].version);
   assert.equal(transferredLock.packages[""].version, exportable[0].version);
 
+  const packaged = await manager.createDevelopmentPackageResource(
+    "org.example.live-source",
+  );
+  assert.equal(packaged.artifact.id, "org.example.live-source");
+  assert.equal(packaged.artifact.version, "0.1.0");
+  assert.equal(packaged.artifact.format, "archive");
+  assert.equal(
+    packaged.fileName,
+    "org.example.live-source-0.1.0.mgplugin",
+  );
+  const packagedResource = manager.consumePluginTransferResource(packaged.token);
+  assert.ok(packagedResource);
+  const packagedChunks = [];
+  for await (const chunk of packagedResource.stream) packagedChunks.push(chunk);
+  const receivedPackage = join(root, "received-development-release.mgplugin");
+  await writeFile(receivedPackage, Buffer.concat(packagedChunks));
+  const extractedPackage = join(root, "received-development-release");
+  await extractPluginArchive(receivedPackage, extractedPackage);
+  const releasedPackage = JSON.parse(
+    await readFile(join(extractedPackage, "package.json"), "utf8"),
+  );
+  assert.equal(releasedPackage.version, "0.1.0");
+
   const first = await manager.search(
     "org.example.live-source",
     { query: "测试", cursor: null, pageSize: 20 },
@@ -322,6 +348,35 @@ test("development projects load in place without creating an installed version",
   );
   assert.equal(first.items[0].title, "第一版：测试");
 
+});
+
+test("development transfer trusts the package tool artifact without Runtime revalidation", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-trusted-development-artifact-");
+  const dataRoot = join(root, "runtime-data");
+  const developmentRoot = join(root, "sources");
+  const projectRoot = join(developmentRoot, "live-source");
+  await createDevelopmentPlugin(projectRoot, "可信构建结果");
+  await writeFile(
+    join(projectRoot, "tools", "mgread.mjs"),
+    `export function buildPluginArtifact({ versionOverride }) {
+  return {
+    bytes: Uint8Array.from([0x74, 0x72, 0x75, 0x73, 0x74, 0x65, 0x64]),
+    fileName: "trusted.mgplugin",
+    format: "archive",
+    versionOverride,
+  };
+}
+`,
+  );
+
+  const manager = new PluginManager(dataRoot, { developmentPluginRoot: developmentRoot });
+  t.after(() => manager.close());
+  await manager.initialize();
+
+  const exportable = await manager.listExportableArtifacts();
+  assert.deepEqual(exportable.map(({ id, format, bytes }) => ({ id, format, bytes })), [
+    { id: "org.example.live-source", format: "archive", bytes: 7 },
+  ]);
 });
 
 test("a development project shadows an installed archive with the same ID without double activation", async (t) => {

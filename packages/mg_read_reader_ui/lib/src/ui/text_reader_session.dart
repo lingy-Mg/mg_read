@@ -46,6 +46,7 @@ extension _TextReaderSession on _TextReaderViewState {
     _catalogById.clear();
     _catalogByIndex.clear();
     _catalogPageIds.clear();
+    _catalogItemKeys.clear();
     _book = null;
     _bookmarks = const <ReaderBookmark>[];
     _catalogCursor = null;
@@ -73,6 +74,7 @@ extension _TextReaderSession on _TextReaderViewState {
     _firstContentNotificationSent = false;
     _firstContentLayoutDuration = Duration.zero;
     _firstContentPreparation = ReaderPaginationPreparation.firstPage;
+    _centeredCatalogChapterId = null;
     if (mounted) setState(() {});
     unawaited(_releaseAwake());
     if (persistenceCheckpoint != null) await persistenceCheckpoint;

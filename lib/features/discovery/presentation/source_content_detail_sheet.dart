@@ -42,8 +42,13 @@ typedef SourceExternalUrlLauncher = Future<bool> Function(Uri url);
 
 typedef SourceShelfSaveRequested = Future<void> Function(PluginContentSummary content);
 
+/// Actions available for a book that is already owned by the local shelf.
+enum SourceShelfAction { setPrivate, cancelPrivate, delete }
+
+typedef SourceShelfActionRequested = Future<void> Function(SourceShelfAction action);
+
 /// Whether this detail is being viewed from discovery or the local shelf.
-enum SourceDetailShelfState { canAdd, alreadyAdded }
+enum SourceDetailShelfState { canAdd, alreadyAdded, private }
 
 Future<void> showSourceContentDetailSheet(
   BuildContext context, {
@@ -58,24 +63,40 @@ Future<void> showSourceContentDetailSheet(
   SourceShelfSaveRequested? onAddToShelf,
   SourceDetailShelfState shelfState = SourceDetailShelfState.canAdd,
   SourceExternalUrlLauncher? onExternalUrlRequested,
+  SourceShelfActionRequested? onShelfAction,
+  bool useModalBottomSheet = false,
 }) {
-  return Navigator.of(context).push<void>(
-    MaterialPageRoute<void>(
-      builder: (_) => _SourceDetailScreen(
-        gateway: gateway,
-        pluginId: pluginId,
-        id: id,
-        initialContent: initialContent,
-        initialCatalog: initialCatalog,
-        initialSourceName: initialSourceName,
-        relatedContents: relatedContents,
-        onTextChapterRequested: onTextChapterRequested,
-        onAddToShelf: onAddToShelf,
-        shelfState: shelfState,
-        onExternalUrlRequested: onExternalUrlRequested ?? _launchSystemBrowser,
-      ),
-    ),
+  final Widget detail = _SourceDetailScreen(
+    gateway: gateway,
+    pluginId: pluginId,
+    id: id,
+    initialContent: initialContent,
+    initialCatalog: initialCatalog,
+    initialSourceName: initialSourceName,
+    relatedContents: relatedContents,
+    onTextChapterRequested: onTextChapterRequested,
+    onAddToShelf: onAddToShelf,
+    shelfState: shelfState,
+    onExternalUrlRequested: onExternalUrlRequested ?? _launchSystemBrowser,
+    onShelfAction: onShelfAction,
+    isModalSheet: useModalBottomSheet,
   );
+  if (useModalBottomSheet) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => FractionallySizedBox(
+        heightFactor: 0.92,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: detail,
+        ),
+      ),
+    );
+  }
+  return Navigator.of(context).push<void>(MaterialPageRoute<void>(builder: (_) => detail));
 }
 
 Future<bool> _launchSystemBrowser(Uri url) => launchUrl(url, mode: LaunchMode.externalApplication);
@@ -173,6 +194,8 @@ class _SourceDetailScreen extends StatefulWidget {
     required this.onAddToShelf,
     required this.shelfState,
     required this.onExternalUrlRequested,
+    required this.onShelfAction,
+    required this.isModalSheet,
   });
   final SourceContentGateway gateway;
   final String pluginId;
@@ -185,6 +208,8 @@ class _SourceDetailScreen extends StatefulWidget {
   final SourceShelfSaveRequested? onAddToShelf;
   final SourceDetailShelfState shelfState;
   final SourceExternalUrlLauncher onExternalUrlRequested;
+  final SourceShelfActionRequested? onShelfAction;
+  final bool isModalSheet;
 
   @override
   State<_SourceDetailScreen> createState() => _SourceDetailScreenState();
@@ -216,9 +241,20 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
         body: SafeArea(
           child: Column(
             children: <Widget>[
-              const Padding(
+              if (widget.isModalSheet)
+                const Padding(
+                  padding: EdgeInsets.only(top: 10, bottom: 2),
+                  child: SizedBox(
+                    width: 42,
+                    height: 5,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.all(Radius.circular(99))),
+                    ),
+                  ),
+                ),
+              Padding(
                 padding: EdgeInsets.symmetric(horizontal: AppSpacing.discoveryPagePadding, vertical: AppSpacing.pageHeaderTopPadding),
-                child: _DetailHeader(),
+                child: _DetailHeader(isModalSheet: widget.isModalSheet),
               ),
               Expanded(
                 child: FutureBuilder<_SourceDetailBundle>(
@@ -240,6 +276,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                             onTextChapterRequested: widget.onTextChapterRequested,
                             onAddToShelf: widget.onAddToShelf,
                             shelfState: widget.shelfState,
+                            onShelfAction: widget.onShelfAction,
                             onExternalUrlRequested: widget.onExternalUrlRequested,
                           ),
                         );
@@ -257,6 +294,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                           onTextChapterRequested: widget.onTextChapterRequested,
                           onAddToShelf: widget.onAddToShelf,
                           shelfState: widget.shelfState,
+                          onShelfAction: widget.onShelfAction,
                           onExternalUrlRequested: widget.onExternalUrlRequested,
                         );
                       }
@@ -275,6 +313,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                         onTextChapterRequested: widget.onTextChapterRequested,
                         onAddToShelf: widget.onAddToShelf,
                         shelfState: widget.shelfState,
+                        onShelfAction: widget.onShelfAction,
                         onExternalUrlRequested: widget.onExternalUrlRequested,
                       ),
                     );
@@ -298,6 +337,7 @@ class _SourceDetailView extends StatefulWidget {
     required this.onTextChapterRequested,
     required this.onAddToShelf,
     required this.shelfState,
+    required this.onShelfAction,
     required this.onExternalUrlRequested,
     super.key,
   });
@@ -308,6 +348,7 @@ class _SourceDetailView extends StatefulWidget {
   final SourceTextChapterRequested? onTextChapterRequested;
   final SourceShelfSaveRequested? onAddToShelf;
   final SourceDetailShelfState shelfState;
+  final SourceShelfActionRequested? onShelfAction;
   final SourceExternalUrlLauncher onExternalUrlRequested;
 
   @override
@@ -330,14 +371,14 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
   @override
   void didUpdateWidget(covariant _SourceDetailView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_isSavingToShelf && oldWidget.shelfState != widget.shelfState && widget.shelfState == SourceDetailShelfState.alreadyAdded) {
+    if (!_isSavingToShelf && oldWidget.shelfState != widget.shelfState && widget.shelfState != SourceDetailShelfState.canAdd) {
       _shelfState = widget.shelfState;
     }
   }
 
   Future<void> _saveToShelf(PluginContentSummary content) async {
     final save = widget.onAddToShelf;
-    if (save == null || _isSavingToShelf || _shelfState == SourceDetailShelfState.alreadyAdded) {
+    if (save == null || _isSavingToShelf || _shelfState != SourceDetailShelfState.canAdd) {
       return;
     }
     setState(() => _isSavingToShelf = true);
@@ -378,6 +419,7 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
     onTextChapterRequested: widget.onTextChapterRequested,
     onAddToShelf: widget.onAddToShelf,
     shelfState: _shelfState,
+    onShelfAction: widget.onShelfAction,
     isSavingToShelf: _isSavingToShelf,
     onSaveToShelf: _saveToShelf,
     onExternalUrlRequested: widget.onExternalUrlRequested,
@@ -395,6 +437,7 @@ class _SourceDetailBody extends StatelessWidget {
     required this.onTextChapterRequested,
     required this.onAddToShelf,
     required this.shelfState,
+    required this.onShelfAction,
     required this.isSavingToShelf,
     required this.onSaveToShelf,
     required this.onExternalUrlRequested,
@@ -409,6 +452,7 @@ class _SourceDetailBody extends StatelessWidget {
   final SourceTextChapterRequested? onTextChapterRequested;
   final SourceShelfSaveRequested? onAddToShelf;
   final SourceDetailShelfState shelfState;
+  final SourceShelfActionRequested? onShelfAction;
   final bool isSavingToShelf;
   final ValueChanged<PluginContentSummary> onSaveToShelf;
   final SourceExternalUrlLauncher onExternalUrlRequested;
@@ -499,13 +543,17 @@ class _SourceDetailBody extends StatelessWidget {
             ),
           ],
         ),
+        if (onShelfAction != null) ...<Widget>[
+          const SizedBox(height: AppSpacing.compact),
+          _ShelfActionRow(shelfState: shelfState, onAction: onShelfAction!),
+        ],
         const SizedBox(height: AppSpacing.section),
         Row(
           children: <Widget>[
             Expanded(
               child: OutlinedButton.icon(
                 key: const Key('source-detail-add-shelf'),
-                onPressed: shelfState == SourceDetailShelfState.alreadyAdded
+                onPressed: shelfState != SourceDetailShelfState.canAdd
                     ? () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('此书已在书架中。')))
                     : onAddToShelf == null
                     ? () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('书架保存功能尚未接入此书源。')))
@@ -513,14 +561,14 @@ class _SourceDetailBody extends StatelessWidget {
                     ? null
                     : () => onSaveToShelf(content),
                 icon: Icon(
-                  shelfState == SourceDetailShelfState.alreadyAdded
+                  shelfState != SourceDetailShelfState.canAdd
                       ? Icons.bookmark_added_outlined
                       : isSavingToShelf
                       ? Icons.hourglass_top_rounded
                       : Icons.library_add_outlined,
                 ),
                 label: Text(
-                  shelfState == SourceDetailShelfState.alreadyAdded
+                  shelfState != SourceDetailShelfState.canAdd
                       ? '已在书架'
                       : isSavingToShelf
                       ? '正在加入…'

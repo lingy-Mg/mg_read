@@ -72,6 +72,7 @@ export function snapshotFrom(
     displayName: descriptor?.displayName ?? pluginId,
     enabled,
     id: pluginId,
+    iconUrl: null,
     name: descriptor?.name ?? pluginId,
     pendingVersion,
     status,
@@ -86,9 +87,35 @@ export function enabledStatus(
   return "damaged";
 }
 
+/** Replaces one installed snapshot after a persisted enable/disable operation. */
+export function withEnabledPluginSnapshot(
+  snapshots: readonly InstalledPluginSnapshot[],
+  index: number,
+  enabled: boolean,
+): { readonly snapshots: readonly InstalledPluginSnapshot[]; readonly updated: InstalledPluginSnapshot } {
+  const current = snapshots[index]!;
+  const updated = Object.freeze({
+    activeVersion: current.activeVersion, contentKinds: current.contentKinds,
+    description: current.description, displayName: current.displayName, enabled,
+    id: current.id, iconUrl: current.iconUrl, name: current.name,
+    pendingVersion: current.pendingVersion, status: enabled ? enabledStatus(current) : "disabled",
+  } satisfies InstalledPluginSnapshot);
+  return Object.freeze({
+    snapshots: Object.freeze([...snapshots.slice(0, index), updated, ...snapshots.slice(index + 1)]),
+    updated,
+  });
+}
+
+/** Removes every Runtime-owned storage root belonging to one uninstalled source. */
+export function removePluginStorage(dataRoot: string, pluginId: string): Promise<unknown[]> {
+  return Promise.all(["plugins", "plugin-archives", "plugin-cache", "plugin-data"].map((root) =>
+    rm(resolve(dataRoot, root, pluginId), { force: true, recursive: true })
+  ));
+}
+
 export async function developmentProjectFingerprint(projectRoot: string): Promise<string> {
   const paths = ["package.json", "package-lock.json"];
-  for (const directory of ["dist", "assets", "packages"]) {
+  for (const directory of ["dist", "assets", "packages", "tools"]) {
     await collectDevelopmentFiles(projectRoot, directory, paths);
   }
   paths.sort((left, right) => left.localeCompare(right));

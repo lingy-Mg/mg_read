@@ -18,17 +18,14 @@ import 'package:mg_read/features/library/data/content_library_book_remover.dart'
 import 'package:mg_read/features/library/data/content_library_book_visibility_changer.dart';
 import 'package:mg_read/features/library/data/content_library_overview_loader.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
 
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('shelf mutations are immediate and remain durable on Android', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('shelf mutations are immediate and remain durable on Android', (WidgetTester tester) async {
     final support = await getApplicationSupportDirectory();
-    final root = Directory(
-      '${support.path}${Platform.pathSeparator}integration-shelf-reactivity-${DateTime.now().microsecondsSinceEpoch}',
-    );
+    final root = Directory('${support.path}${Platform.pathSeparator}integration-shelf-reactivity-${DateTime.now().microsecondsSinceEpoch}');
     await root.create(recursive: true);
     final library = await ContentLibrary.open(dataRoot: root);
     var resourcesClosed = false;
@@ -64,22 +61,14 @@ void main() {
             );
       },
       onMutationFailed: (mutation) {
-        container
-            .read(libraryPageControllerProvider.notifier)
-            .rollbackAddition(mutation.id);
+        container.read(libraryPageControllerProvider.notifier).rollbackAddition(mutation.id);
       },
     );
     container = ProviderContainer(
       overrides: [
-        libraryOverviewLoaderProvider.overrideWithValue(
-          ContentLibraryOverviewLoader(library),
-        ),
-        libraryBookRemoverProvider.overrideWithValue(
-          ContentLibraryBookRemover(library),
-        ),
-        libraryBookVisibilityChangerProvider.overrideWithValue(
-          ContentLibraryBookVisibilityChanger(library),
-        ),
+        libraryOverviewLoaderProvider.overrideWithValue(ContentLibraryOverviewLoader(library)),
+        libraryBookRemoverProvider.overrideWithValue(ContentLibraryBookRemover(library)),
+        libraryBookVisibilityChangerProvider.overrideWithValue(ContentLibraryBookVisibilityChanger(library)),
         discoveryBookshelfSaverProvider.overrideWithValue(saver),
       ],
     );
@@ -91,9 +80,7 @@ void main() {
       if (await root.exists()) await root.delete(recursive: true);
     });
 
-    await tester.pumpWidget(
-      UncontrolledProviderScope(container: container, child: const MgReadApp()),
-    );
+    await tester.pumpWidget(UncontrolledProviderScope(container: container, child: const MgReadApp()));
     await tester.pumpAndSettle();
     expect(find.text('Android 即时书架'), findsNothing);
 
@@ -102,22 +89,14 @@ void main() {
     expect(find.text('Android 即时书架'), findsWidgets);
     await save;
     await tester.pumpAndSettle();
-    expect(
-      (await library.listLibrary(const LibraryQuery())).items,
-      hasLength(1),
-    );
+    expect((await library.listLibrary(const LibraryQuery())).items, hasLength(1));
 
-    await tester.tap(find.byTooltip('书籍更多操作').first);
+    await tester.drag(find.byType(LibraryBookListItem).first, const Offset(-220, 0));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('设为隐私'));
+    await tester.tap(find.text('隐私'));
     await tester.pumpAndSettle();
     expect(find.text('Android 即时书架'), findsNothing);
-    expect(
-      (await library.listLibrary(
-        const LibraryQuery(visibility: LibraryVisibility.private),
-      )).items,
-      hasLength(1),
-    );
+    expect((await library.listLibrary(const LibraryQuery(visibility: LibraryVisibility.private))).items, hasLength(1));
 
     await tester.tap(find.byTooltip('更多操作'));
     await tester.pumpAndSettle();
@@ -125,23 +104,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Android 即时书架'), findsWidgets);
 
-    await tester.tap(find.byTooltip('书籍更多操作').first);
+    await tester.drag(find.byType(LibraryBookListItem).first, const Offset(-220, 0));
     await tester.pumpAndSettle();
     await tester.tap(find.text('取消隐私'));
     await tester.pumpAndSettle();
     expect(find.text('暂无隐私书籍'), findsOneWidget);
-    expect(
-      (await library.listLibrary(
-        const LibraryQuery(visibility: LibraryVisibility.normal),
-      )).items,
-      hasLength(1),
-    );
+    expect((await library.listLibrary(const LibraryQuery(visibility: LibraryVisibility.normal))).items, hasLength(1));
 
     await tester.tap(find.byKey(const Key('private-library-back')));
     await tester.pumpAndSettle();
     expect(find.text('Android 即时书架'), findsWidgets);
 
-    await tester.tap(find.byTooltip('书籍更多操作').first);
+    await tester.drag(find.byType(LibraryBookListItem).first, const Offset(-220, 0));
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除'));
     await tester.pumpAndSettle();

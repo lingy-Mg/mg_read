@@ -1,5 +1,8 @@
 # 独立插件运行时契约
 
+状态：权威 Runtime 契约。复核基线：`59a279b`（2026-08-26）；实现证据只覆盖文中明确记录的
+平台、命令和范围，之后提交与未提交工作区不自动计入。
+
 ## 状态与优先级
 
 本文固定 `mg_read_runtime` 的目标职责。当前仓库已实现 **Windows desktop communication +
@@ -9,10 +12,10 @@ Runtime-owned Flutter Facade、标准 package/lock 安装、依赖对象仓、�
 Runtime Store、Android Javet、macOS
 包集成或最终 Flutter 产品包已经验收，也不授权把 Runtime 代码放进主项目。
 
-Runtime 平台/transport 边界由根 AGENTS、ADR-0001/0003/0004 与本文维护；业务数据所有权以
-[ADR-0011](../../../docs/architecture/adr/0011-app-owned-versioned-persistence.md) 和
-[ADR-0100](../../../docs/architecture/adr/0100-app-owned-content-library.md) 为准。ADR-0008 的
-Runtime 业务 Store 结论已被取代；变更当前边界必须先新增替代 ADR。
+Runtime 平台/transport 的跨模块边界由[核心规范](../../../docs/core.md#runtime-与平台宿主)维护；
+本文件只补充 Runtime package 内部契约。业务数据所有权以
+[核心持久化边界](../../../docs/core.md#主应用持久化与-content-library)为准；旧 Runtime 业务 Store
+方案已被取代，不能从 Git 历史直接恢复。
 
 ## 产品定位
 
@@ -38,7 +41,7 @@ PluginRuntime.invoke<T>(PluginInvocation<T>) -> Future<T>
 
 `PluginInvocation` 包含稳定的插件 ID、版本化 capability、强类型参数、取消语义和结果
 类型。它可以表达插件管理、发现、搜索、详情、目录和资源访问；主应用书架、阅读状态
-和 Content Library 经自身强类型端口持久化。下载跨边界能力需等待新 Accepted ADR。主项目
+和 Content Library 经自身强类型端口持久化。下载跨边界能力需先进入核心规范和强类型契约。主项目
 不得拼接 raw method 字符串或直接使用 wire envelope。
 
 书源冷加载的模块、导出或 `activate` 失败只会隔离该书源的当前版本：Runtime 持久化其
@@ -71,9 +74,10 @@ Node 运行状态由 `runtime.status.v1` 提供一个可扩展的安全快照：
 - 小说/漫画 `DataSource`、`StateStore` 和资源适配由 Runtime 的 Flutter 集成包发布，
   主项目只交给 `novel_reader_ui` 的公开 API。
 
-Debug 构建可经版本化 Facade 显式启用 Runtime-owned HTTP 检查页。它仅返回可复制的调试
-地址，主应用不取得内部端口或资源 token；独立的 LAN listener 不承载控制协议，详细边界见
-[ADR-0023](../../../docs/architecture/adr/0023-debug-runtime-http-inspector.md)。
+Debug 构建可经版本化 Facade 显式启用 Runtime-owned HTTP 检查页。Runtime 仅持久化布尔开关，
+后续冷启动在固定 `52173` 端口恢复 listener；Facade 只返回可复制的调试地址，主应用不取得
+或构造端口、资源 token。独立的 LAN listener 不承载控制协议，详细边界见
+[核心 Runtime 规范](../../../docs/core.md#runtime-与平台宿主)。
 
 这不是“把 `RuntimeClient` 换个名字”。公开 Facade 必须屏蔽所有平台和传输细节，不允许
 以可选 `HostPort`、service locator、database/path 参数、callback 或 `host.*` 的形式
@@ -108,9 +112,10 @@ Runtime 仓库必须拥有并测试：
   主应用业务数据与 Content Library 不在此数据根；Runtime 不为日志创建持久目录。
 - 本地或内置 `.mgplugin` 的原始备份保存在 Runtime 自有 `plugin-archives/<pluginId>/`，
   不作为主应用业务数据，也不经 Facade 暴露路径或文件句柄。
-- Windows Debug development 项目只可在用户显式局域网发送时由 Runtime 生成有界临时标准归档；
-  工作区路径和临时文件不穿透 Facade，接收端仍走 installed 安装与冷激活。
-- 下载 checkpoint、内容缓存和跨边界原子提交在新 Accepted ADR/Facade 契约完成前保持未实现
+- Windows Debug development 项目可在用户显式局域网发送时由 Runtime 生成有界临时 `devsync` artifact，
+  也可在数据源详情中选择本地输出目录，按项目声明版本生成 `.mgplugin.js` 或 `.mgplugin`；工作区路径、
+  临时文件和 artifact 字节都不穿透 Facade，接收端仍走 installed 安装与冷激活。
+- 下载 checkpoint、内容缓存和跨边界原子提交在核心规范/Facade 契约完成前保持未实现
   或 `unsupported`，不能从旧 Runtime Store 规划直接恢复。
 - 未来 WebView、通知、媒体和其他平台能力的 Runtime 自有实现，或明确、稳定的
   `unsupported`。未实现能力绝不反向要求主项目实现 callback。
@@ -135,7 +140,7 @@ Runtime 操作数据后端不得使用 Node native addon，也不得复用主应
 `NO_PROXY`；Windows 还读取用户 Internet Settings 的手工代理，不启动额外 helper 进程。PAC/
 WPAD 必须按每个目标 URL 解析，尚未实现该 resolver 前不得将其错误降级成固定全局代理。
 
-Runtime 遵守 ADR-0024：不再创建结构化事件、span、capture、附件、历史查询或
+Runtime 遵守[核心诊断边界](../../../docs/core.md#诊断与隐私)：不创建结构化事件、span、capture、附件、历史查询或
 `diagnostics/events` 分段文件。Debug 检查页只在显式启用期间保留进程内有界实时日志尾部，
 关闭即清空；Flutter Supervisor 只保留少量稳定启动/终止诊断与有界 fatal fallback。两条路径
 都不读取或复制 HTTP body、HTML、JSON、正文、凭据、路径或原始异常，也不成为业务结果前提。
@@ -148,7 +153,7 @@ Runtime 遵守 ADR-0024：不再创建结构化事件、span、capture、附件�
   只启动 Runtime 包内、版本矩阵记录的精确 Node，不依赖用户 PATH 或全局 Node。
 - Node/Javet/桌面 Node/协议/Facade 兼容矩阵整体升级；所有版本精确固定。
 - 业务大资源只经过 Runtime HTTP 数据面，JSON/WS 不承载二进制或超限文本。
-- installed 插件仅在下次 Runtime 冷启动激活。ADR-0019 的 Windows Debug development 项目在
+- installed 插件仅在下次 Runtime 冷启动激活。Windows Debug development 项目在
   工作区变化后先回收旧 VM，再启动唯一新 Runtime；不得在同一 VM 中热换模块。
 - 首版插件完全可信，但信任模型不允许放宽 archive/lock/SRI 校验、日志脱敏、输入上限、Plugin API 网络入口
   或有界并发。
@@ -160,8 +165,8 @@ Runtime 遵守 ADR-0024：不再创建结构化事件、span、capture、附件�
 1. 在本仓库为 capability、参数、结果、错误和资源语义定义版本化公开类型。
 2. 将所需平台实现、存储、隐私、生命周期和失败恢复放入 Runtime 内部设计与测试。
 3. 用 Runtime Facade 发布该 capability 和脱敏投影；主项目只增加 UI 消费。
-4. 若改变单 VM、平台承载、数据所有权、冷激活或传输边界，先在根架构集新增
-   替代 ADR，并同步本文件、Schema、fixture 和两个 README。
+4. 若改变单 VM、平台承载、数据所有权、冷激活或传输边界，先更新核心规范的最小章节，并同步
+   本文件、Schema、fixture 和两个 README。
 
 禁止以“主项目已有 Flutter/原生能力”为由添加 callback、`HostPort`、`host.*`、数据库
 路径或直接 platform-channel 注入。Runtime 无法独立实现的能力必须返回 `unsupported`，
@@ -184,7 +189,7 @@ Facade。生产 Facade 不接受插件路径、package bytes、callback、host.*
 路径/Cookie/文件/平台通道。Node 与 Flutter 测试共用
 `protocol/fixtures/standard-node-plugin-v1.json`；公开 Flutter 面提供
 `RuntimePingInvocation`、`InstalledPluginsInvocation`、`OpenPluginCodeDirectoryInvocation`、
-`SetPluginEnabledInvocation` 与
+`SetPluginEnabledInvocation` 与 Windows Debug 目录选择的 `packageDevelopmentPlugin()`，
 `SourceDiscover/Search/Detail/Chapters/ContentInvocation`，不泄露
 wire metadata。详见[桌面 Runtime 与标准插件闭环](desktop-runtime-bridge.md)。
 

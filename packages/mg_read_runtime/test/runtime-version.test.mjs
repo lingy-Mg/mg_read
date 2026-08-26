@@ -49,6 +49,24 @@ test("Flutter package declares every nested platform Runtime asset directory", a
   assert.ok(!assetEntries.includes("assets/runtime/windows-x64/"));
 });
 
+test("Android Runtime asset marker includes its staged content fingerprint", async () => {
+  const packageJson = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  const marker = await readFile(
+    new URL(
+      "../packages/mgread_plugin_runtime/assets/runtime/android/runtime-version.txt",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+
+  assert.match(
+    marker,
+    new RegExp(`^${packageJson.version.replaceAll(".", "\\.")}-[a-f0-9]{64}\\n$`),
+  );
+});
+
 test("clean build excludes the deleted legacy template fixture", async () => {
   await assert.rejects(
     access(new URL("../dist/template-plugin-fixture.js", import.meta.url)),

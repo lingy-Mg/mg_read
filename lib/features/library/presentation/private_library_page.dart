@@ -1,3 +1,17 @@
+/// 隐私书架页面。
+///
+/// 职责：
+/// - 展示被设置为隐私的书籍。
+/// - 提供取消隐私和删除操作，并保持本地书架状态即时更新。
+///
+/// 注意：
+/// - 业务持久化由书架 application adapter 负责。
+/// - 页面操作必须通过显式回调和稳定的书籍 ID 执行。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -13,18 +27,16 @@ import 'package:mg_read/features/library/application/library_page_state.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_book_list_action.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
-const _restoreBookAction = LibraryBookListAction(
-  id: 'restore-normal',
-  label: '取消隐私',
-);
+const _restoreBookAction = LibraryBookListAction(id: 'restore-normal', label: '取消隐私');
 const _deleteBookAction = LibraryBookListAction(id: 'delete', label: '删除');
 
-/// The privacy-only bookshelf reached from the library's overflow menu.
+/// The privacy-only bookshelf reached from the library's privacy entry.
 class PrivateLibraryPage extends ConsumerWidget {
   const PrivateLibraryPage({
     required this.onBackRequested,
@@ -39,16 +51,10 @@ class PrivateLibraryPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final LibraryPageState state = ref.watch(
-      privateLibraryPageControllerProvider,
-    );
-    final PrivateLibraryPageController controller = ref.read(
-      privateLibraryPageControllerProvider.notifier,
-    );
+    final LibraryPageState state = ref.watch(privateLibraryPageControllerProvider);
+    final PrivateLibraryPageController controller = ref.read(privateLibraryPageControllerProvider.notifier);
     final LibraryBookRemover? remover = ref.read(libraryBookRemoverProvider);
-    final LibraryBookVisibilityChanger? visibilityChanger = ref.read(
-      libraryBookVisibilityChangerProvider,
-    );
+    final LibraryBookVisibilityChanger? visibilityChanger = ref.read(libraryBookVisibilityChangerProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -59,9 +65,7 @@ class PrivateLibraryPage extends ConsumerWidget {
               AppSecondaryPageTopBar(
                 title: '隐私书架',
                 onBack: () {
-                  unawaited(
-                    ref.read(libraryPageControllerProvider.notifier).refresh(),
-                  );
+                  unawaited(ref.read(libraryPageControllerProvider.notifier).refresh());
                   onBackRequested();
                 },
                 backButtonKey: const Key('private-library-back'),
@@ -85,9 +89,7 @@ class PrivateLibraryPage extends ConsumerWidget {
           selected: AppNavigationDestination.home,
           onSelected: (destination) {
             if (destination == AppNavigationDestination.home) {
-              unawaited(
-                ref.read(libraryPageControllerProvider.notifier).refresh(),
-              );
+              unawaited(ref.read(libraryPageControllerProvider.notifier).refresh());
             }
             onDestinationRequested(destination);
           },
@@ -113,8 +115,7 @@ class _PrivateLibraryBody extends ConsumerStatefulWidget {
   final ValueChanged<String> onReaderRequested;
 
   @override
-  ConsumerState<_PrivateLibraryBody> createState() =>
-      _PrivateLibraryBodyState();
+  ConsumerState<_PrivateLibraryBody> createState() => _PrivateLibraryBodyState();
 }
 
 class _PrivateLibraryBodyState extends ConsumerState<_PrivateLibraryBody> {
@@ -127,10 +128,7 @@ class _PrivateLibraryBodyState extends ConsumerState<_PrivateLibraryBody> {
       return const AppLoadingState(label: '正在加载隐私书架', message: '正在加载隐私书架');
     }
     if (state.overview == null) {
-      return _PrivateLibraryFailure(
-        error: state.error!,
-        onRetry: widget.controller.refresh,
-      );
+      return _PrivateLibraryFailure(error: state.error!, onRetry: widget.controller.refresh);
     }
     final books = LibraryHomeViewData.fromLocalOverview(state.overview!).books;
     if (books.isEmpty) return const _PrivateLibraryEmpty();
@@ -150,10 +148,7 @@ class _PrivateLibraryBodyState extends ConsumerState<_PrivateLibraryBody> {
         ),
         children: <Widget>[
           if (_feedback != null) ...<Widget>[
-            _PrivateLibraryFeedback(
-              message: _feedback!,
-              onDismiss: () => setState(() => _feedback = null),
-            ),
+            _PrivateLibraryFeedback(message: _feedback!, onDismiss: () => setState(() => _feedback = null)),
             const SizedBox(height: AppSpacing.compact),
           ],
           LibraryBookList(
@@ -168,10 +163,7 @@ class _PrivateLibraryBodyState extends ConsumerState<_PrivateLibraryBody> {
     );
   }
 
-  void _handleAction(
-    LibraryBookListItemViewData book,
-    LibraryBookListAction action,
-  ) {
+  void _handleAction(LibraryBookListItemViewData book, LibraryBookListAction action) {
     switch (action.id) {
       case 'restore-normal':
         final changer = widget.visibilityChanger;
@@ -184,10 +176,7 @@ class _PrivateLibraryBodyState extends ConsumerState<_PrivateLibraryBody> {
     }
   }
 
-  Future<void> _restoreBook(
-    LibraryBookListItemViewData book,
-    LibraryBookVisibilityChanger changer,
-  ) async {
+  Future<void> _restoreBook(LibraryBookListItemViewData book, LibraryBookVisibilityChanger changer) async {
     widget.controller.beginRemoval(book.id);
     try {
       await changer.setBookVisibility(book.id, LibraryVisibility.normal);
@@ -202,24 +191,15 @@ class _PrivateLibraryBodyState extends ConsumerState<_PrivateLibraryBody> {
     }
   }
 
-  Future<void> _confirmAndDelete(
-    LibraryBookListItemViewData book,
-    LibraryBookRemover remover,
-  ) async {
+  Future<void> _confirmAndDelete(LibraryBookListItemViewData book, LibraryBookRemover remover) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('删除书籍'),
         content: Text('确定要从书架删除《${book.title}》吗？'),
         actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('删除'),
-          ),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('删除')),
         ],
       ),
     );
@@ -250,20 +230,14 @@ class _PrivateLibraryEmpty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(
-              Icons.visibility_off_outlined,
-              size: 40,
-              color: tokens.mutedText,
-            ),
+            Icon(Icons.visibility_off_outlined, size: 40, color: tokens.mutedText),
             const SizedBox(height: AppSpacing.regular),
             Text('暂无隐私书籍', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: AppSpacing.unit),
             Text(
-              '在首页书籍的更多菜单中设为隐私后，会显示在这里。',
+              '在首页书籍的侧滑操作中设置隐私后，会显示在这里。',
               textAlign: TextAlign.center,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
             ),
           ],
         ),
@@ -289,10 +263,7 @@ class _PrivateLibraryFailure extends StatelessWidget {
           const SizedBox(height: AppSpacing.compact),
           Text(error.code.wireValue),
           const SizedBox(height: AppSpacing.comfortable),
-          FilledButton(
-            onPressed: () => unawaited(onRetry()),
-            child: const Text('重试'),
-          ),
+          FilledButton(onPressed: () => unawaited(onRetry()), child: const Text('重试')),
         ],
       ),
     ),
@@ -300,10 +271,7 @@ class _PrivateLibraryFailure extends StatelessWidget {
 }
 
 class _PrivateLibraryFeedback extends StatelessWidget {
-  const _PrivateLibraryFeedback({
-    required this.message,
-    required this.onDismiss,
-  });
+  const _PrivateLibraryFeedback({required this.message, required this.onDismiss});
 
   final String message;
   final VoidCallback onDismiss;
@@ -329,11 +297,7 @@ class _PrivateLibraryFeedback extends StatelessWidget {
             Icon(Icons.info_outline_rounded, color: tokens.accent),
             const SizedBox(width: AppSpacing.compact),
             Expanded(child: Text(message)),
-            IconButton(
-              tooltip: '关闭提示',
-              onPressed: onDismiss,
-              icon: const Icon(Icons.close_rounded),
-            ),
+            IconButton(tooltip: '关闭提示', onPressed: onDismiss, icon: const Icon(Icons.close_rounded)),
           ],
         ),
       ),

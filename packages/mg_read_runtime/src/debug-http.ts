@@ -24,6 +24,8 @@ import {
 } from "./debug-ui.js";
 
 const debugHost = "0.0.0.0";
+/** Fixed, intentionally uncommon Debug-only LAN port owned by Runtime. */
+export const runtimeDebugHttpPort = 52_173;
 const maxPageSize = 50;
 const maxQueryLength = 160;
 const probeTtlMs = 15 * 60 * 1_000;
@@ -33,6 +35,7 @@ const maxLogMessageLength = 2_000;
 const maxLogPageSize = 200;
 
 export interface RuntimeDebugHttpStatus extends JsonObject {
+  readonly configuredEnabled: boolean;
   readonly enabled: boolean;
   readonly endpoints: readonly string[];
   readonly startedAt: string | null;
@@ -133,13 +136,13 @@ export class RuntimeDebugHttpServer {
     return this.status();
   }
 
-  status(): RuntimeDebugHttpStatus {
+  status(configuredEnabled = this.#server !== undefined): RuntimeDebugHttpStatus {
     const address = this.#server?.address();
     if (address === undefined || address === null || typeof address === "string") {
-      return Object.freeze({ enabled: false, endpoints: Object.freeze([]), startedAt: null });
+      return Object.freeze({ configuredEnabled, enabled: false, endpoints: Object.freeze([]), startedAt: null });
     }
     const endpoints = debugEndpoints(address.port);
-    return Object.freeze({ enabled: true, endpoints, startedAt: this.#startedAt ?? null });
+    return Object.freeze({ configuredEnabled, enabled: true, endpoints, startedAt: this.#startedAt ?? null });
   }
 
   async dispose(): Promise<void> {
@@ -161,7 +164,7 @@ export class RuntimeDebugHttpServer {
       };
       server.once("error", onError);
       server.once("listening", onListening);
-      server.listen({ host: debugHost, port: 0 });
+      server.listen({ host: debugHost, port: runtimeDebugHttpPort });
     });
     this.#server = server;
     this.#startedAt = new Date().toISOString();

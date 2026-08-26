@@ -1,75 +1,37 @@
-# mg_read_runtime Agent 增量规则
+# mg_read_runtime 增量规则
 
-monorepo 根 [AGENTS.md](../../AGENTS.md) 始终适用。本文件只补充 Runtime package 的所有权、
-工具链和验证规则。
+状态：开发规范。根 `AGENTS.md` 始终适用；本文件只补充 Runtime package 的所有权、固定工具链和
+验证入口，不重复根级 Git、隐私、平台验收或数据权威规则。
 
-## 渐进式读取
+## 按任务读取
 
-- Facade/边界：读 [Runtime 契约](docs/standalone-runtime-contract.md)。
-- desktop Supervisor、ready、Job Object、WS/HTTP：再读
-  [desktop 证据](docs/desktop-runtime-bridge.md) 与根
-  [Runtime 生命周期](../../docs/architecture/03-runtime-lifecycle.md)/
-  [内部传输](../../docs/architecture/05-transport-protocol.md)中相关章节。
-- Node/Javet/ABI/升级：读 [版本矩阵](docs/runtime-version-matrix.md) 和 [probes](probes/README.md)。
-- package/lock/安装/冷激活：读根
-  [标准插件专题](../../docs/architecture/04-plugin-sdk-packaging-registry.md) 与相关 ADR。
-- Flutter Facade：读 [package README](packages/mgread_plugin_runtime/README.md)。
-- 性能或日志：读根日志专题、Runtime 契约和受影响测试。
+- Facade/边界：读 Runtime 契约的“主项目唯一公开面”和“不变量”。
+- desktop Supervisor、ready、Job Object、WS/HTTP：只读根生命周期/传输专题中的对应标题。
+- Android Javet、Node/ABI 升级：只读版本矩阵的目标平台和对应 probe。
+- package/lock/artifact：只读标准插件专题的“标准项目结构”“发布 artifact”；安装/回滚再加
+  “installed 冷安装、激活与回滚”。
+- Flutter Facade：读 `packages/mgread_plugin_runtime/README.md` 对应 API；日志任务读根诊断接入规范的
+  Runtime 章节。
 
-不要同时预加载这些文件。旧 `agent.md` 仅是兼容跳转，不是第二份规则。
+不要同时预加载上述材料。旧 `agent.md` 仅为兼容跳转。
 
-## Runtime 所有权
+## Package 所有权
 
-- 本 package 拥有 Node Runtime Core、Android Javet Adapter、Windows/macOS Node launcher、
-  Supervisor、内部 WS/HTTP、Plugin API、标准插件安装执行、Schema/fixture、诊断和唯一
-  Flutter-facing Facade。
-- 每个应用进程只有一个 Node Runtime/VM。禁止 Worker、子进程、第二 VM、Engine Pool、插件
-  native addon 或自定义 ESM Loader/VM 隔离。
-- 生产 Facade 不接受 main-app 数据库/路径、Cookie、文件服务、callback、HostPort、平台通道或
-  raw transport 注入；不暴露 executable、PID、端口、ready、bootId、WS/HTTP URL 或 envelope。
-- Runtime 自有数据根可以保存插件不可变版本、插件私有 data/cache、Cookie、临时资源、运行
-  状态。它不得保存主应用书架、目录、正文、阅读进度或书签的业务权威，
-  也不得打开主应用 SQLite/文件对象。
-- 下载 checkpoint、缓存和跨边界文件提交没有新 Accepted ADR/强类型契约前保持未实现或稳定
-  `unsupported`；不得恢复旧 Runtime Store 全权方案，也不得临时增加 `host.*` 回调。
+- 本 package 独立拥有 Node Runtime Core、Android Javet Adapter、Windows/macOS Node launcher、
+  Supervisor、内部 WS/HTTP、Plugin API、安装执行、schema/fixture、瞬时诊断和唯一 Flutter Facade。
+- 生产 Facade 不接受主应用数据库/路径、Cookie、文件服务、callback、HostPort、平台通道或 raw
+  transport 注入，也不暴露 executable、PID、端口、ready、bootId、WS/HTTP URL 或 envelope。
+- Runtime 自有数据根只保存插件不可变版本、插件私有 data/cache、Cookie、临时资源和运行状态。
+  下载 checkpoint 或跨边界文件提交在没有核心规范和强类型契约时保持未实现或 `unsupported`。
+- installed 插件只在冷启动激活。Windows Debug development 指纹变化后先回收旧 VM，再启动唯一
+  Runtime；不在同一 VM 热替换。Android 由一个专用线程持有一个 Javet `NodeRuntime`。
+- desktop 只接受显式 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` 与 Windows 手工 Internet Settings；
+  PAC/WPAD 需要按目标 URL 的专用 resolver，不能展平成固定代理。
 
-## 插件与平台规则
+## 固定工具链与验证
 
-- 标准插件只使用 `package.json.mgread`、lockfile v3、普通多文件输出和普通 `node_modules`。
-  不恢复 manifest、bundle、shared dependency、自定义 lock 或旧模板 RPC。
-- Runtime 不执行 npm/pnpm/install scripts，不求解 SemVer；拒绝 Git dependency、包外 `file:`、
-  native addon 和原生文件。依赖对象仓的 hardlink/copy 只是内部存储优化。
-- installed 插件版本不可变，只在下次 Runtime 冷启动激活。Windows Debug development 项目按
-  ADR-0019 直读工作区；指纹变化后先回收旧 VM，再启动唯一新 Runtime，不在同一 VM 内热替换。
-- Android 一个专用线程持有一个 Javet `NodeRuntime`；desktop 只从 package 固定路径启动精确
-  Node。Windows Job Object、macOS 签名/公证和 Android ABI 都由本 package 验收。
-- desktop 代理只允许显式 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` 与 Windows 手工 Internet
-  Settings。PAC/WPAD 需要按目标 URL 的专用 resolver，不能展平成固定代理。
-
-## 日志与插件调用
-
-- Runtime 不持久化结构化事件、span、capture、附件或历史查询数据，也不创建
-  `diagnostics/events`。插件脚本使用 `ctx.log` 产生简单日志，网络只走 `ctx.http`。
-- Debug 检查页只在启用期间保留有界内存实时日志；Supervisor 只保留少量稳定启动/终止诊断。
-  两者都不得读取/复制 body、HTML、JSON、正文、URL query、凭据、路径或 raw exception。
-- capability 修改验证轻量日志失败不改变业务结果，并保留 secret/content canary。
-
-## Windows 固定工具链
-
-Windows 所有 Node/npm/Corepack/脚本必须使用：
-
-```text
-tools/node-v24.16.0-win-x64/node.exe
-tools/node-v24.16.0-win-x64/npm.cmd
-```
-
-先把该目录放到 `PATH` 最前，禁止裸用全局 `node/npm/npx/corepack`，也禁止缺失时回退。固定
-Node `24.16.0`、npm `11.13.0` 必须与 `.node-version`、package/lock、compatibility fixture 和
-版本矩阵一致。
-
-## 验证
-
-实现变更使用项目内工具链运行：
+Windows 必须把 `tools/node-v24.16.0-win-x64` 放到 `PATH` 最前并使用其中的 Node 24.16.0/npm
+11.13.0；禁止裸用或回退全局工具。实现变更运行：
 
 ```powershell
 npm.cmd ci
@@ -78,8 +40,7 @@ npm.cmd test
 npm.cmd run check:no-native-addons
 ```
 
-- 触及 desktop Facade/transport：加 `npm.cmd run test:flutter-desktop`。
-- 触及性能关键路径：按任务运行 benchmark 并报告 off/default/explicit capture 边界。
-- 触及 Windows 打包：运行 `stage:flutter-windows`，但它不替代最终应用包验收。
-- Android/Javet、Windows 发布包、macOS 签名/公证分别报告；当前主机未运行的项明确写未执行。
-- Runtime-only 任务不修改根 UI、reader、模板或真实书源，除非用户明确把它们纳入同一交付包。
+- desktop Facade/transport 加 `npm.cmd run test:flutter-desktop`；性能路径运行对应 benchmark；Windows
+  打包加 `stage:flutter-windows`。
+- Android/Javet、Windows 发布包、macOS 签名/公证分别报告，不能相互替代。
+- Runtime-only 任务不修改根 UI、reader、模板或真实书源，除非用户明确纳入同一交付包。

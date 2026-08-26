@@ -9,31 +9,22 @@
  * - 不创建 RPC 或资源路由；
  * - Release 是否调用此控制项由 Flutter Facade 的 Debug 边界决定。
  */
-import { type RuntimeDebugHttpServer } from "./debug-http.js";
-import type { JsonValue, RuntimeProtocolError, RuntimeRequest } from "./protocol.js";
+import type { RuntimeProtocolError, RuntimeRequest } from "./protocol.js";
 
-export type RuntimeDebugHttpDispatchResult =
-  | { readonly result: JsonValue }
+export type RuntimeDebugHttpEnabledResult =
+  | boolean
   | { readonly error: RuntimeProtocolError };
 
-export async function dispatchDebugHttpSetEnabled(
+export function readDebugHttpEnabled(
   request: RuntimeRequest,
-  debugHttp: RuntimeDebugHttpServer | undefined,
-): Promise<RuntimeDebugHttpDispatchResult> {
+): RuntimeDebugHttpEnabledResult {
   if (
     Object.keys(request.params).length !== 1 ||
     typeof request.params.enabled !== "boolean"
   ) {
     return { error: requestError(request, "invalid_request", "The Runtime Debug HTTP setting requires one boolean enabled field.") };
   }
-  if (debugHttp === undefined) {
-    return { error: requestError(request, "internal", "The Runtime Debug HTTP server is unavailable.") };
-  }
-  try {
-    return { result: await debugHttp.setEnabled(request.params.enabled) };
-  } catch {
-    return { error: requestError(request, "internal", "The Runtime Debug HTTP server could not change state.") };
-  }
+  return request.params.enabled;
 }
 
 function requestError(

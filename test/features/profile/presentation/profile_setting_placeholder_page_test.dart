@@ -46,6 +46,7 @@ void main() {
     expect(find.text('功能建设中'), findsOneWidget);
     expect(tester.getTopLeft(find.byKey(const Key('secondary-placeholder-top-bar'))).dy, AppSpacing.pageHeaderTopPadding);
     expect(find.byKey(const Key('secondary-placeholder-back')), findsOneWidget);
+    expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
@@ -76,6 +77,7 @@ void main() {
     expect(find.byType(AboutItemPlaceholderPage), findsOneWidget);
     expect(find.text('检查更新'), findsOneWidget);
     expect(find.text('功能建设中'), findsOneWidget);
+    expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
 
     await tester.tap(find.byKey(const Key('secondary-placeholder-back')));
     await tester.pumpAndSettle();

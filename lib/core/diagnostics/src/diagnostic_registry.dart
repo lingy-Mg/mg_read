@@ -514,6 +514,13 @@ abstract final class AppDiagnosticEvents {
     },
   );
 
+  static final DiagnosticEventDefinition lanSyncStage = DiagnosticEventDefinition.instant(
+    name: 'lan.sync.stage',
+    component: 'feature.lan-sync',
+    summary: 'One bounded foreground local-network synchronization stage.',
+    fields: <String, DiagnosticFieldDefinition>{'role': _string, 'stage': _requiredInstantString, 'bytes': _int64, 'elapsedMicros': _int64},
+  );
+
   static final DiagnosticEventDefinition writerState = DiagnosticEventDefinition.instant(
     name: 'diagnostics.writer.state',
     component: 'app.diagnostics',
@@ -651,6 +658,7 @@ abstract final class AppDiagnosticEvents {
     readerChapterPerformance,
     runtimeFacadeCall,
     lanSyncSession,
+    lanSyncStage,
     performanceSlow,
     writerState,
     eventsDropped,

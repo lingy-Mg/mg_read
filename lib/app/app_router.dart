@@ -28,6 +28,7 @@ import 'package:mg_read/features/discovery/presentation/discovery_destination_pa
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
 import 'package:mg_read/features/library/presentation/private_library_page.dart';
+import 'package:mg_read/features/library/presentation/reading_history_page.dart';
 import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_health_page.dart';
@@ -47,9 +48,7 @@ import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 part 'app_router.g.dart';
 
 /// Owns imperative overlays that cannot use a route-builder [BuildContext].
-final GlobalKey<NavigatorState> appRootNavigatorKey = GlobalKey<NavigatorState>(
-  debugLabel: 'mgReadRootNavigator',
-);
+final GlobalKey<NavigatorState> appRootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'mgReadRootNavigator');
 
 /// Gives page-owned [PopScope] handlers first chance to consume a back action.
 ///
@@ -74,21 +73,15 @@ final appRouterProvider = Provider<GoRouter>((Ref ref) {
   );
   String? previousRoute;
   void reportRoute() {
-    final nextRoute = _stableRouteName(
-      router.routerDelegate.currentConfiguration.uri,
-    );
+    final nextRoute = _stableRouteName(router.routerDelegate.currentConfiguration.uri);
     if (nextRoute == previousRoute) return;
     try {
       diagnostics.emit(
         AppDiagnosticEvents.routeChanged,
         attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-          'fromRoute': previousRoute == null
-              ? DiagnosticValue.nullValue
-              : DiagnosticValue.string(previousRoute!),
+          'fromRoute': previousRoute == null ? DiagnosticValue.nullValue : DiagnosticValue.string(previousRoute!),
           'toRoute': DiagnosticValue.string(nextRoute),
-          'navigationType': DiagnosticValue.string(
-            previousRoute == null ? 'initial' : 'routeUpdate',
-          ),
+          'navigationType': DiagnosticValue.string(previousRoute == null ? 'initial' : 'routeUpdate'),
         }),
       );
     } catch (_) {
@@ -114,31 +107,21 @@ String _stableRouteName(Uri uri) {
     'discover' => 'discovery',
     'reader' => 'reader',
     'private-library' => 'library.private',
-    'profile' when segments.length > 2 && segments[1] == 'about' =>
-      'profile.about.${segments[2]}',
-    'profile' when segments.length > 1 && segments[1] == 'about' =>
-      'profile.about',
-    'profile' when segments.length > 1 && segments[1] == 'feedback' =>
-      'profile.feedback',
-    'profile' when segments.length > 2 && segments[1] == 'plugins' =>
-      'profile.plugins.${segments[2]}',
-    'profile' when segments.length > 1 && segments[1] == 'plugins' =>
-      'profile.plugins',
-    'profile' when segments.length > 1 && segments[1] == 'plugin-cache' =>
-      'profile.pluginCache',
-    'profile' when segments.length > 1 && segments[1] == 'diagnostics' =>
-      'profile.diagnostics',
-    'profile' when segments.length > 2 && segments[1] == 'settings' =>
-      'profile.settings.${segments[2]}',
+    'reading-history' => 'library.readingHistory',
+    'profile' when segments.length > 2 && segments[1] == 'about' => 'profile.about.${segments[2]}',
+    'profile' when segments.length > 1 && segments[1] == 'about' => 'profile.about',
+    'profile' when segments.length > 1 && segments[1] == 'feedback' => 'profile.feedback',
+    'profile' when segments.length > 2 && segments[1] == 'plugins' => 'profile.plugins.${segments[2]}',
+    'profile' when segments.length > 1 && segments[1] == 'plugins' => 'profile.plugins',
+    'profile' when segments.length > 1 && segments[1] == 'plugin-cache' => 'profile.pluginCache',
+    'profile' when segments.length > 1 && segments[1] == 'diagnostics' => 'profile.diagnostics',
+    'profile' when segments.length > 2 && segments[1] == 'settings' => 'profile.settings.${segments[2]}',
     'profile' => 'profile',
     _ => 'unknown',
   };
 }
 
-void _goToDestination(
-  BuildContext context,
-  AppNavigationDestination destination,
-) {
+void _goToDestination(BuildContext context, AppNavigationDestination destination) {
   switch (destination) {
     case AppNavigationDestination.home:
       const LibraryRoute().go(context);
@@ -155,40 +138,20 @@ void _goToDestination(
   }
 }
 
-Page<void> _topLevelDestinationPage({
-  required BuildContext context,
-  required GoRouterState state,
-  required Widget child,
-}) {
+Page<void> _topLevelDestinationPage({required BuildContext context, required GoRouterState state, required Widget child}) {
   return CustomTransitionPage<void>(
     key: state.pageKey,
-    transitionDuration: AppMotion.effectiveDuration(
-      context,
-      AppMotion.destinationTransition,
-    ),
-    reverseTransitionDuration: AppMotion.effectiveDuration(
-      context,
-      AppMotion.destinationReverseTransition,
-    ),
+    transitionDuration: AppMotion.effectiveDuration(context, AppMotion.destinationTransition),
+    reverseTransitionDuration: AppMotion.effectiveDuration(context, AppMotion.destinationReverseTransition),
     child: child,
-    transitionsBuilder:
-        (
-          BuildContext context,
-          Animation<double> animation,
-          Animation<double> secondaryAnimation,
-          Widget child,
-        ) {
-          final Animation<double> curvedAnimation = CurvedAnimation(
-            parent: animation,
-            curve: AppMotion.navigationCurve,
-            reverseCurve: AppMotion.navigationReverseCurve,
-          );
-          return FadeTransition(
-            key: const Key('top-level-destination-transition'),
-            opacity: curvedAnimation,
-            child: child,
-          );
-        },
+    transitionsBuilder: (BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation, Widget child) {
+      final Animation<double> curvedAnimation = CurvedAnimation(
+        parent: animation,
+        curve: AppMotion.navigationCurve,
+        reverseCurve: AppMotion.navigationReverseCurve,
+      );
+      return FadeTransition(key: const Key('top-level-destination-transition'), opacity: curvedAnimation, child: child);
+    },
   );
 }
 
@@ -213,6 +176,12 @@ class LibraryRoute extends GoRouteData with $LibraryRoute {
         onPrivacyLibraryRequested: () {
           const PrivateLibraryRoute().push(context);
         },
+        onReadingHistoryRequested: () {
+          const ReadingHistoryRoute().push(context);
+        },
+        onManageSourcesRequested: () {
+          const PluginCenterRoute().push(context);
+        },
       ),
     );
   }
@@ -226,10 +195,23 @@ class PrivateLibraryRoute extends GoRouteData with $PrivateLibraryRoute {
   @override
   Widget build(BuildContext context, GoRouterState state) => PrivateLibraryPage(
     onBackRequested: () => _returnToLibrary(context),
-    onDestinationRequested: (destination) =>
-        _goToDestination(context, destination),
+    onDestinationRequested: (destination) => _goToDestination(context, destination),
     onReaderRequested: (bookId) => ReaderRoute(bookId: bookId).push(context),
   );
+}
+
+/// Reading history reached from the library overflow menu.
+@TypedGoRoute<ReadingHistoryRoute>(path: '/reading-history')
+class ReadingHistoryRoute extends GoRouteData with $ReadingHistoryRoute {
+  const ReadingHistoryRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) {
+    return ReadingHistoryPage(
+      onBackRequested: () => _returnToLibrary(context),
+      onReaderRequested: (String bookId) => ReaderRoute(bookId: bookId).push(context),
+    );
+  }
 }
 
 /// Runtime-backed source search reached from the shared bottom navigation.
@@ -253,15 +235,9 @@ class SearchRoute extends GoRouteData with $SearchRoute {
         onSourceManagementRequested: () {
           const PluginCenterRoute().push(context);
         },
-        onTextChapterRequested:
-            ({required detail, required firstCatalogPage, required chapter}) {
-              return _openTransientSourceTextReader(
-                context,
-                detail: detail,
-                firstCatalogPage: firstCatalogPage,
-                chapter: chapter,
-              );
-            },
+        onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter}) {
+          return _openTransientSourceTextReader(context, detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
+        },
       ),
     );
   }
@@ -288,15 +264,9 @@ class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
         onSourceManagementRequested: () {
           const PluginCenterRoute().push(context);
         },
-        onTextChapterRequested:
-            ({required detail, required firstCatalogPage, required chapter}) {
-              return _openTransientSourceTextReader(
-                context,
-                detail: detail,
-                firstCatalogPage: firstCatalogPage,
-                chapter: chapter,
-              );
-            },
+        onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter}) {
+          return _openTransientSourceTextReader(context, detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
+        },
       ),
     );
   }
@@ -313,27 +283,18 @@ Future<void> _openTransientSourceTextReader(
   if (navigator == null) {
     throw StateError('The application navigator is not ready.');
   }
-  final gateway = ProviderScope.containerOf(
-    context,
-  ).read(sourceContentGatewayProvider);
+  final gateway = ProviderScope.containerOf(context).read(sourceContentGatewayProvider);
   final session = TransientSourceTextReader(
     detail: detail,
     catalog: firstCatalogPage,
     loadChapterContent: (String chapterId) {
-      return gateway.getContent(
-        pluginId: detail.pluginId,
-        id: detail.summary.id,
-        chapterId: chapterId,
-      );
+      return gateway.getContent(pluginId: detail.pluginId, id: detail.summary.id, chapterId: chapterId);
     },
   );
   await navigator.push<void>(
     MaterialPageRoute<void>(
       builder: (BuildContext routeContext) => ReaderEntryTransition(
-        request: session.createLaunchRequest(
-          initialChapterId: chapter.id,
-          observer: _DismissReaderObserver(navigator),
-        ),
+        request: session.createLaunchRequest(initialChapterId: chapter.id, observer: _DismissReaderObserver(navigator)),
       ),
     ),
   );
@@ -359,9 +320,7 @@ final class _DismissReaderObserver extends ReaderObserver {
   routes: <TypedRoute<RouteData>>[
     TypedGoRoute<AboutRoute>(
       path: 'about',
-      routes: <TypedRoute<RouteData>>[
-        TypedGoRoute<AboutItemPlaceholderRoute>(path: ':itemId'),
-      ],
+      routes: <TypedRoute<RouteData>>[TypedGoRoute<AboutItemPlaceholderRoute>(path: ':itemId')],
     ),
     TypedGoRoute<FeedbackRoute>(path: 'feedback'),
     TypedGoRoute<PluginCenterRoute>(path: 'plugins'),
@@ -402,14 +361,10 @@ class ProfileRoute extends GoRouteData with $ProfileRoute {
               const PluginCacheRoute().push(context);
             },
             onLanSyncRequested: () {
-              const ProfileSettingPlaceholderRoute(
-                settingId: 'data-backup',
-              ).push(context);
+              const ProfileSettingPlaceholderRoute(settingId: 'data-backup').push(context);
             },
             onPendingSettingRequested: (String settingId) {
-              ProfileSettingPlaceholderRoute(
-                settingId: settingId,
-              ).push(context);
+              ProfileSettingPlaceholderRoute(settingId: settingId).push(context);
             },
             onDiagnosticsRequested: () {
               const DiagnosticsRoute().push(context);
@@ -440,8 +395,7 @@ class AboutRoute extends GoRouteData with $AboutRoute {
 }
 
 /// Empty third-level page for an item under the profile's about page.
-class AboutItemPlaceholderRoute extends GoRouteData
-    with $AboutItemPlaceholderRoute {
+class AboutItemPlaceholderRoute extends GoRouteData with $AboutItemPlaceholderRoute {
   const AboutItemPlaceholderRoute({required this.itemId});
 
   final String itemId;
@@ -501,8 +455,7 @@ class PluginCenterRoute extends GoRouteData with $PluginCenterRoute {
 }
 
 /// Runtime-owned Node and data-source health overview.
-class PluginRuntimeHealthRoute extends GoRouteData
-    with $PluginRuntimeHealthRoute {
+class PluginRuntimeHealthRoute extends GoRouteData with $PluginRuntimeHealthRoute {
   const PluginRuntimeHealthRoute();
 
   @override
@@ -520,8 +473,7 @@ class PluginRuntimeHealthRoute extends GoRouteData
 }
 
 /// Runtime-backed detail for one data-source projection.
-class PluginSourceDetailRoute extends GoRouteData
-    with $PluginSourceDetailRoute {
+class PluginSourceDetailRoute extends GoRouteData with $PluginSourceDetailRoute {
   const PluginSourceDetailRoute({required this.pluginId});
 
   final String pluginId;
@@ -572,8 +524,7 @@ class DiagnosticsRoute extends GoRouteData with $DiagnosticsRoute {
 }
 
 /// Empty secondary page for a profile setting awaiting its capability.
-class ProfileSettingPlaceholderRoute extends GoRouteData
-    with $ProfileSettingPlaceholderRoute {
+class ProfileSettingPlaceholderRoute extends GoRouteData with $ProfileSettingPlaceholderRoute {
   const ProfileSettingPlaceholderRoute({required this.settingId});
 
   final String settingId;

@@ -3,6 +3,7 @@
  *
  * 职责：
  * - 消费由 PluginManager 签发的短期资源与插件传输 token；
+ * - 提供有界插件图标投影，不暴露安装路径或原始 descriptor；
  * - 仅向 Runtime 内部 HTTP listener 写入 no-store 响应。
  *
  * 注意：
@@ -42,11 +43,30 @@ export async function servePluginTransferResource(
   try {
     response.writeHead(200, {
       "Cache-Control": "no-store", "Content-Length": resource.bytes,
-      "Content-Type": "application/octet-stream", "X-MgRead-Sha256": resource.sha256,
+      "Content-Type": resource.format === "singleFile" ? "text/javascript; charset=utf-8" : "application/octet-stream",
+      "X-MgRead-Artifact-Format": resource.format,
+      "X-MgRead-Sha256": resource.sha256,
     });
     resource.stream.on("error", () => { response.destroy(); finish(500); });
     resource.stream.pipe(response).on("finish", () => finish(200, resource.bytes));
   } catch {
     response.destroy(); finish(500);
   }
+}
+
+export async function servePluginIconResource(
+  pluginManager: PluginManager | undefined,
+  token: string,
+  response: ServerResponse,
+  finish: LoopbackHttpFinish,
+): Promise<void> {
+  const resource = await pluginManager?.consumePluginIconResource(token);
+  if (resource === undefined) { response.writeHead(404); response.end(); finish(404); return; }
+  response.writeHead(200, {
+    "Cache-Control": "private, max-age=300",
+    "Content-Length": resource.body.byteLength,
+    "Content-Type": resource.mediaType,
+  });
+  response.end(resource.body);
+  finish(200, resource.body.byteLength);
 }

@@ -145,8 +145,8 @@ mentions it. M1.1 therefore does not call or rely on that method.
    all M1 Android, Windows, and macOS lifecycle probes. Do not promote an
    upgrade on static evidence alone.
 6. If an update changes the single-VM, transport, database-authority, cold
-   activation, platform ABI, or minSdk decision, stop and obtain a replacement
-   ADR before implementation.
+   activation, platform ABI, or minSdk decision, update the matching section of
+   the root core specification before implementation.
 
 ## Known risks
 

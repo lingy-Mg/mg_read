@@ -1,5 +1,8 @@
 # mg_read_runtime
 
+状态：package 入口与实现快照。复核基线：`59a279b`（2026-08-26）；之后提交和未提交工作区必须
+从代码、测试和平台证据重新确认。
+
 MgRead 的独立插件运行时。它拥有平台 Runtime、单 Node.js 24 VM、标准 Node 插件安装与执行、
 内部 HTTP/WS、Runtime 数据根和唯一 Flutter-facing Facade；`mg_read` 主项目只调用版本化
 `PluginInvocation`，不接触 Node/Javet、路径、端口或 wire DTO。
@@ -13,7 +16,7 @@ mg_read UI
 ```
 
 正式边界见[独立插件运行时契约](docs/standalone-runtime-contract.md)，插件格式由主项目
-[ADR-0015](../../docs/architecture/adr/0015-standard-node-plugin-projects.md) 固定。
+[核心插件规范](../../docs/core.md#标准插件项目artifact-与安装)固定。
 
 ## 当前实现
 

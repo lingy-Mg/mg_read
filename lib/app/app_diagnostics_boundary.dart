@@ -1,4 +1,11 @@
+/// Process-level Flutter and platform error boundary.
+///
+/// Records only safe error codes and stack fingerprints; it never persists raw
+/// exception messages, arguments, paths, content, or stack frames.
+library;
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:mg_read/app/app_fatal_error_reporter.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 
@@ -25,15 +32,13 @@ final class AppDiagnosticsErrorBoundary {
   late final bool Function(Object, StackTrace) _platformHandler;
   bool _disposed = false;
 
-  static AppDiagnosticsErrorBoundary install(
-    DiagnosticsManager diagnostics, {
-    AppFatalErrorReporter? fatalReporter,
-  }) => AppDiagnosticsErrorBoundary._(
-    reporter: fatalReporter ?? AppFatalErrorReporter(diagnostics),
-    ownsReporter: fatalReporter == null,
-    previousFlutterHandler: FlutterError.onError,
-    previousPlatformHandler: PlatformDispatcher.instance.onError,
-  );
+  static AppDiagnosticsErrorBoundary install(DiagnosticsManager diagnostics, {AppFatalErrorReporter? fatalReporter}) =>
+      AppDiagnosticsErrorBoundary._(
+        reporter: fatalReporter ?? AppFatalErrorReporter(diagnostics),
+        ownsReporter: fatalReporter == null,
+        previousFlutterHandler: FlutterError.onError,
+        previousPlatformHandler: PlatformDispatcher.instance.onError,
+      );
 
   void _handleFlutterError(FlutterErrorDetails details) {
     _reporter.reportUnhandled(
@@ -50,18 +55,23 @@ final class AppDiagnosticsErrorBoundary {
   }
 
   bool _handlePlatformError(Object error, StackTrace stackTrace) {
-    _reporter.reportUnhandled(
-      boundary: 'platform-dispatcher',
-      errorCode: 'unhandled_platform_error',
-      stackTrace: stackTrace,
-      fatal: true,
-    );
+    _reporter.reportUnhandled(boundary: 'platform-dispatcher', errorCode: _platformErrorCode(error), stackTrace: stackTrace, fatal: true);
     try {
       _previousPlatformHandler?.call(error, stackTrace);
     } catch (_) {
       // A previous observer cannot re-open the uncaught error path.
     }
     return true;
+  }
+
+  String _platformErrorCode(Object error) {
+    if (error is PlatformException) {
+      final normalized = error.code.replaceAll(RegExp(r'[^a-z0-9_]'), '_');
+      if (normalized.isNotEmpty && normalized.length <= 64) {
+        return 'platform_$normalized';
+      }
+    }
+    return 'unhandled_platform_error';
   }
 
   void dispose() {

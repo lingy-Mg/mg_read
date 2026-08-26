@@ -9,7 +9,7 @@ final runtime = PluginRuntime();
 final ping = await runtime.invoke(const RuntimePingInvocation());
 final plugins = await runtime.invoke(const InstalledPluginsInvocation());
 final exportable = await runtime.invoke(const PluginTransferListInvocation());
-final plan = await runtime.invoke(PluginTransferPlanInvocation(archives: exportable));
+final plan = await runtime.invoke(PluginTransferPlanInvocation(artifacts: exportable));
 final sourceDirectoryKind = await runtime.invoke(
   const OpenPluginCodeDirectoryInvocation(
     pluginId: 'org.example.source',
@@ -35,7 +35,8 @@ final discovery = await runtime.invoke(
   const SourceDiscoverInvocation(pluginId: 'org.example.source'),
 );
 
-// Opens the native Windows or Android picker, accepts one `.mgplugin`,
+// Opens the native Windows or Android picker, accepts one `.mgplugin.js` or
+// `.mgplugin`,
 // installs it through the Runtime-owned inbox, cold-activates it, and returns
 // false when the user cancels.
 final imported = await runtime.importLocalPlugin();
@@ -48,13 +49,16 @@ final detail = await runtime.invoke(
 
 ```
 
-Plugin transfer is Runtime-owned and bounded: each archive is at most 32 MiB,
-each batch at most 32 archives and 512 MiB. Archive metadata is path-free;
-export returns an ephemeral byte stream and import accepts streams, verifies
+Plugin transfer v2 is Runtime-owned and bounded: each single-file or archive
+artifact is at most 32 MiB, and each batch is at most 32 artifacts and 512 MiB.
+Artifact metadata is path-free; export returns the retained artifact as an
+ephemeral byte stream and import preserves its bytes and format, verifies the
 declared size and SHA-256 in the package-owned adapter, then performs one cold
-activation. Windows Debug development sources are exported only for an explicit
-LAN-sync request as temporary standard archives; equal installed versions and
-downgrades remain excluded.
+activation. LAN transfer converts a Debug development project into a temporary
+`devsync` version only on explicit send; Windows Debug
+`packageDevelopmentPlugin()` instead lets the user select an output directory,
+builds the project at its declared version, and returns only the safe artifact
+file name. Equal installed versions and downgrades remain excluded.
 
 内容类型不猜默认值：协议中每个 nullable 键都必须存在并编码为具体值或 JSON `null`，集合固定
 为数组且无值时返回 `[]`，非负计数中的 `0` 保留为真实零值。缺键、`undefined`、空白字符串、
@@ -80,7 +84,8 @@ capability 调用会有序冷启动唯一 Runtime。
 root 用来预置标准插件版本，不是生产依赖注入接口，也不能由主项目调用。
 
 `importLocalPlugin()` 是生产 Facade 的本地数据源导入能力。文件选择器、私有 inbox、原子复制、
-`.mgplugin` 校验和冷激活均由本 package/Runtime 负责；主应用只接收取消或成功结果，不接触文件路径。
+`.mgplugin.js` / `.mgplugin` 校验和冷激活均由本 package/Runtime 负责；主应用只接收取消或成功结果，
+不接触文件路径。
 Windows 通过受管 Node 子进程重启完成冷激活，Android 通过专用 Javet 线程有序停止并重建唯一活动
 Runtime 实例完成冷激活。
 

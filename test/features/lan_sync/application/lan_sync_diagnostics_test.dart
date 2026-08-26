@@ -29,14 +29,25 @@ void main() {
       }),
     );
 
-    final wire = kit.sink.events
-        .map(const DiagnosticEventCodec().encode)
-        .join();
+    final wire = kit.sink.events.map(const DiagnosticEventCodec().encode).join();
     expect(wire, isNot(contains('192.168.1.9')));
     expect(wire, isNot(contains('123456')));
     expect(wire, isNot(contains('mgread://lan-sync')));
     expect(wire, isNot(contains('Bearer canary-secret')));
     expect(wire, isNot(contains('测试书名')));
+
+    kit.manager.emit(
+      AppDiagnosticEvents.lanSyncStage,
+      traceContext: span.traceContext,
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'role': DiagnosticValue.string('receiver'),
+        'stage': DiagnosticValue.string('plugin_finalize_started'),
+        'bytes': DiagnosticValue.int64(4096),
+        'elapsedMicros': DiagnosticValue.int64(1234),
+      }),
+    );
+    expect(kit.sink.events.last.eventName, 'lan.sync.stage');
+    expect(kit.sink.events.last.traceId, span.traceContext.traceId);
 
     expect(
       () => kit.manager.startSpan(
@@ -65,59 +76,53 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
-    final subscription = container.listen(
-      lanSyncControllerProvider,
-      (_, _) {},
-      fireImmediately: true,
-    );
+    final subscription = container.listen(lanSyncControllerProvider, (_, _) {}, fireImmediately: true);
     addTearDown(subscription.close);
 
     await container.read(lanSyncControllerProvider.notifier).startSending();
 
-    expect(
-      container.read(lanSyncControllerProvider).phase,
-      LanSyncPhase.waitingForPeer,
-    );
+    expect(container.read(lanSyncControllerProvider).phase, LanSyncPhase.waitingForPeer);
     await container.read(lanSyncControllerProvider.notifier).cancel();
+  });
+
+  test('gateway failure retains its stable stage and Runtime code', () async {
+    final container = ProviderContainer(overrides: [lanSyncGatewayProvider.overrideWithValue(const _FailingGateway())]);
+    addTearDown(container.dispose);
+    final subscription = container.listen(lanSyncControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(subscription.close);
+
+    await container.read(lanSyncControllerProvider.notifier).startSending();
+
+    final state = container.read(lanSyncControllerProvider);
+    expect(state.phase, LanSyncPhase.failed);
+    expect(state.errorCode, 'lan_sync_prepare_runtime_invalid_response');
   });
 }
 
-final class _EmptyGateway implements LanSyncGateway {
+class _EmptyGateway implements LanSyncGateway {
   const _EmptyGateway();
 
   @override
-  Future<LanSyncManifest> createManifest() async => const LanSyncManifest(
-    plugins: <LanSyncPluginDescriptor>[],
-    shelfItems: <LanSyncShelfItem>[],
-    skippedShelfItems: 0,
-  );
+  Future<LanSyncManifest> createManifest() async =>
+      const LanSyncManifest(plugins: <LanSyncPluginDescriptor>[], shelfItems: <LanSyncShelfItem>[], skippedShelfItems: 0);
 
   @override
   Future<void> cancelPluginImports() async {}
 
   @override
-  Future<void> preparePluginImports(
-    List<LanSyncPluginDescriptor> plugins,
-  ) async {}
+  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins) async {}
 
   @override
-  Future<Stream<List<int>>> openPluginArchive(
-    LanSyncPluginDescriptor plugin,
-  ) async => const Stream<List<int>>.empty();
+  Future<Stream<List<int>>> openPluginArchive(LanSyncPluginDescriptor plugin) async => const Stream<List<int>>.empty();
 
   @override
-  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest) =>
-      throw UnimplementedError();
+  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest) => throw UnimplementedError();
 
   @override
-  Future<void> importPluginArchive(
-    LanSyncPluginDescriptor plugin,
-    Stream<List<int>> bytes,
-  ) => throw UnimplementedError();
+  Future<void> importPluginArchive(LanSyncPluginDescriptor plugin, Stream<List<int>> bytes) => throw UnimplementedError();
 
   @override
-  Future<LanSyncPluginImportResult> finishPluginImports() =>
-      throw UnimplementedError();
+  Future<LanSyncPluginImportResult> finishPluginImports() => throw UnimplementedError();
 
   @override
   Future<LanSyncApplyResult> applyImport({
@@ -126,4 +131,11 @@ final class _EmptyGateway implements LanSyncGateway {
     required Set<String> availablePluginIds,
     required LanSyncPluginImportResult pluginResult,
   }) => throw UnimplementedError();
+}
+
+final class _FailingGateway extends _EmptyGateway {
+  const _FailingGateway();
+
+  @override
+  Future<LanSyncManifest> createManifest() async => throw const LanSyncGatewayException('runtime_invalid_response');
 }

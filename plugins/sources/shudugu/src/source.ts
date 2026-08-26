@@ -3,7 +3,6 @@
  *
  * 职责：解析发现、搜索、详情、目录和正文，并复用插件私有的 HTML/投影缓存。
  * 注意：发现页允许过期详情投影立即返回并后台刷新；用户打开详情和目录仍遵守一小时严格新鲜度。
- * TODO: - 无。
  */
 import * as cheerio from 'cheerio';
 import type { Element } from 'domhandler';

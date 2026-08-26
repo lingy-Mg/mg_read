@@ -58,24 +58,29 @@ void main() {
     expect(status.plugins, isA<List<InstalledPlugin>>());
   });
 
-  test('Flutter Facade enables and disables the transient Debug inspector', () async {
-    final runtime = PluginRuntime.desktopForTesting(
-      runtimeRepositoryRoot: Directory.current.parent.parent,
-    );
-    addTearDown(runtime.debugDispose);
+  test(
+    'Flutter Facade enables and disables the transient Debug inspector',
+    () async {
+      final runtime = PluginRuntime.desktopForTesting(
+        runtimeRepositoryRoot: Directory.current.parent.parent,
+      );
+      addTearDown(runtime.debugDispose);
 
-    final enabled = await runtime.setDebugHttpEnabled(true);
-    expect(enabled.enabled, isTrue);
-    expect(enabled.endpoints, isNotEmpty);
-    final page = await HttpClient().getUrl(Uri.parse(enabled.endpoints.first));
-    final response = await page.close();
-    expect(response.statusCode, 200);
-    await response.drain();
+      final enabled = await runtime.setDebugHttpEnabled(true);
+      expect(enabled.enabled, isTrue);
+      expect(enabled.endpoints, isNotEmpty);
+      final page = await HttpClient().getUrl(
+        Uri.parse(enabled.endpoints.first),
+      );
+      final response = await page.close();
+      expect(response.statusCode, 200);
+      await response.drain();
 
-    final disabled = await runtime.setDebugHttpEnabled(false);
-    expect(disabled.enabled, isFalse);
-    expect(disabled.endpoints, isEmpty);
-  });
+      final disabled = await runtime.setDebugHttpEnabled(false);
+      expect(disabled.enabled, isFalse);
+      expect(disabled.endpoints, isEmpty);
+    },
+  );
 
   test(
     'Flutter Facade decodes an empty one-shot plugin recovery summary',
@@ -217,6 +222,23 @@ void main() {
       });
 
       final plugins = await runtime.invoke(const InstalledPluginsInvocation());
+      final artifacts = await runtime.invoke(
+        const PluginTransferListInvocation(),
+      );
+      expect(artifacts, hasLength(1));
+      expect(artifacts.single.pluginId, 'org.mgread.flutter.fixture');
+      expect(artifacts.single.version, '1.0.0');
+      expect(artifacts.single.format, PluginArtifactFormat.singleFile);
+      final plan = await runtime.invoke(
+        PluginTransferPlanInvocation(artifacts: artifacts),
+      );
+      expect(plan.single.action, PluginTransferPlanAction.same);
+      final exported = await runtime.exportPluginArtifact(artifacts.single);
+      final exportedBytes = await exported.expand((chunk) => chunk).toList();
+      expect(
+        utf8.decode(exportedBytes),
+        '/* MgRead test single-file artifact. */\n',
+      );
       final cacheFile = File(
         <String>[
           runtimeDataRoot.path,
@@ -267,6 +289,11 @@ void main() {
         const SetPluginEnabledInvocation(
           pluginId: 'org.mgread.flutter.fixture',
           enabled: true,
+        ),
+      );
+      await runtime.invoke(
+        const SchedulePluginUninstallInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
         ),
       );
       final result = await runtime.invoke(
@@ -322,6 +349,7 @@ void main() {
       expect(plugins.single.id, 'org.mgread.flutter.fixture');
       expect(plugins.single.displayName, 'Flutter 标准测试书源');
       expect(plugins.single.activeVersion, '1.0.0');
+      expect(plugins.single.iconUrl, isNull);
       expect(disabled.enabled, isFalse);
       expect(disabled.status, 'disabled');
       expect(enabled.enabled, isTrue);
@@ -382,19 +410,6 @@ void main() {
       expect(plugins.single.status, 'development');
       expect(first.items.single.title, '第一版：测试');
       expect(runtime.debugDesktopProcessStartCount, 1);
-
-      final exportable = await runtime.invoke(
-        const PluginTransferListInvocation(),
-      );
-      expect(exportable, hasLength(1));
-      expect(exportable.single.pluginId, 'org.example.flutter-live');
-      expect(exportable.single.version, startsWith('0.1.1-devsync.'));
-      final archive = await runtime.exportPluginArchive(exportable.single);
-      var transferredBytes = 0;
-      await for (final chunk in archive) {
-        transferredBytes += chunk.length;
-      }
-      expect(transferredBytes, exportable.single.bytes);
 
       await _writeDevelopmentPlugin(developmentRoot, '第二版');
       final second = await runtime.invoke(
@@ -828,6 +843,20 @@ export async function getContent(request) {
   await File(
     <String>[pluginRoot.path, 'pending'].join(Platform.pathSeparator),
   ).writeAsString('1.0.0\n');
+  final artifactRoot = Directory(
+    <String>[
+      root.path,
+      'plugin-archives',
+      'org.mgread.flutter.fixture',
+    ].join(Platform.pathSeparator),
+  );
+  await artifactRoot.create(recursive: true);
+  await File(
+    <String>[
+      artifactRoot.path,
+      '1.0.0.mgplugin.js',
+    ].join(Platform.pathSeparator),
+  ).writeAsString('/* MgRead test single-file artifact. */\n');
   return root;
 }
 

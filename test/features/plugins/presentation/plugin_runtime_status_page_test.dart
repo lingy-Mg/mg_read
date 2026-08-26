@@ -10,19 +10,26 @@
 /// - 无。
 library;
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
+import 'package:mg_read/features/plugins/presentation/plugin_import_error_dialog.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
 
 import 'plugin_runtime_status_page_fixture.dart';
 
 void main() {
+  test('plugin import copy names both supported artifact formats', () {
+    final message = pluginImportErrorMessage(AppErrorCode.fileNameInvalid);
+
+    expect(message, contains('.mgplugin.js'));
+    expect(message, contains('.mgplugin'));
+  });
+
   testWidgets('matches the compact six-source management reference layout', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 690));
     await tester.pumpWidget(
@@ -43,9 +50,9 @@ void main() {
     expect(find.text('数据来源分组'), findsNothing);
     expect(find.byKey(const Key('data-source-management-card')), findsOneWidget);
     expect(find.byKey(const Key('data-source-add')), findsOneWidget);
-    if (Platform.isWindows) {
-      expect(find.byKey(const Key('data-source-open-runtime-directory')), findsOneWidget);
-    }
+    expect(find.byKey(const Key('data-source-open-runtime-directory')), findsNothing);
+    expect(find.byKey(const Key('data-source-add-development-directory')), findsNothing);
+    expect(find.byKey(const Key('runtime-debug-http-toggle')), findsNothing);
     expect(find.byKey(const Key('data-source-toggle-org.mgread.qidian')), findsOneWidget);
     expect(find.byKey(const Key('data-source-toggle-org.mgread.17k')), findsOneWidget);
     expect(find.text('首页'), findsNothing);
@@ -53,10 +60,6 @@ void main() {
     expect(find.text('书架'), findsNothing);
     expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
     expect(find.byIcon(Icons.help_outline), findsOneWidget);
-    if (Platform.isWindows) {
-      expect(find.byKey(const Key('data-source-development-directory-panel')), findsOneWidget);
-      expect(find.textContaining('不要选择单个书源目录'), findsOneWidget);
-    }
 
     final Rect topBar = tester.getRect(find.byKey(const Key('data-source-top-bar')));
     final Rect card = tester.getRect(find.byKey(const Key('data-source-management-card')));
@@ -132,6 +135,41 @@ void main() {
     final toggle = tester.widget<Switch>(find.byKey(const Key('data-source-toggle-org.mgread.discovery-demo')));
     expect(toggle.value, isTrue);
     expect(toggle.onChanged, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('uses Runtime icon URL and keeps the brand fallback on failure', (WidgetTester tester) async {
+    const connection = PluginRuntimeConnection(
+      isHealthy: true,
+      nodeVersion: '24.16.0',
+      runtimeVersion: '0.2.0-standard.2',
+      plugins: <PluginRuntimePlugin>[
+        PluginRuntimePlugin(
+          activeVersion: '1.0.0',
+          contentKinds: <String>['novel'],
+          displayName: '自定义数据源',
+          enabled: true,
+          iconUrl: 'http://127.0.0.1:1/v1/plugin-icon/test-token',
+          id: 'org.example.custom',
+          name: '@mgread-plugin/custom',
+          pendingVersion: null,
+          status: 'active',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => connection)],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: PluginRuntimeStatusPage(onBackRequested: () {}, onDestinationRequested: (_) {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Image), findsOneWidget);
+    expect(find.byIcon(Icons.extension_rounded), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

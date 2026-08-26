@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/example",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Blank standard Node.js project template for a trusted MgRead plugin.",
   "type": "module",
@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "24.13.3",
+    "esbuild": "0.28.2",
     "typescript": "5.9.3"
   },
   "mgread": {
@@ -32,6 +33,7 @@
     "id": "org.example.source",
     "displayName": "示例书源",
     "pluginApi": 1,
+    "packageMode": "single-file",
     "contentKinds": [
       "novel"
     ]

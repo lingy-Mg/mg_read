@@ -17,4 +17,5 @@ reader data -> package:novel_reader_ui/novel_reader_ui.dart
 - `features/`：按产品能力划分的垂直切片；跨 feature 只能通过公开的 application/domain 端口交互。
 - `shared/`：真正跨 feature 的展示组件和小型无业务工具。
 
-不要创建全局 `models/`、`services/`、`repositories/` 或 `providers/` 杂物目录。每个新模块的放置、职责和测试入口见 [主应用模块地图](../docs/implementation/main-app-structure.md)。
+不要创建全局 `models/`、`services/`、`repositories/` 或 `providers/` 杂物目录。跨模块所有权见
+[核心规范对应章节](../docs/core.md#仓库与所有权)；单模块职责和测试入口留在最近的文件头与测试中。

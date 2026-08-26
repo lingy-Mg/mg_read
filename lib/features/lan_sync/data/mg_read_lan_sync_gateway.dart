@@ -1,3 +1,18 @@
+/// MgRead 局域网同步应用网关。
+///
+/// 职责：
+/// - 组合应用书架快照与 Runtime path-free artifact Facade。
+/// - 编排插件计划、原样流式导入和书架事务应用。
+///
+/// 注意：
+/// - 不读取 Runtime 数据根，也不转换 single-file 与 archive 格式。
+/// - 批量导入流在完成、失败或取消时必须关闭。
+/// - 取消和资源清理失败不得泄漏到应用级未处理异常边界。
+///
+/// TODO:
+/// - 无。
+library;
+
 import 'dart:async';
 
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -20,9 +35,9 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
   int _skipped = 0;
   int _failed = 0;
   int _preparedCount = 0;
-  final Map<String, StreamController<List<int>>> _importControllers =
-      <String, StreamController<List<int>>>{};
+  final Map<String, StreamController<List<int>>> _importControllers = <String, StreamController<List<int>>>{};
   Future<List<PluginTransferImportResult>>? _batchImport;
+  String? _batchFailureCode;
 
   @override
   Future<LanSyncManifest> createManifest() async {
@@ -33,46 +48,38 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
     ]);
     final snapshot = results[0] as LibrarySyncSnapshot;
     final installed = results[1] as List<InstalledPlugin>;
-    final archives = results[2] as List<PluginTransferArchive>;
-    final installedById = <String, InstalledPlugin>{
-      for (final plugin in installed) plugin.id: plugin,
-    };
-    final archivesById = <String, PluginTransferArchive>{
-      for (final archive in archives) archive.pluginId: archive,
-    };
+    final artifacts = results[2] as List<PluginTransferArtifact>;
+    final installedById = <String, InstalledPlugin>{for (final plugin in installed) plugin.id: plugin};
+    final artifactsById = <String, PluginTransferArtifact>{for (final artifact in artifacts) artifact.pluginId: artifact};
     final requestedVersions = <String, String>{
-      for (final item in snapshot.items)
-        item.pluginId: item.producerPluginVersion,
+      for (final item in snapshot.items) item.pluginId: item.producerPluginVersion,
       for (final plugin in installed)
         if (plugin.activeVersion != null)
-          plugin.id: plugin.status == 'development'
-              ? archivesById[plugin.id]?.version ?? plugin.activeVersion!
-              : plugin.activeVersion!,
+          plugin.id: plugin.status == 'development' ? artifactsById[plugin.id]?.version ?? plugin.activeVersion! : plugin.activeVersion!,
     };
     if (requestedVersions.length > lanSyncMaxPluginCount) {
       throw StateError('lan_sync_plugin_count_exceeded');
     }
     final plugins = <LanSyncPluginDescriptor>[];
     for (final entry in requestedVersions.entries) {
-      final archive = _findArchive(archives, entry.key, entry.value);
+      final artifact = _findArtifact(artifacts, entry.key, entry.value);
       final installedPlugin = installedById[entry.key];
       plugins.add(
         LanSyncPluginDescriptor(
           id: entry.key,
           version: entry.value,
-          bytes: archive?.bytes ?? 0,
-          sha256: archive?.sha256 ?? ''.padLeft(64, '0'),
-          transferable: archive != null,
+          bytes: artifact?.bytes ?? 0,
+          artifactFormat: _toLanArtifactFormat(artifact?.format ?? PluginArtifactFormat.archive),
+          sha256: artifact?.sha256 ?? ''.padLeft(64, '0'),
+          transferable: artifact != null,
           displayName: installedPlugin?.displayName,
-          reason: archive == null ? 'archive_unavailable' : null,
+          reason: artifact == null ? 'artifact_unavailable' : null,
         ),
       );
     }
     return LanSyncManifest(
       plugins: List<LanSyncPluginDescriptor>.unmodifiable(plugins),
-      shelfItems: List<LanSyncShelfItem>.unmodifiable(
-        snapshot.items.map(_toLanShelfItem),
-      ),
+      shelfItems: List<LanSyncShelfItem>.unmodifiable(snapshot.items.map(_toLanShelfItem)),
       skippedShelfItems: snapshot.skippedSourceLessItems,
     );
   }
@@ -82,7 +89,7 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
     if (!plugin.transferable) {
       throw StateError('lan_sync_plugin_archive_unavailable');
     }
-    return _runtime.exportPluginArchive(_toRuntimeArchive(plugin));
+    return _runtime.exportPluginArtifact(_toRuntimeArtifact(plugin));
   }
 
   @override
@@ -92,43 +99,27 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
     _failed = 0;
     final installed = await _runtime.invoke(const InstalledPluginsInvocation());
     final installedIds = installed.map((plugin) => plugin.id).toSet();
-    final installedById = <String, InstalledPlugin>{
-      for (final plugin in installed) plugin.id: plugin,
-    };
-    final transferable = manifest.plugins
-        .where((plugin) => plugin.transferable)
-        .map(_toRuntimeArchive)
-        .toList(growable: false);
+    final installedById = <String, InstalledPlugin>{for (final plugin in installed) plugin.id: plugin};
+    final transferable = manifest.plugins.where((plugin) => plugin.transferable).map(_toRuntimeArtifact).toList(growable: false);
     final plans = transferable.isEmpty
         ? const <PluginTransferPlanItem>[]
-        : await _runtime.invoke(
-            PluginTransferPlanInvocation(archives: transferable),
-          );
-    final planById = <String, PluginTransferPlanItem>{
-      for (final plan in plans) plan.pluginId: plan,
-    };
+        : await _runtime.invoke(PluginTransferPlanInvocation(artifacts: transferable));
+    final planById = <String, PluginTransferPlanItem>{for (final plan in plans) plan.pluginId: plan};
     final featurePlans = <String, LanSyncPluginPlanState>{};
     final availableAfterTransfer = <String>{...installedIds};
     for (final plugin in manifest.plugins) {
       final plan = planById[plugin.id];
-      final state = plan == null
-          ? _planUnavailableArchive(plugin, installedById[plugin.id])
-          : _toFeaturePlan(plan.action);
+      final state = plan == null ? _planUnavailableArchive(plugin, installedById[plugin.id]) : _toFeaturePlan(plan.action);
       featurePlans[plugin.id] = state;
-      if (state == LanSyncPluginPlanState.missing ||
-          state == LanSyncPluginPlanState.upgrade) {
+      if (state == LanSyncPluginPlanState.missing || state == LanSyncPluginPlanState.upgrade) {
         availableAfterTransfer.add(plugin.id);
       }
-      if (state == LanSyncPluginPlanState.sameVersion ||
-          state == LanSyncPluginPlanState.receiverNewer) {
+      if (state == LanSyncPluginPlanState.sameVersion || state == LanSyncPluginPlanState.receiverNewer) {
         _skipped++;
       }
     }
     final snapshot = _toLibrarySnapshot(manifest);
-    final preview = await _library.previewSyncSnapshot(
-      snapshot,
-      availablePluginIds: availableAfterTransfer,
-    );
+    final preview = await _library.previewSyncSnapshot(snapshot, availablePluginIds: availableAfterTransfer);
     _pendingManifest = manifest;
     _pendingSnapshot = snapshot;
     _pendingPreview = preview;
@@ -144,18 +135,20 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
         ),
       ),
       blockedItemCount: preview.blocked.length,
-      pluginPlans: Map<String, LanSyncPluginPlanState>.unmodifiable(
-        featurePlans,
-      ),
+      pluginPlans: Map<String, LanSyncPluginPlanState>.unmodifiable(featurePlans),
+      selectedPluginIds: <String>{
+        for (final entry in featurePlans.entries)
+          if (entry.value == LanSyncPluginPlanState.missing || entry.value == LanSyncPluginPlanState.upgrade) entry.key,
+      },
+      selectedShelfItemIds: <String>{for (final item in manifest.shelfItems) item.identity},
     );
   }
 
   @override
-  Future<void> preparePluginImports(
-    List<LanSyncPluginDescriptor> plugins,
-  ) async {
+  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins) async {
     await cancelPluginImports();
     _preparedCount = plugins.length;
+    _batchFailureCode = null;
     if (plugins.isEmpty) return;
     for (final plugin in plugins) {
       if (!plugin.transferable || _importControllers.containsKey(plugin.id)) {
@@ -163,22 +156,19 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
       }
       _importControllers[plugin.id] = StreamController<List<int>>();
     }
-    _batchImport = _runtime.importPluginArchives(
-      <({PluginTransferArchive archive, Stream<List<int>> bytes})>[
-        for (final plugin in plugins)
-          (
-            archive: _toRuntimeArchive(plugin),
-            bytes: _importControllers[plugin.id]!.stream,
-          ),
-      ],
-    );
+    final batch = _runtime.importPluginArtifacts(<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>[
+      for (final plugin in plugins) (artifact: _toRuntimeArtifact(plugin), bytes: _importControllers[plugin.id]!.stream),
+    ]);
+    _batchImport = batch;
+    // The Runtime validates the batch before the peer starts sending bytes. A
+    // failure can therefore arrive before finishPluginImports awaits it. Keep a
+    // permanent observer attached so this expected failure stays in the sync
+    // transaction instead of reaching the process-level error boundary.
+    unawaited(_observeBatchImport(batch));
   }
 
   @override
-  Future<void> importPluginArchive(
-    LanSyncPluginDescriptor plugin,
-    Stream<List<int>> bytes,
-  ) async {
+  Future<void> importPluginArchive(LanSyncPluginDescriptor plugin, Stream<List<int>> bytes) async {
     final controller = _importControllers.remove(plugin.id);
     if (controller == null) {
       throw StateError('lan_sync_plugin_not_prepared');
@@ -198,29 +188,21 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
     if (batch != null) {
       try {
         final results = await batch;
-        _installed += results
-            .where(
-              (result) => result.status == PluginTransferImportStatus.installed,
-            )
-            .length;
-        _failed += results
-            .where(
-              (result) => result.status == PluginTransferImportStatus.failed,
-            )
-            .length;
-      } on Object {
+        _installed += results.where((result) => result.status == PluginTransferImportStatus.installed).length;
+        _failed += results.where((result) => result.status == PluginTransferImportStatus.failed).length;
+      } on Object catch (error) {
         _failed += _preparedCount;
+        _batchFailureCode ??= _runtimeFailureCode(error);
       }
     }
     _preparedCount = 0;
     final installed = await _runtime.invoke(const InstalledPluginsInvocation());
     return LanSyncPluginImportResult(
-      availablePluginIds: Set<String>.unmodifiable(
-        installed.map((plugin) => plugin.id),
-      ),
+      availablePluginIds: Set<String>.unmodifiable(installed.map((plugin) => plugin.id)),
       installed: _installed,
       skipped: _skipped,
       failed: _failed,
+      failureCode: _batchFailureCode,
     );
   }
 
@@ -229,7 +211,13 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
     final controllers = _importControllers.values.toList(growable: false);
     _importControllers.clear();
     for (final controller in controllers) {
-      if (!controller.isClosed) await controller.close();
+      if (!controller.isClosed) {
+        try {
+          await controller.close();
+        } on Object {
+          // 取消阶段继续清理其他插件流。
+        }
+      }
     }
     final batch = _batchImport;
     _batchImport = null;
@@ -240,6 +228,15 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
       } on Object {
         // Closed staged streams leave the previous Runtime installation live.
       }
+    }
+    _batchFailureCode = null;
+  }
+
+  Future<void> _observeBatchImport(Future<List<PluginTransferImportResult>> batch) async {
+    try {
+      await batch;
+    } on Object catch (error) {
+      _batchFailureCode ??= _runtimeFailureCode(error);
     }
   }
 
@@ -252,34 +249,20 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
   }) async {
     var snapshot = _pendingSnapshot;
     var preview = _pendingPreview;
-    if (!identical(_pendingManifest, manifest) ||
-        snapshot == null ||
-        preview == null) {
+    if (!identical(_pendingManifest, manifest) || snapshot == null || preview == null) {
       snapshot = _toLibrarySnapshot(manifest);
-      preview = await _library.previewSyncSnapshot(
-        snapshot,
-        availablePluginIds: availablePluginIds,
-      );
+      preview = await _library.previewSyncSnapshot(snapshot, availablePluginIds: availablePluginIds);
     } else if (pluginResult.failed > 0) {
-      preview = await _library.previewSyncSnapshot(
-        snapshot,
-        availablePluginIds: availablePluginIds,
-      );
+      preview = await _library.previewSyncSnapshot(snapshot, availablePluginIds: availablePluginIds);
     }
     final choices = <LibrarySyncIdentity, LibrarySyncConflictChoice>{};
     var keptLocal = 0;
     for (final conflict in preview.conflicts) {
-      final choice =
-          conflictChoices[_identityText(conflict.identity)] ??
-          LanSyncConflictChoice.smartMerge;
+      final choice = conflictChoices[_identityText(conflict.identity)] ?? LanSyncConflictChoice.smartMerge;
       choices[conflict.identity] = _toLibraryChoice(choice);
       if (choice == LanSyncConflictChoice.keepLocal) keptLocal++;
     }
-    final result = await _library.applySyncSnapshot(
-      snapshot,
-      preview: preview,
-      choices: choices,
-    );
+    final result = await _library.applySyncSnapshot(snapshot, preview: preview, choices: choices);
     if (result.code != LibrarySyncResultCode.applied) {
       throw StateError('lan_sync_library_${result.code.name}');
     }
@@ -298,42 +281,40 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
   }
 }
 
-PluginTransferArchive? _findArchive(
-  List<PluginTransferArchive> archives,
-  String pluginId,
-  String version,
-) {
-  for (final archive in archives) {
-    if (archive.pluginId == pluginId && archive.version == version) {
-      return archive;
+PluginTransferArtifact? _findArtifact(List<PluginTransferArtifact> artifacts, String pluginId, String version) {
+  for (final artifact in artifacts) {
+    if (artifact.pluginId == pluginId && artifact.version == version) {
+      return artifact;
     }
   }
   return null;
 }
 
-PluginTransferArchive _toRuntimeArchive(LanSyncPluginDescriptor plugin) =>
-    PluginTransferArchive(
-      bytes: plugin.bytes,
-      pluginId: plugin.id,
-      sha256: plugin.sha256,
-      version: plugin.version,
-    );
+PluginTransferArtifact _toRuntimeArtifact(LanSyncPluginDescriptor plugin) => PluginTransferArtifact(
+  bytes: plugin.bytes,
+  format: switch (plugin.artifactFormat) {
+    LanSyncPluginArtifactFormat.singleFile => PluginArtifactFormat.singleFile,
+    LanSyncPluginArtifactFormat.archive => PluginArtifactFormat.archive,
+  },
+  pluginId: plugin.id,
+  sha256: plugin.sha256,
+  version: plugin.version,
+);
 
-LanSyncPluginPlanState _toFeaturePlan(PluginTransferPlanAction action) =>
-    switch (action) {
-      PluginTransferPlanAction.missing => LanSyncPluginPlanState.missing,
-      PluginTransferPlanAction.upgrade => LanSyncPluginPlanState.upgrade,
-      PluginTransferPlanAction.same => LanSyncPluginPlanState.sameVersion,
-      PluginTransferPlanAction.receiverNewer =>
-        LanSyncPluginPlanState.receiverNewer,
-      PluginTransferPlanAction.unavailable =>
-        LanSyncPluginPlanState.unavailable,
-    };
+LanSyncPluginArtifactFormat _toLanArtifactFormat(PluginArtifactFormat format) => switch (format) {
+  PluginArtifactFormat.singleFile => LanSyncPluginArtifactFormat.singleFile,
+  PluginArtifactFormat.archive => LanSyncPluginArtifactFormat.archive,
+};
 
-LanSyncPluginPlanState _planUnavailableArchive(
-  LanSyncPluginDescriptor sender,
-  InstalledPlugin? receiver,
-) {
+LanSyncPluginPlanState _toFeaturePlan(PluginTransferPlanAction action) => switch (action) {
+  PluginTransferPlanAction.missing => LanSyncPluginPlanState.missing,
+  PluginTransferPlanAction.upgrade => LanSyncPluginPlanState.upgrade,
+  PluginTransferPlanAction.same => LanSyncPluginPlanState.sameVersion,
+  PluginTransferPlanAction.receiverNewer => LanSyncPluginPlanState.receiverNewer,
+  PluginTransferPlanAction.unavailable => LanSyncPluginPlanState.unavailable,
+};
+
+LanSyncPluginPlanState _planUnavailableArchive(LanSyncPluginDescriptor sender, InstalledPlugin? receiver) {
   final receiverVersion = receiver?.activeVersion ?? receiver?.pendingVersion;
   if (receiverVersion == null) return LanSyncPluginPlanState.unavailable;
   final comparison = _compareSemver(receiverVersion, sender.version);
@@ -347,16 +328,8 @@ int _compareSemver(String left, String right) {
   final leftMatch = pattern.firstMatch(left);
   final rightMatch = pattern.firstMatch(right);
   if (leftMatch == null || rightMatch == null) return -1;
-  final leftParts = <int>[
-    int.parse(leftMatch.group(1)!),
-    int.parse(leftMatch.group(2)!),
-    int.parse(leftMatch.group(3)!),
-  ];
-  final rightParts = <int>[
-    int.parse(rightMatch.group(1)!),
-    int.parse(rightMatch.group(2)!),
-    int.parse(rightMatch.group(3)!),
-  ];
+  final leftParts = <int>[int.parse(leftMatch.group(1)!), int.parse(leftMatch.group(2)!), int.parse(leftMatch.group(3)!)];
+  final rightParts = <int>[int.parse(rightMatch.group(1)!), int.parse(rightMatch.group(2)!), int.parse(rightMatch.group(3)!)];
   for (var index = 0; index < leftParts.length; index++) {
     if (leftParts[index] != rightParts[index]) {
       return leftParts[index].compareTo(rightParts[index]);
@@ -369,22 +342,16 @@ int _compareSemver(String left, String right) {
   if (rightPrerelease == null) return -1;
   final leftIdentifiers = leftPrerelease.split('.');
   final rightIdentifiers = rightPrerelease.split('.');
-  final sharedLength = leftIdentifiers.length < rightIdentifiers.length
-      ? leftIdentifiers.length
-      : rightIdentifiers.length;
+  final sharedLength = leftIdentifiers.length < rightIdentifiers.length ? leftIdentifiers.length : rightIdentifiers.length;
   for (var index = 0; index < sharedLength; index++) {
     final leftNumber = int.tryParse(leftIdentifiers[index]);
     final rightNumber = int.tryParse(rightIdentifiers[index]);
-    if (leftNumber != null &&
-        rightNumber != null &&
-        leftNumber != rightNumber) {
+    if (leftNumber != null && rightNumber != null && leftNumber != rightNumber) {
       return leftNumber.compareTo(rightNumber);
     }
     if (leftNumber != null && rightNumber == null) return -1;
     if (leftNumber == null && rightNumber != null) return 1;
-    final textComparison = leftIdentifiers[index].compareTo(
-      rightIdentifiers[index],
-    );
+    final textComparison = leftIdentifiers[index].compareTo(rightIdentifiers[index]);
     if (textComparison != 0) return textComparison;
   }
   return leftIdentifiers.length.compareTo(rightIdentifiers.length);
@@ -402,60 +369,61 @@ LanSyncShelfItem _toLanShelfItem(LibrarySyncItem item) => LanSyncShelfItem(
   progress: item.progress == null ? null : _toLanProgress(item.progress!),
 );
 
-LanSyncReadingProgress _toLanProgress(LibrarySyncReadingProgress progress) =>
-    LanSyncReadingProgress(
-      chapterId: progress.chapterId,
-      paragraphId: progress.paragraphId,
-      characterOffset: progress.characterOffset,
-      chapterIndex: progress.chapterIndex,
-      chapterFraction: progress.chapterFraction,
-      bookFraction: progress.bookFraction,
-      updatedAtUtc: progress.updatedAtUtc,
-      totalReadingSeconds: progress.totalReadingSeconds,
-    );
+LanSyncReadingProgress _toLanProgress(LibrarySyncReadingProgress progress) => LanSyncReadingProgress(
+  chapterId: progress.chapterId,
+  paragraphId: progress.paragraphId,
+  characterOffset: progress.characterOffset,
+  chapterIndex: progress.chapterIndex,
+  chapterFraction: progress.chapterFraction,
+  bookFraction: progress.bookFraction,
+  updatedAtUtc: progress.updatedAtUtc,
+  totalReadingSeconds: progress.totalReadingSeconds,
+);
 
-LibrarySyncSnapshot _toLibrarySnapshot(LanSyncManifest manifest) =>
-    LibrarySyncSnapshot(
-      items: List<LibrarySyncItem>.unmodifiable(
-        manifest.shelfItems.map(
-          (item) => LibrarySyncItem(
-            pluginId: item.pluginId,
-            producerPluginVersion: item.pluginVersion,
-            remoteContentId: item.remoteContentId,
-            kind: ContentKind.fromCode(item.contentKind)!,
-            title: item.title,
-            author: item.author,
-            coverUrl: item.coverUrl == null
-                ? null
-                : Uri.tryParse(item.coverUrl!),
-            sourceName: item.sourceName,
-            progress: item.progress == null
-                ? null
-                : _toLibraryProgress(item.progress!),
-          ),
-        ),
+LibrarySyncSnapshot _toLibrarySnapshot(LanSyncManifest manifest) => LibrarySyncSnapshot(
+  items: List<LibrarySyncItem>.unmodifiable(
+    manifest.shelfItems.map(
+      (item) => LibrarySyncItem(
+        pluginId: item.pluginId,
+        producerPluginVersion: item.pluginVersion,
+        remoteContentId: item.remoteContentId,
+        kind: ContentKind.fromCode(item.contentKind)!,
+        title: item.title,
+        author: item.author,
+        coverUrl: item.coverUrl == null ? null : Uri.tryParse(item.coverUrl!),
+        sourceName: item.sourceName,
+        progress: item.progress == null ? null : _toLibraryProgress(item.progress!),
       ),
-      skippedSourceLessItems: manifest.skippedShelfItems,
-    );
+    ),
+  ),
+  skippedSourceLessItems: manifest.skippedShelfItems,
+);
 
-LibrarySyncReadingProgress _toLibraryProgress(LanSyncReadingProgress value) =>
-    LibrarySyncReadingProgress(
-      chapterId: value.chapterId,
-      paragraphId: value.paragraphId,
-      characterOffset: value.characterOffset,
-      chapterIndex: value.chapterIndex,
-      chapterFraction: value.chapterFraction,
-      bookFraction: value.bookFraction,
-      updatedAtUtc: value.updatedAtUtc,
-      totalReadingSeconds: value.totalReadingSeconds,
-    );
+LibrarySyncReadingProgress _toLibraryProgress(LanSyncReadingProgress value) => LibrarySyncReadingProgress(
+  chapterId: value.chapterId,
+  paragraphId: value.paragraphId,
+  characterOffset: value.characterOffset,
+  chapterIndex: value.chapterIndex,
+  chapterFraction: value.chapterFraction,
+  bookFraction: value.bookFraction,
+  updatedAtUtc: value.updatedAtUtc,
+  totalReadingSeconds: value.totalReadingSeconds,
+);
 
-String _identityText(LibrarySyncIdentity identity) =>
-    '${identity.pluginId}\u001f${identity.remoteContentId}';
+String _identityText(LibrarySyncIdentity identity) => '${identity.pluginId}\u001f${identity.remoteContentId}';
 
-LibrarySyncConflictChoice _toLibraryChoice(LanSyncConflictChoice choice) =>
-    switch (choice) {
-      LanSyncConflictChoice.smartMerge => LibrarySyncConflictChoice.smartMerge,
-      LanSyncConflictChoice.useSender => LibrarySyncConflictChoice.useSender,
-      LanSyncConflictChoice.keepLocal => LibrarySyncConflictChoice.keepLocal,
-    };
+LibrarySyncConflictChoice _toLibraryChoice(LanSyncConflictChoice choice) => switch (choice) {
+  LanSyncConflictChoice.smartMerge => LibrarySyncConflictChoice.smartMerge,
+  LanSyncConflictChoice.useSender => LibrarySyncConflictChoice.useSender,
+  LanSyncConflictChoice.keepLocal => LibrarySyncConflictChoice.keepLocal,
+};
+
+String _runtimeFailureCode(Object error) {
+  if (error is PluginRuntimeException) {
+    final normalized = error.code.replaceAll(RegExp(r'[^a-z0-9_]'), '_');
+    if (normalized.isNotEmpty && normalized.length <= 64) {
+      return 'runtime_$normalized';
+    }
+  }
+  return 'runtime_transfer_failed';
+}

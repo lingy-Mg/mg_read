@@ -25,6 +25,8 @@ import 'package:file_selector/file_selector.dart';
 import 'src/windows_job_object.dart';
 
 part 'src/desktop_supervisor.dart';
+part 'src/desktop_plugin_artifact_io.dart';
+part 'src/desktop_development_synchronization.dart';
 part 'src/desktop_supervisor_bundle.dart';
 part 'src/desktop_supervisor_support.dart';
 part 'src/android_supervisor.dart';

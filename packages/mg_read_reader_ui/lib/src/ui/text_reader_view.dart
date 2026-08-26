@@ -158,11 +158,13 @@ class _TextReaderViewState extends State<TextReaderView>
       <String, ReaderChapterInfo>{};
   final Map<int, ReaderChapterInfo> _catalogByIndex =
       <int, ReaderChapterInfo>{};
+  final Map<String, GlobalKey> _catalogItemKeys = <String, GlobalKey>{};
   final Set<String> _catalogPageIds = <String>{};
   String? _catalogCursor;
   int _catalogTotal = 0;
   bool _catalogHasMore = false;
   bool _catalogLoading = false;
+  String? _centeredCatalogChapterId;
   bool _pageTurnAnimating = false;
   TextChapterContent? _content;
   ReaderChapterInfo? _currentChapterInfo;

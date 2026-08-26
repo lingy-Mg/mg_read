@@ -59,6 +59,9 @@ final class TestReadyPluginRuntimeGateway implements PluginRuntimeGateway {
   Future<bool> importLocalPlugin() async => false;
 
   @override
+  Future<String?> packageDevelopmentPlugin({required String pluginId}) async => null;
+
+  @override
   Future<bool> selectDevelopmentDirectory() async => false;
 
   @override
@@ -71,6 +74,9 @@ final class TestReadyPluginRuntimeGateway implements PluginRuntimeGateway {
   Future<PluginRuntimeDebugHttp> setDebugHttpEnabled(bool enabled) async => const PluginRuntimeDebugHttp.disabled();
 
   @override
+  Future<PluginRuntimeDebugHttp> inspectDebugHttp() async => const PluginRuntimeDebugHttp.disabled();
+
+  @override
   Future<PluginRuntimeConnection> inspect() async => PluginRuntimeConnection(
     isHealthy: true,
     nodeVersion: '24.16.0',
@@ -81,6 +87,9 @@ final class TestReadyPluginRuntimeGateway implements PluginRuntimeGateway {
 
   @override
   Future<void> setEnabled({required String pluginId, required bool enabled}) async {}
+
+  @override
+  Future<void> scheduleUninstall({required String pluginId}) async {}
 }
 
 final class _EmptySourceContentGateway implements SourceContentGateway {

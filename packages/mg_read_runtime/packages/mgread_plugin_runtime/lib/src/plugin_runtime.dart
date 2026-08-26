@@ -14,10 +14,18 @@ abstract interface class _RuntimeSupervisor {
 
   Future<bool> pickAndImportLocalPlugin();
 
-  Future<Stream<List<int>>> exportPluginArchive(PluginTransferArchive archive);
+  Future<Stream<List<int>>> exportPluginArtifact(
+    PluginTransferArtifact artifact,
+  );
 
-  Future<List<PluginTransferImportResult>> importPluginArchives(
-    List<({PluginTransferArchive archive, Stream<List<int>> bytes})> archives,
+  Future<PluginDevelopmentPackage> packageDevelopmentPlugin(
+    String pluginId,
+    String directoryPath,
+  );
+
+  Future<List<PluginTransferImportResult>> importPluginArtifacts(
+    List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
+    artifacts,
   );
 
   Future<void> setDevelopmentDirectory(String path);
@@ -59,6 +67,24 @@ final class PluginRuntime {
     );
   }
 
+  /// Selects an output directory and packages one Windows Debug development source.
+  ///
+  /// The project path, artifact bytes and destination path stay inside this
+  /// Runtime package; the application receives only safe artifact metadata.
+  Future<PluginDevelopmentPackage?> packageDevelopmentPlugin(
+    String pluginId,
+  ) async {
+    if (!kDebugMode || !Platform.isWindows) {
+      throw const PluginRuntimeException(
+        'unsupported',
+        'Development source packaging is available in Windows Debug only.',
+      );
+    }
+    final directoryPath = await getDirectoryPath(confirmButtonText: '选择打包目录');
+    if (directoryPath == null || directoryPath.isEmpty) return null;
+    return _supervisor.packageDevelopmentPlugin(pluginId, directoryPath);
+  }
+
   final _RuntimeSupervisor _supervisor;
 
   /// Invokes a typed Runtime capability.
@@ -81,8 +107,9 @@ final class PluginRuntime {
 
   /// Enables or disables the unauthenticated Debug inspector in Debug builds.
   ///
-  /// This is deliberately transient: callers only receive copyable page URLs,
-  /// never the Runtime's internal control endpoint or resource tokens.
+  /// The preference is Runtime-owned and restored by later Debug Runtime
+  /// starts; callers only receive copyable page URLs, never internal control
+  /// endpoints or resource tokens.
   Future<RuntimeDebugHttpStatus> setDebugHttpEnabled(bool enabled) {
     if (!kDebugMode) {
       throw const PluginRuntimeException(
@@ -93,7 +120,18 @@ final class PluginRuntime {
     return invoke(RuntimeDebugHttpInvocation(enabled: enabled));
   }
 
-  /// Opens the platform file picker and imports one local `.mgplugin` source.
+  /// Reads the Runtime-owned Debug inspector preference and live listener state.
+  Future<RuntimeDebugHttpStatus> debugHttpStatus() {
+    if (!kDebugMode) {
+      throw const PluginRuntimeException(
+        'unsupported',
+        'Runtime Debug HTTP is available in Debug builds only.',
+      );
+    }
+    return invoke(const RuntimeDebugHttpStatusInvocation());
+  }
+
+  /// Opens the platform file picker and imports one local MgRead source.
   ///
   /// The picker and the hand-off to the Runtime-owned inbox both live inside
   /// this package. The application receives only whether the user selected a
@@ -106,53 +144,51 @@ final class PluginRuntime {
       acceptedTypeGroups: <XTypeGroup>[
         XTypeGroup(
           label: 'MgRead 数据来源',
-          extensions: <String>['mgplugin'],
-          // Android's MIME database does not know the custom .mgplugin
-          // suffix. These archive MIME types keep the platform picker from
-          // falling back to an unrestricted * / * request. The Runtime still
-          // validates the archive contents after selection.
-          mimeTypes: Platform.isAndroid
-              ? <String>['application/zip', 'application/octet-stream']
-              : null,
+          extensions: <String>['mgplugin.js', 'mgplugin'],
         ),
       ],
       confirmButtonText: '导入',
     );
     if (file == null) return false;
     final path = file.path;
-    if (path.isEmpty || !path.toLowerCase().endsWith('.mgplugin')) {
+    final lowerPath = path.toLowerCase();
+    if (path.isEmpty ||
+        (!lowerPath.endsWith('.mgplugin.js') &&
+            !lowerPath.endsWith('.mgplugin'))) {
       throw const PluginRuntimeException(
         'invalid_request',
-        'The selected file is not a MgRead plugin archive.',
+        'The selected file is not a MgRead plugin artifact.',
       );
     }
     await _supervisor.importLocalPlugin(path);
     return true;
   }
 
-  /// Streams one Runtime-owned archive without exposing a path, handle, port,
+  /// Streams one Runtime-owned artifact without exposing a path, handle, port,
   /// or control-plane payload to the application.
-  Future<Stream<List<int>>> exportPluginArchive(
-    PluginTransferArchive archive,
-  ) => _supervisor.exportPluginArchive(archive);
+  Future<Stream<List<int>>> exportPluginArtifact(
+    PluginTransferArtifact artifact,
+  ) => _supervisor.exportPluginArtifact(artifact);
 
   /// Accepts a bounded batch and performs one Runtime cold activation.
-  Future<List<PluginTransferImportResult>> importPluginArchives(
-    List<({PluginTransferArchive archive, Stream<List<int>> bytes})> archives,
+  Future<List<PluginTransferImportResult>> importPluginArtifacts(
+    List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
+    artifacts,
   ) {
-    if (archives.length > maxPluginTransferBatch) {
+    if (artifacts.length > maxPluginTransferBatch) {
       throw const PluginRuntimeException(
         'plugin_transfer_batch_too_large',
         'The plugin transfer batch is too large.',
       );
     }
-    return _supervisor.importPluginArchives(archives);
+    return _supervisor.importPluginArtifacts(artifacts);
   }
 
   /// Selects a Windows Debug development-source directory.
   ///
   /// Android deliberately has no development-directory capability; Android
-  /// sources must be imported as validated `.mgplugin` archives.
+  /// sources must be imported as validated `.mgplugin.js` or `.mgplugin`
+  /// artifacts.
   Future<bool> selectDevelopmentDirectory() async {
     if (!kDebugMode || !Platform.isWindows) {
       throw const PluginRuntimeException(

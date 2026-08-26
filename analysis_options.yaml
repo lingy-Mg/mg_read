@@ -7,6 +7,13 @@ analyzer:
   exclude:
     - packages/**
     - templates/**
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
 
 
 

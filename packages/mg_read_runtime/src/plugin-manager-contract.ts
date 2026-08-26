@@ -25,6 +25,7 @@ export type PluginManagerEventCode =
   | "plugin_load_started"
   | "plugin_log_emitted"
   | "plugin_quarantined"
+  | "plugin_uninstall_scheduled"
   | "plugin_uninstall_completed";
 
 export interface PluginManagerEvent {
@@ -66,9 +67,15 @@ export interface InstalledPluginSnapshot extends JsonObject {
   readonly displayName: string;
   readonly enabled: boolean;
   readonly id: string;
+  readonly iconUrl: string | null;
   readonly name: string;
   readonly pendingVersion: string | null;
   readonly status: "active" | "damaged" | "development" | "disabled" | "pending" | "quarantined";
+}
+
+export interface PluginIconResource {
+  readonly body: Uint8Array;
+  readonly mediaType: "image/jpeg" | "image/png" | "image/webp";
 }
 
 /** One-shot, path-free summary of sources isolated during this cold start. */

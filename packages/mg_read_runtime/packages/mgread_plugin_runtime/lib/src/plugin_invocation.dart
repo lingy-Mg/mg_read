@@ -184,34 +184,57 @@ final class RuntimeDebugHttpInvocation
   Map<String, Object?> get _wireParams => <String, Object?>{'enabled': enabled};
 
   @override
-  RuntimeDebugHttpStatus _decodeResult(Object? value) {
-    final result = _jsonObject(value, 'Runtime Debug HTTP result');
-    final rawEndpoints = result['endpoints'];
-    final enabled = result['enabled'];
-    final startedAt = result['startedAt'];
-    if (enabled is! bool ||
-        startedAt != null && startedAt is! String ||
-        rawEndpoints is! List<Object?> ||
-        rawEndpoints.length > 32 ||
-        rawEndpoints.any((Object? value) => value is! String)) {
-      throw const PluginRuntimeException(
-        'invalid_response',
-        'The Runtime returned an invalid Debug HTTP status.',
-      );
-    }
-    final endpoints = rawEndpoints.cast<String>();
-    if (enabled != endpoints.isNotEmpty || !endpoints.every(_isDebugEndpoint)) {
-      throw const PluginRuntimeException(
-        'invalid_response',
-        'The Runtime returned invalid Debug HTTP endpoints.',
-      );
-    }
-    return RuntimeDebugHttpStatus(
-      enabled: enabled,
-      endpoints: List<String>.unmodifiable(endpoints),
-      startedAt: startedAt as String?,
+  RuntimeDebugHttpStatus _decodeResult(Object? value) =>
+      _decodeRuntimeDebugHttpStatus(value);
+}
+
+/// Debug-only query of the Runtime-owned, durable inspector setting.
+@immutable
+final class RuntimeDebugHttpStatusInvocation
+    extends PluginInvocation<RuntimeDebugHttpStatus> {
+  const RuntimeDebugHttpStatusInvocation();
+
+  @override
+  String get _wireMethod => 'runtime.debugHttp.status.v1';
+
+  @override
+  Map<String, Object?> get _wireParams => const <String, Object?>{};
+
+  @override
+  RuntimeDebugHttpStatus _decodeResult(Object? value) =>
+      _decodeRuntimeDebugHttpStatus(value);
+}
+
+RuntimeDebugHttpStatus _decodeRuntimeDebugHttpStatus(Object? value) {
+  final result = _jsonObject(value, 'Runtime Debug HTTP result');
+  final configuredEnabled = result['configuredEnabled'];
+  final rawEndpoints = result['endpoints'];
+  final enabled = result['enabled'];
+  final startedAt = result['startedAt'];
+  if (configuredEnabled is! bool ||
+      enabled is! bool ||
+      startedAt != null && startedAt is! String ||
+      rawEndpoints is! List<Object?> ||
+      rawEndpoints.length > 32 ||
+      rawEndpoints.any((Object? value) => value is! String)) {
+    throw const PluginRuntimeException(
+      'invalid_response',
+      'The Runtime returned an invalid Debug HTTP status.',
     );
   }
+  final endpoints = rawEndpoints.cast<String>();
+  if (enabled != endpoints.isNotEmpty || !endpoints.every(_isDebugEndpoint)) {
+    throw const PluginRuntimeException(
+      'invalid_response',
+      'The Runtime returned invalid Debug HTTP endpoints.',
+    );
+  }
+  return RuntimeDebugHttpStatus(
+    configuredEnabled: configuredEnabled,
+    enabled: enabled,
+    endpoints: List<String>.unmodifiable(endpoints),
+    startedAt: startedAt as String?,
+  );
 }
 
 bool _isDebugEndpoint(String value) {
@@ -223,11 +246,13 @@ bool _isDebugEndpoint(String value) {
 @immutable
 final class RuntimeDebugHttpStatus {
   const RuntimeDebugHttpStatus({
+    required this.configuredEnabled,
     required this.enabled,
     required this.endpoints,
     required this.startedAt,
   });
 
+  final bool configuredEnabled;
   final bool enabled;
   final List<String> endpoints;
   final String? startedAt;
@@ -317,6 +342,31 @@ final class SetPluginEnabledInvocation
 
   @override
   InstalledPlugin _decodeResult(Object? value) => _decodeInstalledPlugin(value);
+}
+
+/// Schedules one installed source for removal at the next Runtime cold start.
+@immutable
+final class SchedulePluginUninstallInvocation extends PluginInvocation<void> {
+  const SchedulePluginUninstallInvocation({required this.pluginId});
+
+  final String pluginId;
+
+  @override
+  String get _wireMethod => 'plugins.uninstall.v1';
+
+  @override
+  Map<String, Object?> get _wireParams => <String, Object?>{'pluginId': pluginId};
+
+  @override
+  void _decodeResult(Object? value) {
+    final result = _jsonObject(value, 'Plugin uninstall result');
+    if (result['scheduled'] != true) {
+      throw const PluginRuntimeException(
+        'invalid_response',
+        'The Runtime returned an invalid plugin uninstall result.',
+      );
+    }
+  }
 }
 
 /// Opens a source code directory through the Flutter desktop Supervisor.
@@ -635,6 +685,7 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
   final name = item['name'];
   final displayName = item['displayName'];
   final description = item['description'];
+  final iconUrl = item['iconUrl'];
   final activeVersion = item['activeVersion'];
   final pendingVersion = item['pendingVersion'];
   final enabled = item['enabled'];
@@ -644,6 +695,8 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
       name is! String ||
       displayName is! String ||
       (description != null && description is! String) ||
+      !item.containsKey('iconUrl') ||
+      (iconUrl != null && iconUrl is! String) ||
       (activeVersion != null && activeVersion is! String) ||
       (pendingVersion != null && pendingVersion is! String) ||
       enabled is! bool ||
@@ -661,6 +714,7 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
     description: description as String?,
     displayName: displayName,
     enabled: enabled,
+    iconUrl: iconUrl as String?,
     id: id,
     name: name,
     pendingVersion: pendingVersion as String?,
@@ -681,6 +735,7 @@ final class InstalledPlugin {
     required this.pendingVersion,
     required this.status,
     this.description,
+    this.iconUrl,
   });
 
   final String? activeVersion;
@@ -688,6 +743,7 @@ final class InstalledPlugin {
   final String? description;
   final String displayName;
   final bool enabled;
+  final String? iconUrl;
   final String id;
   final String name;
   final String? pendingVersion;

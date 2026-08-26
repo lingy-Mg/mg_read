@@ -101,10 +101,11 @@ Runtime 测试独立覆盖 `.mgplugin` 安装器：
 
 ## Debug HTTP 检查页
 
-Debug 构建由 Runtime-owned Facade 显式开关独立 HTTP 检查页。它监听临时 IPv4 LAN 端口，
+Debug 构建由 Runtime-owned Facade 显式开关独立 HTTP 检查页。开关由 Runtime 私有运行状态持久化，
+并监听固定 IPv4 LAN 端口 `52173`；端口暂时被占用时 Runtime 继续工作并在下次启动重试。
 只提供页面、状态、插件、搜索、发现和封面 probe 路由；内部 WS、health 与原始资源 URL 仍在
 私有 loopback server。地址仅供复制，不经主应用构造或保存。无认证 LAN 风险与 Release 排除
-由 [ADR-0023](../../../docs/architecture/adr/0023-debug-runtime-http-inspector.md) 固定。
+由[核心 Runtime 规范](../../../docs/core.md#runtime-与平台宿主)固定。
 
 [`protocol/fixtures/standard-node-plugin-v1.json`](../protocol/fixtures/standard-node-plugin-v1.json)
 由 Node 与 Flutter 集成测试共享。当前验证层级：

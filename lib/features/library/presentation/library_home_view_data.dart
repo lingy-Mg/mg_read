@@ -66,6 +66,30 @@ final class LibraryHomeViewData {
     );
   }
 
+  /// Projects only items with a durable reading position for the history page.
+  factory LibraryHomeViewData.fromReadingHistory(LibraryOverview overview) {
+    final items = overview.items.where((item) => item.readingProgress != null && item.lastReadAtUtc != null).toList()
+      ..sort((a, b) => b.lastReadAtUtc!.compareTo(a.lastReadAtUtc!));
+    return LibraryHomeViewData(
+      isPresentationFixture: false,
+      continueReading: null,
+      books: items.asMap().entries.map((entry) {
+        final item = entry.value;
+        return LibraryBookListItemViewData(
+          id: item.id,
+          title: item.title,
+          subtitle: _librarySubtitle(item),
+          activityLabel: _readingHistoryLabel(item.lastReadAtUtc!),
+          coverUrl: item.coverUrl,
+          coverBytes: item.coverBytes,
+          coverRequest: _coverRequest(item),
+          coverVariant: LibraryCoverVariant.values[entry.key % LibraryCoverVariant.values.length],
+          status: LibraryBookStatus.local,
+        );
+      }),
+    );
+  }
+
   /// Creates the first-run state from a successfully read, empty bookshelf.
   factory LibraryHomeViewData.empty() =>
       LibraryHomeViewData(isPresentationFixture: false, continueReading: null, books: const <LibraryBookListItemViewData>[]);
@@ -107,6 +131,18 @@ String? _librarySubtitle(LibraryItemSummary item) {
     if (item.sourceName != null && item.sourceName!.isNotEmpty) item.sourceName!,
   ];
   return parts.isEmpty ? null : parts.join(' · ');
+}
+
+String _readingHistoryLabel(DateTime timestamp) {
+  final DateTime local = timestamp.toLocal();
+  final DateTime now = DateTime.now();
+  final DateTime today = DateTime(now.year, now.month, now.day);
+  final DateTime date = DateTime(local.year, local.month, local.day);
+  final int dayDelta = today.difference(date).inDays;
+  if (dayDelta == 0) return '今天';
+  if (dayDelta == 1) return '昨天';
+  if (dayDelta > 1 && dayDelta < 7) return '$dayDelta天前';
+  return '${local.month}月${local.day}日';
 }
 
 /// Immutable data for the prominent continue-reading card.
@@ -157,6 +193,7 @@ final class LibraryHomeCallbacks {
     this.onReadingHistory,
     this.onContinueReading,
     this.onOpenBook,
+    this.onBookLongPress,
     this.onBookMore,
     this.onDeleteBook,
     this.onSetBookPrivate,
@@ -172,6 +209,7 @@ final class LibraryHomeCallbacks {
   final VoidCallback? onReadingHistory;
   final VoidCallback? onContinueReading;
   final ValueChanged<LibraryBookListItemViewData>? onOpenBook;
+  final ValueChanged<LibraryBookListItemViewData>? onBookLongPress;
   final ValueChanged<LibraryBookListItemViewData>? onBookMore;
   final Future<void> Function(LibraryBookListItemViewData)? onDeleteBook;
   final Future<void> Function(LibraryBookListItemViewData)? onSetBookPrivate;
@@ -190,6 +228,7 @@ final class LibraryHomeCallbacks {
     VoidCallback? onReadingHistory,
     VoidCallback? onContinueReading,
     ValueChanged<LibraryBookListItemViewData>? onOpenBook,
+    ValueChanged<LibraryBookListItemViewData>? onBookLongPress,
     ValueChanged<LibraryBookListItemViewData>? onBookMore,
     Future<void> Function(LibraryBookListItemViewData)? onDeleteBook,
     Future<void> Function(LibraryBookListItemViewData)? onSetBookPrivate,
@@ -205,6 +244,7 @@ final class LibraryHomeCallbacks {
       onReadingHistory: onReadingHistory ?? this.onReadingHistory,
       onContinueReading: onContinueReading ?? this.onContinueReading,
       onOpenBook: onOpenBook ?? this.onOpenBook,
+      onBookLongPress: onBookLongPress ?? this.onBookLongPress,
       onBookMore: onBookMore ?? this.onBookMore,
       onDeleteBook: onDeleteBook ?? this.onDeleteBook,
       onSetBookPrivate: onSetBookPrivate ?? this.onSetBookPrivate,

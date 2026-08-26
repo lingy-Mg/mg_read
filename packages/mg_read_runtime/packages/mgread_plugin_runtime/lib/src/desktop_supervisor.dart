@@ -99,6 +99,8 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   bool _developmentRestarting = false;
   bool _controlledRestarting = false;
   Directory? _developmentPluginDirectory;
+  late final _DesktopPluginArtifactIo _pluginArtifactIo =
+      _DesktopPluginArtifactIo(this);
 
   /// Package-test-only child launch count; not a public process handle.
   int get debugProcessStartCount => _processStartCount;
@@ -125,8 +127,9 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
 
     if (invocation is OpenPluginCodeDirectoryInvocation) {
       return await _openPluginCodeDirectory(
-        invocation as OpenPluginCodeDirectoryInvocation,
-      ) as T;
+            invocation as OpenPluginCodeDirectoryInvocation,
+          )
+          as T;
     }
 
     if (invocation is OpenRuntimePrivateDirectoryInvocation) {
@@ -217,231 +220,28 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   }
 
   @override
-  Future<Stream<List<int>>> exportPluginArchive(
-    PluginTransferArchive archive,
-  ) async {
-    if (_disposed) {
-      throw const PluginRuntimeException(
-        'runtime_unavailable',
-        'The desktop Runtime has been closed.',
-      );
-    }
-    await _synchronizeDevelopmentRuntime();
-    final connection = await _ensureStarted();
-    final raw = await connection.request(
-      method: 'plugins.transfer.export.v1',
-      params: <String, Object?>{
-        'id': archive.pluginId,
-        'version': archive.version,
-      },
-      timeout: const Duration(minutes: 2),
-    );
-    final result = _jsonObject(raw, 'Plugin transfer export result');
-    final token = result['token'];
-    final returned = _decodePluginTransferArchive(result);
-    if (token is! String ||
-        returned.pluginId != archive.pluginId ||
-        returned.version != archive.version ||
-        returned.bytes != archive.bytes ||
-        returned.sha256 != archive.sha256) {
-      throw const PluginRuntimeException(
-        'plugin_transfer_checksum_mismatch',
-        'The Runtime transfer archive identity did not match the request.',
-      );
-    }
-    return connection.readTransferResource(
-      expectedBytes: returned.bytes,
-      token: token,
-    );
-  }
+  Future<Stream<List<int>>> exportPluginArtifact(
+    PluginTransferArtifact artifact,
+  ) => _pluginArtifactIo.exportArtifact(artifact);
 
   @override
-  Future<List<PluginTransferImportResult>> importPluginArchives(
-    List<({PluginTransferArchive archive, Stream<List<int>> bytes})> archives,
-  ) async {
-    if (_disposed) {
-      throw const PluginRuntimeException(
-        'runtime_unavailable',
-        'The desktop Runtime has been closed.',
-      );
-    }
-    if (archives.isEmpty || archives.length > maxPluginTransferBatch) {
-      throw const PluginRuntimeException(
-        'plugin_transfer_batch_too_large',
-        'The plugin transfer batch is invalid.',
-      );
-    }
-    var total = 0;
-    for (final item in archives) {
-      if (item.archive.bytes <= 0 ||
-          item.archive.bytes > maxPluginTransferBytes) {
-        throw const PluginRuntimeException(
-          'plugin_transfer_archive_too_large',
-          'The plugin transfer archive is too large.',
-        );
-      }
-      total += item.archive.bytes;
-      if (total > maxPluginTransferBatchBytes) {
-        throw const PluginRuntimeException(
-          'plugin_transfer_batch_too_large',
-          'The plugin transfer batch is too large.',
-        );
-      }
-    }
-    final inbox = Directory(
-      _joinPath(<String>[_bundle.dataRoot.path, 'import-inbox']),
-    );
-    final connection = await _ensureStarted();
-    final planRaw = await connection.request(
-      method: 'plugins.transfer.plan.v1',
-      params: <String, Object?>{
-        'archives': archives.map((item) => item.archive.toJson()).toList(),
-      },
-      timeout: const Duration(minutes: 2),
-    );
-    final plan = PluginTransferPlanInvocation(
-      archives: [for (final item in archives) item.archive],
-    )._decodeResult(planRaw);
-    if (plan.any(
-      (item) =>
-          item.action == PluginTransferPlanAction.receiverNewer ||
-          item.action == PluginTransferPlanAction.same ||
-          item.action == PluginTransferPlanAction.unavailable,
-    )) {
-      throw const PluginRuntimeException(
-        'invalid_request',
-        'The plugin transfer would downgrade or replace an equal Runtime version.',
-      );
-    }
-    await inbox.create(recursive: true);
-    _controlledRestarting = true;
-    final temporaryFiles = <File>[];
-    try {
-      for (final item in archives) {
-        final stem =
-            'transfer-${item.archive.pluginId}-${item.archive.version}-${DateTime.now().microsecondsSinceEpoch}';
-        final target = File(_joinPath(<String>[inbox.path, '$stem.mgplugin']));
-        final temporary = File('${target.path}.part');
-        temporaryFiles.add(temporary);
-        var copied = 0;
-        final sink = temporary.openWrite();
-        try {
-          await for (final chunk in item.bytes) {
-            copied += chunk.length;
-            if (copied > item.archive.bytes ||
-                copied > maxPluginTransferBytes) {
-              throw const PluginRuntimeException(
-                'plugin_transfer_size_mismatch',
-                'The plugin transfer archive exceeded its declared size.',
-              );
-            }
-            sink.add(chunk);
-          }
-        } finally {
-          await sink.close();
-        }
-        if (copied != item.archive.bytes) {
-          throw const PluginRuntimeException(
-            'plugin_transfer_size_mismatch',
-            'The plugin transfer archive was truncated.',
-          );
-        }
-        await temporary.rename(target.path);
-      }
-      await connection.request(
-        method: 'plugins.transfer.verify.v1',
-        params: <String, Object?>{
-          'archives': archives.map((item) => item.archive.toJson()).toList(),
-        },
-        timeout: const Duration(minutes: 2),
-      );
-      await _restartForPluginImport();
-      await _ensureStarted();
-      return <PluginTransferImportResult>[
-        for (final item in archives)
-          PluginTransferImportResult(
-            pluginId: item.archive.pluginId,
-            status: PluginTransferImportStatus.installed,
-            version: item.archive.version,
-          ),
-      ];
-    } finally {
-      _controlledRestarting = false;
-      for (final file in temporaryFiles) {
-        try {
-          if (await file.exists()) await file.delete();
-        } on Object {}
-      }
-    }
-  }
+  Future<PluginDevelopmentPackage> packageDevelopmentPlugin(
+    String pluginId,
+    String directoryPath,
+  ) => _pluginArtifactIo.packageDevelopmentPlugin(
+    pluginId,
+    Directory(directoryPath),
+  );
 
   @override
-  Future<void> importLocalPlugin(String sourcePath) async {
-    if (_disposed) {
-      throw const PluginRuntimeException(
-        'runtime_unavailable',
-        'The desktop Runtime has been closed.',
-      );
-    }
-    final source = File(sourcePath);
-    if (!await source.exists()) {
-      throw const PluginRuntimeException(
-        'not_found',
-        'The selected plugin archive is unavailable.',
-      );
-    }
-    final inbox = Directory(
-      _joinPath(<String>[_bundle.dataRoot.path, 'import-inbox']),
-    );
-    await inbox.create(recursive: true);
-    final target = File(
-      _joinPath(<String>[
-        inbox.path,
-        'import-${DateTime.now().microsecondsSinceEpoch}.mgplugin',
-      ]),
-    );
-    final temporary = File('${target.path}.part');
-    _controlledRestarting = true;
-    try {
-      final totalBytes = await source.length();
-      _emitInitializationProgress(
-        completedBytes: 0,
-        stage: 'plugin_copying',
-        totalBytes: totalBytes,
-      );
-      await source.copy(temporary.path);
-      _emitInitializationProgress(
-        completedBytes: totalBytes,
-        stage: 'plugin_copied',
-        totalBytes: totalBytes,
-      );
-      await temporary.rename(target.path);
-      _emitInitializationProgress(
-        completedBytes: 0,
-        stage: 'plugin_installing',
-        totalBytes: 0,
-      );
-      await _restartForPluginImport();
-      await _ensureStarted();
-      _emitInitializationProgress(
-        completedBytes: 1,
-        stage: 'ready',
-        totalBytes: 1,
-      );
-    } on FileSystemException {
-      try {
-        await temporary.delete();
-      } on FileSystemException {
-        // The temporary file may not have been created before the failure.
-      }
-      throw const PluginRuntimeException(
-        'disk_full',
-        'The selected plugin archive could not be imported.',
-      );
-    } finally {
-      _controlledRestarting = false;
-    }
-  }
+  Future<List<PluginTransferImportResult>> importPluginArtifacts(
+    List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
+    artifacts,
+  ) => _pluginArtifactIo.importArtifacts(artifacts);
+
+  @override
+  Future<void> importLocalPlugin(String sourcePath) =>
+      _pluginArtifactIo.importLocalArtifact(sourcePath);
 
   @override
   Future<void> setDevelopmentDirectory(String path) async {
@@ -478,65 +278,6 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
     _developmentPluginDirectory = directory;
     _developmentFingerprint = null;
     await _restartForDevelopmentChange();
-  }
-
-  Future<void> _synchronizeDevelopmentRuntime() async {
-    final developmentRoot = _developmentPluginDirectory;
-    if (developmentRoot == null) return;
-    final previous = _developmentSynchronization;
-    final gate = Completer<void>();
-    _developmentSynchronization = gate.future;
-    try {
-      await previous;
-      final nextFingerprint = await _fingerprintDevelopmentPlugins(
-        developmentRoot,
-      );
-      final currentFingerprint = _developmentFingerprint;
-      if (currentFingerprint == null) {
-        _developmentFingerprint = nextFingerprint;
-        return;
-      }
-      if (currentFingerprint == nextFingerprint) return;
-      await _restartForDevelopmentChange();
-      _developmentFingerprint = nextFingerprint;
-    } finally {
-      gate.complete();
-    }
-  }
-
-  Future<void> _restartForDevelopmentChange() async {
-    _developmentRestarting = true;
-    try {
-      final connection = _connection;
-      if (connection != null) {
-        try {
-          await connection
-              .request(
-                method: 'runtime.shutdown',
-                params: const <String, Object?>{},
-                idempotencyKey: 'development-source-change',
-              )
-              .timeout(_startupTimeout);
-        } on Object {
-          // The Job Object remains the authoritative bounded cleanup path.
-        }
-        await connection.close();
-        _connection = null;
-      }
-      await _terminateOwnedProcessTree();
-      await _disposeMonitor();
-      _startup = null;
-      _recordDiagnostic(
-        const RuntimeDiagnostic(
-          code: 'runtime_development_plugins_reloaded',
-          level: RuntimeDiagnosticLevel.info,
-          message:
-              'Windows development sources changed and the Runtime was reloaded.',
-        ),
-      );
-    } finally {
-      _developmentRestarting = false;
-    }
   }
 
   Future<void> _restartForPluginImport() async {

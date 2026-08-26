@@ -1,5 +1,8 @@
 # MgRead
 
+状态：项目入口与实现快照。复核基线：`c4f655d`（2026-08-20）；“当前状态/目录”只描述该基线，
+之后提交和未提交工作区必须从代码、测试与 Git 重新确认。
+
 `MgRead` 是以插件为在线数据来源的本地优先小说/漫画阅读应用。根目录是 Flutter 主应用，
 拥有路由、主题、页面、阅读器宿主和应用权威持久化；`packages/mg_read_runtime` 负责插件执行、
 平台 Runtime 与内部通信；`packages/mg_read_reader_ui` 只负责阅读体验。
@@ -18,8 +21,8 @@ Node、端口、WS 或 data-root 代码。“我的 → 调试日志”提供应
 
 - Runtime 安装/更新/仓库 UI，以及由 Runtime 驱动的书架和下载页面。
 - 更新检查、协议/隐私/许可/联系内容、截图选择和反馈提交等真实 capability；当前详情页不访问网络、文件或持久化。
-- Runtime 官方仓库/大资源 HTTP/跨平台承载，以及尚未由 Accepted ADR 固定的下载 checkpoint
-  与跨边界文件提交。
+- Runtime 官方仓库/大资源 HTTP/跨平台承载，以及尚未由核心规范和强类型契约固定的下载
+  checkpoint 与跨边界文件提交。
 - Windows/macOS 的 UI 发布适配；Runtime 的 Node/Javet、签名和平台包由 Runtime 仓库验收。
 
 `packages/mg_read_runtime` 已实现 Windows desktop bootstrap 与标准 Node 插件切片：Runtime 自行
@@ -36,31 +39,12 @@ Store 型业务持久化、大资源数据面、正式入库阅读链路、Andro
 其他运行时代码。主应用自己的 persistence/settings 不能向 Runtime 注入路径或连接。后续能力
 仍必须先在 Runtime 仓库以版本化 Facade 发布，再由本项目增加 UI 消费。
 
-## 架构入口
+## 开发文档入口
 
-文档总入口是 [docs/README.md](docs/README.md)。AI/开发任务先读根 `AGENTS.md`，再从
-[渐进式开发路由](docs/development/README.md)选择当前任务；不要预加载下面全部专题。
-
-架构总入口是 [docs/architecture/README.md](docs/architecture/README.md)：
-
-- [产品范围与实施路线](docs/architecture/01-product-roadmap.md)
-- [系统分层与组件边界](docs/architecture/02-system-architecture.md)
-- [Runtime 生命周期与平台探针](docs/architecture/03-runtime-lifecycle.md)
-- [标准 Node 插件、依赖安装与官方仓库](docs/architecture/04-plugin-sdk-packaging-registry.md)
-- [Runtime 内部 WS/HTTP 协议](docs/architecture/05-transport-protocol.md)
-- [数据、缓存与恢复下载](docs/architecture/06-domain-data-cache-downloads.md)
-- [并发与性能规范](docs/architecture/07-concurrency-performance.md)
-- [可靠性、可观测性与测试](docs/architecture/08-reliability-observability-testing.md)
-- [平台发布与未来 WebView/媒体边界](docs/architecture/09-platform-release-future-capabilities.md)
-- [主应用持久化设计](docs/architecture/10-app-persistence-design.md)
-- [主应用持久化独立验收规范](docs/architecture/11-app-persistence-acceptance.md)
-- [全局设置内存门面与异步持久化](docs/architecture/12-global-settings.md)
-- [全局日志与诊断数据](docs/architecture/14-global-diagnostics-logging.md)
-- [插件内容 API v1 与空值语义](docs/architecture/15-plugin-content-contract.md)
-- [Content Library](docs/architecture/20-content-library.md)
-- [已接受 ADR](docs/architecture/adr/README.md)
-
-核心决策是：每个应用进程只有一个可信 Node 24 VM；Android 由 Runtime 自有单个 Javet `NodeRuntime` 承载，Windows/macOS 使用 Runtime 自有的固定官方 Node 子进程；WS/HTTP 是 Runtime 内部实现；主应用 SQLite 是应用权威元数据来源，Runtime 不得获得其路径或连接；主项目只调用强类型 Runtime Facade，且不向 Runtime 注入数据库、文件、Cookie、平台或 `host.*` 服务；插件更新在下次应用进程启动时冷激活。
+AI/开发任务先读根 [`AGENTS.md`](AGENTS.md)，再从
+[最小文档路由](docs/development/README.md)只选择当前任务对应的一个
+[核心规范](docs/core.md)章节。单文件约束以文件头为准，局部实现以代码和测试为准；不要全文加载
+核心规范，也不要为背景遍历 package 文档或 Git 历史。
 
 ## 首版闭环
 
@@ -131,7 +115,8 @@ lib/
     settings/             # 计划：设置与诊断入口
   shared/                 # 真正跨 feature 的 UI 与工具
 docs/
-  architecture/           # 架构、协议、规范、路线图与 ADR
+  core.md                 # 唯一跨模块核心规范，按章节读取
+  development/README.md   # 最小任务路由
 ```
 
 计划目录只在对应里程碑创建。本仓库根目录是唯一 Flutter 主应用，不创建嵌套 `example/` 或第二个 App。
@@ -145,7 +130,7 @@ docs/
 Android Integration Test（模拟器必须已由用户启动；不会启动或操作模拟器）：
 
 ```powershell
-.\tools\run_android_integration_tests.ps1 -DeviceId emulator-5554 -All
+.\tools\run_android_integration_tests.ps1 -DeviceId emulator-5556 -All
 ```
 
 每次修改至少执行：

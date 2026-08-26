@@ -21,6 +21,7 @@ export type RuntimeLifecycleDiagnosticCode =
   | "runtime_loopback_bind_failed"
   | "runtime_node_version_incompatible"
   | "runtime_shutdown_failed"
+  | "runtime_debug_http_port_unavailable"
   | "runtime_start_failed"
   | "runtime_uncaught_exception"
   | "runtime_unhandled_rejection";
@@ -38,6 +39,7 @@ export type PluginDiagnosticCode =
   | "plugin_log_emitted"
   | "plugin_quarantined"
   | "plugin_runtime_initialized"
+  | "plugin_uninstall_scheduled"
   | "plugin_uninstall_completed";
 
 /** Every diagnostic code accepted by this Runtime-owned stdout/stderr bridge. */
