@@ -28,6 +28,8 @@ import {
 import { dirname, resolve } from "node:path";
 
 import type { JsonObject } from "./protocol.js";
+import type { PluginBrowserSessionProvider } from "./plugin-browser-session.js";
+import { createPluginContext } from "./plugin-manager-context.js";
 import {
   type PluginPackageDescriptor,
   readPluginProject,
@@ -40,8 +42,6 @@ import {
   createDevelopmentPackageArtifactResource,
   listExportablePluginArtifacts,
 } from "./plugin-manager-artifact-transfer.js";
-import { pluginApiVersion } from "./plugin-package.js";
-import { runtimeVersion } from "./runtime-version.js";
 import {
   PluginArtifactTransferManager,
   type PluginTransferArtifact,
@@ -131,6 +131,7 @@ export class PluginManager {
   readonly #developmentPluginRoot: string | undefined;
   readonly #events: PluginManagerEventSink;
   readonly #http: PluginRuntimeHttpClient;
+  readonly #browserSession: PluginBrowserSessionProvider | undefined;
   readonly #resources = new Map<string, { pluginId: string; request: JsonObject }>();
   readonly #pluginIcons: PluginIconResources;
   #resourceOrigin = "http://127.0.0.1";
@@ -153,6 +154,7 @@ export class PluginManager {
       readonly embedded?: boolean;
       readonly events?: PluginManagerEventSink;
       readonly http?: PluginRuntimeHttpClient;
+      readonly browserSession?: PluginBrowserSessionProvider;
     } = {},
   ) {
     this.#dataRoot = resolve(runtimeDataRoot);
@@ -162,6 +164,7 @@ export class PluginManager {
       : resolve(options.developmentPluginRoot);
     this.#events = options.events ?? (() => {});
     this.#http = options.http ?? { fetch: (input, init) => fetch(input, init) };
+    this.#browserSession = options.browserSession;
     this.#pluginTransfer = new PluginArtifactTransferManager(this.#dataRoot);
     this.#pluginIcons = new PluginIconResources(this.#dataRoot);
   }
@@ -297,11 +300,11 @@ export class PluginManager {
   }
 
   /** Reports byte usage for installed plugins without exposing cache paths. */
-  async listCacheUsage(): Promise<readonly PluginCacheUsage[]> {
+  async listCacheUsage(pluginId?: string): Promise<readonly PluginCacheUsage[]> {
     await this.initialize();
-    await this.#refreshDevelopmentPlugins();
-    const snapshots = this.#combinedSnapshots();
-    return Object.freeze(await Promise.all(snapshots.map(async (snapshot) =>
+    if (pluginId === undefined) await this.#refreshDevelopmentPlugins();
+    const selected = this.#combinedSnapshots().filter((snapshot) => pluginId === undefined || snapshot.id === pluginId);
+    return Object.freeze(await Promise.all(selected.map(async (snapshot) =>
       Object.freeze({
         bytes: await this.#cacheBytes(snapshot.id),
         pluginId: snapshot.id,
@@ -1009,64 +1012,17 @@ export class PluginManager {
   }
 
   async #createContext(descriptor: PluginPackageDescriptor): Promise<MgReadPluginContext> {
-    const dataDir = resolve(this.#dataRoot, "plugin-data", descriptor.id);
-    const cacheDir = resolve(this.#dataRoot, "plugin-cache", descriptor.id);
-    await Promise.all([
-      mkdir(dataDir, { recursive: true }),
-      mkdir(cacheDir, { recursive: true }),
-    ]);
-    const emitLog = (logLevel: NonNullable<PluginManagerEvent["logLevel"]>, logMessage: string): void => {
-      this.#events({
-        code: "plugin_log_emitted",
-        logLevel,
-        logMessage,
-        outcome: "success",
-        pluginId: descriptor.id,
-      });
-    };
+    const context = await createPluginContext({
+      browserSession: this.#browserSession,
+      dataRoot: this.#dataRoot,
+      descriptor,
+      events: this.#events,
+      http: this.#http,
+      invocationScope: () => this.#invocationScope.getStore(),
+    });
     return Object.freeze({
-      app: Object.freeze({
-        nodeVersion: process.versions.node,
-        pluginApi: pluginApiVersion,
-        runtimeVersion,
-      }),
-      cacheDir,
-      dataDir,
-      http: Object.freeze({
-        fetch: (input: string | URL, init: RequestInit = {}) => {
-          const scope = this.#invocationScope.getStore();
-          const signals: AbortSignal[] = [];
-          if (scope !== undefined) {
-            signals.push(scope.signal);
-            signals.push(
-              AbortSignal.timeout(
-                Math.max(1, Number(scope.deadlineUnixMs) - Date.now()),
-              ),
-            );
-          }
-          if (init.signal != null) signals.push(init.signal);
-          return this.#http.fetch(input, {
-            ...init,
-            redirect: init.redirect ?? "follow",
-            ...(signals.length === 0
-              ? {}
-              : {
-                  signal:
-                    signals.length === 1
-                      ? signals[0]
-                      : AbortSignal.any(signals),
-                }),
-          }, scope?.trace);
-        },
-      }),
+      ...context,
       resource: Object.freeze({ proxy: (request: JsonObject) => this.createResourceUrl(descriptor.id, request) }),
-      log: Object.freeze({
-        debug: (message: string) => emitLog("debug", message),
-        error: (message: string) => emitLog("error", message),
-        info: (message: string) => emitLog("info", message),
-        warn: (message: string) => emitLog("warn", message),
-      }),
-      plugin: Object.freeze({ id: descriptor.id, version: descriptor.version }),
     });
   }
 

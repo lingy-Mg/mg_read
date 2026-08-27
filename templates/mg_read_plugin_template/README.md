@@ -41,7 +41,8 @@ export async function getContent(request) {}
   长期阻塞任务。
 - `discover(request)`：返回递归受控组件 document，或对指定内容集合的 append；支持 tabs、
   section/group、内容/分类集合、文本和分隔线。target、cursor、collectionId 都只回传给当前插件；
-  不能下发任意样式、Flutter 组件或脚本。
+  不能下发任意样式、Flutter 组件或脚本。tab、section 和 category 可声明 `mgread-api.ts` 中的可选
+  `DiscoveryIcon` 语义名；同一图标系统由宿主统一渲染，不能传字体码点、颜色、尺寸或图片 URL。
 - `search({query,cursor,pageSize})`：返回 `items/nextCursor/totalCount`。每个 item 都包含书名、
   内容类型，以及显式 nullable 的作者、URL、封面、简介、字数、章节数、更新时间、最新章节等
   字段；`id` 必须是后续 `getDetail`、`getChapters` 能识别的稳定来源 ID。

@@ -9,9 +9,7 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 
 void main() {
   test('saves a typed discovery item in the app-owned bookshelf', () async {
-    final root = await Directory.systemTemp.createTemp(
-      'mg-read-discovery-save-',
-    );
+    final root = await Directory.systemTemp.createTemp('mg-read-discovery-save-');
     final library = await ContentLibrary.open(dataRoot: root);
     addTearDown(() async {
       await library.close();
@@ -30,18 +28,23 @@ void main() {
       author: '测试作者',
       url: null,
       coverUrl: Uri.parse('https://cdn.example.com/covers/opaque.jpg'),
-      description: null,
-      language: null,
-      status: PluginContentStatus.unknown,
-      access: PluginAccessKind.unknown,
-      wordCount: null,
-      chapterCount: null,
-      publishedAt: null,
-      updatedAt: null,
-      latestChapter: null,
-      categories: const <String>[],
-      tags: const <String>[],
-      attributes: const <PluginContentAttribute>[],
+      description: '完整简介',
+      language: 'zh-CN',
+      status: PluginContentStatus.ongoing,
+      access: PluginAccessKind.free,
+      wordCount: 5652000,
+      chapterCount: 999,
+      publishedAt: DateTime.utc(2025, 1, 2),
+      updatedAt: DateTime.utc(2026, 8, 27),
+      latestChapter: PluginLatestChapter(
+        id: 'chapter-999',
+        title: '第999章',
+        url: Uri.parse('https://source.example/chapter-999'),
+        updatedAt: DateTime.utc(2026, 8, 27, 14, 42),
+      ),
+      categories: const <String>['都市小说'],
+      tags: const <String>['NPC'],
+      attributes: const <PluginContentAttribute>[PluginContentAttribute(key: 'heat', label: '热度', value: '565.2万')],
     );
     final saver = ContentLibraryDiscoveryBookshelfSaver(library);
 
@@ -52,18 +55,22 @@ void main() {
     expect(items, hasLength(1));
     expect(items.single.title, '来自发现页的书');
     expect(items.single.author, '测试作者');
-    expect(
-      items.single.coverUrl,
-      Uri.parse('https://cdn.example.com/covers/opaque.jpg'),
-    );
+    expect(items.single.coverUrl, Uri.parse('https://cdn.example.com/covers/opaque.jpg'));
     expect(items.single.sourceName, '测试书源');
     expect(items.single.source?.remoteContentId, content.id);
+    expect(items.single.description, '完整简介');
+    expect(items.single.language, 'zh-CN');
+    expect(items.single.accessCode, 'free');
+    expect(items.single.chapterCount, 999);
+    expect(items.single.categories, <String>['都市小说']);
+    expect(items.single.tags, <String>['NPC']);
+    expect(items.single.attributes.single.key, 'heat');
+    expect(items.single.attributes.single.value, '565.2万');
+    expect(items.single.latestChapterId, 'chapter-999');
   });
 
   test('reports a committed shelf mutation without awaiting reconciliation', () async {
-    final root = await Directory.systemTemp.createTemp(
-      'mg-read-discovery-save-refresh-',
-    );
+    final root = await Directory.systemTemp.createTemp('mg-read-discovery-save-refresh-');
     final library = await ContentLibrary.open(dataRoot: root);
     addTearDown(() async {
       await library.close();
@@ -73,8 +80,7 @@ void main() {
     final saver = ContentLibraryDiscoveryBookshelfSaver(
       library,
       onMutationStarted: (mutation) => events.add('start:${mutation.id}'),
-      onMutationCommitted: (mutation, item) =>
-          events.add('commit:${item.id.value}'),
+      onMutationCommitted: (mutation, item) => events.add('commit:${item.id.value}'),
     );
 
     await saver.save(source: _source, content: _content);
@@ -84,50 +90,42 @@ void main() {
     expect(events.last, startsWith('commit:'));
   });
 
-  test(
-    'repairs metadata when an existing source item is saved again',
-    () async {
-      final root = await Directory.systemTemp.createTemp(
-        'mg-read-discovery-save-repair-',
-      );
-      final library = await ContentLibrary.open(dataRoot: root);
-      addTearDown(() async {
-        await library.close();
-        await root.delete(recursive: true);
-      });
+  test('repairs metadata when an existing source item is saved again', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-discovery-save-repair-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
 
-      final first = await library.bookshelf.addFromSource(
-        const BookshelfAddRequest(
-          title: '旧书名',
-          author: '旧作者',
-          kind: ContentKind.novel,
-          pluginId: 'org.example.source',
-          pluginVersion: '2.4.0',
-          remoteContentId: 'repair-id',
-        ),
-      );
-      final repaired = await library.bookshelf.addFromSource(
-        BookshelfAddRequest(
-          title: '新书名',
-          author: '新作者',
-          kind: ContentKind.novel,
-          pluginId: 'org.example.source',
-          pluginVersion: '2.4.0',
-          remoteContentId: 'repair-id',
-          coverUrl: Uri.parse('https://cdn.example.com/covers/repair.jpg'),
-          sourceName: '测试书源',
-        ),
-      );
+    final first = await library.bookshelf.addFromSource(
+      const BookshelfAddRequest(
+        title: '旧书名',
+        author: '旧作者',
+        kind: ContentKind.novel,
+        pluginId: 'org.example.source',
+        pluginVersion: '2.4.0',
+        remoteContentId: 'repair-id',
+      ),
+    );
+    final repaired = await library.bookshelf.addFromSource(
+      BookshelfAddRequest(
+        title: '新书名',
+        author: '新作者',
+        kind: ContentKind.novel,
+        pluginId: 'org.example.source',
+        pluginVersion: '2.4.0',
+        remoteContentId: 'repair-id',
+        coverUrl: Uri.parse('https://cdn.example.com/covers/repair.jpg'),
+        sourceName: '测试书源',
+      ),
+    );
 
-      expect(repaired.id.value, first.id.value);
-      expect(repaired.title, '新书名');
-      expect(
-        repaired.coverUrl,
-        Uri.parse('https://cdn.example.com/covers/repair.jpg'),
-      );
-      expect(repaired.sourceName, '测试书源');
-    },
-  );
+    expect(repaired.id.value, first.id.value);
+    expect(repaired.title, '新书名');
+    expect(repaired.coverUrl, Uri.parse('https://cdn.example.com/covers/repair.jpg'));
+    expect(repaired.sourceName, '测试书源');
+  });
 }
 
 final PluginSourceDescriptor _source = PluginSourceDescriptor(

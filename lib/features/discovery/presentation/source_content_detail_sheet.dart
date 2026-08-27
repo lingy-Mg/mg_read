@@ -1,16 +1,12 @@
 /// 书源内容详情页。
 ///
 /// 职责：
-/// - 加载并展示书籍详情、目录和相关推荐。
-/// - 将阅读、收藏和外链操作委托给宿主回调。
+/// - 加载并展示书籍详情、目录和相关推荐，将操作委托给宿主回调。
 ///
 /// 注意：
 /// - 不要在 build() 中执行 Runtime、网络或磁盘 IO。
 /// - 异步加载必须由页面状态持有请求世代，并保留稳定 Key 与书架乐观更新语义。
 /// - 详情只复用发现页顶部栏，不显示顶级书源选择。
-///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';
@@ -30,6 +26,7 @@ import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart
 
 part 'source_content_detail_sections.dart';
 part 'source_content_detail_loading.dart';
+part 'source_content_detail_deferred.dart';
 
 typedef SourceTextChapterRequested =
     Future<void> Function({
@@ -46,6 +43,7 @@ typedef SourceShelfSaveRequested = Future<void> Function(PluginContentSummary co
 enum SourceShelfAction { setPrivate, cancelPrivate, delete }
 
 typedef SourceShelfActionRequested = Future<void> Function(SourceShelfAction action);
+typedef SourceStartReadingRequested = Future<void> Function();
 
 /// Whether this detail is being viewed from discovery or the local shelf.
 enum SourceDetailShelfState { canAdd, alreadyAdded, private }
@@ -64,6 +62,7 @@ Future<void> showSourceContentDetailSheet(
   SourceDetailShelfState shelfState = SourceDetailShelfState.canAdd,
   SourceExternalUrlLauncher? onExternalUrlRequested,
   SourceShelfActionRequested? onShelfAction,
+  SourceStartReadingRequested? onStartReading,
   bool useModalBottomSheet = false,
 }) {
   final Widget detail = _SourceDetailScreen(
@@ -79,6 +78,7 @@ Future<void> showSourceContentDetailSheet(
     shelfState: shelfState,
     onExternalUrlRequested: onExternalUrlRequested ?? _launchSystemBrowser,
     onShelfAction: onShelfAction,
+    onStartReading: onStartReading,
     isModalSheet: useModalBottomSheet,
   );
   if (useModalBottomSheet) {
@@ -102,8 +102,12 @@ Future<void> showSourceContentDetailSheet(
 Future<bool> _launchSystemBrowser(Uri url) => launchUrl(url, mode: LaunchMode.externalApplication);
 
 Future<_SourceDetailBundle> _loadDetail(SourceContentGateway gateway, String pluginId, String id) async {
-  final detail = await gateway.getDetail(pluginId: pluginId, id: id);
-  final chapters = await gateway.getChapters(pluginId: pluginId, id: id);
+  final results = await Future.wait<Object>(<Future<Object>>[
+    gateway.getDetail(pluginId: pluginId, id: id),
+    gateway.getChapters(pluginId: pluginId, id: id),
+  ]);
+  final detail = results[0] as PluginContentDetail;
+  final chapters = results[1] as PluginChaptersResult;
   return _SourceDetailBundle(detail: detail, chapters: chapters);
 }
 
@@ -195,6 +199,7 @@ class _SourceDetailScreen extends StatefulWidget {
     required this.shelfState,
     required this.onExternalUrlRequested,
     required this.onShelfAction,
+    required this.onStartReading,
     required this.isModalSheet,
   });
   final SourceContentGateway gateway;
@@ -208,7 +213,9 @@ class _SourceDetailScreen extends StatefulWidget {
   final SourceShelfSaveRequested? onAddToShelf;
   final SourceDetailShelfState shelfState;
   final SourceExternalUrlLauncher onExternalUrlRequested;
+
   final SourceShelfActionRequested? onShelfAction;
+  final SourceStartReadingRequested? onStartReading;
   final bool isModalSheet;
 
   @override
@@ -277,11 +284,17 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                             onAddToShelf: widget.onAddToShelf,
                             shelfState: widget.shelfState,
                             onShelfAction: widget.onShelfAction,
+                            onStartReading: widget.onStartReading,
                             onExternalUrlRequested: widget.onExternalUrlRequested,
                           ),
                         );
                       }
-                      return _SourceDetailLoadingView(initialContent: widget.initialContent, shelfState: widget.shelfState);
+                      return _SourceDetailLoadingView(
+                        initialContent: widget.initialContent,
+                        shelfState: widget.shelfState,
+                        onShelfAction: widget.onShelfAction,
+                        onStartReading: widget.onStartReading,
+                      );
                     }
                     if (snapshot.hasError) {
                       if (previewBundle != null) {
@@ -295,6 +308,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                           onAddToShelf: widget.onAddToShelf,
                           shelfState: widget.shelfState,
                           onShelfAction: widget.onShelfAction,
+                          onStartReading: widget.onStartReading,
                           onExternalUrlRequested: widget.onExternalUrlRequested,
                         );
                       }
@@ -314,6 +328,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                         onAddToShelf: widget.onAddToShelf,
                         shelfState: widget.shelfState,
                         onShelfAction: widget.onShelfAction,
+                        onStartReading: widget.onStartReading,
                         onExternalUrlRequested: widget.onExternalUrlRequested,
                       ),
                     );
@@ -338,6 +353,7 @@ class _SourceDetailView extends StatefulWidget {
     required this.onAddToShelf,
     required this.shelfState,
     required this.onShelfAction,
+    required this.onStartReading,
     required this.onExternalUrlRequested,
     super.key,
   });
@@ -349,6 +365,7 @@ class _SourceDetailView extends StatefulWidget {
   final SourceShelfSaveRequested? onAddToShelf;
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested? onShelfAction;
+  final SourceStartReadingRequested? onStartReading;
   final SourceExternalUrlLauncher onExternalUrlRequested;
 
   @override
@@ -420,6 +437,7 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
     onAddToShelf: widget.onAddToShelf,
     shelfState: _shelfState,
     onShelfAction: widget.onShelfAction,
+    onStartReading: widget.onStartReading,
     isSavingToShelf: _isSavingToShelf,
     onSaveToShelf: _saveToShelf,
     onExternalUrlRequested: widget.onExternalUrlRequested,
@@ -438,6 +456,7 @@ class _SourceDetailBody extends StatelessWidget {
     required this.onAddToShelf,
     required this.shelfState,
     required this.onShelfAction,
+    required this.onStartReading,
     required this.isSavingToShelf,
     required this.onSaveToShelf,
     required this.onExternalUrlRequested,
@@ -453,6 +472,7 @@ class _SourceDetailBody extends StatelessWidget {
   final SourceShelfSaveRequested? onAddToShelf;
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested? onShelfAction;
+  final SourceStartReadingRequested? onStartReading;
   final bool isSavingToShelf;
   final ValueChanged<PluginContentSummary> onSaveToShelf;
   final SourceExternalUrlLauncher onExternalUrlRequested;
@@ -543,73 +563,72 @@ class _SourceDetailBody extends StatelessWidget {
             ),
           ],
         ),
-        if (onShelfAction != null) ...<Widget>[
-          const SizedBox(height: AppSpacing.compact),
-          _ShelfActionRow(shelfState: shelfState, onAction: onShelfAction!),
-        ],
         const SizedBox(height: AppSpacing.section),
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: OutlinedButton.icon(
-                key: const Key('source-detail-add-shelf'),
-                onPressed: shelfState != SourceDetailShelfState.canAdd
-                    ? () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('此书已在书架中。')))
-                    : onAddToShelf == null
-                    ? () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('书架保存功能尚未接入此书源。')))
-                    : isSavingToShelf
-                    ? null
-                    : () => onSaveToShelf(content),
-                icon: Icon(
-                  shelfState != SourceDetailShelfState.canAdd
-                      ? Icons.bookmark_added_outlined
+        if (shelfState != SourceDetailShelfState.canAdd && onShelfAction != null && onStartReading != null)
+          _ShelfActionBar(shelfState: shelfState, onAction: onShelfAction!, onStartReading: onStartReading!)
+        else
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: OutlinedButton.icon(
+                  key: const Key('source-detail-add-shelf'),
+                  onPressed: shelfState != SourceDetailShelfState.canAdd
+                      ? () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('此书已在书架中。')))
+                      : onAddToShelf == null
+                      ? () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('书架保存功能尚未接入此书源。')))
                       : isSavingToShelf
-                      ? Icons.hourglass_top_rounded
-                      : Icons.library_add_outlined,
-                ),
-                label: Text(
-                  shelfState != SourceDetailShelfState.canAdd
-                      ? '已在书架'
-                      : isSavingToShelf
-                      ? '正在加入…'
-                      : '加入书架',
-                ),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(54),
-                  foregroundColor: tokens.accent,
-                  side: BorderSide(color: tokens.accent),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ? null
+                      : () => onSaveToShelf(content),
+                  icon: Icon(
+                    shelfState != SourceDetailShelfState.canAdd
+                        ? Icons.bookmark_added_outlined
+                        : isSavingToShelf
+                        ? Icons.hourglass_top_rounded
+                        : Icons.library_add_outlined,
+                  ),
+                  label: Text(
+                    shelfState != SourceDetailShelfState.canAdd
+                        ? '已在书架'
+                        : isSavingToShelf
+                        ? '正在加入…'
+                        : '加入书架',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(54),
+                    foregroundColor: tokens.accent,
+                    side: BorderSide(color: tokens.accent),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: AppSpacing.regular),
-            Expanded(
-              child: FilledButton(
-                key: const Key('source-detail-start-reading'),
-                onPressed: isRefreshing || firstChapter == null
-                    ? null
-                    : () => unawaited(
-                        _openTextChapter(
-                          context,
-                          gateway: gateway,
-                          detail: detail,
-                          firstCatalogPage: bundle.chapters,
-                          chapter: firstChapter,
-                          onTextChapterRequested: onTextChapterRequested,
+              const SizedBox(width: AppSpacing.regular),
+              Expanded(
+                child: FilledButton(
+                  key: const Key('source-detail-start-reading'),
+                  onPressed: isRefreshing || firstChapter == null
+                      ? null
+                      : () => unawaited(
+                          _openTextChapter(
+                            context,
+                            gateway: gateway,
+                            detail: detail,
+                            firstCatalogPage: bundle.chapters,
+                            chapter: firstChapter,
+                            onTextChapterRequested: onTextChapterRequested,
+                          ),
                         ),
-                      ),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(54),
-                  backgroundColor: tokens.accent,
-                  disabledBackgroundColor: tokens.accent,
-                  disabledForegroundColor: tokens.surface,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(54),
+                    backgroundColor: tokens.accent,
+                    disabledBackgroundColor: tokens.accent,
+                    disabledForegroundColor: tokens.surface,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: isRefreshing ? const _DetailLoadingButtonLabel() : const Text('开始阅读'),
                 ),
-                child: isRefreshing ? const _DetailLoadingButtonLabel() : const Text('开始阅读'),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
         const SizedBox(height: AppSpacing.section),
         Divider(color: tokens.divider, height: 1),
         const SizedBox(height: AppSpacing.comfortable),

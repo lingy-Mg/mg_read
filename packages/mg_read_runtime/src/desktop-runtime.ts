@@ -54,6 +54,7 @@ import {
   PluginManagerError,
   type PluginManagerEvent,
 } from "./plugin-manager.js";
+import { pluginManagerErrorMessage } from "./plugin-manager-error-message.js";
 import { installPluginArtifactInbox, seedBundledPluginArtifacts } from "./plugin-artifact-inbox.js";
 import { dispatchPluginEnabled, dispatchPluginUninstall } from "./plugin-uninstall-dispatch.js";
 import {
@@ -1141,13 +1142,13 @@ export class DesktopRuntime {
   async #dispatchPluginCacheUsage(
     request: RuntimeRequest,
   ): Promise<RuntimeDispatchResult> {
-    if (Object.keys(request.params).length !== 0) {
+    if (Object.keys(request.params).length > 1 || (Object.keys(request.params).length === 1 && !("pluginId" in request.params)) || (request.params.pluginId !== undefined && typeof request.params.pluginId !== "string")) {
       return this.#pluginCacheInvalidRequest(request);
     }
     try {
       const manager = this.#pluginManager;
       if (manager === undefined) throw new PluginManagerError("plugin_load_failed");
-      return { result: await manager.listCacheUsage() };
+      return { result: await manager.listCacheUsage(request.params.pluginId as string | undefined) };
     } catch (error) {
       return this.#pluginCacheFailure(request, error);
     }
@@ -1495,26 +1496,4 @@ function emitPluginManagerDiagnostic(event: PluginManagerEvent): void {
     outcome: event.outcome,
     type: "diagnostic",
   });
-}
-
-/** Maps internal plugin errors to reviewed wire text. */
-function pluginManagerErrorMessage(code: PluginManagerError["code"]): string {
-  switch (code) {
-    case "cancelled":
-      return "The plugin request was cancelled.";
-    case "invalid_request":
-      return "The plugin request is invalid.";
-    case "plugin_disabled":
-      return "The requested plugin is disabled.";
-    case "plugin_execution_failed":
-      return "The plugin could not complete the requested operation.";
-    case "plugin_invalid_response":
-      return "The plugin returned an invalid response.";
-    case "plugin_load_failed":
-      return "The plugin does not provide the requested capability.";
-    case "plugin_not_found":
-      return "The requested plugin is not installed or active.";
-    case "timeout":
-      return "The plugin request deadline has elapsed.";
-  }
 }

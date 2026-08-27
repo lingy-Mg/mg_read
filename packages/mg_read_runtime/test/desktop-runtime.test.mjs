@@ -450,6 +450,14 @@ test("desktop Runtime reports and clears private plugin caches without paths", a
   assert.deepEqual(usage.result, [{ pluginId: desktopFixture.plugin.id, bytes: 11 }]);
   assert.equal(JSON.stringify(usage.result).includes(dataRoot), false);
 
+  const singleUsage = await sendRequest(
+    socket,
+    makeRequest(ready, "c:cache-usage-single", "plugins.cache.usage.v1", {
+      params: { pluginId: desktopFixture.plugin.id },
+    }),
+  );
+  assert.deepEqual(singleUsage.result, usage.result);
+
   const archiveUsage = await sendRequest(
     socket,
     makeRequest(ready, "c:installation-archive-usage", "plugins.installation.usage.v1", {

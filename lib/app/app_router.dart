@@ -22,6 +22,7 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
+import 'package:mg_read/features/cache/presentation/cache_management_page.dart';
 import 'package:mg_read/features/diagnostics/presentation/diagnostics_viewer_page.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_destination_page.dart';
@@ -33,7 +34,6 @@ import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_health_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_detail_page.dart';
-import 'package:mg_read/features/plugins/presentation/plugin_cache_management_page.dart';
 import 'package:mg_read/features/profile/presentation/about_page.dart';
 import 'package:mg_read/features/profile/presentation/about_item_placeholder_page.dart';
 import 'package:mg_read/features/profile/presentation/feedback_page.dart';
@@ -501,13 +501,13 @@ class PluginSourceDetailRoute extends GoRouteData with $PluginSourceDetailRoute 
   }
 }
 
-/// Runtime-backed cache maintenance reached from profile settings.
+/// Unified cache maintenance reached from profile settings.
 class PluginCacheRoute extends GoRouteData with $PluginCacheRoute {
   const PluginCacheRoute();
 
   @override
   Widget build(BuildContext context, GoRouterState state) {
-    return PluginCacheManagementPage(
+    return CacheManagementPage(
       onBackRequested: () => _returnToProfile(context),
       onDestinationRequested: (AppNavigationDestination destination) {
         _goToDestination(context, destination);

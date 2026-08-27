@@ -6,15 +6,111 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
+import 'package:mg_read/core/content_library/src/models.dart';
 import 'package:mg_read/core/errors/app_error.dart';
+import 'package:mg_read/core/settings/settings.dart';
+import 'package:mg_read/core/persistence/persistence.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/discovery/application/content_library_source_prefetcher.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/reader/application/reader_launch_failure.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/reader/data/content_library_source_text_reader.dart';
+import 'package:mg_read/features/reader/data/content_library_text_reader_state_store.dart';
 
 void main() {
+  test('shares and round-trips global reader preferences across book stores', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-reader-settings-');
+    final registry = RecordDocumentRegistry(<RecordDocumentCodec>[
+      ...contentLibraryRecordDocumentCodecs,
+      ...settingsRecordDocumentCodecs(AppSettingKeys.registry, scopeKind: 'app'),
+    ]);
+    AppPersistence? persistence = await AppPersistence.open(dataRoot: root, registry: registry);
+    ContentLibrary? library = ContentLibrary.fromPersistence(persistence);
+    AppSettingsManager? settings = AppSettingsManager(
+      store: PersistentSettingsStore(
+        records: persistence.metadataRecords,
+        scope: const ScopeKey(kind: 'app', id: 'primary'),
+        registry: AppSettingKeys.registry,
+      ),
+      registry: AppSettingKeys.registry,
+    );
+    addTearDown(() async {
+      await settings?.close();
+      await library?.close();
+      await persistence?.close();
+      await root.delete(recursive: true);
+    });
+    await settings.initialize();
+    final first = await library.bookshelf.add(
+      title: '第一本',
+      kind: ContentKind.novel,
+      source: const ContentLibraryIngest(
+        pluginId: 'fixture',
+        producerPluginVersion: '1.0.0',
+        dataVersion: 1,
+        opaqueData: {'remoteBookId': 'reader-settings-1'},
+      ),
+    );
+    final expected = const TextReaderPreferences(
+      theme: ReaderThemePreset.deepNight,
+      lastNonNightTheme: ReaderThemePreset.eyeCare,
+      background: ReaderBackgroundPreset.softPaper,
+      font: ReaderFontPreset.serif,
+      customFontId: 'font-1',
+      fontSize: 32,
+      fontWeight: 600,
+      letterSpacing: .8,
+      lineHeight: 2.1,
+      paragraphSpacing: 22,
+      firstLineIndent: 2,
+      horizontalPadding: 40,
+      topPadding: 64,
+      bottomPadding: 64,
+      brightness: .5,
+      navigationMode: ReaderNavigationMode.verticalScroll,
+      singleHandMode: true,
+      keepScreenOn: false,
+      pageAnimation: ReaderPageAnimation.cover,
+      immersiveMode: true,
+      showBookComments: false,
+      showChapterComments: false,
+      showParagraphComments: false,
+    );
+    await ContentLibraryTextReaderStateStore(library, itemId: first.id, settings: settings).savePreferences(expected);
+    await settings.flush();
+    await settings.close();
+    settings = null;
+    await library.close();
+    library = null;
+    await persistence.close();
+    persistence = null;
+
+    persistence = await AppPersistence.open(dataRoot: root, registry: registry);
+    library = ContentLibrary.fromPersistence(persistence);
+    settings = AppSettingsManager(
+      store: PersistentSettingsStore(
+        records: persistence.metadataRecords,
+        scope: const ScopeKey(kind: 'app', id: 'primary'),
+        registry: AppSettingKeys.registry,
+      ),
+      registry: AppSettingKeys.registry,
+    );
+    await settings.initialize();
+    final second = await library.bookshelf.add(
+      title: '第二本',
+      kind: ContentKind.novel,
+      source: const ContentLibraryIngest(
+        pluginId: 'fixture',
+        producerPluginVersion: '1.0.0',
+        dataVersion: 1,
+        opaqueData: {'remoteBookId': 'reader-settings-2'},
+      ),
+    );
+    final restored = await ContentLibraryTextReaderStateStore(library, itemId: second.id, settings: settings).loadPreferences();
+    expect(restored, expected);
+  });
+
   test('opens a persisted shelf source and restores durable reading progress', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-reader-');
     final library = await ContentLibrary.open(dataRoot: root);

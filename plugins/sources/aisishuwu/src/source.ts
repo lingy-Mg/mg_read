@@ -20,7 +20,6 @@ import type {
   ContentSummary,
   DiscoverRequest,
   DiscoverResult,
-  DiscoveryComponent,
   MgReadPluginContext,
   SearchRequest,
   SearchResult,
@@ -55,6 +54,10 @@ import {
   requiredText,
   textOrNull,
 } from './source-parsing.js';
+import {
+  buildHomeDiscoveryComponents,
+  type HomeDiscoveryCollections,
+} from './source-discovery.js';
 
 export interface SourceRules {
   readonly origin: string;
@@ -122,78 +125,10 @@ export class AliceBookHouseSource {
 
   async discover(request: DiscoverRequest): Promise<DiscoverResult> {
     if (request.target === null) {
-      const featured = await this.#loadHomeFeatured();
-      const components: DiscoveryComponent[] = [];
-      if (featured.length !== 0) {
-        components.push(Object.freeze({
-          type: 'section' as const,
-          id: 'source-featured-section',
-          title: '重磅推荐',
-          subtitle: null,
-          children: Object.freeze([Object.freeze({
-            type: 'contentCollection' as const,
-            id: 'source-featured-books',
-            layout: 'carousel' as const,
-            items: Object.freeze(featured.map((content) => Object.freeze({
-              content,
-              rank: null,
-              metric: discoveryMetric(content),
-              recommendation: null,
-            }))),
-            continuation: null,
-          })]),
-        }));
-      }
-      components.push(
-        Object.freeze({
-          type: 'section' as const,
-          id: 'source-categories-section',
-          title: '分类',
-          subtitle: null,
-          children: Object.freeze([
-            Object.freeze({ type: 'text' as const, id: 'source-categories-hint', text: '选择分类后查看书籍。' }),
-            Object.freeze({
-              type: 'categoryCollection' as const,
-              id: 'source-categories',
-              layout: 'grid' as const,
-              categories: Object.freeze(this.#categories.map((category) =>
-              Object.freeze({
-                id: `category:${category.id}`,
-                title: category.title,
-                target: `category:${category.id}`,
-                count: null,
-                url: null,
-              }),
-              )),
-            }),
-          ]),
-        }),
-        Object.freeze({
-          type: 'section' as const,
-          id: 'source-rankings-section',
-          title: '排行',
-          subtitle: null,
-          children: Object.freeze([
-            Object.freeze({
-              type: 'categoryCollection' as const,
-              id: 'source-rankings',
-              layout: 'list' as const,
-              categories: Object.freeze(rankingRules.map((ranking) =>
-                Object.freeze({
-                  id: `ranking:${ranking.id}`,
-                  title: ranking.title,
-                  target: `ranking:${ranking.id}`,
-                  count: null,
-                  url: null,
-                }),
-              )),
-            }),
-          ]),
-        }),
-      );
+      const home = await this.#loadHomeDiscovery();
       return Object.freeze({
         kind: 'document' as const,
-        document: Object.freeze({ components: Object.freeze(components) }),
+        document: Object.freeze({ components: buildHomeDiscoveryComponents(home, this.#categories) }),
       });
     }
 
@@ -591,18 +526,50 @@ export class AliceBookHouseSource {
     return Object.freeze(queries);
   }
 
-  async #loadHomeFeatured(): Promise<readonly ContentSummary[]> {
+  async #loadHomeDiscovery(): Promise<HomeDiscoveryCollections> {
     try {
       const homeUrl = new URL('/', this.#baseUrl);
-      const items = await this.#parseHomeFeatured(
-        await this.#getHtml(homeUrl, undefined, discoveryHomeHtmlCachePolicy),
-        homeUrl,
-      );
-      return await this.#withDiscoveryDetails(items.slice(0, 10));
+      const html = await this.#getHtml(homeUrl, undefined, discoveryHomeHtmlCachePolicy);
+      const featured = await this.#withDiscoveryDetails((await this.#parseHomeFeatured(html, homeUrl)).slice(0, 6));
+      const originals = (await this.#parseHomeNamedCollection(html, homeUrl, '原创专区'))
+        .slice(0, 6)
+        .map((content) => this.#compactHomeSummary(content));
+      const popular = (await this.#parseHomeNamedCollection(html, homeUrl, '热门推荐小说'))
+        .slice(0, 8)
+        .map((content) => this.#compactHomeSummary(content));
+      return Object.freeze({ featured, originals: Object.freeze(originals), popular: Object.freeze(popular) });
     } catch {
       this.context.log.debug('source_discovery_home_unavailable');
-      return Object.freeze([]);
+      return Object.freeze({ featured: Object.freeze([]), originals: Object.freeze([]), popular: Object.freeze([]) });
     }
+  }
+
+  async #parseHomeNamedCollection(
+    html: string,
+    pageUrl: URL,
+    heading: string,
+  ): Promise<readonly ContentSummary[]> {
+    const cheerio = await loadCheerio();
+    const $ = cheerio.load(html);
+    const title = $('h2, .title').filter((_, element) => compactSourceText($(element).text()) === heading).first();
+    if (title.length === 0) return Object.freeze([]);
+    const nearest = title.closest('.innerss, .inner, .container, .hot-box');
+    const section = nearest.length === 0 ? title.parent() : nearest;
+    const seen = new Set<string>();
+    const roots = section.find('.list-group-item, .rec_rullist > ul, .details li').toArray();
+    const books = roots.flatMap((element) => this.#parseBookElement($, element, pageUrl, seen));
+    const linkedBooks = section.find('a[href*="/novel/"]').toArray()
+      .flatMap((element) => this.#parseBookElement($, element, pageUrl, seen));
+    return Object.freeze([...books, ...linkedBooks]);
+  }
+
+  #compactHomeSummary(content: ContentSummary): ContentSummary {
+    return Object.freeze({
+      ...content,
+      description: content.description === null ? null : content.description.slice(0, 120),
+      tags: Object.freeze(content.tags.slice(0, 3)),
+      attributes: Object.freeze(content.attributes.slice(0, 2)),
+    });
   }
 
   async #parseHomeFeatured(

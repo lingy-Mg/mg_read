@@ -48,6 +48,69 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets(
+    'shows book title on the chapter title page and chapter title afterwards',
+    (WidgetTester tester) async {
+      final TextReaderController controller = TextReaderController();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox(
+            width: 360,
+            height: 560,
+            child: TextReaderView(
+              bookId: 'chrome-title-book',
+              controller: controller,
+              dataSource: const _DenseChapterDataSource(),
+              stateStore: const _EmptyStateStore(),
+            ),
+          ),
+        ),
+      );
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      });
+      await tester.pumpAndSettle();
+
+      await controller.showControls();
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey<String>('reader-top-title')),
+            )
+            .data,
+        '新书',
+      );
+
+      final Rect primaryBar = tester.getRect(
+        find.byKey(const ValueKey<String>('reader-primary-top-bar')),
+      );
+      final Rect sourceStrip = tester.getRect(
+        find.byKey(const ValueKey<String>('reader-source-strip')),
+      );
+      final Rect urlRegion = tester.getRect(
+        find.byKey(const ValueKey<String>('reader-source-url-region')),
+      );
+      expect(sourceStrip.top, primaryBar.bottom);
+      expect(urlRegion.right, sourceStrip.right - 12);
+
+      await controller.hideControls();
+      final Future<void> turn = controller.nextPage();
+      await tester.pumpAndSettle();
+      await turn;
+      await controller.showControls();
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey<String>('reader-top-title')),
+            )
+            .data,
+        '第一章',
+      );
+    },
+  );
+
   testWidgets('presents real first text once without an intermediate loader', (
     WidgetTester tester,
   ) async {

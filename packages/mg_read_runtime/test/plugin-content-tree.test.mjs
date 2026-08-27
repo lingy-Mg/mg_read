@@ -14,18 +14,27 @@ test('recursive discovery document accepts bounded semantic components', () => {
   const result = validateDiscoverResult('org.example.tree', '树书源', {
     kind: 'document',
     document: { components: [{
-      type: 'tabs', id: 'tabs', tabs: [{ id: 'all', label: '全部', target: 'all' }], selectedTabId: 'all',
+      type: 'tabs', id: 'tabs', tabs: [{ id: 'all', label: '全部', target: 'all', icon: 'explore' }], selectedTabId: 'all',
     }, {
-      type: 'section', id: 'section', title: '标题', subtitle: null, children: [{
+      type: 'section', id: 'section', title: '标题', subtitle: null, icon: 'recommendation', children: [{
         type: 'group', id: 'group', layout: 'vertical', children: [{
-          type: 'contentCollection', id: 'books', layout: 'list', continuation: { target: 'all', cursor: 'more' },
+          type: 'contentCollection', id: 'books', layout: 'coverGrid', continuation: { target: 'all', cursor: 'more' },
           items: [{ content, rank: null, metric: null, recommendation: null }],
+        }, {
+          type: 'categoryCollection', id: 'categories', layout: 'chips', categories: [
+            { id: 'category:1', title: '玄幻', target: 'category:1', count: null, url: null, icon: 'fantasy' },
+          ],
         }],
       }],
     }] },
   });
   assert.equal(result.kind, 'document');
+  assert.equal(result.document.components[0].tabs[0].icon, 'explore');
+  assert.equal(result.document.components[1].icon, 'recommendation');
   assert.equal(result.document.components[1].type, 'section');
+  assert.equal(result.document.components[1].children[0].children[0].layout, 'coverGrid');
+  assert.equal(result.document.components[1].children[0].children[1].layout, 'chips');
+  assert.equal(result.document.components[1].children[0].children[1].categories[0].icon, 'fantasy');
 });
 
 test('discovery document rejects unknown, duplicate, and misplaced components', () => {
@@ -33,6 +42,7 @@ test('discovery document rejects unknown, duplicate, and misplaced components', 
     [{ type: 'unknown', id: 'x' }],
     [{ type: 'section', id: 'same', title: 'A', subtitle: null, children: [] }, { type: 'divider', id: 'same' }],
     [{ type: 'section', id: 'outer', title: 'A', subtitle: null, children: [{ type: 'tabs', id: 'tabs', tabs: [], selectedTabId: null }] }],
+    [{ type: 'section', id: 'bad-icon', title: 'A', subtitle: null, icon: 'arbitrary-material-icon', children: [] }],
   ]) {
     assert.throws(
       () => validateDiscoverResult('org.example.tree', '树书源', { kind: 'document', document: { components } }),

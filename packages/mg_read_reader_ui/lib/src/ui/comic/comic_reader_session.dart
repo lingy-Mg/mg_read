@@ -45,6 +45,7 @@ extension _ComicReaderSession on _ComicReaderViewState {
     _preferences = ComicReaderPreferences.defaults;
     _preferencesAuthoritative = false;
     _bookmarks = const <ComicReaderBookmark>[];
+    _firstContentPresented = false;
     _failure = null;
     _loading = true;
     if (mounted) setState(() {});

@@ -70,6 +70,8 @@ void main() {
         pluginVersion: '1.0.0',
         remoteContentId: 'cover-book',
         coverUrl: Uri.parse('https://covers.example/cover.png'),
+        chapterCount: 999,
+        attributes: const <LibraryItemAttribute>[LibraryItemAttribute(key: 'heat', label: '热度', value: '565.2万')],
       ),
     );
     final overview = await ContentLibraryOverviewLoader(library).load();
@@ -79,6 +81,9 @@ void main() {
     expect(summary.coverPluginId, 'test-source');
     expect(summary.coverPluginVersion, '1.0.0');
     expect(summary.coverRemoteContentId, 'cover-book');
+    expect(summary.chapterCount, 999);
+    expect(summary.attributes.single.key, 'heat');
+    expect(summary.attributes.single.value, '565.2万');
     await library.close();
     await root.delete(recursive: true);
   });

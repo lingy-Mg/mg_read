@@ -16,7 +16,7 @@ class ComicImageByteCache {
     required this.dataSource,
     this.maxEntries = 18,
     this.maxBytes = 48 * 1024 * 1024,
-    this.maxSingleImageBytes = 24 * 1024 * 1024,
+    this.maxSingleImageBytes = 8 * 1024 * 1024,
     this.maxConcurrentLoads = 4,
     this.maxQueuedLoads = 32,
   });
@@ -42,6 +42,10 @@ class ComicImageByteCache {
 
   int get entryCount => _entries.length;
   int get byteCount => _bytes;
+
+  /// Whether encoded bytes for [image] are already retained in this session.
+  bool contains(String chapterId, ComicImageInfo image) =>
+      _entries.containsKey(_key(chapterId, image));
 
   Future<Uint8List> load(
     String chapterId,

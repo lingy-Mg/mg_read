@@ -350,6 +350,31 @@ test("development projects load in place without creating an installed version",
 
 });
 
+test("single cache usage queries reuse the current development snapshot", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-development-cache-usage-");
+  const dataRoot = join(root, "runtime-data");
+  const developmentRoot = join(root, "sources");
+  await createDevelopmentPlugin(join(developmentRoot, "first-source"), "第一版");
+  const manager = new PluginManager(dataRoot, { developmentPluginRoot: developmentRoot });
+  t.after(() => manager.close());
+  await manager.initialize();
+
+  const laterRoot = join(developmentRoot, "later-source");
+  await createDevelopmentPlugin(laterRoot, "后加入");
+  const laterPackagePath = join(laterRoot, "package.json");
+  const laterPackage = JSON.parse(await readFile(laterPackagePath, "utf8"));
+  laterPackage.mgread.id = "org.example.live-source-later";
+  await writeFile(laterPackagePath, `${JSON.stringify(laterPackage, null, 2)}\n`);
+
+  assert.deepEqual(await manager.listCacheUsage("org.example.live-source-later"), []);
+  assert.deepEqual(await manager.listCacheUsage("org.example.live-source-later"), []);
+  const refreshed = await manager.listCacheUsage();
+  assert.deepEqual(
+    refreshed.map((usage) => usage.pluginId).sort(),
+    ["org.example.live-source", "org.example.live-source-later"],
+  );
+});
+
 test("development transfer trusts the package tool artifact without Runtime revalidation", async (t) => {
   const root = await temporaryDirectory(t, "mgread-trusted-development-artifact-");
   const dataRoot = join(root, "runtime-data");

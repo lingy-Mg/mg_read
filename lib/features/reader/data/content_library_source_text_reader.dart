@@ -5,6 +5,7 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/errors/app_error.dart';
+import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/application/content_library_source_prefetcher.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
@@ -18,11 +19,12 @@ import 'package:mg_read/features/reader/data/content_library_text_reader_state_s
 /// Shelf launches use the app-owned immutable catalog snapshot and only ask the
 /// source gateway for the selected chapter when its local body is unavailable.
 final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, LocalShelfReaderPrewarmer {
-  const ContentLibrarySourceTextReader(this._library, this._gateway, [this._prefetcher]);
+  const ContentLibrarySourceTextReader(this._library, this._gateway, [this._prefetcher, this._settings]);
 
   final ContentLibrary _library;
   final SourceContentGateway _gateway;
   final ContentLibrarySourcePrefetcher? _prefetcher;
+  final AppSettingsManager? _settings;
 
   @override
   Future<ReaderLaunchRequest> launch(String libraryItemId, {ReaderObserver? observer}) async {
@@ -245,6 +247,7 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
     final stateStore = ContentLibraryTextReaderStateStore(
       _library,
       itemId: item.id,
+      settings: _settings,
       initialProgress: session.progress,
       progressAlreadyLoaded: true,
     );

@@ -29,11 +29,24 @@ final class BookshelfRepository {
         if (request.sourceName != null) 'sourceName': request.sourceName,
         if (request.sourceUrl != null) 'sourceUrl': request.sourceUrl.toString(),
         if (request.description != null) 'description': request.description,
+        if (request.language != null) 'language': request.language,
+        if (request.accessCode != null) 'accessCode': request.accessCode,
         if (request.wordCount != null) 'wordCount': request.wordCount,
         if (request.chapterCount != null) 'chapterCount': request.chapterCount,
+        if (request.publishedAt != null) 'publishedAt': request.publishedAt!.toIso8601String(),
+        if (request.updatedAt != null) 'updatedAt': request.updatedAt!.toIso8601String(),
         if (request.statusLabel != null) 'statusLabel': request.statusLabel,
+        if (request.latestChapterId != null) 'latestChapterId': request.latestChapterId,
         if (request.latestChapterTitle != null) 'latestChapterTitle': request.latestChapterTitle,
         if (request.latestChapterUrl != null) 'latestChapterUrl': request.latestChapterUrl.toString(),
+        if (request.latestChapterUpdatedAt != null) 'latestChapterUpdatedAt': request.latestChapterUpdatedAt!.toIso8601String(),
+        if (request.categories.isNotEmpty) 'categories': request.categories,
+        if (request.tags.isNotEmpty) 'tags': request.tags,
+        if (request.attributes.isNotEmpty)
+          'attributes': <Map<String, String>>[
+            for (final attribute in request.attributes)
+              <String, String>{'key': attribute.key, 'label': attribute.label, 'value': attribute.value},
+          ],
         if (request.labels.isNotEmpty) 'labels': request.labels,
       },
     ),
@@ -174,6 +187,12 @@ final class BookshelfRepository {
     await _library._persistence.metadataRecords.delete(
       previous: record,
     ); /* objects remain unless a later bounded maintenance pass proves no references */
+    for (final kind in [_readingProgressKind, _bookmarkKind, _mangaProgressKind, _mangaBookmarkKind]) {
+      final related = await _library._persistence.metadataRecords.list(RecordQuery(recordKind: kind, scope: _scope, parentId: id.value, limit: 1000));
+      for (final child in related.records) {
+        await _library._persistence.metadataRecords.delete(previous: child);
+      }
+    }
   }
 }
 

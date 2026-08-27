@@ -47,6 +47,8 @@ void main() {
     expect(hydrated?.statusLabel, '连载');
     expect(hydrated?.latestChapterTitle, '第二章');
     expect(hydrated?.latestChapterUrl, Uri.parse('https://source.example/book-prefetch/chapter-2'));
+    expect(hydrated?.attributes.single.key, 'heat');
+    expect(hydrated?.attributes.single.value, '12.3万');
     expect(catalog.first.chapterUrl, Uri.parse('https://source.example/book-prefetch/chapter:1'));
     expect(await library.openContent(catalog.first.id), isA<NovelChapterContent>());
     expect(gateway.detailCalls, 1);
@@ -159,7 +161,7 @@ final class _PrefetchGateway implements SourceContentGateway {
         ),
         categories: const <String>['玄幻'],
         tags: const <String>[],
-        attributes: const <PluginContentAttribute>[],
+        attributes: const <PluginContentAttribute>[PluginContentAttribute(key: 'heat', label: '热度', value: '12.3万')],
       ),
       aliases: const <String>[],
       catalogUrl: Uri.parse('https://source.example/book-prefetch'),

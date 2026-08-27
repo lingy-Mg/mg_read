@@ -103,6 +103,27 @@ export async function discover(_request) {
 }
 
 export async function search(request) {
+  if (request.query === "browser-cookie") {
+    await context.browser.sessionV1.request({ version: 1, sessionKey: "fixture", url: "https://example.invalid/protected", method: "GET", headers: { cookie: "forbidden" }, body: null, interaction: "silent", timeoutMs: 5_000, maxResponseBytes: 4_096 });
+  }
+  if (request.query === "browser-session") {
+    const response = await context.browser.sessionV1.request({
+      version: 1,
+      sessionKey: "fixture",
+      url: "https://example.invalid/protected",
+      method: "GET",
+      headers: { accept: "text/html" },
+      body: null,
+      interaction: "silent",
+      timeoutMs: 5_000,
+      maxResponseBytes: 4_096,
+    });
+    return {
+      items: [contentSummary(`browser-${response.status}-${response.verificationState}`)],
+      nextCursor: null,
+      totalCount: 1,
+    };
+  }
   return {
     items: [contentSummary(request.query)],
     nextCursor: null,

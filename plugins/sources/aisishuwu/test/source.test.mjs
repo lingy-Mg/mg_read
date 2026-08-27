@@ -81,12 +81,24 @@ test('discovery home exposes source rankings and ranking targets return the full
           }
           if (url.pathname === '/') {
             return new Response(`
+              <div class="inner">
+                <div class="title">原创专区</div>
+                <article class="list-group-item"><a href="/novel/21.html">原创一</a><a href="/lists/71.html">科幻</a></article>
+                <article class="list-group-item"><a href="/novel/22.html">原创二</a><a href="/lists/71.html">科幻</a></article>
+              </div>
               <div class="hot-box">
                 <div class="hot-title"><h2>重磅推荐</h2></div>
                 <div class="hot-data">
                   <a href="/novel/11.html"><img src="https://cdn.example.com/11.jpg"></a><a href="/novel/11.html">推荐一</a>
                   <a href="/novel/12.html"><img src="https://cdn.example.com/12.jpg"></a><a href="/novel/12.html">推荐二</a>
                 </div>
+              </div>
+              <div class="innerss">
+                <div class="title">热门推荐小说</div>
+                <div class="details"><ul class="item-list">
+                  <li><a class="titles" href="/novel/31.html">热门一</a></li>
+                  <li><a class="titles" href="/novel/32.html">热门二</a></li>
+                </ul></div>
               </div>
             `);
           }
@@ -109,7 +121,7 @@ test('discovery home exposes source rankings and ranking targets return the full
   assert.equal(home.kind, 'document');
   assert.deepEqual(
     home.document.components.map((component) => component.id),
-    ['source-featured-section', 'source-categories-section', 'source-rankings-section'],
+    ['source-featured-section', 'source-originals-section', 'source-navigation-group', 'source-popular-section'],
   );
   const featuredCollection = home.document.components[0].children[0];
   assert.equal(featuredCollection.layout, 'carousel');
@@ -117,11 +129,22 @@ test('discovery home exposes source rankings and ranking targets return the full
     featuredCollection.items.map((item) => item.content.title),
     ['推荐一', '推荐二'],
   );
-  const rankingSection = home.document.components[2];
+  assert.equal(home.document.components[1].children[0].layout, 'coverGrid');
+  const navigationGroup = home.document.components[2];
+  assert.equal(navigationGroup.layout, 'vertical');
+  const categorySection = navigationGroup.children[0];
+  assert.equal(categorySection.children[0].layout, 'chips');
+  assert.equal(categorySection.children[0].categories[0].icon, 'scienceFiction');
+  const rankingSection = navigationGroup.children[1];
   assert.deepEqual(
     rankingSection.children[0].categories.map((category) => category.target),
     ['ranking:day', 'ranking:week', 'ranking:month', 'ranking:total'],
   );
+  assert.deepEqual(
+    rankingSection.children[0].categories.map((category) => category.icon),
+    ['dailyRanking', 'weeklyRanking', 'monthlyRanking', 'allTimeRanking'],
+  );
+  assert.equal(home.document.components[3].children[0].layout, 'compact');
 
   const first = await source.discover({
     target: 'ranking:day',
@@ -534,7 +557,13 @@ test('public API completes the opaque content chain with safe diagnostic phases'
     pageSize: 20,
   });
   assert.equal(categoryPage.kind, 'document');
-  const categoryCollection = categoryPage.document.components[0].children.find(
+  const navigationGroup = categoryPage.document.components.find(
+    (component) => component.id === 'source-navigation-group',
+  );
+  const categorySection = navigationGroup.children.find(
+    (component) => component.id === 'source-categories-section',
+  );
+  const categoryCollection = categorySection.children.find(
     (component) => component.type === 'categoryCollection',
   );
   assert.equal(categoryCollection?.type, 'categoryCollection');

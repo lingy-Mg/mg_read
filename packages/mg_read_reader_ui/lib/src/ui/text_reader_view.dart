@@ -3,6 +3,7 @@
 /// 职责：
 /// - 组合正文排版、章节分页、阅读工具栏与设置入口。
 /// - 处理触摸、鼠标、滚轮和键盘的阅读交互。
+/// - 目录打开后分批补齐全部章节，并将当前章节定位到可视区域中部。
 ///
 /// 注意：
 /// - 阅读器不拥有网络、数据库或宿主路由；数据和退出请求通过公开契约交互。
@@ -97,6 +98,7 @@ class _TextReaderViewState extends State<TextReaderView>
   static const int _chapterCacheLimit = 2;
   static const int _commentSummaryBatchSize = 100;
   static const int _chapterStateBatchSize = 100;
+  static const int _catalogCompletionPageSize = 500;
   static const int _paragraphKeyCacheLimit = 256;
   static const int _verticalRestoreMeasureBatchSize = 128;
   static const int _progressiveParagraphBatchSize = 8;
@@ -121,6 +123,10 @@ class _TextReaderViewState extends State<TextReaderView>
   final Object _controllerBindingOwner = Object();
   final FocusNode _focusNode = FocusNode(debugLabel: 'TextReader');
   final ScrollController _verticalController = ScrollController();
+  final ScrollController _catalogScrollController = ScrollController(
+    keepScrollOffset: false,
+  );
+  final ValueNotifier<int> _catalogRevision = ValueNotifier<int>(0);
   final LinkedHashMap<String, TextChapterContent> _chapterCache =
       LinkedHashMap<String, TextChapterContent>();
   final Map<String, Future<TextChapterContent>> _chapterLoads =
@@ -151,6 +157,7 @@ class _TextReaderViewState extends State<TextReaderView>
   Timer? _noticeTimer;
   Timer? _clockTimer;
   Timer? _wheelResetTimer;
+  Future<void>? _catalogCompletion;
 
   ReaderBookInfo? _book;
   final List<ReaderChapterInfo> _catalog = <ReaderChapterInfo>[];
@@ -158,13 +165,13 @@ class _TextReaderViewState extends State<TextReaderView>
       <String, ReaderChapterInfo>{};
   final Map<int, ReaderChapterInfo> _catalogByIndex =
       <int, ReaderChapterInfo>{};
-  final Map<String, GlobalKey> _catalogItemKeys = <String, GlobalKey>{};
   final Set<String> _catalogPageIds = <String>{};
   String? _catalogCursor;
   int _catalogTotal = 0;
   bool _catalogHasMore = false;
   bool _catalogLoading = false;
   String? _centeredCatalogChapterId;
+  int _catalogCenterRetryCount = 0;
   bool _pageTurnAnimating = false;
   TextChapterContent? _content;
   ReaderChapterInfo? _currentChapterInfo;
@@ -503,6 +510,8 @@ class _TextReaderViewState extends State<TextReaderView>
     _verticalController
       ..removeListener(_handleVerticalScroll)
       ..dispose();
+    _catalogScrollController.dispose();
+    _catalogRevision.dispose();
     _pageController.dispose();
     _focusNode.dispose();
     _controller.unbind(_controllerBindingOwner);
@@ -591,6 +600,8 @@ class _TextReaderViewState extends State<TextReaderView>
                               ],
                             ),
                           ),
+                          if (_controlsVisible && !_readerSettingsVisible)
+                            _buildControlsInteractionLock(),
                           if (_content != null) _buildChrome(),
                           if (_readerSettingsVisible)
                             _buildSettingsInteractionLock(),
@@ -612,6 +623,7 @@ class _TextReaderViewState extends State<TextReaderView>
   }
 
   void _showSettingsSheet() {
+    if (_readerSettingsVisible) return;
     _stopAutoReading();
     _setReaderSettingsVisible(true);
     final int routeSession = _sessionGeneration;

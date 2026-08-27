@@ -14,6 +14,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
     }
     final List<_ComicListEntry> entries = _entries();
     return Listener(
+      key: const ValueKey<String>('comic-reader-content-surface'),
       onPointerSignal: (PointerSignalEvent event) {
         if (event is PointerScrollEvent) _focusNode.requestFocus();
       },
@@ -143,6 +144,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
                   child: Row(
                     children: <Widget>[
                       _chromeButton(
+                        key: const ValueKey<String>('comic-reader-back-action'),
                         icon: Icons.arrow_back_rounded,
                         label: ComicReaderStrings.back,
                         onPressed: () => unawaited(_requestExit()),
@@ -160,6 +162,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
                         ),
                       ),
                       _chromeButton(
+                        key: const ValueKey<String>('comic-reader-add-bookmark'),
                         icon: Icons.bookmark_add_outlined,
                         label: ComicReaderStrings.addBookmark,
                         onPressed: () => unawaited(_addBookmark()),
@@ -183,16 +186,19 @@ extension _ComicReaderChrome on _ComicReaderViewState {
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: <Widget>[
                       _bottomButton(
+                        const ValueKey<String>('comic-reader-catalog'),
                         Icons.list_alt_rounded,
                         ComicReaderStrings.catalog,
                         _showCatalog,
                       ),
                       _bottomButton(
+                        const ValueKey<String>('comic-reader-bookmarks'),
                         Icons.bookmarks_outlined,
                         ComicReaderStrings.bookmarks,
                         _showBookmarks,
                       ),
                       _bottomButton(
+                        const ValueKey<String>('comic-reader-settings'),
                         Icons.tune_rounded,
                         ComicReaderStrings.settings,
                         _showSettings,
@@ -209,11 +215,13 @@ extension _ComicReaderChrome on _ComicReaderViewState {
   }
 
   Widget _chromeButton({
+    Key? key,
     required IconData icon,
     required String label,
     required VoidCallback onPressed,
   }) {
     return IconButton(
+      key: key,
       constraints: const BoxConstraints.tightFor(width: 48, height: 48),
       tooltip: label,
       icon: Icon(icon),
@@ -221,8 +229,9 @@ extension _ComicReaderChrome on _ComicReaderViewState {
     );
   }
 
-  Widget _bottomButton(IconData icon, String label, VoidCallback onPressed) {
+  Widget _bottomButton(Key? key, IconData icon, String label, VoidCallback onPressed) {
     return Semantics(
+      key: key,
       button: true,
       label: label,
       child: InkWell(

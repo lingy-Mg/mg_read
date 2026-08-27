@@ -3,6 +3,18 @@ part of 'text_reader_view.dart';
 // ignore_for_file: invalid_use_of_protected_member
 
 extension _TextReaderContentWidgets on _TextReaderViewState {
+  /// 工具栏显示时覆盖正文，保留其上方 chrome 的交互。
+  Widget _buildControlsInteractionLock() {
+    return Positioned.fill(
+      child: GestureDetector(
+        key: const ValueKey<String>('reader-controls-interaction-lock'),
+        behavior: HitTestBehavior.opaque,
+        excludeFromSemantics: true,
+        onTap: _dismissReaderControlsFromReader,
+      ),
+    );
+  }
+
   /// 覆盖正文并阻止设置弹层之外的输入继续传给阅读器。
   ///
   /// 该层位于 Navigator 的设置路由之下，因此不会拦截设置面板本身；
@@ -265,18 +277,18 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
       },
       onTapUp: (TapUpDetails details) =>
           _handleHorizontalTap(details.localPosition),
-      onHorizontalDragStart: _usesDirectPageTurns && !_readerSettingsVisible
+      onHorizontalDragStart: _usesDirectPageTurns && !_readerInteractionBlocked
           ? (_) {
               _stopAutoReading();
               _directDragDelta = 0;
             }
           : null,
-      onHorizontalDragUpdate: _usesDirectPageTurns && !_readerSettingsVisible
+      onHorizontalDragUpdate: _usesDirectPageTurns && !_readerInteractionBlocked
           ? (DragUpdateDetails details) {
               _directDragDelta += details.primaryDelta ?? 0;
             }
           : null,
-      onHorizontalDragEnd: _usesDirectPageTurns && !_readerSettingsVisible
+      onHorizontalDragEnd: _usesDirectPageTurns && !_readerInteractionBlocked
           ? (_) {
               final double delta = _directDragDelta;
               _directDragDelta = 0;
@@ -310,7 +322,7 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
             },
             child: PageView.builder(
               controller: _pageController,
-              physics: _readerSettingsVisible || _usesDirectPageTurns
+              physics: _readerInteractionBlocked || _usesDirectPageTurns
                   ? const NeverScrollableScrollPhysics()
                   : const PageScrollPhysics(),
               itemCount: _pages.length + 2,
@@ -335,7 +347,7 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
       MediaQuery.disableAnimationsOf(context);
 
   void _handlePointerSignal(PointerSignalEvent event) {
-    if (_readerSettingsVisible ||
+    if (_readerInteractionBlocked ||
         event is! PointerScrollEvent ||
         _changingChapter) {
       return;

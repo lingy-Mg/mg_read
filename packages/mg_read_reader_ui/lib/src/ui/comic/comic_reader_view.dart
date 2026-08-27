@@ -83,7 +83,7 @@ class _ComicReaderViewState extends State<ComicReaderView> {
   static const Duration _saveDelay = Duration(milliseconds: 800);
   static const int _catalogPageSize = 50;
   static const int _metadataWindowLimit = 3;
-  static const int _maxSingleImageBytes = 24 * 1024 * 1024;
+  static const int _maxSingleImageBytes = 8 * 1024 * 1024;
   static const double _chapterHeaderExtent = 54;
   static const double _boundaryExtent = 72;
   static const double _defaultAspectRatio = .75;
@@ -139,6 +139,7 @@ class _ComicReaderViewState extends State<ComicReaderView> {
   bool _restoring = false;
   bool _preferencesDirty = false;
   bool _preferencesAuthoritative = false;
+  bool _firstContentPresented = false;
   double _viewportWidth = 0;
   double _viewportHeight = 0;
   double _topPadding = 0;

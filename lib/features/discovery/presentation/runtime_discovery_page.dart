@@ -3,7 +3,8 @@
 /// 职责：
 /// - 渲染来源提供的发现内容、分类和内容列表。
 /// - 转发分类、搜索、详情和导航操作。
-/// - 将加载/空/失败状态交给独立展示组件，保持长列表渲染器聚焦。
+/// - 将递归组件树编排为封面网格、横向书架、紧凑榜单和自适应组合容器。
+/// - 将加载/空/失败状态交给独立展示组件，保持页面容器聚焦。
 ///
 /// 注意：
 /// - 页面只渲染已由 application 层准备好的数据，不在 build() 中执行 IO。
@@ -22,7 +23,9 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
+import 'package:mg_read/features/discovery/presentation/discovery_composite_components.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_content_state.dart';
+import 'package:mg_read/features/discovery/presentation/discovery_semantic_icons.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_list_tag.dart';
@@ -226,8 +229,8 @@ class _DiscoveryComponentRenderer extends StatelessWidget {
         component: PluginDiscoveryTabsComponent(id: component.id, tabs: tabs, selectedTabId: selectedTabId),
         onSelected: onTabSelected,
       ),
-      PluginDiscoverySectionComponent(:final title, :final subtitle, :final children) => _SectionComponent(
-        component: PluginDiscoverySectionComponent(id: component.id, title: title, subtitle: subtitle, children: children),
+      PluginDiscoverySectionComponent(:final title, :final subtitle, :final children, :final icon) => _SectionComponent(
+        component: PluginDiscoverySectionComponent(id: component.id, title: title, subtitle: subtitle, children: children, icon: icon),
         hideTitle: hideSectionTitle,
         child: _ChildrenComponent(children: children, renderer: this),
       ),
@@ -302,6 +305,7 @@ class _TabsComponent extends StatelessWidget {
         final tab = component.tabs[index];
         return ChoiceChip(
           key: ValueKey<String>('runtime-discovery-tab-${tab.id}'),
+          avatar: tab.icon == null ? null : Icon(discoverySemanticIcon(tab.icon), size: 17),
           label: Text(tab.label),
           selected: tab.id == component.selectedTabId,
           onSelected: (_) => onSelected(tab.target),
@@ -322,7 +326,19 @@ class _SectionComponent extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: <Widget>[
-      if (!hideTitle) Semantics(header: true, child: Text(component.title, style: Theme.of(context).textTheme.titleMedium)),
+      if (!hideTitle)
+        Semantics(
+          header: true,
+          child: Row(
+            children: <Widget>[
+              if (component.icon != null) ...<Widget>[
+                Icon(discoverySemanticIcon(component.icon), size: 19, color: AppThemeTokens.of(context).accent),
+                const SizedBox(width: AppSpacing.compact),
+              ],
+              Expanded(child: Text(component.title, style: Theme.of(context).textTheme.titleMedium)),
+            ],
+          ),
+        ),
       if (!hideTitle) const SizedBox(height: AppSpacing.compact),
       if (component.subtitle != null) ...<Widget>[
         const SizedBox(height: AppSpacing.unit),
@@ -357,21 +373,53 @@ class _GroupComponent extends StatelessWidget {
         )
         .toList(growable: false);
     return switch (component.layout) {
-      PluginDiscoveryGroupLayout.vertical => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+      PluginDiscoveryGroupLayout.vertical => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          for (var index = 0; index < children.length; index++) ...<Widget>[
+            children[index],
+            if (index != children.length - 1) const SizedBox(height: AppSpacing.section),
+          ],
+        ],
+      ),
       PluginDiscoveryGroupLayout.horizontal => SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: children),
-      ),
-      PluginDiscoveryGroupLayout.grid => LayoutBuilder(
-        builder: (context, constraints) => Wrap(
-          spacing: AppSpacing.compact,
-          runSpacing: AppSpacing.compact,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: children
-              .map((child) => SizedBox(width: (constraints.maxWidth - AppSpacing.compact) / 2, child: child))
+              .map(
+                (child) => Padding(
+                  padding: const EdgeInsets.only(right: AppSpacing.regular),
+                  child: SizedBox(width: 320, child: _compositeCard(context, child)),
+                ),
+              )
               .toList(growable: false),
         ),
       ),
+      PluginDiscoveryGroupLayout.grid => LayoutBuilder(
+        builder: (context, constraints) {
+          final columnCount = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint ? 2 : 1;
+          final width = (constraints.maxWidth - AppSpacing.regular * (columnCount - 1)) / columnCount;
+          return Wrap(
+            spacing: AppSpacing.regular,
+            runSpacing: AppSpacing.regular,
+            children: children.map((child) => SizedBox(width: width, child: _compositeCard(context, child))).toList(growable: false),
+          );
+        },
+      ),
     };
+  }
+
+  Widget _compositeCard(BuildContext context, Widget child) {
+    final tokens = AppThemeTokens.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tokens.surface,
+        borderRadius: AppRadii.discoveryPanel,
+        border: Border.all(color: tokens.divider),
+      ),
+      child: Padding(padding: const EdgeInsets.all(AppSpacing.comfortable), child: child),
+    );
   }
 }
 
@@ -421,6 +469,22 @@ class _ContentCollection extends StatelessWidget {
           if (index >= 0) onContentPressed(component.items[index].content);
         },
       ),
+      PluginDiscoveryContentLayout.coverGrid => DiscoveryCoverGrid(
+        items: component.items,
+        onPressed: onContentPressed,
+        isInBookshelf: isInBookshelf,
+      ),
+      PluginDiscoveryContentLayout.shelf => DiscoveryBookShelf(
+        items: component.items,
+        onPressed: onContentPressed,
+        isInBookshelf: isInBookshelf,
+      ),
+      PluginDiscoveryContentLayout.compact => DiscoveryCompactBookList(
+        items: component.items,
+        onPressed: onContentPressed,
+        isInBookshelf: isInBookshelf,
+        showRanks: component.items.any((item) => item.rank != null),
+      ),
       PluginDiscoveryContentLayout.ranking => SizedBox(
         height: AppSpacing.discoveryBoardHeight,
         child: DiscoveryRankingBoard(
@@ -457,53 +521,7 @@ class _CategoryCollection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final viewData = component.categories.map(_categoryData).toList(growable: false);
-    if (component.layout == PluginDiscoveryCategoryLayout.grid && component.categories.length <= 8) {
-      return SizedBox(
-        height: AppSpacing.discoveryBoardHeight,
-        child: DiscoveryCategoryBoard(
-          title: '分类',
-          categories: viewData,
-          onPressed: () {},
-          onCategoryPressed: (category) {
-            final target = category.target;
-            if (target != null) onSelected(target);
-          },
-        ),
-      );
-    }
-    final children = component.categories
-        .map(
-          (category) => OutlinedButton(
-            key: ValueKey<String>('runtime-discovery-category-${category.id}'),
-            onPressed: () => onSelected(category.target),
-            child: Text(category.title),
-          ),
-        )
-        .toList(growable: false);
-    return switch (component.layout) {
-      PluginDiscoveryCategoryLayout.grid => LayoutBuilder(
-        builder: (context, constraints) {
-          final int columnCount = discoveryAdaptiveColumnCount(constraints.maxWidth, children.length);
-          final double gap = AppSpacing.compact;
-          final double itemWidth = (constraints.maxWidth - gap * (columnCount - 1)) / columnCount;
-          return Wrap(
-            spacing: gap,
-            runSpacing: gap,
-            children: children.map((child) => SizedBox(width: itemWidth, child: child)).toList(growable: false),
-          );
-        },
-      ),
-      PluginDiscoveryCategoryLayout.list => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          for (var index = 0; index < children.length; index++) ...<Widget>[
-            children[index],
-            if (index < children.length - 1) const SizedBox(height: AppSpacing.compact),
-          ],
-        ],
-      ),
-    };
+    return DiscoveryCategoryCollection(categories: component.categories, layout: component.layout, onSelected: onSelected);
   }
 }
 
@@ -523,13 +541,6 @@ DiscoveryRankedBookViewData _rankedData(PluginDiscoveryContentItem item) => Disc
   author: item.content.author,
   heat: item.metric?.value,
   coverVariant: _coverVariant(item.content.id),
-);
-
-DiscoveryCategoryViewData _categoryData(PluginDiscoveryCategory category) => DiscoveryCategoryViewData(
-  title: category.title,
-  count: category.count == null ? null : '${category.count} 本',
-  icon: DiscoveryCategoryIcon.values[category.id.codeUnits.fold<int>(0, (sum, value) => sum + value) % DiscoveryCategoryIcon.values.length],
-  target: category.target,
 );
 
 String? _nestedPageTitle(List<PluginDiscoveryComponent> components) {

@@ -20,6 +20,7 @@ import {
   DependencyStore,
   extractPluginArchive,
   PluginArchiveError,
+  PluginBrowserSessionError,
   PluginInstaller,
   PluginManager,
   PluginPackageError,
@@ -182,6 +183,18 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
   assert.equal(mangaContent.text, null);
   assert.equal(mangaContent.pages[0].mimeType, null);
   assert.equal(mangaContent.pages[0].width, null);
+  assert.equal(mangaContent.pages[0].resourcePolicy, "sessionOnly");
+  assert.equal(mangaContent.pages[0].expiresAt, null);
+
+  for (const [resourcePolicy, expiresAt] of [["sessionOnly", null], ["refreshable", "2026-08-28T00:00:00Z"], ["durable", null]]) {
+    const page = { id: `page:${resourcePolicy}`, index: 0, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null, resourcePolicy, expiresAt };
+    assert.equal(validateContentResult("org.example.nulls", "空值书源", { contentKind: "manga", chapterId: "chapter:policy", title: null, updatedAt: null, text: null, pages: [page] }).pages[0].resourcePolicy, resourcePolicy);
+  }
+  assert.throws(() => validateContentResult("org.example.nulls", "空值书源", { contentKind: "manga", chapterId: "chapter:bad", title: null, updatedAt: null, text: null, pages: [{ id: "page:bad", index: 0, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null, resourcePolicy: "refreshable", expiresAt: null }] }), PluginContentValidationError);
+  const underManifestBudget = Array.from({ length: 60 }, (_, index) => ({ id: `page:${index}:${"x".repeat(8192)}`, index, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null }));
+  assert.equal(validateContentResult("org.example.nulls", "空值书源", { contentKind: "manga", chapterId: "chapter:budget", title: null, updatedAt: null, text: null, pages: underManifestBudget }).pages.length, 60);
+  const overManifestBudget = Array.from({ length: 63 }, (_, index) => ({ id: `page:${index}:${"x".repeat(8192)}`, index, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null }));
+  assert.throws(() => validateContentResult("org.example.nulls", "空值书源", { contentKind: "manga", chapterId: "chapter:budget", title: null, updatedAt: null, text: null, pages: overManifestBudget }), PluginContentValidationError);
 
   assert.throws(
     () =>
@@ -614,6 +627,65 @@ test("plugin calls give cancel and timeout exactly one terminal event", async (t
   assert.equal(
     events.filter((event) => event.code === "plugin_invocation_completed").length,
     0,
+  );
+});
+
+test("browser.session.v1 is bounded, host-owned, and preserves stable failures", async (t) => {
+  const dataRoot = await temporaryDirectory(t, "mgread-plugin-browser-session-");
+  await new PluginInstaller(dataRoot).installProject(fixtureRoot);
+  const calls = [];
+  const manager = new PluginManager(dataRoot, {
+    browserSession: {
+      async request(request) {
+        calls.push(request);
+        return {
+          version: 1,
+          status: 200,
+          finalUrl: request.url,
+          headers: { "content-type": "text/html" },
+          body: "fixture-browser-body",
+          userAgent: "Fixture Browser",
+          verificationState: "verified",
+        };
+      },
+    },
+  });
+  await manager.initialize();
+  const result = await manager.search(
+    "org.mgread.runtime.fixture",
+    { query: "browser-session", cursor: null, pageSize: 20 },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
+  );
+  assert.equal(result.items[0].title, "标准插件：browser-200-verified");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].pluginId, "org.mgread.runtime.fixture");
+  assert.equal(calls[0].headers.cookie, undefined);
+  assert.equal(calls[0].headers["user-agent"], undefined);
+  assert.equal(calls[0].signal.aborted, false);
+
+  await assert.rejects(
+    manager.search("org.mgread.runtime.fixture", { query: "browser-cookie", cursor: null, pageSize: 20 }, new AbortController().signal, String(Date.now() + 5_000)),
+    (error) => error?.code === "invalid_request",
+  );
+
+  const interaction = new PluginManager(dataRoot, { browserSession: { async request() { throw new PluginBrowserSessionError("interaction_required"); } } });
+  await interaction.initialize();
+  await assert.rejects(
+    interaction.search("org.mgread.runtime.fixture", { query: "browser-session", cursor: null, pageSize: 20 }, new AbortController().signal, String(Date.now() + 5_000)),
+    (error) => error?.code === "interaction_required",
+  );
+
+  const unsupported = new PluginManager(dataRoot);
+  await unsupported.initialize();
+  await assert.rejects(
+    unsupported.search(
+      "org.mgread.runtime.fixture",
+      { query: "browser-session", cursor: null, pageSize: 20 },
+      new AbortController().signal,
+      String(Date.now() + 5_000),
+    ),
+    (error) => error?.code === "unsupported",
   );
 });
 

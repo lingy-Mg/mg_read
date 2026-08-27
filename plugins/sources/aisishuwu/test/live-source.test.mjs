@@ -17,18 +17,28 @@ test('live source completes category, search, detail, catalog, and content flow'
     http: { fetch },
     log: { debug() {}, info() {}, warn() {}, error() {} },
     app: { runtimeVersion: 'live-test', nodeVersion: process.versions.node, pluginApi: 1 },
-    plugin: { id: 'org.mgread.aisishuwu', version: '0.2.7' },
+    plugin: { id: 'org.mgread.aisishuwu', version: '0.2.9' },
   });
 
   const categories = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });
   assert.equal(categories.kind, 'document');
+  assert.ok(Buffer.byteLength(JSON.stringify(categories), 'utf8') <= 52 * 1024);
   const featured = categories.document.components.find((component) => component.id === 'source-featured-section');
   assert.equal(featured?.type, 'section');
   assert.equal(featured?.children[0].layout, 'carousel');
   assert.ok(featured?.children[0].items.length > 1);
-  const categorySection = categories.document.components.find((component) => component.id === 'source-categories-section');
+  const originals = categories.document.components.find((component) => component.id === 'source-originals-section');
+  assert.equal(originals?.children[0].layout, 'coverGrid');
+  assert.ok(originals?.children[0].items.length > 0);
+  const popular = categories.document.components.find((component) => component.id === 'source-popular-section');
+  assert.equal(popular?.children[0].layout, 'compact');
+  assert.ok(popular?.children[0].items.length > 0);
+  const navigation = categories.document.components.find((component) => component.id === 'source-navigation-group');
+  assert.equal(navigation?.type, 'group');
+  const categorySection = navigation.children.find((component) => component.id === 'source-categories-section');
   assert.equal(categorySection?.type, 'section');
-  const target = categorySection.children[1].categories[0].target;
+  assert.equal(categorySection.children[0].layout, 'chips');
+  const target = categorySection.children[0].categories[0].target;
 
   const discovery = await plugin.discover({ target, cursor: null, collectionId: null, pageSize: 5 });
   assert.equal(discovery.kind, 'document');

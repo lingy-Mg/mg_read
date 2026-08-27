@@ -39,6 +39,8 @@ import 'package:mg_read/features/discovery/application/bookshelf_membership.dart
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/cache/application/cover_cache_manager.dart';
+import 'package:mg_read/features/cache/data/content_library_cover_cache_gateway.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 
@@ -235,8 +237,10 @@ Future<void> bootstrapMgReadApp({
         if (contentLibrary != null || contentLibraryFactory != null)
           bookCoverBytesLoaderProvider.overrideWithValue(DeferredBookCoverBytesLoader(getLibrary)),
         if (contentLibrary != null || contentLibraryFactory != null)
+          coverCacheGatewayProvider.overrideWithValue(ContentLibraryCoverCacheGateway(getLibrary)),
+        if (contentLibrary != null || contentLibraryFactory != null)
           libraryReaderLauncherProvider.overrideWith(
-            (ref) => DeferredLibraryReaderLauncher(getLibrary, ref.read(sourceContentGatewayProvider), diagnostics),
+            (ref) => DeferredLibraryReaderLauncher(getLibrary, ref.read(sourceContentGatewayProvider), diagnostics, resolvedManager),
           ),
       ],
       child: AppSettingsLifecycleHost(
@@ -376,5 +380,27 @@ LibraryItemSummary _summaryFromShelfRequest(String mutationId, BookshelfAddReque
   title: request.title,
   author: request.author,
   coverUrl: request.coverUrl,
+  coverPluginId: request.pluginId,
+  coverPluginVersion: request.pluginVersion,
+  coverRemoteContentId: request.remoteContentId,
   sourceName: request.sourceName,
+  sourceUrl: request.sourceUrl,
+  description: request.description,
+  language: request.language,
+  accessCode: request.accessCode,
+  wordCount: request.wordCount,
+  chapterCount: request.chapterCount,
+  publishedAt: request.publishedAt,
+  updatedAt: request.updatedAt,
+  statusLabel: request.statusLabel,
+  latestChapterId: request.latestChapterId,
+  latestChapterTitle: request.latestChapterTitle,
+  latestChapterUrl: request.latestChapterUrl,
+  latestChapterUpdatedAt: request.latestChapterUpdatedAt,
+  categories: request.categories,
+  tags: request.tags,
+  attributes: <LibraryItemSummaryAttribute>[
+    for (final attribute in request.attributes)
+      LibraryItemSummaryAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
+  ],
 );

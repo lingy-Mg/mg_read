@@ -9,7 +9,7 @@
 | 主应用数据库、设置、书架、目录、正文、受控文件 | [主应用持久化与 Content Library](../core.md#主应用持久化与-content-library) |
 | Runtime 生命周期、Facade、Supervisor、WS/HTTP、平台宿主 | [Runtime 与平台宿主](../core.md#runtime-与平台宿主) |
 | 插件 package、lock、artifact、安装、开发加载 | [标准插件项目、artifact 与安装](../core.md#标准插件项目artifact-与安装) |
-| 真实书源、发现、搜索、详情、目录和资源代理 | [插件内容 API](../core.md#插件内容-api) |
+| 真实书源、fixture/CF mock、发现、搜索、详情、目录、资源代理与源级验证 | [插件内容 API](../core.md#插件内容-api) |
 | 阅读器公共 API、会话、进度、书签、阅读器 UI | [阅读器](../core.md#阅读器) |
 | 主应用页面、状态、共享组件、主题和异步生命周期 | [UI、状态与组件](../core.md#ui状态与组件) |
 | App/Runtime 日志、隐私、span、诊断查看器 | [诊断与隐私](../core.md#诊断与隐私) |

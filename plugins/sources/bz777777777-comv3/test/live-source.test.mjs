@@ -1,0 +1,1 @@
+import assert from'node:assert/strict';import test from'node:test';test('live probe records CF gate without claiming browser verification',{timeout:30000},async()=>{const response=await fetch('https://www.bz777777777.com/');const body=await response.text();assert.ok(response.status===403||/(?:cf-challenge|Just a moment)/iu.test(body));});

@@ -48,12 +48,16 @@ class LibraryBookCover extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final (Color start, Color end) = _gradientFor(tokens);
-    final asyncBytes = coverRequest == null ? null : ref.watch(bookCoverBytesProvider(coverRequest!));
+    final List<int>? suppliedBytes = coverBytes?.isNotEmpty ?? false ? coverBytes : null;
+    final List<int>? cachedBytes = suppliedBytes == null && coverRequest != null ? BookCoverMemoryCache.peek(coverRequest!) : null;
+    final asyncBytes = suppliedBytes == null && cachedBytes == null && coverRequest != null
+        ? ref.watch(bookCoverBytesProvider(coverRequest!))
+        : null;
     final List<int>? loadedBytes = switch (asyncBytes) {
       AsyncData<List<int>?>(:final value) => value,
       _ => null,
     };
-    final bytes = coverBytes?.isNotEmpty ?? false ? coverBytes : loadedBytes;
+    final bytes = suppliedBytes ?? cachedBytes ?? loadedBytes;
     final isLoading = (bytes?.isNotEmpty ?? false) == false && asyncBytes?.isLoading == true;
 
     return Semantics(
@@ -71,6 +75,7 @@ class LibraryBookCover extends ConsumerWidget {
                     width: width,
                     height: height,
                     fit: BoxFit.cover,
+                    gaplessPlayback: true,
                     errorBuilder: (context, error, stackTrace) => _placeholder(tokens, start, end, isLoading: false),
                   ),
                 )

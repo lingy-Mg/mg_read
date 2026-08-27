@@ -3,19 +3,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/diagnostics/application/diagnostics_capture_preference_store.dart';
 import 'package:mg_read/features/diagnostics/application/diagnostics_viewer_gateway.dart';
 import 'package:mg_read/features/diagnostics/presentation/diagnostics_viewer_page.dart';
 
 import '../../../core/diagnostics/persistent_diagnostics_testkit.dart';
 
 void main() {
-  testWidgets('opens bounded memory capture and reads details only after expansion', (WidgetTester tester) async {
+  testWidgets('defaults to key logs and reads details only after explicit realtime selection', (WidgetTester tester) async {
     await _setViewport(tester, const Size(800, 1200));
     final gateway = _FakeDiagnosticsViewerGateway();
-    await tester.pumpWidget(_host(gateway));
+    final preferences = _FakeDiagnosticsCapturePreferenceStore();
+    await tester.pumpWidget(_host(gateway, preferences));
     await tester.pumpAndSettle();
 
+    expect(gateway.startedModes, isEmpty);
+    expect(find.text('仅关键日志'), findsOneWidget);
+
+    await tester.tap(find.text('实时详情'));
+    await tester.pumpAndSettle();
     expect(gateway.startedModes, <DiagnosticsDetailMode>[DiagnosticsDetailMode.memoryOnly]);
+    expect(preferences.realtimeDetailsEnabled, isTrue);
     expect(find.text('实时详情 · 仅内存'), findsOneWidget);
     expect(find.text('app.bootstrap.success'), findsOneWidget);
     expect(gateway.detailReads, 0);
@@ -49,13 +57,52 @@ void main() {
 
   testWidgets('shows only the App event feed after Runtime history removal', (WidgetTester tester) async {
     final gateway = _FakeDiagnosticsViewerGateway();
-    await tester.pumpWidget(_host(gateway));
+    await tester.pumpWidget(_host(gateway, _FakeDiagnosticsCapturePreferenceStore()));
     await tester.pumpAndSettle();
 
     expect(find.text('Runtime'), findsNothing);
     expect(find.text('app.bootstrap.success'), findsOneWidget);
     expect(gateway.requestedSources, contains(DiagnosticsViewerSource.app));
-    expect(gateway.startedSources, <DiagnosticsViewerSource>[DiagnosticsViewerSource.app]);
+    expect(gateway.startedSources, isEmpty);
+  });
+
+  testWidgets('restores realtime details but does not persist TXT capture', (WidgetTester tester) async {
+    final preferences = _FakeDiagnosticsCapturePreferenceStore(realtimeDetailsEnabled: true);
+    final firstGateway = _FakeDiagnosticsViewerGateway();
+    await tester.pumpWidget(_host(firstGateway, preferences));
+    await tester.pumpAndSettle();
+
+    expect(firstGateway.startedModes, <DiagnosticsDetailMode>[DiagnosticsDetailMode.memoryOnly]);
+    expect(find.text('实时详情 · 仅内存'), findsOneWidget);
+
+    await tester.tap(find.text('保存详情 TXT'));
+    await tester.pumpAndSettle();
+    expect(preferences.realtimeDetailsEnabled, isTrue);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    final reopenedGateway = _FakeDiagnosticsViewerGateway();
+    await tester.pumpWidget(_host(reopenedGateway, preferences));
+    await tester.pumpAndSettle();
+
+    expect(reopenedGateway.startedModes, <DiagnosticsDetailMode>[DiagnosticsDetailMode.memoryOnly]);
+    expect(find.text('实时详情 · 仅内存'), findsOneWidget);
+
+    await tester.tap(find.text('仅关键'));
+    await tester.pumpAndSettle();
+    expect(preferences.realtimeDetailsEnabled, isFalse);
+    expect(find.text('仅关键日志'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    final keyLogsGateway = _FakeDiagnosticsViewerGateway();
+    await tester.pumpWidget(_host(keyLogsGateway, preferences));
+    await tester.pumpAndSettle();
+
+    expect(keyLogsGateway.startedModes, isEmpty);
+    expect(find.text('仅关键日志'), findsOneWidget);
   });
 
   test('starts an App capture without requiring the Runtime Facade', () async {
@@ -80,14 +127,31 @@ Future<void> _setViewport(WidgetTester tester, Size size) async {
   await tester.pump();
 }
 
-Widget _host(DiagnosticsViewerGateway gateway) {
+Widget _host(DiagnosticsViewerGateway gateway, DiagnosticsCapturePreferenceStore preferences) {
   return ProviderScope(
-    overrides: [diagnosticsViewerGatewayProvider.overrideWithValue(gateway)],
+    overrides: [
+      diagnosticsViewerGatewayProvider.overrideWithValue(gateway),
+      diagnosticsCapturePreferenceStoreProvider.overrideWithValue(preferences),
+    ],
     child: MaterialApp(
       theme: AppTheme.light(),
       home: DiagnosticsViewerPage(onBackRequested: () {}, onDestinationRequested: (_) {}),
     ),
   );
+}
+
+final class _FakeDiagnosticsCapturePreferenceStore implements DiagnosticsCapturePreferenceStore {
+  _FakeDiagnosticsCapturePreferenceStore({this.realtimeDetailsEnabled = false});
+
+  bool realtimeDetailsEnabled;
+
+  @override
+  Future<bool> loadRealtimeDetailsEnabled() async => realtimeDetailsEnabled;
+
+  @override
+  Future<void> saveRealtimeDetailsEnabled(bool enabled) async {
+    realtimeDetailsEnabled = enabled;
+  }
 }
 
 final class _FakeDiagnosticsViewerGateway implements DiagnosticsViewerGateway {

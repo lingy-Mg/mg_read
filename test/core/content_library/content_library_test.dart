@@ -87,6 +87,40 @@ void main() {
     expect(progress?.totalReadingSeconds, 3723);
   });
 
+  test('persists semantic bookmarks by book and keeps repeated saves idempotent', () async {
+    final first = await library.bookshelf.add(title: '书签一', kind: ContentKind.novel, source: source);
+    final second = await library.bookshelf.add(
+      title: '书签二',
+      kind: ContentKind.novel,
+      source: const ContentLibraryIngest(
+        pluginId: 'fixture',
+        producerPluginVersion: '1.0.0',
+        dataVersion: 1,
+        opaqueData: {'remoteBookId': 'book-2'},
+      ),
+    );
+    final bookmark = LibraryBookmark(
+      id: 'bookmark-1',
+      itemId: first.id,
+      chapterId: 'chapter-1',
+      paragraphId: 'paragraph-2',
+      characterOffset: 4,
+      chapterTitle: '第一章',
+      excerpt: '摘录',
+      createdAtUtc: DateTime.utc(2026, 8, 27),
+    );
+    await library.bookmarks.save(bookmark);
+    await library.bookmarks.save(bookmark);
+    expect((await library.bookmarks.load(first.id)).map((item) => item.id), ['bookmark-1']);
+    expect(await library.bookmarks.load(second.id), isEmpty);
+
+    await library.close();
+    library = await ContentLibrary.open(dataRoot: root);
+    expect((await library.bookmarks.load(first.id)).single.excerpt, '摘录');
+    await library.bookmarks.remove(first.id, 'bookmark-1');
+    expect(await library.bookmarks.load(first.id), isEmpty);
+  });
+
   test('content metadata inlines bounded writes but keeps catalog-sized batches in a worker', () async {
     final registry = RecordDocumentRegistry(contentLibraryRecordDocumentCodecs);
     final progressCodec = registry.require('content_library_reading_progress', 'content_library');
@@ -180,6 +214,33 @@ void main() {
     );
 
     expect(diagnostics.sink.events.where((event) => event.eventName.startsWith('persistence.operation.')), hasLength(2));
+  });
+
+  test('reports and clears global and legacy cover cache bytes', () async {
+    final item = await library.bookshelf.addFromSource(
+      BookshelfAddRequest(
+        title: '旧封面缓存',
+        author: null,
+        kind: ContentKind.novel,
+        pluginId: 'fixture',
+        pluginVersion: '1.0.0',
+        remoteContentId: 'legacy-cover',
+      ),
+    );
+    final key = CoverKey(
+      pluginId: 'fixture',
+      pluginVersion: '1.0.0',
+      remoteContentId: 'clearable-cover',
+      coverUrl: Uri.parse('https://covers.example/clearable-cover.png'),
+    );
+    await library.bookshelf.saveCover(id: item.id, bytes: const <int>[8, 9, 10], mimeType: 'image/png');
+    await library.covers.save(key: key, bytes: const <int>[1, 2, 3, 4, 5], mimeType: 'image/png');
+
+    expect(await library.covers.usageBytes(), 8);
+    expect(await library.covers.clear(), 8);
+    expect(await library.covers.usageBytes(), 0);
+    expect(await library.covers.read(key), isNull);
+    expect(await library.bookshelf.readCover(item.id), isNull);
   });
 
   test('persists privacy visibility without changing progress or content', () async {

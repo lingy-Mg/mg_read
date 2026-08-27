@@ -16,6 +16,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
@@ -24,12 +25,12 @@ import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/library/application/library_book_remover.dart';
-import 'package:mg_read/features/library/application/library_book_detail_failure.dart';
 import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
 import 'package:mg_read/features/library/application/library_book_removal_operation.dart';
 import 'package:mg_read/features/library/application/library_book_visibility_changer.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/application/library_page_state.dart';
+import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
@@ -149,29 +150,31 @@ class LibraryPage extends ConsumerWidget {
         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('书籍详情暂不可用。')));
         return;
       }
-      late final LibraryBookDetailLaunchData detail;
-      try {
-        detail = await detailLauncher.load(book.id);
-      } on Object catch (error) {
-        if (!context.mounted) return;
-        final failure = LibraryBookDetailFailure.fromError(error);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(failure.reason.userMessage)));
-        return;
-      }
-      if (!context.mounted) return;
-      await showSourceContentDetailSheet(
+      final LibraryItemSummary? summary = state.overview!.items.cast<LibraryItemSummary?>().firstWhere(
+        (item) => item?.id == book.id,
+        orElse: () => null,
+      );
+      final seed = detailLauncher
+          .load(book.id)
+          .then<SourceContentDetailSeed>(
+            (detail) => SourceContentDetailSeed(
+              pluginId: detail.pluginId,
+              id: detail.remoteContentId,
+              initialContent: detail.initialContent,
+              initialCatalog: detail.initialCatalog,
+              sourceName: detail.sourceName,
+            ),
+          );
+      await showDeferredSourceContentDetailSheet(
         context,
+        seed: seed,
+        previewContent: _libraryDetailPreview(summary, book),
         gateway: sourceGateway,
-        pluginId: detail.pluginId,
-        id: detail.remoteContentId,
-        initialContent: detail.initialContent,
-        initialCatalog: detail.initialCatalog,
-        initialSourceName: detail.sourceName,
         shelfState: SourceDetailShelfState.alreadyAdded,
-        useModalBottomSheet: true,
         onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter}) async {
           prepareAndOpen(book.id);
         },
+        onStartReading: () async => prepareAndOpen(book.id),
         onShelfAction: (SourceShelfAction action) async {
           switch (action) {
             case SourceShelfAction.setPrivate:
@@ -275,6 +278,51 @@ class LibraryPage extends ConsumerWidget {
       ),
     );
   }
+}
+
+PluginContentSummary _libraryDetailPreview(LibraryItemSummary? item, LibraryBookListItemViewData book) {
+  final latestTitle = item?.latestChapterTitle;
+  return PluginContentSummary(
+    id: item?.coverRemoteContentId ?? book.id,
+    title: item?.title ?? book.title,
+    contentKind: PluginContentKind.novel,
+    author: item?.author,
+    url: item?.sourceUrl,
+    coverUrl: item?.coverUrl ?? book.coverUrl,
+    coverBytes: item?.coverBytes ?? book.coverBytes,
+    description: item?.description,
+    language: item?.language,
+    status: switch (item?.statusLabel) {
+      '连载' => PluginContentStatus.ongoing,
+      '已完结' => PluginContentStatus.completed,
+      '暂停更新' => PluginContentStatus.hiatus,
+      _ => PluginContentStatus.unknown,
+    },
+    access: switch (item?.accessCode) {
+      'free' => PluginAccessKind.free,
+      'paid' => PluginAccessKind.paid,
+      'mixed' => PluginAccessKind.mixed,
+      _ => PluginAccessKind.unknown,
+    },
+    wordCount: item?.wordCount,
+    chapterCount: item?.chapterCount,
+    publishedAt: item?.publishedAt,
+    updatedAt: item?.updatedAt,
+    latestChapter: latestTitle == null
+        ? null
+        : PluginLatestChapter(
+            id: item?.latestChapterId,
+            title: latestTitle,
+            url: item?.latestChapterUrl,
+            updatedAt: item?.latestChapterUpdatedAt,
+          ),
+    categories: item?.categories ?? const <String>[],
+    tags: item?.tags ?? const <String>[],
+    attributes: <PluginContentAttribute>[
+      for (final attribute in item?.attributes ?? const <LibraryItemSummaryAttribute>[])
+        PluginContentAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
+    ],
+  );
 }
 
 final class _LibraryTerminalFrameSignal extends StatefulWidget {

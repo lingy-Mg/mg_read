@@ -255,6 +255,14 @@ void main() {
       expect(cacheUsage, hasLength(1));
       expect(cacheUsage.single.pluginId, 'org.mgread.flutter.fixture');
       expect(cacheUsage.single.bytes, 6);
+      final singleCacheUsage = await runtime.invoke(
+        const PluginCacheUsageInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
+        ),
+      );
+      expect(singleCacheUsage, hasLength(1));
+      expect(singleCacheUsage.single.pluginId, 'org.mgread.flutter.fixture');
+      expect(singleCacheUsage.single.bytes, 6);
       final cacheClear = await runtime.invoke(
         const ClearPluginCacheInvocation(
           pluginId: 'org.mgread.flutter.fixture',
@@ -336,6 +344,13 @@ void main() {
           chapterId: chapters.items.single.id,
         ),
       );
+      final mangaContent = await runtime.invoke(
+        SourceContentInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
+          id: result.items.single.id,
+          chapterId: 'manga',
+        ),
+      );
       await _waitForDiagnosticCodes(diagnostics, const <String>[
         'plugin_load_started',
         'plugin_log_emitted',
@@ -369,12 +384,46 @@ void main() {
             .whereType<PluginDiscoverySectionComponent>(),
         isNotEmpty,
       );
+      final discoverySection = document.document.components
+          .whereType<PluginDiscoverySectionComponent>()
+          .single;
+      expect(discoverySection.icon, PluginDiscoveryIcon.recommendation);
+      expect(
+        discoverySection.children
+            .whereType<PluginDiscoveryContentCollectionComponent>()
+            .map((component) => component.layout),
+        containsAll(<PluginDiscoveryContentLayout>[
+          PluginDiscoveryContentLayout.featured,
+          PluginDiscoveryContentLayout.coverGrid,
+          PluginDiscoveryContentLayout.shelf,
+          PluginDiscoveryContentLayout.compact,
+        ]),
+      );
+      expect(
+        discoverySection.children
+            .whereType<PluginDiscoveryCategoryCollectionComponent>()
+            .single
+            .layout,
+        PluginDiscoveryCategoryLayout.chips,
+      );
+      expect(
+        discoverySection.children
+            .whereType<PluginDiscoveryCategoryCollectionComponent>()
+            .single
+            .categories
+            .single
+            .icon,
+        PluginDiscoveryIcon.fantasy,
+      );
       expect(detail.catalogUrl, isNull);
       expect(chapters.items.single.order, 0);
       expect(largeChapters.items, hasLength(733));
       expect(largeChapters.items.last.order, 732);
       expect(content.contentKind, PluginContentKind.novel);
       expect(content.text, 'Flutter 标准正文。');
+      expect(mangaContent.contentKind, PluginContentKind.manga);
+      expect(mangaContent.pages.single.resourcePolicy, PluginMangaPageResourcePolicy.sessionOnly);
+      expect(mangaContent.pages.single.expiresAt, isNull);
     },
   );
 
@@ -787,6 +836,7 @@ export async function discover() {
       id: 'featured-section',
       title: '精选',
       subtitle: null,
+      icon: 'recommendation',
       children: [{
         type: 'contentCollection',
         id: 'featured',
@@ -798,6 +848,22 @@ export async function discover() {
           metric: null,
           recommendation: null,
         }],
+      }, ...['coverGrid', 'shelf', 'compact'].map((layout) => ({
+        type: 'contentCollection',
+        id: `layout-\${layout}`,
+        layout,
+        continuation: null,
+        items: [{
+          content: summary(layout),
+          rank: layout === 'compact' ? 1 : null,
+          metric: null,
+          recommendation: null,
+        }],
+      })), {
+        type: 'categoryCollection',
+        id: 'category-chips',
+        layout: 'chips',
+        categories: [{ id: 'fantasy', title: '玄幻', target: 'fantasy', count: null, url: null, icon: 'fantasy' }],
       }],
     }] },
   };
@@ -830,6 +896,7 @@ export async function getChapters(request) {
   };
 }
 export async function getContent(request) {
+  if (request.chapterId === 'manga') return { contentKind: 'manga', chapterId: request.chapterId, title: null, updatedAt: null, text: null, pages: [{ id: 'page:0', index: 0, url: 'https://example.invalid/page/0', mimeType: null, width: null, height: null }] };
   return {
     contentKind: 'novel',
     chapterId: request.chapterId,

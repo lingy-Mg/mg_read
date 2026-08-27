@@ -1,3 +1,14 @@
+/// Content Library 书架详情启动适配器。
+///
+/// 职责：
+/// - 将持久化书架摘要和有界目录预览映射为共享详情页输入。
+/// - 保留热度等结构化属性供本地优先渲染。
+///
+/// 注意：
+/// - 只读取首批目录，避免长按等待完整大目录反序列化。
+/// - 远端详情和完整目录刷新由共享详情页异步执行。
+library;
+
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
@@ -6,8 +17,7 @@ import 'package:mg_read/features/library/application/library_book_detail_launche
 import 'package:mg_read/features/library/application/library_book_detail_failure.dart';
 
 /// Adapts app-owned shelf metadata and catalog to the shared detail UI input.
-final class ContentLibraryBookDetailLauncher
-    implements LibraryBookDetailLauncher {
+final class ContentLibraryBookDetailLauncher implements LibraryBookDetailLauncher {
   const ContentLibraryBookDetailLauncher(this._library);
 
   final ContentLibrary _library;
@@ -16,25 +26,16 @@ final class ContentLibraryBookDetailLauncher
   Future<LibraryBookDetailLaunchData> load(String bookId) async {
     final item = await _loadItem(bookId);
     if (item == null) {
-      throw _failure(
-        LibraryBookDetailFailureReason.itemMissing,
-        AppErrorCode.notFound,
-      );
+      throw _failure(LibraryBookDetailFailureReason.itemMissing, AppErrorCode.notFound);
     }
     if (item.kind != ContentKind.novel) {
-      throw _failure(
-        LibraryBookDetailFailureReason.unsupportedContent,
-        AppErrorCode.unsupported,
-      );
+      throw _failure(LibraryBookDetailFailureReason.unsupportedContent, AppErrorCode.unsupported);
     }
     if (item.source == null) {
-      throw _failure(
-        LibraryBookDetailFailureReason.sourceMissing,
-        AppErrorCode.invalidFormat,
-      );
+      throw _failure(LibraryBookDetailFailureReason.sourceMissing, AppErrorCode.invalidFormat);
     }
     final source = item.source!;
-    final catalog = await _loadCatalog(item.id);
+    final catalog = await _loadCatalogPreview(item.id);
     return LibraryBookDetailLaunchData(
       pluginId: source.pluginId,
       remoteContentId: source.remoteContentId,
@@ -47,24 +48,27 @@ final class ContentLibraryBookDetailLauncher
         url: item.sourceUrl,
         coverUrl: item.coverUrl,
         description: item.description,
-        language: null,
+        language: item.language,
         status: _statusFromLabel(item.statusLabel),
-        access: PluginAccessKind.unknown,
+        access: _accessFromCode(item.accessCode),
         wordCount: item.wordCount,
         chapterCount: item.chapterCount ?? catalog.length,
-        publishedAt: null,
-        updatedAt: null,
+        publishedAt: item.publishedAt,
+        updatedAt: item.updatedAt,
         latestChapter: item.latestChapterTitle == null
             ? null
             : PluginLatestChapter(
-                id: null,
+                id: item.latestChapterId,
                 title: item.latestChapterTitle!,
                 url: item.latestChapterUrl,
-                updatedAt: null,
+                updatedAt: item.latestChapterUpdatedAt,
               ),
-        categories: item.labels,
-        tags: const <String>[],
-        attributes: const <PluginContentAttribute>[],
+        categories: item.categories.isEmpty ? item.labels : item.categories,
+        tags: item.tags,
+        attributes: <PluginContentAttribute>[
+          for (final attribute in item.attributes)
+            PluginContentAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
+        ],
       ),
       initialCatalog: PluginChaptersResult(
         pluginId: source.pluginId,
@@ -91,21 +95,15 @@ final class ContentLibraryBookDetailLauncher
     try {
       return await _library.getLibraryItem(LibraryItemId(bookId));
     } on Object catch (error) {
-      throw LibraryBookDetailFailure(
-        reason: LibraryBookDetailFailureReason.itemRead,
-        error: AppError.fromUnknown(error),
-      );
+      throw LibraryBookDetailFailure(reason: LibraryBookDetailFailureReason.itemRead, error: AppError.fromUnknown(error));
     }
   }
 
-  Future<List<CatalogEntry>> _loadCatalog(LibraryItemId itemId) async {
+  Future<List<CatalogEntry>> _loadCatalogPreview(LibraryItemId itemId) async {
     try {
-      return await _library.listAllCatalog(itemId);
+      return (await _library.listCatalog(itemId, const CatalogQuery(limit: 100))).items;
     } on Object catch (error) {
-      throw LibraryBookDetailFailure(
-        reason: LibraryBookDetailFailureReason.catalogRead,
-        error: AppError.fromUnknown(error),
-      );
+      throw LibraryBookDetailFailure(reason: LibraryBookDetailFailureReason.catalogRead, error: AppError.fromUnknown(error));
     }
   }
 
@@ -116,8 +114,13 @@ final class ContentLibraryBookDetailLauncher
     _ => PluginContentStatus.unknown,
   };
 
-  LibraryBookDetailFailure _failure(
-    LibraryBookDetailFailureReason reason,
-    AppErrorCode code,
-  ) => LibraryBookDetailFailure(reason: reason, error: AppError.fromCode(code));
+  PluginAccessKind _accessFromCode(String? code) => switch (code) {
+    'free' => PluginAccessKind.free,
+    'paid' => PluginAccessKind.paid,
+    'mixed' => PluginAccessKind.mixed,
+    _ => PluginAccessKind.unknown,
+  };
+
+  LibraryBookDetailFailure _failure(LibraryBookDetailFailureReason reason, AppErrorCode code) =>
+      LibraryBookDetailFailure(reason: reason, error: AppError.fromCode(code));
 }

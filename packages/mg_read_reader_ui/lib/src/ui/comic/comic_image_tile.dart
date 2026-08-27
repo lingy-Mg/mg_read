@@ -48,6 +48,7 @@ class ComicProgressiveImageTile extends StatefulWidget {
     required this.palette,
     required this.onFailure,
     required this.decodeBudget,
+    this.onPresented,
     this.commentFeed,
     this.bookId,
     this.onOpenComments,
@@ -62,6 +63,7 @@ class ComicProgressiveImageTile extends StatefulWidget {
   final ReaderPalette palette;
   final ValueChanged<Object> onFailure;
   final ComicDecodedImageBudget decodeBudget;
+  final ValueChanged<bool>? onPresented;
   final ReaderCommentFeed? commentFeed;
   final String? bookId;
   final ValueChanged<ReaderCommentTarget>? onOpenComments;
@@ -78,10 +80,13 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
   int? _decodeWidth;
   int? _decodeHeight;
   bool _reportedError = false;
+  bool _presented = false;
+  late bool _cacheHit;
 
   @override
   void initState() {
     super.initState();
+    _cacheHit = widget.cache.contains(widget.chapterId, widget.image);
     _future = widget.cache.load(widget.chapterId, widget.image);
   }
 
@@ -96,6 +101,8 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
         oldWidget.height != widget.height) {
       _evictDecodedImage();
       _reportedError = false;
+      _presented = false;
+      _cacheHit = widget.cache.contains(widget.chapterId, widget.image);
       _future = widget.cache.load(widget.chapterId, widget.image);
     }
   }
@@ -142,6 +149,12 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
               builder:
                   (BuildContext context, AsyncSnapshot<Uint8List> snapshot) {
                     if (snapshot.hasData) {
+                      if (!_presented) {
+                        _presented = true;
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) widget.onPresented?.call(_cacheHit);
+                        });
+                      }
                       final Uint8List bytes = snapshot.data!;
                       final double devicePixelRatio =
                           MediaQuery.devicePixelRatioOf(context);
@@ -185,6 +198,9 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
                           widget.image.index + 1,
                         ),
                         child: Image(
+                          key: ValueKey<String>(
+                            'comic-reader-image-${widget.chapterId}-${widget.image.id}',
+                          ),
                           image: _decodedProvider!,
                           width: double.infinity,
                           height: widget.height,
@@ -254,6 +270,9 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
       color: const Color(0xFF17191B),
       child: Center(
         child: TextButton.icon(
+          key: ValueKey<String>(
+            'comic-reader-image-retry-${widget.chapterId}-${widget.image.id}',
+          ),
           onPressed: _retry,
           icon: const Icon(Icons.refresh_rounded),
           label: const Text(ComicReaderStrings.imageFailed),

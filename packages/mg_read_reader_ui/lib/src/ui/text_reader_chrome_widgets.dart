@@ -20,87 +20,105 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
   }
 
   Widget _buildTopBar() {
-    return Material(
-      color: _palette.panel,
-      elevation: 0,
-      child: SafeArea(
-        bottom: false,
-        child: Container(
-          height: 76,
-          decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: _palette.divider)),
-          ),
-          child: Stack(
-            children: <Widget>[
-              Positioned(
-                left: 56,
-                right: 96,
-                top: 0,
-                height: 45,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    _book?.title ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 56,
-                right: 56,
-                bottom: 3,
-                height: 24,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: _palette.panel.withValues(alpha: .76),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: _buildCompactSourceRow(),
-                ),
-              ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: IconButton(
-                  key: const ValueKey<String>('reader-back-action'),
-                  tooltip: ReaderStrings.back,
-                  onPressed: _requestExit,
-                  icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                ),
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    IconButton(
-                      tooltip: _isCurrentBookmarked
-                          ? ReaderStrings.removeBookmark
-                          : ReaderStrings.addBookmark,
-                      onPressed: _toggleBookmark,
-                      icon: Icon(
-                        _isCurrentBookmarked
-                            ? Icons.bookmark_rounded
-                            : Icons.bookmark_border_rounded,
-                        color: _isCurrentBookmarked ? _palette.accent : null,
+    return SafeArea(
+      bottom: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Material(
+            key: const ValueKey<String>('reader-primary-top-bar'),
+            color: _palette.panel,
+            elevation: 0,
+            child: SizedBox(
+              height: 48,
+              child: Stack(
+                children: <Widget>[
+                  Positioned(
+                    left: 56,
+                    right: 96,
+                    top: 0,
+                    bottom: 0,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _topBarTitle,
+                        key: const ValueKey<String>('reader-top-title'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
-                    IconButton(
-                      tooltip: ReaderStrings.refreshChapter,
-                      onPressed: _content == null
-                          ? null
-                          : () => unawaited(_refreshCurrentChapter()),
-                      icon: const Icon(Icons.refresh_rounded, size: 21),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: IconButton(
+                      key: const ValueKey<String>('reader-back-action'),
+                      tooltip: ReaderStrings.back,
+                      onPressed: _requestExit,
+                      icon: const Icon(Icons.arrow_back_ios_new_rounded),
                     ),
-                  ],
-                ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        IconButton(
+                          tooltip: _isCurrentBookmarked
+                              ? ReaderStrings.removeBookmark
+                              : ReaderStrings.addBookmark,
+                          onPressed: _toggleBookmark,
+                          icon: Icon(
+                            _isCurrentBookmarked
+                                ? Icons.bookmark_rounded
+                                : Icons.bookmark_border_rounded,
+                            color: _isCurrentBookmarked
+                                ? _palette.accent
+                                : null,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: ReaderStrings.refreshChapter,
+                          onPressed: _content == null
+                              ? null
+                              : () => unawaited(_refreshCurrentChapter()),
+                          icon: const Icon(Icons.refresh_rounded, size: 21),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          Material(
+            key: const ValueKey<String>('reader-source-strip'),
+            color: _palette.panel.withValues(alpha: .76),
+            elevation: 0,
+            child: Container(
+              height: 28,
+              padding: const EdgeInsets.only(left: 56, right: 12),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: _palette.divider)),
+              ),
+              child: _buildCompactSourceRow(),
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  String get _topBarTitle {
+    final ReaderBookInfo? book = _book;
+    if (book == null) return '';
+    final bool chapterTitleIsOnPage =
+        _preferences.navigationMode == ReaderNavigationMode.horizontalPages &&
+        (_pages.isEmpty ||
+            (_pageIndex >= 0 &&
+                _pageIndex < _pages.length &&
+                _pages[_pageIndex].showsTitle));
+    return chapterTitleIsOnPage ? book.title : _content?.title ?? book.title;
   }
 
   Widget _buildCompactSourceRow() {
@@ -111,9 +129,11 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
       height: 22,
       child: Row(
         children: <Widget>[
-          Flexible(
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 104),
             child: Text(
               sourceName,
+              key: const ValueKey<String>('reader-source-name'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -126,6 +146,7 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
           Container(width: 1, height: 14, color: _palette.divider),
           const SizedBox(width: 8),
           Expanded(
+            key: const ValueKey<String>('reader-source-url-region'),
             child: _buildSourceUrlAction(
               sourceUrl: sourceUrl,
               sourceUri: sourceUri,
@@ -292,6 +313,7 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
                         : Icons.nightlight_outlined,
                     ReaderStrings.night,
                     _toggleNightTheme,
+                    key: const Key('reader-toolbar-night-theme'),
                   ),
                   _barAction(
                     Icons.tune_rounded,

@@ -114,11 +114,23 @@ final class ContentLibrarySourcePrefetcher {
             sourceName: detail.sourceName.isEmpty ? item.sourceName : detail.sourceName,
             sourceUrl: detail.catalogUrl ?? detail.summary.url ?? item.sourceUrl,
             description: detail.summary.description,
+            language: detail.summary.language,
+            accessCode: detail.summary.access.code,
             wordCount: detail.summary.wordCount,
             chapterCount: detail.summary.chapterCount,
+            publishedAt: detail.summary.publishedAt,
+            updatedAt: detail.summary.updatedAt,
             statusLabel: _statusLabel(detail.summary.status),
+            latestChapterId: detail.summary.latestChapter?.id,
             latestChapterTitle: detail.summary.latestChapter?.title,
             latestChapterUrl: detail.summary.latestChapter?.url,
+            latestChapterUpdatedAt: detail.summary.latestChapter?.updatedAt,
+            categories: detail.summary.categories,
+            tags: detail.summary.tags,
+            attributes: <LibraryItemAttribute>[
+              for (final attribute in detail.summary.attributes)
+                LibraryItemAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
+            ],
             labels: <String>[
               ...detail.summary.categories,
               ...detail.summary.tags,

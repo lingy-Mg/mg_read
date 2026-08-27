@@ -79,6 +79,11 @@ class ComicReaderObserver {
   /// Called after a comic session successfully starts.
   FutureOr<void> onSessionStarted(String bookId) {}
 
+  /// Called exactly once after the first real image is presented.
+  FutureOr<void> onFirstContentPresented(
+    ComicFirstContentPresentation presentation,
+  ) {}
+
   /// Called as the session ends with its latest semantic [progress].
   FutureOr<void> onSessionEnded(String bookId, ComicReaderProgress? progress) {}
 

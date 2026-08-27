@@ -27,6 +27,8 @@
   Runtime；不在同一 VM 热替换。Android 由一个专用线程持有一个 Javet `NodeRuntime`。
 - desktop 只接受显式 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` 与 Windows 手工 Internet Settings；
   PAC/WPAD 需要按目标 URL 的专用 resolver，不能展平成固定代理。
+- `browser.session.v1` provider 是唯一浏览器反向能力：插件仅传有界同源请求，平台持有 Cookie、UA、
+  验证 UI 与会话缓存；新增平台实现必须覆盖取消/超时/交互需求和跨插件隔离，不能退回 raw callback。
 
 ## 固定工具链与验证
 

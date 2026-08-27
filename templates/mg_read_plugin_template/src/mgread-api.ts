@@ -10,6 +10,11 @@ export interface MgReadPluginContext {
   readonly http: {
     fetch(input: string | URL, init?: RequestInit): Promise<Response>;
   };
+  readonly browser: {
+    readonly sessionV1: {
+      request(request: BrowserSessionRequestV1): Promise<BrowserSessionResponseV1>;
+    };
+  };
   /** Creates a process-scoped Runtime-owned URL whose request is handled by `resource`. */
   readonly resource: {
     proxy(request: Record<string, unknown>): string;
@@ -31,16 +36,42 @@ export interface MgReadPluginContext {
   };
 }
 
+export interface BrowserSessionRequestV1 {
+  readonly version: 1;
+  readonly sessionKey: string;
+  readonly url: string;
+  readonly method: 'GET' | 'POST';
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body: string | null;
+  readonly interaction: 'allow' | 'silent';
+  readonly timeoutMs: number;
+  readonly maxResponseBytes: number;
+}
+
+export interface BrowserSessionResponseV1 {
+  readonly version: 1;
+  readonly status: number;
+  readonly finalUrl: string;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body: string;
+  readonly userAgent: string | null;
+  readonly verificationState: 'not-required' | 'required' | 'pending' | 'verified' | 'failed';
+}
+
 export type ContentKind = 'novel' | 'manga';
 export type ContentStatus = 'ongoing' | 'completed' | 'hiatus' | 'unknown';
 export type AccessKind = 'free' | 'paid' | 'mixed' | 'unknown';
 export type DiscoveryContentLayout =
   | 'featured'
   | 'carousel'
+  | 'coverGrid'
+  | 'shelf'
+  | 'compact'
   | 'ranking'
   | 'list';
-export type DiscoveryCategoryLayout = 'grid' | 'list';
+export type DiscoveryCategoryLayout = 'grid' | 'chips' | 'list';
 export type DiscoveryGroupLayout = 'vertical' | 'horizontal' | 'grid';
+export type DiscoveryIcon = 'allTimeRanking' | 'audio' | 'book' | 'books' | 'category' | 'classic' | 'completed' | 'dailyRanking' | 'explore' | 'fanFiction' | 'fantasy' | 'free' | 'game' | 'globe' | 'history' | 'horror' | 'hot' | 'lightNovel' | 'manga' | 'military' | 'monthlyRanking' | 'mystery' | 'newRelease' | 'ongoing' | 'other' | 'ranking' | 'recommendation' | 'romance' | 'rural' | 'school' | 'scienceFiction' | 'sports' | 'star' | 'system' | 'timeTravel' | 'trending' | 'urban' | 'weeklyRanking' | 'wuxia';
 
 export interface ContentAttribute {
   readonly key: string;
@@ -125,6 +156,7 @@ export interface DiscoverRequest {
 }
 
 export interface DiscoveryTab {
+  readonly icon?: DiscoveryIcon | null;
   readonly id: string;
   readonly label: string;
   readonly target: string;
@@ -143,6 +175,7 @@ export interface DiscoveryContentItem {
 }
 
 export interface DiscoveryCategory {
+  readonly icon?: DiscoveryIcon | null;
   readonly id: string;
   readonly title: string;
   readonly target: string;
@@ -167,6 +200,7 @@ export interface DiscoverySection {
   readonly id: string;
   readonly title: string;
   readonly subtitle: string | null;
+  readonly icon?: DiscoveryIcon | null;
   readonly children: readonly DiscoveryComponent[];
 }
 
@@ -245,6 +279,10 @@ export interface MangaPage {
   readonly id: string;
   readonly index: number;
   readonly url: string;
+  /** Optional for backwards compatibility; omitted means sessionOnly. */
+  readonly resourcePolicy?: 'sessionOnly' | 'refreshable' | 'durable';
+  /** Required only for refreshable pages; otherwise omit or use null. */
+  readonly expiresAt?: string | null;
   readonly mimeType: string | null;
   readonly width: number | null;
   readonly height: number | null;

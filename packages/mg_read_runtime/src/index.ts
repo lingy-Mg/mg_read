@@ -66,6 +66,19 @@ export type {
   PluginInstallResult,
 } from "./plugin-installer.js";
 export { PluginManager, PluginManagerError } from "./plugin-manager.js";
+export {
+  maximumBrowserRequestBytes,
+  maximumBrowserResponseBytes,
+  maximumBrowserTimeoutMs,
+  PluginBrowserSessionError,
+} from "./plugin-browser-session.js";
+export type {
+  PluginBrowserHostRequest,
+  PluginBrowserSessionProvider,
+  PluginBrowserSessionRequest,
+  PluginBrowserSessionResponse,
+  PluginBrowserVerificationState,
+} from "./plugin-browser-session.js";
 export type {
   InstalledPluginSnapshot,
   PluginInstallationUsage,
@@ -102,6 +115,7 @@ export type {
   PluginDiscoveryAppendResult,
   PluginDiscoveryGroupComponent,
   PluginDiscoveryGroupLayout,
+  PluginDiscoveryIcon,
   PluginDiscoveryMetric,
   PluginDiscoverySectionComponent,
   PluginDiscoveryTab,

@@ -46,13 +46,13 @@ extension _TextReaderSession on _TextReaderViewState {
     _catalogById.clear();
     _catalogByIndex.clear();
     _catalogPageIds.clear();
-    _catalogItemKeys.clear();
     _book = null;
     _bookmarks = const <ReaderBookmark>[];
     _catalogCursor = null;
     _catalogTotal = 0;
     _catalogHasMore = false;
     _catalogLoading = false;
+    _catalogCompletion = null;
     _content = null;
     _currentChapterInfo = null;
     _pages = const <ReaderPage>[];
@@ -75,6 +75,7 @@ extension _TextReaderSession on _TextReaderViewState {
     _firstContentLayoutDuration = Duration.zero;
     _firstContentPreparation = ReaderPaginationPreparation.firstPage;
     _centeredCatalogChapterId = null;
+    _catalogCenterRetryCount = 0;
     if (mounted) setState(() {});
     unawaited(_releaseAwake());
     if (persistenceCheckpoint != null) await persistenceCheckpoint;
@@ -127,9 +128,7 @@ extension _TextReaderSession on _TextReaderViewState {
           : loadedProgress;
       _preferences = results[3] as TextReaderPreferences;
       unawaited(_loadPersistedCustomFont());
-      if (!_isNightTheme(_preferences.theme)) {
-        _lastNonNightTheme = _preferences.theme;
-      }
+      _lastNonNightTheme = _preferences.lastNonNightTheme;
       // Bookmark/state/comment work is deliberately deferred until after the
       // first real text frame so it cannot compete with first-page layout.
       _bookmarks = const <ReaderBookmark>[];
@@ -283,7 +282,10 @@ extension _TextReaderSession on _TextReaderViewState {
     }
   }
 
-  void _mergeCatalog(ChapterCatalogPage page) {
+  void _mergeCatalog(
+    ChapterCatalogPage page, {
+    bool refreshChapterStates = true,
+  }) {
     final bool firstPage = _catalogPageIds.isEmpty && _catalogCursor == null;
     final String? nextCursor = page.nextCursor;
     if (page.total < 0 ||
@@ -349,7 +351,9 @@ extension _TextReaderSession on _TextReaderViewState {
     _catalogCursor = page.nextCursor;
     _catalogTotal = page.total;
     _catalogHasMore = page.hasMore;
-    unawaited(_refreshLoadedChapterStates());
+    if (refreshChapterStates) {
+      unawaited(_refreshLoadedChapterStates());
+    }
   }
 
   Future<ReaderChapterInfo> _chapterInfoAtIndex(int index) async {
@@ -394,32 +398,54 @@ extension _TextReaderSession on _TextReaderViewState {
     return chapter;
   }
 
-  Future<void> _loadMoreCatalog({bool notify = true}) async {
-    if (_catalogLoading || !_catalogHasMore) return;
+  Future<void> _loadCompleteCatalog({bool notify = true}) {
+    final Future<void>? active = _catalogCompletion;
+    if (active != null) return active;
+    if (!_catalogHasMore) return Future<void>.value();
+    late final Future<void> request;
+    request = _loadCompleteCatalogPages(notify: notify).whenComplete(() {
+      if (identical(_catalogCompletion, request)) {
+        _catalogCompletion = null;
+      }
+    });
+    _catalogCompletion = request;
+    return request;
+  }
+
+  Future<void> _loadCompleteCatalogPages({required bool notify}) async {
     final int generation = _sessionGeneration;
     final TextReaderDataSource dataSource = widget.dataSource;
     final String bookId = widget.bookId;
-    final String? cursor = _catalogCursor;
     _catalogLoading = true;
+    _catalogRevision.value++;
     if (notify && mounted) setState(() {});
     try {
-      final ChapterCatalogPage page = await dataSource.loadChapterCatalog(
-        bookId,
-        cursor: cursor,
-      );
-      if (!_isCatalogSessionCurrent(generation, dataSource, bookId) ||
-          cursor != _catalogCursor) {
-        return;
+      while (_catalogHasMore &&
+          _isCatalogSessionCurrent(generation, dataSource, bookId)) {
+        final String? cursor = _catalogCursor;
+        final ChapterCatalogPage page = await dataSource.loadChapterCatalog(
+          bookId,
+          cursor: cursor,
+          pageSize: _TextReaderViewState._catalogCompletionPageSize,
+        );
+        if (!_isCatalogSessionCurrent(generation, dataSource, bookId) ||
+            cursor != _catalogCursor) {
+          return;
+        }
+        _mergeCatalog(page, refreshChapterStates: false);
+        // A local catalog can resolve synchronously. Yield between chunks so
+        // thousands of metadata rows never monopolize the UI isolate.
+        await Future<void>.delayed(Duration.zero);
       }
-      _mergeCatalog(page);
     } catch (error) {
-      if (_isCatalogSessionCurrent(generation, dataSource, bookId) &&
-          cursor == _catalogCursor) {
+      if (_isCatalogSessionCurrent(generation, dataSource, bookId)) {
         await _reportFailure(_asFailure(error, ReaderFailureKind.data));
       }
     } finally {
       if (_isCatalogSessionCurrent(generation, dataSource, bookId)) {
         _catalogLoading = false;
+        _catalogCenterRetryCount = 0;
+        _catalogRevision.value++;
         if (notify && mounted) setState(() {});
       }
     }

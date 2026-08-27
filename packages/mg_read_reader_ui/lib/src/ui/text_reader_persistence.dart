@@ -169,9 +169,7 @@ extension _TextReaderPersistence on _TextReaderViewState {
         normalized.showBookComments != _preferences.showBookComments ||
         normalized.showChapterComments != _preferences.showChapterComments ||
         normalized.showParagraphComments != _preferences.showParagraphComments;
-    if (!_isNightTheme(normalized.theme)) {
-      _lastNonNightTheme = normalized.theme;
-    }
+    _lastNonNightTheme = normalized.lastNonNightTheme;
     if (normalized.customFontId == null) {
       _fontLoadGeneration++;
       _runtimeFontFamily = null;
@@ -302,6 +300,14 @@ extension _TextReaderPersistence on _TextReaderViewState {
   void _setReaderSettingsVisible(bool value) {
     if (_readerSettingsVisible == value || !mounted) return;
     setState(() => _readerSettingsVisible = value);
+  }
+
+  bool get _readerInteractionBlocked =>
+      _controlsVisible || _readerSettingsVisible;
+
+  void _dismissReaderControlsFromReader() {
+    if (!_controlsVisible || !mounted) return;
+    _setControlsVisible(false);
   }
 
   void _dismissReaderSettingsFromReader() {

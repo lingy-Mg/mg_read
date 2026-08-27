@@ -16,6 +16,7 @@ import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
+import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/library/application/library_overview_loader.dart';
 import 'package:mg_read/features/library/application/library_book_remover.dart';
 import 'package:mg_read/features/library/application/library_book_visibility_changer.dart';
@@ -506,7 +507,29 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
             title: item.title,
             author: item.author,
             coverUrl: item.coverUrl,
+            coverPluginId: item.source?.pluginId,
+            coverPluginVersion: item.source?.pluginVersion,
+            coverRemoteContentId: item.source?.remoteContentId,
             sourceName: item.sourceName,
+            sourceUrl: item.sourceUrl,
+            description: item.description,
+            language: item.language,
+            accessCode: item.accessCode,
+            wordCount: item.wordCount,
+            chapterCount: item.chapterCount,
+            publishedAt: item.publishedAt,
+            updatedAt: item.updatedAt,
+            statusLabel: item.statusLabel,
+            latestChapterId: item.latestChapterId,
+            latestChapterTitle: item.latestChapterTitle,
+            latestChapterUrl: item.latestChapterUrl,
+            latestChapterUpdatedAt: item.latestChapterUpdatedAt,
+            categories: item.categories,
+            tags: item.tags,
+            attributes: <LibraryItemSummaryAttribute>[
+              for (final attribute in item.attributes)
+                LibraryItemSummaryAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
+            ],
           ),
         );
       },
@@ -516,10 +539,11 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
 }
 
 final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher {
-  const DeferredLibraryReaderLauncher(this._get, this._gateway, this._diagnostics);
+  const DeferredLibraryReaderLauncher(this._get, this._gateway, this._diagnostics, [this._settings]);
   final ContentLibraryGetter _get;
   final SourceContentGateway _gateway;
   final DiagnosticsManager _diagnostics;
+  final AppSettingsManager? _settings;
   @override
   Future<ReaderLaunchRequest> launch(String libraryItemId, {ReaderObserver? observer}) async {
     final library = await _get();
@@ -527,6 +551,7 @@ final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher {
       library,
       _gateway,
       ContentLibrarySourcePrefetcher(library, _gateway, diagnostics: _diagnostics),
+      _settings,
     ).launch(libraryItemId, observer: observer);
   }
 }

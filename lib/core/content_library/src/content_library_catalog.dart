@@ -16,6 +16,19 @@ final class CatalogRepository {
     );
   }
 
+  /// Synchronizes a manga catalog using only stable host-owned fields.
+  Future<int> syncMangaCatalog({required LibraryItemId itemId, required Iterable<MangaChapterDescriptor> chapters}) async {
+    final item = await _library.getLibraryItem(itemId);
+    final source = item?.source;
+    if (item == null || item.kind != ContentKind.manga || source == null) throw StateError('The shelf item is not a manga item with source identity.');
+    final ingest = ContentLibraryIngest(pluginId: source.pluginId, producerPluginVersion: source.pluginVersion, dataVersion: 1, opaqueData: {'remoteBookId': source.remoteContentId});
+    final values = chapters.toList(growable: false);
+    return _replaceSnapshot(itemId: itemId, bindingId: SourceBindingId(_id()), entries: values.map((chapter) => IngestCatalogEntry(
+      remoteIdentity: chapter.remoteIdentity, title: chapter.title, orderKey: _catalogOrderKey(chapter.index), index: chapter.index,
+      kindCode: ContentKind.manga.code, source: ingest,
+    )));
+  }
+
   Future<Page<CatalogEntry>> list(LibraryItemId itemId, CatalogQuery query) => _library._trace(
     operation: 'catalogList',
     itemCount: query.limit,
@@ -363,6 +376,15 @@ final class ContentRepository {
         action: () => _putManga(entryId: entryId, pages: pages, source: source),
       );
 
+  Future<void> cacheMangaChapter({required CatalogEntryId entryId, required Iterable<MangaPageDescriptor> pages}) async {
+    final record = await _library._persistence.metadataRecords.read(id: entryId.value, scope: _scope);
+    final source = _library.getLibraryItem(LibraryItemId(record?.parentId ?? '') );
+    final item = await source;
+    if (item?.source == null) throw StateError('The shelf item has no source identity.');
+    final ingest = ContentLibraryIngest(pluginId: item!.source!.pluginId, producerPluginVersion: item.source!.pluginVersion, dataVersion: 1, opaqueData: {'remoteBookId': item.source!.remoteContentId});
+    return putManga(entryId: entryId, pages: pages.map((page) => IngestMangaPage(pageId: page.pageId, order: page.order, resource: page.resource, source: ingest, downloadedAssetId: null)).toList(growable: false), source: ingest);
+  }
+
   Future<ReadableContent?> open(CatalogEntryId id) => _library._trace(
     operation: 'contentOpen',
     itemCount: 1,
@@ -497,6 +519,7 @@ final class ContentRepository {
                         ? SourceResource.refreshable(Uri.parse(p['url'] as String), DateTime.parse(p['expiresAtUtc'] as String))
                         : SourceResource.durable(Uri.parse(p['url'] as String))),
               downloadedAssetId: p['assetId'] is String ? ContentAssetId(p['assetId'] as String) : null,
+              mimeType: p['mimeType'] as String?, width: p['width'] as int?, height: p['height'] as int?, byteLength: p['byteLength'] as int?, contentVersion: p['contentVersion'] is int ? p['contentVersion'] as int : 1,
             );
           })
           .toList(growable: false);
@@ -527,12 +550,15 @@ final class IngestCatalogEntry {
 }
 
 final class IngestMangaPage {
-  const IngestMangaPage({required this.pageId, required this.order, required this.resource, required this.source, this.downloadedAssetId});
+  const IngestMangaPage({required this.pageId, required this.order, required this.resource, required this.source, this.downloadedAssetId, this.mimeType = 'image/unknown', this.width, this.height, this.byteLength, this.contentVersion = 1});
   final String pageId;
   final int order;
   final SourceResource resource;
   final ContentLibraryIngest source;
   final ContentAssetId? downloadedAssetId;
+  final String mimeType;
+  final int? width, height, byteLength;
+  final int contentVersion;
   Map<String, Object?> toJson() => {
     'pageId': pageId,
     'order': order,
@@ -540,8 +566,14 @@ final class IngestMangaPage {
     if (resource.url != null) 'url': resource.url.toString(),
     if (resource.expiresAtUtc != null) 'expiresAtUtc': resource.expiresAtUtc!.toUtc().toIso8601String(),
     if (downloadedAssetId != null) 'assetId': downloadedAssetId!.value,
+    'mimeType': mimeType,
+    if (width != null) 'width': width,
+    if (height != null) 'height': height,
+    if (byteLength != null) 'byteLength': byteLength,
+    'contentVersion': contentVersion,
     'plugin': _plugin(source),
   };
+
 }
 
 DiagnosticObjectValue _libraryAttributes({
@@ -561,21 +593,6 @@ DiagnosticObjectValue _libraryAttributes({
   'thresholdMicros': DiagnosticValue.int64(AppDiagnosticThresholds.libraryOperation.inMicroseconds),
 });
 
-Iterable<RecordDocumentCodec> get contentLibraryRecordDocumentCodecs sync* {
-  for (final kind in [_itemKind, _bindingKind, _entryKind, _readingProgressKind]) {
-    yield RecordDocumentCodec(
-      recordKind: kind,
-      scopeKind: _scope.kind,
-      currentVersion: 1,
-      validators: {1: _validate},
-      inlinePreparationPolicy: _metadataInlinePreparationPolicy,
-    );
-  }
-}
-
-RecordDocumentRegistry get _registry => RecordDocumentRegistry(contentLibraryRecordDocumentCodecs);
-void _validate(JsonObject _) {}
-
 Map<String, Object?> _plugin(ContentLibraryIngest v) => {
   'pluginId': v.pluginId,
   'producerPluginVersion': v.producerPluginVersion,
@@ -593,11 +610,20 @@ LibraryItem _item(RecordEnvelope r) => LibraryItem(
   sourceName: _stringFromSummary(r.document, 'sourceName'),
   sourceUrl: _uriFromSummary(r.document, 'sourceUrl'),
   description: _stringFromSummary(r.document, 'description'),
+  language: _stringFromSummary(r.document, 'language'),
+  accessCode: _stringFromSummary(r.document, 'accessCode'),
   wordCount: _intFromSummary(r.document, 'wordCount'),
   chapterCount: _intFromSummary(r.document, 'chapterCount'),
+  publishedAt: _dateTimeFromSummary(r.document, 'publishedAt'),
+  updatedAt: _dateTimeFromSummary(r.document, 'updatedAt'),
   statusLabel: _stringFromSummary(r.document, 'statusLabel'),
+  latestChapterId: _stringFromSummary(r.document, 'latestChapterId'),
   latestChapterTitle: _stringFromSummary(r.document, 'latestChapterTitle'),
   latestChapterUrl: _uriFromSummary(r.document, 'latestChapterUrl'),
+  latestChapterUpdatedAt: _dateTimeFromSummary(r.document, 'latestChapterUpdatedAt'),
+  categories: _stringListFromSummary(r.document, 'categories'),
+  tags: _stringListFromSummary(r.document, 'tags'),
+  attributes: _attributesFromSummary(r.document),
   labels: _stringListFromSummary(r.document, 'labels'),
   source: _itemSource(r.document['plugin']),
   visibility: _visibilityFromDocument(r.document),
@@ -613,9 +639,15 @@ Map<String, Object?> _shelfSummary(ContentLibraryIngest source) {
     'sourceName',
     'sourceUrl',
     'description',
+    'language',
+    'accessCode',
     'statusLabel',
+    'publishedAt',
+    'updatedAt',
+    'latestChapterId',
     'latestChapterTitle',
     'latestChapterUrl',
+    'latestChapterUpdatedAt',
   ];
   for (final key in stringKeys) {
     final value = source.opaqueData[key];
@@ -625,10 +657,26 @@ Map<String, Object?> _shelfSummary(ContentLibraryIngest source) {
     final value = source.opaqueData[key];
     if (value is int && value >= 0) summary[key] = value;
   }
-  final labels = source.opaqueData['labels'];
-  if (labels is List<Object?>) {
-    final values = labels.whereType<String>().where((value) => value.isNotEmpty);
-    if (values.isNotEmpty) summary['labels'] = values.toList(growable: false);
+  for (final key in ['categories', 'tags', 'labels']) {
+    final raw = source.opaqueData[key];
+    if (raw is List<Object?>) {
+      final values = raw.whereType<String>().where((value) => value.isNotEmpty);
+      if (values.isNotEmpty) summary[key] = values.toList(growable: false);
+    }
+  }
+  final attributes = source.opaqueData['attributes'];
+  if (attributes is List<Object?>) {
+    final values = <Map<String, String>>[];
+    for (final raw in attributes) {
+      if (raw is! Map) continue;
+      final key = raw['key'];
+      final label = raw['label'];
+      final value = raw['value'];
+      if (key is String && key.isNotEmpty && label is String && label.isNotEmpty && value is String && value.isNotEmpty) {
+        values.add(<String, String>{'key': key, 'label': label, 'value': value});
+      }
+    }
+    if (values.isNotEmpty) summary['attributes'] = values;
   }
   return summary;
 }
@@ -641,6 +689,27 @@ Map<String, Object?> _summaryFromDocument(Map<String, Object?> document) {
 String? _stringFromSummary(Map<String, Object?> document, String key) {
   final value = _summaryFromDocument(document)[key];
   return value is String && value.isNotEmpty ? value : null;
+}
+
+DateTime? _dateTimeFromSummary(Map<String, Object?> document, String key) {
+  final value = _stringFromSummary(document, key);
+  return value == null ? null : DateTime.tryParse(value);
+}
+
+List<LibraryItemAttribute> _attributesFromSummary(Map<String, Object?> document) {
+  final raw = _summaryFromDocument(document)['attributes'];
+  if (raw is! List<Object?>) return const <LibraryItemAttribute>[];
+  return <LibraryItemAttribute>[
+    for (final value in raw)
+      if (value is Map &&
+          value['key'] is String &&
+          (value['key']! as String).isNotEmpty &&
+          value['label'] is String &&
+          (value['label']! as String).isNotEmpty &&
+          value['value'] is String &&
+          (value['value']! as String).isNotEmpty)
+        LibraryItemAttribute(key: value['key']! as String, label: value['label']! as String, value: value['value']! as String),
+  ];
 }
 
 Uri? _uriFromSummary(Map<String, Object?> document, String key) {

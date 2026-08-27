@@ -41,8 +41,8 @@
     ".mocks.dart"
   ],
   "legacyBaseline": {
-    "packages/mg_read_runtime/src/desktop-runtime.ts": 1433,
-    "packages/mg_read_runtime/src/plugin-manager.ts": 1053
+    "packages/mg_read_runtime/src/desktop-runtime.ts": 1413,
+    "packages/mg_read_runtime/src/plugin-manager.ts": 1009
   },
   "legacyRationale": {
     "packages/mg_read_runtime/src/desktop-runtime.ts": "Artifact inbox, bundled seed coordination, artifact transfer and source state dispatch moved to dedicated modules. The remaining HTTP, WebSocket, cache/source-content control, shutdown and owner-span state shares ECMAScript private fields; the next split is a cache/source-content dispatch port with protocol characterization.",

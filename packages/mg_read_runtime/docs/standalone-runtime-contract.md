@@ -52,7 +52,8 @@ PluginRuntime.invoke<T>(PluginInvocation<T>) -> Future<T>
 插件私有缓存清理由 `plugins.cache.usage.v1`、`plugins.cache.clear.v1` 与
 `plugins.cache.clearAll.v1` 三个强类型 Facade capability 表达。它们只返回数据源 ID、逻辑
 字节数及每项 `cleared/failed` 终态；Runtime 仍独占 cache 目录、文件句柄与底层失败细节，
-主应用不得扫描或清理目录。
+主应用不得扫描或清理目录。`plugins.cache.usage.v1` 允许通过可选的
+`pluginId` 只统计一个已知数据源，便于管理页先显示列表、再逐项填充缓存用量。
 
 安装后的书源大小由 `plugins.installation.usage.v1` 提供，`scope=archive` 统计 Runtime
 保留的原始 `.mgplugin`，`scope=data` 统计书源自身文件，`scope=npm` 统计物化后的

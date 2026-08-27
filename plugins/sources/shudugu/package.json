@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/shudugu",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "MgRead standard Node content-source plugin for 速读谷.",
   "type": "module",

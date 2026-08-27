@@ -9,7 +9,7 @@ import type { Element } from 'domhandler';
 import type {
   ChapterContent, ChaptersRequest, ChaptersResult, ContentAttribute, ContentDetail,
   ContentReferenceRequest, ContentRequest, ContentStatus, ContentSummary, DiscoverRequest,
-  DiscoverResult, MgReadPluginContext, SearchRequest, SearchResult, SearchSuggestionsRequest,
+  DiscoverResult, DiscoveryComponent, DiscoveryIcon, MgReadPluginContext, SearchRequest, SearchResult, SearchSuggestionsRequest,
   SearchSuggestionsResult,
 } from './mgread-api.js';
 import { PluginCache, type CachedResult, type PluginCachePolicy } from './html-cache.js';
@@ -19,6 +19,11 @@ export interface SourceRules { readonly origin: string; readonly categories: rea
 interface CatalogChapter { readonly id: string; readonly title: string; readonly url: URL; }
 interface CachedProjection<T> { readonly expiresAtMs: number; readonly value: T; }
 interface DetailProjection { readonly detail: ContentDetail; readonly catalog: ChaptersResult; }
+interface HomeDiscoveryCollections {
+  readonly latest: readonly ContentSummary[];
+  readonly ranked: readonly ContentSummary[];
+  readonly completed: readonly ContentSummary[];
+}
 // Discovery cards may use a stale projection immediately and refresh it for the
 // next visit. Detail and shelf data are deliberately strict: no value older
 // than one hour is returned after a failed refresh.
@@ -51,16 +56,55 @@ export class ShuduguSource {
   }
 
   async discover(request: DiscoverRequest): Promise<DiscoverResult> {
-    if (request.target === null) return documentResult(Object.freeze({
-      type: 'section', id: 'shudugu-categories-section', title: '小说分类', subtitle: null,
-      children: Object.freeze([
-        Object.freeze({ type: 'text', id: 'shudugu-categories-hint', text: '选择分类后查看书籍。' }),
-        Object.freeze({ type: 'categoryCollection', id: 'shudugu-categories', layout: 'grid', categories: Object.freeze(this.#categories.map((category) => Object.freeze({
-          id: `category:${category.id}`, title: category.title, target: `category:${category.id}`, count: null,
-          url: new URL(`/${category.id}/`, this.#baseUrl).toString(),
-        }))) }),
-      ]),
-    }));
+    if (request.target === null) {
+      const home = await this.#loadHomeDiscovery();
+      const components: DiscoveryComponent[] = [];
+      if (home.latest.length !== 0) {
+        components.push(Object.freeze({
+          type: 'section', id: 'shudugu-latest-section', title: '正在热更', subtitle: '来自官网最新更新', icon: 'ongoing',
+          children: Object.freeze([Object.freeze({
+            type: 'contentCollection', id: 'shudugu-latest-books', layout: 'shelf',
+            items: this.#discoveryItems(home.latest), continuation: null,
+          })]),
+        }));
+      }
+      const overviewChildren: DiscoveryComponent[] = [];
+      if (home.ranked.length !== 0) {
+        overviewChildren.push(Object.freeze({
+          type: 'section', id: 'shudugu-ranking-section', title: '阅读排行', subtitle: '站内热门作品', icon: 'ranking',
+          children: Object.freeze([Object.freeze({
+            type: 'contentCollection', id: 'shudugu-ranking-books', layout: 'compact',
+            items: this.#discoveryItems(home.ranked, true), continuation: null,
+          })]),
+        }));
+      }
+      if (home.completed.length !== 0) {
+        overviewChildren.push(Object.freeze({
+          type: 'section', id: 'shudugu-completed-section', title: '完结精选', subtitle: '一次读到结局', icon: 'completed',
+          children: Object.freeze([Object.freeze({
+            type: 'contentCollection', id: 'shudugu-completed-books', layout: 'coverGrid',
+            items: this.#discoveryItems(home.completed), continuation: null,
+          })]),
+        }));
+      }
+      if (overviewChildren.length !== 0) {
+        components.push(Object.freeze({
+          type: 'group', id: 'shudugu-overview-group', layout: 'vertical',
+          children: Object.freeze(overviewChildren),
+        }));
+      }
+      components.push(Object.freeze({
+        type: 'section', id: 'shudugu-categories-section', title: '探索分类', subtitle: '按题材继续发现', icon: 'explore',
+        children: Object.freeze([Object.freeze({
+          type: 'categoryCollection', id: 'shudugu-categories', layout: 'chips', categories: Object.freeze(this.#categories.map((category) => Object.freeze({
+            id: `category:${category.id}`, title: category.title, target: `category:${category.id}`, count: null,
+            icon: categoryIcon(category.id, category.title),
+            url: new URL(`/${category.id}/`, this.#baseUrl).toString(),
+          }))),
+        })]),
+      }));
+      return Object.freeze({ kind: 'document', document: Object.freeze({ components: Object.freeze(components) }) });
+    }
     const category = this.#category(request.target);
     const page = decodePage(request.cursor, 'category-page');
     const url = this.#categoryUrl(category.id, page);
@@ -192,6 +236,53 @@ export class ShuduguSource {
     const cheerio = await loadCheerio(); const $ = cheerio.load(html); const seen = new Set<string>();
     return Object.freeze($('.item').toArray().flatMap((element) => this.#parseBook($, element, pageUrl, seen)));
   }
+  async #loadHomeDiscovery(): Promise<HomeDiscoveryCollections> {
+    try {
+      const homeUrl = new URL('/', this.#baseUrl);
+      const html = await this.#getHtml(homeUrl, discoveryListingPolicy);
+      const latest = (await this.#parseList(html, homeUrl)).slice(0, 10);
+      const ranked = (await this.#parseHomeLinks(html, homeUrl, '阅读排行', 'ongoing')).slice(0, 8);
+      const completed = (await this.#parseHomeLinks(html, homeUrl, '完结小说', 'completed')).slice(0, 6);
+      return Object.freeze({ latest: Object.freeze(latest), ranked: Object.freeze(ranked), completed: Object.freeze(completed) });
+    } catch {
+      this.context.log.debug('source_discovery_home_unavailable');
+      return Object.freeze({ latest: Object.freeze([]), ranked: Object.freeze([]), completed: Object.freeze([]) });
+    }
+  }
+  async #parseHomeLinks(
+    html: string,
+    pageUrl: URL,
+    heading: string,
+    status: ContentStatus,
+  ): Promise<readonly ContentSummary[]> {
+    const cheerio = await loadCheerio();
+    const $ = cheerio.load(html);
+    const title = $('h2 a').filter((_, element) => textOrNull($(element).text()) === heading).first();
+    if (title.length === 0) return Object.freeze([]);
+    const section = title.closest('.container');
+    const seen = new Set<string>();
+    return Object.freeze(section.find('ul.list a[href]').toArray().flatMap((element) => {
+      const link = $(element);
+      const label = textOrNull(link.text());
+      const href = link.attr('href');
+      if (label === null || href === undefined) return [];
+      const url = this.#sourceUrl(href, pageUrl);
+      const id = novelIdFromUrl(url);
+      if (id === null || seen.has(id)) return [];
+      seen.add(id);
+      return [this.#summary({ id, title: label, author: null, category: null, coverUrl: null, description: null, status, wordCount: null, chapterCount: null, latestChapter: null, updatedAt: null })];
+    }));
+  }
+  #discoveryItems(contents: readonly ContentSummary[], ranked = false): readonly {
+    readonly content: ContentSummary;
+    readonly rank: number | null;
+    readonly metric: null;
+    readonly recommendation: null;
+  }[] {
+    return Object.freeze(contents.map((content, index) => Object.freeze({
+      content, rank: ranked ? index + 1 : null, metric: null, recommendation: null,
+    })));
+  }
   async #parseHotSearches(html: string): Promise<readonly string[]> {
     const cheerio = await loadCheerio(); const $ = cheerio.load(html); const heading = $('h2 a').filter((_, element) => textOrNull($(element).text()) === '阅读排行').first();
     if (heading.length === 0) return Object.freeze([]);
@@ -262,6 +353,23 @@ export class ShuduguSource {
   }
   #chapterId(url: URL): string { if (!/^\/\d+\/\d+(?:-\d+)?\.html$/u.test(url.pathname)) throw new Error('Chapter URL is invalid.'); return `chapter:${Buffer.from(url.pathname).toString('base64url')}`; }
   #decodeChapterId(id: string): URL { if (!id.startsWith('chapter:')) throw new Error('Chapter ID is invalid.'); const path = Buffer.from(id.slice(8), 'base64url').toString('utf8'); return this.#sourceUrl(path, this.#baseUrl); }
+}
+
+function categoryIcon(id: string, title: string): DiscoveryIcon {
+  if (id === 'dushi') return 'urban';
+  if (id === 'xuanhuan' || id === 'qihuan' || id === 'xianxia') return 'fantasy';
+  if (id === 'qing') return 'lightNovel';
+  if (id === 'lishi') return 'history';
+  if (id === 'kehuan' || id === 'zhutianwuxian') return 'scienceFiction';
+  if (id === 'youxi') return 'game';
+  if (id === 'xuanyi') return 'mystery';
+  if (id === 'tiyu') return 'sports';
+  if (id === 'junshi') return 'military';
+  if (id === 'wuxia') return 'wuxia';
+  if (id === 'xiangcun') return 'rural';
+  if (id === 'yanqing') return 'romance';
+  if (title.includes('官场') || title.includes('现实')) return 'globe';
+  return 'category';
 }
 
 function documentResult(section: ContentSummary extends never ? never : { readonly type: 'section'; readonly id: string; readonly title: string; readonly subtitle: null; readonly children: readonly unknown[] }): DiscoverResult { return Object.freeze({ kind: 'document', document: Object.freeze({ components: Object.freeze([section]) }) }) as DiscoverResult; }

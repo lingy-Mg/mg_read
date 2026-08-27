@@ -1,0 +1,4 @@
+artifacts/
+dist/
+node_modules/
+packages/mgread-plugin-cache/

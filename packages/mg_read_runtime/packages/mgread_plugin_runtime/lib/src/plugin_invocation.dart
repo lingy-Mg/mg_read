@@ -355,7 +355,9 @@ final class SchedulePluginUninstallInvocation extends PluginInvocation<void> {
   String get _wireMethod => 'plugins.uninstall.v1';
 
   @override
-  Map<String, Object?> get _wireParams => <String, Object?>{'pluginId': pluginId};
+  Map<String, Object?> get _wireParams => <String, Object?>{
+    'pluginId': pluginId,
+  };
 
   @override
   void _decodeResult(Object? value) {
@@ -525,13 +527,17 @@ final class PluginInstallationSize {
 @immutable
 final class PluginCacheUsageInvocation
     extends PluginInvocation<List<PluginCacheUsage>> {
-  const PluginCacheUsageInvocation();
+  const PluginCacheUsageInvocation({this.pluginId});
+
+  final String? pluginId;
 
   @override
   String get _wireMethod => 'plugins.cache.usage.v1';
 
   @override
-  Map<String, Object?> get _wireParams => const <String, Object?>{};
+  Map<String, Object?> get _wireParams => pluginId == null
+      ? const <String, Object?>{}
+      : <String, Object?>{'pluginId': pluginId};
 
   @override
   List<PluginCacheUsage> _decodeResult(Object? value) {

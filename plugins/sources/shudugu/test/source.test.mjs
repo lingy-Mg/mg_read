@@ -24,7 +24,7 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
     if (path === '/i/sor.aspx') return new Response(`<div class="item"><a href="/51/"><img src="https://cdn.example/cover.jpg"></a><div class="itemtxt"><h3><a href="/51/">测试书</a></h3><p><span>连载中</span><span>都市小说</span></p><p><a href="/zuozhe/?tag=作者">作者：作者甲</a></p></div></div><div class="page">共1本小说</div>`);
     if (path === '/') {
       homeCalls += 1;
-      return new Response(`<div class="container"><h2><a href="/zuixin/">最新更新</a></h2><div class="item"><a href="/51/"><div class="itemtxt"><h3><a href="/51/">不应作为热门词</a></h3></div></div></div><div class="container"><h2><a href="/paihang/">阅读排行</a></h2><ul class="list top clear"><li><p><a href="/51/">排行热书</a></p></li><li><p><a href="/52/">第二排行热书</a></p></li></ul></div>`);
+      return new Response(`<div class="container"><h2><a href="/zuixin/">最新更新</a></h2><div class="item"><a href="/51/"><img src="https://cdn.example/cover.jpg"></a><div class="itemtxt"><h3><a href="/51/">不应作为热门词</a></h3><p><span>连载中</span><span>都市小说</span></p></div></div></div><div class="container"><h2><a href="/paihang/">阅读排行</a></h2><ul class="list top clear"><li><p><a href="/51/">排行热书</a></p></li><li><p><a href="/52/">第二排行热书</a></p></li></ul></div><div class="container"><h2><a href="/wanben/">完结小说</a></h2><ul class="list"><li><p><a href="/53/">完结精品</a></p></li></ul></div>`);
     }
     if (path === '/51/') {
       detailCalls += 1;
@@ -35,6 +35,16 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
     return new Response('not found', { status: 404 });
   }, join(root, 'cache'));
   await plugin.activate(state.value);
+  const discovery = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 10 });
+  assert.deepEqual(discovery.document.components.map((component) => component.id), [
+    'shudugu-latest-section', 'shudugu-overview-group', 'shudugu-categories-section',
+  ]);
+  assert.equal(discovery.document.components[0].children[0].layout, 'shelf');
+  assert.equal(discovery.document.components[1].layout, 'vertical');
+  assert.equal(discovery.document.components[1].children[0].children[0].layout, 'compact');
+  assert.equal(discovery.document.components[1].children[1].children[0].layout, 'coverGrid');
+  assert.equal(discovery.document.components[2].children[0].layout, 'chips');
+  assert.equal(discovery.document.components[2].children[0].categories[0].icon, 'urban');
   const search = await plugin.search({ query: '测试', cursor: null, pageSize: 10 });
   assert.equal(search.items[0].id, 'novel:51');
   assert.equal(
@@ -53,7 +63,7 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
   assert.equal(content.text, '正文 canary');
   assert.deepEqual(suggestions.items.map((item) => item.query), ['排行热书', '第二排行热书']);
   assert.deepEqual(cachedSuggestions, suggestions);
-  assert.equal(homeCalls, 1);
+  assert.equal(homeCalls, 2);
   // Search hydration, opening the detail, then adding to the shelf's catalog
   // all reuse the same parsed detail page during this Runtime session.
   assert.equal(detailCalls, 1);

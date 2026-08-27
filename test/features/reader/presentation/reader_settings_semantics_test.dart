@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 void main() {
-  testWidgets('reader settings locks the reader and barrier closes every settings page', (WidgetTester tester) async {
+  testWidgets('reader controls and settings lock content interactions', (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -20,16 +20,28 @@ void main() {
     await tester.pumpAndSettle();
 
     final Finder settings = find.byKey(const Key('reader-toolbar-settings'));
+    final Finder readerSurface = find.byKey(const ValueKey<String>('reader-content-surface'));
+    final Finder readerScrollable = find.descendant(of: readerSurface, matching: find.byType(Scrollable));
+    expect(readerScrollable, findsOneWidget);
+    final Finder controlsLock = find.byKey(const ValueKey<String>('reader-controls-interaction-lock'));
+    expect(controlsLock, findsOneWidget);
+    final ScrollableState locked = tester.state<ScrollableState>(readerScrollable);
+    expect(locked.position.physics.shouldAcceptUserOffset(locked.position), isFalse);
+    final double offsetBeforeDrag = locked.position.pixels;
+    await tester.drag(controlsLock, const Offset(-240, 0));
+    await tester.pumpAndSettle();
+    expect(locked.position.pixels, offsetBeforeDrag);
+
+    await tester.tapAt(tester.getCenter(readerSurface));
+    await tester.pumpAndSettle();
+    expect(controlsLock, findsNothing);
+
+    await tester.tapAt(tester.getCenter(readerSurface));
+    await tester.pumpAndSettle();
     await tester.tap(settings);
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey<String>('reader-settings-interaction-lock')), findsOneWidget);
-
-    final Finder readerSurface = find.byKey(const ValueKey<String>('reader-content-surface'));
-    final Finder readerScrollable = find.descendant(of: readerSurface, matching: find.byType(Scrollable));
-    expect(readerScrollable, findsOneWidget);
-    final ScrollableState locked = tester.state<ScrollableState>(readerScrollable);
-    expect(locked.position.physics.shouldAcceptUserOffset(locked.position), isFalse);
 
     final Finder settingsSheet = find.byWidgetPredicate((Widget widget) => widget.runtimeType.toString() == 'ReaderSettingsSheet');
     final double sheetTop = tester.getTopLeft(settingsSheet).dy;

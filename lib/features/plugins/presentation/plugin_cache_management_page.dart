@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,39 +9,16 @@ import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.da
 
 /// User-facing maintenance page for Runtime-owned data-source caches.
 class PluginCacheManagementPage extends ConsumerStatefulWidget {
-  const PluginCacheManagementPage({
-    required this.onBackRequested,
-    required this.onDestinationRequested,
-    super.key,
-  });
+  const PluginCacheManagementPage({required this.onBackRequested, required this.onDestinationRequested, super.key});
 
   final VoidCallback onBackRequested;
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
 
   @override
-  ConsumerState<PluginCacheManagementPage> createState() =>
-      _PluginCacheManagementPageState();
+  ConsumerState<PluginCacheManagementPage> createState() => _PluginCacheManagementPageState();
 }
 
-class _PluginCacheManagementPageState
-    extends ConsumerState<PluginCacheManagementPage> {
-  static const Duration _refreshInterval = Duration(seconds: 2);
-  Timer? _refreshTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _refreshTimer = Timer.periodic(_refreshInterval, (_) {
-      unawaited(ref.read(pluginCacheManagementProvider.notifier).refresh());
-    });
-  }
-
-  @override
-  void dispose() {
-    _refreshTimer?.cancel();
-    super.dispose();
-  }
-
+class _PluginCacheManagementPageState extends ConsumerState<PluginCacheManagementPage> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(pluginCacheManagementProvider);
@@ -61,25 +36,18 @@ class _PluginCacheManagementPageState
               ),
               Expanded(
                 child: state.when(
-                  loading: () => const AppLoadingState(
-                    label: '正在读取缓存用量',
-                    message: '正在读取缓存用量',
-                    progressKey: Key('plugin-cache-loading'),
-                  ),
+                  loading: () => const AppLoadingState(label: '正在读取缓存用量', message: '正在读取缓存用量', progressKey: Key('plugin-cache-loading')),
                   error: (Object _, StackTrace _) => Center(
                     child: TextButton(
                       key: const Key('plugin-cache-retry'),
-                      onPressed: () => ref
-                          .read(pluginCacheManagementProvider.notifier)
-                          .refresh(),
+                      onPressed: () => ref.read(pluginCacheManagementProvider.notifier).refresh(),
                       child: const Text('缓存信息暂不可用，点击重试'),
                     ),
                   ),
                   data: (value) => _CacheContent(
                     state: value,
                     onClearAll: () => _confirmAndClearAll(context, ref, value),
-                    onClearPlugin: (entry) =>
-                        _confirmAndClearPlugin(context, ref, entry),
+                    onClearPlugin: (entry) => _confirmAndClearPlugin(context, ref, entry),
                   ),
                 ),
               ),
@@ -90,11 +58,7 @@ class _PluginCacheManagementPageState
     );
   }
 
-  Future<void> _confirmAndClearPlugin(
-    BuildContext context,
-    WidgetRef ref,
-    PluginCacheEntry entry,
-  ) async {
+  Future<void> _confirmAndClearPlugin(BuildContext context, WidgetRef ref, PluginCacheEntry entry) async {
     final confirmed = await _confirm(
       context,
       title: '清理 ${entry.displayName} 的缓存？',
@@ -103,19 +67,13 @@ class _PluginCacheManagementPageState
     );
     if (!confirmed || !context.mounted) return;
     try {
-      await ref
-          .read(pluginCacheManagementProvider.notifier)
-          .clearPlugin(entry.pluginId);
+      await ref.read(pluginCacheManagementProvider.notifier).clearPlugin(entry.pluginId);
     } on Object {
       // The controller retains a safe failure state for the page to render.
     }
   }
 
-  Future<void> _confirmAndClearAll(
-    BuildContext context,
-    WidgetRef ref,
-    PluginCacheManagementState state,
-  ) async {
+  Future<void> _confirmAndClearAll(BuildContext context, WidgetRef ref, PluginCacheManagementState state) async {
     final confirmed = await _confirm(
       context,
       title: '清理全部数据源缓存？',
@@ -130,22 +88,14 @@ class _PluginCacheManagementPageState
     }
   }
 
-  Future<bool> _confirm(
-    BuildContext context, {
-    required String title,
-    required String content,
-    required String action,
-  }) async =>
+  Future<bool> _confirm(BuildContext context, {required String title, required String content, required String action}) async =>
       await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: Text(title),
           content: Text(content),
           actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('取消'),
-            ),
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
             FilledButton(
               key: const Key('plugin-cache-confirm'),
               onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -158,11 +108,7 @@ class _PluginCacheManagementPageState
 }
 
 class _CacheContent extends StatelessWidget {
-  const _CacheContent({
-    required this.state,
-    required this.onClearAll,
-    required this.onClearPlugin,
-  });
+  const _CacheContent({required this.state, required this.onClearAll, required this.onClearPlugin});
 
   final PluginCacheManagementState state;
   final VoidCallback onClearAll;
@@ -188,47 +134,25 @@ class _CacheContent extends StatelessWidget {
               children: <Widget>[
                 Row(
                   children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        '数据源缓存',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                    ),
+                    Expanded(child: Text('数据源缓存', style: Theme.of(context).textTheme.titleLarge)),
                     if (state.isRefreshing) ...<Widget>[
-                      const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
+                      const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                       const SizedBox(width: AppSpacing.unit),
-                      Text(
-                        '正在刷新',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: tokens.mutedText,
-                        ),
-                      ),
+                      Text('正在刷新', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
                     ],
                   ],
                 ),
                 const SizedBox(height: AppSpacing.compact),
                 Text(
                   '共 ${_formatBytes(state.totalBytes)}。缓存由数据源运行环境单独管理，清理不会删除书架内容。',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
                 ),
                 const SizedBox(height: AppSpacing.regular),
                 FilledButton.tonalIcon(
                   key: const Key('plugin-cache-clear-all'),
-                  onPressed: state.isClearing || state.entries.isEmpty
-                      ? null
-                      : onClearAll,
+                  onPressed: state.isClearing || state.entries.isEmpty ? null : onClearAll,
                   icon: state.isClearing
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.delete_outline_rounded),
                   label: const Text('清理全部缓存'),
                 ),
@@ -236,17 +160,11 @@ class _CacheContent extends StatelessWidget {
             ),
           ),
         ),
-        if (state.feedback != null) ...<Widget>[
-          const SizedBox(height: AppSpacing.regular),
-          _FeedbackCard(feedback: state.feedback!),
-        ],
+        if (state.feedback != null) ...<Widget>[const SizedBox(height: AppSpacing.regular), _FeedbackCard(feedback: state.feedback!)],
         const SizedBox(height: AppSpacing.regular),
         if (state.entries.isEmpty)
           const Center(
-            child: Padding(
-              padding: EdgeInsets.all(AppSpacing.comfortable),
-              child: Text('暂无已安装数据源的缓存。'),
-            ),
+            child: Padding(padding: EdgeInsets.all(AppSpacing.comfortable), child: Text('暂无已安装数据源的缓存。')),
           )
         else
           ...state.entries.map(
@@ -262,11 +180,7 @@ class _CacheContent extends StatelessWidget {
 }
 
 class _CacheEntryCard extends StatelessWidget {
-  const _CacheEntryCard({
-    required this.entry,
-    required this.isClearing,
-    required this.onClear,
-  });
+  const _CacheEntryCard({required this.entry, required this.isClearing, required this.onClear});
   final PluginCacheEntry entry;
   final bool isClearing;
   final VoidCallback onClear;
@@ -284,16 +198,22 @@ class _CacheEntryCard extends StatelessWidget {
         ),
         child: ListTile(
           key: ValueKey<String>('plugin-cache-${entry.pluginId}'),
-          title: Text(
-            entry.displayName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Text(_formatBytes(entry.bytes)),
+          title: Text(entry.displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(switch (entry.status) {
+            PluginCacheEntryStatus.scanning => '正在读取缓存用量…',
+            PluginCacheEntryStatus.failed => '暂时无法读取缓存用量',
+            PluginCacheEntryStatus.loaded => _formatBytes(entry.bytes),
+          }),
           trailing: TextButton(
             key: ValueKey<String>('plugin-cache-clear-${entry.pluginId}'),
-            onPressed: isClearing ? null : onClear,
-            child: Text(isClearing ? '正在清理' : '清理'),
+            onPressed: isClearing || entry.isScanning ? null : onClear,
+            child: Text(
+              isClearing
+                  ? '正在清理'
+                  : entry.isScanning
+                  ? '读取中'
+                  : '清理',
+            ),
           ),
         ),
       ),
@@ -321,10 +241,7 @@ class _FeedbackCard extends StatelessWidget {
           borderRadius: AppRadii.control,
           border: Border.all(color: tokens.divider),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.regular),
-          child: Text(text),
-        ),
+        child: Padding(padding: const EdgeInsets.all(AppSpacing.regular), child: Text(text)),
       ),
     );
   }

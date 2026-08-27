@@ -41,6 +41,18 @@ final class CoverRepository {
       );
     },
   );
+
+  /// Returns the disk usage of regenerable source-cover files.
+  Future<int> usageBytes() =>
+      _library._trace(operation: 'coverCacheUsage', contentKind: 'image', action: _library._persistence.fileObjects.coverCacheUsageBytes);
+
+  /// Clears regenerable source covers without touching shelf or reading data.
+  Future<int> clear() => _library._trace(
+    operation: 'coverCacheClear',
+    contentKind: 'image',
+    action: _library._persistence.fileObjects.clearCoverCache,
+    resultState: (releasedBytes) => releasedBytes == 0 ? 'empty' : 'cleared',
+  );
 }
 
 /// Stores the user-owned semantic position reported by the text reader.

@@ -59,23 +59,32 @@ class _DetailStats extends StatelessWidget {
   }
 }
 
-class _ShelfActionRow extends StatefulWidget {
-  const _ShelfActionRow({required this.shelfState, required this.onAction});
+class _ShelfActionBar extends StatefulWidget {
+  const _ShelfActionBar({required this.shelfState, required this.onAction, required this.onStartReading});
 
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested onAction;
+  final SourceStartReadingRequested onStartReading;
 
   @override
-  State<_ShelfActionRow> createState() => _ShelfActionRowState();
+  State<_ShelfActionBar> createState() => _ShelfActionBarState();
 }
 
-class _ShelfActionRowState extends State<_ShelfActionRow> {
+class _ShelfActionBarState extends State<_ShelfActionBar> {
   bool _isRunning = false;
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
     final bool isPrivate = widget.shelfState == SourceDetailShelfState.private;
+    final shape = RoundedRectangleBorder(borderRadius: AppRadii.control);
+    ButtonStyle style(Color foreground, Color border) => OutlinedButton.styleFrom(
+      minimumSize: const Size.fromHeight(50),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.unit),
+      foregroundColor: foreground,
+      side: BorderSide(color: border),
+      shape: shape,
+    );
     return Row(
       children: <Widget>[
         Expanded(
@@ -84,10 +93,7 @@ class _ShelfActionRowState extends State<_ShelfActionRow> {
             onPressed: _isRunning ? null : () => _run(isPrivate ? SourceShelfAction.cancelPrivate : SourceShelfAction.setPrivate),
             icon: Icon(isPrivate ? Icons.visibility_outlined : Icons.visibility_off_outlined),
             label: Text(isPrivate ? '取消隐私' : '隐私'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: tokens.mutedText,
-              side: BorderSide(color: tokens.divider),
-            ),
+            style: style(tokens.mutedText, tokens.divider),
           ),
         ),
         const SizedBox(width: AppSpacing.compact),
@@ -97,11 +103,27 @@ class _ShelfActionRowState extends State<_ShelfActionRow> {
             onPressed: _isRunning ? null : () => _confirmDelete(context),
             icon: const Icon(Icons.delete_outline_rounded),
             label: const Text('删除'),
-            style: OutlinedButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+            style: style(Theme.of(context).colorScheme.error, Theme.of(context).colorScheme.error.withValues(alpha: .58)),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.compact),
+        Expanded(
+          child: OutlinedButton.icon(
+            key: const Key('source-detail-start-reading'),
+            onPressed: _isRunning ? null : _startReading,
+            icon: const Icon(Icons.menu_book_rounded),
+            label: const Text('开始阅读'),
+            style: style(tokens.accent, tokens.accent),
           ),
         ),
       ],
     );
+  }
+
+  Future<void> _startReading() async {
+    if (_isRunning) return;
+    Navigator.of(context).pop();
+    await widget.onStartReading();
   }
 
   Future<void> _confirmDelete(BuildContext context) async {

@@ -7,11 +7,7 @@ import 'package:mg_read/features/profile/presentation/profile_view_data.dart';
 /// spacing or typography.
 class ProfileSettingsList extends StatelessWidget {
   /// Creates a vertically grouped settings list.
-  const ProfileSettingsList({
-    required this.items,
-    required this.onItemPressed,
-    super.key,
-  });
+  const ProfileSettingsList({required this.items, required this.onItemPressed, super.key});
 
   final List<ProfileSettingsItemViewData> items;
   final ValueChanged<ProfileSettingsItemViewData> onItemPressed;
@@ -33,10 +29,7 @@ class ProfileSettingsList extends StatelessWidget {
             final ProfileSettingsItemViewData item = items[index];
             return Column(
               children: <Widget>[
-                ProfileSettingsRow(
-                  item: item,
-                  onPressed: () => onItemPressed(item),
-                ),
+                ProfileSettingsRow(item: item, onPressed: () => onItemPressed(item)),
                 if (index < items.length - 1)
                   Padding(
                     padding: const EdgeInsets.only(
@@ -61,11 +54,7 @@ class ProfileSettingsList extends StatelessWidget {
 /// One fixed-height, touch-safe profile setting row.
 class ProfileSettingsRow extends StatelessWidget {
   /// Creates a custom profile settings row.
-  const ProfileSettingsRow({
-    required this.item,
-    required this.onPressed,
-    super.key,
-  });
+  const ProfileSettingsRow({required this.item, required this.onPressed, super.key});
 
   final ProfileSettingsItemViewData item;
   final VoidCallback onPressed;
@@ -89,20 +78,14 @@ class ProfileSettingsRow extends StatelessWidget {
           child: SizedBox(
             height: AppSpacing.profileSettingsRowHeight,
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.profileSettingsTrailingRight,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.profileSettingsTrailingRight),
               child: Row(
                 children: <Widget>[
                   SizedBox(
                     width: AppSpacing.profileSettingsIconSlot,
                     child: Align(
                       alignment: Alignment.centerLeft,
-                      child: Icon(
-                        _iconFor(item.icon),
-                        color: tokens.warning,
-                        size: AppSpacing.profileSettingsIconSize,
-                      ),
+                      child: Icon(_iconFor(item.icon), color: tokens.warning, size: AppSpacing.profileSettingsIconSize),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.profileSettingsIconTextGap),
@@ -115,21 +98,14 @@ class ProfileSettingsRow extends StatelessWidget {
                           item.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            height: 1.15,
-                          ),
+                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, height: 1.15),
                         ),
                         const SizedBox(height: AppSpacing.unit / 2),
                         Text(
                           item.description,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: tokens.mutedText,
-                            fontWeight: FontWeight.w400,
-                            height: 1.25,
-                          ),
+                          style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText, fontWeight: FontWeight.w400, height: 1.25),
                         ),
                       ],
                     ),
@@ -139,20 +115,14 @@ class ProfileSettingsRow extends StatelessWidget {
                     Text(
                       item.trailingLabel!,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: item.isAccentTrailingLabel
-                            ? tokens.warning
-                            : tokens.mutedText,
+                        color: item.isAccentTrailingLabel ? tokens.warning : tokens.mutedText,
                         fontWeight: FontWeight.w400,
                         height: 1.1,
                       ),
                     ),
                   ],
                   const SizedBox(width: AppSpacing.compact),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: tokens.mutedText,
-                    size: AppSpacing.profileChevronSize,
-                  ),
+                  Icon(Icons.chevron_right_rounded, color: tokens.mutedText, size: AppSpacing.profileChevronSize),
                 ],
               ),
             ),
@@ -170,7 +140,6 @@ class ProfileSettingsRow extends StatelessWidget {
       ProfileSettingsIcon.appearance => Icons.palette_outlined,
       ProfileSettingsIcon.privacy => Icons.shield_outlined,
       ProfileSettingsIcon.backup => Icons.cloud_upload_outlined,
-      ProfileSettingsIcon.clearCache => Icons.delete_outline_rounded,
       ProfileSettingsIcon.diagnostics => Icons.bug_report_outlined,
       ProfileSettingsIcon.about => Icons.info_outline_rounded,
       ProfileSettingsIcon.feedback => Icons.edit_note_outlined,

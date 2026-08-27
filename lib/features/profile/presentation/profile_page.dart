@@ -200,7 +200,7 @@ class _ProfilePageState extends State<ProfilePage> {
       widget.onPluginCenterRequested!();
       return;
     }
-    if (item.id == 'clear-cache' && widget.onPluginCacheRequested != null) {
+    if (item.id == 'downloads-cache' && widget.onPluginCacheRequested != null) {
       widget.onPluginCacheRequested!();
       return;
     }

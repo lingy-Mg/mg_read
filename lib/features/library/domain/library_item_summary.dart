@@ -1,7 +1,7 @@
 /// 书架条目的宿主投影。
 ///
 /// 职责：
-/// - 提供书架主体即时显示所需的稳定字段和封面来源身份。
+/// - 提供书架主体和长按详情即时显示所需的稳定字段与来源身份。
 /// - 将封面字节解析延后至展示层异步执行。
 ///
 /// 注意：
@@ -24,6 +24,22 @@ final class LibraryItemSummary {
     this.coverPluginVersion,
     this.coverRemoteContentId,
     this.sourceName,
+    this.sourceUrl,
+    this.description,
+    this.language,
+    this.accessCode,
+    this.wordCount,
+    this.chapterCount,
+    this.publishedAt,
+    this.updatedAt,
+    this.statusLabel,
+    this.latestChapterId,
+    this.latestChapterTitle,
+    this.latestChapterUrl,
+    this.latestChapterUpdatedAt,
+    this.categories = const <String>[],
+    this.tags = const <String>[],
+    this.attributes = const <LibraryItemSummaryAttribute>[],
     this.readingProgress,
     this.readingChapterIndex,
     this.lastReadAtUtc,
@@ -45,6 +61,22 @@ final class LibraryItemSummary {
   final String? coverPluginVersion;
   final String? coverRemoteContentId;
   final String? sourceName;
+  final Uri? sourceUrl;
+  final String? description;
+  final String? language;
+  final String? accessCode;
+  final int? wordCount;
+  final int? chapterCount;
+  final DateTime? publishedAt;
+  final DateTime? updatedAt;
+  final String? statusLabel;
+  final String? latestChapterId;
+  final String? latestChapterTitle;
+  final Uri? latestChapterUrl;
+  final DateTime? latestChapterUpdatedAt;
+  final List<String> categories;
+  final List<String> tags;
+  final List<LibraryItemSummaryAttribute> attributes;
 
   /// Displayable full-book fraction last reported by the reader.
   final double? readingProgress;
@@ -54,4 +86,13 @@ final class LibraryItemSummary {
 
   /// Time of the durable semantic position, in UTC.
   final DateTime? lastReadAtUtc;
+}
+
+/// Structured detail attribute retained in the library overview projection.
+final class LibraryItemSummaryAttribute {
+  const LibraryItemSummaryAttribute({required this.key, required this.label, required this.value});
+
+  final String key;
+  final String label;
+  final String value;
 }

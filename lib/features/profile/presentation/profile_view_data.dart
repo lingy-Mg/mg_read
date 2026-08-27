@@ -37,18 +37,9 @@ final class ProfileViewData {
       displayName: displayName,
       motto: motto,
       stats: <ProfileStatViewData>[
-        ProfileStatViewData(
-          label: '阅读时长',
-          value: _readingDurationText(readingStats.totalReadingSeconds),
-        ),
-        ProfileStatViewData(
-          label: '阅读书籍',
-          value: '${readingStats.readBookCount} 本',
-        ),
-        ProfileStatViewData(
-          label: '书架收藏',
-          value: '${readingStats.shelfBookCount} 本',
-        ),
+        ProfileStatViewData(label: '阅读时长', value: _readingDurationText(readingStats.totalReadingSeconds)),
+        ProfileStatViewData(label: '阅读书籍', value: '${readingStats.readBookCount} 本'),
+        ProfileStatViewData(label: '书架收藏', value: '${readingStats.shelfBookCount} 本'),
       ],
       syncLabel: syncLabel,
       lastSyncLabel: lastSyncLabel,
@@ -68,9 +59,7 @@ String _readingDurationText(int totalSeconds) {
 @immutable
 final class ProfileStatViewData {
   /// Creates a text-only display statistic.
-  const ProfileStatViewData({required this.label, required this.value})
-    : assert(label != ''),
-      assert(value != '');
+  const ProfileStatViewData({required this.label, required this.value}) : assert(label != ''), assert(value != '');
 
   final String label;
   final String value;
@@ -100,18 +89,7 @@ final class ProfileSettingsItemViewData {
 }
 
 /// Symbol choices that keep the profile fixture independent from Material UI.
-enum ProfileSettingsIcon {
-  reading,
-  sources,
-  download,
-  appearance,
-  privacy,
-  backup,
-  clearCache,
-  diagnostics,
-  about,
-  feedback,
-}
+enum ProfileSettingsIcon { reading, sources, download, appearance, privacy, backup, diagnostics, about, feedback }
 
 /// Clearly disclosed fixture data used while account and sync capabilities are
 /// intentionally outside the current application milestone.
@@ -127,68 +105,17 @@ abstract final class ProfileFixtures {
     syncLabel: '局域网同步',
     lastSyncLabel: '仅在你主动操作时传输',
     settings: <ProfileSettingsItemViewData>[
-      ProfileSettingsItemViewData(
-        id: 'reading-settings',
-        title: '阅读设置',
-        description: '字体、排版、翻页等',
-        icon: ProfileSettingsIcon.reading,
-      ),
-      ProfileSettingsItemViewData(
-        id: 'source-management',
-        title: '数据源管理',
-        description: '管理数据源与启用状态',
-        icon: ProfileSettingsIcon.sources,
-      ),
-      ProfileSettingsItemViewData(
-        id: 'downloads-cache',
-        title: '下载与缓存',
-        description: '已用 512MB / 共 5GB',
-        icon: ProfileSettingsIcon.download,
-      ),
-      ProfileSettingsItemViewData(
-        id: 'theme-appearance',
-        title: '主题与外观',
-        description: '跟随系统 / 暖光主题',
-        icon: ProfileSettingsIcon.appearance,
-      ),
-      ProfileSettingsItemViewData(
-        id: 'privacy-permissions',
-        title: '隐私与权限',
-        description: '权限管理与隐私设置',
-        icon: ProfileSettingsIcon.privacy,
-      ),
-      ProfileSettingsItemViewData(
-        id: 'data-backup',
-        title: '局域网同步',
-        description: '同一网络传输数据源、书架与进度',
-        icon: ProfileSettingsIcon.backup,
-      ),
-      ProfileSettingsItemViewData(
-        id: 'clear-cache',
-        title: '清理缓存',
-        description: '管理各数据源的临时缓存',
-        icon: ProfileSettingsIcon.clearCache,
-      ),
+      ProfileSettingsItemViewData(id: 'reading-settings', title: '阅读设置', description: '字体、排版、翻页等', icon: ProfileSettingsIcon.reading),
+      ProfileSettingsItemViewData(id: 'source-management', title: '数据源管理', description: '管理数据源与启用状态', icon: ProfileSettingsIcon.sources),
+      ProfileSettingsItemViewData(id: 'downloads-cache', title: '缓存管理', description: '数据源缓存、封面缓存与存储用量', icon: ProfileSettingsIcon.download),
+      ProfileSettingsItemViewData(id: 'theme-appearance', title: '主题与外观', description: '跟随系统 / 暖光主题', icon: ProfileSettingsIcon.appearance),
+      ProfileSettingsItemViewData(id: 'privacy-permissions', title: '隐私与权限', description: '权限管理与隐私设置', icon: ProfileSettingsIcon.privacy),
+      ProfileSettingsItemViewData(id: 'data-backup', title: '局域网同步', description: '同一网络传输数据源、书架与进度', icon: ProfileSettingsIcon.backup),
     ],
     about: <ProfileSettingsItemViewData>[
-      ProfileSettingsItemViewData(
-        id: 'diagnostics',
-        title: '调试日志',
-        description: '查看应用与书源运行日志',
-        icon: ProfileSettingsIcon.diagnostics,
-      ),
-      ProfileSettingsItemViewData(
-        id: 'about',
-        title: '关于我们',
-        description: '版本 1.2.0',
-        icon: ProfileSettingsIcon.about,
-      ),
-      ProfileSettingsItemViewData(
-        id: 'feedback',
-        title: '意见反馈',
-        description: '告诉我们您的想法',
-        icon: ProfileSettingsIcon.feedback,
-      ),
+      ProfileSettingsItemViewData(id: 'diagnostics', title: '调试日志', description: '查看应用与书源运行日志', icon: ProfileSettingsIcon.diagnostics),
+      ProfileSettingsItemViewData(id: 'about', title: '关于我们', description: '版本 1.2.0', icon: ProfileSettingsIcon.about),
+      ProfileSettingsItemViewData(id: 'feedback', title: '意见反馈', description: '告诉我们您的想法', icon: ProfileSettingsIcon.feedback),
     ],
   );
 }

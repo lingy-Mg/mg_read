@@ -200,6 +200,13 @@ void main() {
     await expectLater(codec.decodeAndUpgrade(version: 1, payloadJson: payload), throwsA(isA<PersistenceValidationError>()));
   });
 
+  test('keeps corruption semantics when decode falls back to a worker', () async {
+    final codec = defaultRegistry.require('app_setting', localScope.kind);
+    final malformedLargePayload = '{bad${' ' * (5 * 1024)}';
+
+    await expectLater(codec.decodeAndUpgrade(version: 2, payloadJson: malformedLargePayload), throwsA(isA<PersistenceCorruptionError>()));
+  });
+
   test('prepares a CAS write batch through one codec worker', () async {
     final results = await kit.store.writeDocumentsCas([
       RecordDocumentWrite(

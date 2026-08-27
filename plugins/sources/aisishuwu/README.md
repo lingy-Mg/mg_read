@@ -43,7 +43,7 @@ npm.cmd run test:live
 书源调用失败。主程序未来只能经 Runtime 的强类型接口统计或清理该目录，不能取得路径或文件句柄。
 
 `npm run pack:plugin` 输出确定性
-`artifacts/org.mgread.aisishuwu-0.2.8.mgplugin.js`。它内联纯 JavaScript 依赖，并在规范信封内携带
+`artifacts/org.mgread.aisishuwu-0.2.9.mgplugin.js`。它内联纯 JavaScript 依赖，并在规范信封内携带
 `assets/icon.png` 的字节、大小和 SHA-256；不携带 lock、源码、`node_modules` 或 sidecar。安装后
 于下一次 Runtime 冷启动激活。插件不处理账号、登录、Cookie 导出、下载、绕过访问控制或 Runtime
 内部通信。

@@ -86,6 +86,12 @@ final class BookCoverMemoryCache {
       _entries.remove(_entries.keys.first);
     }
   }
+
+  /// Returns already resolved bytes without restarting an asynchronous load.
+  static List<int>? peek(BookCoverRequest request) => _entries[request];
+
+  /// Drops route-to-route cover bytes after the persistent cache is cleared.
+  static void clear() => _entries.clear();
 }
 
 /// App composition supplies the Content Library-backed implementation.

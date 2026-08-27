@@ -39,6 +39,8 @@ plugins/sources/                    真实书源插件
   书签。Runtime 不打开主应用 SQLite，也不获得数据库或内容文件绝对路径。
 - metadata、不可变正文对象和受控文件之间没有跨库原子事务：先写入并校验对象，再以 metadata
   revision CAS 切换引用；已提交 metadata 是故障恢复权威，无引用对象由有界 maintenance/GC 清理。
+- metadata JSON 的规范化、限制、版本、错误和不可变语义始终由 core persistence 统一执行；业务 codec
+  只能显式启用结构、深度、集合和文本总量均有界的小写入 inline，超界与目录级批次继续使用 worker。
 - 目录刷新写 pending snapshot 后一次切换 active；使用稳定 ID 和 keyset cursor，不用 offset、页码、
   数组位置或全量内存载入作为持久权威。
 - Runtime 结果只有经公开 Facade 和主应用强类型 adapter 校验后才能写入 Content Library。没有公开
@@ -60,6 +62,10 @@ plugins/sources/                    真实书源插件
   工作区；指纹变化后先回收旧 VM，再启动唯一新 Runtime，不在同一 VM 热替换模块。
 - 内部 WS/HTTP、ready、bootId、端口、PID、URL 和 envelope 不暴露给主应用。控制帧有界；大资源走
   Runtime HTTP 数据面，不进入无界 JSON/Base64。
+- `browser.session.v1` 是受保护书源唯一可请求的宿主浏览器边界：Runtime 校验版本、HTTPS 同源、
+  GET/POST、安全头、64 KiB 请求、2 MiB UTF-8 响应和 1--120 秒超时，并把调用 deadline/取消传给
+  provider。provider 按 `pluginId + sessionKey + origin` 隔离并缓存 Cookie、UA 与验证状态，Cookie/UA
+  永不返回插件；平台未接入时为 `unsupported`，需要用户验证时为 `interaction_required`。
 - Debug Runtime 检查页只存在于 Debug，保存的只有用户开关；固定监听 `0.0.0.0:52173`。端口冲突
   不阻止 Runtime，Release 永不启用。页面只暴露受限调试 API，不暴露 RPC、health、资源、Cookie、
   token 或控制面，并持续提示仅在可信网络开启。
@@ -92,7 +98,11 @@ plugins/sources/                    真实书源插件
 - 必填身份/枚举缺失、null、空白或未知时拒绝；可空标量必须保留键并显式为值或 `null`；非负计数
   区分 `0` 与未知；集合始终为数组。Runtime 不把缺键/空字符串自动补成 null。
 - `discover` 返回递归受控组件树：`tabs/section/group/contentCollection/categoryCollection/text/
-  divider`；插件不控制主题或执行 UI 代码。续页只追加指定 collection，target/cursor 原样回传。
+  divider`。`contentCollection` 可声明 `featured/carousel/coverGrid/shelf/compact/ranking/list`，
+  `categoryCollection` 可声明 `grid/chips/list`；这些仅是内容语义，主题、断点、尺寸与交互仍由宿主控制，
+  插件不得执行 UI 代码。tab、section 和 category 可复用同一组可选语义 `icon` 名；Runtime 只接受
+  公开白名单，Flutter 统一映射图标、颜色和尺寸，书源不得下发码点或任意图标资源。续页只追加指定
+  collection，target/cursor 原样回传。
 - `searchSuggestions` 是可选热门词能力；热门词由来源提供，宿主不混入本地伪造数据。只有用户主动
   点击建议或提交查询才搜索。
 - `getChapters` 一次返回完整、有序、稳定 ID 唯一的目录；最多 5000 章、编码后最多 2 MiB，不向
@@ -104,6 +114,23 @@ plugins/sources/                    真实书源插件
   来源请求、Cookie 或签名逻辑。
 - Runtime 在写入 wire 前校验固定键、枚举、URL、时间、计数、唯一性和大小；无效结果统一为稳定
   `plugin_invalid_response`，不记录原始插件对象或内容。
+- 真实书源最小读取顺序固定为目标文件头 -> 最近 `AGENTS.md` -> 该源公开类型/fixture/contract -> 本章节；
+  只有新增 Runtime capability 才再读“Runtime 与平台宿主”。每源默认命令为固定 Node 下 `npm.cmd ci`、
+  `npm.cmd test`、`npm.cmd run verify`；线上选择器变化另跑 `test:live`，Runtime 变更再跑 `typecheck`、
+  `test`、`check:no-native-addons`，并将实际 `.mgplugin.js`/`.mgplugin` 冷安装到临时 Runtime 验证激活。
+- fixture 只保留触发选择器、分页、null/0/空集合和错误分支所需的最小脱敏 HTML；禁止保存线上正文、
+  图片、Cookie、UA、token、完整录制或用户搜索词。更新 fixture 时记录来源 UUID/版本/散列和采集日期，
+  先以网络 smoke 确认结构，再人工裁剪；网络失败不能用新 fixture 覆盖旧证据。
+- CF 测试注入 `browser.session.v1` provider，覆盖 verified、`interaction_required`、`unsupported`、timeout、
+  cancelled、超限和跨源拒绝，并断言插件请求不含 Cookie/UA。桌面浏览器通过仅是桌面证据；Android
+  只有 packaged artifact 在授权设备上的 integration test 才算 Android 通过，两个平台不得互相替代。
+- 失败诊断顺序为仓库映射/源版本 -> fixture 解析 -> capability mock -> artifact 信封与冷安装 -> 目标平台
+  provider -> 真实网络。禁止写死临时 Cookie/UA、执行站点下发的非受控绕过脚本、记录挑战页内容、
+  用桌面成功代替 Android，或把 `unsupported`/人工验证未完成写成来源通过。
+- 2026-08-28 首批转换证据：已验证 repository 100 条中精确映射两条“第一版主”与 `写真集`、`写真集2`，
+  四源离线 fixture/contract、single-file artifact 和 Runtime 冷激活通过；规则脚本中的选择器、分类及
+  `diyibanzhu-me` 分页 ID 属规则证据/待线上复核；桌面 CF 人工完成、生产 host provider、Android 与
+  真机均未验证。后续只在新证据上更新本段状态，不把推断提升为事实。
 
 ## 阅读器
 

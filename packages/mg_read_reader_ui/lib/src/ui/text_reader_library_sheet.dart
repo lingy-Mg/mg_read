@@ -2,6 +2,9 @@ part of 'text_reader_view.dart';
 
 // ignore_for_file: invalid_use_of_protected_member
 
+const double _catalogChapterItemExtent = 64;
+const double _catalogListTopPadding = 8;
+
 extension _TextReaderLibrarySheet on _TextReaderViewState {
   void _showLibrarySheet({int initialIndex = 1}) {
     _stopAutoReading();
@@ -10,6 +13,7 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
     final String routeBookId = widget.bookId;
     final TextReaderStateStore routeStore = widget.stateStore;
     _centeredCatalogChapterId = null;
+    _catalogCenterRetryCount = 0;
     bool sheetRefreshStarted = false;
     showModalBottomSheet<void>(
       context: context,
@@ -410,8 +414,42 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
     TextReaderStateStore routeStore,
   ) {
     final String? currentChapterId = _content?.chapterId;
-    Widget buildList() => StatefulBuilder(
-      builder: (BuildContext context, StateSetter setSheetState) {
+    bool catalogCompletionStarted = false;
+    Widget buildList() => ValueListenableBuilder<int>(
+      valueListenable: _catalogRevision,
+      builder: (BuildContext context, int revision, Widget? child) {
+        if (!catalogCompletionStarted) {
+          catalogCompletionStarted = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            if (!_isRouteSessionCurrent(
+              routeSession,
+              routeBookId,
+              store: routeStore,
+            )) {
+              return;
+            }
+            final Future<void> catalogCompletion = _loadCompleteCatalog(
+              notify: false,
+            );
+            await catalogCompletion;
+            if (!context.mounted ||
+                !_isRouteSessionCurrent(
+                  routeSession,
+                  routeBookId,
+                  store: routeStore,
+                )) {
+              return;
+            }
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _centerCurrentCatalogChapterInView(
+                sheetContext: sheetContext,
+                routeSession: routeSession,
+                routeBookId: routeBookId,
+                routeStore: routeStore,
+              );
+            });
+          });
+        }
         if (_catalog.isEmpty && !_catalogHasMore && !_catalogLoading) {
           return _ReaderEmptyState(
             icon: Icons.menu_book_outlined,
@@ -419,7 +457,8 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
             color: _palette.secondaryText,
           );
         }
-        if (currentChapterId != null && _centeredCatalogChapterId != currentChapterId) {
+        if (currentChapterId != null &&
+            _centeredCatalogChapterId != currentChapterId) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _centerCurrentCatalogChapterInView(
               sheetContext: sheetContext,
@@ -430,7 +469,10 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
           });
         }
         return ListView.builder(
+          key: ValueKey<String>('reader-catalog-count-${_catalog.length}'),
+          controller: _catalogScrollController,
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+          itemExtent: _catalogChapterItemExtent,
           itemCount: _catalog.length + (_catalogHasMore ? 1 : 0),
           itemBuilder: (BuildContext context, int index) {
             if (index == _catalog.length) {
@@ -447,7 +489,7 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                           )) {
                             return;
                           }
-                          await _loadMoreCatalog();
+                          await _loadCompleteCatalog(notify: false);
                           if (!sheetContext.mounted ||
                               !_isRouteSessionCurrent(
                                 routeSession,
@@ -456,7 +498,6 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                               )) {
                             return;
                           }
-                          setSheetState(() {});
                         },
                   child: Text(
                     _catalogLoading
@@ -468,10 +509,6 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
             }
             final ReaderChapterInfo chapter = _catalog[index];
             final bool isCurrentChapter = chapter.id == currentChapterId;
-            final GlobalKey chapterItemKey = _catalogItemKeys.putIfAbsent(
-              chapter.id,
-              () => GlobalKey(),
-            );
             final ReaderChapterState? refreshedState =
                 _chapterAccessCoordinator?.snapshot.states[chapter.id];
             final ReaderChapterAvailability availability =
@@ -490,7 +527,7 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 560),
                 child: ListTile(
-                  key: chapterItemKey,
+                  key: ValueKey<String>('reader-catalog-chapter-${chapter.id}'),
                   dense: true,
                   visualDensity: const VisualDensity(vertical: -1),
                   minVerticalPadding: 4,
@@ -593,30 +630,53 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
     required String routeBookId,
     required TextReaderStateStore routeStore,
   }) {
-    if (!_isRouteSessionCurrent(
-      routeSession,
-      routeBookId,
-      store: routeStore,
-    )) {
+    if (!_isRouteSessionCurrent(routeSession, routeBookId, store: routeStore)) {
       return;
     }
     final String? chapterId = _content?.chapterId;
     if (chapterId == null || chapterId == _centeredCatalogChapterId) {
       return;
     }
-    final BuildContext? chapterItemContext = _catalogItemKeys[chapterId]
-        ?.currentContext;
-    if (chapterItemContext == null || !sheetContext.mounted) return;
-    if (Scrollable.maybeOf(chapterItemContext) == null) return;
-    _centeredCatalogChapterId = chapterId;
-    unawaited(
-      Scrollable.ensureVisible(
-        chapterItemContext,
-        alignment: 0.5,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-      ),
+    final int chapterIndex = _catalog.indexWhere(
+      (ReaderChapterInfo chapter) => chapter.id == chapterId,
     );
+    if (_catalogLoading ||
+        chapterIndex < 0 ||
+        !sheetContext.mounted ||
+        !_catalogScrollController.hasClients) {
+      return;
+    }
+    final ScrollPosition position = _catalogScrollController.position;
+    final double minimumVisibleOffset =
+        (_catalogListTopPadding +
+                (chapterIndex + 1) * _catalogChapterItemExtent -
+                position.viewportDimension)
+            .clamp(0, double.infinity);
+    if (position.maxScrollExtent + 1 < minimumVisibleOffset) {
+      // Catalog pages can finish in the same frame that still has the old
+      // sliver extent. The sheet rebuild will retry after layout catches up.
+      if (_catalogCenterRetryCount >= 3) return;
+      _catalogCenterRetryCount++;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _centerCurrentCatalogChapterInView(
+          sheetContext: sheetContext,
+          routeSession: routeSession,
+          routeBookId: routeBookId,
+          routeStore: routeStore,
+        );
+      });
+      WidgetsBinding.instance.scheduleFrame();
+      return;
+    }
+    _catalogCenterRetryCount = 0;
+    final double centeredOffset =
+        _catalogListTopPadding +
+        chapterIndex * _catalogChapterItemExtent -
+        (position.viewportDimension - _catalogChapterItemExtent) / 2;
+    _catalogScrollController.jumpTo(
+      centeredOffset.clamp(0, position.maxScrollExtent),
+    );
+    _centeredCatalogChapterId = chapterId;
   }
 
   Widget _buildBookmarkList(

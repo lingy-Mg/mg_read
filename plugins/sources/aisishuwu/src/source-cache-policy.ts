@@ -6,13 +6,14 @@
  * TODO: - 无。
  */
 import type { HtmlCachePolicy } from './html-cache.js';
+import type { DiscoveryIcon } from './mgread-api.js';
 
-export interface RankingRule { readonly id: string; readonly title: string; readonly path: string; }
+export interface RankingRule { readonly id: string; readonly title: string; readonly path: string; readonly icon: DiscoveryIcon; }
 export const rankingRules = Object.freeze([
-  Object.freeze({ id: 'day', title: '本日排行', path: '/other/rank_hits/order/hits_day.html' }),
-  Object.freeze({ id: 'week', title: '本周排行', path: '/other/rank_hits/order/hits_week.html' }),
-  Object.freeze({ id: 'month', title: '本月排行', path: '/other/rank_hits/order/hits_month.html' }),
-  Object.freeze({ id: 'total', title: '总排行', path: '/other/rank_hits/order/hits.html' }),
+  Object.freeze({ id: 'day', title: '本日排行', path: '/other/rank_hits/order/hits_day.html', icon: 'dailyRanking' }),
+  Object.freeze({ id: 'week', title: '本周排行', path: '/other/rank_hits/order/hits_week.html', icon: 'weeklyRanking' }),
+  Object.freeze({ id: 'month', title: '本月排行', path: '/other/rank_hits/order/hits_month.html', icon: 'monthlyRanking' }),
+  Object.freeze({ id: 'total', title: '总排行', path: '/other/rank_hits/order/hits.html', icon: 'allTimeRanking' }),
 ] satisfies readonly RankingRule[]);
 export const discoveryListingHtmlCachePolicy = Object.freeze({ namespace: 'listing', staleAfterMs: 60 * 60 * 1000, serveStaleWhileRevalidate: true } satisfies HtmlCachePolicy);
 export const searchListingHtmlCachePolicy = Object.freeze({ namespace: 'search', staleAfterMs: 10 * 60 * 1000 } satisfies HtmlCachePolicy);

@@ -93,6 +93,13 @@ final class FileObjectStore {
   Future<void> pruneGlobalCovers({required int maxBytes}) =>
       _instrument(operation: 'pruneGlobalCovers', recordKind: 'globalCover', action: () => _pruneGlobalCovers(maxBytes));
 
+  /// Returns bytes occupied by global and legacy bookshelf cover caches.
+  Future<int> coverCacheUsageBytes() =>
+      _instrument(operation: 'coverCacheUsageBytes', recordKind: 'coverCache', action: _coverCacheUsageBytes);
+
+  /// Removes global and legacy bookshelf cover caches and returns released bytes.
+  Future<int> clearCoverCache() => _instrument(operation: 'clearCoverCache', recordKind: 'coverCache', action: _clearCoverCache);
+
   Future<void> deleteMangaAssets(String mangaId) =>
       _instrument(operation: 'deleteMangaAssets', recordKind: 'mangaAsset', count: 1, action: () => _deleteMangaAssets(mangaId));
 
@@ -244,6 +251,33 @@ final class FileObjectStore {
     _ensureOpen();
     if (maxBytes <= 0) throw ArgumentError.value(maxBytes, 'maxBytes');
     await _pruneGlobalCoversFromIndex(await _globalCoverFiles(), maxBytes);
+  }
+
+  Future<int> _coverCacheUsageBytes() async {
+    _ensureOpen();
+    final globalBytes = (await _globalCoverFiles()).values.fold<int>(0, (sum, entry) => sum + entry.length);
+    return globalBytes + await _directoryFileBytes(Directory('${_root.path}${Platform.pathSeparator}covers'));
+  }
+
+  Future<int> _clearCoverCache() async {
+    _ensureOpen();
+    final releasedBytes = await _coverCacheUsageBytes();
+    final files = await _globalCoverFiles();
+    for (final folderName in const <String>['global', 'covers']) {
+      final folder = Directory('${_root.path}${Platform.pathSeparator}$folderName');
+      if (await folder.exists()) await folder.delete(recursive: true);
+    }
+    files.clear();
+    return releasedBytes;
+  }
+
+  Future<int> _directoryFileBytes(Directory root) async {
+    if (!await root.exists()) return 0;
+    var bytes = 0;
+    await for (final entity in root.list(recursive: true, followLinks: false)) {
+      if (entity is File) bytes += await entity.length();
+    }
+    return bytes;
   }
 
   Future<void> _pruneGlobalCoversFromIndex(Map<String, _GlobalCoverFile> files, int maxBytes) async {

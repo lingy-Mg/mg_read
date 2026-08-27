@@ -84,6 +84,7 @@ PluginDiscoveryTab _decodeDiscoveryTab(Object? value) {
     id: _contentString(item, 'id', context),
     label: _contentString(item, 'label', context),
     target: _contentString(item, 'target', context),
+    icon: _discoveryIcon(_contentField(item, 'icon', context), context),
   );
 }
 
@@ -130,6 +131,7 @@ PluginDiscoveryCategory _decodeDiscoveryCategory(Object? value) {
     target: _contentString(item, 'target', context),
     count: _contentNullableInt(item, 'count', context),
     url: _contentNullableUri(item, 'url', context),
+    icon: _discoveryIcon(_contentField(item, 'icon', context), context),
   );
 }
 
@@ -155,6 +157,22 @@ PluginMangaPage _decodeMangaPage(Object? value) {
   const context = 'Source manga page';
   final item = _contentObject(value, context);
   final url = _contentUri(item, 'url', context);
+  final policyValue = item.containsKey('resourcePolicy')
+      ? _contentString(item, 'resourcePolicy', context)
+      : 'sessionOnly';
+  final resourcePolicy = switch (policyValue) {
+    'sessionOnly' => PluginMangaPageResourcePolicy.sessionOnly,
+    'refreshable' => PluginMangaPageResourcePolicy.refreshable,
+    'durable' => PluginMangaPageResourcePolicy.durable,
+    _ => _contentInvalid('$context contains an unknown resource policy.'),
+  };
+  final expiresAt = item.containsKey('expiresAt')
+      ? _contentNullableDateTime(item, 'expiresAt', context)
+      : null;
+  if ((resourcePolicy == PluginMangaPageResourcePolicy.refreshable) !=
+      (expiresAt != null)) {
+    _contentInvalid('$context contains an invalid expiresAt value.');
+  }
   return PluginMangaPage(
     id: _contentString(item, 'id', context),
     index: _contentInt(item, 'index', context),
@@ -162,6 +180,8 @@ PluginMangaPage _decodeMangaPage(Object? value) {
     mimeType: _contentNullableString(item, 'mimeType', context),
     width: _contentNullableInt(item, 'width', context),
     height: _contentNullableInt(item, 'height', context),
+    resourcePolicy: resourcePolicy,
+    expiresAt: expiresAt,
   );
 }
 
@@ -326,6 +346,9 @@ PluginDiscoveryContentLayout _discoveryContentLayout(
 ) => switch (value) {
   'featured' => PluginDiscoveryContentLayout.featured,
   'carousel' => PluginDiscoveryContentLayout.carousel,
+  'coverGrid' => PluginDiscoveryContentLayout.coverGrid,
+  'shelf' => PluginDiscoveryContentLayout.shelf,
+  'compact' => PluginDiscoveryContentLayout.compact,
   'ranking' => PluginDiscoveryContentLayout.ranking,
   'list' => PluginDiscoveryContentLayout.list,
   _ => _contentInvalid('$context contains an unknown discovery layout.'),
@@ -336,6 +359,7 @@ PluginDiscoveryCategoryLayout _discoveryCategoryLayout(
   String context,
 ) => switch (value) {
   'grid' => PluginDiscoveryCategoryLayout.grid,
+  'chips' => PluginDiscoveryCategoryLayout.chips,
   'list' => PluginDiscoveryCategoryLayout.list,
   _ => _contentInvalid('$context contains an unknown category layout.'),
 };
@@ -349,6 +373,51 @@ PluginDiscoveryGroupLayout _discoveryGroupLayout(
   'grid' => PluginDiscoveryGroupLayout.grid,
   _ => _contentInvalid('$context contains an unknown group layout.'),
 };
+
+PluginDiscoveryIcon? _discoveryIcon(Object? value, String context) =>
+    switch (value) {
+      null => null,
+      'allTimeRanking' => PluginDiscoveryIcon.allTimeRanking,
+      'audio' => PluginDiscoveryIcon.audio,
+      'book' => PluginDiscoveryIcon.book,
+      'books' => PluginDiscoveryIcon.books,
+      'category' => PluginDiscoveryIcon.category,
+      'classic' => PluginDiscoveryIcon.classic,
+      'completed' => PluginDiscoveryIcon.completed,
+      'dailyRanking' => PluginDiscoveryIcon.dailyRanking,
+      'explore' => PluginDiscoveryIcon.explore,
+      'fanFiction' => PluginDiscoveryIcon.fanFiction,
+      'fantasy' => PluginDiscoveryIcon.fantasy,
+      'free' => PluginDiscoveryIcon.free,
+      'game' => PluginDiscoveryIcon.game,
+      'globe' => PluginDiscoveryIcon.globe,
+      'history' => PluginDiscoveryIcon.history,
+      'horror' => PluginDiscoveryIcon.horror,
+      'hot' => PluginDiscoveryIcon.hot,
+      'lightNovel' => PluginDiscoveryIcon.lightNovel,
+      'manga' => PluginDiscoveryIcon.manga,
+      'military' => PluginDiscoveryIcon.military,
+      'monthlyRanking' => PluginDiscoveryIcon.monthlyRanking,
+      'mystery' => PluginDiscoveryIcon.mystery,
+      'newRelease' => PluginDiscoveryIcon.newRelease,
+      'ongoing' => PluginDiscoveryIcon.ongoing,
+      'other' => PluginDiscoveryIcon.other,
+      'ranking' => PluginDiscoveryIcon.ranking,
+      'recommendation' => PluginDiscoveryIcon.recommendation,
+      'romance' => PluginDiscoveryIcon.romance,
+      'rural' => PluginDiscoveryIcon.rural,
+      'school' => PluginDiscoveryIcon.school,
+      'scienceFiction' => PluginDiscoveryIcon.scienceFiction,
+      'sports' => PluginDiscoveryIcon.sports,
+      'star' => PluginDiscoveryIcon.star,
+      'system' => PluginDiscoveryIcon.system,
+      'timeTravel' => PluginDiscoveryIcon.timeTravel,
+      'trending' => PluginDiscoveryIcon.trending,
+      'urban' => PluginDiscoveryIcon.urban,
+      'weeklyRanking' => PluginDiscoveryIcon.weeklyRanking,
+      'wuxia' => PluginDiscoveryIcon.wuxia,
+      _ => _contentInvalid('$context contains an unknown discovery icon.'),
+    };
 
 void _requireMatchingPlugin(
   Map<String, Object?> result,

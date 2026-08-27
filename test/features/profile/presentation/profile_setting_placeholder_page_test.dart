@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 
+import 'package:mg_read/features/cache/presentation/cache_management_page.dart';
 import 'package:mg_read/features/profile/presentation/about_item_placeholder_page.dart';
 import 'package:mg_read/features/profile/presentation/about_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
@@ -24,6 +25,24 @@ import 'package:mg_read/features/profile/presentation/profile_setting_placeholde
 import '../../../app/mg_read_app_test_support.dart';
 
 void main() {
+  testWidgets('single cache setting opens the unified cache management route', (WidgetTester tester) async {
+    final settings = await createTestAppSettings();
+    addTearDown(settings.close);
+    await tester.pumpWidget(testMgReadApp(settings));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('app-nav-profile')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('profile-setting-downloads-cache')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CacheManagementPage), findsOneWidget);
+    expect(find.text('数据源网页与文件缓存'), findsOneWidget);
+    expect(find.text('封面缓存'), findsOneWidget);
+    expect(find.text('正文图片缓存'), findsOneWidget);
+    expect(find.byKey(const Key('profile-setting-clear-cache')), findsNothing);
+  });
+
   testWidgets('profile setting opens a real secondary placeholder route', (WidgetTester tester) async {
     final settings = await createTestAppSettings();
     addTearDown(settings.close);
@@ -63,12 +82,9 @@ void main() {
     await tester.tap(find.byKey(const Key('app-nav-profile')));
     await tester.pumpAndSettle();
     final Finder profileScroll = find.byKey(const Key('profile-page-content'));
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('profile-setting-about')),
-      220,
-      scrollable: find.descendant(of: profileScroll, matching: find.byType(Scrollable)),
-    );
-    await tester.tap(find.byKey(const Key('profile-setting-about')));
+    await tester.drag(profileScroll, const Offset(0, -480));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('关于我们'));
     await tester.pumpAndSettle();
     expect(find.byType(AboutPage), findsOneWidget);
 

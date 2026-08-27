@@ -3,6 +3,7 @@
 /// 职责：
 /// - 分页展示 App 或 Runtime 的脱敏关键事件。
 /// - 管理当前来源的有界详情捕获和按需附件读取。
+/// - 恢复并保存“仅关键 / 实时详情”偏好。
 ///
 /// 注意：
 /// - App 与 Runtime 会话按当前来源隔离，切换失败不能影响另一侧日志。
@@ -18,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/diagnostics/application/diagnostics_capture_preference_store.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 import 'package:mg_read/features/diagnostics/application/diagnostics_viewer_gateway.dart';
 import 'package:mg_read/features/diagnostics/presentation/widgets/diagnostics_viewer_controls.dart';
@@ -40,6 +42,7 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
   static const int _maximumRetainedPreviews = 8;
 
   late final DiagnosticsViewerGateway _gateway;
+  late final DiagnosticsCapturePreferenceStore _capturePreferenceStore;
   static const DiagnosticsViewerSource _source = DiagnosticsViewerSource.app;
   List<DiagnosticsViewerEvent> _events = const <DiagnosticsViewerEvent>[];
   final Map<String, DiagnosticsViewerEventDetails> _details = <String, DiagnosticsViewerEventDetails>{};
@@ -61,9 +64,10 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
   void initState() {
     super.initState();
     _gateway = ref.read(diagnosticsViewerGatewayProvider);
+    _capturePreferenceStore = ref.read(diagnosticsCapturePreferenceStoreProvider);
     scheduleMicrotask(() {
       unawaited(_loadEvents(reset: true));
-      unawaited(_changeCaptureMode(DiagnosticsDetailMode.memoryOnly));
+      unawaited(_restoreCaptureMode());
     });
   }
 
@@ -204,7 +208,20 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
     }
   }
 
-  Future<void> _changeCaptureMode(DiagnosticsDetailMode mode) async {
+  Future<void> _restoreCaptureMode() async {
+    try {
+      final realtimeDetailsEnabled = await _capturePreferenceStore.loadRealtimeDetailsEnabled();
+      if (!mounted || !realtimeDetailsEnabled) return;
+      await _changeCaptureMode(DiagnosticsDetailMode.memoryOnly, persistPreference: false);
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _captureError = _viewerErrorCode(error);
+      });
+    }
+  }
+
+  Future<void> _changeCaptureMode(DiagnosticsDetailMode mode, {bool persistPreference = true}) async {
     if (!mounted) return;
     if (_captureBusy || (_capture?.mode == mode && _capture?.source == _source)) {
       return;
@@ -232,6 +249,9 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
       setState(() {
         _captureBusy = false;
       });
+      if (persistPreference) {
+        await _saveCapturePreference(realtimeDetailsEnabled: false);
+      }
       return;
     }
     try {
@@ -244,11 +264,25 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
         _capture = capture;
         _captureBusy = false;
       });
+      if (persistPreference && mode == DiagnosticsDetailMode.memoryOnly) {
+        await _saveCapturePreference(realtimeDetailsEnabled: true);
+      }
     } on Object catch (error) {
       if (!mounted) return;
       setState(() {
         _captureError = _viewerErrorCode(error);
         _captureBusy = false;
+      });
+    }
+  }
+
+  Future<void> _saveCapturePreference({required bool realtimeDetailsEnabled}) async {
+    try {
+      await _capturePreferenceStore.saveRealtimeDetailsEnabled(realtimeDetailsEnabled);
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _captureError = _viewerErrorCode(error);
       });
     }
   }

@@ -294,6 +294,26 @@ class ComicReaderProgress {
 }
 
 @immutable
+/// First-content signal emitted after the first real comic image is presented.
+class ComicFirstContentPresentation {
+  /// Creates bounded metadata for the first presented image.
+  const ComicFirstContentPresentation({
+    required this.anchor,
+    required this.cacheHit,
+    this.preparationKind = 'progressive',
+  });
+
+  /// Semantic image position at first presentation, when available.
+  final ComicReaderProgress? anchor;
+
+  /// Whether the first image bytes were already in the session cache.
+  final bool cacheHit;
+
+  /// Bounded preparation category, never a URL, path, or payload.
+  final String preparationKind;
+}
+
+@immutable
 /// Host-persisted comic bookmark anchored to one image.
 class ComicReaderBookmark {
   /// Creates a semantic comic bookmark.

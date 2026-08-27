@@ -3,6 +3,7 @@
 /// 职责：
 /// - 编排书架、目录、正文、封面和阅读进度的受控持久化访问。
 /// - 将书源结果转换为主应用拥有的强类型内容对象。
+/// - 注册 Content Library 元数据 codec 与有界小写入策略。
 ///
 /// 注意：
 /// - 不泄漏 SQLite、路径、动态 JSON 或 Runtime 传输对象。
@@ -23,6 +24,7 @@ import 'package:mg_read/core/persistence/src/diagnostic_sha256.dart';
 
 part 'content_library_bookshelf.dart';
 part 'content_library_reader.dart';
+part 'content_library_bookmarks.dart';
 part 'content_library_catalog.dart';
 
 const _scope = ScopeKey(kind: 'content_library', id: 'default');
@@ -30,6 +32,9 @@ const _itemKind = 'content_library_item';
 const _bindingKind = 'content_source_binding';
 const _entryKind = 'content_catalog_entry';
 const _readingProgressKind = 'content_library_reading_progress';
+const _bookmarkKind = 'content_library_bookmark';
+const _mangaProgressKind = 'content_library_manga_progress';
+const _mangaBookmarkKind = 'content_library_manga_bookmark';
 const _coverCacheMaxBytes = 100 * 1024 * 1024;
 const _metadataInlinePreparationPolicy = JsonInlinePreparationPolicy(
   maxDocuments: 8,
@@ -38,6 +43,21 @@ const _metadataInlinePreparationPolicy = JsonInlinePreparationPolicy(
   maxCollectionLength: 64,
   maxTotalTextCodeUnits: 12 * 1024,
 );
+
+Iterable<RecordDocumentCodec> get contentLibraryRecordDocumentCodecs sync* {
+  for (final kind in [_itemKind, _bindingKind, _entryKind, _readingProgressKind, _bookmarkKind, _mangaProgressKind, _mangaBookmarkKind]) {
+    yield RecordDocumentCodec(
+      recordKind: kind,
+      scopeKind: _scope.kind,
+      currentVersion: 1,
+      validators: {1: _validateContentMetadata},
+      inlinePreparationPolicy: _metadataInlinePreparationPolicy,
+    );
+  }
+}
+
+RecordDocumentRegistry get _registry => RecordDocumentRegistry(contentLibraryRecordDocumentCodecs);
+void _validateContentMetadata(JsonObject _) {}
 
 final class ContentLibrary {
   ContentLibrary._(this._persistence, this._diagnostics, {required this._closePersistenceOnClose});
@@ -48,6 +68,8 @@ final class ContentLibrary {
   late final CatalogRepository catalog = CatalogRepository._(this);
   late final ContentRepository content = ContentRepository._(this);
   late final ReadingProgressRepository readingProgress = ReadingProgressRepository._(this);
+  late final BookmarkRepository bookmarks = BookmarkRepository._(this);
+  late final MangaStateRepository mangaState = MangaStateRepository._(this);
   late final LibrarySyncRepository sync = LibrarySyncRepository._(this);
   late final CoverRepository covers = CoverRepository._(this);
   static Future<ContentLibrary> open({required Directory dataRoot, DiagnosticsManager? diagnostics}) async => ContentLibrary._(
@@ -72,7 +94,31 @@ final class ContentLibrary {
       catalog.ensureNovelCatalog(itemId: itemId, chapters: chapters);
   Future<int> syncNovelCatalog({required LibraryItemId itemId, required Iterable<SourceNovelCatalogChapter> chapters}) =>
       catalog.syncNovelCatalog(itemId: itemId, chapters: chapters);
+  Future<int> syncMangaCatalog({required LibraryItemId itemId, required Iterable<MangaChapterDescriptor> chapters}) =>
+      catalog.syncMangaCatalog(itemId: itemId, chapters: chapters);
   Future<ReadableContent?> openContent(CatalogEntryId id) => content.open(id);
+  Future<void> cacheMangaChapter({required CatalogEntryId entryId, required Iterable<MangaPageDescriptor> pages}) =>
+      content.cacheMangaChapter(entryId: entryId, pages: pages);
+  Future<MangaReaderSession?> openMangaReaderSession(LibraryItemId itemId) => _trace(
+    operation: 'mangaReaderSessionOpen', contentKind: ContentKind.manga.code, itemCount: 1,
+    action: () => _openMangaReaderSession(itemId), resultCount: (result) => result == null ? 0 : 1,
+    resultState: (result) => result == null ? 'empty' : 'content',
+  );
+
+  Future<MangaReaderSession?> _openMangaReaderSession(LibraryItemId itemId) async {
+    final record = await _persistence.metadataRecords.read(id: itemId.value, scope: _scope);
+    if (record == null || record.recordKind != _itemKind) return null;
+    final item = _item(record);
+    if (item.kind != ContentKind.manga) return null;
+    final snapshot = record.document['activeSnapshotId'];
+    if (snapshot is! String || snapshot.isEmpty) return null;
+    final first = await _persistence.metadataRecords.list(RecordQuery(recordKind: _entryKind, scope: _scope, parentId: itemId.value, stateKey: 'pending:$snapshot', limit: 1));
+    if (first.records.isEmpty) return null;
+    final binding = first.records.single.document['bindingId'];
+    if (binding is! String || binding.isEmpty) return null;
+    final count = record.document['catalogCount'] is int ? record.document['catalogCount'] as int : first.records.length;
+    return MangaReaderSession._(library: this, item: item, catalogCount: count, snapshot: snapshot, bindingId: SourceBindingId(binding));
+  }
   Future<void> cacheNovelChapter({required LibraryItemId itemId, required String remoteChapterId, required String text}) =>
       content.cacheNovelChapter(itemId: itemId, remoteChapterId: remoteChapterId, text: text);
 

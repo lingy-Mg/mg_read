@@ -7,6 +7,7 @@
 /// 注意：
 /// - 不在 build() 中执行持久化；删除由显式回调在动画后提交。
 /// - 当前滚动控制器只由本壳持有并在销毁时释放。
+/// - 分区和状态筛选通过局部 notifier 更新，不重建顶部与继续阅读区域。
 ///
 /// TODO:
 /// - 无。
@@ -66,8 +67,11 @@ class LibraryHomeShell extends StatefulWidget {
 
 class _LibraryHomeShellState extends State<LibraryHomeShell> {
   final ScrollController _scrollController = ScrollController();
-  LibraryHomeSection _section = LibraryHomeSection.recentUpdates;
-  LibraryStatusFilter _filter = LibraryStatusFilter.all;
+  final ValueNotifier<({LibraryHomeSection section, LibraryStatusFilter filter})> _selection =
+      ValueNotifier<({LibraryHomeSection section, LibraryStatusFilter filter})>((
+        section: LibraryHomeSection.recentUpdates,
+        filter: LibraryStatusFilter.all,
+      ));
   String? _actionFeedback;
   double _contentOpacity = 1;
   final Set<String> _removingBookIds = <String>{};
@@ -88,6 +92,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
 
   @override
   void dispose() {
+    _selection.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -141,38 +146,40 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   }
 
   Widget _buildContentSlivers(BuildContext context) {
-    final List<LibraryBookListItemViewData> books = _visibleBooks;
     return SliverMainAxisGroup(
       slivers: <Widget>[
         SliverToBoxAdapter(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              LibraryHomeTopBar(
-                onSearch: _handleSearch,
-                onToggleTheme: widget.onToggleTheme,
-                onReadingHistory: _handleReadingHistory,
-                onManageSources: _handleManageSources,
-                onPrivacyLibrary: _handlePrivacyLibrary,
-              ),
-              if (widget.isRefreshing) ...<Widget>[
-                const SizedBox(height: AppSpacing.regular),
-                Semantics(label: '正在刷新书架', child: const LinearProgressIndicator()),
-              ],
-              if (widget.errorNotice != null) ...<Widget>[const SizedBox(height: AppSpacing.comfortable), widget.errorNotice!],
-              if (_actionFeedback != null) ...<Widget>[
-                const SizedBox(height: AppSpacing.comfortable),
-                _ActionFeedbackBanner(
-                  message: _actionFeedback!,
-                  onDismiss: () {
-                    setState(() {
-                      _actionFeedback = null;
-                    });
-                  },
+          child: RepaintBoundary(
+            key: const Key('library-stable-header'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                LibraryHomeTopBar(
+                  onSearch: _handleSearch,
+                  onToggleTheme: widget.onToggleTheme,
+                  onReadingHistory: _handleReadingHistory,
+                  onManageSources: _handleManageSources,
+                  onPrivacyLibrary: _handlePrivacyLibrary,
                 ),
+                if (widget.isRefreshing) ...<Widget>[
+                  const SizedBox(height: AppSpacing.regular),
+                  Semantics(label: '正在刷新书架', child: const LinearProgressIndicator()),
+                ],
+                if (widget.errorNotice != null) ...<Widget>[const SizedBox(height: AppSpacing.comfortable), widget.errorNotice!],
+                if (_actionFeedback != null) ...<Widget>[
+                  const SizedBox(height: AppSpacing.comfortable),
+                  _ActionFeedbackBanner(
+                    message: _actionFeedback!,
+                    onDismiss: () {
+                      setState(() {
+                        _actionFeedback = null;
+                      });
+                    },
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.regular),
               ],
-              const SizedBox(height: AppSpacing.regular),
-            ],
+            ),
           ),
         ),
         if (widget.showLoading)
@@ -180,15 +187,6 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
             child: Padding(
               padding: EdgeInsets.only(top: AppSpacing.comfortable),
               child: Center(child: CircularProgressIndicator()),
-            ),
-          )
-        else if (books.isEmpty)
-          SliverAnimatedOpacity(
-            opacity: _contentOpacity,
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOut,
-            sliver: SliverToBoxAdapter(
-              child: KeyedSubtree(key: const Key('library-mobile-layout'), child: _buildCompactContent(context)),
             ),
           )
         else ...<Widget>[
@@ -199,57 +197,65 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
             sliver: SliverToBoxAdapter(
               child: KeyedSubtree(
                 key: const Key('library-mobile-layout'),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    _buildReadingSurface(context),
-                    const SizedBox(height: AppSpacing.comfortable),
-                    _buildLibraryListHeader(),
-                  ],
+                child: RepaintBoundary(
+                  key: const Key('library-stable-reading-surface'),
+                  child: _isFirstRunEmpty
+                      ? const SizedBox(width: double.infinity)
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: <Widget>[
+                            _buildReadingSurface(context),
+                            const SizedBox(height: AppSpacing.comfortable),
+                          ],
+                        ),
                 ),
               ),
             ),
           ),
-          SliverAnimatedOpacity(
-            opacity: _contentOpacity,
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOut,
-            sliver: LibraryBookSliverList(
-              books: books,
-              onOpenBook: _handleOpenBook,
-              onBookLongPress: _handleBookLongPress,
-              onBookMore: _handleBookMore,
-              actions: _bookActions,
-              onBookAction: _handleBookAction,
-              presentation: _listPresentation,
-              preparingBookId: widget.preparingBookId,
-              removingBookIds: _removingBookIds,
-            ),
+          ValueListenableBuilder<({LibraryHomeSection section, LibraryStatusFilter filter})>(
+            valueListenable: _selection,
+            builder: (BuildContext context, selection, Widget? child) {
+              final List<LibraryBookListItemViewData> books = _visibleBooks(selection.filter);
+              return SliverMainAxisGroup(
+                slivers: <Widget>[
+                  SliverAnimatedOpacity(
+                    opacity: _contentOpacity,
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOut,
+                    sliver: SliverToBoxAdapter(child: _buildLibraryListHeader(selection)),
+                  ),
+                  SliverAnimatedOpacity(
+                    opacity: _contentOpacity,
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOut,
+                    sliver: books.isEmpty
+                        ? SliverToBoxAdapter(
+                            child: _isFirstRunEmpty && selection.section == LibraryHomeSection.recentUpdates
+                                ? _NoRecentUpdatesCard(onDiscover: _handleDiscover)
+                                : _NoMatchingBooks(tokens: AppThemeTokens.of(context)),
+                          )
+                        : LibraryBookSliverList(
+                            books: books,
+                            onOpenBook: _handleOpenBook,
+                            onBookLongPress: _handleBookLongPress,
+                            onBookMore: _handleBookMore,
+                            actions: _bookActions,
+                            onBookAction: _handleBookAction,
+                            presentation: _listPresentation(selection.section),
+                            preparingBookId: widget.preparingBookId,
+                            removingBookIds: _removingBookIds,
+                          ),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ],
     );
   }
 
-  Widget _buildCompactContent(BuildContext context) {
-    if (_isFirstRunEmpty) {
-      return _buildFirstRunContent(context);
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        _buildReadingSurface(context),
-        const SizedBox(height: AppSpacing.comfortable),
-        _buildLibraryList(context),
-      ],
-    );
-  }
-
   bool get _isFirstRunEmpty => !widget.data.isPresentationFixture && widget.data.continueReading == null && widget.data.books.isEmpty;
-
-  Widget _buildFirstRunContent(BuildContext context) {
-    return _buildLibraryList(context);
-  }
 
   Widget _buildReadingSurface(BuildContext context) {
     final LibraryContinueReadingViewData? continueReading = widget.data.continueReading;
@@ -263,64 +269,34 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     );
   }
 
-  Widget _buildLibraryList(BuildContext context) {
-    final List<LibraryBookListItemViewData> books = _visibleBooks;
-    final AppThemeTokens tokens = AppThemeTokens.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        _buildLibraryListHeader(),
-        if (books.isEmpty)
-          _section == LibraryHomeSection.recentUpdates && _isFirstRunEmpty
-              ? _NoRecentUpdatesCard(onDiscover: _handleDiscover)
-              : _NoMatchingBooks(tokens: tokens)
-        else
-          LibraryBookList(
-            books: books,
-            onOpenBook: _handleOpenBook,
-            onBookLongPress: _handleBookLongPress,
-            onBookMore: _handleBookMore,
-            actions: _bookActions,
-            onBookAction: _handleBookAction,
-            presentation: _listPresentation,
-            preparingBookId: widget.preparingBookId,
-            removingBookIds: _removingBookIds,
-          ),
-      ],
-    );
-  }
-
-  LibraryBookListPresentation get _listPresentation =>
-      _section == LibraryHomeSection.recentUpdates ? LibraryBookListPresentation.recentUpdates : LibraryBookListPresentation.shelf;
+  LibraryBookListPresentation _listPresentation(LibraryHomeSection section) =>
+      section == LibraryHomeSection.recentUpdates ? LibraryBookListPresentation.recentUpdates : LibraryBookListPresentation.shelf;
 
   List<LibraryBookListAction> get _bookActions => <LibraryBookListAction>[
     if (widget.callbacks.onSetBookPrivate != null) _setBookPrivateAction,
     if (widget.callbacks.onDeleteBook != null) _deleteBookAction,
   ];
 
-  Widget _buildLibraryListHeader() {
+  Widget _buildLibraryListHeader(({LibraryHomeSection section, LibraryStatusFilter filter}) selection) {
     return Column(
       children: <Widget>[
         Row(
           key: const Key('library-list-heading-row'),
           children: <Widget>[
             LibrarySectionNavigation(
-              selected: _section,
+              selected: selection.section,
               onSelected: (LibraryHomeSection section) {
-                setState(() {
-                  _section = section;
-                });
+                if (section == _selection.value.section) return;
+                _selection.value = (section: section, filter: _selection.value.filter);
               },
             ),
             const SizedBox(width: AppSpacing.compact),
             Expanded(
               child: LibraryStatusFilterBar(
-                selected: _filter,
+                selected: selection.filter,
                 onSelected: (LibraryStatusFilter filter) {
-                  setState(() {
-                    _filter = filter;
-                  });
+                  if (filter == _selection.value.filter) return;
+                  _selection.value = (section: _selection.value.section, filter: filter);
                 },
               ),
             ),
@@ -331,13 +307,13 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     );
   }
 
-  List<LibraryBookListItemViewData> get _visibleBooks {
+  List<LibraryBookListItemViewData> _visibleBooks(LibraryStatusFilter filter) {
     final Iterable<LibraryBookListItemViewData> sectionBooks = widget.data.books;
-    return sectionBooks.where(_matchesFilter).toList(growable: false);
+    return sectionBooks.where((LibraryBookListItemViewData book) => _matchesFilter(book, filter)).toList(growable: false);
   }
 
-  bool _matchesFilter(LibraryBookListItemViewData book) {
-    return switch (_filter) {
+  bool _matchesFilter(LibraryBookListItemViewData book, LibraryStatusFilter filter) {
+    return switch (filter) {
       LibraryStatusFilter.all => true,
       LibraryStatusFilter.ongoing => book.status == LibraryBookStatus.ongoing,
       LibraryStatusFilter.completed => book.status == LibraryBookStatus.completed,

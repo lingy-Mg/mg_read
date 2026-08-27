@@ -17,8 +17,12 @@ extension _TextReaderVerticalContentWidgets on _TextReaderViewState {
       key: const ValueKey<String>('reader-content-surface'),
       behavior: HitTestBehavior.translucent,
       onTapUp: (_) {
-        if (_readerSettingsVisible) {
-          _dismissReaderSettingsFromReader();
+        if (_readerInteractionBlocked) {
+          if (_readerSettingsVisible) {
+            _dismissReaderSettingsFromReader();
+          } else {
+            _dismissReaderControlsFromReader();
+          }
           return;
         }
         _stopAutoReading();
@@ -47,7 +51,7 @@ extension _TextReaderVerticalContentWidgets on _TextReaderViewState {
               );
               return ListView.builder(
                 controller: _verticalController,
-                physics: _readerSettingsVisible
+                physics: _readerInteractionBlocked
                     ? const NeverScrollableScrollPhysics()
                     : null,
                 padding: EdgeInsets.fromLTRB(

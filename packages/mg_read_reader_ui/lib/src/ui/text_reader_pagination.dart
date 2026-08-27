@@ -387,7 +387,7 @@ extension _TextReaderPagination on _TextReaderViewState {
       : null;
 
   Future<void> _nextPage({bool userInitiated = true}) async {
-    if (_readerSettingsVisible && userInitiated) return;
+    if (_readerInteractionBlocked && userInitiated) return;
     if (userInitiated) _stopAutoReading();
     if (_preferences.navigationMode == ReaderNavigationMode.verticalScroll) {
       if (_verticalController.hasClients) {
@@ -409,7 +409,7 @@ extension _TextReaderPagination on _TextReaderViewState {
   }
 
   Future<void> _previousPage({bool userInitiated = true}) async {
-    if (_readerSettingsVisible && userInitiated) return;
+    if (_readerInteractionBlocked && userInitiated) return;
     if (userInitiated) _stopAutoReading();
     if (_preferences.navigationMode == ReaderNavigationMode.verticalScroll) {
       if (_verticalController.hasClients) {
@@ -431,8 +431,12 @@ extension _TextReaderPagination on _TextReaderViewState {
   }
 
   void _handleHorizontalTap(Offset localPosition) {
-    if (_readerSettingsVisible) {
-      _dismissReaderSettingsFromReader();
+    if (_readerInteractionBlocked) {
+      if (_readerSettingsVisible) {
+        _dismissReaderSettingsFromReader();
+      } else {
+        _dismissReaderControlsFromReader();
+      }
       return;
     }
     _stopAutoReading();
@@ -454,7 +458,7 @@ extension _TextReaderPagination on _TextReaderViewState {
   }
 
   void _trackMousePointerDown(PointerDownEvent event) {
-    if (_readerSettingsVisible) return;
+    if (_readerInteractionBlocked) return;
     if (event.kind != PointerDeviceKind.mouse ||
         event.buttons != _TextReaderViewState._primaryMouseButton) {
       return;
@@ -482,7 +486,7 @@ extension _TextReaderPagination on _TextReaderViewState {
     _mouseTapPointer = null;
     _mouseTapDownPosition = null;
     _mouseTapMoved = false;
-    if (_readerSettingsVisible) return;
+    if (_readerInteractionBlocked) return;
     if (isTap && event is PointerUpEvent) {
       _handleHorizontalTap(event.localPosition);
     } else if (_usesDirectPageTurns &&

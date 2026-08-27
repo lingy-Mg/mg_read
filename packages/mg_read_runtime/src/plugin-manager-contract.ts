@@ -47,13 +47,16 @@ export class PluginManagerError extends Error {
   constructor(
     readonly code:
       | "cancelled"
+      | "interaction_required"
       | "invalid_request"
+      | "overloaded"
       | "plugin_disabled"
       | "plugin_execution_failed"
       | "plugin_invalid_response"
       | "plugin_load_failed"
       | "plugin_not_found"
-      | "timeout",
+      | "timeout"
+      | "unsupported",
   ) {
     super("The Runtime plugin capability could not be completed.");
     this.name = "PluginManagerError";
@@ -127,6 +130,11 @@ export interface MgReadPluginContext {
   readonly dataDir: string;
   readonly http: {
     fetch(input: string | URL, init?: RequestInit): Promise<Response>;
+  };
+  readonly browser: {
+    readonly sessionV1: {
+      request(request: unknown): Promise<unknown>;
+    };
   };
   readonly resource: { proxy(request: JsonObject): string };
   readonly log: {

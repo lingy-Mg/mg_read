@@ -13,10 +13,12 @@
 part of 'source_content_detail_sheet.dart';
 
 class _SourceDetailLoadingView extends StatelessWidget {
-  const _SourceDetailLoadingView({required this.initialContent, required this.shelfState});
+  const _SourceDetailLoadingView({required this.initialContent, required this.shelfState, this.onShelfAction, this.onStartReading});
 
   final PluginContentSummary? initialContent;
   final SourceDetailShelfState shelfState;
+  final SourceShelfActionRequested? onShelfAction;
+  final SourceStartReadingRequested? onStartReading;
 
   @override
   Widget build(BuildContext context) {
@@ -81,37 +83,40 @@ class _SourceDetailLoadingView extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.section),
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: null,
-                icon: Icon(shelfState != SourceDetailShelfState.canAdd ? Icons.bookmark_added_outlined : Icons.library_add_outlined),
-                label: Text(shelfState != SourceDetailShelfState.canAdd ? '已在书架' : '加入书架'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(54),
-                  disabledForegroundColor: tokens.mutedText,
-                  side: BorderSide(color: tokens.divider),
-                  shape: RoundedRectangleBorder(borderRadius: AppRadii.control),
+        if (shelfState != SourceDetailShelfState.canAdd && onShelfAction != null && onStartReading != null)
+          _ShelfActionBar(shelfState: shelfState, onAction: onShelfAction!, onStartReading: onStartReading!)
+        else
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: null,
+                  icon: const Icon(Icons.library_add_outlined),
+                  label: const Text('加入书架'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(54),
+                    disabledForegroundColor: tokens.mutedText,
+                    side: BorderSide(color: tokens.divider),
+                    shape: RoundedRectangleBorder(borderRadius: AppRadii.control),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: AppSpacing.regular),
-            Expanded(
-              child: FilledButton(
-                key: const Key('source-detail-start-reading'),
-                onPressed: null,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(54),
-                  disabledBackgroundColor: tokens.accent,
-                  disabledForegroundColor: tokens.surface,
-                  shape: RoundedRectangleBorder(borderRadius: AppRadii.control),
+              const SizedBox(width: AppSpacing.regular),
+              Expanded(
+                child: FilledButton(
+                  key: const Key('source-detail-start-reading'),
+                  onPressed: null,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(54),
+                    disabledBackgroundColor: tokens.accent,
+                    disabledForegroundColor: tokens.surface,
+                    shape: RoundedRectangleBorder(borderRadius: AppRadii.control),
+                  ),
+                  child: const _DetailLoadingButtonLabel(),
                 ),
-                child: const _DetailLoadingButtonLabel(),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
         const SizedBox(height: AppSpacing.section),
         Divider(color: tokens.divider, height: 1),
         const SizedBox(height: AppSpacing.comfortable),

@@ -12,8 +12,8 @@ abstract final class SourceBranding {
   static const String shuduguId = 'org.mgread.shudugu';
 
   static String? assetFor(String sourceId) => switch (sourceId) {
-    aliceId => 'assets/data_sources/aisishuwu.png',
-    shuduguId => 'assets/data_sources/shudugu.png',
+    aliceId => 'assets/data_sources/aisishuwu.webp',
+    shuduguId => 'assets/data_sources/shudugu.webp',
     _ => null,
   };
 

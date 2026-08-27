@@ -142,7 +142,7 @@ class _ProfileAvatar extends StatelessWidget {
       child: ExcludeSemantics(
         child: ClipOval(
           child: Image.asset(
-            'assets/profile/profile-traveler-avatar.png',
+            'assets/profile/profile-traveler-avatar.webp',
             width: AppSpacing.profileAvatarSize,
             height: AppSpacing.profileAvatarSize,
             fit: BoxFit.cover,

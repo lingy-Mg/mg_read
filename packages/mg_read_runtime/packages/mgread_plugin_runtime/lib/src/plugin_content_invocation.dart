@@ -8,6 +8,14 @@ enum PluginContentKind {
   final String code;
 }
 
+enum PluginMangaPageResourcePolicy {
+  sessionOnly('sessionOnly'),
+  refreshable('refreshable'),
+  durable('durable');
+  const PluginMangaPageResourcePolicy(this.code);
+  final String code;
+}
+
 enum PluginContentStatus {
   ongoing('ongoing'),
   completed('completed'),
@@ -31,6 +39,9 @@ enum PluginAccessKind {
 enum PluginDiscoveryContentLayout {
   featured('featured'),
   carousel('carousel'),
+  coverGrid('coverGrid'),
+  shelf('shelf'),
+  compact('compact'),
   ranking('ranking'),
   list('list');
 
@@ -40,6 +51,7 @@ enum PluginDiscoveryContentLayout {
 
 enum PluginDiscoveryCategoryLayout {
   grid('grid'),
+  chips('chips'),
   list('list');
 
   const PluginDiscoveryCategoryLayout(this.code);
@@ -52,6 +64,51 @@ enum PluginDiscoveryGroupLayout {
   grid('grid');
 
   const PluginDiscoveryGroupLayout(this.code);
+  final String code;
+}
+
+enum PluginDiscoveryIcon {
+  allTimeRanking('allTimeRanking'),
+  audio('audio'),
+  book('book'),
+  books('books'),
+  category('category'),
+  classic('classic'),
+  completed('completed'),
+  dailyRanking('dailyRanking'),
+  explore('explore'),
+  fanFiction('fanFiction'),
+  fantasy('fantasy'),
+  free('free'),
+  game('game'),
+  globe('globe'),
+  history('history'),
+  horror('horror'),
+  hot('hot'),
+  lightNovel('lightNovel'),
+  manga('manga'),
+  military('military'),
+  monthlyRanking('monthlyRanking'),
+  mystery('mystery'),
+  newRelease('newRelease'),
+  ongoing('ongoing'),
+  other('other'),
+  ranking('ranking'),
+  recommendation('recommendation'),
+  romance('romance'),
+  rural('rural'),
+  school('school'),
+  scienceFiction('scienceFiction'),
+  sports('sports'),
+  star('star'),
+  system('system'),
+  timeTravel('timeTravel'),
+  trending('trending'),
+  urban('urban'),
+  weeklyRanking('weeklyRanking'),
+  wuxia('wuxia');
+
+  const PluginDiscoveryIcon(this.code);
   final String code;
 }
 
@@ -410,11 +467,13 @@ final class PluginDiscoveryTab {
     required this.id,
     required this.label,
     required this.target,
+    this.icon,
   });
 
   final String id;
   final String label;
   final String target;
+  final PluginDiscoveryIcon? icon;
 }
 
 @immutable
@@ -448,6 +507,7 @@ final class PluginDiscoveryCategory {
     required this.target,
     required this.count,
     required this.url,
+    this.icon,
   });
 
   final String id;
@@ -455,6 +515,7 @@ final class PluginDiscoveryCategory {
   final String target;
   final int? count;
   final Uri? url;
+  final PluginDiscoveryIcon? icon;
 }
 
 @immutable
@@ -500,11 +561,13 @@ final class PluginDiscoverySectionComponent extends PluginDiscoveryComponent {
     required this.title,
     required this.subtitle,
     required List<PluginDiscoveryComponent> children,
+    this.icon,
   }) : children = List<PluginDiscoveryComponent>.unmodifiable(children);
 
   final String title;
   final String? subtitle;
   final List<PluginDiscoveryComponent> children;
+  final PluginDiscoveryIcon? icon;
 }
 
 final class PluginDiscoveryGroupComponent extends PluginDiscoveryComponent {
@@ -798,6 +861,8 @@ final class PluginMangaPage {
     required this.mimeType,
     required this.width,
     required this.height,
+    required this.resourcePolicy,
+    required this.expiresAt,
   });
 
   final String id;
@@ -806,6 +871,8 @@ final class PluginMangaPage {
   final String? mimeType;
   final int? width;
   final int? height;
+  final PluginMangaPageResourcePolicy resourcePolicy;
+  final DateTime? expiresAt;
 }
 
 PluginContentSummary _decodeContentSummary(Object? value, String context) {
@@ -919,6 +986,7 @@ PluginDiscoveryComponent _decodeDiscoveryComponent(
       id: id,
       title: _contentString(item, 'title', context),
       subtitle: _contentNullableString(item, 'subtitle', context),
+      icon: _discoveryIcon(_contentField(item, 'icon', context), context),
       children: children(),
     ),
     'group' => PluginDiscoveryGroupComponent(

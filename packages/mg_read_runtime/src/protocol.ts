@@ -27,6 +27,7 @@ export type RuntimeErrorCode =
   | "capture_mode_unsupported"
   | "diagnostics_unavailable"
   | "internal"
+  | "interaction_required"
   | "invalid_request"
   | "method_not_found"
   | "overloaded"
