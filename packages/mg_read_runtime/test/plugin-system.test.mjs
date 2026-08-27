@@ -50,6 +50,9 @@ import {
 const fixtureRoot = fileURLToPath(
   new URL("./fixtures/standard-plugin/", import.meta.url),
 );
+const mangaFixtureRoot = fileURLToPath(
+  new URL("./fixtures/manga-plugin/", import.meta.url),
+);
 
 async function temporaryDirectory(t, prefix) {
   const root = await mkdtemp(join(tmpdir(), prefix));
@@ -191,9 +194,9 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
     assert.equal(validateContentResult("org.example.nulls", "空值书源", { contentKind: "manga", chapterId: "chapter:policy", title: null, updatedAt: null, text: null, pages: [page] }).pages[0].resourcePolicy, resourcePolicy);
   }
   assert.throws(() => validateContentResult("org.example.nulls", "空值书源", { contentKind: "manga", chapterId: "chapter:bad", title: null, updatedAt: null, text: null, pages: [{ id: "page:bad", index: 0, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null, resourcePolicy: "refreshable", expiresAt: null }] }), PluginContentValidationError);
-  const underManifestBudget = Array.from({ length: 60 }, (_, index) => ({ id: `page:${index}:${"x".repeat(8192)}`, index, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null }));
+  const underManifestBudget = Array.from({ length: 60 }, (_, index) => ({ id: `page:${index}:${"x".repeat(8180)}`, index, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null }));
   assert.equal(validateContentResult("org.example.nulls", "空值书源", { contentKind: "manga", chapterId: "chapter:budget", title: null, updatedAt: null, text: null, pages: underManifestBudget }).pages.length, 60);
-  const overManifestBudget = Array.from({ length: 63 }, (_, index) => ({ id: `page:${index}:${"x".repeat(8192)}`, index, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null }));
+  const overManifestBudget = Array.from({ length: 63 }, (_, index) => ({ id: `page:${index}:${"x".repeat(8180)}`, index, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null }));
   assert.throws(() => validateContentResult("org.example.nulls", "空值书源", { contentKind: "manga", chapterId: "chapter:budget", title: null, updatedAt: null, text: null, pages: overManifestBudget }), PluginContentValidationError);
 
   assert.throws(
@@ -244,6 +247,35 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
       }),
     PluginContentValidationError,
   );
+});
+
+test("installed manga fixture exposes catalog, page manifests, policies, and bounded resources", async (t) => {
+  const dataRoot = await temporaryDirectory(t, "mgread-manga-fixture-");
+  await new PluginInstaller(dataRoot).installProject(mangaFixtureRoot);
+  const manager = new PluginManager(dataRoot);
+  await manager.initialize();
+  const signal = new AbortController().signal;
+  const deadline = String(Date.now() + 5_000);
+  const search = await manager.search("org.mgread.runtime.manga-fixture", { query: "固定", cursor: null, pageSize: 20 }, signal, deadline);
+  assert.equal(search.items[0].contentKind, "manga");
+  const detail = await manager.getDetail("org.mgread.runtime.manga-fixture", { id: "manga:fixture-book" }, signal, deadline);
+  assert.equal(detail.contentKind, "manga");
+  const chapters = await manager.getChapters("org.mgread.runtime.manga-fixture", { id: detail.id }, signal, deadline);
+  assert.equal(chapters.items.length, 2);
+  const first = await manager.getContent("org.mgread.runtime.manga-fixture", { id: detail.id, chapterId: chapters.items[0].id }, signal, deadline);
+  const second = await manager.getContent("org.mgread.runtime.manga-fixture", { id: detail.id, chapterId: chapters.items[1].id }, signal, deadline);
+  assert.equal(first.contentKind, "manga");
+  assert.equal(first.pages.length, 2);
+  assert.equal(first.pages[0].resourcePolicy, "sessionOnly");
+  assert.equal(first.pages[0].expiresAt, null);
+  assert.equal(second.pages[0].resourcePolicy, "durable");
+  assert.equal(new URL(second.pages[0].url).host, "example.invalid");
+  assert.match(new URL(second.pages[0].url).pathname, /\/manga\/fixture-book\/manga:fixture-book:chapter-2\/page-0\.png$/u);
+  const token = new URL(first.pages[0].url).pathname.split("/").at(-1);
+  const resource = await manager.consumeResource(token, signal);
+  assert.equal(resource.body.length > 32, true);
+  assert.deepEqual([...resource.body.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.equal(resource.headers["content-type"], "image/png");
 });
 
 test("complete chapter catalogs enforce count, byte, uniqueness, and shape limits", () => {
@@ -644,7 +676,6 @@ test("browser.session.v1 is bounded, host-owned, and preserves stable failures",
           finalUrl: request.url,
           headers: { "content-type": "text/html" },
           body: "fixture-browser-body",
-          userAgent: "Fixture Browser",
           verificationState: "verified",
         };
       },
@@ -662,6 +693,8 @@ test("browser.session.v1 is bounded, host-owned, and preserves stable failures",
   assert.equal(calls[0].pluginId, "org.mgread.runtime.fixture");
   assert.equal(calls[0].headers.cookie, undefined);
   assert.equal(calls[0].headers["user-agent"], undefined);
+  assert.equal(calls[0].presentation, "hidden");
+  assert.equal(calls[0].transport, "webview");
   assert.equal(calls[0].signal.aborted, false);
 
   await assert.rejects(

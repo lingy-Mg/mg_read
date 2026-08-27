@@ -1,12 +1,12 @@
 /// 统一缓存管理页面。
 ///
 /// 职责：
-/// - 分别展示和清理 Runtime 数据源网页/文件缓存与主应用封面缓存。
-/// - 明确正文图片缓存尚未启用，不把未来漫画文件误报为当前缓存。
+/// - 分别展示和清理 Runtime 数据源网页/文件缓存、封面缓存与漫画正文图片缓存。
+/// - 为每类可再生缓存提供独立用量、失败重试和清理反馈。
 ///
 /// 注意：
 /// - 页面只组合独立状态，不读取任何缓存目录。
-/// - 清理可再生缓存不得影响书架、正文、进度或数据源安装状态。
+/// - 清理漫画正文图片只删除可重新下载的图片文件，不删除 manifest、进度或书签。
 library;
 
 import 'package:flutter/material.dart';
@@ -28,6 +28,7 @@ class CacheManagementPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final pluginState = ref.watch(pluginCacheManagementProvider);
     final coverState = ref.watch(coverCacheManagementProvider);
+    final mangaImageState = ref.watch(mangaImageCacheManagementProvider);
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -58,7 +59,11 @@ class CacheManagementPage extends ConsumerWidget {
                       onClear: () => _confirmAndClearCovers(context, ref),
                     ),
                     const SizedBox(height: AppSpacing.regular),
-                    const _ContentImageCacheSection(),
+                    _MangaImageCacheSection(
+                      state: mangaImageState,
+                      onRetry: () => ref.read(mangaImageCacheManagementProvider.notifier).refresh(),
+                      onClear: () => _confirmAndClearMangaImages(context, ref),
+                    ),
                   ],
                 ),
               ),
@@ -111,6 +116,18 @@ class CacheManagementPage extends ConsumerWidget {
     );
     if (!confirmed || !context.mounted) return;
     await ref.read(coverCacheManagementProvider.notifier).clear();
+  }
+
+  Future<void> _confirmAndClearMangaImages(BuildContext context, WidgetRef ref) async {
+    final confirmed = await _confirm(
+      context,
+      title: '清理漫画正文图片缓存？',
+      content: '只会删除可重新下载的漫画正文图片，不影响书架、章节清单（manifest）、阅读进度和书签。',
+      action: '清理',
+      confirmKey: const Key('manga-image-cache-confirm'),
+    );
+    if (!confirmed || !context.mounted) return;
+    await ref.read(mangaImageCacheManagementProvider.notifier).clear();
   }
 
   Future<bool> _confirm(
@@ -239,14 +256,46 @@ class _CoverCacheSection extends StatelessWidget {
   );
 }
 
-class _ContentImageCacheSection extends StatelessWidget {
-  const _ContentImageCacheSection();
+class _MangaImageCacheSection extends StatelessWidget {
+  const _MangaImageCacheSection({required this.state, required this.onRetry, required this.onClear});
+
+  final AsyncValue<MangaImageCacheManagementState> state;
+  final VoidCallback onRetry;
+  final VoidCallback onClear;
 
   @override
-  Widget build(BuildContext context) => const _CacheSummaryCard(
-    title: '正文图片缓存',
-    description: '暂未启用。漫画阅读能力接入后再启用正文图片缓存。',
-    trailing: _StatusLabel(text: '未启用'),
+  Widget build(BuildContext context) => state.when(
+    loading: () => const _CacheSummaryCard(
+      title: '漫画正文图片缓存',
+      description: '正在读取漫画正文图片缓存用量…',
+      trailing: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+    ),
+    error: (Object _, StackTrace _) => _CacheSummaryCard(
+      title: '漫画正文图片缓存',
+      description: '漫画正文图片缓存信息暂不可用。',
+      action: TextButton(key: const Key('manga-image-cache-retry'), onPressed: onRetry, child: const Text('重试')),
+    ),
+    data: (value) => Column(
+      children: <Widget>[
+        _CacheSummaryCard(
+          title: '漫画正文图片缓存',
+          description: '${_formatBytes(value.bytes)}。图片可按需重新下载，清理不影响书架、章节清单（manifest）、阅读进度和书签。',
+          trailing: value.isRefreshing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : null,
+          action: FilledButton.tonalIcon(
+            key: const Key('manga-image-cache-clear'),
+            onPressed: value.isClearing ? null : onClear,
+            icon: value.isClearing
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.delete_outline_rounded),
+            label: Text(value.isClearing ? '正在清理' : '清理漫画正文图片缓存'),
+          ),
+        ),
+        if (value.feedback != null) ...<Widget>[
+          const SizedBox(height: AppSpacing.compact),
+          _CacheFeedbackCard(text: _mangaImageFeedbackText(value.feedback!)),
+        ],
+      ],
+    ),
   );
 }
 
@@ -368,24 +417,6 @@ class _EmptyCacheCard extends StatelessWidget {
   );
 }
 
-class _StatusLabel extends StatelessWidget {
-  const _StatusLabel({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppThemeTokens.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(color: tokens.accentSoft, borderRadius: AppRadii.control),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.compact, vertical: AppSpacing.unit / 2),
-        child: Text(text, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: tokens.mutedText)),
-      ),
-    );
-  }
-}
-
 String _pluginFeedbackText(PluginCacheFeedback feedback) => switch (feedback.kind) {
   PluginCacheFeedbackKind.success => '数据源缓存已清理完成。',
   PluginCacheFeedbackKind.partialFailure => '部分数据源缓存未能清理，请稍后重试。',
@@ -396,6 +427,12 @@ String _coverFeedbackText(CoverCacheFeedback feedback) => switch (feedback) {
   CoverCacheFeedback.cleared => '封面缓存已清理完成。',
   CoverCacheFeedback.alreadyEmpty => '磁盘封面缓存已经为空，进程内封面已释放。',
   CoverCacheFeedback.failure => '封面缓存清理失败，请稍后重试。',
+};
+
+String _mangaImageFeedbackText(MangaImageCacheFeedback feedback) => switch (feedback) {
+  MangaImageCacheFeedback.cleared => '漫画正文图片缓存已清理完成。',
+  MangaImageCacheFeedback.alreadyEmpty => '漫画正文图片缓存已经为空。',
+  MangaImageCacheFeedback.failure => '漫画正文图片缓存清理失败，请稍后重试。',
 };
 
 String _formatBytes(int bytes) {

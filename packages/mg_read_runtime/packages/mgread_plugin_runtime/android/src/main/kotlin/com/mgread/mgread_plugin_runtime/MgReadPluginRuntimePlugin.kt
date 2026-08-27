@@ -234,22 +234,26 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activityBinding = binding
+        runtime?.attachActivity(binding.activity)
         binding.addActivityResultListener(activityResultListener)
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
         activityBinding?.removeActivityResultListener(activityResultListener)
         activityBinding = null
+        runtime?.attachActivity(null)
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
         activityBinding = binding
+        runtime?.attachActivity(binding.activity)
         binding.addActivityResultListener(activityResultListener)
     }
 
     override fun onDetachedFromActivity() {
         activityBinding?.removeActivityResultListener(activityResultListener)
         activityBinding = null
+        runtime?.attachActivity(null)
         pendingPickerResult?.error(
             "runtime_unavailable",
             "The Android file picker was detached.",

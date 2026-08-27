@@ -41,11 +41,11 @@
     ".mocks.dart"
   ],
   "legacyBaseline": {
-    "packages/mg_read_runtime/src/desktop-runtime.ts": 1413,
+      "packages/mg_read_runtime/src/desktop-runtime.ts": 1379,
     "packages/mg_read_runtime/src/plugin-manager.ts": 1009
   },
   "legacyRationale": {
-    "packages/mg_read_runtime/src/desktop-runtime.ts": "Artifact inbox, bundled seed coordination, artifact transfer and source state dispatch moved to dedicated modules. The remaining HTTP, WebSocket, cache/source-content control, shutdown and owner-span state shares ECMAScript private fields; the next split is a cache/source-content dispatch port with protocol characterization.",
+      "packages/mg_read_runtime/src/desktop-runtime.ts": "Construction-only progress, browser-provider and launch option types moved to desktop-runtime-options.ts. The remaining HTTP, WebSocket, cache/source-content control, shutdown and owner-span state shares ECMAScript private fields; the next split is a cache/source-content dispatch port with protocol characterization.",
     "packages/mg_read_runtime/src/plugin-manager.ts": "Icon resources, installation usage and artifact-transfer coordination moved to dedicated modules. Installed activation, development refresh and invocation cancellation still share the single VM queues and AsyncLocalStorage; the next split is an explicit activation port."
   }
 }

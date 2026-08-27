@@ -29,6 +29,9 @@
   PAC/WPAD 需要按目标 URL 的专用 resolver，不能展平成固定代理。
 - `browser.session.v1` provider 是唯一浏览器反向能力：插件仅传有界同源请求，平台持有 Cookie、UA、
   验证 UI 与会话缓存；新增平台实现必须覆盖取消/超时/交互需求和跨插件隔离，不能退回 raw callback。
+- Android 浏览器 provider 每个 `pluginId` 最多一个 WebView/独立 Profile，最多 8 个驻留会话和 16 个
+  待处理请求。`webview` 注入只能使用宿主固定脚本，`http` 只能在宿主内部读取 Profile Cookie/UA；
+  `visible` 使用全局唯一可隐藏弹窗，`hidden` 不附着 View。multi-profile 不可用时返回 `unsupported`。
 
 ## 固定工具链与验证
 
@@ -45,4 +48,6 @@ npm.cmd run check:no-native-addons
 - desktop Facade/transport 加 `npm.cmd run test:flutter-desktop`；性能路径运行对应 benchmark；Windows
   打包加 `stage:flutter-windows`。
 - Android/Javet、Windows 发布包、macOS 签名/公证分别报告，不能相互替代。
+- WebView 变更至少运行 `:mgread_plugin_runtime:compileDebugKotlin`、相邻 Kotlin 单测和 Node
+  `browser-session` contract；真实 CF 与弹窗交互只由允许的 Android integration_test 关闭。
 - Runtime-only 任务不修改根 UI、reader、模板或真实书源，除非用户明确纳入同一交付包。

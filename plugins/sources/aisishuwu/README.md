@@ -28,6 +28,7 @@ npm.cmd run test:live
 刷新，让下一次进入使用新数据。搜索维持 10 分钟刷新窗。详情与章节目录则严格要求一小时内：过期时
 必须刷新成功，不能用旧详情静默回退。搜索建议使用首页“热门推荐小说”缓存 24 小时；正文和任何下载内容不落盘。
 发现阶段已解析的详情会复用于随后打开详情和入书架，目录聚合也会在有效期内复用，避免重复网络与解析。
+首页原创新作会在内部预算内并行补齐封面；公开结果统一使用 Runtime 资源代理，Flutter 不直接访问图片 CDN。
 
 缓存实现来自本地 `@mgread/plugin-cache` 包，不发布 npm。它同时保存 HTML 与经过校验的详情/目录
 投影：列表为获取封面补详情时，即使投影过期也优先返回旧投影并单飞后台刷新；用户主动打开详情或目录
@@ -43,7 +44,7 @@ npm.cmd run test:live
 书源调用失败。主程序未来只能经 Runtime 的强类型接口统计或清理该目录，不能取得路径或文件句柄。
 
 `npm run pack:plugin` 输出确定性
-`artifacts/org.mgread.aisishuwu-0.2.9.mgplugin.js`。它内联纯 JavaScript 依赖，并在规范信封内携带
+`artifacts/org.mgread.aisishuwu-0.2.11.mgplugin.js`。它内联纯 JavaScript 依赖，并在规范信封内携带
 `assets/icon.png` 的字节、大小和 SHA-256；不携带 lock、源码、`node_modules` 或 sidecar。安装后
 于下一次 Runtime 冷启动激活。插件不处理账号、登录、Cookie 导出、下载、绕过访问控制或 Runtime
 内部通信。

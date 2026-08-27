@@ -100,6 +100,52 @@ final class FileObjectStore {
   /// Removes global and legacy bookshelf cover caches and returns released bytes.
   Future<int> clearCoverCache() => _instrument(operation: 'clearCoverCache', recordKind: 'coverCache', action: _clearCoverCache);
 
+  Future<StoredFileObject> commitMangaImage({
+    required String itemId,
+    required String chapterId,
+    required String pageId,
+    required int contentVersion,
+    required List<int> bytes,
+    required String mimeType,
+    required int maxBytes,
+  }) => _instrument(
+    operation: 'commitMangaImage',
+    recordKind: 'mangaImageCache',
+    byteCount: bytes.length,
+    action: () => _commitMangaImage(
+      itemId: itemId,
+      chapterId: chapterId,
+      pageId: pageId,
+      contentVersion: contentVersion,
+      bytes: bytes,
+      mimeType: mimeType,
+      maxBytes: maxBytes,
+    ),
+  );
+
+  Future<List<int>?> readMangaImage({
+    required String itemId,
+    required String chapterId,
+    required String pageId,
+    required int contentVersion,
+  }) => _instrument(
+    operation: 'readMangaImage',
+    recordKind: 'mangaImageCache',
+    action: () => _readMangaImage(itemId, chapterId, pageId, contentVersion),
+  );
+
+  Future<int> mangaImageCacheUsageBytes() => _instrument(
+    operation: 'mangaImageCacheUsageBytes',
+    recordKind: 'mangaImageCache',
+    action: () async => (await _mangaImageFiles()).values.fold<int>(0, (sum, f) => sum + f.length),
+  );
+
+  Future<int> clearMangaImageCache() => _instrument(
+    operation: 'clearMangaImageCache',
+    recordKind: 'mangaImageCache',
+    action: _clearMangaImageCache,
+  );
+
   Future<void> deleteMangaAssets(String mangaId) =>
       _instrument(operation: 'deleteMangaAssets', recordKind: 'mangaAsset', count: 1, action: () => _deleteMangaAssets(mangaId));
 
@@ -258,6 +304,105 @@ final class FileObjectStore {
     final globalBytes = (await _globalCoverFiles()).values.fold<int>(0, (sum, entry) => sum + entry.length);
     return globalBytes + await _directoryFileBytes(Directory('${_root.path}${Platform.pathSeparator}covers'));
   }
+
+  static const int _mangaImageMaxBytes = 8 * 1024 * 1024;
+  Future<StoredFileObject> _commitMangaImage({
+    required String itemId,
+    required String chapterId,
+    required String pageId,
+    required int contentVersion,
+    required List<int> bytes,
+    required String mimeType,
+    required int maxBytes,
+  }) async {
+    _ensureOpen();
+    if (itemId.isEmpty || chapterId.isEmpty || pageId.isEmpty || contentVersion < 1) {
+      throw ArgumentError('manga image identity is invalid');
+    }
+    if (bytes.isEmpty || bytes.length > _mangaImageMaxBytes || maxBytes <= 0) {
+      throw ArgumentError('manga image exceeds limit');
+    }
+    if (!RegExp(r'^image/[A-Za-z0-9.+-]+$').hasMatch(mimeType)) {
+      throw ArgumentError.value(mimeType, 'mimeType');
+    }
+    final key = _mangaImageKey(itemId, chapterId, pageId, contentVersion);
+    final root = Directory('${_root.path}${Platform.pathSeparator}manga-image-cache${Platform.pathSeparator}$key');
+    await root.create(recursive: true);
+    final temp = File('${root.path}${Platform.pathSeparator}.image.part');
+    final target = File('${root.path}${Platform.pathSeparator}image.asset');
+    await temp.writeAsBytes(bytes, flush: true);
+    // Same-directory staged commit; Windows replacement has a tiny delete/rename gap.
+    if (await target.exists()) await target.delete();
+    await temp.rename(target.path);
+    final files = await _mangaImageFiles();
+    files[key] = _GlobalCoverFile(
+      file: target,
+      length: bytes.length,
+      modified: await target.lastModified(),
+    );
+    await _pruneGlobalCoversFromIndex(files, maxBytes);
+    return StoredFileObject(
+      assetId: key,
+      relativePath: 'manga-image-cache/$key/image.asset',
+      byteLength: bytes.length,
+      mimeType: mimeType,
+    );
+  }
+
+  Future<List<int>?> _readMangaImage(String itemId, String chapterId, String pageId, int contentVersion) async {
+    _ensureOpen();
+    final key = _mangaImageKey(itemId, chapterId, pageId, contentVersion);
+    final file = File('${_root.path}${Platform.pathSeparator}manga-image-cache${Platform.pathSeparator}$key${Platform.pathSeparator}image.asset');
+    if (!await file.exists() || await file.length() > _mangaImageMaxBytes) return null;
+    final bytes = await file.readAsBytes();
+    await file.setLastModified(DateTime.now());
+    return bytes;
+  }
+
+  Future<int> _clearMangaImageCache() async {
+    _ensureOpen();
+    final root = Directory('${_root.path}${Platform.pathSeparator}manga-image-cache');
+    final files = await _mangaImageFiles();
+    final bytes = files.values.fold<int>(0, (sum, f) => sum + f.length);
+    if (await root.exists()) await root.delete(recursive: true);
+    files.clear();
+    return bytes;
+  }
+
+  /// Re-scans on each maintenance operation so an interrupted/delete-corrupt
+  /// index can be rebuilt from the directory contents.
+  Future<Map<String, _GlobalCoverFile>> _mangaImageFiles() => _scanMangaImageFiles();
+
+  Future<Map<String, _GlobalCoverFile>> _scanMangaImageFiles() async {
+    final root = Directory('${_root.path}${Platform.pathSeparator}manga-image-cache');
+    final out = <String, _GlobalCoverFile>{};
+    if (!await root.exists()) return out;
+    await for (final e in root.list()) {
+      if (e is! Directory) continue;
+      final key = e.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(key)) continue;
+      final staged = File('${e.path}${Platform.pathSeparator}.image.part');
+      if (await staged.exists()) {
+        try {
+          await staged.delete();
+        } on FileSystemException {
+          // Best-effort crash recovery; clear still removes the whole root.
+        }
+      }
+      final file = File('${e.path}${Platform.pathSeparator}image.asset');
+      if (await file.exists()) {
+        out[key] = _GlobalCoverFile(
+          file: file,
+          length: await file.length(),
+          modified: await file.lastModified(),
+        );
+      }
+    }
+    return out;
+  }
+
+  String _mangaImageKey(String item, String chapter, String page, int version) =>
+      sha256.convert(utf8.encode('$item\u001f$chapter\u001f$page\u001f$version')).toString();
 
   Future<int> _clearCoverCache() async {
     _ensureOpen();

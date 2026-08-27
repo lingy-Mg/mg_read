@@ -49,6 +49,8 @@ extension _ComicReaderChrome on _ComicReaderViewState {
                 spacing: entry.spacing,
                 palette: palette,
                 decodeBudget: _decodeBudget,
+                onPresented: (bool cacheHit) =>
+                    _notifyFirstContentPresented(entry, cacheHit),
                 bookId: widget.bookId,
                 commentFeed: widget.commentFeed,
                 onOpenComments: (ReaderCommentTarget target) =>
@@ -82,6 +84,22 @@ extension _ComicReaderChrome on _ComicReaderViewState {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _notifyFirstContentPresented(_ComicImageEntry entry, bool cacheHit) {
+    if (_firstContentPresented || _disposed) return;
+    _firstContentPresented = true;
+    unawaited(
+      _notify(
+        () => (widget.observer ?? const ComicReaderObserver())
+            .onFirstContentPresented(
+              ComicFirstContentPresentation(
+                anchor: _progress,
+                cacheHit: cacheHit,
+              ),
+            ),
       ),
     );
   }
@@ -162,7 +180,9 @@ extension _ComicReaderChrome on _ComicReaderViewState {
                         ),
                       ),
                       _chromeButton(
-                        key: const ValueKey<String>('comic-reader-add-bookmark'),
+                        key: const ValueKey<String>(
+                          'comic-reader-add-bookmark',
+                        ),
                         icon: Icons.bookmark_add_outlined,
                         label: ComicReaderStrings.addBookmark,
                         onPressed: () => unawaited(_addBookmark()),
@@ -229,7 +249,12 @@ extension _ComicReaderChrome on _ComicReaderViewState {
     );
   }
 
-  Widget _bottomButton(Key? key, IconData icon, String label, VoidCallback onPressed) {
+  Widget _bottomButton(
+    Key? key,
+    IconData icon,
+    String label,
+    VoidCallback onPressed,
+  ) {
     return Semantics(
       key: key,
       button: true,

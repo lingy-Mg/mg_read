@@ -10,14 +10,21 @@ import * as plugin from '../dist/index.mjs';
 // to disk, and asserts only stable structural facts about the public Plugin API.
 test('live source completes category, search, detail, catalog, and content flow', { timeout: 60000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'mgread-aisishuwu-live-'));
+  const resourceRequests = [];
   t.after(() => rm(root, { force: true, recursive: true }));
   await plugin.activate({
     dataDir: join(root, 'data'),
     cacheDir: join(root, 'cache'),
     http: { fetch },
+    resource: {
+      proxy(request) {
+        resourceRequests.push(request);
+        return `http://127.0.0.1:1234/v1/source-resource/live-${resourceRequests.length}`;
+      },
+    },
     log: { debug() {}, info() {}, warn() {}, error() {} },
     app: { runtimeVersion: 'live-test', nodeVersion: process.versions.node, pluginApi: 1 },
-    plugin: { id: 'org.mgread.aisishuwu', version: '0.2.9' },
+    plugin: { id: 'org.mgread.aisishuwu', version: '0.2.11' },
   });
 
   const categories = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });
@@ -30,11 +37,17 @@ test('live source completes category, search, detail, catalog, and content flow'
   const originals = categories.document.components.find((component) => component.id === 'source-originals-section');
   assert.equal(originals?.children[0].layout, 'coverGrid');
   assert.ok(originals?.children[0].items.length > 0);
+  assert.ok(originals?.children[0].items.every((item) => item.content.coverUrl?.startsWith('http://127.0.0.1:1234/v1/source-resource/')));
   const popular = categories.document.components.find((component) => component.id === 'source-popular-section');
   assert.equal(popular?.children[0].layout, 'compact');
   assert.ok(popular?.children[0].items.length > 0);
   const navigation = categories.document.components.find((component) => component.id === 'source-navigation-group');
   assert.equal(navigation?.type, 'group');
+  assert.ok(resourceRequests.length > 0);
+  const coverResource = await plugin.resource(resourceRequests[0]);
+  assert.ok(coverResource.status >= 200 && coverResource.status < 300);
+  assert.match(coverResource.headers['content-type'] ?? '', /^image\//u);
+  assert.ok(coverResource.body.byteLength > 0);
   const categorySection = navigation.children.find((component) => component.id === 'source-categories-section');
   assert.equal(categorySection?.type, 'section');
   assert.equal(categorySection.children[0].layout, 'chips');

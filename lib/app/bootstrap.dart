@@ -41,6 +41,7 @@ import 'package:mg_read/features/reader/application/library_reader_launcher.dart
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/cache/application/cover_cache_manager.dart';
 import 'package:mg_read/features/cache/data/content_library_cover_cache_gateway.dart';
+import 'package:mg_read/features/cache/data/content_library_manga_image_cache_gateway.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 
@@ -238,6 +239,8 @@ Future<void> bootstrapMgReadApp({
           bookCoverBytesLoaderProvider.overrideWithValue(DeferredBookCoverBytesLoader(getLibrary)),
         if (contentLibrary != null || contentLibraryFactory != null)
           coverCacheGatewayProvider.overrideWithValue(ContentLibraryCoverCacheGateway(getLibrary)),
+        if (contentLibrary != null || contentLibraryFactory != null)
+          mangaImageCacheGatewayProvider.overrideWithValue(ContentLibraryMangaImageCacheGateway(getLibrary)),
         if (contentLibrary != null || contentLibraryFactory != null)
           libraryReaderLauncherProvider.overrideWith(
             (ref) => DeferredLibraryReaderLauncher(getLibrary, ref.read(sourceContentGatewayProvider), diagnostics, resolvedManager),

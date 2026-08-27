@@ -2,7 +2,7 @@
 ///
 /// 职责：
 /// - 以稳定封面载体遮蔽正文首帧前的异步准备与排版。
-/// - 消费阅读器公开的首帧和失败通知，完成可打断的视觉交接。
+/// - 消费阅读器公开的文本首帧或漫画首图及失败通知，完成可打断的视觉交接。
 /// - 将系统返回统一交给宿主 Observer，避免退出动画阻塞进度保存。
 ///
 /// 注意：
@@ -27,16 +27,25 @@ import 'package:mg_read/shared/presentation/widgets/default_book_cover_artwork.d
 /// Hosts a resolved reader behind a deterministic cover-to-reader handoff.
 ///
 /// The reader remains mounted underneath the cover while it prepares its first
-/// actual text frame. The cover is removed only after the public first-frame
+/// actual text frame or comic image. The cover is removed only after the public first-frame
 /// callback, so no synthetic progress or intermediate blank surface is shown.
 class ReaderEntryTransition extends StatefulWidget {
-  const ReaderEntryTransition({required this.request, this.onFirstContentPresented, this.onInitialFailure, super.key});
+  const ReaderEntryTransition({
+    required this.request,
+    this.onFirstContentPresented,
+    this.onFirstComicContentPresented,
+    this.onInitialFailure,
+    super.key,
+  });
 
   /// Resolved app-owned inputs for the embedded reader session.
   final ReaderLaunchRequest request;
 
   /// Receives the plugin's one-time real first-frame notification.
   final ValueChanged<ReaderFirstContentPresentation>? onFirstContentPresented;
+
+  /// Receives the plugin's one-time real first-image notification.
+  final ValueChanged<ComicFirstContentPresentation>? onFirstComicContentPresented;
 
   /// Receives a recoverable failure before readable content is shown.
   final ValueChanged<ReaderFailure>? onInitialFailure;
@@ -126,7 +135,6 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
   late final AnimationController _entryController;
   late final AnimationController _handoffController;
   late final ReaderLaunchRequest _boundRequest;
-  late final _ReaderEntryObserver _observer;
   ReaderFailure? _failure;
   bool _firstContentPresented = false;
   bool _handoffComplete = false;
@@ -145,12 +153,14 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
           setState(() => _handoffComplete = true);
         }
       });
-    _observer = _ReaderEntryObserver(
-      delegate: widget.request.observer,
-      firstContentHandler: _presentFirstContent,
-      failureHandler: _presentInitialFailure,
-    );
-    _boundRequest = widget.request.withObserver(_observer);
+    _boundRequest = switch (widget.request) {
+      NovelReaderLaunchRequest request => request.withObserver(
+        _ReaderEntryObserver(delegate: request.observer, firstContentHandler: _presentFirstContent, failureHandler: _presentInitialFailure),
+      ),
+      ComicReaderLaunchRequest request => request.withObserver(
+        _ComicEntryObserver(delegate: request.observer, firstContentHandler: _presentComicContent, failureHandler: _presentInitialFailure),
+      ),
+    };
     _entryController.forward();
   }
 
@@ -184,6 +194,22 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
       return;
     }
     unawaited(_finishHandoff());
+  }
+
+  void _presentComicContent(ComicFirstContentPresentation presentation) {
+    if (!mounted || _firstContentPresented) return;
+    setState(() {
+      _firstContentPresented = true;
+      _failure = null;
+    });
+    widget.onFirstComicContentPresented?.call(presentation);
+    if (_reduceMotion) {
+      _entryController.value = 1;
+      _handoffController.value = 1;
+      setState(() => _handoffComplete = true);
+    } else {
+      unawaited(_finishHandoff());
+    }
   }
 
   Future<void> _finishHandoff() async {
@@ -228,9 +254,18 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
   }
 
   void _requestExit() {
-    final FutureOr<void> Function(ReaderProgress? progress)? callback = _boundRequest.observer?.onExitRequested;
-    if (callback == null) return;
-    unawaited(Future<void>.sync(() async => await callback(null)));
+    switch (_boundRequest) {
+      case NovelReaderLaunchRequest request:
+        final observer = request.observer;
+        if (observer != null) {
+          unawaited(Future<void>.sync(() async => observer.onExitRequested(null)));
+        }
+      case ComicReaderLaunchRequest request:
+        final observer = request.observer;
+        if (observer != null) {
+          unawaited(Future<void>.sync(() async => observer.onExitRequested(null)));
+        }
+    }
   }
 
   @override
@@ -496,4 +531,34 @@ final class _ReaderEntryObserver extends ReaderObserver {
   Future<void> onExitRequested(ReaderProgress? progress) async {
     await delegate?.onExitRequested(progress);
   }
+}
+
+final class _ComicEntryObserver extends ComicReaderObserver {
+  const _ComicEntryObserver({required this.delegate, required this.firstContentHandler, required this.failureHandler});
+  final ComicReaderObserver? delegate;
+  final void Function(ComicFirstContentPresentation) firstContentHandler;
+  final void Function(ReaderFailure) failureHandler;
+  @override
+  Future<void> onSessionStarted(String bookId) async => delegate?.onSessionStarted(bookId);
+  @override
+  Future<void> onSessionEnded(String bookId, ComicReaderProgress? progress) async => delegate?.onSessionEnded(bookId, progress);
+  @override
+  Future<void> onLifecycleChanged(ReaderLifecycleState state, ComicReaderProgress? progress) async =>
+      delegate?.onLifecycleChanged(state, progress);
+  @override
+  Future<void> onChapterChanged(ComicChapterInfo chapter) async => delegate?.onChapterChanged(chapter);
+  @override
+  Future<void> onFailure(ReaderFailure failure) async {
+    failureHandler(failure);
+    await delegate?.onFailure(failure);
+  }
+
+  @override
+  Future<void> onFirstContentPresented(ComicFirstContentPresentation presentation) async {
+    firstContentHandler(presentation);
+    await delegate?.onFirstContentPresented(presentation);
+  }
+
+  @override
+  Future<void> onExitRequested(ComicReaderProgress? progress) async => delegate?.onExitRequested(progress);
 }

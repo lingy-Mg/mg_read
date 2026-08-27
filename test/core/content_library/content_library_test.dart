@@ -574,4 +574,59 @@ void main() {
     expect(result.blockedItems, 1);
     expect((await library.listLibrary(const LibraryQuery())).items, isEmpty);
   });
+
+  test('persists manga state independently and clears only regenerable images', () async {
+    final manga = await library.bookshelf.add(title: '图像书', kind: ContentKind.manga, source: source);
+    final novel = await library.bookshelf.add(title: '文字书', kind: ContentKind.novel, source: source);
+    final progress = LibraryMangaReadingProgress(itemId: manga.id, chapterId: 'c1', imageId: 'p1', imageFraction: .5, chapterIndex: 0, bookFraction: .2, updatedAtUtc: DateTime.utc(2026, 1, 1), readingSeconds: 3);
+    await library.saveMangaProgress(progress);
+    await library.addMangaBookmark(LibraryMangaBookmark(id: 'm1', itemId: manga.id, chapterId: 'c', imageId: 'p', imageFraction: 0, createdAtUtc: DateTime.utc(2026, 1, 1)));
+    expect((await library.loadMangaProgress(manga.id))!.imageId, 'p1');
+    expect(await library.readingProgress.load(novel.id), isNull);
+    await library.mangaImageCache.save(itemId: manga.id, chapterId: 'c1', pageId: 'p1', contentVersion: 1, bytes: const [1, 2], mimeType: 'image/png');
+    expect(await library.mangaImageCache.usageBytes(), 2);
+    await library.mangaImageCache.clear();
+    expect(await library.mangaImageCache.read(itemId: manga.id, chapterId: 'c1', pageId: 'p1', contentVersion: 1), isNull);
+  });
+
+  test('manga image cache hashes long identities and isolates versions', () async {
+    final files = await FileObjectStore.open(root);
+    addTearDown(files.close);
+    final long = 'x' * 500;
+    final first = await files.commitMangaImage(itemId: long, chapterId: long, pageId: long, contentVersion: 1, bytes: const [1], mimeType: 'image/png', maxBytes: 1024);
+    expect(first.relativePath, matches(RegExp(r'^manga-image-cache/[a-f0-9]{64}/image\.asset$')));
+    await files.commitMangaImage(itemId: long, chapterId: long, pageId: long, contentVersion: 1, bytes: const [2, 3], mimeType: 'image/png', maxBytes: 1024);
+    expect(await files.readMangaImage(itemId: long, chapterId: long, pageId: long, contentVersion: 1), [2, 3]);
+    await files.commitMangaImage(itemId: long, chapterId: long, pageId: long, contentVersion: 2, bytes: const [4], mimeType: 'image/jpeg', maxBytes: 1024);
+    expect(await files.readMangaImage(itemId: long, chapterId: long, pageId: long, contentVersion: 1), [2, 3]);
+    expect(await files.readMangaImage(itemId: long, chapterId: long, pageId: long, contentVersion: 2), [4]);
+  });
+
+  test('manga manifest round trips page metadata and bounded session', () async {
+    final item = await library.bookshelf.add(title: '漫画元数据', kind: ContentKind.manga, source: source);
+    await library.syncMangaCatalog(itemId: item.id, chapters: const [MangaChapterDescriptor(remoteIdentity: 'chapter-1', title: '第一话', index: 0, pages: [])]);
+    final entry = (await library.listCatalog(item.id, const CatalogQuery())).items.single;
+    await library.cacheMangaChapter(entryId: entry.id, pages: [
+      MangaPageDescriptor(pageId: 'p1', order: 0, resource: SourceResource.sessionOnly(), mimeType: 'image/png', width: 100, height: 200, byteLength: 300, contentVersion: 7),
+    ]);
+    final session = await library.openMangaReaderSession(item.id);
+    final chapter = await session!.itemAtIndex(0);
+    final content = await session.readContent(chapter!);
+    final page = (content! as MangaChapterContent).pages.single;
+    expect(page.resource.url, isNull);
+    expect(page.mimeType, 'image/png');
+    expect(page.width, 100);
+    expect(page.height, 200);
+    expect(page.byteLength, 300);
+    expect(page.contentVersion, 7);
+  });
+
+  test('manga image cache rejects empty bytes, invalid mime and oversized bytes', () async {
+    final files = await FileObjectStore.open(root);
+    addTearDown(files.close);
+    Future<StoredFileObject> write(List<int> bytes, String mime) => files.commitMangaImage(itemId: 'item', chapterId: 'chapter', pageId: 'page', contentVersion: 1, bytes: bytes, mimeType: mime, maxBytes: 1024 * 1024 * 16);
+    await expectLater(write(const [], 'image/png'), throwsArgumentError);
+    await expectLater(write(const [1], 'text/plain'), throwsArgumentError);
+    await expectLater(write(List<int>.filled(8 * 1024 * 1024 + 1, 0), 'image/png'), throwsArgumentError);
+  });
 }

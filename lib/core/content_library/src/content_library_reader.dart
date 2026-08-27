@@ -55,6 +55,46 @@ final class CoverRepository {
   );
 }
 
+final class MangaImageCacheRepository {
+  MangaImageCacheRepository._(this._library);
+  final ContentLibrary _library;
+  static const maxBytes = 1024 * 1024 * 1024;
+  Future<List<int>?> read({
+    required LibraryItemId itemId,
+    required String chapterId,
+    required String pageId,
+    required int contentVersion,
+  }) => _library._persistence.fileObjects.readMangaImage(
+    itemId: itemId.value,
+    chapterId: chapterId,
+    pageId: pageId,
+    contentVersion: contentVersion,
+  );
+
+  Future<void> save({
+    required LibraryItemId itemId,
+    required String chapterId,
+    required String pageId,
+    required int contentVersion,
+    required List<int> bytes,
+    required String mimeType,
+  }) async {
+    await _library._persistence.fileObjects.commitMangaImage(
+      itemId: itemId.value,
+      chapterId: chapterId,
+      pageId: pageId,
+      contentVersion: contentVersion,
+      bytes: bytes,
+      mimeType: mimeType,
+      maxBytes: maxBytes,
+    );
+  }
+
+  Future<int> usageBytes() => _library._persistence.fileObjects.mangaImageCacheUsageBytes();
+
+  Future<int> clear() => _library._persistence.fileObjects.clearMangaImageCache();
+}
+
 /// Stores the user-owned semantic position reported by the text reader.
 final class ReadingProgressRepository {
   ReadingProgressRepository._(this._library);
@@ -204,6 +244,48 @@ final class NovelReaderSession {
     }
     return _library.readingProgress.save(value);
   }
+}
+
+/// Bounded reader session pinned to one manga catalog snapshot.
+final class MangaReaderSession {
+  MangaReaderSession._({
+    required this._library,
+    required this.item,
+    required this.catalogCount,
+    required this._snapshot,
+    required this._bindingId,
+  });
+
+  final ContentLibrary _library;
+  final LibraryItem item;
+  final int catalogCount;
+  final String _snapshot;
+  final SourceBindingId _bindingId;
+
+  Future<CatalogEntry?> itemAtIndex(int index) => index < 0 || index >= catalogCount
+      ? Future.value(null)
+      : _library.catalog._findInSnapshot(
+          itemId: item.id,
+          snapshot: _snapshot,
+          bindingId: _bindingId,
+          orderKey: _catalogOrderKey(index),
+        );
+
+  Future<CatalogEntry?> itemByRemoteIdentity(String remoteIdentity) {
+    if (remoteIdentity.isEmpty) return Future.value(null);
+    return _library.catalog._findInSnapshot(
+      itemId: item.id,
+      snapshot: _snapshot,
+      bindingId: _bindingId,
+      remoteIdentity: remoteIdentity,
+    );
+  }
+
+  Future<Page<CatalogEntry>> page({String? after, int limit = 100}) =>
+      _library.catalog._pageInSnapshot(itemId: item.id, snapshot: _snapshot, after: after, limit: limit);
+
+  Future<ReadableContent?> readContent(CatalogEntry entry) =>
+      _library.content._openReference(contentReference: entry.contentReference, kind: entry.kind);
 }
 
 String _catalogOrderKey(int index) => index.toString().padLeft(12, '0');

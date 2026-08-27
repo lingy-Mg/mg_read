@@ -12,6 +12,7 @@ enum PluginMangaPageResourcePolicy {
   sessionOnly('sessionOnly'),
   refreshable('refreshable'),
   durable('durable');
+
   const PluginMangaPageResourcePolicy(this.code);
   final String code;
 }
@@ -370,6 +371,12 @@ final class SourceDiscoverInvocation
   final String? cursor;
   final String? collectionId;
   final int pageSize;
+
+  /// Nested discovery can aggregate one listing and bounded detail requests.
+  /// Root discovery and every other capability retain the five-second budget.
+  @override
+  Duration get _timeout =>
+      target == null ? _controlTimeout : const Duration(seconds: 15);
 
   @override
   String get _wireMethod => 'source.discover.v1';

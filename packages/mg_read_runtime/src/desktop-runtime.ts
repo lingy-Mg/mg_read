@@ -55,6 +55,15 @@ import {
   type PluginManagerEvent,
 } from "./plugin-manager.js";
 import { pluginManagerErrorMessage } from "./plugin-manager-error-message.js";
+import type {
+  DesktopRuntimeOptions,
+  DesktopRuntimeProgressSink,
+} from "./desktop-runtime-options.js";
+export type {
+  DesktopRuntimeOptions,
+  DesktopRuntimeProgress,
+  DesktopRuntimeProgressSink,
+} from "./desktop-runtime-options.js";
 import { installPluginArtifactInbox, seedBundledPluginArtifacts } from "./plugin-artifact-inbox.js";
 import { dispatchPluginEnabled, dispatchPluginUninstall } from "./plugin-uninstall-dispatch.js";
 import {
@@ -240,62 +249,6 @@ export interface DesktopRuntimeReady {
   readonly type: "ready";
 }
 
-/** Safe, bounded progress emitted while Runtime-owned work is running. */
-export interface DesktopRuntimeProgress {
-  readonly completedBytes: number;
-  readonly detail?: string;
-  readonly stage:
-    | "assets_copying"
-    | "assets_copied"
-    | "assets_reused"
-    | "node_starting"
-    | "plugin_copying"
-    | "plugin_copied"
-    | "plugin_installing"
-    | "ready";
-  readonly totalBytes: number;
-}
-
-export type DesktopRuntimeProgressSink = (
-  progress: DesktopRuntimeProgress,
-) => void;
-
-/** Construction-only options for the Node Runtime Core. */
-export interface DesktopRuntimeOptions {
-  /**
-   * Requested loopback port. Production uses `0` for an OS-selected port;
-   * nonzero values exist only for deterministic Runtime-owned tests.
-   */
-  readonly port?: number;
-
-  /** Runtime-owned data root; production resolves it in the platform adapter. */
-  readonly dataRoot?: string;
-
-  /** Windows debug-only parent directory of directly loaded source projects. */
-  readonly developmentPluginRoot?: string;
-
-  /** Android adapter-owned inbox populated by the approved ADB test tool. */
-  readonly pluginImportInboxRoot?: string;
-
-  /**
-   * Runtime-package-owned directory of first-run `.mgplugin` seed archives.
-   *
-   * The desktop platform adapter supplies this from its immutable Flutter
-   * package assets. It is deliberately not exposed through the main app or
-   * the Flutter Facade, and is only consumed while this Runtime is cold.
-   */
-  readonly bundledPluginRoot?: string;
-
-  /** Runtime-owned in-process adapter mode; skips the desktop loopback listener. */
-  readonly embedded?: boolean;
-
-  /** Platform build gate for the optional unauthenticated Debug listener. */
-  readonly debugHttpAllowed?: boolean;
-
-  /** Safe progress sink used by the platform adapter; never receives paths or raw errors. */
-  readonly onProgress?: DesktopRuntimeProgressSink;
-}
-
 /** Result returned by the Runtime-owned Android Javet adapter. */
 export type EmbeddedRuntimeResult =
   | { readonly ok: true; readonly result: JsonValue }
@@ -326,6 +279,7 @@ export class DesktopRuntime {
   readonly #debugHttpAllowed: boolean;
   readonly #debugHttpSettings: RuntimeDebugHttpSettings;
   readonly #onProgress: DesktopRuntimeProgressSink;
+  readonly #browserSession: DesktopRuntimeOptions["browserSession"];
 
   /** All currently open RPC sessions, closed before server shutdown. */
   readonly #sessions = new Set<ServerWebSocketSession>();
@@ -355,6 +309,7 @@ export class DesktopRuntime {
     this.#debugHttpAllowed = options.debugHttpAllowed ?? false;
     this.#debugHttpSettings = new RuntimeDebugHttpSettings(this.#dataRoot);
     this.#onProgress = options.onProgress ?? (() => {});
+    this.#browserSession = options.browserSession;
     this.#removeDebugDiagnosticObserver = observeRuntimeDiagnostics((record) => {
       if (!this.#debugHttp?.status().enabled) return;
       this.#debugLogs.append({
@@ -443,6 +398,7 @@ export class DesktopRuntime {
       throw error;
     }
     const pluginManager = new PluginManager(this.#dataRoot, {
+      ...(this.#browserSession === undefined ? {} : { browserSession: this.#browserSession }),
       embedded: this.#embedded,
       ...(this.#developmentPluginRoot === undefined
         ? {}

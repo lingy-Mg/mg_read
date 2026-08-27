@@ -72,6 +72,7 @@ final class ContentLibrary {
   late final MangaStateRepository mangaState = MangaStateRepository._(this);
   late final LibrarySyncRepository sync = LibrarySyncRepository._(this);
   late final CoverRepository covers = CoverRepository._(this);
+  late final MangaImageCacheRepository mangaImageCache = MangaImageCacheRepository._(this);
   static Future<ContentLibrary> open({required Directory dataRoot, DiagnosticsManager? diagnostics}) async => ContentLibrary._(
     await AppPersistence.open(dataRoot: dataRoot, registry: _registry, diagnostics: diagnostics),
     diagnostics,
@@ -99,6 +100,11 @@ final class ContentLibrary {
   Future<ReadableContent?> openContent(CatalogEntryId id) => content.open(id);
   Future<void> cacheMangaChapter({required CatalogEntryId entryId, required Iterable<MangaPageDescriptor> pages}) =>
       content.cacheMangaChapter(entryId: entryId, pages: pages);
+  Future<LibraryMangaReadingProgress?> loadMangaProgress(LibraryItemId itemId) => mangaState.loadProgress(itemId);
+  Future<void> saveMangaProgress(LibraryMangaReadingProgress value) => mangaState.saveProgress(value);
+  Future<List<LibraryMangaBookmark>> listMangaBookmarks(LibraryItemId itemId) => mangaState.listBookmarks(itemId);
+  Future<void> addMangaBookmark(LibraryMangaBookmark value) => mangaState.addBookmark(value);
+  Future<void> removeMangaBookmark(LibraryItemId itemId, String bookmarkId) => mangaState.removeBookmark(itemId, bookmarkId);
   Future<MangaReaderSession?> openMangaReaderSession(LibraryItemId itemId) => _trace(
     operation: 'mangaReaderSessionOpen', contentKind: ContentKind.manga.code, itemCount: 1,
     action: () => _openMangaReaderSession(itemId), resultCount: (result) => result == null ? 0 : 1,

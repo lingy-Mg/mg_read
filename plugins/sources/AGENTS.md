@@ -22,7 +22,9 @@
 - 每次源码变更运行确定性离线测试和 `verify`；请求、选择器、分页或内容解析变化还要运行该来源
   的 `test:live`。线上 smoke 不保存响应 HTML/正文，也不能替代离线回归或 Android artifact 验收。
 - 受保护来源只调用公开 `browser.session.v1`；fixture 用注入 provider 模拟验证状态，并断言请求不含
-  Cookie/UA。没有生产 provider 时保留 `unsupported`/`interaction_required`，不得静态写入通行数据。
+  Cookie/UA。请求必须显式选择 `webview|http` transport 和 `hidden|visible` presentation；`hidden`
+  永不转前台，需要人工验证的来源使用可隐藏的 `visible`。fixture 断言所选策略；没有生产 provider 时
+  保留 `unsupported`/`interaction_required`，不得静态写入通行数据。
 - Windows 命令从来源目录执行，先把
   `../../../packages/mg_read_runtime/tools/node-v24.16.0-win-x64` 放到 `PATH` 最前，禁止回退全局
   Node/npm；随后按 package scripts 运行 `npm.cmd ci`、`npm.cmd test`、`npm.cmd run verify`，以及

@@ -263,8 +263,8 @@ final class _ProfileReaderLauncher implements LibraryReaderLauncher, LocalShelfR
   var _generation = 0;
 
   @override
-  Future<ReaderLaunchRequest> launch(String libraryItemId, {ReaderObserver? observer}) async =>
-      _decorate(await _delegate.launch(libraryItemId, observer: observer));
+  Future<ReaderLaunchRequest> launch(String libraryItemId) async =>
+      _decorate(await _delegate.launch(libraryItemId));
 
   @override
   Future<ReaderLaunchRequest?> warmLocal(String libraryItemId) async {
@@ -273,14 +273,14 @@ final class _ProfileReaderLauncher implements LibraryReaderLauncher, LocalShelfR
     return request == null ? null : _decorate(request);
   }
 
-  ReaderLaunchRequest _decorate(ReaderLaunchRequest request) {
+  NovelReaderLaunchRequest _decorate(NovelReaderLaunchRequest request) {
     _generation += 1;
     final version = switch (scenario) {
       _ProfileScenario.layoutFingerprintHit => 'stable-layout-v1',
       _ProfileScenario.layoutFingerprintInvalidated => 'stable-layout-v1',
       _ => 'content-$_generation',
     };
-    return ReaderLaunchRequest(
+    return NovelReaderLaunchRequest(
       bookId: request.bookId,
       entryCoverBytes: request.entryCoverBytes,
       dataSource: _VersionedProfileDataSource(request.dataSource, version),

@@ -5,7 +5,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:novel_reader_ui/novel_reader_ui.dart';
 import 'package:mg_read/app/app_router.dart';
 import 'package:mg_read/app/mg_read_app.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
@@ -100,12 +99,8 @@ void main() {
     const ReaderRoute(bookId: 'book-local-42').go(context);
     await tester.pumpAndSettle();
 
-    expect(find.text('暂时无法开始阅读'), findsOneWidget);
-    expect(find.text('无法从书源获取这本书的详情。'), findsOneWidget);
-    expect(
-      find.text('诊断代码：reader_launch_source_detail_timeout'),
-      findsOneWidget,
-    );
+    expect(find.text('正文暂时无法打开'), findsOneWidget);
+    expect(find.byKey(const Key('reader-entry-retry')), findsOneWidget);
   });
 
   testWidgets('opens a persisted shelf item directly in the reader', (
@@ -138,7 +133,7 @@ void main() {
     expect(find.byType(LibraryPage), findsOneWidget);
     expect(find.text('无法从书源获取这本书的详情。'), findsOneWidget);
     expect(find.text('重试'), findsOneWidget);
-    expect(find.text('暂时无法开始阅读'), findsNothing);
+      expect(find.text('正文暂时无法打开'), findsNothing);
   });
 
   testWidgets('route and reader diagnostics never persist route parameters', (
@@ -209,7 +204,7 @@ void main() {
     loader.completeNext(_overview('stale result'));
     await tester.pump();
 
-    expect(find.text('暂时无法开始阅读'), findsOneWidget);
+    expect(find.text('正文暂时无法打开'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -298,9 +293,8 @@ final class _FailingReaderLauncher implements LibraryReaderLauncher {
 
   @override
   Future<ReaderLaunchRequest> launch(
-    String libraryItemId, {
-    ReaderObserver? observer,
-  }) => Future<ReaderLaunchRequest>.error(
+    String libraryItemId,
+  ) => Future<ReaderLaunchRequest>.error(
     ReaderLaunchFailure(
       reason: ReaderLaunchFailureReason.sourceDetail,
       error: AppError.fromCode(AppErrorCode.timeout),

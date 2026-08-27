@@ -10,7 +10,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
-import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
@@ -38,6 +37,8 @@ import 'package:mg_read/features/discovery/data/content_library_bookshelf_member
 import 'package:mg_read/features/discovery/data/content_library_source_cover_persistence.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
+import 'package:mg_read/features/reader/application/shelf_reader_launch_coordinator.dart';
+import 'package:mg_read/features/reader/data/content_library_source_comic_reader.dart';
 import 'package:mg_read/features/reader/data/content_library_source_text_reader.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
@@ -538,20 +539,41 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
   }
 }
 
-final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher {
+final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher, LocalShelfReaderPrewarmer {
   const DeferredLibraryReaderLauncher(this._get, this._gateway, this._diagnostics, [this._settings]);
   final ContentLibraryGetter _get;
   final SourceContentGateway _gateway;
   final DiagnosticsManager _diagnostics;
   final AppSettingsManager? _settings;
   @override
-  Future<ReaderLaunchRequest> launch(String libraryItemId, {ReaderObserver? observer}) async {
+  Future<ReaderLaunchRequest> launch(String libraryItemId) async {
     final library = await _get();
-    return ContentLibrarySourceTextReader(
-      library,
-      _gateway,
-      ContentLibrarySourcePrefetcher(library, _gateway, diagnostics: _diagnostics),
-      _settings,
-    ).launch(libraryItemId, observer: observer);
+    final item = await library.getLibraryItem(LibraryItemId(libraryItemId));
+    if (item == null) {
+      return _textReader(library).launch(libraryItemId);
+    }
+    return switch (item.kind) {
+      ContentKind.novel => _textReader(library).launch(libraryItemId),
+      ContentKind.manga => ComicReaderLaunchRequest(
+        bookId: item.id.value,
+        dataSource: ContentLibraryComicReaderDataSource(library: library, gateway: _gateway, item: item),
+        stateStore: ContentLibraryComicReaderStateStore(library, itemId: item.id, settings: _settings),
+      ),
+    };
   }
+
+  @override
+  Future<ReaderLaunchRequest?> warmLocal(String libraryItemId) async {
+    final library = await _get();
+    final item = await library.getLibraryItem(LibraryItemId(libraryItemId));
+    if (item == null || item.kind != ContentKind.novel) return null;
+    return _textReader(library).warmLocal(libraryItemId);
+  }
+
+  ContentLibrarySourceTextReader _textReader(ContentLibrary library) => ContentLibrarySourceTextReader(
+    library,
+    _gateway,
+    ContentLibrarySourcePrefetcher(library, _gateway, diagnostics: _diagnostics),
+    _settings,
+  );
 }

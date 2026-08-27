@@ -73,7 +73,7 @@ abstract interface class LocalShelfReaderPrewarmer {
 ///
 /// A missing body is prepared before navigation. The ready request is handed
 /// to the route once, while the owner span stays open until the reader reports
-/// a frame containing actual body text.
+/// a frame containing actual body text or a real comic image.
 final shelfReaderLaunchCoordinatorProvider =
     NotifierProvider<ShelfReaderLaunchCoordinator, ShelfReaderLaunchState>(
       ShelfReaderLaunchCoordinator.new,
@@ -130,7 +130,6 @@ final class ShelfReaderLaunchCoordinator
         span = _diagnostics.startSpan(
           AppDiagnosticEvents.readerLaunch,
           attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-            'readerMode': DiagnosticValue.string('text'),
             'sourceKind': DiagnosticValue.string('shelf'),
             'resultState': DiagnosticValue.string('preparing'),
           }),
@@ -147,6 +146,10 @@ final class ShelfReaderLaunchCoordinator
     try {
       final warmed = _takeWarm(bookId);
       final request = warmed ?? await _launcher.launch(bookId);
+      attempt.readerMode = switch (request) {
+        NovelReaderLaunchRequest() => 'text',
+        ComicReaderLaunchRequest() => 'comic',
+      };
       attempt.preparationKind = warmed == null
           ? request.preparationKind
           : ReaderLaunchPreparationKind.memory;
@@ -238,7 +241,7 @@ final class ShelfReaderLaunchCoordinator
     );
     attempt.complete(
       DiagnosticObjectValue(<String, DiagnosticValue>{
-        'readerMode': DiagnosticValue.string('text'),
+        'readerMode': DiagnosticValue.string(attempt.readerMode),
         'sourceKind': DiagnosticValue.string('shelf'),
         'pathCategory': DiagnosticValue.string(
           attempt.preparationKind.wireValue,
@@ -381,6 +384,7 @@ final class _LaunchAttempt {
   ReaderLaunchPreparationKind preparationKind =
       ReaderLaunchPreparationKind.persistent;
   Duration preparationElapsed = Duration.zero;
+  String readerMode = 'unknown';
 
   void complete(DiagnosticObjectValue attributes) {
     _finishChildren('ownerCompleted');
@@ -401,7 +405,7 @@ final class _LaunchAttempt {
     try {
       owner.fail(
         attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-          'readerMode': DiagnosticValue.string('text'),
+          'readerMode': DiagnosticValue.string(readerMode),
           'sourceKind': DiagnosticValue.string('shelf'),
           'resultState': DiagnosticValue.string('failure'),
           'errorCode': DiagnosticValue.string(errorCode),
@@ -420,7 +424,7 @@ final class _LaunchAttempt {
     try {
       owner.cancel(
         attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-          'readerMode': DiagnosticValue.string('text'),
+          'readerMode': DiagnosticValue.string(readerMode),
           'sourceKind': DiagnosticValue.string('shelf'),
           'resultState': DiagnosticValue.string(resultState),
         }),

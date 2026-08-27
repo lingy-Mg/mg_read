@@ -12,14 +12,22 @@
 library;
 
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
+import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
+import 'package:mg_read/features/reader/presentation/reader_destination_page.dart';
 import 'package:mg_read/features/reader/presentation/reader_entry_transition.dart';
+import 'package:mg_read/features/reader/presentation/reader_host_page.dart';
+
+import '../../../core/diagnostics/diagnostics_testkit.dart';
 
 void main() {
   testWidgets('hands off the first text frame once without a blank reader', (WidgetTester tester) async {
@@ -81,6 +89,99 @@ void main() {
     expect(find.textContaining('第一章正文'), findsOneWidget);
     expect(find.byKey(const Key('reader-entry-back')), findsNothing);
   });
+
+  testWidgets('ReaderHostPage dispatches comics to ComicReaderView', (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(home: ReaderHostPage(request: _comicRequest())));
+
+    expect(find.byType(ComicReaderView), findsOneWidget);
+    expect(find.byType(TextReaderView), findsNothing);
+  });
+
+  testWidgets('comic handoff waits for the first real image and keeps exit', (WidgetTester tester) async {
+    final source = _ControlledComicDataSource();
+    final observer = _RecordingComicObserver();
+    await tester.pumpWidget(_readerApp(_comicRequest(dataSource: source, observer: observer)));
+    await tester.pump(const Duration(milliseconds: 480));
+
+    expect(find.byKey(const Key('reader-entry-back')), findsOneWidget);
+    expect(observer.firstFrames, isEmpty);
+
+    source.completeImage();
+    await tester.pumpAndSettle();
+
+    expect(observer.firstFrames, hasLength(1));
+    expect(find.byKey(const Key('reader-entry-back')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey<String>('comic-reader-content-surface')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('comic-reader-back-action')));
+    await tester.pump();
+    expect(observer.exitRequests, 1);
+  });
+
+  testWidgets('comic initial image failure stays retryable in the carrier', (WidgetTester tester) async {
+    final source = _FailThenSucceedComicDataSource();
+    final observer = _RecordingComicObserver();
+    await tester.pumpWidget(_readerApp(_comicRequest(dataSource: source, observer: observer)));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('reader-entry-retry')), findsOneWidget);
+    expect(observer.firstFrames, isEmpty);
+
+    source.succeedOnNextRequest = true;
+    await tester.tap(find.byKey(const Key('reader-entry-retry')));
+    await tester.pumpAndSettle();
+
+    expect(observer.firstFrames, hasLength(1));
+    expect(find.byKey(const Key('reader-entry-retry')), findsNothing);
+  });
+
+  testWidgets('comic destination completes diagnostics and exits its route', (WidgetTester tester) async {
+    final kit = DiagnosticsTestkit();
+    final observer = _RecordingComicObserver();
+    addTearDown(kit.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          diagnosticsManagerProvider.overrideWithValue(kit.manager),
+          libraryReaderLauncherProvider.overrideWithValue(_ComicLauncher(_comicRequest(observer: observer))),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Builder(
+            builder: (BuildContext context) => Scaffold(
+              body: TextButton(
+                key: const Key('open-comic-reader'),
+                onPressed: () => Navigator.of(
+                  context,
+                ).push<void>(MaterialPageRoute<void>(builder: (_) => const ReaderDestinationPage(bookId: 'reader-entry-test-comic'))),
+                child: const Text('打开漫画'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('open-comic-reader')));
+    await tester.pumpAndSettle();
+
+    expect(observer.firstFrames, hasLength(1));
+    final terminal = kit.sink.events.lastWhere(
+      (event) =>
+          event.eventName.startsWith('${AppDiagnosticEvents.readerLaunch.name}.') &&
+          event.parentSpanId == null &&
+          event.phase == DiagnosticPhase.terminal,
+    );
+    expect(terminal.attributes.values['readerMode'], DiagnosticStringValue('comic'));
+
+    await tester.tap(find.byKey(const ValueKey<String>('comic-reader-content-surface')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('comic-reader-back-action')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('open-comic-reader')), findsOneWidget);
+    expect(observer.exitRequests, 1);
+  });
 }
 
 Widget _readerApp(ReaderLaunchRequest request, {bool reduceMotion = false}) => MaterialApp(
@@ -101,13 +202,20 @@ Future<void> _pumpReader(WidgetTester tester) async {
 }
 
 ReaderLaunchRequest _request({required TextReaderDataSource dataSource, ReaderObserver? observer, List<int>? coverBytes}) =>
-    ReaderLaunchRequest(
+    NovelReaderLaunchRequest(
       bookId: 'reader-entry-test-book',
       dataSource: dataSource,
       stateStore: const _StateStore(),
       observer: observer,
       entryCoverBytes: coverBytes,
     );
+
+ComicReaderLaunchRequest _comicRequest({ComicReaderDataSource? dataSource, ComicReaderObserver? observer}) => ComicReaderLaunchRequest(
+  bookId: 'reader-entry-test-comic',
+  dataSource: dataSource ?? _ImmediateComicDataSource(),
+  stateStore: const _ComicStateStore(),
+  observer: observer,
+);
 
 const List<int> _onePixelPng = <int>[
   137,
@@ -268,4 +376,102 @@ class _StateStore implements TextReaderStateStore {
 
   @override
   Future<void> saveProgress(String bookId, ReaderProgress progress) async {}
+}
+
+class _ImmediateComicDataSource implements ComicReaderDataSource {
+  static const ComicChapterInfo _chapter = ComicChapterInfo(id: 'comic-chapter-1', title: '漫画第一章', index: 0, imageCount: 1);
+
+  @override
+  Future<ComicBookInfo> loadBookInfo(String bookId) async => ComicBookInfo(id: bookId, title: '测试漫画');
+
+  @override
+  Future<ComicChapterCatalogPage> loadChapterCatalog(String bookId, {String? cursor, int pageSize = 50}) async =>
+      ComicChapterCatalogPage(items: const <ComicChapterInfo>[_chapter], total: 1, hasMore: false);
+
+  @override
+  Future<ComicChapterInfo> loadChapterAtIndex(String bookId, int index) async => _chapter;
+
+  @override
+  Future<ComicChapterContent> loadChapterContent(String bookId, String chapterId) async => ComicChapterContent(
+    chapterId: 'comic-chapter-1',
+    title: '漫画第一章',
+    images: <ComicImageInfo>[ComicImageInfo(id: 'comic-image-1', index: 0, width: 1, height: 1)],
+  );
+
+  @override
+  Future<Uint8List> loadImageBytes(String bookId, String chapterId, String imageId) async => Uint8List.fromList(_onePixelPng);
+}
+
+final class _ControlledComicDataSource extends _ImmediateComicDataSource {
+  final Completer<Uint8List> _image = Completer<Uint8List>();
+
+  @override
+  Future<Uint8List> loadImageBytes(String bookId, String chapterId, String imageId) => _image.future;
+
+  void completeImage() {
+    if (!_image.isCompleted) {
+      _image.complete(Uint8List.fromList(_onePixelPng));
+    }
+  }
+}
+
+final class _FailThenSucceedComicDataSource extends _ImmediateComicDataSource {
+  bool succeedOnNextRequest = false;
+
+  @override
+  Future<Uint8List> loadImageBytes(String bookId, String chapterId, String imageId) async {
+    if (!succeedOnNextRequest) {
+      throw StateError('expected comic image failure');
+    }
+    return Uint8List.fromList(_onePixelPng);
+  }
+}
+
+class _ComicStateStore implements ComicReaderStateStore {
+  const _ComicStateStore();
+
+  @override
+  Future<void> addBookmark(ComicReaderBookmark bookmark) async {}
+
+  @override
+  Future<List<ComicReaderBookmark>> loadBookmarks(String bookId) async => const <ComicReaderBookmark>[];
+
+  @override
+  Future<ComicReaderPreferences?> loadPreferences() async => null;
+
+  @override
+  Future<ComicReaderProgress?> loadProgress(String bookId) async => null;
+
+  @override
+  Future<void> removeBookmark(String bookId, String bookmarkId) async {}
+
+  @override
+  Future<void> savePreferences(ComicReaderPreferences preferences) async {}
+
+  @override
+  Future<void> saveProgress(String bookId, ComicReaderProgress progress) async {}
+}
+
+final class _RecordingComicObserver extends ComicReaderObserver {
+  final List<ComicFirstContentPresentation> firstFrames = <ComicFirstContentPresentation>[];
+  int exitRequests = 0;
+
+  @override
+  void onFirstContentPresented(ComicFirstContentPresentation presentation) {
+    firstFrames.add(presentation);
+  }
+
+  @override
+  void onExitRequested(ComicReaderProgress? progress) {
+    exitRequests++;
+  }
+}
+
+final class _ComicLauncher implements LibraryReaderLauncher {
+  const _ComicLauncher(this.request);
+
+  final ComicReaderLaunchRequest request;
+
+  @override
+  Future<ReaderLaunchRequest> launch(String libraryItemId) async => request;
 }

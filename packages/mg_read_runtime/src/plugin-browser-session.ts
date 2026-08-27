@@ -31,8 +31,10 @@ export interface PluginBrowserSessionRequest {
   readonly interaction: "allow" | "silent";
   readonly maxResponseBytes: number;
   readonly method: "GET" | "POST";
+  readonly presentation: "hidden" | "visible";
   readonly sessionKey: string;
   readonly timeoutMs: number;
+  readonly transport: "http" | "webview";
   readonly url: string;
   readonly version: 1;
 }
@@ -42,7 +44,6 @@ export interface PluginBrowserSessionResponse {
   readonly finalUrl: string;
   readonly headers: Readonly<Record<string, string>>;
   readonly status: number;
-  readonly userAgent: string | null;
   readonly verificationState: PluginBrowserVerificationState;
   readonly version: 1;
 }
@@ -62,6 +63,7 @@ export class PluginBrowserSessionError extends Error {
       | "cancelled"
       | "interaction_required"
       | "overloaded"
+      | "plugin_execution_failed"
       | "timeout"
       | "unsupported",
   ) {
@@ -112,6 +114,8 @@ function validateRequest(value: unknown): PluginBrowserSessionRequest {
   if (value.version !== 1 || !/^[A-Za-z0-9._-]{1,64}$/u.test(value.sessionKey as string)) invalid();
   if (value.method !== "GET" && value.method !== "POST") invalid();
   if (value.interaction !== "allow" && value.interaction !== "silent") invalid();
+  if (value.presentation !== "hidden" && value.presentation !== "visible") invalid();
+  if (value.transport !== "http" && value.transport !== "webview") invalid();
   const timeoutMs = boundedInteger(value.timeoutMs, 1_000, maximumBrowserTimeoutMs);
   const maxResponseBytes = boundedInteger(value.maxResponseBytes, 1, maximumBrowserResponseBytes);
   if (value.body !== null && typeof value.body !== "string") invalid();
@@ -124,8 +128,10 @@ function validateRequest(value: unknown): PluginBrowserSessionRequest {
     interaction: value.interaction,
     maxResponseBytes,
     method: value.method,
+    presentation: value.presentation,
     sessionKey: value.sessionKey as string,
     timeoutMs,
+    transport: value.transport,
     url: url.toString(),
     version: 1,
   });
@@ -145,14 +151,12 @@ function validateResponse(
   try { finalUrl = secureUrl(value.finalUrl); } catch { invalidResponse(); }
   if (finalUrl.origin !== requestUrl.origin) invalidResponse();
   if (!verificationStates.has(value.verificationState as PluginBrowserVerificationState)) invalidResponse();
-  if (value.userAgent !== null && (typeof value.userAgent !== "string" || value.userAgent.length > 512)) invalidResponse();
   const headers = validateResponseHeaders(value.headers);
   return Object.freeze({
     body: value.body,
     finalUrl: finalUrl.toString(),
     headers,
     status: value.status as number,
-    userAgent: value.userAgent as string | null,
     verificationState: value.verificationState as PluginBrowserVerificationState,
     version: 1,
   });

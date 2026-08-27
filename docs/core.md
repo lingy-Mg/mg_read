@@ -62,10 +62,11 @@ plugins/sources/                    真实书源插件
   工作区；指纹变化后先回收旧 VM，再启动唯一新 Runtime，不在同一 VM 热替换模块。
 - 内部 WS/HTTP、ready、bootId、端口、PID、URL 和 envelope 不暴露给主应用。控制帧有界；大资源走
   Runtime HTTP 数据面，不进入无界 JSON/Base64。
-- `browser.session.v1` 是受保护书源唯一可请求的宿主浏览器边界：Runtime 校验版本、HTTPS 同源、
-  GET/POST、安全头、64 KiB 请求、2 MiB UTF-8 响应和 1--120 秒超时，并把调用 deadline/取消传给
-  provider。provider 按 `pluginId + sessionKey + origin` 隔离并缓存 Cookie、UA 与验证状态，Cookie/UA
-  永不返回插件；平台未接入时为 `unsupported`，需要用户验证时为 `interaction_required`。
+- `browser.session.v1` 限同源 HTTPS、安全头、64 KiB 请求、2 MiB 响应和 1--120 秒。`webview` 用宿主
+  `fetch`；`http` 携 Profile Cookie/UA 直连。插件不传凭据。
+- Android 每个插件一个 Profile/至多一个 WebView；驻留 8、待处理 16、缓存 10 分钟，multi-profile
+  缺失不降级。`visible` 为全局可隐藏弹窗，`hidden` 不挂 View。已验证：Node/Kotlin；推断：设备支持
+  multi-profile；未验证：Android CF 与弹窗。
 - Debug Runtime 检查页只存在于 Debug，保存的只有用户开关；固定监听 `0.0.0.0:52173`。端口冲突
   不阻止 Runtime，Release 永不启用。页面只暴露受限调试 API，不暴露 RPC、health、资源、Cookie、
   token 或控制面，并持续提示仅在可信网络开启。
@@ -100,9 +101,10 @@ plugins/sources/                    真实书源插件
 - `discover` 返回递归受控组件树：`tabs/section/group/contentCollection/categoryCollection/text/
   divider`。`contentCollection` 可声明 `featured/carousel/coverGrid/shelf/compact/ranking/list`，
   `categoryCollection` 可声明 `grid/chips/list`；这些仅是内容语义，主题、断点、尺寸与交互仍由宿主控制，
-  插件不得执行 UI 代码。tab、section 和 category 可复用同一组可选语义 `icon` 名；Runtime 只接受
-  公开白名单，Flutter 统一映射图标、颜色和尺寸，书源不得下发码点或任意图标资源。续页只追加指定
-  collection，target/cursor 原样回传。
+  插件不得执行 UI 代码。tab、section、category 可声明同一白名单语义 `icon`；Runtime 校验，Flutter
+  统一映射，书源不得下发码点或图标资源。续页只追加指定 collection，target/cursor 原样回传。
+- 首页按真实来源区块组合组件，不为书源建立 Flutter 专页。榜单、题材使用整行 `vertical`；
+  `group.grid` 只用于并排小面板。`coverGrid` 由宿主决定紧凑三列、较宽四列及桌面增密。
 - `searchSuggestions` 是可选热门词能力；热门词由来源提供，宿主不混入本地伪造数据。只有用户主动
   点击建议或提交查询才搜索。
 - `getChapters` 一次返回完整、有序、稳定 ID 唯一的目录；最多 5000 章、编码后最多 2 MiB，不向

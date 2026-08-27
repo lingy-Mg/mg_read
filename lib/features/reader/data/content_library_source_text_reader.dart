@@ -27,7 +27,7 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
   final AppSettingsManager? _settings;
 
   @override
-  Future<ReaderLaunchRequest> launch(String libraryItemId, {ReaderObserver? observer}) async {
+  Future<NovelReaderLaunchRequest> launch(String libraryItemId) async {
     final itemId = LibraryItemId(libraryItemId);
     var session = await _library.openNovelReaderSession(itemId);
     var item = session?.item ?? await _library.getLibraryItem(itemId);
@@ -52,13 +52,13 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
       session = await _library.openNovelReaderSession(item.id);
     }
     final request = session == null
-        ? await _launchLiveSession(item, source, observer)
-        : await _launchLocalSession(item, source, session, observer, waitForWarm: session.resolveProgressEntry);
+        ? await _launchLiveSession(item, source)
+        : await _launchLocalSession(item, source, session, waitForWarm: session.resolveProgressEntry);
     return _attachCachedCover(item, request);
   }
 
   @override
-  Future<ReaderLaunchRequest?> warmLocal(String libraryItemId) async {
+  Future<NovelReaderLaunchRequest?> warmLocal(String libraryItemId) async {
     final session = await _library.openNovelReaderSession(LibraryItemId(libraryItemId));
     if (session == null) return null;
     final item = session.item;
@@ -71,7 +71,6 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
       item: item,
       source: item.source!,
       session: session,
-      observer: null,
       initialEntry: target,
       initialContent: content,
       preparationKind: ReaderLaunchPreparationKind.memory,
@@ -79,7 +78,7 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
     return _attachCachedCover(item, request);
   }
 
-  Future<ReaderLaunchRequest> _attachCachedCover(LibraryItem item, ReaderLaunchRequest request) async {
+  Future<NovelReaderLaunchRequest> _attachCachedCover(LibraryItem item, NovelReaderLaunchRequest request) async {
     final bytes = await _readCachedCover(item);
     return bytes == null ? request : request.withEntryCoverBytes(bytes);
   }
@@ -102,17 +101,16 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
     }
   }
 
-  Future<ReaderLaunchRequest> _launchLocalSession(
+  Future<NovelReaderLaunchRequest> _launchLocalSession(
     LibraryItem item,
     LibraryItemSource source,
-    NovelReaderSession session,
-    ReaderObserver? observer, {
+    NovelReaderSession session, {
     required Future<CatalogEntry?> Function() waitForWarm,
   }) async {
     var target = await waitForWarm();
     target ??= await session.itemAtIndex(0);
     if (target == null) {
-      return _launchLiveSession(item, source, observer);
+      return _launchLiveSession(item, source);
     }
     var content = await session.readContent(target);
     var preparationKind = ReaderLaunchPreparationKind.persistent;
@@ -156,7 +154,6 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
       item: item,
       source: source,
       session: session,
-      observer: observer,
       initialEntry: target,
       initialContent: preparedContent,
       preparationKind: preparationKind,
@@ -166,7 +163,7 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
 
   /// A newly added or incomplete shelf item refreshes and atomically commits
   /// one complete source catalog before constructing the reader session.
-  Future<ReaderLaunchRequest> _launchLiveSession(LibraryItem item, LibraryItemSource source, ReaderObserver? observer) async {
+  Future<NovelReaderLaunchRequest> _launchLiveSession(LibraryItem item, LibraryItemSource source) async {
     final networkStopwatch = Stopwatch()..start();
     final remoteCatalog = await _resolve(
       ReaderLaunchFailureReason.sourceCatalog,
@@ -212,7 +209,6 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
       item: item,
       source: source,
       session: localSession,
-      observer: observer,
       initialEntry: initialEntry,
       initialContent: NovelChapterContent(text: initialContent.text!),
       preparationKind: ReaderLaunchPreparationKind.network,
@@ -220,11 +216,10 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
     );
   }
 
-  ReaderLaunchRequest _buildSessionRequest({
+  NovelReaderLaunchRequest _buildSessionRequest({
     required LibraryItem item,
     required LibraryItemSource source,
     required NovelReaderSession session,
-    required ReaderObserver? observer,
     required CatalogEntry initialEntry,
     required NovelChapterContent initialContent,
     required ReaderLaunchPreparationKind preparationKind,
@@ -251,11 +246,11 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
       initialProgress: session.progress,
       progressAlreadyLoaded: true,
     );
-    return ReaderLaunchRequest(
+    return NovelReaderLaunchRequest(
       bookId: item.id.value,
       dataSource: dataSource,
       stateStore: stateStore,
-      observer: _TimedReaderObserver(stateStore, observer),
+      observer: _TimedReaderObserver(stateStore, null),
       extensions: ReaderExtensions(chapterStateCapability: chapterAccess),
       estimatedWarmBytes: utf8.encode(initialContent.text).length,
       preparationKind: preparationKind,

@@ -110,7 +110,7 @@ export function validateDetailResult(
     pluginId,
     sourceName,
   });
-  assertInlineBudget(result, contentKind === "manga" ? MAX_INLINE_MANGA_MANIFEST_BYTES : MAX_INLINE_RESULT_BYTES);
+  assertInlineBudget(result);
   return result;
 }
 
@@ -161,7 +161,7 @@ export function validateContentResult(
     title: readNullableString(raw, "title", MAX_LABEL_CHARACTERS),
     updatedAt: readNullableTimestamp(raw, "updatedAt"),
   });
-  assertInlineBudget(result);
+  assertInlineBudget(result, contentKind === "manga" ? MAX_INLINE_MANGA_MANIFEST_BYTES : MAX_INLINE_RESULT_BYTES);
   return result;
 }
 

@@ -11,20 +11,11 @@ enum ReaderLaunchPreparationKind {
   final String wireValue;
 }
 
-/// Immutable host-owned inputs required to open one text-reader session.
-///
-/// Create this request only after the application has resolved the book's
-/// stable ID, content data source, and user-specific state store.
-class ReaderLaunchRequest {
-  /// Creates a request for the reader plugin's public [TextReaderView].
-  const ReaderLaunchRequest({
+/// Immutable host-owned inputs common to every reader session.
+sealed class ReaderLaunchRequest {
+  const ReaderLaunchRequest._({
     required this.bookId,
-    required this.dataSource,
-    required this.stateStore,
     this.entryCoverBytes,
-    this.observer,
-    this.controller,
-    this.extensions = const ReaderExtensions(),
     this.estimatedWarmBytes = 0,
     this.preparationKind = ReaderLaunchPreparationKind.persistent,
     this.networkPreparationElapsed = Duration.zero,
@@ -33,24 +24,9 @@ class ReaderLaunchRequest {
   /// Stable identifier owned by the main application.
   final String bookId;
 
-  /// Main-application adapter that supplies book and chapter content.
-  final TextReaderDataSource dataSource;
-
-  /// Main-application adapter that persists preferences, progress and marks.
-  final TextReaderStateStore stateStore;
-
   /// Cover bytes already available in the host before the reader route opens.
   /// The entry transition renders this local payload and never fetches it.
   final List<int>? entryCoverBytes;
-
-  /// Optional host notification sink, including the request to leave reader.
-  final ReaderObserver? observer;
-
-  /// Optional imperative controller retained by the host feature.
-  final TextReaderController? controller;
-
-  /// Optional independently registered reader capabilities.
-  final ReaderExtensions extensions;
 
   /// Bounded estimate used only by the process-local shelf warm LRU.
   final int estimatedWarmBytes;
@@ -60,34 +36,90 @@ class ReaderLaunchRequest {
 
   /// Network-only preparation duration; always zero for local paths.
   final Duration networkPreparationElapsed;
+}
 
-  /// Rebinds route-lifetime callbacks without rebuilding the prepared data.
-  ReaderLaunchRequest withObserver(ReaderObserver? observer) =>
-      ReaderLaunchRequest(
-        bookId: bookId,
-        dataSource: dataSource,
-        stateStore: stateStore,
-        entryCoverBytes: entryCoverBytes,
-        observer: observer,
-        controller: controller,
-        extensions: extensions,
-        estimatedWarmBytes: estimatedWarmBytes,
-        preparationKind: preparationKind,
-        networkPreparationElapsed: networkPreparationElapsed,
-      );
+/// Typed launch inputs for a text reader session.
+final class NovelReaderLaunchRequest extends ReaderLaunchRequest {
+  const NovelReaderLaunchRequest({
+    required super.bookId,
+    required this.dataSource,
+    required this.stateStore,
+    super.entryCoverBytes,
+    this.observer,
+    this.controller,
+    this.extensions = const ReaderExtensions(),
+    super.estimatedWarmBytes,
+    super.preparationKind,
+    super.networkPreparationElapsed,
+  }) : super._();
+
+  final TextReaderDataSource dataSource;
+  final TextReaderStateStore stateStore;
+  final ReaderObserver? observer;
+  final TextReaderController? controller;
+  final ReaderExtensions extensions;
+
+  /// Rebinds route-lifetime text-reader callbacks without rebuilding data.
+  NovelReaderLaunchRequest withObserver(ReaderObserver? observer) => NovelReaderLaunchRequest(
+    bookId: bookId,
+    dataSource: dataSource,
+    stateStore: stateStore,
+    entryCoverBytes: entryCoverBytes,
+    observer: observer,
+    controller: controller,
+    extensions: extensions,
+    estimatedWarmBytes: estimatedWarmBytes,
+    preparationKind: preparationKind,
+    networkPreparationElapsed: networkPreparationElapsed,
+  );
 
   /// Adds bytes resolved by an app-owned cache without changing the session.
-  ReaderLaunchRequest withEntryCoverBytes(List<int>? bytes) =>
-      ReaderLaunchRequest(
-        bookId: bookId,
-        dataSource: dataSource,
-        stateStore: stateStore,
-        entryCoverBytes: bytes,
-        observer: observer,
-        controller: controller,
-        extensions: extensions,
-        estimatedWarmBytes: estimatedWarmBytes,
-        preparationKind: preparationKind,
-        networkPreparationElapsed: networkPreparationElapsed,
-      );
+  NovelReaderLaunchRequest withEntryCoverBytes(List<int>? bytes) => NovelReaderLaunchRequest(
+    bookId: bookId,
+    dataSource: dataSource,
+    stateStore: stateStore,
+    entryCoverBytes: bytes,
+    observer: observer,
+    controller: controller,
+    extensions: extensions,
+    estimatedWarmBytes: estimatedWarmBytes,
+    preparationKind: preparationKind,
+    networkPreparationElapsed: networkPreparationElapsed,
+  );
+}
+
+/// Typed launch inputs for a comic reader session.
+final class ComicReaderLaunchRequest extends ReaderLaunchRequest {
+  const ComicReaderLaunchRequest({
+    required super.bookId,
+    required this.dataSource,
+    required this.stateStore,
+    super.entryCoverBytes,
+    this.observer,
+    this.controller,
+    this.commentFeed,
+    super.estimatedWarmBytes,
+    super.preparationKind,
+    super.networkPreparationElapsed,
+  }) : super._();
+
+  final ComicReaderDataSource dataSource;
+  final ComicReaderStateStore stateStore;
+  final ComicReaderObserver? observer;
+  final ComicReaderController? controller;
+  final ReaderCommentFeed? commentFeed;
+
+  /// Rebinds route-lifetime comic-reader callbacks without rebuilding data.
+  ComicReaderLaunchRequest withObserver(ComicReaderObserver? observer) => ComicReaderLaunchRequest(
+    bookId: bookId,
+    dataSource: dataSource,
+    stateStore: stateStore,
+    entryCoverBytes: entryCoverBytes,
+    observer: observer,
+    controller: controller,
+    commentFeed: commentFeed,
+    estimatedWarmBytes: estimatedWarmBytes,
+    preparationKind: preparationKind,
+    networkPreparationElapsed: networkPreparationElapsed,
+  );
 }

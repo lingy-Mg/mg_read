@@ -52,12 +52,21 @@ final class AppSettingKeys {
     validator: _validateReaderPreferences,
   );
 
+  static const comicReaderPreferences = SettingKey<Map<String, Object?>>(
+    id: 'reader.comicPreferences',
+    documentKind: 'settings.reader',
+    defaultValue: <String, Object?>{},
+    codec: SettingCodec<Map<String, Object?>>(_readerPreferencesEncode, _readerPreferencesDecode, freeze: freezeJsonSettingMap),
+    validator: _validateReaderPreferences,
+  );
+
   static const all = <SettingKey<dynamic>>[
     themeMode,
     searchHistory,
     discoverySourceId,
     diagnosticsRealtimeDetailsEnabled,
     readerPreferences,
+    comicReaderPreferences,
   ];
 
   static final registry = SettingsRegistry(

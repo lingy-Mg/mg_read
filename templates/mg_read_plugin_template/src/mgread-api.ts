@@ -44,7 +44,9 @@ export interface BrowserSessionRequestV1 {
   readonly headers: Readonly<Record<string, string>>;
   readonly body: string | null;
   readonly interaction: 'allow' | 'silent';
+  readonly presentation: 'hidden' | 'visible';
   readonly timeoutMs: number;
+  readonly transport: 'http' | 'webview';
   readonly maxResponseBytes: number;
 }
 
@@ -54,7 +56,6 @@ export interface BrowserSessionResponseV1 {
   readonly finalUrl: string;
   readonly headers: Readonly<Record<string, string>>;
   readonly body: string;
-  readonly userAgent: string | null;
   readonly verificationState: 'not-required' | 'required' | 'pending' | 'verified' | 'failed';
 }
 

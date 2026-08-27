@@ -7,6 +7,7 @@
 package com.mgread.mgread_plugin_runtime
 
 import android.content.Context
+import android.app.Activity
 import android.net.Uri
 import android.content.pm.ApplicationInfo
 import android.provider.OpenableColumns
@@ -72,10 +73,16 @@ internal class AndroidRuntimeHost(
     private var runtimeModule: V8Module? = null
     private var progressCallback: V8ValueFunction? = null
     private var pluginModuleLoader: V8ValueFunction? = null
+    private val browserSessionHost = AndroidBrowserSessionHost(context)
+    private var browserJavetBridge: AndroidBrowserJavetBridge? = null
     private val pluginModules = mutableListOf<V8Module>()
     private var runtimeRoot: File? = null
     private var dataRoot: File? = null
     private val artifactTransfer = AndroidPluginArtifactTransfer(context)
+
+    fun attachActivity(activity: Activity?) {
+        browserSessionHost.attachActivity(activity)
+    }
 
     fun invoke(
         method: String,
@@ -402,6 +409,7 @@ internal class AndroidRuntimeHost(
             }
         }
         latch.await(5, TimeUnit.SECONDS)
+        browserSessionHost.dispose()
         thread.quitSafely()
     }
 
@@ -458,6 +466,8 @@ internal class AndroidRuntimeHost(
             progressCallback = null
             pluginModuleLoader?.close()
             pluginModuleLoader = null
+            browserJavetBridge?.close()
+            browserJavetBridge = null
             clearPluginModules()
             runtimeModule?.close()
             runtimeModule = null
@@ -482,6 +492,9 @@ internal class AndroidRuntimeHost(
         val runtime = V8Host.getNodeInstance().createV8Runtime<NodeRuntime>()
         Log.i(TAG, "android_runtime_node_create_complete")
         installProgressCallback(runtime)
+        browserJavetBridge = AndroidBrowserJavetBridge(browserSessionHost).also {
+            it.install(runtime)
+        }
         runtime.setV8ModuleResolver(AndroidModuleResolver(root))
         Log.i(TAG, "android_runtime_module_resolver_ready")
         nodeRuntime = runtime
@@ -518,11 +531,14 @@ internal class AndroidRuntimeHost(
         // loader. Keep it active so installed plugin files and dependencies
         // are compiled through AndroidModuleResolver in this same VM.
         Log.i(TAG, "android_runtime_plugin_module_loader_ready")
+        val browserProvider = androidBrowserProviderBootstrap()
         val bootstrap = """
             (async () => {
-              const { DesktopRuntime } = globalThis.__mgreadDesktopRuntime;
+              const { DesktopRuntime, PluginBrowserSessionError } = globalThis.__mgreadDesktopRuntime;
+              $browserProvider
               globalThis.__mgreadStartCoreJson = async () => {
                 const core = new DesktopRuntime({
+                  browserSession,
                   dataRoot: ${JSONObject.quote(dataRoot.path)},
                   pluginImportInboxRoot: ${JSONObject.quote(pluginImportInbox.path)},
                   embedded: true,

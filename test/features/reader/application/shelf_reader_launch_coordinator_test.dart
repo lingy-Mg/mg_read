@@ -166,12 +166,60 @@ void main() {
       expect(encoded, isNot(contains('正文不得记录')));
     },
   );
+
+  test('comic first content completes the owner span as comic', () async {
+    final kit = DiagnosticsTestkit();
+    final launcher = _ControlledLauncher();
+    final container = ProviderContainer(
+      overrides: [
+        libraryReaderLauncherProvider.overrideWithValue(launcher),
+        diagnosticsManagerProvider.overrideWithValue(kit.manager),
+      ],
+    );
+    addTearDown(kit.dispose);
+    addTearDown(container.dispose);
+    final coordinator = container.read(
+      shelfReaderLaunchCoordinatorProvider.notifier,
+    );
+
+    final pending = coordinator.prepare('comic-1');
+    launcher.complete(_comicRequest('comic-1'));
+    expect(await pending, isTrue);
+    expect(
+      coordinator.takePrepared('comic-1'),
+      isA<ComicReaderLaunchRequest>(),
+    );
+    coordinator.completeFirstContent(
+      'comic-1',
+      preparationKind: 'progressive',
+      firstPageLayout: Duration.zero,
+    );
+
+    final terminal = kit.sink.events.lastWhere(
+      (event) =>
+          event.eventName.startsWith(
+            '${AppDiagnosticEvents.readerLaunch.name}.',
+          ) &&
+          event.parentSpanId == null &&
+          event.phase == DiagnosticPhase.terminal,
+    );
+    expect(
+      terminal.attributes.values['readerMode'],
+      DiagnosticStringValue('comic'),
+    );
+  });
 }
 
-ReaderLaunchRequest _request(String bookId) => ReaderLaunchRequest(
+ReaderLaunchRequest _request(String bookId) => NovelReaderLaunchRequest(
   bookId: bookId,
   dataSource: _UnusedDataSource(),
   stateStore: _UnusedStateStore(),
+);
+
+ReaderLaunchRequest _comicRequest(String bookId) => ComicReaderLaunchRequest(
+  bookId: bookId,
+  dataSource: _UnusedComicDataSource(),
+  stateStore: _UnusedComicStateStore(),
 );
 
 final class _ControlledLauncher implements LibraryReaderLauncher {
@@ -180,9 +228,8 @@ final class _ControlledLauncher implements LibraryReaderLauncher {
 
   @override
   Future<ReaderLaunchRequest> launch(
-    String libraryItemId, {
-    ReaderObserver? observer,
-  }) {
+    String libraryItemId,
+  ) {
     launchCount += 1;
     return _completer.future;
   }
@@ -202,6 +249,16 @@ final class _UnusedDataSource implements TextReaderDataSource {
 }
 
 final class _UnusedStateStore implements TextReaderStateStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _UnusedComicDataSource implements ComicReaderDataSource {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _UnusedComicStateStore implements ComicReaderStateStore {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

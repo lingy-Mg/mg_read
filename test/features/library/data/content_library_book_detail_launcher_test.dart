@@ -98,4 +98,31 @@ void main() {
       ),
     );
   });
+
+  test('maps a manga shelf item to manga detail content', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-detail-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final item = await library.bookshelf.addFromSource(
+      const BookshelfAddRequest(
+        title: '书架漫画详情',
+        author: '漫画作者',
+        kind: ContentKind.manga,
+        pluginId: 'org.example.manga',
+        pluginVersion: '1.0.0',
+        remoteContentId: 'manga-7',
+        chapterCount: 12,
+      ),
+    );
+
+    final detail = await ContentLibraryBookDetailLauncher(library).load(item.id.value);
+
+    expect(detail.initialContent.contentKind, PluginContentKind.manga);
+    expect(detail.initialContent.title, '书架漫画详情');
+    expect(detail.initialContent.chapterCount, 12);
+    expect(detail.initialCatalog.items, isEmpty);
+  });
 }

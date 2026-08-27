@@ -1,7 +1,7 @@
 /// 阅读器插件宿主页。
 ///
 /// 职责：
-/// - 只通过阅读器公开 API 装配一次文本阅读会话。
+/// - 只通过阅读器公开 API 按密封请求装配一次小说或漫画阅读会话。
 /// - 不持有入场动效、路由、Runtime 或持久化实现。
 ///
 /// 注意：
@@ -26,15 +26,26 @@ class ReaderHostPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final request = this.request;
     return Scaffold(
-      body: TextReaderView(
-        bookId: request.bookId,
-        dataSource: request.dataSource,
-        stateStore: request.stateStore,
-        observer: request.observer,
-        controller: request.controller,
-        extensions: request.extensions,
-      ),
+      body: switch (request) {
+        NovelReaderLaunchRequest request => TextReaderView(
+          bookId: request.bookId,
+          dataSource: request.dataSource,
+          stateStore: request.stateStore,
+          observer: request.observer,
+          controller: request.controller,
+          extensions: request.extensions,
+        ),
+        ComicReaderLaunchRequest request => ComicReaderView(
+          bookId: request.bookId,
+          dataSource: request.dataSource,
+          stateStore: request.stateStore,
+          observer: request.observer,
+          controller: request.controller,
+          commentFeed: request.commentFeed,
+        ),
+      },
     );
   }
 }

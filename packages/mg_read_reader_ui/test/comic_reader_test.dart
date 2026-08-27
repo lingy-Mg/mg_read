@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -41,8 +41,9 @@ void main() {
     await cache.load('chapter-1', _image('three', 8));
     expect(cache.entryCount, 2);
     expect(cache.byteCount, 10);
+    final limited = ComicImageByteCache(bookId: 'book', dataSource: source);
     await expectLater(
-      cache.load('chapter-1', _image('too-large', 8 * 1024 * 1024 + 1)),
+      limited.load('chapter-1', _image('too-large', 8 * 1024 * 1024 + 1)),
       throwsStateError,
     );
   });
@@ -60,6 +61,9 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
+    expect(observer.firstContentCount, 1);
+    expect(observer.firstPresentation?.anchor?.imageId, 'image-1');
+    expect(observer.firstPresentation?.cacheHit, isFalse);
     expect(find.byKey(const ValueKey<String>('comic-reader-content-surface')), findsOneWidget);
     expect(find.bySemanticsLabel('漫画图片 1'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey<String>('comic-reader-content-surface')));
@@ -72,10 +76,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('comic-reader-back-action')));
     await tester.pump();
     expect(observer.exitCount, 1);
+    expect(observer.firstContentCount, 1);
   });
 }
 
-ComicImageInfo _image(String id, int size) => ComicImageInfo(
+ComicImageInfo _image(String id, int? size) => ComicImageInfo(
   id: id,
   index: 0,
   width: 1,
@@ -110,13 +115,24 @@ class _FakeComicSource implements ComicReaderDataSource {
   Future<ComicChapterContent> loadChapterContent(String bookId, String chapterId) async => ComicChapterContent(
     chapterId: chapterId,
     title: '第一章',
-    images: <ComicImageInfo>[_image('image-1', 1)],
+    images: <ComicImageInfo>[_image('image-1', null)],
   );
 
   @override
   Future<Uint8List> loadImageBytes(String bookId, String chapterId, String imageId) async {
     imageCalls++;
-    return Uint8List.fromList(<int>[1, 2]);
+    final int size = switch (imageId) {
+      'one' || 'two' => 2,
+      'three' => 8,
+      'too-large' => 8 * 1024 * 1024 + 1,
+      _ => 1,
+    };
+    if (imageId == 'image-1') {
+      return Uint8List.fromList(base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      ));
+    }
+    return Uint8List(size);
   }
 }
 
@@ -139,6 +155,15 @@ class _MemoryComicStateStore implements ComicReaderStateStore {
 
 class _RecordingComicObserver extends ComicReaderObserver {
   int exitCount = 0;
+  int firstContentCount = 0;
+  ComicFirstContentPresentation? firstPresentation;
+
+  @override
+  Future<void> onFirstContentPresented(ComicFirstContentPresentation presentation) async {
+    firstContentCount++;
+    firstPresentation = presentation;
+  }
+
   @override
   Future<void> onExitRequested(ComicReaderProgress? progress) async { exitCount++; }
 }

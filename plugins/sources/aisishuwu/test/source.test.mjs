@@ -7,8 +7,9 @@ import test from 'node:test';
 import { AliceBookHouseSource } from '../dist/source.js';
 import * as plugin from '../dist/index.mjs';
 
-test('list results retain an HTTP(S) cover from the source card', async () => {
+test('list results expose source covers through the Runtime proxy', async () => {
   let proxyCalls = 0;
+  let proxyRequest;
   const source = new AliceBookHouseSource(
     {
       dataDir: 'data',
@@ -28,8 +29,9 @@ test('list results retain an HTTP(S) cover from the source card', async () => {
           `),
       },
       resource: {
-        proxy: () => {
+        proxy: (request) => {
           proxyCalls += 1;
+          proxyRequest = request;
           return 'http://127.0.0.1:1234/v1/source-resource/opaque';
         },
       },
@@ -49,9 +51,93 @@ test('list results retain an HTTP(S) cover from the source card', async () => {
 
   assert.equal(
     result.document.components[0].children[0].items[0].content.coverUrl,
-    'https://cdn.example.com/covers/42.jpg',
+    'http://127.0.0.1:1234/v1/source-resource/opaque',
   );
-  assert.equal(proxyCalls, 0);
+  assert.equal(proxyCalls, 1);
+  assert.deepEqual(proxyRequest, { url: 'https://cdn.example.com/covers/42.jpg' });
+});
+
+test('category detail hydration uses eight workers, preserves order, and degrades one failed row once', async () => {
+  const detailCalls = new Map();
+  let activeDetails = 0;
+  let maximumActiveDetails = 0;
+  let startedDetails = 0;
+  let releaseFirstWave;
+  const firstWave = new Promise((resolve) => {
+    releaseFirstWave = resolve;
+  });
+  const list = Array.from({ length: 20 }, (_, index) => {
+    const id = index + 1;
+    return `
+      <article class="list-group-item">
+        <a href="/novel/${id}.html">列表书${id}</a>
+        <a href="/search.html?q=author-${id}&f=author">列表作者${id}</a>
+        <a href="/lists/71.html">科幻</a>
+        <a href="/book/${id}/latest.html">列表最新${id}</a>
+      </article>
+    `;
+  }).join('');
+  const source = new AliceBookHouseSource(
+    {
+      dataDir: 'data',
+      cacheDir: 'cache',
+      http: {
+        fetch: async (input) => {
+          const url = new URL(input);
+          if (url.pathname === '/lists/71.html') return new Response(list);
+          const id = url.pathname.match(/^\/novel\/(\d+)\.html$/u)?.[1];
+          if (id === undefined) throw new Error('Unexpected source request.');
+          detailCalls.set(id, (detailCalls.get(id) ?? 0) + 1);
+          activeDetails += 1;
+          startedDetails += 1;
+          maximumActiveDetails = Math.max(maximumActiveDetails, activeDetails);
+          if (startedDetails === 8) releaseFirstWave();
+          try {
+            await firstWave;
+            if (id === '5') throw new Error('Detail unavailable.');
+            return new Response(`
+              <h1 class="novel_title">列表书${id}</h1>
+              <section class="pic"><img src="https://cdn.example.com/${id}.jpg"></section>
+              <div class="novel_info">
+                <a href="/search.html?q=detail-${id}&f=author">详情作者${id}</a>
+                <a href="/lists/71.html">科幻</a>
+                <p>字 数：12345 · 章 节：67</p>
+                <p>状 态：连载中</p>
+              </div>
+              <div class="jianjie"><p>详情简介${id}</p></div>
+            `);
+          } finally {
+            activeDetails -= 1;
+          }
+        },
+      },
+      log: { debug() {}, info() {}, warn() {}, error() {} },
+      app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
+      plugin: { id: 'org.mgread.aisishuwu', version: '0.2.10' },
+    },
+    { origin: 'https://www.alicesw.com', categories: [{ id: '71', title: '科幻' }] },
+  );
+
+  const result = await source.discover({
+    target: 'category:71',
+    cursor: null,
+    collectionId: null,
+    pageSize: 20,
+  });
+  const items = result.document.components[0].children[0].items;
+
+  assert.equal(maximumActiveDetails, 8);
+  assert.equal([...detailCalls.values()].reduce((total, count) => total + count, 0), 20);
+  assert.equal(detailCalls.get('5'), 1);
+  assert.deepEqual(
+    items.map((item) => item.content.id),
+    Array.from({ length: 20 }, (_, index) => `novel:${index + 1}`),
+  );
+  assert.equal(items[0].content.coverUrl, 'https://cdn.example.com/1.jpg');
+  assert.equal(items[0].content.description, '详情简介1');
+  assert.equal(items[4].content.coverUrl, null);
+  assert.equal(items[4].content.author, '列表作者5');
+  assert.equal(items[4].content.latestChapter.title, '列表最新5');
 });
 
 test('discovery home exposes source rankings and ranking targets return the full list page', async () => {
@@ -130,6 +216,10 @@ test('discovery home exposes source rankings and ranking targets return the full
     ['推荐一', '推荐二'],
   );
   assert.equal(home.document.components[1].children[0].layout, 'coverGrid');
+  assert.deepEqual(
+    home.document.components[1].children[0].items.map((item) => item.content.coverUrl),
+    ['https://cdn.example.com/21.jpg', 'https://cdn.example.com/22.jpg'],
+  );
   const navigationGroup = home.document.components[2];
   assert.equal(navigationGroup.layout, 'vertical');
   const categorySection = navigationGroup.children[0];
@@ -185,27 +275,37 @@ test('detail results retain a lazy-loaded cover from the source page', async () 
   assert.equal(detail.coverUrl, 'https://cdn.example.com/covers/42.jpg');
 });
 
-test('Alice cover results retain their source HTTPS URL when a Runtime proxy is available', async () => {
+test('Alice cover results use the Runtime proxy and the resource handler accepts the live CDN', async () => {
   let proxyRequest;
   let fetchCount = 0;
   const context = {
     dataDir: 'data', cacheDir: 'cache',
     resource: { proxy: (request) => { proxyRequest = request; return 'http://127.0.0.1:1234/v1/source-resource/opaque'; } },
-    http: { fetch: async () => { fetchCount += 1; return new Response('<h1 class="novel_title">封面测试书</h1><section class="pic"><img src="https://www.alicesw.com/covers/42.jpg"></section><div class="novel_info"><a href="/lists/62.html">玄幻</a><p>字 数：0 · 章 节：0</p><p>状 态：连载中</p></div>'); } },
+    http: { fetch: async (input) => {
+      fetchCount += 1;
+      if (new URL(input).origin === 'https://img.321cdn.com') {
+        return new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/webp' } });
+      }
+      return new Response('<h1 class="novel_title">封面测试书</h1><section class="pic"><img src="https://img.321cdn.com/covers/42.webp"></section><div class="novel_info"><a href="/lists/62.html">玄幻</a><p>字 数：0 · 章 节：0</p><p>状 态：连载中</p></div>');
+    } },
     log: { debug() {}, info() {}, warn() {}, error() {} },
     app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
     plugin: { id: 'org.mgread.aisishuwu', version: '0.2.2' },
   };
   const source = new AliceBookHouseSource(context, { origin: 'https://www.alicesw.com', categories: [] });
   const detail = await source.getDetail({ id: 'novel:42' });
-  assert.equal(detail.coverUrl, 'https://www.alicesw.com/covers/42.jpg');
-  assert.equal(proxyRequest, undefined);
+  assert.equal(detail.coverUrl, 'http://127.0.0.1:1234/v1/source-resource/opaque');
+  assert.deepEqual(proxyRequest, { url: 'https://img.321cdn.com/covers/42.webp' });
 
   await plugin.activate(context);
-  const result = await plugin.resource({ url: 'https://evil.example/covers/42.jpg' });
-  assert.equal(result.status, 400);
-  assert.equal(result.body.byteLength, 0);
-  assert.equal(fetchCount, 1);
+  const accepted = await plugin.resource(proxyRequest);
+  assert.equal(accepted.status, 200);
+  assert.equal(accepted.headers['content-type'], 'image/webp');
+  assert.deepEqual([...accepted.body], [1, 2, 3]);
+  const rejected = await plugin.resource({ url: 'https://evil.example/covers/42.jpg' });
+  assert.equal(rejected.status, 400);
+  assert.equal(rejected.body.byteLength, 0);
+  assert.equal(fetchCount, 2);
 });
 
 test('detail projects real source metadata into the v1 summary fields', async () => {

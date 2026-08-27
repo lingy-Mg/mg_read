@@ -28,9 +28,6 @@ final class ContentLibraryBookDetailLauncher implements LibraryBookDetailLaunche
     if (item == null) {
       throw _failure(LibraryBookDetailFailureReason.itemMissing, AppErrorCode.notFound);
     }
-    if (item.kind != ContentKind.novel) {
-      throw _failure(LibraryBookDetailFailureReason.unsupportedContent, AppErrorCode.unsupported);
-    }
     if (item.source == null) {
       throw _failure(LibraryBookDetailFailureReason.sourceMissing, AppErrorCode.invalidFormat);
     }
@@ -43,7 +40,10 @@ final class ContentLibraryBookDetailLauncher implements LibraryBookDetailLaunche
       initialContent: PluginContentSummary(
         id: source.remoteContentId,
         title: item.title,
-        contentKind: PluginContentKind.novel,
+        contentKind: switch (item.kind) {
+          ContentKind.novel => PluginContentKind.novel,
+          ContentKind.manga => PluginContentKind.manga,
+        },
         author: item.author,
         url: item.sourceUrl,
         coverUrl: item.coverUrl,

@@ -382,7 +382,7 @@ final class ContentRepository {
     final item = await source;
     if (item?.source == null) throw StateError('The shelf item has no source identity.');
     final ingest = ContentLibraryIngest(pluginId: item!.source!.pluginId, producerPluginVersion: item.source!.pluginVersion, dataVersion: 1, opaqueData: {'remoteBookId': item.source!.remoteContentId});
-    return putManga(entryId: entryId, pages: pages.map((page) => IngestMangaPage(pageId: page.pageId, order: page.order, resource: page.resource, source: ingest, downloadedAssetId: null)).toList(growable: false), source: ingest);
+    return putManga(entryId: entryId, pages: pages.map((page) => IngestMangaPage(pageId: page.pageId, order: page.order, resource: page.resource, source: ingest, downloadedAssetId: null, mimeType: page.mimeType, width: page.width, height: page.height, byteLength: page.byteLength, contentVersion: page.contentVersion)).toList(growable: false), source: ingest);
   }
 
   Future<ReadableContent?> open(CatalogEntryId id) => _library._trace(

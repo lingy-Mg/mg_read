@@ -119,9 +119,8 @@ final class _PendingReaderLauncher implements LibraryReaderLauncher {
 
   @override
   Future<ReaderLaunchRequest> launch(
-    String libraryItemId, {
-    ReaderObserver? observer,
-  }) {
+    String libraryItemId,
+  ) {
     requestedBookId.complete(libraryItemId);
     return _pendingRequest.future;
   }
@@ -134,13 +133,11 @@ final class _ImmediateReaderLauncher implements LibraryReaderLauncher {
 
   @override
   Future<ReaderLaunchRequest> launch(
-    String libraryItemId, {
-    ReaderObserver? observer,
-  }) async => ReaderLaunchRequest(
+    String libraryItemId,
+  ) async => NovelReaderLaunchRequest(
     bookId: libraryItemId,
     dataSource: const _ReaderDataSource(),
     stateStore: stateStore,
-    observer: observer,
   );
 }
 

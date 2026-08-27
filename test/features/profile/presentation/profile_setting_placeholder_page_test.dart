@@ -39,7 +39,7 @@ void main() {
     expect(find.byType(CacheManagementPage), findsOneWidget);
     expect(find.text('数据源网页与文件缓存'), findsOneWidget);
     expect(find.text('封面缓存'), findsOneWidget);
-    expect(find.text('正文图片缓存'), findsOneWidget);
+    expect(find.text('漫画正文图片缓存'), findsOneWidget);
     expect(find.byKey(const Key('profile-setting-clear-cache')), findsNothing);
   });
 

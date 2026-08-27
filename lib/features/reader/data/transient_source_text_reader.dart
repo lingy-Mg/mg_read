@@ -34,7 +34,7 @@ final class TransientSourceTextReader {
   final _TransientSourceTextReaderDataSource _dataSource;
 
   /// Creates a launch request whose selected source chapter opens immediately.
-  ReaderLaunchRequest createLaunchRequest({
+  NovelReaderLaunchRequest createLaunchRequest({
     required String initialChapterId,
     ReaderObserver? observer,
     TextReaderStateStore? stateStore,
@@ -48,7 +48,7 @@ final class TransientSourceTextReader {
         'The selected source chapter is not in the catalog.',
       );
     }
-    return ReaderLaunchRequest(
+    return NovelReaderLaunchRequest(
       bookId: _dataSource.bookId,
       entryCoverBytes: _entryCoverBytes,
       dataSource: _dataSource,

@@ -318,7 +318,14 @@ void main() {
       final discovery = await runtime.invoke(
         const SourceDiscoverInvocation(pluginId: 'org.mgread.flutter.fixture'),
       );
+      final slowNestedDiscovery = await runtime.invoke(
+        const SourceDiscoverInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
+          target: 'slow-nested',
+        ),
+      );
       expect(suggestions.items, isEmpty);
+      expect(slowNestedDiscovery, isA<PluginDiscoveryDocumentResult>());
       final detail = await runtime.invoke(
         SourceDetailInvocation(
           pluginId: 'org.mgread.flutter.fixture',
@@ -422,9 +429,28 @@ void main() {
       expect(content.contentKind, PluginContentKind.novel);
       expect(content.text, 'Flutter 标准正文。');
       expect(mangaContent.contentKind, PluginContentKind.manga);
-      expect(mangaContent.pages.single.resourcePolicy, PluginMangaPageResourcePolicy.sessionOnly);
+      expect(
+        mangaContent.pages.single.resourcePolicy,
+        PluginMangaPageResourcePolicy.sessionOnly,
+      );
       expect(mangaContent.pages.single.expiresAt, isNull);
+      await expectLater(
+        runtime.invoke(
+          const SourceDiscoverInvocation(
+            pluginId: 'org.mgread.flutter.fixture',
+            pageSize: 50,
+          ),
+        ),
+        throwsA(
+          isA<PluginRuntimeException>().having(
+            (error) => error.code,
+            'code',
+            'timeout',
+          ),
+        ),
+      );
     },
+    timeout: const Timeout(Duration(seconds: 60)),
   );
 
   test(
@@ -828,7 +854,10 @@ function summary(query) {
     attributes: [],
   };
 }
-export async function discover() {
+export async function discover(request) {
+  if (request.target === 'slow-nested' || (request.target === null && request.pageSize === 50)) {
+    await new Promise((resolve) => setTimeout(resolve, 5500));
+  }
   return {
     kind: 'document',
     document: { components: [{

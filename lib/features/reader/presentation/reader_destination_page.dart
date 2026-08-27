@@ -2,12 +2,12 @@
 ///
 /// 职责：
 /// - 将稳定书架 ID 解析为受限的阅读器启动请求。
-/// - 复用唯一的 reader.launch 诊断 span 与首帧完成信号。
+/// - 复用唯一的 reader.launch 诊断 span 与文本首帧或漫画首图完成信号。
 /// - 把已解析会话交给入场承载层，不向路由传递正文或 Runtime 状态。
 ///
 /// 注意：
 /// - 路由销毁、失败与重复解析必须结束既有启动 span。
-/// - 视觉入场不创建额外 owner span，正文首帧仍是成功语义。
+/// - 视觉入场不创建额外 owner span，真实正文或图片首帧才是成功语义。
 ///
 /// TODO:
 /// - 无。
@@ -59,6 +59,7 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
   Object? _error;
   var _generation = 0;
   var _usesShelfCoordinator = false;
+  var _readerMode = 'unknown';
 
   @override
   void initState() {
@@ -102,6 +103,14 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
   }
 
   Future<void> _leaveReader(ReaderProgress? progress) {
+    return _leaveReaderRoute();
+  }
+
+  Future<void> _leaveComicReader(ComicReaderProgress? progress) {
+    return _leaveReaderRoute();
+  }
+
+  Future<void> _leaveReaderRoute() {
     final NavigatorState? navigator = _navigator;
     if (navigator != null && navigator.mounted && navigator.canPop()) {
       navigator.pop();
@@ -119,26 +128,44 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
   );
 
   void _installRequest(ReaderLaunchRequest request, _ReaderLaunchStageReporter stageReporter) {
+    _readerMode = switch (request) {
+      NovelReaderLaunchRequest() => 'text',
+      ComicReaderLaunchRequest() => 'comic',
+    };
     final coordinator = _shelfCoordinator;
     final mappingStage = _usesShelfCoordinator ? coordinator.startStage(widget.bookId, 'mapping') : null;
     final mountStage = _usesShelfCoordinator ? coordinator.startStage(widget.bookId, 'readerMount') : null;
     _readerMountStage = mountStage;
-    _request = ReaderLaunchRequest(
-      bookId: request.bookId,
-      entryCoverBytes: request.entryCoverBytes,
-      dataSource: _MeasuredTextReaderDataSource(request.dataSource, stageReporter),
-      stateStore: _MeasuredTextReaderStateStore(request.stateStore, stageReporter),
-      observer: _ReaderObserverChain(<ReaderObserver>[
-        ?request.observer,
-        _ReaderChapterPerformanceObserver(_diagnostics),
-        _ReaderExitObserver(_leaveReader),
-      ]),
-      controller: request.controller,
-      extensions: request.extensions,
-      estimatedWarmBytes: request.estimatedWarmBytes,
-      preparationKind: request.preparationKind,
-      networkPreparationElapsed: request.networkPreparationElapsed,
-    );
+    _request = switch (request) {
+      NovelReaderLaunchRequest novel => NovelReaderLaunchRequest(
+        bookId: novel.bookId,
+        entryCoverBytes: novel.entryCoverBytes,
+        dataSource: _MeasuredTextReaderDataSource(novel.dataSource, stageReporter),
+        stateStore: _MeasuredTextReaderStateStore(novel.stateStore, stageReporter),
+        observer: _ReaderObserverChain(<ReaderObserver>[
+          ?novel.observer,
+          _ReaderChapterPerformanceObserver(_diagnostics),
+          _ReaderExitObserver(_leaveReader),
+        ]),
+        controller: novel.controller,
+        extensions: novel.extensions,
+        estimatedWarmBytes: novel.estimatedWarmBytes,
+        preparationKind: novel.preparationKind,
+        networkPreparationElapsed: novel.networkPreparationElapsed,
+      ),
+      ComicReaderLaunchRequest comic => ComicReaderLaunchRequest(
+        bookId: comic.bookId,
+        entryCoverBytes: comic.entryCoverBytes,
+        dataSource: comic.dataSource,
+        stateStore: comic.stateStore,
+        observer: _ComicReaderObserverChain(<ComicReaderObserver>[?comic.observer, _ComicReaderExitObserver(_leaveComicReader)]),
+        controller: comic.controller,
+        commentFeed: comic.commentFeed,
+        estimatedWarmBytes: comic.estimatedWarmBytes,
+        preparationKind: comic.preparationKind,
+        networkPreparationElapsed: comic.networkPreparationElapsed,
+      ),
+    };
     mappingStage?.complete(attributes: _stageAttributes('mapping', 'success'));
     if (mounted) setState(() {});
   }
@@ -180,6 +207,41 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
     );
   }
 
+  void _completeComicLaunch(ComicFirstContentPresentation presentation) {
+    final coordinator = _shelfCoordinator;
+    if (_usesShelfCoordinator) {
+      final frameStage = coordinator.startStage(widget.bookId, 'firstContentFrame');
+      frameStage?.complete(attributes: _stageAttributes('firstContentFrame', 'success'));
+      coordinator.completeFirstContent(
+        widget.bookId,
+        preparationKind: presentation.preparationKind,
+        firstPageLayout: Duration.zero,
+        windowClass: _windowClass(),
+      );
+      return;
+    }
+    final span = _launchSpan;
+    final stopwatch = _launchStopwatch;
+    if (span == null || stopwatch == null || span.isEnded) return;
+    stopwatch.stop();
+    span.complete(
+      attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+        'readerMode': DiagnosticValue.string('comic'),
+        'sourceKind': DiagnosticValue.string('shelf'),
+        'resultState': DiagnosticValue.string('firstContentFrame'),
+      }),
+    );
+    reportSlowDiagnostic(
+      _diagnostics,
+      subjectComponent: 'feature.reader',
+      operation: 'firstContentFrame',
+      elapsed: stopwatch.elapsed,
+      threshold: AppDiagnosticThresholds.readerFirstFrame,
+      outcome: DiagnosticOutcome.success,
+      traceContext: span.traceContext,
+    );
+  }
+
   void _failLaunchFromReader(ReaderFailure failure) {
     if (_usesShelfCoordinator) {
       _shelfCoordinator.failFromReader(widget.bookId, 'reader_failure');
@@ -199,7 +261,7 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
     if (span == null || stopwatch == null || span.isEnded) return;
     stopwatch.stop();
     final attributes = <String, DiagnosticValue>{
-      'readerMode': DiagnosticValue.string('text'),
+      'readerMode': DiagnosticValue.string(_readerMode),
       'sourceKind': DiagnosticValue.string('shelf'),
       'resultState': DiagnosticValue.string(resultState),
     };
@@ -223,7 +285,7 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
     if (previous != null && !previous.isEnded) {
       previous.cancel(
         attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-          'readerMode': DiagnosticValue.string('text'),
+          'readerMode': DiagnosticValue.string(_readerMode),
           'sourceKind': DiagnosticValue.string('shelf'),
           'resultState': DiagnosticValue.string('superseded'),
         }),
@@ -232,10 +294,7 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
     _launchStopwatch = Stopwatch()..start();
     _launchSpan = _diagnostics.startSpan(
       AppDiagnosticEvents.readerLaunch,
-      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-        'readerMode': DiagnosticValue.string('text'),
-        'sourceKind': DiagnosticValue.string('shelf'),
-      }),
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{'sourceKind': DiagnosticValue.string('shelf')}),
     );
   }
 
@@ -264,7 +323,12 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
       if (mountStage != null && !mountStage.isEnded) {
         mountStage.complete(attributes: _stageAttributes('readerMount', 'success'));
       }
-      return ReaderEntryTransition(request: request, onFirstContentPresented: _completeLaunch, onInitialFailure: _failLaunchFromReader);
+      return ReaderEntryTransition(
+        request: request,
+        onFirstContentPresented: _completeLaunch,
+        onFirstComicContentPresented: _completeComicLaunch,
+        onInitialFailure: _failLaunchFromReader,
+      );
     }
     final error = _error;
     if (error != null) {
@@ -368,6 +432,15 @@ final class _ReaderExitObserver extends ReaderObserver {
   Future<void> onExitRequested(ReaderProgress? progress) => _onExitRequested(progress);
 }
 
+final class _ComicReaderExitObserver extends ComicReaderObserver {
+  const _ComicReaderExitObserver(this._onExitRequested);
+
+  final Future<void> Function(ComicReaderProgress? progress) _onExitRequested;
+
+  @override
+  Future<void> onExitRequested(ComicReaderProgress? progress) => _onExitRequested(progress);
+}
+
 /// Owns the app-side reader chapter performance span without retaining any
 /// book, chapter, URL, paragraph, or raw exception data.
 final class _ReaderChapterPerformanceObserver extends ReaderObserver {
@@ -376,8 +449,7 @@ final class _ReaderChapterPerformanceObserver extends ReaderObserver {
   final DiagnosticsManager _diagnostics;
   final Map<(ReaderChapterPerformancePhase, int), DiagnosticSpanHandle> _spans =
       <(ReaderChapterPerformancePhase, int), DiagnosticSpanHandle>{};
-  final Map<(ReaderChapterPerformancePhase, int), Stopwatch> _timers =
-      <(ReaderChapterPerformancePhase, int), Stopwatch>{};
+  final Map<(ReaderChapterPerformancePhase, int), Stopwatch> _timers = <(ReaderChapterPerformancePhase, int), Stopwatch>{};
 
   @override
   Future<void> onChapterPerformance(ReaderChapterPerformanceEvent event) async {
@@ -388,10 +460,7 @@ final class _ReaderChapterPerformanceObserver extends ReaderObserver {
       _timers.remove(key);
       try {
         old?.cancel();
-        final span = _diagnostics.startSpan(
-          AppDiagnosticEvents.readerChapterPerformance,
-          attributes: () => _attributes(event),
-        );
+        final span = _diagnostics.startSpan(AppDiagnosticEvents.readerChapterPerformance, attributes: () => _attributes(event));
         _timers[key] = Stopwatch()..start();
         _spans[key] = span;
       } on Object {
@@ -508,6 +577,61 @@ final class _ReaderObserverChain extends ReaderObserver {
 
   @override
   Future<void> onExitRequested(ReaderProgress? progress) async {
+    for (final observer in _observers) {
+      await observer.onExitRequested(progress);
+    }
+  }
+}
+
+final class _ComicReaderObserverChain extends ComicReaderObserver {
+  _ComicReaderObserverChain(Iterable<ComicReaderObserver> observers) : _observers = List<ComicReaderObserver>.unmodifiable(observers);
+
+  final List<ComicReaderObserver> _observers;
+
+  @override
+  Future<void> onSessionStarted(String bookId) async {
+    for (final observer in _observers) {
+      await observer.onSessionStarted(bookId);
+    }
+  }
+
+  @override
+  Future<void> onFirstContentPresented(ComicFirstContentPresentation presentation) async {
+    for (final observer in _observers) {
+      await observer.onFirstContentPresented(presentation);
+    }
+  }
+
+  @override
+  Future<void> onSessionEnded(String bookId, ComicReaderProgress? progress) async {
+    for (final observer in _observers) {
+      await observer.onSessionEnded(bookId, progress);
+    }
+  }
+
+  @override
+  Future<void> onLifecycleChanged(ReaderLifecycleState state, ComicReaderProgress? progress) async {
+    for (final observer in _observers) {
+      await observer.onLifecycleChanged(state, progress);
+    }
+  }
+
+  @override
+  Future<void> onChapterChanged(ComicChapterInfo chapter) async {
+    for (final observer in _observers) {
+      await observer.onChapterChanged(chapter);
+    }
+  }
+
+  @override
+  Future<void> onFailure(ReaderFailure failure) async {
+    for (final observer in _observers) {
+      await observer.onFailure(failure);
+    }
+  }
+
+  @override
+  Future<void> onExitRequested(ComicReaderProgress? progress) async {
     for (final observer in _observers) {
       await observer.onExitRequested(progress);
     }
