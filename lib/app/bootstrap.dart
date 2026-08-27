@@ -34,6 +34,10 @@ import 'package:mg_read/features/library/application/library_page_controller.dar
 import 'package:mg_read/features/library/application/library_book_remover.dart';
 import 'package:mg_read/features/library/application/library_book_visibility_changer.dart';
 import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
+import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
+import 'package:mg_read/features/lan_sync/data/deferred_lan_sync_gateway.dart';
+import 'package:mg_read/features/lan_sync/data/mg_read_lan_sync_gateway.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/profile/application/profile_reading_stats_loader.dart';
 import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
@@ -217,6 +221,11 @@ Future<void> bootstrapMgReadApp({
           libraryBookDetailLauncherProvider.overrideWithValue(DeferredLibraryBookDetailLauncher(getLibrary)),
         if (contentLibrary != null || contentLibraryFactory != null)
           profileReadingStatsLoaderProvider.overrideWithValue(DeferredProfileReadingStatsLoader(getLibrary)),
+        if (contentLibrary != null || contentLibraryFactory != null)
+          lanSyncGatewayProvider.overrideWith((ref) {
+            final runtime = ref.watch(pluginRuntimeFacadeProvider);
+            return DeferredLanSyncGateway(() async => MgReadLanSyncGateway(await getLibrary(), runtime));
+          }),
         if (contentLibrary != null || contentLibraryFactory != null)
           bookshelfMembershipLoaderProvider.overrideWithValue(DeferredBookshelfMembershipLoader(getLibrary)),
         if (contentLibrary != null || contentLibraryFactory != null)

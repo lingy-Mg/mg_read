@@ -25,6 +25,8 @@ import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
 import 'package:mg_read/core/settings/settings.dart';
+import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
+import 'package:mg_read/features/lan_sync/data/deferred_lan_sync_gateway.dart';
 
 import '../core/diagnostics/diagnostics_testkit.dart';
 import '../core/settings/settings_testkit.dart';
@@ -57,6 +59,9 @@ void main() {
     expect(openCalls, 1);
     final scope = mounted! as ProviderScope;
     final host = scope.child as AppSettingsLifecycleHost;
+    final container = ProviderContainer(overrides: scope.overrides);
+    addTearDown(container.dispose);
+    expect(container.read(lanSyncGatewayProvider), isA<DeferredLanSyncGateway>());
     expect(host.manager.state, SettingsState.ready);
 
     await host.manager.close();
