@@ -222,6 +222,28 @@ void main() {
       greaterThan(600),
     );
   });
+
+  testWidgets('keeps a wide recommendation card inside its carousel height', (
+    WidgetTester tester,
+  ) async {
+    const book = DiscoveryHeroViewData(
+      title: '我想操你（各种花式操弄，高H）',
+      category: '校园',
+      description: '“我想操你。”一切的改变就是从陶软收到这条信息开始。从此以后，陶软的生活彻底改变。',
+      metadata: '溪夕汐',
+      coverVariant: DiscoveryCoverVariant.gothic,
+    );
+
+    await _setViewport(tester, const Size(540, 320));
+    await tester.pumpWidget(_hostCarousel(const <DiscoveryHeroViewData>[book]));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    final Rect carousel = tester.getRect(find.byKey(const Key('discovery-carousel-books')));
+    final Rect card = tester.getRect(find.byType(DiscoveryCarouselHeroCard));
+    expect(card.height, greaterThan(184));
+    expect(card.bottom, lessThanOrEqualTo(carousel.bottom));
+  });
 }
 
 Widget _host({

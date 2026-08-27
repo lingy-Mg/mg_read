@@ -82,7 +82,14 @@ class _DiscoveryCarouselBooksState extends State<DiscoveryCarouselBooks> {
       label: '重磅推荐轮播，共 ${widget.books.length} 本',
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final height = constraints.maxWidth < 360 ? 156.0 : 184.0;
+          final compact = constraints.maxWidth < 360;
+          final verticalPadding = compact ? 12.0 : 14.0;
+          final coverWidth = compact ? 84.0 : (constraints.maxWidth * 0.23).clamp(88.0, 112.0);
+          final coverHeight = coverWidth * 1.42;
+          // The cover is a fixed-size child. Keep the PageView's tight height
+          // large enough for it after card padding, including on wide windows
+          // where the cover width reaches its 112px cap.
+          final height = math.max(compact ? 156.0 : 184.0, coverHeight + verticalPadding * 2);
           return SizedBox(
             key: const Key('discovery-carousel-books'),
             height: height,
@@ -194,13 +201,15 @@ class DiscoveryCarouselHeroCard extends StatelessWidget {
                             ],
                             if (data.description != null) ...<Widget>[
                               const SizedBox(height: 8),
-                              Text(
-                                data.description!,
-                                maxLines: compact ? 2 : 3,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.78),
-                                  height: 1.35,
+                              Flexible(
+                                child: Text(
+                                  data.description!,
+                                  maxLines: compact ? 2 : 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.78),
+                                    height: 1.35,
+                                  ),
                                 ),
                               ),
                             ],

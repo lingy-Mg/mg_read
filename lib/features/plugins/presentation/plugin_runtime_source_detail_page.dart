@@ -332,11 +332,15 @@ class _InstallationSizeRow extends StatelessWidget {
       padding: const EdgeInsets.only(top: AppSpacing.regular),
       child: Row(
         children: <Widget>[
-          Expanded(child: Text(label)),
-          Text(
-            value,
-            textAlign: TextAlign.right,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
+          Expanded(flex: 2, child: Text(label)),
+          const SizedBox(width: AppSpacing.regular),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
+            ),
           ),
         ],
       ),
@@ -362,9 +366,10 @@ class _DetailField extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Expanded(child: Text(label)),
+          Expanded(flex: 2, child: Text(label)),
           const SizedBox(width: AppSpacing.regular),
-          Flexible(
+          Expanded(
+            flex: 3,
             child: Text(
               value,
               textAlign: TextAlign.right,

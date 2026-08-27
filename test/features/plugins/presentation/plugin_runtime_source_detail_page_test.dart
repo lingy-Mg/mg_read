@@ -91,6 +91,24 @@ void main() {
       expect(find.text('打开已安装源码文件夹'), findsOneWidget);
     }
   });
+
+  testWidgets('keeps long metadata values readable on a phone-width viewport', (WidgetTester tester) async {
+    final gateway = _DirectoryGateway(_longMetadataConnection);
+    tester.view.physicalSize = const Size(390, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(_host(gateway, 'org.mgread.discovery-demo'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('0.1.3-devsync.1787755401237'), findsOneWidget);
+    expect(find.text('org.mgread.discovery-demo'), findsOneWidget);
+    expect(tester.getSize(find.text('0.1.3-devsync.1787755401237')).height, lessThan(64));
+  });
 }
 
 Widget _host(_DirectoryGateway gateway, String pluginId) => ProviderScope(
@@ -133,6 +151,25 @@ const _installedConnection = PluginRuntimeConnection(
       enabled: true,
       id: 'org.example.installed',
       name: '@example/installed',
+      pendingVersion: null,
+      status: 'active',
+    ),
+  ],
+);
+
+const _longMetadataConnection = PluginRuntimeConnection(
+  isHealthy: true,
+  nodeVersion: '24.16.0',
+  runtimeVersion: 'test',
+  plugins: <PluginRuntimePlugin>[
+    PluginRuntimePlugin(
+      activeVersion: '0.1.3-devsync.1787755401237',
+      contentKinds: <String>['novel'],
+      description: '长文本布局测试。',
+      displayName: '发现组件演示',
+      enabled: true,
+      id: 'org.mgread.discovery-demo',
+      name: '@mgread/discovery-demo',
       pendingVersion: null,
       status: 'active',
     ),
