@@ -1,5 +1,6 @@
 ## Unreleased
 
+* Adjacent text preparation now uses a generation-bound recovery state machine: cancelled or failed content/layout work returns to pending and resumes only from a real reader event, while stale results are discarded and layout operation telemetry remains exactly one terminal event per start.
 * Horizontal text reading now pre-paginates one already-prefetched adjacent chapter in bounded Flutter idle tasks and consumes a compatible complete layout without a chapter-boundary wait.
 * Added bounded `ReaderObserver.onChapterPerformance` notifications for adjacent preparation and chapter transitions; existing observers remain source compatible through the default no-op implementation.
 

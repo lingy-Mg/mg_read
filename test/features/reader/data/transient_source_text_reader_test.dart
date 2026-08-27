@@ -39,6 +39,8 @@ void main() {
       );
       final request = reader.createLaunchRequest(initialChapterId: 'chapter-1');
 
+      expect(request.entryCoverBytes, <int>[1, 2, 3]);
+
       expect(
         await request.stateStore.loadProgress(request.bookId),
         isA<ReaderProgress>().having(
@@ -135,6 +137,7 @@ PluginContentSummary _summary() {
     author: '测试作者',
     url: null,
     coverUrl: null,
+    coverBytes: const <int>[1, 2, 3],
     description: '测试简介',
     language: 'zh-CN',
     status: PluginContentStatus.ongoing,

@@ -31,6 +31,13 @@ const _bindingKind = 'content_source_binding';
 const _entryKind = 'content_catalog_entry';
 const _readingProgressKind = 'content_library_reading_progress';
 const _coverCacheMaxBytes = 100 * 1024 * 1024;
+const _metadataInlinePreparationPolicy = JsonInlinePreparationPolicy(
+  maxDocuments: 8,
+  maxTotalNodes: 384,
+  maxDepth: 8,
+  maxCollectionLength: 64,
+  maxTotalTextCodeUnits: 12 * 1024,
+);
 
 final class ContentLibrary {
   ContentLibrary._(this._persistence, this._diagnostics, {required this._closePersistenceOnClose});
@@ -61,9 +68,9 @@ final class ContentLibrary {
   Future<LibraryItem?> getLibraryItem(LibraryItemId id) => bookshelf.get(id);
   Future<Page<CatalogEntry>> listCatalog(LibraryItemId itemId, CatalogQuery query) => catalog.list(itemId, query);
   Future<List<CatalogEntry>> listAllCatalog(LibraryItemId itemId) => catalog.listAll(itemId);
-  Future<List<CatalogEntry>> ensureNovelCatalog({required LibraryItemId itemId, required Iterable<SourceNovelCatalogChapter> chapters}) =>
+  Future<int> ensureNovelCatalog({required LibraryItemId itemId, required Iterable<SourceNovelCatalogChapter> chapters}) =>
       catalog.ensureNovelCatalog(itemId: itemId, chapters: chapters);
-  Future<List<CatalogEntry>> syncNovelCatalog({required LibraryItemId itemId, required Iterable<SourceNovelCatalogChapter> chapters}) =>
+  Future<int> syncNovelCatalog({required LibraryItemId itemId, required Iterable<SourceNovelCatalogChapter> chapters}) =>
       catalog.syncNovelCatalog(itemId: itemId, chapters: chapters);
   Future<ReadableContent?> openContent(CatalogEntryId id) => content.open(id);
   Future<void> cacheNovelChapter({required LibraryItemId itemId, required String remoteChapterId, required String text}) =>

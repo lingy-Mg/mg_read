@@ -156,6 +156,14 @@ final class NovelReaderSession {
     return _library.catalog._findInSnapshot(itemId: item.id, snapshot: _snapshot, bindingId: _bindingId, remoteIdentity: remoteIdentity);
   }
 
+  /// Resolves a bounded group of chapter identities with one snapshot-scoped
+  /// metadata query. Missing identities are omitted from the result.
+  Future<Map<String, CatalogEntry>> itemsByRemoteIdentities(Iterable<String> remoteIdentities) {
+    final identities = remoteIdentities.toSet();
+    if (identities.isEmpty) return Future.value(const <String, CatalogEntry>{});
+    return _library.catalog._findManyInSnapshot(itemId: item.id, snapshot: _snapshot, bindingId: _bindingId, remoteIdentities: identities);
+  }
+
   Future<Page<CatalogEntry>> page({String? after, int limit = 100}) {
     return _library.catalog._pageInSnapshot(itemId: item.id, snapshot: _snapshot, after: after, limit: limit);
   }

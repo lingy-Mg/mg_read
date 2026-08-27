@@ -125,6 +125,7 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
     _readerMountStage = mountStage;
     _request = ReaderLaunchRequest(
       bookId: request.bookId,
+      entryCoverBytes: request.entryCoverBytes,
       dataSource: _MeasuredTextReaderDataSource(request.dataSource, stageReporter),
       stateStore: _MeasuredTextReaderStateStore(request.stateStore, stageReporter),
       observer: _ReaderObserverChain(<ReaderObserver>[

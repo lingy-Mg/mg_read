@@ -38,6 +38,7 @@ class LibraryHomeShell extends StatefulWidget {
     required this.data,
     required this.onRefresh,
     required this.isRefreshing,
+    this.showLoading = false,
     this.preparingBookId,
     this.errorNotice,
     this.onToggleTheme,
@@ -48,6 +49,9 @@ class LibraryHomeShell extends StatefulWidget {
   final LibraryHomeViewData data;
   final Future<void> Function() onRefresh;
   final bool isRefreshing;
+
+  /// Hides shelf content while app startup is resolving the real library.
+  final bool showLoading;
   final String? preparingBookId;
   final Widget? errorNotice;
 
@@ -171,7 +175,14 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
             ],
           ),
         ),
-        if (books.isEmpty)
+        if (widget.showLoading)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.only(top: AppSpacing.comfortable),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          )
+        else if (books.isEmpty)
           SliverAnimatedOpacity(
             opacity: _contentOpacity,
             duration: const Duration(milliseconds: 220),

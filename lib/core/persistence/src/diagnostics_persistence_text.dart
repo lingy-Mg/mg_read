@@ -175,23 +175,47 @@ final class _DiagnosticTextRewriteTask {
     final events = Directory('$diagnosticsPath${separator}events');
     final staging = Directory('$diagnosticsPath${separator}staging');
     staging.createSync(recursive: true);
+    for (final entity in staging.listSync(followLinks: false)) {
+      if (entity is File && entity.uri.pathSegments.last.startsWith('rewrite-') && entity.path.endsWith('.partial.txt')) {
+        entity.deleteSync();
+      }
+    }
     final staged = <File>[];
     var segment = 1;
     var currentBytes = 0;
-    var current = File('${staging.path}${separator}rewrite-${segment.toString().padLeft(6, '0')}.partial.txt');
+    File? current;
+    RandomAccessFile? writer;
+
+    void openSegment() {
+      current = File('${staging.path}${separator}rewrite-${segment.toString().padLeft(6, '0')}.partial.txt');
+      writer = current!.openSync(mode: FileMode.write);
+    }
+
+    void finishSegment() {
+      final file = current;
+      final handle = writer;
+      if (file == null || handle == null) return;
+      handle
+        ..flushSync()
+        ..closeSync();
+      staged.add(file);
+      current = null;
+      writer = null;
+    }
+
     for (final record in records) {
       final line = '${jsonEncode(record)}\n';
       final bytes = utf8.encode(line).length;
       if (currentBytes > 0 && currentBytes + bytes > maxSegmentBytes) {
-        staged.add(current);
+        finishSegment();
         segment += 1;
         currentBytes = 0;
-        current = File('${staging.path}${separator}rewrite-${segment.toString().padLeft(6, '0')}.partial.txt');
       }
-      current.writeAsStringSync(line, mode: FileMode.append, flush: false);
+      if (writer == null) openSegment();
+      writer!.writeStringSync(line);
       currentBytes += bytes;
     }
-    if (current.existsSync()) staged.add(current);
+    finishSegment();
     for (final entity in events.listSync(followLinks: false)) {
       if (entity is File && entity.path.endsWith('.txt')) entity.deleteSync();
     }

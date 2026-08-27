@@ -22,25 +22,15 @@ import 'package:mg_read/features/reader/application/shelf_reader_launch_coordina
 import 'package:mg_read/features/reader/data/content_library_source_text_reader.dart';
 
 const _anchorText = 'PERF_ANCHOR 首段正文已经实际呈现';
-const _warmups = int.fromEnvironment(
-  'MG_READ_PROFILE_WARMUPS',
-  defaultValue: 5,
-);
-const _measurements = int.fromEnvironment(
-  'MG_READ_PROFILE_MEASUREMENTS',
-  defaultValue: 50,
-);
+const _warmups = int.fromEnvironment('MG_READ_PROFILE_WARMUPS', defaultValue: 5);
+const _measurements = int.fromEnvironment('MG_READ_PROFILE_MEASUREMENTS', defaultValue: 50);
 const _hardP95Micros = 100000;
 
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('shelf reader first-content Profile distributions', (
-    WidgetTester tester,
-  ) async {
-    final dataRoot = await Directory.systemTemp.createTemp(
-      'mg-read-reader-profile-',
-    );
+  testWidgets('shelf reader first-content Profile distributions', (WidgetTester tester) async {
+    final dataRoot = await Directory.systemTemp.createTemp('mg-read-reader-profile-');
     final library = await ContentLibrary.open(dataRoot: dataRoot);
     addTearDown(() async {
       await library.close();
@@ -77,24 +67,15 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          libraryOverviewLoaderProvider.overrideWithValue(
-            _PerformanceOverviewLoader(bookId),
-          ),
+          libraryOverviewLoaderProvider.overrideWithValue(_PerformanceOverviewLoader(bookId)),
           libraryReaderLauncherProvider.overrideWithValue(launcher),
         ],
-        child: ExcludeSemantics(
-          excluding: Platform.isWindows,
-          child: const MgReadApp(),
-        ),
+        child: ExcludeSemantics(excluding: Platform.isWindows, child: const MgReadApp()),
       ),
     );
     await tester.pumpAndSettle();
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(LibraryBookListItem).first),
-    );
-    final coordinator = container.read(
-      shelfReaderLaunchCoordinatorProvider.notifier,
-    );
+    final container = ProviderScope.containerOf(tester.element(find.byType(LibraryBookListItem).first));
+    final coordinator = container.read(shelfReaderLaunchCoordinatorProvider.notifier);
     final originalSize = tester.view.physicalSize;
     final originalDpr = tester.view.devicePixelRatio;
     addTearDown(() {
@@ -105,11 +86,7 @@ void main() {
     final results = <String, Object?>{};
     for (final scenario in _ProfileScenario.values) {
       final samples = <ShelfReaderLaunchSample>[];
-      for (
-        var iteration = 0;
-        iteration < _warmups + _measurements;
-        iteration += 1
-      ) {
+      for (var iteration = 0; iteration < _warmups + _measurements; iteration += 1) {
         launcher.scenario = scenario;
         coordinator.clear();
         if (scenario == _ProfileScenario.memoryHit) {
@@ -128,10 +105,7 @@ void main() {
         final shelfItem = find.byType(LibraryBookListItem).hitTestable().first;
         expect(shelfItem, findsOneWidget);
         await tester.tap(shelfItem);
-        await _pumpUntil(
-          tester,
-          () => find.textContaining(_anchorText).evaluate().isNotEmpty,
-        );
+        await _pumpUntil(tester, () => find.textContaining(_anchorText).evaluate().isNotEmpty);
         await tester.pump();
         final sample = coordinator.lastCompletedSample;
         expect(sample, isNotNull, reason: '${scenario.name} did not complete');
@@ -141,38 +115,22 @@ void main() {
         // Settle, reveal the controls through the stable reader surface key,
         // then choose the one currently hit-testable back action.
         await tester.pumpAndSettle();
-        final readerSurface = find
-            .byKey(const ValueKey<String>('reader-content-surface'))
-            .hitTestable()
-            .first;
+        final readerSurface = find.byKey(const ValueKey<String>('reader-content-surface')).hitTestable().first;
         expect(readerSurface, findsOneWidget);
         await tester.tap(readerSurface);
         await tester.pump(const Duration(milliseconds: 200));
-        final backAction = find
-            .byKey(const ValueKey<String>('reader-back-action'))
-            .hitTestable()
-            .first;
+        final backAction = find.byKey(const ValueKey<String>('reader-back-action')).hitTestable().first;
         expect(backAction, findsOneWidget);
         await tester.tap(backAction);
-        await _pumpUntil(
-          tester,
-          () => find
-              .byType(LibraryBookListItem)
-              .hitTestable()
-              .evaluate()
-              .isNotEmpty,
-        );
+        await _pumpUntil(tester, () => find.byType(LibraryBookListItem).hitTestable().evaluate().isNotEmpty);
         await tester.pumpAndSettle();
       }
       final distribution = _distribution(samples);
       results[scenario.name] = distribution;
-      expect(
-        distribution['p95Micros'],
-        lessThanOrEqualTo(_hardP95Micros),
-        reason: '${scenario.name} P95 exceeded 100ms',
-      );
+      expect(distribution['p95Micros'], lessThanOrEqualTo(_hardP95Micros), reason: '${scenario.name} P95 exceeded 100ms');
     }
 
+    final catalogScale = await _measureCatalogScale(library);
     binding.reportData = <String, Object?>{
       'schemaVersion': 1,
       'metric': 'shelfTapToFirstContentFrame',
@@ -182,8 +140,67 @@ void main() {
       'measurementsPerScenario': _measurements,
       'hardP95Micros': _hardP95Micros,
       'scenarios': results,
+      'catalogScale': catalogScale,
     };
   });
+}
+
+Future<Map<String, Object?>> _measureCatalogScale(ContentLibrary library) async {
+  const catalogCount = 5000;
+  const batchSize = 100;
+  final item = await library.bookshelf.addFromSource(
+    const BookshelfAddRequest(
+      title: '目录规模性能探针',
+      author: null,
+      kind: ContentKind.novel,
+      pluginId: 'org.mgread.profile.fixture',
+      pluginVersion: '1.0.0',
+      remoteContentId: 'reader-catalog-scale-book',
+    ),
+  );
+  final chapters = List<SourceNovelCatalogChapter>.generate(
+    catalogCount,
+    (index) => SourceNovelCatalogChapter(
+      remoteIdentity: 'scale-chapter-$index',
+      title: '规模章节 ${index + 1}',
+      index: index,
+      wordCount: 1000 + index,
+    ),
+    growable: false,
+  );
+  final syncStopwatch = Stopwatch()..start();
+  final synchronized = await library.syncNovelCatalog(itemId: item.id, chapters: chapters);
+  syncStopwatch.stop();
+  expect(synchronized, catalogCount);
+  final session = await library.openNovelReaderSession(item.id);
+  expect(session?.catalogCount, catalogCount);
+
+  final stateReads = <String, Object?>{};
+  for (final requestedCount in const <int>[100, 1000, 5000]) {
+    final samples = <Duration>[];
+    final expectedBatches = (requestedCount + batchSize - 1) ~/ batchSize;
+    for (var iteration = 0; iteration < 6; iteration += 1) {
+      var resolved = 0;
+      var batches = 0;
+      final stopwatch = Stopwatch()..start();
+      for (var start = 0; start < requestedCount; start += batchSize) {
+        final end = (start + batchSize).clamp(0, requestedCount);
+        final entries = await session!.itemsByRemoteIdentities(chapters.sublist(start, end).map((chapter) => chapter.remoteIdentity));
+        resolved += entries.length;
+        batches += 1;
+      }
+      stopwatch.stop();
+      expect(resolved, requestedCount);
+      expect(batches, expectedBatches);
+      if (iteration > 0) samples.add(stopwatch.elapsed);
+    }
+    stateReads['chapters-$requestedCount'] = <String, Object?>{
+      'batchSize': batchSize,
+      'queriesPerSample': expectedBatches,
+      ..._durationDistribution(samples),
+    };
+  }
+  return <String, Object?>{'catalogCount': catalogCount, 'syncMicros': syncStopwatch.elapsedMicroseconds, 'stateReads': stateReads};
 }
 
 Future<void> _pumpUntil(WidgetTester tester, bool Function() predicate) async {
@@ -200,12 +217,8 @@ Map<String, Object?> _distribution(List<ShelfReaderLaunchSample> samples) {
     return values[((values.length - 1) * fraction).ceil()];
   }
 
-  Map<String, int> phasePercentiles(
-    Duration Function(ShelfReaderLaunchSample sample) select,
-  ) {
-    final values = samples
-        .map((sample) => select(sample).inMicroseconds)
-        .toList();
+  Map<String, int> phasePercentiles(Duration Function(ShelfReaderLaunchSample sample) select) {
+    final values = samples.map((sample) => select(sample).inMicroseconds).toList();
     return <String, int>{
       'p50Micros': percentile(List<int>.of(values), 0.50),
       'p95Micros': percentile(List<int>.of(values), 0.95),
@@ -220,28 +233,29 @@ Map<String, Object?> _distribution(List<ShelfReaderLaunchSample> samples) {
     'firstPageLayout': phasePercentiles((sample) => sample.firstPageLayout),
     'pathCategories': <String, int>{
       for (final kind in ReaderLaunchPreparationKind.values)
-        kind.wireValue: samples
-            .where((sample) => sample.preparationKind == kind)
-            .length,
+        kind.wireValue: samples.where((sample) => sample.preparationKind == kind).length,
     },
     'paginationPreparation': <String, int>{
       for (final kind in ReaderPaginationPreparation.values)
-        kind.name: samples
-            .where((sample) => sample.paginationPreparation == kind.name)
-            .length,
+        kind.name: samples.where((sample) => sample.paginationPreparation == kind.name).length,
     },
   };
 }
 
-enum _ProfileScenario {
-  persistentCold,
-  memoryHit,
-  layoutFingerprintHit,
-  layoutFingerprintInvalidated,
+Map<String, int> _durationDistribution(List<Duration> samples) {
+  final values = samples.map((sample) => sample.inMicroseconds).toList(growable: false)..sort();
+  int percentile(double fraction) => values[((values.length - 1) * fraction).ceil()];
+  return <String, int>{
+    'sampleCount': values.length,
+    'p50Micros': percentile(0.50),
+    'p95Micros': percentile(0.95),
+    'p99Micros': percentile(0.99),
+  };
 }
 
-final class _ProfileReaderLauncher
-    implements LibraryReaderLauncher, LocalShelfReaderPrewarmer {
+enum _ProfileScenario { persistentCold, memoryHit, layoutFingerprintHit, layoutFingerprintInvalidated }
+
+final class _ProfileReaderLauncher implements LibraryReaderLauncher, LocalShelfReaderPrewarmer {
   _ProfileReaderLauncher(this._delegate);
 
   final ContentLibrarySourceTextReader _delegate;
@@ -249,10 +263,7 @@ final class _ProfileReaderLauncher
   var _generation = 0;
 
   @override
-  Future<ReaderLaunchRequest> launch(
-    String libraryItemId, {
-    ReaderObserver? observer,
-  }) async =>
+  Future<ReaderLaunchRequest> launch(String libraryItemId, {ReaderObserver? observer}) async =>
       _decorate(await _delegate.launch(libraryItemId, observer: observer));
 
   @override
@@ -271,6 +282,7 @@ final class _ProfileReaderLauncher
     };
     return ReaderLaunchRequest(
       bookId: request.bookId,
+      entryCoverBytes: request.entryCoverBytes,
       dataSource: _VersionedProfileDataSource(request.dataSource, version),
       stateStore: request.stateStore,
       observer: request.observer,
@@ -309,25 +321,17 @@ final class _VersionedProfileDataSource implements TextReaderDataSource {
   final String version;
 
   @override
-  Future<ReaderBookInfo> loadBookInfo(String bookId) =>
-      delegate.loadBookInfo(bookId);
+  Future<ReaderBookInfo> loadBookInfo(String bookId) => delegate.loadBookInfo(bookId);
 
   @override
-  Future<ChapterCatalogPage> loadChapterCatalog(
-    String bookId, {
-    String? cursor,
-    int pageSize = 100,
-  }) => delegate.loadChapterCatalog(bookId, cursor: cursor, pageSize: pageSize);
+  Future<ChapterCatalogPage> loadChapterCatalog(String bookId, {String? cursor, int pageSize = 100}) =>
+      delegate.loadChapterCatalog(bookId, cursor: cursor, pageSize: pageSize);
 
   @override
-  Future<ReaderChapterInfo> loadChapterAtIndex(String bookId, int index) =>
-      delegate.loadChapterAtIndex(bookId, index);
+  Future<ReaderChapterInfo> loadChapterAtIndex(String bookId, int index) => delegate.loadChapterAtIndex(bookId, index);
 
   @override
-  Future<TextChapterContent> loadChapterContent(
-    String bookId,
-    String chapterId,
-  ) async {
+  Future<TextChapterContent> loadChapterContent(String bookId, String chapterId) async {
     final content = await delegate.loadChapterContent(bookId, chapterId);
     return TextChapterContent(
       chapterId: content.chapterId,
@@ -343,15 +347,10 @@ final class _ProfileSourceGateway implements SourceContentGateway {
   var rejectAllRequests = false;
   var contentRequests = 0;
 
-  Never _unexpected() => throw StateError(
-    'Profile local-hit path attempted to access the source gateway.',
-  );
+  Never _unexpected() => throw StateError('Profile local-hit path attempted to access the source gateway.');
 
   @override
-  Future<PluginChaptersResult> getChapters({
-    required String pluginId,
-    required String id,
-  }) async {
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async {
     if (rejectAllRequests) _unexpected();
     return PluginChaptersResult(
       pluginId: pluginId,
@@ -373,11 +372,7 @@ final class _ProfileSourceGateway implements SourceContentGateway {
   }
 
   @override
-  Future<PluginChapterContent> getContent({
-    required String pluginId,
-    required String id,
-    required String chapterId,
-  }) async {
+  Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async {
     if (rejectAllRequests) _unexpected();
     contentRequests += 1;
     return PluginChapterContent(
@@ -389,19 +384,14 @@ final class _ProfileSourceGateway implements SourceContentGateway {
       updatedAt: null,
       text: <String>[
         for (var index = 0; index < 80; index += 1)
-          index == 20
-              ? '$_anchorText。用于验证语义锚点与首帧。'
-              : List<String>.filled(4, '第$index段用于构造稳定的本地小说正文和分页测量。').join(),
+          index == 20 ? '$_anchorText。用于验证语义锚点与首帧。' : List<String>.filled(4, '第$index段用于构造稳定的本地小说正文和分页测量。').join(),
       ].join('\n\n'),
       pages: const <PluginMangaPage>[],
     );
   }
 
   @override
-  Future<PluginContentDetail> getDetail({
-    required String pluginId,
-    required String id,
-  }) async => _unexpected();
+  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async => _unexpected();
 
   @override
   Future<PluginDiscoverResult> discover({
@@ -416,19 +406,12 @@ final class _ProfileSourceGateway implements SourceContentGateway {
   Future<List<PluginSourceDescriptor>> listSources() async => _unexpected();
 
   @override
-  Future<PluginSearchResult> search({
-    required String pluginId,
-    required String query,
-    String? cursor,
-    int pageSize = 20,
-  }) async => _unexpected();
+  Future<PluginSearchResult> search({required String pluginId, required String query, String? cursor, int pageSize = 20}) async =>
+      _unexpected();
 
   @override
-  Future<PluginSearchSuggestionsResult> searchSuggestions({
-    required String pluginId,
-    String? cursor,
-    int pageSize = 20,
-  }) async => _unexpected();
+  Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) async =>
+      _unexpected();
 }
 
 final PluginContentSummary _profileSummary = PluginContentSummary(

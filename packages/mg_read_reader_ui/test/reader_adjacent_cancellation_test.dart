@@ -49,6 +49,45 @@ void main() {
     await _disposeAndDrain(tester);
   });
 
+  testWidgets('background cancellation resumes on foreground', (
+    WidgetTester tester,
+  ) async {
+    var firstStart = true;
+    final observer = _CancellationObserver(
+      onStarted: () {
+        if (firstStart) {
+          firstStart = false;
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.paused,
+          );
+        }
+      },
+    );
+    final controller = TextReaderController();
+    await _pumpCancellationReader(
+      tester,
+      'background-resume',
+      observer,
+      controller: controller,
+    );
+    expect(observer.adjacentOutcomes, _startedThenCancelled);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    for (var index = 0; index < 60; index += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+      if (observer.adjacentOutcomes.length >= 4) break;
+    }
+    expect(observer.adjacentOutcomes, <ReaderChapterPerformanceOutcome>[
+      ReaderChapterPerformanceOutcome.started,
+      ReaderChapterPerformanceOutcome.cancelled,
+      ReaderChapterPerformanceOutcome.started,
+      ReaderChapterPerformanceOutcome.success,
+    ]);
+    expect(controller.snapshot.isReady, isTrue);
+    await _disposeAndDrain(tester);
+  });
+
   testWidgets('memory pressure cancels adjacent preparation exactly once', (
     WidgetTester tester,
   ) async {
@@ -58,6 +97,111 @@ void main() {
     );
     await _pumpCancellationReader(tester, 'pressure-cancel', observer);
     expect(observer.adjacentOutcomes, _startedThenCancelled);
+    await _disposeAndDrain(tester);
+  });
+
+  testWidgets('memory pressure resumes on a later page change', (
+    WidgetTester tester,
+  ) async {
+    late _CancellationObserver observer;
+    final controller = TextReaderController();
+    observer = _CancellationObserver(
+      onStarted: tester.binding.handleMemoryPressure,
+    );
+    await _pumpCancellationReader(
+      tester,
+      'pressure-resume',
+      observer,
+      controller: controller,
+    );
+    expect(observer.adjacentOutcomes, _startedThenCancelled);
+    unawaited(controller.nextPage());
+    for (var index = 0; index < 60; index += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+      if (observer.adjacentOutcomes.length >= 4) break;
+    }
+    expect(observer.adjacentOutcomes, <ReaderChapterPerformanceOutcome>[
+      ReaderChapterPerformanceOutcome.started,
+      ReaderChapterPerformanceOutcome.cancelled,
+      ReaderChapterPerformanceOutcome.started,
+      ReaderChapterPerformanceOutcome.success,
+    ]);
+    unawaited(controller.nextChapter());
+    await tester.pump();
+    expect(controller.snapshot.chapter?.id, 'chapter-2');
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    await _disposeAndDrain(tester);
+  });
+
+  testWidgets(
+    'failed adjacent content retries only after an explicit trigger',
+    (WidgetTester tester) async {
+      final source = _RetryAdjacentDataSource(failures: 1);
+      final observer = _CancellationObserver(onStarted: () {});
+      final controller = TextReaderController();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TextReaderView(
+            bookId: 'adjacent-retry',
+            dataSource: source,
+            stateStore: const _CancellationStateStore(),
+            observer: observer,
+            controller: controller,
+          ),
+        ),
+      );
+      for (
+        var index = 0;
+        index < 60 && source.chapter2Attempts < 1;
+        index += 1
+      ) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(source.chapter2Attempts, 1);
+      await tester.pump(const Duration(milliseconds: 160));
+      expect(source.chapter2Attempts, 1);
+      unawaited(controller.nextPage());
+      for (
+        var index = 0;
+        index < 80 && observer.adjacentOutcomes.length < 2;
+        index += 1
+      ) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(source.chapter2Attempts, 2);
+      expect(observer.adjacentOutcomes, <ReaderChapterPerformanceOutcome>[
+        ReaderChapterPerformanceOutcome.started,
+        ReaderChapterPerformanceOutcome.success,
+      ]);
+      unawaited(controller.nextChapter());
+      await tester.pump();
+      expect(controller.snapshot.chapter?.id, 'chapter-2');
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      await _disposeAndDrain(tester);
+    },
+  );
+
+  testWidgets('repeated adjacent content failure does not self-loop', (
+    WidgetTester tester,
+  ) async {
+    final source = _RetryAdjacentDataSource(failures: 3);
+    final observer = _CancellationObserver(onStarted: () {});
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TextReaderView(
+          bookId: 'adjacent-no-loop',
+          dataSource: source,
+          stateStore: const _CancellationStateStore(),
+          observer: observer,
+        ),
+      ),
+    );
+    for (var index = 0; index < 60 && source.chapter2Attempts < 1; index += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(source.chapter2Attempts, 1);
+    expect(observer.adjacentOutcomes, isEmpty);
     await _disposeAndDrain(tester);
   });
 
@@ -128,6 +272,19 @@ void main() {
           .length,
       1,
     );
+    for (
+      var index = 0;
+      index < 80 && observer.adjacentOutcomes.length < 4;
+      index += 1
+    ) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(observer.adjacentOutcomes, <ReaderChapterPerformanceOutcome>[
+      ReaderChapterPerformanceOutcome.started,
+      ReaderChapterPerformanceOutcome.cancelled,
+      ReaderChapterPerformanceOutcome.started,
+      ReaderChapterPerformanceOutcome.success,
+    ]);
     await _disposeAndDrain(tester);
   });
 
@@ -165,9 +322,11 @@ const List<ReaderChapterPerformanceOutcome> _startedThenCancelled =
 Future<void> _pumpCancellationReader(
   WidgetTester tester,
   String bookId,
-  _CancellationObserver observer,
-) async {
-  final controller = TextReaderController();
+  _CancellationObserver observer, {
+  TextReaderController? controller,
+}) async {
+  final TextReaderController readerController =
+      controller ?? TextReaderController();
   await tester.pumpWidget(
     MaterialApp(
       home: TextReaderView(
@@ -175,11 +334,15 @@ Future<void> _pumpCancellationReader(
         dataSource: const _CancellationDataSource(),
         stateStore: const _CancellationStateStore(),
         observer: observer,
-        controller: controller,
+        controller: readerController,
       ),
     ),
   );
-  await _pumpForAdjacentTerminal(tester, observer, controller: controller);
+  await _pumpForAdjacentTerminal(
+    tester,
+    observer,
+    controller: readerController,
+  );
 }
 
 Future<void> _pumpForAdjacentTerminal(
@@ -242,7 +405,7 @@ final class _CancellationObserver extends ReaderObserver {
   }
 }
 
-final class _CancellationDataSource implements TextReaderDataSource {
+class _CancellationDataSource implements TextReaderDataSource {
   const _CancellationDataSource();
 
   static const _first = ReaderChapterInfo(
@@ -304,6 +467,27 @@ final class _CancellationDataSource implements TextReaderDataSource {
             ],
     ),
   );
+}
+
+final class _RetryAdjacentDataSource extends _CancellationDataSource {
+  _RetryAdjacentDataSource({required this.failures});
+
+  final int failures;
+  int chapter2Attempts = 0;
+
+  @override
+  Future<TextChapterContent> loadChapterContent(
+    String bookId,
+    String chapterId,
+  ) {
+    if (chapterId == 'chapter-2') {
+      chapter2Attempts += 1;
+      if (chapter2Attempts <= failures) {
+        return Future<TextChapterContent>.error(StateError('retry'));
+      }
+    }
+    return super.loadChapterContent(bookId, chapterId);
+  }
 }
 
 final class _CancellationStateStore implements TextReaderStateStore {

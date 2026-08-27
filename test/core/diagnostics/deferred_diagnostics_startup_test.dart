@@ -18,52 +18,54 @@ import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'diagnostics_testkit.dart';
 
 void main() {
-  test(
-    'deferred startup maintenance does not block diagnostics opening',
-    () async {
-      final root = await Directory.systemTemp.createTemp(
-        'mg-read-deferred-diagnostics-startup-',
+  test('deferred startup maintenance does not block diagnostics opening', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-deferred-diagnostics-startup-');
+    addTearDown(() => root.delete(recursive: true));
+    const configuration = PersistentDiagnosticsConfiguration(
+      minimumSeverity: DiagnosticSeverity.trace,
+      retentionPolicy: DiagnosticRetentionPolicy(regularEventBytes: 8 * 1024),
+    );
+    final first = await AppDiagnosticsService.open(
+      dataRoot: root,
+      configuration: configuration,
+      idGenerator: SequentialDiagnosticIdGenerator(),
+      clock: FixedDiagnosticClock(),
+      buildMode: 'test',
+      platform: 'windows-test',
+    );
+    for (var index = 0; index < 100; index += 1) {
+      first.manager.emit(
+        AppDiagnosticEvents.routeChanged,
+        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{'toRoute': DiagnosticValue.string('route$index')}),
       );
-      addTearDown(() => root.delete(recursive: true));
-      const configuration = PersistentDiagnosticsConfiguration(
-        minimumSeverity: DiagnosticSeverity.trace,
-        retentionPolicy: DiagnosticRetentionPolicy(regularEventBytes: 8 * 1024),
-      );
-      final first = await AppDiagnosticsService.open(
-        dataRoot: root,
-        configuration: configuration,
-        idGenerator: SequentialDiagnosticIdGenerator(),
-        clock: FixedDiagnosticClock(),
-        buildMode: 'test',
-        platform: 'windows-test',
-      );
-      for (var index = 0; index < 100; index += 1) {
-        first.manager.emit(
-          AppDiagnosticEvents.routeChanged,
-          attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-            'toRoute': DiagnosticValue.string('route$index'),
-          }),
-        );
-      }
-      await first.manager.flush(timeout: const Duration(seconds: 5));
-      await first.close();
+    }
+    await first.manager.flush(timeout: const Duration(seconds: 5));
+    await first.close();
 
-      final second = await AppDiagnosticsService.open(
-        dataRoot: root,
-        configuration: configuration,
-        idGenerator: SequentialDiagnosticIdGenerator(initialValue: 100000),
-        clock: FixedDiagnosticClock(initialMicros: 1800000000000000),
-        buildMode: 'test',
-        platform: 'windows-test',
-        deferStartupMaintenance: true,
-      );
-      addTearDown(second.close);
+    final second = await AppDiagnosticsService.open(
+      dataRoot: root,
+      configuration: configuration,
+      idGenerator: SequentialDiagnosticIdGenerator(initialValue: 100000),
+      clock: FixedDiagnosticClock(initialMicros: 1800000000000000),
+      buildMode: 'test',
+      platform: 'windows-test',
+      deferStartupMaintenance: true,
+    );
+    addTearDown(second.close);
 
-      expect((await second.listSessions()).items, hasLength(2));
+    expect((await second.listSessions()).items, hasLength(2));
 
-      await second.enforceRetention(configuration.retentionPolicy);
+    final staleRewrite = File(
+      '${root.path}${Platform.pathSeparator}diagnostics'
+      '${Platform.pathSeparator}staging${Platform.pathSeparator}'
+      'rewrite-000001.partial.txt',
+    );
+    await staleRewrite.parent.create(recursive: true);
+    await staleRewrite.writeAsString('stale rewrite data');
 
-      expect((await second.listSessions()).items, hasLength(1));
-    },
-  );
+    await second.enforceRetention(configuration.retentionPolicy).timeout(const Duration(seconds: 5));
+
+    expect((await second.listSessions()).items, hasLength(1));
+    expect(await staleRewrite.exists(), isFalse);
+  });
 }

@@ -19,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
+import 'package:mg_read/app/app_startup.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
@@ -87,12 +88,17 @@ class LibraryPage extends ConsumerWidget {
     final DiagnosticsManager diagnostics = ref.read(diagnosticsManagerProvider);
     final ShelfReaderLaunchState readerLaunch = ref.watch(shelfReaderLaunchCoordinatorProvider);
     final ShelfReaderLaunchCoordinator readerCoordinator = ref.read(shelfReaderLaunchCoordinatorProvider.notifier);
+    final AppStartupController startup = ref.read(appStartupControllerProvider);
 
     if (state.status == LibraryPageStatus.initialLoading) {
-      return const _LibraryLoadingState();
+      return _LibraryLoadingState(showAnimation: !startup.ownsLoadingAnimation);
     }
     if (state.overview == null) {
-      return _LibraryFailureState(error: state.error!, onRetry: controller.refresh);
+      return _LibraryTerminalFrameSignal(
+        startup: startup,
+        resultState: 'failure',
+        child: _LibraryFailureState(error: state.error!, onRetry: controller.refresh),
+      );
     }
 
     final LibraryHomeViewData data = state.overview!.isEmpty
@@ -249,23 +255,50 @@ class LibraryPage extends ConsumerWidget {
               onManageSourcesRequested!();
             },
     );
-    return _ShelfReaderLifecycleHost(
-      warmBookIds: <String>[if (data.continueReading case final current?) current.bookId, for (final book in data.books.take(2)) book.id],
-      contentGeneration: state.overview!,
-      coordinator: readerCoordinator,
-      child: LibraryHomeShell(
-        data: data,
-        callbacks: resolvedCallbacks,
-        preparingBookId: readerLaunch.status == ShelfReaderPreparationStatus.preparing ? readerLaunch.bookId : null,
-        isRefreshing: state.status == LibraryPageStatus.refreshing,
-        onRefresh: controller.refresh,
-        onToggleTheme: () {
-          themeModeScope.onToggleTheme(Theme.of(context).brightness);
-        },
-        errorNotice: state.hasFailure ? _LibraryErrorCard(error: state.error!, onRetry: controller.refresh, hasRetainedData: true) : null,
+    return _LibraryTerminalFrameSignal(
+      startup: startup,
+      child: _ShelfReaderLifecycleHost(
+        warmBookIds: <String>[if (data.continueReading case final current?) current.bookId, for (final book in data.books.take(2)) book.id],
+        contentGeneration: state.overview!,
+        coordinator: readerCoordinator,
+        child: LibraryHomeShell(
+          data: data,
+          callbacks: resolvedCallbacks,
+          preparingBookId: readerLaunch.status == ShelfReaderPreparationStatus.preparing ? readerLaunch.bookId : null,
+          isRefreshing: state.status == LibraryPageStatus.refreshing,
+          onRefresh: controller.refresh,
+          onToggleTheme: () {
+            themeModeScope.onToggleTheme(Theme.of(context).brightness);
+          },
+          errorNotice: state.hasFailure ? _LibraryErrorCard(error: state.error!, onRetry: controller.refresh, hasRetainedData: true) : null,
+        ),
       ),
     );
   }
+}
+
+final class _LibraryTerminalFrameSignal extends StatefulWidget {
+  const _LibraryTerminalFrameSignal({required this.startup, required this.child, this.resultState = 'ready'});
+
+  final AppStartupController startup;
+  final Widget child;
+  final String resultState;
+
+  @override
+  State<_LibraryTerminalFrameSignal> createState() => _LibraryTerminalFrameSignalState();
+}
+
+final class _LibraryTerminalFrameSignalState extends State<_LibraryTerminalFrameSignal> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.startup.signalLibraryTerminalFrame(resultState: widget.resultState);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// Bridges app lifecycle and memory pressure to the process-local warm LRU.
@@ -338,13 +371,17 @@ class _ShelfReaderLifecycleHostState extends State<_ShelfReaderLifecycleHost> wi
 }
 
 class _LibraryLoadingState extends StatelessWidget {
-  const _LibraryLoadingState();
+  const _LibraryLoadingState({required this.showAnimation});
+
+  final bool showAnimation;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: const AppLoadingState(label: '正在加载书架', message: '正在加载书架'),
+        child: showAnimation
+            ? const AppLoadingState(label: '正在加载书架', message: '正在加载书架')
+            : Semantics(label: '正在加载书架', child: const SizedBox.shrink()),
       ),
     );
   }

@@ -26,6 +26,7 @@ import 'diagnostic_privacy.dart';
 import 'diagnostic_registry.dart';
 import 'diagnostic_value.dart';
 import 'diagnostics_manager.dart';
+import 'deferred_diagnostics.dart';
 
 part 'persistent_diagnostics_service.dart';
 

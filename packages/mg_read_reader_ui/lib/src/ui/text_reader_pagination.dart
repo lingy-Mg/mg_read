@@ -2,6 +2,7 @@ part of 'text_reader_view.dart';
 
 // ignore_for_file: invalid_use_of_protected_member
 
+/// 当前章分页完成后通过相邻准备协调器触发布局预排；过期批次只丢弃。
 extension _TextReaderPagination on _TextReaderViewState {
   void _ensurePagination(Size size) {
     if (_content == null ||
@@ -97,6 +98,10 @@ extension _TextReaderPagination on _TextReaderViewState {
       _firstContentPreparation = ReaderPaginationPreparation.cachedFirstPage;
       _firstContentLayoutDuration = stopwatch.elapsed;
       _finishHorizontalPagination();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reconcileAdjacentPreparation();
+      });
+      WidgetsBinding.instance.scheduleFrame();
       return;
     }
     final ReaderProgress? anchor = _progress;
@@ -308,7 +313,7 @@ extension _TextReaderPagination on _TextReaderViewState {
       pages,
     ).clamp(0, pages.isEmpty ? 0 : pages.length - 1);
     _finishHorizontalPagination();
-    _scheduleAdjacentPreparation();
+    _reconcileAdjacentPreparation();
     if (mounted) setState(() {});
     _publishSnapshot();
   }

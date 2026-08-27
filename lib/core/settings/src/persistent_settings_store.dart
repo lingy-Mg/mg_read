@@ -6,13 +6,16 @@ import 'package:mg_read/core/persistence/persistence.dart';
 import 'settings_registry.dart';
 import 'settings_store.dart';
 
+const _settingsInlinePreparationPolicy = JsonInlinePreparationPolicy(
+  maxDocuments: 8,
+  maxTotalNodes: 384,
+  maxDepth: 8,
+  maxCollectionLength: 64,
+  maxTotalTextCodeUnits: 12 * 1024,
+);
+
 final class PersistentSettingsStore implements SettingsStore {
-  PersistentSettingsStore({
-    required this._records,
-    required this.scope,
-    required this._registry,
-    this._closeRecordsOnClose = false,
-  });
+  PersistentSettingsStore({required this._records, required this.scope, required this._registry, this._closeRecordsOnClose = false});
 
   final PersistenceRecordStore _records;
   final ScopeKey scope;
@@ -27,23 +30,14 @@ final class PersistentSettingsStore implements SettingsStore {
   }) async {
     final records = await PersistenceRecordStore.open(
       dataRoot: dataRoot,
-      registry: RecordDocumentRegistry(
-        settingsRecordDocumentCodecs(registry, scopeKind: scope.kind),
-      ),
+      registry: RecordDocumentRegistry(settingsRecordDocumentCodecs(registry, scopeKind: scope.kind)),
       diagnostics: diagnostics,
     );
-    return PersistentSettingsStore(
-      records: records,
-      scope: scope,
-      registry: registry,
-      closeRecordsOnClose: true,
-    );
+    return PersistentSettingsStore(records: records, scope: scope, registry: registry, closeRecordsOnClose: true);
   }
 
   @override
-  Future<List<SettingsDocument>> loadAll(
-    Iterable<SettingsDocumentDefinition> documents,
-  ) async {
+  Future<List<SettingsDocument>> loadAll(Iterable<SettingsDocumentDefinition> documents) async {
     final requested = List<SettingsDocumentDefinition>.of(documents);
     for (final definition in requested) {
       final registered = _registry.requireDocument(definition.kind);
@@ -51,10 +45,7 @@ final class PersistentSettingsStore implements SettingsStore {
         throw const SettingsStoreFailure('unregistered_document');
       }
     }
-    final batch = await _records.readMany(
-      ids: requested.map((document) => document.id),
-      scope: scope,
-    );
+    final batch = await _records.readMany(ids: requested.map((document) => document.id), scope: scope);
     final output = <SettingsDocument>[];
     for (final definition in requested) {
       final failure = batch.failures[definition.id];
@@ -64,9 +55,7 @@ final class PersistentSettingsStore implements SettingsStore {
             id: definition.id,
             kind: definition.kind,
             values: const {},
-            problem: failure is PersistenceFutureVersionError
-                ? SettingsDocumentProblem.futureVersion
-                : SettingsDocumentProblem.corruption,
+            problem: failure is PersistenceFutureVersionError ? SettingsDocumentProblem.futureVersion : SettingsDocumentProblem.corruption,
           ),
         );
         continue;
@@ -77,31 +66,17 @@ final class PersistentSettingsStore implements SettingsStore {
       }
       if (record.recordKind != definition.kind) {
         output.add(
-          SettingsDocument(
-            id: definition.id,
-            kind: definition.kind,
-            values: const {},
-            problem: SettingsDocumentProblem.corruption,
-          ),
+          SettingsDocument(id: definition.id, kind: definition.kind, values: const {}, problem: SettingsDocumentProblem.corruption),
         );
         continue;
       }
-      output.add(
-        SettingsDocument(
-          id: definition.id,
-          kind: definition.kind,
-          values: record.document,
-          revision: record.revision,
-        ),
-      );
+      output.add(SettingsDocument(id: definition.id, kind: definition.kind, values: record.document, revision: record.revision));
     }
     return output;
   }
 
   @override
-  Future<List<SettingsDocument>> writeAll(
-    List<SettingsDocument> documents,
-  ) async {
+  Future<List<SettingsDocument>> writeAll(List<SettingsDocument> documents) async {
     for (final document in documents) {
       final definition = _registry.requireDocument(document.kind);
       if (definition.id != document.id || document.readOnly) {
@@ -144,10 +119,7 @@ final class PersistentSettingsStore implements SettingsStore {
   }
 }
 
-Iterable<RecordDocumentCodec> settingsRecordDocumentCodecs(
-  SettingsRegistry registry, {
-  required String scopeKind,
-}) sync* {
+Iterable<RecordDocumentCodec> settingsRecordDocumentCodecs(SettingsRegistry registry, {required String scopeKind}) sync* {
   for (final definition in registry.documents.values) {
     yield RecordDocumentCodec(
       recordKind: definition.kind,
@@ -159,10 +131,8 @@ Iterable<RecordDocumentCodec> settingsRecordDocumentCodecs(
             definition.validators[version]?.call(document);
           },
       },
-      upgraders: {
-        for (final entry in definition.upgraders.entries)
-          entry.key: (document) => entry.value(document),
-      },
+      upgraders: {for (final entry in definition.upgraders.entries) entry.key: (document) => entry.value(document)},
+      inlinePreparationPolicy: _settingsInlinePreparationPolicy,
       limits: const JsonDocumentLimits(
         maxEncodedBytes: settingsDocumentMaxEncodedBytes,
         maxDepth: settingsDocumentMaxDepth,

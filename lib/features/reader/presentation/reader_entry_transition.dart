@@ -14,6 +14,7 @@
 library;
 
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
@@ -106,6 +107,7 @@ class _ReaderEntryPreparationSurfaceState extends State<ReaderEntryPreparationSu
           _ReaderEntryCover(
             progress: progress,
             disappearance: 0,
+            coverBytes: null,
             failed: widget.failed ? const ReaderFailure(ReaderFailureKind.data, 'route_failure') : null,
             onRetry: widget.onRetry,
             onExit: widget.onExit,
@@ -118,7 +120,7 @@ class _ReaderEntryPreparationSurfaceState extends State<ReaderEntryPreparationSu
 
 class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with TickerProviderStateMixin {
   static const Duration _entryDuration = Duration(milliseconds: 360);
-  static const Duration _handoffDuration = Duration(milliseconds: 180);
+  static const Duration _handoffDuration = Duration(milliseconds: 72);
   static const double _coverAspectRatio = .68;
 
   late final AnimationController _entryController;
@@ -268,6 +270,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
               _ReaderEntryCover(
                 progress: entryCurve.value,
                 disappearance: handoff,
+                coverBytes: _boundRequest.entryCoverBytes,
                 failed: _failure,
                 onRetry: _failure == null ? null : _retry,
                 onExit: _requestExit,
@@ -307,12 +310,14 @@ class _ReaderEntryCover extends StatelessWidget {
     required this.progress,
     required this.disappearance,
     required this.failed,
+    required this.coverBytes,
     required this.onRetry,
     required this.onExit,
   });
 
   final double progress;
   final double disappearance;
+  final List<int>? coverBytes;
   final ReaderFailure? failed;
   final VoidCallback? onRetry;
   final VoidCallback onExit;
@@ -343,7 +348,7 @@ class _ReaderEntryCover extends StatelessWidget {
                   rect: rect,
                   child: ClipRRect(
                     borderRadius: radius,
-                    child: _ReaderEntryArtwork(width: rect.width, height: rect.height, borderRadius: radius),
+                    child: _ReaderEntryArtwork(width: rect.width, height: rect.height, borderRadius: radius, coverBytes: coverBytes),
                   ),
                 ),
                 SafeArea(
@@ -357,7 +362,7 @@ class _ReaderEntryCover extends StatelessWidget {
                     ),
                   ),
                 ),
-                _ReaderEntryStatus(failed: failed, onRetry: onRetry, foreground: tokens.surface.withValues(alpha: .94)),
+                if (failed != null) _ReaderEntryStatus(failed: failed, onRetry: onRetry, foreground: tokens.surface.withValues(alpha: .94)),
               ],
             ),
           ),
@@ -368,15 +373,30 @@ class _ReaderEntryCover extends StatelessWidget {
 }
 
 class _ReaderEntryArtwork extends StatelessWidget {
-  const _ReaderEntryArtwork({required this.width, required this.height, required this.borderRadius});
+  const _ReaderEntryArtwork({required this.width, required this.height, required this.borderRadius, required this.coverBytes});
 
   final double width;
   final double height;
   final BorderRadius borderRadius;
+  final List<int>? coverBytes;
 
   @override
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
+    if (coverBytes == null || coverBytes!.isEmpty) {
+      return _entryFallback(tokens);
+    }
+    return Image.memory(
+      Uint8List.fromList(coverBytes!),
+      fit: BoxFit.cover,
+      alignment: Alignment.center,
+      width: width,
+      height: height,
+      errorBuilder: (_, _, _) => _entryFallback(tokens),
+    );
+  }
+
+  Widget _entryFallback(AppThemeTokens tokens) {
     return DefaultBookCoverArtwork(
       title: '阅读',
       width: width,

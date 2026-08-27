@@ -12,6 +12,8 @@
 /// - 无。
 library;
 
+import 'dart:collection';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -60,12 +62,42 @@ final class EmptyBookCoverBytesLoader implements BookCoverBytesLoader {
   Future<List<int>?> resolve(BookCoverRequest request) async => null;
 }
 
+/// Keeps bytes that a visible cover has already resolved available to the
+/// next route without making that route resolve the cover again.
+final class BookCoverMemoryCache {
+  BookCoverMemoryCache._();
+
+  static const int _maxEntries = 32;
+  static final LinkedHashMap<BookCoverRequest, List<int>> _entries = LinkedHashMap<BookCoverRequest, List<int>>();
+
+  static List<int>? read(BookCoverRequest request) {
+    final bytes = _entries.remove(request);
+    if (bytes == null) return null;
+    _entries[request] = bytes;
+    return bytes;
+  }
+
+  static void write(BookCoverRequest request, List<int>? bytes) {
+    if (bytes == null || bytes.isEmpty) return;
+    _entries
+      ..remove(request)
+      ..[request] = List<int>.unmodifiable(bytes);
+    while (_entries.length > _maxEntries) {
+      _entries.remove(_entries.keys.first);
+    }
+  }
+}
+
 /// App composition supplies the Content Library-backed implementation.
 final bookCoverBytesLoaderProvider = Provider<BookCoverBytesLoader>((Ref ref) => const EmptyBookCoverBytesLoader());
 
 /// Per-cover asynchronous state shared by every mounted consumer of one key.
-final bookCoverBytesProvider = FutureProvider.autoDispose.family<List<int>?, BookCoverRequest>((Ref ref, BookCoverRequest request) {
-  return ref.watch(bookCoverBytesLoaderProvider).resolve(request);
+final bookCoverBytesProvider = FutureProvider.autoDispose.family<List<int>?, BookCoverRequest>((Ref ref, BookCoverRequest request) async {
+  final memory = BookCoverMemoryCache.read(request);
+  if (memory != null) return memory;
+  final bytes = await ref.watch(bookCoverBytesLoaderProvider).resolve(request);
+  BookCoverMemoryCache.write(request, bytes);
+  return bytes;
 });
 
 /// Supplies one source identity to a discovery, search, or detail subtree.

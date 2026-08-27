@@ -161,6 +161,10 @@ chapterId + paragraphId + characterOffset
   完整结果进入有界 layout LRU，最多主动准备一个 next。纵向模式不预排布局。
 - 相邻预排只消费空闲预算，不主动制造连续 frame；设置、字体、窗口/safe area、切书、后台、内存压力
   或 dispose 会取消任务，过期结果和过大结果直接丢弃。
+- 相邻正文与布局由一个绑定 session、当前章索引、下一章 ID、布局指纹和布局世代的内部目标协调，
+  阶段固定为 `pending`、`contentLoading`、`contentReady`、`layoutLoading`、`ready`。取消或失败
+  清理活动 guard 并回到 `pending`；只在当前章分页完成、横向页变化、恢复前台、重新分页完成或下一章
+  正文到达时再次 reconcile。失败不递归、不使用 timer 或退避，内存压力只清理并等待下一真实事件。
 - 目录按需分页并去重，不能通过顺序扫描代替按索引定位。
 - 评论摘要和页列表按目标、排序、游标与请求世代隔离。
 - 字体句柄和漫画字节遵守各自的内存预算与淘汰规则。

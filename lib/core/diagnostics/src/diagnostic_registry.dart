@@ -292,6 +292,19 @@ abstract final class AppDiagnosticEvents {
     fields: <String, DiagnosticFieldDefinition>{'stage': _string, 'errorCode': _string},
   );
 
+  static final DiagnosticEventDefinition startupStage = DiagnosticEventDefinition.instant(
+    name: 'app.startup.stage',
+    component: 'app.bootstrap',
+    summary: 'A bounded application startup stage marker.',
+    fields: <String, DiagnosticFieldDefinition>{
+      'stage': _requiredInstantString,
+      'durationMicros': _requiredInstantInt64,
+      'resultState': _requiredInstantString,
+      'errorCode': _string,
+      'attempt': _requiredInstantInt64,
+    },
+  );
+
   static final DiagnosticEventDefinition lifecycleChanged = DiagnosticEventDefinition.instant(
     name: 'app.lifecycle.changed',
     component: 'app.lifecycle',
@@ -640,6 +653,7 @@ abstract final class AppDiagnosticEvents {
   static final DiagnosticEventRegistry registry = DiagnosticEventRegistry(<DiagnosticEventDefinition>[
     diagnosticsRun,
     bootstrap,
+    startupStage,
     lifecycleChanged,
     routeChanged,
     unhandledError,

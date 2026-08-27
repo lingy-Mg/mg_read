@@ -14,13 +14,7 @@ typedef UtcClock = DateTime Function();
 final class PersistenceRecordStore {
   static const int maxWriteBatchSize = 128;
 
-  PersistenceRecordStore._(
-    this._database,
-    this._registry,
-    this._clock,
-    this.databasePath,
-    this._diagnostics,
-  );
+  PersistenceRecordStore._(this._database, this._registry, this._clock, this.databasePath, this._diagnostics);
 
   final _PersistenceDatabase _database;
   final RecordDocumentRegistry _registry;
@@ -38,8 +32,14 @@ final class PersistenceRecordStore {
   /// Native Drift hosts all SQL work on a dedicated background isolate.
   bool get usesBackgroundExecutor => true;
 
-  /// Test evidence that JSON preparation ran outside the calling isolate.
+  /// Historical compatibility name for the last JSON execution isolate.
   int? get lastCodecWorkerIsolateIdForTest => _lastCodecWorkerIsolateId;
+
+  /// Test-only execution location for the most recently prepared JSON.
+  ///
+  /// Unlike the historical worker-named getter, this may identify the caller
+  /// isolate when the codec explicitly allows bounded inline preparation.
+  int? get lastCodecExecutionIsolateIdForTest => _lastCodecWorkerIsolateId;
 
   /// Test-only evidence that an ID set was read with one SQL statement.
   int get batchReadCountForTest => _batchReadCount;
@@ -52,11 +52,8 @@ final class PersistenceRecordStore {
   }) async {
     Future<PersistenceRecordStore> openStore() async {
       await dataRoot.create(recursive: true);
-      final path =
-          '${dataRoot.path}${Platform.pathSeparator}app_metadata.sqlite';
-      final database = _PersistenceDatabase(
-        NativeDatabase.createInBackground(File(path)),
-      );
+      final path = '${dataRoot.path}${Platform.pathSeparator}app_metadata.sqlite';
+      final database = _PersistenceDatabase(NativeDatabase.createInBackground(File(path)));
       await database.customStatement('''
       CREATE TABLE IF NOT EXISTS metadata_records (
         record_id TEXT PRIMARY KEY NOT NULL,
@@ -74,9 +71,7 @@ final class PersistenceRecordStore {
         updated_at_utc INTEGER NOT NULL
       )
     ''');
-      await database.customStatement(
-        'CREATE INDEX IF NOT EXISTS metadata_records_scope ON metadata_records(scope_kind, scope_id)',
-      );
+      await database.customStatement('CREATE INDEX IF NOT EXISTS metadata_records_scope ON metadata_records(scope_kind, scope_id)');
       await database.customStatement(
         'CREATE INDEX IF NOT EXISTS metadata_records_kind_scope ON metadata_records(record_kind, scope_kind, scope_id)',
       );
@@ -92,13 +87,7 @@ final class PersistenceRecordStore {
       await database.customStatement(
         'CREATE INDEX IF NOT EXISTS metadata_records_parent_state_order ON metadata_records(record_kind, scope_kind, scope_id, parent_id, state_key, order_key, record_id)',
       );
-      return PersistenceRecordStore._(
-        database,
-        registry,
-        clock,
-        path,
-        diagnostics,
-      );
+      return PersistenceRecordStore._(database, registry, clock, path, diagnostics);
     }
 
     if (diagnostics == null) return openStore();
@@ -129,18 +118,14 @@ final class PersistenceRecordStore {
     revision: (result) => result.revision,
   );
 
-  Future<RecordEnvelope?> read({required String id, required ScopeKey scope}) =>
-      _instrument(
-        operation: 'read',
-        action: () => _read(id: id, scope: scope),
-        resultCount: (result) => result == null ? 0 : 1,
-        revision: (result) => result?.revision,
-      );
+  Future<RecordEnvelope?> read({required String id, required ScopeKey scope}) => _instrument(
+    operation: 'read',
+    action: () => _read(id: id, scope: scope),
+    resultCount: (result) => result == null ? 0 : 1,
+    revision: (result) => result?.revision,
+  );
 
-  Future<RecordReadBatchResult> readMany({
-    required Iterable<String> ids,
-    required ScopeKey scope,
-  }) {
+  Future<RecordReadBatchResult> readMany({required Iterable<String> ids, required ScopeKey scope}) {
     final requested = List<String>.of(ids);
     return _instrument(
       operation: 'readMany',
@@ -160,11 +145,7 @@ final class PersistenceRecordStore {
 
   /// Counts matching records without decoding their versioned documents.
   /// Typed repositories use this for legacy snapshot metadata compatibility.
-  Future<int> count(RecordQuery query) => _instrument(
-    operation: 'count',
-    recordKind: query.recordKind,
-    action: () => _count(query),
-  );
+  Future<int> count(RecordQuery query) => _instrument(operation: 'count', recordKind: query.recordKind, action: () => _count(query));
 
   /// Reads records for a bounded set of identity keys with one SQL statement.
   ///
@@ -175,25 +156,21 @@ final class PersistenceRecordStore {
     required String recordKind,
     required ScopeKey scope,
     required Iterable<String> identityKeys,
+    String? parentId,
+    String? stateKey,
   }) {
     final requested = identityKeys.toSet();
     return _instrument(
       operation: 'listByIdentityKeys',
       recordKind: recordKind,
       count: requested.length,
-      action: () => _listByIdentityKeys(
-        recordKind: recordKind,
-        scope: scope,
-        identityKeys: requested,
-      ),
+      action: () =>
+          _listByIdentityKeys(recordKind: recordKind, scope: scope, identityKeys: requested, parentId: parentId, stateKey: stateKey),
       resultCount: (result) => result.length,
     );
   }
 
-  Future<RecordEnvelope> update({
-    required RecordEnvelope previous,
-    required JsonObject document,
-  }) => _instrument(
+  Future<RecordEnvelope> update({required RecordEnvelope previous, required JsonObject document}) => _instrument(
     operation: 'update',
     recordKind: previous.recordKind,
     count: 1,
@@ -218,9 +195,7 @@ final class PersistenceRecordStore {
     );
   }
 
-  Future<List<RecordDocumentWriteResult>> writeDocumentsCas(
-    List<RecordDocumentWrite> writes,
-  ) {
+  Future<List<RecordDocumentWriteResult>> writeDocumentsCas(List<RecordDocumentWrite> writes) {
     final copied = List<RecordDocumentWrite>.of(writes);
     return _instrument(
       operation: 'writeDocumentsCas',
@@ -231,8 +206,7 @@ final class PersistenceRecordStore {
     );
   }
 
-  Future<T> transaction<T>(Future<T> Function() action) =>
-      _instrument(operation: 'transaction', action: () => _transaction(action));
+  Future<T> transaction<T>(Future<T> Function() action) => _instrument(operation: 'transaction', action: () => _transaction(action));
 
   Future<void> close() => _closeFuture ??= _beginClose();
 
@@ -249,12 +223,8 @@ final class PersistenceRecordStore {
     await diagnostics.runSpan<void>(
       AppDiagnosticEvents.persistenceClose,
       (_) => _close(),
-      startAttributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-        'store': DiagnosticValue.string('metadata'),
-      }),
-      successAttributes: (_) => DiagnosticObjectValue(<String, DiagnosticValue>{
-        'store': DiagnosticValue.string('metadata'),
-      }),
+      startAttributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{'store': DiagnosticValue.string('metadata')}),
+      successAttributes: (_) => DiagnosticObjectValue(<String, DiagnosticValue>{'store': DiagnosticValue.string('metadata')}),
       errorAttributes: (_) => DiagnosticObjectValue(<String, DiagnosticValue>{
         'store': DiagnosticValue.string('metadata'),
         'errorCode': DiagnosticValue.string('close_failed'),
@@ -275,38 +245,26 @@ final class PersistenceRecordStore {
     }
   }
 
-  Future<RecordEnvelope?> _read({
-    required String id,
-    required ScopeKey scope,
-  }) async {
+  Future<RecordEnvelope?> _read({required String id, required ScopeKey scope}) async {
     _ensureOpen();
     final rows = await _database
         .customSelect(
           'SELECT * FROM metadata_records WHERE record_id = ? AND scope_kind = ? AND scope_id = ?',
-          variables: [
-            Variable.withString(id),
-            Variable.withString(scope.kind),
-            Variable.withString(scope.id),
-          ],
+          variables: [Variable.withString(id), Variable.withString(scope.kind), Variable.withString(scope.id)],
         )
         .get();
     if (rows.isEmpty) return null;
     return _rowToEnvelope(rows.single.data);
   }
 
-  Future<RecordReadBatchResult> _readMany({
-    required Iterable<String> ids,
-    required ScopeKey scope,
-  }) async {
+  Future<RecordReadBatchResult> _readMany({required Iterable<String> ids, required ScopeKey scope}) async {
     _ensureOpen();
     final requested = ids.toSet();
     if (requested.isEmpty) {
       return const RecordReadBatchResult(records: {}, failures: {});
     }
     if (requested.length > 900 || requested.any((id) => id.isEmpty)) {
-      throw const PersistenceValidationError(
-        'Batch reads require 1 to 900 non-empty record IDs.',
-      );
+      throw const PersistenceValidationError('Batch reads require 1 to 900 non-empty record IDs.');
     }
     _batchReadCount++;
     final placeholders = List.filled(requested.length, '?').join(', ');
@@ -314,21 +272,24 @@ final class PersistenceRecordStore {
         .customSelect(
           'SELECT * FROM metadata_records WHERE scope_kind = ? AND scope_id = ? '
           'AND record_id IN ($placeholders)',
-          variables: [
-            Variable.withString(scope.kind),
-            Variable.withString(scope.id),
-            for (final id in requested) Variable.withString(id),
-          ],
+          variables: [Variable.withString(scope.kind), Variable.withString(scope.id), for (final id in requested) Variable.withString(id)],
         )
         .get();
     final records = <String, RecordEnvelope>{};
     final failures = <String, PersistenceError>{};
-    for (final row in rows) {
-      final id = row.data['record_id'] as String;
-      try {
-        records[id] = await _rowToEnvelope(row.data);
-      } on PersistenceError catch (error) {
-        failures[id] = error;
+    try {
+      final decoded = await _rowsToEnvelopes(rows.map((row) => row.data));
+      for (final envelope in decoded) {
+        records[envelope.id] = envelope;
+      }
+    } on PersistenceError {
+      for (final row in rows) {
+        final id = row.data['record_id'] as String;
+        try {
+          records[id] = await _rowToEnvelope(row.data);
+        } on PersistenceError catch (error) {
+          failures[id] = error;
+        }
       }
     }
     return RecordReadBatchResult(records: records, failures: failures);
@@ -353,14 +314,8 @@ final class PersistenceRecordStore {
     addNullable('identity_key', query.identityKey);
     addNullable('order_key', query.orderKey);
     if (query.after case final after?) {
-      where.add(
-        '(COALESCE(order_key, \'\') > ? OR (COALESCE(order_key, \'\') = ? AND record_id > ?))',
-      );
-      variables.addAll([
-        Variable.withString(after.orderKey),
-        Variable.withString(after.orderKey),
-        Variable.withString(after.id),
-      ]);
+      where.add('(COALESCE(order_key, \'\') > ? OR (COALESCE(order_key, \'\') = ? AND record_id > ?))');
+      variables.addAll([Variable.withString(after.orderKey), Variable.withString(after.orderKey), Variable.withString(after.id)]);
     }
     final rows = await _database
         .customSelect(
@@ -371,15 +326,11 @@ final class PersistenceRecordStore {
         .get();
     final hasMore = rows.length > query.limit;
     final pageRows = hasMore ? rows.take(query.limit).toList() : rows;
-    final records = await _rowsToEnvelopes(
-      pageRows.map((row) => row.data).toList(growable: false),
-    );
+    final records = await _rowsToEnvelopes(pageRows.map((row) => row.data).toList(growable: false));
     final tail = records.isEmpty ? null : records.last;
     return RecordPage(
       records: List.unmodifiable(records),
-      nextCursor: hasMore && tail != null
-          ? RecordCursor(orderKey: tail.orderKey ?? '', id: tail.id)
-          : null,
+      nextCursor: hasMore && tail != null ? RecordCursor(orderKey: tail.orderKey ?? '', id: tail.id) : null,
     );
   }
 
@@ -402,10 +353,7 @@ final class PersistenceRecordStore {
     addNullable('identity_key', query.identityKey);
     addNullable('order_key', query.orderKey);
     final rows = await _database
-        .customSelect(
-          'SELECT COUNT(*) AS record_count FROM metadata_records WHERE ${where.join(' AND ')}',
-          variables: variables,
-        )
+        .customSelect('SELECT COUNT(*) AS record_count FROM metadata_records WHERE ${where.join(' AND ')}', variables: variables)
         .get();
     return rows.single.data['record_count'] as int;
   }
@@ -414,36 +362,42 @@ final class PersistenceRecordStore {
     required String recordKind,
     required ScopeKey scope,
     required Set<String> identityKeys,
+    String? parentId,
+    String? stateKey,
   }) async {
     _ensureOpen();
     if (identityKeys.isEmpty) return const <RecordEnvelope>[];
     if (identityKeys.length > 900 || identityKeys.any((key) => key.isEmpty)) {
-      throw const PersistenceValidationError(
-        'Identity batch reads require 1 to 900 non-empty keys.',
-      );
+      throw const PersistenceValidationError('Identity batch reads require 1 to 900 non-empty keys.');
     }
     final placeholders = List.filled(identityKeys.length, '?').join(', ');
+    final where = <String>['record_kind = ?', 'scope_kind = ?', 'scope_id = ?', 'identity_key IN ($placeholders)'];
+    final variables = <Variable<Object>>[
+      Variable.withString(recordKind),
+      Variable.withString(scope.kind),
+      Variable.withString(scope.id),
+      for (final key in identityKeys) Variable.withString(key),
+    ];
+    if (parentId != null) {
+      where.add('parent_id = ?');
+      variables.add(Variable.withString(parentId));
+    }
+    if (stateKey != null) {
+      where.add('state_key = ?');
+      variables.add(Variable.withString(stateKey));
+    }
     final rows = await _database
         .customSelect(
           'SELECT * FROM metadata_records '
-          'WHERE record_kind = ? AND scope_kind = ? AND scope_id = ? '
-          'AND identity_key IN ($placeholders) '
+          'WHERE ${where.join(' AND ')} '
           'ORDER BY identity_key ASC, COALESCE(order_key, \'\') ASC, record_id ASC',
-          variables: <Variable<Object>>[
-            Variable.withString(recordKind),
-            Variable.withString(scope.kind),
-            Variable.withString(scope.id),
-            for (final key in identityKeys) Variable.withString(key),
-          ],
+          variables: variables,
         )
         .get();
     return _rowsToEnvelopes(rows.map((row) => row.data));
   }
 
-  Future<RecordEnvelope> _update({
-    required RecordEnvelope previous,
-    required JsonObject document,
-  }) async {
+  Future<RecordEnvelope> _update({required RecordEnvelope previous, required JsonObject document}) async {
     _ensureOpen();
     final codec = _registry.require(previous.recordKind, previous.scope.kind);
     final prepared = await codec.prepareCurrent(document);
@@ -464,14 +418,7 @@ final class PersistenceRecordStore {
       updates: {},
     );
     if (affected != 1) throw const PersistenceConflictError();
-    return _envelopeFromPrevious(
-      previous,
-      codec.currentVersion,
-      previous.revision + 1,
-      prepared.document,
-      previous.createdAtUtc,
-      now,
-    );
+    return _envelopeFromPrevious(previous, codec.currentVersion, previous.revision + 1, prepared.document, previous.createdAtUtc, now);
   }
 
   Future<void> _delete({required RecordEnvelope previous}) async {
@@ -492,42 +439,27 @@ final class PersistenceRecordStore {
   Future<void> _createBatch(List<RecordDraft> drafts) async {
     _ensureOpen();
     _validateWriteBatchSize(drafts.length);
-    final prepared = List<_PreparedDraft?>.filled(drafts.length, null);
-    final groups = <(String, String), List<(int, RecordDraft)>>{};
-    for (var index = 0; index < drafts.length; index++) {
-      final draft = drafts[index];
+    for (final draft in drafts) {
       _validateDraft(draft);
-      groups
-          .putIfAbsent((
-            draft.recordKind,
-            draft.scope.kind,
-          ), () => <(int, RecordDraft)>[])
-          .add((index, draft));
     }
-    for (final group in groups.values) {
-      final codec = _registry.require(
-        group.first.$2.recordKind,
-        group.first.$2.scope.kind,
+    final documents = await _registry.prepareCurrentMany(
+      documents: drafts.map((draft) => (recordKind: draft.recordKind, scopeKind: draft.scope.kind, document: draft.document)),
+    );
+    final prepared = List<_PreparedDraft>.generate(drafts.length, (index) {
+      final draft = drafts[index];
+      final document = documents[index];
+      _lastCodecWorkerIsolateId = document.workerIsolateId;
+      return _PreparedDraft(
+        draft: draft,
+        codec: _registry.require(draft.recordKind, draft.scope.kind),
+        document: document,
+        now: _clock().toUtc(),
       );
-      final documents = await codec.prepareCurrentMany(
-        documents: group.map((entry) => entry.$2.document),
-      );
-      for (var index = 0; index < group.length; index++) {
-        final entry = group[index];
-        final document = documents[index];
-        _lastCodecWorkerIsolateId = document.workerIsolateId;
-        prepared[entry.$1] = _PreparedDraft(
-          draft: entry.$2,
-          codec: codec,
-          document: document,
-          now: _clock().toUtc(),
-        );
-      }
-    }
+    });
     try {
       await _database.transaction(() async {
         for (final draft in prepared) {
-          await _insertPreparedDraft(draft!);
+          await _insertPreparedDraft(draft);
         }
       });
     } catch (error) {
@@ -538,9 +470,7 @@ final class PersistenceRecordStore {
     }
   }
 
-  Future<List<RecordDocumentWriteResult>> _writeDocumentsCas(
-    List<RecordDocumentWrite> writes,
-  ) async {
+  Future<List<RecordDocumentWriteResult>> _writeDocumentsCas(List<RecordDocumentWrite> writes) async {
     _ensureOpen();
     _validateWriteBatchSize(writes.length);
     final identities = <(String, ScopeKey)>{};
@@ -550,28 +480,26 @@ final class PersistenceRecordStore {
           write.scope.kind.isEmpty ||
           write.scope.id.isEmpty ||
           (write.expectedRevision != null && write.expectedRevision! < 1)) {
-        throw const PersistenceValidationError(
-          'CAS writes require valid IDs, scope, kind, and revision.',
-        );
+        throw const PersistenceValidationError('CAS writes require valid IDs, scope, kind, and revision.');
       }
       if (!identities.add((write.id, write.scope))) {
-        throw const PersistenceValidationError(
-          'A CAS batch cannot contain the same record twice.',
-        );
+        throw const PersistenceValidationError('A CAS batch cannot contain the same record twice.');
       }
     }
-    final prepared = <_PreparedDocumentWrite>[];
-    for (final write in writes) {
-      final codec = _registry.require(write.recordKind, write.scope.kind);
-      final document = await codec.prepareCurrent(write.document);
+    final documents = await _registry.prepareCurrentMany(
+      documents: writes.map((write) => (recordKind: write.recordKind, scopeKind: write.scope.kind, document: write.document)),
+    );
+    final preparedWrites = List<_PreparedDocumentWrite>.generate(writes.length, (index) {
+      final write = writes[index];
+      final document = documents[index];
       _lastCodecWorkerIsolateId = document.workerIsolateId;
-      prepared.add(_PreparedDocumentWrite(write, codec, document));
-    }
+      return _PreparedDocumentWrite(write, _registry.require(write.recordKind, write.scope.kind), document);
+    });
     final now = _clock().toUtc().millisecondsSinceEpoch;
     try {
       return await _database.transaction(() async {
         final results = <RecordDocumentWriteResult>[];
-        for (final item in prepared) {
+        for (final item in preparedWrites) {
           final write = item.write;
           final expected = write.expectedRevision;
           if (expected == null) {
@@ -591,14 +519,7 @@ final class PersistenceRecordStore {
                 now,
               ],
             );
-            results.add(
-              RecordDocumentWriteResult(
-                id: write.id,
-                scope: write.scope,
-                revision: 1,
-                document: item.document.document,
-              ),
-            );
+            results.add(RecordDocumentWriteResult(id: write.id, scope: write.scope, revision: 1, document: item.document.document));
             continue;
           }
           final affected = await _database.customUpdate(
@@ -622,19 +543,13 @@ final class PersistenceRecordStore {
             throw const PersistenceConflictError();
           }
           results.add(
-            RecordDocumentWriteResult(
-              id: write.id,
-              scope: write.scope,
-              revision: expected + 1,
-              document: item.document.document,
-            ),
+            RecordDocumentWriteResult(id: write.id, scope: write.scope, revision: expected + 1, document: item.document.document),
           );
         }
         return results;
       });
     } catch (error) {
-      if (error is PersistenceConflictError ||
-          error.toString().contains('UNIQUE constraint failed')) {
+      if (error is PersistenceConflictError || error.toString().contains('UNIQUE constraint failed')) {
         throw const PersistenceConflictError();
       }
       rethrow;
@@ -683,23 +598,15 @@ final class PersistenceRecordStore {
             rethrow;
           }
         },
-        startAttributes: () => _operationAttributes(
-          operation: operation,
-          recordKind: recordKind,
-          count: count,
-        ),
+        startAttributes: () => _operationAttributes(operation: operation, recordKind: recordKind, count: count),
         successAttributes: (result) => _operationAttributes(
           operation: operation,
           recordKind: recordKind,
           count: resultCount?.call(result) ?? count,
           revision: revision?.call(result),
         ),
-        errorAttributes: (error) => _operationAttributes(
-          operation: operation,
-          recordKind: recordKind,
-          count: count,
-          errorCode: _persistenceErrorCode(error),
-        ),
+        errorAttributes: (error) =>
+            _operationAttributes(operation: operation, recordKind: recordKind, count: count, errorCode: _persistenceErrorCode(error)),
       );
     });
   }
@@ -717,16 +624,12 @@ final class PersistenceRecordStore {
     if (count != null) 'count': DiagnosticValue.int64(count),
     if (revision != null) 'revision': DiagnosticValue.int64(revision),
     if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
-    'thresholdMicros': DiagnosticValue.int64(
-      AppDiagnosticThresholds.persistenceOperation.inMicroseconds,
-    ),
+    'thresholdMicros': DiagnosticValue.int64(AppDiagnosticThresholds.persistenceOperation.inMicroseconds),
   });
 
   void _validateWriteBatchSize(int length) {
     if (length > maxWriteBatchSize) {
-      throw const PersistenceValidationError(
-        'A write batch cannot contain more than 128 documents.',
-      );
+      throw const PersistenceValidationError('A write batch cannot contain more than 128 documents.');
     }
   }
 
@@ -756,8 +659,7 @@ final class PersistenceRecordStore {
   });
 
   void _ensureOpen() {
-    if (_closed ||
-        (_closing && !identical(Zone.current[#persistenceRecordStore], this))) {
+    if (_closed || (_closing && !identical(Zone.current[#persistenceRecordStore], this))) {
       throw const PersistenceClosedError();
     }
   }
@@ -782,50 +684,29 @@ final class PersistenceRecordStore {
   }
 
   void _validateDraft(RecordDraft draft) {
-    if (draft.id.isEmpty ||
-        draft.recordKind.isEmpty ||
-        draft.scope.kind.isEmpty ||
-        draft.scope.id.isEmpty) {
-      throw const PersistenceValidationError(
-        'Record identifiers and scope values cannot be empty.',
-      );
+    if (draft.id.isEmpty || draft.recordKind.isEmpty || draft.scope.kind.isEmpty || draft.scope.id.isEmpty) {
+      throw const PersistenceValidationError('Record identifiers and scope values cannot be empty.');
     }
   }
 
   Future<RecordEnvelope> _rowToEnvelope(Map<String, dynamic> row) async {
     final kind = row['record_kind'] as String;
-    final scope = ScopeKey(
-      kind: row['scope_kind'] as String,
-      id: row['scope_id'] as String,
-    );
+    final scope = ScopeKey(kind: row['scope_kind'] as String, id: row['scope_id'] as String);
     final codec = _registry.require(kind, scope.kind);
-    final prepared = await codec.decodeAndUpgrade(
-      version: row['format_version'] as int,
-      payloadJson: row['payload_json'] as String,
-    );
+    final prepared = await codec.decodeAndUpgrade(version: row['format_version'] as int, payloadJson: row['payload_json'] as String);
     _lastCodecWorkerIsolateId = prepared.workerIsolateId;
     return _preparedRowToEnvelope(row, codec, prepared);
   }
 
-  Future<List<RecordEnvelope>> _rowsToEnvelopes(
-    Iterable<Map<String, dynamic>> rows,
-  ) async {
+  Future<List<RecordEnvelope>> _rowsToEnvelopes(Iterable<Map<String, dynamic>> rows) async {
     final copied = List<Map<String, dynamic>>.of(rows);
     if (copied.isEmpty) return const <RecordEnvelope>[];
-    final first = copied.first;
-    final recordKind = first['record_kind'] as String;
-    final scopeKind = first['scope_kind'] as String;
-    if (copied.any(
-      (row) =>
-          row['record_kind'] != recordKind || row['scope_kind'] != scopeKind,
-    )) {
-      return Future.wait(copied.map(_rowToEnvelope));
-    }
-    final codec = _registry.require(recordKind, scopeKind);
-    final prepared = await codec.decodeAndUpgradeMany(
+    final prepared = await _registry.decodeAndUpgradeMany(
       documents: copied
           .map(
             (row) => (
+              recordKind: row['record_kind'] as String,
+              scopeKind: row['scope_kind'] as String,
               version: row['format_version'] as int,
               payloadJson: row['payload_json'] as String,
             ),
@@ -838,51 +719,37 @@ final class PersistenceRecordStore {
     return List<RecordEnvelope>.unmodifiable(
       List<RecordEnvelope>.generate(
         copied.length,
-        (index) =>
-            _preparedRowToEnvelope(copied[index], codec, prepared[index]),
+        (index) => _preparedRowToEnvelope(
+          copied[index],
+          _registry.require(copied[index]['record_kind'] as String, copied[index]['scope_kind'] as String),
+          prepared[index],
+        ),
       ),
     );
   }
 
-  RecordEnvelope _preparedRowToEnvelope(
-    Map<String, dynamic> row,
-    RecordDocumentCodec codec,
-    PreparedJsonDocument prepared,
-  ) => RecordEnvelope(
-    id: row['record_id'] as String,
-    recordKind: row['record_kind'] as String,
-    scope: ScopeKey(
-      kind: row['scope_kind'] as String,
-      id: row['scope_id'] as String,
-    ),
-    parentId: row['parent_id'] as String?,
-    identityKey: row['identity_key'] as String?,
-    orderKey: row['order_key'] as String?,
-    stateKey: row['state_key'] as String?,
-    formatVersion: codec.currentVersion,
-    revision: row['revision'] as int,
-    document: prepared.document,
-    createdAtUtc: DateTime.fromMillisecondsSinceEpoch(
-      row['created_at_utc'] as int,
-      isUtc: true,
-    ),
-    updatedAtUtc: DateTime.fromMillisecondsSinceEpoch(
-      row['updated_at_utc'] as int,
-      isUtc: true,
-    ),
-  );
+  RecordEnvelope _preparedRowToEnvelope(Map<String, dynamic> row, RecordDocumentCodec codec, PreparedJsonDocument prepared) =>
+      RecordEnvelope(
+        id: row['record_id'] as String,
+        recordKind: row['record_kind'] as String,
+        scope: ScopeKey(kind: row['scope_kind'] as String, id: row['scope_id'] as String),
+        parentId: row['parent_id'] as String?,
+        identityKey: row['identity_key'] as String?,
+        orderKey: row['order_key'] as String?,
+        stateKey: row['state_key'] as String?,
+        formatVersion: codec.currentVersion,
+        revision: row['revision'] as int,
+        document: prepared.document,
+        createdAtUtc: DateTime.fromMillisecondsSinceEpoch(row['created_at_utc'] as int, isUtc: true),
+        updatedAtUtc: DateTime.fromMillisecondsSinceEpoch(row['updated_at_utc'] as int, isUtc: true),
+      );
 
   Future<_PreparedDraft> _prepareDraft(RecordDraft draft) async {
     _validateDraft(draft);
     final codec = _registry.require(draft.recordKind, draft.scope.kind);
     final document = await codec.prepareCurrent(draft.document);
     _lastCodecWorkerIsolateId = document.workerIsolateId;
-    return _PreparedDraft(
-      draft: draft,
-      codec: codec,
-      document: document,
-      now: _clock().toUtc(),
-    );
+    return _PreparedDraft(draft: draft, codec: codec, document: document, now: _clock().toUtc());
   }
 
   Future<RecordEnvelope> _insertPreparedDraft(_PreparedDraft prepared) async {
@@ -908,14 +775,7 @@ final class PersistenceRecordStore {
         prepared.now.millisecondsSinceEpoch,
       ],
     );
-    return _envelopeFromDraft(
-      draft,
-      prepared.codec.currentVersion,
-      1,
-      prepared.document.document,
-      prepared.now,
-      prepared.now,
-    );
+    return _envelopeFromDraft(draft, prepared.codec.currentVersion, 1, prepared.document.document, prepared.now, prepared.now);
   }
 
   RecordEnvelope _envelopeFromDraft(
@@ -1007,12 +867,7 @@ final class RecordDocumentWrite {
 }
 
 final class RecordDocumentWriteResult {
-  const RecordDocumentWriteResult({
-    required this.id,
-    required this.scope,
-    required this.revision,
-    required this.document,
-  });
+  const RecordDocumentWriteResult({required this.id, required this.scope, required this.revision, required this.document});
 
   final String id;
   final ScopeKey scope;
@@ -1021,12 +876,7 @@ final class RecordDocumentWriteResult {
 }
 
 final class _PreparedDraft {
-  const _PreparedDraft({
-    required this.draft,
-    required this.codec,
-    required this.document,
-    required this.now,
-  });
+  const _PreparedDraft({required this.draft, required this.codec, required this.document, required this.now});
 
   final RecordDraft draft;
   final RecordDocumentCodec codec;

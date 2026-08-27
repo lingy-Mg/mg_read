@@ -8,6 +8,7 @@ part of 'text_reader_view.dart';
 ///
 /// 注意：
 /// - 预取是 best effort；失败不得影响前台正文或语义进度。
+/// - 正文完成或失败均回到相邻准备协调器，由下一真实阅读事件决定是否继续。
 /// - 网络、文件和持久化仍由宿主数据源拥有。
 ///
 /// TODO:
@@ -56,39 +57,10 @@ extension _TextReaderChapterPrefetch on _TextReaderViewState {
   }
 
   Future<void> _prefetchNext(int currentIndex) async {
-    final int nextIndex = currentIndex + 1;
-    if (_catalogTotal > 0 && nextIndex >= _catalogTotal) return;
-    final int session = _sessionGeneration;
-    final TextReaderDataSource dataSource = widget.dataSource;
-    final String bookId = widget.bookId;
-    try {
-      final ReaderChapterInfo next = await _chapterInfoAtIndex(nextIndex);
-      if (!_isSessionCurrent(session) ||
-          !identical(dataSource, widget.dataSource) ||
-          bookId != widget.bookId) {
-        return;
-      }
-      if (_chapterCache.containsKey(next.id)) {
-        _scheduleAdjacentPreparation();
-        return;
-      }
-      final TextChapterContent content = await _loadChapterContent(
-        dataSource,
-        bookId,
-        next.id,
-      );
-      if (!_isSessionCurrent(session) ||
-          !identical(dataSource, widget.dataSource) ||
-          bookId != widget.bookId ||
-          _chapterIndex != currentIndex) {
-        return;
-      }
-      if (content.chapterId != next.id) return;
-      _validateChapter(content, expectedChapterId: next.id);
-      _cacheChapter(content);
-      _scheduleAdjacentPreparation();
-    } catch (_) {
-      // Prefetch is best effort. Foreground loading reports actionable errors.
-    }
+    if (_chapterIndex != currentIndex) return;
+    // Content and layout are reconciled by the same state machine. In
+    // particular, a failed request returns to pending and waits for a later
+    // page/lifecycle/layout event instead of recursively retrying.
+    _reconcileAdjacentPreparation();
   }
 }

@@ -109,6 +109,75 @@ final class AppSettingsManager {
 
   Future<void> initialize() => _initializeFuture ??= _initialize();
 
+  /// Reopens settings after a failed first initialization.
+  ///
+  /// Initialization is single-flight: callers while the retry is loading
+  /// receive the same future. A successfully initialized manager has nothing
+  /// to retry, while a closing manager rejects the request.
+  Future<void> retryInitialization() {
+    switch (_state) {
+      case SettingsState.loading:
+        return _initializeFuture ??= _initialize();
+      case SettingsState.ready:
+      case SettingsState.degraded:
+        return Future<void>.value();
+      case SettingsState.failed:
+        final retry = _retryInitialization();
+        _initializeFuture = retry;
+        return retry;
+      case SettingsState.closing:
+      case SettingsState.closed:
+        return Future<void>.error(StateError('Settings initialization cannot be retried in state $_state.'));
+    }
+  }
+
+  Future<void> _retryInitialization() async {
+    final failedStore = _store;
+    _store = null;
+    _resetInitializationState();
+    _state = SettingsState.loading;
+    _emitStatus(recomputeState: false);
+
+    if (failedStore != null) {
+      try {
+        await failedStore.close().timeout(_policy.closeTimeout);
+      } catch (_) {
+        // The failed store is no longer owned by the manager. A factory retry
+        // can proceed even when best-effort cleanup does not complete.
+      }
+    }
+    if (_isClosingOrClosed) {
+      return;
+    }
+    if (_storeFactory == null) {
+      _state = SettingsState.failed;
+      _globalErrorCode = 'initialization_retry_unavailable';
+      _emitStatus(recomputeState: false);
+      return;
+    }
+    await _initialize();
+  }
+
+  void _resetInitializationState() {
+    _globalErrorCode = null;
+    _snapshot = SettingsSnapshot.withDefaults(_registry.defaultValues);
+    for (final document in _documents.values) {
+      document.timer?.cancel();
+      document.timer = null;
+      document.persistedValues = {};
+      document.values = {};
+      document.decodedValues = {};
+      document.patch = {};
+      document.revision = null;
+      document.generation = 0;
+      document.persistedGeneration = 0;
+      document.retryCount = 0;
+      document.inFlight = false;
+      document.permanentErrorCode = null;
+      document.transientErrorCode = null;
+    }
+  }
+
   Future<void> _initialize() async {
     if (_state != SettingsState.loading) {
       return;

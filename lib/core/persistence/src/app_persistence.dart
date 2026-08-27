@@ -28,13 +28,7 @@ part 'file_object_store.dart';
 
 /// The only owner of app database and object-store lifecycles.
 final class AppPersistence {
-  AppPersistence._(
-    this.dataRoot,
-    this.metadataRecords,
-    this.contentObjects,
-    this.fileObjects,
-    this._diagnostics,
-  );
+  AppPersistence._(this.dataRoot, this.metadataRecords, this.contentObjects, this.fileObjects, this._diagnostics);
   final Directory dataRoot;
   final PersistenceRecordStore metadataRecords;
   final ContentObjectStore contentObjects;
@@ -46,38 +40,93 @@ final class AppPersistence {
     required Directory dataRoot,
     required RecordDocumentRegistry registry,
     DiagnosticsManager? diagnostics,
+  }) => _open(dataRoot: dataRoot, registry: registry, diagnostics: diagnostics);
+
+  /// Opens the stores through supplied openers for persistence lifecycle tests.
+  ///
+  /// The openers are intentionally narrow: they only replace store creation;
+  /// ownership, failure cleanup, diagnostics, and close ordering remain the
+  /// same as [open].
+  static Future<AppPersistence> openForTesting({
+    required Directory dataRoot,
+    required RecordDocumentRegistry registry,
+    DiagnosticsManager? diagnostics,
+    Future<PersistenceRecordStore> Function()? metadataOpener,
+    Future<ContentObjectStore> Function()? contentOpener,
+    Future<FileObjectStore> Function()? fileOpener,
+  }) => _open(
+    dataRoot: dataRoot,
+    registry: registry,
+    diagnostics: diagnostics,
+    metadataOpener: metadataOpener,
+    contentOpener: contentOpener,
+    fileOpener: fileOpener,
+  );
+
+  static Future<AppPersistence> _open({
+    required Directory dataRoot,
+    required RecordDocumentRegistry registry,
+    DiagnosticsManager? diagnostics,
+    Future<PersistenceRecordStore> Function()? metadataOpener,
+    Future<ContentObjectStore> Function()? contentOpener,
+    Future<FileObjectStore> Function()? fileOpener,
   }) {
     Future<AppPersistence> openStores() async {
-      final metadata = await PersistenceRecordStore.open(
-        dataRoot: dataRoot,
-        registry: registry,
-        diagnostics: diagnostics,
-      );
-      try {
-        final content = await ContentObjectStore.open(
-          dataRoot,
-          diagnostics: diagnostics,
-        );
+      PersistenceRecordStore? metadata;
+      ContentObjectStore? content;
+      FileObjectStore? files;
+      Object? firstError;
+      StackTrace? firstStack;
+
+      void captureError(Object error, StackTrace stack) {
+        if (firstError != null) return;
+        firstError = error;
+        firstStack = stack;
+      }
+
+      Future<T> start<T>(Future<T> Function() opener, void Function(T) onSuccess) async {
         try {
-          final files = await FileObjectStore.open(
-            dataRoot,
-            diagnostics: diagnostics,
-          );
-          return AppPersistence._(
-            dataRoot,
-            metadata,
-            content,
-            files,
-            diagnostics,
-          );
-        } catch (_) {
-          await content.close();
+          final value = await Future<T>.sync(opener);
+          onSuccess(value);
+          return value;
+        } catch (error, stack) {
+          captureError(error, stack);
           rethrow;
         }
-      } catch (_) {
-        await metadata.close();
-        rethrow;
       }
+
+      final metadataFuture = start(
+        metadataOpener ?? () => PersistenceRecordStore.open(dataRoot: dataRoot, registry: registry, diagnostics: diagnostics),
+        (value) => metadata = value,
+      );
+      final contentFuture = start(
+        contentOpener ?? () => ContentObjectStore.open(dataRoot, diagnostics: diagnostics),
+        (value) => content = value,
+      );
+      final fileFuture = start(fileOpener ?? () => FileObjectStore.open(dataRoot, diagnostics: diagnostics), (value) => files = value);
+
+      try {
+        await Future.wait<Object>(<Future<Object>>[metadataFuture, contentFuture, fileFuture], eagerError: false);
+      } catch (error, stack) {
+        // Future.wait(eagerError: false) has already awaited every started
+        // branch. Close in the same order as normal AppPersistence.close,
+        // while preserving the first branch error and its original stack.
+        for (final close in <Future<void> Function()>[
+          if (content != null) content!.close,
+          if (files != null) files!.close,
+          if (metadata != null) metadata!.close,
+        ]) {
+          try {
+            await close();
+          } catch (_) {
+            // The initiating open error is the public failure. Remaining
+            // resources must still be attempted even if one close fails.
+          }
+        }
+        Error.throwWithStackTrace(firstError ?? error, firstStack ?? stack);
+      }
+
+      return AppPersistence._(dataRoot, metadata!, content!, files!, diagnostics);
     }
 
     if (diagnostics == null || diagnostics.isClosed) return openStores();
@@ -117,12 +166,8 @@ final class AppPersistence {
     await diagnostics.runSpan<void>(
       AppDiagnosticEvents.persistenceClose,
       (_) => closeStores(),
-      startAttributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-        'store': DiagnosticValue.string('app'),
-      }),
-      successAttributes: (_) => DiagnosticObjectValue(<String, DiagnosticValue>{
-        'store': DiagnosticValue.string('app'),
-      }),
+      startAttributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{'store': DiagnosticValue.string('app')}),
+      successAttributes: (_) => DiagnosticObjectValue(<String, DiagnosticValue>{'store': DiagnosticValue.string('app')}),
       errorAttributes: (_) => DiagnosticObjectValue(<String, DiagnosticValue>{
         'store': DiagnosticValue.string('app'),
         'errorCode': DiagnosticValue.string('close_failed'),
@@ -139,10 +184,7 @@ final class ContentObjectStore {
   final DiagnosticsManager? _diagnostics;
   final _StoreLifecycleGate _lifecycle = _StoreLifecycleGate();
   bool get usesBackgroundExecutor => true;
-  static Future<ContentObjectStore> open(
-    Directory root, {
-    DiagnosticsManager? diagnostics,
-  }) async {
+  static Future<ContentObjectStore> open(Directory root, {DiagnosticsManager? diagnostics}) async {
     await root.create(recursive: true);
     final path = '${root.path}${Platform.pathSeparator}content.sqlite';
     final db = _ContentDatabase(NativeDatabase.createInBackground(File(path)));
@@ -162,13 +204,7 @@ final class ContentObjectStore {
     operation: 'put',
     recordKind: contentKind,
     count: 1,
-    action: () => _put(
-      objectId: objectId,
-      contentKind: contentKind,
-      objectType: objectType,
-      generation: generation,
-      payload: payload,
-    ),
+    action: () => _put(objectId: objectId, contentKind: contentKind, objectType: objectType, generation: generation, payload: payload),
     bytes: (result) => result.byteLength,
   );
 
@@ -187,8 +223,7 @@ final class ContentObjectStore {
       (_) => _close(),
       startAttributes: () => _storeAttributes('contentObjects'),
       successAttributes: (_) => _storeAttributes('contentObjects'),
-      errorAttributes: (_) =>
-          _storeAttributes('contentObjects', errorCode: 'close_failed'),
+      errorAttributes: (_) => _storeAttributes('contentObjects', errorCode: 'close_failed'),
     );
   });
 
@@ -203,15 +238,7 @@ final class ContentObjectStore {
     final bytes = utf8.encode(payload);
     await _database.customStatement(
       'INSERT INTO content_objects (object_id, content_kind, object_type, generation, payload, byte_length, created_at_utc) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [
-        objectId,
-        contentKind,
-        objectType,
-        generation,
-        payload,
-        bytes.length,
-        DateTime.now().toUtc().millisecondsSinceEpoch,
-      ],
+      [objectId, contentKind, objectType, generation, payload, bytes.length, DateTime.now().toUtc().millisecondsSinceEpoch],
     );
     return StoredContentObject(
       objectId: objectId,
@@ -226,10 +253,7 @@ final class ContentObjectStore {
   Future<StoredContentObject?> _read(String objectId) async {
     _ensureOpen();
     final rows = await _database
-        .customSelect(
-          'SELECT * FROM content_objects WHERE object_id = ?',
-          variables: [Variable.withString(objectId)],
-        )
+        .customSelect('SELECT * FROM content_objects WHERE object_id = ?', variables: [Variable.withString(objectId)])
         .get();
     if (rows.isEmpty) return null;
     final r = rows.single.data;
@@ -264,18 +288,9 @@ final class ContentObjectStore {
       if (diagnostics == null || diagnostics.isClosed) return action();
       return diagnostics.runSpan<T>(
         AppDiagnosticEvents.persistenceOperation,
-        (span) => _runMeasuredPersistenceAction(
-          diagnostics: diagnostics,
-          span: span,
-          operation: operation,
-          action: action,
-        ),
-        startAttributes: () => _persistenceOperationAttributes(
-          store: 'contentObjects',
-          operation: operation,
-          recordKind: recordKind,
-          count: count,
-        ),
+        (span) => _runMeasuredPersistenceAction(diagnostics: diagnostics, span: span, operation: operation, action: action),
+        startAttributes: () =>
+            _persistenceOperationAttributes(store: 'contentObjects', operation: operation, recordKind: recordKind, count: count),
         successAttributes: (result) => _persistenceOperationAttributes(
           store: 'contentObjects',
           operation: operation,
@@ -308,11 +323,10 @@ final class StoredContentObject {
   final int generation, byteLength;
 }
 
-DiagnosticObjectValue _storeAttributes(String store, {String? errorCode}) =>
-    DiagnosticObjectValue(<String, DiagnosticValue>{
-      'store': DiagnosticValue.string(store),
-      if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
-    });
+DiagnosticObjectValue _storeAttributes(String store, {String? errorCode}) => DiagnosticObjectValue(<String, DiagnosticValue>{
+  'store': DiagnosticValue.string(store),
+  if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
+});
 
 DiagnosticObjectValue _persistenceOperationAttributes({
   required String store,
@@ -328,9 +342,7 @@ DiagnosticObjectValue _persistenceOperationAttributes({
   if (count != null) 'count': DiagnosticValue.int64(count),
   if (bytes != null) 'bytes': DiagnosticValue.int64(bytes),
   if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
-  'thresholdMicros': DiagnosticValue.int64(
-    AppDiagnosticThresholds.persistenceOperation.inMicroseconds,
-  ),
+  'thresholdMicros': DiagnosticValue.int64(AppDiagnosticThresholds.persistenceOperation.inMicroseconds),
 });
 
 Future<T> _runMeasuredPersistenceAction<T>({
@@ -401,8 +413,7 @@ final class _StoreLifecycleGate {
     );
   }
 
-  Future<void> close(Future<void> Function() action) =>
-      _closeFuture ??= _beginClose(action);
+  Future<void> close(Future<void> Function() action) => _closeFuture ??= _beginClose(action);
 
   Future<void> _beginClose(Future<void> Function() action) async {
     _closing = true;
@@ -414,8 +425,7 @@ final class _StoreLifecycleGate {
   }
 
   void ensureOpen() {
-    if (_closed ||
-        (_closing && !identical(Zone.current[#storeLifecycleGate], this))) {
+    if (_closed || (_closing && !identical(Zone.current[#storeLifecycleGate], this))) {
       throw StateError('Persistence store is closed.');
     }
   }

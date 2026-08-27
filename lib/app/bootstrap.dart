@@ -1,8 +1,8 @@
 /// MgRead Flutter 启动组合根。
 ///
 /// 职责：
-/// - 先挂载不依赖持久化或 Runtime 的启动界面，确保 Windows 调试冷启动立即创建窗口。
-/// - 在后台完成应用持久化、设置和诊断组合后替换为正式 ProviderScope。
+/// - 在任何持久化或 Runtime IO 前挂载稳定的 ProviderScope 与真实应用壳。
+/// - 在后台完成应用持久化、设置和诊断组合，并通过启动状态原地解锁。
 ///
 /// 注意：
 /// - Node Runtime 仍由根应用首帧后的独立预热流程启动。
@@ -20,12 +20,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app.dart';
 import 'package:mg_read/app/app_diagnostics_boundary.dart';
 import 'package:mg_read/app/app_fatal_error_reporter.dart';
 import 'package:mg_read/app/app_settings_lifecycle.dart';
+import 'package:mg_read/app/app_startup.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
@@ -34,24 +34,13 @@ import 'package:mg_read/features/library/application/library_page_controller.dar
 import 'package:mg_read/features/library/application/library_book_remover.dart';
 import 'package:mg_read/features/library/application/library_book_visibility_changer.dart';
 import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
-import 'package:mg_read/features/library/data/content_library_book_remover.dart';
-import 'package:mg_read/features/library/data/content_library_book_visibility_changer.dart';
-import 'package:mg_read/features/library/data/content_library_book_detail_launcher.dart';
-import 'package:mg_read/features/library/data/content_library_overview_loader.dart';
-import 'package:mg_read/features/library/domain/library_item_summary.dart';
-import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
-import 'package:mg_read/features/lan_sync/data/mg_read_lan_sync_gateway.dart';
-import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
+import 'package:mg_read/features/profile/application/profile_reading_stats_loader.dart';
 import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
-import 'package:mg_read/features/discovery/application/content_library_source_prefetcher.dart';
-import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
-import 'package:mg_read/features/discovery/data/content_library_bookshelf_membership.dart';
-import 'package:mg_read/features/discovery/data/content_library_source_cover_persistence.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
-import 'package:mg_read/features/reader/data/content_library_source_text_reader.dart';
-import 'package:mg_read/features/profile/application/profile_reading_stats_loader.dart';
-import 'package:mg_read/features/profile/data/content_library_profile_reading_stats_loader.dart';
+import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
+import 'package:mg_read/features/library/domain/library_item_summary.dart';
 
 typedef SettingsDataRootResolver = Future<Directory> Function();
 typedef MgReadAppRunner = void Function(Widget app);
@@ -59,6 +48,12 @@ typedef AppDiagnosticsServiceFactory = Future<AppDiagnosticsService> Function(Di
 typedef ContentLibraryFactory =
     Future<ContentLibrary> Function(Directory dataRoot, DiagnosticsManager diagnostics, AppPersistence? persistence);
 typedef AppPersistenceFactory = Future<AppPersistence> Function(Directory dataRoot, DiagnosticsManager diagnostics);
+
+final class _UseDefaultDiagnosticsFactory {
+  const _UseDefaultDiagnosticsFactory();
+}
+
+const _useDefaultDiagnosticsFactory = _UseDefaultDiagnosticsFactory();
 
 /// Starts the Flutter host composition root.
 ///
@@ -71,7 +66,7 @@ Future<void> bootstrapMgReadApp({
   AppSettingsManager? settingsManager,
   AppDiagnosticsService? diagnosticsService,
   DiagnosticsManager? diagnosticsManager,
-  AppDiagnosticsServiceFactory? diagnosticsServiceFactory = _openDefaultDiagnostics,
+  Object? diagnosticsServiceFactory = _useDefaultDiagnosticsFactory,
   ContentLibrary? contentLibrary,
   ContentLibraryFactory? contentLibraryFactory = _openDefaultContentLibrary,
   AppPersistenceFactory? appPersistenceFactory = _openDefaultAppPersistence,
@@ -83,155 +78,185 @@ Future<void> bootstrapMgReadApp({
     throw ArgumentError('Provide diagnosticsService or diagnosticsManager, not both.');
   }
   WidgetsFlutterBinding.ensureInitialized();
-  // Do this before any application-support lookup or first-run database open.
-  // On Windows, both can take long enough on a cold profile that awaiting them
-  // first leaves the debugger connected but with no native Flutter window.
-  appRunner(const _BootstrapLoadingApp());
-  Directory? dataRoot;
-  if ((contentLibrary == null && contentLibraryFactory != null) ||
-      settingsManager == null ||
-      (diagnosticsService == null && diagnosticsManager == null && diagnosticsServiceFactory != null)) {
-    dataRoot = await dataRootResolver();
-  }
-  AppDiagnosticsService? persistentDiagnostics = diagnosticsService;
-  if (persistentDiagnostics == null && diagnosticsManager == null && diagnosticsServiceFactory != null) {
-    try {
-      persistentDiagnostics = await diagnosticsServiceFactory(dataRoot!);
-    } catch (_) {
-      stderr.writeln('[mg_read] diagnostics unavailable: diagnostics_open_failed');
-    }
-  }
+  // The real ProviderScope and MgReadApp are mounted exactly once before any
+  // application-support lookup or first-run database open.
+  Future<Directory>? dataRootFuture;
+  Future<Directory> resolveDataRoot() => dataRootFuture ??= dataRootResolver();
+  final deferredDiagnostics = DeferredDiagnosticEventSink(
+    minimumSeverity: kReleaseMode ? DiagnosticSeverity.warn : DiagnosticSeverity.debug,
+  );
   final diagnostics =
-      persistentDiagnostics?.manager ??
       diagnosticsManager ??
-      DiagnosticsManager(sink: const NoopDiagnosticEventSink(), registry: AppDiagnosticEvents.registry, source: DiagnosticSource.app);
+      diagnosticsService?.manager ??
+      DiagnosticsManager(
+        sink: diagnosticsService == null ? deferredDiagnostics : const NoopDiagnosticEventSink(),
+        registry: AppDiagnosticEvents.registry,
+        source: DiagnosticSource.app,
+      );
+  final diagnosticsPorts = DeferredDiagnosticsPorts();
+  if (diagnosticsService != null) diagnosticsPorts.attach(diagnosticsService);
   final fatalErrorReporter = AppFatalErrorReporter(diagnostics);
   final errorBoundary = AppDiagnosticsErrorBoundary.install(diagnostics, fatalReporter: fatalErrorReporter);
-  ContentLibrary? persistentContentLibrary = contentLibrary;
   AppPersistence? sharedPersistence;
+  AppDiagnosticsService? persistentDiagnostics = diagnosticsService;
   AppSettingsManager? manager = settingsManager;
+  manager ??= AppSettingsManager(
+    registry: AppSettingKeys.registry,
+    diagnostics: diagnostics,
+    storeFactory: () async {
+      final persistence = sharedPersistence;
+      if (persistence != null) {
+        return PersistentSettingsStore(
+          records: persistence.metadataRecords,
+          scope: const ScopeKey(kind: 'app', id: 'primary'),
+          registry: AppSettingKeys.registry,
+        );
+      }
+      return PersistentSettingsStore.open(
+        dataRoot: await resolveDataRoot(),
+        scope: const ScopeKey(kind: 'app', id: 'primary'),
+        registry: AppSettingKeys.registry,
+        diagnostics: diagnostics,
+      );
+    },
+  );
+  final resolvedManager = manager;
+  late final AppStartupController startup;
+  Future<AppDiagnosticsService?> openPersistentDiagnostics() async {
+    final existing = persistentDiagnostics;
+    if (existing != null) return existing;
+    if (diagnosticsManager != null || diagnosticsServiceFactory == null) {
+      return null;
+    }
+    try {
+      final root = await resolveDataRoot();
+      final usesDefaultFactory = identical(diagnosticsServiceFactory, _useDefaultDiagnosticsFactory);
+      final service = usesDefaultFactory
+          ? await _openDefaultDiagnostics(root, existingManager: diagnostics)
+          : await (diagnosticsServiceFactory as AppDiagnosticsServiceFactory)(root);
+      // The default service attaches the existing deferred manager while it
+      // opens. Only an injected factory owns a separate manager that still
+      // needs an explicit bridge here.
+      if (!usesDefaultFactory) {
+        await deferredDiagnostics.attach(service.manager.sink);
+      }
+      diagnosticsPorts.attach(service);
+      persistentDiagnostics = service;
+      startup.recordStage('diagnostics', resultState: 'ready');
+      return service;
+    } on Object {
+      await deferredDiagnostics.disable();
+      startup.recordStage('diagnostics', resultState: 'failure', errorCode: 'diagnostics_unavailable');
+      return null;
+    }
+  }
+
+  Future<AppStartupResources> openResources() async {
+    AppPersistence? attemptPersistence;
+    ContentLibrary? attemptLibrary = contentLibrary;
+    try {
+      if (attemptLibrary == null && contentLibraryFactory != null) {
+        if (appPersistenceFactory != null) {
+          attemptPersistence = await appPersistenceFactory(await resolveDataRoot(), diagnostics);
+          sharedPersistence = attemptPersistence;
+          startup.recordStage('persistence', resultState: 'ready');
+        }
+        attemptLibrary = await contentLibraryFactory(await resolveDataRoot(), diagnostics, attemptPersistence);
+        startup.recordStage('library', resultState: 'ready');
+      }
+      if (startup.attemptNumber > 1 && resolvedManager.state == SettingsState.failed) {
+        await resolvedManager.retryInitialization();
+      } else {
+        await resolvedManager.initialize();
+      }
+      if (resolvedManager.state != SettingsState.ready) {
+        throw StateError('settings_not_ready');
+      }
+      startup.recordStage('settings', resultState: 'ready');
+      return AppStartupResources(contentLibrary: attemptLibrary, persistence: attemptPersistence);
+    } on Object {
+      try {
+        await attemptLibrary?.close();
+      } catch (_) {}
+      try {
+        await attemptPersistence?.close();
+      } catch (_) {}
+      rethrow;
+    }
+  }
+
+  startup = AppStartupController(
+    openResources: openResources,
+    diagnostics: diagnostics,
+    diagnosticsServiceLoader: openPersistentDiagnostics,
+    ownsLoadingAnimation: true,
+  );
+  Future<ContentLibrary> getLibrary() => startup.contentLibrary;
+  startup.recordStage('composition', resultState: 'mounted');
+  // Do this before any application-support lookup and first-run database open.
+  appRunner(
+    ProviderScope(
+      overrides: [
+        appStartupControllerProvider.overrideWithValue(startup),
+        appSettingsProvider.overrideWithValue(resolvedManager),
+        diagnosticsManagerProvider.overrideWithValue(diagnostics),
+        fatalErrorReporterProvider.overrideWithValue(fatalErrorReporter),
+        diagnosticsQueryProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),
+        diagnosticsCaptureProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),
+        diagnosticsMaintenanceProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),
+        if (contentLibrary != null || contentLibraryFactory != null)
+          libraryOverviewLoaderProvider.overrideWithValue(DeferredLibraryOverviewLoader(startup)),
+        if (contentLibrary != null || contentLibraryFactory != null)
+          libraryBookRemoverProvider.overrideWithValue(DeferredLibraryBookRemover(getLibrary)),
+        if (contentLibrary != null || contentLibraryFactory != null)
+          libraryBookVisibilityChangerProvider.overrideWithValue(DeferredLibraryBookVisibilityChanger(getLibrary)),
+        if (contentLibrary != null || contentLibraryFactory != null)
+          libraryBookDetailLauncherProvider.overrideWithValue(DeferredLibraryBookDetailLauncher(getLibrary)),
+        if (contentLibrary != null || contentLibraryFactory != null)
+          profileReadingStatsLoaderProvider.overrideWithValue(DeferredProfileReadingStatsLoader(getLibrary)),
+        if (contentLibrary != null || contentLibraryFactory != null)
+          bookshelfMembershipLoaderProvider.overrideWithValue(DeferredBookshelfMembershipLoader(getLibrary)),
+        if (contentLibrary != null || contentLibraryFactory != null)
+          discoveryBookshelfSaverProvider.overrideWith((ref) {
+            final membership = ref.read(bookshelfMembershipProvider.notifier);
+            return DeferredDiscoveryBookshelfSaver(
+              getLibrary,
+              ref.read(sourceContentGatewayProvider),
+              diagnostics,
+              membership,
+              onMutationStarted: (mutation) => ref
+                  .read(libraryPageControllerProvider.notifier)
+                  .beginAddition(mutationId: mutation.id, provisionalItem: _summaryFromShelfRequest(mutation.id, mutation.request)),
+              onMutationCommitted: (mutation, item) =>
+                  ref.read(libraryPageControllerProvider.notifier).commitAddition(mutationId: mutation.id, durableItem: item),
+              onMutationFailed: (mutation) => ref.read(libraryPageControllerProvider.notifier).rollbackAddition(mutation.id),
+            );
+          }),
+        if (contentLibrary != null || contentLibraryFactory != null)
+          bookCoverBytesLoaderProvider.overrideWithValue(DeferredBookCoverBytesLoader(getLibrary)),
+        if (contentLibrary != null || contentLibraryFactory != null)
+          libraryReaderLauncherProvider.overrideWith(
+            (ref) => DeferredLibraryReaderLauncher(getLibrary, ref.read(sourceContentGatewayProvider), diagnostics),
+          ),
+      ],
+      child: AppSettingsLifecycleHost(
+        manager: resolvedManager,
+        diagnostics: diagnostics,
+        closeDiagnostics: null,
+        disposeDiagnosticsBoundary: errorBoundary.dispose,
+        disposeFatalErrorReporter: fatalErrorReporter.dispose,
+        closeContentLibrary: startup.close,
+        child: child,
+      ),
+    ),
+  );
   final bootstrapStopwatch = Stopwatch()..start();
   final bootstrapSpan = diagnostics.startSpan(
     AppDiagnosticEvents.bootstrap,
     attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{'stage': DiagnosticValue.string('composition')}),
   );
-  try {
-    if (persistentContentLibrary == null && contentLibraryFactory != null) {
-      if (appPersistenceFactory != null) {
-        sharedPersistence = await appPersistenceFactory(dataRoot!, diagnostics);
-      }
-      persistentContentLibrary = await contentLibraryFactory(dataRoot!, diagnostics, sharedPersistence);
-    }
-    manager ??= AppSettingsManager(
-      registry: AppSettingKeys.registry,
-      diagnostics: diagnostics,
-      storeFactory: () async {
-        final persistence = sharedPersistence;
-        if (persistence != null) {
-          return PersistentSettingsStore(
-            records: persistence.metadataRecords,
-            scope: const ScopeKey(kind: 'app', id: 'primary'),
-            registry: AppSettingKeys.registry,
-          );
-        }
-        return PersistentSettingsStore.open(
-          dataRoot: dataRoot!,
-          scope: const ScopeKey(kind: 'app', id: 'primary'),
-          registry: AppSettingKeys.registry,
-          diagnostics: diagnostics,
-        );
-      },
-    );
-    final resolvedManager = manager;
-    await resolvedManager.initialize();
-    ContentLibrarySourcePrefetcher? sourcePrefetcher;
-    appRunner(
-      ProviderScope(
-        overrides: [
-          appSettingsProvider.overrideWithValue(resolvedManager),
-          diagnosticsManagerProvider.overrideWithValue(diagnostics),
-          fatalErrorReporterProvider.overrideWithValue(fatalErrorReporter),
-          diagnosticsQueryProvider.overrideWithValue(persistentDiagnostics),
-          diagnosticsCaptureProvider.overrideWithValue(persistentDiagnostics),
-          diagnosticsMaintenanceProvider.overrideWithValue(persistentDiagnostics),
-          if (persistentContentLibrary != null)
-            libraryOverviewLoaderProvider.overrideWithValue(ContentLibraryOverviewLoader(persistentContentLibrary)),
-          if (persistentContentLibrary != null)
-            libraryBookRemoverProvider.overrideWithValue(ContentLibraryBookRemover(persistentContentLibrary)),
-          if (persistentContentLibrary != null)
-            libraryBookVisibilityChangerProvider.overrideWithValue(ContentLibraryBookVisibilityChanger(persistentContentLibrary)),
-          if (persistentContentLibrary != null)
-            libraryBookDetailLauncherProvider.overrideWithValue(ContentLibraryBookDetailLauncher(persistentContentLibrary)),
-          if (persistentContentLibrary != null)
-            profileReadingStatsLoaderProvider.overrideWithValue(ContentLibraryProfileReadingStatsLoader(persistentContentLibrary)),
-          if (persistentContentLibrary != null)
-            lanSyncGatewayProvider.overrideWith((ref) => MgReadLanSyncGateway(persistentContentLibrary!, PluginRuntime())),
-          if (persistentContentLibrary != null)
-            bookshelfMembershipLoaderProvider.overrideWithValue(ContentLibraryBookshelfMembershipLoader(persistentContentLibrary)),
-          if (persistentContentLibrary != null)
-            discoveryBookshelfSaverProvider.overrideWith((ref) {
-              final library = persistentContentLibrary!;
-              final membership = ref.read(bookshelfMembershipProvider.notifier);
-              return ContentLibraryDiscoveryBookshelfSaver(
-                library,
-                prefetcher: sourcePrefetcher ??= ContentLibrarySourcePrefetcher(
-                  library,
-                  ref.read(sourceContentGatewayProvider),
-                  diagnostics: diagnostics,
-                ),
-                membership: membership,
-                onMutationStarted: (mutation) {
-                  ref
-                      .read(libraryPageControllerProvider.notifier)
-                      .beginAddition(mutationId: mutation.id, provisionalItem: _summaryFromShelfRequest(mutation.id, mutation.request));
-                },
-                onMutationCommitted: (mutation, item) {
-                  membership.markAdded(pluginId: mutation.request.pluginId, title: item.title);
-                  ref
-                      .read(libraryPageControllerProvider.notifier)
-                      .commitAddition(mutationId: mutation.id, durableItem: _summaryFromLibraryItem(item));
-                },
-                onMutationFailed: (mutation) {
-                  ref.read(libraryPageControllerProvider.notifier).rollbackAddition(mutation.id);
-                },
-              );
-            }),
-          if (persistentContentLibrary != null)
-            bookCoverBytesLoaderProvider.overrideWithValue(ContentLibrarySourceCoverPersistence(persistentContentLibrary)),
-          if (persistentContentLibrary != null)
-            libraryReaderLauncherProvider.overrideWith(
-              (ref) => ContentLibrarySourceTextReader(
-                persistentContentLibrary!,
-                ref.read(sourceContentGatewayProvider),
-                sourcePrefetcher ??= ContentLibrarySourcePrefetcher(
-                  persistentContentLibrary,
-                  ref.read(sourceContentGatewayProvider),
-                  diagnostics: diagnostics,
-                ),
-              ),
-            ),
-        ],
-        child: AppSettingsLifecycleHost(
-          manager: resolvedManager,
-          diagnostics: diagnostics,
-          closeDiagnostics: persistentDiagnostics?.close ?? diagnostics.close,
-          disposeDiagnosticsBoundary: errorBoundary.dispose,
-          disposeFatalErrorReporter: fatalErrorReporter.dispose,
-          closeContentLibrary: persistentContentLibrary == null
-              ? null
-              : () => _closePersistenceResources(persistentContentLibrary!, sharedPersistence),
-          child: child,
-        ),
-      ),
-    );
-    final deferredDiagnostics = persistentDiagnostics;
-    if (deferredDiagnostics != null) {
-      // A large interrupted TXT history can require compaction. Diagnostics
-      // maintenance must never delay the now-ready application window.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        unawaited(_enforceDeferredDiagnosticsRetention(deferredDiagnostics));
-      });
-    }
+  await startup.start();
+  if (startup.state.isReady) {
     bootstrapSpan.complete(attributes: DiagnosticObjectValue(<String, DiagnosticValue>{'stage': DiagnosticValue.string('mounted')}));
     bootstrapStopwatch.stop();
     reportSlowDiagnostic(
@@ -243,7 +268,7 @@ Future<void> bootstrapMgReadApp({
       outcome: DiagnosticOutcome.success,
       traceContext: bootstrapSpan.traceContext,
     );
-  } catch (error, stackTrace) {
+  } else {
     bootstrapSpan.fail(
       attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
         'stage': DiagnosticValue.string('failed'),
@@ -260,13 +285,8 @@ Future<void> bootstrapMgReadApp({
       outcome: DiagnosticOutcome.error,
       traceContext: bootstrapSpan.traceContext,
     );
-    errorBoundary.dispose();
-    fatalErrorReporter.dispose();
-    await manager?.close();
-    await persistentContentLibrary?.close();
-    await sharedPersistence?.close();
-    await (persistentDiagnostics?.close() ?? diagnostics.close());
-    Error.throwWithStackTrace(error, stackTrace);
+    // Startup failures are rendered in-place by the mounted gate. Keep the
+    // process alive so the user can retry without replacing the container.
   }
 }
 
@@ -275,30 +295,22 @@ Future<Directory> _defaultSettingsDataRoot() async {
   return Directory('${support.path}${Platform.pathSeparator}persistence');
 }
 
-Future<AppDiagnosticsService> _openDefaultDiagnostics(Directory dataRoot) => AppDiagnosticsService.open(
-  dataRoot: dataRoot,
-  configuration: PersistentDiagnosticsConfiguration(
-    minimumSeverity: kReleaseMode ? DiagnosticSeverity.warn : DiagnosticSeverity.debug,
-    eventMirror: kReleaseMode ? null : _DebugConsoleEventMirror().add,
-  ),
-  buildMode: kReleaseMode
-      ? 'release'
-      : kProfileMode
-      ? 'profile'
-      : 'debug',
-  platform: Platform.operatingSystem,
-  deferStartupMaintenance: true,
-);
-
-/// Runs non-essential diagnostics cleanup after the application is visible.
-Future<void> _enforceDeferredDiagnosticsRetention(AppDiagnosticsService diagnostics) async {
-  try {
-    await diagnostics.enforceRetention(diagnostics.configuration.retentionPolicy);
-  } catch (_) {
-    // Diagnostics retention is fail-open: it must not surface as an app error
-    // or interfere with the already-mounted product UI.
-  }
-}
+Future<AppDiagnosticsService> _openDefaultDiagnostics(Directory dataRoot, {DiagnosticsManager? existingManager}) =>
+    AppDiagnosticsService.open(
+      dataRoot: dataRoot,
+      configuration: PersistentDiagnosticsConfiguration(
+        minimumSeverity: kReleaseMode ? DiagnosticSeverity.warn : DiagnosticSeverity.debug,
+        eventMirror: kReleaseMode ? null : _DebugConsoleEventMirror().add,
+      ),
+      buildMode: kReleaseMode
+          ? 'release'
+          : kProfileMode
+          ? 'profile'
+          : 'debug',
+      platform: Platform.operatingSystem,
+      deferStartupMaintenance: true,
+      existingManager: existingManager,
+    );
 
 /// Bounded, best-effort developer-console output outside the app log queue.
 ///
@@ -359,11 +371,6 @@ Future<AppPersistence> _openDefaultAppPersistence(Directory dataRoot, Diagnostic
   diagnostics: diagnostics,
 );
 
-Future<void> _closePersistenceResources(ContentLibrary contentLibrary, AppPersistence? sharedPersistence) async {
-  await contentLibrary.close();
-  await sharedPersistence?.close();
-}
-
 LibraryItemSummary _summaryFromShelfRequest(String mutationId, BookshelfAddRequest request) => LibraryItemSummary(
   id: 'pending-shelf:$mutationId',
   title: request.title,
@@ -371,24 +378,3 @@ LibraryItemSummary _summaryFromShelfRequest(String mutationId, BookshelfAddReque
   coverUrl: request.coverUrl,
   sourceName: request.sourceName,
 );
-
-LibraryItemSummary _summaryFromLibraryItem(LibraryItem item) =>
-    LibraryItemSummary(id: item.id.value, title: item.title, author: item.author, coverUrl: item.coverUrl, sourceName: item.sourceName);
-
-/// Minimal first-frame surface with no persistence, provider, or Runtime use.
-///
-/// It is intentionally replaced by the fully composed application once the
-/// background startup Future completes.
-final class _BootstrapLoadingApp extends StatelessWidget {
-  const _BootstrapLoadingApp();
-
-  @override
-  Widget build(BuildContext context) => const MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: Scaffold(
-      body: Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[CircularProgressIndicator(), SizedBox(height: 16), Text('正在启动…')]),
-      ),
-    ),
-  );
-}

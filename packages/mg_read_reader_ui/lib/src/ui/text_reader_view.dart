@@ -227,11 +227,16 @@ class _TextReaderViewState extends State<TextReaderView>
   int _contentEpoch = 0;
   bool _currentPaginationComplete = false;
   int _adjacentPreparationGeneration = 0;
+  int _adjacentLayoutGeneration = 0;
   int _adjacentOperationId = 0;
   int _chapterTransitionOperationId = 0;
   bool _adjacentPreparationActive = false;
   int _adjacentActiveOperation = 0;
   Stopwatch? _adjacentPreparationStopwatch;
+  _AdjacentPreparationTarget? _adjacentPreparationTarget;
+  _AdjacentPreparationTarget? _adjacentSuppressedTarget;
+  _AdjacentPreparationStage _adjacentPreparationStage =
+      _AdjacentPreparationStage.pending;
   int? _pendingChapterTransitionOperation;
   Stopwatch? _chapterTransitionStopwatch;
   int _progressiveParagraphCursor = 0;

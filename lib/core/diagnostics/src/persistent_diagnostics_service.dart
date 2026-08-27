@@ -1,7 +1,6 @@
 part of 'persistent_diagnostics.dart';
 
-final class AppDiagnosticsService
-    implements DiagnosticsQuery, DiagnosticsCapture, DiagnosticsMaintenance {
+final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCapture, DiagnosticsMaintenance {
   AppDiagnosticsService._({
     required this.manager,
     required this._sink,
@@ -31,8 +30,7 @@ final class AppDiagnosticsService
 
   static Future<AppDiagnosticsService> open({
     required Directory dataRoot,
-    PersistentDiagnosticsConfiguration configuration =
-        const PersistentDiagnosticsConfiguration(),
+    PersistentDiagnosticsConfiguration configuration = const PersistentDiagnosticsConfiguration(),
     DiagnosticIdGenerator? idGenerator,
     DiagnosticClock? clock,
     DiagnosticEventRegistry? registry,
@@ -40,11 +38,26 @@ final class AppDiagnosticsService
     String buildMode = 'debug',
     String platform = 'unknown',
     bool deferStartupMaintenance = false,
+    DiagnosticsManager? existingManager,
   }) async {
     configuration.validate();
-    final ids = idGenerator ?? SecureDiagnosticIdGenerator();
-    final effectiveClock = clock ?? const SystemDiagnosticClock();
-    final sourceRunId = ids.nextId('run');
+    final manager = existingManager;
+    if (manager != null) {
+      if (manager.source != DiagnosticSource.app) {
+        throw ArgumentError.value(manager.source, 'existingManager', 'The persistent app diagnostics service needs an app manager.');
+      }
+      if (manager.isClosed) {
+        throw StateError('The existing diagnostics manager is closed.');
+      }
+      if (manager.sink is! DeferredDiagnosticEventSink) {
+        throw ArgumentError('existingManager must use DeferredDiagnosticEventSink.');
+      }
+    }
+    final ids = manager?.idGenerator ?? idGenerator ?? SecureDiagnosticIdGenerator();
+    final effectiveClock = manager?.clock ?? clock ?? const SystemDiagnosticClock();
+    final sourceRunId = manager?.sourceRunId ?? ids.nextId('run');
+    final effectiveBuildMode = manager?.buildMode ?? buildMode;
+    final effectivePlatform = manager?.platform ?? platform;
     final persistence = await DiagnosticsPersistence.open(
       dataRoot: dataRoot,
       clock: effectiveClock.nowUtc,
@@ -62,30 +75,32 @@ final class AppDiagnosticsService
       regularSessionMaxBytes: configuration.retentionPolicy.regularEventBytes,
       regularSessionAge: configuration.retentionPolicy.regularEventAge,
     );
-    final sink = _PersistentDiagnosticEventSink(
-      persistence: persistence,
-      configuration: configuration,
-    );
-    final manager = DiagnosticsManager(
-      sink: sink,
-      registry: registry ?? AppDiagnosticEvents.registry,
-      source: DiagnosticSource.app,
-      privacyPolicy: privacyPolicy,
-      idGenerator: ids,
-      clock: effectiveClock,
-      sourceRunId: sourceRunId,
-      buildMode: buildMode,
-      platform: platform,
-    );
-    final runSpan = manager.startSpan(
+    final sink = _PersistentDiagnosticEventSink(persistence: persistence, configuration: configuration);
+    final resolvedManager =
+        manager ??
+        DiagnosticsManager(
+          sink: sink,
+          registry: registry ?? AppDiagnosticEvents.registry,
+          source: DiagnosticSource.app,
+          privacyPolicy: privacyPolicy,
+          idGenerator: ids,
+          clock: effectiveClock,
+          sourceRunId: sourceRunId,
+          buildMode: buildMode,
+          platform: platform,
+        );
+    if (manager != null) {
+      await (manager.sink as DeferredDiagnosticEventSink).attach(sink);
+    }
+    final runSpan = resolvedManager.startSpan(
       AppDiagnosticEvents.diagnosticsRun,
       attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-        'buildMode': DiagnosticValue.string(buildMode),
-        'platform': DiagnosticValue.string(platform),
+        'buildMode': DiagnosticValue.string(effectiveBuildMode),
+        'platform': DiagnosticValue.string(effectivePlatform),
       }),
     );
     final service = AppDiagnosticsService._(
-      manager: manager,
+      manager: resolvedManager,
       sink: sink,
       persistence: persistence,
       configuration: configuration,
@@ -96,7 +111,7 @@ final class AppDiagnosticsService
     sink.activeSessionResolver = service._activeSessionForEvent;
     sink.captureEnabledResolver = service._isCaptureEnabledForComponent;
     sink.dropReporter = service._reportDrops;
-    manager.emit(
+    resolvedManager.emit(
       AppDiagnosticEvents.writerState,
       attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
         'state': DiagnosticValue.string('ready'),
@@ -114,11 +129,7 @@ final class AppDiagnosticsService
     int limit = 100,
   }) async {
     await _sink.flush(timeout: const Duration(milliseconds: 500));
-    return _persistence.listSessions(
-      filter: filter,
-      cursor: cursor,
-      limit: limit,
-    );
+    return _persistence.listSessions(filter: filter, cursor: cursor, limit: limit);
   }
 
   @override
@@ -128,11 +139,7 @@ final class AppDiagnosticsService
     int limit = 100,
   }) async {
     await _sink.flush(timeout: const Duration(milliseconds: 500));
-    return _persistence.listEvents(
-      filter: filter,
-      cursor: cursor,
-      limit: limit,
-    );
+    return _persistence.listEvents(filter: filter, cursor: cursor, limit: limit);
   }
 
   @override
@@ -142,15 +149,11 @@ final class AppDiagnosticsService
   }
 
   @override
-  Future<List<DiagnosticAttachmentDescriptor>> listAttachments(
-    String eventId,
-  ) => _persistence.listAttachments(eventId);
+  Future<List<DiagnosticAttachmentDescriptor>> listAttachments(String eventId) => _persistence.listAttachments(eventId);
 
   @override
-  Stream<List<int>> openAttachment(
-    String attachmentId, {
-    DiagnosticByteRange? range,
-  }) => _persistence.openAttachment(attachmentId, range: range);
+  Stream<List<int>> openAttachment(String attachmentId, {DiagnosticByteRange? range}) =>
+      _persistence.openAttachment(attachmentId, range: range);
 
   @override
   Future<DiagnosticPage<DiagnosticStructuredNode>> listStructuredNodes(
@@ -159,43 +162,25 @@ final class AppDiagnosticsService
     DiagnosticCursor? cursor,
     int limit = 100,
   }) {
-    throw UnsupportedError(
-      'Structured attachment paging is delivered with the diagnostics viewer.',
-    );
+    throw UnsupportedError('Structured attachment paging is delivered with the diagnostics viewer.');
   }
 
   @override
   Future<DiagnosticSession> startCapture(DiagnosticCapturePolicy policy) async {
     _ensureOpen();
-    final span = manager.startSpan(
-      AppDiagnosticEvents.capture,
-      attributes: () => _captureAttributes(policy, sessionState: 'starting'),
-    );
+    final span = manager.startSpan(AppDiagnosticEvents.capture, attributes: () => _captureAttributes(policy, sessionState: 'starting'));
     try {
       if (policy.payloadKind == DiagnosticPayloadKind.restrictedRaw) {
-        throw UnsupportedError(
-          'restrictedRaw requires the separately approved encrypted D5 store.',
-        );
+        throw UnsupportedError('restrictedRaw requires the separately approved encrypted D5 store.');
       }
       if (_activeCapture != null) {
-        throw StateError(
-          'Only one explicit app capture session may be active.',
-        );
+        throw StateError('Only one explicit app capture session may be active.');
       }
       final sessionId = _idGenerator.nextId('capture');
       if (policy.maxStoredBytes > configuration.retentionPolicy.captureBytes) {
-        throw RangeError.range(
-          policy.maxStoredBytes,
-          1,
-          configuration.retentionPolicy.captureBytes,
-          'policy.maxStoredBytes',
-        );
+        throw RangeError.range(policy.maxStoredBytes, 1, configuration.retentionPolicy.captureBytes, 'policy.maxStoredBytes');
       }
-      await _persistence.createCaptureSession(
-        sessionId: sessionId,
-        sourceRunId: sourceRunId,
-        policy: policy,
-      );
+      await _persistence.createCaptureSession(sessionId: sessionId, sourceRunId: sourceRunId, policy: policy);
       _activeCapture = await _persistence.getCaptureSession(sessionId);
       _captureSpan = span;
       _captureExpiryTimer = Timer(policy.duration, () {
@@ -204,11 +189,7 @@ final class AppDiagnosticsService
       return _activeCapture!.session;
     } catch (error, stackTrace) {
       span.fail(
-        attributes: _captureAttributes(
-          policy,
-          sessionState: 'failed',
-          errorCode: _captureErrorCode(error),
-        ),
+        attributes: _captureAttributes(policy, sessionState: 'failed', errorCode: _captureErrorCode(error)),
       );
       Error.throwWithStackTrace(error, stackTrace);
     }
@@ -225,11 +206,7 @@ final class AppDiagnosticsService
         _captureExpiryTimer = null;
         _activeCapture = null;
         if (_captureSpan case final span? when !span.isEnded) {
-          span.complete(
-            attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-              'sessionState': DiagnosticValue.string('ended'),
-            }),
-          );
+          span.complete(attributes: DiagnosticObjectValue(<String, DiagnosticValue>{'sessionState': DiagnosticValue.string('ended')}));
         }
         _captureSpan = null;
       }
@@ -319,8 +296,7 @@ final class AppDiagnosticsService
         'captureState': DiagnosticValue.string(result.captureState.name),
         'rawBytes': DiagnosticValue.int64(result.rawByteLength),
         'storedBytes': DiagnosticValue.int64(result.storedByteLength),
-        if (result.captureState == DiagnosticCaptureState.failed)
-          'errorCode': DiagnosticValue.string('attachment_failed'),
+        if (result.captureState == DiagnosticCaptureState.failed) 'errorCode': DiagnosticValue.string('attachment_failed'),
       });
       if (result.captureState == DiagnosticCaptureState.failed) {
         span.fail(attributes: attributes);
@@ -357,9 +333,7 @@ final class AppDiagnosticsService
     await _sink.flush(timeout: configuration.defaultFlushTimeout);
     final event = await _persistence.getEvent(eventId);
     if (event == null) throw StateError('Diagnostic event does not exist.');
-    final session = await _persistence.getCaptureSession(
-      event.captureSessionId!,
-    );
+    final session = await _persistence.getCaptureSession(event.captureSessionId!);
     final attachmentId = _idGenerator.nextId('attachment');
     String? blockedReason;
     if (session == null || session.isDefault) {
@@ -372,8 +346,7 @@ final class AppDiagnosticsService
       blockedReason = 'restrictedRawUnsupported';
     } else if (!_isTextDiagnosticMediaType(mediaType)) {
       blockedReason = 'textDetailsOnly';
-    } else if (privacyClass == DiagnosticPrivacyClass.content &&
-        session.session.payloadKind == DiagnosticPayloadKind.metadataOnly) {
+    } else if (privacyClass == DiagnosticPrivacyClass.content && session.session.payloadKind == DiagnosticPayloadKind.metadataOnly) {
       blockedReason = 'payloadModeBlocked';
     } else if (privacyClass == DiagnosticPrivacyClass.content &&
         session.session.payloadKind == DiagnosticPayloadKind.safeStructured &&
@@ -399,20 +372,12 @@ final class AppDiagnosticsService
         storedByteLength: 0,
         truncationReason: blockedReason,
       );
-      return _persistence.commitAttachment(
-        descriptor: descriptor,
-        objectKey: null,
-      );
+      return _persistence.commitAttachment(descriptor: descriptor, objectKey: null);
     }
-    final maxBytes = min(
-      configuration.retentionPolicy.singleAttachmentBytes,
-      session!.remainingBytes,
-    );
+    final maxBytes = min(configuration.retentionPolicy.singleAttachmentBytes, session!.remainingBytes);
     try {
       final statistics = await _persistence.getStatistics();
-      final globalRemaining =
-          configuration.retentionPolicy.globalHardBytes -
-          statistics.logicalStoredBytes;
+      final globalRemaining = configuration.retentionPolicy.globalHardBytes - statistics.logicalStoredBytes;
       if (globalRemaining <= 0) {
         final descriptor = _descriptor(
           attachmentId: attachmentId,
@@ -430,10 +395,7 @@ final class AppDiagnosticsService
           storedByteLength: 0,
           truncationReason: 'globalDiagnosticsQuota',
         );
-        return _persistence.commitAttachment(
-          descriptor: descriptor,
-          objectKey: null,
-        );
+        return await _persistence.commitAttachment(descriptor: descriptor, objectKey: null);
       }
       final effectiveMaxBytes = min(maxBytes, globalRemaining);
       final commit = await _persistence.detailStore.write(
@@ -442,8 +404,7 @@ final class AppDiagnosticsService
         bytes: bytes,
         maxStoredBytes: effectiveMaxBytes,
         maxDuration: configuration.attachmentWriteTimeout,
-        persistToText:
-            session.detailStorage == DiagnosticDetailStorage.persistToText,
+        persistToText: session.detailStorage == DiagnosticDetailStorage.persistToText,
       );
       final descriptor = _descriptor(
         attachmentId: attachmentId,
@@ -467,9 +428,7 @@ final class AppDiagnosticsService
         objectKey: commit.detailKey.isEmpty ? null : commit.detailKey,
         persisted: commit.persisted,
       );
-      _activeCapture = await _persistence.getCaptureSession(
-        session.session.sessionId,
-      );
+      _activeCapture = await _persistence.getCaptureSession(session.session.sessionId);
       return stored;
     } catch (_) {
       final descriptor = _descriptor(
@@ -489,10 +448,7 @@ final class AppDiagnosticsService
         truncationReason: 'detailTextWriteFailed',
       );
       try {
-        return await _persistence.commitAttachment(
-          descriptor: descriptor,
-          objectKey: null,
-        );
+        return await _persistence.commitAttachment(descriptor: descriptor, objectKey: null);
       } catch (_) {
         return descriptor;
       }
@@ -500,23 +456,18 @@ final class AppDiagnosticsService
   }
 
   @override
-  Future<DiagnosticMaintenanceResult> enforceRetention(
-    DiagnosticRetentionPolicy policy,
-  ) => manager.runSpan<DiagnosticMaintenanceResult>(
+  Future<DiagnosticMaintenanceResult> enforceRetention(DiagnosticRetentionPolicy policy) => manager.runSpan<DiagnosticMaintenanceResult>(
     AppDiagnosticEvents.retention,
     (_) async {
       await _sink.flush(timeout: configuration.defaultFlushTimeout);
       return _persistence.enforceRetention(policy);
     },
-    successAttributes: (result) =>
-        DiagnosticObjectValue(<String, DiagnosticValue>{
-          'sessionCount': DiagnosticValue.int64(result.deletedSessions),
-          'eventCount': DiagnosticValue.int64(result.deletedEvents),
-          'reclaimedBytes': DiagnosticValue.int64(result.reclaimedBytes),
-        }),
-    errorAttributes: (_) => DiagnosticObjectValue(<String, DiagnosticValue>{
-      'errorCode': DiagnosticValue.string('retention_failed'),
+    successAttributes: (result) => DiagnosticObjectValue(<String, DiagnosticValue>{
+      'sessionCount': DiagnosticValue.int64(result.deletedSessions),
+      'eventCount': DiagnosticValue.int64(result.deletedEvents),
+      'reclaimedBytes': DiagnosticValue.int64(result.reclaimedBytes),
     }),
+    errorAttributes: (_) => DiagnosticObjectValue(<String, DiagnosticValue>{'errorCode': DiagnosticValue.string('retention_failed')}),
   );
 
   @override
@@ -525,13 +476,8 @@ final class AppDiagnosticsService
   }
 
   @override
-  Future<DiagnosticExportResult> exportBundle({
-    required DiagnosticExportSelection selection,
-    required DiagnosticExportPolicy policy,
-  }) {
-    throw UnsupportedError(
-      'Bundle export is delivered with the diagnostics viewer package.',
-    );
+  Future<DiagnosticExportResult> exportBundle({required DiagnosticExportSelection selection, required DiagnosticExportPolicy policy}) {
+    throw UnsupportedError('Bundle export is delivered with the diagnostics viewer package.');
   }
 
   Future<DiagnosticStorageStatistics> getStatistics() async {
@@ -549,11 +495,7 @@ final class AppDiagnosticsService
       await _persistence.stopCaptureSession(capture.session.sessionId);
       _activeCapture = null;
       if (_captureSpan case final span? when !span.isEnded) {
-        span.complete(
-          attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-            'sessionState': DiagnosticValue.string('closed'),
-          }),
-        );
+        span.complete(attributes: DiagnosticObjectValue(<String, DiagnosticValue>{'sessionState': DiagnosticValue.string('closed')}));
       }
       _captureSpan = null;
     }
@@ -564,15 +506,11 @@ final class AppDiagnosticsService
         'queueDepth': DiagnosticValue.int64(_sink.statistics.queueDepth),
         'queueBytes': DiagnosticValue.int64(_sink.statistics.queueBytes),
         'batchSize': DiagnosticValue.int64(_sink.statistics.lastBatchSize),
-        'commitMicros': DiagnosticValue.int64(
-          _sink.statistics.lastCommitMicros,
-        ),
+        'commitMicros': DiagnosticValue.int64(_sink.statistics.lastCommitMicros),
       }),
     );
     try {
-      await _attachmentWriteTail.timeout(
-        configuration.attachmentWriteTimeout + const Duration(seconds: 1),
-      );
+      await _attachmentWriteTail.timeout(configuration.attachmentWriteTimeout + const Duration(seconds: 1));
     } on TimeoutException {
       // The object writer has its own deadline; shutdown stays fail-open.
     }
@@ -586,19 +524,15 @@ final class AppDiagnosticsService
 
   String? _activeSessionForEvent(DiagnosticEvent event) {
     final capture = _activeCapture;
-    if (capture == null ||
-        capture.session.state != DiagnosticSessionState.active ||
-        capture.remainingBytes <= 0) {
+    if (capture == null || capture.session.state != DiagnosticSessionState.active || capture.remainingBytes <= 0) {
       return null;
     }
-    if (capture.components.isNotEmpty &&
-        !capture.components.contains(event.component)) {
+    if (capture.components.isNotEmpty && !capture.components.contains(event.component)) {
       return null;
     }
     if (capture.origins.isNotEmpty) {
       final origin = event.attributes.values['origin'];
-      if (origin is! DiagnosticStringValue ||
-          !capture.origins.contains(origin.value)) {
+      if (origin is! DiagnosticStringValue || !capture.origins.contains(origin.value)) {
         return null;
       }
     }
@@ -607,9 +541,7 @@ final class AppDiagnosticsService
 
   bool _isCaptureEnabledForComponent(String component) {
     final capture = _activeCapture;
-    if (capture == null ||
-        capture.session.state != DiagnosticSessionState.active ||
-        capture.remainingBytes <= 0) {
+    if (capture == null || capture.session.state != DiagnosticSessionState.active || capture.remainingBytes <= 0) {
       return false;
     }
     return capture.components.isEmpty || capture.components.contains(component);
@@ -670,20 +602,17 @@ final class AppDiagnosticsService
   }
 }
 
-DiagnosticObjectValue _captureAttributes(
-  DiagnosticCapturePolicy policy, {
-  required String sessionState,
-  String? errorCode,
-}) => DiagnosticObjectValue(<String, DiagnosticValue>{
-  'payloadKind': DiagnosticValue.string(policy.payloadKind.name),
-  'durationMicros': DiagnosticValue.int64(policy.duration.inMicroseconds),
-  'maxBytes': DiagnosticValue.int64(policy.maxStoredBytes),
-  'detailStorage': DiagnosticValue.string(policy.detailStorage.name),
-  'componentCount': DiagnosticValue.int64(policy.components.length),
-  'originCount': DiagnosticValue.int64(policy.origins.length),
-  'sessionState': DiagnosticValue.string(sessionState),
-  if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
-});
+DiagnosticObjectValue _captureAttributes(DiagnosticCapturePolicy policy, {required String sessionState, String? errorCode}) =>
+    DiagnosticObjectValue(<String, DiagnosticValue>{
+      'payloadKind': DiagnosticValue.string(policy.payloadKind.name),
+      'durationMicros': DiagnosticValue.int64(policy.duration.inMicroseconds),
+      'maxBytes': DiagnosticValue.int64(policy.maxStoredBytes),
+      'detailStorage': DiagnosticValue.string(policy.detailStorage.name),
+      'componentCount': DiagnosticValue.int64(policy.components.length),
+      'originCount': DiagnosticValue.int64(policy.origins.length),
+      'sessionState': DiagnosticValue.string(sessionState),
+      if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
+    });
 
 String _captureErrorCode(Object error) => switch (error) {
   UnsupportedError() => 'capture_mode_unsupported',

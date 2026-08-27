@@ -17,8 +17,10 @@ final class TransientSourceTextReader {
     required this.detail,
     required PluginChaptersResult catalog,
     required SourceChapterContentLoader loadChapterContent,
+    List<int>? entryCoverBytes,
     String? bookId,
-  }) : _dataSource = _TransientSourceTextReaderDataSource(
+  }) : _entryCoverBytes = entryCoverBytes ?? detail.summary.coverBytes,
+       _dataSource = _TransientSourceTextReaderDataSource(
          detail: detail,
          catalog: catalog,
          loadChapterContent: loadChapterContent,
@@ -27,6 +29,7 @@ final class TransientSourceTextReader {
 
   /// Typed source metadata returned by the Runtime Facade.
   final PluginContentDetail detail;
+  final List<int>? _entryCoverBytes;
 
   final _TransientSourceTextReaderDataSource _dataSource;
 
@@ -47,6 +50,7 @@ final class TransientSourceTextReader {
     }
     return ReaderLaunchRequest(
       bookId: _dataSource.bookId,
+      entryCoverBytes: _entryCoverBytes,
       dataSource: _dataSource,
       stateStore:
           stateStore ??

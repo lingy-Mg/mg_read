@@ -14,21 +14,30 @@ part of 'app_persistence.dart';
 
 /// Files are staged then atomically renamed under an app-private relative path.
 final class FileObjectStore {
-  FileObjectStore._(this._root, this._diagnostics);
+  FileObjectStore._(this._root, this._diagnostics, this._touchFileMtime);
 
   static final RegExp _coverKeyPattern = RegExp(r'^[a-f0-9]{64}$');
+  static const int _maximumPendingGlobalCoverTouches = 32;
 
   final Directory _root;
   final DiagnosticsManager? _diagnostics;
+  final Future<void> Function(File file, DateTime modified) _touchFileMtime;
   final _StoreLifecycleGate _lifecycle = _StoreLifecycleGate();
   Future<Map<String, _GlobalCoverFile>>? _globalCoverFilesFuture;
+  final Map<String, Future<void>> _pendingGlobalCoverTouches = <String, Future<void>>{};
 
   bool get usesBackgroundExecutor => true;
 
-  static Future<FileObjectStore> open(Directory root, {DiagnosticsManager? diagnostics}) async {
+  static Future<FileObjectStore> open(
+    Directory root, {
+    DiagnosticsManager? diagnostics,
+
+    /// Test-only seam for gating and observing non-blocking LRU touches.
+    Future<void> Function(File file, DateTime modified)? touchFileMtime,
+  }) async {
     final files = Directory('${root.path}${Platform.pathSeparator}files${Platform.pathSeparator}content-assets');
     await files.create(recursive: true);
-    return FileObjectStore._(files, diagnostics);
+    return FileObjectStore._(files, diagnostics, touchFileMtime ?? _setFileMtime);
   }
 
   Future<StoredFileObject> commitBytes({
@@ -71,7 +80,8 @@ final class FileObjectStore {
   Future<List<int>?> readCoverBytes(String itemId) =>
       _instrument(operation: 'readCoverBytes', recordKind: 'bookshelfCover', count: 1, action: () => _readCoverBytes(itemId));
 
-  /// Reads and touches a global cover for LRU purposes.
+  /// Reads a global cover and schedules its LRU touch without waiting for the
+  /// filesystem mtime update.
   Future<List<int>?> readGlobalCoverBytes(String coverKey) =>
       _instrument(operation: 'readGlobalCoverBytes', recordKind: 'globalCover', count: 1, action: () => _readGlobalCoverBytes(coverKey));
 
@@ -185,13 +195,42 @@ final class FileObjectStore {
       return null;
     }
     final bytes = await file.readAsBytes();
-    final modified = DateTime.now();
-    await file.setLastModified(modified);
-    final indexedFiles = _globalCoverFilesFuture;
-    if (indexedFiles != null) {
-      (await indexedFiles)[coverKey] = _GlobalCoverFile(file: file, length: bytes.length, modified: modified);
-    }
+    _scheduleGlobalCoverTouch(coverKey, file, bytes.length);
     return bytes;
+  }
+
+  void _scheduleGlobalCoverTouch(String coverKey, File file, int length) {
+    if (_pendingGlobalCoverTouches.containsKey(coverKey)) return;
+    if (_pendingGlobalCoverTouches.length >= _maximumPendingGlobalCoverTouches) {
+      return;
+    }
+    final touch = _touchGlobalCover(coverKey, file, length);
+    _pendingGlobalCoverTouches[coverKey] = touch;
+    unawaited(
+      touch.whenComplete(() {
+        if (identical(_pendingGlobalCoverTouches[coverKey], touch)) {
+          _pendingGlobalCoverTouches.remove(coverKey);
+        }
+      }),
+    );
+  }
+
+  Future<void> _touchGlobalCover(String coverKey, File file, int length) async {
+    try {
+      final modified = DateTime.now();
+      await _touchFileMtime(file, modified);
+      final indexedFiles = _globalCoverFilesFuture;
+      if (indexedFiles == null) return;
+      final files = await indexedFiles;
+      if (!await file.exists()) {
+        files.remove(coverKey);
+        return;
+      }
+      files[coverKey] = _GlobalCoverFile(file: file, length: length, modified: modified);
+    } catch (_) {
+      // LRU metadata is best effort and must never make a valid cover read
+      // fail. A later scan or commit repairs the in-memory index if needed.
+    }
   }
 
   Future<void> _deleteCover(String itemId) async {
@@ -301,6 +340,8 @@ final class FileObjectStore {
     });
   }
 }
+
+Future<void> _setFileMtime(File file, DateTime modified) => file.setLastModified(modified);
 
 final class StoredFileObject {
   const StoredFileObject({required this.assetId, required this.relativePath, required this.byteLength, required this.mimeType});

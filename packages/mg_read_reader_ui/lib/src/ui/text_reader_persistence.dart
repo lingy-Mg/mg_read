@@ -2,6 +2,7 @@ part of 'text_reader_view.dart';
 
 // ignore_for_file: invalid_use_of_protected_member
 
+/// 生命周期恢复只触发相邻准备 reconcile，不在后台执行预排。
 extension _TextReaderPersistence on _TextReaderViewState {
   void _scheduleProgressSave({bool immediate = false}) {
     _saveTimer?.cancel();
@@ -219,7 +220,7 @@ extension _TextReaderPersistence on _TextReaderViewState {
     } else {
       unawaited(_syncAwake());
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_disposed) _scheduleAdjacentPreparation();
+        if (!_disposed) _reconcileAdjacentPreparation();
       });
     }
     final ReaderObserver observer = _observer;

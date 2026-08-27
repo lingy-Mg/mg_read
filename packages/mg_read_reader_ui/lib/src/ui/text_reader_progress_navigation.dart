@@ -3,6 +3,7 @@ part of 'text_reader_view.dart';
 // ignore_for_file: invalid_use_of_protected_member
 
 /// 处理横向页面变化后的语义进度、边界恢复和短时提示。
+/// 横向页变化同时是相邻准备失败后的显式恢复触发点。
 extension _TextReaderProgressNavigation on _TextReaderViewState {
   void _showNotice(String message) {
     _noticeTimer?.cancel();
@@ -18,6 +19,7 @@ extension _TextReaderProgressNavigation on _TextReaderViewState {
         rawIndex > 0 &&
         rawIndex < _pages.length + 1) {
       _pageIndex = rawIndex - 1;
+      _reconcileAdjacentPreparation();
       if (mounted) setState(() {});
       return;
     }
@@ -31,6 +33,7 @@ extension _TextReaderProgressNavigation on _TextReaderViewState {
     }
     _pageIndex = rawIndex - 1;
     _updateProgressFromPage();
+    _reconcileAdjacentPreparation();
     if (mounted) setState(() {});
   }
 

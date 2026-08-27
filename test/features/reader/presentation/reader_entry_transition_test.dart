@@ -34,19 +34,27 @@ void main() {
     expect(find.text('正在准备正文'), findsNothing);
   });
 
-  testWidgets('keeps a quiet accessible carrier while text is still loading', (WidgetTester tester) async {
+  testWidgets('keeps the supplied cover visible while text is still loading', (WidgetTester tester) async {
     final _ControlledDataSource dataSource = _ControlledDataSource();
     final _RecordingObserver observer = _RecordingObserver();
     await tester.pumpWidget(_readerApp(_request(dataSource: dataSource, observer: observer)));
     await tester.pump(const Duration(milliseconds: 480));
 
-    expect(find.byKey(const Key('reader-entry-status')), findsOneWidget);
+    expect(find.byKey(const Key('reader-entry-status')), findsNothing);
     expect(find.textContaining('第一章正文'), findsNothing);
 
     await tester.tap(find.byKey(const Key('reader-entry-back')));
     await tester.pump();
     expect(observer.exitRequests, 1);
     dataSource.complete();
+  });
+
+  testWidgets('renders the entry cover from local bytes without network loading', (WidgetTester tester) async {
+    await tester.pumpWidget(_readerApp(_request(dataSource: _ControlledDataSource(), coverBytes: _onePixelPng)));
+    await tester.pump();
+
+    expect(find.byWidgetPredicate((Widget widget) => widget is Image && widget.image is MemoryImage), findsOneWidget);
+    expect(find.byKey(const Key('reader-entry-status')), findsNothing);
   });
 
   testWidgets('keeps initial failures in the carrier and retries the reader', (WidgetTester tester) async {
@@ -92,8 +100,87 @@ Future<void> _pumpReader(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 220));
 }
 
-ReaderLaunchRequest _request({required TextReaderDataSource dataSource, ReaderObserver? observer}) =>
-    ReaderLaunchRequest(bookId: 'reader-entry-test-book', dataSource: dataSource, stateStore: const _StateStore(), observer: observer);
+ReaderLaunchRequest _request({required TextReaderDataSource dataSource, ReaderObserver? observer, List<int>? coverBytes}) =>
+    ReaderLaunchRequest(
+      bookId: 'reader-entry-test-book',
+      dataSource: dataSource,
+      stateStore: const _StateStore(),
+      observer: observer,
+      entryCoverBytes: coverBytes,
+    );
+
+const List<int> _onePixelPng = <int>[
+  137,
+  80,
+  78,
+  71,
+  13,
+  10,
+  26,
+  10,
+  0,
+  0,
+  0,
+  13,
+  73,
+  72,
+  68,
+  82,
+  0,
+  0,
+  0,
+  1,
+  0,
+  0,
+  0,
+  1,
+  8,
+  6,
+  0,
+  0,
+  0,
+  31,
+  21,
+  196,
+  137,
+  0,
+  0,
+  0,
+  13,
+  73,
+  68,
+  65,
+  84,
+  120,
+  156,
+  99,
+  248,
+  207,
+  192,
+  240,
+  31,
+  0,
+  5,
+  0,
+  1,
+  255,
+  137,
+  153,
+  61,
+  29,
+  0,
+  0,
+  0,
+  0,
+  73,
+  69,
+  78,
+  68,
+  174,
+  66,
+  96,
+  130,
+];
 
 class _RecordingObserver extends ReaderObserver {
   final List<ReaderFirstContentPresentation> firstFrames = <ReaderFirstContentPresentation>[];

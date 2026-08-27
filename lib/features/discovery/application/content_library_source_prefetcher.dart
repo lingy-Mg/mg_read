@@ -12,11 +12,7 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 /// cached. All failures are isolated to this best-effort background task; the
 /// shelf mutation itself has already committed successfully.
 final class ContentLibrarySourcePrefetcher {
-  ContentLibrarySourcePrefetcher(
-    this._library,
-    this._gateway, {
-    this._diagnostics,
-  });
+  ContentLibrarySourcePrefetcher(this._library, this._gateway, {this._diagnostics});
 
   final ContentLibrary _library;
   final SourceContentGateway _gateway;
@@ -55,19 +51,12 @@ final class ContentLibrarySourcePrefetcher {
     return _readable[item.id.value]?.future ?? Future<void>.value();
   }
 
-  bool hasInFlight(String libraryItemId) =>
-      _active.containsKey(libraryItemId) ||
-      _readable.containsKey(libraryItemId);
+  bool hasInFlight(String libraryItemId) => _active.containsKey(libraryItemId) || _readable.containsKey(libraryItemId);
 
   /// Waits for an already-started warm-up, mainly for host lifecycle tests.
-  Future<void> waitFor(String libraryItemId) =>
-      _active[libraryItemId] ?? Future<void>.value();
+  Future<void> waitFor(String libraryItemId) => _active[libraryItemId] ?? Future<void>.value();
 
-  Future<void> _run(
-    LibraryItem item,
-    LibraryItemSource source,
-    Completer<void> readable,
-  ) async {
+  Future<void> _run(LibraryItem item, LibraryItemSource source, Completer<void> readable) async {
     final diagnostics = _diagnostics;
     final span = diagnostics?.startSpan(
       AppDiagnosticEvents.readerPrefetch,
@@ -80,21 +69,12 @@ final class ContentLibrarySourcePrefetcher {
     var cachedChapterCount = 0;
     try {
       final detailFuture = _loadDetail(source);
-      final catalogResult = await _gateway.getChapters(
-        pluginId: source.pluginId,
-        id: source.remoteContentId,
-      );
+      final catalogResult = await _gateway.getChapters(pluginId: source.pluginId, id: source.remoteContentId);
       if (catalogResult.items.isEmpty) {
         if (!readable.isCompleted) {
           readable.completeError(StateError('Source catalog is empty.'));
         }
-        span?.complete(
-          attributes: _attributes(
-            catalogCount: 0,
-            cachedChapterCount: 0,
-            resultState: 'empty',
-          ),
-        );
+        span?.complete(attributes: _attributes(catalogCount: 0, cachedChapterCount: 0, resultState: 'empty'));
         return;
       }
 
@@ -103,22 +83,12 @@ final class ContentLibrarySourcePrefetcher {
         id: source.remoteContentId,
         chapterId: catalogResult.items.first.id,
       );
-      final catalog = await _library.syncNovelCatalog(
-        itemId: item.id,
-        chapters: _toCatalog(catalogResult.items),
-      );
-      catalogCount = catalog.length;
+      catalogCount = await _library.syncNovelCatalog(itemId: item.id, chapters: _toCatalog(catalogResult.items));
 
       try {
         final content = await firstContent;
-        if (content.contentKind == PluginContentKind.novel &&
-            content.text != null &&
-            content.text!.isNotEmpty) {
-          await _library.cacheNovelChapter(
-            itemId: item.id,
-            remoteChapterId: catalogResult.items.first.id,
-            text: content.text!,
-          );
+        if (content.contentKind == PluginContentKind.novel && content.text != null && content.text!.isNotEmpty) {
+          await _library.cacheNovelChapter(itemId: item.id, remoteChapterId: catalogResult.items.first.id, text: content.text!);
           cachedChapterCount = 1;
         }
       } on Object {
@@ -134,20 +104,15 @@ final class ContentLibrarySourcePrefetcher {
       if (detail != null) {
         await _library.bookshelf.addFromSource(
           BookshelfAddRequest(
-            title: detail.summary.title.isEmpty
-                ? item.title
-                : detail.summary.title,
+            title: detail.summary.title.isEmpty ? item.title : detail.summary.title,
             author: detail.summary.author ?? item.author,
             kind: ContentKind.novel,
             pluginId: source.pluginId,
             pluginVersion: source.pluginVersion,
             remoteContentId: source.remoteContentId,
             coverUrl: detail.summary.coverUrl ?? item.coverUrl,
-            sourceName: detail.sourceName.isEmpty
-                ? item.sourceName
-                : detail.sourceName,
-            sourceUrl:
-                detail.catalogUrl ?? detail.summary.url ?? item.sourceUrl,
+            sourceName: detail.sourceName.isEmpty ? item.sourceName : detail.sourceName,
+            sourceUrl: detail.catalogUrl ?? detail.summary.url ?? item.sourceUrl,
             description: detail.summary.description,
             wordCount: detail.summary.wordCount,
             chapterCount: detail.summary.chapterCount,
@@ -157,18 +122,13 @@ final class ContentLibrarySourcePrefetcher {
             labels: <String>[
               ...detail.summary.categories,
               ...detail.summary.tags,
-              for (final attribute in detail.summary.attributes)
-                attribute.value,
+              for (final attribute in detail.summary.attributes) attribute.value,
             ],
           ),
         );
       }
       span?.complete(
-        attributes: _attributes(
-          catalogCount: catalogCount,
-          cachedChapterCount: cachedChapterCount,
-          resultState: 'complete',
-        ),
+        attributes: _attributes(catalogCount: catalogCount, cachedChapterCount: cachedChapterCount, resultState: 'complete'),
       );
     } on Object {
       if (!readable.isCompleted) {
@@ -191,18 +151,13 @@ final class ContentLibrarySourcePrefetcher {
 
   Future<PluginContentDetail?> _loadDetail(LibraryItemSource source) async {
     try {
-      return await _gateway.getDetail(
-        pluginId: source.pluginId,
-        id: source.remoteContentId,
-      );
+      return await _gateway.getDetail(pluginId: source.pluginId, id: source.remoteContentId);
     } on Object {
       return null;
     }
   }
 
-  List<SourceNovelCatalogChapter> _toCatalog(
-    Iterable<PluginChapterSummary> chapters,
-  ) => [
+  List<SourceNovelCatalogChapter> _toCatalog(Iterable<PluginChapterSummary> chapters) => [
     for (var index = 0; index < chapters.length; index += 1)
       SourceNovelCatalogChapter(
         remoteIdentity: chapters.elementAt(index).id,

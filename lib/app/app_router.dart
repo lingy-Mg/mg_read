@@ -44,6 +44,7 @@ import 'package:mg_read/features/reader/presentation/reader_destination_page.dar
 import 'package:mg_read/features/reader/data/transient_source_text_reader.dart';
 import 'package:mg_read/features/reader/presentation/reader_entry_transition.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
+import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 part 'app_router.g.dart';
 
@@ -284,9 +285,16 @@ Future<void> _openTransientSourceTextReader(
     throw StateError('The application navigator is not ready.');
   }
   final gateway = ProviderScope.containerOf(context).read(sourceContentGatewayProvider);
+  final coverUrl = detail.summary.coverUrl;
+  final cachedCoverBytes =
+      detail.summary.coverBytes ??
+      (coverUrl == null
+          ? null
+          : BookCoverMemoryCache.read(BookCoverRequest(pluginId: detail.pluginId, pluginVersion: 'unknown', remoteContentId: detail.summary.id, coverUrl: coverUrl)));
   final session = TransientSourceTextReader(
     detail: detail,
     catalog: firstCatalogPage,
+    entryCoverBytes: cachedCoverBytes,
     loadChapterContent: (String chapterId) {
       return gateway.getContent(pluginId: detail.pluginId, id: detail.summary.id, chapterId: chapterId);
     },

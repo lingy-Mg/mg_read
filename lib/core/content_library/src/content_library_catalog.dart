@@ -34,15 +34,15 @@ final class CatalogRepository {
 
   /// Initializes a persisted novel catalog once, preserving downloaded chapter
   /// content on all later reader launches.
-  Future<List<CatalogEntry>> ensureNovelCatalog({required LibraryItemId itemId, required Iterable<SourceNovelCatalogChapter> chapters}) {
+  Future<int> ensureNovelCatalog({required LibraryItemId itemId, required Iterable<SourceNovelCatalogChapter> chapters}) {
     final copied = List<SourceNovelCatalogChapter>.of(chapters);
     return _library._trace(
       operation: 'catalogEnsureNovel',
       contentKind: ContentKind.novel.code,
       itemCount: copied.length,
       action: () => _ensureNovelCatalog(itemId, copied),
-      resultCount: (result) => result.length,
-      resultState: (result) => result.isEmpty ? 'empty' : 'content',
+      resultCount: (result) => result,
+      resultState: (result) => result == 0 ? 'empty' : 'content',
     );
   }
 
@@ -50,19 +50,19 @@ final class CatalogRepository {
   ///
   /// Source chapter IDs are stored explicitly, rather than reconstructed from
   /// the internal binding key, so IDs containing `:` remain lossless.
-  Future<List<CatalogEntry>> syncNovelCatalog({required LibraryItemId itemId, required Iterable<SourceNovelCatalogChapter> chapters}) {
+  Future<int> syncNovelCatalog({required LibraryItemId itemId, required Iterable<SourceNovelCatalogChapter> chapters}) {
     final copied = List<SourceNovelCatalogChapter>.of(chapters);
     return _library._trace(
       operation: 'catalogSyncNovel',
       contentKind: ContentKind.novel.code,
       itemCount: copied.length,
       action: () => _syncNovelCatalog(itemId, copied),
-      resultCount: (result) => result.length,
-      resultState: (result) => result.isEmpty ? 'empty' : 'content',
+      resultCount: (result) => result,
+      resultState: (result) => result == 0 ? 'empty' : 'content',
     );
   }
 
-  Future<void> _replaceSnapshot({
+  Future<int> _replaceSnapshot({
     required LibraryItemId itemId,
     required SourceBindingId bindingId,
     required Iterable<IngestCatalogEntry> entries,
@@ -129,6 +129,7 @@ final class CatalogRepository {
       previous: item,
       document: {...item.document, 'activeSnapshotId': snapshot, 'catalogCount': ordinal},
     );
+    return ordinal;
   }
 
   Future<CatalogEntry?> _findInSnapshot({
@@ -151,6 +152,27 @@ final class CatalogRepository {
       ),
     );
     return page.records.isEmpty ? null : _entry(page.records.single);
+  }
+
+  Future<Map<String, CatalogEntry>> _findManyInSnapshot({
+    required LibraryItemId itemId,
+    required String snapshot,
+    required SourceBindingId bindingId,
+    required Iterable<String> remoteIdentities,
+  }) async {
+    final identities = remoteIdentities.toSet();
+    if (identities.isEmpty) return const <String, CatalogEntry>{};
+    final records = await _library._persistence.metadataRecords.listByIdentityKeys(
+      recordKind: _entryKind,
+      scope: _scope,
+      identityKeys: identities.map((identity) => '${bindingId.value}:$identity'),
+      parentId: itemId.value,
+      stateKey: 'pending:$snapshot',
+    );
+    return Map<String, CatalogEntry>.unmodifiable({
+      for (final record in records)
+        if (record.document['remoteIdentity'] case final String identity) identity: _entry(record),
+    });
   }
 
   Future<CatalogEntry?> _activeEntryByRemoteIdentity(LibraryItemId itemId, String remoteIdentity) async {
@@ -221,9 +243,17 @@ final class CatalogRepository {
     return List<CatalogEntry>.unmodifiable(entries);
   }
 
-  Future<List<CatalogEntry>> _ensureNovelCatalog(LibraryItemId itemId, List<SourceNovelCatalogChapter> chapters) async {
-    final existing = await _listAll(itemId);
-    if (existing.isNotEmpty) return existing;
+  Future<int> _ensureNovelCatalog(LibraryItemId itemId, List<SourceNovelCatalogChapter> chapters) async {
+    final item = await _library._persistence.metadataRecords.read(id: itemId.value, scope: _scope);
+    final activeSnapshot = item?.document['activeSnapshotId'];
+    final storedCatalogCount = item?.document['catalogCount'];
+    if (activeSnapshot is String && activeSnapshot.isNotEmpty) {
+      if (storedCatalogCount is int && storedCatalogCount > 0) return storedCatalogCount;
+      final existingCount = await _library._persistence.metadataRecords.count(
+        RecordQuery(recordKind: _entryKind, scope: _scope, parentId: itemId.value, stateKey: 'pending:$activeSnapshot', limit: 1),
+      );
+      if (existingCount > 0) return existingCount;
+    }
     if (chapters.isEmpty) {
       throw ArgumentError.value(chapters, 'chapters', 'Cannot persist an empty catalog.');
     }
@@ -233,7 +263,6 @@ final class CatalogRepository {
         throw ArgumentError.value(chapter.remoteIdentity, 'chapters');
       }
     }
-    final item = await _library._persistence.metadataRecords.read(id: itemId.value, scope: _scope);
     final source = item == null ? null : _itemSource(item.document['plugin']);
     if (source == null) {
       throw StateError('The shelf item has no source identity.');
@@ -250,7 +279,7 @@ final class CatalogRepository {
       dataVersion: 1,
       opaqueData: <String, Object?>{'remoteBookId': source.remoteContentId},
     );
-    await _replaceSnapshot(
+    return _replaceSnapshot(
       itemId: itemId,
       bindingId: SourceBindingId(bindings.records.single.id),
       entries: chapters.map(
@@ -266,10 +295,9 @@ final class CatalogRepository {
         ),
       ),
     );
-    return _listAll(itemId);
   }
 
-  Future<List<CatalogEntry>> _syncNovelCatalog(LibraryItemId itemId, List<SourceNovelCatalogChapter> chapters) async {
+  Future<int> _syncNovelCatalog(LibraryItemId itemId, List<SourceNovelCatalogChapter> chapters) async {
     if (chapters.isEmpty) {
       throw ArgumentError.value(chapters, 'chapters', 'Cannot persist an empty catalog.');
     }
@@ -297,7 +325,7 @@ final class CatalogRepository {
       dataVersion: 1,
       opaqueData: <String, Object?>{'remoteBookId': source.remoteContentId},
     );
-    await _replaceSnapshot(
+    return _replaceSnapshot(
       itemId: itemId,
       bindingId: SourceBindingId(bindings.records.single.id),
       previousByRemoteIdentity: previous,
@@ -314,7 +342,6 @@ final class CatalogRepository {
         ),
       ),
     );
-    return _listAll(itemId);
   }
 }
 
@@ -536,16 +563,18 @@ DiagnosticObjectValue _libraryAttributes({
 
 Iterable<RecordDocumentCodec> get contentLibraryRecordDocumentCodecs sync* {
   for (final kind in [_itemKind, _bindingKind, _entryKind, _readingProgressKind]) {
-    yield RecordDocumentCodec(recordKind: kind, scopeKind: _scope.kind, currentVersion: 1, validators: {1: _validate});
+    yield RecordDocumentCodec(
+      recordKind: kind,
+      scopeKind: _scope.kind,
+      currentVersion: 1,
+      validators: {1: _validate},
+      inlinePreparationPolicy: _metadataInlinePreparationPolicy,
+    );
   }
 }
 
 RecordDocumentRegistry get _registry => RecordDocumentRegistry(contentLibraryRecordDocumentCodecs);
-void _validate(JsonObject value) {
-  if (jsonEncode(value).length > 256 * 1024) {
-    throw const PersistenceValidationError('Content library dynamic document exceeds 256 KiB.');
-  }
-}
+void _validate(JsonObject _) {}
 
 Map<String, Object?> _plugin(ContentLibraryIngest v) => {
   'pluginId': v.pluginId,

@@ -21,6 +21,7 @@ class ReaderLaunchRequest {
     required this.bookId,
     required this.dataSource,
     required this.stateStore,
+    this.entryCoverBytes,
     this.observer,
     this.controller,
     this.extensions = const ReaderExtensions(),
@@ -37,6 +38,10 @@ class ReaderLaunchRequest {
 
   /// Main-application adapter that persists preferences, progress and marks.
   final TextReaderStateStore stateStore;
+
+  /// Cover bytes already available in the host before the reader route opens.
+  /// The entry transition renders this local payload and never fetches it.
+  final List<int>? entryCoverBytes;
 
   /// Optional host notification sink, including the request to leave reader.
   final ReaderObserver? observer;
@@ -62,6 +67,22 @@ class ReaderLaunchRequest {
         bookId: bookId,
         dataSource: dataSource,
         stateStore: stateStore,
+        entryCoverBytes: entryCoverBytes,
+        observer: observer,
+        controller: controller,
+        extensions: extensions,
+        estimatedWarmBytes: estimatedWarmBytes,
+        preparationKind: preparationKind,
+        networkPreparationElapsed: networkPreparationElapsed,
+      );
+
+  /// Adds bytes resolved by an app-owned cache without changing the session.
+  ReaderLaunchRequest withEntryCoverBytes(List<int>? bytes) =>
+      ReaderLaunchRequest(
+        bookId: bookId,
+        dataSource: dataSource,
+        stateStore: stateStore,
+        entryCoverBytes: bytes,
         observer: observer,
         controller: controller,
         extensions: extensions,
