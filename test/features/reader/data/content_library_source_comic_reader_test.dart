@@ -103,6 +103,21 @@ void main() {
     expect(offline.contentCalls, 0);
   });
 
+  test('keeps a validated runtime manifest readable when its cache write fails', () async {
+    final fixture = await _LibraryFixture.open(withSettings: true);
+    addTearDown(fixture.close);
+    final gateway = _Gateway(pages: <PluginMangaPage>[_page(policy: PluginMangaPageResourcePolicy.durable)]);
+    final adapter = ContentLibraryComicReaderDataSource(library: fixture.library, gateway: gateway, item: fixture.manga);
+
+    await adapter.loadChapterCatalog(fixture.manga.id.value);
+    await fixture.persistence!.contentObjects.close();
+
+    final content = await adapter.loadChapterContent(fixture.manga.id.value, 'chapter-1');
+
+    expect(content.images.single.id, 'image-1');
+    expect(gateway.contentCalls, 1);
+  });
+
   test('refreshes an expired refreshable URL before downloading', () async {
     final fixture = await _LibraryFixture.open();
     addTearDown(fixture.close);

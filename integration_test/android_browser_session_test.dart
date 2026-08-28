@@ -12,23 +12,20 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('Android WebView session supports same-origin fetch and HTTP', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('Android WebView session supports fetch, rendered HTML, and HTTP', (WidgetTester tester) async {
     await tester.pump();
     final runtime = PluginRuntime();
     addTearDown(runtime.debugDispose);
 
-    final webview = await runtime.invoke(const SourceSearchInvocation(
-      pluginId: 'org.mgread.browser-session-fixture',
-      query: 'android-webview',
-    ));
+    final webview = await runtime.invoke(
+      const SourceSearchInvocation(pluginId: 'org.mgread.browser-session-fixture', query: 'android-webview'),
+    );
     expect(webview.items.single.title, 'webview:200:not-required');
 
-    final http = await runtime.invoke(const SourceSearchInvocation(
-      pluginId: 'org.mgread.browser-session-fixture',
-      query: 'android-http',
-    ));
+    final html = await runtime.invoke(const SourceSearchInvocation(pluginId: 'org.mgread.browser-session-fixture', query: 'android-html'));
+    expect(html.items.single.title, 'html:200:verified');
+
+    final http = await runtime.invoke(const SourceSearchInvocation(pluginId: 'org.mgread.browser-session-fixture', query: 'android-http'));
     expect(http.items.single.title, 'http:200:verified');
   });
 }

@@ -370,6 +370,8 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             performInteraction(job, session)
         } else if (job.request.transport == "webview") {
             performWebViewFetch(job, session, verificationState)
+        } else if (job.request.transport == "html") {
+            performPageHtml(job, session, verificationState)
         } else {
             performHttp(job, session, verificationState)
         }
@@ -421,6 +423,25 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
                 { pollWebViewFetch(job, session, verificationState) },
                 FETCH_POLL_MILLIS,
             )
+        }
+    }
+
+    private fun performPageHtml(job: Job, session: Session, verificationState: String) {
+        session.webView.evaluateJavascript(pageHtmlScript(job)) { raw ->
+            if (!isCurrent(job, session)) return@evaluateJavascript
+            val encoded = decodeEvaluation(raw)
+            val result = encoded?.let { runCatching { JSONObject(it) }.getOrNull() }
+            if (result?.optBoolean("ok", false) != true) {
+                completeError(job, result?.optString("code") ?: "plugin_execution_failed")
+                return@evaluateJavascript
+            }
+            val response = result.getJSONObject("response")
+            val state = if (looksLikeCloudflareChallenge(response.optString("body"))) {
+                "failed"
+            } else {
+                verificationState
+            }
+            completeSuccess(job, response, state)
         }
     }
 
@@ -661,6 +682,24 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
               })();
               return 'started';
             })()
+        """.trimIndent()
+    }
+
+    private fun pageHtmlScript(job: Job): String {
+        val origin = JSONObject.quote(job.request.origin)
+        return """
+            (() => { try {
+              const finalUrl = location.href;
+              if (new URL(finalUrl).origin !== $origin) throw new Error('cross_origin');
+              const body = document.documentElement?.outerHTML ?? '';
+              if (new TextEncoder().encode(body).byteLength > ${job.request.maxResponseBytes}) {
+                return JSON.stringify({ok:false,code:'overloaded'});
+              }
+              return JSON.stringify({ok:true,response:{status:200,finalUrl,
+                headers:{'content-type':'text/html'},body}});
+            } catch (_) {
+              return JSON.stringify({ok:false,code:'plugin_execution_failed'});
+            } })()
         """.trimIndent()
     }
 

@@ -223,7 +223,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
   }
 
   void _presentInitialFailure(ReaderFailure failure) {
-    if (!mounted || _firstContentPresented) return;
+    if (!mounted || _firstContentPresented || !_blocksInitialContent(failure)) return;
     setState(() => _failure = failure);
     widget.onInitialFailure?.call(failure);
     if (_reduceMotion) {
@@ -232,6 +232,11 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
     }
     unawaited(_entryController.animateTo(1, curve: Curves.easeOutCubic));
   }
+
+  bool _blocksInitialContent(ReaderFailure failure) => switch (failure.kind) {
+    ReaderFailureKind.data || ReaderFailureKind.layout => true,
+    ReaderFailureKind.persistence || ReaderFailureKind.platform || ReaderFailureKind.unknown => false,
+  };
 
   void _retry() {
     if (_firstContentPresented) return;
@@ -461,7 +466,7 @@ class _ReaderEntryStatus extends StatelessWidget {
         child: Semantics(
           key: const Key('reader-entry-status'),
           liveRegion: true,
-          label: hasFailure ? '正文暂时无法打开' : '正在准备正文',
+          label: hasFailure ? '正文暂时无法打开：${failed!.message}' : '正在准备正文',
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[

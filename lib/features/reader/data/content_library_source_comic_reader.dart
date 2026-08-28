@@ -163,16 +163,23 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
       for (final page in remote.pages)
         if (page.resourcePolicy == PluginMangaPageResourcePolicy.sessionOnly) page.id: page.url,
     };
-    await library.cacheMangaChapter(entryId: entry.id, pages: descriptors);
-    final refreshedEntry = await session.itemByRemoteIdentity(chapterId);
-    final persisted = refreshedEntry == null ? null : await session.readContent(refreshedEntry);
-    if (persisted is! MangaChapterContent || persisted.pages.isEmpty) {
-      throw StateError('Content Library did not round-trip the manga manifest.');
+    var pages = _runtimePages(descriptors);
+    CatalogEntry? refreshedEntry;
+    try {
+      await library.cacheMangaChapter(entryId: entry.id, pages: descriptors);
+      refreshedEntry = await session.itemByRemoteIdentity(chapterId);
+      final persisted = refreshedEntry == null ? null : await session.readContent(refreshedEntry);
+      if (persisted is MangaChapterContent && persisted.pages.isNotEmpty) {
+        pages = persisted.pages;
+      }
+    } on Object {
+      // A persistence outage must not discard an already validated Runtime
+      // manifest. The current session can still read it and retry caching later.
     }
     final manifest = _ChapterManifest(
       chapterId: chapterId,
       title: remote.title ?? refreshedEntry?.title ?? entry.title,
-      pages: persisted.pages,
+      pages: pages,
       sessionOnlyUrls: sessionOnlyUrls,
     );
     _manifests[chapterId] = manifest;
@@ -222,6 +229,20 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
     );
   }
 
+  List<MangaPage> _runtimePages(Iterable<MangaPageDescriptor> descriptors) => [
+    for (final descriptor in descriptors)
+      MangaPage(
+        pageId: descriptor.pageId,
+        order: descriptor.order,
+        resource: descriptor.resource,
+        mimeType: descriptor.mimeType,
+        width: descriptor.width,
+        height: descriptor.height,
+        byteLength: descriptor.byteLength,
+        contentVersion: descriptor.contentVersion,
+      ),
+  ];
+
   Future<_ChapterManifest?> _persistedManifest(String chapterId) async {
     final existing = _manifests[chapterId];
     if (existing != null) return existing;
@@ -260,7 +281,12 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
       uri = manifest.downloadUri(page);
     }
     if (uri == null) throw StateError('Comic image URL is unavailable.');
-    final bytes = await fetcher(uri);
+    final Uint8List bytes;
+    try {
+      bytes = await fetcher(uri);
+    } on Object catch (error) {
+      throw ReaderFailure(ReaderFailureKind.data, '漫画图片下载失败', cause: error);
+    }
     if (bytes.isEmpty) throw StateError('Comic image is empty.');
     if (bytes.length > _maximumImageBytes) throw StateError('Comic image exceeds 8 MiB.');
     try {
@@ -465,6 +491,12 @@ Future<Uint8List> _fetchHttpImage(Uri uri) async {
       if (current.scheme != 'http' && current.scheme != 'https') {
         throw ArgumentError.value(current, 'uri', 'Comic images require HTTP or HTTPS.');
       }
+      if (_isLoopback(current)) {
+        // Runtime source resources are private loopback URLs. They must never
+        // be sent through a desktop proxy, which can turn a valid one-time
+        // resource into an unrelated remote request.
+        client.findProxy = (_) => 'DIRECT';
+      }
       final request = await client.getUrl(current).timeout(const Duration(seconds: 15));
       request.followRedirects = false;
       final response = await request.close().timeout(const Duration(seconds: 20));
@@ -496,3 +528,5 @@ Future<Uint8List> _fetchHttpImage(Uri uri) async {
     client.close(force: true);
   }
 }
+
+bool _isLoopback(Uri uri) => uri.host == 'localhost' || uri.host == '127.0.0.1' || uri.host == '::1';

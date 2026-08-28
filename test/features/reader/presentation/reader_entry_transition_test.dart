@@ -104,6 +104,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 480));
 
     expect(find.byKey(const Key('reader-entry-back')), findsOneWidget);
+    // Widget tests have no reader-platform channel. Its recoverable platform
+    // failure must not replace a still-loading first comic image with the
+    // body-unavailable carrier.
+    expect(find.byKey(const Key('reader-entry-status')), findsNothing);
     expect(observer.firstFrames, isEmpty);
 
     source.completeImage();

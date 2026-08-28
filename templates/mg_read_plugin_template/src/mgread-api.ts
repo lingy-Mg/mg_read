@@ -49,7 +49,8 @@ export interface BrowserSessionRequestV1 {
   readonly interaction: 'allow' | 'silent';
   readonly presentation: 'hidden' | 'visible';
   readonly timeoutMs: number;
-  readonly transport: 'http' | 'webview';
+  /** webview = same-origin fetch, html = rendered page HTML, http = host Cookie/UA HTTP. */
+  readonly transport: 'html' | 'http' | 'webview';
   readonly maxResponseBytes: number;
 }
 

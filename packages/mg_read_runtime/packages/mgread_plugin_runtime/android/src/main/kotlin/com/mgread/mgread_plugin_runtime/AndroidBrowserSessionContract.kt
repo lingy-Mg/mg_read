@@ -86,7 +86,7 @@ internal data class AndroidBrowserSessionRequest(
             val presentation = value.requiredString("presentation", 7)
             require(presentation == "hidden" || presentation == "visible")
             val transport = value.requiredString("transport", 7)
-            require(transport == "http" || transport == "webview")
+            require(transport == "html" || transport == "http" || transport == "webview")
             val timeoutMs = value.optLong("timeoutMs", -1L)
             require(timeoutMs in 1_000L..MAX_TIMEOUT_MILLIS)
             val maxResponseBytes = value.optInt("maxResponseBytes", -1)

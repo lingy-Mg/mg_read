@@ -41,23 +41,30 @@ void main() {
     },
   );
 
-  test('recreates a manually closed visible WebView on the next request', () async {
-    final root = await Directory.systemTemp.createTemp('mgread-windows-recreate-');
-    addTearDown(() => root.delete(recursive: true));
-    final platform = _FakeBrowserPlatform(failNextShow: true);
-    final host = WindowsBrowserSessionHost(root, platform: platform);
-    addTearDown(host.dispose);
+  test(
+    'recreates a manually closed visible WebView on the next request',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'mgread-windows-recreate-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final platform = _FakeBrowserPlatform(failNextShow: true);
+      final host = WindowsBrowserSessionHost(root, platform: platform);
+      addTearDown(host.dispose);
 
-    final result = await host.request(
-      jobId: 's:recreate',
-      deadlineUnixMs: DateTime.now().add(const Duration(seconds: 5)).millisecondsSinceEpoch,
-      raw: _request(presentation: 'visible', transport: 'webview'),
-    );
+      final result = await host.request(
+        jobId: 's:recreate',
+        deadlineUnixMs: DateTime.now()
+            .add(const Duration(seconds: 5))
+            .millisecondsSinceEpoch,
+        raw: _request(presentation: 'visible', transport: 'webview'),
+      );
 
-    expect(result['body'], 'fixture-browser-body');
-    expect(platform.createCalls, 2);
-    expect(platform.showCalls, 2);
-  });
+      expect(result['body'], 'fixture-browser-body');
+      expect(platform.createCalls, 2);
+      expect(platform.showCalls, 2);
+    },
+  );
 
   test(
     'HTTP mode keeps Cookie and UA inside the Windows host and writes Set-Cookie back',
@@ -108,6 +115,26 @@ void main() {
       expect(platform.showCalls, 0);
     },
   );
+
+  test('HTML mode returns the current verified page document', () async {
+    final root = await Directory.systemTemp.createTemp('mgread-windows-html-');
+    addTearDown(() => root.delete(recursive: true));
+    final platform = _FakeBrowserPlatform();
+    final host = WindowsBrowserSessionHost(root, platform: platform);
+    addTearDown(host.dispose);
+
+    final result = await host.request(
+      jobId: 's:html',
+      deadlineUnixMs: DateTime.now()
+          .add(const Duration(seconds: 5))
+          .millisecondsSinceEpoch,
+      raw: _request(presentation: 'visible', transport: 'html'),
+    );
+
+    expect(result['body'], '<html><body>fixture</body></html>');
+    expect(result['status'], 200);
+    expect(result['verificationState'], 'not-required');
+  });
 
   test(
     'hidden challenge maps to interaction_required without showing a window',
@@ -350,6 +377,19 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
             'finalUrl': 'https://example.com/protected',
             'headers': <String, String>{'content-type': 'text/html'},
             'body': 'fixture-browser-body',
+          },
+        }),
+      );
+    }
+    if (script.contains('document.documentElement?.outerHTML')) {
+      return jsonEncode(
+        jsonEncode(<String, Object?>{
+          'ok': true,
+          'response': <String, Object?>{
+            'status': 200,
+            'finalUrl': 'https://example.com/protected',
+            'headers': <String, String>{'content-type': 'text/html'},
+            'body': '<html><body>fixture</body></html>',
           },
         }),
       );

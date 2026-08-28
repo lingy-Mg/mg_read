@@ -224,9 +224,13 @@ final class WindowsBrowserSessionHost {
       if (request.operation == 'interaction') {
         return await _interact(job, session);
       }
-      return request.transport == 'webview'
-          ? await _webViewFetch(job, session, state)
-          : await _httpFetch(job, session, state);
+      if (request.transport == 'webview') {
+        return await _webViewFetch(job, session, state);
+      }
+      if (request.transport == 'html') {
+        return await _pageHtml(job, session, state);
+      }
+      return await _httpFetch(job, session, state);
     } on WindowsBrowserSessionException {
       rethrow;
     } on MissingPluginException {
@@ -555,6 +559,31 @@ final class WindowsBrowserSessionHost {
     throw const WindowsBrowserSessionException('plugin_execution_failed');
   }
 
+  Future<Map<String, Object?>> _pageHtml(
+    _WindowsBrowserJob job,
+    _WindowsBrowserSession session,
+    String verificationState,
+  ) async {
+    final value = _decodeScriptObject(
+      await _platform.executeScript(session.sessionId, _pageHtmlScript(job)),
+    );
+    if (value == null || value['ok'] != true) {
+      final code = value?['code'];
+      throw WindowsBrowserSessionException(
+        code is String ? code : 'plugin_execution_failed',
+      );
+    }
+    final response = _stringMap(value['response']);
+    final body = response['body'];
+    return <String, Object?>{
+      ...response,
+      'version': 1,
+      'verificationState': _looksLikeChallenge(body)
+          ? 'failed'
+          : verificationState,
+    };
+  }
+
   Future<Map<String, Object?>> _finishHttpResponse(
     _WindowsBrowserJob job,
     _WindowsBrowserSession session,
@@ -751,7 +780,7 @@ final class _WindowsBrowserRequest {
     if (!const <String>{'GET', 'POST'}.contains(method) ||
         !const <String>{'allow', 'silent'}.contains(interaction) ||
         !const <String>{'hidden', 'visible'}.contains(presentation) ||
-        !const <String>{'http', 'webview'}.contains(transport) ||
+        !const <String>{'html', 'http', 'webview'}.contains(transport) ||
         timeoutMs is! int ||
         timeoutMs < 1000 ||
         timeoutMs > _maximumTimeoutMs ||
@@ -888,6 +917,11 @@ String _fetchScript(_WindowsBrowserJob job) {
   final body = request.body == null ? 'null' : jsonEncode(request.body);
   final origin = jsonEncode(request.origin);
   return """(() => {globalThis.__mgreadFetchResults ??= Object.create(null);const key=$key;(async()=>{try{const response=await fetch($url,{method:$method,headers:JSON.parse($headers),body:$body,credentials:'include',redirect:'follow'});const body=await response.text();if(new TextEncoder().encode(body).byteLength>${request.maxResponseBytes}){globalThis.__mgreadFetchResults[key]=JSON.stringify({ok:false,code:'overloaded'});return;}const finalUrl=new URL(response.url);if(finalUrl.origin!==$origin)throw new Error('cross_origin');const headers={};for(const name of ['cache-control','content-type','etag','expires','last-modified']){const value=response.headers.get(name);if(value!==null)headers[name]=value.slice(0,1024);}globalThis.__mgreadFetchResults[key]=JSON.stringify({ok:true,response:{status:response.status,finalUrl:response.url,headers,body}});}catch(_){globalThis.__mgreadFetchResults[key]=JSON.stringify({ok:false,code:'plugin_execution_failed'});}})();return 'started';})()""";
+}
+
+String _pageHtmlScript(_WindowsBrowserJob job) {
+  final origin = jsonEncode(job.request.origin);
+  return """(() => {try{const finalUrl=location.href;const currentOrigin=new URL(finalUrl).origin;if(currentOrigin!==$origin)throw new Error('cross_origin');const body=document.documentElement?.outerHTML??'';if(new TextEncoder().encode(body).byteLength>${job.request.maxResponseBytes})return JSON.stringify({ok:false,code:'overloaded'});return JSON.stringify({ok:true,response:{status:200,finalUrl,headers:{'content-type':'text/html'},body}});}catch(_){return JSON.stringify({ok:false,code:'plugin_execution_failed'});}})()""";
 }
 
 String _interactionTargetScript(_WindowsBrowserRequest request) {

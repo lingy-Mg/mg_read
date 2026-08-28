@@ -11,12 +11,12 @@ export async function activate(context: RequestContext) {
 }
 
 export async function discover(request: PageRequest & { readonly target: string | null; readonly collectionId: string | null }) {
-  if (request.target !== null) throw new Error('Target is invalid.');
+  if (request.target !== null && request.target !== 'latest') throw new Error('Target is invalid.');
   const page = parseCursor(request.cursor);
   const result = await requireSource().latest(page);
   const items = result.items.slice(0, request.pageSize)
     .map((content) => Object.freeze({ content, rank: null, metric: null, recommendation: null }));
-  const continuation = result.hasNext && items.length === request.pageSize ? Object.freeze({ target: null, cursor: `latest:${page + 1}` }) : null;
+  const continuation = result.hasNext && items.length === request.pageSize ? Object.freeze({ target: 'latest', cursor: `latest:${page + 1}` }) : null;
   if (request.collectionId !== null) return Object.freeze({ kind: 'append', collectionId: 'latest', items: Object.freeze(items), continuation });
   return Object.freeze({ kind: 'document', document: { components: Object.freeze([
     Object.freeze({ type: 'section', id: 'latest-section', title: '最新漫画', subtitle: null, children: Object.freeze([

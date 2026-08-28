@@ -34,7 +34,8 @@ export interface PluginBrowserSessionRequest {
   readonly presentation: "hidden" | "visible";
   readonly sessionKey: string;
   readonly timeoutMs: number;
-  readonly transport: "http" | "webview";
+  /** `webview` = same-origin fetch, `html` = rendered page HTML, `http` = host Cookie/UA HTTP. */
+  readonly transport: "html" | "http" | "webview";
   readonly url: string;
   readonly version: 1;
 }
@@ -217,7 +218,7 @@ function validateRequest(value: unknown): PluginBrowserSessionRequest {
   if (value.method !== "GET" && value.method !== "POST") invalid();
   if (value.interaction !== "allow" && value.interaction !== "silent") invalid();
   if (value.presentation !== "hidden" && value.presentation !== "visible") invalid();
-  if (value.transport !== "http" && value.transport !== "webview") invalid();
+  if (value.transport !== "http" && value.transport !== "html" && value.transport !== "webview") invalid();
   const timeoutMs = boundedInteger(value.timeoutMs, 1_000, maximumBrowserTimeoutMs);
   const maxResponseBytes = boundedInteger(value.maxResponseBytes, 1, maximumBrowserResponseBytes);
   if (value.body !== null && typeof value.body !== "string") invalid();

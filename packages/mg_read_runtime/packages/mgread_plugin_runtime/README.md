@@ -85,7 +85,8 @@ root 用来预置标准插件版本，不是生产依赖注入接口，也不能
 
 `browser.session.v1` 在 Android 由 Javet/WebView provider 实现，在 Windows 由内部 WS 反向帧进入
 package 自有 WebView2；两者都不增加主应用 Facade。`transport=webview` 在同源页面内运行宿主固定
-`fetch`；`transport=http` 从独立 Profile/UDF 内部读取 Cookie/UA 后由宿主直连并回写 Set-Cookie。
+`fetch`；`transport=html` 访问目标页面后返回当前 DOM HTML；`transport=http` 从独立 Profile/UDF
+内部读取 Cookie/UA 后由宿主直连并回写 Set-Cookie。第三种是验证后的宿主 HTTP，不提取或重放 CF token。
 插件还可请求当前数据源 WebView 内的控件坐标、原生输入和控件点击；这些操作只绑定该插件会话。
 坐标查询仅使用宿主固定的 `getBoundingClientRect()`；点击由 WebView 宿主输入入口投递，输入由
 宿主原生输入通道提交，不调用 `HTMLElement.click()`、DOM `dispatchEvent()` 或 DOM value setter。

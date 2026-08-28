@@ -24,7 +24,7 @@ function request(overrides = {}) {
   };
 }
 
-test("v1 forwards both host transports and both presentation modes", async () => {
+test("v1 forwards all host transports and both presentation modes", async () => {
   const calls = [];
   const provider = {
     async request(value) {
@@ -55,12 +55,21 @@ test("v1 forwards both host transports and both presentation modes", async () =>
     signal,
     String(Date.now() + 10_000),
   );
+  const html = await requestPluginBrowserSession(
+    provider,
+    "org.mgread.fixture",
+    request({ presentation: "visible", transport: "html" }),
+    signal,
+    String(Date.now() + 10_000),
+  );
   assert.deepEqual(calls.map(({ presentation, transport }) => ({ presentation, transport })), [
     { presentation: "hidden", transport: "webview" },
     { presentation: "visible", transport: "http" },
+    { presentation: "visible", transport: "html" },
   ]);
   assert.equal(webview.userAgent, undefined);
   assert.equal(http.userAgent, undefined);
+  assert.equal(html.userAgent, undefined);
 });
 
 test("v1 rejects omitted mode fields and plugin-owned credentials", async () => {
@@ -69,6 +78,7 @@ test("v1 rejects omitted mode fields and plugin-owned credentials", async () => 
   for (const invalid of [
     request({ presentation: undefined }),
     request({ transport: undefined }),
+    request({ transport: "unsupported" }),
     request({ headers: { cookie: "forbidden" } }),
     request({ headers: { "user-agent": "forbidden" } }),
   ]) {

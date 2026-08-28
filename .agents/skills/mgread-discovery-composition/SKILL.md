@@ -31,3 +31,15 @@ Cross-layer feature work normally needs all three. A local visual adjustment sho
 - Reuse the one semantic icon contract across tabs, sections, and category/ranking entries. Missing icons use a stable host fallback; unknown names fail validation.
 
 When a public boundary changes, deliver the complete chain: TypeScript contract and validator, exports, Flutter enum/decoder, host renderer, official template, affected real sources, focused tests, and the single relevant core specification section.
+
+## Protected-source browser modes
+
+- `transport: "webview"` runs the host-fixed same-origin `fetch` inside the visible or hidden WebView;
+  browser Cookie, UA, redirect, and same-origin behavior remain host-owned.
+- `transport: "html"` navigates the real WebView to the requested page and returns bounded current DOM HTML;
+  it is for sources whose parser needs the rendered page rather than an HTTP response.
+- `transport: "http"` lets the user complete any required real browser verification first, then the host reads
+  its own Cookie/UA and performs the bounded request. Never extract, replay, or synthesize Cloudflare tokens.
+- Windows and Android must implement all three transports with the same limits, origin checks, cancellation,
+  challenge state, and manual-verification behavior. WebView controls may use only reviewed host input paths;
+  no DOM click/value setter, arbitrary plugin script, CDP, global mouse/keyboard, or device control.
