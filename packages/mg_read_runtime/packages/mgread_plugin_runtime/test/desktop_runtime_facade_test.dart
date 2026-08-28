@@ -434,21 +434,16 @@ void main() {
         PluginMangaPageResourcePolicy.sessionOnly,
       );
       expect(mangaContent.pages.single.expiresAt, isNull);
-      await expectLater(
-        runtime.invoke(
-          const SourceDiscoverInvocation(
-            pluginId: 'org.mgread.flutter.fixture',
-            pageSize: 50,
-          ),
-        ),
-        throwsA(
-          isA<PluginRuntimeException>().having(
-            (error) => error.code,
-            'code',
-            'timeout',
-          ),
+      final largerDiscovery = await runtime.invoke(
+        const SourceDiscoverInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
+          pageSize: 50,
         ),
       );
+      // Source calls allow the browser.session.v1 interaction window to use
+      // its full bounded host deadline; the Runtime timeout is covered by
+      // the Node integration tests rather than this 5.5-second fixture.
+      expect(largerDiscovery, isA<PluginDiscoveryDocumentResult>());
     },
     timeout: const Timeout(Duration(seconds: 60)),
   );

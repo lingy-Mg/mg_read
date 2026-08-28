@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:mgread_plugin_runtime/src/windows_browser_session_host.dart';
 
 void main() {
@@ -39,6 +40,24 @@ void main() {
       expect(platform.loadedUrls, hasLength(1));
     },
   );
+
+  test('recreates a manually closed visible WebView on the next request', () async {
+    final root = await Directory.systemTemp.createTemp('mgread-windows-recreate-');
+    addTearDown(() => root.delete(recursive: true));
+    final platform = _FakeBrowserPlatform(failNextShow: true);
+    final host = WindowsBrowserSessionHost(root, platform: platform);
+    addTearDown(host.dispose);
+
+    final result = await host.request(
+      jobId: 's:recreate',
+      deadlineUnixMs: DateTime.now().add(const Duration(seconds: 5)).millisecondsSinceEpoch,
+      raw: _request(presentation: 'visible', transport: 'webview'),
+    );
+
+    expect(result['body'], 'fixture-browser-body');
+    expect(platform.createCalls, 2);
+    expect(platform.showCalls, 2);
+  });
 
   test(
     'HTTP mode keeps Cookie and UA inside the Windows host and writes Set-Cookie back',
@@ -119,6 +138,47 @@ void main() {
     },
   );
 
+  test('WebView interactions stay scoped to the source session', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'mgread-windows-actions-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final platform = _FakeBrowserPlatform();
+    final host = WindowsBrowserSessionHost(root, platform: platform);
+    addTearDown(host.dispose);
+
+    final coordinates = await host.request(
+      jobId: 's:coordinates',
+      deadlineUnixMs: DateTime.now()
+          .add(const Duration(seconds: 5))
+          .millisecondsSinceEpoch,
+      raw: _interactionRequest('coordinates'),
+    );
+    final input = await host.request(
+      jobId: 's:input',
+      deadlineUnixMs: DateTime.now()
+          .add(const Duration(seconds: 5))
+          .millisecondsSinceEpoch,
+      raw: _interactionRequest('native-input', text: 'fixture-input'),
+    );
+    final click = await host.request(
+      jobId: 's:click',
+      deadlineUnixMs: DateTime.now()
+          .add(const Duration(seconds: 5))
+          .millisecondsSinceEpoch,
+      raw: _interactionRequest('control-click'),
+    );
+
+    expect(coordinates, containsPair('action', 'coordinates'));
+    expect(coordinates['x'], 12);
+    expect(input, containsPair('action', 'native-input'));
+    expect(click, containsPair('action', 'control-click'));
+    expect(platform.createCalls, 1);
+    expect(platform.loadedUrls, hasLength(1));
+    expect(platform.dispatchMouseInputCalls, 2);
+    expect(platform.insertedTexts, <String>['fixture-input']);
+  });
+
   test(
     'resident WebViews stay capped during concurrent source creation',
     () async {
@@ -170,17 +230,35 @@ Map<String, Object?> _request({
   'maxResponseBytes': 4096,
 };
 
+Map<String, Object?> _interactionRequest(String action, {String? text}) =>
+    <String, Object?>{
+      'operation': 'interaction',
+      'action': action,
+      'version': 1,
+      'pluginId': 'org.mgread.fixture',
+      'sessionKey': 'fixture',
+      'url': 'https://example.com/protected',
+      'selector': '#fixture-control',
+      'presentation': 'hidden',
+      'timeoutMs': 5000,
+      if (text != null) 'text': text,
+    };
+
 final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
   _FakeBrowserPlatform({
     this.challenge = false,
     this.createDelay = Duration.zero,
+    this.failNextShow = false,
   });
 
   final bool challenge;
   final Duration createDelay;
+  bool failNextShow;
   int createCalls = 0;
   int disposeCalls = 0;
   int showCalls = 0;
+  int dispatchMouseInputCalls = 0;
+  final List<String> insertedTexts = <String>[];
   final List<String> loadedUrls = <String>[];
   final List<Map<String, Object?>> writtenCookies = <Map<String, Object?>>[];
 
@@ -198,6 +276,21 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
   Future<void> dispose(String sessionId) async => disposeCalls += 1;
 
   @override
+  Future<void> dispatchMouseInput(
+    String sessionId, {
+    required double x,
+    required double y,
+    required double devicePixelRatio,
+  }) async {
+    dispatchMouseInputCalls += 1;
+  }
+
+  @override
+  Future<void> insertText(String sessionId, String text) async {
+    insertedTexts.add(text);
+  }
+
+  @override
   Future<String> executeScript(String sessionId, String script) async {
     if (script == 'location.origin') return jsonEncode('https://example.com');
     if (script == 'navigator.userAgent') return jsonEncode('fixture-agent');
@@ -207,6 +300,44 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
           'href': 'https://example.com/protected',
           'ready': true,
           'challenge': challenge,
+        }),
+      );
+    }
+    if (script.contains("action:'coordinates'")) {
+      return jsonEncode(
+        jsonEncode(<String, Object?>{
+          'accepted': true,
+          'action': 'coordinates',
+          'x': 12,
+          'y': 18,
+          'width': 80,
+          'height': 24,
+        }),
+      );
+    }
+    if (script.contains("action:'native-input'")) {
+      return jsonEncode(
+        jsonEncode(<String, Object?>{
+          'accepted': true,
+          'action': 'native-input',
+          'x': 12,
+          'y': 18,
+          'width': 80,
+          'height': 24,
+          'devicePixelRatio': 1,
+        }),
+      );
+    }
+    if (script.contains("action:'control-click'")) {
+      return jsonEncode(
+        jsonEncode(<String, Object?>{
+          'accepted': true,
+          'action': 'control-click',
+          'x': 12,
+          'y': 18,
+          'width': 80,
+          'height': 24,
+          'devicePixelRatio': 1,
         }),
       );
     }
@@ -245,7 +376,13 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
       writtenCookies.add(cookie);
 
   @override
-  Future<void> show(String sessionId) async => showCalls += 1;
+  Future<void> show(String sessionId) async {
+    showCalls += 1;
+    if (failNextShow) {
+      failNextShow = false;
+      throw PlatformException(code: 'unsupported');
+    }
+  }
 
   @override
   Future<void> stop(String sessionId) async {}

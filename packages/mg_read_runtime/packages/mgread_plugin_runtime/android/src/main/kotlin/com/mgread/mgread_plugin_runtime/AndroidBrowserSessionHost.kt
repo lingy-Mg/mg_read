@@ -1,10 +1,13 @@
 /**
  * Android WebView owner for browser.session.v1.
  *
- * One plugin ID owns at most one resident WebView and one isolated WebView
- * profile. Hidden sessions never attach a View; visible verification uses one
- * global foreground dialog with a user-controlled Hide action. All injected
- * JavaScript is host-authored and request fields are JSON encoded.
+ * One plugin ID owns at most one resident WebView. When the installed WebView
+ * supports multi-profile, that WebView receives an isolated profile; older
+ * WebViews use the app's single default WebView profile and emit an explicit
+ * fallback warning. Hidden sessions never attach a View; visible verification
+ * uses one global foreground dialog with user-controlled Hide and Close actions.
+ * Hide preserves the session; Close destroys it so the next request recreates it.
+ * All injected JavaScript is host-authored and request fields are JSON encoded.
  */
 package com.mgread.mgread_plugin_runtime
 
@@ -18,7 +21,11 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceError
@@ -29,6 +36,7 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.webkit.NavigationParameters
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import org.json.JSONObject
@@ -39,6 +47,11 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+
+private enum class ProfileMode {
+    ISOLATED,
+    SINGLE_FALLBACK,
+}
 
 internal class AndroidBrowserSessionHost(private val context: Context) {
     private data class Job(
@@ -55,6 +68,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         val contextWrapper: MutableContextWrapper,
         val cookieManager: CookieManager,
         val pluginId: String,
+        val profileMode: ProfileMode,
         val verifiedAt: MutableMap<String, Long>,
         val webView: WebView,
         var activeJobId: String? = null,
@@ -114,9 +128,12 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
      * surface. The wait is bounded to keep the private bridge responsive.
      */
     fun poll(id: String, waitMillis: Long = 0L): String {
-        val deadline = System.nanoTime() + waitMillis.coerceIn(0L, POLL_WAIT_MAX_MILLIS) * 1_000_000L
+        val deadline = System.nanoTime() + waitMillis.coerceIn(0L, MAX_POLL_WAIT_MILLIS) * 1_000_000L
         do {
-            completed.remove(id)?.let { return it }
+            completed.remove(id)?.let {
+                Log.i(TAG, "browser_session_poll_complete")
+                return it
+            }
             if (System.nanoTime() >= deadline) return PENDING_RESULT
             try {
                 Thread.sleep(POLL_SLEEP_MILLIS)
@@ -154,15 +171,31 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
     private fun begin(job: Job) {
         if (!isCurrent(job)) return
         Log.i(TAG, "browser_session_begin transport=${job.request.transport}")
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
-            Log.i(TAG, "browser_session_unsupported reason=multi_profile")
-            completeError(job, "unsupported")
-            return
+        val profileMode = if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+            Log.i(TAG, "browser_session_profile_mode=isolated plugin_id=${job.request.pluginId}")
+            ProfileMode.ISOLATED
+        } else {
+            Log.w(
+                TAG,
+                "browser_session_profile_mode=single_fallback " +
+                    "reason=multi_profile_unsupported " +
+                    "plugin_id=${job.request.pluginId} cookie_scope=app_default_webview",
+            )
+            ProfileMode.SINGLE_FALLBACK
         }
-        val session = runCatching { sessionFor(job) }.getOrElse {
+        val session = runCatching { sessionFor(job, profileMode) }.getOrElse {
             completeError(job, "unsupported")
             return
         } ?: return
+        if (session.profileMode != profileMode) {
+            Log.w(
+                TAG,
+                "browser_session_profile_mode_changed " +
+                    "plugin_id=${job.request.pluginId} expected=$profileMode actual=${session.profileMode}",
+            )
+            completeError(job, "unsupported")
+            return
+        }
         if (session.activeJobId != null) {
             completeError(job, "overloaded")
             return
@@ -184,7 +217,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         }
     }
 
-    private fun sessionFor(job: Job): Session? {
+    private fun sessionFor(job: Job, profileMode: ProfileMode): Session? {
         sessions[job.request.pluginId]?.let { return it }
         if (sessions.size >= MAX_RESIDENT_WEBVIEWS) {
             val evicted = sessions.values
@@ -200,12 +233,19 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         }
         val wrapper = MutableContextWrapper(activity ?: context)
         val webView = WebView(wrapper)
-        WebViewCompat.setProfile(webView, profileName(job.request.pluginId))
+        if (profileMode == ProfileMode.ISOLATED) {
+            WebViewCompat.setProfile(webView, profileName(job.request.pluginId))
+        }
         configure(webView)
         val session = Session(
             contextWrapper = wrapper,
-            cookieManager = WebViewCompat.getProfile(webView).cookieManager,
+            cookieManager = if (profileMode == ProfileMode.ISOLATED) {
+                WebViewCompat.getProfile(webView).cookieManager
+            } else {
+                CookieManager.getInstance()
+            },
             pluginId = job.request.pluginId,
+            profileMode = profileMode,
             verifiedAt = mutableMapOf(),
             webView = webView,
         )
@@ -259,8 +299,34 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
     private fun loadForVerification(job: Job, session: Session) {
         if (!isCurrent(job, session)) return
         Log.i(TAG, "browser_session_load_for_verification")
-        session.webView.loadUrl(job.request.url, job.request.headers)
+        navigate(session.webView, job.request.url, job.request.headers)
         mainHandler.postDelayed({ probePage(job, session) }, PAGE_POLL_MILLIS)
+    }
+
+    private fun navigate(webView: WebView, url: String, headers: Map<String, String>) {
+        val usedModernApi = runCatching {
+            if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEBVIEW_NAVIGATE_EXPERIMENTAL_V1)) {
+                false
+            } else {
+                WebViewCompat.navigate(
+                    webView,
+                    url,
+                    NavigationParameters.Builder()
+                        .addAdditionalHeaders(headers)
+                        .build(),
+                )
+                true
+            }
+        }.getOrElse {
+            Log.w(TAG, "browser_session_navigation_api=webkit_navigate_failed_fallback")
+            false
+        }
+        if (!usedModernApi) {
+            Log.w(TAG, "browser_session_navigation_api=load_url_fallback reason=webkit_navigate_unsupported")
+            webView.loadUrl(url, headers)
+        } else {
+            Log.i(TAG, "browser_session_navigation_api=webkit_navigate")
+        }
     }
 
     private fun probePage(job: Job, session: Session) {
@@ -300,10 +366,51 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
 
     private fun perform(job: Job, session: Session, verificationState: String) {
         Log.i(TAG, "browser_session_perform transport=${job.request.transport}")
-        if (job.request.transport == "webview") {
+        if (job.request.operation == "interaction") {
+            performInteraction(job, session)
+        } else if (job.request.transport == "webview") {
             performWebViewFetch(job, session, verificationState)
         } else {
             performHttp(job, session, verificationState)
+        }
+    }
+
+    private fun performInteraction(job: Job, session: Session) {
+        if (!isCurrent(job, session)) return
+        session.webView.evaluateJavascript(interactionTargetScript(job.request)) { raw ->
+            if (!isCurrent(job, session)) return@evaluateJavascript
+            val response = decodeEvaluation(raw)?.let { runCatching { JSONObject(it) }.getOrNull() }
+            if (response?.optBoolean("accepted", false) != true ||
+                response.optString("action") != job.request.action
+            ) {
+                completeError(job, "plugin_execution_failed")
+                return@evaluateJavascript
+            }
+            if (job.request.action != "coordinates") {
+                val x = response.optDouble("x", Double.NaN)
+                val y = response.optDouble("y", Double.NaN)
+                val devicePixelRatio = response.optDouble("devicePixelRatio", Double.NaN)
+                if (!dispatchWebViewTap(session.webView, x, y, devicePixelRatio)) {
+                    completeError(job, "unsupported")
+                    return@evaluateJavascript
+                }
+                if (job.request.action == "native-input" &&
+                    !commitNativeText(session.webView, job.request.text.orEmpty())
+                ) {
+                    completeError(job, "plugin_execution_failed")
+                    return@evaluateJavascript
+                }
+            }
+            response.put("version", 1)
+            if (job.request.action != "coordinates") {
+                response.remove("x")
+                response.remove("y")
+                response.remove("width")
+                response.remove("height")
+                response.remove("devicePixelRatio")
+            }
+            completed[job.id] = JSONObject().put("state", "done").put("response", response).toString()
+            finish(job)
         }
     }
 
@@ -454,6 +561,10 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             text = "隐藏"
             setOnClickListener { hideForeground() }
         })
+        bar.addView(Button(currentActivity).apply {
+            text = "关闭"
+            setOnClickListener { closeForeground(session) }
+        })
         root.addView(bar, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         root.addView(session.webView, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -463,7 +574,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         val dialog = runCatching {
             Dialog(currentActivity, android.R.style.Theme_Material_Light_NoActionBar).apply {
                 setContentView(root)
-                setOnCancelListener { hideForeground() }
+                setOnCancelListener { closeForeground(session) }
                 setOnDismissListener {
                     (session.webView.parent as? ViewGroup)?.removeView(session.webView)
                     if (foregroundDialog === this) {
@@ -488,6 +599,29 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         foregroundDialog = null
         foregroundPluginId = null
         dialog?.dismiss()
+    }
+
+    private fun closeForeground(session: Session) {
+        val dialog = if (foregroundPluginId == session.pluginId) foregroundDialog else null
+        if (foregroundDialog === dialog) {
+            foregroundDialog = null
+            foregroundPluginId = null
+        }
+        dialog?.setOnCancelListener(null)
+        dialog?.setOnDismissListener(null)
+        dialog?.dismiss()
+        (session.webView.parent as? ViewGroup)?.removeView(session.webView)
+        session.webView.stopLoading()
+        session.webView.destroy()
+        if (sessions[session.pluginId] === session) sessions.remove(session.pluginId)
+        val activeJob = session.activeJobId?.let { jobs[it] }
+        session.activeJobId = null
+        Log.i(
+            TAG,
+            "browser_session_manual_close plugin_id=${session.pluginId} " +
+                "session_recreated_on_next_request=true",
+        )
+        activeJob?.let { completeError(it, "interaction_required") }
     }
 
     private fun webViewFetchScript(job: Job): String {
@@ -530,6 +664,54 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         """.trimIndent()
     }
 
+    private fun interactionTargetScript(request: AndroidBrowserSessionRequest): String {
+        val selector = JSONObject.quote(request.selector)
+        return """
+            (() => { try { const e=document.querySelector($selector); if(!e) return JSON.stringify({accepted:false,action:'${request.action}'}); const r=e.getBoundingClientRect(); if(!Number.isFinite(r.x)||!Number.isFinite(r.y)||r.width<=0||r.height<=0) return JSON.stringify({accepted:false,action:'${request.action}'}); return JSON.stringify({accepted:true,action:'${request.action}',x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height,devicePixelRatio:window.devicePixelRatio||1}); } catch (_) { return JSON.stringify({accepted:false,action:'${request.action}'}); } })()
+        """.trimIndent()
+    }
+
+    private fun dispatchWebViewTap(
+        webView: WebView,
+        cssX: Double,
+        cssY: Double,
+        devicePixelRatio: Double,
+    ): Boolean {
+        if (!cssX.isFinite() || !cssY.isFinite() || !devicePixelRatio.isFinite() ||
+            devicePixelRatio <= 0.0 || devicePixelRatio > 8.0 ||
+            !webView.isAttachedToWindow
+        ) return false
+        val x = (cssX * devicePixelRatio).toFloat()
+        val y = (cssY * devicePixelRatio).toFloat()
+        if (!x.isFinite() || !y.isFinite() || x < 0f || y < 0f ||
+            x >= webView.width || y >= webView.height
+        ) return false
+        val now = android.os.SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0)
+        val up = MotionEvent.obtain(now, now + 16L, MotionEvent.ACTION_UP, x, y, 0)
+        down.source = InputDevice.SOURCE_TOUCHSCREEN
+        up.source = InputDevice.SOURCE_TOUCHSCREEN
+        return try {
+            val downAccepted = webView.dispatchTouchEvent(down)
+            val upAccepted = webView.dispatchTouchEvent(up)
+            downAccepted && upAccepted
+        } finally {
+            down.recycle()
+            up.recycle()
+        }
+    }
+
+    private fun commitNativeText(webView: WebView, text: String): Boolean {
+        if (!webView.isAttachedToWindow || !webView.requestFocus(View.FOCUS_DOWN)) return false
+        val editorInfo = EditorInfo()
+        val inputConnection = webView.onCreateInputConnection(editorInfo) ?: return false
+        return try {
+            inputConnection.commitText(text, 1)
+        } finally {
+            inputConnection.closeConnection()
+        }
+    }
+
     private fun responseObject(value: AndroidBrowserHttpResponse): JSONObject = JSONObject()
         .put("status", value.status)
         .put("finalUrl", value.finalUrl)
@@ -560,13 +742,13 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         const val MAX_RESIDENT_WEBVIEWS = 8
         const val PAGE_POLL_MILLIS = 400L
         const val POLL_SLEEP_MILLIS = 10L
-        const val POLL_WAIT_MAX_MILLIS = 250L
+        const val MAX_POLL_WAIT_MILLIS = 120_000L
         const val VERIFICATION_CACHE_MILLIS = 10 * 60 * 1000L
         const val TAG = "MgReadAndroidBrowser"
         const val PENDING_RESULT = "{\"state\":\"pending\"}"
         val PAGE_PROBE_SCRIPT = """
             (() => { try { const text=(document.title+' '+(document.documentElement?.innerText||'')).slice(0,200000);
-            return JSON.stringify({href:location.href,ready:document.readyState==='complete',
+            return JSON.stringify({href:location.href,ready:document.readyState!=='loading',
             challenge:/(cf-challenge|cf-turnstile|just a moment|checking your browser|challenge-platform)/i.test(text)});
             } catch (_) { return null; } })()
         """.trimIndent()

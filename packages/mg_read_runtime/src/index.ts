@@ -71,9 +71,15 @@ export {
   maximumBrowserResponseBytes,
   maximumBrowserTimeoutMs,
   PluginBrowserSessionError,
+  requestPluginBrowserInteraction,
+  requestPluginBrowserSession,
 } from "./plugin-browser-session.js";
 export type {
   PluginBrowserHostRequest,
+  PluginBrowserHostResponse,
+  PluginBrowserSessionInteraction,
+  PluginBrowserSessionInteractionRequest,
+  PluginBrowserSessionInteractionResponse,
   PluginBrowserSessionProvider,
   PluginBrowserSessionRequest,
   PluginBrowserSessionResponse,

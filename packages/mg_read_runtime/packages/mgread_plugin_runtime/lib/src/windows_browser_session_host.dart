@@ -3,6 +3,8 @@
 /// One plugin owns at most one WebView2 and isolated user-data folder. Fixed
 /// host scripts implement browser fetch; direct HTTP temporarily reads the
 /// profile Cookie/UA and writes Set-Cookie updates back without exposing them.
+/// Closing the native verification window invalidates that session; the next
+/// visible source request recreates it.
 library;
 
 import 'dart:async';
@@ -34,7 +36,14 @@ abstract interface class WindowsBrowserPlatform {
     required String profilePath,
   });
   Future<void> dispose(String sessionId);
+  Future<void> dispatchMouseInput(
+    String sessionId, {
+    required double x,
+    required double y,
+    required double devicePixelRatio,
+  });
   Future<String> executeScript(String sessionId, String script);
+  Future<void> insertText(String sessionId, String text);
   Future<List<Map<String, Object?>>> getCookies(String sessionId, String url);
   Future<void> hide(String sessionId);
   Future<void> load(String sessionId, String url);
@@ -68,6 +77,26 @@ final class MethodChannelWindowsBrowserPlatform
 
   @override
   Future<void> dispose(String sessionId) => _invoke('dispose', sessionId);
+
+  @override
+  Future<void> dispatchMouseInput(
+    String sessionId, {
+    required double x,
+    required double y,
+    required double devicePixelRatio,
+  }) => _channel.invokeMethod<void>('dispatchMouseInput', <String, Object?>{
+    'sessionId': sessionId,
+    'x': x,
+    'y': y,
+    'devicePixelRatio': devicePixelRatio,
+  });
+
+  @override
+  Future<void> insertText(String sessionId, String text) =>
+      _channel.invokeMethod<void>('insertText', <String, Object?>{
+        'sessionId': sessionId,
+        'text': text,
+      });
 
   @override
   Future<String> executeScript(String sessionId, String script) async {
@@ -168,8 +197,23 @@ final class WindowsBrowserSessionHost {
         throw const WindowsBrowserSessionException('overloaded');
       session.activeJobId = jobId;
       session.lastUsedAt = _clock();
-      if (request.presentation == 'visible')
-        await _platform.show(session.sessionId);
+      if (request.presentation == 'visible') {
+        try {
+          await _platform.show(session.sessionId);
+        } on PlatformException catch (error) {
+          if (error.code != 'unsupported') rethrow;
+          if (identical(_sessions[request.pluginId], session)) {
+            _sessions.remove(request.pluginId);
+          }
+          session.activeJobId = null;
+          session = await _sessionFor(request.pluginId);
+          if (session.activeJobId != null)
+            throw const WindowsBrowserSessionException('overloaded');
+          session.activeJobId = jobId;
+          session.lastUsedAt = _clock();
+          await _platform.show(session.sessionId);
+        }
+      }
       final cachedAt = session.verifiedAt[request.origin];
       final cached =
           cachedAt != null &&
@@ -177,6 +221,9 @@ final class WindowsBrowserSessionHost {
       final sameOrigin =
           cached && await _currentOrigin(session) == request.origin;
       final state = sameOrigin ? 'verified' : await _verify(job, session);
+      if (request.operation == 'interaction') {
+        return await _interact(job, session);
+      }
       return request.transport == 'webview'
           ? await _webViewFetch(job, session, state)
           : await _httpFetch(job, session, state);
@@ -372,6 +419,52 @@ final class WindowsBrowserSessionHost {
     }
   }
 
+  Future<Map<String, Object?>> _interact(
+    _WindowsBrowserJob job,
+    _WindowsBrowserSession session,
+  ) async {
+    _check(job);
+    final raw = await _platform.executeScript(
+      session.sessionId,
+      _interactionTargetScript(job.request),
+    );
+    _check(job);
+    final result = _decodeScriptObject(raw);
+    if (result == null ||
+        result['accepted'] != true ||
+        result['action'] != job.request.action) {
+      throw const WindowsBrowserSessionException('plugin_execution_failed');
+    }
+    if (job.request.action == 'coordinates') {
+      return <String, Object?>{...result, 'version': 1};
+    }
+    final x = _finiteNumber(result['x']);
+    final y = _finiteNumber(result['y']);
+    final devicePixelRatio = _finiteNumber(result['devicePixelRatio']);
+    if (x == null ||
+        y == null ||
+        devicePixelRatio == null ||
+        devicePixelRatio <= 0) {
+      throw const WindowsBrowserSessionException('plugin_execution_failed');
+    }
+    await _platform.dispatchMouseInput(
+      session.sessionId,
+      x: x,
+      y: y,
+      devicePixelRatio: devicePixelRatio,
+    );
+    _check(job);
+    if (job.request.action == 'native-input') {
+      await _platform.insertText(session.sessionId, job.request.text!);
+      _check(job);
+    }
+    return <String, Object?>{
+      'accepted': true,
+      'action': job.request.action,
+      'version': 1,
+    };
+  }
+
   Future<Map<String, Object?>> _httpFetch(
     _WindowsBrowserJob job,
     _WindowsBrowserSession session,
@@ -560,6 +653,7 @@ final class WindowsBrowserSessionHost {
 
 final class _WindowsBrowserRequest {
   const _WindowsBrowserRequest({
+    required this.action,
     required this.body,
     required this.headers,
     required this.interaction,
@@ -572,8 +666,12 @@ final class _WindowsBrowserRequest {
     required this.transport,
     required this.url,
     required this.origin,
+    required this.operation,
+    required this.selector,
+    required this.text,
   });
 
+  final String action;
   final String? body;
   final Map<String, String> headers;
   final String interaction;
@@ -586,6 +684,9 @@ final class _WindowsBrowserRequest {
   final String transport;
   final String url;
   final String origin;
+  final String operation;
+  final String selector;
+  final String? text;
 
   static _WindowsBrowserRequest parse(Map<String, Object?> value) {
     if (utf8.encode(jsonEncode(value)).length > _maximumRequestBytes ||
@@ -598,6 +699,48 @@ final class _WindowsBrowserRequest {
       _invalid();
     final url = _required(value, 'url', 4096);
     final origin = _origin(url);
+    final operation = value['operation'] is String
+        ? value['operation']! as String
+        : 'request';
+    if (operation == 'interaction') {
+      final action = _required(value, 'action', 16);
+      final presentation = _required(value, 'presentation', 7);
+      final timeoutMs = value['timeoutMs'];
+      final selector = _required(value, 'selector', 512);
+      final text = value['text'];
+      if (!const <String>{
+            'coordinates',
+            'native-input',
+            'control-click',
+          }.contains(action) ||
+          !const <String>{'hidden', 'visible'}.contains(presentation) ||
+          timeoutMs is! int ||
+          timeoutMs < 1000 ||
+          timeoutMs > _maximumTimeoutMs ||
+          (action == 'native-input' &&
+              (text is! String || text.length > 16 * 1024)) ||
+          (action != 'native-input' && text != null))
+        _invalid();
+      return _WindowsBrowserRequest(
+        action: action,
+        body: null,
+        headers: <String, String>{},
+        interaction: 'allow',
+        maxResponseBytes: 1,
+        method: 'GET',
+        operation: operation,
+        pluginId: pluginId,
+        presentation: presentation,
+        selector: selector,
+        sessionKey: sessionKey,
+        text: text as String?,
+        timeoutMs: timeoutMs,
+        transport: 'webview',
+        url: url,
+        origin: origin,
+      );
+    }
+    if (operation != 'request') _invalid();
     final method = _required(value, 'method', 4);
     final interaction = _required(value, 'interaction', 8);
     final presentation = _required(value, 'presentation', 7);
@@ -620,6 +763,7 @@ final class _WindowsBrowserRequest {
       _invalid();
     final headers = _headers(value['headers'], origin);
     return _WindowsBrowserRequest(
+      action: '',
       body: body as String?,
       headers: headers,
       interaction: interaction,
@@ -632,6 +776,9 @@ final class _WindowsBrowserRequest {
       transport: transport,
       url: url,
       origin: origin,
+      operation: operation,
+      selector: '',
+      text: null,
     );
   }
 
@@ -727,6 +874,11 @@ bool _looksLikeChallenge(Object? value) =>
       caseSensitive: false,
     ).hasMatch(value);
 
+double? _finiteNumber(Object? value) {
+  if (value is! num || !value.isFinite) return null;
+  return value.toDouble();
+}
+
 String _fetchScript(_WindowsBrowserJob job) {
   final request = job.request;
   final key = jsonEncode(job.id);
@@ -738,5 +890,10 @@ String _fetchScript(_WindowsBrowserJob job) {
   return """(() => {globalThis.__mgreadFetchResults ??= Object.create(null);const key=$key;(async()=>{try{const response=await fetch($url,{method:$method,headers:JSON.parse($headers),body:$body,credentials:'include',redirect:'follow'});const body=await response.text();if(new TextEncoder().encode(body).byteLength>${request.maxResponseBytes}){globalThis.__mgreadFetchResults[key]=JSON.stringify({ok:false,code:'overloaded'});return;}const finalUrl=new URL(response.url);if(finalUrl.origin!==$origin)throw new Error('cross_origin');const headers={};for(const name of ['cache-control','content-type','etag','expires','last-modified']){const value=response.headers.get(name);if(value!==null)headers[name]=value.slice(0,1024);}globalThis.__mgreadFetchResults[key]=JSON.stringify({ok:true,response:{status:response.status,finalUrl:response.url,headers,body}});}catch(_){globalThis.__mgreadFetchResults[key]=JSON.stringify({ok:false,code:'plugin_execution_failed'});}})();return 'started';})()""";
 }
 
+String _interactionTargetScript(_WindowsBrowserRequest request) {
+  final selector = jsonEncode(request.selector);
+  return """(() => { try { const e=document.querySelector($selector); if(!e) return JSON.stringify({accepted:false,action:'${request.action}'}); const r=e.getBoundingClientRect(); if(!Number.isFinite(r.x)||!Number.isFinite(r.y)||r.width<=0||r.height<=0) return JSON.stringify({accepted:false,action:'${request.action}'}); return JSON.stringify({accepted:true,action:'${request.action}',x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height,devicePixelRatio:window.devicePixelRatio||1}); } catch (_) { return JSON.stringify({accepted:false,action:'${request.action}'}); } })()""";
+}
+
 const _pageProbeScript =
-    """(() => {try{const text=(document.title+' '+(document.documentElement?.innerText||'')).slice(0,200000);return JSON.stringify({href:location.href,ready:document.readyState==='complete',challenge:/(cf-challenge|cf-turnstile|just a moment|checking your browser|challenge-platform)/i.test(text)});}catch(_){return null;}})()""";
+    """(() => {try{const text=(document.title+' '+(document.documentElement?.innerText||'')).slice(0,200000);return JSON.stringify({href:location.href,ready:document.readyState!=='loading',challenge:/(cf-challenge|cf-turnstile|just a moment|checking your browser|challenge-platform)/i.test(text)});}catch(_){return null;}})()""";

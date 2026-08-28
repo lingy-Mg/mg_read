@@ -73,6 +73,7 @@ import {
 
 import {
   PluginManagerError,
+  isPluginManagerError,
   type PluginCacheClearItem,
   type PluginCacheClearResult,
   type PluginCacheUsage,
@@ -109,6 +110,7 @@ import {
 
 export {
   PluginManagerError,
+  isPluginManagerError,
   type InstalledPluginSnapshot,
   type PluginCacheClearItem,
   type PluginCacheClearResult,
@@ -649,7 +651,7 @@ export class PluginManager {
         outcome: "error",
         pluginId,
       });
-      if (error instanceof PluginManagerError) throw error;
+      if (isPluginManagerError(error)) throw new PluginManagerError(error.code);
       this.#throwIfCancelled(signal, deadlineUnixMs);
       if (error instanceof PluginContentValidationError) {
         throw new PluginManagerError("plugin_invalid_response");

@@ -27,14 +27,18 @@
   Runtime；不在同一 VM 热替换。Android 由一个专用线程持有一个 Javet `NodeRuntime`。
 - desktop 只接受显式 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` 与 Windows 手工 Internet Settings；
   PAC/WPAD 需要按目标 URL 的专用 resolver，不能展平成固定代理。
-- `browser.session.v1` provider 是唯一浏览器反向能力：插件仅传有界同源请求，平台持有 Cookie、UA、
-  验证 UI 与会话缓存；新增平台实现必须覆盖取消/超时/交互需求和跨插件隔离，不能退回 raw callback。
-- Android 浏览器 provider 每个 `pluginId` 最多一个 WebView/独立 Profile，最多 8 个驻留会话和 16 个
-  待处理请求。`webview` 注入只能使用宿主固定脚本，`http` 只能在宿主内部读取 Profile Cookie/UA；
-  `visible` 使用全局唯一可隐藏弹窗，`hidden` 不附着 View。multi-profile 不可用时返回 `unsupported`。
+- `browser.session.v1` provider 是唯一浏览器反向能力：插件仅传有界同源请求或 WebView 会话内的
+  坐标/原生输入/控件点击操作，平台持有 Cookie、UA、验证 UI 与会话缓存；新增平台实现必须覆盖
+  取消/超时/交互需求和跨插件隔离，不能退回 raw callback 或桌面全局输入。
+- Android 浏览器 provider 每个 `pluginId` 最多一个 WebView；支持 multi-profile 时使用独立 Profile，最多 8 个驻留
+  会话和 16 个待处理请求。`webview` 注入只能使用宿主固定脚本，`http` 只能在宿主内部读取 Profile Cookie/UA；
+  `visible` 使用全局唯一可隐藏弹窗，`hidden` 不附着 View。multi-profile 不可用时必须明确记录
+  `single_fallback` 降级日志，并使用应用默认单体 WebView Profile；该模式不提供跨插件 Cookie 隔离。
 - Windows provider 通过现有内部 WebSocket 的 server-direction `host.browserSession.v1` 反向帧到达 Flutter
   package，再进入固定版本 WebView2 原生插件；不得新增公开 HostPort、凭据参数或 raw script API。每个
   `pluginId` 使用独立 UDF 和至多一个 WebView2；`visible` 全局只显示一个可隐藏窗口，`hidden` 从不显示。
+  数据源 WebView 交互只允许宿主固定脚本查询 `getBoundingClientRect()`；点击和原生输入必须从该 WebView
+  宿主输入入口投递，不使用 `HTMLElement.click()`、DOM `dispatchEvent()`、DOM value setter 或 CDP。
 
 - WebView2 SDK 固定为 `Microsoft.Web.WebView2 1.0.4129.50` 并静态链接 Loader；运行设备仍须安装
   Evergreen WebView2 Runtime。SDK 下载 URL 与 SHA-256 同时固定，升级时核对官方 NuGet、许可证、

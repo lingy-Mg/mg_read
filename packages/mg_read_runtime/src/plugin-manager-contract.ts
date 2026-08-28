@@ -63,6 +63,29 @@ export class PluginManagerError extends Error {
   }
 }
 
+const pluginManagerErrorCodes = new Set<PluginManagerError["code"]>([
+  "cancelled",
+  "interaction_required",
+  "invalid_request",
+  "overloaded",
+  "plugin_disabled",
+  "plugin_execution_failed",
+  "plugin_invalid_response",
+  "plugin_load_failed",
+  "plugin_not_found",
+  "timeout",
+  "unsupported",
+]);
+
+/** Preserves stable Runtime errors when embedded module realms duplicate classes. */
+export function isPluginManagerError(error: unknown): error is { readonly code: PluginManagerError["code"] } {
+  if (error instanceof PluginManagerError) return true;
+  if (error === null || typeof error !== "object") return false;
+  if ("name" in error && error.name !== "PluginManagerError") return false;
+  const code = (error as { readonly code?: unknown }).code;
+  return typeof code === "string" && pluginManagerErrorCodes.has(code as PluginManagerError["code"]);
+}
+
 export interface InstalledPluginSnapshot extends JsonObject {
   readonly activeVersion: string | null;
   readonly contentKinds: readonly string[];
@@ -134,6 +157,9 @@ export interface MgReadPluginContext {
   readonly browser: {
     readonly sessionV1: {
       request(request: unknown): Promise<unknown>;
+      requestCoordinates(request: unknown): Promise<unknown>;
+      nativeInput(request: unknown): Promise<unknown>;
+      controlClick(request: unknown): Promise<unknown>;
     };
   };
   readonly resource: { proxy(request: JsonObject): string };

@@ -83,3 +83,50 @@ test("desktop broker reports unsupported until a negotiated Flutter host attache
   const broker = new DesktopBrowserSessionBroker("boot:fixture");
   assert.throws(() => broker.request(request()), (error) => error?.code === "unsupported");
 });
+
+test("desktop broker forwards only a scoped WebView interaction", async () => {
+  const broker = new DesktopBrowserSessionBroker("boot:fixture");
+  const host = session();
+  broker.attach(host);
+  const pending = broker.request({
+    operation: "interaction",
+    action: "coordinates",
+    version: 1,
+    pluginId: "org.mgread.fixture",
+    sessionKey: "fixture",
+    url: "https://example.com/protected",
+    selector: "#fixture-control",
+    presentation: "hidden",
+    timeoutMs: 5_000,
+    signal: new AbortController().signal,
+  });
+  const envelope = host.sent[0];
+  assert.deepEqual(envelope.params, {
+    operation: "interaction",
+    action: "coordinates",
+    version: 1,
+    pluginId: "org.mgread.fixture",
+    sessionKey: "fixture",
+    url: "https://example.com/protected",
+    selector: "#fixture-control",
+    presentation: "hidden",
+    timeoutMs: 5_000,
+  });
+  broker.handleIncoming(host, {
+    v: "1.1",
+    type: "host_response",
+    bootId: "boot:fixture",
+    id: envelope.id,
+    traceId: envelope.traceId,
+    result: {
+      version: 1,
+      accepted: true,
+      action: "coordinates",
+      x: 12,
+      y: 18,
+      width: 80,
+      height: 24,
+    },
+  });
+  assert.equal((await pending).x, 12);
+});

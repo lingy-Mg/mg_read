@@ -5,7 +5,11 @@
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { requestPluginBrowserSession, type PluginBrowserSessionProvider } from "./plugin-browser-session.js";
+import {
+  requestPluginBrowserInteraction,
+  requestPluginBrowserSession,
+  type PluginBrowserSessionProvider,
+} from "./plugin-browser-session.js";
 import type { PluginPackageDescriptor } from "./plugin-package.js";
 import { pluginApiVersion } from "./plugin-package.js";
 import { runtimeVersion } from "./runtime-version.js";
@@ -35,11 +39,25 @@ export async function createPluginContext(options: {
   };
   return Object.freeze({
     app: Object.freeze({ nodeVersion: process.versions.node, pluginApi: pluginApiVersion, runtimeVersion }),
-    browser: Object.freeze({ sessionV1: Object.freeze({ request: (request: unknown) => {
-      const scope = invocationScope();
-      if (scope === undefined) throw new PluginManagerError("invalid_request");
-      return requestPluginBrowserSession(browserSession, descriptor.id, request, scope.signal, scope.deadlineUnixMs);
-    } }) }),
+    browser: Object.freeze({ sessionV1: Object.freeze({
+      request: (request: unknown) => withScope(scope =>
+        requestPluginBrowserSession(browserSession, descriptor.id, request, scope.signal, scope.deadlineUnixMs)),
+      requestCoordinates: (request: unknown) => withScope(scope =>
+        requestPluginBrowserInteraction(browserSession, descriptor.id, {
+          ...(request as Record<string, unknown>),
+          action: "coordinates",
+        }, scope.signal, scope.deadlineUnixMs)),
+      nativeInput: (request: unknown) => withScope(scope =>
+        requestPluginBrowserInteraction(browserSession, descriptor.id, {
+          ...(request as Record<string, unknown>),
+          action: "native-input",
+        }, scope.signal, scope.deadlineUnixMs)),
+      controlClick: (request: unknown) => withScope(scope =>
+        requestPluginBrowserInteraction(browserSession, descriptor.id, {
+          ...(request as Record<string, unknown>),
+          action: "control-click",
+        }, scope.signal, scope.deadlineUnixMs)),
+    }) }),
     cacheDir,
     dataDir,
     http: Object.freeze({ fetch: (input: string | URL, init: RequestInit = {}) => {
@@ -63,4 +81,12 @@ export async function createPluginContext(options: {
     }),
     plugin: Object.freeze({ id: descriptor.id, version: descriptor.version }),
   });
+
+  function withScope<T>(
+    operation: (scope: PluginInvocationScope) => Promise<T>,
+  ): Promise<T> {
+    const scope = invocationScope();
+    if (scope === undefined) throw new PluginManagerError("invalid_request");
+    return operation(scope);
+  }
 }

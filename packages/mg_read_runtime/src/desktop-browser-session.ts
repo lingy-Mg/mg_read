@@ -10,8 +10,8 @@ import { randomUUID } from "node:crypto";
 import {
   PluginBrowserSessionError,
   type PluginBrowserHostRequest,
+  type PluginBrowserHostResponse,
   type PluginBrowserSessionProvider,
-  type PluginBrowserSessionResponse,
 } from "./plugin-browser-session.js";
 import type { JsonObject } from "./protocol.js";
 import { protocolVersion } from "./runtime-version.js";
@@ -29,7 +29,7 @@ const hostErrorCodes = new Set([
 
 interface PendingHostRequest {
   readonly reject: (error: Error) => void;
-  readonly resolve: (response: PluginBrowserSessionResponse) => void;
+  readonly resolve: (response: PluginBrowserHostResponse) => void;
   readonly session: ServerWebSocketSession;
   readonly traceId: string;
 }
@@ -57,7 +57,7 @@ export class DesktopBrowserSessionBroker implements PluginBrowserSessionProvider
     }
   }
 
-  request(request: PluginBrowserHostRequest): Promise<PluginBrowserSessionResponse> {
+  request(request: PluginBrowserHostRequest): Promise<PluginBrowserHostResponse> {
     const session = this.#host;
     if (session === undefined || session.isClosed) {
       throw new PluginBrowserSessionError("unsupported");
@@ -80,25 +80,41 @@ export class DesktopBrowserSessionBroker implements PluginBrowserSessionProvider
       traceId,
       deadlineUnixMs: String(Date.now() + request.timeoutMs),
       params: {
-        version: request.version,
-        pluginId: request.pluginId,
-        sessionKey: request.sessionKey,
-        url: request.url,
-        method: request.method,
-        headers: request.headers,
-        body: request.body,
-        interaction: request.interaction,
-        presentation: request.presentation,
-        transport: request.transport,
-        timeoutMs: request.timeoutMs,
-        maxResponseBytes: request.maxResponseBytes,
+        ...(request.operation !== "interaction"
+          ? {
+              operation: "request",
+              version: request.version,
+              pluginId: request.pluginId,
+              sessionKey: request.sessionKey,
+              url: request.url,
+              method: request.method,
+              headers: request.headers,
+              body: request.body,
+              interaction: request.interaction,
+              presentation: request.presentation,
+              transport: request.transport,
+              timeoutMs: request.timeoutMs,
+              maxResponseBytes: request.maxResponseBytes,
+            }
+          : {
+              operation: "interaction",
+              action: request.action,
+              version: request.version,
+              pluginId: request.pluginId,
+              sessionKey: request.sessionKey,
+              url: request.url,
+              selector: request.selector,
+              presentation: request.presentation,
+              timeoutMs: request.timeoutMs,
+              ...(request.text === undefined ? {} : { text: request.text }),
+            }),
       },
     });
     if (Buffer.byteLength(envelope, "utf8") > maxWebSocketControlFrameBytes) {
       throw new PluginBrowserSessionError("overloaded");
     }
 
-    return new Promise<PluginBrowserSessionResponse>((resolve, reject) => {
+    return new Promise<PluginBrowserHostResponse>((resolve, reject) => {
       const onAbort = (): void => {
         if (!this.#pending.delete(id)) return;
         try {
@@ -169,7 +185,7 @@ export class DesktopBrowserSessionBroker implements PluginBrowserSessionProvider
       pending.reject(new PluginBrowserSessionError("plugin_execution_failed"));
       return true;
     }
-    pending.resolve(value.result as unknown as PluginBrowserSessionResponse);
+    pending.resolve(value.result as unknown as PluginBrowserHostResponse);
     return true;
   }
 }

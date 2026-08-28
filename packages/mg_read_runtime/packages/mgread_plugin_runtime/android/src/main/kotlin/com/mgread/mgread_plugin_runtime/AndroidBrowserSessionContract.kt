@@ -11,14 +11,18 @@ import org.json.JSONObject
 import java.net.URI
 
 internal data class AndroidBrowserSessionRequest(
+    val action: String,
     val body: String?,
     val headers: Map<String, String>,
     val interaction: String,
     val maxResponseBytes: Int,
     val method: String,
+    val operation: String,
     val pluginId: String,
     val presentation: String,
+    val selector: String,
     val sessionKey: String,
+    val text: String?,
     val timeoutMs: Long,
     val transport: String,
     val url: String,
@@ -44,6 +48,37 @@ internal data class AndroidBrowserSessionRequest(
             require(SESSION_KEY.matches(sessionKey))
             val url = value.requiredString("url", 4096)
             originOf(url)
+            val operation = value.optString("operation", "request")
+            require(operation == "request" || operation == "interaction")
+            if (operation == "interaction") {
+                val action = value.requiredString("action", 16)
+                require(action == "coordinates" || action == "native-input" || action == "control-click")
+                val presentation = value.requiredString("presentation", 7)
+                require(presentation == "hidden" || presentation == "visible")
+                val timeoutMs = value.optLong("timeoutMs", -1L)
+                require(timeoutMs in 1_000L..MAX_TIMEOUT_MILLIS)
+                val selector = value.requiredString("selector", 512)
+                val text = if (value.isNull("text")) null else value.optString("text", "")
+                require(action != "native-input" || (text != null && text.length <= 16 * 1024))
+                require(action == "native-input" || text == null)
+                return AndroidBrowserSessionRequest(
+                    action = action,
+                    body = null,
+                    headers = emptyMap(),
+                    interaction = "allow",
+                    maxResponseBytes = 1,
+                    method = "GET",
+                    operation = operation,
+                    pluginId = pluginId,
+                    presentation = presentation,
+                    selector = selector,
+                    sessionKey = sessionKey,
+                    text = text,
+                    timeoutMs = timeoutMs,
+                    transport = "webview",
+                    url = url,
+                )
+            }
             val method = value.requiredString("method", 4)
             require(method == "GET" || method == "POST")
             val interaction = value.requiredString("interaction", 8)
@@ -60,14 +95,18 @@ internal data class AndroidBrowserSessionRequest(
             require(method != "GET" || body == null)
             val headers = parseHeaders(value.getJSONObject("headers"), url)
             return AndroidBrowserSessionRequest(
+                action = "",
                 body = body,
                 headers = headers,
                 interaction = interaction,
                 maxResponseBytes = maxResponseBytes,
                 method = method,
+                operation = operation,
                 pluginId = pluginId,
                 presentation = presentation,
+                selector = "",
                 sessionKey = sessionKey,
+                text = null,
                 timeoutMs = timeoutMs,
                 transport = transport,
                 url = url,

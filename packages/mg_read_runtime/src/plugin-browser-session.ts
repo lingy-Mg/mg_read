@@ -39,6 +39,22 @@ export interface PluginBrowserSessionRequest {
   readonly version: 1;
 }
 
+export type PluginBrowserSessionInteraction =
+  | "coordinates"
+  | "native-input"
+  | "control-click";
+
+export interface PluginBrowserSessionInteractionRequest {
+  readonly action: PluginBrowserSessionInteraction;
+  readonly presentation: "hidden" | "visible";
+  readonly selector: string;
+  readonly sessionKey: string;
+  readonly text?: string;
+  readonly timeoutMs: number;
+  readonly url: string;
+  readonly version: 1;
+}
+
 export interface PluginBrowserSessionResponse {
   readonly body: string;
   readonly finalUrl: string;
@@ -48,13 +64,32 @@ export interface PluginBrowserSessionResponse {
   readonly version: 1;
 }
 
-export interface PluginBrowserHostRequest extends PluginBrowserSessionRequest {
-  readonly pluginId: string;
-  readonly signal: AbortSignal;
+export interface PluginBrowserSessionInteractionResponse {
+  readonly accepted: boolean;
+  readonly action: PluginBrowserSessionInteraction;
+  readonly height?: number;
+  readonly width?: number;
+  readonly x?: number;
+  readonly y?: number;
+  readonly version: 1;
 }
 
+export type PluginBrowserHostRequest = (PluginBrowserSessionRequest & {
+  readonly operation: "request";
+  readonly pluginId: string;
+  readonly signal: AbortSignal;
+}) | (PluginBrowserSessionInteractionRequest & {
+  readonly operation: "interaction";
+  readonly pluginId: string;
+  readonly signal: AbortSignal;
+});
+
+export type PluginBrowserHostResponse =
+  | PluginBrowserSessionResponse
+  | PluginBrowserSessionInteractionResponse;
+
 export interface PluginBrowserSessionProvider {
-  request(request: PluginBrowserHostRequest): Promise<PluginBrowserSessionResponse>;
+  request(request: PluginBrowserHostRequest): Promise<PluginBrowserHostResponse>;
 }
 
 export class PluginBrowserSessionError extends Error {
@@ -70,6 +105,32 @@ export class PluginBrowserSessionError extends Error {
     super("The host browser session could not complete the request.");
     this.name = "PluginBrowserSessionError";
   }
+}
+
+const pluginBrowserSessionErrorCodes = new Set<PluginBrowserSessionError["code"]>([
+  "cancelled",
+  "interaction_required",
+  "overloaded",
+  "plugin_execution_failed",
+  "timeout",
+  "unsupported",
+]);
+
+function browserSessionErrorCode(value: unknown): PluginBrowserSessionError["code"] | undefined {
+  if (value === null || typeof value !== "object") return undefined;
+  const code = (value as { readonly __mgreadBrowserSessionError?: unknown }).__mgreadBrowserSessionError;
+  return typeof code === "string" && pluginBrowserSessionErrorCodes.has(code as PluginBrowserSessionError["code"])
+    ? code as PluginBrowserSessionError["code"]
+    : undefined;
+}
+
+/** Accepts the same stable error envelope across separate embedded module realms. */
+function isPluginBrowserSessionError(error: unknown): error is { readonly code: PluginBrowserSessionError["code"] } {
+  if (error instanceof PluginBrowserSessionError) return true;
+  if (error === null || typeof error !== "object") return false;
+  if ("name" in error && error.name !== "PluginBrowserSessionError") return false;
+  const code = (error as { readonly code?: unknown }).code;
+  return typeof code === "string" && pluginBrowserSessionErrorCodes.has(code as PluginBrowserSessionError["code"]);
 }
 
 export async function requestPluginBrowserSession(
@@ -95,11 +156,52 @@ export async function requestPluginBrowserSession(
       ...validated,
       pluginId,
       signal,
+      operation: "request",
     }));
+    const hostErrorCode = browserSessionErrorCode(response);
+    if (hostErrorCode !== undefined) throw new PluginManagerError(hostErrorCode);
     return validateResponse(response, validated);
   } catch (error) {
     if (error instanceof PluginManagerError) throw error;
-    if (error instanceof PluginBrowserSessionError) {
+    if (isPluginBrowserSessionError(error)) {
+      throw new PluginManagerError(error.code);
+    }
+    if (signal.aborted) {
+      throw new PluginManagerError(invocationSignal.aborted ? "cancelled" : "timeout");
+    }
+    throw new PluginManagerError("plugin_execution_failed");
+  }
+}
+
+export async function requestPluginBrowserInteraction(
+  provider: PluginBrowserSessionProvider | undefined,
+  pluginId: string,
+  request: unknown,
+  invocationSignal: AbortSignal,
+  deadlineUnixMs: string,
+): Promise<PluginBrowserSessionInteractionResponse> {
+  if (provider === undefined) throw new PluginManagerError("unsupported");
+  const validated = validateInteractionRequest(request);
+  const remainingMs = Number(deadlineUnixMs) - Date.now();
+  if (invocationSignal.aborted) throw new PluginManagerError("cancelled");
+  if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
+    throw new PluginManagerError("timeout");
+  }
+  const timeoutSignal = AbortSignal.timeout(
+    Math.max(1, Math.min(validated.timeoutMs, remainingMs)),
+  );
+  const signal = AbortSignal.any([invocationSignal, timeoutSignal]);
+  try {
+    const response = await provider.request(Object.freeze({
+      ...validated,
+      operation: "interaction",
+      pluginId,
+      signal,
+    }));
+    return validateInteractionResponse(response, validated.action);
+  } catch (error) {
+    if (error instanceof PluginManagerError) throw error;
+    if (isPluginBrowserSessionError(error)) {
       throw new PluginManagerError(error.code);
     }
     if (signal.aborted) {
@@ -158,6 +260,50 @@ function validateResponse(
     headers,
     status: value.status as number,
     verificationState: value.verificationState as PluginBrowserVerificationState,
+    version: 1,
+  });
+}
+
+function validateInteractionRequest(value: unknown): PluginBrowserSessionInteractionRequest {
+  if (!isRecord(value) || encodedBytes(value) > maximumBrowserRequestBytes) invalid();
+  if (value.version !== 1 || !/^[A-Za-z0-9._-]{1,64}$/u.test(value.sessionKey as string)) invalid();
+  if (value.action !== "coordinates" && value.action !== "native-input" && value.action !== "control-click") invalid();
+  if (value.presentation !== "hidden" && value.presentation !== "visible") invalid();
+  if (typeof value.selector !== "string" || value.selector.length === 0 || value.selector.length > 512) invalid();
+  const timeoutMs = boundedInteger(value.timeoutMs, 1_000, maximumBrowserTimeoutMs);
+  const url = secureUrl(value.url);
+  if (value.action === "native-input" && (typeof value.text !== "string" || value.text.length > 16 * 1024)) invalid();
+  if (value.action !== "native-input" && value.text !== undefined) invalid();
+  return Object.freeze({
+    action: value.action,
+    presentation: value.presentation,
+    selector: value.selector,
+    sessionKey: value.sessionKey as string,
+    ...(value.text === undefined ? {} : { text: value.text as string }),
+    timeoutMs,
+    url: url.toString(),
+    version: 1,
+  });
+}
+
+function validateInteractionResponse(
+  value: unknown,
+  action: PluginBrowserSessionInteraction,
+): PluginBrowserSessionInteractionResponse {
+  if (!isRecord(value) || value.version !== 1 || value.action !== action || value.accepted !== true) invalidResponse();
+  if (action !== "coordinates") {
+    return Object.freeze({ accepted: true, action, version: 1 });
+  }
+  for (const key of ["x", "y", "width", "height"] as const) {
+    if (typeof value[key] !== "number" || !Number.isFinite(value[key]) || value[key] < 0 || value[key] > 100_000) invalidResponse();
+  }
+  return Object.freeze({
+    accepted: true,
+    action,
+    height: value.height as number,
+    width: value.width as number,
+    x: value.x as number,
+    y: value.y as number,
     version: 1,
   });
 }

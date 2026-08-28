@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  requestPluginBrowserInteraction,
   requestPluginBrowserSession,
 } from "../dist/plugin-browser-session.js";
 
@@ -82,4 +83,63 @@ test("v1 rejects omitted mode fields and plugin-owned credentials", async () => 
       (error) => error?.code === "invalid_request",
     );
   }
+});
+
+test("v1 preserves stable browser errors crossing an embedded module realm", async () => {
+  const provider = {
+    async request() {
+      throw {
+        name: "PluginBrowserSessionError",
+        code: "unsupported",
+        message: "The host browser session could not complete the request.",
+      };
+    },
+  };
+  await assert.rejects(
+    requestPluginBrowserSession(
+      provider,
+      "org.mgread.fixture",
+      request(),
+      new AbortController().signal,
+      String(Date.now() + 10_000),
+    ),
+    (error) => error?.code === "unsupported",
+  );
+});
+
+test("v1 exposes bounded WebView interactions without accepting scripts or global targets", async () => {
+  const calls = [];
+  const provider = {
+    async request(value) {
+      calls.push(value);
+      return {
+        version: 1,
+        accepted: true,
+        action: value.action,
+        ...(value.action === "coordinates" ? { x: 1, y: 2, width: 3, height: 4 } : {}),
+      };
+    },
+  };
+  const signal = new AbortController().signal;
+  const result = await requestPluginBrowserInteraction(
+    provider,
+    "org.mgread.fixture",
+    {
+      version: 1,
+      sessionKey: "fixture",
+      url: "https://example.com/protected",
+      selector: "#control",
+      presentation: "hidden",
+      timeoutMs: 5_000,
+      action: "coordinates",
+      script: "document.body.innerHTML='unsafe'",
+    },
+    signal,
+    String(Date.now() + 10_000),
+  );
+  assert.equal(result.x, 1);
+  assert.equal(calls[0].pluginId, "org.mgread.fixture");
+  assert.equal(calls[0].operation, "interaction");
+  assert.equal(calls[0].selector, "#control");
+  assert.equal("script" in calls[0], false);
 });

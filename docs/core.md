@@ -62,10 +62,12 @@ plugins/sources/                    真实书源插件
   工作区；指纹变化后先回收旧 VM，再启动唯一新 Runtime，不在同一 VM 热替换模块。
 - 内部 WS/HTTP、ready、bootId、端口、PID、URL 和 envelope 不暴露给主应用。控制帧有界；大资源走
   Runtime HTTP 数据面，不进入无界 JSON/Base64。
-- `browser.session.v1` 限同源 HTTPS、64 KiB/2 MiB、1--120 秒；`webview` 固定脚本，
-  `http` 在宿主内携 Cookie/UA 并回写 Set-Cookie，插件无凭据。
-- Android/Windows 每插件一个独立 Profile/WebView，限制 8/16/10 分钟；`visible` 全局唯一可隐藏，`hidden`
-  不显示。Android 缺 multi-profile 返回 `unsupported`；Windows 以协议 `1.1` 反向 WS 接入 WebView2。
+- `browser.session.v1` 限同源 HTTPS、64 KiB/2 MiB、1--120 秒；`webview` 固定脚本只查
+  `getBoundingClientRect()`，交互由该 WebView 宿主输入入口完成，不用 DOM 合成事件、value setter 或 CDP。
+  `http` 在宿主内携 Cookie/UA 并回写 Set-Cookie，插件无凭据，不提供桌面全局输入或点击。
+- Android/Windows 每插件一个 WebView，限制 8/16/10 分钟；Android 支持 multi-profile 时使用独立 Profile，
+  不支持时明确记录 `single_fallback` 降级日志并使用应用默认单体 Profile（不提供跨插件 Cookie 隔离）。
+  `visible` 全局唯一可隐藏，`hidden` 不显示；Windows 以协议 `1.1` 反向 WS 接入 WebView2。
 - Debug 检查页仅保存开关、监听 `0.0.0.0:52173`；冲突不阻断，Release 禁用，不暴露凭据/控制面。
 
 ## 标准插件项目、artifact 与安装

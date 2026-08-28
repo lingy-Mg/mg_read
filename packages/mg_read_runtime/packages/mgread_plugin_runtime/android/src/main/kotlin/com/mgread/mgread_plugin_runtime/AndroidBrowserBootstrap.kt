@@ -3,12 +3,16 @@ package com.mgread.mgread_plugin_runtime
 
 internal fun androidBrowserProviderBootstrap(): String = """
     const browserSession = {
-      request(request) {
+      async request(request) {
         const payload = JSON.stringify({
+          operation: request.operation ?? 'request',
+          action: request.action,
           version: request.version,
           pluginId: request.pluginId,
           sessionKey: request.sessionKey,
           url: request.url,
+          selector: request.selector,
+          text: request.text,
           method: request.method,
           headers: request.headers,
           body: request.body,
@@ -19,37 +23,27 @@ internal fun androidBrowserProviderBootstrap(): String = """
           maxResponseBytes: request.maxResponseBytes,
         });
         const id = globalThis.__mgreadBrowserStart(payload);
-        return new Promise((resolve, reject) => {
-          let settled = false;
-          const cleanup = () => request.signal.removeEventListener('abort', abort);
-          const fail = (code) => {
-            if (settled) return;
-            settled = true;
-            cleanup();
-            reject(new PluginBrowserSessionError(code));
+        const onAbort = () => globalThis.__mgreadBrowserCancel(id);
+        request.signal.addEventListener('abort', onAbort, { once: true });
+        const browserSessionError = (code) => {
+          return {
+            __mgreadBrowserSessionError: code,
           };
-          const abort = () => {
-            globalThis.__mgreadBrowserCancel(id);
-            fail('cancelled');
-          };
-          request.signal.addEventListener('abort', abort, { once: true });
-          try {
-            // Keep polling in this Javet call rather than depending on the
-            // embedded Node timer queue. The host wait is bounded and the
-            // Android main thread remains free for WebView callbacks.
-            while (!settled) {
-              if (request.signal.aborted) { abort(); break; }
-              const result = JSON.parse(globalThis.__mgreadBrowserPollWait(id, 250));
-              if (result.state === 'pending') continue;
-              if (result.state === 'error') { fail(result.code); break; }
-              settled = true;
-              cleanup();
-              resolve(result.response);
-            }
-          } catch (_) {
-            fail('plugin_execution_failed');
-          }
-        });
+        };
+        try {
+          if (request.signal.aborted) return browserSessionError('cancelled');
+          // Wait in the private host bridge rather than depending on the
+          // embedded Node timer queue. The Android main thread remains free
+          // for WebView callbacks and the wait is bounded by the request.
+          const result = JSON.parse(globalThis.__mgreadBrowserPollWait(id, request.timeoutMs));
+          if (result.state === 'pending') return browserSessionError('timeout');
+          if (result.state === 'error') return browserSessionError(result.code);
+          return result.response;
+        } catch (error) {
+          return browserSessionError('plugin_execution_failed');
+        } finally {
+          request.signal.removeEventListener('abort', onAbort);
+        }
       },
     };
 """.trimIndent()

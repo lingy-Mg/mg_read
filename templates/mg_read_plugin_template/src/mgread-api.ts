@@ -13,6 +13,9 @@ export interface MgReadPluginContext {
   readonly browser: {
     readonly sessionV1: {
       request(request: BrowserSessionRequestV1): Promise<BrowserSessionResponseV1>;
+      requestCoordinates(request: BrowserCoordinatesRequestV1): Promise<BrowserCoordinatesResponseV1>;
+      nativeInput(request: BrowserNativeInputRequestV1): Promise<BrowserInteractionResponseV1>;
+      controlClick(request: BrowserControlClickRequestV1): Promise<BrowserInteractionResponseV1>;
     };
   };
   /** Creates a process-scoped Runtime-owned URL whose request is handled by `resource`. */
@@ -57,6 +60,40 @@ export interface BrowserSessionResponseV1 {
   readonly headers: Readonly<Record<string, string>>;
   readonly body: string;
   readonly verificationState: 'not-required' | 'required' | 'pending' | 'verified' | 'failed';
+}
+
+export interface BrowserInteractionRequestBaseV1 {
+  readonly version: 1;
+  readonly sessionKey: string;
+  readonly url: string;
+  readonly selector: string;
+  readonly presentation: 'hidden' | 'visible';
+  readonly timeoutMs: number;
+}
+
+export interface BrowserCoordinatesRequestV1 extends BrowserInteractionRequestBaseV1 {}
+
+export interface BrowserNativeInputRequestV1 extends BrowserInteractionRequestBaseV1 {
+  readonly text: string;
+}
+
+export interface BrowserControlClickRequestV1 extends BrowserInteractionRequestBaseV1 {}
+
+export interface BrowserInteractionResponseV1 {
+  readonly version: 1;
+  readonly accepted: true;
+  readonly action: 'native-input' | 'control-click';
+}
+
+export interface BrowserCoordinatesResponseV1 {
+  readonly version: 1;
+  readonly accepted: true;
+  readonly action: 'coordinates';
+  /** CSS pixels relative to the target WebView viewport. */
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 export type ContentKind = 'novel' | 'manga';

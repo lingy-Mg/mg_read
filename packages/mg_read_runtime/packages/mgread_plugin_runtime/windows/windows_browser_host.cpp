@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <mutex>
 #include <utility>
 
@@ -72,6 +73,20 @@ int64_t FindInt64(const flutter::EncodableMap& map, const char* key,
   return fallback;
 }
 
+double FindDouble(const flutter::EncodableMap& map, const char* key,
+                  double fallback = -1.0) {
+  const auto* value = Find(map, key);
+  if (value == nullptr) return fallback;
+  if (const auto* number = std::get_if<double>(value)) return *number;
+  if (const auto* number = std::get_if<int64_t>(value)) {
+    return static_cast<double>(*number);
+  }
+  if (const auto* number = std::get_if<int32_t>(value)) {
+    return static_cast<double>(*number);
+  }
+  return fallback;
+}
+
 std::string NewSessionId() {
   GUID guid{};
   if (FAILED(CoCreateGuid(&guid))) return {};
@@ -92,14 +107,29 @@ Microsoft::WRL::ComPtr<T> Query(Microsoft::WRL::ComPtr<ICoreWebView2> webview) {
   return result;
 }
 
+HWND FindWebViewWindow(HWND parent) {
+  for (HWND child = GetWindow(parent, GW_CHILD); child != nullptr;
+       child = GetWindow(child, GW_HWNDNEXT)) {
+    wchar_t class_name[128]{};
+    GetClassName(child, class_name, ARRAYSIZE(class_name));
+    if (wcsstr(class_name, L"Chrome_WidgetWin") != nullptr) return child;
+    if (const HWND nested = FindWebViewWindow(child); nested != nullptr) {
+      return nested;
+    }
+  }
+  return nullptr;
+}
+
 }  // namespace
 
 struct WindowsBrowserHost::Session {
+  WindowsBrowserHost* owner = nullptr;
   std::string plugin_id;
   std::string session_id;
   std::wstring profile_path;
   HWND window = nullptr;
   HWND hide_button = nullptr;
+  HWND input_window = nullptr;
   Microsoft::WRL::ComPtr<ICoreWebView2Environment> environment;
   Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller;
   Microsoft::WRL::ComPtr<ICoreWebView2> webview;
@@ -136,7 +166,11 @@ struct WindowsBrowserHost::Session {
         }
         break;
       case WM_CLOSE:
-        ShowWindow(window, SW_HIDE);
+        if (session != nullptr && session->owner != nullptr) {
+          session->owner->DisposeSession(session->session_id);
+        } else {
+          ShowWindow(window, SW_HIDE);
+        }
         return 0;
       case WM_SIZE:
         if (session != nullptr) session->Resize();
@@ -208,6 +242,10 @@ void WindowsBrowserHost::Handle(
     }
   } else if (call.method_name() == "executeScript") {
     ExecuteScript(session, *arguments, result);
+  } else if (call.method_name() == "dispatchMouseInput") {
+    DispatchMouseInput(session, *arguments, result);
+  } else if (call.method_name() == "insertText") {
+    InsertText(session, *arguments, result);
   } else if (call.method_name() == "getCookies") {
     GetCookies(session, *arguments, result);
   } else if (call.method_name() == "setCookie") {
@@ -232,6 +270,7 @@ void WindowsBrowserHost::Create(const flutter::EncodableMap& arguments,
     return;
   }
   const auto session = std::make_shared<Session>();
+  session->owner = this;
   session->plugin_id = *plugin_id;
   session->session_id = NewSessionId();
   session->profile_path = Utf8ToWide(*profile_path);
@@ -296,6 +335,7 @@ void WindowsBrowserHost::Create(const flutter::EncodableMap& arguments,
                         settings->put_IsZoomControlEnabled(FALSE);
                       }
                       session->controller->put_IsVisible(TRUE);
+                      session->input_window = FindWebViewWindow(session->window);
                       session->Resize();
                       result->Success(flutter::EncodableValue(session->session_id));
                       return S_OK;
@@ -312,6 +352,69 @@ void WindowsBrowserHost::Create(const flutter::EncodableMap& arguments,
     DisposeSession(session->session_id);
     SafeError(result, "unsupported");
   }
+}
+
+void WindowsBrowserHost::DispatchMouseInput(
+    const SessionPtr& session, const flutter::EncodableMap& arguments,
+    std::shared_ptr<MethodResult> result) {
+  const double x = FindDouble(arguments, "x");
+  const double y = FindDouble(arguments, "y");
+  const double device_pixel_ratio = FindDouble(arguments, "devicePixelRatio");
+  if (!std::isfinite(x) || !std::isfinite(y) ||
+      !std::isfinite(device_pixel_ratio) || x < 0 || y < 0 ||
+      device_pixel_ratio <= 0 || device_pixel_ratio > 8) {
+    SafeError(result, "plugin_execution_failed");
+    return;
+  }
+  if (session->input_window == nullptr || !IsWindow(session->input_window)) {
+    session->input_window = FindWebViewWindow(session->window);
+  }
+  if (session->input_window == nullptr) {
+    SafeError(result, "unsupported");
+    return;
+  }
+  RECT bounds{};
+  GetClientRect(session->input_window, &bounds);
+  const auto physical_x = static_cast<LONG>(std::lround(x * device_pixel_ratio));
+  const auto physical_y = static_cast<LONG>(std::lround(y * device_pixel_ratio));
+  if (physical_x < 0 || physical_y < 0 || physical_x >= bounds.right ||
+      physical_y >= bounds.bottom) {
+    SafeError(result, "plugin_execution_failed");
+    return;
+  }
+  const LPARAM point = MAKELPARAM(physical_x, physical_y);
+  SendMessage(session->input_window, WM_MOUSEMOVE, 0, point);
+  SendMessage(session->input_window, WM_LBUTTONDOWN, MK_LBUTTON, point);
+  SendMessage(session->input_window, WM_LBUTTONUP, 0, point);
+  result->Success();
+}
+
+void WindowsBrowserHost::InsertText(
+    const SessionPtr& session, const flutter::EncodableMap& arguments,
+    std::shared_ptr<MethodResult> result) {
+  const auto* text = FindString(arguments, "text");
+  if (text == nullptr || text->size() > 64 * 1024) {
+    SafeError(result, "plugin_execution_failed");
+    return;
+  }
+  if (session->input_window == nullptr || !IsWindow(session->input_window)) {
+    session->input_window = FindWebViewWindow(session->window);
+  }
+  if (session->input_window == nullptr) {
+    SafeError(result, "unsupported");
+    return;
+  }
+  const auto wide = Utf8ToWide(*text);
+  if (text->empty() != wide.empty()) {
+    SafeError(result, "plugin_execution_failed");
+    return;
+  }
+  SetFocus(session->input_window);
+  for (const wchar_t character : wide) {
+    SendMessage(session->input_window, WM_CHAR,
+                static_cast<WPARAM>(character), 1);
+  }
+  result->Success();
 }
 
 void WindowsBrowserHost::ExecuteScript(

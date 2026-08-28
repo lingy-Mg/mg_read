@@ -46,11 +46,7 @@ import { DesktopBrowserSessionBroker } from "./desktop-browser-session.js";
 import { readDebugHttpEnabled } from "./debug-http-control.js";
 import { RuntimeDebugHttpSettings } from "./debug-http-settings.js";
 import { servePluginIconResource, servePluginTransferResource, serveSourceResource } from "./loopback-resources.js";
-import {
-  PluginManager,
-  PluginManagerError,
-  type PluginManagerEvent,
-} from "./plugin-manager.js";
+import { isPluginManagerError, PluginManager, PluginManagerError, type PluginManagerEvent } from "./plugin-manager.js";
 import { pluginManagerErrorMessage } from "./plugin-manager-error-message.js";
 import type { DesktopRuntimeOptions, DesktopRuntimeProgressSink } from "./desktop-runtime-options.js";
 export type {
@@ -1077,7 +1073,7 @@ export class DesktopRuntime {
         },
       };
     } catch (error) {
-      if (error instanceof PluginManagerError) {
+      if (isPluginManagerError(error)) {
         return {
           error: this.#requestError(
             request,
@@ -1188,7 +1184,7 @@ export class DesktopRuntime {
     request: RuntimeRequest,
     error: unknown,
   ): RuntimeDispatchFailure {
-    if (error instanceof PluginManagerError) {
+    if (isPluginManagerError(error)) {
       return {
         error: this.#requestError(
           request,
@@ -1296,7 +1292,7 @@ export class DesktopRuntime {
           ),
         };
       }
-      if (error instanceof PluginManagerError) {
+      if (isPluginManagerError(error)) {
         return {
           error: this.#requestError(
             request,

@@ -29,6 +29,6 @@ void main() {
       pluginId: 'org.mgread.browser-session-fixture',
       query: 'android-http',
     ));
-    expect(http.items.single.title, 'http:200:not-required');
+    expect(http.items.single.title, 'http:200:verified');
   });
 }
