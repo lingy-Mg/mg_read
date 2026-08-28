@@ -7,10 +7,10 @@
 export const expectedNodeVersion = "24.16.0";
 
 /** The version of the Runtime-owned loopback control protocol. */
-export const protocolVersion = "1.0";
+export const protocolVersion = "1.1";
 
 /** The version of this Runtime implementation and its bundled contracts. */
-export const runtimeVersion = "0.4.1-standard.0";
+export const runtimeVersion = "0.4.2-standard.0";
 
 /** Android ABIs that have a matching Javet/Node compatibility unit. */
 export type AndroidNodeAbi = "arm64-v8a" | "x86_64";

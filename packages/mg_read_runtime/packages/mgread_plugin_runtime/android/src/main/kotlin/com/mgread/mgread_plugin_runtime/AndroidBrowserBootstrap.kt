@@ -32,22 +32,23 @@ internal fun androidBrowserProviderBootstrap(): String = """
             globalThis.__mgreadBrowserCancel(id);
             fail('cancelled');
           };
-          const poll = () => {
-            if (settled) return;
-            if (request.signal.aborted) { abort(); return; }
-            try {
-              const result = JSON.parse(globalThis.__mgreadBrowserPoll(id));
-              if (result.state === 'pending') { setTimeout(poll, 25); return; }
-              if (result.state === 'error') { fail(result.code); return; }
+          request.signal.addEventListener('abort', abort, { once: true });
+          try {
+            // Keep polling in this Javet call rather than depending on the
+            // embedded Node timer queue. The host wait is bounded and the
+            // Android main thread remains free for WebView callbacks.
+            while (!settled) {
+              if (request.signal.aborted) { abort(); break; }
+              const result = JSON.parse(globalThis.__mgreadBrowserPollWait(id, 250));
+              if (result.state === 'pending') continue;
+              if (result.state === 'error') { fail(result.code); break; }
               settled = true;
               cleanup();
               resolve(result.response);
-            } catch (_) {
-              fail('plugin_execution_failed');
             }
-          };
-          request.signal.addEventListener('abort', abort, { once: true });
-          poll();
+          } catch (_) {
+            fail('plugin_execution_failed');
+          }
         });
       },
     };

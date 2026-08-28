@@ -76,7 +76,8 @@ if (-not (Test-Path -LiteralPath $runtimeNpm -PathType Leaf)) {
 $developmentPluginArtifacts = @()
 $pluginSourceDirectories = @(
     (Join-Path $projectRoot 'plugins/sources/aisishuwu'),
-    (Join-Path $projectRoot 'plugins/sources/mgread-discovery-demo')
+    (Join-Path $projectRoot 'plugins/sources/mgread-discovery-demo'),
+    (Join-Path $projectRoot 'plugins/sources/browser-session-fixture')
 )
 $originalPath = $env:PATH
 try {
@@ -84,7 +85,13 @@ try {
     foreach ($pluginSourceDirectory in $pluginSourceDirectories) {
         $packageJsonPath = Join-Path $pluginSourceDirectory 'package.json'
         $packageJson = Get-Content -LiteralPath $packageJsonPath -Raw | ConvertFrom-Json
-        $artifactName = "$($packageJson.mgread.id)-$($packageJson.version).mgplugin"
+        $packageMode = [string]$packageJson.mgread.packageMode
+        $artifactSuffix = switch ($packageMode) {
+            'archive' { '.mgplugin' }
+            'single-file' { '.mgplugin.js' }
+            default { throw "Unsupported MgRead package mode '$packageMode' for '$($packageJson.mgread.id)'." }
+        }
+        $artifactName = "$($packageJson.mgread.id)-$($packageJson.version)$artifactSuffix"
         Push-Location $pluginSourceDirectory
         try {
             & $runtimeNpm run verify

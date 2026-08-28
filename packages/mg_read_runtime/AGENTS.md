@@ -32,6 +32,13 @@
 - Android 浏览器 provider 每个 `pluginId` 最多一个 WebView/独立 Profile，最多 8 个驻留会话和 16 个
   待处理请求。`webview` 注入只能使用宿主固定脚本，`http` 只能在宿主内部读取 Profile Cookie/UA；
   `visible` 使用全局唯一可隐藏弹窗，`hidden` 不附着 View。multi-profile 不可用时返回 `unsupported`。
+- Windows provider 通过现有内部 WebSocket 的 server-direction `host.browserSession.v1` 反向帧到达 Flutter
+  package，再进入固定版本 WebView2 原生插件；不得新增公开 HostPort、凭据参数或 raw script API。每个
+  `pluginId` 使用独立 UDF 和至多一个 WebView2；`visible` 全局只显示一个可隐藏窗口，`hidden` 从不显示。
+
+- WebView2 SDK 固定为 `Microsoft.Web.WebView2 1.0.4129.50` 并静态链接 Loader；运行设备仍须安装
+  Evergreen WebView2 Runtime。SDK 下载 URL 与 SHA-256 同时固定，升级时核对官方 NuGet、许可证、
+  下载大小并重新执行 Windows Debug 构建。
 
 ## 固定工具链与验证
 
@@ -50,4 +57,7 @@ npm.cmd run check:no-native-addons
 - Android/Javet、Windows 发布包、macOS 签名/公证分别报告，不能相互替代。
 - WebView 变更至少运行 `:mgread_plugin_runtime:compileDebugKotlin`、相邻 Kotlin 单测和 Node
   `browser-session` contract；真实 CF 与弹窗交互只由允许的 Android integration_test 关闭。
+- Windows WebView2 变更先跑 Node reverse-broker、Dart fake-platform/HTTP、Facade reverse-wire fixture，
+  再跑 `flutter build windows --debug`。mock 只证明契约；只有真实 Windows WebView2 弹窗和目标站请求
+  才能证明桌面浏览器层，且不能替代 Android 设备证据。
 - Runtime-only 任务不修改根 UI、reader、模板或真实书源，除非用户明确纳入同一交付包。

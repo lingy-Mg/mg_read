@@ -16,6 +16,7 @@ internal class AndroidBrowserJavetBridge(
     fun install(runtime: NodeRuntime) {
         installStringFunction(runtime, "__mgreadBrowserStart") { raw -> host.start(raw) }
         installStringFunction(runtime, "__mgreadBrowserPoll") { id -> host.poll(id) }
+        installPollWaitFunction(runtime)
         val cancelContext = JavetCallbackContext(
             "__mgreadBrowserCancel",
             JavetCallbackType.DirectCallNoThisAndNoResult,
@@ -27,6 +28,24 @@ internal class AndroidBrowserJavetBridge(
         )
         runtime.createV8ValueFunction(cancelContext).also { function ->
             runtime.getGlobalObject().set("__mgreadBrowserCancel", function)
+            functions += function
+        }
+    }
+
+    private fun installPollWaitFunction(runtime: NodeRuntime) {
+        val context = JavetCallbackContext(
+            "__mgreadBrowserPollWait",
+            JavetCallbackType.DirectCallNoThisAndResult,
+            object : IJavetDirectCallable.NoThisAndResult<Exception> {
+                override fun call(vararg values: V8Value): V8Value {
+                    val id = values.firstOrNull()?.toString().orEmpty()
+                    val waitMillis = values.getOrNull(1)?.toString()?.toLongOrNull() ?: 0L
+                    return runtime.createV8ValueString(host.poll(id, waitMillis))
+                }
+            },
+        )
+        runtime.createV8ValueFunction(context).also { function ->
+            runtime.getGlobalObject().set("__mgreadBrowserPollWait", function)
             functions += function
         }
     }

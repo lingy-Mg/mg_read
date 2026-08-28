@@ -23,6 +23,7 @@ import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 
 import 'src/windows_job_object.dart';
+import 'src/windows_browser_session_host.dart';
 
 part 'src/desktop_supervisor.dart';
 part 'src/desktop_plugin_artifact_io.dart';

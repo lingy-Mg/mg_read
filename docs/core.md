@@ -62,14 +62,11 @@ plugins/sources/                    真实书源插件
   工作区；指纹变化后先回收旧 VM，再启动唯一新 Runtime，不在同一 VM 热替换模块。
 - 内部 WS/HTTP、ready、bootId、端口、PID、URL 和 envelope 不暴露给主应用。控制帧有界；大资源走
   Runtime HTTP 数据面，不进入无界 JSON/Base64。
-- `browser.session.v1` 限同源 HTTPS、安全头、64 KiB 请求、2 MiB 响应和 1--120 秒。`webview` 用宿主
-  `fetch`；`http` 携 Profile Cookie/UA 直连。插件不传凭据。
-- Android 每个插件一个 Profile/至多一个 WebView；驻留 8、待处理 16、缓存 10 分钟，multi-profile
-  缺失不降级。`visible` 为全局可隐藏弹窗，`hidden` 不挂 View。已验证：Node/Kotlin；推断：设备支持
-  multi-profile；未验证：Android CF 与弹窗。
-- Debug Runtime 检查页只存在于 Debug，保存的只有用户开关；固定监听 `0.0.0.0:52173`。端口冲突
-  不阻止 Runtime，Release 永不启用。页面只暴露受限调试 API，不暴露 RPC、health、资源、Cookie、
-  token 或控制面，并持续提示仅在可信网络开启。
+- `browser.session.v1` 限同源 HTTPS、64 KiB/2 MiB、1--120 秒；`webview` 固定脚本，
+  `http` 在宿主内携 Cookie/UA 并回写 Set-Cookie，插件无凭据。
+- Android/Windows 每插件一个独立 Profile/WebView，限制 8/16/10 分钟；`visible` 全局唯一可隐藏，`hidden`
+  不显示。Android 缺 multi-profile 返回 `unsupported`；Windows 以协议 `1.1` 反向 WS 接入 WebView2。
+- Debug 检查页仅保存开关、监听 `0.0.0.0:52173`；冲突不阻断，Release 禁用，不暴露凭据/控制面。
 
 ## 标准插件项目、artifact 与安装
 

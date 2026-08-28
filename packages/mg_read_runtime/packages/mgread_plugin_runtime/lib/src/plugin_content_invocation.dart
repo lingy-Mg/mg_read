@@ -1,5 +1,7 @@
 part of mgread_plugin_runtime;
 
+const Duration _contentTimeout = Duration(minutes: 2);
+
 enum PluginContentKind {
   novel('novel'),
   manga('manga');
@@ -209,6 +211,9 @@ final class SourceSearchInvocation
   final int pageSize;
 
   @override
+  Duration get _timeout => _contentTimeout;
+
+  @override
   String get _wireMethod => 'source.search.v1';
 
   @override
@@ -274,6 +279,9 @@ final class SourceSearchSuggestionsInvocation
   final String pluginId;
   final String? cursor;
   final int pageSize;
+
+  @override
+  Duration get _timeout => _contentTimeout;
 
   @override
   String get _wireMethod => 'source.searchSuggestions.v1';
@@ -372,11 +380,8 @@ final class SourceDiscoverInvocation
   final String? collectionId;
   final int pageSize;
 
-  /// Nested discovery can aggregate one listing and bounded detail requests.
-  /// Root discovery and every other capability retain the five-second budget.
   @override
-  Duration get _timeout =>
-      target == null ? _controlTimeout : const Duration(seconds: 15);
+  Duration get _timeout => _contentTimeout;
 
   @override
   String get _wireMethod => 'source.discover.v1';
@@ -633,6 +638,9 @@ final class SourceDetailInvocation
   final String id;
 
   @override
+  Duration get _timeout => _contentTimeout;
+
+  @override
   String get _wireMethod => 'source.getDetail.v1';
 
   @override
@@ -687,6 +695,9 @@ final class SourceChaptersInvocation
 
   final String pluginId;
   final String id;
+
+  @override
+  Duration get _timeout => _contentTimeout;
 
   @override
   String get _wireMethod => 'source.getChapters.v1';
@@ -769,6 +780,9 @@ final class SourceContentInvocation
   final String pluginId;
   final String id;
   final String chapterId;
+
+  @override
+  Duration get _timeout => _contentTimeout;
 
   @override
   String get _wireMethod => 'source.getContent.v1';

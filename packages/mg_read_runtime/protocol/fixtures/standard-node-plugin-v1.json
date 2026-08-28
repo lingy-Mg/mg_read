@@ -7,8 +7,8 @@
     "readyPath": "/health/ready"
   },
   "nodeVersion": "24.16.0",
-  "protocolVersion": "1.0",
-  "runtimeVersion": "0.4.1-standard.0",
+  "protocolVersion": "1.1",
+  "runtimeVersion": "0.4.2-standard.0",
   "webSocket": {
     "maxControlFrameBytes": 4194304,
     "maxInFlightRequests": 256,

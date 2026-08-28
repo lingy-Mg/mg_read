@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "protocolVersion": "1.0",
+  "protocolVersion": "1.1",
   "runtime": {
     "javetAndroid": {
       "coordinate": "com.caoccao.javet:javet-android",

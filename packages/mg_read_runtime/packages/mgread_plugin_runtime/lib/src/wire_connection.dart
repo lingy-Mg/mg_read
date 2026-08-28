@@ -23,7 +23,7 @@ typedef _PendingRequestMap = Map<String, _PendingRequest>;
 /// all transport failures into stable Facade exceptions. It is not exposed to
 /// the Flutter application.
 final class _WireConnection {
-  _WireConnection._(this._ready, this._socket) {
+  _WireConnection._(this._ready, this._socket, this._browserSessionHost) {
     _messages = _socket.cast<Object?>().listen(
       _onMessage,
       cancelOnError: false,
@@ -37,6 +37,8 @@ final class _WireConnection {
 
   /// Internal loopback socket; package callers never receive this value.
   final WebSocket _socket;
+  final WindowsBrowserSessionHost? _browserSessionHost;
+  final Set<String> _hostJobs = <String>{};
 
   /// Typed stream subscription that accepts text only after explicit validation.
   late final StreamSubscription<Object?> _messages;
@@ -57,7 +59,10 @@ final class _WireConnection {
   int _requestSequence = 0;
 
   /// Opens a compression-disabled WebSocket to the ready Runtime loopback port.
-  static Future<_WireConnection> connect(_RuntimeReady ready) async {
+  static Future<_WireConnection> connect(
+    _RuntimeReady ready, {
+    required Directory dataRoot,
+  }) async {
     final socket = await WebSocket.connect(
       Uri(
         scheme: 'ws',
@@ -67,7 +72,11 @@ final class _WireConnection {
       ).toString(),
       compression: CompressionOptions.compressionOff,
     ).timeout(_controlTimeout);
-    return _WireConnection._(ready, socket);
+    return _WireConnection._(
+      ready,
+      socket,
+      Platform.isWindows ? WindowsBrowserSessionHost(dataRoot) : null,
+    );
   }
 
   ///
@@ -323,6 +332,14 @@ final class _WireConnection {
         _failAllPending();
         return;
       }
+      if (envelope['type'] == 'host_request') {
+        unawaited(_handleHostRequest(envelope));
+        return;
+      }
+      if (envelope['type'] == 'host_cancel') {
+        _handleHostCancel(envelope);
+        return;
+      }
       final id = envelope['id'];
       if (id is! String) {
         _failAllPending();
@@ -366,12 +383,118 @@ final class _WireConnection {
     }
   }
 
+  Future<void> _handleHostRequest(_RuntimeJsonObject envelope) async {
+    final id = envelope['id'];
+    final traceId = envelope['traceId'];
+    final deadlineRaw = envelope['deadlineUnixMs'];
+    final params = envelope['params'];
+    if (id is! String ||
+        !id.startsWith('s:') ||
+        traceId is! String ||
+        traceId.isEmpty ||
+        envelope['method'] != 'host.browserSession.v1' ||
+        deadlineRaw is! String ||
+        params is! Map<Object?, Object?> ||
+        _hostJobs.contains(id)) {
+      _failAllPending();
+      return;
+    }
+    final deadline = int.tryParse(deadlineRaw);
+    if (deadline == null) {
+      _failAllPending();
+      return;
+    }
+    final host = _browserSessionHost;
+    if (host == null) {
+      _sendHostError(id, traceId, 'unsupported');
+      return;
+    }
+    _hostJobs.add(id);
+    try {
+      if (deadline <= DateTime.now().millisecondsSinceEpoch) {
+        throw const WindowsBrowserSessionException('timeout');
+      }
+      final result = await host.request(
+        jobId: id,
+        deadlineUnixMs: deadline,
+        raw: <String, Object?>{
+          for (final entry in params.entries)
+            if (entry.key is String) entry.key! as String: entry.value,
+        },
+      );
+      if (_hostJobs.remove(id)) _sendHostResult(id, traceId, result);
+    } on WindowsBrowserSessionException catch (error) {
+      if (_hostJobs.remove(id)) _sendHostError(id, traceId, error.code);
+    } on Object {
+      if (_hostJobs.remove(id))
+        _sendHostError(id, traceId, 'plugin_execution_failed');
+    }
+  }
+
+  void _handleHostCancel(_RuntimeJsonObject envelope) {
+    final targetId = envelope['targetId'];
+    if (targetId is! String || !targetId.startsWith('s:')) {
+      _failAllPending();
+      return;
+    }
+    if (_hostJobs.remove(targetId))
+      unawaited(_browserSessionHost?.cancel(targetId));
+  }
+
+  void _sendHostResult(String id, String traceId, Map<String, Object?> result) {
+    _sendHostEnvelope(<String, Object?>{
+      'v': _protocolVersion,
+      'type': 'host_response',
+      'bootId': _ready.bootId,
+      'id': id,
+      'traceId': traceId,
+      'result': result,
+    });
+  }
+
+  void _sendHostError(String id, String traceId, String code) {
+    const allowed = <String>{
+      'cancelled',
+      'interaction_required',
+      'overloaded',
+      'plugin_execution_failed',
+      'timeout',
+      'unsupported',
+    };
+    _sendHostEnvelope(<String, Object?>{
+      'v': _protocolVersion,
+      'type': 'host_error',
+      'bootId': _ready.bootId,
+      'id': id,
+      'traceId': traceId,
+      'error': <String, Object?>{
+        'code': allowed.contains(code) ? code : 'plugin_execution_failed',
+      },
+    });
+  }
+
+  void _sendHostEnvelope(Map<String, Object?> envelope) {
+    if (_closed) return;
+    final encoded = jsonEncode(envelope);
+    if (utf8.encode(encoded).length > _maxControlFrameBytes) {
+      _failAllPending();
+      return;
+    }
+    _socket.add(encoded);
+  }
+
   /// Marks this connection terminal and completes every unresolved call once.
   void _failAllPending() {
     if (_closed && _pending.isEmpty) {
       return;
     }
     _closed = true;
+    final hostJobs = _hostJobs.toList(growable: false);
+    _hostJobs.clear();
+    for (final id in hostJobs) {
+      unawaited(_browserSessionHost?.cancel(id));
+    }
+    unawaited(_browserSessionHost?.dispose());
     const error = PluginRuntimeException(
       'transport_disconnected',
       'The Runtime transport is disconnected.',

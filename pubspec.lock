@@ -517,7 +517,7 @@ packages:
       path: "packages/mg_read_runtime/packages/mgread_plugin_runtime"
       relative: true
     source: path
-    version: "0.4.1-standard.0"
+    version: "0.4.2-standard.0"
   mime:
     dependency: transitive
     description:

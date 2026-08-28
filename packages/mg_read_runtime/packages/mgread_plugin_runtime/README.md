@@ -83,10 +83,11 @@ capability 调用会有序冷启动唯一 Runtime。
 `PluginRuntime.desktopForTesting` 与 `debug*` 成员只用于本仓库 testkit。测试专用临时 data
 root 用来预置标准插件版本，不是生产依赖注入接口，也不能由主项目调用。
 
-Android 的 `browser.session.v1` 由 package 内 Javet/WebView provider 实现，不增加主应用 Facade。
-`transport=webview` 在同源页面内运行宿主固定 `fetch`；`transport=http` 从独立 WebView Profile 内部读取
-Cookie/UA 后由宿主直连。每个插件最多一个 WebView；可见验证使用全局弹窗并可隐藏，隐藏会话不挂载
-视图。设备缺少 WebView multi-profile 能力时返回 `unsupported`，不会共享默认 Cookie Profile。
+`browser.session.v1` 在 Android 由 Javet/WebView provider 实现，在 Windows 由内部 WS 反向帧进入
+package 自有 WebView2；两者都不增加主应用 Facade。`transport=webview` 在同源页面内运行宿主固定
+`fetch`；`transport=http` 从独立 Profile/UDF 内部读取 Cookie/UA 后由宿主直连并回写 Set-Cookie。
+每个插件最多一个 WebView；可见验证使用全局唯一弹窗并可隐藏，隐藏会话不显示。Android 缺少
+multi-profile 或 Windows 缺少 Evergreen WebView2 Runtime 时返回 `unsupported`，不会共享默认会话。
 
 `importLocalPlugin()` 是生产 Facade 的本地数据源导入能力。文件选择器、私有 inbox、原子复制、
 `.mgplugin.js` / `.mgplugin` 校验和冷激活均由本 package/Runtime 负责；主应用只接收取消或成功结果，

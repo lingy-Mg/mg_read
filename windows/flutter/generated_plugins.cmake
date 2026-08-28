@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   file_selector_windows
+  mgread_plugin_runtime
   novel_reader_ui
   url_launcher_windows
 )

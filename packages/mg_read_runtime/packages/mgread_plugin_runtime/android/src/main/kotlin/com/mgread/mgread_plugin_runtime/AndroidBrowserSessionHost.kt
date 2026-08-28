@@ -16,6 +16,7 @@ import android.graphics.Color
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.Gravity
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -89,6 +90,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             completed[id] = errorResult("plugin_execution_failed")
             return id
         }
+        Log.i(TAG, "browser_session_start transport=${request.transport} presentation=${request.presentation}")
         if (jobs.size >= MAX_PENDING_REQUESTS) {
             completed[id] = errorResult("overloaded")
             return id
@@ -105,7 +107,25 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         return id
     }
 
-    fun poll(id: String): String = completed.remove(id) ?: PENDING_RESULT
+    /**
+     * Polls from the Javet thread without relying on the embedded Node timer
+     * queue. The WebView callbacks still run on the Android main thread, so a
+     * short wait here does not block page loading or the visible verification
+     * surface. The wait is bounded to keep the private bridge responsive.
+     */
+    fun poll(id: String, waitMillis: Long = 0L): String {
+        val deadline = System.nanoTime() + waitMillis.coerceIn(0L, POLL_WAIT_MAX_MILLIS) * 1_000_000L
+        do {
+            completed.remove(id)?.let { return it }
+            if (System.nanoTime() >= deadline) return PENDING_RESULT
+            try {
+                Thread.sleep(POLL_SLEEP_MILLIS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return PENDING_RESULT
+            }
+        } while (true)
+    }
 
     fun cancel(id: String) {
         jobs[id]?.let { job ->
@@ -133,7 +153,9 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
 
     private fun begin(job: Job) {
         if (!isCurrent(job)) return
+        Log.i(TAG, "browser_session_begin transport=${job.request.transport}")
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+            Log.i(TAG, "browser_session_unsupported reason=multi_profile")
             completeError(job, "unsupported")
             return
         }
@@ -236,6 +258,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
 
     private fun loadForVerification(job: Job, session: Session) {
         if (!isCurrent(job, session)) return
+        Log.i(TAG, "browser_session_load_for_verification")
         session.webView.loadUrl(job.request.url, job.request.headers)
         mainHandler.postDelayed({ probePage(job, session) }, PAGE_POLL_MILLIS)
     }
@@ -253,6 +276,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             val href = value?.optString("href").orEmpty()
             val challenge = value?.optBoolean("challenge", false) == true
             val sameOrigin = runCatching { originOf(href) == job.request.origin }.getOrDefault(false)
+            Log.i(TAG, "browser_session_probe ready=$ready challenge=$challenge same_origin=$sameOrigin")
             if (ready && sameOrigin && !challenge) {
                 session.verifiedAt[job.request.origin] = System.currentTimeMillis()
                 perform(job, session, if (job.hadChallenge) "verified" else "not-required")
@@ -275,6 +299,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
     }
 
     private fun perform(job: Job, session: Session, verificationState: String) {
+        Log.i(TAG, "browser_session_perform transport=${job.request.transport}")
         if (job.request.transport == "webview") {
             performWebViewFetch(job, session, verificationState)
         } else {
@@ -383,6 +408,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
 
     private fun completeError(job: Job, code: String) {
         if (jobs.remove(job.id) == null) return
+        Log.i(TAG, "browser_session_complete_error code=$code")
         completed[job.id] = errorResult(code)
         sessions[job.request.pluginId]?.let { session ->
             if (session.activeJobId == job.id) session.activeJobId = null
@@ -533,7 +559,10 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         const val MAX_PENDING_REQUESTS = 16
         const val MAX_RESIDENT_WEBVIEWS = 8
         const val PAGE_POLL_MILLIS = 400L
+        const val POLL_SLEEP_MILLIS = 10L
+        const val POLL_WAIT_MAX_MILLIS = 250L
         const val VERIFICATION_CACHE_MILLIS = 10 * 60 * 1000L
+        const val TAG = "MgReadAndroidBrowser"
         const val PENDING_RESULT = "{\"state\":\"pending\"}"
         val PAGE_PROBE_SCRIPT = """
             (() => { try { const text=(document.title+' '+(document.documentElement?.innerText||'')).slice(0,200000);

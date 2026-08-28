@@ -4,11 +4,10 @@ part of mgread_plugin_runtime;
 const _expectedNodeVersion = '24.16.0';
 
 /// Version of the internal Runtime control protocol negotiated during hello.
-const _protocolVersion = '1.0';
+const _protocolVersion = '1.1';
 
 /// Upper bound for child startup and readiness probes.
-// A new release Runtime data root can install packaged defaults before ready;
-// debug builds instead validate directly loaded workspace projects.
+// Release may install defaults before ready; Debug validates workspace projects.
 const _startupTimeout = Duration(seconds: 20);
 
 /// Upper bound for a single already-connected control request.
@@ -376,8 +375,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   /// 3. parse the structured ready record and probe loopback HTTP; and
   /// 4. connect the internal WebSocket and validate `runtime.hello`.
   ///
-  /// Every failure tears down the partial child tree before a safe Facade error
-  /// is exposed to Flutter.
+  /// Every failure tears down partial state before exposing a safe error.
   Future<_WireConnection> _start() async {
     _startupStartedAt = DateTime.now();
     try {
@@ -428,7 +426,10 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
 
       final ready = await monitor.waitForReady();
       await _probeHttpReady(ready);
-      final connection = await _WireConnection.connect(ready);
+      final connection = await _WireConnection.connect(
+        ready,
+        dataRoot: _bundle.dataRoot,
+      );
       await connection.hello();
       _connection = connection;
       return connection;

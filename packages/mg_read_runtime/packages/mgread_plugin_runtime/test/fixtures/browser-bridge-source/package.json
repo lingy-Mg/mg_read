@@ -1,0 +1,14 @@
+{
+  "name": "@mgread-plugin/browser-bridge-fixture",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "engines": { "node": ">=24 <25" },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.browser-bridge-fixture",
+    "displayName": "Browser Bridge Fixture",
+    "pluginApi": 1,
+    "contentKinds": ["novel"]
+  }
+}

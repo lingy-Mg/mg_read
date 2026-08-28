@@ -34,11 +34,7 @@ import {
   type RuntimeProtocolError,
   type RuntimeRequest,
 } from "./protocol.js";
-import {
-  expectedNodeVersion,
-  protocolVersion,
-  runtimeVersion,
-} from "./runtime-version.js";
+import { expectedNodeVersion, protocolVersion, runtimeVersion } from "./runtime-version.js";
 import {
   maxWebSocketControlFrameBytes,
   maxWebSocketOutboundQueueBytes,
@@ -46,6 +42,7 @@ import {
 } from "./websocket.js";
 import { RuntimeDebugHttpServer, RuntimeDebugLogBuffer, type RuntimeDebugHttpStatus } from "./debug-http.js";
 import { createRuntimeDebugHttpServer } from "./debug-http-bridge.js";
+import { DesktopBrowserSessionBroker } from "./desktop-browser-session.js";
 import { readDebugHttpEnabled } from "./debug-http-control.js";
 import { RuntimeDebugHttpSettings } from "./debug-http-settings.js";
 import { servePluginIconResource, servePluginTransferResource, serveSourceResource } from "./loopback-resources.js";
@@ -55,10 +52,7 @@ import {
   type PluginManagerEvent,
 } from "./plugin-manager.js";
 import { pluginManagerErrorMessage } from "./plugin-manager-error-message.js";
-import type {
-  DesktopRuntimeOptions,
-  DesktopRuntimeProgressSink,
-} from "./desktop-runtime-options.js";
+import type { DesktopRuntimeOptions, DesktopRuntimeProgressSink } from "./desktop-runtime-options.js";
 export type {
   DesktopRuntimeOptions,
   DesktopRuntimeProgress,
@@ -309,7 +303,7 @@ export class DesktopRuntime {
     this.#debugHttpAllowed = options.debugHttpAllowed ?? false;
     this.#debugHttpSettings = new RuntimeDebugHttpSettings(this.#dataRoot);
     this.#onProgress = options.onProgress ?? (() => {});
-    this.#browserSession = options.browserSession;
+    this.#browserSession = options.browserSession ?? (this.#embedded ? undefined : new DesktopBrowserSessionBroker(this.#bootId));
     this.#removeDebugDiagnosticObserver = observeRuntimeDiagnostics((record) => {
       if (!this.#debugHttp?.status().enabled) return;
       this.#debugLogs.append({
@@ -650,6 +644,7 @@ export class DesktopRuntime {
         if (session !== undefined) {
           this.#sessions.delete(session);
           this.#abortSessionRequests(session);
+          this.#desktopBrowserBroker()?.detach(session);
         }
       },
       onText: (text) => {
@@ -678,6 +673,8 @@ export class DesktopRuntime {
       session.close(1007, "Runtime control frame must contain JSON.");
       return;
     }
+
+    if (this.#desktopBrowserBroker()?.handleIncoming(session, parsedJson) === true) return;
 
     if (isRuntimeCancellationEnvelope(parsedJson)) {
       const parsedCancellation = parseRuntimeCancellation(parsedJson, this.#bootId);
@@ -770,7 +767,12 @@ export class DesktopRuntime {
       this.#sendProtocolError(session, result.error);
       return;
     }
+    if (request.method === RUNTIME_CONTROL_METHOD.hello) this.#desktopBrowserBroker()?.attach(session);
     this.#sendJson(session, makeResponse(this.#bootId, request, result.result));
+  }
+
+  #desktopBrowserBroker(): DesktopBrowserSessionBroker | undefined {
+    return this.#browserSession instanceof DesktopBrowserSessionBroker ? this.#browserSession : undefined;
   }
 
   /**

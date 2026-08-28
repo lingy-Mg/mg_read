@@ -1,0 +1,24 @@
+{
+  "name": "@mgread-plugin/browser-session-fixture",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.mjs",
+  "packageManager": "npm@11.13.0",
+  "engines": { "node": ">=24 <25", "npm": "11.13.0" },
+  "scripts": {
+    "build": "node --check dist/index.mjs",
+    "typecheck": "node --check dist/index.mjs",
+    "test": "node --test test/*.test.mjs",
+    "pack:plugin": "node tools/pack.mjs",
+    "verify": "npm run typecheck && npm test && npm run pack:plugin"
+  },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.browser-session-fixture",
+    "displayName": "Browser Session Android Fixture",
+    "pluginApi": 1,
+    "packageMode": "single-file",
+    "contentKinds": ["novel"]
+  }
+}

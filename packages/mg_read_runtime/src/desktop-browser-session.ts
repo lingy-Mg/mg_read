@@ -1,0 +1,179 @@
+/**
+ * Desktop reverse bridge for the platform-owned browser.session.v1 provider.
+ *
+ * The Node Core sends only validated, bounded requests over its existing
+ * authenticated WebSocket. Cookie, user-agent, WebView handles and profile
+ * paths never enter this process or the plugin API.
+ */
+import { randomUUID } from "node:crypto";
+
+import {
+  PluginBrowserSessionError,
+  type PluginBrowserHostRequest,
+  type PluginBrowserSessionProvider,
+  type PluginBrowserSessionResponse,
+} from "./plugin-browser-session.js";
+import type { JsonObject } from "./protocol.js";
+import { protocolVersion } from "./runtime-version.js";
+import { maxWebSocketControlFrameBytes, ServerWebSocketSession } from "./websocket.js";
+
+const maximumPendingHostRequests = 16;
+const hostErrorCodes = new Set([
+  "cancelled",
+  "interaction_required",
+  "overloaded",
+  "plugin_execution_failed",
+  "timeout",
+  "unsupported",
+] as const);
+
+interface PendingHostRequest {
+  readonly reject: (error: Error) => void;
+  readonly resolve: (response: PluginBrowserSessionResponse) => void;
+  readonly session: ServerWebSocketSession;
+  readonly traceId: string;
+}
+
+/** One host-facing channel shared by every desktop plugin invocation. */
+export class DesktopBrowserSessionBroker implements PluginBrowserSessionProvider {
+  readonly #bootId: string;
+  readonly #pending = new Map<string, PendingHostRequest>();
+  #host: ServerWebSocketSession | undefined;
+
+  constructor(bootId: string) {
+    this.#bootId = bootId;
+  }
+
+  attach(session: ServerWebSocketSession): void {
+    this.#host = session;
+  }
+
+  detach(session: ServerWebSocketSession): void {
+    if (this.#host === session) this.#host = undefined;
+    for (const [id, pending] of this.#pending) {
+      if (pending.session !== session) continue;
+      this.#pending.delete(id);
+      pending.reject(new PluginBrowserSessionError("unsupported"));
+    }
+  }
+
+  request(request: PluginBrowserHostRequest): Promise<PluginBrowserSessionResponse> {
+    const session = this.#host;
+    if (session === undefined || session.isClosed) {
+      throw new PluginBrowserSessionError("unsupported");
+    }
+    if (this.#pending.size >= maximumPendingHostRequests) {
+      throw new PluginBrowserSessionError("overloaded");
+    }
+    if (request.signal.aborted) {
+      throw new PluginBrowserSessionError("cancelled");
+    }
+
+    const id = `s:browser-${randomUUID()}`;
+    const traceId = `trace:${id}`;
+    const envelope = JSON.stringify({
+      v: protocolVersion,
+      type: "host_request",
+      bootId: this.#bootId,
+      id,
+      method: "host.browserSession.v1",
+      traceId,
+      deadlineUnixMs: String(Date.now() + request.timeoutMs),
+      params: {
+        version: request.version,
+        pluginId: request.pluginId,
+        sessionKey: request.sessionKey,
+        url: request.url,
+        method: request.method,
+        headers: request.headers,
+        body: request.body,
+        interaction: request.interaction,
+        presentation: request.presentation,
+        transport: request.transport,
+        timeoutMs: request.timeoutMs,
+        maxResponseBytes: request.maxResponseBytes,
+      },
+    });
+    if (Buffer.byteLength(envelope, "utf8") > maxWebSocketControlFrameBytes) {
+      throw new PluginBrowserSessionError("overloaded");
+    }
+
+    return new Promise<PluginBrowserSessionResponse>((resolve, reject) => {
+      const onAbort = (): void => {
+        if (!this.#pending.delete(id)) return;
+        try {
+          session.sendText(JSON.stringify({
+            v: protocolVersion,
+            type: "host_cancel",
+            bootId: this.#bootId,
+            id: `s:cancel-${randomUUID()}`,
+            targetId: id,
+            traceId,
+          }));
+        } catch {
+          // The invocation deadline/cancellation remains authoritative.
+        }
+        reject(new PluginBrowserSessionError("cancelled"));
+      };
+      request.signal.addEventListener("abort", onAbort, { once: true });
+      this.#pending.set(id, {
+        reject: (error) => {
+          request.signal.removeEventListener("abort", onAbort);
+          reject(error);
+        },
+        resolve: (response) => {
+          request.signal.removeEventListener("abort", onAbort);
+          resolve(response);
+        },
+        session,
+        traceId,
+      });
+      try {
+        session.sendText(envelope);
+      } catch {
+        this.#pending.delete(id);
+        request.signal.removeEventListener("abort", onAbort);
+        reject(new PluginBrowserSessionError("unsupported"));
+      }
+    });
+  }
+
+  /** Consumes only server-direction host replies; normal client RPC returns false. */
+  handleIncoming(session: ServerWebSocketSession, value: unknown): boolean {
+    if (!isObject(value) || (value.type !== "host_response" && value.type !== "host_error")) {
+      return false;
+    }
+    const id = typeof value.id === "string" ? value.id : "";
+    const pending = this.#pending.get(id);
+    if (
+      pending === undefined ||
+      pending.session !== session ||
+      value.v !== protocolVersion ||
+      value.bootId !== this.#bootId ||
+      value.traceId !== pending.traceId
+    ) {
+      session.close(1002, "Runtime host response envelope is invalid.");
+      return true;
+    }
+    this.#pending.delete(id);
+    if (value.type === "host_error") {
+      const code = isObject(value.error) && typeof value.error.code === "string"
+        ? value.error.code
+        : "plugin_execution_failed";
+      pending.reject(new PluginBrowserSessionError(
+        hostErrorCodes.has(code as never) ? code as never : "plugin_execution_failed",
+      ));
+      return true;
+    }
+    if (!isObject(value.result)) {
+      pending.reject(new PluginBrowserSessionError("plugin_execution_failed"));
+      return true;
+    }
+    pending.resolve(value.result as unknown as PluginBrowserSessionResponse);
+    return true;
+  }
+}
+
+function isObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

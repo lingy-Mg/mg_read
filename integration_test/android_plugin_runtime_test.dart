@@ -66,10 +66,10 @@ void main() {
     final plugins = await runtime.invoke(const InstalledPluginsInvocation());
     final aisishuwu = plugins.singleWhere((plugin) => plugin.id == 'org.mgread.aisishuwu');
     expect(aisishuwu.status, 'active');
-    expect(aisishuwu.activeVersion, '0.2.7');
+    expect(aisishuwu.activeVersion, '0.2.11');
     final demo = plugins.singleWhere((plugin) => plugin.id == 'org.mgread.discovery-demo');
     expect(demo.status, 'active');
-    expect(demo.activeVersion, '0.1.1');
+    expect(demo.activeVersion, '0.1.2');
 
     final fixtureDetail = await runtime.invoke(const SourceDetailInvocation(pluginId: 'org.mgread.aisishuwu', id: 'novel:52801'));
     expect(fixtureDetail.summary.chapterCount, 733);
