@@ -70,8 +70,10 @@ extension _TextReaderSession on _TextReaderViewState {
     _changingChapter = false;
     _chapterLoadingOverlayVisible = false;
     _awaitingPreviousChapterTail = false;
+    _horizontalChapterHandoff = null;
     _restoringHorizontalAnchor = false;
     _restoringHorizontalRawIndex = null;
+    _horizontalPageScrollActive = false;
     _controlsVisible = false;
     _sliderPreview = null;
     _noticeMessage = null;
@@ -493,6 +495,7 @@ extension _TextReaderSession on _TextReaderViewState {
     final ReaderObserver observer = _observer;
     final TextReaderDataSource dataSource = widget.dataSource;
     final String bookId = widget.bookId;
+    _HorizontalChapterHandoff? stagedHandoff;
     _changingChapter = true;
     _chapterLoadingOverlayVisible = showLoadingOverlay;
     if (!initial && mounted) setState(() {});
@@ -530,6 +533,27 @@ extension _TextReaderSession on _TextReaderViewState {
         preparedPages = _TextReaderViewState._layoutCache.take(
           preparedFingerprint,
         );
+      }
+      if (preparedPages != null &&
+          preparedPages.isNotEmpty &&
+          !initial &&
+          restoreProgress == null &&
+          targetChapterFraction == null) {
+        final TextChapterContent handoffContent = chapter;
+        final List<ReaderPage> handoffPages = preparedPages;
+        final int handoffPageIndex = openAtEnd ? handoffPages.length - 1 : 0;
+        final int total = _catalogTotal > 0 ? _catalogTotal : _catalog.length;
+        final double handoffBookFraction = total <= 0
+            ? 0
+            : ((targetInfo.index + (openAtEnd ? 1 : 0)) / total).clamp(0, 1);
+        stagedHandoff = _HorizontalChapterHandoff(
+          content: handoffContent,
+          page: handoffPages[handoffPageIndex],
+          pageIndex: handoffPageIndex,
+          pageCount: handoffPages.length,
+          bookFraction: handoffBookFraction,
+        );
+        setState(() => _horizontalChapterHandoff = stagedHandoff);
       }
       if (openAtEnd &&
           previousContent != null &&
@@ -604,7 +628,6 @@ extension _TextReaderSession on _TextReaderViewState {
         _firstContentPreparation = ReaderPaginationPreparation.cachedFirstPage;
       }
       _failure = null;
-      if (mounted) setState(() {});
       if (preparedPages != null) {
         _finishHorizontalPagination();
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -612,6 +635,7 @@ extension _TextReaderSession on _TextReaderViewState {
         });
         WidgetsBinding.instance.scheduleFrame();
       }
+      if (mounted) setState(() {});
       _publishSnapshot();
       unawaited(_notify(() => observer.onChapterChanged(targetInfo)));
       // Screen-awake is non-essential to a page turn. A slow platform queue
@@ -629,10 +653,12 @@ extension _TextReaderSession on _TextReaderViewState {
       }
     } catch (error) {
       if (!_isCurrent(generation) || navigation != _navigationGeneration) {
+        _clearHorizontalChapterHandoff(stagedHandoff);
         return;
       }
       _stopAutoReading();
       _awaitingPreviousChapterTail = false;
+      _clearHorizontalChapterHandoff(stagedHandoff);
       final ReaderFailure failure = _asFailure(error, ReaderFailureKind.data);
       _failure = failure;
       if (mounted) setState(() {});
@@ -645,6 +671,14 @@ extension _TextReaderSession on _TextReaderViewState {
         if (mounted) setState(() {});
       }
     }
+  }
+
+  void _clearHorizontalChapterHandoff(_HorizontalChapterHandoff? handoff) {
+    if (handoff == null || !identical(_horizontalChapterHandoff, handoff)) {
+      return;
+    }
+    _horizontalChapterHandoff = null;
+    if (mounted) setState(() {});
   }
 
   void _validateChapter(

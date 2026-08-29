@@ -155,6 +155,79 @@ void main() {
     expect(last.pages.single.blocks, hasLength(9));
   });
 
+  test('page-bounded pagination resumes a long paragraph exactly', () {
+    const TextPaginator paginator = TextPaginator();
+    const TextStyle titleStyle = TextStyle(fontSize: 22, height: 1.35);
+    const TextStyle bodyStyle = TextStyle(fontSize: 16, height: 1.5);
+    final String text = List<String>.filled(900, '连续正文').join();
+    final TextChapterContent chapter = TextChapterContent(
+      chapterId: 'chapter-long',
+      title: '长段落',
+      paragraphs: <TextParagraph>[
+        TextParagraph(id: 'long-paragraph', text: text),
+      ],
+    );
+    final List<ReaderPage> pages = <ReaderPage>[];
+    ReaderPageContinuation? continuation;
+    var characterOffset = 0;
+    var sliceCount = 0;
+
+    while (true) {
+      final ReaderPaginationBatch batch = paginator.paginateBatch(
+        chapter: chapter,
+        width: 300,
+        height: 180,
+        titleStyle: titleStyle,
+        bodyStyle: bodyStyle,
+        paragraphSpacing: 8,
+        includeChapterTitle: sliceCount == 0,
+        maximumPages: 1,
+        firstParagraphStartOffset: characterOffset,
+        continuation: continuation,
+        finish: false,
+      );
+      pages.addAll(batch.pages);
+      continuation = batch.continuation;
+      sliceCount += 1;
+      if (batch.isComplete) break;
+      expect(batch.nextParagraphIndex, 0);
+      expect(batch.nextCharacterOffset, greaterThan(characterOffset));
+      characterOffset = batch.nextCharacterOffset;
+    }
+    if (!continuation.isEmpty || pages.isEmpty) {
+      pages.addAll(
+        paginator
+            .paginateBatch(
+              chapter: TextChapterContent(
+                chapterId: chapter.chapterId,
+                title: chapter.title,
+                paragraphs: const <TextParagraph>[],
+              ),
+              width: 300,
+              height: 180,
+              titleStyle: titleStyle,
+              bodyStyle: bodyStyle,
+              paragraphSpacing: 8,
+              includeChapterTitle: false,
+              continuation: continuation,
+              finish: true,
+            )
+            .pages,
+      );
+    }
+
+    final List<ReaderPageBlock> blocks = <ReaderPageBlock>[
+      for (final page in pages) ...page.blocks,
+    ];
+    expect(sliceCount, greaterThan(1));
+    expect(blocks.map((block) => block.text).join(), text);
+    expect(blocks.first.startOffset, 0);
+    expect(blocks.last.endOffset, text.length);
+    for (var index = 1; index < blocks.length; index += 1) {
+      expect(blocks[index].startOffset, blocks[index - 1].endOffset);
+    }
+  });
+
   test('anchor-first pagination does not visit preceding paragraphs', () {
     final List<String> visited = <String>[];
     final TextPaginator paginator = TextPaginator(

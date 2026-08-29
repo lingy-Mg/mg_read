@@ -32,11 +32,11 @@
 | absent | `open(true)` | 创建 visible |
 | hidden/visible | `open(...)` | 复用页面并按 visible 请求更新呈现 |
 | hidden | `show` | visible |
-| visible | `hide` 或用户隐藏 | hidden，页面保留 |
-| hidden/visible | `close` 或用户关闭 | absent，取消活动任务并销毁页面 |
+| visible | `hide`、Windows 用户关闭窗口或 Android 用户隐藏 | hidden，页面保留 |
+| hidden/visible | `close` 或 Android 用户关闭 | absent，取消活动任务并销毁页面 |
 | absent | 除 `open/close` 外操作 | `unsupported` |
 
-平台用户按钮与 API 是同一状态转换。原生窗口隐藏/销毁后必须通知 Flutter/Runtime；宿主执行原生输入前还必须直接检查真实窗口可见性，不能只相信缓存布尔值。
+Windows 用户只能把原生窗口隐藏，不能销毁页面；只有数据源脚本 `close` 可以销毁。原生窗口隐藏/销毁后必须通知 Flutter/Runtime；宿主执行原生输入前还必须直接检查真实窗口可见性，不能只相信缓存布尔值。
 
 ## 调度、取消和错误
 
@@ -59,10 +59,11 @@
 
 可见页面顶部由宿主绘制，网页不能修改：
 
-1. 标题：`{数据源名称}正在进行探测 - {当前行为}`。
-2. 下一行显示当前 URL；导航完成和页面内跳转都应及时刷新。
-3. 提供用户可用的隐藏和关闭操作。
-4. Windows WebView2 允许 F12 DevTools；Android 不要求对应能力。
+1. Windows 系统窗口标题显示：`{数据源名称}正在进行探测 - {当前行为}`。
+2. Windows 页面内顶部只显示当前 URL；导航完成和页面内跳转都应及时刷新。
+3. Windows 不显示页面内隐藏或关闭按钮；标题栏关闭只隐藏，页面销毁仅由脚本 `close` 触发。
+4. Android 继续在宿主顶部显示来源/行为、URL、隐藏和关闭操作。
+5. Windows WebView2 允许 F12 DevTools；Android 不要求对应能力。
 
 标题日志只显示有界行为标签，不显示 URL 查询中的敏感数据、脚本、HTML、Cookie 或响应正文。
 
@@ -94,7 +95,7 @@
 
 以下是上次静态审计发现的当前缺口。每次相关任务先重新验证代码；修复后删除对应状态并保留回归测试：
 
-1. Windows 原生隐藏/关闭按钮没有回传 Dart，导致 `visible` 和 session cache 失真；隐藏页面仍可能收到输入，关闭后的 hidden `open` 可能假成功。
+1. Windows 用户关闭窗口改为隐藏后仍没有回传 Dart，导致 `visible` 和 session cache 失真；隐藏页面仍可能收到输入。
 2. Node、Android、Windows 都在控制操作前检查全局 pending 上限，`show/hide/close` 不能保证随时执行。
 3. Windows `page.*` 提前从 `request()` 返回，绕过旧路径的完整 Platform/MissingPlugin 错误映射。
 4. Android 只禁止自动播放，没有完全静音。

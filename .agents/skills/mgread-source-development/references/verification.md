@@ -72,8 +72,9 @@ flutter build windows --debug
 
 真实 WebView2 验收至少检查：
 
-- 顶部数据源名称、当前行为、URL、隐藏和关闭按钮。
-- API hide/show 与用户按钮双向状态一致；用户关闭后 open 能重建。
+- 系统窗口标题显示数据源名称和当前行为，页面内顶部只显示当前 URL。
+- 页面内没有隐藏和关闭按钮；标题栏关闭、Alt+F4 和任务栏关闭只隐藏并保留页面，只有脚本 `close` 销毁。
+- API hide/show 与用户关闭隐藏状态一致；脚本关闭后 open 能重建。
 - 隐藏页面不能接收 pointer、文本或按键。
 - 新窗口、外部协议、下载、权限、脚本对话框、文件选择、全屏和音频确实被阻止。
 - F12 能打开 DevTools，但代码和测试不使用 CDP。
@@ -108,7 +109,7 @@ Android 真实验收至少检查：
 | --- | --- |
 | Android 错误假成功 | Provider 返回每个 error envelope，所有 API 拒绝并保留 code |
 | JS 返回值失真 | 真实宿主序列化拒绝 NaN/Infinity/undefined/function/symbol，不能静默改成 null 或丢键 |
-| Windows 手动隐藏/关闭失真 | 模拟原生事件，Dart 状态更新；隐藏输入被拒绝；open 重建 |
+| Windows 手动隐藏失真 | 模拟标题栏关闭，Dart 状态更新；窗口只隐藏且页面保留；隐藏输入被拒绝 |
 | 控制通道被 pending 阻塞 | 普通任务占满时 show/hide/close 仍完成，close 取消任务 |
 | Windows 错误降级 | 原生 Platform/MissingPlugin/timeout 分别映射稳定 code |
 | 异步结果泄漏 | Promise 在 timeout/cancel 后完成，结果表仍为空 |

@@ -6,6 +6,22 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
+bool _overlapsAny(WidgetTester tester, Finder finder, Rect viewport) =>
+    finder.evaluate().any((Element element) {
+      final Finder exact = find.byElementPredicate(
+        (Element candidate) => identical(candidate, element),
+        skipOffstage: false,
+      );
+      return tester.getRect(exact).overlaps(viewport);
+    });
+
+bool _hasAdjacentPreparationSucceeded(_PerformanceObserver observer) =>
+    observer.events.any(
+      (event) =>
+          event.phase == ReaderChapterPerformancePhase.adjacentPreparation &&
+          event.outcome == ReaderChapterPerformanceOutcome.success,
+    );
+
 void main() {
   late SchedulingStrategy schedulingStrategy;
 
@@ -319,6 +335,7 @@ void main() {
     'forward chapter handoff keeps readable content visible on every frame',
     (WidgetTester tester) async {
       final controller = TextReaderController();
+      final observer = _PerformanceObserver();
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -327,6 +344,7 @@ void main() {
               controller: controller,
               dataSource: const _PreviousChapterDataSource(),
               stateStore: const _EmptyStateStore(),
+              observer: observer,
             ),
           ),
         ),
@@ -344,29 +362,41 @@ void main() {
       final Rect readerSurface = tester.getRect(surface);
       final Finder previousTail = find.textContaining(
         _PreviousChapterDataSource.tail,
+        skipOffstage: false,
       );
-      final Finder nextBody = find.text('第二章正文');
+      final Finder nextBody = find.textContaining(
+        '第二章正文',
+        findRichText: true,
+        skipOffstage: false,
+      );
       for (var turn = 0; turn < 8; turn++) {
-        final bool tailVisible =
-            previousTail.evaluate().isNotEmpty &&
-            tester.getRect(previousTail).overlaps(readerSurface);
+        final bool tailVisible = _overlapsAny(
+          tester,
+          previousTail,
+          readerSurface,
+        );
         if (tailVisible) break;
         unawaited(controller.nextPage());
         await tester.pumpAndSettle();
       }
       expect(controller.snapshot.chapter?.id, 'chapter-1');
-      expect(tester.getRect(previousTail).overlaps(readerSurface), isTrue);
+      expect(_overlapsAny(tester, previousTail, readerSurface), isTrue);
+      for (var frame = 0; frame < 120; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        if (_hasAdjacentPreparationSucceeded(observer)) break;
+      }
+      expect(_hasAdjacentPreparationSucceeded(observer), isTrue);
 
       unawaited(controller.nextPage());
       var reachedNextChapter = false;
       for (var frame = 0; frame < 24; frame++) {
         await tester.pump(const Duration(milliseconds: 16));
-        final bool tailVisible =
-            previousTail.evaluate().isNotEmpty &&
-            tester.getRect(previousTail).overlaps(readerSurface);
-        final bool nextVisible =
-            nextBody.evaluate().isNotEmpty &&
-            tester.getRect(nextBody).overlaps(readerSurface);
+        final bool tailVisible = _overlapsAny(
+          tester,
+          previousTail,
+          readerSurface,
+        );
+        final bool nextVisible = _overlapsAny(tester, nextBody, readerSurface);
         expect(
           tailVisible || nextVisible,
           isTrue,
@@ -398,6 +428,7 @@ void main() {
     'backward drag from the next chapter restores the previous chapter tail',
     (WidgetTester tester) async {
       final controller = TextReaderController();
+      final observer = _PerformanceObserver();
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -406,6 +437,7 @@ void main() {
               controller: controller,
               dataSource: const _PreviousChapterDataSource(),
               stateStore: const _EmptyStateStore(),
+              observer: observer,
             ),
           ),
         ),
@@ -421,21 +453,27 @@ void main() {
       );
       final Finder initialTail = find.textContaining(
         _PreviousChapterDataSource.tail,
+        skipOffstage: false,
       );
       for (var turn = 0; turn < 8; turn++) {
-        final bool tailVisible =
-            initialTail.evaluate().isNotEmpty &&
-            tester
-                .getRect(initialTail)
-                .overlaps(tester.getRect(initialSurface));
+        final bool tailVisible = _overlapsAny(
+          tester,
+          initialTail,
+          tester.getRect(initialSurface),
+        );
         if (tailVisible) break;
         unawaited(controller.nextPage());
         await tester.pumpAndSettle();
       }
       expect(
-        tester.getRect(initialTail).overlaps(tester.getRect(initialSurface)),
+        _overlapsAny(tester, initialTail, tester.getRect(initialSurface)),
         isTrue,
       );
+      for (var frame = 0; frame < 120; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        if (_hasAdjacentPreparationSucceeded(observer)) break;
+      }
+      expect(_hasAdjacentPreparationSucceeded(observer), isTrue);
       unawaited(controller.nextPage());
       await tester.pumpAndSettle();
       expect(controller.snapshot.chapter?.id, 'chapter-2');
@@ -451,16 +489,22 @@ void main() {
         reachedPreviousChapter = true;
         final Finder tail = find.textContaining(
           _PreviousChapterDataSource.tail,
+          skipOffstage: false,
         );
-        final bool tailVisible =
-            tail.evaluate().isNotEmpty &&
-            tester.getRect(tail).overlaps(tester.getRect(surface));
+        final bool tailVisible = _overlapsAny(
+          tester,
+          tail,
+          tester.getRect(surface),
+        );
         final Finder head = find.textContaining(
           _PreviousChapterDataSource.head,
+          skipOffstage: false,
         );
-        final bool headVisible =
-            head.evaluate().isNotEmpty &&
-            tester.getRect(head).overlaps(tester.getRect(surface));
+        final bool headVisible = _overlapsAny(
+          tester,
+          head,
+          tester.getRect(surface),
+        );
         expect(
           tailVisible,
           isTrue,
@@ -499,11 +543,14 @@ void main() {
         ),
       ),
     );
-    await tester.runAsync(() async {
-      await Future<void>.delayed(const Duration(milliseconds: 450));
-    });
-    for (var index = 0; index < 12; index++) {
+    for (var index = 0; index < 60; index++) {
       await tester.pump(const Duration(milliseconds: 16));
+      final bool prepared = observer.events.any(
+        (event) =>
+            event.phase == ReaderChapterPerformancePhase.adjacentPreparation &&
+            event.outcome == ReaderChapterPerformanceOutcome.success,
+      );
+      if (prepared) break;
     }
     unawaited(controller.nextChapter());
     await tester.pump();
@@ -562,9 +609,20 @@ void main() {
       find.byKey(const ValueKey<String>('reader-content-surface')),
       const Offset(-700, 0),
     );
-    await tester.pump(const Duration(milliseconds: 80));
+    var sawTransitionSpinner = false;
+    for (var frame = 0; frame < 60; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      final bool spinner = find
+          .byType(CircularProgressIndicator)
+          .evaluate()
+          .isNotEmpty;
+      if (spinner) {
+        sawTransitionSpinner = true;
+        break;
+      }
+    }
     expect(controller.snapshot.chapter?.id, 'chapter-1');
-    expect(find.byType(CircularProgressIndicator), findsWidgets);
+    expect(sawTransitionSpinner, isTrue);
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 900));
     });

@@ -147,6 +147,9 @@ extension _TextReaderAdjacentPagination on _TextReaderViewState {
   }
 
   void _cancelAdjacentPreparation() {
+    _adjacentQuietTimer?.cancel();
+    _adjacentQuietTimer = null;
+    _adjacentQuietWindowOpen = false;
     _adjacentPreparationGeneration++;
     _adjacentLayoutGeneration++;
     _completeAdjacentPreparation(ReaderChapterPerformanceOutcome.cancelled);
@@ -208,13 +211,27 @@ extension _TextReaderAdjacentPagination on _TextReaderViewState {
   void _reconcileAdjacentPreparation() {
     if (_disposed ||
         !_foreground ||
+        _horizontalPageScrollActive ||
         !_currentPaginationComplete ||
         _content == null ||
         _layoutFingerprint == null ||
         _pages.isEmpty ||
         _preferences.navigationMode != ReaderNavigationMode.horizontalPages) {
+      _adjacentQuietTimer?.cancel();
+      _adjacentQuietTimer = null;
+      _adjacentQuietWindowOpen = false;
       _adjacentPreparationTarget = null;
       _adjacentPreparationStage = _AdjacentPreparationStage.pending;
+      return;
+    }
+    if (!_adjacentQuietWindowOpen) {
+      _adjacentQuietTimer?.cancel();
+      _adjacentQuietTimer = Timer(_TextReaderViewState._adjacentQuietDelay, () {
+        _adjacentQuietTimer = null;
+        if (_disposed || !_foreground) return;
+        _adjacentQuietWindowOpen = true;
+        _reconcileAdjacentPreparation();
+      });
       return;
     }
     final int nextIndex = _chapterIndex + 1;
@@ -350,8 +367,66 @@ extension _TextReaderAdjacentPagination on _TextReaderViewState {
     );
     final List<ReaderPage> pages = <ReaderPage>[];
     ReaderPageContinuation? continuation;
-    var cursor = 0;
-    void runBatch() {
+    var paragraphCursor = 0;
+    var characterCursor = 0;
+    late void Function() runSlice;
+
+    void scheduleSlice() {
+      WidgetsBinding.instance.addPostFrameCallback((_) => runSlice());
+      WidgetsBinding.instance.scheduleFrame();
+    }
+
+    void completeLayout() {
+      final bool hasChapterTrailing = _hasChapterComments;
+      if (continuation?.isEmpty == false || pages.isEmpty) {
+        final ReaderPaginationBatch finalBatch = _paginator.paginateBatch(
+          chapter: TextChapterContent(
+            chapterId: content.chapterId,
+            title: content.title,
+            paragraphs: const <TextParagraph>[],
+            contentVersion: content.contentVersion,
+          ),
+          width: _paginationWidth(size),
+          height: _paginationHeight(size),
+          titleStyle: _titleTextStyle,
+          bodyStyle: _bodyTextStyle,
+          paragraphSpacing: _preferences.paragraphSpacing,
+          firstLineIndent: _preferences.firstLineIndent,
+          textDirection: Directionality.of(context),
+          textScaler: _textScaler,
+          includeChapterTitle: false,
+          chapterTrailingHeight: hasChapterTrailing ? 168 : 0,
+          continuation: continuation,
+          finish: true,
+        );
+        pages.addAll(finalBatch.pages);
+      } else if (hasChapterTrailing) {
+        pages.add(
+          ReaderPage(
+            blocks: <ReaderPageBlock>[],
+            showsChapterTrailing: true,
+            chapterTrailingHeight: 168,
+          ),
+        );
+      }
+      if (!_TextReaderViewState._layoutCache.canStore(pages)) {
+        _adjacentSuppressedTarget = _adjacentPreparationTarget;
+        _completeAdjacentPreparation(
+          ReaderChapterPerformanceOutcome.error,
+          paragraphCount: content.paragraphs.length,
+        );
+        return;
+      }
+      _TextReaderViewState._layoutCache.put(fingerprint, pages);
+      _completeAdjacentPreparation(
+        ReaderChapterPerformanceOutcome.success,
+        pageCount: pages.length,
+        paragraphCount: content.paragraphs.length,
+      );
+      if (mounted) setState(() {});
+    }
+
+    runSlice = () {
       if (!_isAdjacentPreparationCurrent(
         generation,
         session,
@@ -367,17 +442,19 @@ extension _TextReaderAdjacentPagination on _TextReaderViewState {
         }
         return;
       }
-      final int end =
-          (cursor + _TextReaderViewState._progressiveParagraphBatchSize).clamp(
-            0,
-            content.paragraphs.length,
-          );
       try {
+        if (paragraphCursor >= content.paragraphs.length) {
+          completeLayout();
+          return;
+        }
+        final List<TextParagraph> remaining = content.paragraphs.sublist(
+          paragraphCursor,
+        );
         final ReaderPaginationBatch batch = _paginator.paginateBatch(
           chapter: TextChapterContent(
             chapterId: content.chapterId,
             title: content.title,
-            paragraphs: content.paragraphs.sublist(cursor, end),
+            paragraphs: remaining,
             contentVersion: content.contentVersion,
           ),
           width: _paginationWidth(size),
@@ -388,64 +465,43 @@ extension _TextReaderAdjacentPagination on _TextReaderViewState {
           firstLineIndent: _preferences.firstLineIndent,
           textDirection: Directionality.of(context),
           textScaler: _textScaler,
-          includeChapterTitle: cursor == 0,
+          includeChapterTitle:
+              paragraphCursor == 0 && characterCursor == 0 && pages.isEmpty,
+          maximumPages: 1,
+          firstParagraphStartOffset: characterCursor,
           paragraphTrailingWidth: _hasParagraphComments
               ? _TextReaderViewState._inlineCommentHitSize
               : 0,
           paragraphTrailingHeight: _hasParagraphComments
               ? _TextReaderViewState._inlineCommentHitSize
               : 0,
-          chapterTrailingHeight:
-              _hasChapterComments && end == content.paragraphs.length ? 168 : 0,
           continuation: continuation,
-          finish: end == content.paragraphs.length,
+          finish: false,
         );
         pages.addAll(batch.pages);
         continuation = batch.continuation;
-        cursor = end;
-        if (cursor < content.paragraphs.length) {
-          WidgetsBinding.instance.scheduleTask<void>(runBatch, Priority.idle);
-          return;
-        }
-        if (!_isAdjacentPreparationCurrent(
-          generation,
-          session,
-          contentEpoch,
-          fingerprint,
-          next.id,
-        )) {
-          if (_adjacentPreparationActive &&
-              _adjacentActiveOperation == operationId) {
-            _completeAdjacentPreparation(
-              ReaderChapterPerformanceOutcome.cancelled,
-            );
-          }
-          return;
-        }
-        if (!_TextReaderViewState._layoutCache.canStore(pages)) {
-          _adjacentSuppressedTarget = _adjacentPreparationTarget;
-          _completeAdjacentPreparation(
-            ReaderChapterPerformanceOutcome.error,
-            paragraphCount: content.paragraphs.length,
-          );
-          return;
-        }
-        _TextReaderViewState._layoutCache.put(fingerprint, pages);
-        _completeAdjacentPreparation(
-          ReaderChapterPerformanceOutcome.success,
-          pageCount: pages.length,
-          paragraphCount: content.paragraphs.length,
-        );
-        if (mounted) setState(() {});
+        paragraphCursor += batch.nextParagraphIndex;
+        characterCursor = batch.nextCharacterOffset;
+        if (batch.isComplete) paragraphCursor = content.paragraphs.length;
+        scheduleSlice();
       } catch (_) {
         _completeAdjacentPreparation(
           ReaderChapterPerformanceOutcome.error,
           paragraphCount: content.paragraphs.length,
         );
       }
-    }
+    };
 
-    WidgetsBinding.instance.scheduleTask<void>(runBatch, Priority.idle);
+    scheduleSlice();
+  }
+
+  void _pauseAdjacentPreparationForInteraction() {
+    if (_preferences.navigationMode != ReaderNavigationMode.horizontalPages ||
+        _adjacentPreparationStage == _AdjacentPreparationStage.ready) {
+      return;
+    }
+    _cancelAdjacentPreparation();
+    _reconcileAdjacentPreparation();
   }
 
   Future<void> _loadAdjacentContent(_AdjacentPreparationTarget target) async {

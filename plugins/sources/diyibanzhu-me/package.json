@@ -2,5 +2,5 @@
   "name":"@mgread-plugin/diyibanzhu-me","version":"2.0.0","private":true,"description":"MgRead conversion of the user-provided 第一版主 source.","type":"module","main":"dist/index.mjs","packageManager":"npm@11.13.0","engines":{"node":">=24 <25","npm":"11.13.0"},
   "scripts":{"sync:cache":"node ../../../tools/sync_plugin_cache.mjs diyibanzhu-me","build":"npm run sync:cache && tsc -p tsconfig.json","typecheck":"tsc -p tsconfig.json --noEmit","test":"npm run build && node --test test/contract.test.mjs test/source.test.mjs","test:live":"npm run build && node --use-env-proxy --test test/live-source.test.mjs","pack:plugin":"npm run build && node tools/mgread.mjs pack","verify":"npm run typecheck && npm test && npm run pack:plugin"},
   "dependencies":{"@mgread/plugin-cache":"file:./packages/mgread-plugin-cache","cheerio":"1.1.0"},"devDependencies":{"@types/node":"24.13.3","esbuild":"0.28.2","typescript":"5.9.3"},
-  "mgread":{"schemaVersion":1,"id":"org.mgread.diyibanzhu-me","displayName":"第一版主","description":"第一版主移动站数据源，受保护页面由宿主浏览器会话提供。","pluginApi":1,"packageMode":"single-file","icon":"assets/icon.png","contentKinds":["novel"]}
+  "mgread":{"schemaVersion":1,"id":"org.mgread.diyibanzhu-me","displayName":"第一版主","description":"第一版主移动站数据源，受保护页面由宿主单页 WebView 提供。","pluginApi":1,"packageMode":"single-file","icon":"assets/icon.png","contentKinds":["novel"]}
 }

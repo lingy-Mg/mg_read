@@ -48,6 +48,8 @@ plugins/sources/                    真实数据源插件
 - 漫画正文图片缓存返回总量与按 `LibraryItemId` 的用量；无归属旧缓存只计总量。
 - 发现页可构造仅存活于路由的临时阅读会话；退出即丢弃，不写 App/Runtime 持久化，也不替代正式
   入库、目录、正文、进度和书签流程。
+- 本地 `.mgread` v1 仅含所选数据源 artifact、书架和进度，不含源码、正文、缓存、设置、凭据或路径；
+  导入先预览并逐项选择，再复用 Runtime 校验和 Content Library 事务。
 
 ## Runtime 与平台宿主
 
@@ -69,14 +71,14 @@ plugins/sources/                    真实数据源插件
   HTML、CORS `fetch`、原生输入、等待、URL 与显隐关闭。普通调用 FIFO、控制旁路；超时不毁页并撤销结果
   token。不用 CDP；Windows 允许 F12。
 - Android/Windows 每插件一个 WebView（最多 8/16）；Android multi-profile 不可用时记录 `single_fallback`。
-  `visible` 全局唯一；顶部显示来源/行为和 URL，阻止越界能力。Windows 静音，Android 暂仅禁止自动播放。
+  `visible` 全局唯一；Windows 窗口标题显示来源/行为，页面内只显示 URL，用户关闭窗口只隐藏且仅脚本
+  `close` 销毁。宿主阻止越界能力；Windows 静音，Android 暂仅禁止自动播放。
 - Debug 检查页监听 `0.0.0.0:52173`；冲突不阻断，Release 禁用。
 
 ## 标准插件项目、artifact 与安装
 
-- 插件是可信的标准 Node.js 24 项目。`package.json.mgread` 是唯一元数据，npm lockfile v3 是开发
-  依赖图；开发使用普通 `node_modules` 和多文件 ESM。禁止 Git dependency、install script、native
-  addon、第二 VM、manifest、自定义 lock 或 shared-dependency 协议。
+- 插件是可信 Node.js 24 项目；`package.json.mgread` 是唯一元数据，lockfile v3 是依赖图。开发使用普通
+  `node_modules`/多文件 ESM；禁止 Git dependency、install script、native addon、第二 VM 或自定义协议。
 - `mgread.packageMode` 为 `single-file|archive`，默认 `single-file`。single-file 使用精确
   `esbuild 0.28.2` 生成 Node 24 ESM，不 minify、不带 source map/时间戳，只 externalize Node builtin；
   unresolved/dynamic import、非 builtin external、Wasm/native/binary/sidecar 必须构建失败。
@@ -84,9 +86,8 @@ plugins/sources/                    真实数据源插件
   code 字节数/SHA-256 和可选内嵌图标；信封 512 KiB、图标 256 KiB、artifact 32 MiB 上限。
 - 显式 archive 为确定性 `.mgplugin` ZIP，保留 package/lock/dist/assets/packages 和 lock 恢复语义。
   两种模式都不携带 `node_modules` 或源码，不运行 install script，不自动互相回退。
-- 项目工具导出 `buildPluginArtifact({versionOverride}) -> {bytes,fileName,format}`；函数只返回内存
-  结果，CLI 才写输出。Windows development 同步信任该可信工具的构建结果，只校验返回形状、传输
-  格式、大小并计算传输 SHA-256，不重复解析/解压做第二次内容决策；接收端仍校验字节数和摘要。
+- `buildPluginArtifact({versionOverride})` 只返回内存 bytes/fileName/format，CLI 才写盘。Windows
+  development 同步或本地导出先调用它；发送端校验形状/格式/大小并计算 SHA-256，接收端校验字节与摘要。
 - 安装写入不可变版本目录并原子切换 pending；失败不破坏当前版本。archive 依赖按 lock/SRI 精确
   恢复，Runtime 不求解 SemVer、不运行 npm 生命周期脚本。
 - 插件私有缓存只保存可重复 GET 展示投影：发现/搜索 10 分钟，详情/目录 1 小时；使用哈希键、原子

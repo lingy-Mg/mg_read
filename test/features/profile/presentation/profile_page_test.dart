@@ -154,6 +154,24 @@ void main() {
     expect(find.byKey(const Key('profile-setting-clear-cache')), findsNothing);
   });
 
+  testWidgets('delegates the import export entry to the app layer', (WidgetTester tester) async {
+    var requested = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProfilePage(onImportExportRequested: () => requested = true),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byKey(const Key('profile-page-content')), const Offset(0, -420));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('profile-setting-import-export')));
+
+    expect(requested, isTrue);
+    expect(find.text('导入导出'), findsOneWidget);
+  });
+
   testWidgets('keeps the phone-width profile content centered on wide windows', (WidgetTester tester) async {
     await _setViewport(tester, const Size(1280, 900));
     await tester.pumpWidget(_host());

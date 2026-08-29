@@ -75,6 +75,9 @@ class ReaderPaginationBatch {
   ReaderPaginationBatch({
     required List<ReaderPage> pages,
     required this.continuation,
+    required this.nextParagraphIndex,
+    required this.nextCharacterOffset,
+    required this.isComplete,
   }) : pages = List.unmodifiable(pages);
 
   /// Fully filled pages produced by this batch.
@@ -82,6 +85,15 @@ class ReaderPaginationBatch {
 
   /// The still-fillable final page, if the caller has more text to process.
   final ReaderPageContinuation continuation;
+
+  /// Paragraph index at which a page-bounded caller should resume.
+  final int nextParagraphIndex;
+
+  /// Character offset within [nextParagraphIndex] at which work should resume.
+  final int nextCharacterOffset;
+
+  /// Whether all supplied paragraphs were consumed.
+  final bool isComplete;
 }
 
 class TextPaginator {
@@ -109,6 +121,7 @@ class TextPaginator {
     bool includeChapterTitle = true,
     int? maximumPages,
     int paragraphBaseOffset = 0,
+    int firstParagraphStartOffset = 0,
     String? stopAfterParagraphId,
     int stopAfterCharacterOffset = 0,
   }) => paginateBatch(
@@ -127,6 +140,7 @@ class TextPaginator {
     includeChapterTitle: includeChapterTitle,
     maximumPages: maximumPages,
     paragraphBaseOffset: paragraphBaseOffset,
+    firstParagraphStartOffset: firstParagraphStartOffset,
     stopAfterParagraphId: stopAfterParagraphId,
     stopAfterCharacterOffset: stopAfterCharacterOffset,
     finish: true,
@@ -151,6 +165,7 @@ class TextPaginator {
     bool includeChapterTitle = true,
     int? maximumPages,
     int paragraphBaseOffset = 0,
+    int firstParagraphStartOffset = 0,
     String? stopAfterParagraphId,
     int stopAfterCharacterOffset = 0,
     ReaderPageContinuation? continuation,
@@ -164,6 +179,9 @@ class TextPaginator {
           usedHeight: 0,
           showsTitle: false,
         ),
+        nextParagraphIndex: chapter.paragraphs.length,
+        nextCharacterOffset: 0,
+        isComplete: true,
       );
     }
 
@@ -185,6 +203,8 @@ class TextPaginator {
     var showsTitle = continuation?.showsTitle ?? includeChapterTitle;
     var reachedAnchor = false;
     var reachedPageLimit = false;
+    var nextParagraphIndex = chapter.paragraphs.length;
+    var nextCharacterOffset = 0;
 
     bool containsAnchor(ReaderPageBlock block) =>
         stopAfterParagraphId != null &&
@@ -215,6 +235,9 @@ class TextPaginator {
       // host-provided paragraph, not positions in a display-only copy.
       final int baseOffset = paragraphIndex == 0 ? paragraphBaseOffset : 0;
       final String source = paragraph.text;
+      var offset = paragraphIndex == 0
+          ? firstParagraphStartOffset.clamp(0, source.length)
+          : 0;
       final double trailingWidth = paragraphTrailingWidth
           .clamp(0, width)
           .toDouble();
@@ -248,7 +271,6 @@ class TextPaginator {
         continue;
       }
 
-      var offset = 0;
       while (offset < source.length && !reachedPageLimit) {
         var available = height - usedHeight;
         if (available < _minimumLineHeight(bodyStyle) && blocks.isNotEmpty) {
@@ -388,6 +410,15 @@ class TextPaginator {
           commitPage();
         }
       }
+      if (reachedPageLimit) {
+        if (offset < source.length) {
+          nextParagraphIndex = paragraphIndex;
+          nextCharacterOffset = offset;
+        } else {
+          nextParagraphIndex = paragraphIndex + 1;
+          nextCharacterOffset = 0;
+        }
+      }
       if (reachedAnchor || reachedPageLimit) break;
     }
 
@@ -415,6 +446,9 @@ class TextPaginator {
         usedHeight: usedHeight,
         showsTitle: showsTitle,
       ),
+      nextParagraphIndex: nextParagraphIndex,
+      nextCharacterOffset: nextCharacterOffset,
+      isComplete: nextParagraphIndex >= chapter.paragraphs.length,
     );
   }
 

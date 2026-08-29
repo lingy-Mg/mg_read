@@ -38,6 +38,7 @@ class ProfilePage extends StatefulWidget {
     this.onFeedbackRequested,
     this.onPluginCenterRequested,
     this.onPluginCacheRequested,
+    this.onImportExportRequested,
     this.onLanSyncRequested,
     this.onPendingSettingRequested,
     this.onDiagnosticsRequested,
@@ -54,6 +55,7 @@ class ProfilePage extends StatefulWidget {
   final VoidCallback? onFeedbackRequested;
   final VoidCallback? onPluginCenterRequested;
   final VoidCallback? onPluginCacheRequested;
+  final VoidCallback? onImportExportRequested;
   final VoidCallback? onLanSyncRequested;
   final ValueChanged<String>? onPendingSettingRequested;
   final VoidCallback? onDiagnosticsRequested;
@@ -202,6 +204,10 @@ class _ProfilePageState extends State<ProfilePage> {
     }
     if (item.id == 'downloads-cache' && widget.onPluginCacheRequested != null) {
       widget.onPluginCacheRequested!();
+      return;
+    }
+    if (item.id == 'import-export' && widget.onImportExportRequested != null) {
+      widget.onImportExportRequested!();
       return;
     }
     if (item.id == 'data-backup' && widget.onLanSyncRequested != null) {

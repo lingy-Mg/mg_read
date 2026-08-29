@@ -13,9 +13,11 @@ namespace mgread_plugin_runtime {
 namespace {
 
 constexpr wchar_t kWindowClass[] = L"MgReadBrowserSessionWindow";
-constexpr int kHideButtonId = 1001;
-constexpr int kCloseButtonId = 1002;
-constexpr int kToolbarHeight = 78;
+constexpr int kToolbarHeight = 62;
+constexpr COLORREF kHeaderColor = RGB(255, 255, 255);
+constexpr COLORREF kAddressColor = RGB(244, 247, 251);
+constexpr COLORREF kBorderColor = RGB(226, 232, 240);
+constexpr COLORREF kBodyColor = RGB(71, 85, 105);
 
 std::wstring Utf8ToWide(const std::string& value) {
   if (value.empty()) return {};
@@ -131,42 +133,106 @@ HWND FindWebViewWindow(HWND parent) {
 }  // namespace
 
 struct WindowsBrowserHost::Session {
-  WindowsBrowserHost* owner = nullptr;
   std::string plugin_id;
   std::wstring plugin_name;
   std::string session_id;
   std::wstring profile_path;
   HWND window = nullptr;
-  HWND hide_button = nullptr;
-  HWND close_button = nullptr;
-  HWND status_text = nullptr;
   HWND url_text = nullptr;
   HWND input_window = nullptr;
+  UINT dpi = 96;
+  HFONT body_font = nullptr;
+  HBRUSH header_brush = nullptr;
+  HBRUSH address_brush = nullptr;
   Microsoft::WRL::ComPtr<ICoreWebView2Environment> environment;
   Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller;
   Microsoft::WRL::ComPtr<ICoreWebView2> webview;
+
+  ~Session() {
+    if (body_font != nullptr) DeleteObject(body_font);
+    if (header_brush != nullptr) DeleteObject(header_brush);
+    if (address_brush != nullptr) DeleteObject(address_brush);
+  }
+
+  int Scale(int value) const {
+    return MulDiv(value, static_cast<int>(dpi), 96);
+  }
+
+  int ToolbarHeight() const { return Scale(kToolbarHeight); }
+
+  void RecreateFonts() {
+    if (body_font != nullptr) DeleteObject(body_font);
+    body_font = CreateFontW(-Scale(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE,
+                            FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                            CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                            DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+    if (url_text != nullptr) {
+      SendMessage(url_text, WM_SETFONT, reinterpret_cast<WPARAM>(body_font),
+                  TRUE);
+    }
+  }
+
+  void DrawRoundedRect(HDC device_context, const RECT& bounds, int radius,
+                       COLORREF fill_color, COLORREF border_color) const {
+    const HBRUSH brush = CreateSolidBrush(fill_color);
+    const HPEN pen = CreatePen(PS_SOLID, std::max(1, Scale(1)), border_color);
+    const auto old_brush = SelectObject(device_context, brush);
+    const auto old_pen = SelectObject(device_context, pen);
+    RoundRect(device_context, bounds.left, bounds.top, bounds.right,
+              bounds.bottom, radius, radius);
+    SelectObject(device_context, old_pen);
+    SelectObject(device_context, old_brush);
+    DeleteObject(pen);
+    DeleteObject(brush);
+  }
+
+  void PaintToolbar(HDC device_context) const {
+    RECT bounds{};
+    GetClientRect(window, &bounds);
+    RECT header_bounds{0, 0, bounds.right, ToolbarHeight()};
+    FillRect(device_context, &header_bounds, header_brush);
+
+    RECT address_bounds{Scale(16), Scale(12),
+                        std::max<LONG>(Scale(16), bounds.right - Scale(16)),
+                        Scale(47)};
+    DrawRoundedRect(device_context, address_bounds, Scale(12), kAddressColor,
+                    kBorderColor);
+
+    const HPEN icon_pen =
+        CreatePen(PS_SOLID, std::max(1, Scale(1)), kBodyColor);
+    const auto old_pen = SelectObject(device_context, icon_pen);
+    const auto old_brush =
+        SelectObject(device_context, GetStockObject(NULL_BRUSH));
+    Ellipse(device_context, Scale(25), Scale(22), Scale(39), Scale(36));
+    MoveToEx(device_context, Scale(27), Scale(29), nullptr);
+    LineTo(device_context, Scale(37), Scale(29));
+    MoveToEx(device_context, Scale(32), Scale(22), nullptr);
+    LineTo(device_context, Scale(32), Scale(36));
+    SelectObject(device_context, old_brush);
+    SelectObject(device_context, old_pen);
+    DeleteObject(icon_pen);
+
+    RECT separator{0, ToolbarHeight() - std::max(1, Scale(1)), bounds.right,
+                   ToolbarHeight()};
+    const HBRUSH separator_brush = CreateSolidBrush(kBorderColor);
+    FillRect(device_context, &separator, separator_brush);
+    DeleteObject(separator_brush);
+  }
 
   void Resize() const {
     if (window == nullptr) return;
     RECT bounds{};
     GetClientRect(window, &bounds);
-    if (hide_button != nullptr) {
-      MoveWindow(hide_button, std::max(0L, bounds.right - 184L), 7, 80, 28, TRUE);
-    }
-    if (close_button != nullptr) {
-      MoveWindow(close_button, std::max(0L, bounds.right - 96L), 7, 80, 28, TRUE);
-    }
-    if (status_text != nullptr) {
-      MoveWindow(status_text, 16, 10, std::max(0L, bounds.right - 216L), 24, TRUE);
-    }
     if (url_text != nullptr) {
-      MoveWindow(url_text, 16, 42, std::max(0L, bounds.right - 32L), 24, TRUE);
+      MoveWindow(url_text, Scale(48), Scale(19),
+                 std::max(0L, bounds.right - Scale(68)), Scale(22), TRUE);
     }
     if (controller != nullptr) {
-      RECT browser_bounds{0, kToolbarHeight, bounds.right,
-                          std::max<LONG>(kToolbarHeight, bounds.bottom)};
+      RECT browser_bounds{0, ToolbarHeight(), bounds.right,
+                          std::max<LONG>(ToolbarHeight(), bounds.bottom)};
       controller->put_Bounds(browser_bounds);
     }
+    InvalidateRect(window, nullptr, FALSE);
   }
 
   static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam,
@@ -180,28 +246,42 @@ struct WindowsBrowserHost::Session {
                        reinterpret_cast<LONG_PTR>(session));
     }
     switch (message) {
-      case WM_COMMAND:
-        if (LOWORD(wparam) == kHideButtonId) {
-          ShowWindow(window, SW_HIDE);
-          return 0;
-        }
-        if (LOWORD(wparam) == kCloseButtonId) {
-          if (session != nullptr && session->owner != nullptr) {
-            session->owner->DisposeSession(session->session_id);
-          }
-          return 0;
-        }
-        break;
       case WM_CLOSE:
-        if (session != nullptr && session->owner != nullptr) {
-          session->owner->DisposeSession(session->session_id);
-        } else {
-          ShowWindow(window, SW_HIDE);
-        }
+        ShowWindow(window, SW_HIDE);
         return 0;
       case WM_SIZE:
         if (session != nullptr) session->Resize();
         return 0;
+      case WM_DPICHANGED:
+        if (session != nullptr) {
+          session->dpi = HIWORD(wparam);
+          session->RecreateFonts();
+          const auto* suggested = reinterpret_cast<RECT*>(lparam);
+          SetWindowPos(window, nullptr, suggested->left, suggested->top,
+                       suggested->right - suggested->left,
+                       suggested->bottom - suggested->top,
+                       SWP_NOACTIVATE | SWP_NOZORDER);
+          session->Resize();
+        }
+        return 0;
+      case WM_PAINT:
+        if (session != nullptr) {
+          PAINTSTRUCT paint{};
+          const HDC device_context = BeginPaint(window, &paint);
+          session->PaintToolbar(device_context);
+          EndPaint(window, &paint);
+          return 0;
+        }
+        break;
+      case WM_CTLCOLOREDIT:
+        if (session != nullptr &&
+            reinterpret_cast<HWND>(lparam) == session->url_text) {
+          const HDC device_context = reinterpret_cast<HDC>(wparam);
+          SetBkColor(device_context, kAddressColor);
+          SetTextColor(device_context, kBodyColor);
+          return reinterpret_cast<LRESULT>(session->address_brush);
+        }
+        break;
       default:
         break;
     }
@@ -304,7 +384,6 @@ void WindowsBrowserHost::Create(const flutter::EncodableMap& arguments,
     return;
   }
   const auto session = std::make_shared<Session>();
-  session->owner = this;
   session->plugin_id = *plugin_id;
   session->plugin_name = Utf8ToWide(*plugin_name);
   session->session_id = NewSessionId();
@@ -313,32 +392,29 @@ void WindowsBrowserHost::Create(const flutter::EncodableMap& arguments,
     SafeError(result, "unsupported");
     return;
   }
+  const std::wstring initial_status =
+      session->plugin_name + L"正在进行探测 - 已打开";
   session->window = CreateWindowEx(
-      WS_EX_APPWINDOW, kWindowClass, L"MgRead 数据源探测",
+      WS_EX_APPWINDOW, kWindowClass, initial_status.c_str(),
       WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 980, 760,
       flutter_window_, nullptr, GetModuleHandle(nullptr), session.get());
   if (session->window == nullptr) {
     SafeError(result, "unsupported");
     return;
   }
-  session->hide_button = CreateWindow(
-      L"BUTTON", L"\u9690\u85cf", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-      0, 0, 80, 28, session->window,
-      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kHideButtonId)),
-      GetModuleHandle(nullptr), nullptr);
-  session->close_button = CreateWindow(
-      L"BUTTON", L"关闭", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-      0, 0, 80, 28, session->window,
-      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCloseButtonId)),
-      GetModuleHandle(nullptr), nullptr);
-  const std::wstring initial_status = session->plugin_name + L"正在进行探测 - 已打开";
-  session->status_text = CreateWindow(
-      L"STATIC", initial_status.c_str(), WS_CHILD | WS_VISIBLE | SS_LEFT,
-      0, 0, 100, 24, session->window, nullptr, GetModuleHandle(nullptr), nullptr);
+  session->dpi = GetDpiForWindow(session->window);
+  if (session->dpi == 0) session->dpi = 96;
+  session->header_brush = CreateSolidBrush(kHeaderColor);
+  session->address_brush = CreateSolidBrush(kAddressColor);
+  session->RecreateFonts();
   session->url_text = CreateWindowEx(
-      WS_EX_CLIENTEDGE, L"EDIT", L"about:blank",
-      WS_CHILD | WS_VISIBLE | ES_LEFT | ES_AUTOHSCROLL | ES_READONLY,
+      0, L"EDIT", L"about:blank",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_LEFT | ES_AUTOHSCROLL |
+          ES_READONLY | ES_NOHIDESEL,
       0, 0, 100, 24, session->window, nullptr, GetModuleHandle(nullptr), nullptr);
+  session->RecreateFonts();
+  SendMessage(session->url_text, EM_SETMARGINS,
+              EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(0, 0));
   sessions_[session->session_id] = session;
   plugin_sessions_[session->plugin_id] = session->session_id;
 
@@ -588,7 +664,7 @@ void WindowsBrowserHost::UpdateStatus(
     const SessionPtr& session, const flutter::EncodableMap& arguments,
     std::shared_ptr<MethodResult> result) {
   const auto* status = FindString(arguments, "status");
-  if (status == nullptr || status->size() > 512 || session->status_text == nullptr) {
+  if (status == nullptr || status->size() > 512 || session->window == nullptr) {
     SafeError(result, "plugin_execution_failed");
     return;
   }
@@ -597,7 +673,7 @@ void WindowsBrowserHost::UpdateStatus(
     SafeError(result, "plugin_execution_failed");
     return;
   }
-  SetWindowText(session->status_text, wide.c_str());
+  SetWindowText(session->window, wide.c_str());
   result->Success();
 }
 

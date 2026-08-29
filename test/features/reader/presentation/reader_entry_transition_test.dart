@@ -61,7 +61,13 @@ void main() {
     await tester.pumpWidget(_readerApp(_request(dataSource: _ControlledDataSource(), coverBytes: _onePixelPng)));
     await tester.pump();
 
-    expect(find.byWidgetPredicate((Widget widget) => widget is Image && widget.image is MemoryImage), findsOneWidget);
+    final Finder cover = find.byWidgetPredicate((Widget widget) => widget is Image && widget.image is MemoryImage);
+    expect(cover, findsOneWidget);
+    expect(tester.getTopLeft(cover), Offset.zero);
+    expect(tester.getSize(cover), tester.getSize(find.byType(ReaderEntryTransition)));
+    final ImageProvider<Object> initialProvider = tester.widget<Image>(cover).image;
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(identical(tester.widget<Image>(cover).image, initialProvider), isTrue);
     expect(find.byKey(const Key('reader-entry-status')), findsNothing);
   });
 
@@ -127,8 +133,27 @@ void main() {
     await tester.pumpWidget(_readerApp(_comicRequest(dataSource: source, coverBytes: _onePixelPng)));
     await tester.pump();
 
-    expect(find.byWidgetPredicate((Widget widget) => widget is Image && widget.image is MemoryImage), findsOneWidget);
+    final Finder cover = find.byWidgetPredicate((Widget widget) => widget is Image && widget.image is MemoryImage);
+    expect(cover, findsOneWidget);
+    expect(tester.getTopLeft(cover), Offset.zero);
+    expect(tester.getSize(cover), tester.getSize(find.byType(ReaderEntryTransition)));
     expect(find.byKey(const Key('reader-entry-back')), findsOneWidget);
+
+    source.completeImage();
+  });
+
+  testWidgets('comic loading reuses one cover provider throughout animation rebuilds', (WidgetTester tester) async {
+    final source = _ControlledComicDataSource();
+    await tester.pumpWidget(_readerApp(_comicRequest(dataSource: source, coverBytes: _onePixelPng)));
+    await tester.pump();
+
+    final Finder cover = find.byWidgetPredicate((Widget widget) => widget is Image && widget.image is MemoryImage);
+    final ImageProvider<Object> initialProvider = tester.widget<Image>(cover).image;
+
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(identical(tester.widget<Image>(cover).image, initialProvider), isTrue);
+    await tester.pump(const Duration(milliseconds: 160));
+    expect(identical(tester.widget<Image>(cover).image, initialProvider), isTrue);
 
     source.completeImage();
   });

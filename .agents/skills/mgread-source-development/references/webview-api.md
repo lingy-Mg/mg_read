@@ -25,7 +25,7 @@ const result = await page.executeJavaScript<{ title: string }>(`
 - `open({visible:false})` 创建或复用隐藏页面；`open({visible:true})` 创建或复用并显示。
 - `show()` 和 `hide()` 只改变呈现状态，不清除导航、DOM、Storage 或浏览器会话。
 - `close()` 销毁平台页面并取消活动普通操作。之后只有再次 `open()` 才能重新创建；旧 handle 的其他方法应返回 `unsupported`，不能静默重建。
-- 用户点击宿主顶部的隐藏或关闭按钮，必须产生与 API 相同的状态转换，并同步回 Runtime。
+- Windows 宿主不提供页面内隐藏或关闭按钮；用户触发系统标题栏关闭、Alt+F4 或任务栏关闭时只隐藏窗口并保留页面。只有数据源脚本调用 `close()` 才销毁页面。Android 宿主的用户隐藏/关闭操作继续分别映射为 `hide()`/`close()`。
 - 超时或取消单个普通操作不销毁页面，后续操作仍可继续。
 
 普通操作按数据源串行执行。`show/hide/close` 属于独立控制通道：必须能在普通操作等待、超时或页面验证期间执行，不能被普通请求队列和容量上限阻塞；`close` 可以取消活动操作。
@@ -89,7 +89,7 @@ interface WebViewFetchRequest {
 
 ### `click({x,y,timeoutMs?})`
 
-- 坐标是相对 WebView 内容 viewport 的 CSS 像素，不包含宿主顶部标题和地址栏。
+- 坐标是相对 WebView 内容 viewport 的 CSS 像素，不包含 Windows 宿主地址栏或 Android 宿主顶部区域。
 - 页面必须可见；隐藏页面返回 `interaction_required`。
 - 宿主把坐标转换为平台输入坐标并发送真实 WebView pointer/touch 输入。
 - 禁止 `HTMLElement.click()`、DOM `dispatchEvent()`、CDP 和桌面全局点击。

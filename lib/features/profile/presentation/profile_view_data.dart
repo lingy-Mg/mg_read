@@ -89,7 +89,7 @@ final class ProfileSettingsItemViewData {
 }
 
 /// Symbol choices that keep the profile fixture independent from Material UI.
-enum ProfileSettingsIcon { reading, sources, download, appearance, privacy, backup, diagnostics, about, feedback }
+enum ProfileSettingsIcon { reading, sources, download, appearance, privacy, importExport, backup, diagnostics, about, feedback }
 
 /// Clearly disclosed fixture data used while account and sync capabilities are
 /// intentionally outside the current application milestone.
@@ -110,6 +110,7 @@ abstract final class ProfileFixtures {
       ProfileSettingsItemViewData(id: 'downloads-cache', title: '缓存管理', description: '数据源缓存、封面缓存与存储用量', icon: ProfileSettingsIcon.download),
       ProfileSettingsItemViewData(id: 'theme-appearance', title: '主题与外观', description: '跟随系统 / 暖光主题', icon: ProfileSettingsIcon.appearance),
       ProfileSettingsItemViewData(id: 'privacy-permissions', title: '隐私与权限', description: '权限管理与隐私设置', icon: ProfileSettingsIcon.privacy),
+      ProfileSettingsItemViewData(id: 'import-export', title: '导入导出', description: '选择数据源、书架与阅读进度', icon: ProfileSettingsIcon.importExport),
       ProfileSettingsItemViewData(id: 'data-backup', title: '局域网同步', description: '同一网络传输数据源、书架与进度', icon: ProfileSettingsIcon.backup),
     ],
     about: <ProfileSettingsItemViewData>[

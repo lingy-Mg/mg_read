@@ -322,7 +322,7 @@ extension _TextReaderPagination on _TextReaderViewState {
   /// semantic end anchor. This prevents a previous-chapter turn from exposing
   /// that chapter's first page while its tail is still being calculated.
   void _finishHorizontalPagination() {
-    _restoreHorizontalPageLater();
+    _replaceHorizontalPageController(_pageIndex + 1);
     if (!_awaitingPreviousChapterTail) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -350,7 +350,8 @@ extension _TextReaderPagination on _TextReaderViewState {
   void _restoreHorizontalPageLater() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_pageController.hasClients) return;
-      _restoreHorizontalPageWithoutProgress(_pageIndex + 1);
+      _replaceHorizontalPageController(_pageIndex + 1);
+      setState(() {});
       _publishSnapshot();
     });
     WidgetsBinding.instance.scheduleFrame();
@@ -387,6 +388,7 @@ extension _TextReaderPagination on _TextReaderViewState {
       : null;
 
   Future<void> _nextPage({bool userInitiated = true}) async {
+    if (userInitiated) _pauseAdjacentPreparationForInteraction();
     if (_readerInteractionBlocked && userInitiated) return;
     if (_changingChapter || _pageTurnAnimating) return;
     if (userInitiated) _stopAutoReading();
@@ -415,6 +417,7 @@ extension _TextReaderPagination on _TextReaderViewState {
   }
 
   Future<void> _previousPage({bool userInitiated = true}) async {
+    if (userInitiated) _pauseAdjacentPreparationForInteraction();
     if (_readerInteractionBlocked && userInitiated) return;
     if (_changingChapter || _pageTurnAnimating) return;
     if (userInitiated) _stopAutoReading();
@@ -692,6 +695,7 @@ extension _TextReaderPagination on _TextReaderViewState {
     _pageIndex = 0;
     _pages = const <ReaderPage>[];
     _awaitingPreviousChapterTail = false;
+    _horizontalChapterHandoff = null;
     _restoringHorizontalAnchor = false;
     _restoringHorizontalRawIndex = null;
     _paragraphKeys.clear();

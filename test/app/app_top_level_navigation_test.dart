@@ -8,6 +8,7 @@ import 'package:mg_read/features/discovery/presentation/discovery_destination_pa
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
 import 'package:mg_read/features/library/presentation/private_library_page.dart';
+import 'package:mg_read/features/import_export/presentation/import_export_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
@@ -69,6 +70,26 @@ void main() {
 
     expect(find.byType(PrivateLibraryPage), findsOneWidget);
     expect(find.descendant(of: find.byKey(const Key('app-nav-home')), matching: find.byIcon(Icons.visibility_off_rounded)), findsOneWidget);
+  });
+
+  testWidgets('opens import export from My and returns through the secondary route', (WidgetTester tester) async {
+    final settings = await createTestAppSettings();
+    addTearDown(settings.close);
+    await tester.pumpWidget(testMgReadApp(settings));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('app-nav-profile')));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byKey(const Key('profile-page-content')), const Offset(0, -420));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('profile-setting-import-export')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ImportExportPage), findsOneWidget);
+    expect(find.byType(ProfilePage), findsNothing);
+    await tester.tap(find.byKey(const Key('import-export-back')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfilePage), findsOneWidget);
   });
 }
 

@@ -32,6 +32,59 @@ void main() {
     SchedulerBinding.instance.schedulingStrategy = schedulingStrategy;
   });
 
+  testWidgets('real interaction restarts the adjacent quiet window', (
+    WidgetTester tester,
+  ) async {
+    final observer = _CancellationObserver(onStarted: () {});
+    final controller = TextReaderController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TextReaderView(
+          bookId: 'interaction-quiet-window',
+          dataSource: const _ShortInitialAdjacentDataSource(),
+          stateStore: const _CancellationStateStore(),
+          observer: observer,
+          controller: controller,
+        ),
+      ),
+    );
+    for (var index = 0; index < 12 && !controller.snapshot.isReady; index++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(controller.snapshot.isReady, isTrue);
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('reader-content-surface')),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(observer.adjacentOutcomes, isEmpty);
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(observer.adjacentOutcomes, isNotEmpty);
+    await _disposeAndDrain(tester);
+  });
+
+  testWidgets('long adjacent layout yields a painted frame before completion', (
+    WidgetTester tester,
+  ) async {
+    final observer = _FrameYieldObserver();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TextReaderView(
+          bookId: 'adjacent-frame-yield',
+          dataSource: const _CancellationDataSource(),
+          stateStore: const _CancellationStateStore(),
+          observer: observer,
+        ),
+      ),
+    );
+    for (var index = 0; index < 240 && !observer.completed; index += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(observer.completed, isTrue);
+    expect(observer.frameRanBeforeCompletion, isTrue);
+    await _disposeAndDrain(tester);
+  });
+
   testWidgets('background cancels adjacent preparation exactly once', (
     WidgetTester tester,
   ) async {
@@ -116,7 +169,7 @@ void main() {
     );
     expect(observer.adjacentOutcomes, _startedThenCancelled);
     unawaited(controller.nextPage());
-    for (var index = 0; index < 60; index += 1) {
+    for (var index = 0; index < 180; index += 1) {
       await tester.pump(const Duration(milliseconds: 16));
       if (observer.adjacentOutcomes.length >= 4) break;
     }
@@ -405,6 +458,26 @@ final class _CancellationObserver extends ReaderObserver {
   }
 }
 
+final class _FrameYieldObserver extends ReaderObserver {
+  bool completed = false;
+  bool frameRanBeforeCompletion = false;
+  bool _frameRan = false;
+
+  @override
+  void onChapterPerformance(ReaderChapterPerformanceEvent event) {
+    if (event.phase != ReaderChapterPerformancePhase.adjacentPreparation) {
+      return;
+    }
+    if (event.outcome == ReaderChapterPerformanceOutcome.started) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _frameRan = true);
+      WidgetsBinding.instance.scheduleFrame();
+    } else if (event.outcome == ReaderChapterPerformanceOutcome.success) {
+      completed = true;
+      frameRanBeforeCompletion = _frameRan;
+    }
+  }
+}
+
 class _CancellationDataSource implements TextReaderDataSource {
   const _CancellationDataSource();
 
@@ -485,6 +558,29 @@ final class _RetryAdjacentDataSource extends _CancellationDataSource {
       if (chapter2Attempts <= failures) {
         return Future<TextChapterContent>.error(StateError('retry'));
       }
+    }
+    return super.loadChapterContent(bookId, chapterId);
+  }
+}
+
+final class _ShortInitialAdjacentDataSource extends _CancellationDataSource {
+  const _ShortInitialAdjacentDataSource();
+
+  @override
+  Future<TextChapterContent> loadChapterContent(
+    String bookId,
+    String chapterId,
+  ) {
+    if (chapterId == 'chapter-1') {
+      return SynchronousFuture(
+        TextChapterContent(
+          chapterId: chapterId,
+          title: '第一章',
+          paragraphs: const <TextParagraph>[
+            TextParagraph(id: 'chapter-1-short', text: '短正文'),
+          ],
+        ),
+      );
     }
     return super.loadChapterContent(bookId, chapterId);
   }

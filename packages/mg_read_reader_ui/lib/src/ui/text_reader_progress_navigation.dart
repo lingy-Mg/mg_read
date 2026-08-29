@@ -22,7 +22,7 @@ extension _TextReaderProgressNavigation on _TextReaderViewState {
           rawIndex < _pages.length + 1) {
         _pageIndex = rawIndex - 1;
         _reconcileAdjacentPreparation();
-        if (mounted) setState(() {});
+        _completeHorizontalPageControllerReplacement(rawIndex);
       }
       // Replacing a chapter changes PageView's item count. It can emit a
       // callback for the old/clamped raw page before the requested semantic
@@ -66,24 +66,62 @@ extension _TextReaderProgressNavigation on _TextReaderViewState {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_pageController.hasClients) return;
-      _restoreHorizontalPageWithoutProgress(_pageIndex + 1);
+      _replaceHorizontalPageController(_pageIndex + 1);
+      setState(() {});
     });
   }
 
-  void _restoreHorizontalPageWithoutProgress(int rawIndex) {
+  void _replaceHorizontalPageController(int rawIndex) {
+    final PageController previous = _pageController;
+    final PageController replacement = PageController(
+      initialPage: rawIndex,
+      keepPage: false,
+    );
     _restoringHorizontalAnchor = true;
     _restoringHorizontalRawIndex = rawIndex;
-    _pageController.jumpToPage(rawIndex);
+    _pageController = replacement;
+    _retiredPageControllers.add(previous);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _restoringHorizontalRawIndex != rawIndex) return;
-        if (rawIndex > 0 && rawIndex < _pages.length + 1) {
-          _pageIndex = rawIndex - 1;
-        }
-        _restoringHorizontalRawIndex = null;
-        _restoringHorizontalAnchor = false;
-      });
-      WidgetsBinding.instance.scheduleFrame();
+      if (_retiredPageControllers.remove(previous)) previous.dispose();
+      if (!mounted ||
+          !identical(_pageController, replacement) ||
+          _restoringHorizontalRawIndex != rawIndex) {
+        return;
+      }
+      final double? page = replacement.hasClients ? replacement.page : null;
+      if (page != null && (page - rawIndex).abs() <= 0.001) {
+        _completeHorizontalPageControllerReplacement(rawIndex);
+      }
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
+  /// Acknowledges the target page reported by the replacement PageView.
+  /// This never performs a delayed page correction: it only releases the
+  /// already rendered handoff sheet after the new target page has laid out.
+  void _completeHorizontalPageControllerReplacement(int rawIndex) {
+    if (!_restoringHorizontalAnchor ||
+        _restoringHorizontalRawIndex != rawIndex) {
+      return;
+    }
+    if (rawIndex > 0 && rawIndex < _pages.length + 1) {
+      _pageIndex = rawIndex - 1;
+    }
+    _restoringHorizontalRawIndex = null;
+    _restoringHorizontalAnchor = false;
+    final _HorizontalChapterHandoff? handoff = _horizontalChapterHandoff;
+    if (handoff == null) {
+      if (mounted) setState(() {});
+      return;
+    }
+    final PageController replacement = _pageController;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !identical(_pageController, replacement) ||
+          !identical(_horizontalChapterHandoff, handoff)) {
+        return;
+      }
+      setState(() => _horizontalChapterHandoff = null);
     });
     WidgetsBinding.instance.scheduleFrame();
   }

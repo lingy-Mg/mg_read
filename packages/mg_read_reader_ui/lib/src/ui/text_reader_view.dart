@@ -5,7 +5,9 @@
 /// - 将章节缓存参数交给宿主能力，并保持网络、持久化和全局任务状态在宿主侧。
 /// - 横向翻页时将背景与正文组合成同一页片参与动画。
 /// - 将已预排的下一章第一页作为连续页片，动画停止后再提交跨章状态。
+/// - 跨章提交重建不保留 PageStorage 页码的控制器，并在目标页挂载前保留交接页。
 /// - 跨章回退时屏蔽 PageView 重建产生的过期页回调，保持上一章真实尾页。
+/// - 相邻章节在首屏静默窗口后按单页时间片预排，任何真实交互立即让出 UI isolate。
 /// - 处理触摸、鼠标、滚轮和键盘的阅读交互。
 /// - 目录打开后分批补齐全部章节，并将当前章节定位到可视区域中部。
 /// - 将章节状态查询合并进阅读器会话缓存，目录重开只补查尚未覆盖的章节。
@@ -25,7 +27,6 @@ import 'dart:collection';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -111,6 +112,7 @@ class _TextReaderViewState extends State<TextReaderView>
   static const int _paragraphKeyCacheLimit = 256;
   static const int _verticalRestoreMeasureBatchSize = 128;
   static const int _progressiveParagraphBatchSize = 8;
+  static const Duration _adjacentQuietDelay = Duration(milliseconds: 350);
   static const double _pageFooterBottomInset = 10;
   // TextPainter measures fractional line heights, while RenderParagraph rounds
   // their painted extent to device pixels. Keep a small reserve so a page that
@@ -161,7 +163,10 @@ class _TextReaderViewState extends State<TextReaderView>
   late bool _ownsController;
   late AppLifecycleListener _lifecycleListener;
   late final ReaderAutoReadingCoordinator _autoReadingCoordinator;
-  PageController _pageController = PageController(initialPage: 1);
+  PageController _pageController = PageController(
+    initialPage: 1,
+    keepPage: false,
+  );
   final Set<PageController> _retiredPageControllers = <PageController>{};
   final GlobalKey<PopupMenuButtonState<_ReaderOverflowAction>>
   _readerOverflowMenuKey =
@@ -172,6 +177,7 @@ class _TextReaderViewState extends State<TextReaderView>
   Timer? _noticeTimer;
   Timer? _clockTimer;
   Timer? _wheelResetTimer;
+  Timer? _adjacentQuietTimer;
   Future<void>? _catalogCompletion;
 
   ReaderBookInfo? _book;
@@ -228,12 +234,14 @@ class _TextReaderViewState extends State<TextReaderView>
   bool _changingChapter = false;
   bool _chapterLoadingOverlayVisible = false;
   bool _awaitingPreviousChapterTail = false;
+  _HorizontalChapterHandoff? _horizontalChapterHandoff;
   bool _disposed = false;
   bool _autoScrolling = false;
   bool _restoringVerticalAnchor = false;
   bool _restoringHorizontalAnchor = false;
   int? _restoringHorizontalRawIndex;
   bool _pageTurnForward = true;
+  bool _horizontalPageScrollActive = false;
   double _directDragDelta = 0;
   int? _mouseTapPointer;
   Offset? _mouseTapDownPosition;
@@ -256,6 +264,7 @@ class _TextReaderViewState extends State<TextReaderView>
   int _adjacentOperationId = 0;
   int _chapterTransitionOperationId = 0;
   bool _adjacentPreparationActive = false;
+  bool _adjacentQuietWindowOpen = false;
   int _adjacentActiveOperation = 0;
   Stopwatch? _adjacentPreparationStopwatch;
   _AdjacentPreparationTarget? _adjacentPreparationTarget;
@@ -525,6 +534,7 @@ class _TextReaderViewState extends State<TextReaderView>
     _noticeTimer?.cancel();
     _clockTimer?.cancel();
     _wheelResetTimer?.cancel();
+    _adjacentQuietTimer?.cancel();
     unawaited(_releaseAwake());
     unawaited(_notify(() => observer.onSessionEnded(bookId, progress)));
     _lifecycleListener.dispose();
@@ -625,6 +635,10 @@ class _TextReaderViewState extends State<TextReaderView>
                               ],
                             ),
                           ),
+                          if (_horizontalChapterHandoff != null)
+                            _buildHorizontalChapterHandoff(
+                              _horizontalChapterHandoff!,
+                            ),
                           if (_controlsVisible && !_readerSettingsVisible)
                             _buildControlsInteractionLock(),
                           if (_content != null) _buildChrome(),
@@ -727,4 +741,11 @@ class _TextReaderViewState extends State<TextReaderView>
     final ReaderThemePreset next = _isNightTheme(_preferences.theme)
         ? _lastNonNightTheme
         : ReaderThemePreset.night;
-    unawaited(_updatePreferences(_preferences.co
+    unawaited(_updatePreferences(_preferences.copyWith(theme: next)));
+  }
+
+  bool _isNightTheme(ReaderThemePreset theme) =>
+      theme == ReaderThemePreset.night ||
+      theme == ReaderThemePreset.deepNight ||
+      theme == ReaderThemePreset.charcoal;
+}

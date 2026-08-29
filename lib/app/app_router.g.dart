@@ -198,6 +198,11 @@ RouteBase get $profileRoute => GoRouteData.$route(
       factory: $PluginCacheRoute._fromState,
     ),
     GoRouteData.$route(
+      path: 'import-export',
+      hasOverriddenOnExit: false,
+      factory: $ImportExportRoute._fromState,
+    ),
+    GoRouteData.$route(
       path: 'diagnostics',
       hasOverriddenOnExit: false,
       factory: $DiagnosticsRoute._fromState,
@@ -368,6 +373,27 @@ mixin $PluginCacheRoute on GoRouteData {
 
   @override
   String get location => GoRouteData.$location('/profile/plugin-cache');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $ImportExportRoute on GoRouteData {
+  static ImportExportRoute _fromState(GoRouterState state) =>
+      const ImportExportRoute();
+
+  @override
+  String get location => GoRouteData.$location('/profile/import-export');
 
   @override
   void go(BuildContext context) => context.go(location);

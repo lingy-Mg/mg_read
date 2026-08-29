@@ -30,6 +30,7 @@ import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
 import 'package:mg_read/features/library/presentation/private_library_page.dart';
 import 'package:mg_read/features/library/presentation/reading_history_page.dart';
+import 'package:mg_read/features/import_export/presentation/import_export_page.dart';
 import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_health_page.dart';
@@ -116,6 +117,7 @@ String _stableRouteName(Uri uri) {
     'profile' when segments.length > 2 && segments[1] == 'plugins' => 'profile.plugins.${segments[2]}',
     'profile' when segments.length > 1 && segments[1] == 'plugins' => 'profile.plugins',
     'profile' when segments.length > 1 && segments[1] == 'plugin-cache' => 'profile.pluginCache',
+    'profile' when segments.length > 1 && segments[1] == 'import-export' => 'profile.importExport',
     'profile' when segments.length > 1 && segments[1] == 'diagnostics' => 'profile.diagnostics',
     'profile' when segments.length > 2 && segments[1] == 'settings' => 'profile.settings.${segments[2]}',
     'profile' => 'profile',
@@ -393,6 +395,7 @@ final class _DismissComicReaderObserver extends ComicReaderObserver {
     TypedGoRoute<PluginRuntimeHealthRoute>(path: 'plugins/status'),
     TypedGoRoute<PluginSourceDetailRoute>(path: 'plugins/:pluginId'),
     TypedGoRoute<PluginCacheRoute>(path: 'plugin-cache'),
+    TypedGoRoute<ImportExportRoute>(path: 'import-export'),
     TypedGoRoute<DiagnosticsRoute>(path: 'diagnostics'),
     TypedGoRoute<ProfileSettingPlaceholderRoute>(path: 'settings/:settingId'),
   ],
@@ -425,6 +428,9 @@ class ProfileRoute extends GoRouteData with $ProfileRoute {
             },
             onPluginCacheRequested: () {
               const PluginCacheRoute().push(context);
+            },
+            onImportExportRequested: () {
+              const ImportExportRoute().push(context);
             },
             onLanSyncRequested: () {
               const ProfileSettingPlaceholderRoute(settingId: 'data-backup').push(context);
@@ -571,6 +577,16 @@ class PluginCacheRoute extends GoRouteData with $PluginCacheRoute {
         _goToDestination(context, destination);
       },
     );
+  }
+}
+
+/// Selective local import/export reached from profile settings.
+class ImportExportRoute extends GoRouteData with $ImportExportRoute {
+  const ImportExportRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) {
+    return ImportExportPage(onBackRequested: () => _returnToProfile(context));
   }
 }
 

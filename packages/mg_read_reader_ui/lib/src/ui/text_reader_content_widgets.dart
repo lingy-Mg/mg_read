@@ -2,7 +2,54 @@ part of 'text_reader_view.dart';
 
 // ignore_for_file: invalid_use_of_protected_member
 
+final class _HorizontalChapterHandoff {
+  const _HorizontalChapterHandoff({
+    required this.content,
+    required this.page,
+    required this.pageIndex,
+    required this.pageCount,
+    required this.bookFraction,
+  });
+
+  final TextChapterContent content;
+  final ReaderPage page;
+  final int pageIndex;
+  final int pageCount;
+  final double bookFraction;
+}
+
 extension _TextReaderContentWidgets on _TextReaderViewState {
+  Widget _buildHorizontalChapterHandoff(_HorizontalChapterHandoff handoff) {
+    return ExcludeSemantics(
+      child: IgnorePointer(
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            ReaderBackgroundSurface(
+              preset: _preferences.background,
+              palette: _palette,
+              child: KeyedSubtree(
+                key: const ValueKey<String>('reader-chapter-handoff-page'),
+                child: _buildPage(
+                  handoff.page,
+                  handoff.pageIndex,
+                  pageContent: handoff.content,
+                  pageCount: handoff.pageCount,
+                  bookFraction: handoff.bookFraction,
+                ),
+              ),
+            ),
+            ColoredBox(
+              color: Colors.black.withValues(
+                alpha: (1 - _preferences.brightness) * 0.65,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// 工具栏显示时覆盖正文，保留其上方 chrome 的交互。
   Widget _buildControlsInteractionLock() {
     return Positioned.fill(
@@ -305,7 +352,10 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
       child: Listener(
         behavior: HitTestBehavior.translucent,
         onPointerSignal: _handlePointerSignal,
-        onPointerDown: _trackMousePointerDown,
+        onPointerDown: (PointerDownEvent event) {
+          _pauseAdjacentPreparationForInteraction();
+          _trackMousePointerDown(event);
+        },
         onPointerMove: _trackMousePointerMove,
         onPointerUp: _finishMousePointer,
         onPointerCancel: _finishMousePointer,
@@ -313,7 +363,10 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
           behavior: horizontalPageScrollBehavior,
           child: NotificationListener<ScrollNotification>(
             onNotification: (ScrollNotification notification) {
-              if (notification case ScrollUpdateNotification update) {
+              if (notification is ScrollStartNotification) {
+                _horizontalPageScrollActive = true;
+                _pauseAdjacentPreparationForInteraction();
+              } else if (notification case ScrollUpdateNotification update) {
                 if (update.dragDetails != null) _stopAutoReading();
                 final double? page = _pageController.hasClients
                     ? _pageController.page
@@ -322,11 +375,14 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
                   _pageTurnForward = update.scrollDelta! > 0;
                 }
               } else if (notification is ScrollEndNotification) {
+                _horizontalPageScrollActive = false;
+                _pauseAdjacentPreparationForInteraction();
                 _commitHorizontalBoundaryAfterScroll();
               }
               return false;
             },
             child: PageView.builder(
+              key: ObjectKey(_pageController),
               controller: _pageController,
               physics: _readerInteractionBlocked || _usesDirectPageTurns
                   ? const NeverScrollableScrollPhysics()
@@ -353,6 +409,7 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
       MediaQuery.disableAnimationsOf(context);
 
   void _handlePointerSignal(PointerSignalEvent event) {
+    _pauseAdjacentPreparationForInteraction();
     if (_readerInteractionBlocked ||
         event is! PointerScrollEvent ||
         _changingChapter) {

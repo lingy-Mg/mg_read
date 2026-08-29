@@ -7,6 +7,7 @@
 ///
 /// 注意：
 /// - 不持有书籍正文、Repository、Runtime DTO 或可持久化状态。
+/// - 已传入的封面首帧即铺满承载层，并在整个会话中复用同一个图片提供器；动画帧不得重新复制封面字节。
 /// - 减少动态效果、路由销毁和重试都会立即停止并释放动画 Controller。
 ///
 /// TODO:
@@ -116,7 +117,7 @@ class _ReaderEntryPreparationSurfaceState extends State<ReaderEntryPreparationSu
           _ReaderEntryCover(
             progress: progress,
             disappearance: 0,
-            coverBytes: null,
+            coverImage: null,
             failed: widget.failed ? const ReaderFailure(ReaderFailureKind.data, 'route_failure') : null,
             onRetry: widget.onRetry,
             onExit: widget.onExit,
@@ -135,6 +136,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
   late final AnimationController _entryController;
   late final AnimationController _handoffController;
   late final ReaderLaunchRequest _boundRequest;
+  late final MemoryImage? _entryCoverImage;
   ReaderFailure? _failure;
   bool _firstContentPresented = false;
   bool _handoffComplete = false;
@@ -145,7 +147,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
   @override
   void initState() {
     super.initState();
-    _entryController = AnimationController(vsync: this, duration: _entryDuration)..addListener(_rebuildForAnimation);
+    _entryController = AnimationController(vsync: this, duration: _entryDuration, value: 1)..addListener(_rebuildForAnimation);
     _handoffController = AnimationController(vsync: this, duration: _handoffDuration)
       ..addListener(_rebuildForAnimation)
       ..addStatusListener((AnimationStatus status) {
@@ -153,6 +155,8 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
           setState(() => _handoffComplete = true);
         }
       });
+    final coverBytes = widget.request.entryCoverBytes;
+    _entryCoverImage = coverBytes == null || coverBytes.isEmpty ? null : MemoryImage(Uint8List.fromList(coverBytes));
     _boundRequest = switch (widget.request) {
       NovelReaderLaunchRequest request => request.withObserver(
         _ReaderEntryObserver(delegate: request.observer, firstContentHandler: _presentFirstContent, failureHandler: _presentInitialFailure),
@@ -166,7 +170,6 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
         ),
       ),
     };
-    _entryController.forward();
   }
 
   @override
@@ -326,7 +329,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
               _ReaderEntryCover(
                 progress: entryCurve.value,
                 disappearance: handoff,
-                coverBytes: _boundRequest.entryCoverBytes,
+                coverImage: _entryCoverImage,
                 failed: _failure,
                 onRetry: _failure == null ? null : _retry,
                 onExit: _requestExit,
@@ -366,14 +369,14 @@ class _ReaderEntryCover extends StatelessWidget {
     required this.progress,
     required this.disappearance,
     required this.failed,
-    required this.coverBytes,
+    required this.coverImage,
     required this.onRetry,
     required this.onExit,
   });
 
   final double progress;
   final double disappearance;
-  final List<int>? coverBytes;
+  final ImageProvider<Object>? coverImage;
   final ReaderFailure? failed;
   final VoidCallback? onRetry;
   final VoidCallback onExit;
@@ -404,7 +407,7 @@ class _ReaderEntryCover extends StatelessWidget {
                   rect: rect,
                   child: ClipRRect(
                     borderRadius: radius,
-                    child: _ReaderEntryArtwork(width: rect.width, height: rect.height, borderRadius: radius, coverBytes: coverBytes),
+                    child: _ReaderEntryArtwork(width: rect.width, height: rect.height, borderRadius: radius, coverImage: coverImage),
                   ),
                 ),
                 SafeArea(
@@ -429,25 +432,26 @@ class _ReaderEntryCover extends StatelessWidget {
 }
 
 class _ReaderEntryArtwork extends StatelessWidget {
-  const _ReaderEntryArtwork({required this.width, required this.height, required this.borderRadius, required this.coverBytes});
+  const _ReaderEntryArtwork({required this.width, required this.height, required this.borderRadius, required this.coverImage});
 
   final double width;
   final double height;
   final BorderRadius borderRadius;
-  final List<int>? coverBytes;
+  final ImageProvider<Object>? coverImage;
 
   @override
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    if (coverBytes == null || coverBytes!.isEmpty) {
+    if (coverImage == null) {
       return _entryFallback(tokens);
     }
-    return Image.memory(
-      Uint8List.fromList(coverBytes!),
+    return Image(
+      image: coverImage!,
       fit: BoxFit.cover,
       alignment: Alignment.center,
       width: width,
       height: height,
+      gaplessPlayback: true,
       errorBuilder: (_, _, _) => _entryFallback(tokens),
     );
   }
