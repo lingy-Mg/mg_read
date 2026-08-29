@@ -26,10 +26,16 @@ export const MAX_INLINE_RESULT_BYTES = 56 * 1_024;
 export const MAX_INLINE_CHAPTER_CATALOG_BYTES = 2 * 1_024 * 1_024;
 export const MAX_INLINE_TEXT_BYTES = 48 * 1_024;
 export const MAX_INLINE_MANGA_MANIFEST_BYTES = 512 * 1_024;
+export const MAX_MEDIA_GROUPS = 128;
+export const MAX_MEDIA_HEADERS = 16;
 
 /** Content kinds shared by package metadata, Plugin API, wire and Flutter. */
-export type PluginContentKind = "manga" | "novel";
+export type PluginContentKind = "audio" | "manga" | "novel" | "video";
 export type PluginMangaPageResourcePolicy = "sessionOnly" | "refreshable" | "durable";
+/** Media is always addressed through a Runtime proxy. A refreshable URL must
+ * be re-resolved with getContent; no source may cache or replay credentials. */
+export type PluginMediaResourcePolicy = "sessionOnly" | "refreshable";
+export type PluginMediaResourceType = "audio" | "hls" | "video";
 
 /** Stable publication state. Unknown is explicit and never encoded as null. */
 export type PluginContentStatus =
@@ -320,9 +326,21 @@ export interface PluginChapterSummary extends JsonObject {
 }
 
 export interface PluginChaptersResult extends JsonObject {
+  /** Empty for novel/manga and audio sources without an explicit grouping.
+   * Video groups intentionally carry no season/line semantics. */
+  readonly groups?: readonly PluginMediaGroup[];
   readonly items: readonly PluginChapterSummary[];
   readonly pluginId: string;
   readonly sourceName: string;
+}
+
+/** A neutral ordered collection of media episodes. It can mean a season,
+ * source line, edition, or any other source-defined grouping. */
+export interface PluginMediaGroup extends JsonObject {
+  readonly episodes: readonly PluginChapterSummary[];
+  readonly id: string;
+  readonly order: number;
+  readonly title: string;
 }
 
 export interface PluginContentRequest extends JsonObject {
@@ -344,12 +362,26 @@ export interface PluginMangaPage extends JsonObject {
 export interface PluginChapterContent extends JsonObject {
   readonly chapterId: string;
   readonly contentKind: PluginContentKind;
+  /** Present only for audio/video content. `url` must be a Runtime proxy URL,
+   * never an upstream signed media URL. */
+  readonly media?: PluginMediaResource | null;
   readonly pages: readonly PluginMangaPage[];
   readonly pluginId: string;
   readonly sourceName: string;
   readonly text: string | null;
   readonly title: string | null;
   readonly updatedAt: string | null;
+}
+
+/** Playable media metadata retained by the Flutter host and passed to exactly
+ * one independent player package. Headers remain data-plane-only at the proxy. */
+export interface PluginMediaResource extends JsonObject {
+  readonly expiresAt: string | null;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly mimeType: string | null;
+  readonly resourcePolicy: PluginMediaResourcePolicy;
+  readonly resourceType: PluginMediaResourceType;
+  readonly url: string;
 }
 
 export interface ParsedPluginRequest<T extends JsonObject> {

@@ -185,6 +185,75 @@ PluginMangaPage _decodeMangaPage(Object? value) {
   );
 }
 
+PluginMediaResource _decodeMediaResource(Object? value) {
+  const context = 'Source media resource';
+  final item = _contentObject(value, context);
+  final policy = _contentString(item, 'resourcePolicy', context);
+  final resourcePolicy = switch (policy) {
+    'sessionOnly' => PluginMediaResourcePolicy.sessionOnly,
+    'refreshable' => PluginMediaResourcePolicy.refreshable,
+    _ => _contentInvalid('$context contains an unknown resource policy.'),
+  };
+  final expiresAt = _contentNullableDateTime(item, 'expiresAt', context);
+  if ((resourcePolicy == PluginMediaResourcePolicy.refreshable) !=
+      (expiresAt != null)) {
+    _contentInvalid('$context contains an invalid expiresAt value.');
+  }
+  final type = switch (_contentString(item, 'resourceType', context)) {
+    'audio' => PluginMediaResourceType.audio,
+    'hls' => PluginMediaResourceType.hls,
+    'video' => PluginMediaResourceType.video,
+    _ => _contentInvalid('$context contains an unknown resource type.'),
+  };
+  final headers = _contentObject(_contentField(item, 'headers', context), context);
+  if (headers.length > 16) _contentInvalid('$context contains too many headers.');
+  final typedHeaders = <String, String>{
+    for (final entry in headers.entries)
+      if (RegExp(r'^[A-Za-z0-9-]{1,64}$').hasMatch(entry.key) &&
+          entry.value is String &&
+          (entry.value as String).length <= 4096 &&
+          !(entry.value as String).contains(RegExp(r'[\r\n]')))
+        entry.key: entry.value as String
+      else
+        throw PluginRuntimeException('invalid_response', '$context contains an invalid header.'),
+  };
+  final url = _contentUri(item, 'url', context);
+  if (!(_isRuntimeMediaProxyUri(url))) {
+    _contentInvalid('$context must use a Runtime media proxy URL.');
+  }
+  return PluginMediaResource(
+    url: url,
+    resourceType: type,
+    resourcePolicy: resourcePolicy,
+    expiresAt: expiresAt,
+    mimeType: _contentNullableString(item, 'mimeType', context),
+    headers: typedHeaders,
+  );
+}
+
+bool _isRuntimeMediaProxyUri(Uri url) =>
+    (url.host == '127.0.0.1' || url.host == 'localhost' || url.host == '::1') &&
+    RegExp(r'^/v1/source-resource/[A-Za-z0-9_-]{16,}$').hasMatch(url.path);
+
+PluginMediaGroup _decodeMediaGroup(Object? value) {
+  const context = 'Source media group';
+  final item = _contentObject(value, context);
+  final episodes = _contentList(item, 'episodes', context)
+      .map(_decodeChapterSummary)
+      .toList(growable: false);
+  if (episodes.isEmpty) _contentInvalid('$context cannot be empty.');
+  _requireUnique(episodes.map((episode) => episode.id), context);
+  for (var index = 0; index < episodes.length; index += 1) {
+    if (episodes[index].order != index) _contentInvalid('$context episodes are not ordered.');
+  }
+  return PluginMediaGroup(
+    id: _contentString(item, 'id', context),
+    title: _contentString(item, 'title', context),
+    order: _contentInt(item, 'order', context),
+    episodes: episodes,
+  );
+}
+
 Map<String, Object?> _contentObject(Object? value, String context) =>
     _jsonObject(value, context);
 
@@ -317,8 +386,10 @@ DateTime? _contentNullableDateTime(
 }
 
 PluginContentKind _contentKind(String value, String context) => switch (value) {
+  'audio' => PluginContentKind.audio,
   'novel' => PluginContentKind.novel,
   'manga' => PluginContentKind.manga,
+  'video' => PluginContentKind.video,
   _ => _contentInvalid('$context contains an unknown content kind.'),
 };
 

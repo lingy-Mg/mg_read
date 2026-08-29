@@ -17,7 +17,7 @@ export const pluginPackageSchemaVersion = 1;
 export const pluginApiVersion = 1;
 
 /** Content kinds accepted in package.json.mgread v1. */
-export type PluginContentKind = "manga" | "novel";
+export type PluginContentKind = "audio" | "manga" | "novel" | "video";
 export type PluginPackageMode = "archive" | "single-file";
 
 /** Stable failure raised while validating a standard Node plugin project. */
@@ -233,7 +233,7 @@ export function parsePluginPackageDescriptor(
         description.length > 240)) ||
     !Array.isArray(contentKinds) ||
     contentKinds.length === 0 ||
-    contentKinds.some((kind) => kind !== "novel" && kind !== "manga") ||
+    contentKinds.some((kind) => kind !== "novel" && kind !== "manga" && kind !== "audio" && kind !== "video") ||
     new Set(contentKinds).size !== contentKinds.length ||
     (packageMode !== "single-file" && packageMode !== "archive") ||
     (icon !== undefined && !isSupportedIconPath(icon))

@@ -20,11 +20,13 @@ import 'package:mg_read/features/library/application/library_overview_loader.dar
 import 'package:mg_read/features/library/application/library_book_remover.dart';
 import 'package:mg_read/features/library/application/library_book_visibility_changer.dart';
 import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
+import 'package:mg_read/features/library/application/library_book_refresher.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/library/data/content_library_overview_loader.dart';
 import 'package:mg_read/features/library/data/content_library_book_remover.dart';
 import 'package:mg_read/features/library/data/content_library_book_visibility_changer.dart';
 import 'package:mg_read/features/library/data/content_library_book_detail_launcher.dart';
+import 'package:mg_read/features/library/data/content_library_book_refresher.dart';
 import 'package:mg_read/features/library/domain/library_overview.dart';
 import 'package:mg_read/features/profile/application/profile_reading_stats_loader.dart';
 import 'package:mg_read/features/profile/data/content_library_profile_reading_stats_loader.dart';
@@ -471,6 +473,15 @@ final class DeferredLibraryBookDetailLauncher implements LibraryBookDetailLaunch
   final ContentLibraryGetter _get;
   @override
   Future<LibraryBookDetailLaunchData> load(String bookId) async => ContentLibraryBookDetailLauncher(await _get()).load(bookId);
+}
+
+final class DeferredLibraryBookRefresher implements LibraryBookRefresher {
+  const DeferredLibraryBookRefresher(this._get, this._gateway);
+  final ContentLibraryGetter _get;
+  final SourceContentGateway _gateway;
+
+  @override
+  Future<void> refresh(String bookId) async => ContentLibraryBookRefresher(await _get(), _gateway).refresh(bookId);
 }
 
 final class DeferredProfileReadingStatsLoader implements ProfileReadingStatsLoader {

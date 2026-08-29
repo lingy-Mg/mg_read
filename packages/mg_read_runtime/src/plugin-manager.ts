@@ -30,6 +30,7 @@ import { dirname, resolve } from "node:path";
 import type { JsonObject } from "./protocol.js";
 import type { PluginBrowserSessionProvider } from "./plugin-browser-session.js";
 import { createPluginContext } from "./plugin-manager-context.js";
+import { registerMediaProxyResource } from "./media-resource-proxy.js";
 import {
   type PluginPackageDescriptor,
   readPluginProject,
@@ -193,7 +194,7 @@ export class PluginManager {
       if (typeof oldest === "string") this.#resources.delete(oldest);
     }
     const token = randomBytes(32).toString("base64url");
-    this.#resources.set(token, { pluginId, request });
+    this.#resources.set(token, { pluginId, request }); registerMediaProxyResource(token, { fetch: this.#http.fetch.bind(this.#http), pluginId, proxy: (next) => this.createResourceUrl(pluginId, next), request });
     return `${this.#resourceOrigin}/v1/source-resource/${token}`;
   }
 

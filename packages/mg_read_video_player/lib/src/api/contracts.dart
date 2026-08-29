@@ -18,7 +18,7 @@ import 'models.dart';
 
 /// Resolves a stable content identifier into immutable video metadata.
 abstract interface class VideoDataSource {
-  /// Loads the title and ordered episodes for [contentId].
+  /// Loads the title and ordered host-defined groups for [contentId].
   Future<VideoContent> load(String contentId);
 }
 
@@ -58,6 +58,8 @@ abstract interface class VideoPlaybackBackend {
   Widget buildSurface({required BoxFit fit, Key? key});
 
   /// Opens one resolved episode and optionally starts playback.
+  ///
+  /// Each open must publish `firstFrameReady: false` before a new true signal.
   Future<void> open(
     VideoEpisode episode, {
     required Duration initialPosition,

@@ -85,38 +85,56 @@ class _ShelfActionBarState extends State<_ShelfActionBar> {
       side: BorderSide(color: border),
       shape: shape,
     );
-    return Row(
-      children: <Widget>[
-        Expanded(
-          child: OutlinedButton.icon(
-            key: const Key('source-detail-privacy-action'),
-            onPressed: _isRunning ? null : () => _run(isPrivate ? SourceShelfAction.cancelPrivate : SourceShelfAction.setPrivate),
-            icon: Icon(isPrivate ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-            label: Text(isPrivate ? '取消隐私' : '隐私'),
-            style: style(tokens.mutedText, tokens.divider),
-          ),
-        ),
-        const SizedBox(width: AppSpacing.compact),
-        Expanded(
-          child: OutlinedButton.icon(
-            key: const Key('source-detail-delete-action'),
-            onPressed: _isRunning ? null : () => _confirmDelete(context),
-            icon: const Icon(Icons.delete_outline_rounded),
-            label: const Text('删除'),
-            style: style(Theme.of(context).colorScheme.error, Theme.of(context).colorScheme.error.withValues(alpha: .58)),
-          ),
-        ),
-        const SizedBox(width: AppSpacing.compact),
-        Expanded(
-          child: OutlinedButton.icon(
-            key: const Key('source-detail-start-reading'),
-            onPressed: _isRunning ? null : _startReading,
-            icon: const Icon(Icons.menu_book_rounded),
-            label: const Text('开始阅读'),
-            style: style(tokens.accent, tokens.accent),
-          ),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final actionWidth = (constraints.maxWidth - AppSpacing.compact) / 2;
+        return Wrap(
+          spacing: AppSpacing.compact,
+          runSpacing: AppSpacing.compact,
+          children: <Widget>[
+            SizedBox(
+              width: actionWidth,
+              child: OutlinedButton.icon(
+                key: const Key('source-detail-refresh-action'),
+                onPressed: _isRunning ? null : () => _run(SourceShelfAction.refresh),
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('刷新'),
+                style: style(tokens.accent, tokens.accent),
+              ),
+            ),
+            SizedBox(
+              width: actionWidth,
+              child: OutlinedButton.icon(
+                key: const Key('source-detail-privacy-action'),
+                onPressed: _isRunning ? null : () => _run(isPrivate ? SourceShelfAction.cancelPrivate : SourceShelfAction.setPrivate),
+                icon: Icon(isPrivate ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                label: Text(isPrivate ? '取消隐私' : '隐私'),
+                style: style(tokens.mutedText, tokens.divider),
+              ),
+            ),
+            SizedBox(
+              width: actionWidth,
+              child: OutlinedButton.icon(
+                key: const Key('source-detail-delete-action'),
+                onPressed: _isRunning ? null : () => _confirmDelete(context),
+                icon: const Icon(Icons.delete_outline_rounded),
+                label: const Text('删除'),
+                style: style(Theme.of(context).colorScheme.error, Theme.of(context).colorScheme.error.withValues(alpha: .58)),
+              ),
+            ),
+            SizedBox(
+              width: actionWidth,
+              child: OutlinedButton.icon(
+                key: const Key('source-detail-start-reading'),
+                onPressed: _isRunning ? null : _startReading,
+                icon: const Icon(Icons.menu_book_rounded),
+                label: const Text('开始阅读'),
+                style: style(tokens.accent, tokens.accent),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -147,7 +165,7 @@ class _ShelfActionBarState extends State<_ShelfActionBar> {
     try {
       await widget.onAction(action);
       if (!mounted) return;
-      Navigator.of(context).pop();
+      if (action != SourceShelfAction.refresh) Navigator.of(context).pop();
     } on Object {
       if (!mounted) return;
       setState(() => _isRunning = false);

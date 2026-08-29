@@ -20,6 +20,7 @@ export 'src/api/models.dart'
     show
         VideoContent,
         VideoEpisode,
+        VideoEpisodeGroup,
         VideoFitMode,
         VideoPlaybackBackendState,
         VideoPlaybackProgress,

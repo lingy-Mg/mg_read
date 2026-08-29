@@ -3,8 +3,10 @@ part of mgread_plugin_runtime;
 const Duration _contentTimeout = Duration(minutes: 2);
 
 enum PluginContentKind {
+  audio('audio'),
   novel('novel'),
-  manga('manga');
+  manga('manga'),
+  video('video');
 
   const PluginContentKind(this.code);
   final String code;
@@ -16,6 +18,23 @@ enum PluginMangaPageResourcePolicy {
   durable('durable');
 
   const PluginMangaPageResourcePolicy(this.code);
+  final String code;
+}
+
+enum PluginMediaResourcePolicy {
+  sessionOnly('sessionOnly'),
+  refreshable('refreshable');
+
+  const PluginMediaResourcePolicy(this.code);
+  final String code;
+}
+
+enum PluginMediaResourceType {
+  audio('audio'),
+  hls('hls'),
+  video('video');
+
+  const PluginMediaResourceType(this.code);
   final String code;
 }
 
@@ -718,6 +737,19 @@ final class SourceChaptersInvocation
       'Source chapters result',
     ).map(_decodeChapterSummary).toList(growable: false);
     _requireUnique(items.map((item) => item.id), 'Source chapters result');
+    final groups = result.containsKey('groups')
+        ? _contentList(result, 'groups', 'Source chapters result')
+            .map(_decodeMediaGroup)
+            .toList(growable: false)
+        : const <PluginMediaGroup>[];
+    _requireUnique(groups.map((group) => group.id), 'Source media groups');
+    for (var index = 0; index < groups.length; index += 1) {
+      if (groups[index].order != index) _contentInvalid('Source media groups are not ordered.');
+    }
+    final episodeIds = groups.expand((group) => group.episodes).map((episode) => episode.id).toList(growable: false);
+    if (groups.isNotEmpty && (episodeIds.length != items.length || episodeIds.toSet().length != episodeIds.length || !episodeIds.every((id) => items.any((item) => item.id == id)))) {
+      _contentInvalid('Source media groups do not match the episode catalog.');
+    }
     return PluginChaptersResult(
       pluginId: pluginId,
       sourceName: _contentString(
@@ -726,6 +758,7 @@ final class SourceChaptersInvocation
         'Source chapters result',
       ),
       items: items,
+      groups: groups,
     );
   }
 }
@@ -736,11 +769,29 @@ final class PluginChaptersResult {
     required this.pluginId,
     required this.sourceName,
     required List<PluginChapterSummary> items,
-  }) : items = List<PluginChapterSummary>.unmodifiable(items);
+    List<PluginMediaGroup> groups = const <PluginMediaGroup>[],
+  }) : items = List<PluginChapterSummary>.unmodifiable(items),
+       groups = List<PluginMediaGroup>.unmodifiable(groups);
 
   final String pluginId;
   final String sourceName;
   final List<PluginChapterSummary> items;
+  final List<PluginMediaGroup> groups;
+}
+
+@immutable
+final class PluginMediaGroup {
+  PluginMediaGroup({
+    required this.id,
+    required this.title,
+    required this.order,
+    required List<PluginChapterSummary> episodes,
+  }) : episodes = List<PluginChapterSummary>.unmodifiable(episodes);
+
+  final String id;
+  final String title;
+  final int order;
+  final List<PluginChapterSummary> episodes;
 }
 
 @immutable
@@ -821,16 +872,19 @@ final class SourceContentInvocation
       'pages',
       'Source content result',
     ).map(_decodeMangaPage).toList(growable: false);
+    final media = result.containsKey('media') && result['media'] != null
+        ? _decodeMediaResource(result['media'])
+        : null;
     _requireUnique(pages.map((page) => page.id), 'Source content pages');
     for (var index = 0; index < pages.length; index += 1) {
       if (pages[index].index != index) {
         _contentInvalid('Source content pages are not zero-based and ordered.');
       }
     }
-    if ((contentKind == PluginContentKind.novel && text == null) ||
-        (contentKind == PluginContentKind.novel && pages.isNotEmpty) ||
-        (contentKind == PluginContentKind.manga && text != null) ||
-        (contentKind == PluginContentKind.manga && pages.isEmpty)) {
+    if ((contentKind == PluginContentKind.novel && (text == null || pages.isNotEmpty || media != null)) ||
+        (contentKind == PluginContentKind.manga && (text != null || pages.isEmpty || media != null)) ||
+        ((contentKind == PluginContentKind.audio || contentKind == PluginContentKind.video) &&
+            (text != null || pages.isNotEmpty || media == null))) {
       _contentInvalid('Source content result has inconsistent content fields.');
     }
     return PluginChapterContent(
@@ -846,6 +900,7 @@ final class SourceContentInvocation
       ),
       text: text,
       pages: pages,
+      media: media,
     );
   }
 }
@@ -861,6 +916,7 @@ final class PluginChapterContent {
     required this.updatedAt,
     required this.text,
     required List<PluginMangaPage> pages,
+    this.media,
   }) : pages = List<PluginMangaPage>.unmodifiable(pages);
 
   final String pluginId;
@@ -871,6 +927,26 @@ final class PluginChapterContent {
   final DateTime? updatedAt;
   final String? text;
   final List<PluginMangaPage> pages;
+  final PluginMediaResource? media;
+}
+
+@immutable
+final class PluginMediaResource {
+  PluginMediaResource({
+    required this.url,
+    required this.resourceType,
+    required this.resourcePolicy,
+    required this.expiresAt,
+    required this.mimeType,
+    required Map<String, String> headers,
+  }) : headers = Map<String, String>.unmodifiable(headers);
+
+  final Uri url;
+  final PluginMediaResourceType resourceType;
+  final PluginMediaResourcePolicy resourcePolicy;
+  final DateTime? expiresAt;
+  final String? mimeType;
+  final Map<String, String> headers;
 }
 
 @immutable

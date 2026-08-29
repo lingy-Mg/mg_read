@@ -2,7 +2,7 @@
 ///
 /// Responsibilities:
 /// - Serialize the final progress write behind every earlier queued save.
-/// - Pause and dispose the backend even when persistence or pause fails.
+/// - Start backend cleanup immediately, independently of slow persistence.
 ///
 /// Notes:
 /// - Errors cannot be surfaced into the disposed widget tree and are isolated.
@@ -14,6 +14,20 @@ import '../api/models.dart';
 /// Completes persistence and backend cleanup after the view has detached.
 Future<void> shutdownVideoSession({
   required VideoPlaybackBackend backend,
+  required VideoPlaybackStateStore store,
+  required Future<void> saveTail,
+  required VideoPlaybackProgress? progress,
+}) async {
+  final cleanup = _cleanupBackend(backend);
+  await _persistFinalProgress(
+    store: store,
+    saveTail: saveTail,
+    progress: progress,
+  );
+  await cleanup;
+}
+
+Future<void> _persistFinalProgress({
   required VideoPlaybackStateStore store,
   required Future<void> saveTail,
   required VideoPlaybackProgress? progress,
@@ -30,6 +44,9 @@ Future<void> shutdownVideoSession({
       // Disposal cannot surface persistence errors into a dead widget tree.
     }
   }
+}
+
+Future<void> _cleanupBackend(VideoPlaybackBackend backend) async {
   try {
     await backend.pause();
   } on Object {

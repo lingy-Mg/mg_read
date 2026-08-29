@@ -1,0 +1,132 @@
+/// Package-private player surface, status and chrome composition.
+///
+/// Responsibilities:
+/// - Compose the backend surface with package-owned dark video presentation.
+/// - Route pointer, keyboard and back intents to the session coordinator.
+///
+/// Notes:
+/// - System text scaling is preserved; child controls own narrow-layout safety.
+/// - This file contains no session loading, persistence or backend sequencing.
+library;
+
+// Cross-file UI helpers are intentionally package-private despite Dart's
+// library-level public naming rules.
+// ignore_for_file: public_member_api_docs
+
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../api/contracts.dart';
+import '../api/models.dart';
+import 'video_player_chrome.dart';
+import 'video_player_status_layer.dart';
+
+final class VideoPlayerStage extends StatelessWidget {
+  const VideoPlayerStage({
+    required this.backend,
+    required this.snapshot,
+    required this.focusNode,
+    required this.exitAuthorized,
+    required this.onPopAttempt,
+    required this.onKeyEvent,
+    required this.onToggleControls,
+    required this.onRetry,
+    required this.onExit,
+    required this.onPlayOrPause,
+    required this.onSeek,
+    required this.onSkip,
+    required this.onRate,
+    required this.onFit,
+    required this.onEpisodes,
+    required this.onFullscreen,
+    super.key,
+  });
+
+  final VideoPlaybackBackend backend;
+  final VideoPlayerSnapshot snapshot;
+  final FocusNode focusNode;
+  final bool exitAuthorized;
+  final VoidCallback onPopAttempt;
+  final KeyEventResult Function(FocusNode, KeyEvent) onKeyEvent;
+  final Future<void> Function() onToggleControls;
+  final Future<void> Function() onRetry;
+  final Future<void> Function() onExit;
+  final Future<void> Function() onPlayOrPause;
+  final Future<void> Function(Duration) onSeek;
+  final Future<void> Function(Duration) onSkip;
+  final Future<void> Function(double) onRate;
+  final Future<void> Function() onFit;
+  final Future<void> Function() onEpisodes;
+  final Future<void> Function(bool) onFullscreen;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Theme(
+        data: videoPlayerTheme(),
+        child: PopScope<void>(
+          canPop: exitAuthorized,
+          onPopInvokedWithResult: (bool didPop, void result) {
+            if (!didPop) onPopAttempt();
+          },
+          child: Focus(
+            focusNode: focusNode,
+            autofocus: true,
+            onKeyEvent: onKeyEvent,
+            child: Scaffold(
+              backgroundColor: const Color(0xFF050607),
+              body: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  GestureDetector(
+                    key: const Key('video-player-surface'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => unawaited(onToggleControls()),
+                    child: backend.buildSurface(
+                      key: const Key('video-player-engine-surface'),
+                      fit: videoBoxFit(snapshot.fitMode),
+                    ),
+                  ),
+                  if (!snapshot.firstFrameReady ||
+                      snapshot.status != VideoPlayerStatus.ready)
+                    VideoSessionStatusLayer(
+                      snapshot: snapshot,
+                      onRetry: onRetry,
+                      onExit: onExit,
+                    ),
+                  if (snapshot.status == VideoPlayerStatus.ready)
+                    VideoPlayerChrome(
+                      snapshot: snapshot,
+                      reduceMotion: reduceMotion,
+                      onExit: () => unawaited(onExit()),
+                      onPlayOrPause: () => unawaited(onPlayOrPause()),
+                      onSeek: (value) => unawaited(onSeek(value)),
+                      onSkip: (value) => unawaited(onSkip(value)),
+                      onRate: (value) => unawaited(onRate(value)),
+                      onFit: () => unawaited(onFit()),
+                      onEpisodes: () => unawaited(onEpisodes()),
+                      onFullscreen: (value) => unawaited(onFullscreen(value)),
+                    ),
+                  if (snapshot.status == VideoPlayerStatus.ready &&
+                      snapshot.buffering)
+                    const Align(
+                      alignment: Alignment.center,
+                      child: IgnorePointer(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFFFA43A),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

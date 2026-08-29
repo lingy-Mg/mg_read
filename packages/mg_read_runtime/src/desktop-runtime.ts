@@ -549,7 +549,7 @@ export class DesktopRuntime {
     const resourceMatch = /^\/v1\/source-resource\/([A-Za-z0-9_-]{32,128})$/.exec(url.pathname);
     if (resourceMatch !== null) {
       if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); finish(405); return; }
-      void serveSourceResource(this.#pluginManager, resourceMatch[1]!, response, finish);
+      void serveSourceResource(this.#pluginManager, resourceMatch[1]!, response, finish, request);
       return;
     }
     const iconMatch = /^\/v1\/plugin-icon\/([A-Za-z0-9_-]{32,128})$/.exec(url.pathname);

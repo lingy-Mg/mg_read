@@ -36,8 +36,8 @@ abstract interface class VideoPlayerControllerDelegate {
   /// Changes output volume.
   Future<void> setVolume(double volume);
 
-  /// Opens another episode.
-  Future<void> selectEpisode(String episodeId);
+  /// Opens an episode within a host-defined group.
+  Future<void> selectEpisode(String groupId, String episodeId);
 
   /// Advances to the next fit mode.
   Future<void> cycleFitMode();
@@ -86,9 +86,9 @@ final class VideoPlayerController extends ChangeNotifier {
   /// Sets volume in the 0–100 range.
   Future<void> setVolume(double volume) => _requireDelegate().setVolume(volume);
 
-  /// Switches to the episode identified by [episodeId].
-  Future<void> selectEpisode(String episodeId) =>
-      _requireDelegate().selectEpisode(episodeId);
+  /// Switches to [episodeId] within [groupId].
+  Future<void> selectEpisode(String groupId, String episodeId) =>
+      _requireDelegate().selectEpisode(groupId, episodeId);
 
   /// Cycles through the package-owned video fit modes.
   Future<void> cycleFitMode() => _requireDelegate().cycleFitMode();

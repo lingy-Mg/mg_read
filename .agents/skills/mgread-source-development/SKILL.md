@@ -23,6 +23,9 @@ description: Develop, review, package, or debug MgRead data-source plugins and s
 - 数据源调用 `ctx.webview`，或修改其公开类型和行为：读取 [references/webview-api.md](references/webview-api.md)。
 - 修改 browser provider、Android WebView、Windows WebView2、窗口控制、错误传播、输入或安全边界：读取 [references/webview-host-development.md](references/webview-host-development.md)。
 - 准备测试、打包、版本更新、真机验证或交付结论：读取 [references/verification.md](references/verification.md)，只执行受影响边界对应的矩阵。
+- 音频或视频来源、播放资源、Range/HLS、短时效 URL，或独立播放器宿主对接：读取
+  [references/media-source-contract.md](references/media-source-contract.md)。音频和视频必须分别实现、分别验证，
+  不得抽象成一个“通用媒体源”。
 
 常见组合：真实站点解析修复读取“插件契约 + 真实网页浏览器探测 + 验证”；纯发现编排读取“发现组合 + 验证”；发现公开契约变化读取“两份发现参考 + 验证”；跨平台 WebView 变化读取“两份 WebView 参考 + 验证”。
 
@@ -35,6 +38,21 @@ description: Develop, review, package, or debug MgRead data-source plugins and s
 - `ctx.webview` 每个数据源强制一页，无 `sessionKey`、`onUrlChanged` 或 Cookie API。Cookie、UA、Profile、窗口和输入设备由宿主持有。
 - 禁止数据源抽取或回放挑战 token，禁止 CDP、DOM 合成点击、DOM value setter、全局输入或设备控制；Windows 仅允许用户主动按 F12 打开 DevTools。
 - `single-file` 与 `archive` 是两个独立发布模式，不能互相降级，也不能把 `.mgplugin` archive 当成 `.mgplugin.js`。
+
+## 音频与视频来源边界
+
+- 音频使用 `contentKind: 'audio'`、有序章节目录和每章一个 `media` 资源；播放器队列、进度、路由和刷新
+  由音频宿主拥有。不得把视频分组、集数或视频 UI 塞进音频来源。
+- 视频使用 `contentKind: 'video'`。`groups[]` 是中性容器，固定字段为 `groupId + episodeId`；它可代表季、
+  线路、版本或其他来源结构，通用 Runtime/Futter/UI 不得将其语义写死。每组必须有稳定顺序和非空集列表，
+  且扁平 `items[]` 与全部 episodes 一一对应。
+- 媒体返回值只携带 Runtime proxy URL、resourceType、必要 headers、mime 与 refresh 语义。`audio`、`video` 和
+  `hls` 是不同资源类型；HLS 清单及其 URI 必须经代理重写，Range 只在 Runtime 数据面转发。JS 不读取、拼接、
+  Base64 化或缓存媒体主体/分片。
+- `refreshable` 必须有 `expiresAt`，过期或播放器收到授权/签名失败时由宿主重新调用 `getContent`。不得从 URL
+  片段推测时间、长期持久化签名 URL、Cookie、Referer、UA 或 Authorization，也不得以此绕过会员、付费或验证。
+- 真实来源只解析公开可访问数据；验证码、登录、年龄/付费墙或播放器交互限制统一上报
+  `interaction_required`/`unsupported`，不取 token、不回放 token、不模拟点击。
 
 ## 跨层完成条件
 

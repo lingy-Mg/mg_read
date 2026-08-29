@@ -52,7 +52,7 @@ typedef SourceExternalUrlLauncher = Future<bool> Function(Uri url);
 typedef SourceShelfSaveRequested = Future<void> Function(PluginContentSummary content);
 
 /// Actions available for a book that is already owned by the local shelf.
-enum SourceShelfAction { setPrivate, cancelPrivate, delete }
+enum SourceShelfAction { refresh, setPrivate, cancelPrivate, delete }
 
 typedef SourceShelfActionRequested = Future<void> Function(SourceShelfAction action);
 typedef SourceStartReadingRequested = Future<void> Function();

@@ -1,8 +1,12 @@
 # mg_read_video_player
 
-独立维护的 MgRead 视频播放器 package。宿主通过 `VideoDataSource` 提供标题、选集、URL 和请求头，
-通过 `VideoPlaybackStateStore` 持久化选集与播放位置，并通过 `VideoPlayerObserver` 接收退出和全屏意图。
+独立维护的 MgRead 视频播放器 package。宿主通过 `VideoDataSource` 提供标题、通用分组、选集、URL
+和请求头，通过 `VideoPlaybackStateStore` 持久化分组、选集与播放位置，并通过 `VideoPlayerObserver`
+接收退出和全屏意图。
 测试可注入 `VideoPlaybackBackend`，无需启动原生解码器。
+
+`VideoEpisodeGroup` 不区分“季”或“线路”：group ID 在内容内唯一，episode ID 在组内唯一，不同组可
+复用相同 episode ID。恢复与切集始终使用 `groupId + episodeId`，避免多线路歧义。
 
 ## 依赖与原生库
 
@@ -15,9 +19,9 @@
 
 ## 宿主边界
 
-播放器只发送全屏请求，不直接修改系统 UI。全屏窗口、方向锁定、PiP、系统常亮、路由退出和平台
-验收均由宿主实现。系统返回与 Escape 会先请求退出全屏；非全屏时播放器暂停并刷新进度后才允许
-宿主退出路由。
+播放器只发送全屏请求，不直接修改系统 UI。全屏窗口、方向锁定、PiP、系统常亮和平台验收均由
+宿主实现。系统返回与 Escape 会先请求退出全屏；非全屏时播放器暂停并刷新进度。未传 observer
+时播放器随后对最近的 Navigator 执行 `maybePop`；传入 observer 后，路由退出完全由宿主回调负责。
 
 ```dart
 VideoPlayerView(

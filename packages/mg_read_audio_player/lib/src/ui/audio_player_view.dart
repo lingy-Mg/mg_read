@@ -333,12 +333,15 @@ class _AudioPlayerViewState extends State<AudioPlayerView>
     }
   }
 
-  Future<void> _authorizeExit() async {
-    if (!mounted || _exitAuthorized) return;
-    setState(() {
-      _exitAuthorized = true;
-    });
+  Future<bool> _authorizeExit() async {
+    if (!mounted) return false;
+    if (!_exitAuthorized) {
+      setState(() {
+        _exitAuthorized = true;
+      });
+    }
     await WidgetsBinding.instance.endOfFrame;
+    return mounted && _exitAuthorized;
   }
 
   Future<void> _cycleRate(double current) {

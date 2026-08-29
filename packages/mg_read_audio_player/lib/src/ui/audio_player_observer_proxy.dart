@@ -13,7 +13,7 @@ import 'dart:async';
 import '../api/audio_contracts.dart';
 import '../api/audio_models.dart';
 
-typedef AudioExitAuthorizer = Future<void> Function();
+typedef AudioExitAuthorizer = Future<bool> Function();
 
 final class AudioPlayerObserverProxy extends AudioPlayerObserver {
   const AudioPlayerObserverProxy({required this.authorizeExit, this.delegate});
@@ -54,7 +54,7 @@ final class AudioPlayerObserverProxy extends AudioPlayerObserver {
 
   @override
   Future<void> onExitRequested(AudioPlaybackProgress? progress) async {
-    await authorizeExit();
+    if (!await authorizeExit()) return;
     await delegate?.onExitRequested(progress);
   }
 }

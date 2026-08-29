@@ -87,6 +87,9 @@ final class BookCoverMemoryCache {
     }
   }
 
+  /// Drops one visible cover after its source has explicitly refreshed it.
+  static void remove(BookCoverRequest request) => _entries.remove(request);
+
   /// Returns already resolved bytes without restarting an asynchronous load.
   static List<int>? peek(BookCoverRequest request) => _entries[request];
 

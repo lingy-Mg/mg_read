@@ -171,7 +171,7 @@ export interface WebViewWaitForTextRequest {
   readonly timeoutMs: number;
 }
 
-export type ContentKind = 'novel' | 'manga';
+export type ContentKind = 'audio' | 'novel' | 'manga' | 'video';
 export type ContentStatus = 'ongoing' | 'completed' | 'hiatus' | 'unknown';
 export type AccessKind = 'free' | 'paid' | 'mixed' | 'unknown';
 export type DiscoveryContentLayout =
@@ -380,7 +380,17 @@ export interface ChapterSummary {
 }
 
 export interface ChaptersResult {
+  /** Video sources return source-defined neutral groups. Do not label these as
+   * seasons or lines in shared code. Omit or use [] for ordinary catalogs. */
+  readonly groups?: readonly MediaGroup[];
   readonly items: readonly ChapterSummary[];
+}
+
+export interface MediaGroup {
+  readonly id: string;
+  readonly title: string;
+  readonly order: number;
+  readonly episodes: readonly ChapterSummary[];
 }
 
 export interface ContentRequest {
@@ -411,4 +421,18 @@ export interface ChapterContent {
   readonly text: string | null;
   /** 漫画为非空有序页，小说必须为 []。 */
   readonly pages: readonly MangaPage[];
+  /** Audio/video must provide a Runtime proxy URL, never an upstream signed
+   * URL. Re-resolve a refreshable resource with getContent after expiry. */
+  readonly media?: MediaResource | null;
+}
+
+export interface MediaResource {
+  readonly url: string;
+  readonly resourceType: 'audio' | 'video' | 'hls';
+  readonly resourcePolicy: 'sessionOnly' | 'refreshable';
+  readonly expiresAt: string | null;
+  readonly mimeType: string | null;
+  /** Headers are passed only to ctx.resource.proxy and the player backend.
+   * Never log, persist, or put media bytes in a Plugin API response. */
+  readonly headers: Readonly<Record<string, string>>;
 }

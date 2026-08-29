@@ -2,12 +2,13 @@
 ///
 /// Responsibilities:
 /// - Load and validate a queue, restore semantic position and bind commands.
-/// - Reject stale async results and serialize durable progress writes.
+/// - Reject stale async results and serialize backend initialization and saves.
 /// - Flush progress on pause, track change, lifecycle, exit and close.
 ///
 /// Notes:
 /// - Background audio services are host-owned and are not started here.
 /// - Position streams are throttled before persistence; UI remains immediate.
+/// - Route teardown releases transport resources before awaiting slow storage.
 library;
 
 import 'dart:async';
@@ -64,10 +65,13 @@ final class AudioPlayerSession extends ChangeNotifier {
   _backendSubscription;
   Timer? _saveTimer;
   Timer? _sleepTimer;
+  Future<void> _backendInitializationTail = Future<void>.value();
   Future<void> _saveTail = Future<void>.value();
   Future<void>? _closeFuture;
   Future<void>? _exitRequest;
+  String? _lastBackendErrorMessage;
   int _generation = 0;
+  bool _backendSnapshotsEnabled = false;
   bool _closing = false;
   bool _closed = false;
 
@@ -76,6 +80,9 @@ final class AudioPlayerSession extends ChangeNotifier {
   Future<void> initialize() async {
     if (_closing || _closed) return;
     final generation = ++_generation;
+    _backendSnapshotsEnabled = false;
+    _lastBackendErrorMessage = null;
+    _playlist = null;
     _emit(
       AudioPlayerSnapshot(
         status: AudioPlayerStatus.loading,
@@ -92,13 +99,15 @@ final class AudioPlayerSession extends ChangeNotifier {
       ]);
       if (!_isCurrent(generation)) return;
       final playlist = results[0]! as AudioPlaylist;
-      final progress = results[1] as AudioPlaybackProgress?;
+      final loadedProgress = results[1] as AudioPlaybackProgress?;
+      final progress = loadedProgress?.collectionId == collectionId
+          ? loadedProgress
+          : null;
       _validatePlaylist(playlist);
       final initialIndex = progress == null
           ? 0
           : playlist.tracks.indexWhere((track) => track.id == progress.trackId);
       final restoredIndex = initialIndex < 0 ? 0 : initialIndex;
-      _playlist = playlist;
       _emit(
         AudioPlayerSnapshot(
           status: AudioPlayerStatus.loading,
@@ -109,20 +118,34 @@ final class AudioPlayerSession extends ChangeNotifier {
           currentIndex: restoredIndex,
         ),
       );
-      await backend.open(
-        playlist.tracks,
-        initialIndex: restoredIndex,
-        play: false,
+      final backendInitialization = _backendInitializationTail.then<void>((
+        _,
+      ) async {
+        if (!_isCurrent(generation)) return;
+        await backend.open(
+          playlist.tracks,
+          initialIndex: restoredIndex,
+          play: false,
+        );
+        if (!_isCurrent(generation)) return;
+        if (progress != null &&
+            progress.trackId == playlist.tracks[restoredIndex].id &&
+            progress.position > Duration.zero) {
+          await backend.seek(progress.position);
+        }
+      });
+      _backendInitializationTail = backendInitialization.then<void>(
+        (_) {},
+        onError: (Object _, StackTrace _) {},
       );
+      await backendInitialization;
       if (!_isCurrent(generation)) return;
-      if (progress != null &&
-          progress.trackId == playlist.tracks[restoredIndex].id &&
-          progress.position > Duration.zero) {
-        await backend.seek(progress.position);
-      }
-      if (!_isCurrent(generation)) return;
+      _playlist = playlist;
+      _backendSnapshotsEnabled = true;
       _applyReadySnapshot(backend.snapshot);
+      _handleBackendError(backend.snapshot.errorMessage);
       await _notify(() => observer?.onSessionStarted(collectionId));
+      if (!_isCurrent(generation)) return;
       await _notify(
         () => observer?.onTrackChanged(playlist.tracks[restoredIndex]),
       );
@@ -158,7 +181,9 @@ final class AudioPlayerSession extends ChangeNotifier {
   }
 
   void _acceptBackendSnapshot(AudioPlaybackBackendSnapshot value) {
-    if (_closing || _closed || _playlist == null) return;
+    if (_closing || _closed || !_backendSnapshotsEnabled || _playlist == null) {
+      return;
+    }
     final queue = _playlist!.tracks;
     if (value.currentIndex < 0 || value.currentIndex >= queue.length) return;
     final previousIndex = _snapshot.currentIndex;
@@ -174,15 +199,27 @@ final class AudioPlayerSession extends ChangeNotifier {
       );
     }
     if (value.playing) _scheduleThrottledSave();
-    final message = value.errorMessage;
-    if (message != null && message.isNotEmpty) {
-      const failure = AudioPlayerFailure(
-        code: 'audio_backend_error',
-        message: '播放遇到错误，请稍后重试。',
-      );
-      _emit(_snapshot.copyWith(failure: failure));
-      unawaited(_notify(() => observer?.onFailure(failure)));
+    _handleBackendError(value.errorMessage);
+  }
+
+  void _handleBackendError(String? rawMessage) {
+    final message = rawMessage?.trim();
+    if (message == null || message.isEmpty) {
+      final shouldClearFailure =
+          _lastBackendErrorMessage != null &&
+          _snapshot.failure?.code == 'audio_backend_error';
+      _lastBackendErrorMessage = null;
+      if (shouldClearFailure) _emit(_snapshot.copyWith(clearFailure: true));
+      return;
     }
+    if (message == _lastBackendErrorMessage) return;
+    _lastBackendErrorMessage = message;
+    const failure = AudioPlayerFailure(
+      code: 'audio_backend_error',
+      message: '播放遇到错误，请稍后重试。',
+    );
+    _emit(_snapshot.copyWith(failure: failure));
+    unawaited(_notify(() => observer?.onFailure(failure)));
   }
 
   void _applyReadySnapshot(AudioPlaybackBackendSnapshot value) {
@@ -204,7 +241,7 @@ final class AudioPlayerSession extends ChangeNotifier {
         rate: value.rate,
         volume: value.volume,
         sleepTimerDuration: _snapshot.sleepTimerDuration,
-        failure: value.errorMessage == null ? _snapshot.failure : null,
+        failure: _snapshot.failure,
       ),
     );
   }
@@ -355,6 +392,7 @@ final class AudioPlayerSession extends ChangeNotifier {
     if (_closing || _closed) return;
     try {
       await flushProgress();
+      if (_closing || _closed) return;
       await _notify(() => observer?.onExitRequested(_progressFor(_snapshot)));
     } finally {
       if (!_closing && !_closed) _exitRequest = null;
@@ -367,17 +405,22 @@ final class AudioPlayerSession extends ChangeNotifier {
     if (_closed) return;
     _closing = true;
     _generation++;
+    _backendSnapshotsEnabled = false;
+    _lastBackendErrorMessage = null;
     _sleepTimer?.cancel();
     _saveTimer?.cancel();
     _sleepTimer = null;
     _saveTimer = null;
     final progress = _progressFor(_snapshot);
     if (progress != null) _enqueueSave(progress);
+    controller.unbind(this);
+    final backendShutdown = Future.wait<void>(<Future<void>>[
+      _backendSubscription.cancel(),
+      backend.dispose(),
+    ]).then<void>((_) {}, onError: (Object _, StackTrace _) {});
     await _saveTail;
     await _notify(() => observer?.onSessionEnded(collectionId, progress));
-    controller.unbind(this);
-    await _backendSubscription.cancel();
-    await backend.dispose();
+    await backendShutdown;
     _closed = true;
     _closing = false;
     super.dispose();

@@ -35,6 +35,7 @@ import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
 
 const _deleteBookAction = LibraryBookListAction(id: 'delete', label: '删除');
 const _setBookPrivateAction = LibraryBookListAction(id: 'set-private', label: '隐私');
+const _refreshBookAction = LibraryBookListAction(id: 'refresh', label: '刷新');
 
 /// The responsive, presentation-only app shell for the library landing page.
 class LibraryHomeShell extends StatefulWidget {
@@ -330,6 +331,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   }
 
   List<LibraryBookListAction> get _bookActions => <LibraryBookListAction>[
+    if (widget.callbacks.onRefreshBook != null) _refreshBookAction,
     if (widget.callbacks.onSetBookPrivate != null) _setBookPrivateAction,
     if (widget.callbacks.onDeleteBook != null) _deleteBookAction,
   ];
@@ -447,6 +449,13 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
 
   void _handleBookAction(LibraryBookListItemViewData book, LibraryBookListAction action) {
     switch (action.id) {
+      case 'refresh':
+        final refreshBook = widget.callbacks.onRefreshBook;
+        if (refreshBook != null) {
+          unawaited(_refreshBook(book, refreshBook));
+          return;
+        }
+        break;
       case 'delete':
         final deleteBook = widget.callbacks.onDeleteBook;
         if (deleteBook != null) {
@@ -463,6 +472,22 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
         break;
     }
     _showUnavailableMessage();
+  }
+
+  Future<void> _refreshBook(
+    LibraryBookListItemViewData book,
+    Future<void> Function(LibraryBookListItemViewData) refreshBook,
+  ) async {
+    try {
+      await refreshBook(book);
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(behavior: SnackBarBehavior.floating, content: Text('《${book.title}》已刷新')));
+    } on Object {
+      if (!mounted) return;
+      setState(() => _actionFeedback = '刷新书籍失败，请稍后重试。');
+    }
   }
 
   Future<void> _setBookPrivate(LibraryBookListItemViewData book, Future<void> Function(LibraryBookListItemViewData) setPrivate) async {

@@ -772,3 +772,32 @@ test("an unavailable optional dependency is skipped without changing install suc
   assert.equal(result.skippedOptionalDependencies, 1);
   assert.equal(result.pendingActivation, true);
 });
+
+test("media catalogs preserve neutral groups and require proxy playback metadata", () => {
+  const episode = (id, order) => ({
+    id, title: `Episode ${order + 1}`, order, url: null, volumeTitle: null,
+    wordCount: null, updatedAt: null, isLocked: false, attributes: [],
+  });
+  const catalog = validateChaptersResult("org.example.video", "Fixture video", {
+    items: [episode("episode:a", 0), episode("episode:b", 1)],
+    groups: [{ id: "group:source-a", title: "Source A", order: 0, episodes: [episode("episode:a", 0), episode("episode:b", 1)] }],
+  });
+  assert.equal(catalog.groups[0].title, "Source A");
+  assert.equal(catalog.groups[0].episodes[1].id, "episode:b");
+  const content = validateContentResult("org.example.video", "Fixture video", {
+    chapterId: "episode:a", contentKind: "video", title: null, updatedAt: null,
+    text: null, pages: [], media: {
+      url: "http://127.0.0.1/v1/source-resource/abcdefghijklmnop", resourceType: "hls",
+      resourcePolicy: "refreshable", expiresAt: "2026-08-30T00:05:00Z",
+      mimeType: "application/vnd.apple.mpegurl", headers: { Referer: "https://example.test/" },
+    },
+  });
+  assert.equal(content.media.resourceType, "hls");
+  assert.throws(() => validateContentResult("org.example.video", "Fixture video", {
+    chapterId: "episode:a", contentKind: "video", title: null, updatedAt: null,
+    text: null, pages: [], media: {
+      url: "https://upstream.example/media.m3u8", resourceType: "hls",
+      resourcePolicy: "refreshable", expiresAt: null, mimeType: null, headers: {},
+    },
+  }), PluginContentValidationError);
+});

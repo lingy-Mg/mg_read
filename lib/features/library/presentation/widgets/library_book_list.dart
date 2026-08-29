@@ -47,7 +47,7 @@ final class LibraryBookListPresentation {
   );
 
   /// The compact row used by the bookshelf section.
-  static const LibraryBookListPresentation shelf = LibraryBookListPresentation(showOverflowAction: false, showSwipeActions: true);
+  static const LibraryBookListPresentation shelf = LibraryBookListPresentation(showSwipeActions: true);
 
   /// The compact row reserved for the reading-history surface.
   static const LibraryBookListPresentation readingHistory = LibraryBookListPresentation();

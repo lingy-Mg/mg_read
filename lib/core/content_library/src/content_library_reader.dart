@@ -44,6 +44,14 @@ final class CoverRepository {
     },
   );
 
+  /// Invalidates one source cover without disturbing other shelf covers.
+  Future<void> remove(CoverKey key) => _library._trace(
+    operation: 'coverRemove',
+    contentKind: 'image',
+    itemCount: 1,
+    action: () => _library._persistence.fileObjects.deleteGlobalCover(_storageKey(key)),
+  );
+
   /// Returns the disk usage of regenerable source-cover files.
   Future<int> usageBytes() =>
       _library._trace(operation: 'coverCacheUsage', contentKind: 'image', action: _library._persistence.fileObjects.coverCacheUsageBytes);

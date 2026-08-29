@@ -86,6 +86,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('source-detail-privacy-action')), findsOneWidget);
+    expect(find.byKey(const Key('source-detail-refresh-action')), findsOneWidget);
     expect(find.byKey(const Key('source-detail-delete-action')), findsOneWidget);
     expect(find.byKey(const Key('source-detail-start-reading')), findsOneWidget);
     expect(find.byKey(const Key('source-detail-add-shelf')), findsNothing);

@@ -27,6 +27,7 @@ import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/library/application/library_book_remover.dart';
 import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
+import 'package:mg_read/features/library/application/library_book_refresher.dart';
 import 'package:mg_read/features/library/application/library_book_removal_operation.dart';
 import 'package:mg_read/features/library/application/library_book_visibility_changer.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
@@ -40,6 +41,7 @@ import 'package:mg_read/features/discovery/presentation/source_content_detail_sh
 import 'package:mg_read/features/reader/application/shelf_reader_launch_coordinator.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
+import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 /// The library landing page driven by immutable lifecycle and display state.
 class LibraryPage extends ConsumerWidget {
@@ -112,6 +114,7 @@ class LibraryPage extends ConsumerWidget {
     final ValueChanged<String>? readerRequested = onReaderRequested;
     final ValueChanged<String>? bookDetailRequested = onBookDetailRequested;
     final LibraryBookDetailLauncher? detailLauncher = ref.read(libraryBookDetailLauncherProvider);
+    final LibraryBookRefresher? bookRefresher = ref.read(libraryBookRefresherProvider);
     final SourceContentGateway sourceGateway = ref.read(sourceContentGatewayProvider);
     void prepareAndOpen(String bookId) {
       final callback = readerRequested;
@@ -143,6 +146,18 @@ class LibraryPage extends ConsumerWidget {
         ? null
         : LibraryBookRemovalOperation(remover: bookRemover, controller: controller, diagnostics: diagnostics);
     late LibraryHomeCallbacks resolvedCallbacks;
+    Future<void> refreshBook(LibraryBookListItemViewData book) async {
+      final refresher = bookRefresher;
+      if (refresher == null) throw StateError('Book refresh is unavailable.');
+      final request = book.coverRequest;
+      await refresher.refresh(book.id);
+      if (request != null) {
+        BookCoverMemoryCache.remove(request);
+        ref.invalidate(bookCoverBytesProvider(request));
+      }
+      await controller.refresh();
+    }
+
     Future<void> openBookDetail(LibraryBookListItemViewData book) async {
       final externalCallback = bookDetailRequested;
       if (externalCallback != null) {
@@ -180,6 +195,11 @@ class LibraryPage extends ConsumerWidget {
         onStartReading: () async => prepareAndOpen(book.id),
         onShelfAction: (SourceShelfAction action) async {
           switch (action) {
+            case SourceShelfAction.refresh:
+              await refreshBook(book);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('《${book.title}》已刷新')));
+              }
             case SourceShelfAction.setPrivate:
               await resolvedCallbacks.onSetBookPrivate?.call(book);
             case SourceShelfAction.cancelPrivate:
@@ -216,6 +236,12 @@ class LibraryPage extends ConsumerWidget {
               bookDetailRequested(book.id);
             },
       onBookLongPress: callbacks.onBookLongPress ?? openBookDetail,
+      onRefreshBook: bookRefresher == null
+          ? callbacks.onRefreshBook
+          : (book) async {
+              await callbacks.onRefreshBook?.call(book);
+              await refreshBook(book);
+            },
       onContinueReading: readerRequested == null || data.continueReading == null
           ? callbacks.onContinueReading
           : () {

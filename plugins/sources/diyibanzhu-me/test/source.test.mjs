@@ -35,7 +35,8 @@ async function fixture(t, options = {}) {
         if (options.yieldFetch === true) await Promise.resolve();
         if (fetchGate) { fetchGate = false; pageHtml = challenge; return { status: 403, url: request.url, headers: {}, body: challenge }; }
         const url = new URL(request.url);
-        const body = url.pathname.startsWith('/view/') ? html.content : url.pathname.startsWith('/list/') ? html.detail : html.list;
+        const action = url.searchParams.get('action');
+        const body = action === 'article' ? html.content : action === 'list' ? html.detail : html.list;
         return { status: 200, url: request.url, headers: { 'content-type': 'text/html' }, body };
       } finally {
         metrics.activeFetches -= 1;
@@ -109,6 +110,22 @@ test('initial verification shows the page, waits with a deadline and keeps it vi
   assert.equal(calls.filter(call => call.operation === 'hide').length, 0);
   const wait = calls.find(call => call.operation === 'waitForText');
   assert.deepEqual(wait, { operation: 'waitForText', text: '第一版主', scope: 'text', timeoutMs: 120000 });
+});
+
+test('discovery follows the live WAP pagination template instead of removed book routes', async t => {
+  const { calls } = await fixture(t);
+  const result = await plugin.discover({
+    target: 'category:fantasy',
+    cursor: 'category:fantasy:2',
+    collectionId: 'category-books:fantasy',
+    pageSize: 20,
+  });
+  assert.equal(result.kind, 'append');
+  assert.equal(result.items.length, 1);
+  const fetches = calls.filter(call => call.operation === 'fetch');
+  assert.equal(fetches.length, 2);
+  assert.equal(fetches[0].url, `${origin}/wap.php?action=shuku&order=3&tid=4`);
+  assert.equal(fetches[1].url, `${origin}/wap.php?action=shuku&tid=4&over=&order=3&uid=&totalresult=30&pageno=2`);
 });
 
 test('a fetch verification response is completed visibly and retried once', async t => {

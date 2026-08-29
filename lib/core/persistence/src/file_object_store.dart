@@ -87,6 +87,10 @@ final class FileObjectStore {
   Future<List<int>?> readGlobalCoverBytes(String coverKey) =>
       _instrument(operation: 'readGlobalCoverBytes', recordKind: 'globalCover', count: 1, action: () => _readGlobalCoverBytes(coverKey));
 
+  /// Removes one regenerable global cover so its next use fetches fresh bytes.
+  Future<void> deleteGlobalCover(String coverKey) =>
+      _instrument(operation: 'deleteGlobalCover', recordKind: 'globalCover', count: 1, action: () => _deleteGlobalCover(coverKey));
+
   /// Removes the cover owned by one bookshelf item.
   Future<void> deleteCover(String itemId) =>
       _instrument(operation: 'deleteCover', recordKind: 'bookshelfCover', count: 1, action: () => _deleteCover(itemId));
@@ -250,6 +254,15 @@ final class FileObjectStore {
     final bytes = await file.readAsBytes();
     _scheduleGlobalCoverTouch(coverKey, file, bytes.length);
     return bytes;
+  }
+
+  Future<void> _deleteGlobalCover(String coverKey) async {
+    _ensureOpen();
+    _validateCoverKey(coverKey);
+    final files = await _globalCoverFiles();
+    final folder = Directory('${_root.path}${Platform.pathSeparator}global${Platform.pathSeparator}$coverKey');
+    if (await folder.exists()) await folder.delete(recursive: true);
+    files.remove(coverKey);
   }
 
   void _scheduleGlobalCoverTouch(String coverKey, File file, int length) {

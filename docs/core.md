@@ -136,12 +136,11 @@ plugins/sources/                    真实数据源插件
 ## 阅读器
 
 - 上述三个 package 分别负责阅读、音频、视频，互不依赖，不共享媒体模型、Controller 或 UI。
-- package 只持有会话、交互和生命周期；宿主拥有数据、状态、路由及授权资源。Widget 不接触鉴权、
-  Cookie、数据库、下载、账号、支付或 DRM。
+- package 只持有会话、交互和生命周期；宿主拥有数据、路由及授权资源，不接触鉴权、数据库、下载、
+  账号、支付或 DRM。
 - 文本锚点为 `chapterId + paragraphId + characterOffset`，漫画为 `chapterId + imageId + imageFraction`；
-  页码/像素偏移不能成为持久权威。
-- Observer 只请求宿主退出；未注册的 capability 隐藏。UI 不访问数据库、文件或 Service Locator；
-  异步域有世代/取消和有界缓存，布局变化恢复语义位置，资源成对释放。
+  不持久化页码或像素偏移。视频以通用 `groupId + episodeId` 表示季、线路等分组和组内集数。
+- Observer 只请求宿主退出；未注册的 capability 隐藏。异步域有世代/取消，资源成对释放。
 
 ## UI、状态与组件
 

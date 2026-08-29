@@ -333,6 +333,28 @@ void main() {
     expect(find.byKey(const Key('library-top-overflow-menu')), findsNothing);
   });
 
+  testWidgets('offers refresh from the bookshelf more menu', (WidgetTester tester) async {
+    LibraryBookListItemViewData? refreshedBook;
+    await tester.pumpWidget(
+      _host(
+        callbacks: LibraryHomeCallbacks(
+          onRefreshBook: (LibraryBookListItemViewData book) async {
+            refreshedBook = book;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('library-book-overflow-menu-fixture-lord-of-mysteries')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('刷新'));
+    await tester.pumpAndSettle();
+
+    expect(refreshedBook?.id, 'fixture-lord-of-mysteries');
+    expect(find.text('《诡秘之主》已刷新'), findsOneWidget);
+  });
+
   testWidgets('offers privacy actions from book swipe actions and home overflow menu', (WidgetTester tester) async {
     LibraryBookListItemViewData? privateBook;
     var privateShelfOpenCount = 0;

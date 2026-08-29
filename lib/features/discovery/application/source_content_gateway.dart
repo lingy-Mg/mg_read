@@ -166,7 +166,11 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
     return _invoke(
       capability: 'source.getContent.v1',
       action: () => _runtime.invoke(SourceContentInvocation(pluginId: pluginId, id: id, chapterId: chapterId)),
-      resultCount: (result) => result.contentKind == PluginContentKind.novel ? 1 : result.pages.length,
+      resultCount: (result) => switch (result.contentKind) {
+        PluginContentKind.novel => 1,
+        PluginContentKind.manga => result.pages.length,
+        PluginContentKind.audio || PluginContentKind.video => result.media == null ? 0 : 1,
+      },
     );
   }
 
@@ -255,11 +259,15 @@ final availablePluginSourcesProvider = FutureProvider<List<PluginSourceDescripto
 });
 
 bool _isUsableSource(PluginRuntimePlugin plugin) {
-  return plugin.enabled && plugin.activeVersion != null && plugin.contentKinds.any((kind) => kind == 'novel' || kind == 'manga');
+  return plugin.enabled && plugin.activeVersion != null && plugin.contentKinds.any(
+    (kind) => kind == 'novel' || kind == 'manga' || kind == 'audio' || kind == 'video',
+  );
 }
 
 PluginContentKind _contentKind(String value) => switch (value) {
   'novel' => PluginContentKind.novel,
   'manga' => PluginContentKind.manga,
+  'audio' => PluginContentKind.audio,
+  'video' => PluginContentKind.video,
   _ => throw StateError('Runtime returned a non-content plugin kind.'),
 };

@@ -18,9 +18,11 @@ import '../api/contracts.dart';
 import '../api/controller.dart';
 import '../api/models.dart';
 import '../backend/media_kit_video_playback_backend.dart';
-import 'video_player_chrome.dart';
+import 'video_backend_command_queue.dart';
+import 'video_episode_selection.dart';
+import 'video_episode_sheet.dart';
 import 'video_player_shutdown.dart';
-import 'video_player_status_layer.dart';
+import 'video_player_stage.dart';
 
 /// A complete video player backed by host content and persistence ports.
 final class VideoPlayerView extends StatefulWidget {
@@ -56,7 +58,9 @@ final class VideoPlayerView extends StatefulWidget {
   /// Optional externally owned imperative controller.
   final VideoPlayerController? controller;
 
-  /// Playback backend factory; tests should inject a deterministic fake.
+  /// Playback backend factory sampled when the view is first mounted.
+  ///
+  /// Tests should inject a deterministic fake and remount to replace it.
   final VideoPlaybackBackendFactory backendFactory;
 
   /// Whether the restored episode should start automatically.
@@ -82,6 +86,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   final FocusNode _focusNode = FocusNode(debugLabel: 'mg-read-video-player');
 
   VideoContent? _content;
+  VideoEpisodeGroup? _group;
   VideoEpisode? _episode;
   String? _activeContentId;
   VideoPlaybackStateStore? _activeStateStore;
@@ -97,11 +102,11 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   int _loadGeneration = 0;
   int _episodeGeneration = 0;
   int _reloadGeneration = 0;
-  String? _reportedFirstFrameEpisodeId;
+  String? _reportedFirstFrameSelection;
   String? _reportedBackendError;
   Timer? _saveTimer;
   Timer? _controlsTimer;
-  Future<void> _backendQueue = Future<void>.value();
+  final VideoBackendCommandQueue _backendCommands = VideoBackendCommandQueue();
   Future<void> _saveQueue = Future<void>.value();
 
   @override
@@ -143,6 +148,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     final generation = ++_reloadGeneration;
     _loadGeneration++;
     _episodeGeneration++;
+    await _pauseBackend(reportFailure: false);
     await _flushProgress(force: true);
     if (_disposed || generation != _reloadGeneration) return;
     await _loadSession();
@@ -157,11 +163,12 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     _saveTimer?.cancel();
     _saveTimer = null;
     _progressDirty = false;
-    _reportedFirstFrameEpisodeId = null;
+    _reportedFirstFrameSelection = null;
     _update(() {
       _status = VideoPlayerStatus.loading;
       _failure = null;
       _content = null;
+      _group = null;
       _episode = null;
       _controlsVisible = true;
       _exitAuthorized = false;
@@ -183,6 +190,16 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       return;
     }
     if (!_isCurrentLoad(generation)) return;
+    if (content.id != contentId) {
+      _setFailure(
+        const VideoPlayerFailure(
+          VideoPlayerFailureKind.data,
+          '视频内容标识不匹配',
+          code: 'content_identity_mismatch',
+        ),
+      );
+      return;
+    }
 
     VideoPlaybackProgress? progress;
     try {
@@ -200,7 +217,11 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     if (!_isCurrentLoad(generation)) return;
     _activeContentId = contentId;
     _activeStateStore = stateStore;
-    if (content.episodes.isEmpty) {
+    final restoredProgress = progress?.contentId == contentId ? progress : null;
+    final selection =
+        restoredVideoSelection(content.groups, restoredProgress) ??
+        firstPlayableVideoSelection(content.groups);
+    if (selection == null) {
       _update(() {
         _content = content;
         _status = VideoPlayerStatus.empty;
@@ -208,15 +229,15 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       return;
     }
 
-    final VideoEpisode selected =
-        _restoredEpisode(content.episodes, progress?.episodeId) ??
-        content.episodes.first;
-    final Duration initialPosition = progress?.episodeId == selected.id
-        ? progress!.position
+    final Duration initialPosition =
+        restoredProgress?.groupId == selection.group.id &&
+            restoredProgress?.episodeId == selection.episode.id
+        ? restoredProgress!.position
         : Duration.zero;
     _content = content;
     await _openEpisode(
-      selected,
+      selection.group,
+      selection.episode,
       initialPosition: initialPosition,
       play: widget.autoPlay,
       flushCurrent: false,
@@ -225,20 +246,26 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   }
 
   Future<void> _openEpisode(
+    VideoEpisodeGroup group,
     VideoEpisode episode, {
     required Duration initialPosition,
     required bool play,
     required bool flushCurrent,
     int? loadGeneration,
   }) async {
-    if (flushCurrent) await _flushProgress(force: true);
+    if (flushCurrent) {
+      await _pauseBackend(reportFailure: false);
+      await _flushProgress(force: true);
+    }
     if (_disposed ||
         (loadGeneration != null && !_isCurrentLoad(loadGeneration))) {
       return;
     }
     final generation = ++_episodeGeneration;
-    _reportedFirstFrameEpisodeId = null;
+    _reportedFirstFrameSelection = null;
+    _reportedBackendError = null;
     _update(() {
+      _group = group;
       _episode = episode;
       _status = VideoPlayerStatus.loading;
       _failure = null;
@@ -246,7 +273,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     });
 
     final backend = _backend;
-    final Future<void> operation = _backendQueue.then((_) async {
+    final Future<void> operation = _backendCommands.enqueue(() async {
       if (!_isCurrentEpisode(generation) || !identical(backend, _backend)) {
         return;
       }
@@ -256,7 +283,6 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
         play: play,
       );
     });
-    _backendQueue = operation.then<void>((_) {}, onError: (_) {});
     try {
       await operation;
       if (!_isCurrentEpisode(generation) || !identical(backend, _backend)) {
@@ -303,11 +329,16 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       );
       return;
     }
+    final groupId = _group?.id;
     final episodeId = _episode?.id;
-    if (next.firstFrameReady &&
-        episodeId != null &&
-        _reportedFirstFrameEpisodeId != episodeId) {
-      _reportedFirstFrameEpisodeId = episodeId;
+    final selectionId = groupId == null || episodeId == null
+        ? null
+        : '$groupId\u0000$episodeId';
+    if (!previous.firstFrameReady &&
+        next.firstFrameReady &&
+        selectionId != null &&
+        _reportedFirstFrameSelection != selectionId) {
+      _reportedFirstFrameSelection = selectionId;
       _status = VideoPlayerStatus.ready;
       _rebuildAndPublish();
       final observer = widget.observer;
@@ -321,11 +352,11 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
 
   @override
   Future<void> play() =>
-      _runPlaybackCommand(() => _backend.play(), code: 'play_failed');
+      _runPlaybackCommand((backend) => backend.play(), code: 'play_failed');
 
   @override
   Future<void> pause() async {
-    await _runPlaybackCommand(() => _backend.pause(), code: 'pause_failed');
+    await _pauseBackend(code: 'pause_failed');
     await _flushProgress(force: true);
   }
 
@@ -335,7 +366,10 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   @override
   Future<void> seek(Duration position) async {
     final target = _clampPosition(position, _backendState.duration);
-    await _runPlaybackCommand(() => _backend.seek(target), code: 'seek_failed');
+    await _runPlaybackCommand(
+      (backend) => backend.seek(target),
+      code: 'seek_failed',
+    );
     _progressDirty = true;
     _scheduleProgressSave();
     _showControls();
@@ -346,25 +380,26 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
 
   @override
   Future<void> setRate(double rate) => _runPlaybackCommand(
-    () => _backend.setRate(rate.clamp(.25, 3).toDouble()),
+    (backend) => backend.setRate(rate.clamp(.25, 3).toDouble()),
     code: 'rate_failed',
   );
 
   @override
   Future<void> setVolume(double volume) => _runPlaybackCommand(
-    () => _backend.setVolume(volume.clamp(0, 100).toDouble()),
+    (backend) => backend.setVolume(volume.clamp(0, 100).toDouble()),
     code: 'volume_failed',
   );
 
   @override
-  Future<void> selectEpisode(String episodeId) async {
-    if (_episode?.id == episodeId) return;
+  Future<void> selectEpisode(String groupId, String episodeId) async {
+    if (_group?.id == groupId && _episode?.id == episodeId) return;
     final content = _content;
     if (content == null) return;
-    final episode = _restoredEpisode(content.episodes, episodeId);
-    if (episode == null) return;
+    final selection = videoSelectionById(content.groups, groupId, episodeId);
+    if (selection == null) return;
     await _openEpisode(
-      episode,
+      selection.group,
+      selection.episode,
       initialPosition: Duration.zero,
       play: true,
       flushCurrent: true,
@@ -397,6 +432,9 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     if (observer != null) {
       await _notify(() => observer.onFullscreenRequested(fullscreen));
     }
+    if (!_disposed && mounted) {
+      _focusNode.requestFocus();
+    }
     _scheduleControlsHide();
   }
 
@@ -408,11 +446,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     }
     if (_exitRequested) return;
     _exitRequested = true;
-    await _runPlaybackCommand(
-      () => _backend.pause(),
-      code: 'exit_pause_failed',
-      reportFailure: false,
-    );
+    await _pauseBackend(code: 'exit_pause_failed', reportFailure: false);
     await _flushProgress(force: true);
     if (_disposed) return;
     _update(() => _exitAuthorized = true);
@@ -434,13 +468,24 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   }
 
   Future<void> _runPlaybackCommand(
-    Future<void> Function() command, {
+    Future<void> Function(VideoPlaybackBackend backend) command, {
     required String code,
     bool reportFailure = true,
+    bool allowWithoutEpisode = false,
   }) async {
-    if (_disposed || _episode == null) return;
+    if (_disposed || (!allowWithoutEpisode && _episode == null)) return;
+    final backend = _backend;
+    final episodeGeneration = _episodeGeneration;
+    final operation = _backendCommands.enqueue(() async {
+      if (_disposed || !identical(backend, _backend)) return;
+      if (!allowWithoutEpisode &&
+          (_episode == null || episodeGeneration != _episodeGeneration)) {
+        return;
+      }
+      await command(backend);
+    });
     try {
-      await command();
+      await operation;
     } on Object {
       if (reportFailure) {
         _notifyFailure(
@@ -453,6 +498,16 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       }
     }
   }
+
+  Future<void> _pauseBackend({
+    String code = 'transition_pause_failed',
+    bool reportFailure = true,
+  }) => _runPlaybackCommand(
+    (backend) => backend.pause(),
+    code: code,
+    reportFailure: reportFailure,
+    allowWithoutEpisode: true,
+  );
 
   void _scheduleProgressSave() {
     if (_saveTimer != null || _episode == null || _disposed) return;
@@ -486,12 +541,14 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   }
 
   VideoPlaybackProgress? get _currentProgress {
+    final group = _group;
     final episode = _episode;
     final contentId = _activeContentId;
-    if (episode == null || contentId == null) return null;
+    if (group == null || episode == null || contentId == null) return null;
     final duration = _backendState.duration;
     return VideoPlaybackProgress(
       contentId: contentId,
+      groupId: group.id,
       episodeId: episode.id,
       position: _clampPosition(_backendState.position, duration),
       duration: duration,
@@ -508,11 +565,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   }
 
   Future<void> _pauseForBackground() async {
-    await _runPlaybackCommand(
-      () => _backend.pause(),
-      code: 'background_pause_failed',
-      reportFailure: false,
-    );
+    await _pauseBackend(code: 'background_pause_failed', reportFailure: false);
     await _flushProgress(force: true);
   }
 
@@ -533,15 +586,19 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
 
   Future<void> _showEpisodes() async {
     final content = _content;
-    if (content == null || content.episodes.isEmpty) return;
+    if (content == null ||
+        firstPlayableVideoSelection(content.groups) == null) {
+      return;
+    }
     _controlsTimer?.cancel();
     final selected = await showVideoEpisodeSheet(
       context: context,
-      episodes: content.episodes,
+      groups: content.groups,
+      activeGroupId: _group?.id,
       activeEpisodeId: _episode?.id,
     );
     if (!mounted || selected == null) return;
-    await selectEpisode(selected);
+    await selectEpisode(selected.groupId, selected.episodeId);
     _focusNode.requestFocus();
   }
 
@@ -565,7 +622,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
 
   Future<void> _retry() async {
     _reportedBackendError = null;
-    await _loadSession();
+    await _reloadSession();
   }
 
   void _setFailure(VideoPlayerFailure failure) {
@@ -604,7 +661,8 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     status: _status,
     contentId: widget.contentId,
     title: _content?.title ?? '',
-    episodes: _content?.episodes ?? const <VideoEpisode>[],
+    groups: _content?.groups ?? const <VideoEpisodeGroup>[],
+    activeGroupId: _group?.id,
     activeEpisodeId: _episode?.id,
     position: _backendState.position,
     duration: _backendState.duration,
@@ -634,81 +692,24 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   void _publish() => _controller.publish(this, _snapshot);
 
   @override
-  Widget build(BuildContext context) {
-    final MediaQueryData media = MediaQuery.of(context);
-    final bool reduceMotion = media.disableAnimations;
-    final snapshot = _snapshot;
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
-      child: Theme(
-        data: videoPlayerTheme(),
-        child: MediaQuery(
-          data: media.copyWith(
-            textScaler: media.textScaler.clamp(maxScaleFactor: 1.3),
-          ),
-          child: PopScope<void>(
-            canPop: _exitAuthorized,
-            onPopInvokedWithResult: (bool didPop, void result) {
-              if (!didPop) unawaited(requestExit());
-            },
-            child: Focus(
-              focusNode: _focusNode,
-              autofocus: true,
-              onKeyEvent: _handleKey,
-              child: Scaffold(
-                backgroundColor: const Color(0xFF050607),
-                body: Stack(
-                  fit: StackFit.expand,
-                  children: <Widget>[
-                    GestureDetector(
-                      key: const Key('video-player-surface'),
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => unawaited(toggleControls()),
-                      child: _backend.buildSurface(
-                        key: const Key('video-player-engine-surface'),
-                        fit: videoBoxFit(_fitMode),
-                      ),
-                    ),
-                    if (!snapshot.firstFrameReady ||
-                        snapshot.status != VideoPlayerStatus.ready)
-                      VideoSessionStatusLayer(
-                        snapshot: snapshot,
-                        onRetry: _retry,
-                        onExit: requestExit,
-                      ),
-                    if (snapshot.status == VideoPlayerStatus.ready)
-                      VideoPlayerChrome(
-                        snapshot: snapshot,
-                        reduceMotion: reduceMotion,
-                        onExit: () => unawaited(requestExit()),
-                        onPlayOrPause: () => unawaited(playOrPause()),
-                        onSeek: (Duration value) => unawaited(seek(value)),
-                        onSkip: (Duration value) => unawaited(skip(value)),
-                        onRate: (double value) => unawaited(setRate(value)),
-                        onFit: () => unawaited(cycleFitMode()),
-                        onEpisodes: () => unawaited(_showEpisodes()),
-                        onFullscreen: (bool value) =>
-                            unawaited(requestFullscreen(value)),
-                      ),
-                    if (snapshot.status == VideoPlayerStatus.ready &&
-                        snapshot.buffering)
-                      const Align(
-                        alignment: Alignment.center,
-                        child: IgnorePointer(
-                          child: CircularProgressIndicator(
-                            color: Color(0xFFFFA43A),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => VideoPlayerStage(
+    backend: _backend,
+    snapshot: _snapshot,
+    focusNode: _focusNode,
+    exitAuthorized: _exitAuthorized,
+    onPopAttempt: () => unawaited(requestExit()),
+    onKeyEvent: _handleKey,
+    onToggleControls: toggleControls,
+    onRetry: _retry,
+    onExit: requestExit,
+    onPlayOrPause: playOrPause,
+    onSeek: seek,
+    onSkip: skip,
+    onRate: setRate,
+    onFit: cycleFitMode,
+    onEpisodes: _showEpisodes,
+    onFullscreen: requestFullscreen,
+  );
 
   @override
   void dispose() {
@@ -736,14 +737,6 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     );
     super.dispose();
   }
-}
-
-VideoEpisode? _restoredEpisode(List<VideoEpisode> episodes, String? episodeId) {
-  if (episodeId == null) return null;
-  for (final episode in episodes) {
-    if (episode.id == episodeId) return episode;
-  }
-  return null;
 }
 
 Duration _clampPosition(Duration position, Duration? duration) {

@@ -1,12 +1,15 @@
 /// Default MediaKit implementation of the video playback backend.
 ///
 /// Responsibilities:
-/// - Open resolved URIs with request headers and forward engine state updates.
+/// - Own one fresh MediaKit player/controller/surface session per episode open.
+/// - Open resolved URIs with request headers and forward current-session state.
 /// - Render a raw MediaKit video surface without MediaKit-owned controls.
 ///
 /// Notes:
 /// - Native library bundles are deliberately selected by the host application.
 /// - Fullscreen, orientation, PiP and system-awake behavior are disabled here.
+/// - MediaKit's first-frame future is controller-lifetime scoped, so players are
+///   never reused across episode opens.
 library;
 
 import 'dart:async';
@@ -25,47 +28,22 @@ VideoPlaybackBackend createMediaKitVideoPlaybackBackend() =>
 
 /// MediaKit-backed implementation used by default in production hosts.
 final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
-  /// Creates a player and its single video surface controller.
+  /// Prepares MediaKit without choosing a host native-library bundle.
   MediaKitVideoPlaybackBackend() {
     MediaKit.ensureInitialized();
-    _player = Player();
-    _videoController = VideoController(_player);
-    _subscriptions.addAll(<StreamSubscription<Object?>>[
-      _player.stream.playing.listen(
-        (bool value) => _emit(_value.copyWith(playing: value)),
-      ),
-      _player.stream.position.listen(
-        (Duration value) => _emit(_value.copyWith(position: value)),
-      ),
-      _player.stream.duration.listen(
-        (Duration value) => _emit(_value.copyWith(duration: value)),
-      ),
-      _player.stream.buffering.listen(
-        (bool value) => _emit(_value.copyWith(buffering: value)),
-      ),
-      _player.stream.rate.listen(
-        (double value) => _emit(_value.copyWith(rate: value)),
-      ),
-      _player.stream.volume.listen(
-        (double value) => _emit(_value.copyWith(volume: value)),
-      ),
-      _player.stream.error.listen((String value) {
-        if (value.trim().isNotEmpty) {
-          _emit(_value.copyWith(errorMessage: value));
-        }
-      }),
-    ]);
   }
 
-  late final Player _player;
-  late final VideoController _videoController;
   final ValueNotifier<VideoPlaybackBackendState> _state =
       ValueNotifier<VideoPlaybackBackendState>(
         const VideoPlaybackBackendState(),
       );
-  final List<StreamSubscription<Object?>> _subscriptions =
-      <StreamSubscription<Object?>>[];
+  Future<void> _openQueue = Future<void>.value();
+  Future<void>? _disposeFuture;
+  _MediaKitEpisodeSession? _session;
   int _openGeneration = 0;
+  int _surfaceGeneration = 0;
+  double _rate = 1;
+  double _volume = 100;
   bool _disposed = false;
 
   VideoPlaybackBackendState get _value => _state.value;
@@ -74,102 +52,262 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
   ValueListenable<VideoPlaybackBackendState> get state => _state;
 
   @override
-  Widget buildSurface({required BoxFit fit, Key? key}) => Video(
-    key: key,
-    controller: _videoController,
-    fit: fit,
-    fill: const Color(0xFF050607),
-    controls: NoVideoControls,
-    wakelock: false,
-    pauseUponEnteringBackgroundMode: false,
-    resumeUponEnteringForegroundMode: false,
-    onEnterFullscreen: _noPlatformFullscreen,
-    onExitFullscreen: _noPlatformFullscreen,
-  );
+  Widget buildSurface({required BoxFit fit, Key? key}) {
+    final session = _session;
+    return KeyedSubtree(
+      key: key,
+      child: session == null
+          ? SizedBox.expand(key: ValueKey<int>(_surfaceGeneration))
+          : Video(
+              key: ValueKey<int>(_surfaceGeneration),
+              controller: session.controller,
+              fit: fit,
+              fill: const Color(0xFF050607),
+              controls: NoVideoControls,
+              wakelock: false,
+              pauseUponEnteringBackgroundMode: false,
+              resumeUponEnteringForegroundMode: false,
+              onEnterFullscreen: _noPlatformFullscreen,
+              onExitFullscreen: _noPlatformFullscreen,
+            ),
+    );
+  }
 
   @override
   Future<void> open(
     VideoEpisode episode, {
     required Duration initialPosition,
     required bool play,
-  }) async {
+  }) {
     _ensureActive();
     final generation = ++_openGeneration;
     _emit(
       VideoPlaybackBackendState(
         duration: episode.durationHint ?? Duration.zero,
-        rate: _value.rate,
-        volume: _value.volume,
+        rate: _rate,
+        volume: _volume,
         buffering: true,
       ),
     );
-    await _player.open(
-      Media(episode.uri, httpHeaders: episode.httpHeaders),
-      play: false,
+
+    final operation = _openQueue.then<void>(
+      (_) => _openEpisode(
+        episode,
+        initialPosition: initialPosition,
+        play: play,
+        generation: generation,
+      ),
     );
-    if (_disposed || generation != _openGeneration) return;
-    if (initialPosition > Duration.zero) await _player.seek(initialPosition);
-    if (_disposed || generation != _openGeneration) return;
-    if (play) await _player.play();
-    if (_disposed || generation != _openGeneration) return;
-    _emit(_value.copyWith(buffering: false, clearError: true));
-    unawaited(_markFirstFrame(generation));
+    _openQueue = operation.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return operation;
   }
 
-  Future<void> _markFirstFrame(int generation) async {
+  Future<void> _openEpisode(
+    VideoEpisode episode, {
+    required Duration initialPosition,
+    required bool play,
+    required int generation,
+  }) async {
+    if (!_isRequestedGeneration(generation)) return;
+
+    final session = _MediaKitEpisodeSession();
+    _bind(session, generation);
+    if (!_isRequestedGeneration(generation)) {
+      await session.dispose();
+      return;
+    }
+
+    final previous = _session;
+    _session = session;
+    _surfaceGeneration++;
+    _emit(_value.copyWith(firstFrameReady: false));
+    unawaited(_markFirstFrame(session, generation));
+
+    // VideoController initializes after a frame. This frame also detaches the
+    // previous keyed Video subtree before its Player-owned notifiers are freed.
+    await session.controllerReady;
+    if (previous != null) await previous.dispose();
+    if (!_isCurrent(session, generation)) return;
+
     try {
-      await _videoController.waitUntilFirstFrameRendered;
-      if (_disposed || generation != _openGeneration) return;
+      await session.player.open(
+        Media(episode.uri, httpHeaders: episode.httpHeaders),
+        play: false,
+      );
+      if (!_isCurrent(session, generation)) return;
+
+      if (initialPosition > Duration.zero) {
+        await session.player.seek(initialPosition);
+        if (!_isCurrent(session, generation)) return;
+      }
+
+      await session.player.setRate(_rate);
+      if (!_isCurrent(session, generation)) return;
+      await session.player.setVolume(_volume);
+      if (!_isCurrent(session, generation)) return;
+
+      if (play) {
+        await session.player.play();
+        if (!_isCurrent(session, generation)) return;
+      }
+      _emit(_value.copyWith(buffering: false, clearError: true));
+    } on Object catch (error, stackTrace) {
+      if (!_isCurrent(session, generation)) return;
+      _emit(_value.copyWith(errorMessage: error.toString(), buffering: false));
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  void _bind(_MediaKitEpisodeSession session, int generation) {
+    session.subscriptions.addAll(<StreamSubscription<Object?>>[
+      session.player.stream.playing.listen(
+        (bool value) => _updateFrom(
+          session,
+          generation,
+          (state) => state.copyWith(playing: value),
+        ),
+      ),
+      session.player.stream.position.listen(
+        (Duration value) => _updateFrom(
+          session,
+          generation,
+          (state) => state.copyWith(position: value),
+        ),
+      ),
+      session.player.stream.duration.listen(
+        (Duration value) => _updateFrom(
+          session,
+          generation,
+          (state) => state.copyWith(duration: value),
+        ),
+      ),
+      session.player.stream.buffering.listen(
+        (bool value) => _updateFrom(
+          session,
+          generation,
+          (state) => state.copyWith(buffering: value),
+        ),
+      ),
+      session.player.stream.rate.listen(
+        (double value) => _updateFrom(
+          session,
+          generation,
+          (state) => state.copyWith(rate: value),
+        ),
+      ),
+      session.player.stream.volume.listen(
+        (double value) => _updateFrom(
+          session,
+          generation,
+          (state) => state.copyWith(volume: value),
+        ),
+      ),
+      session.player.stream.error.listen((String value) {
+        if (value.trim().isEmpty) return;
+        _updateFrom(
+          session,
+          generation,
+          (state) => state.copyWith(errorMessage: value),
+        );
+      }),
+    ]);
+  }
+
+  Future<void> _markFirstFrame(
+    _MediaKitEpisodeSession session,
+    int generation,
+  ) async {
+    try {
+      final rendered = await session.waitForFirstFrame();
+      if (!rendered || !_isCurrent(session, generation)) return;
       _emit(_value.copyWith(firstFrameReady: true));
     } on Object catch (error) {
-      if (_disposed || generation != _openGeneration) return;
+      if (!_isCurrent(session, generation)) return;
       _emit(_value.copyWith(errorMessage: error.toString(), buffering: false));
     }
   }
 
-  @override
-  Future<void> play() async {
-    _ensureActive();
-    await _player.play();
+  void _updateFrom(
+    _MediaKitEpisodeSession session,
+    int generation,
+    VideoPlaybackBackendState Function(VideoPlaybackBackendState) update,
+  ) {
+    if (!_isCurrent(session, generation)) return;
+    _emit(update(_value));
   }
+
+  bool _isRequestedGeneration(int generation) =>
+      !_disposed && generation == _openGeneration;
+
+  bool _isCurrent(_MediaKitEpisodeSession session, int generation) =>
+      _isRequestedGeneration(generation) && identical(_session, session);
+
+  _MediaKitEpisodeSession _activeSession() {
+    _ensureActive();
+    final session = _session;
+    if (session == null) throw StateError('No video episode is open.');
+    return session;
+  }
+
+  @override
+  Future<void> play() => _activeSession().player.play();
 
   @override
   Future<void> pause() async {
     if (_disposed) return;
-    await _player.pause();
+    await _session?.player.pause();
   }
 
   @override
-  Future<void> seek(Duration position) async {
-    _ensureActive();
-    await _player.seek(position);
-  }
+  Future<void> seek(Duration position) =>
+      _activeSession().player.seek(position);
 
   @override
   Future<void> setRate(double rate) async {
-    _ensureActive();
-    await _player.setRate(rate);
+    final session = _activeSession();
+    await session.player.setRate(rate);
+    if (_disposed || !identical(_session, session)) return;
+    _rate = rate;
     _emit(_value.copyWith(rate: rate));
   }
 
   @override
   Future<void> setVolume(double volume) async {
-    _ensureActive();
-    await _player.setVolume(volume);
+    final session = _activeSession();
+    await session.player.setVolume(volume);
+    if (_disposed || !identical(_session, session)) return;
+    _volume = volume;
     _emit(_value.copyWith(volume: volume));
   }
 
   @override
-  Future<void> dispose() async {
-    if (_disposed) return;
+  Future<void> dispose() {
+    final pending = _disposeFuture;
+    if (pending != null) return pending;
     _disposed = true;
     _openGeneration++;
-    for (final subscription in _subscriptions) {
-      await subscription.cancel();
+    final operation = _dispose();
+    _disposeFuture = operation;
+    return operation;
+  }
+
+  Future<void> _dispose() async {
+    final session = _session;
+    _session = null;
+    _surfaceGeneration++;
+    try {
+      if (session != null) await session.dispose();
+    } finally {
+      final lateSession = _session;
+      _session = null;
+      if (lateSession != null && !identical(lateSession, session)) {
+        await lateSession.dispose();
+      }
+      _state.dispose();
     }
-    _subscriptions.clear();
-    await _player.dispose();
-    _state.dispose();
   }
 
   void _emit(VideoPlaybackBackendState value) {
@@ -182,4 +320,47 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
   }
 
   static Future<void> _noPlatformFullscreen() async {}
+}
+
+final class _MediaKitEpisodeSession {
+  _MediaKitEpisodeSession() {
+    player = Player();
+    controller = VideoController(player);
+    controllerReady = WidgetsBinding.instance.endOfFrame;
+  }
+
+  late final Player player;
+  late final VideoController controller;
+  late final Future<void> controllerReady;
+  final List<StreamSubscription<Object?>> subscriptions =
+      <StreamSubscription<Object?>>[];
+  final Completer<void> _closed = Completer<void>();
+  Future<void>? _disposeFuture;
+
+  Future<bool> waitForFirstFrame() => Future.any<bool>(<Future<bool>>[
+    controller.waitUntilFirstFrameRendered.then((_) => true),
+    _closed.future.then((_) => false),
+  ]);
+
+  Future<void> dispose() {
+    final pending = _disposeFuture;
+    if (pending != null) return pending;
+    final operation = _dispose();
+    _disposeFuture = operation;
+    return operation;
+  }
+
+  Future<void> _dispose() async {
+    if (!_closed.isCompleted) _closed.complete();
+    try {
+      await controllerReady;
+      await Future.wait<void>(
+        subscriptions.map((subscription) => subscription.cancel()),
+        eagerError: false,
+      );
+    } finally {
+      subscriptions.clear();
+      await player.dispose();
+    }
+  }
 }

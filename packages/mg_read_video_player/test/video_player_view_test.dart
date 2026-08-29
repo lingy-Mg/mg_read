@@ -23,6 +23,7 @@ void main() {
     final store = _RecordingStore(
       restored: const VideoPlaybackProgress(
         contentId: 'show',
+        groupId: 'season-1',
         episodeId: 'episode-2',
         position: Duration(seconds: 42),
         duration: Duration(minutes: 2),
@@ -52,6 +53,7 @@ void main() {
       'https://example.test/',
     );
     expect(controller.snapshot.activeEpisodeId, 'episode-2');
+    expect(controller.snapshot.activeGroupId, 'season-1');
     expect(controller.snapshot.position, const Duration(seconds: 42));
     expect(observer.firstFrames, 1);
     expect(find.text('演示视频'), findsOneWidget);
@@ -123,12 +125,15 @@ void main() {
     backend.emitPosition(const Duration(seconds: 51));
     await tester.tap(find.byKey(const Key('video-player-episodes')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('video-player-episode-episode-2')));
+    await tester.tap(
+      find.byKey(const Key('video-player-episode-season-1-episode-2')),
+    );
     await tester.pumpAndSettle();
 
     expect(
       store.saved.any(
         (VideoPlaybackProgress value) =>
+            value.groupId == 'season-1' &&
             value.episodeId == 'episode-1' &&
             value.position == const Duration(seconds: 51),
       ),
@@ -196,6 +201,10 @@ void main() {
       await tester.pump();
       expect(backend.pauseCount, greaterThan(0));
       expect(store.saved.last.position, const Duration(seconds: 54));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
 
       await controller.requestFullscreen(true);
       expect(observer.fullscreenRequests, <bool>[true]);
@@ -205,10 +214,12 @@ void main() {
       expect(observer.exitCount, 0);
       expect(find.byKey(const Key('video-player-surface')), findsOneWidget);
 
+      final pausesBeforeExit = backend.pauseCount;
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pump();
       await tester.pump();
       await tester.pumpAndSettle();
+      expect(backend.pauseCount, greaterThan(pausesBeforeExit));
       expect(observer.exitCount, 1);
       expect(find.byKey(const Key('video-player-surface')), findsNothing);
       expect(find.byKey(const Key('video-middle-route')), findsOneWidget);
@@ -218,9 +229,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(observer.exitCount, 1);
       expect(find.byKey(const Key('video-middle-route')), findsOneWidget);
-
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.pump();
     },
   );
 
@@ -292,9 +300,85 @@ void main() {
 
       await tester.binding.handlePopRoute();
       await tester.pump();
+      await tester.pump();
       expect(observer.exitCount, 1);
     },
   );
+
+  testWidgets('selects a season group before switching its episode', (
+    WidgetTester tester,
+  ) async {
+    final backend = _FakeVideoBackend();
+    final store = _RecordingStore();
+    final controller = VideoPlayerController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      _playerApp(
+        contentId: 'seasons',
+        backend: backend,
+        source: _FixedDataSource(_seasonContent()),
+        store: store,
+        controller: controller,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('video-player-episodes')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('video-player-group-season-2')));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const Key('video-player-episode-season-2-episode-1')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(controller.snapshot.activeGroupId, 'season-2');
+    expect(controller.snapshot.activeEpisodeId, 'episode-1');
+    expect(backend.openCalls.last.episode.uri, contains('/season-2/'));
+    expect(store.saved.last.groupId, 'season-1');
+  });
+
+  testWidgets('restores and switches lines sharing one episode identifier', (
+    WidgetTester tester,
+  ) async {
+    final backend = _FakeVideoBackend();
+    final store = _RecordingStore(
+      restored: const VideoPlaybackProgress(
+        contentId: 'routes',
+        groupId: 'route-b',
+        episodeId: 'episode-1',
+        position: Duration(seconds: 18),
+        duration: Duration(minutes: 2),
+      ),
+    );
+    final controller = VideoPlayerController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      _playerApp(
+        contentId: 'routes',
+        backend: backend,
+        source: _FixedDataSource(_routeContent()),
+        store: store,
+        controller: controller,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(controller.snapshot.activeGroupId, 'route-b');
+    expect(controller.snapshot.activeEpisodeId, 'episode-1');
+    expect(backend.openCalls.last.episode.uri, contains('backup.example.test'));
+    await controller.selectEpisode('route-a', 'episode-1');
+    backend.emitPosition(const Duration(seconds: 33));
+    await controller.pause();
+
+    expect(controller.snapshot.activeGroupId, 'route-a');
+    expect(
+      backend.openCalls.last.episode.uri,
+      contains('primary.example.test'),
+    );
+    expect(store.saved.last.groupId, 'route-a');
+    expect(store.saved.last.episodeId, 'episode-1');
+  });
 
   testWidgets('stale content load cannot replace a newer session', (
     WidgetTester tester,
@@ -386,7 +470,6 @@ void main() {
         backend: backend,
         store: store,
         controller: controller,
-        progressSaveThrottle: Duration.zero,
       ),
     );
     await tester.pumpAndSettle();
@@ -397,13 +480,14 @@ void main() {
     expect(store.saved.first.position, const Duration(seconds: 10));
     backend.emitPosition(const Duration(seconds: 20));
     await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    expect(backend.disposed, isTrue);
     firstSave.complete();
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 10));
     });
 
     expect(store.saved.last.position, const Duration(seconds: 20));
-    expect(backend.disposed, isTrue);
   });
 }
 
@@ -457,6 +541,15 @@ final class _ImmediateDataSource implements VideoDataSource {
   Future<VideoContent> load(String contentId) async => _content(contentId);
 }
 
+final class _FixedDataSource implements VideoDataSource {
+  const _FixedDataSource(this.content);
+
+  final VideoContent content;
+
+  @override
+  Future<VideoContent> load(String contentId) async => content;
+}
+
 final class _ControlledDataSource implements VideoDataSource {
   final Map<String, Completer<VideoContent>> _requests =
       <String, Completer<VideoContent>>{};
@@ -472,20 +565,88 @@ final class _ControlledDataSource implements VideoDataSource {
 VideoContent _content(String id) => VideoContent(
   id: id,
   title: id == 'show' ? '演示视频' : '$id 视频',
-  episodes: <VideoEpisode>[
-    VideoEpisode(
-      id: id == 'show' ? 'episode-1' : '$id-episode-1',
-      title: '第 1 集',
-      uri: 'https://example.test/$id/1.mp4',
-      httpHeaders: const <String, String>{'Referer': 'https://example.test/'},
-      durationHint: const Duration(minutes: 2),
+  groups: <VideoEpisodeGroup>[
+    VideoEpisodeGroup(
+      id: id == 'show' ? 'season-1' : '$id-group',
+      title: id == 'show' ? '第一季' : '$id 分组',
+      episodes: <VideoEpisode>[
+        VideoEpisode(
+          id: id == 'show' ? 'episode-1' : '$id-episode-1',
+          title: '第 1 集',
+          uri: 'https://example.test/$id/1.mp4',
+          httpHeaders: const <String, String>{
+            'Referer': 'https://example.test/',
+          },
+          durationHint: const Duration(minutes: 2),
+        ),
+        VideoEpisode(
+          id: id == 'show' ? 'episode-2' : '$id-episode-2',
+          title: '第 2 集',
+          uri: 'https://example.test/$id/2.mp4',
+          httpHeaders: const <String, String>{
+            'Referer': 'https://example.test/',
+          },
+          durationHint: const Duration(minutes: 3),
+        ),
+      ],
     ),
-    VideoEpisode(
-      id: id == 'show' ? 'episode-2' : '$id-episode-2',
-      title: '第 2 集',
-      uri: 'https://example.test/$id/2.mp4',
-      httpHeaders: const <String, String>{'Referer': 'https://example.test/'},
-      durationHint: const Duration(minutes: 3),
+  ],
+);
+
+VideoContent _seasonContent() => VideoContent(
+  id: 'seasons',
+  title: '分季节目',
+  groups: <VideoEpisodeGroup>[
+    VideoEpisodeGroup(
+      id: 'season-1',
+      title: '第一季',
+      episodes: <VideoEpisode>[
+        VideoEpisode(
+          id: 'episode-1',
+          title: '第一季第 1 集',
+          uri: 'https://example.test/season-1/1.mp4',
+        ),
+      ],
+    ),
+    VideoEpisodeGroup(
+      id: 'season-2',
+      title: '第二季',
+      episodes: <VideoEpisode>[
+        VideoEpisode(
+          id: 'episode-1',
+          title: '第二季第 1 集',
+          uri: 'https://example.test/season-2/1.mp4',
+        ),
+      ],
+    ),
+  ],
+);
+
+VideoContent _routeContent() => VideoContent(
+  id: 'routes',
+  title: '多线路节目',
+  groups: <VideoEpisodeGroup>[
+    VideoEpisodeGroup(
+      id: 'route-a',
+      title: '线路 A',
+      episodes: <VideoEpisode>[
+        VideoEpisode(
+          id: 'episode-1',
+          title: '第 1 集',
+          uri: 'https://primary.example.test/1.mp4',
+        ),
+      ],
+    ),
+    VideoEpisodeGroup(
+      id: 'route-b',
+      title: '线路 B',
+      episodes: <VideoEpisode>[
+        VideoEpisode(
+          id: 'episode-1',
+          title: '第 1 集',
+          uri: 'https://backup.example.test/1.mp4',
+        ),
+      ],
     ),
   ],
 );

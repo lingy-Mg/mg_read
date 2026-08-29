@@ -37,6 +37,32 @@ void main() {
     expect(find.byKey(const Key('audio-play-pause')), findsOneWidget);
   });
 
+  testWidgets('ignores progress owned by another collection', (tester) async {
+    final backend = _FakeAudioBackend();
+    final store = _FakeAudioStateStore(
+      initial: AudioPlaybackProgress(
+        collectionId: 'another-book',
+        trackId: 'track-2',
+        position: const Duration(seconds: 42),
+        updatedAt: DateTime.utc(2026),
+      ),
+    );
+
+    await tester.pumpWidget(
+      _testHost(
+        backend: backend,
+        store: store,
+        observer: const AudioPlayerObserver(),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(backend.openedInitialIndex, 0);
+    expect(backend.seeks, isEmpty);
+    expect(find.text('第一章 从这里开始'), findsOneWidget);
+  });
+
   testWidgets('controls transport and saves before switching tracks', (
     tester,
   ) async {
@@ -154,6 +180,97 @@ void main() {
     controller.dispose();
   });
 
+  testWidgets(
+    'blocked backend initialization stays loading and latest retry wins',
+    (tester) async {
+      final firstOpen = Completer<void>();
+      final secondOpen = Completer<void>();
+      final backend = _FakeAudioBackend(
+        openGates: <Completer<void>>[firstOpen, secondOpen],
+      );
+      final store = _FakeAudioStateStore(
+        initial: AudioPlaybackProgress(
+          collectionId: 'book',
+          trackId: 'track-2',
+          position: const Duration(seconds: 9),
+          updatedAt: DateTime.utc(2026),
+        ),
+      );
+      final controller = AudioPlayerController();
+      final dataSource = _ImmediateSequencedDataSource(<AudioPlaylist>[
+        _singleTrackPlaylist(title: '旧 open 队列'),
+        _playlist(title: '最终队列'),
+      ]);
+
+      await tester.pumpWidget(
+        _testHost(
+          backend: backend,
+          store: store,
+          observer: const AudioPlayerObserver(),
+          controller: controller,
+          dataSource: dataSource,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(backend.openCalls, 1);
+      expect(controller.snapshot.status, AudioPlayerStatus.loading);
+      await controller.play();
+      expect(backend.playCalls, 0);
+
+      unawaited(controller.retry());
+      await tester.pump();
+      await tester.pump();
+      expect(dataSource.calls, 2);
+      expect(backend.openCalls, 1);
+      expect(controller.snapshot.status, AudioPlayerStatus.loading);
+
+      firstOpen.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(backend.openCalls, 2);
+      expect(controller.snapshot.status, AudioPlayerStatus.loading);
+
+      secondOpen.complete();
+      await tester.pumpAndSettle();
+      expect(controller.snapshot.status, AudioPlayerStatus.ready);
+      expect(controller.snapshot.collectionTitle, '最终队列');
+      expect(controller.snapshot.currentTrack?.id, 'track-2');
+      expect(backend.seeks, contains(const Duration(seconds: 9)));
+
+      controller.dispose();
+    },
+  );
+
+  testWidgets('repeated snapshots report one backend failure until cleared', (
+    tester,
+  ) async {
+    final backend = _FakeAudioBackend();
+    final observer = _RecordingObserver();
+
+    await tester.pumpWidget(
+      _testHost(
+        backend: backend,
+        store: _FakeAudioStateStore(),
+        observer: observer,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    backend.emitError('decoder failed');
+    backend.emitPosition(const Duration(seconds: 1));
+    backend.emitPosition(const Duration(seconds: 2));
+    await tester.pump();
+    expect(observer.failureCalls, 1);
+
+    backend.clearError();
+    backend.emitError('decoder failed');
+    await tester.pump();
+    expect(observer.failureCalls, 2);
+  });
+
   testWidgets('system back is intercepted and flushes through exit observer', (
     tester,
   ) async {
@@ -195,6 +312,115 @@ void main() {
     expect(store.saved.last.position, const Duration(seconds: 51));
     expect(navigatorKey.currentState!.canPop(), isFalse);
   });
+
+  testWidgets('external removal during a slow flush cannot double-pop', (
+    tester,
+  ) async {
+    final saveGate = Completer<void>();
+    final store = _FakeAudioStateStore(saveGate: saveGate);
+    final backend = _FakeAudioBackend();
+    final navigatorKey = GlobalKey<NavigatorState>();
+    final observer = _PoppingObserver(navigatorKey);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigatorKey,
+        home: const Scaffold(body: Center(child: Text('底层页面'))),
+      ),
+    );
+    final hostRoute = MaterialPageRoute<void>(
+      builder: (_) => const Scaffold(body: Center(child: Text('宿主页'))),
+    );
+    navigatorKey.currentState!.push<void>(hostRoute);
+    await tester.pumpAndSettle();
+    final playerRoute = MaterialPageRoute<void>(
+      builder: (_) => AudioPlayerView(
+        collectionId: 'book',
+        dataSource: _FakeAudioDataSource(),
+        stateStore: store,
+        observer: observer,
+        backend: backend,
+        saveInterval: const Duration(hours: 1),
+      ),
+    );
+    navigatorKey.currentState!.push<void>(playerRoute);
+    await tester.pumpAndSettle();
+
+    backend.emitPosition(const Duration(seconds: 18));
+    await tester.pump();
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(store.saved, isNotEmpty);
+
+    navigatorKey.currentState!.removeRoute(playerRoute);
+    await tester.pump();
+    saveGate.complete();
+    await tester.pumpAndSettle();
+
+    expect(observer.exitCalls, 0);
+    expect(find.byType(AudioPlayerView), findsNothing);
+    expect(find.text('宿主页'), findsOneWidget);
+    expect(find.text('底层页面'), findsNothing);
+    expect(navigatorKey.currentState!.canPop(), isTrue);
+  });
+
+  testWidgets(
+    'route teardown releases transport before the final save completes',
+    (tester) async {
+      final saveGate = Completer<void>();
+      final store = _FakeAudioStateStore(saveGate: saveGate);
+      final backend = _FakeAudioBackend();
+      final controller = AudioPlayerController();
+      final navigatorKey = GlobalKey<NavigatorState>();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigatorKey,
+          home: const Scaffold(body: Center(child: Text('资源宿主页'))),
+        ),
+      );
+      final playerRoute = MaterialPageRoute<void>(
+        builder: (_) => AudioPlayerView(
+          collectionId: 'book',
+          dataSource: _FakeAudioDataSource(),
+          stateStore: store,
+          controller: controller,
+          backend: backend,
+          saveInterval: const Duration(hours: 1),
+        ),
+      );
+      navigatorKey.currentState!.push<void>(playerRoute);
+      await tester.pumpAndSettle();
+
+      backend.emitPosition(const Duration(seconds: 10));
+      await tester.pump();
+      unawaited(controller.pause());
+      await tester.pump();
+      expect(store.saved.map((item) => item.position), <Duration>[
+        const Duration(seconds: 10),
+      ]);
+
+      backend.emitPosition(const Duration(seconds: 20));
+      await tester.pump();
+      navigatorKey.currentState!.removeRoute(playerRoute);
+      await tester.pump();
+
+      expect(controller.isAttached, isFalse);
+      expect(backend.disposeCalls, 1);
+      expect(store.saved.map((item) => item.position), <Duration>[
+        const Duration(seconds: 10),
+      ]);
+
+      saveGate.complete();
+      await tester.pumpAndSettle();
+      expect(store.saved.map((item) => item.position), <Duration>[
+        const Duration(seconds: 10),
+        const Duration(seconds: 20),
+      ]);
+
+      controller.dispose();
+    },
+  );
 
   testWidgets('exit can be requested again when the host keeps the route', (
     tester,
@@ -302,6 +528,18 @@ AudioPlaylist _playlist({String title = '风声书场'}) => AudioPlaylist(
   ],
 );
 
+AudioPlaylist _singleTrackPlaylist({required String title}) => AudioPlaylist(
+  collectionId: 'book',
+  title: title,
+  tracks: <AudioTrack>[
+    AudioTrack(
+      id: 'track-1',
+      title: '旧队列曲目',
+      resource: Uri.parse('https://example.test/audio/old.mp3'),
+    ),
+  ],
+);
+
 final class _FakeAudioDataSource implements AudioPlayerDataSource {
   @override
   Future<AudioPlaylist> loadPlaylist(String collectionId) async => _playlist();
@@ -321,10 +559,25 @@ final class _SequencedDataSource implements AudioPlayerDataSource {
   }
 }
 
+final class _ImmediateSequencedDataSource implements AudioPlayerDataSource {
+  _ImmediateSequencedDataSource(this.playlists);
+
+  final List<AudioPlaylist> playlists;
+  int calls = 0;
+
+  @override
+  Future<AudioPlaylist> loadPlaylist(String collectionId) async {
+    final index = calls.clamp(0, playlists.length - 1);
+    calls++;
+    return playlists[index];
+  }
+}
+
 final class _FakeAudioStateStore implements AudioPlaybackStateStore {
-  _FakeAudioStateStore({this.initial});
+  _FakeAudioStateStore({this.initial, this.saveGate});
 
   final AudioPlaybackProgress? initial;
+  final Completer<void>? saveGate;
   final List<AudioPlaybackProgress> saved = <AudioPlaybackProgress>[];
 
   @override
@@ -334,17 +587,24 @@ final class _FakeAudioStateStore implements AudioPlaybackStateStore {
   @override
   Future<void> saveProgress(AudioPlaybackProgress progress) async {
     saved.add(progress);
+    await saveGate?.future;
   }
 }
 
 final class _RecordingObserver extends AudioPlayerObserver {
   int exitCalls = 0;
+  int failureCalls = 0;
   AudioPlaybackProgress? exitProgress;
 
   @override
   Future<void> onExitRequested(AudioPlaybackProgress? progress) async {
     exitCalls++;
     exitProgress = progress;
+  }
+
+  @override
+  Future<void> onFailure(AudioPlayerFailure failure) async {
+    failureCalls++;
   }
 }
 
@@ -365,6 +625,11 @@ final class _PoppingObserver extends AudioPlayerObserver {
 }
 
 final class _FakeAudioBackend implements AudioPlaybackBackend {
+  _FakeAudioBackend({
+    List<Completer<void>> openGates = const <Completer<void>>[],
+  }) : _openGates = List<Completer<void>>.of(openGates);
+
+  final List<Completer<void>> _openGates;
   final StreamController<AudioPlaybackBackendSnapshot> _controller =
       StreamController<AudioPlaybackBackendSnapshot>.broadcast(sync: true);
   AudioPlaybackBackendSnapshot _snapshot = const AudioPlaybackBackendSnapshot(
@@ -373,6 +638,8 @@ final class _FakeAudioBackend implements AudioPlaybackBackend {
 
   List<AudioTrack> tracks = const <AudioTrack>[];
   int? openedInitialIndex;
+  int openCalls = 0;
+  int disposeCalls = 0;
   int playCalls = 0;
   int pauseCalls = 0;
   int nextCalls = 0;
@@ -396,14 +663,35 @@ final class _FakeAudioBackend implements AudioPlaybackBackend {
     _emit(_snapshot.copyWith(position: position));
   }
 
+  void emitError(String message) {
+    _emit(_snapshot.copyWith(errorMessage: message));
+  }
+
+  void clearError() {
+    _emit(_snapshot.copyWith(clearError: true));
+  }
+
   @override
   Future<void> open(
     List<AudioTrack> tracks, {
     required int initialIndex,
     bool play = false,
   }) async {
+    final callIndex = openCalls;
+    openCalls++;
     this.tracks = List<AudioTrack>.of(tracks);
     openedInitialIndex = initialIndex;
+    _emit(
+      AudioPlaybackBackendSnapshot(
+        currentIndex: initialIndex,
+        duration: const Duration(minutes: 2),
+        playing: play,
+        buffering: true,
+      ),
+    );
+    if (callIndex < _openGates.length) {
+      await _openGates[callIndex].future;
+    }
     _emit(
       AudioPlaybackBackendSnapshot(
         currentIndex: initialIndex,
@@ -464,6 +752,7 @@ final class _FakeAudioBackend implements AudioPlaybackBackend {
 
   @override
   Future<void> dispose() async {
+    disposeCalls++;
     await _controller.close();
   }
 }

@@ -122,14 +122,17 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final bool compact = constraints.maxWidth < 520;
+        final bool iconsOnly =
+            constraints.maxWidth < 380 ||
+            MediaQuery.textScalerOf(context).scale(14) > 20;
         final slider = Row(
           children: <Widget>[
             SizedBox(
               width: 48,
-              child: Text(
-                _formatDuration(shownPosition),
-                textAlign: TextAlign.end,
-                style: _timeStyle,
+              child: FittedBox(
+                alignment: Alignment.centerRight,
+                fit: BoxFit.scaleDown,
+                child: Text(_formatDuration(shownPosition), style: _timeStyle),
               ),
             ),
             Expanded(
@@ -158,48 +161,80 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
             ),
             SizedBox(
               width: 48,
-              child: Text(_formatDuration(duration), style: _timeStyle),
-            ),
-          ],
-        );
-        final actions = Wrap(
-          alignment: compact ? WrapAlignment.spaceBetween : WrapAlignment.end,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 4,
-          runSpacing: 2,
-          children: <Widget>[
-            TextButton.icon(
-              key: const Key('video-player-episodes'),
-              onPressed: widget.onEpisodes,
-              icon: const Icon(Icons.video_library_rounded, size: 19),
-              label: Text(_episodeLabel(snapshot)),
-            ),
-            PopupMenuButton<double>(
-              key: const Key('video-player-rate'),
-              tooltip: '播放速度',
-              initialValue: snapshot.rate,
-              onSelected: widget.onRate,
-              itemBuilder: (_) => const <PopupMenuEntry<double>>[
-                PopupMenuItem<double>(value: .5, child: Text('0.5×')),
-                PopupMenuItem<double>(value: .75, child: Text('0.75×')),
-                PopupMenuItem<double>(value: 1, child: Text('1.0×')),
-                PopupMenuItem<double>(value: 1.25, child: Text('1.25×')),
-                PopupMenuItem<double>(value: 1.5, child: Text('1.5×')),
-                PopupMenuItem<double>(value: 2, child: Text('2.0×')),
-              ],
-              child: _CompactAction(
-                icon: Icons.speed_rounded,
-                label: '${_trimRate(snapshot.rate)}×',
+              child: FittedBox(
+                alignment: Alignment.centerLeft,
+                fit: BoxFit.scaleDown,
+                child: Text(_formatDuration(duration), style: _timeStyle),
               ),
             ),
-            TextButton.icon(
-              key: const Key('video-player-fit'),
-              onPressed: widget.onFit,
-              icon: const Icon(Icons.aspect_ratio_rounded, size: 19),
-              label: Text(_fitLabel(snapshot.fitMode)),
-            ),
           ],
         );
+        final actions = iconsOnly
+            ? Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: <Widget>[
+                  IconButton(
+                    key: const Key('video-player-episodes'),
+                    tooltip: '选择 ${_episodeLabel(snapshot)}',
+                    onPressed: widget.onEpisodes,
+                    icon: const Icon(Icons.video_library_rounded),
+                  ),
+                  PopupMenuButton<double>(
+                    key: const Key('video-player-rate'),
+                    tooltip: '播放速度',
+                    initialValue: snapshot.rate,
+                    onSelected: widget.onRate,
+                    itemBuilder: _rateItems,
+                    icon: const Icon(Icons.speed_rounded),
+                  ),
+                  IconButton(
+                    key: const Key('video-player-fit'),
+                    tooltip: '画面比例：${_fitLabel(snapshot.fitMode)}',
+                    onPressed: widget.onFit,
+                    icon: const Icon(Icons.aspect_ratio_rounded),
+                  ),
+                ],
+              )
+            : Wrap(
+                alignment: compact
+                    ? WrapAlignment.spaceBetween
+                    : WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 4,
+                runSpacing: 2,
+                children: <Widget>[
+                  TextButton.icon(
+                    key: const Key('video-player-episodes'),
+                    onPressed: widget.onEpisodes,
+                    icon: const Icon(Icons.video_library_rounded, size: 19),
+                    label: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 180),
+                      child: Text(
+                        _episodeLabel(snapshot),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  PopupMenuButton<double>(
+                    key: const Key('video-player-rate'),
+                    tooltip: '播放速度',
+                    initialValue: snapshot.rate,
+                    onSelected: widget.onRate,
+                    itemBuilder: _rateItems,
+                    child: _CompactAction(
+                      icon: Icons.speed_rounded,
+                      label: '${_trimRate(snapshot.rate)}×',
+                    ),
+                  ),
+                  TextButton.icon(
+                    key: const Key('video-player-fit'),
+                    onPressed: widget.onFit,
+                    icon: const Icon(Icons.aspect_ratio_rounded, size: 19),
+                    label: Text(_fitLabel(snapshot.fitMode)),
+                  ),
+                ],
+              );
         return Material(
           color: _panel,
           borderRadius: BorderRadius.circular(14),
@@ -357,66 +392,6 @@ final class _CompactAction extends StatelessWidget {
   );
 }
 
-/// Shows the package-owned episode selector and returns a stable episode ID.
-Future<String?> showVideoEpisodeSheet({
-  required BuildContext context,
-  required List<VideoEpisode> episodes,
-  required String? activeEpisodeId,
-}) => showModalBottomSheet<String>(
-  context: context,
-  backgroundColor: const Color(0xFF17191C),
-  useSafeArea: true,
-  showDragHandle: true,
-  builder: (BuildContext context) => ConstrainedBox(
-    constraints: BoxConstraints(
-      maxHeight: MediaQuery.sizeOf(context).height * .72,
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-          child: Text(
-            '选集',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(color: _foreground),
-          ),
-        ),
-        Expanded(
-          child: ListView.separated(
-            itemCount: episodes.length,
-            separatorBuilder: (_, _) =>
-                const Divider(height: 1, color: Colors.white10),
-            itemBuilder: (BuildContext context, int index) {
-              final episode = episodes[index];
-              final selected = episode.id == activeEpisodeId;
-              return ListTile(
-                key: Key('video-player-episode-${episode.id}'),
-                selected: selected,
-                selectedColor: _accent,
-                textColor: _foreground,
-                iconColor: _secondary,
-                leading: Icon(
-                  selected
-                      ? Icons.play_circle_fill_rounded
-                      : Icons.play_circle_outline_rounded,
-                ),
-                title: Text(
-                  episode.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                onTap: () => Navigator.of(context).pop(episode.id),
-              );
-            },
-          ),
-        ),
-      ],
-    ),
-  ),
-);
-
 const TextStyle _timeStyle = TextStyle(
   color: _secondary,
   fontSize: 11,
@@ -424,11 +399,26 @@ const TextStyle _timeStyle = TextStyle(
 );
 
 String _episodeLabel(VideoPlayerSnapshot snapshot) {
-  for (final episode in snapshot.episodes) {
-    if (episode.id == snapshot.activeEpisodeId) return episode.title;
+  for (final group in snapshot.groups) {
+    if (group.id != snapshot.activeGroupId) continue;
+    for (final episode in group.episodes) {
+      if (episode.id == snapshot.activeEpisodeId) {
+        return '${group.title} · ${episode.title}';
+      }
+    }
   }
   return '选集';
 }
+
+List<PopupMenuEntry<double>> _rateItems(BuildContext context) =>
+    const <PopupMenuEntry<double>>[
+      PopupMenuItem<double>(value: .5, child: Text('0.5×')),
+      PopupMenuItem<double>(value: .75, child: Text('0.75×')),
+      PopupMenuItem<double>(value: 1, child: Text('1.0×')),
+      PopupMenuItem<double>(value: 1.25, child: Text('1.25×')),
+      PopupMenuItem<double>(value: 1.5, child: Text('1.5×')),
+      PopupMenuItem<double>(value: 2, child: Text('2.0×')),
+    ];
 
 String _fitLabel(VideoFitMode mode) => switch (mode) {
   VideoFitMode.contain => '适应',

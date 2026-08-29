@@ -7,6 +7,7 @@
 #include "generated_plugin_registrant.h"
 
 #include <file_selector_windows/file_selector_windows.h>
+#include <media_kit_video/media_kit_video_plugin_c_api.h>
 #include <mgread_plugin_runtime/mgread_plugin_runtime_plugin_c_api.h>
 #include <novel_reader_ui/novel_reader_ui_plugin_c_api.h>
 #include <share_plus/share_plus_windows_plugin_c_api.h>
@@ -15,6 +16,8 @@
 void RegisterPlugins(flutter::PluginRegistry* registry) {
   FileSelectorWindowsRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FileSelectorWindows"));
+  MediaKitVideoPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("MediaKitVideoPluginCApi"));
   MgreadPluginRuntimePluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("MgreadPluginRuntimePluginCApi"));
   NovelReaderUiPluginCApiRegisterWithRegistrar(

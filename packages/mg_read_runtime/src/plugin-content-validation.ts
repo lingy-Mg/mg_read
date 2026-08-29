@@ -16,6 +16,8 @@ import {
   MAX_INLINE_MANGA_MANIFEST_BYTES,
   MAX_LABEL_CHARACTERS,
   MAX_MANGA_PAGES,
+  MAX_MEDIA_GROUPS,
+  MAX_MEDIA_HEADERS,
   MAX_SEARCH_ITEMS,
   MAX_SEARCH_SUGGESTIONS,
   MAX_TAGS,
@@ -32,11 +34,13 @@ import {
   type PluginContentStatus,
   type PluginLatestChapter,
   type PluginMangaPage,
+  type PluginMediaGroup,
+  type PluginMediaResource,
   type PluginSearchResult,
   type PluginSearchSuggestionsResult,
 } from "./plugin-content-types.js";
 
-const contentKinds = new Set<PluginContentKind>(["novel", "manga"]);
+const contentKinds = new Set<PluginContentKind>(["audio", "manga", "novel", "video"]);
 const contentStatuses = new Set<PluginContentStatus>([
   "ongoing",
   "completed",
@@ -120,12 +124,20 @@ export function validateChaptersResult(
   value: unknown,
 ): PluginChaptersResult {
   const raw = readRecord(value);
-  assertOnlyKeys(raw, ["items"]);
+  assertOnlyKeys(raw, ["groups", "items"]);
   const items = Object.freeze(
     readArray(raw, "items", MAX_CHAPTER_ITEMS).map(validateChapterSummary),
   );
   assertUnique(items.map((item) => item.id));
-  const result = Object.freeze({ items, pluginId, sourceName });
+  const groups = Object.freeze(
+    (Object.hasOwn(raw, "groups") ? readArray(raw, "groups", MAX_MEDIA_GROUPS) : [])
+      .map(validateMediaGroup),
+  );
+  assertUnique(groups.map((group) => group.id));
+  for (const [index, group] of groups.entries()) if (group.order !== index) fail();
+  const groupedIds = groups.flatMap((group) => group.episodes.map((episode) => episode.id));
+  if (groups.length !== 0 && (groupedIds.length !== items.length || new Set(groupedIds).size !== groupedIds.length || !groupedIds.every((id) => items.some((item) => item.id === id)))) fail();
+  const result = Object.freeze({ groups, items, pluginId, sourceName });
   assertInlineBudget(result, MAX_INLINE_CHAPTER_CATALOG_BYTES);
   return result;
 }
@@ -141,9 +153,11 @@ export function validateContentResult(
   const pages = Object.freeze(
     readArray(raw, "pages", MAX_MANGA_PAGES).map(validateMangaPage),
   );
+  const media = Object.hasOwn(raw, "media") ? readNullableObject(raw, "media", validateMediaResource) : null;
   if (
-    (contentKind === "novel" && (text === null || pages.length !== 0)) ||
-    (contentKind === "manga" && (text !== null || pages.length === 0))
+    (contentKind === "novel" && (text === null || pages.length !== 0 || media !== null)) ||
+    (contentKind === "manga" && (text !== null || pages.length === 0 || media !== null)) ||
+    ((contentKind === "audio" || contentKind === "video") && (text !== null || pages.length !== 0 || media === null))
   ) {
     fail();
   }
@@ -154,6 +168,7 @@ export function validateContentResult(
   const result = Object.freeze({
     chapterId: readRequiredString(raw, "chapterId", MAX_ID_CHARACTERS),
     contentKind,
+    media,
     pages,
     pluginId,
     sourceName,
@@ -242,6 +257,56 @@ function validateMangaPage(value: unknown): PluginMangaPage {
     resourcePolicy,
     width: readNullablePositiveInteger(raw, "width"),
   });
+}
+
+function validateMediaGroup(value: unknown): PluginMediaGroup {
+  const raw = readRecord(value);
+  const episodes = Object.freeze(readArray(raw, "episodes", MAX_CHAPTER_ITEMS).map(validateChapterSummary));
+  if (episodes.length === 0) fail();
+  assertUnique(episodes.map((episode) => episode.id));
+  for (const [index, episode] of episodes.entries()) if (episode.order !== index) fail();
+  return Object.freeze({
+    episodes,
+    id: readRequiredString(raw, "id", MAX_ID_CHARACTERS),
+    order: readNonNegativeInteger(raw, "order"),
+    title: readRequiredString(raw, "title", MAX_LABEL_CHARACTERS),
+  });
+}
+
+function validateMediaResource(value: unknown): PluginMediaResource {
+  const raw = readRecord(value);
+  const headers = readRecord(readOwn(raw, "headers"));
+  const entries = Object.entries(headers);
+  if (entries.length > MAX_MEDIA_HEADERS) fail();
+  for (const [name, header] of entries) {
+    if (!/^[A-Za-z0-9-]{1,64}$/.test(name) || typeof header !== "string" || header.length > 4096 || /[\r\n]/.test(header)) fail();
+  }
+  const resourcePolicy = readEnum(raw, "resourcePolicy", new Set(["sessionOnly", "refreshable"] as const));
+  const expiresAt = readNullableTimestamp(raw, "expiresAt");
+  if ((resourcePolicy === "refreshable") !== (expiresAt !== null)) fail();
+  const resourceType = readEnum(raw, "resourceType", new Set(["audio", "hls", "video"] as const));
+  const mimeType = readNullableString(raw, "mimeType", 128);
+  if (mimeType !== null && !/^[a-z0-9][a-z0-9!#$&^_.+-]+\/[a-z0-9][a-z0-9!#$&^_.+-]+$/i.test(mimeType)) fail();
+  const typedHeaders: Record<string, string> = {};
+  for (const [name, header] of entries) typedHeaders[name] = header as string;
+  const url = readRequiredUrl(raw, "url");
+  if (!isRuntimeMediaProxyUrl(url)) fail();
+  return Object.freeze({
+    expiresAt,
+    headers: Object.freeze(typedHeaders),
+    mimeType,
+    resourcePolicy,
+    resourceType,
+    url,
+  });
+}
+
+function isRuntimeMediaProxyUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1") &&
+      /^\/v1\/source-resource\/[A-Za-z0-9_-]{16,}$/u.test(url.pathname);
+  } catch { return false; }
 }
 
 function readOptionalEnum<const T extends string>(raw: Record<string, unknown>, key: string, values: ReadonlySet<T>, fallback: T): T {
