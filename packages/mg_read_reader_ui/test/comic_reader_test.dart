@@ -58,6 +58,42 @@ void main() {
     },
   );
 
+  test('comic image cache has a lazy 1000-entry safety cap', () {
+    final source = _FakeComicSource();
+    final cache = ComicImageByteCache(bookId: 'book', dataSource: source);
+    addTearDown(cache.dispose);
+
+    expect(cache.maxEntries, 1000);
+    expect(cache.maxBytes, 48 * 1024 * 1024);
+    expect(cache.entryCount, 0);
+    expect(cache.byteCount, 0);
+    expect(source.imageCalls, 0, reason: 'constructing the reader cache must not start image work');
+  });
+
+  test('memory pressure cancels prefetch and rejects late cache insertion', () async {
+    final source = _BlockingComicSource();
+    final cache = ComicImageByteCache(
+      bookId: 'book',
+      dataSource: source,
+      maxConcurrentLoads: 1,
+    );
+    addTearDown(cache.dispose);
+
+    cache.prefetch('chapter-1', _image('one', null));
+    cache.prefetch('chapter-1', _image('two', null));
+    await Future<void>.delayed(Duration.zero);
+    expect(source.started, <String>['one']);
+
+    cache.handleMemoryPressure();
+    source.complete('one');
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(source.started, <String>['one']);
+    expect(cache.entryCount, 0);
+    expect(cache.byteCount, 0);
+  });
+
   test(
     'comic image cache schedules distinct images with a bounded concurrency',
     () async {

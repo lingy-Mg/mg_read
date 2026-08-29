@@ -16,6 +16,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
@@ -505,7 +506,7 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     final role = keepRole ? state.role : null;
     unawaited(_cancelPluginImportsSafely());
     unawaited(_disposeResources());
-    state = LanSyncViewState(role: role, phase: LanSyncPhase.failed, message: _messageForError(code), errorCode: code);
+    state = LanSyncViewState(role: role, phase: LanSyncPhase.failed, message: lanSyncFailureMessage(code), errorCode: code);
   }
 
   void _startSpan(LanSyncRole role) {
@@ -641,13 +642,15 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
   bool _isCurrent(int generation) => generation == _generation;
 }
 
-String _messageForError(String code) => switch (code) {
+/// Converts privacy-safe LAN failure codes into user-facing copy.
+String lanSyncFailureMessage(String code) => switch (code) {
   'lan_sync_manual_address_invalid' => '连接地址格式不正确',
   'lan_sync_address_not_private' => '只能连接同一私有局域网内的设备',
   'lan_sync_discovery_failed' => '无法查找局域网设备，请尝试手动输入地址',
   'lan_sync_connect_failed' => '连接失败，请确认两台设备在同一网络',
   'lan_sync_preview_failed' => '同步清单无法读取或版本不兼容',
   'lan_sync_import_failed' => '导入未完成，本机原有书架不会被删除',
+  'lan_sync_import_$bookshelfCapacityExceededCode' => '书架已满，请先清理书籍',
   'lan_sync_timeout' => '等待确认超时，请重新开始同步',
   _ => '局域网同步失败，请重试',
 };

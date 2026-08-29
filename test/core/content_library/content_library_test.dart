@@ -3,6 +3,7 @@
 /// 职责：
 /// - 验证书架、目录、正文、封面与阅读进度的应用自有持久化语义。
 /// - 覆盖全局封面缓存的 LRU 上限与路径隔离。
+/// - 覆盖漫画图片缓存的无总量上限写入和主动维护边界。
 ///
 /// 注意：
 /// - 每个用例使用独立临时目录，不能依赖真实应用数据或网络。
@@ -438,15 +439,39 @@ void main() {
 
   test('manga assets are grouped and removed with the manga item', () async {
     final item = await library.bookshelf.add(title: '本地漫画', kind: ContentKind.manga, source: source);
+    final retained = await library.bookshelf.add(
+      title: '保留漫画',
+      kind: ContentKind.manga,
+      source: const ContentLibraryIngest(
+        pluginId: 'fixture',
+        producerPluginVersion: '1.0.0',
+        dataVersion: 1,
+        opaqueData: <String, Object?>{'remoteBookId': 'retained-manga'},
+      ),
+    );
     final files = await FileObjectStore.open(root);
     addTearDown(files.close);
     await files.commitBytes(mangaId: item.id.value, assetId: 'asset_identifier_0001', bytes: [1, 2, 3], mimeType: 'image/png');
+    for (final manga in <LibraryItem>[item, retained]) {
+      await library.mangaImageCache.save(
+        itemId: manga.id,
+        chapterId: 'chapter',
+        pageId: 'page',
+        contentVersion: 1,
+        bytes: const <int>[4],
+        mimeType: 'image/png',
+      );
+    }
     final directory = Directory(
       '${root.path}${Platform.pathSeparator}files${Platform.pathSeparator}content-assets${Platform.pathSeparator}${item.id.value}',
     );
     expect(await directory.exists(), isTrue);
     await library.bookshelf.remove(item.id, LibraryRemovalPolicy.removeFromShelfKeepContent);
     expect(await directory.exists(), isFalse);
+    expect(await library.mangaImageCache.read(itemId: item.id, chapterId: 'chapter', pageId: 'page', contentVersion: 1), isNull);
+    expect(await library.mangaImageCache.read(itemId: retained.id, chapterId: 'chapter', pageId: 'page', contentVersion: 1), const <int>[
+      4,
+    ]);
   });
 
   test('opens a bounded novel session with targeted chapter queries', () async {
@@ -700,7 +725,6 @@ void main() {
       contentVersion: 1,
       bytes: const [1],
       mimeType: 'image/png',
-      maxBytes: 1024,
     );
     expect(first.relativePath, matches(RegExp(r'^manga-image-cache/[a-f0-9]{64}/image\.asset$')));
     await files.commitMangaImage(
@@ -710,18 +734,9 @@ void main() {
       contentVersion: 1,
       bytes: const [2, 3],
       mimeType: 'image/png',
-      maxBytes: 1024,
     );
     expect(await files.readMangaImage(itemId: long, chapterId: long, pageId: long, contentVersion: 1), [2, 3]);
-    await files.commitMangaImage(
-      itemId: long,
-      chapterId: long,
-      pageId: long,
-      contentVersion: 2,
-      bytes: const [4],
-      mimeType: 'image/jpeg',
-      maxBytes: 1024,
-    );
+    await files.commitMangaImage(itemId: long, chapterId: long, pageId: long, contentVersion: 2, bytes: const [4], mimeType: 'image/jpeg');
     expect(await files.readMangaImage(itemId: long, chapterId: long, pageId: long, contentVersion: 1), [2, 3]);
     expect(await files.readMangaImage(itemId: long, chapterId: long, pageId: long, contentVersion: 2), [4]);
     var usage = await files.mangaImageCacheUsage();
@@ -740,6 +755,35 @@ void main() {
     usage = await files.mangaImageCacheUsage();
     expect(usage.totalBytes, 3);
     expect(usage.bytesByItem, isEmpty);
+  });
+
+  test('consecutive manga image writes do not scan the whole cache or evict earlier images', () async {
+    final files = await FileObjectStore.open(root);
+    addTearDown(files.close);
+    final cacheRoot = Directory(
+      '${root.path}${Platform.pathSeparator}files${Platform.pathSeparator}'
+      'content-assets${Platform.pathSeparator}manga-image-cache',
+    );
+    final scanProbeRoot = Directory('${cacheRoot.path}${Platform.pathSeparator}${'a' * 64}');
+    await scanProbeRoot.create(recursive: true);
+    final scanProbe = File('${scanProbeRoot.path}${Platform.pathSeparator}.image.part');
+    await scanProbe.writeAsBytes(const <int>[99]);
+
+    for (var page = 0; page < 3; page++) {
+      await files.commitMangaImage(
+        itemId: 'item',
+        chapterId: 'chapter',
+        pageId: 'page-$page',
+        contentVersion: 1,
+        bytes: <int>[page + 1],
+        mimeType: 'image/png',
+      );
+    }
+
+    expect(await scanProbe.exists(), isTrue, reason: 'writes must not invoke the maintenance directory scan');
+    for (var page = 0; page < 3; page++) {
+      expect(await files.readMangaImage(itemId: 'item', chapterId: 'chapter', pageId: 'page-$page', contentVersion: 1), <int>[page + 1]);
+    }
   });
 
   test('manga manifest round trips page metadata and bounded session', () async {
@@ -779,15 +823,8 @@ void main() {
   test('manga image cache rejects empty bytes, invalid mime and oversized bytes', () async {
     final files = await FileObjectStore.open(root);
     addTearDown(files.close);
-    Future<StoredFileObject> write(List<int> bytes, String mime) => files.commitMangaImage(
-      itemId: 'item',
-      chapterId: 'chapter',
-      pageId: 'page',
-      contentVersion: 1,
-      bytes: bytes,
-      mimeType: mime,
-      maxBytes: 1024 * 1024 * 16,
-    );
+    Future<StoredFileObject> write(List<int> bytes, String mime) =>
+        files.commitMangaImage(itemId: 'item', chapterId: 'chapter', pageId: 'page', contentVersion: 1, bytes: bytes, mimeType: mime);
     await expectLater(write(const [], 'image/png'), throwsArgumentError);
     await expectLater(write(const [1], 'text/plain'), throwsArgumentError);
     await expectLater(write(List<int>.filled(8 * 1024 * 1024 + 1, 0), 'image/png'), throwsArgumentError);

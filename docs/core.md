@@ -11,8 +11,8 @@
 - 指令优先级：用户当前要求 → 本核心规范 → 最近的 `AGENTS.md` 增量 → 代码公开契约与测试。
 - 架构变化直接修改本文件的最小章节，并同步公开类型、测试和调用方。历史原因由 Git 保存，不再
   新建成组 ADR、实现快照或阶段规划文档。
-- `mg_read` 是唯一 Flutter 主应用；首版平台是 Android、Windows、macOS，Android 第一。
-  iOS、Linux、Web、账号、云同步、WebView 登录、音视频、DRM 和商店分发不在当前范围。
+- `mg_read` 是唯一 Flutter 主应用；首发 Android、Windows、macOS，Android 优先。iOS、Linux、Web、
+  账号、云同步、WebView 登录、DRM 和商店分发不在当前范围。
 - 每个任务只完成用户指定切片，不顺手进入其他里程碑或未来能力。
 
 ## 仓库与所有权
@@ -20,6 +20,8 @@
 ```text
 lib/                               Flutter 主应用
 packages/mg_read_reader_ui/        novel_reader_ui 阅读器 package
+packages/mg_read_audio_player/     独立音频播放器 package
+packages/mg_read_video_player/     独立视频播放器 package
 packages/mg_read_runtime/          Runtime Core、平台宿主和 Flutter Facade
 templates/mg_read_plugin_template/ 官方空白 Node 插件模板
 plugins/sources/                    真实数据源插件
@@ -33,23 +35,21 @@ plugins/sources/                    真实数据源插件
 
 ## 主应用持久化与 Content Library
 
-- `AppPersistence` 为权威；metadata records 版本化、异步、可迁移，schema、JSON 和
-  容器生命周期只留在 core persistence。
-- `ContentLibrary` 拥有书架、来源绑定、目录、正文、漫画文件、进度和书签；Runtime 不打开主应用
-  SQLite，也不获得数据库或内容文件路径。
+- `AppPersistence` 为权威；metadata 版本、schema、JSON 和容器生命周期仅留在 core persistence。
+- `ContentLibrary` 拥有书架、目录、正文、漫画文件、进度和书签；Runtime 不打开 SQLite 或获取内容路径。
+- 书架唯一上限为 `bookshelfMaxItemCount`（100）；新增须在 metadata 事务内校验，超限抛
+  `BookshelfCapacityExceededException`，更新不占名额。
 - metadata、不可变正文对象和受控文件之间没有跨库原子事务：先写入并校验对象，再以 metadata
   revision CAS 切换引用；已提交 metadata 是故障恢复权威，无引用对象由有界 maintenance/GC 清理。
-- metadata JSON 的规范化、限制、版本、错误和不可变语义始终由 core persistence 统一执行；业务 codec
-  只能显式启用结构、深度、集合和文本总量均有界的小写入 inline，超界与目录级批次继续使用 worker。
+- metadata JSON 规范化、限制、版本和不可变语义由 core persistence 统一执行；仅有界小写入可 inline，
+  超界与目录批次使用 worker。
 - 目录刷新写 pending snapshot 后一次切换 active；使用稳定 ID 和 keyset cursor，不用 offset、页码、
   数组位置或全量内存载入作为持久权威。
-- Runtime 结果只有经公开 Facade 和主应用强类型 adapter 校验后才能写入 Content Library。没有公开
-  强类型提交协议时保持未实现/`unsupported`，不得以 raw transport 或 `host.*` 回调补齐。
+- Runtime 结果经公开 Facade 和强类型 adapter 校验后才能入库；无公开协议时保持 `unsupported`，
+  不得用 raw transport 或 `host.*` 回调补齐。
 - 漫画正文图片缓存返回总量与按 `LibraryItemId` 的用量；无归属旧缓存只计总量。
-- 发现页可构造仅存活于路由的临时阅读会话；退出即丢弃，不写 App/Runtime 持久化，也不替代正式
-  入库、目录、正文、进度和书签流程。
-- 本地 `.mgread` v1 仅含所选数据源 artifact、书架和进度，不含源码、正文、缓存、设置、凭据或路径；
-  导入先预览并逐项选择，再复用 Runtime 校验和 Content Library 事务。
+- 发现页临时阅读会话退出即丢弃，不替代正式入库、目录、正文、进度和书签流程。
+- 本地 `.mgread` v1 仅含所选 artifact、书架和进度；导入先预览选择，再复用 Runtime 校验与 Content Library 事务。
 
 ## Runtime 与平台宿主
 
@@ -135,8 +135,10 @@ plugins/sources/                    真实数据源插件
 
 ## 阅读器
 
-- `novel_reader_ui` 只负责小说/漫画阅读体验、排版、工具栏、语义位置、生命周期和已实现原生能力；
-  不负责网络、鉴权、Cookie、数据库、下载、账号、支付、DRM、宿主路由或评论写入。
+- `novel_reader_ui` 只负责小说/漫画；音频与视频分别由 `mg_read_audio_player`、
+  `mg_read_video_player` 独立维护。三个 package 不互相深导入，也不建立统一媒体模型、Controller 或 UI。
+- 各 package 只拥有会话、交互、语义位置、生命周期和已实现平台能力；宿主提供纯业务数据、状态存储、
+  路由及授权资源，不把网络鉴权、Cookie、数据库、下载、账号、支付或 DRM 下沉到 Widget。
 - 主应用 adapter 提供纯业务数据和状态。文本锚点使用 `chapterId + paragraphId + characterOffset`；
   漫画使用 `chapterId + imageId + imageFraction`。页码/像素偏移不能成为持久权威。
 - `ReaderObserver.onExitRequested` 只通知宿主，由主应用决定路由/确认。可选 capability 未注册时隐藏
@@ -156,17 +158,19 @@ plugins/sources/                    真实数据源插件
 - 可见中文文案留在页面/局部组件，不新建集中多语言层。真实字段缺失时显示 `--` 或隐藏，不伪造
   API 数据或能力。
 
-## 诊断与隐私
+## 诊断
 
-- App 诊断只持久化为有界分段 UTF-8 TXT；Runtime 只保留 Debug 启用窗口内的有界瞬时简单日志，
-  不创建结构化事件库、capture、附件、历史查询或 `diagnostics/events`。
-- 默认日志不得读取、构造、复制或保存 HTTP body、HTML、大 JSON、正文、图片、用户输入、书名、
-  作者、完整 URL/query、IP/配对码、Authorization、Cookie、token、凭据、原始异常或绝对路径。
+- App 诊断默认关闭；总开关由普通设置存储持有。显式启用才创建 writer；关闭从下次启动生效，
+  使当前日志安全收尾。Runtime 只保留 Debug 启用窗口内的有界瞬时日志。
+- 每个已启用的 App 启动只写一个 UTF-8 TXT，内存只持有当前启动目录。历史文件完全冷存储：
+  启动不读取、修复、反序列化或重建历史；查看器只用文件名、mtime、length 列表，用户选择单个
+  文件后才读取。损坏只隔离所选文件；删除和保留按文件元数据执行，当前文件只能在安全关闭时结束。
+- 诊断字段和显式捕获字节原样保存，不识别、脱敏、投影或清洗。容量、时限和保留上限只是资源边界。
 - App 用户操作/长任务只有一个 owner span 和一个终态：`success/error/cancelled/timeout/overloaded`；
   高频 frame、滚动、chunk 和条目只做有界聚合。Runtime/插件只写阶段、稳定分支、计数、字节、
   耗时和稳定错误码。
 - 日志、viewer、observer、磁盘或缓冲失败不得改变业务结果。生产代码不得直接使用 `print`、
-  `debugPrint`、`developer.log`、`console.*` 或自建日志文件；测试覆盖 secret/content canary 和失败隔离。
+  `debugPrint`、`developer.log`、`console.*` 或自建日志文件；测试覆盖原样往返和失败隔离。
 
 ## 前台局域网同步
 

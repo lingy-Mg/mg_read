@@ -130,6 +130,7 @@ final class BookshelfRepository {
         );
         return _item(updated);
       }
+      await _ensureBookshelfCapacity(_library, requestedNewItems: 1);
       final id = _id();
       final document = {'title': title, 'author': ?author, 'kind': kind.code, 'plugin': _plugin(source), 'summary': shelfSummary};
       final record = await _library._persistence.metadataRecords.create(
@@ -221,14 +222,14 @@ final class LibrarySyncRepository {
 
   Future<LibrarySyncSnapshot> createSnapshot() => _library._trace(
     operation: 'syncSnapshotCreate',
-    itemCount: 100,
+    itemCount: bookshelfMaxItemCount,
     action: _createSnapshot,
     resultCount: (result) => result.items.length,
     resultState: (result) => result.items.isEmpty ? 'empty' : 'content',
   );
 
   Future<LibrarySyncSnapshot> _createSnapshot() async {
-    final page = await _library.bookshelf.list(const LibraryQuery(limit: 100));
+    final page = await _library.bookshelf.list(const LibraryQuery(limit: bookshelfMaxItemCount));
     final items = <LibrarySyncItem>[];
     var skipped = 0;
     for (final item in page.items) {
@@ -264,7 +265,7 @@ final class LibrarySyncRepository {
   );
 
   Future<LibrarySyncPreview> _preview(LibrarySyncSnapshot snapshot, Set<String> availablePluginIds) async {
-    final page = await _library.bookshelf.list(const LibraryQuery(limit: 100));
+    final page = await _library.bookshelf.list(const LibraryQuery(limit: bookshelfMaxItemCount));
     final localByIdentity = <LibrarySyncIdentity, LibraryItem>{};
     for (final item in page.items) {
       final source = item.source;
@@ -278,7 +279,7 @@ final class LibrarySyncRepository {
     final conflicts = <LibrarySyncConflict>[];
     final blocked = <LibrarySyncBlockedItem>[];
     final seen = <LibrarySyncIdentity>{};
-    if (snapshot.version != 1 || snapshot.items.length > 100) {
+    if (snapshot.version != 1 || snapshot.items.length > bookshelfMaxItemCount) {
       return LibrarySyncPreview(
         snapshot: snapshot,
         newItems: const <LibrarySyncItem>[],
@@ -352,14 +353,10 @@ final class LibrarySyncRepository {
     }
     final blockedIdentities = preview.blocked.map((item) => item.item.identity).toSet();
     final validItems = _validSnapshotItems(snapshot).where((item) => !blockedIdentities.contains(item.identity)).toList(growable: false);
-    final page = await _library.bookshelf.list(const LibraryQuery(limit: 100));
-    if (page.items.length + preview.newItems.length > 100) {
-      return const LibrarySyncApplyResult(code: LibrarySyncResultCode.invalidRequest);
-    }
     try {
       return await _library._persistence.metadataRecords.transaction(() async {
         final records = await _library._persistence.metadataRecords.list(
-          const RecordQuery(recordKind: _itemKind, scope: _scope, limit: 100),
+          const RecordQuery(recordKind: _itemKind, scope: _scope, limit: bookshelfMaxItemCount),
         );
         final localRecords = <LibrarySyncIdentity, RecordEnvelope>{};
         for (final record in records.records) {
@@ -375,6 +372,8 @@ final class LibrarySyncRepository {
             throw const _SyncStaleRevision();
           }
         }
+        final requestedNewItems = validItems.where((item) => !localRecords.containsKey(item.identity)).length;
+        await _ensureBookshelfCapacity(_library, requestedNewItems: requestedNewItems);
         final progressRecords = await _library._persistence.metadataRecords.listByIdentityKeys(
           recordKind: _readingProgressKind,
           scope: _scope,
@@ -490,9 +489,18 @@ typedef ContentLibrarySyncRepository = LibrarySyncRepository;
 bool _validSnapshot(LibrarySyncSnapshot snapshot) =>
     snapshot.version == 1 &&
     snapshot.skippedSourceLessItems >= 0 &&
-    snapshot.skippedSourceLessItems <= 100 &&
-    snapshot.items.length <= 100 &&
+    snapshot.skippedSourceLessItems <= bookshelfMaxItemCount &&
+    snapshot.items.length <= bookshelfMaxItemCount &&
     _validSnapshotItems(snapshot).length == snapshot.items.length;
+
+Future<void> _ensureBookshelfCapacity(ContentLibrary library, {required int requestedNewItems}) async {
+  if (requestedNewItems <= 0) return;
+  final currentCount = await library._persistence.metadataRecords.count(
+    const RecordQuery(recordKind: _itemKind, scope: _scope, limit: bookshelfMaxItemCount),
+  );
+  if (currentCount + requestedNewItems <= bookshelfMaxItemCount) return;
+  throw BookshelfCapacityExceededException(currentCount: currentCount, requestedNewItems: requestedNewItems);
+}
 
 List<LibrarySyncItem> _validSnapshotItems(LibrarySyncSnapshot snapshot) {
   final seen = <LibrarySyncIdentity>{};

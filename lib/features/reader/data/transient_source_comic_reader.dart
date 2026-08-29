@@ -11,6 +11,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/reader/data/bounded_reader_session_cache.dart';
 import 'package:mg_read/features/reader/data/content_library_source_comic_reader.dart';
 
 /// Serves one discovery/detail comic session without requiring a shelf item.
@@ -25,7 +26,8 @@ final class TransientSourceComicReaderDataSource implements ComicReaderDataSourc
   final SourceContentGateway gateway;
   final ComicImageFetcher fetcher;
   late final List<PluginChapterSummary> _chapters;
-  final Map<String, ComicChapterContent> _contents = <String, ComicChapterContent>{};
+  final BoundedReaderSessionCache<String, ComicChapterContent> _contents =
+      BoundedReaderSessionCache<String, ComicChapterContent>(maxEntries: 3);
 
   @override
   Future<ComicBookInfo> loadBookInfo(String bookId) async {

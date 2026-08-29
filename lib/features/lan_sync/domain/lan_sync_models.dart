@@ -14,6 +14,8 @@ library;
 
 import 'package:flutter/foundation.dart';
 
+import 'package:mg_read/core/content_library/content_library.dart';
+
 const int lanSyncProtocolVersion = 2;
 const int lanSyncMaxControlFrameBytes = 64 * 1024;
 const int lanSyncMaxManifestBytes = 1024 * 1024;
@@ -24,6 +26,7 @@ const int lanSyncMaxBinaryChunkBytes = 256 * 1024;
 const int lanSyncPluginRelayChunkBytes = 64 * 1024;
 const int lanSyncMaxPluginBytes = 32 * 1024 * 1024;
 const int lanSyncMaxPluginCount = 32;
+const int lanSyncMaxShelfItemCount = bookshelfMaxItemCount;
 const int lanSyncMaxBatchBytes = 512 * 1024 * 1024;
 const Duration lanSyncSessionLifetime = Duration(minutes: 10);
 const Duration lanSyncHandshakeTimeout = Duration(seconds: 30);
@@ -345,7 +348,7 @@ final class LanSyncManifest {
     }
     final rawPlugins = _requiredList(json['plugins']);
     final rawItems = _requiredList(json['shelfItems']);
-    if (rawPlugins.length > lanSyncMaxPluginCount || rawItems.length > 100) {
+    if (rawPlugins.length > lanSyncMaxPluginCount || rawItems.length > lanSyncMaxShelfItemCount) {
       throw const FormatException('manifest_limit_exceeded');
     }
     final plugins = <LanSyncPluginDescriptor>[for (final raw in rawPlugins) LanSyncPluginDescriptor.fromJson(_requiredMap(raw))];
@@ -359,7 +362,7 @@ final class LanSyncManifest {
     return LanSyncManifest(
       plugins: List.unmodifiable(plugins),
       shelfItems: List.unmodifiable(<LanSyncShelfItem>[for (final raw in rawItems) LanSyncShelfItem.fromJson(_requiredMap(raw))]),
-      skippedShelfItems: _requiredInt(json, 'skippedShelfItems', min: 0, max: 100),
+      skippedShelfItems: _requiredInt(json, 'skippedShelfItems', min: 0, max: lanSyncMaxShelfItemCount),
     );
   }
 }

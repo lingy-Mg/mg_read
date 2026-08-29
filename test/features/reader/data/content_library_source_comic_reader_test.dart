@@ -52,7 +52,7 @@ void main() {
     expect(persistedPage.contentVersion, 1700000000000);
   });
 
-  test('uses the byte cache and refreshes a missing session-only URL once in a new adapter', () async {
+  test('keeps image bytes memory-only and refreshes session-only URLs in a new adapter', () async {
     final fixture = await _LibraryFixture.open();
     addTearDown(fixture.close);
     final gateway = _Gateway(
@@ -75,13 +75,13 @@ void main() {
 
     final rebuilt = ContentLibraryComicReaderDataSource(library: fixture.library, gateway: gateway, item: fixture.manga, fetcher: fetch);
     expect(await rebuilt.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1'), <int>[1, 2, 3]);
-    expect(gateway.contentCalls, 1, reason: 'a persisted byte hit does not need a transient URL');
+    expect(gateway.contentCalls, 2, reason: 'a new adapter must refresh the redacted session-only URL');
     await rebuilt.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-2');
     expect(gateway.contentCalls, 2);
-    expect(fetched.map((uri) => uri.queryParameters['generation']), <String?>['1', '2']);
+    expect(fetched.map((uri) => uri.queryParameters['generation']), <String?>['1', '2', '2']);
   });
 
-  test('opens persisted catalog, manifest and bytes while the source is offline', () async {
+  test('opens persisted catalog and manifest offline but does not persist image bytes', () async {
     final fixture = await _LibraryFixture.open();
     addTearDown(fixture.close);
     final online = _Gateway(pages: <PluginMangaPage>[_page()]);
@@ -96,12 +96,48 @@ void main() {
     await first.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1');
 
     final offline = _Gateway(failChapters: true, failContent: true);
-    final rebuilt = ContentLibraryComicReaderDataSource(library: fixture.library, gateway: offline, item: fixture.manga);
+    final rebuilt = ContentLibraryComicReaderDataSource(
+      library: fixture.library,
+      gateway: offline,
+      item: fixture.manga,
+      fetcher: (_) async => throw StateError('network offline'),
+    );
     expect((await rebuilt.loadChapterCatalog(fixture.manga.id.value)).items.single.id, 'chapter-1');
     expect((await rebuilt.loadChapterContent(fixture.manga.id.value, 'chapter-1')).images.single.id, 'image-1');
-    expect(await rebuilt.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1'), <int>[7, 8, 9]);
+    await expectLater(
+      rebuilt.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1'),
+      throwsA(isA<ReaderFailure>()),
+    );
     expect(offline.chapterCalls, 0);
     expect(offline.contentCalls, 1, reason: 'the adapter probes the source, then falls back to the committed offline manifest');
+  });
+
+  test('keeps only three recently used runtime manifests', () async {
+    final fixture = await _LibraryFixture.open();
+    addTearDown(fixture.close);
+    final gateway = _Gateway(
+      chapters: const <_ChapterFixture>[
+        _ChapterFixture('chapter-1', '第一章', 0),
+        _ChapterFixture('chapter-2', '第二章', 1),
+        _ChapterFixture('chapter-3', '第三章', 2),
+        _ChapterFixture('chapter-4', '第四章', 3),
+      ],
+      pages: <PluginMangaPage>[_page()],
+    );
+    final adapter = ContentLibraryComicReaderDataSource(
+      library: fixture.library,
+      gateway: gateway,
+      item: fixture.manga,
+    );
+
+    for (final chapterId in <String>['chapter-1', 'chapter-2', 'chapter-3']) {
+      await adapter.loadChapterContent(fixture.manga.id.value, chapterId);
+    }
+    await adapter.loadChapterContent(fixture.manga.id.value, 'chapter-1');
+    await adapter.loadChapterContent(fixture.manga.id.value, 'chapter-4');
+    await adapter.loadChapterContent(fixture.manga.id.value, 'chapter-2');
+
+    expect(gateway.contentCalls, 5, reason: 'touching chapter-1 makes chapter-2 the least recently used manifest');
   });
 
   test('keeps a validated runtime manifest readable when its cache write fails', () async {

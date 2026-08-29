@@ -53,7 +53,7 @@ void main() {
     );
     addTearDown(second.close);
 
-    expect((await second.listSessions()).items, hasLength(2));
+    expect(await second.listLogFiles(), hasLength(2));
 
     final staleRewrite = File(
       '${root.path}${Platform.pathSeparator}diagnostics'
@@ -65,7 +65,7 @@ void main() {
 
     await second.enforceRetention(configuration.retentionPolicy).timeout(const Duration(seconds: 5));
 
-    expect((await second.listSessions()).items, hasLength(1));
+    expect(await second.listLogFiles(), hasLength(1));
     expect(await staleRewrite.exists(), isFalse);
   });
 }

@@ -10,7 +10,7 @@ import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import '../core/diagnostics/diagnostics_testkit.dart';
 
 void main() {
-  test('framework boundary stores only stable error metadata', () async {
+  test('framework boundary stores the supplied stack unchanged', () async {
     const secretCanary = 'Bearer SECRET-CANARY?token=private';
     final kit = DiagnosticsTestkit();
     final reporter = AppFatalErrorReporter(kit.manager);
@@ -39,12 +39,13 @@ void main() {
     expect(event.eventName, 'app.error.unhandled');
     expect(event.severity, DiagnosticSeverity.error);
     expect(event.attributes.values['boundary'], DiagnosticStringValue('flutter-framework'));
-    expect(encoded, isNot(contains(secretCanary)));
-    expect(encoded, isNot(contains('C:\\private')));
+    expect(event.attributes.values['errorText'], DiagnosticStringValue('Bad state: $secretCanary'));
+    expect(encoded, contains(secretCanary));
+    expect(encoded, contains('C:\\\\private'));
     expect(reports, isEmpty);
   });
 
-  test('platform boundary retains only the stable platform code', () async {
+  test('platform boundary retains the original platform error text', () async {
     final kit = DiagnosticsTestkit();
     final reporter = AppFatalErrorReporter(kit.manager);
     final boundary = AppDiagnosticsErrorBoundary.install(kit.manager, fatalReporter: reporter);
@@ -61,6 +62,12 @@ void main() {
 
     expect(handled, isTrue);
     expect(kit.sink.events.single.attributes.values['errorCode'], DiagnosticStringValue('platform_camera_session_failed'));
-    expect(reporter.takeNextReport()?.errorCode, 'platform_camera_session_failed');
+    expect(
+      kit.sink.events.single.attributes.values['errorText'],
+      isA<DiagnosticStringValue>().having((value) => value.value, 'value', contains('C:\\private\\secret-token')),
+    );
+    final report = reporter.takeNextReport();
+    expect(report?.errorCode, 'platform_camera_session_failed');
+    expect(report?.errorText, contains('C:\\private\\secret-token'));
   });
 }

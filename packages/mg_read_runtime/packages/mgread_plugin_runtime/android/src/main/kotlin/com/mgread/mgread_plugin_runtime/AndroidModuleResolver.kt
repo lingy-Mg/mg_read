@@ -3,7 +3,7 @@
  *
  * 职责：
  * - 在提取后的 Runtime 根目录中解析 Runtime 与已安装插件的 ESM 文件。
- * - 将 Cheerio 唯一的 CommonJS 叶子适配为 Javet ESM 加载器可执行的模块。
+ * - 通过共享源适配器为 Javet 模块提供标准 `import.meta.url` 语义。
  *
  * 注意：
  * - 解析范围限制在 Runtime 自有根目录，绝不向 Flutter 暴露路径。
@@ -45,7 +45,7 @@ internal class AndroidModuleResolver(
         val candidate = resolveFile(requestedPath)
             ?: resolvePackage(moduleName, referrerFile)
             ?: return null
-        return runtime.getExecutor(moduleSource(candidate))
+        return runtime.getExecutor(androidModuleSource(candidate))
             .setResourceName(candidate.path)
             .setModule(true)
             .compileV8Module()
@@ -118,19 +118,6 @@ internal class AndroidModuleResolver(
             if (index.isFile) return index.canonicalFile
         }
         return null
-    }
-
-    /** boolbase is the lone CommonJS leaf in Cheerio's ESM dependency graph. */
-    private fun moduleSource(candidate: File): String {
-        if (!candidate.path.replace(File.separatorChar, '/').endsWith("/node_modules/boolbase/index.js")) {
-            return candidate.readText()
-        }
-        return """
-            const module = { exports: {} };
-            const exports = module.exports;
-            ${candidate.readText()}
-            export default module.exports;
-        """.trimIndent()
     }
 
     private companion object {

@@ -1,12 +1,12 @@
 /// 应用诊断 TXT 持久化库。
 ///
 /// 职责：
-/// - 写入、恢复和查询有界分段诊断记录。
+/// - 写入和查询当前启动的单文件诊断记录。
 /// - 管理详情附件、保留策略和旧日志清理。
 ///
 /// 注意：
 /// - 诊断失败不得影响业务结果，也不得形成 SQLite/WAL 索引。
-/// - 默认只保存元数据；正文、凭据和原始异常不得进入持久化内容。
+/// - 已接收事件按原值编码；本层不执行内容识别或改写。
 ///
 /// TODO:
 /// - 无。
@@ -25,30 +25,30 @@ import 'diagnostic_text_detail_store.dart';
 part 'diagnostics_persistence_models.dart';
 part 'diagnostics_persistence_text.dart';
 part 'diagnostics_persistence_background.dart';
+part 'diagnostics_cold_archive.dart';
 
-/// App-owned segmented TXT diagnostics store.
+/// App-owned, process-scoped TXT diagnostics store.
 ///
-/// Event records are newline-delimited JSON in bounded `.txt` segments. The
-/// in-memory catalog is rebuilt in an isolate at startup and is never a second
-/// persistent index.
+/// The active process owns one newline-delimited JSON file and one in-memory
+/// catalog. Historical files stay cold: [open] never reads, decodes, repairs,
+/// or indexes their contents. They are parsed only through an explicit archive
+/// selection.
 final class DiagnosticsPersistence {
   DiagnosticsPersistence._(this.diagnosticsRoot, this.eventsRoot, this.detailStore, this._clock);
 
   static const int textFormatVersion = 1;
   static const int maxWriteBatchSize = 128;
   static const int maxQueryPageSize = 200;
-  static const int maxSegmentBytes = 4 * 1024 * 1024;
 
   final Directory diagnosticsRoot;
   final Directory eventsRoot;
   final DiagnosticTextDetailStore detailStore;
   final DateTime Function() _clock;
-  final DiagnosticEventCodec _eventCodec = const DiagnosticEventCodec();
   final Map<String, _RunRecord> _runs = <String, _RunRecord>{};
   final Map<String, _SessionRecord> _sessions = <String, _SessionRecord>{};
   final Map<String, DiagnosticEvent> _events = <String, DiagnosticEvent>{};
   final Map<String, _AttachmentRecord> _attachments = <String, _AttachmentRecord>{};
-  final Map<String, int> _segmentSequenceByRun = <String, int>{};
+  final Set<String> _pendingDetailDeletes = <String>{};
   Future<void> _writeTail = Future<void>.value();
   File? _activeSegment;
   String? _activeSegmentRunId;
@@ -71,22 +71,7 @@ final class DiagnosticsPersistence {
     await _removeLegacyDatabaseArtifacts(diagnosticsRoot);
     final detailStore = await DiagnosticTextDetailStore.open(diagnosticsRoot, maxMemoryBytes: detailMemoryBytes);
     final store = DiagnosticsPersistence._(diagnosticsRoot, eventsRoot, detailStore, clock);
-    try {
-      final loaded = await Isolate.run(_DiagnosticTextLoadTask(eventsRoot.path).call, debugName: 'mg-read-diagnostics-text-rebuild');
-      store._lastEncoderWorkerIsolateId = loaded.workerIsolateId;
-      for (final entry in loaded.segmentBytes.entries) {
-        store._updateSegmentSequence(entry.key);
-      }
-      for (final record in loaded.records) {
-        store._applyRecord(record, fromDisk: true);
-      }
-      await store.recoverInterruptedState();
-      await store.reconcileDetails();
-      return store;
-    } catch (_) {
-      await detailStore.close();
-      rethrow;
-    }
+    return store;
   }
 
   Future<void> beginRun({
@@ -116,6 +101,11 @@ final class DiagnosticsPersistence {
       if (_runs.containsKey(sourceRunId)) {
         throw StateError('Diagnostic run already exists.');
       }
+      final file = File('${eventsRoot.path}${Platform.pathSeparator}${_runFileName(run)}');
+      await file.create(recursive: true);
+      _activeSegment = file;
+      _activeSegmentRunId = sourceRunId;
+      _activeSegmentBytes = 0;
       await _appendRecords(sourceRunId, <Map<String, Object?>>[_runStartRecord(run), _sessionStartRecord(session)]);
       _runs[sourceRunId] = run;
       _sessions[sourceRunId] = session;
@@ -370,6 +360,179 @@ final class DiagnosticsPersistence {
     yield* detailStore.openDetail(detailKey, range: range);
   }
 
+  /// Lists run files from directory metadata only. No file is opened here.
+  Future<List<DiagnosticLogFile>> listLogFiles() async {
+    _ensureOpen();
+    await _writeTail;
+    final currentPath = _activeSegment?.absolute.path;
+    final files = <DiagnosticLogFile>[];
+    await for (final entity in eventsRoot.list(followLinks: false)) {
+      if (entity is! File || !entity.path.endsWith('.txt')) continue;
+      final name = entity.uri.pathSegments.last;
+      if (!_diagnosticRunFilePattern.hasMatch(name)) continue;
+      final stat = await entity.stat();
+      final parsedStart = _startedMicrosFromRunFileName(name);
+      files.add(
+        DiagnosticLogFile(
+          fileId: _encodeLogFileId(name),
+          startedAtUtcMicros: parsedStart ?? stat.modified.toUtc().microsecondsSinceEpoch,
+          modifiedAtUtcMicros: stat.modified.toUtc().microsecondsSinceEpoch,
+          storedBytes: stat.size,
+          isCurrent: entity.absolute.path == currentPath,
+        ),
+      );
+    }
+    files.sort((left, right) => right.startedAtUtcMicros.compareTo(left.startedAtUtcMicros));
+    return List<DiagnosticLogFile>.unmodifiable(files);
+  }
+
+  Future<DiagnosticPage<DiagnosticEvent>> listLogEvents(String fileId, {DiagnosticCursor? cursor, int limit = 100}) async {
+    _ensureOpen();
+    _validateLimit(limit);
+    await _writeTail;
+    final file = _resolveLogFile(fileId);
+    final List<DiagnosticEvent> events;
+    if (_activeSegment?.absolute.path == file.absolute.path) {
+      events = _events.values.toList(growable: false)..sort(_compareEventsDescending);
+    } else {
+      events = (await _loadColdFile(file)).events;
+    }
+    final anchor = cursor == null ? null : _decodeCursor(cursor, 'logEvents');
+    final after = events
+        .where(
+          (event) =>
+              anchor == null ||
+              event.occurredAtUtcMicros < anchor.$1 ||
+              (event.occurredAtUtcMicros == anchor.$1 && event.eventId.compareTo(anchor.$2) < 0),
+        )
+        .toList(growable: false);
+    final hasMore = after.length > limit;
+    final page = hasMore ? after.take(limit).toList(growable: false) : after;
+    final tail = page.isEmpty ? null : page.last;
+    return DiagnosticPage<DiagnosticEvent>(
+      items: page,
+      nextCursor: hasMore && tail != null ? _encodeCursor('logEvents', tail.occurredAtUtcMicros, tail.eventId) : null,
+    );
+  }
+
+  Future<DiagnosticEvent?> getLogEvent(String fileId, String eventId) async {
+    validateDiagnosticOpaqueId(eventId, 'eventId');
+    await _writeTail;
+    final file = _resolveLogFile(fileId);
+    if (_activeSegment?.absolute.path == file.absolute.path) return _events[eventId];
+    final loaded = await _loadColdFile(file);
+    for (final event in loaded.events) {
+      if (event.eventId == eventId) return event;
+    }
+    return null;
+  }
+
+  Future<List<DiagnosticAttachmentDescriptor>> listLogAttachments(String fileId, String eventId) async {
+    validateDiagnosticOpaqueId(eventId, 'eventId');
+    await _writeTail;
+    final file = _resolveLogFile(fileId);
+    if (_activeSegment?.absolute.path == file.absolute.path) {
+      return List<DiagnosticAttachmentDescriptor>.unmodifiable(
+        _attachments.values.where((item) => item.descriptor.eventId == eventId).map((item) => item.descriptor),
+      );
+    }
+    final loaded = await _loadColdFile(file);
+    return List<DiagnosticAttachmentDescriptor>.unmodifiable(loaded.attachments[eventId] ?? const <DiagnosticAttachmentDescriptor>[]);
+  }
+
+  Stream<List<int>> openLogAttachment(String fileId, String attachmentId, {DiagnosticByteRange? range}) async* {
+    validateDiagnosticOpaqueId(attachmentId, 'attachmentId');
+    await _writeTail;
+    final file = _resolveLogFile(fileId);
+    String? detailKey;
+    if (_activeSegment?.absolute.path == file.absolute.path) {
+      detailKey = _attachments[attachmentId]?.detailKey;
+    } else {
+      detailKey = (await _loadColdFile(file)).detailKeys[attachmentId];
+    }
+    if (detailKey == null) throw StateError('Diagnostic attachment payload was not captured.');
+    yield* detailStore.openDetail(detailKey, range: range);
+  }
+
+  Future<void> deleteLogFile(String fileId) async {
+    await _writeTail;
+    final file = _resolveLogFile(fileId);
+    if (_activeSegment?.absolute.path == file.absolute.path) {
+      throw StateError('The current diagnostic log cannot be deleted.');
+    }
+    _DiagnosticColdFileLoadResult? loaded;
+    try {
+      loaded = await _loadColdFile(file);
+    } on FormatException {
+      // A corrupt log remains independently deletable; its unresolvable detail
+      // files are reclaimed later by metadata-only retention.
+    }
+    if (await file.exists()) await file.delete();
+    if (loaded != null) {
+      for (final key in loaded.detailKeys.values.toSet()) {
+        await detailStore.delete(key);
+      }
+    }
+  }
+
+  Future<DiagnosticExportResult> exportLogFile(String fileId) async {
+    await _writeTail;
+    final file = _resolveLogFile(fileId);
+    _DiagnosticColdFileLoadResult? loaded = _activeSegment?.absolute.path == file.absolute.path
+        ? _DiagnosticColdFileLoadResult(
+            events: _events.values.toList(growable: false),
+            attachments: <String, List<DiagnosticAttachmentDescriptor>>{
+              for (final event in _events.values)
+                event.eventId: _attachments.values
+                    .where((item) => item.descriptor.eventId == event.eventId)
+                    .map((item) => item.descriptor)
+                    .toList(growable: false),
+            },
+            detailKeys: const <String, String>{},
+            workerIsolateId: Isolate.current.hashCode,
+            isCorrupted: false,
+          )
+        : null;
+    if (loaded == null) {
+      try {
+        loaded = await _loadColdFile(file);
+      } on FormatException {
+        // Export remains available for a corrupt log. Counts are unknown, but
+        // the original bytes are copied unchanged for inspection.
+      }
+    }
+    final exportId = 'export_${_clock().toUtc().microsecondsSinceEpoch}';
+    final exports = Directory('${diagnosticsRoot.path}${Platform.pathSeparator}exports');
+    await exports.create(recursive: true);
+    final name = '$exportId.txt';
+    final target = File('${exports.path}${Platform.pathSeparator}$name');
+    await file.copy(target.path);
+    final bytes = await target.length();
+    return DiagnosticExportResult(
+      exportId: exportId,
+      relativeObjectKey: 'exports/$name',
+      byteLength: bytes,
+      sessionCount: 1,
+      eventCount: loaded?.events.length ?? 0,
+      attachmentCount: loaded?.attachments.values.fold<int>(0, (sum, items) => sum + items.length) ?? 0,
+    );
+  }
+
+  Future<_DiagnosticColdFileLoadResult> _loadColdFile(File file) async {
+    final loaded = await Isolate.run(_DiagnosticColdFileLoadTask(file.path).call, debugName: 'mg-read-diagnostics-cold-file-read');
+    _lastEncoderWorkerIsolateId = loaded.workerIsolateId;
+    if (loaded.isCorrupted) throw const FormatException('diagnostic_log_corrupted');
+    return loaded;
+  }
+
+  File _resolveLogFile(String fileId) {
+    final name = _decodeLogFileId(fileId);
+    if (!_diagnosticRunFilePattern.hasMatch(name)) {
+      throw const FormatException('Invalid diagnostic log file ID.');
+    }
+    return File('${eventsRoot.path}${Platform.pathSeparator}$name');
+  }
+
   Future<void> recoverInterruptedState() async {
     _ensureOpen();
     final now = _clock().toUtc().microsecondsSinceEpoch;
@@ -416,7 +579,7 @@ final class DiagnosticsPersistence {
   Future<DiagnosticMaintenanceResult> enforceRetention(DiagnosticRetentionPolicy policy) async {
     _ensureOpen();
     policy.validate();
-    return _exclusive(() async {
+    final activeResult = await _exclusive(() async {
       final now = _clock().toUtc().microsecondsSinceEpoch;
       final targets = <String>{};
       for (final session in _sessions.values) {
@@ -440,7 +603,6 @@ final class DiagnosticsPersistence {
         reclaimedBytes += result.reclaimedBytes;
       }
       if (targets.isNotEmpty) await _compactCatalog();
-      await reconcileDetails();
       return DiagnosticMaintenanceResult(
         deletedSessions: deletedSessions,
         deletedEvents: deletedEvents,
@@ -448,6 +610,85 @@ final class DiagnosticsPersistence {
         reclaimedBytes: reclaimedBytes,
       );
     });
+    final coldResult = await _enforceColdRetention(policy);
+    return DiagnosticMaintenanceResult(
+      deletedSessions: activeResult.deletedSessions + coldResult.deletedSessions,
+      deletedEvents: activeResult.deletedEvents,
+      deletedObjects: activeResult.deletedObjects + coldResult.deletedObjects,
+      reclaimedBytes: activeResult.reclaimedBytes + coldResult.reclaimedBytes,
+    );
+  }
+
+  Future<DiagnosticMaintenanceResult> _enforceColdRetention(DiagnosticRetentionPolicy policy) async {
+    await detailStore.cleanStaging();
+    final nowMicros = _clock().toUtc().microsecondsSinceEpoch;
+    final currentPath = _activeSegment?.absolute.path;
+    final files = <(File, FileStat)>[];
+    await for (final entity in eventsRoot.list(followLinks: false)) {
+      if (entity is! File || !_diagnosticRunFilePattern.hasMatch(entity.uri.pathSegments.last)) continue;
+      if (entity.absolute.path == currentPath) continue;
+      files.add((entity, await entity.stat()));
+    }
+    files.sort((left, right) => left.$2.modified.compareTo(right.$2.modified));
+    final targets = <File>{};
+    var eventBytes = files.fold<int>(0, (sum, item) => sum + item.$2.size) + _activeSegmentBytes;
+    for (final item in files) {
+      if (item.$2.modified.toUtc().microsecondsSinceEpoch <= nowMicros - policy.regularEventAge.inMicroseconds) {
+        targets.add(item.$1);
+        eventBytes -= item.$2.size;
+      }
+    }
+    for (final item in files) {
+      if (eventBytes <= policy.regularEventBytes) break;
+      if (targets.add(item.$1)) eventBytes -= item.$2.size;
+    }
+    var reclaimed = 0;
+    for (final file in targets) {
+      final length = await file.length();
+      await file.delete();
+      reclaimed += length;
+    }
+
+    var pendingDeleted = 0;
+    for (final key in _pendingDetailDeletes.toList(growable: false)) {
+      if (await detailStore.delete(key)) {
+        _pendingDetailDeletes.remove(key);
+        pendingDeleted += 1;
+      }
+    }
+    final activeDetailKeys = _attachments.values.map((item) => item.detailKey).whereType<String>().toSet();
+    final detailFiles = <(File, FileStat)>[];
+    await for (final entity in detailStore.detailsRoot.list(followLinks: false)) {
+      if (entity is! File || !entity.path.endsWith('.txt')) continue;
+      final key = entity.uri.pathSegments.last.replaceFirst(RegExp(r'\.txt$'), '');
+      if (activeDetailKeys.contains(key)) continue;
+      detailFiles.add((entity, await entity.stat()));
+    }
+    detailFiles.sort((left, right) => left.$2.modified.compareTo(right.$2.modified));
+    final detailTargets = <File>{};
+    var detailBytes = detailFiles.fold<int>(0, (sum, item) => sum + item.$2.size);
+    for (final item in detailFiles) {
+      if (item.$2.modified.toUtc().microsecondsSinceEpoch <= nowMicros - policy.captureAge.inMicroseconds) {
+        detailTargets.add(item.$1);
+        detailBytes -= item.$2.size;
+      }
+    }
+    final allowedDetailBytes = policy.globalHardBytes - eventBytes;
+    for (final item in detailFiles) {
+      if (detailBytes <= allowedDetailBytes) break;
+      if (detailTargets.add(item.$1)) detailBytes -= item.$2.size;
+    }
+    for (final file in detailTargets) {
+      final length = await file.length();
+      await file.delete();
+      reclaimed += length;
+    }
+    return DiagnosticMaintenanceResult(
+      deletedSessions: targets.length,
+      deletedEvents: 0,
+      deletedObjects: detailTargets.length + pendingDeleted,
+      reclaimedBytes: reclaimed,
+    );
   }
 
   Future<DiagnosticMaintenanceResult> deleteSession(String sessionId) async {
@@ -499,77 +740,6 @@ final class DiagnosticsPersistence {
     await detailStore.close();
   }
 
-  void _applyRecord(Map<String, Object?> record, {required bool fromDisk}) {
-    final version = record['textFormatVersion'];
-    if (version is! int || version > textFormatVersion || version <= 0) return;
-    switch (record['recordType']) {
-      case 'run.start':
-        final run = _runFromRecord(record);
-        _runs[run.sourceRunId] = run;
-      case 'run.end':
-        final run = _runs[record['sourceRunId']];
-        if (run != null) {
-          run
-            ..state = record['state'] as String? ?? 'ended'
-            ..endedAtUtcMicros = record['endedAtUtcMicros'] as int?;
-        }
-      case 'session.start':
-        final session = _sessionFromRecord(record);
-        _sessions[session.sessionId] = session;
-      case 'session.end':
-        final session = _sessions[record['sessionId']];
-        if (session != null) {
-          session
-            ..state = _enumByName(DiagnosticSessionState.values, record['state'] as String? ?? 'ended', 'session state')
-            ..endedAtUtcMicros = record['endedAtUtcMicros'] as int?;
-        }
-      case 'event':
-        final envelope = record['event'];
-        if (envelope is! Map) return;
-        final event = _eventCodec.decode(envelope.map((key, value) => MapEntry(key.toString(), value)));
-        _events[event.eventId] = event;
-        final lineBytes = utf8.encode('${jsonEncode(record)}\n').length;
-        final run = _runs[event.sourceRunId];
-        if (run != null) {
-          run
-            ..eventCount += 1
-            ..storedBytes += lineBytes;
-        }
-        final session = _sessions[event.captureSessionId ?? event.sourceRunId];
-        if (session != null) {
-          session
-            ..eventCount += 1
-            ..storedBytes += lineBytes;
-        }
-      case 'attachment':
-        final value = record['descriptor'];
-        if (value is! Map) return;
-        var descriptor = _descriptorFromMap(value.map((key, item) => MapEntry(key.toString(), item)));
-        final persisted = record['persisted'] == true;
-        if (fromDisk && !persisted && descriptor.storedByteLength > 0) {
-          descriptor = _descriptorWithFailure(descriptor, 'memoryDetailExpired');
-        }
-        final attachment = _AttachmentRecord(descriptor: descriptor, detailKey: record['detailKey'] as String?, persisted: persisted);
-        _attachments[descriptor.attachmentId] = attachment;
-        final event = _events[descriptor.eventId];
-        if (event != null) {
-          _events[event.eventId] = _eventWithAttachment(event, descriptor);
-          final run = _runs[event.sourceRunId];
-          if (run != null) {
-            run
-              ..attachmentCount += 1
-              ..storedBytes += descriptor.storedByteLength;
-          }
-          final session = _sessions[event.captureSessionId ?? event.sourceRunId];
-          if (session != null) {
-            session
-              ..attachmentCount += 1
-              ..storedBytes += descriptor.storedByteLength;
-          }
-        }
-    }
-  }
-
   Future<DiagnosticMaintenanceResult> _deleteSessionInternal(String sessionId) async {
     final session = _sessions[sessionId];
     if (session == null) {
@@ -597,6 +767,8 @@ final class DiagnosticsPersistence {
       if (key != null && await detailStore.delete(key)) {
         deletedDetails += 1;
         reclaimedBytes += attachment.descriptor.storedByteLength;
+      } else if (key != null) {
+        _pendingDetailDeletes.add(key);
       }
     }
     for (final eventId in eventIds) {

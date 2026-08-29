@@ -22,9 +22,6 @@ final diagnosticsManagerProvider = Provider<DiagnosticsManager>((Ref ref) {
 /// Read/query capabilities are absent in isolated widget and unit tests unless
 /// explicitly overridden by the composition root.
 final diagnosticsQueryProvider = Provider<DiagnosticsQuery?>((Ref ref) => null);
-final diagnosticsCaptureProvider = Provider<DiagnosticsCapture?>(
-  (Ref ref) => null,
-);
-final diagnosticsMaintenanceProvider = Provider<DiagnosticsMaintenance?>(
-  (Ref ref) => null,
-);
+final diagnosticsCaptureProvider = Provider<DiagnosticsCapture?>((Ref ref) => null);
+final diagnosticsMaintenanceProvider = Provider<DiagnosticsMaintenance?>((Ref ref) => null);
+final diagnosticsLogArchiveProvider = Provider<DiagnosticsLogArchive?>((Ref ref) => null);

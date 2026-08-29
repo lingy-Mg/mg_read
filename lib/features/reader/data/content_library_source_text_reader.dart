@@ -13,6 +13,7 @@ import 'package:mg_read/features/reader/application/chapter_cache_task_controlle
 import 'package:mg_read/features/reader/application/reader_launch_failure.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/reader/application/shelf_reader_launch_coordinator.dart';
+import 'package:mg_read/features/reader/data/bounded_reader_session_cache.dart';
 import 'package:mg_read/features/reader/data/content_library_text_reader_state_store.dart';
 
 /// Opens a shelf novel with app-owned reading state and a typed source gateway.
@@ -329,6 +330,8 @@ final class _TimedReaderObserver extends ReaderObserver {
 
 /// Host-side cache and mutable state exposed through the reader's public API.
 final class _SessionNovelChapterAccess implements ReaderChapterStateCapability, ReaderChapterCacheCapability {
+  static const int _maximumMemoryWeight = 128 * 1024;
+
   _SessionNovelChapterAccess({
     required this.session,
     required this.item,
@@ -346,7 +349,14 @@ final class _SessionNovelChapterAccess implements ReaderChapterStateCapability, 
   final LibraryItemSource source;
   final SourceContentGateway gateway;
   final ChapterCacheTaskController? cacheTasks;
-  final Map<String, String> _memoryByRemoteId = <String, String>{};
+  final BoundedReaderSessionCache<String, String> _memoryByRemoteId =
+      BoundedReaderSessionCache<String, String>(
+        maxEntries: 2,
+        maxWeight: _maximumMemoryWeight,
+        // Dart String.length is O(1). This UTF-16 payload estimate avoids
+        // re-encoding a whole chapter on the reader's first-content path.
+        weightOf: (String _, String text) => text.length * 2,
+      );
   final Set<String> _readChapterIds = <String>{};
   final Set<String> _cachedChapterIds = <String>{};
   final Set<String> _failedChapterIds = <String>{};

@@ -202,7 +202,9 @@ final class AppStartupController extends ValueNotifier<AppStartupState> {
   /// Runs optional diagnostics retention only after Runtime warmup has
   /// finished. Diagnostics maintenance is intentionally fail-open.
   Future<String> runDeferredDiagnosticsMaintenance() async {
-    final service = await ensureDiagnosticsReady();
+    final resourceService = _resources?.diagnosticsService;
+    final pendingService = _diagnosticsServiceFuture;
+    final service = resourceService ?? (pendingService == null ? null : await pendingService.catchError((_) => null));
     if (service == null) return 'skipped';
     try {
       await service.enforceRetention(service.configuration.retentionPolicy).timeout(const Duration(seconds: 5));
@@ -341,15 +343,19 @@ final class AppStartupController extends ValueNotifier<AppStartupState> {
 
 /// Stable diagnostics capability ports. They are attached once persistent
 /// diagnostics opens, so routes do not need a ProviderScope replacement.
-final class DeferredDiagnosticsPorts implements DiagnosticsQuery, DiagnosticsCapture, DiagnosticsMaintenance {
+final class DeferredDiagnosticsPorts implements DiagnosticsQuery, DiagnosticsCapture, DiagnosticsMaintenance, DiagnosticsLogArchive {
+  DeferredDiagnosticsPorts({DiagnosticsLogArchive? coldArchive}) : _archive = coldArchive;
+
   DiagnosticsQuery? _query;
   DiagnosticsCapture? _capture;
   DiagnosticsMaintenance? _maintenance;
+  DiagnosticsLogArchive? _archive;
 
   void attach(AppDiagnosticsService service) {
     _query = service;
     _capture = service;
     _maintenance = service;
+    _archive = service;
   }
 
   Future<T> _unavailable<T>() => Future<T>.error(StateError('diagnostics_unavailable'));
@@ -388,7 +394,6 @@ final class DeferredDiagnosticsPorts implements DiagnosticsQuery, DiagnosticsCap
     required String mediaType,
     required String formatId,
     required int formatVersion,
-    required DiagnosticPrivacyClass privacyClass,
     required Stream<List<int>> bytes,
     String? charset,
     String? schemaId,
@@ -400,7 +405,6 @@ final class DeferredDiagnosticsPorts implements DiagnosticsQuery, DiagnosticsCap
         mediaType: mediaType,
         formatId: formatId,
         formatVersion: formatVersion,
-        privacyClass: privacyClass,
         bytes: bytes,
         charset: charset,
         schemaId: schemaId,
@@ -415,6 +419,23 @@ final class DeferredDiagnosticsPorts implements DiagnosticsQuery, DiagnosticsCap
   @override
   Future<DiagnosticExportResult> exportBundle({required DiagnosticExportSelection selection, required DiagnosticExportPolicy policy}) =>
       _maintenance?.exportBundle(selection: selection, policy: policy) ?? _unavailable();
+  @override
+  Future<List<DiagnosticLogFile>> listLogFiles() => _archive?.listLogFiles() ?? _unavailable();
+  @override
+  Future<DiagnosticPage<DiagnosticEvent>> listLogEvents(String fileId, {DiagnosticCursor? cursor, int limit = 100}) =>
+      _archive?.listLogEvents(fileId, cursor: cursor, limit: limit) ?? _unavailable();
+  @override
+  Future<DiagnosticEvent?> getLogEvent(String fileId, String eventId) => _archive?.getLogEvent(fileId, eventId) ?? _unavailable();
+  @override
+  Future<List<DiagnosticAttachmentDescriptor>> listLogAttachments(String fileId, String eventId) =>
+      _archive?.listLogAttachments(fileId, eventId) ?? _unavailable();
+  @override
+  Stream<List<int>> openLogAttachment(String fileId, String attachmentId, {DiagnosticByteRange? range}) =>
+      _archive?.openLogAttachment(fileId, attachmentId, range: range) ?? const Stream<List<int>>.empty();
+  @override
+  Future<void> deleteLogFile(String fileId) => _archive?.deleteLogFile(fileId) ?? _unavailable();
+  @override
+  Future<DiagnosticExportResult> exportLogFile(String fileId) => _archive?.exportLogFile(fileId) ?? _unavailable();
 }
 
 /// Content-library adapter that waits for startup resources instead of

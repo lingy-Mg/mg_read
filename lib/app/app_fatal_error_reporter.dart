@@ -8,13 +8,13 @@ import 'package:mg_read/core/errors/app_error.dart';
 
 /// Immutable, user-copyable projection of a fatal application diagnostic.
 ///
-/// This deliberately has no exception, stack, URL, content, path, or secret
-/// fields. The fingerprint is computed before the report is enqueued.
+/// Values supplied by the reporting boundary are kept unchanged.
 final class AppFatalDiagnosticReport {
   const AppFatalDiagnosticReport({
     required this.errorCode,
+    required this.errorText,
     required this.traceId,
-    required this.stackFingerprint,
+    required this.stackTrace,
     required this.phase,
     required this.runtimeState,
     required this.diagnosticsMarker,
@@ -26,17 +26,19 @@ final class AppFatalDiagnosticReport {
   /// A controlled Runtime health projection, never a launcher detail.
   final String runtimeState;
 
-  /// Signals that Runtime retained bounded safe diagnostics for this failure.
+  /// Signals that Runtime retained bounded diagnostics for this failure.
   final String diagnosticsMarker;
   final String errorCode;
+  final String errorText;
   final String traceId;
-  final String stackFingerprint;
+  final String stackTrace;
 
   String get copyPayload =>
       'MgRead 诊断报告\n'
       '错误代码: $errorCode\n'
+      '错误内容: $errorText\n'
       '追踪 ID: $traceId\n'
-      '堆栈指纹: $stackFingerprint\n'
+      '堆栈: $stackTrace\n'
       '阶段: $phase\n'
       'Runtime 状态: $runtimeState\n'
       '诊断标记: $diagnosticsMarker';
@@ -44,35 +46,32 @@ final class AppFatalDiagnosticReport {
 
 /// Process-scoped, fail-open bridge from fatal app boundaries to the root UI.
 ///
-/// Callers provide stable codes and a [StackTrace] only for fingerprinting.
-/// They must never pass an exception or Runtime transport object here.
+/// Callers provide stable codes plus the original error text and [StackTrace].
 final class AppFatalErrorReporter {
   AppFatalErrorReporter(this._diagnostics);
 
   final DiagnosticsManager _diagnostics;
-  final StreamController<AppFatalDiagnosticReport> _reports =
-      StreamController<AppFatalDiagnosticReport>.broadcast(sync: true);
-  final Queue<AppFatalDiagnosticReport> _pending =
-      Queue<AppFatalDiagnosticReport>();
+  final StreamController<AppFatalDiagnosticReport> _reports = StreamController<AppFatalDiagnosticReport>.broadcast(sync: true);
+  final Queue<AppFatalDiagnosticReport> _pending = Queue<AppFatalDiagnosticReport>();
   bool _disposed = false;
 
   Stream<AppFatalDiagnosticReport> get reports => _reports.stream;
 
   bool get hasPendingReports => _pending.isNotEmpty;
 
-  AppFatalDiagnosticReport? takeNextReport() =>
-      _pending.isEmpty ? null : _pending.removeFirst();
+  AppFatalDiagnosticReport? takeNextReport() => _pending.isEmpty ? null : _pending.removeFirst();
 
   /// Records and queues an uncaught Flutter or platform boundary failure.
   void reportUnhandled({
     required String boundary,
     required String errorCode,
+    required String errorText,
     required StackTrace stackTrace,
     required bool fatal,
   }) {
     final traceId = _newOpaqueId('trace', 'fataltraceunavailable');
     final spanId = _newOpaqueId('span', 'fatalspanunavailable');
-    final fingerprint = _stackFingerprint(stackTrace);
+    final stackText = stackTrace.toString();
     try {
       _diagnostics.emit(
         AppDiagnosticEvents.unhandledError,
@@ -80,7 +79,8 @@ final class AppFatalErrorReporter {
         attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
           'boundary': DiagnosticValue.string(boundary),
           'errorCode': DiagnosticValue.string(errorCode),
-          'stackFingerprint': DiagnosticValue.string(fingerprint),
+          'errorText': DiagnosticValue.string(errorText),
+          'stackTrace': DiagnosticValue.string(stackText),
           'fatal': DiagnosticValue.boolean(fatal),
         }),
       );
@@ -91,8 +91,9 @@ final class AppFatalErrorReporter {
       _enqueue(
         AppFatalDiagnosticReport(
           errorCode: errorCode,
+          errorText: errorText,
           traceId: traceId,
-          stackFingerprint: fingerprint,
+          stackTrace: stackText,
           phase: 'unhandled',
           runtimeState: 'not_applicable',
           diagnosticsMarker: 'app_boundary_recorded',
@@ -103,13 +104,12 @@ final class AppFatalErrorReporter {
 
   /// Queues only Runtime-wide failures observed by the startup application
   /// layer. Ordinary source capability failures stay with their local UI.
-  void reportFatalRuntimeFailure(AppError error, StackTrace stackTrace) {
+  void reportFatalRuntimeFailure(AppError error, StackTrace stackTrace, {Object? originalError}) {
     if (!isFatalRuntimeFailure(error)) return;
-    final traceId =
-        _validatedTraceId(error.traceId) ??
-        _newOpaqueId('trace', 'fataltraceunavailable');
+    final traceId = _validatedTraceId(error.traceId) ?? _newOpaqueId('trace', 'fataltraceunavailable');
     final spanId = _newOpaqueId('span', 'fatalspanunavailable');
-    final fingerprint = _stackFingerprint(stackTrace);
+    final stackText = stackTrace.toString();
+    final errorText = (originalError ?? error).toString();
     try {
       _diagnostics.emit(
         AppDiagnosticEvents.unhandledError,
@@ -118,7 +118,8 @@ final class AppFatalErrorReporter {
         attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
           'boundary': DiagnosticValue.string('runtime-warmup'),
           'errorCode': DiagnosticValue.string(error.code.wireValue),
-          'stackFingerprint': DiagnosticValue.string(fingerprint),
+          'errorText': DiagnosticValue.string(errorText),
+          'stackTrace': DiagnosticValue.string(stackText),
           'fatal': DiagnosticValue.boolean(true),
         }),
       );
@@ -128,8 +129,9 @@ final class AppFatalErrorReporter {
     _enqueue(
       AppFatalDiagnosticReport(
         errorCode: error.code.wireValue,
+        errorText: errorText,
         traceId: traceId,
-        stackFingerprint: fingerprint,
+        stackTrace: stackText,
         phase: 'runtime_facade',
         runtimeState: _runtimeStateFor(error),
         diagnosticsMarker: 'runtime_failure_observed',
@@ -137,25 +139,16 @@ final class AppFatalErrorReporter {
     );
   }
 
-  /// Accepts only application-owned, allowlisted projections of Runtime
-  /// diagnostics. The caller must never forward the Runtime diagnostic text.
+  /// Records a Runtime-wide diagnostic with its original diagnostic text.
   void reportFatalRuntimeDiagnostic({
     required String errorCode,
+    required String diagnosticText,
     required String phase,
     required String runtimeState,
   }) {
-    final safeErrorCode = _runtimeDiagnosticCodes.contains(errorCode)
-        ? errorCode
-        : 'runtime_unavailable';
-    final safePhase = _runtimePhases.contains(phase)
-        ? phase
-        : 'runtime_lifecycle';
-    final safeRuntimeState = _runtimeStates.contains(runtimeState)
-        ? runtimeState
-        : 'unavailable';
     final traceId = _newOpaqueId('trace', 'fataltraceunavailable');
     final spanId = _newOpaqueId('span', 'fatalspanunavailable');
-    final fingerprint = _stackFingerprint(StackTrace.empty);
+    final stackText = StackTrace.empty.toString();
     try {
       _diagnostics.emit(
         AppDiagnosticEvents.unhandledError,
@@ -163,8 +156,9 @@ final class AppFatalErrorReporter {
         severity: DiagnosticSeverity.fatal,
         attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
           'boundary': DiagnosticValue.string('runtime-observer'),
-          'errorCode': DiagnosticValue.string(safeErrorCode),
-          'stackFingerprint': DiagnosticValue.string(fingerprint),
+          'errorCode': DiagnosticValue.string(errorCode),
+          'errorText': DiagnosticValue.string(diagnosticText),
+          'stackTrace': DiagnosticValue.string(stackText),
           'fatal': DiagnosticValue.boolean(true),
         }),
       );
@@ -173,11 +167,12 @@ final class AppFatalErrorReporter {
     }
     _enqueue(
       AppFatalDiagnosticReport(
-        errorCode: safeErrorCode,
+        errorCode: errorCode,
+        errorText: diagnosticText,
         traceId: traceId,
-        stackFingerprint: fingerprint,
-        phase: safePhase,
-        runtimeState: safeRuntimeState,
+        stackTrace: stackText,
+        phase: phase,
+        runtimeState: runtimeState,
         diagnosticsMarker: 'runtime_diagnostic_observed',
       ),
     );
@@ -198,26 +193,6 @@ final class AppFatalErrorReporter {
     AppErrorCode.transportDisconnected => 'disconnected',
     AppErrorCode.versionIncompatible => 'incompatible',
     _ => 'unavailable',
-  };
-
-  static const Set<String> _runtimeDiagnosticCodes = <String>{
-    'runtime_process_exited',
-    'runtime_start_failed',
-    'runtime_not_ready',
-    'runtime_unavailable',
-  };
-  static const Set<String> _runtimePhases = <String>{
-    'runtime_facade',
-    'runtime_startup',
-    'runtime_lifecycle',
-  };
-  static const Set<String> _runtimeStates = <String>{
-    'startup_failed',
-    'not_ready',
-    'exited',
-    'unavailable',
-    'disconnected',
-    'incompatible',
   };
 
   void dispose() {
@@ -242,14 +217,6 @@ final class AppFatalErrorReporter {
       return _diagnostics.idGenerator.nextId(namespace);
     } catch (_) {
       return fallback;
-    }
-  }
-
-  String _stackFingerprint(StackTrace stackTrace) {
-    try {
-      return _diagnostics.privacyPolicy.stackFingerprint(stackTrace);
-    } catch (_) {
-      return 'fingerprintunavailable';
     }
   }
 

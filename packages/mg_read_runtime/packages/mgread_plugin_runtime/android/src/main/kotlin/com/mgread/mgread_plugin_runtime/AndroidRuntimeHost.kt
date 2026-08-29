@@ -509,7 +509,7 @@ internal class AndroidRuntimeHost(
         check(awaitString("Promise.resolve('android-runtime-probe')") == "android-runtime-probe")
         Log.i(TAG, "android_runtime_promise_probe_complete")
         val module = try {
-            runtime.getExecutor(dist.readText())
+            runtime.getExecutor(androidModuleSource(dist))
                 .setResourceName(dist.path)
                 .setModule(true)
                 .compileV8Module()
@@ -649,7 +649,7 @@ internal class AndroidRuntimeHost(
                             modulePath.path.startsWith(dataRootPath.path + File.separator),
                     ) { "plugin_module_path_invalid" }
                     check(modulePath.isFile) { "plugin_module_missing" }
-                    val module = runtime.getExecutor(modulePath)
+                    val module = runtime.getExecutor(androidModuleSource(modulePath))
                         .setResourceName(modulePath.path)
                         .setModule(true)
                         .compileV8Module()

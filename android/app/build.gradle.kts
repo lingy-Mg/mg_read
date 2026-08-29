@@ -76,3 +76,32 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+// Flutter writes one shared registrant into src/main for every build mode.
+// A concurrent debug/integration command can therefore leave the dev-only
+// integration_test plugin in that file after the release plugin list was
+// prepared. Release does not carry integration_test on its Java classpath, so
+// sanitize only that generated block immediately before release compilation.
+val integrationTestRegistrantBlock = Regex(
+    """(?m)^    try \{\R      flutterEngine\.getPlugins\(\)\.add\(new dev\.flutter\.plugins\.integration_test\.IntegrationTestPlugin\(\)\);\R    \} catch \(Exception e\) \{\R      Log\.e\(TAG, "Error registering plugin integration_test, dev\.flutter\.plugins\.integration_test\.IntegrationTestPlugin", e\);\R    \}\R""",
+)
+
+tasks.matching { it.name == "compileReleaseJavaWithJavac" }.configureEach {
+    doFirst {
+        val registrant = layout.projectDirectory
+            .file("src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java")
+            .asFile
+        if (!registrant.isFile) return@doFirst
+
+        val generatedSource = registrant.readText()
+        if ("dev.flutter.plugins.integration_test.IntegrationTestPlugin" !in generatedSource) {
+            return@doFirst
+        }
+        val releaseSource = generatedSource.replace(integrationTestRegistrantBlock, "")
+        check(releaseSource != generatedSource) {
+            "Flutter generated an unsupported integration_test registration shape for release."
+        }
+        registrant.writeText(releaseSource)
+        logger.lifecycle("Removed dev-only integration_test from the release plugin registrant.")
+    }
+}

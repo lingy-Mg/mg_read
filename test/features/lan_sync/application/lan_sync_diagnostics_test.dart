@@ -97,6 +97,10 @@ void main() {
     expect(state.phase, LanSyncPhase.failed);
     expect(state.errorCode, 'lan_sync_prepare_runtime_invalid_response');
   });
+
+  test('capacity failure code has explicit LAN user feedback', () {
+    expect(lanSyncFailureMessage('lan_sync_import_bookshelf_capacity_exceeded'), '书架已满，请先清理书籍');
+  });
 }
 
 class _EmptyGateway implements LanSyncGateway {

@@ -235,6 +235,9 @@ extension _ComicReaderChrome on _ComicReaderViewState {
         ),
       ),
     );
+    // This callback is posted only after the first real image is painted, so
+    // nearby downloads cannot compete with the reader's first-content path.
+    _prefetchAround(entry);
   }
 
   Widget _chromeButton({

@@ -18,6 +18,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/core/settings/settings.dart';
 
 abstract interface class DiagnosticsCapturePreferenceStore {
+  Future<bool> loadDiagnosticsEnabled();
+
+  Future<void> saveDiagnosticsEnabled(bool enabled);
+
   Future<bool> loadRealtimeDetailsEnabled();
 
   Future<void> saveRealtimeDetailsEnabled(bool enabled);
@@ -31,6 +35,12 @@ final class AppSettingsDiagnosticsCapturePreferenceStore implements DiagnosticsC
   const AppSettingsDiagnosticsCapturePreferenceStore(this._settings);
 
   final AppSettingsManager _settings;
+
+  @override
+  Future<bool> loadDiagnosticsEnabled() async => _settings.get(AppSettingKeys.diagnosticsEnabled);
+
+  @override
+  Future<void> saveDiagnosticsEnabled(bool enabled) => _settings.set(AppSettingKeys.diagnosticsEnabled, enabled);
 
   @override
   Future<bool> loadRealtimeDetailsEnabled() async => _settings.get(AppSettingKeys.diagnosticsRealtimeDetailsEnabled);

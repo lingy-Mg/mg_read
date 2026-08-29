@@ -1,12 +1,13 @@
 /// 应用持久化诊断服务。
 ///
 /// 职责：
-/// - 将全局诊断事件写入有界队列和 TXT 持久化存储。
+/// - 显式启用后，将当前启动的全局诊断事件写入有界队列和单个 TXT。
 /// - 提供受限详情捕获、附件和会话生命周期管理。
 ///
 /// 注意：
 /// - 诊断压力或写入失败不得阻塞业务链路。
-/// - 默认禁止捕获正文、凭据、Cookie、路径和原始异常。
+/// - 已接收的事件值与显式捕获字节原样写入，不执行内容检测或改写。
+/// - 历史文件不得在服务打开时读取；只在用户选择后按文件读取。
 ///
 /// TODO:
 /// - 无。
@@ -22,7 +23,6 @@ import 'package:mg_read/core/persistence/src/diagnostics_persistence.dart';
 
 import 'diagnostic_event.dart';
 import 'diagnostic_ports.dart';
-import 'diagnostic_privacy.dart';
 import 'diagnostic_registry.dart';
 import 'diagnostic_value.dart';
 import 'diagnostics_manager.dart';
@@ -121,7 +121,7 @@ typedef DiagnosticActiveSessionResolver = String? Function(DiagnosticEvent event
 typedef DiagnosticCaptureEnabledResolver = bool Function(String component);
 typedef DiagnosticDropReporter = void Function(int droppedEvents, int windowMicros, String reason);
 
-/// Receives the manager-sanitized event for an optional live diagnostics sink.
+/// Receives the schema-validated event for an optional live diagnostics sink.
 ///
 /// The callback must remain best-effort; any buffering it performs is bounded.
 typedef DiagnosticEventMirror = void Function(DiagnosticEvent event);

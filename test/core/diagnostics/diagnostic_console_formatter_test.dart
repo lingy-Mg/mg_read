@@ -43,34 +43,63 @@ void main() {
     );
   });
 
-  test(
-    'keeps reader stage completion visible without opaque envelope data',
-    () {
-      final event = _event(
-        eventName: 'reader.launch.stage.complete',
-        component: 'feature.reader',
-        phase: DiagnosticPhase.terminal,
-        outcome: DiagnosticOutcome.success,
-        durationMicros: 13769240,
-        attributes: <String, DiagnosticValue>{
-          'stage': DiagnosticValue.string('requestBuild'),
-          'resultState': DiagnosticValue.string('success'),
-        },
-      );
-
-      expect(formatter.shouldMirror(event), isTrue);
-      expect(
-        formatter.format(event),
-        allOf(
-          contains('[OK] reader.launch.stage.complete'),
-          contains('duration=13.769s'),
-          contains('stage=requestBuild'),
-          contains('resultState=success'),
-          isNot(contains('trace_')),
+  test('adds status colors only to developer-console output', () {
+    final cases = <({DiagnosticEvent event, String color})>[
+      (event: _event(eventName: 'app.bootstrap.start', component: 'app.bootstrap', phase: DiagnosticPhase.start), color: '\x1B[96m'),
+      (
+        event: _event(
+          eventName: 'app.bootstrap.complete',
+          component: 'app.bootstrap',
+          phase: DiagnosticPhase.terminal,
+          outcome: DiagnosticOutcome.success,
         ),
-      );
-    },
-  );
+        color: '\x1B[92m',
+      ),
+      (event: _event(severity: DiagnosticSeverity.warn, eventName: 'performance.slow', component: 'app.performance'), color: '\x1B[93m'),
+      (event: _event(severity: DiagnosticSeverity.error, eventName: 'runtime.failed', component: 'app.runtime'), color: '\x1B[91m'),
+      (
+        event: _event(
+          eventName: 'runtime.cancelled',
+          component: 'app.runtime',
+          phase: DiagnosticPhase.terminal,
+          outcome: DiagnosticOutcome.cancelled,
+        ),
+        color: '\x1B[95m',
+      ),
+    ];
+
+    for (final entry in cases) {
+      final plain = formatter.format(entry.event);
+      expect(plain, isNot(contains('\x1B[')));
+      expect(formatter.formatForConsole(entry.event), '${entry.color}$plain\x1B[0m');
+    }
+  });
+
+  test('keeps reader stage completion visible without opaque envelope data', () {
+    final event = _event(
+      eventName: 'reader.launch.stage.complete',
+      component: 'feature.reader',
+      phase: DiagnosticPhase.terminal,
+      outcome: DiagnosticOutcome.success,
+      durationMicros: 13769240,
+      attributes: <String, DiagnosticValue>{
+        'stage': DiagnosticValue.string('requestBuild'),
+        'resultState': DiagnosticValue.string('success'),
+      },
+    );
+
+    expect(formatter.shouldMirror(event), isTrue);
+    expect(
+      formatter.format(event),
+      allOf(
+        contains('[OK] reader.launch.stage.complete'),
+        contains('duration=13.769s'),
+        contains('stage=requestBuild'),
+        contains('resultState=success'),
+        isNot(contains('trace_')),
+      ),
+    );
+  });
 }
 
 DiagnosticEvent _event({

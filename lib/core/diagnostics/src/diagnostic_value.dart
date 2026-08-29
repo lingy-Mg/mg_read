@@ -20,12 +20,7 @@ final class DiagnosticValueBudget {
   final int maxNodes;
 
   void validate() {
-    if (maxEncodedBytes <= 0 ||
-        maxDepth <= 0 ||
-        maxObjectKeys <= 0 ||
-        maxArrayItems <= 0 ||
-        maxStringBytes <= 0 ||
-        maxNodes <= 0) {
+    if (maxEncodedBytes <= 0 || maxDepth <= 0 || maxObjectKeys <= 0 || maxArrayItems <= 0 || maxStringBytes <= 0 || maxNodes <= 0) {
       throw ArgumentError('Diagnostic value budgets must all be positive.');
     }
   }
@@ -48,28 +43,18 @@ sealed class DiagnosticValue {
 
   static DiagnosticValue string(String value) => DiagnosticStringValue(value);
 
-  static DiagnosticValue int64(int value) =>
-      DiagnosticInt64Value(value.toString());
+  static DiagnosticValue int64(int value) => DiagnosticInt64Value(value.toString());
 
-  static DiagnosticValue finiteDouble(double value) =>
-      DiagnosticDoubleValue(value);
+  static DiagnosticValue finiteDouble(double value) => DiagnosticDoubleValue(value);
 
-  static DiagnosticListValue list(Iterable<DiagnosticValue> values) =>
-      DiagnosticListValue(values);
+  static DiagnosticListValue list(Iterable<DiagnosticValue> values) => DiagnosticListValue(values);
 
-  static DiagnosticObjectValue object(Map<String, DiagnosticValue> values) =>
-      DiagnosticObjectValue(values);
+  static DiagnosticObjectValue object(Map<String, DiagnosticValue> values) => DiagnosticObjectValue(values);
 
-  static DiagnosticRedactedValue redacted({String reason = 'policy'}) =>
-      DiagnosticRedactedValue(reason: reason);
+  static DiagnosticTruncatedValue truncated({required String reason, int? originalCount}) =>
+      DiagnosticTruncatedValue(reason: reason, originalCount: originalCount);
 
-  static DiagnosticTruncatedValue truncated({
-    required String reason,
-    int? originalCount,
-  }) => DiagnosticTruncatedValue(reason: reason, originalCount: originalCount);
-
-  static DiagnosticAttachmentReferenceValue attachment(String attachmentId) =>
-      DiagnosticAttachmentReferenceValue(attachmentId);
+  static DiagnosticAttachmentReferenceValue attachment(String attachmentId) => DiagnosticAttachmentReferenceValue(attachmentId);
 }
 
 final class DiagnosticNullValue extends DiagnosticValue {
@@ -94,8 +79,7 @@ final class DiagnosticBoolValue extends DiagnosticValue {
   Object toWireValue() => <String, Object?>{'type': 'bool', 'value': value};
 
   @override
-  bool operator ==(Object other) =>
-      other is DiagnosticBoolValue && other.value == value;
+  bool operator ==(Object other) => other is DiagnosticBoolValue && other.value == value;
 
   @override
   int get hashCode => Object.hash(DiagnosticBoolValue, value);
@@ -114,8 +98,7 @@ final class DiagnosticStringValue extends DiagnosticValue {
   Object toWireValue() => <String, Object?>{'type': 'string', 'value': value};
 
   @override
-  bool operator ==(Object other) =>
-      other is DiagnosticStringValue && other.value == value;
+  bool operator ==(Object other) => other is DiagnosticStringValue && other.value == value;
 
   @override
   int get hashCode => Object.hash(DiagnosticStringValue, value);
@@ -139,14 +122,10 @@ final class DiagnosticInt64Value extends DiagnosticValue {
   final String decimal;
 
   @override
-  Object toWireValue() => <String, Object?>{
-    'type': 'int64',
-    'decimal': decimal,
-  };
+  Object toWireValue() => <String, Object?>{'type': 'int64', 'decimal': decimal};
 
   @override
-  bool operator ==(Object other) =>
-      other is DiagnosticInt64Value && other.decimal == decimal;
+  bool operator ==(Object other) => other is DiagnosticInt64Value && other.decimal == decimal;
 
   @override
   int get hashCode => Object.hash(DiagnosticInt64Value, decimal);
@@ -162,36 +141,25 @@ final class DiagnosticDoubleValue extends DiagnosticValue {
   final double value;
 
   @override
-  Object toWireValue() => <String, Object?>{
-    'type': 'finiteDouble',
-    'value': value,
-  };
+  Object toWireValue() => <String, Object?>{'type': 'finiteDouble', 'value': value};
 
   @override
-  bool operator ==(Object other) =>
-      other is DiagnosticDoubleValue && other.value == value;
+  bool operator ==(Object other) => other is DiagnosticDoubleValue && other.value == value;
 
   @override
   int get hashCode => Object.hash(DiagnosticDoubleValue, value);
 }
 
 final class DiagnosticListValue extends DiagnosticValue {
-  DiagnosticListValue(Iterable<DiagnosticValue> values)
-    : values = List<DiagnosticValue>.unmodifiable(values);
+  DiagnosticListValue(Iterable<DiagnosticValue> values) : values = List<DiagnosticValue>.unmodifiable(values);
 
   final List<DiagnosticValue> values;
 
   @override
-  Object toWireValue() => <String, Object?>{
-    'type': 'list',
-    'values': values
-        .map((value) => value.toWireValue())
-        .toList(growable: false),
-  };
+  Object toWireValue() => <String, Object?>{'type': 'list', 'values': values.map((value) => value.toWireValue()).toList(growable: false)};
 
   @override
-  bool operator ==(Object other) =>
-      other is DiagnosticListValue && _listEquals(other.values, values);
+  bool operator ==(Object other) => other is DiagnosticListValue && _listEquals(other.values, values);
 
   @override
   int get hashCode => Object.hashAll(values);
@@ -199,9 +167,7 @@ final class DiagnosticListValue extends DiagnosticValue {
 
 final class DiagnosticObjectValue extends DiagnosticValue {
   DiagnosticObjectValue(Map<String, DiagnosticValue> values)
-    : values = UnmodifiableMapView<String, DiagnosticValue>(
-        SplayTreeMap<String, DiagnosticValue>.from(values),
-      ) {
+    : values = UnmodifiableMapView<String, DiagnosticValue>(SplayTreeMap<String, DiagnosticValue>.from(values)) {
     for (final key in values.keys) {
       _validateKey(key);
     }
@@ -211,47 +177,19 @@ final class DiagnosticObjectValue extends DiagnosticValue {
 
   final Map<String, DiagnosticValue> values;
 
-  DiagnosticObjectValue merged(DiagnosticObjectValue other) =>
-      DiagnosticObjectValue(<String, DiagnosticValue>{
-        ...values,
-        ...other.values,
-      });
+  DiagnosticObjectValue merged(DiagnosticObjectValue other) => DiagnosticObjectValue(<String, DiagnosticValue>{...values, ...other.values});
 
   @override
   Object toWireValue() => <String, Object?>{
     'type': 'object',
-    'values': <String, Object?>{
-      for (final entry in values.entries) entry.key: entry.value.toWireValue(),
-    },
+    'values': <String, Object?>{for (final entry in values.entries) entry.key: entry.value.toWireValue()},
   };
 
   @override
-  bool operator ==(Object other) =>
-      other is DiagnosticObjectValue && _mapEquals(other.values, values);
+  bool operator ==(Object other) => other is DiagnosticObjectValue && _mapEquals(other.values, values);
 
   @override
-  int get hashCode => Object.hashAll(
-    values.entries.map((entry) => Object.hash(entry.key, entry.value)),
-  );
-}
-
-final class DiagnosticRedactedValue extends DiagnosticValue {
-  const DiagnosticRedactedValue({required this.reason});
-
-  final String reason;
-
-  @override
-  Object toWireValue() => <String, Object?>{
-    'type': 'redacted',
-    'reason': reason,
-  };
-
-  @override
-  bool operator ==(Object other) =>
-      other is DiagnosticRedactedValue && other.reason == reason;
-
-  @override
-  int get hashCode => Object.hash(DiagnosticRedactedValue, reason);
+  int get hashCode => Object.hashAll(values.entries.map((entry) => Object.hash(entry.key, entry.value)));
 }
 
 final class DiagnosticTruncatedValue extends DiagnosticValue {
@@ -261,21 +199,13 @@ final class DiagnosticTruncatedValue extends DiagnosticValue {
   final int? originalCount;
 
   @override
-  Object toWireValue() => <String, Object?>{
-    'type': 'truncated',
-    'reason': reason,
-    'originalCount': ?originalCount,
-  };
+  Object toWireValue() => <String, Object?>{'type': 'truncated', 'reason': reason, 'originalCount': ?originalCount};
 
   @override
-  bool operator ==(Object other) =>
-      other is DiagnosticTruncatedValue &&
-      other.reason == reason &&
-      other.originalCount == originalCount;
+  bool operator ==(Object other) => other is DiagnosticTruncatedValue && other.reason == reason && other.originalCount == originalCount;
 
   @override
-  int get hashCode =>
-      Object.hash(DiagnosticTruncatedValue, reason, originalCount);
+  int get hashCode => Object.hash(DiagnosticTruncatedValue, reason, originalCount);
 }
 
 final class DiagnosticAttachmentReferenceValue extends DiagnosticValue {
@@ -290,19 +220,13 @@ final class DiagnosticAttachmentReferenceValue extends DiagnosticValue {
   final String attachmentId;
 
   @override
-  Object toWireValue() => <String, Object?>{
-    'type': 'attachmentRef',
-    'attachmentId': attachmentId,
-  };
+  Object toWireValue() => <String, Object?>{'type': 'attachmentRef', 'attachmentId': attachmentId};
 
   @override
-  bool operator ==(Object other) =>
-      other is DiagnosticAttachmentReferenceValue &&
-      other.attachmentId == attachmentId;
+  bool operator ==(Object other) => other is DiagnosticAttachmentReferenceValue && other.attachmentId == attachmentId;
 
   @override
-  int get hashCode =>
-      Object.hash(DiagnosticAttachmentReferenceValue, attachmentId);
+  int get hashCode => Object.hash(DiagnosticAttachmentReferenceValue, attachmentId);
 }
 
 /// Converts JSON-compatible values into the bounded tagged union.
@@ -319,14 +243,10 @@ final class DiagnosticValueBuilder {
     final state = _DiagnosticBuildState(budget);
     final result = _build(source, state, depth: 0);
     if (result is! DiagnosticObjectValue) {
-      throw const DiagnosticValueBuildError(
-        'Diagnostic attributes must encode as an object.',
-      );
+      throw const DiagnosticValueBuildError('Diagnostic attributes must encode as an object.');
     }
     if (result.encodedByteLength > budget.maxEncodedBytes) {
-      throw DiagnosticValueBuildError(
-        'Diagnostic attributes exceed ${budget.maxEncodedBytes} bytes.',
-      );
+      throw DiagnosticValueBuildError('Diagnostic attributes exceed ${budget.maxEncodedBytes} bytes.');
     }
     return result;
   }
@@ -334,19 +254,12 @@ final class DiagnosticValueBuilder {
   DiagnosticValue build(Object? source) {
     final value = _build(source, _DiagnosticBuildState(budget), depth: 0);
     if (value.encodedByteLength > budget.maxEncodedBytes) {
-      return DiagnosticValue.truncated(
-        reason: 'encodedByteLimit',
-        originalCount: value.encodedByteLength,
-      );
+      return DiagnosticValue.truncated(reason: 'encodedByteLimit', originalCount: value.encodedByteLength);
     }
     return value;
   }
 
-  DiagnosticValue _build(
-    Object? source,
-    _DiagnosticBuildState state, {
-    required int depth,
-  }) {
+  DiagnosticValue _build(Object? source, _DiagnosticBuildState state, {required int depth}) {
     if (depth > budget.maxDepth) {
       return DiagnosticValue.truncated(reason: 'depthLimit');
     }
@@ -358,19 +271,14 @@ final class DiagnosticValueBuilder {
     if (source is String) {
       final bytes = utf8.encode(source).length;
       if (bytes > budget.maxStringBytes) {
-        return DiagnosticValue.truncated(
-          reason: 'stringByteLimit',
-          originalCount: bytes,
-        );
+        return DiagnosticValue.truncated(reason: 'stringByteLimit', originalCount: bytes);
       }
       return DiagnosticValue.string(source);
     }
     if (source is int) return DiagnosticValue.int64(source);
     if (source is double) {
       if (!source.isFinite) {
-        throw const DiagnosticValueBuildError(
-          'Non-finite doubles require an explicit diagnostic-tree adapter.',
-        );
+        throw const DiagnosticValueBuildError('Non-finite doubles require an explicit diagnostic-tree adapter.');
       }
       return DiagnosticValue.finiteDouble(source);
     }
@@ -380,14 +288,9 @@ final class DiagnosticValueBuilder {
       }
       try {
         if (source.length > budget.maxArrayItems) {
-          return DiagnosticValue.truncated(
-            reason: 'arrayItemLimit',
-            originalCount: source.length,
-          );
+          return DiagnosticValue.truncated(reason: 'arrayItemLimit', originalCount: source.length);
         }
-        return DiagnosticValue.list(
-          source.map((value) => _build(value, state, depth: depth + 1)),
-        );
+        return DiagnosticValue.list(source.map((value) => _build(value, state, depth: depth + 1)));
       } finally {
         state.leave(source);
       }
@@ -398,23 +301,15 @@ final class DiagnosticValueBuilder {
       }
       try {
         if (source.length > budget.maxObjectKeys) {
-          return DiagnosticValue.truncated(
-            reason: 'objectKeyLimit',
-            originalCount: source.length,
-          );
+          return DiagnosticValue.truncated(reason: 'objectKeyLimit', originalCount: source.length);
         }
         final keys = source.keys.toList(growable: false)..sort();
-        return DiagnosticValue.object(<String, DiagnosticValue>{
-          for (final key in keys)
-            key: _build(source[key], state, depth: depth + 1),
-        });
+        return DiagnosticValue.object(<String, DiagnosticValue>{for (final key in keys) key: _build(source[key], state, depth: depth + 1)});
       } finally {
         state.leave(source);
       }
     }
-    throw DiagnosticValueBuildError(
-      'Unsupported diagnostic value type: ${source.runtimeType}.',
-    );
+    throw DiagnosticValueBuildError('Unsupported diagnostic value type: ${source.runtimeType}.');
   }
 }
 
@@ -434,23 +329,14 @@ final class DiagnosticValueCodec {
       'bool' => DiagnosticValue.boolean(_required<bool>(wireValue, 'value')),
       'string' => DiagnosticValue.string(_required<String>(wireValue, 'value')),
       'int64' => DiagnosticInt64Value(_required<String>(wireValue, 'decimal')),
-      'finiteDouble' => DiagnosticValue.finiteDouble(
-        _required<num>(wireValue, 'value').toDouble(),
-      ),
-      'list' => DiagnosticValue.list(
-        _required<List<Object?>>(wireValue, 'values').map(decode),
-      ),
+      'finiteDouble' => DiagnosticValue.finiteDouble(_required<num>(wireValue, 'value').toDouble()),
+      'list' => DiagnosticValue.list(_required<List<Object?>>(wireValue, 'values').map(decode)),
       'object' => _decodeObject(wireValue),
-      'redacted' => DiagnosticValue.redacted(
-        reason: _required<String>(wireValue, 'reason'),
-      ),
       'truncated' => DiagnosticValue.truncated(
         reason: _required<String>(wireValue, 'reason'),
         originalCount: wireValue['originalCount'] as int?,
       ),
-      'attachmentRef' => DiagnosticValue.attachment(
-        _required<String>(wireValue, 'attachmentId'),
-      ),
+      'attachmentRef' => DiagnosticValue.attachment(_required<String>(wireValue, 'attachmentId')),
       _ => throw FormatException('Unsupported diagnostic value type: $type.'),
     };
   }
@@ -504,11 +390,7 @@ final class _DiagnosticBuildState {
 
 void _validateKey(String key) {
   if (key.isEmpty || key.length > 128 || !_diagnosticKey.hasMatch(key)) {
-    throw ArgumentError.value(
-      key,
-      'key',
-      'Diagnostic keys must be stable lower camel/snake/dot identifiers.',
-    );
+    throw ArgumentError.value(key, 'key', 'Diagnostic keys must be stable lower camel/snake/dot identifiers.');
   }
 }
 
@@ -523,10 +405,7 @@ bool _listEquals(List<DiagnosticValue> a, List<DiagnosticValue> b) {
   return true;
 }
 
-bool _mapEquals(
-  Map<String, DiagnosticValue> a,
-  Map<String, DiagnosticValue> b,
-) {
+bool _mapEquals(Map<String, DiagnosticValue> a, Map<String, DiagnosticValue> b) {
   if (identical(a, b)) return true;
   if (a.length != b.length) return false;
   for (final entry in a.entries) {

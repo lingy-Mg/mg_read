@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/diagnostics/application/diagnostics_capture_preference_store.dart';
 import 'package:mg_read/features/diagnostics/application/diagnostics_viewer_gateway.dart';
 import 'package:mg_read/features/diagnostics/presentation/diagnostics_viewer_page.dart';
@@ -10,6 +11,20 @@ import 'package:mg_read/features/diagnostics/presentation/diagnostics_viewer_pag
 import '../../../core/diagnostics/persistent_diagnostics_testkit.dart';
 
 void main() {
+  testWidgets('defaults diagnostics off, lists file metadata, and reads no events', (WidgetTester tester) async {
+    final gateway = _FakeDiagnosticsViewerGateway();
+    final preferences = _FakeDiagnosticsCapturePreferenceStore(diagnosticsEnabled: false);
+    await tester.pumpWidget(_host(gateway, preferences));
+    await tester.pumpAndSettle();
+
+    expect(find.text('默认关闭，不创建日志文件；开启后立即记录本次启动后续事件'), findsOneWidget);
+    expect(gateway.fileListReads, 1);
+    expect(gateway.eventReads, 0);
+    await tester.tap(find.text('实时详情'));
+    await tester.pumpAndSettle();
+    expect(gateway.startedModes, isEmpty);
+  });
+
   testWidgets('defaults to key logs and reads details only after explicit realtime selection', (WidgetTester tester) async {
     await _setViewport(tester, const Size(800, 1200));
     final gateway = _FakeDiagnosticsViewerGateway();
@@ -19,6 +34,11 @@ void main() {
 
     expect(gateway.startedModes, isEmpty);
     expect(find.text('仅关键日志'), findsOneWidget);
+    expect(gateway.eventReads, 0);
+
+    await tester.tap(find.byKey(const Key('diagnostics-log-log_file_current')));
+    await tester.pumpAndSettle();
+    expect(gateway.eventReads, 1);
 
     await tester.tap(find.text('实时详情'));
     await tester.pumpAndSettle();
@@ -61,6 +81,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Runtime'), findsNothing);
+    await tester.tap(find.byKey(const Key('diagnostics-log-log_file_current')));
+    await tester.pumpAndSettle();
     expect(find.text('app.bootstrap.success'), findsOneWidget);
     expect(gateway.requestedSources, contains(DiagnosticsViewerSource.app));
     expect(gateway.startedSources, isEmpty);
@@ -141,9 +163,18 @@ Widget _host(DiagnosticsViewerGateway gateway, DiagnosticsCapturePreferenceStore
 }
 
 final class _FakeDiagnosticsCapturePreferenceStore implements DiagnosticsCapturePreferenceStore {
-  _FakeDiagnosticsCapturePreferenceStore({this.realtimeDetailsEnabled = false});
+  _FakeDiagnosticsCapturePreferenceStore({this.realtimeDetailsEnabled = false, this.diagnosticsEnabled = true});
 
   bool realtimeDetailsEnabled;
+  bool diagnosticsEnabled;
+
+  @override
+  Future<bool> loadDiagnosticsEnabled() async => diagnosticsEnabled;
+
+  @override
+  Future<void> saveDiagnosticsEnabled(bool enabled) async {
+    diagnosticsEnabled = enabled;
+  }
 
   @override
   Future<bool> loadRealtimeDetailsEnabled() async => realtimeDetailsEnabled;
@@ -161,10 +192,31 @@ final class _FakeDiagnosticsViewerGateway implements DiagnosticsViewerGateway {
   final List<DiagnosticsViewerSource> requestedSources = <DiagnosticsViewerSource>[];
   var detailReads = 0;
   var previewReads = 0;
+  var eventReads = 0;
+  var fileListReads = 0;
 
   @override
-  Future<DiagnosticsViewerEventPage> listEvents({required DiagnosticsViewerSource source, String? cursor}) async {
+  Future<List<DiagnosticsViewerLogFile>> listLogFiles() async {
+    fileListReads += 1;
+    return const <DiagnosticsViewerLogFile>[
+      DiagnosticsViewerLogFile(
+        fileId: 'log_file_current',
+        startedAtUtcMicros: 1800000000000000,
+        modifiedAtUtcMicros: 1800000000000000,
+        storedBytes: 1024,
+        isCurrent: true,
+      ),
+    ];
+  }
+
+  @override
+  Future<DiagnosticsViewerEventPage> listEvents({
+    required DiagnosticsViewerSource source,
+    required String logFileId,
+    String? cursor,
+  }) async {
     requestedSources.add(source);
+    eventReads += 1;
     return DiagnosticsViewerEventPage(
       items: <DiagnosticsViewerEvent>[
         DiagnosticsViewerEvent(
@@ -180,6 +232,7 @@ final class _FakeDiagnosticsViewerGateway implements DiagnosticsViewerGateway {
           durationMicros: 1200,
           attachmentCount: 1,
           capturedBytes: 25,
+          logFileId: logFileId,
         ),
       ],
     );
@@ -199,6 +252,7 @@ final class _FakeDiagnosticsViewerGateway implements DiagnosticsViewerGateway {
           captureState: 'captured',
           rawByteLength: 25,
           storedByteLength: 25,
+          logFileId: event.logFileId,
         ),
       ],
     );
@@ -226,4 +280,17 @@ final class _FakeDiagnosticsViewerGateway implements DiagnosticsViewerGateway {
   Future<void> stopCapture(DiagnosticsViewerCapture capture) async {
     stoppedModes.add(capture.mode);
   }
+
+  @override
+  Future<void> deleteLogFile(String logFileId) async {}
+
+  @override
+  Future<DiagnosticExportResult> exportLogFile(String logFileId) async => DiagnosticExportResult(
+    exportId: 'export_0000000001',
+    relativeObjectKey: 'exports/export.txt',
+    byteLength: 1024,
+    sessionCount: 1,
+    eventCount: 1,
+    attachmentCount: 1,
+  );
 }

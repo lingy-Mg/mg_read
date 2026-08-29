@@ -1,11 +1,11 @@
 /// 应用诊断事件注册表。
 ///
 /// 职责：
-/// - 为跨功能诊断提供版本化、脱敏且有界的事件 schema。
+/// - 为跨功能诊断提供版本化且有界的事件 schema。
 /// - 拒绝未注册事件和未声明字段。
 ///
 /// 注意：
-/// - 字段不得携带用户输入、内容、URL、凭据或绝对路径。
+/// - 字段值按调用方提供的内容原样编码，不做检测或改写。
 /// - 事件名与字段语义变更必须版本化。
 ///
 /// TODO:
@@ -22,20 +22,14 @@ enum DiagnosticDefinitionKind { instant, span }
 enum DiagnosticFieldType { boolean, string, int64, finiteDouble, number, list, object, attachmentReference, any }
 
 final class DiagnosticFieldDefinition {
-  const DiagnosticFieldDefinition({
-    required this.type,
-    this.privacyClass = DiagnosticPrivacyClass.internal,
-    this.requiredFor = const <DiagnosticPhase>{},
-    this.allowNull = false,
-  });
+  const DiagnosticFieldDefinition({required this.type, this.requiredFor = const <DiagnosticPhase>{}, this.allowNull = false});
 
   final DiagnosticFieldType type;
-  final DiagnosticPrivacyClass privacyClass;
   final Set<DiagnosticPhase> requiredFor;
   final bool allowNull;
 
   bool accepts(DiagnosticValue value) {
-    if (value is DiagnosticRedactedValue || value is DiagnosticTruncatedValue) {
+    if (value is DiagnosticTruncatedValue) {
       return true;
     }
     if (allowNull && value is DiagnosticNullValue) return true;
@@ -327,7 +321,8 @@ abstract final class AppDiagnosticEvents {
     fields: <String, DiagnosticFieldDefinition>{
       'boundary': _requiredInstantString,
       'errorCode': _requiredInstantString,
-      'stackFingerprint': _string,
+      'errorText': _string,
+      'stackTrace': _string,
       'fatal': _boolean,
     },
   );
@@ -614,7 +609,6 @@ abstract final class AppDiagnosticEvents {
     severity: DiagnosticSeverity.debug,
     fields: <String, DiagnosticFieldDefinition>{
       'kind': _string,
-      'privacyClass': _string,
       'captureState': _string,
       'rawBytes': _int64,
       'storedBytes': _int64,

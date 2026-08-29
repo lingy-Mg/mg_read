@@ -11,7 +11,7 @@ import 'package:mg_read/core/errors/app_error.dart';
 import '../core/diagnostics/diagnostics_testkit.dart';
 
 void main() {
-  test('fatal reports contain only stable diagnostic values', () async {
+  test('fatal reports keep the supplied stack unchanged', () async {
     const secretCanary = 'Cookie=SECRET-CANARY https://private.example/a';
     final kit = DiagnosticsTestkit();
     final reporter = AppFatalErrorReporter(kit.manager);
@@ -26,6 +26,7 @@ void main() {
     reporter.reportUnhandled(
       boundary: 'platform-dispatcher',
       errorCode: 'unhandled_platform_error',
+      errorText: secretCanary,
       stackTrace: StackTrace.fromString('at $secretCanary C:\\private\\a.dart'),
       fatal: true,
     );
@@ -33,41 +34,37 @@ void main() {
     expect(reports, hasLength(1));
     final report = reports.single;
     expect(report.errorCode, 'unhandled_platform_error');
+    expect(report.errorText, secretCanary);
     expect(report.traceId, matches(RegExp(r'^[A-Za-z0-9_-]{16,128}$')));
-    expect(report.stackFingerprint, matches(RegExp(r'^[a-f0-9]{16}$')));
-    expect(report.copyPayload, isNot(contains(secretCanary)));
-    expect(report.copyPayload, isNot(contains('C:\\private')));
-    expect(
-      jsonEncode(const DiagnosticEventCodec().encode(kit.sink.events.single)),
-      isNot(contains(secretCanary)),
-    );
+    expect(report.stackTrace, contains(secretCanary));
+    expect(report.copyPayload, contains(secretCanary));
+    expect(report.copyPayload, contains('C:\\private'));
+    expect(jsonEncode(const DiagnosticEventCodec().encode(kit.sink.events.single)), contains(secretCanary));
   });
 
-  test(
-    'non-fatal framework reports are recorded without opening a dialog',
-    () async {
-      final kit = DiagnosticsTestkit();
-      final reporter = AppFatalErrorReporter(kit.manager);
-      final reports = <AppFatalDiagnosticReport>[];
-      final subscription = reporter.reports.listen(reports.add);
-      addTearDown(() async {
-        await subscription.cancel();
-        reporter.dispose();
-        await kit.dispose();
-      });
+  test('non-fatal framework reports are recorded without opening a dialog', () async {
+    final kit = DiagnosticsTestkit();
+    final reporter = AppFatalErrorReporter(kit.manager);
+    final reports = <AppFatalDiagnosticReport>[];
+    final subscription = reporter.reports.listen(reports.add);
+    addTearDown(() async {
+      await subscription.cancel();
+      reporter.dispose();
+      await kit.dispose();
+    });
 
-      reporter.reportUnhandled(
-        boundary: 'flutter-framework',
-        errorCode: 'unhandled_flutter_error',
-        stackTrace: StackTrace.empty,
-        fatal: false,
-      );
+    reporter.reportUnhandled(
+      boundary: 'flutter-framework',
+      errorCode: 'unhandled_flutter_error',
+      errorText: 'framework failure',
+      stackTrace: StackTrace.empty,
+      fatal: false,
+    );
 
-      expect(reports, isEmpty);
-      expect(kit.sink.events, hasLength(1));
-      expect(kit.sink.events.single.severity, DiagnosticSeverity.error);
-    },
-  );
+    expect(reports, isEmpty);
+    expect(kit.sink.events, hasLength(1));
+    expect(kit.sink.events.single.severity, DiagnosticSeverity.error);
+  });
 
   test('runtime reporter ignores ordinary source errors', () async {
     final kit = DiagnosticsTestkit();
@@ -80,56 +77,44 @@ void main() {
       await kit.dispose();
     });
 
-    reporter.reportFatalRuntimeFailure(
-      AppError.fromCode(AppErrorCode.timeout),
-      StackTrace.empty,
-    );
+    reporter.reportFatalRuntimeFailure(AppError.fromCode(AppErrorCode.timeout), StackTrace.empty);
     expect(reports, isEmpty);
     expect(kit.sink.events, isEmpty);
 
-    reporter.reportFatalRuntimeFailure(
-      AppError.fromCode(AppErrorCode.runtimeStartFailed),
-      StackTrace.empty,
-    );
+    reporter.reportFatalRuntimeFailure(AppError.fromCode(AppErrorCode.runtimeStartFailed), StackTrace.empty);
     expect(reports, hasLength(1));
     expect(kit.sink.events.single.severity, DiagnosticSeverity.fatal);
-    expect(
-      kit.sink.events.single.attributes.values['boundary'],
-      DiagnosticStringValue('runtime-warmup'),
-    );
+    expect(kit.sink.events.single.attributes.values['boundary'], DiagnosticStringValue('runtime-warmup'));
   });
 
-  test(
-    'runtime no-ready errors are fatal with a bounded safe projection',
-    () async {
-      final kit = DiagnosticsTestkit();
-      final reporter = AppFatalErrorReporter(kit.manager);
-      final reports = <AppFatalDiagnosticReport>[];
-      final subscription = reporter.reports.listen(reports.add);
-      addTearDown(() async {
-        await subscription.cancel();
-        reporter.dispose();
-        await kit.dispose();
-      });
+  test('runtime no-ready errors retain the supplied failure text and stack', () async {
+    final kit = DiagnosticsTestkit();
+    final reporter = AppFatalErrorReporter(kit.manager);
+    final reports = <AppFatalDiagnosticReport>[];
+    final subscription = reporter.reports.listen(reports.add);
+    addTearDown(() async {
+      await subscription.cancel();
+      reporter.dispose();
+      await kit.dispose();
+    });
 
-      reporter.reportFatalRuntimeFailure(
-        AppError.fromCode(AppErrorCode.runtimeNotReady),
-        StackTrace.fromString('raw startup detail SECRET-CANARY C:\\private'),
-      );
+    reporter.reportFatalRuntimeFailure(
+      AppError.fromCode(AppErrorCode.runtimeNotReady),
+      StackTrace.fromString('raw startup detail SECRET-CANARY C:\\private'),
+      originalError: StateError('raw runtime failure SECRET-CANARY C:\\private'),
+    );
 
-      expect(reports, hasLength(1));
-      expect(reports.single.errorCode, 'runtime_not_ready');
-      expect(reports.single.phase, 'runtime_facade');
-      expect(reports.single.runtimeState, 'not_ready');
-      expect(reports.single.diagnosticsMarker, 'runtime_failure_observed');
-      expect(reports.single.copyPayload, isNot(contains('SECRET-CANARY')));
-      expect(reports.single.copyPayload, isNot(contains('C:\\private')));
-    },
-  );
+    expect(reports, hasLength(1));
+    expect(reports.single.errorCode, 'runtime_not_ready');
+    expect(reports.single.phase, 'runtime_facade');
+    expect(reports.single.runtimeState, 'not_ready');
+    expect(reports.single.diagnosticsMarker, 'runtime_failure_observed');
+    expect(reports.single.copyPayload, contains('SECRET-CANARY'));
+    expect(reports.single.copyPayload, contains('C:\\private'));
+    expect(reports.single.errorText, contains('raw runtime failure'));
+  });
 
-  testWidgets('dialog queues, copies its safe payload, and closes', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('dialog queues, copies its safe payload, and closes', (WidgetTester tester) async {
     final kit = DiagnosticsTestkit();
     final reporter = AppFatalErrorReporter(kit.manager);
     String? copiedPayload;
@@ -141,6 +126,7 @@ void main() {
     reporter.reportUnhandled(
       boundary: 'platform-dispatcher',
       errorCode: 'unhandled_platform_error',
+      errorText: 'fatal platform failure',
       stackTrace: StackTrace.empty,
       fatal: true,
     );
@@ -163,8 +149,9 @@ void main() {
     await tester.tap(find.byKey(const Key('fatal-error-copy')));
     await tester.pump();
     expect(copiedPayload, contains('错误代码: unhandled_platform_error'));
+    expect(copiedPayload, contains('错误内容: fatal platform failure'));
     expect(copiedPayload, contains('追踪 ID:'));
-    expect(copiedPayload, contains('堆栈指纹:'));
+    expect(copiedPayload, contains('堆栈:'));
     expect(copiedPayload, contains('阶段: unhandled'));
     expect(copiedPayload, contains('Runtime 状态: not_applicable'));
     expect(copiedPayload, contains('诊断标记: app_boundary_recorded'));

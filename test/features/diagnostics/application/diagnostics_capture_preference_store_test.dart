@@ -6,7 +6,7 @@ import 'package:mg_read/features/diagnostics/application/diagnostics_capture_pre
 import '../../../core/settings/settings_testkit.dart';
 
 void main() {
-  test('defaults to key logs and restores realtime details after reopen', () async {
+  test('diagnostics and realtime detail preferences persist without diagnostics service', () async {
     final store = FakeSettingsStore();
     final firstManager = AppSettingsManager(
       store: store,
@@ -17,8 +17,10 @@ void main() {
     addTearDown(firstManager.close);
 
     final firstPreference = AppSettingsDiagnosticsCapturePreferenceStore(firstManager);
+    expect(await firstPreference.loadDiagnosticsEnabled(), isFalse);
     expect(await firstPreference.loadRealtimeDetailsEnabled(), isFalse);
 
+    await firstPreference.saveDiagnosticsEnabled(true);
     await firstPreference.saveRealtimeDetailsEnabled(true);
     await firstManager.flush();
 
@@ -26,6 +28,8 @@ void main() {
     await reopenedManager.initialize();
     addTearDown(reopenedManager.close);
 
-    expect(await AppSettingsDiagnosticsCapturePreferenceStore(reopenedManager).loadRealtimeDetailsEnabled(), isTrue);
+    final reopenedPreference = AppSettingsDiagnosticsCapturePreferenceStore(reopenedManager);
+    expect(await reopenedPreference.loadDiagnosticsEnabled(), isTrue);
+    expect(await reopenedPreference.loadRealtimeDetailsEnabled(), isTrue);
   });
 }

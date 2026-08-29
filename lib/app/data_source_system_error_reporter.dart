@@ -5,10 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 
-/// Safe, copyable projection of sources isolated during Runtime startup.
-///
-/// It deliberately omits source identifiers, exception text, paths, URLs,
-/// code and request data. Runtime simple logs never own or persist request detail.
+/// Copyable projection of the Runtime startup-recovery result supplied to the
+/// application layer.
 final class DataSourceSystemDiagnosticReport {
   const DataSourceSystemDiagnosticReport({
     required this.errorCode,
@@ -35,18 +33,17 @@ final class DataSourceSystemErrorReporter {
   DataSourceSystemErrorReporter(this._diagnostics);
 
   final DiagnosticsManager _diagnostics;
-  final StreamController<DataSourceSystemDiagnosticReport> _reports =
-      StreamController<DataSourceSystemDiagnosticReport>.broadcast(sync: true);
-  final Queue<DataSourceSystemDiagnosticReport> _pending =
-      Queue<DataSourceSystemDiagnosticReport>();
+  final StreamController<DataSourceSystemDiagnosticReport> _reports = StreamController<DataSourceSystemDiagnosticReport>.broadcast(
+    sync: true,
+  );
+  final Queue<DataSourceSystemDiagnosticReport> _pending = Queue<DataSourceSystemDiagnosticReport>();
   bool _disposed = false;
 
   Stream<DataSourceSystemDiagnosticReport> get reports => _reports.stream;
 
   bool get hasPendingReports => _pending.isNotEmpty;
 
-  DataSourceSystemDiagnosticReport? takeNextReport() =>
-      _pending.isEmpty ? null : _pending.removeFirst();
+  DataSourceSystemDiagnosticReport? takeNextReport() => _pending.isEmpty ? null : _pending.removeFirst();
 
   void reportQuarantinedSources({required int quarantinedCount}) {
     if (_disposed || quarantinedCount <= 0) return;
@@ -55,15 +52,12 @@ final class DataSourceSystemErrorReporter {
     try {
       _diagnostics.emit(
         AppDiagnosticEvents.unhandledError,
-        traceContext: DiagnosticTraceContext(
-          traceId: traceId,
-          spanId: _diagnostics.idGenerator.nextId('datasourceerror'),
-        ),
+        traceContext: DiagnosticTraceContext(traceId: traceId, spanId: _diagnostics.idGenerator.nextId('datasourceerror')),
         severity: DiagnosticSeverity.error,
         attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
           'boundary': DiagnosticValue.string('data-source-startup-recovery'),
           'errorCode': DiagnosticValue.string(errorCode),
-          'stackFingerprint': DiagnosticValue.string('0000000000000000'),
+          'stackTrace': DiagnosticValue.string(StackTrace.current.toString()),
           'fatal': DiagnosticValue.boolean(false),
         }),
       );
@@ -106,11 +100,8 @@ final class DataSourceSystemErrorReporter {
   }
 }
 
-final dataSourceSystemErrorReporterProvider =
-    Provider<DataSourceSystemErrorReporter>((Ref ref) {
-      final reporter = DataSourceSystemErrorReporter(
-        ref.watch(diagnosticsManagerProvider),
-      );
-      ref.onDispose(reporter.dispose);
-      return reporter;
-    });
+final dataSourceSystemErrorReporterProvider = Provider<DataSourceSystemErrorReporter>((Ref ref) {
+  final reporter = DataSourceSystemErrorReporter(ref.watch(diagnosticsManagerProvider));
+  ref.onDispose(reporter.dispose);
+  return reporter;
+});

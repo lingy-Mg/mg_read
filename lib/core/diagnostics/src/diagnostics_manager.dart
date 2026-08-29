@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 
 import 'diagnostic_event.dart';
-import 'diagnostic_privacy.dart';
 import 'diagnostic_registry.dart';
 import 'diagnostic_value.dart';
 
@@ -11,11 +10,7 @@ typedef DiagnosticAttributesBuilder = DiagnosticObjectValue Function();
 const Symbol _diagnosticTraceContextZoneKey = #mgReadDiagnosticTraceContext;
 
 abstract interface class DiagnosticEventSink {
-  bool isEnabled({
-    required String component,
-    required DiagnosticSeverity severity,
-    required DiagnosticPayloadKind payloadKind,
-  });
+  bool isEnabled({required String component, required DiagnosticSeverity severity, required DiagnosticPayloadKind payloadKind});
 
   /// Synchronously accepts or rejects an already bounded event.
   bool add(DiagnosticEvent event);
@@ -30,8 +25,7 @@ abstract interface class DiagnosticIdGenerator {
 }
 
 final class SecureDiagnosticIdGenerator implements DiagnosticIdGenerator {
-  SecureDiagnosticIdGenerator({Random? random})
-    : _random = random ?? Random.secure();
+  SecureDiagnosticIdGenerator({Random? random}) : _random = random ?? Random.secure();
 
   final Random _random;
 
@@ -68,14 +62,21 @@ final class DiagnosticEmitResult {
 
 /// Process-scoped diagnostics management layer.
 ///
-/// The manager performs only enablement, bounded schema/privacy validation and
+/// Context supplied by an explicit, bounded detail-capture session.
+final class DiagnosticCaptureContext {
+  const DiagnosticCaptureContext({this.payloadKind = DiagnosticPayloadKind.metadataOnly, this.hasExplicitCaptureSession = false});
+
+  final DiagnosticPayloadKind payloadKind;
+  final bool hasExplicitCaptureSession;
+}
+
+/// The manager performs only enablement, bounded schema validation and
 /// synchronous queue admission. The sink owns all encoding and I/O work.
 final class DiagnosticsManager {
   factory DiagnosticsManager({
     required DiagnosticEventSink sink,
     required DiagnosticEventRegistry registry,
     required DiagnosticSource source,
-    DiagnosticPrivacyPolicy? privacyPolicy,
     DiagnosticIdGenerator? idGenerator,
     DiagnosticClock? clock,
     String? sourceRunId,
@@ -87,7 +88,6 @@ final class DiagnosticsManager {
       sink: sink,
       registry: registry,
       source: source,
-      privacyPolicy: privacyPolicy ?? DiagnosticPrivacyPolicy(),
       idGenerator: effectiveIdGenerator,
       clock: clock ?? const SystemDiagnosticClock(),
       sourceRunId: sourceRunId ?? effectiveIdGenerator.nextId('run'),
@@ -100,7 +100,6 @@ final class DiagnosticsManager {
     required this.sink,
     required this.registry,
     required this.source,
-    required this.privacyPolicy,
     required this.idGenerator,
     required this.clock,
     required this.sourceRunId,
@@ -114,7 +113,6 @@ final class DiagnosticsManager {
   final DiagnosticEventSink sink;
   final DiagnosticEventRegistry registry;
   final DiagnosticSource source;
-  final DiagnosticPrivacyPolicy privacyPolicy;
   final DiagnosticIdGenerator idGenerator;
   final DiagnosticClock clock;
   final String sourceRunId;
@@ -128,8 +126,7 @@ final class DiagnosticsManager {
 
   bool get isClosed => _closed;
 
-  DiagnosticTraceContext? get currentTraceContext =>
-      Zone.current[_diagnosticTraceContextZoneKey] as DiagnosticTraceContext?;
+  DiagnosticTraceContext? get currentTraceContext => Zone.current[_diagnosticTraceContextZoneKey] as DiagnosticTraceContext?;
 
   bool isEnabled(
     DiagnosticEventDefinition definition, {
@@ -138,11 +135,7 @@ final class DiagnosticsManager {
   }) {
     if (_closed) return false;
     final registered = registry.requireDefinition(definition);
-    return _isSinkEnabled(
-      component: registered.component,
-      severity: severity ?? registered.defaultSeverity,
-      payloadKind: payloadKind,
-    );
+    return _isSinkEnabled(component: registered.component, severity: severity ?? registered.defaultSeverity, payloadKind: payloadKind);
   }
 
   DiagnosticEmitResult emit(
@@ -150,7 +143,7 @@ final class DiagnosticsManager {
     DiagnosticAttributesBuilder? attributes,
     DiagnosticSeverity? severity,
     DiagnosticTraceContext? traceContext,
-    DiagnosticPrivacyContext privacyContext = const DiagnosticPrivacyContext(),
+    DiagnosticCaptureContext captureContext = const DiagnosticCaptureContext(),
     String? captureSessionId,
     Set<DiagnosticEventFlag> flags = const <DiagnosticEventFlag>{},
   }) {
@@ -160,11 +153,7 @@ final class DiagnosticsManager {
       throw StateError('${registered.name} must be emitted as a span.');
     }
     final effectiveSeverity = severity ?? registered.defaultSeverity;
-    if (!_isSinkEnabled(
-      component: registered.component,
-      severity: effectiveSeverity,
-      payloadKind: privacyContext.payloadKind,
-    )) {
+    if (!_isSinkEnabled(component: registered.component, severity: effectiveSeverity, payloadKind: captureContext.payloadKind)) {
       return const DiagnosticEmitResult.filtered();
     }
     return _emitEvent(
@@ -173,7 +162,7 @@ final class DiagnosticsManager {
       severity: effectiveSeverity,
       attributes: attributes,
       traceContext: traceContext,
-      privacyContext: privacyContext,
+      captureContext: captureContext,
       captureSessionId: captureSessionId,
       flags: flags,
     );
@@ -183,7 +172,7 @@ final class DiagnosticsManager {
     DiagnosticEventDefinition definition, {
     DiagnosticAttributesBuilder? attributes,
     DiagnosticTraceContext? parentContext,
-    DiagnosticPrivacyContext privacyContext = const DiagnosticPrivacyContext(),
+    DiagnosticCaptureContext captureContext = const DiagnosticCaptureContext(),
     String? captureSessionId,
   }) {
     _ensureOpen();
@@ -194,33 +183,26 @@ final class DiagnosticsManager {
     final spanId = idGenerator.nextId('span');
     final effectiveParent = parentContext ?? currentTraceContext;
     final context = effectiveParent == null
-        ? DiagnosticTraceContext(
-            traceId: idGenerator.nextId('trace'),
-            spanId: spanId,
-          )
+        ? DiagnosticTraceContext(traceId: idGenerator.nextId('trace'), spanId: spanId)
         : effectiveParent.child(spanId);
     final handle = DiagnosticSpanHandle._(
       manager: this,
       definition: registered,
       traceContext: context,
-      privacyContext: privacyContext,
+      captureContext: captureContext,
       captureSessionId: captureSessionId,
       startedAtMicros: _monotonic.elapsedMicroseconds,
     );
     _openSpans.add(handle);
     final severity = registered.defaultSeverity;
-    if (_isSinkEnabled(
-      component: registered.component,
-      severity: severity,
-      payloadKind: privacyContext.payloadKind,
-    )) {
+    if (_isSinkEnabled(component: registered.component, severity: severity, payloadKind: captureContext.payloadKind)) {
       _emitEvent(
         definition: registered,
         phase: DiagnosticPhase.start,
         severity: severity,
         attributes: attributes,
         traceContext: context,
-        privacyContext: privacyContext,
+        captureContext: captureContext,
         captureSessionId: captureSessionId,
       );
     }
@@ -235,22 +217,13 @@ final class DiagnosticsManager {
     DiagnosticObjectValue Function(Object error)? errorAttributes,
     DiagnosticTraceContext? parentContext,
   }) async {
-    final span = startSpan(
-      definition,
-      attributes: startAttributes,
-      parentContext: parentContext,
-    );
+    final span = startSpan(definition, attributes: startAttributes, parentContext: parentContext);
     try {
       final result = await runZoned(
         () => operation(span),
-        zoneValues: <Object?, Object?>{
-          _diagnosticTraceContextZoneKey: span.traceContext,
-        },
+        zoneValues: <Object?, Object?>{_diagnosticTraceContextZoneKey: span.traceContext},
       );
-      span.end(
-        DiagnosticOutcome.success,
-        attributes: successAttributes?.call(result),
-      );
+      span.end(DiagnosticOutcome.success, attributes: successAttributes?.call(result));
       return result;
     } catch (error, stackTrace) {
       span.end(
@@ -258,12 +231,8 @@ final class DiagnosticsManager {
         attributes:
             errorAttributes?.call(error) ??
             DiagnosticObjectValue(<String, DiagnosticValue>{
-              if (definition.fields.containsKey('errorCode'))
-                'errorCode': DiagnosticValue.string('unclassified'),
-              if (definition.fields.containsKey('stackFingerprint'))
-                'stackFingerprint': DiagnosticValue.string(
-                  privacyPolicy.stackFingerprint(stackTrace),
-                ),
+              if (definition.fields.containsKey('errorCode')) 'errorCode': DiagnosticValue.string('unclassified'),
+              if (definition.fields.containsKey('stackTrace')) 'stackTrace': DiagnosticValue.string(stackTrace.toString()),
             }),
       );
       Error.throwWithStackTrace(error, stackTrace);
@@ -278,18 +247,9 @@ final class DiagnosticsManager {
     DiagnosticObjectValue Function(Object error)? errorAttributes,
     DiagnosticTraceContext? parentContext,
   }) {
-    final span = startSpan(
-      definition,
-      attributes: startAttributes,
-      parentContext: parentContext,
-    );
+    final span = startSpan(definition, attributes: startAttributes, parentContext: parentContext);
     try {
-      final result = runZoned(
-        () => operation(span),
-        zoneValues: <Object?, Object?>{
-          _diagnosticTraceContextZoneKey: span.traceContext,
-        },
-      );
+      final result = runZoned(() => operation(span), zoneValues: <Object?, Object?>{_diagnosticTraceContextZoneKey: span.traceContext});
       span.complete(attributes: successAttributes?.call(result));
       return result;
     } catch (error, stackTrace) {
@@ -297,12 +257,8 @@ final class DiagnosticsManager {
         attributes:
             errorAttributes?.call(error) ??
             DiagnosticObjectValue(<String, DiagnosticValue>{
-              if (definition.fields.containsKey('errorCode'))
-                'errorCode': DiagnosticValue.string('unclassified'),
-              if (definition.fields.containsKey('stackFingerprint'))
-                'stackFingerprint': DiagnosticValue.string(
-                  privacyPolicy.stackFingerprint(stackTrace),
-                ),
+              if (definition.fields.containsKey('errorCode')) 'errorCode': DiagnosticValue.string('unclassified'),
+              if (definition.fields.containsKey('stackTrace')) 'stackTrace': DiagnosticValue.string(stackTrace.toString()),
             }),
       );
       Error.throwWithStackTrace(error, stackTrace);
@@ -319,8 +275,7 @@ final class DiagnosticsManager {
     }
   }
 
-  Future<void> close({Duration timeout = const Duration(seconds: 2)}) =>
-      _closeFuture ??= _close(timeout);
+  Future<void> close({Duration timeout = const Duration(seconds: 2)}) => _closeFuture ??= _close(timeout);
 
   Future<void> _close(Duration timeout) async {
     if (_closed) return;
@@ -336,11 +291,7 @@ final class DiagnosticsManager {
     _monotonic.stop();
   }
 
-  DiagnosticEmitResult _finishSpan(
-    DiagnosticSpanHandle span,
-    DiagnosticOutcome outcome,
-    DiagnosticObjectValue? attributes,
-  ) {
+  DiagnosticEmitResult _finishSpan(DiagnosticSpanHandle span, DiagnosticOutcome outcome, DiagnosticObjectValue? attributes) {
     if (!_openSpans.remove(span)) {
       throw StateError('Diagnostic span already ended.');
     }
@@ -349,11 +300,7 @@ final class DiagnosticsManager {
       throw StateError('${definition.name} does not allow ${outcome.name}.');
     }
     final severity = definition.severityFor(outcome: outcome);
-    if (!_isSinkEnabled(
-      component: definition.component,
-      severity: severity,
-      payloadKind: span.privacyContext.payloadKind,
-    )) {
+    if (!_isSinkEnabled(component: definition.component, severity: severity, payloadKind: span.captureContext.payloadKind)) {
       return const DiagnosticEmitResult.filtered();
     }
     return _emitEvent(
@@ -364,7 +311,7 @@ final class DiagnosticsManager {
       severity: severity,
       attributes: attributes == null ? null : () => attributes,
       traceContext: span.traceContext,
-      privacyContext: span.privacyContext,
+      captureContext: span.captureContext,
       captureSessionId: span.captureSessionId,
       flags: outcome == DiagnosticOutcome.incomplete
           ? const <DiagnosticEventFlag>{DiagnosticEventFlag.incomplete}
@@ -380,23 +327,14 @@ final class DiagnosticsManager {
     int? durationMicros,
     DiagnosticAttributesBuilder? attributes,
     DiagnosticTraceContext? traceContext,
-    required DiagnosticPrivacyContext privacyContext,
+    required DiagnosticCaptureContext captureContext,
     String? captureSessionId,
     Set<DiagnosticEventFlag> flags = const <DiagnosticEventFlag>{},
   }) {
     final effectiveTraceContext = traceContext ?? currentTraceContext;
     final rawAttributes = attributes?.call() ?? DiagnosticObjectValue.empty;
     definition.validateAttributes(rawAttributes, phase);
-    final sanitized = privacyPolicy.sanitizeAttributes(
-      definition: definition,
-      attributes: rawAttributes,
-      context: privacyContext,
-    );
-    definition.validateAttributes(sanitized, phase);
     final effectiveFlags = <DiagnosticEventFlag>{...flags};
-    if (sanitized != rawAttributes) {
-      effectiveFlags.add(DiagnosticEventFlag.redacted);
-    }
     _sourceSequence += 1;
     final event = DiagnosticEvent(
       eventId: idGenerator.nextId('event'),
@@ -416,24 +354,16 @@ final class DiagnosticsManager {
       outcome: outcome,
       durationMicros: durationMicros,
       summary: definition.summary,
-      attributes: sanitized,
+      attributes: rawAttributes,
       captureSessionId: captureSessionId,
       flags: effectiveFlags,
     );
     return DiagnosticEmitResult(accepted: _addToSink(event), event: event);
   }
 
-  bool _isSinkEnabled({
-    required String component,
-    required DiagnosticSeverity severity,
-    required DiagnosticPayloadKind payloadKind,
-  }) {
+  bool _isSinkEnabled({required String component, required DiagnosticSeverity severity, required DiagnosticPayloadKind payloadKind}) {
     try {
-      return sink.isEnabled(
-        component: component,
-        severity: severity,
-        payloadKind: payloadKind,
-      );
+      return sink.isEnabled(component: component, severity: severity, payloadKind: payloadKind);
     } catch (_) {
       return false;
     }
@@ -457,7 +387,7 @@ final class DiagnosticSpanHandle {
     required this.manager,
     required this.definition,
     required this.traceContext,
-    required this.privacyContext,
+    required this.captureContext,
     required this.captureSessionId,
     required this.startedAtMicros,
   });
@@ -465,47 +395,35 @@ final class DiagnosticSpanHandle {
   final DiagnosticsManager manager;
   final DiagnosticEventDefinition definition;
   final DiagnosticTraceContext traceContext;
-  final DiagnosticPrivacyContext privacyContext;
+  final DiagnosticCaptureContext captureContext;
   final String? captureSessionId;
   final int startedAtMicros;
   bool _ended = false;
 
   bool get isEnded => _ended;
 
-  DiagnosticEmitResult end(
-    DiagnosticOutcome outcome, {
-    DiagnosticObjectValue? attributes,
-  }) {
+  DiagnosticEmitResult end(DiagnosticOutcome outcome, {DiagnosticObjectValue? attributes}) {
     if (_ended) throw StateError('Diagnostic span already ended.');
     _ended = true;
     return manager._finishSpan(this, outcome, attributes);
   }
 
-  DiagnosticEmitResult complete({DiagnosticObjectValue? attributes}) =>
-      end(DiagnosticOutcome.success, attributes: attributes);
+  DiagnosticEmitResult complete({DiagnosticObjectValue? attributes}) => end(DiagnosticOutcome.success, attributes: attributes);
 
-  DiagnosticEmitResult fail({DiagnosticObjectValue? attributes}) =>
-      end(DiagnosticOutcome.error, attributes: attributes);
+  DiagnosticEmitResult fail({DiagnosticObjectValue? attributes}) => end(DiagnosticOutcome.error, attributes: attributes);
 
-  DiagnosticEmitResult cancel({DiagnosticObjectValue? attributes}) =>
-      end(DiagnosticOutcome.cancelled, attributes: attributes);
+  DiagnosticEmitResult cancel({DiagnosticObjectValue? attributes}) => end(DiagnosticOutcome.cancelled, attributes: attributes);
 
-  DiagnosticEmitResult timeout({DiagnosticObjectValue? attributes}) =>
-      end(DiagnosticOutcome.timeout, attributes: attributes);
+  DiagnosticEmitResult timeout({DiagnosticObjectValue? attributes}) => end(DiagnosticOutcome.timeout, attributes: attributes);
 
-  DiagnosticEmitResult overload({DiagnosticObjectValue? attributes}) =>
-      end(DiagnosticOutcome.overloaded, attributes: attributes);
+  DiagnosticEmitResult overload({DiagnosticObjectValue? attributes}) => end(DiagnosticOutcome.overloaded, attributes: attributes);
 }
 
 final class NoopDiagnosticEventSink implements DiagnosticEventSink {
   const NoopDiagnosticEventSink();
 
   @override
-  bool isEnabled({
-    required String component,
-    required DiagnosticSeverity severity,
-    required DiagnosticPayloadKind payloadKind,
-  }) => false;
+  bool isEnabled({required String component, required DiagnosticSeverity severity, required DiagnosticPayloadKind payloadKind}) => false;
 
   @override
   bool add(DiagnosticEvent event) => false;

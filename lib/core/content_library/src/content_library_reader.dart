@@ -7,6 +7,7 @@
 ///
 /// 注意：
 /// - 全局封面写入在持久化边界内按 LRU 上限维护，调用方不访问路径或自行清理。
+/// - 漫画正文图片写入不设总容量上限；总量统计和清理只由用户主动管理触发。
 /// - 会话不得越过 active snapshot；异步访问保持在 ContentLibrary 所有权内。
 ///
 /// TODO:
@@ -59,7 +60,6 @@ final class CoverRepository {
 final class MangaImageCacheRepository {
   MangaImageCacheRepository._(this._library);
   final ContentLibrary _library;
-  static const maxBytes = 1024 * 1024 * 1024;
   Future<List<int>?> read({
     required LibraryItemId itemId,
     required String chapterId,
@@ -87,7 +87,6 @@ final class MangaImageCacheRepository {
       contentVersion: contentVersion,
       bytes: bytes,
       mimeType: mimeType,
-      maxBytes: maxBytes,
     );
   }
 

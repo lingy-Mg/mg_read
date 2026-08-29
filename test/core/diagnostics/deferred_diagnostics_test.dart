@@ -91,7 +91,8 @@ void main() {
     await service.close();
     final reopened = await DiagnosticsPersistence.open(dataRoot: root);
     addTearDown(reopened.close);
-    final events = await reopened.listEvents(filter: DiagnosticEventFilter(sessionId: 'run_000000000000000000000001'), limit: 20);
+    final files = await reopened.listLogFiles();
+    final events = await reopened.listLogEvents(files.single.fileId, limit: 20);
     expect(events.items.map((event) => event.sourceRunId).toSet(), {'run_000000000000000000000001'});
     expect(events.items.any((event) => event.eventName == 'app.startup.stage'), isTrue);
   });

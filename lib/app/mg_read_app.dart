@@ -73,7 +73,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> {
       final observer = ref.read(runtimeFatalErrorObserverProvider);
       observer.observeLatestDiagnostics();
       if (!observer.hasObservedFatal) {
-        ref.read(fatalErrorReporterProvider).reportFatalRuntimeFailure(AppError.fromUnknown(error), stackTrace);
+        ref.read(fatalErrorReporterProvider).reportFatalRuntimeFailure(AppError.fromUnknown(error), stackTrace, originalError: error);
       }
       return false;
     }
@@ -211,7 +211,6 @@ final class _AppStartupGateState extends ConsumerState<_AppStartupGate> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           startup.recordStage('libraryFirstUsableFrame', resultState: 'failure');
-          unawaited(startup.ensureDiagnosticsReady());
         }
       });
     }
@@ -231,7 +230,6 @@ final class _AppStartupGateState extends ConsumerState<_AppStartupGate> {
             TextButton(
               key: const Key('startup-diagnostics'),
               onPressed: () {
-                unawaited(startup.ensureDiagnosticsReady());
                 const DiagnosticsRoute().go(context);
               },
               child: const Text('查看诊断'),

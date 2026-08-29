@@ -10,49 +10,19 @@ enum DiagnosticSeverity { trace, debug, info, warn, error, fatal }
 
 enum DiagnosticPhase { instant, start, terminal }
 
-enum DiagnosticOutcome {
-  success,
-  error,
-  cancelled,
-  timeout,
-  overloaded,
-  incomplete,
-}
+enum DiagnosticOutcome { success, error, cancelled, timeout, overloaded, incomplete }
 
-enum DiagnosticPayloadKind {
-  metadataOnly,
-  safeStructured,
-  contentPayload,
-  restrictedRaw,
-}
+enum DiagnosticPayloadKind { metadataOnly, safeStructured, contentPayload, restrictedRaw }
 
-enum DiagnosticPrivacyClass { public, internal, content, restricted, secret }
-
-enum DiagnosticCaptureState {
-  captured,
-  truncated,
-  policyBlocked,
-  pressureDropped,
-  failed,
-}
+enum DiagnosticCaptureState { captured, truncated, policyBlocked, pressureDropped, failed }
 
 enum DiagnosticStorageCodec { identity, gzip }
 
-enum DiagnosticEventFlag {
-  sampled,
-  truncated,
-  redacted,
-  droppedPayload,
-  incomplete,
-}
+enum DiagnosticEventFlag { sampled, truncated, droppedPayload, incomplete }
 
 /// Trace identifiers crossing app and Runtime use this public shape only.
 final class DiagnosticTraceContext {
-  DiagnosticTraceContext({
-    required this.traceId,
-    required this.spanId,
-    this.parentSpanId,
-  }) {
+  DiagnosticTraceContext({required this.traceId, required this.spanId, this.parentSpanId}) {
     _validateOpaqueId(traceId, 'traceId');
     _validateOpaqueId(spanId, 'spanId');
     if (parentSpanId case final value?) {
@@ -64,11 +34,7 @@ final class DiagnosticTraceContext {
   final String spanId;
   final String? parentSpanId;
 
-  DiagnosticTraceContext child(String childSpanId) => DiagnosticTraceContext(
-    traceId: traceId,
-    spanId: childSpanId,
-    parentSpanId: spanId,
-  );
+  DiagnosticTraceContext child(String childSpanId) => DiagnosticTraceContext(traceId: traceId, spanId: childSpanId, parentSpanId: spanId);
 }
 
 /// Immutable, query-friendly diagnostic event envelope.
@@ -110,10 +76,7 @@ final class DiagnosticEvent {
     if (sourceSequence <= 0 || occurredAtUtcMicros <= 0) {
       throw ArgumentError('Sequence and UTC timestamp must be positive.');
     }
-    if (monotonicOffsetMicros < 0 ||
-        attachmentCount < 0 ||
-        capturedBytes < 0 ||
-        (durationMicros != null && durationMicros! < 0)) {
+    if (monotonicOffsetMicros < 0 || attachmentCount < 0 || capturedBytes < 0 || (durationMicros != null && durationMicros! < 0)) {
       throw ArgumentError('Diagnostic counters cannot be negative.');
     }
     if (summary.isEmpty || summary.length > 512 || summary.contains('\n')) {
@@ -165,49 +128,40 @@ final class DiagnosticEvent {
   /// Unknown envelope fields are retained for read-only future-version data.
   final Map<String, Object?> extensionFields;
 
-  bool get isFutureEnvelope =>
-      envelopeVersion > currentDiagnosticEnvelopeVersion;
+  bool get isFutureEnvelope => envelopeVersion > currentDiagnosticEnvelopeVersion;
 
   DiagnosticTraceContext? get traceContext {
     if (traceId == null || spanId == null) return null;
-    return DiagnosticTraceContext(
-      traceId: traceId!,
-      spanId: spanId!,
-      parentSpanId: parentSpanId,
-    );
+    return DiagnosticTraceContext(traceId: traceId!, spanId: spanId!, parentSpanId: parentSpanId);
   }
 
-  DiagnosticEvent copyWith({
-    String? captureSessionId,
-    int? attachmentCount,
-    int? capturedBytes,
-    Set<DiagnosticEventFlag>? flags,
-  }) => DiagnosticEvent(
-    envelopeVersion: envelopeVersion,
-    eventId: eventId,
-    source: source,
-    component: component,
-    sourceRunId: sourceRunId,
-    sourceSequence: sourceSequence,
-    occurredAtUtcMicros: occurredAtUtcMicros,
-    monotonicOffsetMicros: monotonicOffsetMicros,
-    severity: severity,
-    eventName: eventName,
-    eventSchemaVersion: eventSchemaVersion,
-    traceId: traceId,
-    spanId: spanId,
-    parentSpanId: parentSpanId,
-    phase: phase,
-    outcome: outcome,
-    durationMicros: durationMicros,
-    summary: summary,
-    attributes: attributes,
-    captureSessionId: captureSessionId ?? this.captureSessionId,
-    attachmentCount: attachmentCount ?? this.attachmentCount,
-    capturedBytes: capturedBytes ?? this.capturedBytes,
-    flags: flags ?? this.flags,
-    extensionFields: extensionFields,
-  );
+  DiagnosticEvent copyWith({String? captureSessionId, int? attachmentCount, int? capturedBytes, Set<DiagnosticEventFlag>? flags}) =>
+      DiagnosticEvent(
+        envelopeVersion: envelopeVersion,
+        eventId: eventId,
+        source: source,
+        component: component,
+        sourceRunId: sourceRunId,
+        sourceSequence: sourceSequence,
+        occurredAtUtcMicros: occurredAtUtcMicros,
+        monotonicOffsetMicros: monotonicOffsetMicros,
+        severity: severity,
+        eventName: eventName,
+        eventSchemaVersion: eventSchemaVersion,
+        traceId: traceId,
+        spanId: spanId,
+        parentSpanId: parentSpanId,
+        phase: phase,
+        outcome: outcome,
+        durationMicros: durationMicros,
+        summary: summary,
+        attributes: attributes,
+        captureSessionId: captureSessionId ?? this.captureSessionId,
+        attachmentCount: attachmentCount ?? this.attachmentCount,
+        capturedBytes: capturedBytes ?? this.capturedBytes,
+        flags: flags ?? this.flags,
+        extensionFields: extensionFields,
+      );
 }
 
 /// Stable codec used by TXT records, export manifests and Runtime fixtures.
@@ -276,47 +230,27 @@ final class DiagnosticEventCodec {
     return DiagnosticEvent(
       envelopeVersion: _integer(wireValue, 'envelopeVersion'),
       eventId: _string(wireValue, 'eventId'),
-      source: _enumByName(
-        DiagnosticSource.values,
-        _string(wireValue, 'source'),
-        'source',
-      ),
+      source: _enumByName(DiagnosticSource.values, _string(wireValue, 'source'), 'source'),
       component: _string(wireValue, 'component'),
       sourceRunId: _string(wireValue, 'sourceRunId'),
       sourceSequence: _integer(wireValue, 'sourceSequence'),
       occurredAtUtcMicros: _integer(wireValue, 'occurredAtUtcMicros'),
       monotonicOffsetMicros: _integer(wireValue, 'monotonicOffsetMicros'),
-      severity: _enumByName(
-        DiagnosticSeverity.values,
-        _string(wireValue, 'severity'),
-        'severity',
-      ),
+      severity: _enumByName(DiagnosticSeverity.values, _string(wireValue, 'severity'), 'severity'),
       eventName: _string(wireValue, 'eventName'),
       eventSchemaVersion: _integer(wireValue, 'eventSchemaVersion'),
       traceId: wireValue['traceId'] as String?,
       spanId: wireValue['spanId'] as String?,
       parentSpanId: wireValue['parentSpanId'] as String?,
-      phase: _enumByName(
-        DiagnosticPhase.values,
-        _string(wireValue, 'phase'),
-        'phase',
-      ),
-      outcome: wireValue['outcome'] == null
-          ? null
-          : _enumByName(
-              DiagnosticOutcome.values,
-              _string(wireValue, 'outcome'),
-              'outcome',
-            ),
+      phase: _enumByName(DiagnosticPhase.values, _string(wireValue, 'phase'), 'phase'),
+      outcome: wireValue['outcome'] == null ? null : _enumByName(DiagnosticOutcome.values, _string(wireValue, 'outcome'), 'outcome'),
       durationMicros: wireValue['durationMicros'] as int?,
       summary: _string(wireValue, 'summary'),
       attributes: attributes,
       captureSessionId: wireValue['captureSessionId'] as String?,
       attachmentCount: _integer(wireValue, 'attachmentCount'),
       capturedBytes: _integer(wireValue, 'capturedBytes'),
-      flags: _stringList(wireValue, 'flags')
-          .map((name) => _enumByName(DiagnosticEventFlag.values, name, 'flags'))
-          .toSet(),
+      flags: _stringList(wireValue, 'flags').map((name) => _enumByName(DiagnosticEventFlag.values, name, 'flags')).toSet(),
       extensionFields: <String, Object?>{
         for (final entry in wireValue.entries)
           if (!known.contains(entry.key)) entry.key: entry.value,
@@ -352,8 +286,7 @@ final class DiagnosticEventCodec {
   }
 }
 
-void validateDiagnosticName(String value, String parameterName) =>
-    _validateStableName(value, parameterName);
+void validateDiagnosticName(String value, String parameterName) => _validateStableName(value, parameterName);
 
 void validateDiagnosticFieldName(String value, String parameterName) {
   if (!_fieldName.hasMatch(value)) {
@@ -361,8 +294,7 @@ void validateDiagnosticFieldName(String value, String parameterName) {
   }
 }
 
-void validateDiagnosticOpaqueId(String value, String parameterName) =>
-    _validateOpaqueId(value, parameterName);
+void validateDiagnosticOpaqueId(String value, String parameterName) => _validateOpaqueId(value, parameterName);
 
 void _validateStableName(String value, String parameterName) {
   if (!_stableName.hasMatch(value)) {
@@ -380,5 +312,4 @@ final RegExp _stableName = RegExp(r'^[a-z][a-z0-9]*(?:[._-][a-z][a-z0-9]*)*$');
 final RegExp _fieldName = RegExp(r'^[A-Za-z][A-Za-z0-9_.-]{0,127}$');
 final RegExp _opaqueId = RegExp(r'^[A-Za-z0-9_-]{16,128}$');
 
-Map<String, Object?> immutableExtensionFields(Map<String, Object?> values) =>
-    UnmodifiableMapView<String, Object?>(values);
+Map<String, Object?> immutableExtensionFields(Map<String, Object?> values) => UnmodifiableMapView<String, Object?>(values);

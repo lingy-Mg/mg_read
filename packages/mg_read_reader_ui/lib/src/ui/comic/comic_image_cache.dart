@@ -14,7 +14,7 @@ class ComicImageByteCache {
   ComicImageByteCache({
     required this.bookId,
     required this.dataSource,
-    this.maxEntries = 18,
+    this.maxEntries = 1000,
     this.maxBytes = 48 * 1024 * 1024,
     this.maxSingleImageBytes = 8 * 1024 * 1024,
     this.maxConcurrentLoads = 4,
@@ -115,6 +115,30 @@ class ComicImageByteCache {
 
   void prefetch(String chapterId, ComicImageInfo image) {
     load(chapterId, image, visiblePriority: false).ignore();
+  }
+
+  /// Drops warm encoded bytes and invalidates low-priority work.
+  ///
+  /// Visible requests remain active. Futures already executing cannot be
+  /// cancelled, so removing their request identity prevents late prefetch
+  /// results from repopulating the cache after memory pressure.
+  void handleMemoryPressure() {
+    if (_disposed) return;
+    _entries.clear();
+    _bytes = 0;
+    for (final _ImageRequest request in _requests.values.toList()) {
+      if (request.visiblePriority) continue;
+      if (!request.started) _prefetchQueue.remove(request);
+      if (identical(_requests[request.key], request)) {
+        _requests.remove(request.key);
+      }
+      if (!request.completer.isCompleted) {
+        request.completer.completeError(
+          StateError('Comic image prefetch was cancelled by memory pressure.'),
+        );
+      }
+    }
+    _pump();
   }
 
   void remove(String chapterId, ComicImageInfo image) {

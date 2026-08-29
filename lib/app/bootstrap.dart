@@ -50,6 +50,7 @@ import 'package:mg_read/features/cache/data/content_library_cover_cache_gateway.
 import 'package:mg_read/features/cache/data/content_library_database_cache_gateway.dart';
 import 'package:mg_read/features/cache/data/content_library_manga_image_cache_gateway.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
+import 'package:mg_read/features/diagnostics/application/diagnostics_activation.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 
 typedef SettingsDataRootResolver = Future<Directory> Function();
@@ -94,6 +95,7 @@ Future<void> bootstrapMgReadApp({
   Future<Directory> resolveDataRoot() => dataRootFuture ??= dataRootResolver();
   final deferredDiagnostics = DeferredDiagnosticEventSink(
     minimumSeverity: kReleaseMode ? DiagnosticSeverity.warn : DiagnosticSeverity.debug,
+    bufferBeforeAttach: false,
   );
   final diagnostics =
       diagnosticsManager ??
@@ -103,7 +105,7 @@ Future<void> bootstrapMgReadApp({
         registry: AppDiagnosticEvents.registry,
         source: DiagnosticSource.app,
       );
-  final diagnosticsPorts = DeferredDiagnosticsPorts();
+  final diagnosticsPorts = DeferredDiagnosticsPorts(coldArchive: ColdDiagnosticsLogArchive(resolveDataRoot));
   if (diagnosticsService != null) diagnosticsPorts.attach(diagnosticsService);
   final fatalErrorReporter = AppFatalErrorReporter(diagnostics);
   final errorBoundary = AppDiagnosticsErrorBoundary.install(diagnostics, fatalReporter: fatalErrorReporter);
@@ -164,6 +166,7 @@ Future<void> bootstrapMgReadApp({
   Future<AppStartupResources> openResources() async {
     AppPersistence? attemptPersistence;
     ContentLibrary? attemptLibrary = contentLibrary;
+    AppDiagnosticsService? attemptDiagnostics;
     try {
       if (attemptLibrary == null && contentLibraryFactory != null) {
         if (appPersistenceFactory != null) {
@@ -183,7 +186,10 @@ Future<void> bootstrapMgReadApp({
         throw StateError('settings_not_ready');
       }
       startup.recordStage('settings', resultState: 'ready');
-      return AppStartupResources(contentLibrary: attemptLibrary, persistence: attemptPersistence);
+      if (resolvedManager.supports(AppSettingKeys.diagnosticsEnabled) && resolvedManager.get(AppSettingKeys.diagnosticsEnabled)) {
+        attemptDiagnostics = await openPersistentDiagnostics();
+      }
+      return AppStartupResources(contentLibrary: attemptLibrary, persistence: attemptPersistence, diagnosticsService: attemptDiagnostics);
     } on Object {
       try {
         await attemptLibrary?.close();
@@ -201,6 +207,11 @@ Future<void> bootstrapMgReadApp({
     diagnosticsServiceLoader: openPersistentDiagnostics,
     ownsLoadingAnimation: true,
   );
+  final diagnosticsActivation = _AppDiagnosticsActivation(
+    settings: resolvedManager,
+    openForCurrentRun: openPersistentDiagnostics,
+    isCurrentRunEnabled: () => persistentDiagnostics != null,
+  );
   Future<ContentLibrary> getLibrary() => startup.contentLibrary;
   startup.recordStage('composition', resultState: 'mounted');
   // Do this before any application-support lookup and first-run database open.
@@ -214,6 +225,8 @@ Future<void> bootstrapMgReadApp({
         diagnosticsQueryProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),
         diagnosticsCaptureProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),
         diagnosticsMaintenanceProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),
+        diagnosticsLogArchiveProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),
+        diagnosticsActivationProvider.overrideWithValue(diagnosticsActivation),
         if (contentLibrary != null || contentLibraryFactory != null)
           libraryOverviewLoaderProvider.overrideWithValue(DeferredLibraryOverviewLoader(startup)),
         if (contentLibrary != null || contentLibraryFactory != null)
@@ -339,6 +352,32 @@ Future<AppDiagnosticsService> _openDefaultDiagnostics(Directory dataRoot, {Diagn
       existingManager: existingManager,
     );
 
+final class _AppDiagnosticsActivation implements DiagnosticsActivation {
+  const _AppDiagnosticsActivation({required this._settings, required this._openForCurrentRun, required this._isCurrentRunEnabled});
+
+  final AppSettingsManager _settings;
+  final Future<AppDiagnosticsService?> Function() _openForCurrentRun;
+  final bool Function() _isCurrentRunEnabled;
+
+  @override
+  bool get enabledForCurrentRun => _isCurrentRunEnabled();
+
+  @override
+  Future<bool> enableForCurrentRun() async {
+    if (!_settings.supports(AppSettingKeys.diagnosticsEnabled)) return false;
+    await _settings.set(AppSettingKeys.diagnosticsEnabled, true);
+    await _settings.flush();
+    return await _openForCurrentRun() != null;
+  }
+
+  @override
+  Future<void> disableOnNextLaunch() async {
+    if (!_settings.supports(AppSettingKeys.diagnosticsEnabled)) return;
+    await _settings.set(AppSettingKeys.diagnosticsEnabled, false);
+    await _settings.flush();
+  }
+}
+
 /// Bounded, best-effort developer-console output outside the app log queue.
 ///
 /// This keeps console backpressure, encoding, and I/O out of the user-action
@@ -356,7 +395,7 @@ final class _DebugConsoleEventMirror {
     if (!_formatter.shouldMirror(event)) return;
     final String line;
     try {
-      line = _formatter.format(event);
+      line = _formatter.formatForConsole(event);
     } on Object {
       return;
     }

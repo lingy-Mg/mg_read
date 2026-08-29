@@ -49,11 +49,46 @@ final class DiagnosticCursor {
 }
 
 final class DiagnosticPage<T> {
-  DiagnosticPage({required Iterable<T> items, this.nextCursor})
-    : items = List<T>.unmodifiable(items);
+  DiagnosticPage({required Iterable<T> items, this.nextCursor}) : items = List<T>.unmodifiable(items);
 
   final List<T> items;
   final DiagnosticCursor? nextCursor;
+}
+
+/// Metadata-only projection of one cold diagnostic run file.
+///
+/// Listing these values may use directory entries and [FileStat] only. Event
+/// counts are intentionally absent because deriving them would read history.
+final class DiagnosticLogFile {
+  const DiagnosticLogFile({
+    required this.fileId,
+    required this.startedAtUtcMicros,
+    required this.modifiedAtUtcMicros,
+    required this.storedBytes,
+    required this.isCurrent,
+  });
+
+  final String fileId;
+  final int startedAtUtcMicros;
+  final int modifiedAtUtcMicros;
+  final int storedBytes;
+  final bool isCurrent;
+}
+
+abstract interface class DiagnosticsLogArchive {
+  Future<List<DiagnosticLogFile>> listLogFiles();
+
+  Future<DiagnosticPage<DiagnosticEvent>> listLogEvents(String fileId, {DiagnosticCursor? cursor, int limit = 100});
+
+  Future<DiagnosticEvent?> getLogEvent(String fileId, String eventId);
+
+  Future<List<DiagnosticAttachmentDescriptor>> listLogAttachments(String fileId, String eventId);
+
+  Stream<List<int>> openLogAttachment(String fileId, String attachmentId, {DiagnosticByteRange? range});
+
+  Future<void> deleteLogFile(String fileId);
+
+  Future<DiagnosticExportResult> exportLogFile(String fileId);
 }
 
 final class DiagnosticSessionFilter {
@@ -110,12 +145,10 @@ final class DiagnosticAttachmentDescriptor {
     required this.mediaType,
     required this.formatId,
     required this.formatVersion,
-    required this.privacyClass,
     required this.captureState,
     required this.rawByteLength,
     required this.storedByteLength,
     required this.storageCodec,
-    required this.redactionVersion,
     this.charset,
     this.schemaId,
     this.schemaVersion,
@@ -126,11 +159,7 @@ final class DiagnosticAttachmentDescriptor {
     validateDiagnosticOpaqueId(eventId, 'eventId');
     validateDiagnosticName(kind, 'kind');
     validateDiagnosticName(formatId, 'formatId');
-    if (formatVersion <= 0 ||
-        rawByteLength < 0 ||
-        storedByteLength < 0 ||
-        redactionVersion <= 0 ||
-        (schemaVersion != null && schemaVersion! <= 0)) {
+    if (formatVersion <= 0 || rawByteLength < 0 || storedByteLength < 0 || (schemaVersion != null && schemaVersion! <= 0)) {
       throw ArgumentError('Invalid diagnostic attachment descriptor.');
     }
     if (sha256 != null && !RegExp(r'^[a-f0-9]{64}$').hasMatch(sha256!)) {
@@ -147,22 +176,18 @@ final class DiagnosticAttachmentDescriptor {
   final int formatVersion;
   final String? schemaId;
   final int? schemaVersion;
-  final DiagnosticPrivacyClass privacyClass;
   final DiagnosticCaptureState captureState;
   final int rawByteLength;
   final int storedByteLength;
   final String? sha256;
   final DiagnosticStorageCodec storageCodec;
-  final int redactionVersion;
   final String? truncationReason;
 }
 
 final class DiagnosticByteRange {
   DiagnosticByteRange({required this.offset, required this.length}) {
     if (offset < 0 || length <= 0) {
-      throw ArgumentError(
-        'Attachment range must be non-negative and non-empty.',
-      );
+      throw ArgumentError('Attachment range must be non-negative and non-empty.');
     }
   }
 
@@ -170,19 +195,7 @@ final class DiagnosticByteRange {
   final int length;
 }
 
-enum DiagnosticStructuredNodeKind {
-  scalar,
-  object,
-  list,
-  reference,
-  dateTime,
-  int64,
-  nonFinite,
-  attachment,
-  redacted,
-  truncated,
-  unsupported,
-}
+enum DiagnosticStructuredNodeKind { scalar, object, list, reference, dateTime, int64, nonFinite, attachment, truncated, unsupported }
 
 final class DiagnosticStructuredNode {
   DiagnosticStructuredNode({
@@ -211,20 +224,13 @@ abstract interface class DiagnosticsQuery {
     int limit = 100,
   });
 
-  Future<DiagnosticPage<DiagnosticEvent>> listEvents({
-    required DiagnosticEventFilter filter,
-    DiagnosticCursor? cursor,
-    int limit = 100,
-  });
+  Future<DiagnosticPage<DiagnosticEvent>> listEvents({required DiagnosticEventFilter filter, DiagnosticCursor? cursor, int limit = 100});
 
   Future<DiagnosticEvent?> getEvent(String eventId);
 
   Future<List<DiagnosticAttachmentDescriptor>> listAttachments(String eventId);
 
-  Stream<List<int>> openAttachment(
-    String attachmentId, {
-    DiagnosticByteRange? range,
-  });
+  Stream<List<int>> openAttachment(String attachmentId, {DiagnosticByteRange? range});
 
   Future<DiagnosticPage<DiagnosticStructuredNode>> listStructuredNodes(
     String attachmentId, {
@@ -247,12 +253,8 @@ final class DiagnosticCapturePolicy {
     if (duration <= Duration.zero || maxStoredBytes <= 0) {
       throw ArgumentError('Capture duration and byte quota must be positive.');
     }
-    if (payloadKind != DiagnosticPayloadKind.metadataOnly &&
-        components.isEmpty &&
-        origins.isEmpty) {
-      throw ArgumentError(
-        'Payload capture needs a component or origin allowlist.',
-      );
+    if (payloadKind != DiagnosticPayloadKind.metadataOnly && components.isEmpty && origins.isEmpty) {
+      throw ArgumentError('Payload capture needs a component or origin allowlist.');
     }
     for (final component in components) {
       validateDiagnosticName(component, 'component');
@@ -297,7 +299,6 @@ abstract interface class DiagnosticsCapture {
     required String mediaType,
     required String formatId,
     required int formatVersion,
-    required DiagnosticPrivacyClass privacyClass,
     required Stream<List<int>> bytes,
     String? charset,
     String? schemaId,
@@ -396,8 +397,7 @@ final class DiagnosticStorageStatistics {
 }
 
 final class DiagnosticExportSelection {
-  DiagnosticExportSelection(Iterable<String> sessionIds)
-    : sessionIds = List<String>.unmodifiable(sessionIds) {
+  DiagnosticExportSelection(Iterable<String> sessionIds) : sessionIds = List<String>.unmodifiable(sessionIds) {
     if (this.sessionIds.isEmpty) {
       throw ArgumentError('At least one diagnostic session is required.');
     }
@@ -410,15 +410,7 @@ final class DiagnosticExportSelection {
 }
 
 final class DiagnosticExportPolicy {
-  const DiagnosticExportPolicy({
-    this.includeContentPayload = false,
-    this.includeRestrictedRaw = false,
-    this.reapplyRedaction = true,
-  });
-
-  final bool includeContentPayload;
-  final bool includeRestrictedRaw;
-  final bool reapplyRedaction;
+  const DiagnosticExportPolicy();
 }
 
 final class DiagnosticExportResult {
@@ -445,18 +437,12 @@ final class DiagnosticExportResult {
 }
 
 abstract interface class DiagnosticsMaintenance {
-  Future<DiagnosticMaintenanceResult> enforceRetention(
-    DiagnosticRetentionPolicy policy,
-  );
+  Future<DiagnosticMaintenanceResult> enforceRetention(DiagnosticRetentionPolicy policy);
 
   Future<void> deleteSession(String sessionId);
 
-  Future<DiagnosticExportResult> exportBundle({
-    required DiagnosticExportSelection selection,
-    required DiagnosticExportPolicy policy,
-  });
+  Future<DiagnosticExportResult> exportBundle({required DiagnosticExportSelection selection, required DiagnosticExportPolicy policy});
 }
 
-Map<String, DiagnosticValue> immutableDiagnosticValues(
-  Map<String, DiagnosticValue> values,
-) => UnmodifiableMapView<String, DiagnosticValue>(values);
+Map<String, DiagnosticValue> immutableDiagnosticValues(Map<String, DiagnosticValue> values) =>
+    UnmodifiableMapView<String, DiagnosticValue>(values);

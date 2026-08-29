@@ -1,7 +1,7 @@
 /// 调试日志查看器的强类型查询与捕获网关。
 ///
 /// 职责：
-/// - 将 App 的受限诊断读取映射为页面数据。
+/// - 将 App 的元数据文件列表和单文件按需读取映射为页面数据。
 /// - 创建和停止有时限的 App 详情捕获会话。
 ///
 /// 注意：
@@ -35,6 +35,7 @@ final class DiagnosticsViewerEvent {
     required this.occurredAtUtcMicros,
     required this.attachmentCount,
     required this.capturedBytes,
+    required this.logFileId,
     this.outcome,
     this.durationMicros,
   });
@@ -51,8 +52,26 @@ final class DiagnosticsViewerEvent {
   final String severity;
   final DiagnosticsViewerSource source;
   final String summary;
+  final String logFileId;
 
   String get identity => '${source.name}:$eventId';
+}
+
+@immutable
+final class DiagnosticsViewerLogFile {
+  const DiagnosticsViewerLogFile({
+    required this.fileId,
+    required this.startedAtUtcMicros,
+    required this.modifiedAtUtcMicros,
+    required this.storedBytes,
+    required this.isCurrent,
+  });
+
+  final String fileId;
+  final int startedAtUtcMicros;
+  final int modifiedAtUtcMicros;
+  final int storedBytes;
+  final bool isCurrent;
 }
 
 @immutable
@@ -65,6 +84,7 @@ final class DiagnosticsViewerAttachment {
     required this.captureState,
     required this.rawByteLength,
     required this.storedByteLength,
+    required this.logFileId,
     this.truncationReason,
   });
 
@@ -76,6 +96,7 @@ final class DiagnosticsViewerAttachment {
   final DiagnosticsViewerSource source;
   final int storedByteLength;
   final String? truncationReason;
+  final String logFileId;
 
   String get identity => '${source.name}:$attachmentId';
 }
@@ -114,7 +135,9 @@ final class DiagnosticsViewerCapture {
 }
 
 abstract interface class DiagnosticsViewerGateway {
-  Future<DiagnosticsViewerEventPage> listEvents({required DiagnosticsViewerSource source, String? cursor});
+  Future<List<DiagnosticsViewerLogFile>> listLogFiles();
+
+  Future<DiagnosticsViewerEventPage> listEvents({required DiagnosticsViewerSource source, required String logFileId, String? cursor});
 
   Future<DiagnosticsViewerEventDetails> loadEventDetails(DiagnosticsViewerEvent event);
 
@@ -123,6 +146,10 @@ abstract interface class DiagnosticsViewerGateway {
   Future<DiagnosticsViewerCapture> startCapture({required DiagnosticsDetailMode mode, required DiagnosticsViewerSource source});
 
   Future<void> stopCapture(DiagnosticsViewerCapture capture);
+
+  Future<void> deleteLogFile(String logFileId);
+
+  Future<DiagnosticExportResult> exportLogFile(String logFileId);
 }
 
 final diagnosticsViewerGatewayProvider = Provider<DiagnosticsViewerGateway>(
@@ -130,11 +157,13 @@ final diagnosticsViewerGatewayProvider = Provider<DiagnosticsViewerGateway>(
     ref.watch(diagnosticsQueryProvider),
     ref.watch(diagnosticsCaptureProvider),
     ref.watch(diagnosticsManagerProvider),
+    ref.watch(diagnosticsLogArchiveProvider),
   ),
 );
 
 final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway {
-  DefaultDiagnosticsViewerGateway(this._appQuery, this._appCapture, this._diagnostics);
+  DefaultDiagnosticsViewerGateway(DiagnosticsQuery? appQuery, this._appCapture, this._diagnostics, [DiagnosticsLogArchive? appArchive])
+    : _appArchive = appArchive ?? (appQuery is DiagnosticsLogArchive ? appQuery as DiagnosticsLogArchive : null);
 
   static const int _previewBytes = 32 * 1024;
   static const Duration _captureDuration = Duration(minutes: 15);
@@ -147,11 +176,33 @@ final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway 
     'feature.reader',
   };
   final DiagnosticsCapture? _appCapture;
-  final DiagnosticsQuery? _appQuery;
   final DiagnosticsManager _diagnostics;
+  final DiagnosticsLogArchive? _appArchive;
 
   @override
-  Future<DiagnosticsViewerEventPage> listEvents({required DiagnosticsViewerSource source, String? cursor}) async {
+  Future<List<DiagnosticsViewerLogFile>> listLogFiles() async {
+    final archive = _appArchive;
+    if (archive == null) return const <DiagnosticsViewerLogFile>[];
+    final files = await archive.listLogFiles();
+    return List<DiagnosticsViewerLogFile>.unmodifiable(
+      files.map(
+        (file) => DiagnosticsViewerLogFile(
+          fileId: file.fileId,
+          startedAtUtcMicros: file.startedAtUtcMicros,
+          modifiedAtUtcMicros: file.modifiedAtUtcMicros,
+          storedBytes: file.storedBytes,
+          isCurrent: file.isCurrent,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<DiagnosticsViewerEventPage> listEvents({
+    required DiagnosticsViewerSource source,
+    required String logFileId,
+    String? cursor,
+  }) async {
     final span = _diagnostics.startSpan(
       AppDiagnosticEvents.viewerOperation,
       attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
@@ -164,17 +215,13 @@ final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway 
       final DiagnosticsViewerEventPage result;
       switch (source) {
         case DiagnosticsViewerSource.app:
-          final query = _appQuery;
-          if (query == null) {
+          final archive = _appArchive;
+          if (archive == null) {
             result = const DiagnosticsViewerEventPage(items: <DiagnosticsViewerEvent>[]);
           } else {
-            final page = await query.listEvents(
-              filter: DiagnosticEventFilter(),
-              cursor: cursor == null ? null : DiagnosticCursor(cursor),
-              limit: 20,
-            );
+            final page = await archive.listLogEvents(logFileId, cursor: cursor == null ? null : DiagnosticCursor(cursor), limit: 20);
             result = DiagnosticsViewerEventPage(
-              items: List<DiagnosticsViewerEvent>.unmodifiable(page.items.map(_mapAppEvent)),
+              items: List<DiagnosticsViewerEvent>.unmodifiable(page.items.map((event) => _mapAppEvent(event, logFileId))),
               nextCursor: page.nextCursor?.value,
             );
           }
@@ -215,14 +262,16 @@ final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway 
       final DiagnosticsViewerEventDetails result;
       switch (event.source) {
         case DiagnosticsViewerSource.app:
-          final query = _appQuery;
-          if (query == null) throw StateError('app_diagnostics_unavailable');
-          final detail = await query.getEvent(event.eventId);
+          final archive = _appArchive;
+          if (archive == null) throw StateError('app_diagnostics_unavailable');
+          final detail = await archive.getLogEvent(event.logFileId, event.eventId);
           if (detail == null) throw StateError('diagnostic_event_not_found');
-          final attachments = await query.listAttachments(event.eventId);
+          final attachments = await archive.listLogAttachments(event.logFileId, event.eventId);
           result = DiagnosticsViewerEventDetails(
             attributesText: _prettyJson(detail.attributes.toWireValue()),
-            attachments: List<DiagnosticsViewerAttachment>.unmodifiable(attachments.map(_mapAppAttachment)),
+            attachments: List<DiagnosticsViewerAttachment>.unmodifiable(
+              attachments.map((attachment) => _mapAppAttachment(attachment, event.logFileId)),
+            ),
           );
       }
       span.complete(
@@ -261,10 +310,11 @@ final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway 
       final List<int> bytes;
       switch (attachment.source) {
         case DiagnosticsViewerSource.app:
-          final query = _appQuery;
-          if (query == null) throw StateError('app_diagnostics_unavailable');
+          final archive = _appArchive;
+          if (archive == null) throw StateError('app_diagnostics_unavailable');
           final output = <int>[];
-          await for (final chunk in query.openAttachment(
+          await for (final chunk in archive.openLogAttachment(
+            attachment.logFileId,
             attachment.attachmentId,
             range: DiagnosticByteRange(offset: 0, length: _previewBytes),
           )) {
@@ -346,9 +396,23 @@ final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway 
     }
     if (firstError != null) throw firstError;
   }
+
+  @override
+  Future<void> deleteLogFile(String logFileId) async {
+    final archive = _appArchive;
+    if (archive == null) throw const DiagnosticsViewerException('app_diagnostics_unavailable');
+    await archive.deleteLogFile(logFileId);
+  }
+
+  @override
+  Future<DiagnosticExportResult> exportLogFile(String logFileId) async {
+    final archive = _appArchive;
+    if (archive == null) throw const DiagnosticsViewerException('app_diagnostics_unavailable');
+    return archive.exportLogFile(logFileId);
+  }
 }
 
-DiagnosticsViewerEvent _mapAppEvent(DiagnosticEvent event) => DiagnosticsViewerEvent(
+DiagnosticsViewerEvent _mapAppEvent(DiagnosticEvent event, String logFileId) => DiagnosticsViewerEvent(
   source: DiagnosticsViewerSource.app,
   eventId: event.eventId,
   component: event.component,
@@ -361,9 +425,10 @@ DiagnosticsViewerEvent _mapAppEvent(DiagnosticEvent event) => DiagnosticsViewerE
   durationMicros: event.durationMicros,
   attachmentCount: event.attachmentCount,
   capturedBytes: event.capturedBytes,
+  logFileId: logFileId,
 );
 
-DiagnosticsViewerAttachment _mapAppAttachment(DiagnosticAttachmentDescriptor attachment) => DiagnosticsViewerAttachment(
+DiagnosticsViewerAttachment _mapAppAttachment(DiagnosticAttachmentDescriptor attachment, String logFileId) => DiagnosticsViewerAttachment(
   source: DiagnosticsViewerSource.app,
   attachmentId: attachment.attachmentId,
   kind: attachment.kind,
@@ -372,6 +437,7 @@ DiagnosticsViewerAttachment _mapAppAttachment(DiagnosticAttachmentDescriptor att
   rawByteLength: attachment.rawByteLength,
   storedByteLength: attachment.storedByteLength,
   truncationReason: attachment.truncationReason,
+  logFileId: logFileId,
 );
 
 String _prettyJson(Object? value) => const JsonEncoder.withIndent('  ').convert(value);

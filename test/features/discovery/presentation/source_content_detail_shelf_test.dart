@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
@@ -44,6 +45,24 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('暂时无法加入书架，请稍后重试。'), findsOneWidget);
+  });
+
+  testWidgets('detail translates the stable capacity failure for the user', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: _DetailHost(
+          onAddToShelf: (_) =>
+              Future<void>.error(const BookshelfCapacityExceededException(currentCount: bookshelfMaxItemCount, requestedNewItems: 1)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('source-detail-add-shelf')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('书架已满，请先清理书籍。'), findsOneWidget);
   });
 
   testWidgets('shelf detail adapts the add action to an existing shelf item', (tester) async {

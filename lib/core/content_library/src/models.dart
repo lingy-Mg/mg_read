@@ -3,6 +3,7 @@
 /// 职责：
 /// - 定义书架、来源、目录、正文、进度、书签和同步边界的数据结构。
 /// - 保存数据源展示摘要时保留结构化字段，不暴露 Runtime DTO 或持久化 JSON。
+/// - 公开书架唯一容量上限和可识别的容量业务错误。
 ///
 /// 注意：
 /// - 模型不得包含数据库路径、动态传输对象或平台资源句柄。
@@ -10,6 +11,24 @@
 library;
 
 import 'dart:collection';
+
+/// The single global capacity shared by shelf writes, statistics and sync.
+const int bookshelfMaxItemCount = 100;
+
+const String bookshelfCapacityExceededCode = 'bookshelf_capacity_exceeded';
+
+/// Stable business failure raised when a write would create item 101.
+final class BookshelfCapacityExceededException implements Exception {
+  const BookshelfCapacityExceededException({required this.currentCount, required this.requestedNewItems});
+
+  final int currentCount;
+  final int requestedNewItems;
+  String get code => bookshelfCapacityExceededCode;
+
+  @override
+  String toString() =>
+      'BookshelfCapacityExceededException(code: $code, currentCount: $currentCount, requestedNewItems: $requestedNewItems)';
+}
 
 enum ContentKind {
   novel('novel'),
@@ -539,7 +558,7 @@ enum LibraryVisibility {
 }
 
 final class LibraryQuery {
-  const LibraryQuery({this.after, this.limit = 100, this.state, this.visibility});
+  const LibraryQuery({this.after, this.limit = bookshelfMaxItemCount, this.state, this.visibility});
   final String? after, state;
   final int limit;
 
@@ -575,7 +594,17 @@ final class UnsupportedContent extends ReadableContent {
 }
 
 final class MangaPage {
-  const MangaPage({required this.pageId, required this.order, required this.resource, this.downloadedAssetId, this.mimeType, this.width, this.height, this.byteLength, this.contentVersion = 1});
+  const MangaPage({
+    required this.pageId,
+    required this.order,
+    required this.resource,
+    this.downloadedAssetId,
+    this.mimeType,
+    this.width,
+    this.height,
+    this.byteLength,
+    this.contentVersion = 1,
+  });
   final String pageId;
   final int order;
   final SourceResource resource;
@@ -587,7 +616,16 @@ final class MangaPage {
 
 /// Public, stable manga page input. Plugin payloads remain inside core.
 final class MangaPageDescriptor {
-  const MangaPageDescriptor({required this.pageId, required this.order, required this.resource, this.mimeType = 'image/unknown', this.width, this.height, this.byteLength, this.contentVersion = 1});
+  const MangaPageDescriptor({
+    required this.pageId,
+    required this.order,
+    required this.resource,
+    this.mimeType = 'image/unknown',
+    this.width,
+    this.height,
+    this.byteLength,
+    this.contentVersion = 1,
+  });
   final String pageId;
   final int order;
   final SourceResource resource;
@@ -605,7 +643,16 @@ final class MangaChapterDescriptor {
 }
 
 final class LibraryMangaReadingProgress {
-  const LibraryMangaReadingProgress({required this.itemId, required this.chapterId, required this.imageId, required this.imageFraction, required this.chapterIndex, required this.bookFraction, required this.updatedAtUtc, this.readingSeconds = 0});
+  const LibraryMangaReadingProgress({
+    required this.itemId,
+    required this.chapterId,
+    required this.imageId,
+    required this.imageFraction,
+    required this.chapterIndex,
+    required this.bookFraction,
+    required this.updatedAtUtc,
+    this.readingSeconds = 0,
+  });
   final LibraryItemId itemId;
   final String chapterId, imageId;
   final double imageFraction, bookFraction;
@@ -614,7 +661,14 @@ final class LibraryMangaReadingProgress {
 }
 
 final class LibraryMangaBookmark {
-  const LibraryMangaBookmark({required this.id, required this.itemId, required this.chapterId, required this.imageId, required this.imageFraction, required this.createdAtUtc});
+  const LibraryMangaBookmark({
+    required this.id,
+    required this.itemId,
+    required this.chapterId,
+    required this.imageId,
+    required this.imageFraction,
+    required this.createdAtUtc,
+  });
   final String id;
   final LibraryItemId itemId;
   final String chapterId, imageId;

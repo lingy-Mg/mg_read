@@ -27,6 +27,7 @@ import 'package:mg_read/core/persistence/persistence.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/data/deferred_lan_sync_gateway.dart';
+import 'package:mg_read/features/diagnostics/application/diagnostics_activation.dart';
 
 import '../core/diagnostics/diagnostics_testkit.dart';
 import '../core/settings/settings_testkit.dart';
@@ -70,10 +71,10 @@ void main() {
     await host.closeDiagnostics?.call();
   });
 
-  test('default diagnostics attaches to the startup manager once', () async {
+  test('default diagnostics stays absent until explicit current-run activation', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-bootstrap-default-diagnostics-');
     addTearDown(() => root.delete(recursive: true));
-    final manager = AppSettingsManager(store: FakeSettingsStore(), registry: settingsTestRegistry);
+    final manager = AppSettingsManager(store: FakeSettingsStore(), registry: AppSettingKeys.registry);
     Widget? mounted;
 
     await bootstrapMgReadApp(
@@ -90,7 +91,54 @@ void main() {
     addTearDown(container.dispose);
     final startup = container.read(appStartupControllerProvider);
     expect(startup.state.status, AppStartupStatus.ready);
+    final diagnosticsRoot = Directory('${root.path}${Platform.pathSeparator}diagnostics');
+    expect(await diagnosticsRoot.exists(), isFalse);
+
+    final activation = container.read(diagnosticsActivationProvider)!;
+    expect(activation.enabledForCurrentRun, isFalse);
+    expect(await activation.enableForCurrentRun(), isTrue);
+    expect(activation.enabledForCurrentRun, isTrue);
+    expect(manager.get(AppSettingKeys.diagnosticsEnabled), isTrue);
+    expect(await diagnosticsRoot.exists(), isTrue);
     expect(await startup.ensureDiagnosticsReady(), isNotNull);
+    await activation.disableOnNextLaunch();
+    expect(manager.get(AppSettingKeys.diagnosticsEnabled), isFalse);
+    expect(activation.enabledForCurrentRun, isTrue);
+
+    final host = scope.child as AppSettingsLifecycleHost;
+    await host.manager.close();
+    await host.closeContentLibrary?.call();
+    host.disposeDiagnosticsBoundary?.call();
+  });
+
+  test('persisted diagnostics opt-in starts exactly one current-run log', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-bootstrap-persisted-diagnostics-');
+    addTearDown(() => root.delete(recursive: true));
+    final store = FakeSettingsStore();
+    store.documents[AppSettingKeys.diagnosticsDocument.kind] = SettingsDocument(
+      id: AppSettingKeys.diagnosticsDocument.id,
+      kind: AppSettingKeys.diagnosticsDocument.kind,
+      values: <String, Object?>{AppSettingKeys.diagnosticsEnabled.id: true},
+    );
+    final manager = AppSettingsManager(store: store, registry: AppSettingKeys.registry);
+    Widget? mounted;
+
+    await bootstrapMgReadApp(
+      settingsManager: manager,
+      contentLibraryFactory: null,
+      appPersistenceFactory: null,
+      dataRootResolver: () async => root,
+      appRunner: (app) => mounted = app,
+      child: const SizedBox.shrink(),
+    );
+
+    final scope = mounted! as ProviderScope;
+    final container = ProviderContainer(overrides: scope.overrides);
+    addTearDown(container.dispose);
+    final activation = container.read(diagnosticsActivationProvider)!;
+    expect(activation.enabledForCurrentRun, isTrue);
+    final events = Directory('${root.path}${Platform.pathSeparator}diagnostics${Platform.pathSeparator}events');
+    expect(await events.list().where((entity) => entity is File).length, 1);
 
     final host = scope.child as AppSettingsLifecycleHost;
     await host.manager.close();

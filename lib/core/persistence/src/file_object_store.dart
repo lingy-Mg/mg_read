@@ -8,6 +8,7 @@
 /// 注意：
 /// - 不向调用方泄漏绝对路径或绕过 [AppPersistence] 生命周期。
 /// - 全局封面索引仅在首次维护时扫描；命中读取不触发扫描。
+/// - 漫画图片写入不设总容量上限且不扫描缓存目录；统计、清理和按书删除可按需扫描。
 ///
 /// TODO:
 /// - 无。
@@ -108,7 +109,6 @@ final class FileObjectStore {
     required int contentVersion,
     required List<int> bytes,
     required String mimeType,
-    required int maxBytes,
   }) => _instrument(
     operation: 'commitMangaImage',
     recordKind: 'mangaImageCache',
@@ -120,7 +120,6 @@ final class FileObjectStore {
       contentVersion: contentVersion,
       bytes: bytes,
       mimeType: mimeType,
-      maxBytes: maxBytes,
     ),
   );
 
@@ -314,13 +313,12 @@ final class FileObjectStore {
     required int contentVersion,
     required List<int> bytes,
     required String mimeType,
-    required int maxBytes,
   }) async {
     _ensureOpen();
     if (itemId.isEmpty || chapterId.isEmpty || pageId.isEmpty || contentVersion < 1) {
       throw ArgumentError('manga image identity is invalid');
     }
-    if (bytes.isEmpty || bytes.length > _mangaImageMaxBytes || maxBytes <= 0) {
+    if (bytes.isEmpty || bytes.length > _mangaImageMaxBytes) {
       throw ArgumentError('manga image exceeds limit');
     }
     if (!RegExp(r'^image/[A-Za-z0-9.+-]+$').hasMatch(mimeType)) {
@@ -340,9 +338,6 @@ final class FileObjectStore {
     // Same-directory staged commit; Windows replacement has a tiny delete/rename gap.
     if (await target.exists()) await target.delete();
     await temp.rename(target.path);
-    final files = await _mangaImageFiles();
-    files[key] = _GlobalCoverFile(file: target, length: bytes.length, modified: await target.lastModified(), ownerId: itemId);
-    await _pruneGlobalCoversFromIndex(files, maxBytes);
     return StoredFileObject(assetId: key, relativePath: 'manga-image-cache/$key/image.asset', byteLength: bytes.length, mimeType: mimeType);
   }
 
@@ -353,9 +348,7 @@ final class FileObjectStore {
       '${_root.path}${Platform.pathSeparator}manga-image-cache${Platform.pathSeparator}$key${Platform.pathSeparator}image.asset',
     );
     if (!await file.exists() || await file.length() > _mangaImageMaxBytes) return null;
-    final bytes = await file.readAsBytes();
-    await file.setLastModified(DateTime.now());
-    return bytes;
+    return file.readAsBytes();
   }
 
   Future<int> _clearMangaImageCache() async {
@@ -370,7 +363,7 @@ final class FileObjectStore {
 
   /// Re-scans on each maintenance operation so an interrupted/delete-corrupt
   /// index can be rebuilt from the directory contents.
-  Future<Map<String, _GlobalCoverFile>> _mangaImageFiles() => _scanMangaImageFiles();
+  Future<Map<String, _MangaImageFile>> _mangaImageFiles() => _scanMangaImageFiles();
 
   Future<({int totalBytes, Map<String, int> bytesByItem})> _mangaImageCacheUsage() async {
     final files = await _mangaImageFiles();
@@ -386,9 +379,9 @@ final class FileObjectStore {
     return (totalBytes: totalBytes, bytesByItem: Map<String, int>.unmodifiable(bytesByItem));
   }
 
-  Future<Map<String, _GlobalCoverFile>> _scanMangaImageFiles() async {
+  Future<Map<String, _MangaImageFile>> _scanMangaImageFiles() async {
     final root = Directory('${_root.path}${Platform.pathSeparator}manga-image-cache');
-    final out = <String, _GlobalCoverFile>{};
+    final out = <String, _MangaImageFile>{};
     if (!await root.exists()) return out;
     await for (final e in root.list()) {
       if (e is! Directory) continue;
@@ -422,7 +415,7 @@ final class FileObjectStore {
             // A corrupt or pre-index cache remains counted in the total.
           }
         }
-        out[key] = _GlobalCoverFile(file: file, length: await file.length(), modified: await file.lastModified(), ownerId: ownerId);
+        out[key] = _MangaImageFile(file: file, length: await file.length(), ownerId: ownerId);
       }
     }
     return out;
@@ -486,6 +479,10 @@ final class FileObjectStore {
     final folder = Directory('${_root.path}${Platform.pathSeparator}$mangaId');
     if (await folder.exists()) {
       await folder.delete(recursive: true);
+    }
+    final cachedImages = await _mangaImageFiles();
+    for (final entry in cachedImages.entries.where((entry) => entry.value.ownerId == mangaId).toList()) {
+      await entry.value.file.parent.delete(recursive: true);
     }
   }
 
@@ -557,10 +554,17 @@ final class StoredFileObject {
 }
 
 final class _GlobalCoverFile {
-  const _GlobalCoverFile({required this.file, required this.length, required this.modified, this.ownerId});
+  const _GlobalCoverFile({required this.file, required this.length, required this.modified});
 
   final File file;
   final int length;
   final DateTime modified;
+}
+
+final class _MangaImageFile {
+  const _MangaImageFile({required this.file, required this.length, this.ownerId});
+
+  final File file;
+  final int length;
   final String? ownerId;
 }

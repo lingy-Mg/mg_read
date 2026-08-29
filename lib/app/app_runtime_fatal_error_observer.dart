@@ -7,17 +7,13 @@ import 'package:mg_read/app/app_fatal_error_reporter.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 
 /// Narrow typed source used by the app-level Runtime fatal observer.
-///
-/// This deliberately exposes no process, transport, diagnostic text, path, or
-/// other Runtime implementation detail to the app.
 abstract interface class RuntimeFatalDiagnosticSource {
   Stream<RuntimeDiagnostic> get diagnostics;
 
   List<RuntimeDiagnostic> get latestDiagnostics;
 }
 
-final class PluginRuntimeFatalDiagnosticSource
-    implements RuntimeFatalDiagnosticSource {
+final class PluginRuntimeFatalDiagnosticSource implements RuntimeFatalDiagnosticSource {
   const PluginRuntimeFatalDiagnosticSource(this._runtime);
 
   final PluginRuntime _runtime;
@@ -29,7 +25,7 @@ final class PluginRuntimeFatalDiagnosticSource
   List<RuntimeDiagnostic> get latestDiagnostics => _runtime.latestDiagnostics;
 }
 
-/// Bridges only allowlisted Runtime-wide terminal diagnostics to the root UI.
+/// Bridges Runtime-wide terminal diagnostics to the root UI.
 ///
 /// It is intentionally process-scoped and begins before app warmup, so a
 /// Windows Node exit reported after startup is observed even when the next
@@ -75,6 +71,7 @@ final class RuntimeFatalErrorObserver {
     _hasObservedFatal = true;
     _reporter.reportFatalRuntimeDiagnostic(
       errorCode: projection.errorCode,
+      diagnosticText: diagnostic.message,
       phase: projection.phase,
       runtimeState: projection.runtimeState,
     );
@@ -88,11 +85,7 @@ final class RuntimeFatalErrorObserver {
 }
 
 final class _RuntimeFatalProjection {
-  const _RuntimeFatalProjection({
-    required this.errorCode,
-    required this.phase,
-    required this.runtimeState,
-  });
+  const _RuntimeFatalProjection({required this.errorCode, required this.phase, required this.runtimeState});
 
   final String errorCode;
   final String phase;
@@ -120,11 +113,7 @@ _RuntimeFatalProjection? _fatalProjectionFor(String code) => switch (code) {
   'runtime_http_readiness_failed' ||
   'runtime_invalid_ready_signal' ||
   'runtime_ready_timeout' ||
-  'runtime_not_ready' => const _RuntimeFatalProjection(
-    errorCode: 'runtime_not_ready',
-    phase: 'runtime_startup',
-    runtimeState: 'not_ready',
-  ),
+  'runtime_not_ready' => const _RuntimeFatalProjection(errorCode: 'runtime_not_ready', phase: 'runtime_startup', runtimeState: 'not_ready'),
   'runtime_unavailable' => const _RuntimeFatalProjection(
     errorCode: 'runtime_unavailable',
     phase: 'runtime_lifecycle',
@@ -134,9 +123,7 @@ _RuntimeFatalProjection? _fatalProjectionFor(String code) => switch (code) {
 };
 
 /// Starts the single app-level Runtime observer before the first Facade call.
-final runtimeFatalErrorObserverProvider = Provider<RuntimeFatalErrorObserver>((
-  Ref ref,
-) {
+final runtimeFatalErrorObserverProvider = Provider<RuntimeFatalErrorObserver>((Ref ref) {
   final observer = RuntimeFatalErrorObserver(
     PluginRuntimeFatalDiagnosticSource(ref.watch(pluginRuntimeFacadeProvider)),
     ref.watch(fatalErrorReporterProvider),

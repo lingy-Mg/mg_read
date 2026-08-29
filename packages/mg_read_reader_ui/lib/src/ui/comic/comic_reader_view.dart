@@ -81,7 +81,8 @@ class ComicReaderView extends StatefulWidget {
   State<ComicReaderView> createState() => _ComicReaderViewState();
 }
 
-class _ComicReaderViewState extends State<ComicReaderView> {
+class _ComicReaderViewState extends State<ComicReaderView>
+    with WidgetsBindingObserver {
   static const Duration _saveDelay = Duration(milliseconds: 800);
   static const int _catalogPageSize = 50;
   static const int _metadataWindowLimit = 3;
@@ -142,6 +143,8 @@ class _ComicReaderViewState extends State<ComicReaderView> {
   bool _preferencesDirty = false;
   bool _preferencesAuthoritative = false;
   bool _firstContentPresented = false;
+  bool _prefetchForward = true;
+  double? _lastObservedScrollOffset;
   double _viewportWidth = 0;
   double _viewportHeight = 0;
   double _topPadding = 0;
@@ -183,6 +186,7 @@ class _ComicReaderViewState extends State<ComicReaderView> {
     );
     _bindController();
     _scrollController.addListener(_handleScroll);
+    WidgetsBinding.instance.addObserver(this);
     _lifecycleListener = AppLifecycleListener(onStateChange: _handleLifecycle);
     unawaited(_loadPlatformCapabilities());
     unawaited(_initialize());
@@ -244,6 +248,11 @@ class _ComicReaderViewState extends State<ComicReaderView> {
   }
 
   @override
+  void didHaveMemoryPressure() {
+    _imageCache.handleMemoryPressure();
+  }
+
+  @override
   void dispose() {
     _disposed = true;
     _sessionGeneration++;
@@ -262,6 +271,7 @@ class _ComicReaderViewState extends State<ComicReaderView> {
     unawaited(_releaseAwake());
     unawaited(_notify(() => observer.onSessionEnded(bookId, progress)));
     _lifecycleListener.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController
       ..removeListener(_handleScroll)
       ..dispose();

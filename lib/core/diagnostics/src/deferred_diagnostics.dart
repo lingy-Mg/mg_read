@@ -18,6 +18,7 @@ final class DeferredDiagnosticEventSink implements DiagnosticEventSink {
     this.maxEvents = 128,
     this.maxBytes = 64 * 1024,
     Set<String> traceComponents = const <String>{},
+    this.bufferBeforeAttach = true,
   }) : traceComponents = Set<String>.unmodifiable(traceComponents) {
     if (maxEvents <= 0 || maxBytes <= 0) {
       throw ArgumentError('Deferred diagnostics bounds must be positive.');
@@ -28,6 +29,11 @@ final class DeferredDiagnosticEventSink implements DiagnosticEventSink {
   final int maxEvents;
   final int maxBytes;
   final Set<String> traceComponents;
+
+  /// When false, the unattached sink is completely silent. This is the
+  /// production default-disabled diagnostics path: it allocates no event
+  /// envelopes and retains no startup history before explicit activation.
+  final bool bufferBeforeAttach;
   DiagnosticEventSink? _fallbackSink;
   final ListQueue<_DeferredDiagnosticEvent> _events = ListQueue<_DeferredDiagnosticEvent>();
   DiagnosticEventSink? _attachedSink;
@@ -72,6 +78,7 @@ final class DeferredDiagnosticEventSink implements DiagnosticEventSink {
         return false;
       }
     }
+    if (!bufferBeforeAttach) return false;
     if (payloadKind != DiagnosticPayloadKind.metadataOnly) return false;
     if (severity == DiagnosticSeverity.trace && !traceComponents.contains(component)) {
       return false;
@@ -85,6 +92,7 @@ final class DeferredDiagnosticEventSink implements DiagnosticEventSink {
     if (!_enabled) return _forwardToFallback(event);
     final sink = _attachedSink;
     if (sink != null) return _forward(sink, event);
+    if (!bufferBeforeAttach) return false;
 
     // Direct callers may bypass isEnabled; keep the startup buffer's contract
     // identical in that case as well.

@@ -250,7 +250,7 @@ final class LanSyncSenderService {
                 if (value is String) value,
             };
       if (rawShelfSelection is List &&
-          (rawShelfSelection.length > 100 ||
+          (rawShelfSelection.length > lanSyncMaxShelfItemCount ||
               rawShelfSelection.any((value) => value is! String) ||
               selectedShelfItemIds.length != rawShelfSelection.length)) {
         throw const LanSyncTransportException('lan_sync_selection_invalid');
@@ -451,7 +451,7 @@ final class LanSyncReceiverConnection {
         ? <String>{for (final item in manifest.shelfItems) item.identity}
         : Set<String>.of(shelfItemIds);
     final availableShelfItemIds = <String>{for (final item in manifest.shelfItems) item.identity};
-    if (selectedShelfItemIds.length > 100 || !availableShelfItemIds.containsAll(selectedShelfItemIds)) {
+    if (selectedShelfItemIds.length > lanSyncMaxShelfItemCount || !availableShelfItemIds.containsAll(selectedShelfItemIds)) {
       throw const LanSyncTransportException('lan_sync_selection_invalid');
     }
     final selectedById = <String, LanSyncPluginDescriptor>{

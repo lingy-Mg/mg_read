@@ -7,8 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/import_export/application/import_export_service.dart';
 import 'package:mg_read/features/import_export/presentation/import_export_page.dart';
+import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
 void main() {
@@ -42,6 +44,10 @@ void main() {
     expect(coordinator.exportedPluginIds, <String>{_plugin.id});
     expect(coordinator.exportedShelfIds, isEmpty);
     expect(find.textContaining('导出完成'), findsOneWidget);
+  });
+
+  test('capacity failure has explicit local-import user feedback', () {
+    expect(importExportFailureMessage(const LanSyncGatewayException(bookshelfCapacityExceededCode), fallback: '导入失败'), '书架已满，请先清理书籍。');
   });
 }
 

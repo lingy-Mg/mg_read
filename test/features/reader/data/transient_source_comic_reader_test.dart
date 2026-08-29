@@ -50,6 +50,24 @@ void main() {
     expect(await store.loadProgress('manga-1'), progress);
     expect(await store.loadBookmarks('manga-1'), isEmpty);
   });
+
+  test('keeps only three recently used preview manifests', () async {
+    final gateway = _Gateway();
+    final reader = TransientSourceComicReaderDataSource(
+      detail: _detail,
+      catalog: _catalogWithChapters(4),
+      gateway: gateway,
+    );
+
+    for (final chapterId in <String>['chapter-1', 'chapter-2', 'chapter-3']) {
+      await reader.loadChapterContent('manga-1', chapterId);
+    }
+    await reader.loadChapterContent('manga-1', 'chapter-1');
+    await reader.loadChapterContent('manga-1', 'chapter-4');
+    await reader.loadChapterContent('manga-1', 'chapter-2');
+
+    expect(gateway.contentCalls, 5, reason: 'touching chapter-1 makes chapter-2 the least recently used manifest');
+  });
 }
 
 final class _Gateway implements SourceContentGateway {
@@ -158,5 +176,24 @@ final _catalog = PluginChaptersResult(
       isLocked: false,
       attributes: <PluginContentAttribute>[],
     ),
+  ],
+);
+
+PluginChaptersResult _catalogWithChapters(int count) => PluginChaptersResult(
+  pluginId: 'org.example.manga',
+  sourceName: '示例漫画源',
+  items: <PluginChapterSummary>[
+    for (var index = 0; index < count; index++)
+      PluginChapterSummary(
+        id: 'chapter-${index + 1}',
+        title: '第${index + 1}章',
+        order: index,
+        url: null,
+        volumeTitle: null,
+        wordCount: null,
+        updatedAt: null,
+        isLocked: false,
+        attributes: const <PluginContentAttribute>[],
+      ),
   ],
 );

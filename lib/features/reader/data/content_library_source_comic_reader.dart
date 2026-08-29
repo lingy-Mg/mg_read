@@ -1,8 +1,10 @@
 /// Content Library-backed comic reader adapters.
 ///
 /// Runtime supplies catalogs and regenerable manifests; Content Library owns
-/// the synchronized snapshot, URL-safe manifest, image cache, progress, and
-/// bookmarks. Session-only URLs and request single-flights stay in this file.
+/// the synchronized snapshot, URL-safe manifest, progress, and bookmarks.
+/// Encoded image bytes stay in the reader's bounded memory cache; this adapter
+/// does not read or write a persistent image cache. Session-only URLs and
+/// request single-flights stay in this file.
 library;
 
 import 'dart:async';
@@ -15,6 +17,7 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/reader/data/bounded_reader_session_cache.dart';
 
 typedef ComicImageFetcher = Future<Uint8List> Function(Uri uri);
 
@@ -31,7 +34,8 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
   final ComicImageFetcher fetcher;
   _CatalogSnapshot? _catalog;
   Future<_CatalogSnapshot>? _catalogLoading;
-  final Map<String, _ChapterManifest> _manifests = <String, _ChapterManifest>{};
+  final BoundedReaderSessionCache<String, _ChapterManifest> _manifests =
+      BoundedReaderSessionCache<String, _ChapterManifest>(maxEntries: 3);
   final Map<String, Future<_ChapterManifest>> _runtimeManifestLoads = <String, Future<_ChapterManifest>>{};
   final Map<String, Future<Uint8List>> _imageLoads = <String, Future<Uint8List>>{};
 
@@ -276,16 +280,12 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
     manifest ??= await _runtimeManifest(chapterId);
     var page = manifest.page(imageId);
     if (page == null) throw StateError('Comic image is not in the chapter manifest.');
-    var cached = await _readCached(chapterId, page);
-    if (cached != null) return cached;
 
     var uri = manifest.downloadUri(page);
     if (uri == null || manifest.needsRefresh(page)) {
       manifest = await _runtimeManifest(chapterId, forceRefresh: true);
       page = manifest.page(imageId);
       if (page == null) throw StateError('Comic image is not in the refreshed chapter manifest.');
-      cached = await _readCached(chapterId, page);
-      if (cached != null) return cached;
       uri = manifest.downloadUri(page);
     }
     if (uri == null) throw StateError('Comic image URL is unavailable.');
@@ -297,35 +297,7 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
     }
     if (bytes.isEmpty) throw StateError('Comic image is empty.');
     if (bytes.length > _maximumImageBytes) throw StateError('Comic image exceeds 8 MiB.');
-    try {
-      await library.mangaImageCache.save(
-        itemId: item.id,
-        chapterId: chapterId,
-        pageId: imageId,
-        contentVersion: page.contentVersion,
-        bytes: bytes,
-        mimeType: page.mimeType ?? 'image/unknown',
-      );
-    } on Object {
-      // Cache persistence is best effort; the downloaded bytes remain usable.
-    }
     return bytes;
-  }
-
-  Future<Uint8List?> _readCached(String chapterId, MangaPage page) async {
-    try {
-      final cached = await library.mangaImageCache.read(
-        itemId: item.id,
-        chapterId: chapterId,
-        pageId: page.pageId,
-        contentVersion: page.contentVersion,
-      );
-      return cached == null || cached.isEmpty ? null : Uint8List.fromList(cached);
-    } on Object {
-      // Cache I/O is best effort. A readable source image must still be
-      // attempted when the cache index or file is unavailable.
-      return null;
-    }
   }
 
   ComicChapterInfo _chapterInfo(CatalogEntry entry) => ComicChapterInfo(

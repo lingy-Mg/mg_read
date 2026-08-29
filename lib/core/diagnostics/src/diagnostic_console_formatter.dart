@@ -5,36 +5,29 @@ import 'diagnostic_value.dart';
 ///
 /// The persisted TXT envelope remains the complete structured diagnostic
 /// record. The console intentionally shows only user-flow milestones and all
-/// warnings/errors, so it remains useful while a feature is running.
+/// warnings/errors, so it remains useful while a feature is running. ANSI
+/// styling is applied only by [formatForConsole]; [format] stays plain text for
+/// storage, copying, and tests that inspect diagnostic content.
 final class DiagnosticConsoleFormatter {
   const DiagnosticConsoleFormatter();
 
-  static const Set<String> _summaryTerminalComponents = <String>{
-    'app.bootstrap',
-    'feature.library',
-    'feature.reader',
-    'feature.plugins',
-  };
+  static const String _ansiReset = '\x1B[0m';
+
+  static const Set<String> _summaryTerminalComponents = <String>{'app.bootstrap', 'feature.library', 'feature.reader', 'feature.plugins'};
 
   bool shouldMirror(DiagnosticEvent event) {
     if (event.severity.index >= DiagnosticSeverity.warn.index) return true;
     if (event.eventName == 'app.route.changed') {
       return true;
     }
-    if (event.phase == DiagnosticPhase.start &&
-        event.parentSpanId == null &&
-        _summaryTerminalComponents.contains(event.component)) {
+    if (event.phase == DiagnosticPhase.start && event.parentSpanId == null && _summaryTerminalComponents.contains(event.component)) {
       return true;
     }
-    return event.phase == DiagnosticPhase.terminal &&
-        _summaryTerminalComponents.contains(event.component);
+    return event.phase == DiagnosticPhase.terminal && _summaryTerminalComponents.contains(event.component);
   }
 
   String format(DiagnosticEvent event) {
-    final fields = <String>[
-      '[MgRead][${_time(event.occurredAtUtcMicros)}][${_level(event)}]',
-      event.eventName,
-    ];
+    final fields = <String>['[MgRead][${_time(event.occurredAtUtcMicros)}][${_level(event)}]', event.eventName];
     if (event.durationMicros case final duration?) {
       fields.add('duration=${_duration(duration)}');
     }
@@ -44,9 +37,13 @@ final class DiagnosticConsoleFormatter {
     return fields.join(' ');
   }
 
-  Iterable<MapEntry<String, DiagnosticValue>> _orderedAttributes(
-    DiagnosticObjectValue attributes,
-  ) sync* {
+  /// Formats a mirrored developer-console line with a status-specific color.
+  String formatForConsole(DiagnosticEvent event) {
+    final color = _ansiColor(event);
+    return '$color${format(event)}$_ansiReset';
+  }
+
+  Iterable<MapEntry<String, DiagnosticValue>> _orderedAttributes(DiagnosticObjectValue attributes) sync* {
     const preferred = <String>[
       'stage',
       'operation',
@@ -92,33 +89,43 @@ final class DiagnosticConsoleFormatter {
     return event.severity.name.toUpperCase();
   }
 
+  String _ansiColor(DiagnosticEvent event) {
+    if (event.phase == DiagnosticPhase.start) return '\x1B[96m';
+    if (event.outcome case final outcome?) {
+      return switch (outcome) {
+        DiagnosticOutcome.success => '\x1B[92m',
+        DiagnosticOutcome.timeout || DiagnosticOutcome.overloaded => '\x1B[93m',
+        DiagnosticOutcome.error => '\x1B[91m',
+        DiagnosticOutcome.cancelled || DiagnosticOutcome.incomplete => '\x1B[95m',
+      };
+    }
+    return switch (event.severity) {
+      DiagnosticSeverity.trace || DiagnosticSeverity.debug => '\x1B[90m',
+      DiagnosticSeverity.info => '\x1B[94m',
+      DiagnosticSeverity.warn => '\x1B[93m',
+      DiagnosticSeverity.error || DiagnosticSeverity.fatal => '\x1B[91m',
+    };
+  }
+
   String _time(int utcMicros) {
-    final value = DateTime.fromMicrosecondsSinceEpoch(
-      utcMicros,
-      isUtc: true,
-    ).toLocal();
+    final value = DateTime.fromMicrosecondsSinceEpoch(utcMicros, isUtc: true).toLocal();
     return '${_two(value.hour)}:${_two(value.minute)}:${_two(value.second)}.'
         '${value.millisecond.toString().padLeft(3, '0')}';
   }
 
-  String _value(DiagnosticValue value, {required String key}) =>
-      switch (value) {
-        DiagnosticNullValue() => 'null',
-        DiagnosticBoolValue(:final value) => '$value',
-        DiagnosticStringValue(:final value) => _shortText(value),
-        DiagnosticInt64Value(:final decimal) when key.endsWith('Micros') =>
-          _duration(int.parse(decimal)),
-        DiagnosticInt64Value(:final decimal)
-            when key.toLowerCase().contains('bytes') =>
-          _bytes(int.parse(decimal)),
-        DiagnosticInt64Value(:final decimal) => decimal,
-        DiagnosticDoubleValue(:final value) => value.toStringAsFixed(3),
-        DiagnosticRedactedValue() => '<redacted>',
-        DiagnosticTruncatedValue() => '<truncated>',
-        DiagnosticAttachmentReferenceValue() => '<attachment>',
-        DiagnosticListValue() => '[…]',
-        DiagnosticObjectValue() => '{…}',
-      };
+  String _value(DiagnosticValue value, {required String key}) => switch (value) {
+    DiagnosticNullValue() => 'null',
+    DiagnosticBoolValue(:final value) => '$value',
+    DiagnosticStringValue(:final value) => _shortText(value),
+    DiagnosticInt64Value(:final decimal) when key.endsWith('Micros') => _duration(int.parse(decimal)),
+    DiagnosticInt64Value(:final decimal) when key.toLowerCase().contains('bytes') => _bytes(int.parse(decimal)),
+    DiagnosticInt64Value(:final decimal) => decimal,
+    DiagnosticDoubleValue(:final value) => value.toStringAsFixed(3),
+    DiagnosticTruncatedValue() => '<truncated>',
+    DiagnosticAttachmentReferenceValue() => '<attachment>',
+    DiagnosticListValue() => '[…]',
+    DiagnosticObjectValue() => '{…}',
+  };
 
   String _shortText(String value) {
     final compact = value.replaceAll(RegExp(r'\s+'), ' ');

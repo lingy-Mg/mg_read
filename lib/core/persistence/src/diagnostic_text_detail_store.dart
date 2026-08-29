@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -31,11 +29,7 @@ final class DiagnosticTextDetailCommit {
 }
 
 final class DiagnosticTextDetailStatistics {
-  const DiagnosticTextDetailStatistics({
-    required this.detailCount,
-    required this.detailTextBytes,
-    required this.memoryDetailBytes,
-  });
+  const DiagnosticTextDetailStatistics({required this.detailCount, required this.detailTextBytes, required this.memoryDetailBytes});
 
   final int detailCount;
   final int detailTextBytes;
@@ -45,15 +39,10 @@ final class DiagnosticTextDetailStatistics {
 /// Bounded debug-detail spool with optional UTF-8 TXT persistence.
 ///
 /// The caller must pass this store a stream only after the explicit capture
-/// gate succeeds. Input is capped before decoding, sanitized in a background
-/// isolate, and never becomes an unbounded string.
+/// gate succeeds. Input is capped and stored byte-for-byte; it never becomes
+/// an unbounded string in this layer.
 final class DiagnosticTextDetailStore {
-  DiagnosticTextDetailStore._(
-    this.root,
-    this.detailsRoot,
-    this.stagingRoot,
-    this.maxMemoryBytes,
-  );
+  DiagnosticTextDetailStore._(this.root, this.detailsRoot, this.stagingRoot, this.maxMemoryBytes);
 
   static const int defaultMaxMemoryBytes = 8 * 1024 * 1024;
 
@@ -66,37 +55,24 @@ final class DiagnosticTextDetailStore {
   var _memoryBytes = 0;
   bool _closed = false;
 
-  static Future<DiagnosticTextDetailStore> open(
-    Directory diagnosticsRoot, {
-    int maxMemoryBytes = defaultMaxMemoryBytes,
-  }) async {
+  static Future<DiagnosticTextDetailStore> open(Directory diagnosticsRoot, {int maxMemoryBytes = defaultMaxMemoryBytes}) async {
     if (maxMemoryBytes <= 0) {
       throw ArgumentError.value(maxMemoryBytes, 'maxMemoryBytes');
     }
-    final details = Directory(
-      '${diagnosticsRoot.path}${Platform.pathSeparator}details',
-    );
-    final staging = Directory(
-      '${diagnosticsRoot.path}${Platform.pathSeparator}staging',
-    );
+    final details = Directory('${diagnosticsRoot.path}${Platform.pathSeparator}details');
+    final staging = Directory('${diagnosticsRoot.path}${Platform.pathSeparator}staging');
     await Future.wait(<Future<void>>[
       diagnosticsRoot.create(recursive: true),
       details.create(recursive: true),
       staging.create(recursive: true),
     ]);
-    final store = DiagnosticTextDetailStore._(
-      diagnosticsRoot,
-      details,
-      staging,
-      maxMemoryBytes,
-    );
+    final store = DiagnosticTextDetailStore._(diagnosticsRoot, details, staging, maxMemoryBytes);
     await store.cleanStaging();
     return store;
   }
 
   Future<DiagnosticTextDetailCommit> write({
     required String attachmentId,
-    required DiagnosticPrivacyClass privacyClass,
     required Stream<List<int>> bytes,
     required int maxStoredBytes,
     required Duration maxDuration,
@@ -104,12 +80,6 @@ final class DiagnosticTextDetailStore {
   }) async {
     _ensureOpen();
     validateDiagnosticOpaqueId(attachmentId, 'attachmentId');
-    if (privacyClass == DiagnosticPrivacyClass.secret) {
-      throw ArgumentError('Secret diagnostic details are never captured.');
-    }
-    if (privacyClass == DiagnosticPrivacyClass.restricted) {
-      throw UnsupportedError('restrictedRaw detail capture is unavailable.');
-    }
     if (maxStoredBytes <= 0 || maxDuration <= Duration.zero) {
       throw ArgumentError('Detail limits must be positive.');
     }
@@ -156,9 +126,7 @@ final class DiagnosticTextDetailStore {
         final remaining = acceptedBudget - acceptedBytes;
         if (remaining <= 0) {
           truncated = true;
-          truncationReason ??= acceptedBudget < maxStoredBytes
-              ? 'detailMemoryPressure'
-              : 'singleAttachmentByteLimit';
+          truncationReason ??= acceptedBudget < maxStoredBytes ? 'detailMemoryPressure' : 'singleAttachmentByteLimit';
           continue;
         }
         final take = min(remaining, chunk.length);
@@ -168,9 +136,7 @@ final class DiagnosticTextDetailStore {
         }
         if (take != chunk.length) {
           truncated = true;
-          truncationReason ??= acceptedBudget < maxStoredBytes
-              ? 'detailMemoryPressure'
-              : 'singleAttachmentByteLimit';
+          truncationReason ??= acceptedBudget < maxStoredBytes ? 'detailMemoryPressure' : 'singleAttachmentByteLimit';
         }
       }
     } finally {
@@ -181,11 +147,7 @@ final class DiagnosticTextDetailStore {
       }
     }
 
-    final sanitized = await Isolate.run(
-      _SanitizeTextDetailTask(collected.takeBytes()).call,
-      debugName: 'mg-read-diagnostics-detail-sanitize',
-    );
-    var stored = sanitized.bytes;
+    var stored = collected.takeBytes();
     if (stored.length > acceptedBudget) {
       stored = Uint8List.sublistView(stored, 0, acceptedBudget);
       truncated = true;
@@ -201,21 +163,16 @@ final class DiagnosticTextDetailStore {
     }
     return DiagnosticTextDetailCommit(
       detailKey: detailKey,
-      sha256: sanitized.sha256,
+      sha256: (DiagnosticSha256()..add(stored)).closeHex(),
       rawByteLength: rawByteLength,
       storedByteLength: stored.length,
-      captureState: truncated
-          ? DiagnosticCaptureState.truncated
-          : DiagnosticCaptureState.captured,
+      captureState: truncated ? DiagnosticCaptureState.truncated : DiagnosticCaptureState.captured,
       persisted: persistToText,
       truncationReason: truncationReason,
     );
   }
 
-  Stream<List<int>> openDetail(
-    String detailKey, {
-    DiagnosticByteRange? range,
-  }) async* {
+  Stream<List<int>> openDetail(String detailKey, {DiagnosticByteRange? range}) async* {
     _ensureOpen();
     validateDiagnosticOpaqueId(detailKey, 'detailKey');
     final memory = _memoryDetails[detailKey];
@@ -224,9 +181,7 @@ final class DiagnosticTextDetailStore {
       if (start > memory.length) {
         throw RangeError.range(start, 0, memory.length, 'range.offset');
       }
-      final end = range == null
-          ? memory.length
-          : min(memory.length, start + range.length);
+      final end = range == null ? memory.length : min(memory.length, start + range.length);
       yield Uint8List.sublistView(memory, start, end);
       return;
     }
@@ -307,11 +262,7 @@ final class DiagnosticTextDetailStore {
         bytes += await entity.length();
       }
     }
-    return DiagnosticTextDetailStatistics(
-      detailCount: count,
-      detailTextBytes: bytes,
-      memoryDetailBytes: _memoryBytes,
-    );
+    return DiagnosticTextDetailStatistics(detailCount: count, detailTextBytes: bytes, memoryDetailBytes: _memoryBytes);
   }
 
   Future<void> close() async {
@@ -322,9 +273,7 @@ final class DiagnosticTextDetailStore {
   }
 
   Future<void> _commitTextFile(String detailKey, Uint8List bytes) async {
-    final staging = File(
-      '${stagingRoot.path}${Platform.pathSeparator}$detailKey.partial.txt',
-    );
+    final staging = File('${stagingRoot.path}${Platform.pathSeparator}$detailKey.partial.txt');
     final target = _fileForKey(detailKey);
     try {
       await staging.writeAsBytes(bytes, flush: true);
@@ -355,93 +304,3 @@ final class DiagnosticTextDetailStore {
 }
 
 final RegExp _validDetailKey = RegExp(r'^[A-Za-z0-9_-]{8,128}$');
-
-final class _SanitizedTextDetail {
-  const _SanitizedTextDetail(this.bytes, this.sha256);
-
-  final Uint8List bytes;
-  final String sha256;
-}
-
-final class _SanitizeTextDetailTask {
-  const _SanitizeTextDetailTask(this.source);
-
-  final Uint8List source;
-
-  _SanitizedTextDetail call() {
-    final decoded = utf8.decode(source, allowMalformed: true);
-    final sanitized = _sanitizeText(decoded);
-    final bytes = Uint8List.fromList(utf8.encode(sanitized));
-    final digest = DiagnosticSha256()..add(bytes);
-    return _SanitizedTextDetail(bytes, digest.closeHex());
-  }
-}
-
-String _sanitizeText(String source) {
-  try {
-    final json = jsonDecode(source);
-    return jsonEncode(_sanitizeJson(json));
-  } on FormatException {
-    var value = source;
-    value = value.replaceAllMapped(
-      RegExp(r'\bBearer\s+[A-Za-z0-9._~+/=-]+', caseSensitive: false),
-      (_) => 'Bearer <redacted>',
-    );
-    value = value.replaceAllMapped(
-      RegExp(
-        r'\b(authorization|cookie|set-cookie|password|passwd|token|access_token|refresh_token|credential|credentials|secret|api[_-]?key)\b\s*[:=]\s*([^\r\n,;<>]+)',
-        caseSensitive: false,
-      ),
-      (match) => '${match.group(1)}=<redacted>',
-    );
-    value = value.replaceAllMapped(
-      RegExp(
-        r'([?&](?:token|access_token|refresh_token|password|secret|api[_-]?key)=)[^&#\s]*',
-        caseSensitive: false,
-      ),
-      (match) => '${match.group(1)}<redacted>',
-    );
-    return value;
-  }
-}
-
-Object? _sanitizeJson(Object? value, {String? fieldName}) {
-  if (fieldName != null && _isSecretName(fieldName)) return '<redacted>';
-  if (value is Map) {
-    return <String, Object?>{
-      for (final entry in value.entries)
-        entry.key.toString(): _sanitizeJson(
-          entry.value,
-          fieldName: entry.key.toString(),
-        ),
-    };
-  }
-  if (value is List) {
-    return value.map((item) => _sanitizeJson(item)).toList(growable: false);
-  }
-  return value;
-}
-
-bool _isSecretName(String name) {
-  final normalized = name.toLowerCase();
-  return <String>{
-        'authorization',
-        'cookie',
-        'set-cookie',
-        'password',
-        'passwd',
-        'token',
-        'access_token',
-        'refresh_token',
-        'credential',
-        'credentials',
-        'secret',
-        'api_key',
-        'api-key',
-        'x-api-key',
-      }.contains(normalized) ||
-      normalized.endsWith('token') ||
-      normalized.endsWith('password') ||
-      normalized.endsWith('credential') ||
-      normalized.endsWith('secret');
-}

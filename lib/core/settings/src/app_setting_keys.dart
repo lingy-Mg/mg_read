@@ -49,6 +49,19 @@ final class AppSettingKeys {
     validator: _validateBool,
   );
 
+  /// Persistent opt-in for App diagnostics.
+  ///
+  /// The setting is owned by the normal settings store so reading or changing
+  /// it never requires the diagnostics service itself. `false` means startup
+  /// must keep the diagnostic sink silent and must not open diagnostic files.
+  static const diagnosticsEnabled = SettingKey<bool>(
+    id: 'diagnostics.enabled',
+    documentKind: 'settings.diagnostics',
+    defaultValue: false,
+    codec: SettingCodec<bool>(_boolEncode, _boolDecode),
+    validator: _validateBool,
+  );
+
   /// JSON-shaped snapshot of all host-independent text reader preferences.
   static const readerPreferencesDocument = SettingsDocumentDefinition(id: 'app-settings:settings.reader', kind: 'settings.reader');
 
@@ -73,6 +86,7 @@ final class AppSettingKeys {
     homeLayoutMode,
     searchHistory,
     discoverySourceId,
+    diagnosticsEnabled,
     diagnosticsRealtimeDetailsEnabled,
     readerPreferences,
     comicReaderPreferences,

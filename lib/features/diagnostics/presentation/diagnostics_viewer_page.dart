@@ -1,12 +1,12 @@
 /// 调试日志查看页面。
 ///
 /// 职责：
-/// - 分页展示 App 或 Runtime 的脱敏关键事件。
+/// - 先列出 App 历史/当前日志文件，再按用户选择分页读取原始事件。
 /// - 管理当前来源的有界详情捕获和按需附件读取。
 /// - 恢复并保存“仅关键 / 实时详情”偏好。
 ///
 /// 注意：
-/// - App 与 Runtime 会话按当前来源隔离，切换失败不能影响另一侧日志。
+/// - 文件列表不得加载事件；单文件损坏不能影响其他文件。
 /// - 页面销毁时必须停止自己创建的捕获会话，不能在 build() 中发起 IO。
 ///
 /// TODO:
@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/diagnostics/application/diagnostics_activation.dart';
 import 'package:mg_read/features/diagnostics/application/diagnostics_capture_preference_store.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 import 'package:mg_read/features/diagnostics/application/diagnostics_viewer_gateway.dart';
@@ -43,7 +44,10 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
 
   late final DiagnosticsViewerGateway _gateway;
   late final DiagnosticsCapturePreferenceStore _capturePreferenceStore;
+  DiagnosticsActivation? _activation;
   static const DiagnosticsViewerSource _source = DiagnosticsViewerSource.app;
+  List<DiagnosticsViewerLogFile> _logFiles = const <DiagnosticsViewerLogFile>[];
+  DiagnosticsViewerLogFile? _selectedLogFile;
   List<DiagnosticsViewerEvent> _events = const <DiagnosticsViewerEvent>[];
   final Map<String, DiagnosticsViewerEventDetails> _details = <String, DiagnosticsViewerEventDetails>{};
   final Set<String> _loadingDetails = <String>{};
@@ -58,6 +62,8 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
   var _loading = true;
   var _loadingMore = false;
   var _captureBusy = false;
+  var _diagnosticsEnabled = false;
+  var _activationBusy = false;
   var _generation = 0;
 
   @override
@@ -65,9 +71,9 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
     super.initState();
     _gateway = ref.read(diagnosticsViewerGatewayProvider);
     _capturePreferenceStore = ref.read(diagnosticsCapturePreferenceStoreProvider);
+    _activation = ref.read(diagnosticsActivationProvider);
     scheduleMicrotask(() {
-      unawaited(_loadEvents(reset: true));
-      unawaited(_restoreCaptureMode());
+      unawaited(_loadLifecycle());
     });
   }
 
@@ -105,12 +111,27 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
                         ),
                         sliver: SliverList.list(
                           children: <Widget>[
+                            _DiagnosticsLifecyclePanel(
+                              enabledPreference: _diagnosticsEnabled,
+                              enabledForCurrentRun: _activation?.enabledForCurrentRun ?? _diagnosticsEnabled,
+                              busy: _activationBusy,
+                              onChanged: _changeDiagnosticsEnabled,
+                            ),
+                            const SizedBox(height: AppSpacing.regular),
                             DiagnosticsViewerCapturePanel(
                               mode: _capture?.mode ?? DiagnosticsDetailMode.off,
                               busy: _captureBusy,
                               warningCode: _capture?.warningCode,
                               errorCode: _captureError,
                               onModeSelected: _changeCaptureMode,
+                            ),
+                            const SizedBox(height: AppSpacing.regular),
+                            _LogFilePicker(
+                              files: _logFiles,
+                              selectedFileId: _selectedLogFile?.fileId,
+                              onSelected: _selectLogFile,
+                              onDelete: _deleteSelectedLog,
+                              onExport: _exportSelectedLog,
                             ),
                             const SizedBox(height: AppSpacing.regular),
                             if (_loading)
@@ -120,6 +141,8 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
                               )
                             else if (_loadError != null)
                               _LoadFailure(errorCode: _loadError!, onRetry: () => _loadEvents(reset: true))
+                            else if (_selectedLogFile == null)
+                              const _SelectLogFile()
                             else if (_events.isEmpty)
                               const _EmptyEvents()
                             else
@@ -151,6 +174,115 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
     );
   }
 
+  Future<void> _loadLifecycle() async {
+    try {
+      final enabled = await _capturePreferenceStore.loadDiagnosticsEnabled();
+      if (!mounted) return;
+      setState(() {
+        _diagnosticsEnabled = enabled;
+        _loading = false;
+      });
+      await _loadLogFiles();
+      if (enabled || (_activation?.enabledForCurrentRun ?? false)) {
+        await _restoreCaptureMode();
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = _viewerErrorCode(error);
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _changeDiagnosticsEnabled(bool enabled) async {
+    if (_activationBusy) return;
+    setState(() {
+      _activationBusy = true;
+      _loadError = null;
+    });
+    try {
+      if (enabled) {
+        final activation = _activation;
+        final active = activation == null ? true : await activation.enableForCurrentRun();
+        if (!active) throw StateError('diagnostics_activation_failed');
+        if (activation == null) {
+          await _capturePreferenceStore.saveDiagnosticsEnabled(true);
+        }
+        if (!mounted) return;
+        setState(() {
+          _diagnosticsEnabled = true;
+        });
+        await _loadLogFiles();
+      } else {
+        final activation = _activation;
+        if (activation == null) {
+          await _capturePreferenceStore.saveDiagnosticsEnabled(false);
+        } else {
+          await activation.disableOnNextLaunch();
+        }
+        if (!mounted) return;
+        setState(() {
+          _diagnosticsEnabled = false;
+        });
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = _viewerErrorCode(error);
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _activationBusy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadLogFiles() async {
+    final files = await _gateway.listLogFiles();
+    if (!mounted) return;
+    setState(() {
+      _logFiles = files;
+      _selectedLogFile = null;
+      _events = const <DiagnosticsViewerEvent>[];
+      _nextCursor = null;
+      _loading = false;
+    });
+  }
+
+  Future<void> _selectLogFile(DiagnosticsViewerLogFile file) async {
+    if (_selectedLogFile?.fileId == file.fileId) return;
+    setState(() {
+      _selectedLogFile = file;
+    });
+    await _loadEvents(reset: true);
+  }
+
+  Future<void> _deleteSelectedLog() async {
+    final file = _selectedLogFile;
+    if (file == null || file.isCurrent) return;
+    try {
+      await _gateway.deleteLogFile(file.fileId);
+      await _loadLogFiles();
+    } on Object catch (error) {
+      if (mounted) setState(() => _loadError = _viewerErrorCode(error));
+    }
+  }
+
+  Future<void> _exportSelectedLog() async {
+    final file = _selectedLogFile;
+    if (file == null) return;
+    try {
+      final result = await _gateway.exportLogFile(file.fileId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已导出 ${result.byteLength} 字节')));
+    } on Object catch (error) {
+      if (mounted) setState(() => _loadError = _viewerErrorCode(error));
+    }
+  }
+
   Widget _buildEventCard(DiagnosticsViewerEvent event) {
     final expanded = _expandedEvent == event.identity;
     return Padding(
@@ -171,6 +303,8 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
 
   Future<void> _loadEvents({required bool reset}) async {
     if (!mounted) return;
+    final selected = _selectedLogFile;
+    if (selected == null) return;
     if (!reset && (_loadingMore || _nextCursor == null)) return;
     final generation = ++_generation;
     final source = _source;
@@ -189,8 +323,8 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
       }
     });
     try {
-      final page = await _gateway.listEvents(source: source, cursor: reset ? null : _nextCursor);
-      if (!mounted || generation != _generation || source != _source) return;
+      final page = await _gateway.listEvents(source: source, logFileId: selected.fileId, cursor: reset ? null : _nextCursor);
+      if (!mounted || generation != _generation || source != _source || _selectedLogFile?.fileId != selected.fileId) return;
       setState(() {
         final combined = reset ? page.items : <DiagnosticsViewerEvent>[..._events, ...page.items];
         _events = List<DiagnosticsViewerEvent>.unmodifiable(combined.take(_maximumRetainedEvents));
@@ -224,6 +358,12 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
   Future<void> _changeCaptureMode(DiagnosticsDetailMode mode, {bool persistPreference = true}) async {
     if (!mounted) return;
     if (_captureBusy || (_capture?.mode == mode && _capture?.source == _source)) {
+      return;
+    }
+    if (mode != DiagnosticsDetailMode.off && !(_activation?.enabledForCurrentRun ?? _diagnosticsEnabled)) {
+      setState(() {
+        _captureError = 'diagnostics_disabled';
+      });
       return;
     }
     setState(() {
@@ -345,6 +485,121 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
       });
     }
   }
+}
+
+class _DiagnosticsLifecyclePanel extends StatelessWidget {
+  const _DiagnosticsLifecyclePanel({
+    required this.enabledPreference,
+    required this.enabledForCurrentRun,
+    required this.busy,
+    required this.onChanged,
+  });
+
+  final bool enabledPreference;
+  final bool enabledForCurrentRun;
+  final bool busy;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final detail = enabledForCurrentRun
+        ? enabledPreference
+              ? '本次启动已启用；后续启动会继续启用'
+              : '本次启动仍在安全写入；关闭将在下次启动生效'
+        : '默认关闭，不创建日志文件；开启后立即记录本次启动后续事件';
+    return Card(
+      child: SwitchListTile(
+        key: const Key('diagnostics-master-switch'),
+        value: enabledPreference,
+        onChanged: busy ? null : onChanged,
+        title: const Text('应用诊断'),
+        subtitle: Text(detail),
+      ),
+    );
+  }
+}
+
+class _LogFilePicker extends StatelessWidget {
+  const _LogFilePicker({
+    required this.files,
+    required this.selectedFileId,
+    required this.onSelected,
+    required this.onDelete,
+    required this.onExport,
+  });
+
+  final List<DiagnosticsViewerLogFile> files;
+  final String? selectedFileId;
+  final ValueChanged<DiagnosticsViewerLogFile> onSelected;
+  final VoidCallback onDelete;
+  final VoidCallback onExport;
+
+  @override
+  Widget build(BuildContext context) {
+    DiagnosticsViewerLogFile? selected;
+    for (final file in files) {
+      if (file.fileId == selectedFileId) {
+        selected = file;
+        break;
+      }
+    }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.regular),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Text('日志文件', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: AppSpacing.compact),
+            if (files.isEmpty)
+              const Text('当前没有诊断日志文件')
+            else
+              Wrap(
+                spacing: AppSpacing.compact,
+                runSpacing: AppSpacing.compact,
+                children: <Widget>[
+                  for (final file in files)
+                    ChoiceChip(
+                      key: Key('diagnostics-log-${file.fileId}'),
+                      selected: selectedFileId == file.fileId,
+                      onSelected: (_) => onSelected(file),
+                      label: Text(
+                        file.isCurrent
+                            ? '当前 · ${_formatTimestamp(file.startedAtUtcMicros)}'
+                            : '${_formatTimestamp(file.startedAtUtcMicros)} · ${_formatBytes(file.storedBytes)}',
+                      ),
+                    ),
+                ],
+              ),
+            if (selected != null) ...<Widget>[
+              const SizedBox(height: AppSpacing.compact),
+              Wrap(
+                spacing: AppSpacing.compact,
+                children: <Widget>[
+                  OutlinedButton.icon(onPressed: onExport, icon: const Icon(Icons.ios_share_rounded), label: const Text('导出')),
+                  OutlinedButton.icon(
+                    onPressed: selected.isCurrent ? null : onDelete,
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    label: Text(selected.isCurrent ? '当前日志不可删除' : '删除'),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectLogFile extends StatelessWidget {
+  const _SelectLogFile();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+    padding: EdgeInsets.all(AppSpacing.page),
+    child: Center(child: Text('请选择一个日志文件后按需读取')),
+  );
 }
 
 class _EventCard extends StatelessWidget {

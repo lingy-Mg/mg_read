@@ -262,7 +262,12 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
       choices[conflict.identity] = _toLibraryChoice(choice);
       if (choice == LanSyncConflictChoice.keepLocal) keptLocal++;
     }
-    final result = await _library.applySyncSnapshot(snapshot, preview: preview, choices: choices);
+    final LibrarySyncApplyResult result;
+    try {
+      result = await _library.applySyncSnapshot(snapshot, preview: preview, choices: choices);
+    } on BookshelfCapacityExceededException {
+      throw const LanSyncGatewayException(bookshelfCapacityExceededCode);
+    }
     if (result.code != LibrarySyncResultCode.applied) {
       throw StateError('lan_sync_library_${result.code.name}');
     }

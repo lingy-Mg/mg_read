@@ -19,6 +19,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
@@ -432,10 +433,11 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
         _shelfState = SourceDetailShelfState.alreadyAdded;
       });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已加入书架。')));
-    } on Object {
+    } on Object catch (error) {
       if (!mounted) return;
       setState(() => _isSavingToShelf = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('暂时无法加入书架，请稍后重试。')));
+      final message = error is BookshelfCapacityExceededException ? '书架已满，请先清理书籍。' : '暂时无法加入书架，请稍后重试。';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 

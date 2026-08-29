@@ -25,7 +25,7 @@ final class ContentLibraryOverviewLoader implements LibraryOverviewLoader {
 
   @override
   Future<LibraryOverview> load({LibraryVisibility visibility = LibraryVisibility.normal}) async {
-    final page = await _library.listLibrary(LibraryQuery(limit: 100, visibility: visibility));
+    final page = await _library.listLibrary(LibraryQuery(limit: bookshelfMaxItemCount, visibility: visibility));
     final progressByItemId = <String, LibraryReadingProgress>{
       for (final progress in await _library.readingProgress.loadMany(page.items.map((item) => item.id))) progress.itemId.value: progress,
     };

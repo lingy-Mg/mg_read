@@ -1,7 +1,6 @@
 /// Process-level Flutter and platform error boundary.
 ///
-/// Records only safe error codes and stack fingerprints; it never persists raw
-/// exception messages, arguments, paths, content, or stack frames.
+/// Records the error text and stack supplied by Flutter/platform unchanged.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -9,8 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:mg_read/app/app_fatal_error_reporter.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 
-/// Installs process-level Flutter and root-isolate error observation without
-/// persisting raw exception text, stack frames, arguments or paths.
+/// Installs process-level Flutter and root-isolate error observation.
 final class AppDiagnosticsErrorBoundary {
   AppDiagnosticsErrorBoundary._({
     required this._reporter,
@@ -44,6 +42,7 @@ final class AppDiagnosticsErrorBoundary {
     _reporter.reportUnhandled(
       boundary: 'flutter-framework',
       errorCode: 'unhandled_flutter_error',
+      errorText: details.exception.toString(),
       stackTrace: details.stack ?? StackTrace.empty,
       fatal: false,
     );
@@ -55,7 +54,13 @@ final class AppDiagnosticsErrorBoundary {
   }
 
   bool _handlePlatformError(Object error, StackTrace stackTrace) {
-    _reporter.reportUnhandled(boundary: 'platform-dispatcher', errorCode: _platformErrorCode(error), stackTrace: stackTrace, fatal: true);
+    _reporter.reportUnhandled(
+      boundary: 'platform-dispatcher',
+      errorCode: _platformErrorCode(error),
+      errorText: error.toString(),
+      stackTrace: stackTrace,
+      fatal: true,
+    );
     try {
       _previousPlatformHandler?.call(error, stackTrace);
     } catch (_) {

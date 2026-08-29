@@ -14,7 +14,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/import_export/application/import_export_service.dart';
+import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
@@ -274,10 +276,10 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
     });
     try {
       await action();
-    } on Object {
+    } on Object catch (error) {
       if (mounted) {
         setState(() {
-          _feedback = failureMessage;
+          _feedback = importExportFailureMessage(error, fallback: failureMessage);
           _feedbackIsError = true;
         });
       }
@@ -319,6 +321,10 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
     _feedback = null;
   });
 }
+
+/// Converts stable import boundary failures into user-facing copy.
+String importExportFailureMessage(Object error, {required String fallback}) =>
+    error is LanSyncGatewayException && error.code == bookshelfCapacityExceededCode ? '书架已满，请先清理书籍。' : fallback;
 
 class _ScopeNotice extends StatelessWidget {
   const _ScopeNotice();

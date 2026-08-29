@@ -1,6 +1,6 @@
-/// 诊断 TXT 的串行写入、分段切换与后台压缩执行。
+/// 诊断 TXT 的串行写入与当前启动单文件重写。
 ///
-/// 保持单写队列、isolate 编码和原有分段/保留语义。
+/// 保持单写队列和 isolate 编码；当前启动永不切换到第二个事件文件。
 part of 'diagnostics_persistence.dart';
 
 extension _DiagnosticsPersistenceBackgroundExecution on DiagnosticsPersistence {
@@ -40,11 +40,8 @@ extension _DiagnosticsPersistenceBackgroundExecution on DiagnosticsPersistence {
 
     for (final line in lines) {
       final encodedBytes = utf8.encode('$line\n').length;
-      if (_activeSegment == null ||
-          _activeSegmentRunId != sourceRunId ||
-          _activeSegmentBytes + encodedBytes > DiagnosticsPersistence.maxSegmentBytes) {
-        await flushBuffer();
-        await _activateNextSegment(sourceRunId);
+      if (_activeSegment == null || _activeSegmentRunId != sourceRunId) {
+        throw StateError('The active diagnostic run file is unavailable.');
       }
       final segment = _activeSegment;
       if (segment == null) {
@@ -59,28 +56,6 @@ extension _DiagnosticsPersistenceBackgroundExecution on DiagnosticsPersistence {
       _activeSegmentBytes += encodedBytes;
     }
     await flushBuffer();
-  }
-
-  Future<void> _activateNextSegment(String sourceRunId) async {
-    final next = (_segmentSequenceByRun[sourceRunId] ?? 0) + 1;
-    _segmentSequenceByRun[sourceRunId] = next;
-    final file = File(
-      '${eventsRoot.path}${Platform.pathSeparator}'
-      'run-$sourceRunId-${next.toString().padLeft(6, '0')}.txt',
-    );
-    await file.create(recursive: true);
-    _activeSegment = file;
-    _activeSegmentRunId = sourceRunId;
-    _activeSegmentBytes = await file.length();
-  }
-
-  void _updateSegmentSequence(String fileName) {
-    final match = RegExp(r'^run-(.+)-(\d{6})\.txt$').firstMatch(fileName);
-    if (match == null) return;
-    final runId = match.group(1)!;
-    final sequence = int.parse(match.group(2)!);
-    final current = _segmentSequenceByRun[runId] ?? 0;
-    if (sequence > current) _segmentSequenceByRun[runId] = sequence;
   }
 
   Future<void> _compactCatalog() async {
@@ -110,16 +85,17 @@ extension _DiagnosticsPersistenceBackgroundExecution on DiagnosticsPersistence {
       }
     }
     final result = await Isolate.run(
-      _DiagnosticTextRewriteTask(diagnosticsRoot.path, records, DiagnosticsPersistence.maxSegmentBytes).call,
+      _DiagnosticTextRewriteTask(diagnosticsRoot.path, _activeSegment?.path, records).call,
       debugName: 'mg-read-diagnostics-text-compact',
     );
     _lastEncoderWorkerIsolateId = result.workerIsolateId;
     _activeSegment = null;
     _activeSegmentRunId = null;
     _activeSegmentBytes = 0;
-    _segmentSequenceByRun.clear();
-    for (final name in result.segmentNames) {
-      _updateSegmentSequence(name);
+    if (result.segmentNames.length == 1 && _runs.length == 1) {
+      _activeSegment = File('${eventsRoot.path}${Platform.pathSeparator}${result.segmentNames.single}');
+      _activeSegmentRunId = _runs.keys.single;
+      _activeSegmentBytes = await _activeSegment!.length();
     }
   }
 }

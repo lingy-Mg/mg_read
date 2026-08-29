@@ -46,6 +46,8 @@ extension _ComicReaderSession on _ComicReaderViewState {
     _preferencesAuthoritative = false;
     _bookmarks = const <ComicReaderBookmark>[];
     _firstContentPresented = false;
+    _prefetchForward = true;
+    _lastObservedScrollOffset = null;
     _failure = null;
     _loading = true;
     if (mounted) setState(() {});
@@ -617,6 +619,12 @@ extension _ComicReaderSession on _ComicReaderViewState {
 
   void _handleScroll() {
     if (_disposed || _restoring || !_scrollController.hasClients) return;
+    final double offset = _scrollController.offset;
+    final double? previousOffset = _lastObservedScrollOffset;
+    if (previousOffset != null && offset != previousOffset) {
+      _prefetchForward = offset > previousOffset;
+    }
+    _lastObservedScrollOffset = offset;
     _updateProgressFromScroll();
     final ScrollPosition position = _scrollController.position;
     final double trigger = position.viewportDimension * 1.5;
@@ -704,21 +712,31 @@ extension _ComicReaderSession on _ComicReaderViewState {
   }
 
   void _prefetchAround(_ComicImageEntry selected) {
+    if (!_firstContentPresented) return;
     final List<_ComicListEntry> entries = _entries();
     final int index =
         _imageEntryIndexes['${selected.chapter.info.id}\u0000${selected.image.id}'] ??
         -1;
     if (index < 0) return;
+    final int aheadStep = _prefetchForward ? 1 : -1;
+    _prefetchImages(entries, startIndex: index, step: aheadStep, limit: 6);
+    _prefetchImages(entries, startIndex: index, step: -aheadStep, limit: 2);
+  }
+
+  void _prefetchImages(
+    List<_ComicListEntry> entries, {
+    required int startIndex,
+    required int step,
+    required int limit,
+  }) {
     int loaded = 0;
-    for (int distance = 1; distance <= 4 && loaded < 3; distance++) {
-      for (final int candidate in <int>[index + distance, index - distance]) {
-        if (candidate < 0 || candidate >= entries.length) continue;
-        final _ComicListEntry entry = entries[candidate];
-        if (entry is! _ComicImageEntry) continue;
-        _imageCache.prefetch(entry.chapter.info.id, entry.image);
-        loaded++;
-        if (loaded >= 3) break;
-      }
+    for (int candidate = startIndex + step;
+        candidate >= 0 && candidate < entries.length && loaded < limit;
+        candidate += step) {
+      final _ComicListEntry entry = entries[candidate];
+      if (entry is! _ComicImageEntry) continue;
+      _imageCache.prefetch(entry.chapter.info.id, entry.image);
+      loaded++;
     }
   }
 

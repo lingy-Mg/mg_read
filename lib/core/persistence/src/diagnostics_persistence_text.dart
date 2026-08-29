@@ -107,52 +107,82 @@ final class _DiagnosticEventEncodeTask {
   }
 }
 
-final class _DiagnosticTextLoadResult {
-  const _DiagnosticTextLoadResult({required this.records, required this.segmentBytes, required this.workerIsolateId});
+final class _DiagnosticColdFileLoadResult {
+  const _DiagnosticColdFileLoadResult({
+    required this.events,
+    required this.attachments,
+    required this.detailKeys,
+    required this.workerIsolateId,
+    required this.isCorrupted,
+  });
 
-  final List<Map<String, Object?>> records;
-  final Map<String, int> segmentBytes;
+  final List<DiagnosticEvent> events;
+  final Map<String, List<DiagnosticAttachmentDescriptor>> attachments;
+  final Map<String, String> detailKeys;
   final int workerIsolateId;
+  final bool isCorrupted;
 }
 
-final class _DiagnosticTextLoadTask {
-  const _DiagnosticTextLoadTask(this.eventsPath);
+final class _DiagnosticColdFileLoadTask {
+  const _DiagnosticColdFileLoadTask(this.path);
 
-  final String eventsPath;
+  final String path;
 
-  _DiagnosticTextLoadResult call() {
-    final root = Directory(eventsPath);
-    final files = root.listSync(followLinks: false).whereType<File>().where((file) => file.path.endsWith('.txt')).toList(growable: false)
-      ..sort((left, right) => left.path.compareTo(right.path));
-    final records = <Map<String, Object?>>[];
-    final segmentBytes = <String, int>{};
-    for (final file in files) {
-      var bytes = file.readAsBytesSync();
+  _DiagnosticColdFileLoadResult call() {
+    final events = <DiagnosticEvent>[];
+    final attachments = <String, List<DiagnosticAttachmentDescriptor>>{};
+    final detailKeys = <String, String>{};
+    var corrupted = false;
+    try {
+      final bytes = File(path).readAsBytesSync();
       final lastNewline = bytes.lastIndexOf(0x0a);
-      final completeLength = lastNewline < 0 ? 0 : lastNewline + 1;
-      if (completeLength != bytes.length) {
-        final handle = file.openSync(mode: FileMode.writeOnlyAppend);
-        handle.truncateSync(completeLength);
-        handle.closeSync();
-        bytes = bytes.sublist(0, completeLength);
-      }
-      final name = file.uri.pathSegments.last;
-      segmentBytes[name] = completeLength;
-      if (bytes.isEmpty) continue;
-      final text = utf8.decode(bytes, allowMalformed: false);
+      final complete = lastNewline < 0 ? const <int>[] : bytes.sublist(0, lastNewline + 1);
+      if (complete.length != bytes.length) corrupted = true;
+      final text = utf8.decode(complete, allowMalformed: false);
       for (final line in const LineSplitter().convert(text)) {
         if (line.isEmpty) continue;
         try {
-          final value = jsonDecode(line);
-          if (value is Map) {
-            records.add(value.map((key, item) => MapEntry(key.toString(), item)));
+          final decoded = jsonDecode(line);
+          if (decoded is! Map) {
+            corrupted = true;
+            continue;
           }
-        } on FormatException {
-          // A malformed complete line is isolated; later records stay usable.
+          final record = decoded.map((key, value) => MapEntry(key.toString(), value));
+          switch (record['recordType']) {
+            case 'event':
+              final envelope = record['event'];
+              if (envelope is! Map) {
+                corrupted = true;
+                continue;
+              }
+              events.add(const DiagnosticEventCodec().decode(envelope.map((key, value) => MapEntry(key.toString(), value))));
+            case 'attachment':
+              final value = record['descriptor'];
+              if (value is! Map) {
+                corrupted = true;
+                continue;
+              }
+              final descriptor = _descriptorFromMap(value.map((key, item) => MapEntry(key.toString(), item)));
+              attachments.putIfAbsent(descriptor.eventId, () => <DiagnosticAttachmentDescriptor>[]).add(descriptor);
+              if (record['detailKey'] case final String key when key.isNotEmpty) {
+                detailKeys[descriptor.attachmentId] = key;
+              }
+          }
+        } on Object {
+          corrupted = true;
         }
       }
+    } on Object {
+      corrupted = true;
     }
-    return _DiagnosticTextLoadResult(records: records, segmentBytes: segmentBytes, workerIsolateId: Isolate.current.hashCode);
+    events.sort(_compareEventsDescending);
+    return _DiagnosticColdFileLoadResult(
+      events: events,
+      attachments: attachments,
+      detailKeys: detailKeys,
+      workerIsolateId: Isolate.current.hashCode,
+      isCorrupted: corrupted,
+    );
   }
 }
 
@@ -164,15 +194,14 @@ final class _DiagnosticTextRewriteResult {
 }
 
 final class _DiagnosticTextRewriteTask {
-  const _DiagnosticTextRewriteTask(this.diagnosticsPath, this.records, this.maxSegmentBytes);
+  const _DiagnosticTextRewriteTask(this.diagnosticsPath, this.activeFilePath, this.records);
 
   final String diagnosticsPath;
+  final String? activeFilePath;
   final List<Map<String, Object?>> records;
-  final int maxSegmentBytes;
 
   _DiagnosticTextRewriteResult call() {
     final separator = Platform.pathSeparator;
-    final events = Directory('$diagnosticsPath${separator}events');
     final staging = Directory('$diagnosticsPath${separator}staging');
     staging.createSync(recursive: true);
     for (final entity in staging.listSync(followLinks: false)) {
@@ -180,52 +209,20 @@ final class _DiagnosticTextRewriteTask {
         entity.deleteSync();
       }
     }
-    final staged = <File>[];
-    var segment = 1;
-    var currentBytes = 0;
-    File? current;
-    RandomAccessFile? writer;
-
-    void openSegment() {
-      current = File('${staging.path}${separator}rewrite-${segment.toString().padLeft(6, '0')}.partial.txt');
-      writer = current!.openSync(mode: FileMode.write);
-    }
-
-    void finishSegment() {
-      final file = current;
-      final handle = writer;
-      if (file == null || handle == null) return;
-      handle
-        ..flushSync()
-        ..closeSync();
-      staged.add(file);
-      current = null;
-      writer = null;
-    }
-
+    final activePath = activeFilePath;
+    if (activePath == null) return _DiagnosticTextRewriteResult(const <String>[], Isolate.current.hashCode);
+    final active = File(activePath);
+    final staged = File('${staging.path}${separator}rewrite-current.partial.txt');
+    final writer = staged.openSync(mode: FileMode.write);
     for (final record in records) {
-      final line = '${jsonEncode(record)}\n';
-      final bytes = utf8.encode(line).length;
-      if (currentBytes > 0 && currentBytes + bytes > maxSegmentBytes) {
-        finishSegment();
-        segment += 1;
-        currentBytes = 0;
-      }
-      if (writer == null) openSegment();
-      writer!.writeStringSync(line);
-      currentBytes += bytes;
+      writer.writeStringSync('${jsonEncode(record)}\n');
     }
-    finishSegment();
-    for (final entity in events.listSync(followLinks: false)) {
-      if (entity is File && entity.path.endsWith('.txt')) entity.deleteSync();
-    }
-    final names = <String>[];
-    for (var index = 0; index < staged.length; index += 1) {
-      final name = 'run-compacted-${(index + 1).toString().padLeft(6, '0')}.txt';
-      staged[index].renameSync('${events.path}$separator$name');
-      names.add(name);
-    }
-    return _DiagnosticTextRewriteResult(names, Isolate.current.hashCode);
+    writer
+      ..flushSync()
+      ..closeSync();
+    if (active.existsSync()) active.deleteSync();
+    staged.renameSync(active.path);
+    return _DiagnosticTextRewriteResult(<String>[active.uri.pathSegments.last], Isolate.current.hashCode);
   }
 }
 
@@ -282,26 +279,6 @@ Map<String, Object?> _attachmentRecord(_AttachmentRecord attachment) => <String,
   'persisted': attachment.persisted,
 };
 
-_RunRecord _runFromRecord(Map<String, Object?> record) => _RunRecord(
-  sourceRunId: record['sourceRunId'] as String,
-  source: _enumByName(DiagnosticSource.values, record['source'] as String, 'source'),
-  startedAtUtcMicros: record['startedAtUtcMicros'] as int,
-);
-
-_SessionRecord _sessionFromRecord(Map<String, Object?> record) => _SessionRecord(
-  sessionId: record['sessionId'] as String,
-  sourceRunId: record['sourceRunId'] as String,
-  source: _enumByName(DiagnosticSource.values, record['source'] as String, 'source'),
-  startedAtUtcMicros: record['startedAtUtcMicros'] as int,
-  expiresAtUtcMicros: record['expiresAtUtcMicros'] as int?,
-  payloadKind: _enumByName(DiagnosticPayloadKind.values, record['payloadKind'] as String, 'payload kind'),
-  maxStoredBytes: record['maxStoredBytes'] as int,
-  components: _stringSet(record['components']),
-  origins: _stringSet(record['origins']),
-  isDefault: record['isDefault'] == true,
-  detailStorage: _enumByName(DiagnosticDetailStorage.values, record['detailStorage'] as String? ?? 'persistToText', 'detail storage'),
-);
-
 Map<String, Object?> _descriptorToMap(DiagnosticAttachmentDescriptor descriptor) => <String, Object?>{
   'attachmentId': descriptor.attachmentId,
   'eventId': descriptor.eventId,
@@ -312,13 +289,11 @@ Map<String, Object?> _descriptorToMap(DiagnosticAttachmentDescriptor descriptor)
   'formatVersion': descriptor.formatVersion,
   'schemaId': descriptor.schemaId,
   'schemaVersion': descriptor.schemaVersion,
-  'privacyClass': descriptor.privacyClass.name,
   'captureState': descriptor.captureState.name,
   'rawByteLength': descriptor.rawByteLength,
   'storedByteLength': descriptor.storedByteLength,
   'sha256': descriptor.sha256,
   'storageCodec': descriptor.storageCodec.name,
-  'redactionVersion': descriptor.redactionVersion,
   'truncationReason': descriptor.truncationReason,
 };
 
@@ -332,35 +307,13 @@ DiagnosticAttachmentDescriptor _descriptorFromMap(Map<String, Object?> value) =>
   formatVersion: value['formatVersion'] as int,
   schemaId: value['schemaId'] as String?,
   schemaVersion: value['schemaVersion'] as int?,
-  privacyClass: _enumByName(DiagnosticPrivacyClass.values, value['privacyClass'] as String, 'privacy class'),
   captureState: _enumByName(DiagnosticCaptureState.values, value['captureState'] as String, 'capture state'),
   rawByteLength: value['rawByteLength'] as int,
   storedByteLength: value['storedByteLength'] as int,
   sha256: value['sha256'] as String?,
   storageCodec: _enumByName(DiagnosticStorageCodec.values, value['storageCodec'] as String, 'storage codec'),
-  redactionVersion: value['redactionVersion'] as int,
   truncationReason: value['truncationReason'] as String?,
 );
-
-DiagnosticAttachmentDescriptor _descriptorWithFailure(DiagnosticAttachmentDescriptor descriptor, String reason) =>
-    DiagnosticAttachmentDescriptor(
-      attachmentId: descriptor.attachmentId,
-      eventId: descriptor.eventId,
-      kind: descriptor.kind,
-      mediaType: descriptor.mediaType,
-      charset: descriptor.charset,
-      formatId: descriptor.formatId,
-      formatVersion: descriptor.formatVersion,
-      schemaId: descriptor.schemaId,
-      schemaVersion: descriptor.schemaVersion,
-      privacyClass: descriptor.privacyClass,
-      captureState: DiagnosticCaptureState.failed,
-      rawByteLength: descriptor.rawByteLength,
-      storedByteLength: 0,
-      storageCodec: descriptor.storageCodec,
-      redactionVersion: descriptor.redactionVersion,
-      truncationReason: reason,
-    );
 
 DiagnosticEvent _eventWithAttachment(DiagnosticEvent event, DiagnosticAttachmentDescriptor descriptor) => event.copyWith(
   attachmentCount: event.attachmentCount + 1,
@@ -375,11 +328,6 @@ DiagnosticEvent _eventWithAttachment(DiagnosticEvent event, DiagnosticAttachment
 );
 
 DiagnosticEvent _withoutAttachmentProjection(DiagnosticEvent event) => event.copyWith(attachmentCount: 0, capturedBytes: 0);
-
-Set<String> _stringSet(Object? value) {
-  if (value is! List) return const <String>{};
-  return value.whereType<String>().toSet();
-}
 
 int _compareSessionsDescending(DiagnosticSession left, DiagnosticSession right) {
   final time = right.startedAtUtcMicros.compareTo(left.startedAtUtcMicros);
@@ -417,10 +365,29 @@ Future<void> _removeLegacyDatabaseArtifacts(Directory root) async {
     final file = File('${root.path}${Platform.pathSeparator}$name');
     if (await file.exists()) await file.delete();
   }
-  for (final name in <String>['objects', 'exports']) {
+  for (final name in <String>['objects']) {
     final directory = Directory('${root.path}${Platform.pathSeparator}$name');
     if (await directory.exists()) await directory.delete(recursive: true);
   }
 }
 
 DateTime _utcNow() => DateTime.now().toUtc();
+
+String _runFileName(_RunRecord run) => 'run-${run.startedAtUtcMicros.toString().padLeft(20, '0')}-${run.sourceRunId}.txt';
+
+final RegExp _diagnosticRunFilePattern = RegExp(r'^run-[A-Za-z0-9_-]+\.txt$');
+
+int? _startedMicrosFromRunFileName(String name) {
+  final match = RegExp(r'^run-(\d{20})-[A-Za-z0-9_-]+\.txt$').firstMatch(name);
+  return match == null ? null : int.tryParse(match.group(1)!);
+}
+
+String _encodeLogFileId(String name) => base64UrlEncode(utf8.encode(name)).replaceAll('=', '');
+
+String _decodeLogFileId(String fileId) {
+  if (!RegExp(r'^[A-Za-z0-9_-]{8,512}$').hasMatch(fileId)) {
+    throw const FormatException('Invalid diagnostic log file ID.');
+  }
+  final padding = '=' * ((4 - fileId.length % 4) % 4);
+  return utf8.decode(base64Url.decode('$fileId$padding'));
+}

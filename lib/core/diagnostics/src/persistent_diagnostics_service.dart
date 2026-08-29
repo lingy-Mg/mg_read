@@ -1,6 +1,6 @@
 part of 'persistent_diagnostics.dart';
 
-final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCapture, DiagnosticsMaintenance {
+final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCapture, DiagnosticsMaintenance, DiagnosticsLogArchive {
   AppDiagnosticsService._({
     required this.manager,
     required this._sink,
@@ -34,7 +34,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
     DiagnosticIdGenerator? idGenerator,
     DiagnosticClock? clock,
     DiagnosticEventRegistry? registry,
-    DiagnosticPrivacyPolicy? privacyPolicy,
     String buildMode = 'debug',
     String platform = 'unknown',
     bool deferStartupMaintenance = false,
@@ -82,7 +81,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
           sink: sink,
           registry: registry ?? AppDiagnosticEvents.registry,
           source: DiagnosticSource.app,
-          privacyPolicy: privacyPolicy,
           idGenerator: ids,
           clock: effectiveClock,
           sourceRunId: sourceRunId,
@@ -170,9 +168,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
     _ensureOpen();
     final span = manager.startSpan(AppDiagnosticEvents.capture, attributes: () => _captureAttributes(policy, sessionState: 'starting'));
     try {
-      if (policy.payloadKind == DiagnosticPayloadKind.restrictedRaw) {
-        throw UnsupportedError('restrictedRaw requires the separately approved encrypted D5 store.');
-      }
       if (_activeCapture != null) {
         throw StateError('Only one explicit app capture session may be active.');
       }
@@ -234,7 +229,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
     required String mediaType,
     required String formatId,
     required int formatVersion,
-    required DiagnosticPrivacyClass privacyClass,
     required Stream<List<int>> bytes,
     String? charset,
     String? schemaId,
@@ -247,7 +241,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
         mediaType: mediaType,
         formatId: formatId,
         formatVersion: formatVersion,
-        privacyClass: privacyClass,
         bytes: bytes,
         charset: charset,
         schemaId: schemaId,
@@ -264,7 +257,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
     required String mediaType,
     required String formatId,
     required int formatVersion,
-    required DiagnosticPrivacyClass privacyClass,
     required Stream<List<int>> bytes,
     String? charset,
     String? schemaId,
@@ -272,10 +264,7 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
   }) async {
     final span = manager.startSpan(
       AppDiagnosticEvents.attachment,
-      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-        'kind': DiagnosticValue.string(kind),
-        'privacyClass': DiagnosticValue.string(privacyClass.name),
-      }),
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{'kind': DiagnosticValue.string(kind)}),
     );
     try {
       final result = await _captureAttachmentCore(
@@ -284,7 +273,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
         mediaType: mediaType,
         formatId: formatId,
         formatVersion: formatVersion,
-        privacyClass: privacyClass,
         bytes: bytes,
         charset: charset,
         schemaId: schemaId,
@@ -292,7 +280,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
       );
       final attributes = DiagnosticObjectValue(<String, DiagnosticValue>{
         'kind': DiagnosticValue.string(kind),
-        'privacyClass': DiagnosticValue.string(privacyClass.name),
         'captureState': DiagnosticValue.string(result.captureState.name),
         'rawBytes': DiagnosticValue.int64(result.rawByteLength),
         'storedBytes': DiagnosticValue.int64(result.storedByteLength),
@@ -308,7 +295,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
       span.fail(
         attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
           'kind': DiagnosticValue.string(kind),
-          'privacyClass': DiagnosticValue.string(privacyClass.name),
           'captureState': DiagnosticValue.string('failed'),
           'errorCode': DiagnosticValue.string('attachment_failed'),
         }),
@@ -323,7 +309,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
     required String mediaType,
     required String formatId,
     required int formatVersion,
-    required DiagnosticPrivacyClass privacyClass,
     required Stream<List<int>> bytes,
     String? charset,
     String? schemaId,
@@ -340,18 +325,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
       blockedReason = 'explicitCaptureRequired';
     } else if (session.session.state != DiagnosticSessionState.active) {
       blockedReason = 'captureSessionInactive';
-    } else if (privacyClass == DiagnosticPrivacyClass.secret) {
-      blockedReason = 'secretNeverPersisted';
-    } else if (privacyClass == DiagnosticPrivacyClass.restricted) {
-      blockedReason = 'restrictedRawUnsupported';
-    } else if (!_isTextDiagnosticMediaType(mediaType)) {
-      blockedReason = 'textDetailsOnly';
-    } else if (privacyClass == DiagnosticPrivacyClass.content && session.session.payloadKind == DiagnosticPayloadKind.metadataOnly) {
-      blockedReason = 'payloadModeBlocked';
-    } else if (privacyClass == DiagnosticPrivacyClass.content &&
-        session.session.payloadKind == DiagnosticPayloadKind.safeStructured &&
-        !_isStructuredDiagnosticMediaType(mediaType)) {
-      blockedReason = 'safeStructuredRequiresJson';
     } else if (session.remainingBytes <= 0) {
       blockedReason = 'captureSessionQuota';
     }
@@ -366,7 +339,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
         formatVersion: formatVersion,
         schemaId: schemaId,
         schemaVersion: schemaVersion,
-        privacyClass: privacyClass,
         captureState: DiagnosticCaptureState.policyBlocked,
         rawByteLength: 0,
         storedByteLength: 0,
@@ -389,7 +361,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
           formatVersion: formatVersion,
           schemaId: schemaId,
           schemaVersion: schemaVersion,
-          privacyClass: privacyClass,
           captureState: DiagnosticCaptureState.pressureDropped,
           rawByteLength: 0,
           storedByteLength: 0,
@@ -400,7 +371,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
       final effectiveMaxBytes = min(maxBytes, globalRemaining);
       final commit = await _persistence.detailStore.write(
         attachmentId: attachmentId,
-        privacyClass: privacyClass,
         bytes: bytes,
         maxStoredBytes: effectiveMaxBytes,
         maxDuration: configuration.attachmentWriteTimeout,
@@ -416,7 +386,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
         formatVersion: formatVersion,
         schemaId: schemaId,
         schemaVersion: schemaVersion,
-        privacyClass: privacyClass,
         captureState: commit.captureState,
         rawByteLength: commit.rawByteLength,
         storedByteLength: commit.storedByteLength,
@@ -441,7 +410,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
         formatVersion: formatVersion,
         schemaId: schemaId,
         schemaVersion: schemaVersion,
-        privacyClass: privacyClass,
         captureState: DiagnosticCaptureState.failed,
         rawByteLength: 0,
         storedByteLength: 0,
@@ -483,6 +451,41 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
   Future<DiagnosticStorageStatistics> getStatistics() async {
     await _sink.flush(timeout: configuration.defaultFlushTimeout);
     return _persistence.getStatistics();
+  }
+
+  @override
+  Future<List<DiagnosticLogFile>> listLogFiles() async {
+    await _sink.flush(timeout: const Duration(milliseconds: 500));
+    return _persistence.listLogFiles();
+  }
+
+  @override
+  Future<DiagnosticPage<DiagnosticEvent>> listLogEvents(String fileId, {DiagnosticCursor? cursor, int limit = 100}) async {
+    await _sink.flush(timeout: const Duration(milliseconds: 500));
+    return _persistence.listLogEvents(fileId, cursor: cursor, limit: limit);
+  }
+
+  @override
+  Future<DiagnosticEvent?> getLogEvent(String fileId, String eventId) async {
+    await _sink.flush(timeout: const Duration(milliseconds: 500));
+    return _persistence.getLogEvent(fileId, eventId);
+  }
+
+  @override
+  Future<List<DiagnosticAttachmentDescriptor>> listLogAttachments(String fileId, String eventId) =>
+      _persistence.listLogAttachments(fileId, eventId);
+
+  @override
+  Stream<List<int>> openLogAttachment(String fileId, String attachmentId, {DiagnosticByteRange? range}) =>
+      _persistence.openLogAttachment(fileId, attachmentId, range: range);
+
+  @override
+  Future<void> deleteLogFile(String fileId) => _persistence.deleteLogFile(fileId);
+
+  @override
+  Future<DiagnosticExportResult> exportLogFile(String fileId) async {
+    await _sink.flush(timeout: configuration.defaultFlushTimeout);
+    return _persistence.exportLogFile(fileId);
   }
 
   Future<void> close() => _closeFuture ??= _close();
@@ -566,7 +569,6 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
     required String mediaType,
     required String formatId,
     required int formatVersion,
-    required DiagnosticPrivacyClass privacyClass,
     required DiagnosticCaptureState captureState,
     required int rawByteLength,
     required int storedByteLength,
@@ -585,13 +587,11 @@ final class AppDiagnosticsService implements DiagnosticsQuery, DiagnosticsCaptur
     formatVersion: formatVersion,
     schemaId: schemaId,
     schemaVersion: schemaVersion,
-    privacyClass: privacyClass,
     captureState: captureState,
     rawByteLength: rawByteLength,
     storedByteLength: storedByteLength,
     sha256: sha256,
     storageCodec: DiagnosticStorageCodec.identity,
-    redactionVersion: 1,
     truncationReason: truncationReason,
   );
 
@@ -620,19 +620,3 @@ String _captureErrorCode(Object error) => switch (error) {
   StateError() => 'capture_state_invalid',
   _ => 'capture_start_failed',
 };
-
-bool _isTextDiagnosticMediaType(String mediaType) {
-  final normalized = mediaType.split(';').first.trim().toLowerCase();
-  return normalized.startsWith('text/') ||
-      normalized == 'application/json' ||
-      normalized.endsWith('+json') ||
-      normalized == 'application/xml' ||
-      normalized.endsWith('+xml') ||
-      normalized == 'application/x-www-form-urlencoded' ||
-      normalized == 'application/javascript';
-}
-
-bool _isStructuredDiagnosticMediaType(String mediaType) {
-  final normalized = mediaType.split(';').first.trim().toLowerCase();
-  return normalized == 'application/json' || normalized.endsWith('+json');
-}

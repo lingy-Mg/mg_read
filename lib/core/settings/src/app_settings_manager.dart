@@ -104,6 +104,10 @@ final class AppSettingsManager {
   SendPort get backgroundCommandPort => _commandReceiver.sendPort;
   BackgroundSettingsClient get backgroundClient => BackgroundSettingsClient(backgroundCommandPort);
 
+  /// Whether this composition registered [key]. Narrow test compositions can
+  /// omit product settings without making optional lifecycle wiring throw.
+  bool supports(SettingKey<dynamic> key) => identical(_registry.keys[key.id], key);
+
   T get<T>(SettingKey<T> key) {
     _requireRegisteredKey(key);
     return _snapshot.get(key);
