@@ -17,7 +17,10 @@ test('live source completes category, search, detail, catalog and content', { ti
   const overview = categories.document.components.find((item) => item.id === 'shudugu-overview-group');
   assert.equal(overview?.type, 'group');
   assert.equal(overview.children[0].children[0].layout, 'compact');
-  assert.equal(overview.children[1].children[0].layout, 'coverGrid');
+  const completed = overview.children[1].children[0];
+  assert.equal(completed.layout, 'coverGrid');
+  assert.ok(completed.items.length > 0);
+  assert.ok(completed.items.every((item) => item.content.coverUrl !== null));
   const category = categories.document.components.find((item) => item.id === 'shudugu-categories-section')?.children.find((item) => item.type === 'categoryCollection');
   assert.equal(category?.type, 'categoryCollection');
   assert.equal(category.layout, 'chips');

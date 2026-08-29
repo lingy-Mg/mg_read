@@ -57,6 +57,37 @@ abstract interface class ReaderChapterStateCapability {
   Future<void> markRead(String bookId, String chapterId);
 }
 
+/// Starts one host-owned persistent chapter-cache task.
+///
+/// The reader only collects bounded user intent. Networking, scheduling,
+/// persistence, progress presentation, cancellation, and retries remain owned
+/// by the host application.
+abstract interface class ReaderChapterCacheCapability {
+  /// Starts caching chapters for [bookId] with the requested limits.
+  Future<void> startCaching(String bookId, ReaderChapterCacheRequest request);
+}
+
+@immutable
+/// Immutable user-selected limits for one chapter-cache task.
+class ReaderChapterCacheRequest {
+  /// Creates a validated host cache request.
+  const ReaderChapterCacheRequest({
+    required this.chapterCount,
+    required this.concurrency,
+    required this.delay,
+  }) : assert(chapterCount >= 0),
+       assert(concurrency > 0);
+
+  /// Number of chapters to cache from the beginning of the catalog.
+  final int chapterCount;
+
+  /// Maximum number of chapter requests allowed to run at once.
+  final int concurrency;
+
+  /// Delay applied by each worker before it starts another chapter.
+  final Duration delay;
+}
+
 /// Optional host repository for external reader fonts.
 ///
 /// The plugin never opens descriptor URLs. Implementations own networking,
@@ -348,6 +379,7 @@ class ReaderExtensions {
   const ReaderExtensions({
     this.commentFeed,
     this.chapterStateCapability,
+    this.chapterCacheCapability,
     this.fontRepository,
     @Deprecated('Use commentFeed for the reader-owned read-only comment UI.')
     this.comments,
@@ -358,6 +390,9 @@ class ReaderExtensions {
 
   /// Optional source of mutable download/read state for text chapters.
   final ReaderChapterStateCapability? chapterStateCapability;
+
+  /// Optional host-owned persistent chapter-cache task entry point.
+  final ReaderChapterCacheCapability? chapterCacheCapability;
 
   /// Optional host-owned catalog, installer, and cache for external fonts.
   final ReaderFontRepository? fontRepository;

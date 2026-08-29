@@ -1,0 +1,40 @@
+{
+  "name": "@mgread-plugin/elkoparts-net",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MgRead Node 24 source for the public Elkoparts novel site.",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "bin": {
+    "mgread": "tools/mgread.mjs"
+  },
+  "packageManager": "npm@11.13.0",
+  "engines": {
+    "node": ">=24 <25",
+    "npm": "11.13.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/contract.test.mjs test/packaging.test.mjs test/source.test.mjs",
+    "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
+    "pack:plugin": "npm run build && node tools/mgread.mjs pack",
+    "verify": "npm run typecheck && npm test && npm run pack:plugin"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.elkoparts-net",
+    "displayName": "饿狼小说",
+    "description": "饿狼小说公开网页书源，支持分类、搜索、详情、完整目录与正文阅读。",
+    "pluginApi": 1,
+    "packageMode": "single-file",
+    "contentKinds": [
+      "novel"
+    ]
+  }
+}

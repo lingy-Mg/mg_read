@@ -7,8 +7,11 @@
 /// 注意：
 /// - 组件只消费 Runtime 已校验的数据，不执行 IO，也不接受书源颜色、尺寸或任意 UI 代码。
 /// - 布局名称表达内容语义；列数、间距和主题始终由 MgRead 根据可用宽度决定。
+/// - 分类 chips 按可用宽度等分列宽，最后一行保持同一列宽而不按内容收缩。
+/// - 横向书架在组件内允许触摸、手写笔、触控板和鼠标直接拖动。
 library;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
@@ -36,9 +39,9 @@ class DiscoveryCoverGrid extends StatelessWidget {
           < 1440 => 5,
           _ => 6,
         };
-        const gap = AppSpacing.regular;
+        const gap = AppSpacing.discoveryComponentGap;
         final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
-        final coverHeight = width * 1.38;
+        final coverHeight = width * AppSpacing.discoveryCoverAspectRatio;
         return GridView.builder(
           key: const Key('runtime-discovery-cover-grid'),
           shrinkWrap: true,
@@ -48,8 +51,8 @@ class DiscoveryCoverGrid extends StatelessWidget {
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
             crossAxisSpacing: gap,
-            mainAxisSpacing: AppSpacing.comfortable,
-            mainAxisExtent: coverHeight + 58,
+            mainAxisSpacing: AppSpacing.discoverySectionContentGap,
+            mainAxisExtent: coverHeight + AppSpacing.discoveryCoverMetadataExtent,
           ),
           itemBuilder: (context, index) {
             final item = items[index];
@@ -79,26 +82,37 @@ class DiscoveryBookShelf extends StatelessWidget {
     if (items.isEmpty) return const SizedBox.shrink();
     return SizedBox(
       key: const Key('runtime-discovery-book-shelf'),
-      height: 224,
-      child: ListView.separated(
-        primary: false,
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.only(right: AppSpacing.regular),
-        itemCount: items.length,
-        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.regular),
-        itemBuilder: (context, index) {
-          final item = items[index];
-          return SizedBox(
-            width: 112,
-            child: _CoverTile(
-              item: item,
-              width: 112,
-              coverHeight: 154,
-              inBookshelf: isInBookshelf(item.content),
-              onPressed: () => onPressed(item.content),
-            ),
-          );
-        },
+      height: AppSpacing.discoveryShelfHeight,
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(
+          dragDevices: const <PointerDeviceKind>{
+            PointerDeviceKind.touch,
+            PointerDeviceKind.mouse,
+            PointerDeviceKind.stylus,
+            PointerDeviceKind.invertedStylus,
+            PointerDeviceKind.trackpad,
+          },
+        ),
+        child: ListView.separated(
+          primary: false,
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.only(right: AppSpacing.discoveryComponentGap),
+          itemCount: items.length,
+          separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.discoveryComponentGap),
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return SizedBox(
+              width: AppSpacing.discoveryShelfItemWidth,
+              child: _CoverTile(
+                item: item,
+                width: AppSpacing.discoveryShelfItemWidth,
+                coverHeight: AppSpacing.discoveryShelfItemWidth * AppSpacing.discoveryCoverAspectRatio,
+                inBookshelf: isInBookshelf(item.content),
+                onPressed: () => onPressed(item.content),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -122,13 +136,8 @@ class DiscoveryCompactBookList extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = AppThemeTokens.of(context);
-    return DecoratedBox(
+    return DiscoveryComponentSurface(
       key: const Key('runtime-discovery-compact-list'),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: AppRadii.discoveryPanel,
-        border: Border.all(color: tokens.divider),
-      ),
       child: Column(
         children: <Widget>[
           for (var index = 0; index < items.length; index++) ...<Widget>[
@@ -149,56 +158,60 @@ class DiscoveryCompactBookList extends StatelessWidget {
                     key: ValueKey<String>('runtime-discovery-compact-${content.id}'),
                     onTap: () => onPressed(content),
                     borderRadius: _rowRadius(index, items.length),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.regular, vertical: 10),
-                      child: Row(
-                        children: <Widget>[
-                          if (showRanks) ...<Widget>[
-                            SizedBox(
-                              width: 24,
-                              child: Text(
-                                '$rank',
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.titleSmall?.copyWith(color: rankColor, fontWeight: FontWeight.w800),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: AppSpacing.discoveryCompactRowMinHeight),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.discoveryPanelPadding, vertical: AppSpacing.compact),
+                        child: Row(
+                          children: <Widget>[
+                            if (showRanks) ...<Widget>[
+                              SizedBox(
+                                width: 24,
+                                child: Text(
+                                  '$rank',
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.titleSmall?.copyWith(color: rankColor, fontWeight: FontWeight.w800),
+                                ),
+                              ),
+                              const SizedBox(width: AppSpacing.compact),
+                            ],
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Text(content.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall),
+                                  if (metadata.isNotEmpty) ...<Widget>[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      metadata,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
-                            const SizedBox(width: AppSpacing.compact),
+                            if (isInBookshelf(content)) ...<Widget>[
+                              const SizedBox(width: AppSpacing.compact),
+                              Icon(Icons.bookmark_added_rounded, size: 17, color: tokens.accent),
+                            ],
+                            if (item.metric != null) ...<Widget>[
+                              const SizedBox(width: AppSpacing.compact),
+                              Text(item.metric!.value, style: theme.textTheme.labelSmall?.copyWith(color: tokens.mutedText)),
+                            ],
+                            const SizedBox(width: AppSpacing.unit),
+                            Icon(Icons.chevron_right_rounded, size: 18, color: tokens.mutedText),
                           ],
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(content.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall),
-                                if (metadata.isNotEmpty) ...<Widget>[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    metadata,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          if (isInBookshelf(content)) ...<Widget>[
-                            const SizedBox(width: AppSpacing.compact),
-                            Icon(Icons.bookmark_added_rounded, size: 17, color: tokens.accent),
-                          ],
-                          if (item.metric != null) ...<Widget>[
-                            const SizedBox(width: AppSpacing.compact),
-                            Text(item.metric!.value, style: theme.textTheme.labelSmall?.copyWith(color: tokens.mutedText)),
-                          ],
-                          const SizedBox(width: AppSpacing.unit),
-                          Icon(Icons.chevron_right_rounded, size: 18, color: tokens.mutedText),
-                        ],
+                        ),
                       ),
                     ),
                   ),
                 );
               },
             ),
-            if (index != items.length - 1) Divider(height: 1, indent: showRanks ? 56 : AppSpacing.regular, color: tokens.divider),
+            if (index != items.length - 1)
+              Divider(height: 1, indent: showRanks ? 56 : AppSpacing.discoveryPanelPadding, color: tokens.divider),
           ],
         ],
       ),
@@ -215,25 +228,127 @@ class DiscoveryCategoryCollection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => switch (layout) {
-    PluginDiscoveryCategoryLayout.chips => Wrap(
-      key: const Key('runtime-discovery-category-chips'),
-      spacing: AppSpacing.compact,
-      runSpacing: AppSpacing.compact,
-      children: categories
-          .map(
-            (category) => ActionChip(
-              key: ValueKey<String>('runtime-discovery-category-${category.id}'),
-              avatar: category.icon == null ? null : Icon(discoverySemanticIcon(category.icon), size: 17),
-              label: Text(category.count == null ? category.title : '${category.title}  ${category.count}'),
-              onPressed: () => onSelected(category.target),
-              side: BorderSide(color: AppThemeTokens.of(context).divider),
-            ),
-          )
-          .toList(growable: false),
-    ),
+    PluginDiscoveryCategoryLayout.chips => _CategoryChips(categories: categories, onSelected: onSelected),
     PluginDiscoveryCategoryLayout.grid => _CategoryGrid(categories: categories, onSelected: onSelected),
     PluginDiscoveryCategoryLayout.list => _CategoryList(categories: categories, onSelected: onSelected),
   };
+}
+
+class _CategoryChips extends StatelessWidget {
+  const _CategoryChips({required this.categories, required this.onSelected});
+
+  final List<PluginDiscoveryCategory> categories;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final columns = switch (constraints.maxWidth) {
+        < 320 => 2,
+        < 600 => 3,
+        < 840 => 4,
+        < 1080 => 5,
+        _ => 6,
+      };
+      const gap = AppSpacing.discoveryComponentGap;
+      final itemWidth = (constraints.maxWidth - gap * (columns - 1)) / columns;
+      return Wrap(
+        key: const Key('runtime-discovery-category-chips'),
+        spacing: gap,
+        runSpacing: AppSpacing.compact,
+        children: categories
+            .map(
+              (category) => SizedBox(
+                width: itemWidth,
+                child: DiscoveryComponentChip(
+                  key: ValueKey<String>('runtime-discovery-category-${category.id}'),
+                  label: category.count == null ? category.title : '${category.title}  ${category.count}',
+                  icon: category.icon == null ? null : discoverySemanticIcon(category.icon),
+                  expanded: true,
+                  onPressed: () => onSelected(category.target),
+                ),
+              ),
+            )
+            .toList(growable: false),
+      );
+    },
+  );
+}
+
+/// Shared surface for source-composed discovery panels.
+class DiscoveryComponentSurface extends StatelessWidget {
+  const DiscoveryComponentSurface({required this.child, this.padding = EdgeInsets.zero, super.key});
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppThemeTokens.of(context);
+    return Material(
+      color: tokens.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: AppRadii.discoveryPanel,
+        side: BorderSide(color: tokens.divider),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(padding: padding, child: child),
+    );
+  }
+}
+
+/// Shared 36dp visual pill with a 48dp interaction target.
+class DiscoveryComponentChip extends StatelessWidget {
+  const DiscoveryComponentChip({
+    required this.label,
+    required this.onPressed,
+    this.icon,
+    this.selected = false,
+    this.expanded = false,
+    super.key,
+  });
+
+  final String label;
+  final IconData? icon;
+  final bool selected;
+  final bool expanded;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = AppThemeTokens.of(context);
+    return SizedBox(
+      height: AppSpacing.minimumTouchTarget,
+      child: Align(
+        widthFactor: expanded ? null : 1,
+        alignment: Alignment.center,
+        child: SizedBox(
+          height: AppSpacing.discoveryChipVisualHeight,
+          width: expanded ? double.infinity : null,
+          child: ChoiceChip(
+            showCheckmark: false,
+            selected: selected,
+            onSelected: (_) => onPressed(),
+            avatar: icon == null ? null : Icon(icon, size: 17, color: tokens.accent),
+            label: Text(label),
+            labelStyle: theme.textTheme.bodyMedium?.copyWith(
+              color: selected ? theme.colorScheme.onPrimaryContainer : theme.colorScheme.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
+            labelPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.unit),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.compact),
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            backgroundColor: tokens.surface,
+            selectedColor: tokens.accentSoft,
+            side: BorderSide(color: selected ? tokens.accent : tokens.divider),
+            shape: RoundedRectangleBorder(borderRadius: AppRadii.discoveryTile),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _CoverTile extends StatelessWidget {
@@ -325,6 +440,8 @@ class _CategoryGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
+      final theme = Theme.of(context);
+      final tokens = AppThemeTokens.of(context);
       final columns = constraints.maxWidth < 420
           ? 2
           : constraints.maxWidth < 760
@@ -341,21 +458,36 @@ class _CategoryGrid extends StatelessWidget {
               (category) => SizedBox(
                 width: width,
                 child: Material(
-                  color: AppThemeTokens.of(context).featureSurface,
-                  borderRadius: AppRadii.discoveryTile,
+                  color: tokens.featureSurface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: AppRadii.discoveryTile,
+                    side: BorderSide(color: tokens.divider),
+                  ),
+                  clipBehavior: Clip.antiAlias,
                   child: InkWell(
                     key: ValueKey<String>('runtime-discovery-category-${category.id}'),
                     onTap: () => onSelected(category.target),
                     borderRadius: AppRadii.discoveryTile,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.regular, vertical: AppSpacing.comfortable),
-                      child: Row(
-                        children: <Widget>[
-                          Icon(discoverySemanticIcon(category.icon), size: 19, color: AppThemeTokens.of(context).accent),
-                          const SizedBox(width: AppSpacing.compact),
-                          Expanded(child: Text(category.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                          if (category.count != null) Text('${category.count}', style: Theme.of(context).textTheme.labelSmall),
-                        ],
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: AppSpacing.minimumTouchTarget),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.discoveryPanelPadding),
+                        child: Row(
+                          children: <Widget>[
+                            Icon(discoverySemanticIcon(category.icon), size: 18, color: tokens.accent),
+                            const SizedBox(width: AppSpacing.compact),
+                            Expanded(
+                              child: Text(
+                                category.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                            if (category.count != null)
+                              Text('${category.count}', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -375,25 +507,55 @@ class _CategoryList extends StatelessWidget {
   final ValueChanged<String> onSelected;
 
   @override
-  Widget build(BuildContext context) => Column(
-    key: const Key('runtime-discovery-category-list'),
-    children: categories
-        .map(
-          (category) => ListTile(
-            key: ValueKey<String>('runtime-discovery-category-${category.id}'),
-            dense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.regular),
-            leading: Icon(discoverySemanticIcon(category.icon), size: 20),
-            title: Text(category.title),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[if (category.count != null) Text('${category.count}'), const Icon(Icons.chevron_right_rounded)],
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = AppThemeTokens.of(context);
+    return DiscoveryComponentSurface(
+      key: const Key('runtime-discovery-category-list'),
+      child: Column(
+        children: <Widget>[
+          for (var index = 0; index < categories.length; index++) ...<Widget>[
+            Builder(
+              builder: (context) {
+                final category = categories[index];
+                return InkWell(
+                  key: ValueKey<String>('runtime-discovery-category-${category.id}'),
+                  onTap: () => onSelected(category.target),
+                  borderRadius: _rowRadius(index, categories.length),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: AppSpacing.discoveryCompactRowMinHeight),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.discoveryPanelPadding),
+                      child: Row(
+                        children: <Widget>[
+                          Icon(discoverySemanticIcon(category.icon), size: 18, color: tokens.accent),
+                          const SizedBox(width: AppSpacing.compact),
+                          Expanded(
+                            child: Text(
+                              category.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          if (category.count != null) ...<Widget>[
+                            Text('${category.count}', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                            const SizedBox(width: AppSpacing.unit),
+                          ],
+                          Icon(Icons.chevron_right_rounded, size: 18, color: tokens.mutedText),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
-            onTap: () => onSelected(category.target),
-          ),
-        )
-        .toList(growable: false),
-  );
+            if (index != categories.length - 1) Divider(height: 1, indent: AppSpacing.discoveryPanelPadding + 26, color: tokens.divider),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 BorderRadius _rowRadius(int index, int length) {

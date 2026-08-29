@@ -18,6 +18,10 @@ export interface MgReadPluginContext {
       controlClick(request: BrowserControlClickRequestV1): Promise<BrowserInteractionResponseV1>;
     };
   };
+  /** One Runtime-owned page per data source. Repeated open() calls reuse it. */
+  readonly webview: {
+    open(options?: WebViewOpenOptions): Promise<WebViewPage>;
+  };
   /** Creates a process-scoped Runtime-owned URL whose request is handled by `resource`. */
   readonly resource: {
     proxy(request: Record<string, unknown>): string;
@@ -95,6 +99,76 @@ export interface BrowserCoordinatesResponseV1 {
   readonly y: number;
   readonly width: number;
   readonly height: number;
+}
+
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue };
+
+export interface WebViewOpenOptions {
+  /** Hidden by default; show()/hide() can change this at any time. */
+  readonly visible?: boolean;
+  readonly timeoutMs?: number;
+}
+
+export interface WebViewPage {
+  /** Ordinary page calls are serialized FIFO by Runtime; controls bypass that queue. */
+  navigate(url: string, options?: WebViewCallOptions): Promise<void>;
+  /** `code` is an async function body, so top-level await and return are valid. */
+  executeJavaScript<T extends JsonValue = JsonValue>(code: string, options?: WebViewCallOptions): Promise<T>;
+  /** Returns the live documentElement.outerHTML after client-side rendering. */
+  getHtml(options?: WebViewCallOptions): Promise<string>;
+  /** Runs window.fetch inside the page and therefore obeys browser CORS. */
+  fetch(request: WebViewFetchRequest): Promise<WebViewFetchResponse>;
+  /** CSS viewport coordinates; the host sends a real WebView pointer input. */
+  click(request: { readonly x: number; readonly y: number; readonly timeoutMs?: number }): Promise<void>;
+  /** Sends native text input to the currently focused page control. */
+  inputText(text: string, options?: WebViewCallOptions): Promise<void>;
+  key(request: WebViewKeyRequest): Promise<void>;
+  waitForText(request: WebViewWaitForTextRequest): Promise<{ readonly url: string }>;
+  getUrl(options?: WebViewCallOptions): Promise<string>;
+  show(options?: WebViewCallOptions): Promise<void>;
+  hide(options?: WebViewCallOptions): Promise<void>;
+  close(options?: WebViewCallOptions): Promise<void>;
+}
+
+export interface WebViewCallOptions { readonly timeoutMs?: number }
+
+export interface WebViewFetchRequest {
+  readonly url: string;
+  readonly method?: string;
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly body?: string | null;
+  readonly responseType?: 'text' | 'json' | 'base64';
+  readonly timeoutMs?: number;
+}
+
+export interface WebViewFetchResponse {
+  readonly status: number;
+  readonly url: string;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body: JsonValue;
+}
+
+export interface WebViewKeyRequest {
+  readonly key:
+    | 'Enter' | 'Tab' | 'Escape'
+    | 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight'
+    | 'PageUp' | 'PageDown' | 'Home' | 'End'
+    | 'Backspace' | 'Delete';
+  readonly modifiers?: readonly ('alt' | 'control' | 'shift')[];
+  readonly timeoutMs?: number;
+}
+
+export interface WebViewWaitForTextRequest {
+  readonly text: string;
+  readonly scope?: 'text' | 'html';
+  /** Required maximum wait; the host does not wait without a deadline. */
+  readonly timeoutMs: number;
 }
 
 export type ContentKind = 'novel' | 'manga';

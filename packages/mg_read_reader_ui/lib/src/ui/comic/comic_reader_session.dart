@@ -163,11 +163,7 @@ extension _ComicReaderSession on _ComicReaderViewState {
         if (restored != null) target = restored;
       }
       if (!_isSession(session, bookId, dataSource, store)) return;
-      await _openChapterInfo(
-        target,
-        restore: saved?.chapterId == target.id ? saved : null,
-        replaceWindow: true,
-      );
+      await _openChapterInfo(target, replaceWindow: true);
       if (!_isSession(session, bookId, dataSource, store)) return;
       unawaited(
         _notify(
@@ -190,18 +186,7 @@ extension _ComicReaderSession on _ComicReaderViewState {
   Future<ComicChapterInfo?> _resolveSavedChapter(
     ComicReaderProgress saved,
   ) async {
-    if (saved.chapterId.trim().isEmpty ||
-        saved.imageId.trim().isEmpty ||
-        saved.chapterIndex < 0 ||
-        !saved.imageFraction.isFinite ||
-        saved.imageFraction < 0 ||
-        saved.imageFraction > 1 ||
-        !saved.chapterFraction.isFinite ||
-        saved.chapterFraction < 0 ||
-        saved.chapterFraction > 1 ||
-        !saved.bookFraction.isFinite ||
-        saved.bookFraction < 0 ||
-        saved.bookFraction > 1) {
+    if (saved.chapterId.trim().isEmpty || saved.chapterIndex < 0) {
       unawaited(
         _reportFailure(
           const ReaderFailure(
@@ -298,6 +283,7 @@ extension _ComicReaderSession on _ComicReaderViewState {
         restore,
       );
       _progress = resolvedRestore;
+      if (resolvedRestore != null) _scheduleProgressSave();
       _loading = false;
       _failure = null;
       _restoring = true;
@@ -438,9 +424,6 @@ extension _ComicReaderSession on _ComicReaderViewState {
         return;
       }
       if (!_isBoundaryCursor(index, before: before)) return;
-      final double oldOffset = _scrollController.hasClients
-          ? _scrollController.offset
-          : 0;
       final double insertedExtent = _chapterExtent(content);
       double removedFromTop = 0;
       setState(() {
@@ -465,8 +448,11 @@ extension _ComicReaderSession on _ComicReaderViewState {
             return;
           }
           _restoring = true;
+          // Keep wheel/trackpad movement received during this frame instead of
+          // restoring the stale offset captured before the prepend layout.
+          final double liveOffset = _scrollController.offset;
           _scrollController.jumpTo(
-            (oldOffset + offsetDelta).clamp(
+            (liveOffset + offsetDelta).clamp(
               0,
               _scrollController.position.maxScrollExtent,
             ),
@@ -701,15 +687,6 @@ extension _ComicReaderSession on _ComicReaderViewState {
           .toDouble(),
     );
     final bool chapterChanged = _currentChapter?.id != chapter.info.id;
-    if (chapterChanged && _progress != null) {
-      unawaited(
-        _queueProgressSave(
-          store: widget.stateStore,
-          bookId: widget.bookId,
-          progress: _progress!,
-        ),
-      );
-    }
     _progress = next;
     if (chapterChanged) {
       _currentChapter = chapter.info;
@@ -721,7 +698,7 @@ extension _ComicReaderSession on _ComicReaderViewState {
         ),
       );
     }
-    _scheduleProgressSave();
+    if (chapterChanged) _scheduleProgressSave();
     _scheduleSnapshotPublish();
     _prefetchAround(selected);
   }
@@ -796,12 +773,11 @@ extension _ComicReaderSession on _ComicReaderViewState {
     required String bookId,
     required ComicReaderProgress progress,
   }) {
+    final ComicReaderProgress durableProgress = _chapterStartProgress(progress);
     final _BookStoreKey stateKey = _BookStoreKey(store, bookId);
     final String writeKey =
-        '${progress.chapterId}\u0000'
-        '${progress.imageId}\u0000${progress.imageFraction}\u0000'
-        '${progress.chapterIndex}\u0000${progress.chapterFraction}\u0000'
-        '${progress.bookFraction}';
+        '${durableProgress.chapterId}\u0000'
+        '${durableProgress.chapterIndex}';
     if (_lastProgressWriteKeys[stateKey] == writeKey) {
       return _progressWrites[stateKey] ?? Future<void>.value();
     }
@@ -809,7 +785,7 @@ extension _ComicReaderSession on _ComicReaderViewState {
     return _enqueueStoreWrite(
       _progressWrites,
       stateKey,
-      () => store.saveProgress(bookId, progress),
+      () => store.saveProgress(bookId, durableProgress),
       (Object error) {
         if (_lastProgressWriteKeys[stateKey] == writeKey) {
           _lastProgressWriteKeys.remove(stateKey);
@@ -820,6 +796,30 @@ extension _ComicReaderSession on _ComicReaderViewState {
           unawaited(_reportFailure(_stateFailure(error)));
         }
       },
+    );
+  }
+
+  /// Keeps exact image coordinates transient while persisting only a stable
+  /// chapter-start anchor until image-position restoration is reliable.
+  ComicReaderProgress _chapterStartProgress(ComicReaderProgress progress) {
+    String firstImageId = progress.imageId;
+    for (final _LoadedComicChapter chapter in _window) {
+      if (chapter.info.id == progress.chapterId &&
+          chapter.content.images.isNotEmpty) {
+        firstImageId = chapter.content.images.first.id;
+        break;
+      }
+    }
+    final int total = _catalogTotal > 0
+        ? _catalogTotal
+        : math.max(progress.chapterIndex + 1, 1);
+    return ComicReaderProgress(
+      chapterId: progress.chapterId,
+      imageId: firstImageId,
+      imageFraction: 0,
+      chapterIndex: progress.chapterIndex,
+      chapterFraction: 0,
+      bookFraction: (progress.chapterIndex / total).clamp(0, 1).toDouble(),
     );
   }
 }

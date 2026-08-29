@@ -3,6 +3,58 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 void main() {
+  test(
+    'uses a compact default top margin without rewriting explicit values',
+    () {
+      expect(TextReaderPreferences.defaults.topPadding, 8);
+      expect(
+        const TextReaderPreferences(topPadding: 24).normalized().topPadding,
+        24,
+      );
+      expect(
+        const TextReaderPreferences(topPadding: 40).normalized().topPadding,
+        40,
+      );
+      expect(
+        const TextReaderPreferences(topPadding: 64).normalized().topPadding,
+        64,
+      );
+    },
+  );
+
+  testWidgets(
+    'places default text content eight dp after the Android safe area',
+    (WidgetTester tester) async {
+      final TextReaderController controller = TextReaderController();
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (BuildContext context, Widget? child) {
+            final MediaQueryData mediaQuery = MediaQuery.of(context);
+            return MediaQuery(
+              data: mediaQuery.copyWith(
+                padding: const EdgeInsets.only(top: 24),
+                viewPadding: const EdgeInsets.only(top: 24),
+              ),
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
+          home: TextReaderView(
+            bookId: 'top-margin-book',
+            controller: controller,
+            dataSource: const _ThemeDataSource(),
+            stateStore: _MemoryStore(TextReaderPreferences.defaults),
+          ),
+        ),
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 500)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.getTopLeft(find.text('第一章').first).dy, 32);
+    },
+  );
+
   test('normalizes legacy and night last-theme values safely', () {
     expect(
       const TextReaderPreferences(

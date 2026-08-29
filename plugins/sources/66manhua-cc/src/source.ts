@@ -1,6 +1,7 @@
 /**
- * 66manhua.cc public HTML parser. It reads only site pages, returns opaque IDs,
- * and proxies the verified image hosts; it never persists HTML or image bodies.
+ * 66manhua.cc public HTML parser. It reads only site pages, preserves the
+ * homepage's real discovery sections, returns opaque IDs, and proxies verified
+ * image hosts; it never persists HTML or image bodies.
  */
 import { Buffer } from 'node:buffer';
 import * as cheerio from 'cheerio/slim';
@@ -13,12 +14,33 @@ export interface Context {
 }
 
 export interface Summary {
-  readonly id: string; readonly title: string; readonly contentKind: 'manga'; readonly author: null;
+  readonly id: string; readonly title: string; readonly contentKind: 'manga'; readonly author: string | null;
   readonly url: string; readonly coverUrl: string | null; readonly description: string | null; readonly language: 'zh-CN';
   readonly status: 'unknown'; readonly access: 'unknown'; readonly wordCount: null; readonly chapterCount: number | null;
   readonly publishedAt: null; readonly updatedAt: null;
   readonly latestChapter: { readonly id: null; readonly title: string; readonly url: null; readonly updatedAt: null } | null;
   readonly categories: readonly string[]; readonly tags: readonly string[]; readonly attributes: readonly never[];
+}
+
+export interface RankedSummary {
+  readonly content: Summary;
+  readonly rank: number | null;
+  readonly metric: { readonly label: string; readonly value: string } | null;
+}
+
+export interface RankingCollection {
+  readonly id: 'favorites' | 'rewards' | 'monthly-tickets';
+  readonly title: string;
+  readonly items: readonly RankedSummary[];
+}
+
+export interface HomeDiscovery {
+  readonly featured: readonly Summary[];
+  readonly recent: readonly Summary[];
+  readonly popular: readonly RankedSummary[];
+  readonly rising: readonly RankedSummary[];
+  readonly completed: readonly Summary[];
+  readonly rankings: readonly RankingCollection[];
 }
 
 const origin = 'https://66manhua.cc';
@@ -33,29 +55,44 @@ export class ManhuaSource {
     return this.parseList(await this.#html(url), url);
   }
 
-  async discover(): Promise<readonly Summary[]> { return this.parseList(await this.#html(new URL('/', origin)), new URL('/', origin)); }
+  async discover(): Promise<HomeDiscovery> {
+    const url = new URL('/', origin);
+    const $ = cheerio.load(await this.#html(url));
+    const recentRoot = $('.recent-wr .in-sec-update').first();
+    const featuredRoot = $('.in-fine').first();
+    const risingRoot = sectionByTitle($, '上升最快');
+    const completedRoot = sectionByTitle($, '完结大作');
+    const rankings: RankingCollection[] = [];
+    $('.in-rank-box').each((_, element) => {
+      const root = $(element); const title = clean(root.find('.head span').first().text());
+      const identity = rankingIdentity(title); if (identity === null) return;
+      rankings.push(Object.freeze({ id: identity.id, title: identity.title, items: this.#rankedItems($, root.find('.rank-item'), url, identity.metric) }));
+    });
+    return Object.freeze({
+      featured: this.#cards($, featuredRoot.find('.in-fine__big, .in-comic--type-a'), url),
+      recent: this.#cards($, recentRoot.find('.in-comic--type-b'), url),
+      popular: this.#rankedItems($, $('.recent-wr .in-rank-box--aside .rank-item'), url, null),
+      rising: this.#rankedItems($, risingRoot.find('.in-comic--type-b'), url, null),
+      completed: this.#cards($, completedRoot.find('.in-comic--type-b'), url),
+      rankings: Object.freeze(rankings),
+    });
+  }
 
   parseList(html: string, base: URL): readonly Summary[] {
-    const $ = cheerio.load(html); const values: Summary[] = []; const seen = new Set<string>();
-    $('.common-comic-item, .in-comic--type-a, .in-comic--type-b').each((_, element) => {
-      const root = $(element); const link = root.find('a[href*="/index.php/comic/"]').first();
-      const href = link.attr('href'); const title = clean(root.find('.comic__title a, .comic-name a').first().text()) ?? clean(link.attr('title'));
-      if (href === undefined || title === null) return;
-      const url = new URL(href, base); if (!isComic(url) || seen.has(url.pathname)) return; seen.add(url.pathname);
-      const image = root.find('img').first(); const rawCover = image.attr('data-original') ?? image.attr('data-src') ?? image.attr('src');
-      values.push(summary(url, title, rawCover === undefined ? null : this.#proxyImage(new URL(rawCover, base), base), clean(root.find('.comic__feature, .feature').first().text())));
-    });
-    return Object.freeze(values);
+    const $ = cheerio.load(html);
+    return this.#cards($, $('.common-comic-item, .in-comic--type-a, .in-comic--type-b'), base);
   }
 
   async detail(id: string) {
     const url = decodeComic(id); const html = await this.#html(url); const $ = cheerio.load(html);
-    const title = clean($('.de-info__box h1, h1.comic-title, .comic-detail h1').first().text()) ?? clean($('meta[property="og:title"]').attr('content'));
+    const title = clean($('.de-info__box .comic-title, h1.comic-title, .comic-detail h1').first().text()) ?? clean($('meta[property="og:title"]').attr('content'));
     if (title === null) throw new Error('Detail title is missing.');
     const rawCover = $('.de-info__cover img, .comic-cover img, .de-info__box img').first().attr('data-original') ?? $('.de-info__cover img, .comic-cover img, .de-info__box img').first().attr('src') ?? $('meta[property="og:image"]').attr('content');
-    const description = clean($('.de-info__desc, .comic-detail__desc, .de-info__intro').first().text()) ?? clean($('meta[name="description"]').attr('content'));
+    const author = clean($('.de-info__box .comic-author .name a, .comic-detail .comic-author').first().text());
+    const description = clean($('.de-info__box .comic-intro .intro-total').first().text()) ?? clean($('.de-info__box .comic-intro .intro, .de-info__desc, .comic-detail__desc, .de-info__intro').first().text()) ?? clean($('meta[name="description"]').attr('content'));
+    const categories = Object.freeze($('.de-info__box .comic-status a[href*="/index.php/category/tags/"]').map((_, element) => clean($(element).text())).get().filter((value): value is string => value !== null));
     const chapterCount = $('.j-chapter-link[href*="/index.php/chapter/"]').length || null;
-    return Object.freeze({ ...summary(url, title, rawCover === undefined ? null : this.#proxyImage(new URL(rawCover, url), url), description), chapterCount, aliases: Object.freeze([]), catalogUrl: url.toString() });
+    return Object.freeze({ ...summary(url, title, this.#cover(rawCover, url), description, author), chapterCount, categories, aliases: Object.freeze([]), catalogUrl: url.toString() });
   }
 
   async chapters(id: string) {
@@ -103,10 +140,61 @@ export class ManhuaSource {
     return response.text();
   }
 
+  #cards($: cheerio.CheerioAPI, roots: cheerio.Cheerio<any>, base: URL): readonly Summary[] {
+    const values: Summary[] = []; const seen = new Set<string>();
+    roots.each((_, element) => {
+      const value = this.#card($, $(element), base); if (value === null || seen.has(value.url)) return;
+      seen.add(value.url); values.push(value);
+    });
+    return Object.freeze(values);
+  }
+
+  #rankedItems($: cheerio.CheerioAPI, roots: cheerio.Cheerio<any>, base: URL, metricLabel: string | null): readonly RankedSummary[] {
+    const values: RankedSummary[] = []; const seen = new Set<string>();
+    roots.each((index, element) => {
+      const root = $(element); const content = this.#card($, root, base);
+      if (content === null || seen.has(content.url)) return; seen.add(content.url);
+      const parsedRank = Number.parseInt(clean(root.find('.num').first().text()) ?? '', 10);
+      const metricText = clean(root.find('.count').first().text());
+      const metricValue = metricText?.replace(/^.*?[：:]/u, '').trim() ?? null;
+      values.push(Object.freeze({
+        content,
+        rank: Number.isSafeInteger(parsedRank) && parsedRank > 0 ? parsedRank : index + 1,
+        metric: metricLabel === null || metricValue === null ? null : Object.freeze({ label: metricLabel, value: metricValue }),
+      }));
+    });
+    return Object.freeze(values);
+  }
+
+  #card($: cheerio.CheerioAPI, root: cheerio.Cheerio<any>, base: URL): Summary | null {
+    const link = root.find('a[href*="/index.php/comic/"]').first(); const href = link.attr('href');
+    const title = clean(root.find('.comic__title a, .comic-name a').first().text()) ?? clean(link.attr('title')) ?? clean(root.find('img').first().attr('alt'));
+    if (href === undefined || title === null) return null;
+    const url = new URL(href, base); if (!isComic(url)) return null;
+    const image = root.find('img').first(); const rawCover = image.attr('data-original') ?? image.attr('data-src') ?? image.attr('src');
+    const info = root.find('.in-fine__info .text'); const authorLine = clean(info.first().text());
+    const author = authorLine?.replace(/^作者[：:]\s*/u, '').trim() || null;
+    const description = clean(root.find('.comic__feature, .feature').first().text()) ?? (info.length > 1 ? clean(info.last().text()) : null);
+    const latestChapterTitle = clean(root.find('.cover__tag').first().text());
+    return summary(url, title, this.#cover(rawCover, base), description, author, latestChapterTitle);
+  }
+
+  #cover(raw: string | undefined, referer: URL): string | null {
+    if (raw === undefined || /\/bg_loadimg_[^/]+\.(?:png|webp)$/iu.test(raw)) return null;
+    try { const url = new URL(raw, referer); return isImage(url) ? this.#proxyImage(url, referer) : null; } catch { return null; }
+  }
+
   #proxyImage(url: URL, referer: URL): string { if (!isImage(url) || !isSite(referer)) throw new Error('Image URL is invalid.'); return this.context.resource.proxy({ kind: 'image', url: url.toString(), referer: referer.toString() }); }
 }
 
-function summary(url: URL, title: string, coverUrl: string | null, description: string | null): Summary { return Object.freeze({ id: encodeComic(url), title, contentKind: 'manga', author: null, url: url.toString(), coverUrl, description, language: 'zh-CN', status: 'unknown', access: 'unknown', wordCount: null, chapterCount: null, publishedAt: null, updatedAt: null, latestChapter: null, categories: Object.freeze([]), tags: Object.freeze([]), attributes: Object.freeze([]) }); }
+function summary(url: URL, title: string, coverUrl: string | null, description: string | null, author: string | null = null, latestChapterTitle: string | null = null): Summary { return Object.freeze({ id: encodeComic(url), title, contentKind: 'manga', author, url: url.toString(), coverUrl, description, language: 'zh-CN', status: 'unknown', access: 'unknown', wordCount: null, chapterCount: null, publishedAt: null, updatedAt: null, latestChapter: latestChapterTitle === null ? null : Object.freeze({ id: null, title: latestChapterTitle, url: null, updatedAt: null }), categories: Object.freeze([]), tags: Object.freeze([]), attributes: Object.freeze([]) }); }
+function sectionByTitle($: cheerio.CheerioAPI, title: string): cheerio.Cheerio<any> { return $('.in-sec-wr').filter((_, element) => clean($(element).find('.in-sec__head span').first().text()) === title).first(); }
+function rankingIdentity(title: string | null): { readonly id: RankingCollection['id']; readonly title: string; readonly metric: string } | null {
+  if (title === '收藏榜') return Object.freeze({ id: 'favorites', title, metric: '收藏' });
+  if (title === '打赏榜') return Object.freeze({ id: 'rewards', title, metric: '打赏' });
+  if (title === '月票榜') return Object.freeze({ id: 'monthly-tickets', title, metric: '月票' });
+  return null;
+}
 function token(url: URL): string { return Buffer.from(url.pathname, 'utf8').toString('base64url'); }
 function encodeComic(url: URL): string { return `comic:${token(url)}`; }
 function encodeChapter(url: URL): string { return `chapter:${token(url)}`; }

@@ -181,6 +181,18 @@ final class LibraryContinueReadingViewData {
 /// The currently active non-persistent update-list filter.
 enum LibraryStatusFilter { all, ongoing, completed, local }
 
+/// The user-selected presentation used for the home bookshelf collection.
+enum LibraryHomeLayoutMode {
+  list,
+  card;
+
+  /// Stable value persisted by the app-owned settings manager.
+  String get settingValue => name;
+
+  /// Resolves an app setting while retaining the safe list fallback.
+  static LibraryHomeLayoutMode fromSetting(String value) => value == card.name ? card : list;
+}
+
 /// The two content sections available at the library landing page.
 enum LibraryHomeSection { recentUpdates, shelf }
 

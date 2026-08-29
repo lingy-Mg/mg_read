@@ -74,16 +74,10 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
     if (_loading && _content == null) {
       return _CenteredStatus(
         color: _palette.secondaryText,
-        child: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            SizedBox.square(
-              dimension: 30,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            SizedBox(height: 12),
-            Text(ReaderStrings.loading),
-          ],
+        child: _ReaderLoadingIndicator(
+          message: ReaderStrings.loading,
+          indicatorColor: _palette.accent,
+          textColor: _palette.secondaryText,
         ),
       );
     }
@@ -125,11 +119,14 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
               children: <Widget>[
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: IconButton(
-                    key: const ValueKey<String>('reader-back-action'),
-                    tooltip: ReaderStrings.back,
-                    onPressed: _requestExit,
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                  child: ReaderAccessibleTooltip(
+                    label: ReaderStrings.back,
+                    onTap: _requestExit,
+                    child: IconButton(
+                      key: const ValueKey<String>('reader-back-action'),
+                      onPressed: _requestExit,
+                      icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -231,7 +228,12 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
                   child: SizedBox(
                     width: 220,
                     child: FilledButton.icon(
-                      onPressed: _catalogTotal > 0 ? _nextChapter : null,
+                      key: const ValueKey<String>('reader-start-reading'),
+                      onPressed: _catalogTotal > 0
+                          ? () => unawaited(
+                              _nextChapter(showLoadingOverlay: true),
+                            )
+                          : null,
                       icon: const Icon(Icons.arrow_forward_rounded, size: 19),
                       label: const Text(ReaderStrings.startReading),
                     ),
@@ -380,20 +382,24 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
   }
 
   Widget _buildPageEffect(int rawIndex, Widget child) {
-    if (_preferences.pageAnimation == ReaderPageAnimation.slide) return child;
-    final Widget effectChild =
-        _preferences.pageAnimation == ReaderPageAnimation.cover
-        ? ReaderBackgroundSurface(
-            preset: _preferences.background,
-            palette: _palette,
-            child: child,
-          )
-        : child;
+    // A horizontal page is one visual sheet: its background and text must
+    // travel through the same native or reader-owned transition. Keeping the
+    // treatment only on the reader root makes the texture look pinned while
+    // the text moves, and leaves page-curl/cover edges visually transparent.
+    final Widget pageSurface = ReaderBackgroundSurface(
+      key: ValueKey<String>('reader-page-background-$rawIndex'),
+      preset: _preferences.background,
+      palette: _palette,
+      child: child,
+    );
+    if (_preferences.pageAnimation == ReaderPageAnimation.slide) {
+      return pageSurface;
+    }
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         return AnimatedBuilder(
           animation: _pageController,
-          child: effectChild,
+          child: pageSurface,
           builder: (BuildContext context, Widget? child) {
             final double page = _pageController.hasClients
                 ? (_pageController.page ??

@@ -20,6 +20,12 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
   }
 
   Widget _buildTopBar() {
+    final String bookmarkLabel = _isCurrentBookmarked
+        ? ReaderStrings.removeBookmark
+        : ReaderStrings.addBookmark;
+    void refreshAction() => unawaited(
+      _refreshCurrentChapter(dismissControls: true, showLoadingOverlay: true),
+    );
     return SafeArea(
       bottom: false,
       child: Column(
@@ -35,7 +41,9 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
                 children: <Widget>[
                   Positioned(
                     left: 56,
-                    right: 96,
+                    right: widget.extensions.chapterCacheCapability == null
+                        ? 96
+                        : 144,
                     top: 0,
                     bottom: 0,
                     child: Align(
@@ -51,11 +59,14 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
                   ),
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: IconButton(
-                      key: const ValueKey<String>('reader-back-action'),
-                      tooltip: ReaderStrings.back,
-                      onPressed: _requestExit,
-                      icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                    child: ReaderAccessibleTooltip(
+                      label: ReaderStrings.back,
+                      onTap: _requestExit,
+                      child: IconButton(
+                        key: const ValueKey<String>('reader-back-action'),
+                        onPressed: _requestExit,
+                        icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                      ),
                     ),
                   ),
                   Align(
@@ -63,27 +74,37 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        IconButton(
-                          tooltip: _isCurrentBookmarked
-                              ? ReaderStrings.removeBookmark
-                              : ReaderStrings.addBookmark,
-                          onPressed: _toggleBookmark,
-                          icon: Icon(
-                            _isCurrentBookmarked
-                                ? Icons.bookmark_rounded
-                                : Icons.bookmark_border_rounded,
-                            color: _isCurrentBookmarked
-                                ? _palette.accent
-                                : null,
+                        ReaderAccessibleTooltip(
+                          label: bookmarkLabel,
+                          onTap: _toggleBookmark,
+                          child: IconButton(
+                            key: const ValueKey<String>(
+                              'reader-toolbar-bookmark',
+                            ),
+                            onPressed: _toggleBookmark,
+                            icon: Icon(
+                              _isCurrentBookmarked
+                                  ? Icons.bookmark_rounded
+                                  : Icons.bookmark_border_rounded,
+                              color: _isCurrentBookmarked
+                                  ? _palette.accent
+                                  : null,
+                            ),
                           ),
                         ),
-                        IconButton(
-                          tooltip: ReaderStrings.refreshChapter,
-                          onPressed: _content == null
-                              ? null
-                              : () => unawaited(_refreshCurrentChapter()),
-                          icon: const Icon(Icons.refresh_rounded, size: 21),
+                        ReaderAccessibleTooltip(
+                          label: ReaderStrings.refreshChapter,
+                          onTap: refreshAction,
+                          child: IconButton(
+                            key: const ValueKey<String>(
+                              'reader-toolbar-refresh-chapter',
+                            ),
+                            onPressed: refreshAction,
+                            icon: const Icon(Icons.refresh_rounded, size: 21),
+                          ),
                         ),
+                        if (widget.extensions.chapterCacheCapability != null)
+                          _buildReaderOverflowMenu(),
                       ],
                     ),
                   ),
@@ -195,17 +216,16 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
       ],
     );
     if (sourceUri == null) return label;
-    return Tooltip(
-      message: sourceUrl!,
-      child: Semantics(
-        button: true,
-        link: true,
-        label: '${ReaderStrings.openSourceUrl}: $sourceUrl',
-        child: InkWell(
-          borderRadius: BorderRadius.circular(6),
-          onTap: () => unawaited(_openSourceUrl(sourceUri)),
-          child: SizedBox(height: compact ? 22 : 48, child: label),
-        ),
+    void openSourceAction() => unawaited(_openSourceUrl(sourceUri));
+    return ReaderAccessibleTooltip(
+      label: '${ReaderStrings.openSourceUrl}: $sourceUrl',
+      tooltipMessage: sourceUrl,
+      link: true,
+      onTap: openSourceAction,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: openSourceAction,
+        child: SizedBox(height: compact ? 22 : 48, child: label),
       ),
     );
   }
@@ -224,10 +244,18 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
     }
   }
 
-  Future<void> _refreshCurrentChapter() async {
+  Future<void> _refreshCurrentChapter({
+    bool dismissControls = false,
+    bool showLoadingOverlay = false,
+  }) async {
     final String? chapterId = _content?.chapterId;
     if (chapterId == null) return;
-    await _openChapter(chapterId, forceRefresh: true);
+    await _openChapter(
+      chapterId,
+      forceRefresh: true,
+      dismissControls: dismissControls,
+      showLoadingOverlay: showLoadingOverlay,
+    );
   }
 
   String get _sourceDisplayName {
@@ -275,11 +303,19 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
               Row(
                 children: <Widget>[
                   TextButton(
+                    key: const ValueKey<String>(
+                      'reader-toolbar-previous-chapter',
+                    ),
                     style: TextButton.styleFrom(
                       minimumSize: const Size(58, 44),
                       textStyle: const TextStyle(fontSize: 13),
                     ),
-                    onPressed: _previousChapter,
+                    onPressed: () => unawaited(
+                      _previousChapter(
+                        dismissControls: true,
+                        showLoadingOverlay: true,
+                      ),
+                    ),
                     child: const Text(ReaderStrings.previousChapter),
                   ),
                   Expanded(
@@ -291,11 +327,17 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
                     ),
                   ),
                   TextButton(
+                    key: const ValueKey<String>('reader-toolbar-next-chapter'),
                     style: TextButton.styleFrom(
                       minimumSize: const Size(58, 44),
                       textStyle: const TextStyle(fontSize: 13),
                     ),
-                    onPressed: _nextChapter,
+                    onPressed: () => unawaited(
+                      _nextChapter(
+                        dismissControls: true,
+                        showLoadingOverlay: true,
+                      ),
+                    ),
                     child: const Text(ReaderStrings.nextChapter),
                   ),
                 ],
@@ -377,6 +419,7 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
 
   Future<void> _jumpToBookFraction(double value) async {
     setState(() => _sliderPreview = null);
+    _setControlsVisible(false);
     final int navigation = ++_navigationGeneration;
     final int session = _sessionGeneration;
     if (value <= 0) {
@@ -395,7 +438,11 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
       if (!_isSessionCurrent(session) || navigation != _navigationGeneration) {
         return;
       }
-      await _openChapter(chapter.id, targetChapterFraction: chapterFraction);
+      await _openChapter(
+        chapter.id,
+        targetChapterFraction: chapterFraction,
+        showLoadingOverlay: true,
+      );
     } catch (error) {
       if (!_isSessionCurrent(session) || navigation != _navigationGeneration) {
         return;

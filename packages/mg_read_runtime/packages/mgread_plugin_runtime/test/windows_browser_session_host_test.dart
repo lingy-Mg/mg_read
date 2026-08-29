@@ -264,7 +264,143 @@ void main() {
       expect(platform.disposeCalls, 1);
     },
   );
+
+  test(
+    'single-page API reuses its page and supports control and native input',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'mgread-windows-page-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final platform = _FakeBrowserPlatform();
+      final host = WindowsBrowserSessionHost(root, platform: platform);
+      addTearDown(host.dispose);
+      final deadline = DateTime.now()
+          .add(const Duration(seconds: 5))
+          .millisecondsSinceEpoch;
+
+      await host.request(
+        jobId: 'p:open',
+        deadlineUnixMs: deadline,
+        raw: _page('page.open', <String, Object?>{'visible': true}),
+      );
+      await host.request(
+        jobId: 'p:navigate',
+        deadlineUnixMs: deadline,
+        raw: _page('page.navigate', <String, Object?>{
+          'url': 'https://example.com/page',
+        }),
+      );
+      final value = await host.request(
+        jobId: 'p:eval',
+        deadlineUnixMs: deadline,
+        raw: _page('page.evaluate', <String, Object?>{
+          'code': 'await Promise.resolve(); return {ok:true};',
+        }),
+      );
+      final html = await host.request(
+        jobId: 'p:html',
+        deadlineUnixMs: deadline,
+        raw: _page('page.html'),
+      );
+      await host.request(
+        jobId: 'p:click',
+        deadlineUnixMs: deadline,
+        raw: _page('page.click', <String, Object?>{'x': 12, 'y': 18}),
+      );
+      await host.request(
+        jobId: 'p:input',
+        deadlineUnixMs: deadline,
+        raw: _page('page.input', <String, Object?>{'text': 'native'}),
+      );
+      await host.request(
+        jobId: 'p:key',
+        deadlineUnixMs: deadline,
+        raw: _page('page.key', <String, Object?>{
+          'key': 'Enter',
+          'modifiers': <String>['control'],
+        }),
+      );
+      await host.request(
+        jobId: 'p:hide',
+        deadlineUnixMs: deadline,
+        raw: _page('page.hide'),
+      );
+      await host.request(
+        jobId: 'p:show',
+        deadlineUnixMs: deadline,
+        raw: _page('page.show'),
+      );
+      await host.request(
+        jobId: 'p:close',
+        deadlineUnixMs: deadline,
+        raw: _page('page.close'),
+      );
+
+      expect(value['value'], <String, Object?>{'ok': true});
+      expect(html['html'], '<html><body>live</body></html>');
+      expect(platform.createCalls, 1);
+      expect(platform.dispatchMouseInputCalls, 1);
+      expect(platform.insertedTexts, <String>['native']);
+      expect(platform.dispatchedKeys, <String>['Enter']);
+      expect(platform.hideCalls, 1);
+      expect(platform.disposeCalls, 1);
+    },
+  );
+
+  test('timed out page scripts revoke late result writes', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'mgread-windows-page-timeout-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final platform = _FakeBrowserPlatform(holdPageResult: true);
+    final host = WindowsBrowserSessionHost(root, platform: platform);
+    addTearDown(host.dispose);
+    await host.request(
+      jobId: 'p:open-timeout',
+      deadlineUnixMs: DateTime.now()
+          .add(const Duration(seconds: 5))
+          .millisecondsSinceEpoch,
+      raw: _page('page.open', <String, Object?>{'visible': false}),
+    );
+
+    await expectLater(
+      host.request(
+        jobId: 'p:evaluate-timeout',
+        deadlineUnixMs: DateTime.now()
+            .add(const Duration(milliseconds: 50))
+            .millisecondsSinceEpoch,
+        raw: _page('page.evaluate', <String, Object?>{
+          'code': 'await new Promise(() => {});',
+        }),
+      ),
+      throwsA(
+        isA<WindowsBrowserSessionException>().having(
+          (error) => error.code,
+          'code',
+          'timeout',
+        ),
+      ),
+    );
+    expect(platform.pageJobGuarded, isTrue);
+    expect(platform.pageJobActive, isFalse);
+
+    platform.completeHeldPageScript();
+    expect(platform.pageResult, isNull);
+  });
 }
+
+Map<String, Object?> _page(
+  String operation, [
+  Map<String, Object?> extra = const <String, Object?>{},
+]) => <String, Object?>{
+  'version': 1,
+  'operation': operation,
+  'pluginId': 'org.mgread.fixture',
+  'pluginName': 'Fixture Source',
+  'timeoutMs': 5000,
+  ...extra,
+};
 
 Map<String, Object?> _request({
   required String presentation,
@@ -304,23 +440,37 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
     this.createDelay = Duration.zero,
     this.failNextShow = false,
     this.fetchChallengeOnce = false,
+    this.holdPageResult = false,
   });
 
   final bool challenge;
   final Duration createDelay;
   bool failNextShow;
   bool fetchChallengeOnce;
+  final bool holdPageResult;
   int createCalls = 0;
   int disposeCalls = 0;
   int showCalls = 0;
   int dispatchMouseInputCalls = 0;
+  int hideCalls = 0;
   final List<String> insertedTexts = <String>[];
+  final List<String> dispatchedKeys = <String>[];
   final List<String> loadedUrls = <String>[];
   final List<Map<String, Object?>> writtenCookies = <Map<String, Object?>>[];
+  Map<String, Object?>? pageResult;
+  bool pageJobActive = false;
+  bool pageJobGuarded = false;
+
+  void completeHeldPageScript() {
+    if (pageJobActive || !pageJobGuarded) {
+      pageResult = <String, Object?>{'value': 'late'};
+    }
+  }
 
   @override
   Future<String> create({
     required String pluginId,
+    required String pluginName,
     required String profilePath,
   }) async {
     await Future<void>.delayed(createDelay);
@@ -347,7 +497,53 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
   }
 
   @override
+  Future<void> dispatchKey(
+    String sessionId, {
+    required String key,
+    required List<String> modifiers,
+  }) async => dispatchedKeys.add(key);
+
+  @override
   Future<String> executeScript(String sessionId, String script) async {
+    if (script == 'document.readyState') return jsonEncode('complete');
+    if (script == 'location.href')
+      return jsonEncode('https://example.com/page');
+    if (script == 'window.devicePixelRatio||1') return jsonEncode(1);
+    if (script ==
+        "JSON.stringify({html:document.documentElement?.outerHTML??''})") {
+      return jsonEncode(
+        jsonEncode(<String, Object?>{'html': '<html><body>live</body></html>'}),
+      );
+    }
+    if (script.contains('__mgreadPageResults??=')) {
+      pageJobActive = true;
+      pageJobGuarded = script.contains(
+        'globalThis.__mgreadPageJobs?.[key]===token',
+      );
+      if (!holdPageResult) {
+        pageResult = script.contains('new AsyncFunction')
+            ? <String, Object?>{
+                'value': <String, Object?>{'ok': true},
+              }
+            : <String, Object?>{};
+      }
+      return jsonEncode(true);
+    }
+    if (script.startsWith('(() => {delete globalThis.__mgreadPageJobs?.[')) {
+      pageJobActive = false;
+      pageResult = null;
+      return jsonEncode(true);
+    }
+    if (script.contains('__mgreadPageResults?.')) {
+      final result = pageResult;
+      pageResult = null;
+      if (result != null) pageJobActive = false;
+      return jsonEncode(
+        result == null
+            ? null
+            : jsonEncode(<String, Object?>{'ok': true, 'response': result}),
+      );
+    }
     if (script == 'location.origin') return jsonEncode('https://example.com');
     if (script == 'navigator.userAgent') return jsonEncode('fixture-agent');
     if (script.contains('document.readyState')) {
@@ -449,7 +645,7 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
   ];
 
   @override
-  Future<void> hide(String sessionId) async {}
+  Future<void> hide(String sessionId) async => hideCalls += 1;
 
   @override
   Future<void> load(String sessionId, String url) async => loadedUrls.add(url);
@@ -469,6 +665,9 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
 
   @override
   Future<void> stop(String sessionId) async {}
+
+  @override
+  Future<void> updateStatus(String sessionId, String status) async {}
 }
 
 final class _FakeHttpClient extends Fake implements HttpClient {

@@ -4,11 +4,12 @@ part of 'text_reader_view.dart';
 
 const double _catalogChapterItemExtent = 64;
 const double _catalogListTopPadding = 8;
+const double _catalogScrollbarThickness = 18;
+const double _catalogScrollbarMinThumbLength = 52;
 
 extension _TextReaderLibrarySheet on _TextReaderViewState {
   void _showLibrarySheet({int initialIndex = 1}) {
     _stopAutoReading();
-    unawaited(_refreshLoadedChapterStates());
     final int routeSession = _sessionGeneration;
     final String routeBookId = widget.bookId;
     final TextReaderStateStore routeStore = widget.stateStore;
@@ -368,6 +369,9 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
     required Uri? url,
   }) {
     final String? value = url?.toString();
+    final VoidCallback? openSourceAction = url == null
+        ? null
+        : () => unawaited(_openSourceUrl(url));
     return Row(
       children: <Widget>[
         Icon(icon, size: 18, color: _palette.secondaryText),
@@ -391,10 +395,13 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
           ),
         ),
         if (url != null)
-          IconButton(
-            tooltip: ReaderStrings.openSourceUrl,
-            onPressed: () => unawaited(_openSourceUrl(url)),
-            icon: Icon(Icons.open_in_new_rounded, color: _palette.accent),
+          ReaderAccessibleTooltip(
+            label: ReaderStrings.openSourceUrl,
+            onTap: openSourceAction!,
+            child: IconButton(
+              onPressed: openSourceAction,
+              icon: Icon(Icons.open_in_new_rounded, color: _palette.accent),
+            ),
           )
         else
           Text(
@@ -468,150 +475,181 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
             );
           });
         }
-        return ListView.builder(
-          key: ValueKey<String>('reader-catalog-count-${_catalog.length}'),
+        return RawScrollbar(
+          key: const ValueKey<String>('reader-catalog-scrollbar'),
           controller: _catalogScrollController,
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
-          itemExtent: _catalogChapterItemExtent,
-          itemCount: _catalog.length + (_catalogHasMore ? 1 : 0),
-          itemBuilder: (BuildContext context, int index) {
-            if (index == _catalog.length) {
-              return Padding(
-                padding: const EdgeInsets.all(16),
-                child: OutlinedButton(
-                  onPressed: _catalogLoading
-                      ? null
-                      : () async {
-                          if (!_isRouteSessionCurrent(
-                            routeSession,
-                            routeBookId,
-                            store: routeStore,
-                          )) {
-                            return;
-                          }
-                          await _loadCompleteCatalog(notify: false);
-                          if (!sheetContext.mounted ||
-                              !_isRouteSessionCurrent(
+          thumbVisibility: true,
+          interactive: true,
+          thickness: _catalogScrollbarThickness,
+          radius: const Radius.circular(_catalogScrollbarThickness / 2),
+          minThumbLength: _catalogScrollbarMinThumbLength,
+          minOverscrollLength: _catalogScrollbarMinThumbLength,
+          mainAxisMargin: 8,
+          crossAxisMargin: 2,
+          thumbColor: _palette.secondaryText.withValues(alpha: .82),
+          child: ScrollConfiguration(
+            behavior: ScrollConfiguration.of(
+              context,
+            ).copyWith(scrollbars: false),
+            child: ListView.builder(
+              key: ValueKey<String>('reader-catalog-count-${_catalog.length}'),
+              controller: _catalogScrollController,
+              padding: const EdgeInsets.fromLTRB(12, 8, 34, 20),
+              itemExtent: _catalogChapterItemExtent,
+              itemCount: _catalog.length + (_catalogHasMore ? 1 : 0),
+              itemBuilder: (BuildContext context, int index) {
+                if (index == _catalog.length) {
+                  return Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: OutlinedButton(
+                      onPressed: _catalogLoading
+                          ? null
+                          : () async {
+                              if (!_isRouteSessionCurrent(
                                 routeSession,
                                 routeBookId,
                                 store: routeStore,
                               )) {
-                            return;
-                          }
-                        },
-                  child: Text(
-                    _catalogLoading
-                        ? ReaderStrings.loading
-                        : ReaderStrings.loadMoreChapters,
-                  ),
-                ),
-              );
-            }
-            final ReaderChapterInfo chapter = _catalog[index];
-            final bool isCurrentChapter = chapter.id == currentChapterId;
-            final ReaderChapterState? refreshedState =
-                _chapterAccessCoordinator?.snapshot.states[chapter.id];
-            final ReaderChapterAvailability availability =
-                refreshedState == null
-                ? chapter.availability
-                : refreshedState.availability;
-            final int? wordCount = refreshedState == null
-                ? chapter.wordCount
-                : refreshedState.wordCount;
-            final bool hasBeenRead = refreshedState == null
-                ? chapter.hasBeenRead
-                : refreshedState.hasBeenRead;
-            final bool stateLoading =
-                _chapterAccessCoordinator?.snapshot.loading == true;
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: ListTile(
-                  key: ValueKey<String>('reader-catalog-chapter-${chapter.id}'),
-                  dense: true,
-                  visualDensity: const VisualDensity(vertical: -1),
-                  minVerticalPadding: 4,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  tileColor: isCurrentChapter
-                      ? _palette.accent.withValues(alpha: .14)
-                      : index.isEven
-                      ? _palette.accent.withValues(alpha: .035)
-                      : null,
-                  selected: isCurrentChapter,
-                  selectedColor: _palette.accent,
-                  selectedTileColor: _palette.accent.withValues(alpha: .15),
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(14)),
-                  ),
-                  leading: SizedBox(
-                    width: 34,
-                    child: Text(
-                      '${chapter.index + 1}',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: isCurrentChapter
-                            ? _palette.accent
-                            : _palette.secondaryText,
-                        fontSize: isCurrentChapter ? 12.5 : 12,
-                        fontWeight: isCurrentChapter
-                            ? FontWeight.w700
-                            : FontWeight.w500,
+                                return;
+                              }
+                              await _loadCompleteCatalog(notify: false);
+                              if (!sheetContext.mounted ||
+                                  !_isRouteSessionCurrent(
+                                    routeSession,
+                                    routeBookId,
+                                    store: routeStore,
+                                  )) {
+                                return;
+                              }
+                            },
+                      child: Text(
+                        _catalogLoading
+                            ? ReaderStrings.loading
+                            : ReaderStrings.loadMoreChapters,
                       ),
                     ),
-                  ),
-                  title: Text(
-                    chapter.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: isCurrentChapter ? 14.5 : 14,
-                      fontWeight: isCurrentChapter
-                          ? FontWeight.w700
-                          : FontWeight.w500,
-                      color: isCurrentChapter ? _palette.accent : null,
+                  );
+                }
+                final ReaderChapterInfo chapter = _catalog[index];
+                final bool isCurrentChapter = chapter.id == currentChapterId;
+                final ReaderChapterState? refreshedState =
+                    _chapterAccessCoordinator?.snapshot.states[chapter.id];
+                final ReaderChapterAvailability availability =
+                    refreshedState == null
+                    ? chapter.availability
+                    : refreshedState.availability;
+                final int? wordCount = refreshedState == null
+                    ? chapter.wordCount
+                    : refreshedState.wordCount;
+                final bool hasBeenRead = refreshedState == null
+                    ? chapter.hasBeenRead
+                    : refreshedState.hasBeenRead;
+                final bool stateLoading =
+                    _chapterAccessCoordinator?.snapshot.loading == true;
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 560),
+                    child: ListTile(
+                      key: ValueKey<String>(
+                        'reader-catalog-chapter-${chapter.id}',
+                      ),
+                      dense: true,
+                      visualDensity: const VisualDensity(vertical: -1),
+                      minVerticalPadding: 4,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      tileColor: isCurrentChapter
+                          ? _palette.accent.withValues(alpha: .14)
+                          : index.isEven
+                          ? _palette.accent.withValues(alpha: .035)
+                          : null,
+                      selected: isCurrentChapter,
+                      selectedColor: _palette.accent,
+                      selectedTileColor: _palette.accent.withValues(alpha: .15),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(14)),
+                      ),
+                      leading: SizedBox(
+                        width: 34,
+                        child: Text(
+                          '${chapter.index + 1}',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: isCurrentChapter
+                                ? _palette.accent
+                                : _palette.secondaryText,
+                            fontSize: isCurrentChapter ? 12.5 : 12,
+                            fontWeight: isCurrentChapter
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        chapter.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: isCurrentChapter ? 14.5 : 14,
+                          fontWeight: isCurrentChapter
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: isCurrentChapter ? _palette.accent : null,
+                        ),
+                      ),
+                      trailing: isCurrentChapter
+                          ? Icon(
+                              Icons.play_arrow_rounded,
+                              size: 16,
+                              color: _palette.accent,
+                            )
+                          : null,
+                      subtitle: ReaderChapterStateBadge(
+                        availability: availability,
+                        wordCount:
+                            !stateLoading &&
+                                availability ==
+                                    ReaderChapterAvailability.downloaded
+                            ? wordCount
+                            : null,
+                        hasBeenRead: hasBeenRead,
+                        loading: stateLoading && refreshedState == null,
+                        palette: _palette,
+                        onRetry:
+                            availability == ReaderChapterAvailability.failed
+                            ? () => unawaited(
+                                _refreshLoadedChapterStates(
+                                  chapterId: chapter.id,
+                                  force: true,
+                                ),
+                              )
+                            : null,
+                      ),
+                      onTap: () {
+                        if (!_isRouteSessionCurrent(
+                          routeSession,
+                          routeBookId,
+                          store: routeStore,
+                        )) {
+                          return;
+                        }
+                        Navigator.of(sheetContext).pop();
+                        unawaited(
+                          _openChapter(
+                            chapter.id,
+                            dismissControls: true,
+                            showLoadingOverlay: true,
+                          ),
+                        );
+                      },
                     ),
                   ),
-                  trailing: isCurrentChapter
-                      ? Icon(
-                          Icons.play_arrow_rounded,
-                          size: 16,
-                          color: _palette.accent,
-                        )
-                      : null,
-                  subtitle: ReaderChapterStateBadge(
-                    availability: availability,
-                    wordCount:
-                        !stateLoading &&
-                            availability == ReaderChapterAvailability.downloaded
-                        ? wordCount
-                        : null,
-                    hasBeenRead: hasBeenRead,
-                    loading: stateLoading && refreshedState == null,
-                    palette: _palette,
-                    onRetry: availability == ReaderChapterAvailability.failed
-                        ? () => unawaited(
-                            _refreshLoadedChapterStates(chapterId: chapter.id),
-                          )
-                        : null,
-                  ),
-                  onTap: () {
-                    if (!_isRouteSessionCurrent(
-                      routeSession,
-                      routeBookId,
-                      store: routeStore,
-                    )) {
-                      return;
-                    }
-                    Navigator.of(sheetContext).pop();
-                    unawaited(_openChapter(chapter.id));
-                  },
-                ),
-              ),
-            );
-          },
+                );
+              },
+            ),
+          ),
         );
       },
     );
@@ -697,6 +735,47 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
       itemCount: _bookmarks.length,
       itemBuilder: (BuildContext context, int index) {
         final ReaderBookmark bookmark = _bookmarks[index];
+        Future<void> removeBookmark() async {
+          await _queueBookmarkMutation(() async {
+            if (!_isRouteSessionCurrent(
+                  routeSession,
+                  routeBookId,
+                  store: routeStore,
+                ) ||
+                _bookmarks.every((item) => item.id != bookmark.id)) {
+              return;
+            }
+            try {
+              await routeStore.removeBookmark(routeBookId, bookmark.id);
+            } catch (error) {
+              if (_isRouteSessionCurrent(
+                routeSession,
+                routeBookId,
+                store: routeStore,
+              )) {
+                await _reportFailure(
+                  _asFailure(error, ReaderFailureKind.persistence),
+                );
+              }
+              return;
+            }
+            if (!sheetContext.mounted ||
+                !_isRouteSessionCurrent(
+                  routeSession,
+                  routeBookId,
+                  store: routeStore,
+                )) {
+              return;
+            }
+            setState(() {
+              _bookmarks = List.unmodifiable(
+                _bookmarks.where((item) => item.id != bookmark.id),
+              );
+            });
+            Navigator.of(sheetContext).pop();
+          });
+        }
+
         return Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 560),
@@ -713,49 +792,16 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-              trailing: IconButton(
-                tooltip: ReaderStrings.removeBookmark,
-                icon: const Icon(Icons.close_rounded, size: 19),
-                onPressed: () async {
-                  await _queueBookmarkMutation(() async {
-                    if (!_isRouteSessionCurrent(
-                          routeSession,
-                          routeBookId,
-                          store: routeStore,
-                        ) ||
-                        _bookmarks.every((item) => item.id != bookmark.id)) {
-                      return;
-                    }
-                    try {
-                      await routeStore.removeBookmark(routeBookId, bookmark.id);
-                    } catch (error) {
-                      if (_isRouteSessionCurrent(
-                        routeSession,
-                        routeBookId,
-                        store: routeStore,
-                      )) {
-                        await _reportFailure(
-                          _asFailure(error, ReaderFailureKind.persistence),
-                        );
-                      }
-                      return;
-                    }
-                    if (!sheetContext.mounted ||
-                        !_isRouteSessionCurrent(
-                          routeSession,
-                          routeBookId,
-                          store: routeStore,
-                        )) {
-                      return;
-                    }
-                    setState(() {
-                      _bookmarks = List.unmodifiable(
-                        _bookmarks.where((item) => item.id != bookmark.id),
-                      );
-                    });
-                    Navigator.of(sheetContext).pop();
-                  });
-                },
+              trailing: ReaderAccessibleTooltip(
+                label: ReaderStrings.removeBookmark,
+                onTap: removeBookmark,
+                child: IconButton(
+                  key: ValueKey<String>(
+                    'reader-bookmark-remove-${bookmark.id}',
+                  ),
+                  icon: const Icon(Icons.close_rounded, size: 19),
+                  onPressed: removeBookmark,
+                ),
               ),
               onTap: () {
                 if (!_isRouteSessionCurrent(
@@ -766,13 +812,20 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                     bookmark.bookId != routeBookId) {
                   return;
                 }
-                _progress = ReaderProgress(
+                final ReaderProgress restoreProgress = ReaderProgress(
                   chapterId: bookmark.chapterId,
                   paragraphId: bookmark.paragraphId,
                   characterOffset: bookmark.characterOffset,
                 );
                 Navigator.of(sheetContext).pop();
-                unawaited(_openChapter(bookmark.chapterId, initial: true));
+                unawaited(
+                  _openChapter(
+                    bookmark.chapterId,
+                    dismissControls: true,
+                    showLoadingOverlay: true,
+                    restoreProgress: restoreProgress,
+                  ),
+                );
               },
             ),
           ),

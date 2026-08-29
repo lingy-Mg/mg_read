@@ -2,8 +2,8 @@
  * Android browser-session wire contract.
  *
  * This is a second validation layer for the private Javet bridge. It accepts
- * only the reviewed v1 fields and never accepts Cookie, user-agent, script, or
- * arbitrary WebView settings from plugin code.
+ * only reviewed v1 fields. The additive single-page API accepts script source
+ * as data but never accepts Cookie, profile handles, or WebView settings.
  */
 package com.mgread.mgread_plugin_runtime
 
@@ -19,6 +19,7 @@ internal data class AndroidBrowserSessionRequest(
     val method: String,
     val operation: String,
     val pluginId: String,
+    val pluginName: String = pluginId,
     val presentation: String,
     val selector: String,
     val sessionKey: String,
@@ -26,8 +27,9 @@ internal data class AndroidBrowserSessionRequest(
     val timeoutMs: Long,
     val transport: String,
     val url: String,
+    val pageParams: JSONObject? = null,
 ) {
-    val origin: String = originOf(url)
+    val origin: String = if (url.isEmpty()) "" else originOf(url)
 
     companion object {
         private val allowedHeaders = setOf(
@@ -44,11 +46,14 @@ internal data class AndroidBrowserSessionRequest(
             require(value.optInt("version", -1) == 1)
             val pluginId = value.requiredString("pluginId", 160)
             require(PLUGIN_ID.matches(pluginId))
+            val operation = value.optString("operation", "request")
+            if (operation.startsWith("page.")) {
+                return parsePage(value, pluginId, operation)
+            }
             val sessionKey = value.requiredString("sessionKey", 64)
             require(SESSION_KEY.matches(sessionKey))
             val url = value.requiredString("url", 4096)
             originOf(url)
-            val operation = value.optString("operation", "request")
             require(operation == "request" || operation == "interaction")
             if (operation == "interaction") {
                 val action = value.requiredString("action", 16)
@@ -70,6 +75,7 @@ internal data class AndroidBrowserSessionRequest(
                     method = "GET",
                     operation = operation,
                     pluginId = pluginId,
+                    pluginName = pluginId,
                     presentation = presentation,
                     selector = selector,
                     sessionKey = sessionKey,
@@ -103,6 +109,7 @@ internal data class AndroidBrowserSessionRequest(
                 method = method,
                 operation = operation,
                 pluginId = pluginId,
+                pluginName = pluginId,
                 presentation = presentation,
                 selector = "",
                 sessionKey = sessionKey,
@@ -110,6 +117,70 @@ internal data class AndroidBrowserSessionRequest(
                 timeoutMs = timeoutMs,
                 transport = transport,
                 url = url,
+            )
+        }
+
+        private fun parsePage(
+            value: JSONObject,
+            pluginId: String,
+            operation: String,
+        ): AndroidBrowserSessionRequest {
+            require(operation in PAGE_OPERATIONS)
+            val timeoutMs = value.optLong("timeoutMs", -1L)
+            require(timeoutMs in 1L..MAX_TIMEOUT_MILLIS)
+            val pluginName = value.requiredString("pluginName", 128)
+            val url = when (operation) {
+                "page.navigate", "page.fetch" -> value.requiredHttpUrl("url")
+                else -> ""
+            }
+            when (operation) {
+                "page.open" -> require(value.opt("visible") is Boolean)
+                "page.evaluate" -> value.requiredString("code", 512 * 1024)
+                "page.fetch" -> {
+                    val method = value.requiredString("method", 32)
+                    require(METHOD.matches(method))
+                    require(value.optString("responseType") in setOf("text", "json", "base64"))
+                    require(value.opt("headers") is JSONObject)
+                    value.getJSONObject("headers").keys().forEach { name ->
+                        require(name.isNotBlank() && name.length <= 256)
+                        require(value.getJSONObject("headers").getString(name).length <= 64 * 1024)
+                    }
+                    require(value.isNull("body") || value.opt("body") is String)
+                }
+                "page.click" -> {
+                    require(value.optDouble("x", Double.NaN).let { it.isFinite() && it in 0.0..100_000.0 })
+                    require(value.optDouble("y", Double.NaN).let { it.isFinite() && it in 0.0..100_000.0 })
+                }
+                "page.input" -> value.requiredString("text", 64 * 1024)
+                "page.key" -> {
+                    require(value.optString("key") in PAGE_KEYS)
+                    val modifiers = value.optJSONArray("modifiers") ?: throw IllegalArgumentException()
+                    require(modifiers.length() <= 3)
+                    repeat(modifiers.length()) { require(modifiers.getString(it) in PAGE_MODIFIERS) }
+                }
+                "page.waitText" -> {
+                    value.requiredString("text", 64 * 1024)
+                    require(value.optString("scope") in setOf("text", "html"))
+                }
+            }
+            return AndroidBrowserSessionRequest(
+                action = "",
+                body = null,
+                headers = emptyMap(),
+                interaction = "silent",
+                maxResponseBytes = MAX_RESPONSE_BYTES,
+                method = "GET",
+                operation = operation,
+                pluginId = pluginId,
+                pluginName = pluginName,
+                presentation = "hidden",
+                selector = "",
+                sessionKey = "",
+                text = null,
+                timeoutMs = timeoutMs,
+                transport = "webview",
+                url = url,
+                pageParams = value,
             )
         }
 
@@ -132,6 +203,13 @@ internal data class AndroidBrowserSessionRequest(
     }
 }
 
+private fun JSONObject.requiredHttpUrl(name: String): String {
+    val value = requiredString(name, 4096)
+    val uri = URI(value)
+    require((uri.scheme == "https" || uri.scheme == "http") && uri.rawUserInfo == null && uri.host != null)
+    return uri.toString()
+}
+
 internal fun originOf(value: String): String {
     val uri = URI(value)
     require(uri.scheme == "https" && uri.rawUserInfo == null && uri.host != null)
@@ -150,10 +228,21 @@ private fun JSONObject.requiredString(name: String, maximumLength: Int): String 
 
 private val PLUGIN_ID = Regex("^[a-z0-9]+(?:[._-][a-z0-9]+)+$")
 private val SESSION_KEY = Regex("^[A-Za-z0-9._-]{1,64}$")
+private val METHOD = Regex("^[A-Z]+$")
+private val PAGE_OPERATIONS = setOf(
+    "page.open", "page.show", "page.hide", "page.close", "page.navigate",
+    "page.evaluate", "page.html", "page.fetch", "page.click", "page.input",
+    "page.key", "page.waitText", "page.getUrl",
+)
+private val PAGE_KEYS = setOf(
+    "Enter", "Tab", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+    "PageUp", "PageDown", "Home", "End", "Backspace", "Delete",
+)
+private val PAGE_MODIFIERS = setOf("alt", "control", "shift")
 private val CLOUDFLARE_MARKERS = Regex(
     "cf-challenge|cf-turnstile|just a moment|checking your browser|challenge-platform",
     RegexOption.IGNORE_CASE,
 )
-private const val MAX_REQUEST_BYTES = 64 * 1024
+private const val MAX_REQUEST_BYTES = 1024 * 1024
 private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 private const val MAX_TIMEOUT_MILLIS = 120_000L

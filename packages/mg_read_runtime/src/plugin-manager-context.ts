@@ -21,6 +21,7 @@ import type {
   PluginRuntimeHttpClient,
 } from "./plugin-manager-contract.js";
 import { PluginManagerError } from "./plugin-manager-contract.js";
+import { createPluginWebViewApi } from "./plugin-webview-page.js";
 
 export async function createPluginContext(options: {
   readonly browserSession: PluginBrowserSessionProvider | undefined;
@@ -36,6 +37,11 @@ export async function createPluginContext(options: {
   await Promise.all([mkdir(dataDir, { recursive: true }), mkdir(cacheDir, { recursive: true })]);
   const emitLog = (logLevel: NonNullable<PluginManagerEvent["logLevel"]>, logMessage: string): void => {
     events({ code: "plugin_log_emitted", logLevel, logMessage, outcome: "success", pluginId: descriptor.id });
+  };
+  const withScope = <T>(operation: (scope: PluginInvocationScope) => Promise<T>): Promise<T> => {
+    const scope = invocationScope();
+    if (scope === undefined) throw new PluginManagerError("invalid_request");
+    return operation(scope);
   };
   return Object.freeze({
     app: Object.freeze({ nodeVersion: process.versions.node, pluginApi: pluginApiVersion, runtimeVersion }),
@@ -58,6 +64,12 @@ export async function createPluginContext(options: {
           action: "control-click",
         }, scope.signal, scope.deadlineUnixMs)),
     }) }),
+    webview: createPluginWebViewApi({
+      pluginId: descriptor.id,
+      pluginName: descriptor.displayName,
+      provider: browserSession,
+      withScope,
+    }),
     cacheDir,
     dataDir,
     http: Object.freeze({ fetch: (input: string | URL, init: RequestInit = {}) => {
@@ -82,11 +94,4 @@ export async function createPluginContext(options: {
     plugin: Object.freeze({ id: descriptor.id, version: descriptor.version }),
   });
 
-  function withScope<T>(
-    operation: (scope: PluginInvocationScope) => Promise<T>,
-  ): Promise<T> {
-    const scope = invocationScope();
-    if (scope === undefined) throw new PluginManagerError("invalid_request");
-    return operation(scope);
-  }
 }

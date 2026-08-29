@@ -118,9 +118,9 @@ class _ReaderFontCatalogState extends State<ReaderFontCatalog> {
       );
     }
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
       itemCount: state.fonts.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 8),
+      separatorBuilder: (_, _) => const SizedBox(height: 6),
       itemBuilder: (BuildContext context, int index) {
         final ReaderFontDescriptor descriptor = state.fonts[index];
         return _ReaderFontMetadataLoader(
@@ -243,16 +243,20 @@ class _ReaderFontTile extends StatelessWidget {
         color: selected
             ? ReaderSettingsTokens.selectedControl(palette)
             : ReaderSettingsTokens.mutedControl(palette),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(
+          ReaderSettingsTokens.fontCatalogCardRadius,
+        ),
         child: Padding(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(8),
           child: Row(
             children: <Widget>[
               ClipRRect(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(
+                  ReaderSettingsTokens.smallRadius,
+                ),
                 child: SizedBox(
-                  width: 64,
-                  height: 64,
+                  width: ReaderSettingsTokens.fontCatalogPreviewSize,
+                  height: ReaderSettingsTokens.fontCatalogPreviewSize,
                   child: previewBytes == null
                       ? ColoredBox(
                           color: palette.panel,
@@ -278,7 +282,7 @@ class _ReaderFontTile extends StatelessWidget {
                         ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -292,7 +296,7 @@ class _ReaderFontTile extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 2),
                     Text(
                       descriptor.familyName,
                       maxLines: 1,
@@ -302,7 +306,7 @@ class _ReaderFontTile extends StatelessWidget {
                         fontSize: 12,
                       ),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 2),
                     Text(
                       metadata,
                       maxLines: 2,
@@ -315,7 +319,7 @@ class _ReaderFontTile extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               _FontActions(
                 palette: palette,
                 installed: installed,

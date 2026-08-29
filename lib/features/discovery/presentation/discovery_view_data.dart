@@ -61,6 +61,8 @@ final class DiscoveryHeroViewData {
     required this.metadata,
     required this.coverVariant,
     this.coverBytes,
+    this.remoteContentId,
+    this.coverUrl,
     this.heat,
   });
 
@@ -70,6 +72,8 @@ final class DiscoveryHeroViewData {
   final String? metadata;
   final DiscoveryCoverVariant coverVariant;
   final List<int>? coverBytes;
+  final String? remoteContentId;
+  final Uri? coverUrl;
   final String? heat;
 }
 

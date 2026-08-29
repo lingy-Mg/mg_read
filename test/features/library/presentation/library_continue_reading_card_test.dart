@@ -7,7 +7,7 @@ import 'package:mg_read/features/library/presentation/widgets/library_book_cover
 import 'package:mg_read/features/library/presentation/widgets/library_continue_reading_card.dart';
 
 void main() {
-  testWidgets('centers the continue action in the card area beside the cover', (WidgetTester tester) async {
+  testWidgets('renders an immersive surface with a flat cover on the right', (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
@@ -23,11 +23,23 @@ void main() {
 
     final Rect surface = tester.getRect(find.byKey(const Key('continue-reading-surface')));
     final Rect action = tester.getRect(find.byKey(const Key('continue-reading-cta')));
-    final Rect cover = tester.getRect(find.byType(LibraryBookCover));
+    final Finder flatCover = find.byKey(const Key('continue-reading-flat-cover'));
+    final Rect cover = tester.getRect(flatCover);
     final Rect title = tester.getRect(find.text('诡秘之主'));
+    final Element surfaceElement = tester.element(find.byKey(const Key('continue-reading-surface')));
+    final List<Widget> localCoverAncestors = <Widget>[];
+    tester.element(flatCover).visitAncestorElements((Element element) {
+      if (identical(element, surfaceElement)) return false;
+      localCoverAncestors.add(element.widget);
+      return true;
+    });
 
-    expect(action.center.dx, closeTo((cover.right + surface.right) / 2, 0.1));
-    expect(title.center.dx, closeTo(action.center.dx, 0.1));
-    expect(title.left, greaterThan(cover.right));
+    expect(find.byType(LibraryBookCover), findsNWidgets(2));
+    expect(localCoverAncestors.whereType<Transform>(), isEmpty);
+    expect(localCoverAncestors.whereType<RotatedBox>(), isEmpty);
+    expect(surface.contains(cover.topLeft), isTrue);
+    expect(surface.contains(cover.bottomRight), isTrue);
+    expect(title.right, lessThan(cover.left));
+    expect(action.right, lessThan(cover.left));
   });
 }

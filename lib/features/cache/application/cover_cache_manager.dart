@@ -2,6 +2,7 @@
 ///
 /// 职责：
 /// - 通过窄网关读取和清理可再生封面与漫画正文图片缓存。
+/// - 保持漫画正文图片缓存总量、旧缓存余量与逐漫画用量的一致快照。
 /// - 清理持久缓存后同步失效共享的进程内封面字节。
 ///
 /// 注意：
@@ -31,7 +32,7 @@ final class EmptyCoverCacheGateway implements CoverCacheGateway {
 }
 
 abstract interface class MangaImageCacheGateway {
-  Future<int> usageBytes();
+  Future<MangaImageCacheUsage> loadUsage();
   Future<int> clear();
 }
 
@@ -39,7 +40,7 @@ final class EmptyMangaImageCacheGateway implements MangaImageCacheGateway {
   const EmptyMangaImageCacheGateway();
 
   @override
-  Future<int> usageBytes() async => 0;
+  Future<MangaImageCacheUsage> loadUsage() async => const MangaImageCacheUsage(totalBytes: 0, entries: []);
 
   @override
   Future<int> clear() async => 0;
@@ -90,7 +91,7 @@ final class MangaImageCacheManagementController extends AsyncNotifier<MangaImage
       if (generation == _generation) {
         state = AsyncData(
           MangaImageCacheManagementState(
-            bytes: 0,
+            usage: current.usage.cleared(),
             feedback: releasedBytes == 0 ? MangaImageCacheFeedback.alreadyEmpty : MangaImageCacheFeedback.cleared,
           ),
         );
@@ -103,14 +104,14 @@ final class MangaImageCacheManagementController extends AsyncNotifier<MangaImage
   }
 
   Future<MangaImageCacheManagementState> _load() async =>
-      MangaImageCacheManagementState(bytes: await ref.read(mangaImageCacheGatewayProvider).usageBytes());
+      MangaImageCacheManagementState(usage: await ref.read(mangaImageCacheGatewayProvider).loadUsage());
 }
 
 @immutable
 final class MangaImageCacheManagementState {
-  const MangaImageCacheManagementState({required this.bytes, this.isClearing = false, this.isRefreshing = false, this.feedback});
+  const MangaImageCacheManagementState({required this.usage, this.isClearing = false, this.isRefreshing = false, this.feedback});
 
-  final int bytes;
+  final MangaImageCacheUsage usage;
   final bool isClearing;
   final bool isRefreshing;
   final MangaImageCacheFeedback? feedback;
@@ -121,7 +122,7 @@ final class MangaImageCacheManagementState {
     MangaImageCacheFeedback? feedback,
     bool clearFeedback = false,
   }) => MangaImageCacheManagementState(
-    bytes: bytes,
+    usage: usage,
     isClearing: isClearing ?? this.isClearing,
     isRefreshing: isRefreshing ?? this.isRefreshing,
     feedback: clearFeedback ? null : feedback ?? this.feedback,
@@ -129,6 +130,32 @@ final class MangaImageCacheManagementState {
 }
 
 enum MangaImageCacheFeedback { cleared, alreadyEmpty, failure }
+
+@immutable
+final class MangaImageCacheUsage {
+  const MangaImageCacheUsage({required this.totalBytes, required this.entries, this.unattributedBytes = 0});
+
+  final int totalBytes;
+  final int unattributedBytes;
+  final List<MangaImageCacheEntry> entries;
+
+  MangaImageCacheUsage cleared() => MangaImageCacheUsage(
+    totalBytes: 0,
+    unattributedBytes: 0,
+    entries: <MangaImageCacheEntry>[for (final entry in entries) entry.copyWith(bytes: 0)],
+  );
+}
+
+@immutable
+final class MangaImageCacheEntry {
+  const MangaImageCacheEntry({required this.itemId, required this.title, required this.bytes});
+
+  final String itemId;
+  final String title;
+  final int bytes;
+
+  MangaImageCacheEntry copyWith({int? bytes}) => MangaImageCacheEntry(itemId: itemId, title: title, bytes: bytes ?? this.bytes);
+}
 
 final coverCacheGatewayProvider = Provider<CoverCacheGateway>((Ref ref) => const EmptyCoverCacheGateway());
 

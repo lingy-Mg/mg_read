@@ -7,12 +7,20 @@ import * as plugin from '../dist/index.mjs';
 
 test('synthetic fixture covers public discovery, search, detail, catalog, image manifest, proxy and restricted chapter refusal', async (t) => {
   const cacheDir = await mkdtemp(join(tmpdir(), '66manhua-cache-')); t.after(() => rm(cacheDir, { recursive: true, force: true }));
-  const [list, detail, chapter, locked] = await Promise.all(['list.html', 'detail.html', 'chapter.html', 'locked-chapter.html'].map((name) => readFile(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')));
+  const [home, list, detail, chapter, locked] = await Promise.all(['home.html', 'list.html', 'detail.html', 'chapter.html', 'locked-chapter.html'].map((name) => readFile(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')));
   const proxied = []; const requests = [];
-  await plugin.activate({ dataDir: cacheDir, cacheDir, app: {}, plugin: {}, log: { debug(){}, info(){}, warn(){}, error(){} }, resource: { proxy(request) { proxied.push(request); return `http://127.0.0.1/resource/${proxied.length}`; } }, http: { async fetch(input, init) { const url = new URL(input); requests.push({ url, init }); if (url.hostname === 'mh.aikanhanman.top') return new Response(new Uint8Array([7, 8]), { headers: { 'content-type': 'image/jpeg' } }); if (url.pathname === '/index.php/comic/sample') return new Response(detail); if (url.pathname === '/index.php/chapter/123') return new Response(chapter); if (url.pathname === '/index.php/chapter/124') return new Response(locked); return new Response(list); } } });
+  await plugin.activate({ dataDir: cacheDir, cacheDir, app: {}, plugin: {}, log: { debug(){}, info(){}, warn(){}, error(){} }, resource: { proxy(request) { proxied.push(request); return `http://127.0.0.1/resource/${proxied.length}`; } }, http: { async fetch(input, init) { const url = new URL(input); requests.push({ url, init }); if (url.hostname === 'mh.aikanhanman.top') return new Response(new Uint8Array([7, 8]), { headers: { 'content-type': 'image/jpeg' } }); if (url.pathname === '/') return new Response(home); if (url.pathname === '/index.php/comic/sample') return new Response(detail); if (url.pathname === '/index.php/chapter/123') return new Response(chapter); if (url.pathname === '/index.php/chapter/124') return new Response(locked); return new Response(list); } } });
   const search = await plugin.search({ query: 'fixture', cursor: null, pageSize: 20 }); assert.equal(search.items.length, 1); assert.equal(search.nextCursor, null);
   const discover = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 }); assert.equal(discover.kind, 'document');
+  assert.deepEqual(discover.document.components.map((component) => component.type === 'group' ? `${component.type}:${component.layout}` : `${component.type}:${component.children[0].layout}`), ['section:carousel', 'section:coverGrid', 'group:vertical', 'section:shelf', 'group:grid']);
+  const sections = discover.document.components.flatMap((component) => component.type === 'group' ? component.children : [component]);
+  assert.deepEqual(sections.map((section) => section.title), ['精选推荐', '最近更新', '上升最快', '人气排行榜', '完结大作', '收藏榜', '打赏榜', '月票榜']);
+  assert.equal(sections[0].children[0].items[0].content.author, 'Fixture Author');
+  assert.equal(sections[1].children[0].items[0].content.latestChapter.title, '第 8 话');
+  assert.deepEqual(sections.slice(-3).map((section) => section.children[0].items[0].metric), [{ label: '收藏', value: '110' }, { label: '打赏', value: '2' }, { label: '月票', value: '9' }]);
+  assert.equal(new Set(sections.flatMap((section) => section.children[0].items.map((item) => item.content.coverUrl).filter(Boolean))).size, 7);
   const detailResult = await plugin.getDetail({ id: search.items[0].id }); const chapters = await plugin.getChapters({ id: detailResult.id });
+  assert.equal(detailResult.title, 'Sample'); assert.equal(detailResult.author, 'Fixture Author'); assert.equal(detailResult.description, 'Complete fixture summary.'); assert.deepEqual(detailResult.categories, ['都市']);
   assert.equal(chapters.items.length, 2); assert.equal(chapters.items[1].isLocked, true);
   const content = await plugin.getContent({ id: detailResult.id, chapterId: chapters.items[0].id }); assert.equal(content.text, null); assert.equal(content.pages.length, 2);
   await assert.rejects(plugin.getContent({ id: detailResult.id, chapterId: chapters.items[1].id }), /requires public access/u);

@@ -137,8 +137,13 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: AppSpacing.discoveryPagePadding, vertical: AppSpacing.pageHeaderTopPadding),
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  AppSpacing.discoveryPagePadding,
+                  AppSpacing.pageHeaderTopPaddingFor(context),
+                  AppSpacing.discoveryPagePadding,
+                  AppSpacing.pageHeaderTopPadding,
+                ),
                 child: _DetailHeader(isModalSheet: true),
               ),
               Expanded(

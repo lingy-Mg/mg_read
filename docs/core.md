@@ -33,10 +33,10 @@ plugins/sources/                    真实书源插件
 
 ## 主应用持久化与 Content Library
 
-- 主应用 `AppPersistence` 是业务数据权威。metadata records 版本化、异步、可迁移；SQLite/Drift、
-  schema、动态 JSON 和容器生命周期只存在于 core persistence 内部。
-- `ContentLibrary` 独立拥有书架、来源绑定、目录快照、小说正文、漫画 manifest/文件、阅读进度和
-  书签。Runtime 不打开主应用 SQLite，也不获得数据库或内容文件绝对路径。
+- `AppPersistence` 为权威；metadata records 版本化、异步、可迁移，schema、JSON 和
+  容器生命周期只留在 core persistence。
+- `ContentLibrary` 拥有书架、来源绑定、目录、正文、漫画文件、进度和书签；Runtime 不打开主应用
+  SQLite，也不获得数据库或内容文件路径。
 - metadata、不可变正文对象和受控文件之间没有跨库原子事务：先写入并校验对象，再以 metadata
   revision CAS 切换引用；已提交 metadata 是故障恢复权威，无引用对象由有界 maintenance/GC 清理。
 - metadata JSON 的规范化、限制、版本、错误和不可变语义始终由 core persistence 统一执行；业务 codec
@@ -45,6 +45,7 @@ plugins/sources/                    真实书源插件
   数组位置或全量内存载入作为持久权威。
 - Runtime 结果只有经公开 Facade 和主应用强类型 adapter 校验后才能写入 Content Library。没有公开
   强类型提交协议时保持未实现/`unsupported`，不得以 raw transport 或 `host.*` 回调补齐。
+- 漫画正文图片缓存返回总量与按 `LibraryItemId` 的用量；无归属旧缓存只计总量。
 - 发现页可构造仅存活于路由的临时阅读会话；退出即丢弃，不写 App/Runtime 持久化，也不替代正式
   入库、目录、正文、进度和书签流程。
 
@@ -58,17 +59,18 @@ plugins/sources/                    真实书源插件
   Node。Windows Job Object、macOS 签名/公证和 Android ABI 分平台验收，不能相互替代。
 - Runtime 数据根只保存插件不可变安装版本、插件私有 data/cache、Cookie、临时资源和运行状态；
   不保存书架、目录、正文、进度或书签业务权威。
-- installed 插件版本不可变，只在 Runtime 冷启动激活。Windows Debug development 可直读构建后的
-  工作区；指纹变化后先回收旧 VM，再启动唯一新 Runtime，不在同一 VM 热替换模块。
+- installed 插件版本不可变且仅冷启动激活。Windows Debug 可直读工作区；指纹变化先回收旧 VM，
+  再启动唯一新 Runtime，不热替换模块。
 - 内部 WS/HTTP、ready、bootId、端口、PID、URL 和 envelope 不暴露给主应用。控制帧有界；大资源走
   Runtime HTTP 数据面，不进入无界 JSON/Base64。
-- `browser.session.v1` 限同源 HTTPS、64 KiB/2 MiB、1--120 秒；`webview` 在同源页面内运行宿主固定
-  `fetch`，`html` 访问目标页面后返回当前 DOM HTML，`http` 在宿主内携 Cookie/UA 并回写 Set-Cookie。
-  插件无凭据；交互由该 WebView 宿主输入入口完成，不用 DOM 合成事件、value setter 或 CDP。
-- Android/Windows 每插件一个 WebView，限制 8/16/10 分钟；Android 支持 multi-profile 时使用独立 Profile，
-  不支持时明确记录 `single_fallback` 降级日志并使用应用默认单体 Profile（不提供跨插件 Cookie 隔离）。
-  `visible` 全局唯一可隐藏，`hidden` 不显示；Windows 以协议 `1.1` 反向 WS 接入 WebView2。
-- Debug 检查页仅保存开关、监听 `0.0.0.0:52173`；冲突不阻断，Release 禁用，不暴露凭据/控制面。
+- `browser.session.v1` 保留同源 HTTPS 与 64 KiB/2 MiB/1--120 秒边界；Cookie/UA 留在宿主，交互不用
+  DOM 合成事件、value setter 或 CDP。
+- `ctx.webview` 每源一页且 `open` 复用，无 `sessionKey`/`onUrlChanged`/Cookie API；支持导航、异步 JS/JSON、
+  HTML、CORS `fetch`、原生输入、等待、URL 与显隐关闭。普通调用 FIFO、控制旁路；超时不毁页并撤销结果
+  token。不用 CDP；Windows 允许 F12。
+- Android/Windows 每插件一个 WebView（最多 8/16）；Android multi-profile 不可用时记录 `single_fallback`。
+  `visible` 全局唯一；顶部显示来源/行为和 URL，阻止越界能力。Windows 静音，Android 暂仅禁止自动播放。
+- Debug 检查页监听 `0.0.0.0:52173`；冲突不阻断，Release 禁用。
 
 ## 标准插件项目、artifact 与安装
 

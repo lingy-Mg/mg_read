@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,32 +15,18 @@ import 'fixtures/alice_book_house_detail_fixture.dart';
 void main() {
   setUpAll(() async {
     final FontLoader miSans = FontLoader('packages/novel_reader_ui/MiSans')
-      ..addFont(
-        rootBundle.load('packages/novel_reader_ui/assets/fonts/MiSansVF.ttf'),
-      );
-    final FontLoader materialIcons = FontLoader('MaterialIcons')
-      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+      ..addFont(rootBundle.load('packages/novel_reader_ui/assets/fonts/MiSansVF.ttf'));
+    final FontLoader materialIcons = FontLoader('MaterialIcons')..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await Future.wait(<Future<void>>[miSans.load(), materialIcons.load()]);
   });
 
-  testWidgets('matches the compact light book detail reference baseline', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('matches the compact light book detail reference baseline', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(const _DetailGoldenHost(useReference: true));
     await tester.pumpAndSettle();
 
-    expect(
-      tester
-          .state<ScrollableState>(_detailVerticalScrollableFinder())
-          .position
-          .pixels,
-      0,
-    );
-    expect(
-      tester.getTopLeft(find.byKey(const Key('source-detail-cover'))).dy,
-      92,
-    );
+    expect(tester.state<ScrollableState>(_detailVerticalScrollableFinder()).position.pixels, 0);
+    expect(tester.getTopLeft(find.byKey(const Key('source-detail-cover'))).dy, 84);
     expect(find.byKey(const Key('source-detail-header-title')), findsOneWidget);
     expect(find.text('爱潜水的乌贼'), findsWidgets);
     expect(find.text('447万'), findsOneWidget);
@@ -49,36 +36,22 @@ void main() {
     expect(find.text('42.3万人评分'), findsOneWidget);
     expect(find.text('克苏鲁'), findsWidgets);
     expect(find.text('西幻'), findsOneWidget);
-    expect(
-      find.byKey(const Key('source-detail-recommendations-scroll')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('source-detail-recommendations-refresh')),
-      findsOneWidget,
-    );
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/source_content_detail_compact_light.png'),
-    );
+    expect(find.byKey(const Key('source-detail-recommendations-scroll')), findsOneWidget);
+    expect(find.byKey(const Key('source-detail-recommendations-refresh')), findsOneWidget);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/source_content_detail_compact_light.png'));
   });
 
-  testWidgets(
-    'formats numeric source stats without duplicating the word label',
-    (WidgetTester tester) async {
-      await _setViewport(tester, const Size(390, 900));
-      await tester.pumpWidget(const _DetailGoldenHost());
-      await tester.pumpAndSettle();
+  testWidgets('formats numeric source stats without duplicating the word label', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 900));
+    await tester.pumpWidget(const _DetailGoldenHost());
+    await tester.pumpAndSettle();
 
-      expect(find.text('1.22万'), findsOneWidget);
-      expect(find.text('185.96万'), findsOneWidget);
-      expect(find.text('字数：1859600'), findsNothing);
-    },
-  );
+    expect(find.text('1.22万'), findsOneWidget);
+    expect(find.text('185.96万'), findsOneWidget);
+    expect(find.text('字数：1859600'), findsNothing);
+  });
 
-  testWidgets('uses the complete catalog length as the chapter count', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('uses the complete catalog length as the chapter count', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_DetailGoldenHost(gateway: _GoldenDetailGateway()));
     await tester.pumpAndSettle();
@@ -86,9 +59,27 @@ void main() {
     expect(find.text('共 4 章', skipOffstage: false), findsOneWidget);
   });
 
-  testWidgets('reveals more chapters locally without another source request', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('allows a mouse drag to scroll detail recommendations on desktop', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 900));
+    await tester.pumpWidget(const _DetailGoldenHost(useReference: true));
+    await tester.pumpAndSettle();
+
+    final recommendations = find.byKey(const Key('source-detail-recommendations-scroll'));
+    await tester.scrollUntilVisible(recommendations, 280, scrollable: _detailVerticalScrollableFinder());
+    await tester.ensureVisible(recommendations);
+    await tester.pumpAndSettle();
+    final horizontalScrollable = find.descendant(of: recommendations, matching: find.byType(Scrollable));
+    final state = tester.state<ScrollableState>(horizontalScrollable);
+    expect(state.position.maxScrollExtent, greaterThan(0));
+    expect(state.position.pixels, 0);
+
+    await tester.drag(horizontalScrollable, const Offset(-160, 0), kind: PointerDeviceKind.mouse);
+    await tester.pumpAndSettle();
+
+    expect(state.position.pixels, greaterThan(0));
+  });
+
+  testWidgets('reveals more chapters locally without another source request', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     final gateway = _GoldenDetailGateway(catalogItemCount: 22);
     await tester.pumpWidget(_DetailGoldenHost(gateway: gateway));
@@ -97,14 +88,9 @@ void main() {
     await tester.scrollUntilVisible(
       find.byKey(const Key('source-detail-load-more-chapters')),
       280,
-      scrollable: find.descendant(
-        of: find.byKey(const Key('source-content-detail-sheet')),
-        matching: _detailVerticalScrollableFinder(),
-      ),
+      scrollable: find.descendant(of: find.byKey(const Key('source-content-detail-sheet')), matching: _detailVerticalScrollableFinder()),
     );
-    await tester.ensureVisible(
-      find.byKey(const Key('source-detail-load-more-chapters')),
-    );
+    await tester.ensureVisible(find.byKey(const Key('source-detail-load-more-chapters')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('source-detail-load-more-chapters')));
     await tester.pumpAndSettle();
@@ -114,9 +100,7 @@ void main() {
     expect(gateway.chapterRequests, 1);
   });
 
-  testWidgets('keeps the list summary visible while detail data is loading', (
-    tester,
-  ) async {
+  testWidgets('keeps the list summary visible while detail data is loading', (tester) async {
     await _setViewport(tester, const Size(390, 900));
     final gateway = _DelayedDetailGateway();
     await tester.pumpWidget(_DetailGoldenHost(gateway: gateway));
@@ -125,14 +109,7 @@ void main() {
 
     expect(find.text('变身绝色女神（ai加料）'), findsWidgets);
     expect(find.text('加载中'), findsOneWidget);
-    expect(
-      tester
-          .widget<FilledButton>(
-            find.byKey(const Key('source-detail-start-reading')),
-          )
-          .onPressed,
-      isNull,
-    );
+    expect(tester.widget<FilledButton>(find.byKey(const Key('source-detail-start-reading'))).onPressed, isNull);
 
     gateway.complete();
     await tester.pumpAndSettle();
@@ -140,14 +117,10 @@ void main() {
     expect(find.text('加载中'), findsNothing);
   });
 
-  testWidgets('uses a compact shimmering detail skeleton before a summary exists', (
-    tester,
-  ) async {
+  testWidgets('uses a compact shimmering detail skeleton before a summary exists', (tester) async {
     await _setViewport(tester, const Size(390, 900));
     final gateway = _DelayedDetailGateway();
-    await tester.pumpWidget(
-      _DetailGoldenHost(gateway: gateway, includeInitialContent: false),
-    );
+    await tester.pumpWidget(_DetailGoldenHost(gateway: gateway, includeInitialContent: false));
     await tester.pump();
     await tester.pump();
 
@@ -161,17 +134,11 @@ void main() {
   });
 }
 
-Finder _detailVerticalScrollableFinder() => find.byWidgetPredicate(
-  (Widget widget) =>
-      widget is Scrollable && widget.axisDirection == AxisDirection.down,
-);
+Finder _detailVerticalScrollableFinder() =>
+    find.byWidgetPredicate((Widget widget) => widget is Scrollable && widget.axisDirection == AxisDirection.down);
 
 class _DetailGoldenHost extends StatelessWidget {
-  const _DetailGoldenHost({
-    this.gateway,
-    this.useReference = false,
-    this.includeInitialContent = true,
-  });
+  const _DetailGoldenHost({this.gateway, this.useReference = false, this.includeInitialContent = true});
 
   final _GoldenDetailGateway? gateway;
   final bool useReference;
@@ -185,10 +152,7 @@ class _DetailGoldenHost extends StatelessWidget {
     builder: (BuildContext context, Widget? child) {
       final MediaQueryData mediaQuery = MediaQuery.of(context);
       return MediaQuery(
-        data: mediaQuery.copyWith(
-          padding: const EdgeInsets.only(top: 24),
-          viewPadding: const EdgeInsets.only(top: 24),
-        ),
+        data: mediaQuery.copyWith(padding: const EdgeInsets.only(top: 24), viewPadding: const EdgeInsets.only(top: 24)),
         child: child ?? const SizedBox.shrink(),
       );
     },
@@ -200,10 +164,7 @@ class _DetailGoldenHost extends StatelessWidget {
 }
 
 class _DetailEntry extends StatefulWidget {
-  const _DetailEntry({
-    required this.gateway,
-    required this.includeInitialContent,
-  });
+  const _DetailEntry({required this.gateway, required this.includeInitialContent});
 
   final _GoldenDetailGateway gateway;
   final bool includeInitialContent;
@@ -224,12 +185,8 @@ class _DetailEntryState extends State<_DetailEntry> {
           gateway: widget.gateway,
           pluginId: widget.gateway.pluginId,
           id: widget.gateway.bookId,
-          initialContent: widget.includeInitialContent
-              ? widget.gateway.detail.summary
-              : null,
-          initialSourceName: widget.includeInitialContent
-              ? widget.gateway.detail.sourceName
-              : null,
+          initialContent: widget.includeInitialContent ? widget.gateway.detail.summary : null,
+          initialSourceName: widget.includeInitialContent ? widget.gateway.detail.sourceName : null,
           relatedContents: widget.gateway.recommendations,
           onExternalUrlRequested: (_) async => true,
         ),
@@ -248,34 +205,19 @@ class _GoldenDetailGateway implements SourceContentGateway {
   final int? catalogItemCount;
   var chapterRequests = 0;
 
-  String get pluginId => useReference
-      ? AliceBookHouseDetailFixture.referencePluginId
-      : AliceBookHouseDetailFixture.pluginId;
-  String get bookId => useReference
-      ? AliceBookHouseDetailFixture.referenceBookId
-      : AliceBookHouseDetailFixture.bookId;
-  PluginContentDetail get detail => useReference
-      ? AliceBookHouseDetailFixture.referenceDetail
-      : AliceBookHouseDetailFixture.detail;
-  List<PluginContentSummary> get recommendations => useReference
-      ? AliceBookHouseDetailFixture.referenceRecommendations
-      : AliceBookHouseDetailFixture.recommendations;
+  String get pluginId => useReference ? AliceBookHouseDetailFixture.referencePluginId : AliceBookHouseDetailFixture.pluginId;
+  String get bookId => useReference ? AliceBookHouseDetailFixture.referenceBookId : AliceBookHouseDetailFixture.bookId;
+  PluginContentDetail get detail => useReference ? AliceBookHouseDetailFixture.referenceDetail : AliceBookHouseDetailFixture.detail;
+  List<PluginContentSummary> get recommendations =>
+      useReference ? AliceBookHouseDetailFixture.referenceRecommendations : AliceBookHouseDetailFixture.recommendations;
 
   @override
-  Future<PluginContentDetail> getDetail({
-    required String pluginId,
-    required String id,
-  }) async => detail;
+  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async => detail;
 
   @override
-  Future<PluginChaptersResult> getChapters({
-    required String pluginId,
-    required String id,
-  }) async {
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async {
     chapterRequests += 1;
-    final base = useReference
-        ? AliceBookHouseDetailFixture.referenceCatalog
-        : AliceBookHouseDetailFixture.firstCatalogPage;
+    final base = useReference ? AliceBookHouseDetailFixture.referenceCatalog : AliceBookHouseDetailFixture.firstCatalogPage;
     final count = catalogItemCount;
     if (count == null || count <= base.items.length) return base;
     return PluginChaptersResult(
@@ -300,23 +242,15 @@ class _GoldenDetailGateway implements SourceContentGateway {
   }
 
   @override
-  Future<List<PluginSourceDescriptor>> listSources() async =>
+  Future<List<PluginSourceDescriptor>> listSources() async => throw UnimplementedError();
+
+  @override
+  Future<PluginSearchResult> search({required String pluginId, required String query, String? cursor, int pageSize = 20}) async =>
       throw UnimplementedError();
 
   @override
-  Future<PluginSearchResult> search({
-    required String pluginId,
-    required String query,
-    String? cursor,
-    int pageSize = 20,
-  }) async => throw UnimplementedError();
-
-  @override
-  Future<PluginSearchSuggestionsResult> searchSuggestions({
-    required String pluginId,
-    String? cursor,
-    int pageSize = 20,
-  }) async => throw UnimplementedError();
+  Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) async =>
+      throw UnimplementedError();
 
   @override
   Future<PluginDiscoverResult> discover({
@@ -328,32 +262,21 @@ class _GoldenDetailGateway implements SourceContentGateway {
   }) async => throw UnimplementedError();
 
   @override
-  Future<PluginChapterContent> getContent({
-    required String pluginId,
-    required String id,
-    required String chapterId,
-  }) async => throw UnimplementedError();
+  Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async =>
+      throw UnimplementedError();
 }
 
 final class _DelayedDetailGateway extends _GoldenDetailGateway {
   _DelayedDetailGateway() : super();
 
-  final Completer<PluginContentDetail> _detail =
-      Completer<PluginContentDetail>();
-  final Completer<PluginChaptersResult> _chapters =
-      Completer<PluginChaptersResult>();
+  final Completer<PluginContentDetail> _detail = Completer<PluginContentDetail>();
+  final Completer<PluginChaptersResult> _chapters = Completer<PluginChaptersResult>();
 
   @override
-  Future<PluginContentDetail> getDetail({
-    required String pluginId,
-    required String id,
-  }) => _detail.future;
+  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) => _detail.future;
 
   @override
-  Future<PluginChaptersResult> getChapters({
-    required String pluginId,
-    required String id,
-  }) => _chapters.future;
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) => _chapters.future;
 
   void complete() {
     _detail.complete(detail);

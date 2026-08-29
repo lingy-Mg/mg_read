@@ -287,19 +287,30 @@ class _RecommendationsSectionState extends State<_RecommendationsSection> {
         SizedBox(
           key: const Key('source-detail-recommendations-scroll'),
           height: 194,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            physics: const ClampingScrollPhysics(),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: _visibleCandidates
-                  .map(
-                    (item) => Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: _RecommendationCard(content: item),
-                    ),
-                  )
-                  .toList(growable: false),
+          child: ScrollConfiguration(
+            behavior: ScrollConfiguration.of(context).copyWith(
+              dragDevices: const <PointerDeviceKind>{
+                PointerDeviceKind.touch,
+                PointerDeviceKind.mouse,
+                PointerDeviceKind.stylus,
+                PointerDeviceKind.invertedStylus,
+                PointerDeviceKind.trackpad,
+              },
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const ClampingScrollPhysics(),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: _visibleCandidates
+                    .map(
+                      (item) => Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: _RecommendationCard(content: item),
+                      ),
+                    )
+                    .toList(growable: false),
+              ),
             ),
           ),
         ),
@@ -426,8 +437,9 @@ Future<void> _openTextChapter(
       await _showChapterContent(context, gateway: gateway, pluginId: detail.pluginId, id: detail.summary.id, chapter: chapter);
       return;
     }
+    final entryCoverBytes = _resolvedEntryCoverBytes(context, detail.summary);
     Navigator.of(context).pop();
-    await callback(detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
+    await callback(detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter, entryCoverBytes: entryCoverBytes);
     return;
   }
   final callback = onTextChapterRequested;
@@ -435,8 +447,18 @@ Future<void> _openTextChapter(
     await _showChapterContent(context, gateway: gateway, pluginId: detail.pluginId, id: detail.summary.id, chapter: chapter);
     return;
   }
+  final entryCoverBytes = _resolvedEntryCoverBytes(context, detail.summary);
   Navigator.of(context).pop();
-  await callback(detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
+  await callback(detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter, entryCoverBytes: entryCoverBytes);
+}
+
+List<int>? _resolvedEntryCoverBytes(BuildContext context, PluginContentSummary content) {
+  final supplied = content.coverBytes;
+  if (supplied != null && supplied.isNotEmpty) return supplied;
+  final coverUrl = content.coverUrl;
+  final scope = context.getInheritedWidgetOfExactType<BookCoverSourceScope>();
+  if (coverUrl == null || scope == null) return null;
+  return BookCoverMemoryCache.peek(scope.requestFor(remoteContentId: content.id, coverUrl: coverUrl));
 }
 
 Future<void> _showChapterContent(

@@ -7,11 +7,13 @@
 /// - 不要在 build() 中执行 Runtime、网络或磁盘 IO。
 /// - 异步加载必须由页面状态持有请求世代，并保留稳定 Key 与书架乐观更新语义。
 /// - 详情只复用发现页顶部栏，不显示顶级书源选择。
+/// - 横向推荐列表允许触摸、手写笔、触控板和鼠标直接拖动。
 library;
 
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -33,6 +35,7 @@ typedef SourceTextChapterRequested =
       required PluginContentDetail detail,
       required PluginChaptersResult firstCatalogPage,
       required PluginChapterSummary chapter,
+      required List<int>? entryCoverBytes,
     });
 
 typedef SourceComicChapterRequested =
@@ -40,6 +43,7 @@ typedef SourceComicChapterRequested =
       required PluginContentDetail detail,
       required PluginChaptersResult firstCatalogPage,
       required PluginChapterSummary chapter,
+      required List<int>? entryCoverBytes,
     });
 
 typedef SourceExternalUrlLauncher = Future<bool> Function(Uri url);
@@ -271,7 +275,12 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                   ),
                 ),
               Padding(
-                padding: EdgeInsets.symmetric(horizontal: AppSpacing.discoveryPagePadding, vertical: AppSpacing.pageHeaderTopPadding),
+                padding: EdgeInsets.fromLTRB(
+                  AppSpacing.discoveryPagePadding,
+                  AppSpacing.pageHeaderTopPaddingFor(context),
+                  AppSpacing.discoveryPagePadding,
+                  AppSpacing.pageHeaderTopPadding,
+                ),
                 child: _DetailHeader(isModalSheet: widget.isModalSheet),
               ),
               Expanded(

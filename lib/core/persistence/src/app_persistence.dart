@@ -190,6 +190,9 @@ final class ContentObjectStore {
     await root.create(recursive: true);
     final path = '${root.path}${Platform.pathSeparator}content.sqlite';
     final db = _ContentDatabase(NativeDatabase.createInBackground(File(path)));
+    await db.customStatement('PRAGMA journal_mode=WAL');
+    await db.customStatement('PRAGMA synchronous=NORMAL');
+    await db.customStatement('PRAGMA busy_timeout=2000');
     await db.customStatement(
       'CREATE TABLE IF NOT EXISTS content_objects (object_id TEXT PRIMARY KEY NOT NULL, content_kind TEXT NOT NULL, object_type TEXT NOT NULL, generation INTEGER NOT NULL, payload TEXT NOT NULL, byte_length INTEGER NOT NULL, created_at_utc INTEGER NOT NULL)',
     );
@@ -216,6 +219,30 @@ final class ContentObjectStore {
     countResult: (result) => result == null ? 0 : 1,
     bytes: (result) => result?.byteLength,
   );
+
+  Future<ContentObjectPage> listInfo({String? afterObjectId, int limit = 500}) => _instrument(
+    operation: 'listInfo',
+    count: limit,
+    action: () => _listInfo(afterObjectId: afterObjectId, limit: limit),
+    countResult: (result) => result.objects.length,
+  );
+
+  Future<int> deleteMany(Iterable<String> objectIds) {
+    final copied = objectIds.toSet();
+    return _instrument(
+      operation: 'deleteMany',
+      count: copied.length,
+      action: () => _deleteMany(copied),
+      countResult: (result) => result,
+    );
+  }
+
+  Future<DatabaseStorageStats> storageStats() => _instrument(
+    operation: 'storageStats',
+    action: _storageStats,
+  );
+
+  Future<void> compact() => _instrument(operation: 'compact', action: _compact);
 
   Future<void> close() => _lifecycle.close(() {
     final diagnostics = _diagnostics;
@@ -267,6 +294,68 @@ final class ContentObjectStore {
       payload: r['payload'] as String,
       byteLength: r['byte_length'] as int,
     );
+  }
+
+  Future<ContentObjectPage> _listInfo({required String? afterObjectId, required int limit}) async {
+    _ensureOpen();
+    if (limit < 1 || limit > 1000) throw ArgumentError.value(limit, 'limit');
+    final rows = await _database.customSelect(
+      'SELECT object_id, byte_length FROM content_objects '
+      '${afterObjectId == null ? '' : 'WHERE object_id > ? '}ORDER BY object_id ASC LIMIT ?',
+      variables: <Variable<Object>>[
+        if (afterObjectId != null) Variable.withString(afterObjectId),
+        Variable.withInt(limit + 1),
+      ],
+    ).get();
+    final hasMore = rows.length > limit;
+    final objects = <StoredContentObjectInfo>[
+      for (final row in rows.take(limit))
+        StoredContentObjectInfo(
+          objectId: row.data['object_id'] as String,
+          byteLength: row.data['byte_length'] as int,
+        ),
+    ];
+    return ContentObjectPage(
+      objects: List<StoredContentObjectInfo>.unmodifiable(objects),
+      nextObjectId: hasMore && objects.isNotEmpty ? objects.last.objectId : null,
+    );
+  }
+
+  Future<int> _deleteMany(Set<String> objectIds) async {
+    _ensureOpen();
+    if (objectIds.isEmpty) return 0;
+    if (objectIds.length > 500 || objectIds.any((id) => id.isEmpty)) {
+      throw ArgumentError.value(objectIds.length, 'objectIds');
+    }
+    final placeholders = List<String>.filled(objectIds.length, '?').join(', ');
+    return _database.customUpdate(
+      'DELETE FROM content_objects WHERE object_id IN ($placeholders)',
+      variables: <Variable<Object>>[for (final id in objectIds) Variable.withString(id)],
+      updates: const <TableUpdate>{},
+    );
+  }
+
+  Future<DatabaseStorageStats> _storageStats() async {
+    _ensureOpen();
+    final pageCount = await _pragmaInt('page_count');
+    final freePages = await _pragmaInt('freelist_count');
+    final pageSize = await _pragmaInt('page_size');
+    return DatabaseStorageStats(
+      allocatedBytes: pageCount * pageSize,
+      reclaimableBytes: freePages * pageSize,
+    );
+  }
+
+  Future<void> _compact() async {
+    _ensureOpen();
+    await _database.customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
+    await _database.customStatement('VACUUM');
+    await _database.customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
+  }
+
+  Future<int> _pragmaInt(String pragma) async {
+    final row = await _database.customSelect('PRAGMA $pragma').getSingle();
+    return row.data.values.single as int;
   }
 
   Future<void> _close() async {
@@ -323,6 +412,20 @@ final class StoredContentObject {
   });
   final String objectId, contentKind, objectType, payload;
   final int generation, byteLength;
+}
+
+final class StoredContentObjectInfo {
+  const StoredContentObjectInfo({required this.objectId, required this.byteLength});
+
+  final String objectId;
+  final int byteLength;
+}
+
+final class ContentObjectPage {
+  const ContentObjectPage({required this.objects, this.nextObjectId});
+
+  final List<StoredContentObjectInfo> objects;
+  final String? nextObjectId;
 }
 
 DiagnosticObjectValue _storeAttributes(String store, {String? errorCode}) => DiagnosticObjectValue(<String, DiagnosticValue>{

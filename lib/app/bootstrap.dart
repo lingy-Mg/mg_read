@@ -42,6 +42,7 @@ import 'package:mg_read/features/profile/application/profile_reading_stats_loade
 import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
+import 'package:mg_read/features/reader/application/chapter_cache_task_controller.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/cache/application/cover_cache_manager.dart';
 import 'package:mg_read/features/cache/data/content_library_cover_cache_gateway.dart';
@@ -252,7 +253,13 @@ Future<void> bootstrapMgReadApp({
           mangaImageCacheGatewayProvider.overrideWithValue(ContentLibraryMangaImageCacheGateway(getLibrary)),
         if (contentLibrary != null || contentLibraryFactory != null)
           libraryReaderLauncherProvider.overrideWith(
-            (ref) => DeferredLibraryReaderLauncher(getLibrary, ref.read(sourceContentGatewayProvider), diagnostics, resolvedManager),
+            (ref) => DeferredLibraryReaderLauncher(
+              getLibrary,
+              ref.read(sourceContentGatewayProvider),
+              diagnostics,
+              resolvedManager,
+              ref.read(chapterCacheTaskControllerProvider.notifier),
+            ),
           ),
       ],
       child: AppSettingsLifecycleHost(

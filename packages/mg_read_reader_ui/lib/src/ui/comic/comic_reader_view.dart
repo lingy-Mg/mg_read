@@ -3,6 +3,7 @@
 /// 职责：
 /// - 协调漫画章节窗口、图片缓存、语义进度和阅读器 chrome。
 /// - 通过宿主端口获取内容并维护有限的相邻章节资源。
+/// - 为漫画内容提供固定白色底层，并让触控与桌面鼠标共享纵向拖动语义。
 ///
 /// 注意：
 /// - 不直接访问网络、文件或数据库；异步结果必须验证会话世代。
@@ -14,6 +15,7 @@ library;
 
 import 'dart:async';
 import 'dart:collection';
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -305,7 +307,7 @@ class _ComicReaderViewState extends State<ComicReaderView> {
             autofocus: true,
             onKeyEvent: _handleKeyEvent,
             child: Scaffold(
-              backgroundColor: const Color(0xFF101112),
+              backgroundColor: Colors.white,
               body: LayoutBuilder(
                 builder: (BuildContext context, BoxConstraints constraints) {
                   final double previousWidth = _viewportWidth;
@@ -334,7 +336,10 @@ class _ComicReaderViewState extends State<ComicReaderView> {
                   return Stack(
                     fit: StackFit.expand,
                     children: <Widget>[
-                      _buildReadingSurface(palette),
+                      ColoredBox(
+                        color: Colors.white,
+                        child: _buildReadingSurface(palette),
+                      ),
                       IgnorePointer(
                         child: ColoredBox(
                           color: Colors.black.withValues(

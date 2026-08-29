@@ -9,17 +9,12 @@ import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.d
 void main() {
   setUpAll(() async {
     final FontLoader miSans = FontLoader('packages/novel_reader_ui/MiSans')
-      ..addFont(
-        rootBundle.load('packages/novel_reader_ui/assets/fonts/MiSansVF.ttf'),
-      );
-    final FontLoader materialIcons = FontLoader('MaterialIcons')
-      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+      ..addFont(rootBundle.load('packages/novel_reader_ui/assets/fonts/MiSansVF.ttf'));
+    final FontLoader materialIcons = FontLoader('MaterialIcons')..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await Future.wait(<Future<void>>[miSans.load(), materialIcons.load()]);
   });
 
-  testWidgets('matches the compact light discovery list reference', (
-    tester,
-  ) async {
+  testWidgets('matches the compact light discovery list reference', (tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(const _GoldenHost());
     await tester.pumpAndSettle();
@@ -28,10 +23,7 @@ void main() {
     expect(find.byIcon(Icons.add_rounded), findsNothing);
     expect(find.text('加入书架'), findsNothing);
     expect(find.byType(OutlinedButton), findsNothing);
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/runtime_discovery_list_compact_light.png'),
-    );
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/runtime_discovery_list_compact_light.png'));
   });
 
   testWidgets('matches the wide discovery list proportions', (tester) async {
@@ -39,15 +31,10 @@ void main() {
     await tester.pumpWidget(const _GoldenHost());
     await tester.pumpAndSettle();
 
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/runtime_discovery_list_wide_light.png'),
-    );
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/runtime_discovery_list_wide_light.png'));
   });
 
-  testWidgets('renders the source row while discovery content is loading', (
-    tester,
-  ) async {
+  testWidgets('renders the source row while discovery content is loading', (tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(const _GoldenHost(loading: true));
 
@@ -70,10 +57,7 @@ class _GoldenHost extends StatelessWidget {
     builder: (context, child) {
       final mediaQuery = MediaQuery.of(context);
       return MediaQuery(
-        data: mediaQuery.copyWith(
-          padding: const EdgeInsets.only(top: 24),
-          viewPadding: const EdgeInsets.only(top: 24),
-        ),
+        data: mediaQuery.copyWith(padding: const EdgeInsets.only(top: 24), viewPadding: const EdgeInsets.only(top: 24)),
         child: child ?? const SizedBox.shrink(),
       );
     },
@@ -88,7 +72,8 @@ class _GoldenHost extends StatelessWidget {
       onContentPressed: (_) {},
       onRefreshRequested: () {},
       onLoadMore: (_) {},
-      canNavigateBack: true,
+      canNavigateBack: !loading,
+      navigationDepth: loading ? 0 : 1,
       onBackRequested: () {},
       loadingCollectionId: null,
     ),
@@ -227,13 +212,7 @@ PluginDiscoveryContentItem _item({
     latestChapter: null,
     categories: <String>[category],
     tags: tags,
-    attributes: <PluginContentAttribute>[
-      PluginContentAttribute(
-        key: 'discoveryUpdatedLabel',
-        label: '更新时间',
-        value: update,
-      ),
-    ],
+    attributes: <PluginContentAttribute>[PluginContentAttribute(key: 'discoveryUpdatedLabel', label: '更新时间', value: update)],
   ),
   rank: null,
   metric: PluginDiscoveryMetric(label: '热度', value: heat),

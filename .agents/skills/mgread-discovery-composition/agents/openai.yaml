@@ -1,4 +1,0 @@
-interface:
-  display_name: "MgRead 发现组合开发"
-  short_description: "开发书源驱动的发现组件、组合布局、跨层契约与语义图标系统"
-  default_prompt: "Use $mgread-discovery-composition to implement or revise this MgRead discovery composition change across the required layers."

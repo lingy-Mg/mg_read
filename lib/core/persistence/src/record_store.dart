@@ -63,6 +63,9 @@ final class PersistenceRecordStore {
       await dataRoot.create(recursive: true);
       final path = '${dataRoot.path}${Platform.pathSeparator}app_metadata.sqlite';
       final database = _PersistenceDatabase(NativeDatabase.createInBackground(File(path)));
+      await database.customStatement('PRAGMA journal_mode=WAL');
+      await database.customStatement('PRAGMA synchronous=NORMAL');
+      await database.customStatement('PRAGMA busy_timeout=2000');
       await database.customStatement('''
       CREATE TABLE IF NOT EXISTS metadata_records (
         record_id TEXT PRIMARY KEY NOT NULL,
@@ -193,6 +196,17 @@ final class PersistenceRecordStore {
     count: 1,
     action: () => _delete(previous: previous),
   );
+
+  /// Deletes a bounded set of records with one revision-checked SQL statement.
+  Future<void> deleteBatch(List<RecordEnvelope> previous) {
+    final copied = List<RecordEnvelope>.of(previous);
+    return _instrument(
+      operation: 'deleteBatch',
+      recordKind: _singleRecordKind(copied.map((record) => record.recordKind)),
+      count: copied.length,
+      action: () => _deleteBatch(copied),
+    );
+  }
 
   Future<void> createBatch(List<RecordDraft> drafts) {
     final copied = List<RecordDraft>.of(drafts);
@@ -445,6 +459,38 @@ final class PersistenceRecordStore {
     if (affected != 1) throw const PersistenceConflictError();
   }
 
+  Future<void> _deleteBatch(List<RecordEnvelope> previous) async {
+    _ensureOpen();
+    _validateWriteBatchSize(previous.length);
+    if (previous.isEmpty) return;
+    final identities = <(String, ScopeKey)>{};
+    for (final record in previous) {
+      if (record.id.isEmpty || record.scope.kind.isEmpty || record.scope.id.isEmpty || record.revision < 1) {
+        throw const PersistenceValidationError('CAS deletes require valid IDs, scope, and revision.');
+      }
+      if (!identities.add((record.id, record.scope))) {
+        throw const PersistenceValidationError('A CAS delete batch cannot contain the same record twice.');
+      }
+    }
+    final where = List<String>.filled(
+      previous.length,
+      '(record_id = ? AND scope_kind = ? AND scope_id = ? AND revision = ?)',
+    ).join(' OR ');
+    final affected = await _database.customUpdate(
+      'DELETE FROM metadata_records WHERE $where',
+      variables: <Variable<Object>>[
+        for (final record in previous) ...<Variable<Object>>[
+          Variable.withString(record.id),
+          Variable.withString(record.scope.kind),
+          Variable.withString(record.scope.id),
+          Variable.withInt(record.revision),
+        ],
+      ],
+      updates: const <TableUpdate>{},
+    );
+    if (affected != previous.length) throw const PersistenceConflictError();
+  }
+
   Future<void> _createBatch(List<RecordDraft> drafts) async {
     _ensureOpen();
     _validateWriteBatchSize(drafts.length);
@@ -466,9 +512,9 @@ final class PersistenceRecordStore {
       );
     });
     try {
-      await _database.transaction(() async {
+      await _database.batch((batch) {
         for (final draft in prepared) {
-          await _insertPreparedDraft(draft);
+          batch.customStatement(_insertMetadataRecordSql, _preparedDraftArguments(draft));
         }
       });
     } catch (error) {
@@ -642,6 +688,35 @@ final class PersistenceRecordStore {
     }
   }
 
+  Future<DatabaseStorageStats> storageStats() => _instrument(
+    operation: 'storageStats',
+    action: () async {
+      _ensureOpen();
+      final pageCount = await _pragmaInt('page_count');
+      final freePages = await _pragmaInt('freelist_count');
+      final pageSize = await _pragmaInt('page_size');
+      return DatabaseStorageStats(
+        allocatedBytes: pageCount * pageSize,
+        reclaimableBytes: freePages * pageSize,
+      );
+    },
+  );
+
+  Future<void> compact() => _instrument(
+    operation: 'compact',
+    action: () async {
+      _ensureOpen();
+      await _database.customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
+      await _database.customStatement('VACUUM');
+      await _database.customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
+    },
+  );
+
+  Future<int> _pragmaInt(String pragma) async {
+    final row = await _database.customSelect('PRAGMA $pragma').getSingle();
+    return row.data.values.single as int;
+  }
+
   Future<void> _close() async {
     if (_closed) return;
     _closed = true;
@@ -688,6 +763,13 @@ final class RecordReadBatchResult {
 
   final Map<String, RecordEnvelope> records;
   final Map<String, PersistenceError> failures;
+}
+
+final class DatabaseStorageStats {
+  const DatabaseStorageStats({required this.allocatedBytes, required this.reclaimableBytes});
+
+  final int allocatedBytes;
+  final int reclaimableBytes;
 }
 
 final class RecordDocumentWrite {

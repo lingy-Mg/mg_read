@@ -10,7 +10,7 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 
 void main() {
-  test('deferred launcher keeps novel and manga sessions typed', () async {
+  test('deferred launcher keeps novel and manga sessions typed and supplies the manga cover', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-launcher-');
     final library = await ContentLibrary.open(dataRoot: root);
     final diagnostics = DiagnosticsManager(
@@ -33,15 +33,23 @@ void main() {
         remoteContentId: 'novel',
       ),
     );
+    final mangaCoverUrl = Uri.parse('https://fixture.example/manga-cover.png');
     final manga = await library.bookshelf.addFromSource(
-      const BookshelfAddRequest(
+      BookshelfAddRequest(
         title: '测试漫画',
         author: null,
         kind: ContentKind.manga,
         pluginId: 'fixture',
         pluginVersion: '1',
         remoteContentId: 'manga',
+        coverUrl: mangaCoverUrl,
       ),
+    );
+    const mangaCoverBytes = <int>[1, 2, 3, 4];
+    await library.covers.save(
+      key: CoverKey(pluginId: 'fixture', pluginVersion: '1', remoteContentId: 'manga', coverUrl: mangaCoverUrl),
+      bytes: mangaCoverBytes,
+      mimeType: 'image/png',
     );
     final launcher = DeferredLibraryReaderLauncher(() async => library, const _Gateway(), diagnostics);
 
@@ -50,6 +58,7 @@ void main() {
 
     expect(novelRequest, isA<NovelReaderLaunchRequest>());
     expect(mangaRequest, isA<ComicReaderLaunchRequest>());
+    expect(mangaRequest.entryCoverBytes, mangaCoverBytes);
     expect(await launcher.warmLocal(novel.id.value), isA<NovelReaderLaunchRequest>());
     expect(await launcher.warmLocal(manga.id.value), isNull);
   });

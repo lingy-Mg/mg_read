@@ -180,6 +180,7 @@ void main() {
                     required detail,
                     required firstCatalogPage,
                     required chapter,
+                    required entryCoverBytes,
                   }) async {
                     requestedDetail = detail;
                     requestedCatalog = firstCatalogPage;

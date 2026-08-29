@@ -6,11 +6,12 @@ import '../reader_strings.dart';
 import '../reader_theme.dart';
 import 'reader_settings_tokens.dart';
 
-/// A horizontal settings rail that maps the mouse wheel to horizontal motion.
+/// A horizontal settings rail with complete desktop and touch navigation.
 ///
 /// Windows precision wheels may report either vertical or horizontal deltas;
 /// the dominant axis is used so the same control works with a mouse wheel and
-/// a trackpad without changing the touch interaction.
+/// a trackpad. Mouse is also added to the inherited drag devices so a desktop
+/// user can hold and drag the rail without changing touch interaction.
 class ReaderSettingsHorizontalList extends StatefulWidget {
   const ReaderSettingsHorizontalList({
     super.key,
@@ -61,15 +62,24 @@ class _ReaderSettingsHorizontalListState
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
-      behavior: HitTestBehavior.opaque,
-      onPointerSignal: _handlePointerSignal,
-      child: ListView.separated(
-        controller: _controller,
-        scrollDirection: Axis.horizontal,
-        itemCount: widget.itemCount,
-        separatorBuilder: widget.separatorBuilder,
-        itemBuilder: widget.itemBuilder,
+    final ScrollBehavior inheritedBehavior = ScrollConfiguration.of(context);
+    return ScrollConfiguration(
+      behavior: inheritedBehavior.copyWith(
+        dragDevices: <PointerDeviceKind>{
+          ...inheritedBehavior.dragDevices,
+          PointerDeviceKind.mouse,
+        },
+      ),
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerSignal: _handlePointerSignal,
+        child: ListView.separated(
+          controller: _controller,
+          scrollDirection: Axis.horizontal,
+          itemCount: widget.itemCount,
+          separatorBuilder: widget.separatorBuilder,
+          itemBuilder: widget.itemBuilder,
+        ),
       ),
     );
   }
@@ -140,50 +150,50 @@ class ReaderSettingsCapsule extends StatelessWidget {
   Widget build(BuildContext context) {
     final Widget result = SizedBox(
       height: ReaderSettingsTokens.touchTarget,
-      child: Center(
-        child: Material(
-          color: Colors.transparent,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(
+          ReaderSettingsTokens.controlRadius + 4,
+        ),
+        child: InkWell(
           borderRadius: BorderRadius.circular(
             ReaderSettingsTokens.controlRadius + 4,
           ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(
-              ReaderSettingsTokens.controlRadius + 4,
-            ),
-            onTap: onTap,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                minHeight: ReaderSettingsTokens.controlHeight,
-              ),
-              child: Stack(
-                fit: StackFit.passthrough,
-                children: <Widget>[
-                  Positioned.fill(
-                    child: Ink(
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? ReaderSettingsTokens.selectedControl(palette)
-                            : ReaderSettingsTokens.mutedControl(palette),
-                        borderRadius: BorderRadius.circular(
-                          ReaderSettingsTokens.controlRadius,
-                        ),
-                      ),
+          onTap: onTap,
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              Positioned(
+                left: 0,
+                right: 0,
+                top:
+                    (ReaderSettingsTokens.touchTarget -
+                        ReaderSettingsTokens.controlHeight) /
+                    2,
+                height: ReaderSettingsTokens.controlHeight,
+                child: Ink(
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? ReaderSettingsTokens.selectedControl(palette)
+                        : ReaderSettingsTokens.mutedControl(palette),
+                    borderRadius: BorderRadius.circular(
+                      ReaderSettingsTokens.controlRadius,
                     ),
                   ),
-                  Padding(
-                    padding: padding,
-                    child: Center(
-                      child: DefaultTextStyle.merge(
-                        style: const TextStyle(
-                          fontSize: ReaderSettingsTokens.controlTextSize,
-                        ),
-                        child: child,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+              Padding(
+                padding: padding,
+                child: Center(
+                  child: DefaultTextStyle.merge(
+                    style: const TextStyle(
+                      fontSize: ReaderSettingsTokens.controlTextSize,
+                    ),
+                    child: child,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -492,6 +502,7 @@ class ReaderSettingsSubpageHeader extends StatelessWidget {
         IconButton(
           tooltip: ReaderStrings.back,
           onPressed: onBack,
+          iconSize: 18,
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
         ),
         const SizedBox(width: 2),
@@ -612,8 +623,8 @@ class _NavigationItem extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Icon(icon, size: 22, color: color),
-                const SizedBox(height: 2),
+                Icon(icon, size: 20, color: color),
+                const SizedBox(height: 1),
                 Text(
                   label,
                   style: TextStyle(

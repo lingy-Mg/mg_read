@@ -94,7 +94,12 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                         key: const Key('discovery-page-content'),
                         controller: _scrollController,
                         primary: false,
-                        padding: EdgeInsets.fromLTRB(pagePadding, AppSpacing.pageHeaderTopPadding, pagePadding, AppSpacing.page),
+                        padding: EdgeInsets.fromLTRB(
+                          pagePadding,
+                          AppSpacing.pageHeaderTopPaddingFor(context),
+                          pagePadding,
+                          AppSpacing.page,
+                        ),
                         children: <Widget>[
                           DiscoveryTopBar(
                             sourceName: _data.sourceName,
@@ -580,6 +585,8 @@ class DiscoveryHeroCard extends StatelessWidget {
                       title: data.title,
                       variant: data.coverVariant,
                       coverBytes: data.coverBytes,
+                      remoteContentId: data.remoteContentId,
+                      coverUrl: data.coverUrl,
                       width: AppSpacing.discoveryHeroCoverWidth,
                       height: AppSpacing.discoveryHeroCoverHeight,
                     ),

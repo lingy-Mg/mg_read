@@ -2,6 +2,7 @@
 ///
 /// 职责：
 /// - 分别展示和清理 Runtime 数据源网页/文件缓存、封面缓存与漫画正文图片缓存。
+/// - 为漫画正文图片缓存展示总量、逐漫画用量和旧缓存余量。
 /// - 为每类可再生缓存提供独立用量、失败重试和清理反馈。
 ///
 /// 注意：
@@ -14,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/cache/application/cover_cache_manager.dart';
+import 'package:mg_read/features/cache/presentation/manga_image_cache_breakdown_card.dart';
 import 'package:mg_read/features/plugins/application/plugin_cache_manager.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
@@ -279,7 +281,7 @@ class _MangaImageCacheSection extends StatelessWidget {
       children: <Widget>[
         _CacheSummaryCard(
           title: '漫画正文图片缓存',
-          description: '${_formatBytes(value.bytes)}。图片可按需重新下载，清理不影响书架、章节清单（manifest）、阅读进度和书签。',
+          description: '总计 ${_formatBytes(value.usage.totalBytes)}。图片可按需重新下载，清理不影响书架、章节清单（manifest）、阅读进度和书签。',
           trailing: value.isRefreshing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : null,
           action: FilledButton.tonalIcon(
             key: const Key('manga-image-cache-clear'),
@@ -290,6 +292,8 @@ class _MangaImageCacheSection extends StatelessWidget {
             label: Text(value.isClearing ? '正在清理' : '清理漫画正文图片缓存'),
           ),
         ),
+        const SizedBox(height: AppSpacing.compact),
+        MangaImageCacheBreakdownCard(usage: value.usage),
         if (value.feedback != null) ...<Widget>[
           const SizedBox(height: AppSpacing.compact),
           _CacheFeedbackCard(text: _mangaImageFeedbackText(value.feedback!)),

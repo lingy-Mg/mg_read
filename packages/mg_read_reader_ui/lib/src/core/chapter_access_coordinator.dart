@@ -37,12 +37,13 @@ class ReaderChapterAccessCoordinator extends ChangeNotifier {
   ReaderChapterStateCapability _capability;
   ReaderChapterAccessSnapshot _snapshot =
       const ReaderChapterAccessSnapshot.initial();
-  Map<String, ReaderChapterState> _baseStates =
-      const <String, ReaderChapterState>{};
+  final Map<String, ReaderChapterState> _baseStates =
+      <String, ReaderChapterState>{};
+  final Set<String> _cachedIds = <String>{};
+  final Set<String> _loadingIds = <String>{};
   final LinkedHashSet<String> _optimisticReadIds = LinkedHashSet<String>();
   final Map<String, Object> _markReadTokens = <String, Object>{};
   int _bindingGeneration = 0;
-  int _refreshGeneration = 0;
   bool _disposed = false;
 
   static const int maximumBatchSize = 200;
@@ -60,48 +61,51 @@ class ReaderChapterAccessCoordinator extends ChangeNotifier {
   }) {
     if (_bookId == bookId && identical(_capability, capability)) return;
     _bindingGeneration++;
-    _refreshGeneration++;
     _bookId = bookId;
     _capability = capability;
     _markReadTokens.clear();
-    _baseStates = const <String, ReaderChapterState>{};
+    _baseStates.clear();
+    _cachedIds.clear();
+    _loadingIds.clear();
     _optimisticReadIds.clear();
     _publish(const ReaderChapterAccessSnapshot.initial());
   }
 
-  Future<void> refresh(Iterable<String> chapterIds) async {
+  /// Refreshes chapter states while reusing coverage cached for this reader
+  /// session. Set [force] only for explicit retry or a real state-changing
+  /// event such as opening/downloading a chapter.
+  Future<void> refresh(
+    Iterable<String> chapterIds, {
+    bool force = false,
+  }) async {
     if (_disposed) return;
     final int bindingGeneration = _bindingGeneration;
-    final int refreshGeneration = ++_refreshGeneration;
     final String bookId = _bookId;
     final ReaderChapterStateCapability capability = _capability;
-    late final List<String> ids;
+    late final List<String> normalizedIds;
     try {
-      ids = _normalizeIds(chapterIds);
+      normalizedIds = _normalizeIds(chapterIds);
     } catch (error) {
-      if (!_isRefreshCurrent(
-        bindingGeneration,
-        refreshGeneration,
-        bookId,
-        capability,
-      )) {
-        return;
-      }
+      if (!_isCurrent(bindingGeneration, bookId, capability)) return;
       _publish(
         ReaderChapterAccessSnapshot(
           states: _effectiveStates(),
-          loading: false,
+          loading: _loadingIds.isNotEmpty,
           failure: error,
         ),
       );
       return;
     }
+    final List<String> ids = normalizedIds
+        .where(
+          (String id) =>
+              !_loadingIds.contains(id) && (force || !_cachedIds.contains(id)),
+        )
+        .toList(growable: false);
     if (ids.isEmpty) {
-      _baseStates = const <String, ReaderChapterState>{};
-      _optimisticReadIds.clear();
-      _publish(const ReaderChapterAccessSnapshot.initial());
       return;
     }
+    _loadingIds.addAll(ids);
     _publish(
       ReaderChapterAccessSnapshot(
         states: _effectiveStates(),
@@ -109,19 +113,14 @@ class ReaderChapterAccessCoordinator extends ChangeNotifier {
         failure: null,
       ),
     );
+    Map<String, ReaderChapterState>? validated;
+    Object? failure;
     try {
       final Map<String, ReaderChapterState> response = await capability
           .loadChapterStates(bookId, ids);
-      if (!_isRefreshCurrent(
-        bindingGeneration,
-        refreshGeneration,
-        bookId,
-        capability,
-      )) {
-        return;
-      }
+      if (!_isCurrent(bindingGeneration, bookId, capability)) return;
       final Set<String> requested = ids.toSet();
-      final Map<String, ReaderChapterState> validated =
+      final Map<String, ReaderChapterState> candidate =
           <String, ReaderChapterState>{};
       for (final MapEntry<String, ReaderChapterState> entry
           in response.entries) {
@@ -133,36 +132,34 @@ class ReaderChapterAccessCoordinator extends ChangeNotifier {
             'Chapter state response does not match the requested chapters.',
           );
         }
-        validated[entry.key] = entry.value;
+        candidate[entry.key] = entry.value;
       }
-      _baseStates = Map<String, ReaderChapterState>.unmodifiable(validated);
-      _optimisticReadIds.retainAll(requested);
-      for (final ReaderChapterState state in validated.values) {
-        if (state.hasBeenRead) _optimisticReadIds.remove(state.chapterId);
-      }
-      _publish(
-        ReaderChapterAccessSnapshot(
-          states: _effectiveStates(),
-          loading: false,
-          failure: null,
-        ),
-      );
+      validated = candidate;
     } catch (error) {
-      if (!_isRefreshCurrent(
-        bindingGeneration,
-        refreshGeneration,
-        bookId,
-        capability,
-      )) {
-        return;
+      failure = error;
+    } finally {
+      if (_isCurrent(bindingGeneration, bookId, capability)) {
+        _loadingIds.removeAll(ids);
+        // A failed automatic lookup is cached as covered as well. Reopening
+        // the catalog must not hammer the host; explicit retry uses force.
+        _cachedIds.addAll(ids);
+        if (validated != null) {
+          for (final String id in ids) {
+            _baseStates.remove(id);
+          }
+          _baseStates.addAll(validated);
+          for (final ReaderChapterState state in validated.values) {
+            if (state.hasBeenRead) _optimisticReadIds.remove(state.chapterId);
+          }
+        }
+        _publish(
+          ReaderChapterAccessSnapshot(
+            states: _effectiveStates(),
+            loading: _loadingIds.isNotEmpty,
+            failure: failure,
+          ),
+        );
       }
-      _publish(
-        ReaderChapterAccessSnapshot(
-          states: _effectiveStates(),
-          loading: false,
-          failure: error,
-        ),
-      );
     }
   }
 
@@ -258,15 +255,6 @@ class ReaderChapterAccessCoordinator extends ChangeNotifier {
       bookId == _bookId &&
       identical(capability, _capability);
 
-  bool _isRefreshCurrent(
-    int bindingGeneration,
-    int refreshGeneration,
-    String bookId,
-    ReaderChapterStateCapability capability,
-  ) =>
-      _isCurrent(bindingGeneration, bookId, capability) &&
-      refreshGeneration == _refreshGeneration;
-
   void _publish(ReaderChapterAccessSnapshot value) {
     if (_disposed) return;
     _snapshot = value;
@@ -278,10 +266,12 @@ class ReaderChapterAccessCoordinator extends ChangeNotifier {
     if (_disposed) return;
     _disposed = true;
     _bindingGeneration++;
-    _refreshGeneration++;
     _markReadTokens.clear();
-    _baseStates = const <String, ReaderChapterState>{};
+    _baseStates.clear();
+    _cachedIds.clear();
+    _loadingIds.clear();
     _optimisticReadIds.clear();
+    _snapshot = const ReaderChapterAccessSnapshot.initial();
     super.dispose();
   }
 }

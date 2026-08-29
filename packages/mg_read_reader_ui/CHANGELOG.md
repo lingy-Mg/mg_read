@@ -1,5 +1,8 @@
 ## Unreleased
 
+* Added an optional host-owned chapter-cache task capability and a wide reader overflow dialog with a whole-book-bounded chapter slider plus inline concurrency and delay controls; already-persisted chapters skip request delays, and the reader still performs no network or persistent-cache I/O.
+* Horizontal text pages now move their selected background treatment together with the page content for slide, cover, and simulated page-curl transitions.
+* Text reader content now defaults to an 8dp top margin after the system safe area; explicitly supplied or persisted larger margins remain unchanged.
 * Text reader preferences now persist the last non-night theme so returning
   from night mode restores the user's previous light theme; hosts may omit this
   field and readers will default it to `day`.

@@ -122,19 +122,30 @@ void main() {
     expect(observer.exitRequests, 1);
   });
 
-  testWidgets('comic initial image failure stays local to the image tile', (WidgetTester tester) async {
+  testWidgets('comic loading renders the supplied real cover bytes', (WidgetTester tester) async {
+    final source = _ControlledComicDataSource();
+    await tester.pumpWidget(_readerApp(_comicRequest(dataSource: source, coverBytes: _onePixelPng)));
+    await tester.pump();
+
+    expect(find.byWidgetPredicate((Widget widget) => widget is Image && widget.image is MemoryImage), findsOneWidget);
+    expect(find.byKey(const Key('reader-entry-back')), findsOneWidget);
+
+    source.completeImage();
+  });
+
+  testWidgets('comic initial image failure keeps the real cover until retry succeeds', (WidgetTester tester) async {
     final source = _FailThenSucceedComicDataSource();
     final observer = _RecordingComicObserver();
-    await tester.pumpWidget(_readerApp(_comicRequest(dataSource: source, observer: observer)));
+    await tester.pumpWidget(_readerApp(_comicRequest(dataSource: source, observer: observer, coverBytes: _onePixelPng)));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('reader-entry-retry')), findsNothing);
-    expect(find.text('正文暂时无法打开'), findsNothing);
-    expect(find.byKey(const ValueKey<String>('comic-reader-image-retry-comic-chapter-1-comic-image-1')), findsOneWidget);
+    expect(find.byKey(const Key('reader-entry-retry')), findsOneWidget);
+    expect(find.text('正文暂时无法打开'), findsOneWidget);
+    expect(find.byWidgetPredicate((Widget widget) => widget is Image && widget.image is MemoryImage), findsOneWidget);
     expect(observer.firstFrames, isEmpty);
 
     source.succeedOnNextRequest = true;
-    await tester.tap(find.byKey(const ValueKey<String>('comic-reader-image-retry-comic-chapter-1-comic-image-1')));
+    await tester.tap(find.byKey(const Key('reader-entry-retry')));
     await tester.pumpAndSettle();
 
     expect(observer.firstFrames, hasLength(1));
@@ -216,12 +227,14 @@ ReaderLaunchRequest _request({required TextReaderDataSource dataSource, ReaderOb
       entryCoverBytes: coverBytes,
     );
 
-ComicReaderLaunchRequest _comicRequest({ComicReaderDataSource? dataSource, ComicReaderObserver? observer}) => ComicReaderLaunchRequest(
-  bookId: 'reader-entry-test-comic',
-  dataSource: dataSource ?? _ImmediateComicDataSource(),
-  stateStore: const _ComicStateStore(),
-  observer: observer,
-);
+ComicReaderLaunchRequest _comicRequest({ComicReaderDataSource? dataSource, ComicReaderObserver? observer, List<int>? coverBytes}) =>
+    ComicReaderLaunchRequest(
+      bookId: 'reader-entry-test-comic',
+      dataSource: dataSource ?? _ImmediateComicDataSource(),
+      stateStore: const _ComicStateStore(),
+      observer: observer,
+      entryCoverBytes: coverBytes,
+    );
 
 const List<int> _onePixelPng = <int>[
   137,

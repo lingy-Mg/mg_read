@@ -519,12 +519,21 @@ extension _TextReaderPagination on _TextReaderViewState {
     }
   }
 
-  Future<void> _nextChapter() async {
+  Future<void> _nextChapter({
+    bool dismissControls = false,
+    bool showLoadingOverlay = false,
+  }) async {
     _stopAutoReading();
-    await _nextChapterInternal();
+    await _nextChapterInternal(
+      dismissControls: dismissControls,
+      showLoadingOverlay: showLoadingOverlay,
+    );
   }
 
-  Future<bool> _nextChapterInternal() async {
+  Future<bool> _nextChapterInternal({
+    bool dismissControls = false,
+    bool showLoadingOverlay = false,
+  }) async {
     _completeChapterTransition(ReaderChapterPerformanceOutcome.cancelled);
     final int navigation = ++_navigationGeneration;
     final int nextIndex = _chapterIndex + 1;
@@ -554,7 +563,12 @@ extension _TextReaderPagination on _TextReaderViewState {
         );
         return false;
       }
-      await _openChapter(next.id, preserveAutoReading: true);
+      await _openChapter(
+        next.id,
+        preserveAutoReading: true,
+        dismissControls: dismissControls,
+        showLoadingOverlay: showLoadingOverlay,
+      );
       final bool success = _content?.chapterId == next.id && _failure == null;
       if (!success) {
         _completeChapterTransition(
@@ -581,7 +595,10 @@ extension _TextReaderPagination on _TextReaderViewState {
     }
   }
 
-  Future<void> _previousChapter() async {
+  Future<void> _previousChapter({
+    bool dismissControls = false,
+    bool showLoadingOverlay = false,
+  }) async {
     _stopAutoReading();
     _completeChapterTransition(ReaderChapterPerformanceOutcome.cancelled);
     final int navigation = ++_navigationGeneration;
@@ -619,7 +636,12 @@ extension _TextReaderPagination on _TextReaderViewState {
         );
         return;
       }
-      await _openChapter(previous.id, openAtEnd: true);
+      await _openChapter(
+        previous.id,
+        openAtEnd: true,
+        dismissControls: dismissControls,
+        showLoadingOverlay: showLoadingOverlay,
+      );
       if (_content?.chapterId != previous.id || _failure != null) {
         _completeChapterTransition(
           ReaderChapterPerformanceOutcome.error,
@@ -643,8 +665,9 @@ extension _TextReaderPagination on _TextReaderViewState {
     }
   }
 
-  Future<void> _showBookPreview() async {
+  Future<void> _showBookPreview({bool dismissControls = false}) async {
     _stopAutoReading();
+    if (dismissControls) _setControlsVisible(false);
     final int navigation = ++_navigationGeneration;
     final int generation = ++_requestGeneration;
     final int session = _sessionGeneration;
@@ -665,6 +688,7 @@ extension _TextReaderPagination on _TextReaderViewState {
     _paragraphKeys.clear();
     _progress = const ReaderProgress.bookPreview();
     _changingChapter = false;
+    _chapterLoadingOverlayVisible = false;
     _failure = null;
     if (mounted) setState(() {});
     await _releaseAwake();

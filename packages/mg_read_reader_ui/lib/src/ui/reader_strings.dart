@@ -1,5 +1,6 @@
 abstract final class ReaderStrings {
   static const loading = '正在打开书籍…';
+  static const loadingChapter = '正在加载章节…';
   static const retry = '重新加载';
   static const loadFailed = '暂时无法加载内容';
   static const emptyChapter = '本章暂无正文';
@@ -14,6 +15,14 @@ abstract final class ReaderStrings {
   static const removeBookmark = '删除书签';
   static const refreshChapter = '刷新本章';
   static const more = '更多';
+  static const cacheChapters = '缓存章节';
+  static const cacheChapterCount = '缓存章节数';
+  static const cacheConcurrency = '并发';
+  static const cacheDelay = '延迟';
+  static const cacheDelaySeconds = '秒';
+  static const startCaching = '开始缓存';
+  static const chapterCountRange = '可选范围';
+  static const cacheChapterRangeHint = '从全书第 1 章开始，已缓存章节会直接计入进度';
   static const source = '书源';
   static const sourceUnavailable = '未提供';
   static const sourceUrl = '来源链接';
@@ -147,4 +156,5 @@ abstract final class ReaderStrings {
 
   static String chapterIndexOutOfRange(int index) => '章节索引超出范围: $index';
   static String chapterCount(int total) => '$total 章';
+  static String chapterCountRangeLabel(int total) => '0–$total 章';
 }

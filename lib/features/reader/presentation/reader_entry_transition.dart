@@ -137,7 +137,6 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
   late final ReaderLaunchRequest _boundRequest;
   ReaderFailure? _failure;
   bool _firstContentPresented = false;
-  bool _readerVisible = false;
   bool _handoffComplete = false;
   int _readerEpoch = 0;
 
@@ -163,7 +162,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
           delegate: request.observer,
           firstContentHandler: _presentComicContent,
           failureHandler: _presentInitialFailure,
-          imageFailureHandler: _revealComicAfterImageFailure,
+          imageFailureHandler: _presentInitialComicImageFailure,
         ),
       ),
     };
@@ -218,16 +217,15 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
     }
   }
 
-  void _revealComicAfterImageFailure() {
-    if (!mounted || _firstContentPresented || _readerVisible) return;
-    setState(() => _readerVisible = true);
+  void _presentInitialComicImageFailure(ReaderFailure failure) {
+    if (!mounted || _firstContentPresented) return;
+    setState(() => _failure = failure);
+    widget.onInitialFailure?.call(failure);
     if (_reduceMotion) {
       _entryController.value = 1;
-      _handoffController.value = 1;
-      setState(() => _handoffComplete = true);
-    } else {
-      unawaited(_finishHandoff());
+      return;
     }
+    unawaited(_entryController.animateTo(1, curve: Curves.easeOutCubic));
   }
 
   Future<void> _finishHandoff() async {
@@ -236,7 +234,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
       duration: _entryController.value < .92 ? const Duration(milliseconds: 120) : const Duration(milliseconds: 72),
       curve: Curves.easeOutCubic,
     );
-    if (!mounted || (!_firstContentPresented && !_readerVisible) || _reduceMotion) return;
+    if (!mounted || !_firstContentPresented || _reduceMotion) return;
     await _handoffController.forward();
   }
 
@@ -317,7 +315,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
             Transform.translate(
               offset: Offset(0, (1 - handoff) * 7),
               child: Opacity(
-                opacity: _firstContentPresented || _readerVisible ? handoff : 0,
+                opacity: _firstContentPresented ? handoff : 0,
                 child: KeyedSubtree(
                   key: ValueKey<int>(_readerEpoch),
                   child: ReaderHostPage(request: _boundRequest),
@@ -566,7 +564,7 @@ final class _ComicEntryObserver extends ComicReaderObserver {
   final ComicReaderObserver? delegate;
   final void Function(ComicFirstContentPresentation) firstContentHandler;
   final void Function(ReaderFailure) failureHandler;
-  final VoidCallback imageFailureHandler;
+  final ValueChanged<ReaderFailure> imageFailureHandler;
   @override
   Future<void> onSessionStarted(String bookId) async => delegate?.onSessionStarted(bookId);
   @override
@@ -579,7 +577,7 @@ final class _ComicEntryObserver extends ComicReaderObserver {
   @override
   Future<void> onFailure(ReaderFailure failure) async {
     if (failure.kind == ReaderFailureKind.image) {
-      imageFailureHandler();
+      imageFailureHandler(failure);
     } else {
       failureHandler(failure);
     }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
@@ -182,6 +183,71 @@ void main() {
     expect(observer.exitCount, 1);
     expect(observer.firstContentCount, 1);
   });
+
+  testWidgets(
+    'prepending a chapter preserves an in-flight upward mouse-wheel delta',
+    (WidgetTester tester) async {
+      tester.view
+        ..physicalSize = const Size(400, 600)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final source = _DelayedPreviousChapterComicSource();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ComicReaderView(
+            bookId: 'book',
+            dataSource: source,
+            stateStore: _MemoryComicStateStore(
+              progress: const ComicReaderProgress(
+                chapterId: 'chapter-2',
+                imageId: 'chapter-2-image-1',
+                chapterIndex: 1,
+              ),
+            ),
+          ),
+        ),
+      );
+      for (int frame = 0; frame < 12; frame++) {
+        await tester.pump(const Duration(milliseconds: 25));
+      }
+      expect(source.previousChapterRequested, isTrue);
+
+      final Finder scrollableFinder = find.byType(Scrollable).first;
+      final ScrollPosition position = tester
+          .state<ScrollableState>(scrollableFinder)
+          .position;
+      position.jumpTo(500);
+      await tester.pump();
+      final double offsetBeforePrepend = position.pixels;
+      const double wheelDelta = -120;
+      // Four square 400dp pages plus a 54dp header replace the 72dp leading
+      // boundary when chapter 1 is inserted.
+      const double insertedExtent = 54 + (4 * 400) - 72;
+      var wheelDispatched = false;
+      tester.binding.addPostFrameCallback((_) {
+        wheelDispatched = true;
+        tester.binding.handlePointerEvent(
+          PointerScrollEvent(
+            position: tester.getCenter(
+              find.byKey(
+                const ValueKey<String>('comic-reader-content-surface'),
+              ),
+            ),
+            scrollDelta: const Offset(0, wheelDelta),
+          ),
+        );
+      });
+
+      source.completePreviousChapter();
+      await tester.pump();
+
+      expect(wheelDispatched, isTrue);
+      expect(
+        position.pixels,
+        closeTo(offsetBeforePrepend + insertedExtent + wheelDelta, .1),
+      );
+    },
+  );
 }
 
 ComicImageInfo _image(String id, int? size) =>
@@ -320,9 +386,79 @@ class _MismatchedAspectComicSource extends _FakeComicSource {
   ) async => _bytes;
 }
 
-class _MemoryComicStateStore implements ComicReaderStateStore {
+class _DelayedPreviousChapterComicSource extends _FakeComicSource {
+  final Completer<ComicChapterContent> _previousChapter =
+      Completer<ComicChapterContent>();
+  bool previousChapterRequested = false;
+
   @override
-  Future<ComicReaderProgress?> loadProgress(String bookId) async => null;
+  Future<ComicChapterCatalogPage> loadChapterCatalog(
+    String bookId, {
+    String? cursor,
+    int pageSize = 50,
+  }) async => ComicChapterCatalogPage(
+    items: List<ComicChapterInfo>.generate(
+      3,
+      (int index) => ComicChapterInfo(
+        id: 'chapter-${index + 1}',
+        title: '第${index + 1}章',
+        index: index,
+        imageCount: 4,
+      ),
+    ),
+    total: 3,
+    hasMore: false,
+  );
+
+  @override
+  Future<ComicChapterInfo> loadChapterAtIndex(String bookId, int index) async =>
+      ComicChapterInfo(
+        id: 'chapter-${index + 1}',
+        title: '第${index + 1}章',
+        index: index,
+        imageCount: 4,
+      );
+
+  @override
+  Future<ComicChapterContent> loadChapterContent(
+    String bookId,
+    String chapterId,
+  ) {
+    if (chapterId == 'chapter-1') {
+      previousChapterRequested = true;
+      return _previousChapter.future;
+    }
+    return Future<ComicChapterContent>.value(_content(chapterId));
+  }
+
+  void completePreviousChapter() {
+    if (!_previousChapter.isCompleted) {
+      _previousChapter.complete(_content('chapter-1'));
+    }
+  }
+
+  ComicChapterContent _content(String chapterId) => ComicChapterContent(
+    chapterId: chapterId,
+    title: chapterId,
+    images: List<ComicImageInfo>.generate(
+      4,
+      (int index) => ComicImageInfo(
+        id: '$chapterId-image-${index + 1}',
+        index: index,
+        width: 1,
+        height: 1,
+      ),
+    ),
+  );
+}
+
+class _MemoryComicStateStore implements ComicReaderStateStore {
+  _MemoryComicStateStore({this.progress});
+
+  final ComicReaderProgress? progress;
+
+  @override
+  Future<ComicReaderProgress?> loadProgress(String bookId) async => progress;
   @override
   Future<void> saveProgress(
     String bookId,

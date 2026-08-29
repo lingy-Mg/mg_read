@@ -268,7 +268,7 @@ class TextReaderPreferences {
     this.paragraphSpacing = 14,
     this.firstLineIndent = 2,
     this.horizontalPadding = 24,
-    this.topPadding = 24,
+    this.topPadding = 8,
     this.bottomPadding = 32,
     this.brightness = 1,
     this.navigationMode = ReaderNavigationMode.horizontalPages,
@@ -328,7 +328,8 @@ class TextReaderPreferences {
 
   /// Space between the top safe area and the first line of page content.
   ///
-  /// This is also used as the top inset for vertical scrolling.
+  /// Defaults to 8 logical pixels and is also used as the top inset for
+  /// vertical scrolling. Explicit or persisted larger values remain valid.
   final double topPadding;
 
   /// Space between the last line of page content and the bottom safe area.

@@ -9,6 +9,7 @@ import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/application/content_library_source_prefetcher.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
+import 'package:mg_read/features/reader/application/chapter_cache_task_controller.dart';
 import 'package:mg_read/features/reader/application/reader_launch_failure.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/reader/application/shelf_reader_launch_coordinator.dart';
@@ -16,15 +17,19 @@ import 'package:mg_read/features/reader/data/content_library_text_reader_state_s
 
 /// Opens a shelf novel with app-owned reading state and a typed source gateway.
 ///
+/// Whole-book cache requests are handed to the app-global task controller;
+/// each selected chapter is committed through the immutable library session.
+///
 /// Shelf launches use the app-owned immutable catalog snapshot and only ask the
 /// source gateway for the selected chapter when its local body is unavailable.
 final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, LocalShelfReaderPrewarmer {
-  const ContentLibrarySourceTextReader(this._library, this._gateway, [this._prefetcher, this._settings]);
+  const ContentLibrarySourceTextReader(this._library, this._gateway, [this._prefetcher, this._settings, this._chapterCacheTasks]);
 
   final ContentLibrary _library;
   final SourceContentGateway _gateway;
   final ContentLibrarySourcePrefetcher? _prefetcher;
   final AppSettingsManager? _settings;
+  final ChapterCacheTaskController? _chapterCacheTasks;
 
   @override
   Future<NovelReaderLaunchRequest> launch(String libraryItemId) async {
@@ -230,6 +235,7 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
       item: item,
       source: source,
       gateway: _gateway,
+      cacheTasks: _chapterCacheTasks,
       initialEntry: initialEntry,
       initialContent: initialContent,
     );
@@ -251,7 +257,10 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
       dataSource: dataSource,
       stateStore: stateStore,
       observer: _TimedReaderObserver(stateStore, null),
-      extensions: ReaderExtensions(chapterStateCapability: chapterAccess),
+      extensions: ReaderExtensions(
+        chapterStateCapability: chapterAccess,
+        chapterCacheCapability: _chapterCacheTasks == null ? null : chapterAccess,
+      ),
       estimatedWarmBytes: utf8.encode(initialContent.text).length,
       preparationKind: preparationKind,
       networkPreparationElapsed: preparationKind == ReaderLaunchPreparationKind.network ? networkPreparationElapsed : Duration.zero,
@@ -319,30 +328,39 @@ final class _TimedReaderObserver extends ReaderObserver {
 }
 
 /// Host-side cache and mutable state exposed through the reader's public API.
-final class _SessionNovelChapterAccess implements ReaderChapterStateCapability {
+final class _SessionNovelChapterAccess implements ReaderChapterStateCapability, ReaderChapterCacheCapability {
   _SessionNovelChapterAccess({
     required this.session,
     required this.item,
     required this.source,
     required this.gateway,
+    required this.cacheTasks,
     required CatalogEntry initialEntry,
     required NovelChapterContent initialContent,
   }) {
     _memoryByRemoteId[initialEntry.remoteIdentity] = initialContent.text;
-    _cachedChapterIds.add(initialEntry.remoteIdentity);
   }
 
   final NovelReaderSession session;
   final LibraryItem item;
   final LibraryItemSource source;
   final SourceContentGateway gateway;
+  final ChapterCacheTaskController? cacheTasks;
   final Map<String, String> _memoryByRemoteId = <String, String>{};
   final Set<String> _readChapterIds = <String>{};
   final Set<String> _cachedChapterIds = <String>{};
   final Set<String> _failedChapterIds = <String>{};
   final Map<String, Future<PluginChapterContent>> _loading = <String, Future<PluginChapterContent>>{};
+  final Map<String, Future<ChapterCacheItemResult>> _cacheLoading = <String, Future<ChapterCacheItemResult>>{};
 
-  Future<PluginChapterContent> load(String chapterId) {
+  Future<PluginChapterContent> load(String chapterId) async {
+    final content = await _load(chapterId);
+    final text = content.text;
+    if (text != null) _memoryByRemoteId[chapterId] = text;
+    return content;
+  }
+
+  Future<PluginChapterContent> _load(String chapterId) {
     final active = _loading[chapterId];
     if (active != null) return active;
     final task = _loadAndCache(chapterId);
@@ -359,7 +377,6 @@ final class _SessionNovelChapterAccess implements ReaderChapterStateCapability {
     if (memory != null) return _pluginContent(entry, memory);
     final cached = await session.readContent(entry);
     if (cached case NovelChapterContent(:final text)) {
-      _memoryByRemoteId[chapterId] = text;
       return _pluginContent(entry, text);
     }
     try {
@@ -375,7 +392,6 @@ final class _SessionNovelChapterAccess implements ReaderChapterStateCapability {
       } on Object {
         // Keep reading; a later request can retry the cache write.
       }
-      _memoryByRemoteId[chapterId] = remote.text!;
       _failedChapterIds.remove(chapterId);
       return remote;
     } on Object {
@@ -418,6 +434,73 @@ final class _SessionNovelChapterAccess implements ReaderChapterStateCapability {
   Future<void> markRead(String bookId, String chapterId) async {
     _requireBook(bookId);
     _readChapterIds.add(chapterId);
+  }
+
+  @override
+  Future<void> startCaching(String bookId, ReaderChapterCacheRequest request) async {
+    _requireBook(bookId);
+    final tasks = cacheTasks;
+    if (tasks == null) throw StateError('Chapter caching is unavailable.');
+    if (request.chapterCount > session.catalogCount) {
+      throw RangeError.range(request.chapterCount, 0, session.catalogCount, 'request.chapterCount');
+    }
+    tasks.start(
+      bookTitle: item.title,
+      total: request.chapterCount,
+      concurrency: request.concurrency,
+      delay: request.delay,
+      cacheChapter: _cacheChapterAtIndex,
+    );
+  }
+
+  Future<ChapterCacheItemResult> _cacheChapterAtIndex(int index) async {
+    final entry = await session.itemAtIndex(index);
+    if (entry == null) throw RangeError.index(index, List<void>.filled(session.catalogCount, null));
+    final chapterId = entry.remoteIdentity;
+    final activeCache = _cacheLoading[chapterId];
+    if (activeCache != null) return activeCache;
+    final task = _persistChapter(entry);
+    _cacheLoading[chapterId] = task;
+    return task.whenComplete(() => _cacheLoading.remove(chapterId));
+  }
+
+  Future<ChapterCacheItemResult> _persistChapter(CatalogEntry entry) async {
+    final chapterId = entry.remoteIdentity;
+    if (entry.contentStatus == 'ready' || _cachedChapterIds.contains(chapterId)) {
+      return ChapterCacheItemResult.alreadyCached;
+    }
+    final cached = await session.readContent(entry);
+    if (cached is NovelChapterContent) {
+      _cachedChapterIds.add(chapterId);
+      return ChapterCacheItemResult.alreadyCached;
+    }
+    final memory = _memoryByRemoteId[chapterId];
+    if (memory != null) {
+      await session.cacheChapter(entry: entry, text: memory);
+      _cachedChapterIds.add(chapterId);
+      _failedChapterIds.remove(chapterId);
+      return ChapterCacheItemResult.downloaded;
+    }
+    final activeReaderLoad = _loading[chapterId];
+    if (activeReaderLoad != null) {
+      await activeReaderLoad;
+      if (_cachedChapterIds.contains(chapterId)) {
+        return ChapterCacheItemResult.alreadyCached;
+      }
+    }
+    try {
+      final remote = await gateway.getContent(pluginId: source.pluginId, id: source.remoteContentId, chapterId: chapterId);
+      if (remote.contentKind != PluginContentKind.novel || remote.text == null) {
+        throw StateError('The source chapter is not a text-reader chapter.');
+      }
+      await session.cacheChapter(entry: entry, text: remote.text!);
+      _cachedChapterIds.add(chapterId);
+      _failedChapterIds.remove(chapterId);
+      return ChapterCacheItemResult.downloaded;
+    } on Object {
+      _failedChapterIds.add(chapterId);
+      rethrow;
+    }
   }
 
   ReaderChapterAvailability _availability(CatalogEntry entry) {

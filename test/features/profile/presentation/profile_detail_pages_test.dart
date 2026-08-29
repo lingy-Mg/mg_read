@@ -102,14 +102,14 @@ void main() {
     final Rect icon = tester.getRect(find.byKey(const Key('about-app-icon')));
     final Rect card = tester.getRect(find.byKey(const Key('about-settings-card')));
 
-    expect(topBar.top, closeTo(32, 0.1));
+    expect(topBar.top, closeTo(24, 0.1));
     expect(topBar.height, AppSpacing.minimumTouchTarget);
-    expect(icon.top, closeTo(109, 0.1));
+    expect(icon.top, closeTo(101, 0.1));
     expect(icon.size, const Size(106, 106));
     expect(card.left, closeTo(20, 0.1));
     expect(card.width, closeTo(350, 0.1));
     expect(card.height, AppDetailMetrics.aboutCardHeight);
-    expect(card.top, closeTo(356, 0.1));
+    expect(card.top, closeTo(348, 0.1));
     expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
   });
 
@@ -121,8 +121,8 @@ void main() {
     final Rect banner = tester.getRect(find.byKey(const Key('feedback-thanks-banner')));
     final Rect form = tester.getRect(find.byKey(const Key('feedback-form-card')));
 
-    expect(banner, const Rect.fromLTWH(20, 80, 350, 108));
-    expect(form, const Rect.fromLTWH(20, 203, 350, 602));
+    expect(banner, const Rect.fromLTWH(20, 72, 350, 108));
+    expect(form, const Rect.fromLTWH(20, 195, 350, 602));
     expect(tester.takeException(), isNull);
   });
 
@@ -133,13 +133,13 @@ void main() {
 
     await tester.drag(find.byKey(const Key('about-page-content')), const Offset(0, -180));
     await tester.pumpAndSettle();
-    expect(tester.getRect(find.byKey(const Key('profile-detail-top-bar'))).top, 32);
+    expect(tester.getRect(find.byKey(const Key('profile-detail-top-bar'))).top, 24);
 
     await tester.pumpWidget(_feedbackHost());
     await tester.pumpAndSettle();
     await tester.drag(find.byKey(const Key('feedback-page-content')), const Offset(0, -180));
     await tester.pumpAndSettle();
-    expect(tester.getRect(find.byKey(const Key('profile-detail-top-bar'))).top, 32);
+    expect(tester.getRect(find.byKey(const Key('profile-detail-top-bar'))).top, 24);
   });
 
   testWidgets('feedback types switch and content is limited to 500 characters', (WidgetTester tester) async {

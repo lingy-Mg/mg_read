@@ -36,6 +36,7 @@ import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver
 import 'package:mg_read/features/discovery/data/content_library_bookshelf_membership.dart';
 import 'package:mg_read/features/discovery/data/content_library_source_cover_persistence.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
+import 'package:mg_read/features/reader/application/chapter_cache_task_controller.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/reader/application/shelf_reader_launch_coordinator.dart';
 import 'package:mg_read/features/reader/data/content_library_source_comic_reader.dart';
@@ -540,11 +541,12 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
 }
 
 final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher, LocalShelfReaderPrewarmer {
-  const DeferredLibraryReaderLauncher(this._get, this._gateway, this._diagnostics, [this._settings]);
+  const DeferredLibraryReaderLauncher(this._get, this._gateway, this._diagnostics, [this._settings, this._chapterCacheTasks]);
   final ContentLibraryGetter _get;
   final SourceContentGateway _gateway;
   final DiagnosticsManager _diagnostics;
   final AppSettingsManager? _settings;
+  final ChapterCacheTaskController? _chapterCacheTasks;
   @override
   Future<ReaderLaunchRequest> launch(String libraryItemId) async {
     final library = await _get();
@@ -556,6 +558,7 @@ final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher, Loca
       ContentKind.novel => _textReader(library).launch(libraryItemId),
       ContentKind.manga => ComicReaderLaunchRequest(
         bookId: item.id.value,
+        entryCoverBytes: await _readCachedCover(library, item),
         dataSource: ContentLibraryComicReaderDataSource(library: library, gateway: _gateway, item: item),
         stateStore: ContentLibraryComicReaderStateStore(library, itemId: item.id, settings: _settings),
       ),
@@ -575,5 +578,24 @@ final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher, Loca
     _gateway,
     ContentLibrarySourcePrefetcher(library, _gateway, diagnostics: _diagnostics),
     _settings,
+    _chapterCacheTasks,
   );
+
+  Future<List<int>?> _readCachedCover(ContentLibrary library, LibraryItem item) async {
+    try {
+      final source = item.source;
+      final url = item.coverUrl;
+      if (source != null && url != null) {
+        final cached = await library.covers.read(
+          CoverKey(pluginId: source.pluginId, pluginVersion: source.pluginVersion, remoteContentId: source.remoteContentId, coverUrl: url),
+        );
+        if (cached != null && cached.isNotEmpty) return cached;
+      }
+      final legacy = await library.bookshelf.readCover(item.id);
+      return legacy == null || legacy.isEmpty ? null : legacy;
+    } on Object {
+      // A cover-cache failure must not prevent the comic reader from opening.
+      return null;
+    }
+  }
 }

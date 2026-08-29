@@ -12,6 +12,8 @@
 /// - 无。
 library;
 
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -21,16 +23,22 @@ import 'package:mg_read/features/library/presentation/widgets/library_book_cover
 /// 仅由展示模型驱动的突出当前阅读卡片。
 class LibraryContinueReadingCard extends StatelessWidget {
   /// Creates the current-reading card for [data].
-  const LibraryContinueReadingCard({required this.data, required this.onContinueReading, this.isPreparing = false, super.key});
+  const LibraryContinueReadingCard({
+    required this.data,
+    required this.onContinueReading,
+    this.isPreparing = false,
+    this.showBackdrop = true,
+    super.key,
+  });
 
   final LibraryContinueReadingViewData data;
   final VoidCallback onContinueReading;
   final bool isPreparing;
+  final bool showBackdrop;
 
   @override
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-
     return Semantics(
       container: true,
       label: isPreparing ? '继续阅读，${data.title}，正在准备阅读内容' : '继续阅读，${data.title}',
@@ -38,81 +46,67 @@ class LibraryContinueReadingCard extends StatelessWidget {
       child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
           final bool compact = constraints.maxWidth < AppSpacing.compactCardStackBreakpoint;
-          final double coverWidth = compact
-              ? AppSpacing.continueReadingCoverWidth - AppSpacing.section
-              : AppSpacing.continueReadingCoverWidth;
-          final double coverHeight = compact
-              ? AppSpacing.continueReadingCoverHeight - AppSpacing.section * 2
-              : AppSpacing.continueReadingCoverHeight;
-          final double cardHeight = compact
-              ? AppSpacing.continueReadingCardHeight - AppSpacing.regular
-              : AppSpacing.continueReadingCardHeight;
-          final double cardTop = compact
-              ? AppSpacing.continueReadingCardTopInset - AppSpacing.compact
-              : AppSpacing.continueReadingCardTopInset;
-          final double cardLeft = coverWidth - AppSpacing.continueReadingCardCoverOverlap;
-          final double detailsHorizontalInset = coverWidth - cardLeft + AppSpacing.regular;
-
-          return SizedBox(
-            height: coverHeight,
-            width: double.infinity,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: <Widget>[
-                Positioned(
-                  key: const Key('continue-reading-surface'),
-                  left: cardLeft,
-                  right: 0,
-                  top: cardTop,
-                  height: cardHeight,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: AppRadii.card,
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: <Color>[tokens.featureSurface, tokens.surface.withValues(alpha: 0.94)],
-                      ),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: AppRadii.card,
-                      child: Stack(
-                        children: <Widget>[
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              child: Opacity(
-                                opacity: 0.72,
-                                child: Image.asset(
-                                  'assets/illustrations/home/continue_reading_backdrop.png',
-                                  fit: BoxFit.cover,
-                                  alignment: Alignment.centerRight,
-                                ),
-                              ),
+          final double textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.5);
+          final double cardHeight = (showBackdrop ? (compact ? 172 : 196) : (compact ? 154 : 172)) + (textScale - 1) * 48;
+          final double coverHeight = showBackdrop ? (compact ? 108 : 132) : (compact ? 146 : 170);
+          final double coverWidth = coverHeight * 0.68;
+          final double externalBottomInset = (cardHeight - coverHeight) / 2;
+          final Widget content = Stack(
+            children: <Widget>[
+              if (showBackdrop) ...<Widget>[
+                Positioned.fill(
+                  child: ExcludeSemantics(
+                    child: IgnorePointer(
+                      child: ImageFiltered(
+                        imageFilter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                        child: Transform.scale(
+                          scale: 1.18,
+                          child: Opacity(
+                            opacity: 0.46,
+                            child: LibraryBookCover(
+                              title: data.title,
+                              variant: data.coverVariant,
+                              coverBytes: data.coverBytes,
+                              coverRequest: data.coverRequest,
+                              assetPath: data.coverAssetPath,
+                              width: constraints.maxWidth,
+                              height: cardHeight,
                             ),
                           ),
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              child: CustomPaint(painter: _ContinueReadingTexturePainter(color: tokens.accent.withValues(alpha: 0.07))),
-                            ),
-                          ),
-                          Padding(
-                            padding: EdgeInsets.only(
-                              left: detailsHorizontalInset,
-                              right: AppSpacing.regular,
-                              top: AppSpacing.compact,
-                              bottom: AppSpacing.compact,
-                            ),
-                            child: _ContinueReadingDetails(data: data, onContinueReading: onContinueReading, isPreparing: isPreparing),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-                Positioned(
-                  left: 0,
-                  top: 0,
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: <Color>[
+                          tokens.featureSurface.withValues(alpha: 0.98),
+                          tokens.surface.withValues(alpha: 0.86),
+                          tokens.surface.withValues(alpha: 0.54),
+                        ],
+                        stops: const <double>[0, 0.56, 1],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              Positioned(
+                right: showBackdrop ? AppSpacing.comfortable : 0,
+                top: (cardHeight - coverHeight) / 2,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: AppRadii.bookCover,
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(color: tokens.shadow.withValues(alpha: 0.18), blurRadius: 12, offset: const Offset(0, 5)),
+                    ],
+                  ),
                   child: LibraryBookCover(
+                    key: const Key('continue-reading-flat-cover'),
                     title: data.title,
                     variant: data.coverVariant,
                     coverBytes: data.coverBytes,
@@ -122,8 +116,40 @@ class LibraryContinueReadingCard extends StatelessWidget {
                     height: coverHeight,
                   ),
                 ),
-              ],
+              ),
+              Positioned.fill(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    showBackdrop ? AppSpacing.comfortable : 0,
+                    showBackdrop ? AppSpacing.comfortable : 0,
+                    coverWidth + (showBackdrop ? AppSpacing.page : AppSpacing.comfortable),
+                    showBackdrop ? AppSpacing.comfortable : externalBottomInset,
+                  ),
+                  child: _ContinueReadingDetails(
+                    data: data,
+                    onContinueReading: onContinueReading,
+                    isPreparing: isPreparing,
+                    showEyebrow: showBackdrop,
+                  ),
+                ),
+              ),
+            ],
+          );
+          final Widget sizedContent = SizedBox(
+            key: const Key('continue-reading-surface'),
+            height: cardHeight,
+            width: double.infinity,
+            child: showBackdrop ? ClipRRect(borderRadius: AppRadii.card, child: content) : content,
+          );
+          if (!showBackdrop) return sizedContent;
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              color: tokens.featureSurface,
+              borderRadius: AppRadii.card,
+              border: Border.all(color: tokens.divider),
+              boxShadow: <BoxShadow>[BoxShadow(color: tokens.shadow.withValues(alpha: 0.1), blurRadius: 18, offset: const Offset(0, 6))],
             ),
+            child: sizedContent,
           );
         },
       ),
@@ -132,208 +158,117 @@ class LibraryContinueReadingCard extends StatelessWidget {
 }
 
 class _ContinueReadingDetails extends StatelessWidget {
-  const _ContinueReadingDetails({required this.data, required this.onContinueReading, required this.isPreparing});
+  const _ContinueReadingDetails({
+    required this.data,
+    required this.onContinueReading,
+    required this.isPreparing,
+    required this.showEyebrow,
+  });
 
   final LibraryContinueReadingViewData data;
   final VoidCallback onContinueReading;
   final bool isPreparing;
+  final bool showEyebrow;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    final int percentage = (data.progress * 100).round();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: showEyebrow ? MainAxisAlignment.start : MainAxisAlignment.end,
       children: <Widget>[
-        SizedBox(
-          width: double.infinity,
-          child: Center(
-            child: _AdaptiveSingleLineTitle(
-              title: data.title,
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w500, height: 1.16, letterSpacing: -0.2),
-            ),
+        if (showEyebrow) ...<Widget>[
+          Text(
+            '继续阅读',
+            style: theme.textTheme.bodySmall?.copyWith(color: tokens.accent, fontWeight: FontWeight.w600, letterSpacing: 0.3),
           ),
+          const SizedBox(height: AppSpacing.compact),
+        ],
+        Text(
+          data.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600, height: 1.18, letterSpacing: -0.2),
         ),
-        const Spacer(),
-        Row(
-          children: <Widget>[
-            Flexible(
-              fit: FlexFit.loose,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: AppSpacing.continueReadingProgressWidth),
-                child: SizedBox(
-                  width: AppSpacing.continueReadingProgressWidth,
-                  child: ReadingProgressBar(progress: data.progress),
-                ),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.continueReadingProgressValueGap),
-            Text(
-              '$percentage%',
-              style: theme.textTheme.bodySmall?.copyWith(color: tokens.accent, fontWeight: FontWeight.w400, height: 1.1),
-            ),
-          ],
-        ),
-        const Spacer(),
+        if (showEyebrow) const Spacer() else const SizedBox(height: AppSpacing.comfortable),
         Align(
           alignment: Alignment.center,
-          child: _ContinueReadingAction(onPressed: onContinueReading, isPreparing: isPreparing),
+          child: _ContinueReadingAction(onPressed: onContinueReading, isPreparing: isPreparing, progress: data.progress),
         ),
       ],
     );
   }
 }
 
-class _AdaptiveSingleLineTitle extends StatelessWidget {
-  const _AdaptiveSingleLineTitle({required this.title, required this.style});
-
-  final String title;
-  final TextStyle? style;
-
-  @override
-  Widget build(BuildContext context) {
-    final TextStyle resolvedStyle = style ?? DefaultTextStyle.of(context).style;
-    final TextScaler textScaler = MediaQuery.textScalerOf(context);
-
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        final double baseFontSize = resolvedStyle.fontSize ?? AppTypography.sectionTitle;
-        double fontSize = baseFontSize;
-        while (fontSize > AppTypography.continueReadingTitleMinimum &&
-            _titleWidth(
-                  context: context,
-                  style: resolvedStyle.copyWith(fontSize: fontSize),
-                  textScaler: textScaler,
-                ) >
-                constraints.maxWidth) {
-          fontSize -= 1;
-        }
-
-        return Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textScaler: textScaler,
-          style: resolvedStyle.copyWith(fontSize: fontSize),
-        );
-      },
-    );
-  }
-
-  double _titleWidth({required BuildContext context, required TextStyle style, required TextScaler textScaler}) {
-    final TextPainter painter = TextPainter(
-      text: TextSpan(text: title, style: style),
-      textDirection: Directionality.of(context),
-      textScaler: textScaler,
-      maxLines: 1,
-    )..layout();
-    return painter.width;
-  }
-}
-
 class _ContinueReadingAction extends StatelessWidget {
-  const _ContinueReadingAction({required this.onPressed, required this.isPreparing});
+  const _ContinueReadingAction({required this.onPressed, required this.isPreparing, required this.progress});
 
   final VoidCallback onPressed;
   final bool isPreparing;
+  final double progress;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    final Color actionStart = Color.lerp(tokens.accent, tokens.mutedText, 0.17)!;
-    final Color actionEnd = Color.lerp(tokens.accent, tokens.mutedText, 0.21)!;
-    return SizedBox(
-      width: AppSpacing.continueReadingActionWidth,
-      height: AppSpacing.continueReadingActionHeight,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: AppRadii.continueReadingAction,
-          gradient: LinearGradient(colors: <Color>[actionStart, actionEnd]),
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            key: const Key('continue-reading-cta'),
-            onTap: isPreparing ? null : onPressed,
-            borderRadius: AppRadii.continueReadingAction,
-            child: Center(
-              child: isPreparing
-                  ? SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary))
-                  : Text(
-                      '继续阅读',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: theme.colorScheme.onPrimary,
-                        fontWeight: FontWeight.w500,
-                        height: 1.2,
-                      ),
-                    ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ContinueReadingTexturePainter extends CustomPainter {
-  const _ContinueReadingTexturePainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final Paint line = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
-    final Paint fill = Paint()
-      ..color = color.withValues(alpha: color.a * 0.36)
-      ..style = PaintingStyle.fill;
-
-    final Offset center = Offset(size.width * 0.83, size.height * 1.04);
-    final double baseRadius = size.height * 0.58;
-    canvas.drawCircle(center, baseRadius, line);
-    canvas.drawCircle(center, baseRadius * 0.72, line);
-    canvas.drawArc(Rect.fromCircle(center: center, radius: baseRadius * 1.22), 3.68, 1.82, false, line);
-
-    final Path lowerWash = Path()
-      ..moveTo(size.width * 0.34, size.height)
-      ..lineTo(size.width, size.height * 0.56)
-      ..lineTo(size.width, size.height)
-      ..close();
-    canvas.drawPath(lowerWash, fill);
-  }
-
-  @override
-  bool shouldRepaint(covariant _ContinueReadingTexturePainter oldDelegate) {
-    return oldDelegate.color != color;
-  }
-}
-
-/// A readable and semantic progress indicator for the continue-reading card.
-class ReadingProgressBar extends StatelessWidget {
-  /// Creates a linear indicator for a normalized [progress] value.
-  const ReadingProgressBar({required this.progress, super.key}) : assert(progress >= 0 && progress <= 1);
-
-  final double progress;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppThemeTokens tokens = AppThemeTokens.of(context);
     final int percentage = (progress * 100).round();
-
     return Semantics(
+      button: true,
       label: '阅读进度 $percentage%',
       value: '$percentage%',
+      onTap: isPreparing ? null : onPressed,
       child: ExcludeSemantics(
-        child: ClipRRect(
-          borderRadius: AppRadii.pill,
-          child: SizedBox(
-            height: AppSpacing.readingProgressHeight,
-            child: LinearProgressIndicator(value: progress, color: tokens.accent, backgroundColor: tokens.accent.withValues(alpha: 0.14)),
+        child: SizedBox(
+          width: 136,
+          height: 42,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: AppRadii.continueReadingAction,
+              boxShadow: <BoxShadow>[BoxShadow(color: tokens.accent.withValues(alpha: 0.24), blurRadius: 10, offset: const Offset(0, 4))],
+            ),
+            child: ClipRRect(
+              borderRadius: AppRadii.continueReadingAction,
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  ColoredBox(color: tokens.accent.withValues(alpha: 0.38)),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      key: const Key('continue-reading-cta-progress'),
+                      widthFactor: progress,
+                      heightFactor: 1,
+                      child: ColoredBox(color: tokens.accent),
+                    ),
+                  ),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      key: const Key('continue-reading-cta'),
+                      onTap: isPreparing ? null : onPressed,
+                      child: Center(
+                        child: isPreparing
+                            ? SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary),
+                              )
+                            : Text(
+                                '继续阅读',
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  color: theme.colorScheme.onPrimary,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.2,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),

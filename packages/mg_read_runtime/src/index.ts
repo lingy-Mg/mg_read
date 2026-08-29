@@ -84,7 +84,18 @@ export type {
   PluginBrowserSessionRequest,
   PluginBrowserSessionResponse,
   PluginBrowserVerificationState,
+  PluginWebViewHostRequest,
+  PluginWebViewOperation,
 } from "./plugin-browser-session.js";
+export { maximumWebViewTimeoutMs } from "./plugin-webview-page.js";
+export type {
+  PluginJsonValue,
+  PluginWebViewApi,
+  PluginWebViewFetchRequest,
+  PluginWebViewFetchResponse,
+  PluginWebViewKey,
+  PluginWebViewPage,
+} from "./plugin-webview-page.js";
 export type {
   InstalledPluginSnapshot,
   PluginInstallationUsage,

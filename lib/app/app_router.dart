@@ -46,7 +46,6 @@ import 'package:mg_read/features/reader/data/transient_source_comic_reader.dart'
 import 'package:mg_read/features/reader/data/transient_source_text_reader.dart';
 import 'package:mg_read/features/reader/presentation/reader_entry_transition.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
-import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 part 'app_router.g.dart';
 
@@ -238,11 +237,23 @@ class SearchRoute extends GoRouteData with $SearchRoute {
         onSourceManagementRequested: () {
           const PluginCenterRoute().push(context);
         },
-        onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter}) {
-          return _openTransientSourceTextReader(context, detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
+        onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) {
+          return _openTransientSourceTextReader(
+            context,
+            detail: detail,
+            firstCatalogPage: firstCatalogPage,
+            chapter: chapter,
+            entryCoverBytes: entryCoverBytes,
+          );
         },
-        onComicChapterRequested: ({required detail, required firstCatalogPage, required chapter}) {
-          return _openTransientSourceComicReader(context, detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
+        onComicChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) {
+          return _openTransientSourceComicReader(
+            context,
+            detail: detail,
+            firstCatalogPage: firstCatalogPage,
+            chapter: chapter,
+            entryCoverBytes: entryCoverBytes,
+          );
         },
       ),
     );
@@ -270,11 +281,23 @@ class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
         onSourceManagementRequested: () {
           const PluginCenterRoute().push(context);
         },
-        onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter}) {
-          return _openTransientSourceTextReader(context, detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
+        onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) {
+          return _openTransientSourceTextReader(
+            context,
+            detail: detail,
+            firstCatalogPage: firstCatalogPage,
+            chapter: chapter,
+            entryCoverBytes: entryCoverBytes,
+          );
         },
-        onComicChapterRequested: ({required detail, required firstCatalogPage, required chapter}) {
-          return _openTransientSourceComicReader(context, detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
+        onComicChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) {
+          return _openTransientSourceComicReader(
+            context,
+            detail: detail,
+            firstCatalogPage: firstCatalogPage,
+            chapter: chapter,
+            entryCoverBytes: entryCoverBytes,
+          );
         },
       ),
     );
@@ -287,24 +310,17 @@ Future<void> _openTransientSourceTextReader(
   required PluginContentDetail detail,
   required PluginChaptersResult firstCatalogPage,
   required PluginChapterSummary chapter,
+  required List<int>? entryCoverBytes,
 }) async {
   final navigator = appRootNavigatorKey.currentState;
   if (navigator == null) {
     throw StateError('The application navigator is not ready.');
   }
   final gateway = ProviderScope.containerOf(context).read(sourceContentGatewayProvider);
-  final coverUrl = detail.summary.coverUrl;
-  final cachedCoverBytes =
-      detail.summary.coverBytes ??
-      (coverUrl == null
-          ? null
-          : BookCoverMemoryCache.read(
-              BookCoverRequest(pluginId: detail.pluginId, pluginVersion: 'unknown', remoteContentId: detail.summary.id, coverUrl: coverUrl),
-            ));
   final session = TransientSourceTextReader(
     detail: detail,
     catalog: firstCatalogPage,
-    entryCoverBytes: cachedCoverBytes,
+    entryCoverBytes: entryCoverBytes,
     loadChapterContent: (String chapterId) {
       return gateway.getContent(pluginId: detail.pluginId, id: detail.summary.id, chapterId: chapterId);
     },
@@ -324,21 +340,14 @@ Future<void> _openTransientSourceComicReader(
   required PluginContentDetail detail,
   required PluginChaptersResult firstCatalogPage,
   required PluginChapterSummary chapter,
+  required List<int>? entryCoverBytes,
 }) async {
   final NavigatorState? navigator = appRootNavigatorKey.currentState;
   if (navigator == null) throw StateError('The application navigator is not ready.');
   final gateway = ProviderScope.containerOf(context).read(sourceContentGatewayProvider);
-  final coverUrl = detail.summary.coverUrl;
-  final cachedCoverBytes =
-      detail.summary.coverBytes ??
-      (coverUrl == null
-          ? null
-          : BookCoverMemoryCache.read(
-              BookCoverRequest(pluginId: detail.pluginId, pluginVersion: 'unknown', remoteContentId: detail.summary.id, coverUrl: coverUrl),
-            ));
   final request = ComicReaderLaunchRequest(
     bookId: detail.summary.id,
-    entryCoverBytes: cachedCoverBytes,
+    entryCoverBytes: entryCoverBytes,
     dataSource: TransientSourceComicReaderDataSource(detail: detail, catalog: firstCatalogPage, gateway: gateway),
     stateStore: TransientComicReaderStateStore(),
     observer: _DismissComicReaderObserver(navigator),

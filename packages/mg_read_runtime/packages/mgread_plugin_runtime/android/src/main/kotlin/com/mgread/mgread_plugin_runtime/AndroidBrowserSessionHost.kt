@@ -1,5 +1,5 @@
 /**
- * Android WebView owner for browser.session.v1.
+ * Android WebView owner for browser.session.v1 and ctx.webview.
  *
  * One plugin ID owns at most one resident WebView. When the installed WebView
  * supports multi-profile, that WebView receives an isolated profile; older
@@ -7,7 +7,9 @@
  * fallback warning. Hidden sessions never attach a View; visible verification
  * uses one global foreground dialog with user-controlled Hide and Close actions.
  * Hide preserves the session; Close destroys it so the next request recreates it.
- * All injected JavaScript is host-authored and request fields are JSON encoded.
+ * Supporting JavaScript is host-authored; ctx.webview's explicit script body is
+ * JSON encoded into a revocable async wrapper and returns only JSON values.
+ * Timeout and cancellation delete both the job token and any completed result.
  */
 package com.mgread.mgread_plugin_runtime
 
@@ -68,11 +70,14 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         val contextWrapper: MutableContextWrapper,
         val cookieManager: CookieManager,
         val pluginId: String,
+        var pluginName: String,
         val profileMode: ProfileMode,
         val verifiedAt: MutableMap<String, Long>,
         val webView: WebView,
         var activeJobId: String? = null,
         var lastUsedAt: Long = System.currentTimeMillis(),
+        var statusView: TextView? = null,
+        var urlView: TextView? = null,
     )
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -118,6 +123,11 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         )
         jobs[id] = job
         mainHandler.post { begin(job) }
+        mainHandler.postDelayed({
+            if (isCurrent(job) && System.currentTimeMillis() >= job.deadlineUnixMs) {
+                completeError(job, "timeout")
+            }
+        }, request.timeoutMs)
         return id
     }
 
@@ -171,6 +181,29 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
     private fun begin(job: Job) {
         if (!isCurrent(job)) return
         Log.i(TAG, "browser_session_begin transport=${job.request.transport}")
+        if (job.request.operation == "page.close") {
+            sessions[job.request.pluginId]?.let { session ->
+                val activeJob = session.activeJobId?.let { jobs[it] }
+                closePage(session)
+                activeJob?.let { completeError(it, "cancelled") }
+            }
+            completePageSuccess(job, JSONObject())
+            return
+        }
+        if (job.request.operation == "page.show" || job.request.operation == "page.hide") {
+            val existing = sessions[job.request.pluginId]
+            if (existing == null) {
+                completeError(job, "unsupported")
+            } else if (job.request.operation == "page.show") {
+                updateStatus(existing, "已显示")
+                if (showForeground(existing, job)) completePageSuccess(job, JSONObject())
+                else completeError(job, "interaction_required")
+            } else {
+                if (foregroundPluginId == existing.pluginId) hideForeground()
+                completePageSuccess(job, JSONObject())
+            }
+            return
+        }
         val profileMode = if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
             Log.i(TAG, "browser_session_profile_mode=isolated plugin_id=${job.request.pluginId}")
             ProfileMode.ISOLATED
@@ -196,6 +229,10 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             completeError(job, "unsupported")
             return
         }
+        if (job.request.operation.startsWith("page.")) {
+            beginPage(job, session)
+            return
+        }
         if (session.activeJobId != null) {
             completeError(job, "overloaded")
             return
@@ -219,6 +256,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
 
     private fun sessionFor(job: Job, profileMode: ProfileMode): Session? {
         sessions[job.request.pluginId]?.let {
+            it.pluginName = job.request.pluginName
             Log.i(TAG, "browser_session_reuse plugin_id=${job.request.pluginId}")
             return it
         }
@@ -248,11 +286,13 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
                 CookieManager.getInstance()
             },
             pluginId = job.request.pluginId,
+            pluginName = job.request.pluginName,
             profileMode = profileMode,
             verifiedAt = mutableMapOf(),
             webView = webView,
         )
         webView.webViewClient = clientFor(session)
+        webView.webChromeClient = androidBlockingChromeClient()
         session.cookieManager.setAcceptCookie(true)
         session.cookieManager.setAcceptThirdPartyCookies(webView, true)
         sessions[job.request.pluginId] = session
@@ -272,13 +312,23 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) safeBrowsingEnabled = true
         }
         webView.isHorizontalScrollBarEnabled = false
+        webView.setDownloadListener { _, _, _, _, _ ->
+            Log.i(TAG, "browser_download_blocked")
+        }
     }
 
     private fun clientFor(session: Session): WebViewClient = object : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-            val job = session.activeJobId?.let { jobs[it] } ?: return true
+            if (session.activeJobId?.let { jobs[it] }?.request?.operation?.startsWith("page.") == true) {
+                return request.url.scheme != "https" && request.url.scheme != "http"
+            }
+            val job = session.activeJobId?.let { jobs[it] } ?: return request.url.scheme != "https" && request.url.scheme != "http"
             return runCatching { originOf(request.url.toString()) != job.request.origin }
                 .getOrDefault(true)
+        }
+
+        override fun onPageFinished(view: WebView, url: String) {
+            session.urlView?.text = url
         }
 
         override fun onReceivedError(
@@ -298,6 +348,155 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             return true
         }
     }
+
+    private fun beginPage(job: Job, session: Session) {
+        val request = job.request
+        if (request.operation == "page.open") {
+            val visible = request.pageParams?.optBoolean("visible", false) == true
+            if (visible && !showForeground(session, job)) {
+                completeError(job, "interaction_required")
+            } else {
+                updateStatus(session, "已打开")
+                completePageSuccess(job, JSONObject())
+            }
+            return
+        }
+        if (session.activeJobId != null) {
+            completeError(job, "overloaded")
+            return
+        }
+        session.activeJobId = job.id
+        session.lastUsedAt = System.currentTimeMillis()
+        updateStatus(session, androidPageActionLabel(request.operation))
+        when (request.operation) {
+            "page.navigate" -> {
+                navigate(session.webView, request.url, emptyMap())
+                pollPageReady(job, session)
+            }
+            "page.evaluate" -> startPageAsyncScript(
+                job,
+                session,
+                "const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;" +
+                    "const value=await new AsyncFunction(${JSONObject.quote(request.pageParams!!.getString("code"))}).call(window);" +
+                    "return {value};",
+            )
+            "page.html" -> startPageAsyncScript(
+                job,
+                session,
+                "return {html:document.documentElement?.outerHTML??''};",
+            )
+            "page.fetch" -> startPageAsyncScript(job, session, androidPageFetchBody(request.pageParams!!))
+            "page.click" -> performPageClick(job, session)
+            "page.input" -> {
+                if (!isPageVisible(session)) completeError(job, "interaction_required")
+                else if (!commitNativeText(session.webView, request.pageParams!!.getString("text"))) {
+                    completeError(job, "plugin_execution_failed")
+                } else completePageSuccess(job, JSONObject())
+            }
+            "page.key" -> {
+                if (!isPageVisible(session)) completeError(job, "interaction_required")
+                else if (!androidDispatchNativeKey(session.webView, request.pageParams!!)) completeError(job, "plugin_execution_failed")
+                else completePageSuccess(job, JSONObject())
+            }
+            "page.waitText" -> pollPageText(job, session)
+            "page.getUrl" -> completePageSuccess(job, JSONObject().put("url", session.webView.url.orEmpty()))
+            else -> completeError(job, "unsupported")
+        }
+    }
+
+    private fun pollPageReady(job: Job, session: Session) {
+        if (!isCurrent(job, session)) return
+        if (System.currentTimeMillis() >= job.deadlineUnixMs) {
+            completeError(job, "timeout")
+            return
+        }
+        session.webView.evaluateJavascript("document.readyState") { raw ->
+            if (!isCurrent(job, session)) return@evaluateJavascript
+            val state = runCatching { JSONTokener(raw).nextValue() as? String }.getOrNull()
+            if (state == "interactive" || state == "complete") {
+                completePageSuccess(job, JSONObject())
+            } else {
+                mainHandler.postDelayed({ pollPageReady(job, session) }, PAGE_OPERATION_POLL_MILLIS)
+            }
+        }
+    }
+
+    private fun startPageAsyncScript(job: Job, session: Session, body: String) {
+        session.webView.evaluateJavascript(androidStartPageAsyncScript(job.id, body)) {
+            mainHandler.postDelayed({ pollPageAsyncScript(job, session) }, PAGE_OPERATION_POLL_MILLIS)
+        }
+    }
+
+    private fun pollPageAsyncScript(job: Job, session: Session) {
+        if (!isCurrent(job, session)) return
+        if (System.currentTimeMillis() >= job.deadlineUnixMs) {
+            completeError(job, "timeout")
+            return
+        }
+        session.webView.evaluateJavascript(androidPollPageAsyncScript(job.id)) { raw ->
+            if (!isCurrent(job, session)) return@evaluateJavascript
+            val encoded = decodeEvaluation(raw)
+            if (encoded == null) {
+                mainHandler.postDelayed({ pollPageAsyncScript(job, session) }, PAGE_OPERATION_POLL_MILLIS)
+                return@evaluateJavascript
+            }
+            val result = runCatching { JSONObject(encoded) }.getOrNull()
+            if (result?.optBoolean("ok", false) != true) {
+                completeError(job, result?.optString("code") ?: "plugin_execution_failed")
+                return@evaluateJavascript
+            }
+            val response = result.optJSONObject("response")
+            if (response == null) completeError(job, "plugin_execution_failed")
+            else completePageSuccess(job, response)
+        }
+    }
+
+    private fun pollPageText(job: Job, session: Session) {
+        if (!isCurrent(job, session)) return
+        if (System.currentTimeMillis() >= job.deadlineUnixMs) {
+            completeError(job, "timeout")
+            return
+        }
+        val value = job.request.pageParams!!
+        val expression = if (value.getString("scope") == "html") {
+            "document.documentElement?.outerHTML??''"
+        } else {
+            "document.documentElement?.innerText??''"
+        }
+        val script = "(() => ($expression).includes(${JSONObject.quote(value.getString("text"))}))()"
+        session.webView.evaluateJavascript(script) { raw ->
+            if (!isCurrent(job, session)) return@evaluateJavascript
+            if (raw == "true") {
+                completePageSuccess(job, JSONObject().put("url", session.webView.url.orEmpty()))
+            } else {
+                mainHandler.postDelayed({ pollPageText(job, session) }, PAGE_OPERATION_POLL_MILLIS)
+            }
+        }
+    }
+
+    private fun performPageClick(job: Job, session: Session) {
+        if (!isPageVisible(session)) {
+            completeError(job, "interaction_required")
+            return
+        }
+        session.webView.evaluateJavascript("window.devicePixelRatio||1") { raw ->
+            if (!isCurrent(job, session)) return@evaluateJavascript
+            val ratio = raw?.toDoubleOrNull() ?: Double.NaN
+            val value = job.request.pageParams!!
+            if (!dispatchWebViewTap(session.webView, value.getDouble("x"), value.getDouble("y"), ratio)) {
+                completeError(job, "plugin_execution_failed")
+            } else completePageSuccess(job, JSONObject())
+        }
+    }
+
+    private fun completePageSuccess(job: Job, response: JSONObject) {
+        if (!isCurrent(job)) return
+        completed[job.id] = JSONObject().put("state", "done").put("response", response).toString(); finish(job)
+    }
+
+    private fun isPageVisible(session: Session): Boolean = foregroundPluginId == session.pluginId && foregroundDialog?.isShowing == true && session.webView.isAttachedToWindow
+
+    private fun updateStatus(session: Session, action: String) { session.statusView?.text = "${session.pluginName}正在进行探测 - $action"; session.urlView?.text = session.webView.url.orEmpty() }
 
     private fun loadForVerification(job: Job, session: Session) {
         if (!isCurrent(job, session)) return
@@ -559,10 +758,18 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         Log.i(TAG, "browser_session_complete_error code=$code")
         completed[job.id] = errorResult(code)
         sessions[job.request.pluginId]?.let { session ->
+            expirePageAsyncResult(job, session)
             if (session.activeJobId == job.id) session.activeJobId = null
-            session.webView.stopLoading()
+            if (!job.request.operation.startsWith("page.")) session.webView.stopLoading()
         }
-        if (foregroundPluginId == job.request.pluginId) hideForeground()
+        if (!job.request.operation.startsWith("page.") && foregroundPluginId == job.request.pluginId) hideForeground()
+    }
+
+    private fun expirePageAsyncResult(job: Job, session: Session) {
+        if (job.request.operation !in PAGE_ASYNC_OPERATIONS) return
+        runCatching {
+            session.webView.evaluateJavascript(androidExpirePageAsyncScript(job.id), null)
+        }
     }
 
     private fun finish(job: Job) {
@@ -571,7 +778,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             if (session.activeJobId == job.id) session.activeJobId = null
             session.lastUsedAt = System.currentTimeMillis()
         }
-        if (foregroundPluginId == job.request.pluginId) hideForeground()
+        if (!job.request.operation.startsWith("page.") && foregroundPluginId == job.request.pluginId) hideForeground()
     }
 
     private fun isCurrent(job: Job, session: Session? = null): Boolean =
@@ -580,7 +787,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
 
     private fun showForeground(session: Session, job: Job): Boolean {
         val currentActivity = activity ?: return false
-        if (foregroundPluginId != null && foregroundPluginId != session.pluginId) return false
+        if (foregroundPluginId != null && foregroundPluginId != session.pluginId) hideForeground()
         if (foregroundDialog?.isShowing == true) return true
         session.contextWrapper.baseContext = currentActivity
         (session.webView.parent as? ViewGroup)?.removeView(session.webView)
@@ -593,11 +800,12 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             orientation = LinearLayout.HORIZONTAL
             setPadding(24, 16, 16, 16)
         }
-        bar.addView(TextView(currentActivity).apply {
-            text = "浏览器验证"
+        val status = TextView(currentActivity).apply {
+            text = "${session.pluginName}正在进行探测 - ${androidPageActionLabel(job.request.operation)}"
             textSize = 18f
             setTextColor(Color.BLACK)
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        bar.addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         bar.addView(Button(currentActivity).apply {
             text = "隐藏"
             setOnClickListener { hideForeground() }
@@ -607,6 +815,15 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             setOnClickListener { closeForeground(session) }
         })
         root.addView(bar, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        val address = TextView(currentActivity).apply {
+            text = session.webView.url.orEmpty()
+            textSize = 13f
+            setTextColor(Color.DKGRAY)
+            setBackgroundColor(Color.rgb(245, 247, 250))
+            setPadding(24, 12, 24, 12)
+            setTextIsSelectable(true)
+        }
+        root.addView(address, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         root.addView(session.webView, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             0,
@@ -632,6 +849,8 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         }
         foregroundDialog = dialog
         foregroundPluginId = job.request.pluginId
+        session.statusView = status
+        session.urlView = address
         Log.i(TAG, "browser_session_verification_window_shown plugin_id=${job.request.pluginId}")
         return true
     }
@@ -644,6 +863,12 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
     }
 
     private fun closeForeground(session: Session) {
+        val activeJob = session.activeJobId?.let { jobs[it] }
+        closePage(session)
+        activeJob?.let { completeError(it, "interaction_required") }
+    }
+
+    private fun closePage(session: Session) {
         val dialog = if (foregroundPluginId == session.pluginId) foregroundDialog else null
         if (foregroundDialog === dialog) {
             foregroundDialog = null
@@ -656,14 +881,14 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         session.webView.stopLoading()
         session.webView.destroy()
         if (sessions[session.pluginId] === session) sessions.remove(session.pluginId)
-        val activeJob = session.activeJobId?.let { jobs[it] }
         session.activeJobId = null
+        session.statusView = null
+        session.urlView = null
         Log.i(
             TAG,
             "browser_session_manual_close plugin_id=${session.pluginId} " +
                 "session_recreated_on_next_request=true",
         )
-        activeJob?.let { completeError(it, "interaction_required") }
     }
 
     private fun webViewFetchScript(job: Job): String {
@@ -778,9 +1003,8 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         .put("headers", JSONObject(value.headers))
         .put("body", value.body)
 
-    private fun decodeEvaluation(raw: String?): String? = runCatching {
-        JSONTokener(raw ?: return null).nextValue() as? String
-    }.getOrNull()
+    private fun decodeEvaluation(raw: String?): String? =
+        runCatching { JSONTokener(raw ?: return null).nextValue() as? String }.getOrNull()
 
     private fun profileName(pluginId: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -801,11 +1025,13 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         const val MAX_PENDING_REQUESTS = 16
         const val MAX_RESIDENT_WEBVIEWS = 8
         const val PAGE_POLL_MILLIS = 400L
+        const val PAGE_OPERATION_POLL_MILLIS = 50L
         const val POLL_SLEEP_MILLIS = 10L
         const val MAX_POLL_WAIT_MILLIS = 120_000L
         const val VERIFICATION_CACHE_MILLIS = 10 * 60 * 1000L
         const val TAG = "MgReadAndroidBrowser"
         const val PENDING_RESULT = "{\"state\":\"pending\"}"
+        val PAGE_ASYNC_OPERATIONS = setOf("page.evaluate", "page.html", "page.fetch")
         val PAGE_PROBE_SCRIPT = """
             (() => { try { const text=(document.title+' '+(document.documentElement?.innerText||'')).slice(0,200000);
             return JSON.stringify({href:location.href,ready:document.readyState!=='loading',

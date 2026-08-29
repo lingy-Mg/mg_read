@@ -24,6 +24,62 @@ class _CenteredStatus extends StatelessWidget {
   );
 }
 
+class _ReaderLoadingIndicator extends StatelessWidget {
+  const _ReaderLoadingIndicator({
+    required this.message,
+    required this.indicatorColor,
+    required this.textColor,
+  });
+
+  final String message;
+  final Color indicatorColor;
+  final Color textColor;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: message,
+    liveRegion: true,
+    excludeSemantics: true,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        SizedBox.square(
+          dimension: 30,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: indicatorColor,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(message, style: TextStyle(color: textColor)),
+      ],
+    ),
+  );
+}
+
+class _ChapterLoadingMask extends StatelessWidget {
+  const _ChapterLoadingMask({required this.palette});
+
+  final ReaderPalette palette;
+
+  @override
+  Widget build(BuildContext context) => Positioned.fill(
+    child: AbsorbPointer(
+      child: ColoredBox(
+        key: const ValueKey<String>('reader-chapter-loading-mask'),
+        color: palette.background.withValues(alpha: 0.86),
+        child: Center(
+          child: _ReaderLoadingIndicator(
+            message: ReaderStrings.loadingChapter,
+            indicatorColor: palette.accent,
+            textColor: palette.secondaryText,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 class _ReaderEmptyState extends StatelessWidget {
   const _ReaderEmptyState({
     required this.icon,
@@ -58,25 +114,10 @@ class _PreviousChapterTailMask extends StatelessWidget {
       child: ColoredBox(
         color: palette.background.withValues(alpha: 0.78),
         child: Center(
-          child: Semantics(
-            label: '正在定位上一章末页',
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                SizedBox.square(
-                  dimension: 28,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: palette.accent,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '正在定位上一章末页',
-                  style: TextStyle(color: palette.secondaryText),
-                ),
-              ],
-            ),
+          child: _ReaderLoadingIndicator(
+            message: '正在定位上一章末页',
+            indicatorColor: palette.accent,
+            textColor: palette.secondaryText,
           ),
         ),
       ),

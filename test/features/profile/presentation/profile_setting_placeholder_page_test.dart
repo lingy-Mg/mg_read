@@ -14,8 +14,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:mg_read/app/app_theme.dart';
-
 import 'package:mg_read/features/cache/presentation/cache_management_page.dart';
 import 'package:mg_read/features/profile/presentation/about_item_placeholder_page.dart';
 import 'package:mg_read/features/profile/presentation/about_page.dart';
@@ -63,7 +61,7 @@ void main() {
     expect(find.byType(ProfileSettingPlaceholderPage), findsOneWidget);
     expect(find.text('阅读设置'), findsOneWidget);
     expect(find.text('功能建设中'), findsOneWidget);
-    expect(tester.getTopLeft(find.byKey(const Key('secondary-placeholder-top-bar'))).dy, AppSpacing.pageHeaderTopPadding);
+    expect(tester.getTopLeft(find.byKey(const Key('secondary-placeholder-top-bar'))).dy, 0);
     expect(find.byKey(const Key('secondary-placeholder-back')), findsOneWidget);
     expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
 

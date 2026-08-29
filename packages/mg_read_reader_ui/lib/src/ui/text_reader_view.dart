@@ -2,8 +2,13 @@
 ///
 /// 职责：
 /// - 组合正文排版、章节分页、阅读工具栏与设置入口。
+/// - 将章节缓存参数交给宿主能力，并保持网络、持久化和全局任务状态在宿主侧。
+/// - 横向翻页时将背景与正文组合成同一页片参与动画。
 /// - 处理触摸、鼠标、滚轮和键盘的阅读交互。
 /// - 目录打开后分批补齐全部章节，并将当前章节定位到可视区域中部。
+/// - 将章节状态查询合并进阅读器会话缓存，目录重开只补查尚未覆盖的章节。
+/// - 显式跳章操作收起阅读 chrome，未就绪的章节统一在正文层显示加载态。
+/// - 隔离工具栏和目录动作 Tooltip 的 OverlayPortal 语义，保持 Windows AXTree 稳定。
 ///
 /// 注意：
 /// - 阅读器不拥有网络、数据库或宿主路由；数据和退出请求通过公开契约交互。
@@ -36,6 +41,7 @@ import 'comments/reader_comment_widgets.dart';
 import 'chapter/reader_chapter_state_badge.dart';
 import 'effects/reader_page_effect.dart';
 import 'fonts/reader_font_controller.dart';
+import 'reader_accessible_tooltip.dart';
 import 'reader_strings.dart';
 import 'reader_theme.dart';
 import 'settings/reader_settings_sheet.dart';
@@ -51,6 +57,7 @@ part 'text_reader_persistence.dart';
 part 'text_reader_content_widgets.dart';
 part 'text_reader_vertical_content_widgets.dart';
 part 'text_reader_chrome_widgets.dart';
+part 'text_reader_cache_dialog.dart';
 part 'text_reader_library_sheet.dart';
 part 'text_reader_status_widgets.dart';
 
@@ -153,6 +160,11 @@ class _TextReaderViewState extends State<TextReaderView>
   late AppLifecycleListener _lifecycleListener;
   late final ReaderAutoReadingCoordinator _autoReadingCoordinator;
   final PageController _pageController = PageController(initialPage: 1);
+  final GlobalKey<PopupMenuButtonState<_ReaderOverflowAction>>
+  _readerOverflowMenuKey =
+      GlobalKey<PopupMenuButtonState<_ReaderOverflowAction>>(
+        debugLabel: 'reader-overflow-menu',
+      );
   Timer? _saveTimer;
   Timer? _noticeTimer;
   Timer? _clockTimer;
@@ -191,6 +203,7 @@ class _TextReaderViewState extends State<TextReaderView>
   bool _loading = true;
   bool _controlsVisible = false;
   bool _readerSettingsVisible = false;
+  bool _readerOverflowMenuExpanded = false;
   bool _foreground = true;
   ReaderLifecycleState _lifecycleState = ReaderLifecycleState.foreground;
   ReaderPlatformCapabilities _platformCapabilities =
@@ -210,6 +223,7 @@ class _TextReaderViewState extends State<TextReaderView>
   String? _lastProgressBookId;
   bool _preferencesPreviewDirty = false;
   bool _changingChapter = false;
+  bool _chapterLoadingOverlayVisible = false;
   bool _awaitingPreviousChapterTail = false;
   bool _disposed = false;
   bool _autoScrolling = false;
@@ -355,7 +369,10 @@ class _TextReaderViewState extends State<TextReaderView>
     setState(() {});
   }
 
-  Future<void> _refreshLoadedChapterStates({String? chapterId}) async {
+  Future<void> _refreshLoadedChapterStates({
+    String? chapterId,
+    bool force = false,
+  }) async {
     final ReaderChapterAccessCoordinator? coordinator =
         _chapterAccessCoordinator;
     if (coordinator == null || _disposed) return;
@@ -370,7 +387,7 @@ class _TextReaderViewState extends State<TextReaderView>
         return;
       }
       final int end = (start + _chapterStateBatchSize).clamp(0, ids.length);
-      await coordinator.refresh(ids.sublist(start, end));
+      await coordinator.refresh(ids.sublist(start, end), force: force);
     }
   }
 
@@ -378,7 +395,7 @@ class _TextReaderViewState extends State<TextReaderView>
     final ReaderChapterAccessCoordinator? coordinator =
         _chapterAccessCoordinator;
     if (coordinator == null) return;
-    await _refreshLoadedChapterStates(chapterId: chapterId);
+    await _refreshLoadedChapterStates(chapterId: chapterId, force: true);
     if (_disposed || !identical(coordinator, _chapterAccessCoordinator)) {
       return;
     }
@@ -607,6 +624,8 @@ class _TextReaderViewState extends State<TextReaderView>
                             _buildSettingsInteractionLock(),
                           if (_awaitingPreviousChapterTail)
                             _PreviousChapterTailMask(palette: palette),
+                          if (_chapterLoadingOverlayVisible)
+                            _ChapterLoadingMask(palette: palette),
                           if (_noticeMessage != null)
                             _ReaderNotice(message: _noticeMessage!),
                         ],

@@ -15,6 +15,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_anchored_menu.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 
@@ -25,6 +26,8 @@ class LibraryHomeTopBar extends StatelessWidget {
     required this.onReadingHistory,
     required this.onManageSources,
     required this.onPrivacyLibrary,
+    required this.layoutMode,
+    required this.onLayoutModeToggle,
     this.onToggleTheme,
     super.key,
   });
@@ -34,6 +37,8 @@ class LibraryHomeTopBar extends StatelessWidget {
   final VoidCallback onReadingHistory;
   final VoidCallback onManageSources;
   final VoidCallback onPrivacyLibrary;
+  final LibraryHomeLayoutMode layoutMode;
+  final VoidCallback onLayoutModeToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +66,10 @@ class LibraryHomeTopBar extends StatelessWidget {
             tooltip: '更多操作',
             menuKey: const Key('library-top-overflow-menu'),
             actions: <LibraryAnchoredMenuAction>[
+              LibraryAnchoredMenuAction(
+                label: layoutMode == LibraryHomeLayoutMode.list ? '切换为卡片模式' : '切换为列表模式',
+                onSelected: onLayoutModeToggle,
+              ),
               LibraryAnchoredMenuAction(label: '阅读记录', onSelected: onReadingHistory),
               LibraryAnchoredMenuAction(label: '管理数据源', onSelected: onManageSources),
               LibraryAnchoredMenuAction(label: '隐私书架', onSelected: onPrivacyLibrary),

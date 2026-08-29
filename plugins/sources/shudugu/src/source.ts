@@ -242,7 +242,8 @@ export class ShuduguSource {
       const html = await this.#getHtml(homeUrl, discoveryListingPolicy);
       const latest = (await this.#parseList(html, homeUrl)).slice(0, 10);
       const ranked = (await this.#parseHomeLinks(html, homeUrl, '阅读排行', 'ongoing')).slice(0, 8);
-      const completed = (await this.#parseHomeLinks(html, homeUrl, '完结小说', 'completed')).slice(0, 6);
+      const completedLinks = (await this.#parseHomeLinks(html, homeUrl, '完结小说', 'completed')).slice(0, 6);
+      const completed = await this.#withDetails(completedLinks);
       return Object.freeze({ latest: Object.freeze(latest), ranked: Object.freeze(ranked), completed: Object.freeze(completed) });
     } catch {
       this.context.log.debug('source_discovery_home_unavailable');

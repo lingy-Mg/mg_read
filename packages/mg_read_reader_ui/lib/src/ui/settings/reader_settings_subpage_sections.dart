@@ -59,7 +59,7 @@ extension _ReaderSettingsSubpageSections on _ReaderSettingsSheetState {
         ),
         if (widget.fontRepository != null) ...<Widget>[
           Padding(
-            padding: const EdgeInsets.fromLTRB(6, 4, 6, 5),
+            padding: const EdgeInsets.fromLTRB(6, 2, 6, 4),
             child: Text(
               ReaderStrings.externalFonts,
               style: TextStyle(
@@ -70,7 +70,7 @@ extension _ReaderSettingsSubpageSections on _ReaderSettingsSheetState {
             ),
           ),
           SizedBox(
-            height: 300,
+            height: 248,
             child: ReaderFontCatalog(
               repository: widget.fontRepository!,
               palette: palette,
@@ -266,7 +266,7 @@ extension _ReaderSettingsSubpageSections on _ReaderSettingsSheetState {
   Widget _subpage({required Widget header, required List<Widget> children}) {
     return Scrollbar(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
@@ -277,7 +277,7 @@ extension _ReaderSettingsSubpageSections on _ReaderSettingsSheetState {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 header,
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 ...children,
               ],
             ),
@@ -296,17 +296,17 @@ extension _ReaderSettingsSubpageSections on _ReaderSettingsSheetState {
     ReaderPalette palette,
   ) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Padding(
-            padding: const EdgeInsets.fromLTRB(6, 0, 6, 5),
+            padding: const EdgeInsets.fromLTRB(6, 0, 6, 4),
             child: Text(
               title,
               style: TextStyle(
                 color: palette.secondaryText,
-                fontSize: 12,
+                fontSize: ReaderSettingsTokens.controlTextSize,
                 fontWeight: FontWeight.w600,
               ),
             ),

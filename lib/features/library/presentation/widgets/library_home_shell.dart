@@ -20,11 +20,13 @@ import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_book_grid.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list_action.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_continue_reading_card.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_controls.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_top_bar.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_home_top_visual.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
@@ -39,6 +41,8 @@ class LibraryHomeShell extends StatefulWidget {
     required this.data,
     required this.onRefresh,
     required this.isRefreshing,
+    this.initialLayoutMode = LibraryHomeLayoutMode.list,
+    this.onLayoutModeChanged,
     this.showLoading = false,
     this.preparingBookId,
     this.errorNotice,
@@ -50,6 +54,8 @@ class LibraryHomeShell extends StatefulWidget {
   final LibraryHomeViewData data;
   final Future<void> Function() onRefresh;
   final bool isRefreshing;
+  final LibraryHomeLayoutMode initialLayoutMode;
+  final Future<void> Function(LibraryHomeLayoutMode mode)? onLayoutModeChanged;
 
   /// Hides shelf content while app startup is resolving the real library.
   final bool showLoading;
@@ -75,10 +81,21 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   String? _actionFeedback;
   double _contentOpacity = 1;
   final Set<String> _removingBookIds = <String>{};
+  late LibraryHomeLayoutMode _layoutMode;
+  bool _layoutModeChangePending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _layoutMode = widget.initialLayoutMode;
+  }
 
   @override
   void didUpdateWidget(covariant LibraryHomeShell oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!_layoutModeChangePending && oldWidget.initialLayoutMode != widget.initialLayoutMode) {
+      _layoutMode = widget.initialLayoutMode;
+    }
     if (oldWidget.isRefreshing && !widget.isRefreshing && !identical(oldWidget.data, widget.data)) {
       _contentOpacity = 0.4;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -123,9 +140,10 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                           primary: false,
                           physics: const AlwaysScrollableScrollPhysics(),
                           slivers: <Widget>[
+                            _buildTopSliver(context, pagePadding),
                             SliverPadding(
-                              padding: EdgeInsets.fromLTRB(pagePadding, AppSpacing.pageHeaderTopPadding, pagePadding, AppSpacing.page),
-                              sliver: _buildContentSlivers(context),
+                              padding: EdgeInsets.fromLTRB(pagePadding, AppSpacing.comfortable, pagePadding, AppSpacing.page),
+                              sliver: _buildBodySlivers(context),
                             ),
                           ],
                         ),
@@ -145,43 +163,69 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     );
   }
 
-  Widget _buildContentSlivers(BuildContext context) {
-    return SliverMainAxisGroup(
-      slivers: <Widget>[
-        SliverToBoxAdapter(
-          child: RepaintBoundary(
-            key: const Key('library-stable-header'),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                LibraryHomeTopBar(
-                  onSearch: _handleSearch,
-                  onToggleTheme: widget.onToggleTheme,
-                  onReadingHistory: _handleReadingHistory,
-                  onManageSources: _handleManageSources,
-                  onPrivacyLibrary: _handlePrivacyLibrary,
+  Widget _buildTopSliver(BuildContext context, double pagePadding) {
+    return SliverToBoxAdapter(
+      child: LibraryHomeTopVisual(
+        continueReading: widget.data.continueReading,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(pagePadding, AppSpacing.pageHeaderTopPaddingFor(context), pagePadding, AppSpacing.comfortable),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              RepaintBoundary(
+                key: const Key('library-stable-header'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    LibraryHomeTopBar(
+                      onSearch: _handleSearch,
+                      onToggleTheme: widget.onToggleTheme,
+                      onReadingHistory: _handleReadingHistory,
+                      onManageSources: _handleManageSources,
+                      onPrivacyLibrary: _handlePrivacyLibrary,
+                      layoutMode: _layoutMode,
+                      onLayoutModeToggle: _handleLayoutModeToggle,
+                    ),
+                    if (widget.isRefreshing) ...<Widget>[
+                      const SizedBox(height: AppSpacing.regular),
+                      Semantics(label: '正在刷新书架', child: const LinearProgressIndicator()),
+                    ],
+                    if (widget.errorNotice != null) ...<Widget>[const SizedBox(height: AppSpacing.comfortable), widget.errorNotice!],
+                    if (_actionFeedback != null) ...<Widget>[
+                      const SizedBox(height: AppSpacing.comfortable),
+                      _ActionFeedbackBanner(
+                        message: _actionFeedback!,
+                        onDismiss: () {
+                          setState(() {
+                            _actionFeedback = null;
+                          });
+                        },
+                      ),
+                    ],
+                    const SizedBox(height: AppSpacing.regular),
+                  ],
                 ),
-                if (widget.isRefreshing) ...<Widget>[
-                  const SizedBox(height: AppSpacing.regular),
-                  Semantics(label: '正在刷新书架', child: const LinearProgressIndicator()),
-                ],
-                if (widget.errorNotice != null) ...<Widget>[const SizedBox(height: AppSpacing.comfortable), widget.errorNotice!],
-                if (_actionFeedback != null) ...<Widget>[
-                  const SizedBox(height: AppSpacing.comfortable),
-                  _ActionFeedbackBanner(
-                    message: _actionFeedback!,
-                    onDismiss: () {
-                      setState(() {
-                        _actionFeedback = null;
-                      });
-                    },
+              ),
+              if (!widget.showLoading && !_isFirstRunEmpty)
+                AnimatedOpacity(
+                  opacity: _contentOpacity,
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOut,
+                  child: KeyedSubtree(
+                    key: const Key('library-mobile-layout'),
+                    child: RepaintBoundary(key: const Key('library-stable-reading-surface'), child: _buildReadingSurface(context)),
                   ),
-                ],
-                const SizedBox(height: AppSpacing.regular),
-              ],
-            ),
+                ),
+            ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildBodySlivers(BuildContext context) {
+    return SliverMainAxisGroup(
+      slivers: <Widget>[
         if (widget.showLoading)
           const SliverToBoxAdapter(
             child: Padding(
@@ -190,28 +234,6 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
             ),
           )
         else ...<Widget>[
-          SliverAnimatedOpacity(
-            opacity: _contentOpacity,
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOut,
-            sliver: SliverToBoxAdapter(
-              child: KeyedSubtree(
-                key: const Key('library-mobile-layout'),
-                child: RepaintBoundary(
-                  key: const Key('library-stable-reading-surface'),
-                  child: _isFirstRunEmpty
-                      ? const SizedBox(width: double.infinity)
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: <Widget>[
-                            _buildReadingSurface(context),
-                            const SizedBox(height: AppSpacing.comfortable),
-                          ],
-                        ),
-                ),
-              ),
-            ),
-          ),
           ValueListenableBuilder<({LibraryHomeSection section, LibraryStatusFilter filter})>(
             valueListenable: _selection,
             builder: (BuildContext context, selection, Widget? child) {
@@ -234,17 +256,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                                 ? _NoRecentUpdatesCard(onDiscover: _handleDiscover)
                                 : _NoMatchingBooks(tokens: AppThemeTokens.of(context)),
                           )
-                        : LibraryBookSliverList(
-                            books: books,
-                            onOpenBook: _handleOpenBook,
-                            onBookLongPress: _handleBookLongPress,
-                            onBookMore: _handleBookMore,
-                            actions: _bookActions,
-                            onBookAction: _handleBookAction,
-                            presentation: _listPresentation(selection.section),
-                            preparingBookId: widget.preparingBookId,
-                            removingBookIds: _removingBookIds,
-                          ),
+                        : _buildBookCollection(books: books, section: selection.section),
                   ),
                 ],
               );
@@ -264,6 +276,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     }
     return LibraryContinueReadingCard(
       data: continueReading,
+      showBackdrop: false,
       isPreparing: widget.preparingBookId == continueReading.bookId,
       onContinueReading: _handleContinueReading,
     );
@@ -271,6 +284,32 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
 
   LibraryBookListPresentation _listPresentation(LibraryHomeSection section) =>
       section == LibraryHomeSection.recentUpdates ? LibraryBookListPresentation.recentUpdates : LibraryBookListPresentation.shelf;
+
+  Widget _buildBookCollection({required List<LibraryBookListItemViewData> books, required LibraryHomeSection section}) {
+    if (_layoutMode == LibraryHomeLayoutMode.card) {
+      return LibraryBookSliverGrid(
+        books: books,
+        onOpenBook: _handleOpenBook,
+        onBookLongPress: _handleBookLongPress,
+        onBookMore: _handleBookMore,
+        actions: _bookActions,
+        onBookAction: _handleBookAction,
+        preparingBookId: widget.preparingBookId,
+        removingBookIds: _removingBookIds,
+      );
+    }
+    return LibraryBookSliverList(
+      books: books,
+      onOpenBook: _handleOpenBook,
+      onBookLongPress: _handleBookLongPress,
+      onBookMore: _handleBookMore,
+      actions: _bookActions,
+      onBookAction: _handleBookAction,
+      presentation: _listPresentation(section),
+      preparingBookId: widget.preparingBookId,
+      removingBookIds: _removingBookIds,
+    );
+  }
 
   List<LibraryBookListAction> get _bookActions => <LibraryBookListAction>[
     if (widget.callbacks.onSetBookPrivate != null) _setBookPrivateAction,
@@ -323,6 +362,34 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
 
   void _handleSearch() {
     _invoke(widget.callbacks.onSearch);
+  }
+
+  Future<void> _handleLayoutModeToggle() async {
+    if (_layoutModeChangePending) return;
+    final LibraryHomeLayoutMode previousMode = _layoutMode;
+    final LibraryHomeLayoutMode nextMode = previousMode == LibraryHomeLayoutMode.list
+        ? LibraryHomeLayoutMode.card
+        : LibraryHomeLayoutMode.list;
+    setState(() {
+      _layoutMode = nextMode;
+      _layoutModeChangePending = true;
+      _actionFeedback = null;
+    });
+    try {
+      await widget.onLayoutModeChanged?.call(nextMode);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _layoutMode = previousMode;
+        _actionFeedback = '首页布局偏好保存失败，已恢复原模式。';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _layoutModeChangePending = false;
+        });
+      }
+    }
   }
 
   void _handleReadingHistory() {

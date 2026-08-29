@@ -1,5 +1,6 @@
-// Package-private WebView2 primitive host. Only Dart's fixed browser-session
-// state machine may call this channel; plugins cannot supply scripts or paths.
+// Package-private WebView2 primitive host. Only the Dart browser state machine
+// may call this channel; ctx.webview script source reaches it only after Runtime
+// validation and no WebView handles, profiles, or paths are exposed to plugins.
 #ifndef FLUTTER_PLUGIN_MGREAD_WINDOWS_BROWSER_HOST_H_
 #define FLUTTER_PLUGIN_MGREAD_WINDOWS_BROWSER_HOST_H_
 
@@ -44,6 +45,12 @@ class WindowsBrowserHost {
   void InsertText(const SessionPtr& session,
                   const flutter::EncodableMap& arguments,
                   std::shared_ptr<MethodResult> result);
+  void DispatchKey(const SessionPtr& session,
+                   const flutter::EncodableMap& arguments,
+                   std::shared_ptr<MethodResult> result);
+  void UpdateStatus(const SessionPtr& session,
+                    const flutter::EncodableMap& arguments,
+                    std::shared_ptr<MethodResult> result);
   void GetCookies(const SessionPtr& session,
                   const flutter::EncodableMap& arguments,
                   std::shared_ptr<MethodResult> result);

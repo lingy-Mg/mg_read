@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
+import '../reader_accessible_tooltip.dart';
 import '../reader_theme.dart';
 
 abstract final class ReaderChapterStateStrings {
@@ -147,23 +148,18 @@ class ReaderChapterStateBadge extends StatelessWidget {
         child: content,
       );
     }
-    return Tooltip(
-      message: ReaderChapterStateStrings.retry,
-      excludeFromSemantics: true,
-      child: Semantics(
-        button: true,
-        label: '${semantics.join('，')}，${ReaderChapterStateStrings.retry}',
-        onTap: onRetry,
-        excludeSemantics: true,
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: onRetry,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: content,
-            ),
+    return ReaderAccessibleTooltip(
+      label: '${semantics.join('，')}，${ReaderChapterStateStrings.retry}',
+      tooltipMessage: ReaderChapterStateStrings.retry,
+      onTap: onRetry!,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onRetry,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: content,
           ),
         ),
       ),

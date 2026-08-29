@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
+import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 import 'fixtures/alice_book_house_detail_fixture.dart';
 
@@ -76,13 +78,22 @@ void main() {
 
   testWidgets('manga detail starts the comic reader callback instead of a URL list', (tester) async {
     var comicChapterCount = 0;
+    List<int>? forwardedCoverBytes;
+    BookCoverMemoryCache.write(
+      BookCoverRequest(pluginId: 'org.example.manga', pluginVersion: 'unknown', remoteContentId: 'manga-1', coverUrl: _mangaCoverUrl),
+      _mangaCoverBytes,
+    );
+    addTearDown(BookCoverMemoryCache.clear);
     await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light(),
-        home: _MangaDetailHost(
-          onComicChapterRequested: ({required detail, required firstCatalogPage, required chapter}) async {
-            comicChapterCount += 1;
-          },
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: _MangaDetailHost(
+            onComicChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) async {
+              comicChapterCount += 1;
+              forwardedCoverBytes = entryCoverBytes;
+            },
+          ),
         ),
       ),
     );
@@ -92,6 +103,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(comicChapterCount, 1);
+    expect(forwardedCoverBytes, _mangaCoverBytes);
     expect(find.byKey(const Key('source-detail-start-reading')), findsNothing);
     expect(find.byKey(const Key('source-chapter-content-sheet')), findsNothing);
   });
@@ -315,13 +327,16 @@ final class _MangaGateway implements SourceContentGateway {
   }) => throw UnimplementedError();
 }
 
+const _mangaCoverBytes = <int>[1, 2, 3, 4];
+final _mangaCoverUrl = Uri.parse('https://example.com/manga-cover.png');
+
 final _mangaSummary = PluginContentSummary(
   id: 'manga-1',
   title: '示例漫画',
   contentKind: PluginContentKind.manga,
   author: '示例作者',
   url: null,
-  coverUrl: null,
+  coverUrl: _mangaCoverUrl,
   description: '示例漫画简介',
   language: 'zh-CN',
   status: PluginContentStatus.ongoing,

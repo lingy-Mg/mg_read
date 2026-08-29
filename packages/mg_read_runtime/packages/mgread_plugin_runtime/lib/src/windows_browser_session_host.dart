@@ -1,8 +1,10 @@
-/// Windows owner for the private browser.session.v1 host boundary.
+/// Windows owner for browser.session.v1 and the single-page ctx.webview boundary.
 ///
 /// One plugin owns at most one WebView2 and isolated user-data folder. Fixed
 /// host scripts implement browser fetch; direct HTTP temporarily reads the
 /// profile Cookie/UA and writes Set-Cookie updates back without exposing them.
+/// The new page API carries explicitly requested script bodies and JSON results;
+/// all supporting scripts and native inputs remain host-owned.
 /// Closing the native verification window invalidates that session; the next
 /// visible source request recreates it.
 library;
@@ -14,7 +16,9 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
-const _maximumRequestBytes = 64 * 1024;
+part 'windows_webview_page.dart';
+
+const _maximumRequestBytes = 1024 * 1024;
 const _maximumResponseBytes = 2 * 1024 * 1024;
 const _maximumTimeoutMs = 120000;
 const _maximumPendingRequests = 16;
@@ -34,6 +38,7 @@ final class WindowsBrowserSessionException implements Exception {
 abstract interface class WindowsBrowserPlatform {
   Future<String> create({
     required String pluginId,
+    required String pluginName,
     required String profilePath,
   });
   Future<void> dispose(String sessionId);
@@ -45,12 +50,18 @@ abstract interface class WindowsBrowserPlatform {
   });
   Future<String> executeScript(String sessionId, String script);
   Future<void> insertText(String sessionId, String text);
+  Future<void> dispatchKey(
+    String sessionId, {
+    required String key,
+    required List<String> modifiers,
+  });
   Future<List<Map<String, Object?>>> getCookies(String sessionId, String url);
   Future<void> hide(String sessionId);
   Future<void> load(String sessionId, String url);
   Future<void> setCookie(String sessionId, Map<String, Object?> cookie);
   Future<void> show(String sessionId);
   Future<void> stop(String sessionId);
+  Future<void> updateStatus(String sessionId, String status);
 }
 
 /// Method-channel adapter implemented by the package's Windows plugin.
@@ -65,11 +76,16 @@ final class MethodChannelWindowsBrowserPlatform
   @override
   Future<String> create({
     required String pluginId,
+    required String pluginName,
     required String profilePath,
   }) async {
     final value = await _channel.invokeMethod<String>(
       'create',
-      <String, Object?>{'pluginId': pluginId, 'profilePath': profilePath},
+      <String, Object?>{
+        'pluginId': pluginId,
+        'pluginName': pluginName,
+        'profilePath': profilePath,
+      },
     );
     if (value == null || value.isEmpty)
       throw const WindowsBrowserSessionException('unsupported');
@@ -98,6 +114,17 @@ final class MethodChannelWindowsBrowserPlatform
         'sessionId': sessionId,
         'text': text,
       });
+
+  @override
+  Future<void> dispatchKey(
+    String sessionId, {
+    required String key,
+    required List<String> modifiers,
+  }) => _channel.invokeMethod<void>('dispatchKey', <String, Object?>{
+    'sessionId': sessionId,
+    'key': key,
+    'modifiers': modifiers,
+  });
 
   @override
   Future<String> executeScript(String sessionId, String script) async {
@@ -152,6 +179,13 @@ final class MethodChannelWindowsBrowserPlatform
   @override
   Future<void> stop(String sessionId) => _invoke('stop', sessionId);
 
+  @override
+  Future<void> updateStatus(String sessionId, String status) =>
+      _channel.invokeMethod<void>('updateStatus', <String, Object?>{
+        'sessionId': sessionId,
+        'status': status,
+      });
+
   Future<void> _invoke(String method, String sessionId) => _channel
       .invokeMethod<void>(method, <String, Object?>{'sessionId': sessionId});
 }
@@ -186,6 +220,14 @@ final class WindowsBrowserSessionHost {
     required Map<String, Object?> raw,
   }) async {
     if (_disposed) throw const WindowsBrowserSessionException('unsupported');
+    if (raw['operation'] is String &&
+        (raw['operation']! as String).startsWith('page.')) {
+      return _requestPage(
+        jobId: jobId,
+        deadlineUnixMs: deadlineUnixMs,
+        raw: raw,
+      );
+    }
     final request = _WindowsBrowserRequest.parse(raw);
     _log(
       'browser_session_start plugin_id=${request.pluginId} '
@@ -197,7 +239,7 @@ final class WindowsBrowserSessionHost {
     _jobs[jobId] = job;
     _WindowsBrowserSession? session;
     try {
-      session = await _sessionFor(request.pluginId);
+      session = await _sessionFor(request.pluginId, request.pluginId);
       if (session.activeJobId != null)
         throw const WindowsBrowserSessionException('overloaded');
       session.activeJobId = jobId;
@@ -215,7 +257,7 @@ final class WindowsBrowserSessionHost {
             _sessions.remove(request.pluginId);
           }
           session.activeJobId = null;
-          session = await _sessionFor(request.pluginId);
+          session = await _sessionFor(request.pluginId, request.pluginId);
           if (session.activeJobId != null)
             throw const WindowsBrowserSessionException('overloaded');
           session.activeJobId = jobId;
@@ -318,7 +360,10 @@ final class WindowsBrowserSessionHost {
     ]);
   }
 
-  Future<_WindowsBrowserSession> _sessionFor(String pluginId) async {
+  Future<_WindowsBrowserSession> _sessionFor(
+    String pluginId,
+    String pluginName,
+  ) async {
     final existing = _sessions[pluginId];
     if (existing != null) {
       _log('browser_session_reuse plugin_id=$pluginId');
@@ -326,7 +371,7 @@ final class WindowsBrowserSessionHost {
     }
     final pending = _creating[pluginId];
     if (pending != null) return pending;
-    final created = _createSessionSerially(pluginId);
+    final created = _createSessionSerially(pluginId, pluginName);
     _creating[pluginId] = created;
     try {
       return await created;
@@ -335,7 +380,10 @@ final class WindowsBrowserSessionHost {
     }
   }
 
-  Future<_WindowsBrowserSession> _createSessionSerially(String pluginId) async {
+  Future<_WindowsBrowserSession> _createSessionSerially(
+    String pluginId,
+    String pluginName,
+  ) async {
     while (true) {
       final pending = _sessionCreationGate;
       if (pending == null) break;
@@ -344,14 +392,17 @@ final class WindowsBrowserSessionHost {
     final gate = Completer<void>();
     _sessionCreationGate = gate;
     try {
-      return await _createSession(pluginId);
+      return await _createSession(pluginId, pluginName);
     } finally {
       if (identical(_sessionCreationGate, gate)) _sessionCreationGate = null;
       gate.complete();
     }
   }
 
-  Future<_WindowsBrowserSession> _createSession(String pluginId) async {
+  Future<_WindowsBrowserSession> _createSession(
+    String pluginId,
+    String pluginName,
+  ) async {
     if (_sessions.length >= _maximumResidentWebViews) {
       final idle =
           _sessions.values
@@ -372,9 +423,15 @@ final class WindowsBrowserSessionHost {
     await profile.create(recursive: true);
     final sessionId = await _platform.create(
       pluginId: pluginId,
+      pluginName: pluginName,
       profilePath: profile.path,
     );
-    final session = _WindowsBrowserSession(pluginId, sessionId, _clock());
+    final session = _WindowsBrowserSession(
+      pluginId,
+      pluginName,
+      sessionId,
+      _clock(),
+    );
     _sessions[pluginId] = session;
     _log('browser_session_created plugin_id=$pluginId');
     return session;
@@ -823,6 +880,26 @@ final class _WindowsBrowserRequest {
   final String selector;
   final String? text;
 
+  factory _WindowsBrowserRequest.pagePlaceholder(_WindowsPageRequest request) =>
+      _WindowsBrowserRequest(
+        action: '',
+        body: null,
+        headers: const <String, String>{},
+        interaction: 'silent',
+        maxResponseBytes: _maximumResponseBytes,
+        method: 'GET',
+        pluginId: request.pluginId,
+        presentation: 'hidden',
+        sessionKey: '',
+        timeoutMs: request.timeoutMs,
+        transport: 'webview',
+        url: request.url ?? 'https://invalid.example/',
+        origin: 'https://invalid.example',
+        operation: request.operation,
+        selector: '',
+        text: request.text,
+      );
+
   static _WindowsBrowserRequest parse(Map<String, Object?> value) {
     if (utf8.encode(jsonEncode(value)).length > _maximumRequestBytes ||
         value['version'] != 1)
@@ -945,13 +1022,20 @@ final class _WindowsBrowserRequest {
 }
 
 final class _WindowsBrowserSession {
-  _WindowsBrowserSession(this.pluginId, this.sessionId, this.lastUsedAt);
+  _WindowsBrowserSession(
+    this.pluginId,
+    this.pluginName,
+    this.sessionId,
+    this.lastUsedAt,
+  );
 
   final String pluginId;
+  final String pluginName;
   final String sessionId;
   final Map<String, DateTime> verifiedAt = <String, DateTime>{};
   String? activeJobId;
   DateTime lastUsedAt;
+  bool visible = false;
 }
 
 final class _WindowsBrowserJob {
@@ -965,81 +1049,3 @@ final class _WindowsBrowserJob {
   int retries = 0;
   HttpClient? client;
 }
-
-Map<String, Object?>? _decodeScriptObject(String raw) {
-  final decoded = jsonDecode(raw);
-  if (decoded is! String) return null;
-  final value = jsonDecode(decoded);
-  return value is Map<Object?, Object?> ? _stringMap(value) : null;
-}
-
-Map<String, Object?> _stringMap(Object? value) {
-  if (value is! Map<Object?, Object?>)
-    throw const WindowsBrowserSessionException('plugin_execution_failed');
-  return <String, Object?>{
-    for (final entry in value.entries)
-      if (entry.key is String) entry.key! as String: entry.value,
-  };
-}
-
-String _required(Map<String, Object?> value, String key, int maximumLength) {
-  final field = value[key];
-  if (field is! String || field.isEmpty || field.length > maximumLength)
-    _invalid();
-  return field;
-}
-
-Never _invalid() =>
-    throw const WindowsBrowserSessionException('plugin_execution_failed');
-
-String _origin(String value) {
-  final uri = Uri.parse(value);
-  if (uri.scheme != 'https' || uri.host.isEmpty || uri.userInfo.isNotEmpty)
-    _invalid();
-  return Uri(
-    scheme: 'https',
-    host: uri.host.toLowerCase(),
-    port: uri.hasPort && uri.port != 443 ? uri.port : null,
-  ).origin;
-}
-
-bool _looksLikeChallenge(Object? value) =>
-    value is String &&
-    RegExp(
-      r'cf-challenge|cf-turnstile|just a moment|checking your browser|challenge-platform',
-      caseSensitive: false,
-    ).hasMatch(value);
-
-bool _isChallengeResponse(Map<String, Object?> response) {
-  final status = response['status'];
-  return status == 403 || _looksLikeChallenge(response['body']);
-}
-
-double? _finiteNumber(Object? value) {
-  if (value is! num || !value.isFinite) return null;
-  return value.toDouble();
-}
-
-String _fetchScript(_WindowsBrowserJob job) {
-  final request = job.request;
-  final key = jsonEncode(job.id);
-  final url = jsonEncode(request.url);
-  final method = jsonEncode(request.method);
-  final headers = jsonEncode(jsonEncode(request.headers));
-  final body = request.body == null ? 'null' : jsonEncode(request.body);
-  final origin = jsonEncode(request.origin);
-  return """(() => {globalThis.__mgreadFetchResults ??= Object.create(null);const key=$key;(async()=>{try{const response=await fetch($url,{method:$method,headers:JSON.parse($headers),body:$body,credentials:'include',redirect:'follow'});const body=await response.text();if(new TextEncoder().encode(body).byteLength>${request.maxResponseBytes}){globalThis.__mgreadFetchResults[key]=JSON.stringify({ok:false,code:'overloaded'});return;}const finalUrl=new URL(response.url);if(finalUrl.origin!==$origin)throw new Error('cross_origin');const headers={};for(const name of ['cache-control','content-type','etag','expires','last-modified']){const value=response.headers.get(name);if(value!==null)headers[name]=value.slice(0,1024);}globalThis.__mgreadFetchResults[key]=JSON.stringify({ok:true,response:{status:response.status,finalUrl:response.url,headers,body}});}catch(_){globalThis.__mgreadFetchResults[key]=JSON.stringify({ok:false,code:'plugin_execution_failed'});}})();return 'started';})()""";
-}
-
-String _pageHtmlScript(_WindowsBrowserJob job) {
-  final origin = jsonEncode(job.request.origin);
-  return """(() => {try{const finalUrl=location.href;const currentOrigin=new URL(finalUrl).origin;if(currentOrigin!==$origin)throw new Error('cross_origin');const body=document.documentElement?.outerHTML??'';if(new TextEncoder().encode(body).byteLength>${job.request.maxResponseBytes})return JSON.stringify({ok:false,code:'overloaded'});return JSON.stringify({ok:true,response:{status:200,finalUrl,headers:{'content-type':'text/html'},body}});}catch(_){return JSON.stringify({ok:false,code:'plugin_execution_failed'});}})()""";
-}
-
-String _interactionTargetScript(_WindowsBrowserRequest request) {
-  final selector = jsonEncode(request.selector);
-  return """(() => { try { const e=document.querySelector($selector); if(!e) return JSON.stringify({accepted:false,action:'${request.action}'}); const r=e.getBoundingClientRect(); if(!Number.isFinite(r.x)||!Number.isFinite(r.y)||r.width<=0||r.height<=0) return JSON.stringify({accepted:false,action:'${request.action}'}); return JSON.stringify({accepted:true,action:'${request.action}',x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height,devicePixelRatio:window.devicePixelRatio||1}); } catch (_) { return JSON.stringify({accepted:false,action:'${request.action}'}); } })()""";
-}
-
-const _pageProbeScript =
-    """(() => {try{const text=(document.title+' '+(document.documentElement?.innerText||'')).slice(0,200000);return JSON.stringify({href:location.href,ready:document.readyState!=='loading',challenge:/(cf-challenge|cf-turnstile|just a moment|checking your browser|challenge-platform)/i.test(text)});}catch(_){return null;}})()""";

@@ -8,7 +8,8 @@
  *
  * Notes:
  * - this file does not launch a browser or persist browser state;
- * - platform providers must isolate sessions by plugin ID, session key and origin.
+ * - platform providers keep one page per plugin for the new webview API;
+ * - legacy v1 sessions continue to use their session key and origin boundary.
  */
 import { Buffer } from "node:buffer";
 
@@ -83,14 +84,39 @@ export type PluginBrowserHostRequest = (PluginBrowserSessionRequest & {
   readonly operation: "interaction";
   readonly pluginId: string;
   readonly signal: AbortSignal;
-});
+}) | PluginWebViewHostRequest;
+
+export type PluginWebViewOperation =
+  | "page.open"
+  | "page.show"
+  | "page.hide"
+  | "page.close"
+  | "page.navigate"
+  | "page.evaluate"
+  | "page.html"
+  | "page.fetch"
+  | "page.click"
+  | "page.input"
+  | "page.key"
+  | "page.waitText"
+  | "page.getUrl";
+
+export interface PluginWebViewHostRequest {
+  readonly operation: PluginWebViewOperation;
+  readonly pluginId: string;
+  readonly pluginName: string;
+  readonly signal: AbortSignal;
+  readonly timeoutMs: number;
+  readonly version: 1;
+  readonly [key: string]: unknown;
+}
 
 export type PluginBrowserHostResponse =
   | PluginBrowserSessionResponse
   | PluginBrowserSessionInteractionResponse;
 
 export interface PluginBrowserSessionProvider {
-  request(request: PluginBrowserHostRequest): Promise<PluginBrowserHostResponse>;
+  request(request: PluginBrowserHostRequest): Promise<unknown>;
 }
 
 export class PluginBrowserSessionError extends Error {
@@ -117,7 +143,8 @@ const pluginBrowserSessionErrorCodes = new Set<PluginBrowserSessionError["code"]
   "unsupported",
 ]);
 
-function browserSessionErrorCode(value: unknown): PluginBrowserSessionError["code"] | undefined {
+/** Reads the return-value error envelope used by embedded Android providers. */
+export function browserSessionErrorCode(value: unknown): PluginBrowserSessionError["code"] | undefined {
   if (value === null || typeof value !== "object") return undefined;
   const code = (value as { readonly __mgreadBrowserSessionError?: unknown }).__mgreadBrowserSessionError;
   return typeof code === "string" && pluginBrowserSessionErrorCodes.has(code as PluginBrowserSessionError["code"])

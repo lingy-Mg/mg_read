@@ -5,13 +5,20 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 void main() {
   testWidgets('catalog completes 5000 chapters and lazily centres the current one', (WidgetTester tester) async {
     final _CatalogPositionDataSource dataSource = _CatalogPositionDataSource();
+    final _CatalogChapterStateCapability chapterStateCapability = _CatalogChapterStateCapability();
     await tester.pumpWidget(
       MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.windows),
         home: Scaffold(
           body: SizedBox(
             width: 400,
             height: 700,
-            child: TextReaderView(bookId: 'catalog-position-book', dataSource: dataSource, stateStore: const _CatalogPositionStateStore()),
+            child: TextReaderView(
+              bookId: 'catalog-position-book',
+              dataSource: dataSource,
+              stateStore: const _CatalogPositionStateStore(),
+              extensions: ReaderExtensions(chapterStateCapability: chapterStateCapability),
+            ),
           ),
         ),
       ),
@@ -29,8 +36,17 @@ void main() {
     expect(dataSource.loadedChapterIds, contains('chapter-4990'));
     expect(find.byKey(const ValueKey<String>('reader-catalog-count-5000')), findsOneWidget);
     expect(find.text('加载更多章节'), findsNothing);
+    final RawScrollbar catalogScrollbar = tester.widget<RawScrollbar>(find.byKey(const ValueKey<String>('reader-catalog-scrollbar')));
+    expect(catalogScrollbar.thumbVisibility, isTrue);
+    expect(catalogScrollbar.interactive, isTrue);
+    expect(catalogScrollbar.thickness, 18);
+    expect(catalogScrollbar.minThumbLength, 52);
     final Finder catalogList = find.byType(ListView);
     expect(catalogList, findsOneWidget);
+    expect(find.ancestor(of: catalogList, matching: find.bySubtype<RawScrollbar>()), findsOneWidget);
+    expect(find.text('已下载'), findsWidgets);
+    expect(chapterStateCapability.queriedChapterIds, hasLength(5000));
+    final int queryCountAfterFirstOpen = chapterStateCapability.requests.length;
     final Finder catalogScrollable = find.descendant(of: catalogList, matching: find.byType(Scrollable));
     final ScrollPosition catalogPosition = tester.state<ScrollableState>(catalogScrollable).position;
     expect(catalogPosition.maxScrollExtent, greaterThan(300000));
@@ -42,7 +58,33 @@ void main() {
     final Rect chapterRect = tester.getRect(currentChapter);
     final Rect listRect = tester.getRect(catalogList);
     expect((chapterRect.center.dy - listRect.center.dy).abs(), lessThanOrEqualTo(2));
+
+    Navigator.of(tester.element(catalogList)).pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('目录'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已下载'), findsWidgets);
+    expect(chapterStateCapability.requests, hasLength(queryCountAfterFirstOpen));
   });
+}
+
+final class _CatalogChapterStateCapability implements ReaderChapterStateCapability {
+  final List<List<String>> requests = <List<String>>[];
+
+  Set<String> get queriedChapterIds => requests.expand((List<String> ids) => ids).toSet();
+
+  @override
+  Future<Map<String, ReaderChapterState>> loadChapterStates(String bookId, List<String> chapterIds) async {
+    requests.add(List<String>.of(chapterIds));
+    return <String, ReaderChapterState>{
+      for (final String chapterId in chapterIds)
+        chapterId: ReaderChapterState(chapterId: chapterId, availability: ReaderChapterAvailability.downloaded, wordCount: 1200),
+    };
+  }
+
+  @override
+  Future<void> markRead(String bookId, String chapterId) async {}
 }
 
 final class _CatalogPositionDataSource implements TextReaderDataSource {

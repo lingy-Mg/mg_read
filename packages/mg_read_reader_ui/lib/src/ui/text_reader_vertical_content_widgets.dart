@@ -120,7 +120,11 @@ extension _TextReaderVerticalContentWidgets on _TextReaderViewState {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 24),
                     child: OutlinedButton(
-                      onPressed: _nextChapter,
+                      key: const ValueKey<String>(
+                        'reader-vertical-next-chapter',
+                      ),
+                      onPressed: () =>
+                          unawaited(_nextChapter(showLoadingOverlay: true)),
                       child: const Text(ReaderStrings.nextChapter),
                     ),
                   );

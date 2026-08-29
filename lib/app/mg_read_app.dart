@@ -18,6 +18,7 @@ import 'package:mg_read/features/library/presentation/library_home_view_data.dar
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
+import 'package:mg_read/features/reader/presentation/chapter_cache_task_bar.dart';
 import 'package:mg_read/shared/presentation/widgets/app_back_navigation_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 
@@ -93,23 +94,29 @@ class _MgReadAppState extends ConsumerState<MgReadApp> {
       themeMode: ThemeMode.light,
       routerConfig: router,
       builder: (BuildContext context, Widget? child) {
-        return _AppStartupGate(
-          child: DataSourceSystemErrorDialogHost(
-            reporter: ref.watch(dataSourceSystemErrorReporterProvider),
-            child: AppFatalErrorDialogHost(
-              reporter: ref.watch(fatalErrorReporterProvider),
-              child: AppBottomNavigationMotionScope(
-                child: AppBackNavigationScope(
-                  onBackRequested: popApplicationRoute,
-                  child: AppThemeModeScope(
-                    themeMode: ThemeMode.light,
-                    onToggleTheme: _toggleTheme,
-                    child: child ?? const SizedBox.shrink(),
+        return Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            _AppStartupGate(
+              child: DataSourceSystemErrorDialogHost(
+                reporter: ref.watch(dataSourceSystemErrorReporterProvider),
+                child: AppFatalErrorDialogHost(
+                  reporter: ref.watch(fatalErrorReporterProvider),
+                  child: AppBottomNavigationMotionScope(
+                    child: AppBackNavigationScope(
+                      onBackRequested: popApplicationRoute,
+                      child: AppThemeModeScope(
+                        themeMode: ThemeMode.light,
+                        onToggleTheme: _toggleTheme,
+                        child: child ?? const SizedBox.shrink(),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
+            const ChapterCacheTaskBar(),
+          ],
         );
       },
     );

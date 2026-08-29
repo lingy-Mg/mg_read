@@ -90,11 +90,29 @@ package 自有 WebView2；两者都不增加主应用 Facade。`transport=webvie
 插件还可请求当前数据源 WebView 内的控件坐标、原生输入和控件点击；这些操作只绑定该插件会话。
 坐标查询仅使用宿主固定的 `getBoundingClientRect()`；点击由 WebView 宿主输入入口投递，输入由
 宿主原生输入通道提交，不调用 `HTMLElement.click()`、DOM `dispatchEvent()` 或 DOM value setter。
-此路径不启用 CDP，不提供桌面全局鼠标、键盘或其他窗口控制，也不接受插件脚本。
+旧 v1 路径不启用 CDP，不提供桌面全局鼠标、键盘或其他窗口控制，也不接受插件脚本。
 每个插件最多一个 WebView；可见验证使用全局唯一弹窗并可隐藏，隐藏会话不显示。Android 支持
 multi-profile 时使用独立 Profile；旧版 Android WebView 会明确记录 `single_fallback` 降级日志并使用应用
 默认单体 WebView Profile，因此不提供跨插件 Cookie 隔离。Windows 缺少 Evergreen WebView2 Runtime 时仍返回
 `unsupported`，不会共享默认会话。
+
+新数据源优先使用单页面 `ctx.webview`：
+
+```javascript
+const page = await ctx.webview.open({ visible: true });
+await page.navigate('https://example.com/');
+const value = await page.executeJavaScript(`
+  const response = await fetch('/api/state');
+  return await response.json();
+`);
+```
+
+每个数据源强制只有一个页面，重复 `open()` 返回同一 handle，无 `sessionKey`，也暂不公开
+`onUrlChanged` 或 Cookie API。页面还提供 `getHtml`、遵循浏览器 CORS 的 `fetch`、原生坐标点击、
+原生文本/按键、带最大时限的 `waitForText`、`getUrl`、`show`、`hide` 和 `close`。脚本按异步函数体
+执行，结果可为任意 JSON 值；Runtime 对普通页面操作进行 FIFO 串行，控制操作旁路队列。调用超时不
+自动销毁页面，并撤销页面内任务 token，迟到的 Promise 不再写入结果。探测窗口阻止弹窗、外部协议、下载、权限、
+文件选择与全屏；Windows 原生静音并允许 F12 DevTools，Android 目前只禁止自动播放。
 
 `importLocalPlugin()` 是生产 Facade 的本地数据源导入能力。文件选择器、私有 inbox、原子复制、
 `.mgplugin.js` / `.mgplugin` 校验和冷激活均由本 package/Runtime 负责；主应用只接收取消或成功结果，

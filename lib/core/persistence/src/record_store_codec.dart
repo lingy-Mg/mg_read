@@ -3,6 +3,12 @@
 /// 不改变 JSON 限额、codec registry、revision 或时间戳语义。
 part of 'record_store.dart';
 
+const _insertMetadataRecordSql = '''INSERT INTO metadata_records (
+  record_id, record_kind, scope_kind, scope_id, parent_id, identity_key,
+  order_key, state_key, format_version, revision, payload_json,
+  created_at_utc, updated_at_utc
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)''';
+
 extension _PersistenceRecordCodec on PersistenceRecordStore {
   void _validateDraft(RecordDraft draft) {
     if (draft.id.isEmpty || draft.recordKind.isEmpty || draft.scope.kind.isEmpty || draft.scope.id.isEmpty) {
@@ -75,27 +81,7 @@ extension _PersistenceRecordCodec on PersistenceRecordStore {
 
   Future<RecordEnvelope> _insertPreparedDraft(_PreparedDraft prepared) async {
     final draft = prepared.draft;
-    await _database.customStatement(
-      '''INSERT INTO metadata_records (
-        record_id, record_kind, scope_kind, scope_id, parent_id, identity_key,
-        order_key, state_key, format_version, revision, payload_json,
-        created_at_utc, updated_at_utc
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)''',
-      [
-        draft.id,
-        draft.recordKind,
-        draft.scope.kind,
-        draft.scope.id,
-        draft.parentId,
-        draft.identityKey,
-        draft.orderKey,
-        draft.stateKey,
-        prepared.codec.currentVersion,
-        prepared.document.payloadJson,
-        prepared.now.millisecondsSinceEpoch,
-        prepared.now.millisecondsSinceEpoch,
-      ],
-    );
+    await _database.customStatement(_insertMetadataRecordSql, _preparedDraftArguments(prepared));
     return _envelopeFromDraft(draft, prepared.codec.currentVersion, 1, prepared.document.document, prepared.now, prepared.now);
   }
 
@@ -142,6 +128,24 @@ extension _PersistenceRecordCodec on PersistenceRecordStore {
     orderKey: previous.orderKey,
     stateKey: previous.stateKey,
   );
+}
+
+List<Object?> _preparedDraftArguments(_PreparedDraft prepared) {
+  final draft = prepared.draft;
+  return <Object?>[
+    draft.id,
+    draft.recordKind,
+    draft.scope.kind,
+    draft.scope.id,
+    draft.parentId,
+    draft.identityKey,
+    draft.orderKey,
+    draft.stateKey,
+    prepared.codec.currentVersion,
+    prepared.document.payloadJson,
+    prepared.now.millisecondsSinceEpoch,
+    prepared.now.millisecondsSinceEpoch,
+  ];
 }
 
 final class _PreparedDraft {

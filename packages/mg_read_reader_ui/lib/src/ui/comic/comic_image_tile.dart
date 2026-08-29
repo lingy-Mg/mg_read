@@ -198,7 +198,13 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
                       'comic-reader-image-${widget.chapterId}-${widget.image.id}',
                     ),
                     image: _decodedProvider!,
-                    fit: BoxFit.contain,
+                    // The outer tile already uses the encoded image ratio.
+                    // Fill it once that ratio is known so integer decode-size
+                    // rounding cannot expose a fractional black row between
+                    // vertically adjacent pages at non-integer desktop DPI.
+                    fit: _decodedAspectRatio == null
+                        ? BoxFit.contain
+                        : BoxFit.fill,
                     alignment: Alignment.topCenter,
                     filterQuality: FilterQuality.medium,
                     errorBuilder:

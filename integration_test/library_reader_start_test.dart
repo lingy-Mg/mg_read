@@ -12,7 +12,6 @@ import 'package:mg_read/features/library/application/library_page_controller.dar
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/library/domain/library_overview.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
-import 'package:mg_read/features/library/presentation/widgets/library_continue_reading_card.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 
@@ -37,7 +36,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('已加入书架的书'), findsAtLeastNWidgets(1));
-    expect(find.byType(ReadingProgressBar), findsOneWidget);
+    expect(
+      find.byKey(const Key('continue-reading-cta-progress')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byType(LibraryBookListItem));
     await tester.pump();

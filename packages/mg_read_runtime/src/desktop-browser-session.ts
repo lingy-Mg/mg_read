@@ -10,7 +10,8 @@ import { randomUUID } from "node:crypto";
 import {
   PluginBrowserSessionError,
   type PluginBrowserHostRequest,
-  type PluginBrowserHostResponse,
+  type PluginBrowserSessionInteractionRequest,
+  type PluginBrowserSessionRequest,
   type PluginBrowserSessionProvider,
 } from "./plugin-browser-session.js";
 import type { JsonObject } from "./protocol.js";
@@ -29,7 +30,7 @@ const hostErrorCodes = new Set([
 
 interface PendingHostRequest {
   readonly reject: (error: Error) => void;
-  readonly resolve: (response: PluginBrowserHostResponse) => void;
+  readonly resolve: (response: unknown) => void;
   readonly session: ServerWebSocketSession;
   readonly traceId: string;
 }
@@ -57,7 +58,7 @@ export class DesktopBrowserSessionBroker implements PluginBrowserSessionProvider
     }
   }
 
-  request(request: PluginBrowserHostRequest): Promise<PluginBrowserHostResponse> {
+  request(request: PluginBrowserHostRequest): Promise<unknown> {
     const session = this.#host;
     if (session === undefined || session.isClosed) {
       throw new PluginBrowserSessionError("unsupported");
@@ -71,6 +72,12 @@ export class DesktopBrowserSessionBroker implements PluginBrowserSessionProvider
 
     const id = `s:browser-${randomUUID()}`;
     const traceId = `trace:${id}`;
+    const runtimeOperation = (request as { readonly operation?: string }).operation;
+    const params = runtimeOperation === "interaction"
+      ? interactionParameters(request)
+      : runtimeOperation?.startsWith("page.") === true
+        ? pageParameters(request)
+        : legacyParameters(request);
     const envelope = JSON.stringify({
       v: protocolVersion,
       type: "host_request",
@@ -79,42 +86,13 @@ export class DesktopBrowserSessionBroker implements PluginBrowserSessionProvider
       method: "host.browserSession.v1",
       traceId,
       deadlineUnixMs: String(Date.now() + request.timeoutMs),
-      params: {
-        ...(request.operation !== "interaction"
-          ? {
-              operation: "request",
-              version: request.version,
-              pluginId: request.pluginId,
-              sessionKey: request.sessionKey,
-              url: request.url,
-              method: request.method,
-              headers: request.headers,
-              body: request.body,
-              interaction: request.interaction,
-              presentation: request.presentation,
-              transport: request.transport,
-              timeoutMs: request.timeoutMs,
-              maxResponseBytes: request.maxResponseBytes,
-            }
-          : {
-              operation: "interaction",
-              action: request.action,
-              version: request.version,
-              pluginId: request.pluginId,
-              sessionKey: request.sessionKey,
-              url: request.url,
-              selector: request.selector,
-              presentation: request.presentation,
-              timeoutMs: request.timeoutMs,
-              ...(request.text === undefined ? {} : { text: request.text }),
-            }),
-      },
+      params,
     });
     if (Buffer.byteLength(envelope, "utf8") > maxWebSocketControlFrameBytes) {
       throw new PluginBrowserSessionError("overloaded");
     }
 
-    return new Promise<PluginBrowserHostResponse>((resolve, reject) => {
+    return new Promise<unknown>((resolve, reject) => {
       const onAbort = (): void => {
         if (!this.#pending.delete(id)) return;
         try {
@@ -185,11 +163,51 @@ export class DesktopBrowserSessionBroker implements PluginBrowserSessionProvider
       pending.reject(new PluginBrowserSessionError("plugin_execution_failed"));
       return true;
     }
-    pending.resolve(value.result as unknown as PluginBrowserHostResponse);
+    pending.resolve(value.result);
     return true;
   }
 }
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function pageParameters(request: PluginBrowserHostRequest): Readonly<Record<string, unknown>> {
+  const { signal: _signal, ...params } = request;
+  return params;
+}
+
+function legacyParameters(request: PluginBrowserHostRequest): Readonly<Record<string, unknown>> {
+  const value = request as PluginBrowserSessionRequest & { readonly pluginId: string };
+  return {
+    operation: "request",
+    version: value.version,
+    pluginId: value.pluginId,
+    sessionKey: value.sessionKey,
+    url: value.url,
+    method: value.method,
+    headers: value.headers,
+    body: value.body,
+    interaction: value.interaction,
+    presentation: value.presentation,
+    transport: value.transport,
+    timeoutMs: value.timeoutMs,
+    maxResponseBytes: value.maxResponseBytes,
+  };
+}
+
+function interactionParameters(request: PluginBrowserHostRequest): Readonly<Record<string, unknown>> {
+  const value = request as PluginBrowserSessionInteractionRequest & { readonly pluginId: string };
+  return {
+    operation: "interaction",
+    action: value.action,
+    version: value.version,
+    pluginId: value.pluginId,
+    sessionKey: value.sessionKey,
+    url: value.url,
+    selector: value.selector,
+    presentation: value.presentation,
+    timeoutMs: value.timeoutMs,
+    ...(value.text === undefined ? {} : { text: value.text }),
+  };
 }

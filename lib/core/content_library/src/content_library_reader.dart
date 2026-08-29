@@ -3,6 +3,7 @@
 /// 职责：
 /// - 经主应用持久化层读写可再生封面和语义阅读进度。
 /// - 为阅读器提供绑定到不可变目录快照的强类型会话。
+/// - 投影漫画正文图片缓存总量和按书架漫画归属的用量。
 ///
 /// 注意：
 /// - 全局封面写入在持久化边界内按 LRU 上限维护，调用方不访问路径或自行清理。
@@ -92,7 +93,32 @@ final class MangaImageCacheRepository {
 
   Future<int> usageBytes() => _library._persistence.fileObjects.mangaImageCacheUsageBytes();
 
+  Future<MangaImageCacheStorageUsage> usage() async {
+    final usage = await _library._persistence.fileObjects.mangaImageCacheUsage();
+    final items = <MangaImageCacheItemUsage>[
+      for (final entry in usage.bytesByItem.entries) MangaImageCacheItemUsage(itemId: LibraryItemId(entry.key), bytes: entry.value),
+    ];
+    final attributedBytes = items.fold<int>(0, (sum, item) => sum + item.bytes);
+    return MangaImageCacheStorageUsage(totalBytes: usage.totalBytes, unattributedBytes: usage.totalBytes - attributedBytes, items: items);
+  }
+
   Future<int> clear() => _library._persistence.fileObjects.clearMangaImageCache();
+}
+
+final class MangaImageCacheStorageUsage {
+  MangaImageCacheStorageUsage({required this.totalBytes, required this.unattributedBytes, required List<MangaImageCacheItemUsage> items})
+    : items = List<MangaImageCacheItemUsage>.unmodifiable(items);
+
+  final int totalBytes;
+  final int unattributedBytes;
+  final List<MangaImageCacheItemUsage> items;
+}
+
+final class MangaImageCacheItemUsage {
+  const MangaImageCacheItemUsage({required this.itemId, required this.bytes});
+
+  final LibraryItemId itemId;
+  final int bytes;
 }
 
 /// Stores the user-owned semantic position reported by the text reader.
@@ -264,21 +290,11 @@ final class MangaReaderSession {
 
   Future<CatalogEntry?> itemAtIndex(int index) => index < 0 || index >= catalogCount
       ? Future.value(null)
-      : _library.catalog._findInSnapshot(
-          itemId: item.id,
-          snapshot: _snapshot,
-          bindingId: _bindingId,
-          orderKey: _catalogOrderKey(index),
-        );
+      : _library.catalog._findInSnapshot(itemId: item.id, snapshot: _snapshot, bindingId: _bindingId, orderKey: _catalogOrderKey(index));
 
   Future<CatalogEntry?> itemByRemoteIdentity(String remoteIdentity) {
     if (remoteIdentity.isEmpty) return Future.value(null);
-    return _library.catalog._findInSnapshot(
-      itemId: item.id,
-      snapshot: _snapshot,
-      bindingId: _bindingId,
-      remoteIdentity: remoteIdentity,
-    );
+    return _library.catalog._findInSnapshot(itemId: item.id, snapshot: _snapshot, bindingId: _bindingId, remoteIdentity: remoteIdentity);
   }
 
   Future<Page<CatalogEntry>> page({String? after, int limit = 100}) =>

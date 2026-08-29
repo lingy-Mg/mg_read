@@ -13,6 +13,7 @@
 import type { JsonObject } from "./protocol.js";
 import type { PluginPackageDescriptor } from "./plugin-package.js";
 import type { PluginContentOperation } from "./plugin-content.js";
+import type { PluginWebViewApi } from "./plugin-webview-page.js";
 
 export type PluginManagerEventCode =
   | "plugin_disabled"
@@ -162,6 +163,7 @@ export interface MgReadPluginContext {
       controlClick(request: unknown): Promise<unknown>;
     };
   };
+  readonly webview: PluginWebViewApi;
   readonly resource: { proxy(request: JsonObject): string };
   readonly log: {
     debug(event: string): void;

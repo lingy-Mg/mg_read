@@ -11,6 +11,7 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_book_grid.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_removal_transition.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_swipe_actions.dart';
@@ -23,6 +24,13 @@ import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 
 void main() {
+  testWidgets('places the Android home header directly below the system inset', (WidgetTester tester) async {
+    await tester.pumpWidget(_host(topInset: 24));
+    await tester.pumpAndSettle();
+
+    expect(tester.getRect(find.byType(LibraryHomeTopBar)).top, 24);
+  });
+
   testWidgets('renders the home hierarchy with progress and book semantics', (WidgetTester tester) async {
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
@@ -31,7 +39,7 @@ void main() {
     expect(find.textContaining('界面预览'), findsNothing);
     expect(find.byKey(const Key('continue-reading-cta')), findsOneWidget);
     expect(find.text('诡秘之主'), findsAtLeastNWidgets(2));
-    expect(find.text('最近更新'), findsOneWidget);
+    expect(find.text('最近阅读'), findsOneWidget);
     expect(find.text('管理我的书源'), findsNothing);
     expect(find.byType(AppBottomNavigation), findsOneWidget);
     expect(find.byWidgetPredicate((Widget widget) => widget is Semantics && widget.properties.label == '阅读进度 72%'), findsOneWidget);
@@ -39,6 +47,28 @@ void main() {
       find.byWidgetPredicate((Widget widget) => widget is Semantics && widget.properties.label == '诡秘之主，第1268章 不可名状的低语，1小时前，有更新'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('uses the current cover behind the complete top area', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 844));
+    await tester.pumpWidget(_host());
+    await tester.pumpAndSettle();
+
+    final Rect backdrop = tester.getRect(find.byKey(const Key('library-home-top-backdrop')));
+    final Rect topBar = tester.getRect(find.byType(LibraryHomeTopBar));
+    final Rect readingSurface = tester.getRect(find.byKey(const Key('continue-reading-surface')));
+
+    expect(find.byKey(const Key('library-home-top-backdrop-cover')), findsOneWidget);
+    expect(find.byKey(const Key('library-home-top-bottom-fade')), findsOneWidget);
+    expect(find.byKey(const Key('library-home-left-readability-scrim')), findsOneWidget);
+    expect(tester.widget<ClipRect>(find.byKey(const Key('library-home-top-backdrop'))), isA<ClipRect>());
+    expect(tester.widget<LibraryBookCover>(find.byKey(const Key('library-home-top-backdrop-cover'))).alignment, Alignment.topCenter);
+    expect(backdrop.left, 0);
+    expect(backdrop.right, 390);
+    expect(backdrop.contains(topBar.topLeft), isTrue);
+    expect(backdrop.contains(topBar.bottomRight), isTrue);
+    expect(backdrop.contains(readingSurface.topLeft), isTrue);
+    expect(backdrop.contains(readingSurface.bottomRight), isTrue);
   });
 
   testWidgets('shows preparation only on the selected shelf entry', (WidgetTester tester) async {
@@ -77,6 +107,131 @@ void main() {
 
     expect(find.text('管理数据源'), findsOneWidget);
     expect(find.text('管理书源'), findsNothing);
+  });
+
+  testWidgets('switches between list and card modes from the top menu', (WidgetTester tester) async {
+    final List<LibraryHomeLayoutMode> savedModes = <LibraryHomeLayoutMode>[];
+    await tester.pumpWidget(
+      _host(
+        onLayoutModeChanged: (LibraryHomeLayoutMode mode) async {
+          savedModes.add(mode);
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LibraryBookSliverList), findsOneWidget);
+    expect(find.byType(LibraryBookSliverGrid), findsNothing);
+
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    expect(find.text('切换为卡片模式'), findsOneWidget);
+    await tester.tap(find.text('切换为卡片模式'));
+    await tester.pumpAndSettle();
+
+    expect(savedModes, <LibraryHomeLayoutMode>[LibraryHomeLayoutMode.card]);
+    expect(find.byType(LibraryBookSliverGrid), findsOneWidget);
+    expect(find.byType(LibraryBookSliverList), findsNothing);
+
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    expect(find.text('切换为列表模式'), findsOneWidget);
+  });
+
+  testWidgets('restores list mode when the card preference cannot be saved', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      _host(
+        onLayoutModeChanged: (LibraryHomeLayoutMode mode) async {
+          throw StateError('settings unavailable');
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('切换为卡片模式'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LibraryBookSliverList), findsOneWidget);
+    expect(find.byType(LibraryBookSliverGrid), findsNothing);
+    expect(find.text('首页布局偏好保存失败，已恢复原模式。'), findsOneWidget);
+  });
+
+  testWidgets('card mode preserves book open, long press, and private actions', (WidgetTester tester) async {
+    LibraryBookListItemViewData? openedBook;
+    LibraryBookListItemViewData? longPressedBook;
+    LibraryBookListItemViewData? privateBook;
+    await tester.pumpWidget(
+      _host(
+        initialLayoutMode: LibraryHomeLayoutMode.card,
+        callbacks: LibraryHomeCallbacks(
+          onOpenBook: (LibraryBookListItemViewData book) => openedBook = book,
+          onBookLongPress: (LibraryBookListItemViewData book) => longPressedBook = book,
+          onSetBookPrivate: (LibraryBookListItemViewData book) async {
+            privateBook = book;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final Finder firstCard = find.byType(LibraryBookGridItem).first;
+    await tester.tap(firstCard);
+    expect(openedBook?.id, 'fixture-lord-of-mysteries');
+    await tester.longPress(firstCard);
+    expect(longPressedBook?.id, 'fixture-lord-of-mysteries');
+
+    final Finder cardMenu = find.byKey(const Key('library-grid-book-overflow-menu-fixture-lord-of-mysteries'));
+    await tester.tap(cardMenu);
+    await tester.pumpAndSettle();
+    final Finder gridPrivacy = find.byKey(const Key('library-grid-book-action-fixture-lord-of-mysteries-set-private'));
+    await tester.tap(gridPrivacy);
+    await tester.pump(AppMotion.destinationTransition);
+    await tester.pumpAndSettle();
+    expect(privateBook?.id, 'fixture-lord-of-mysteries');
+  });
+
+  testWidgets('card mode preserves preparation, filtering, and deletion', (WidgetTester tester) async {
+    LibraryBookListItemViewData? deletedBook;
+    await _setViewport(tester, const Size(390, 844));
+    await tester.pumpWidget(
+      _host(
+        initialLayoutMode: LibraryHomeLayoutMode.card,
+        preparingBookId: 'fixture-heavenly-path',
+        callbacks: LibraryHomeCallbacks(
+          onDeleteBook: (LibraryBookListItemViewData book) async {
+            deletedBook = book;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byWidgetPredicate(
+        (Widget widget) => widget is LibraryBookGridItem && widget.data.id == 'fixture-heavenly-path' && widget.isPreparing,
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('library-filter-completed')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate((Widget widget) => widget is LibraryBookGridItem && widget.data.status == LibraryBookStatus.ongoing),
+      findsNothing,
+    );
+
+    final LibraryBookGridItem completedCard = tester.widget<LibraryBookGridItem>(find.byType(LibraryBookGridItem).first);
+    await tester.tap(find.byKey(Key('library-grid-book-overflow-menu-${completedCard.data.id}')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(Key('library-grid-book-action-${completedCard.data.id}-delete')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    await tester.pump(AppMotion.destinationTransition);
+    await tester.pumpAndSettle();
+    expect(deletedBook?.id, completedCard.data.id);
   });
 
   testWidgets('confirms bookshelf deletion before invoking the delete action', (WidgetTester tester) async {
@@ -278,7 +433,7 @@ void main() {
     final Text updateTitle = tester.widget<Text>(
       find.descendant(of: find.byType(LibraryBookListItem).first, matching: find.text('诡秘之主')).last,
     );
-    final Text selectedSection = tester.widget<Text>(find.text('最近更新'));
+    final Text selectedSection = tester.widget<Text>(find.text('最近阅读'));
     final Text unselectedSection = tester.widget<Text>(find.text('书架'));
     final Text continueAction = tester.widget<Text>(
       find.descendant(of: find.byKey(const Key('continue-reading-cta')), matching: find.text('继续阅读')),
@@ -288,12 +443,12 @@ void main() {
     expect(pageTitle.style?.fontWeight, FontWeight.w600);
     expect(updateTitle.style?.fontSize, 16);
     expect(updateTitle.style?.fontWeight, FontWeight.w600);
-    expect(selectedSection.style?.fontSize, 16);
+    expect(selectedSection.style?.fontSize, AppTypography.secondary);
     expect(selectedSection.style?.fontWeight, FontWeight.w600);
-    expect(unselectedSection.style?.fontSize, 16);
+    expect(unselectedSection.style?.fontSize, AppTypography.secondary);
     expect(unselectedSection.style?.fontWeight, FontWeight.w400);
-    expect(continueAction.style?.fontSize, 14);
-    expect(continueAction.style?.fontWeight, FontWeight.w500);
+    expect(continueAction.style?.fontSize, 16);
+    expect(continueAction.style?.fontWeight, FontWeight.w600);
   });
 
   testWidgets('unbound actions show and dismiss local presentation feedback', (WidgetTester tester) async {
@@ -340,7 +495,7 @@ void main() {
         overrides: [bookCoverBytesLoaderProvider.overrideWithValue(loader)],
         child: MaterialApp(
           theme: AppTheme.light(),
-          home: LibraryHomeShell(data: data, isRefreshing: false, onRefresh: () async {}),
+          home: LibraryHomeShell(data: data, initialLayoutMode: LibraryHomeLayoutMode.card, isRefreshing: false, onRefresh: () async {}),
         ),
       ),
     );
@@ -457,16 +612,21 @@ void main() {
     final Rect headingRow = tester.getRect(find.byKey(const Key('library-list-heading-row')));
     final Rect filters = tester.getRect(find.byKey(const Key('library-status-filter-bar')));
     final Rect sectionNavigation = tester.getRect(find.byType(LibrarySectionNavigation));
-    final Rect continueCover = tester.getRect(find.byType(LibraryBookCover).first);
+    final Rect continueCover = tester.getRect(find.byKey(const Key('continue-reading-flat-cover')));
     final Rect continueAction = tester.getRect(find.byKey(const Key('continue-reading-cta')));
 
     expect(filters.left, greaterThan(sectionNavigation.right));
     expect(filters.center.dy, closeTo(headingRow.center.dy, 0.1));
     expect(filters.right, closeTo(headingRow.right, 0.1));
-    expect(continueAction.bottom, lessThan(continueCover.bottom));
+    final Rect continueSurface = tester.getRect(find.byKey(const Key('continue-reading-surface')));
+    expect(continueSurface.contains(continueCover.topLeft), isTrue);
+    expect(continueSurface.contains(continueAction.bottomRight), isTrue);
+    expect(continueAction.right, lessThan(continueCover.left));
+    expect(continueAction.center.dx, closeTo((continueSurface.left + continueCover.left - AppSpacing.comfortable) / 2, 0.1));
+    expect(tester.widget<FractionallySizedBox>(find.byKey(const Key('continue-reading-cta-progress'))).widthFactor, 0.72);
   });
 
-  testWidgets('raises the cover beyond the shorter card and keeps a long title to one line', (WidgetTester tester) async {
+  testWidgets('keeps the flat cover inside the hero and safely truncates a long title', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 844));
     const String longTitle = '这是一本足够长到需要在极窄空间里自动缩小并最终省略的继续阅读书籍标题';
     final data = LibraryHomeViewData(
@@ -485,23 +645,49 @@ void main() {
     await tester.pumpAndSettle();
 
     final Rect surface = tester.getRect(find.byKey(const Key('continue-reading-surface')));
-    final Rect cover = tester.getRect(find.byType(LibraryBookCover).first);
+    final Finder flatCover = find.byKey(const Key('continue-reading-flat-cover'));
+    final Rect cover = tester.getRect(flatCover);
+    final Widget readingSurface = tester.widget(find.byKey(const Key('continue-reading-surface')));
     final Text title = tester.widget<Text>(
-      find.byWidgetPredicate((Widget widget) => widget is Text && widget.data == longTitle && widget.maxLines == 1),
+      find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is Text && widget.data == longTitle && widget.maxLines == 2 && widget.style?.fontSize == AppTypography.sectionTitle,
+      ),
     );
 
-    expect(surface.height, AppSpacing.continueReadingCardHeight);
-    expect(cover.height, greaterThan(surface.height));
-    expect(cover.top, lessThan(surface.top));
-    expect(cover.bottom, greaterThan(surface.bottom));
-    expect(cover.left, lessThan(surface.left));
+    expect(surface.height, greaterThanOrEqualTo(172));
+    expect(readingSurface, isA<SizedBox>());
+    expect(cover.height, greaterThan(165));
+    expect(surface.contains(cover.topLeft), isTrue);
+    expect(cover.bottom, lessThanOrEqualTo(surface.bottom));
+    expect(cover.right, closeTo(surface.right, 0.1));
+    expect(find.ancestor(of: flatCover, matching: find.byType(RotatedBox)), findsNothing);
     expect(find.text('继续阅读'), findsOneWidget);
     expect(find.text('阅读记录'), findsNothing);
     expect(find.text('第999章 不应显示'), findsNothing);
     expect(find.text('上次阅读 不应显示'), findsNothing);
-    expect(title.maxLines, 1);
+    expect(title.maxLines, 2);
     expect(title.overflow, TextOverflow.ellipsis);
-    expect(title.style?.fontSize, lessThan(AppTypography.sectionTitle));
+    expect(title.style?.fontSize, lessThanOrEqualTo(AppTypography.sectionTitle));
+    expect(title.style?.shadows, isNull);
+  });
+
+  testWidgets('keeps the hero and one-line controls overflow-free with enlarged text', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 844));
+    await tester.pumpWidget(_host(textScaler: const TextScaler.linear(1.5)));
+    await tester.pumpAndSettle();
+
+    final Rect heading = tester.getRect(find.byKey(const Key('library-list-heading-row')));
+    final Rect sections = tester.getRect(find.byType(LibrarySectionNavigation));
+    final Rect filters = tester.getRect(find.byKey(const Key('library-status-filter-bar')));
+    final Rect hero = tester.getRect(find.byKey(const Key('continue-reading-surface')));
+    final Rect cover = tester.getRect(find.byKey(const Key('continue-reading-flat-cover')));
+
+    expect(tester.takeException(), isNull);
+    expect(sections.center.dy, closeTo(heading.center.dy, 0.1));
+    expect(filters.center.dy, closeTo(heading.center.dy, 0.1));
+    expect(cover.bottom, lessThanOrEqualTo(hero.bottom));
+    expect(cover.right, closeTo(hero.right, 0.1));
   });
 
   testWidgets('aligns compact row metadata with the cover and stacks the trailing controls', (WidgetTester tester) async {
@@ -509,8 +695,8 @@ void main() {
     await tester.pumpWidget(_host(callbacks: LibraryHomeCallbacks(onDeleteBook: (_) async {})));
     await tester.pumpAndSettle();
 
-    final Finder firstCover = find.byType(LibraryBookCover).at(1);
     final Finder firstTile = find.byType(LibraryBookListItem).first;
+    final Finder firstCover = find.descendant(of: firstTile, matching: find.byType(LibraryBookCover));
     final Finder firstMetadataTag = find.byType(LibraryMetadataTag).first;
     final Finder firstSwipeActions = find.byType(LibraryBookSwipeActions).first;
     final Finder firstUnreadDot = find.byWidgetPredicate((Widget widget) => widget is Semantics && widget.properties.label == '有更新').first;
@@ -603,15 +789,26 @@ Widget _host({
   LibraryHomeViewData? data,
   String? preparingBookId,
   bool disableAnimations = false,
+  double topInset = 0,
+  TextScaler textScaler = TextScaler.noScaling,
+  LibraryHomeLayoutMode initialLayoutMode = LibraryHomeLayoutMode.list,
+  Future<void> Function(LibraryHomeLayoutMode mode)? onLayoutModeChanged,
 }) {
   return MaterialApp(
     theme: AppTheme.light(),
     darkTheme: AppTheme.dark(),
     themeMode: themeMode,
     home: MediaQuery(
-      data: MediaQueryData(disableAnimations: disableAnimations),
+      data: MediaQueryData(
+        disableAnimations: disableAnimations,
+        textScaler: textScaler,
+        padding: EdgeInsets.only(top: topInset),
+        viewPadding: EdgeInsets.only(top: topInset),
+      ),
       child: LibraryHomeShell(
         data: data ?? LibraryHomeFixtures.preview,
+        initialLayoutMode: initialLayoutMode,
+        onLayoutModeChanged: onLayoutModeChanged,
         callbacks: callbacks,
         isRefreshing: false,
         onRefresh: () async {},

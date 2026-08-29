@@ -63,9 +63,9 @@ void main() {
 
     final Rect topBar = tester.getRect(find.byKey(const Key('data-source-top-bar')));
     final Rect card = tester.getRect(find.byKey(const Key('data-source-management-card')));
-    expect(topBar.top, closeTo(AppSpacing.pageHeaderTopPadding, 0.1));
+    expect(topBar.top, 0);
     expect(topBar.height, AppSpacing.minimumTouchTarget);
-    expect(card.top, closeTo(AppSpacing.pageHeaderTopPadding + AppSpacing.minimumTouchTarget + AppSpacing.regular, 0.1));
+    expect(card.top, closeTo(AppSpacing.minimumTouchTarget + AppSpacing.regular, 0.1));
     expect(card.left, closeTo(AppDetailMetrics.horizontalPadding, 0.1));
     expect(card.width, closeTo(390 - AppDetailMetrics.horizontalPadding * 2, 0.1));
 
@@ -96,7 +96,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final Rect topBar = tester.getRect(find.byKey(const Key('data-source-top-bar')));
-    expect(topBar.top, 24 + AppSpacing.pageHeaderTopPadding);
+    expect(topBar.top, 24);
     expect(topBar.height, AppSpacing.minimumTouchTarget);
   });
 

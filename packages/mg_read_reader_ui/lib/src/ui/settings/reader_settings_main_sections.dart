@@ -20,31 +20,33 @@ extension _ReaderSettingsMainSections on _ReaderSettingsSheetState {
             child: Column(
               children: <Widget>[
                 _buildBrightnessRow(palette),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 _buildFontSizeRow(palette),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 _buildThemeRow(palette),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 _buildBackgroundRow(palette),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 _buildPagingRow(palette),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 _buildOtherRow(palette),
-                const SizedBox(height: 6),
+                const SizedBox(height: 2),
                 TextButton.icon(
                   style: TextButton.styleFrom(
                     minimumSize: const Size(
                       0,
                       ReaderSettingsTokens.touchTarget,
                     ),
-                    textStyle: const TextStyle(fontSize: 13),
+                    textStyle: const TextStyle(
+                      fontSize: ReaderSettingsTokens.subpageLabelFontSize,
+                    ),
                   ),
                   onPressed: _toggleAutoReading,
                   icon: Icon(
                     _autoReading
                         ? Icons.pause_circle_outline_rounded
                         : Icons.play_arrow_rounded,
-                    size: 19,
+                    size: 17,
                   ),
                   label: Text(
                     _autoReading
@@ -172,7 +174,7 @@ extension _ReaderSettingsMainSections on _ReaderSettingsSheetState {
                   textAlign: TextAlign.center,
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded),
+              const Icon(Icons.chevron_right_rounded, size: 18),
             ],
           ),
         );
@@ -202,7 +204,8 @@ extension _ReaderSettingsMainSections on _ReaderSettingsSheetState {
                 width:
                     (constraints.maxWidth -
                             ReaderSettingsTokens.labelWidth -
-                            142)
+                            ReaderSettingsTokens.fontSizeControlWidth -
+                            6)
                         .clamp(96, 220)
                         .toDouble(),
                 child: fontControl,

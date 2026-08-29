@@ -6,6 +6,7 @@
 ///
 /// 注意：
 /// - 调用方只提供标题、操作和内容，不得叠加额外的顶部安全区或标题栏间距。
+/// - Android 紧贴系统顶部安全区；其他平台保留八 dp 顶部节奏。
 /// - 内容壳不负责路由、异步加载或业务状态。
 /// - 二级及更深页面不得显示主导航栏。
 ///
@@ -22,7 +23,7 @@ import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 ///
 /// The bar deliberately owns only presentation chrome. The surrounding page
 /// must place it in [AppSecondaryPageContent] inside a top [SafeArea], so it
-/// follows the same eight-dp rhythm as the primary profile header.
+/// follows the same platform-aware rhythm as the primary profile header.
 class AppSecondaryPageTopBar extends StatelessWidget {
   const AppSecondaryPageTopBar({
     required this.title,
@@ -125,7 +126,7 @@ class AppSecondaryPageContent extends StatelessWidget {
     builder: (BuildContext context, BoxConstraints constraints) {
       final double horizontalPadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint ? AppSpacing.widePagePadding : 0;
       return Padding(
-        padding: EdgeInsets.fromLTRB(horizontalPadding, AppSpacing.pageHeaderTopPadding, horizontalPadding, 0),
+        padding: EdgeInsets.fromLTRB(horizontalPadding, AppSpacing.pageHeaderTopPaddingFor(context), horizontalPadding, 0),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),

@@ -1,0 +1,33 @@
+{
+  "name": "@mgread-plugin/35ge-info",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MgRead conversion of the user-provided 35小说 source.",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "packageManager": "npm@11.13.0",
+  "engines": { "node": ">=24 <25", "npm": "11.13.0" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/contract.test.mjs test/source.test.mjs",
+    "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
+    "pack:plugin": "npm run build && node tools/mgread.mjs pack",
+    "verify": "npm run typecheck && npm test && npm run pack:plugin"
+  },
+  "dependencies": { "cheerio": "1.1.0" },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.35ge-info",
+    "displayName": "35小说",
+    "description": "35中文网免费小说书源，支持分类、搜索、详情、目录与正文阅读。",
+    "pluginApi": 1,
+    "packageMode": "single-file",
+    "contentKinds": ["novel"]
+  }
+}

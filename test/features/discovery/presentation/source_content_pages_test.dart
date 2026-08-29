@@ -51,7 +51,7 @@ void main() {
     expect(selectedTarget, 'category:1');
   });
 
-  testWidgets('adds compact vertical spacing between list categories', (tester) async {
+  testWidgets('uses unified panel rows for list categories', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
@@ -79,7 +79,9 @@ void main() {
 
     final first = tester.getRect(find.byKey(const Key('runtime-discovery-category-category-1')));
     final second = tester.getRect(find.byKey(const Key('runtime-discovery-category-category-2')));
-    expect(second.top - first.bottom, AppSpacing.compact);
+    expect(first.height, AppSpacing.discoveryCompactRowMinHeight);
+    expect(second.height, AppSpacing.discoveryCompactRowMinHeight);
+    expect(second.top - first.bottom, 1);
   });
 
   testWidgets('renders a back control only for a retained navigation stack', (tester) async {

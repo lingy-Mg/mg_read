@@ -103,7 +103,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         primary: false,
                         padding: EdgeInsets.fromLTRB(
                           pagePadding,
-                          AppSpacing.pageHeaderTopPadding,
+                          AppSpacing.pageHeaderTopPaddingFor(context),
                           pagePadding,
                           AppSpacing.profileContentBottomSafeDistance,
                         ),

@@ -7,13 +7,15 @@
 #include <cmath>
 #include <mutex>
 #include <utility>
+#include <vector>
 
 namespace mgread_plugin_runtime {
 namespace {
 
 constexpr wchar_t kWindowClass[] = L"MgReadBrowserSessionWindow";
 constexpr int kHideButtonId = 1001;
-constexpr int kToolbarHeight = 42;
+constexpr int kCloseButtonId = 1002;
+constexpr int kToolbarHeight = 78;
 
 std::wstring Utf8ToWide(const std::string& value) {
   if (value.empty()) return {};
@@ -55,6 +57,12 @@ const flutter::EncodableMap* FindMap(const flutter::EncodableMap& map,
                                     const char* key) {
   const auto* value = Find(map, key);
   return value == nullptr ? nullptr : std::get_if<flutter::EncodableMap>(value);
+}
+
+const flutter::EncodableList* FindList(const flutter::EncodableMap& map,
+                                      const char* key) {
+  const auto* value = Find(map, key);
+  return value == nullptr ? nullptr : std::get_if<flutter::EncodableList>(value);
 }
 
 bool FindBool(const flutter::EncodableMap& map, const char* key,
@@ -125,10 +133,14 @@ HWND FindWebViewWindow(HWND parent) {
 struct WindowsBrowserHost::Session {
   WindowsBrowserHost* owner = nullptr;
   std::string plugin_id;
+  std::wstring plugin_name;
   std::string session_id;
   std::wstring profile_path;
   HWND window = nullptr;
   HWND hide_button = nullptr;
+  HWND close_button = nullptr;
+  HWND status_text = nullptr;
+  HWND url_text = nullptr;
   HWND input_window = nullptr;
   Microsoft::WRL::ComPtr<ICoreWebView2Environment> environment;
   Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller;
@@ -139,7 +151,16 @@ struct WindowsBrowserHost::Session {
     RECT bounds{};
     GetClientRect(window, &bounds);
     if (hide_button != nullptr) {
-      MoveWindow(hide_button, std::max(0L, bounds.right - 92L), 7, 80, 28, TRUE);
+      MoveWindow(hide_button, std::max(0L, bounds.right - 184L), 7, 80, 28, TRUE);
+    }
+    if (close_button != nullptr) {
+      MoveWindow(close_button, std::max(0L, bounds.right - 96L), 7, 80, 28, TRUE);
+    }
+    if (status_text != nullptr) {
+      MoveWindow(status_text, 16, 10, std::max(0L, bounds.right - 216L), 24, TRUE);
+    }
+    if (url_text != nullptr) {
+      MoveWindow(url_text, 16, 42, std::max(0L, bounds.right - 32L), 24, TRUE);
     }
     if (controller != nullptr) {
       RECT browser_bounds{0, kToolbarHeight, bounds.right,
@@ -162,6 +183,12 @@ struct WindowsBrowserHost::Session {
       case WM_COMMAND:
         if (LOWORD(wparam) == kHideButtonId) {
           ShowWindow(window, SW_HIDE);
+          return 0;
+        }
+        if (LOWORD(wparam) == kCloseButtonId) {
+          if (session != nullptr && session->owner != nullptr) {
+            session->owner->DisposeSession(session->session_id);
+          }
           return 0;
         }
         break;
@@ -234,7 +261,8 @@ void WindowsBrowserHost::Handle(
   } else if (call.method_name() == "load") {
     const auto* url = FindString(*arguments, "url");
     const auto wide = url == nullptr ? std::wstring() : Utf8ToWide(*url);
-    if (wide.rfind(L"https://", 0) != 0 || session->webview == nullptr ||
+    if ((wide.rfind(L"https://", 0) != 0 && wide.rfind(L"http://", 0) != 0) ||
+        session->webview == nullptr ||
         FAILED(session->webview->Navigate(wide.c_str()))) {
       SafeError(result, "plugin_execution_failed");
     } else {
@@ -246,6 +274,10 @@ void WindowsBrowserHost::Handle(
     DispatchMouseInput(session, *arguments, result);
   } else if (call.method_name() == "insertText") {
     InsertText(session, *arguments, result);
+  } else if (call.method_name() == "dispatchKey") {
+    DispatchKey(session, *arguments, result);
+  } else if (call.method_name() == "updateStatus") {
+    UpdateStatus(session, *arguments, result);
   } else if (call.method_name() == "getCookies") {
     GetCookies(session, *arguments, result);
   } else if (call.method_name() == "setCookie") {
@@ -258,8 +290,10 @@ void WindowsBrowserHost::Handle(
 void WindowsBrowserHost::Create(const flutter::EncodableMap& arguments,
                                 std::shared_ptr<MethodResult> result) {
   const auto* plugin_id = FindString(arguments, "pluginId");
+  const auto* plugin_name = FindString(arguments, "pluginName");
   const auto* profile_path = FindString(arguments, "profilePath");
-  if (plugin_id == nullptr || plugin_id->empty() || profile_path == nullptr ||
+  if (plugin_id == nullptr || plugin_id->empty() || plugin_name == nullptr ||
+      plugin_name->empty() || profile_path == nullptr ||
       profile_path->empty()) {
     SafeError(result, "plugin_execution_failed");
     return;
@@ -272,6 +306,7 @@ void WindowsBrowserHost::Create(const flutter::EncodableMap& arguments,
   const auto session = std::make_shared<Session>();
   session->owner = this;
   session->plugin_id = *plugin_id;
+  session->plugin_name = Utf8ToWide(*plugin_name);
   session->session_id = NewSessionId();
   session->profile_path = Utf8ToWide(*profile_path);
   if (session->session_id.empty() || session->profile_path.empty()) {
@@ -279,7 +314,7 @@ void WindowsBrowserHost::Create(const flutter::EncodableMap& arguments,
     return;
   }
   session->window = CreateWindowEx(
-      WS_EX_APPWINDOW, kWindowClass, L"MgRead Browser Verification",
+      WS_EX_APPWINDOW, kWindowClass, L"MgRead 数据源探测",
       WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 980, 760,
       flutter_window_, nullptr, GetModuleHandle(nullptr), session.get());
   if (session->window == nullptr) {
@@ -291,6 +326,19 @@ void WindowsBrowserHost::Create(const flutter::EncodableMap& arguments,
       0, 0, 80, 28, session->window,
       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kHideButtonId)),
       GetModuleHandle(nullptr), nullptr);
+  session->close_button = CreateWindow(
+      L"BUTTON", L"关闭", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+      0, 0, 80, 28, session->window,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCloseButtonId)),
+      GetModuleHandle(nullptr), nullptr);
+  const std::wstring initial_status = session->plugin_name + L"正在进行探测 - 已打开";
+  session->status_text = CreateWindow(
+      L"STATIC", initial_status.c_str(), WS_CHILD | WS_VISIBLE | SS_LEFT,
+      0, 0, 100, 24, session->window, nullptr, GetModuleHandle(nullptr), nullptr);
+  session->url_text = CreateWindowEx(
+      WS_EX_CLIENTEDGE, L"EDIT", L"about:blank",
+      WS_CHILD | WS_VISIBLE | ES_LEFT | ES_AUTOHSCROLL | ES_READONLY,
+      0, 0, 100, 24, session->window, nullptr, GetModuleHandle(nullptr), nullptr);
   sessions_[session->session_id] = session;
   plugin_sessions_[session->plugin_id] = session->session_id;
 
@@ -329,11 +377,82 @@ void WindowsBrowserHost::Create(const flutter::EncodableMap& arguments,
                           settings != nullptr) {
                         settings->put_IsScriptEnabled(TRUE);
                         settings->put_IsWebMessageEnabled(FALSE);
-                        settings->put_AreDefaultScriptDialogsEnabled(TRUE);
+                        settings->put_AreDefaultScriptDialogsEnabled(FALSE);
                         settings->put_IsStatusBarEnabled(FALSE);
-                        settings->put_AreDevToolsEnabled(FALSE);
+                        settings->put_AreDevToolsEnabled(TRUE);
                         settings->put_IsZoomControlEnabled(FALSE);
+                        Microsoft::WRL::ComPtr<ICoreWebView2Settings3> settings3;
+                        if (SUCCEEDED(settings.As(&settings3)) && settings3 != nullptr) {
+                          settings3->put_AreBrowserAcceleratorKeysEnabled(TRUE);
+                        }
                       }
+                      EventRegistrationToken token{};
+                      session->webview->add_SourceChanged(
+                          Microsoft::WRL::Callback<ICoreWebView2SourceChangedEventHandler>(
+                              [session](ICoreWebView2*, ICoreWebView2SourceChangedEventArgs*) -> HRESULT {
+                                LPWSTR source = nullptr;
+                                if (session->webview != nullptr &&
+                                    SUCCEEDED(session->webview->get_Source(&source)) && source != nullptr) {
+                                  if (session->url_text != nullptr) SetWindowText(session->url_text, source);
+                                  CoTaskMemFree(source);
+                                }
+                                return S_OK;
+                              }).Get(),
+                          &token);
+                      session->webview->add_NavigationStarting(
+                          Microsoft::WRL::Callback<ICoreWebView2NavigationStartingEventHandler>(
+                              [](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
+                                LPWSTR uri = nullptr;
+                                if (args != nullptr && SUCCEEDED(args->get_Uri(&uri)) && uri != nullptr) {
+                                  const bool allowed = wcsncmp(uri, L"https://", 8) == 0 ||
+                                                       wcsncmp(uri, L"http://", 7) == 0 ||
+                                                       wcscmp(uri, L"about:blank") == 0;
+                                  if (!allowed) args->put_Cancel(TRUE);
+                                  CoTaskMemFree(uri);
+                                }
+                                return S_OK;
+                              }).Get(),
+                          &token);
+                      session->webview->add_NewWindowRequested(
+                          Microsoft::WRL::Callback<ICoreWebView2NewWindowRequestedEventHandler>(
+                              [](ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* args) -> HRESULT {
+                                if (args != nullptr) args->put_Handled(TRUE);
+                                return S_OK;
+                              }).Get(),
+                          &token);
+                      session->webview->add_PermissionRequested(
+                          Microsoft::WRL::Callback<ICoreWebView2PermissionRequestedEventHandler>(
+                              [](ICoreWebView2*, ICoreWebView2PermissionRequestedEventArgs* args) -> HRESULT {
+                                if (args != nullptr) args->put_State(COREWEBVIEW2_PERMISSION_STATE_DENY);
+                                return S_OK;
+                              }).Get(),
+                          &token);
+                      session->webview->add_ContainsFullScreenElementChanged(
+                          Microsoft::WRL::Callback<ICoreWebView2ContainsFullScreenElementChangedEventHandler>(
+                              [session](ICoreWebView2*, IUnknown*) -> HRESULT {
+                                if (session->webview != nullptr) {
+                                  session->webview->ExecuteScript(
+                                      L"document.fullscreenElement&&document.exitFullscreen()", nullptr);
+                                }
+                                return S_OK;
+                              }).Get(),
+                          &token);
+                      session->webview->AddScriptToExecuteOnDocumentCreated(
+                          LR"JS((()=>{document.addEventListener('click',e=>{const t=e.target;if(t instanceof HTMLInputElement&&t.type==='file'){e.preventDefault();e.stopImmediatePropagation();}},true);const p=HTMLInputElement.prototype.showPicker;if(p)HTMLInputElement.prototype.showPicker=function(){if(this.type==='file')return;p.call(this);};})())JS",
+                          Microsoft::WRL::Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
+                              [](HRESULT, LPCWSTR) -> HRESULT { return S_OK; }).Get());
+                      const auto webview4 = Query<ICoreWebView2_4>(session->webview);
+                      if (webview4 != nullptr) {
+                        webview4->add_DownloadStarting(
+                            Microsoft::WRL::Callback<ICoreWebView2DownloadStartingEventHandler>(
+                                [](ICoreWebView2*, ICoreWebView2DownloadStartingEventArgs* args) -> HRESULT {
+                                  if (args != nullptr) args->put_Cancel(TRUE);
+                                  return S_OK;
+                                }).Get(),
+                            &token);
+                      }
+                      const auto webview8 = Query<ICoreWebView2_8>(session->webview);
+                      if (webview8 != nullptr) webview8->put_IsMuted(TRUE);
                       session->controller->put_IsVisible(TRUE);
                       session->input_window = FindWebViewWindow(session->window);
                       session->Resize();
@@ -414,6 +533,71 @@ void WindowsBrowserHost::InsertText(
     SendMessage(session->input_window, WM_CHAR,
                 static_cast<WPARAM>(character), 1);
   }
+  result->Success();
+}
+
+void WindowsBrowserHost::DispatchKey(
+    const SessionPtr& session, const flutter::EncodableMap& arguments,
+    std::shared_ptr<MethodResult> result) {
+  const auto* key = FindString(arguments, "key");
+  const auto* modifiers = FindList(arguments, "modifiers");
+  if (key == nullptr || modifiers == nullptr) {
+    SafeError(result, "plugin_execution_failed");
+    return;
+  }
+  if (session->input_window == nullptr || !IsWindow(session->input_window)) {
+    session->input_window = FindWebViewWindow(session->window);
+  }
+  if (session->input_window == nullptr) {
+    SafeError(result, "unsupported");
+    return;
+  }
+  const std::map<std::string, WPARAM> keys{
+      {"Enter", VK_RETURN}, {"Tab", VK_TAB}, {"Escape", VK_ESCAPE},
+      {"ArrowUp", VK_UP}, {"ArrowDown", VK_DOWN}, {"ArrowLeft", VK_LEFT},
+      {"ArrowRight", VK_RIGHT}, {"PageUp", VK_PRIOR}, {"PageDown", VK_NEXT},
+      {"Home", VK_HOME}, {"End", VK_END}, {"Backspace", VK_BACK},
+      {"Delete", VK_DELETE},
+  };
+  const auto found = keys.find(*key);
+  if (found == keys.end()) {
+    SafeError(result, "plugin_execution_failed");
+    return;
+  }
+  std::vector<WPARAM> modifier_keys;
+  for (const auto& value : *modifiers) {
+    const auto* modifier = std::get_if<std::string>(&value);
+    if (modifier == nullptr) continue;
+    if (*modifier == "alt") modifier_keys.push_back(VK_MENU);
+    if (*modifier == "control") modifier_keys.push_back(VK_CONTROL);
+    if (*modifier == "shift") modifier_keys.push_back(VK_SHIFT);
+  }
+  SetFocus(session->input_window);
+  for (const auto modifier : modifier_keys) {
+    SendMessage(session->input_window, WM_KEYDOWN, modifier, 1);
+  }
+  SendMessage(session->input_window, WM_KEYDOWN, found->second, 1);
+  SendMessage(session->input_window, WM_KEYUP, found->second, 1 | (1LL << 30) | (1LL << 31));
+  for (auto iterator = modifier_keys.rbegin(); iterator != modifier_keys.rend(); ++iterator) {
+    SendMessage(session->input_window, WM_KEYUP, *iterator, 1 | (1LL << 30) | (1LL << 31));
+  }
+  result->Success();
+}
+
+void WindowsBrowserHost::UpdateStatus(
+    const SessionPtr& session, const flutter::EncodableMap& arguments,
+    std::shared_ptr<MethodResult> result) {
+  const auto* status = FindString(arguments, "status");
+  if (status == nullptr || status->size() > 512 || session->status_text == nullptr) {
+    SafeError(result, "plugin_execution_failed");
+    return;
+  }
+  const auto wide = Utf8ToWide(*status);
+  if (wide.empty()) {
+    SafeError(result, "plugin_execution_failed");
+    return;
+  }
+  SetWindowText(session->status_text, wide.c_str());
   result->Success();
 }
 

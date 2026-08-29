@@ -166,6 +166,8 @@ class DiscoveryCarouselHeroCard extends StatelessWidget {
                       DiscoveryBookCover(
                         title: data.title,
                         coverBytes: data.coverBytes,
+                        remoteContentId: data.remoteContentId,
+                        coverUrl: data.coverUrl,
                         variant: data.coverVariant,
                         width: coverWidth,
                         height: coverHeight,

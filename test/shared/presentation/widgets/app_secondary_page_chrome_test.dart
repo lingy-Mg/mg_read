@@ -20,23 +20,50 @@ void main() {
   testWidgets('uses compact and wide secondary-page content widths', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_host());
-    expect(tester.getRect(find.byKey(_contentKey)), const Rect.fromLTRB(0, AppSpacing.pageHeaderTopPadding, 390, 900));
+    expect(tester.getRect(find.byKey(_contentKey)), const Rect.fromLTRB(0, 0, 390, 900));
 
     await _setViewport(tester, const Size(1280, 900));
     await tester.pump();
     expect(
       tester.getRect(find.byKey(_contentKey)),
-      Rect.fromLTRB((1280 - AppSpacing.contentMaxWidth) / 2, AppSpacing.pageHeaderTopPadding, (1280 + AppSpacing.contentMaxWidth) / 2, 900),
+      Rect.fromLTRB((1280 - AppSpacing.contentMaxWidth) / 2, 0, (1280 + AppSpacing.contentMaxWidth) / 2, 900),
     );
+  });
+
+  testWidgets('uses only the system inset on Android', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 900));
+    await tester.pumpWidget(_host(topInset: 24));
+
+    expect(tester.getRect(find.byKey(_contentKey)).top, 24);
+  });
+
+  testWidgets('retains the eight-dp rhythm outside Android', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 900));
+    await tester.pumpWidget(_host(platform: TargetPlatform.windows, topInset: 24));
+
+    expect(tester.getRect(find.byKey(_contentKey)).top, 24 + AppSpacing.pageHeaderTopPadding);
   });
 }
 
 const Key _contentKey = Key('secondary-page-content-test');
 
-Widget _host() => MaterialApp(
-  theme: AppTheme.light(),
+Widget _host({TargetPlatform platform = TargetPlatform.android, double topInset = 0}) => MaterialApp(
+  theme: AppTheme.light().copyWith(platform: platform),
+  builder: (BuildContext context, Widget? child) {
+    final MediaQueryData mediaQuery = MediaQuery.of(context);
+    return MediaQuery(
+      data: mediaQuery.copyWith(
+        padding: EdgeInsets.only(top: topInset),
+        viewPadding: EdgeInsets.only(top: topInset),
+      ),
+      child: child ?? const SizedBox.shrink(),
+    );
+  },
   home: Scaffold(
-    body: AppSecondaryPageContent(child: const SizedBox.expand(key: _contentKey)),
+    body: SafeArea(
+      bottom: false,
+      child: AppSecondaryPageContent(child: const SizedBox.expand(key: _contentKey)),
+    ),
   ),
 );
 

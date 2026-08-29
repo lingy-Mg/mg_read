@@ -24,6 +24,7 @@ import 'package:mg_read/app/app_startup.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
+import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/library/application/library_book_remover.dart';
 import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
 import 'package:mg_read/features/library/application/library_book_removal_operation.dart';
@@ -82,6 +83,8 @@ class LibraryPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppThemeModeScope themeModeScope = AppThemeModeScope.of(context);
+    final AppSettingsManager settings = ref.read(appSettingsProvider);
+    final LibraryHomeLayoutMode initialLayoutMode = LibraryHomeLayoutMode.fromSetting(settings.snapshot.get(AppSettingKeys.homeLayoutMode));
     final LibraryPageState state = ref.watch(libraryPageControllerProvider);
     final LibraryPageController controller = ref.read(libraryPageControllerProvider.notifier);
     final LibraryBookRemover? bookRemover = ref.read(libraryBookRemoverProvider);
@@ -171,7 +174,7 @@ class LibraryPage extends ConsumerWidget {
         previewContent: _libraryDetailPreview(summary, book),
         gateway: sourceGateway,
         shelfState: SourceDetailShelfState.alreadyAdded,
-        onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter}) async {
+        onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) async {
           prepareAndOpen(book.id);
         },
         onStartReading: () async => prepareAndOpen(book.id),
@@ -266,6 +269,8 @@ class LibraryPage extends ConsumerWidget {
         coordinator: readerCoordinator,
         child: LibraryHomeShell(
           data: data,
+          initialLayoutMode: initialLayoutMode,
+          onLayoutModeChanged: (LibraryHomeLayoutMode mode) => settings.set(AppSettingKeys.homeLayoutMode, mode.settingValue),
           callbacks: resolvedCallbacks,
           preparingBookId: readerLaunch.status == ShelfReaderPreparationStatus.preparing ? readerLaunch.bookId : null,
           isRefreshing: state.status == LibraryPageStatus.refreshing,

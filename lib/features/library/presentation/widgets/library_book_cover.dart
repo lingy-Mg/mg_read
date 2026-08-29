@@ -33,6 +33,7 @@ class LibraryBookCover extends ConsumerWidget {
     this.assetPath,
     this.coverBytes,
     this.coverRequest,
+    this.alignment = Alignment.center,
     super.key,
   });
 
@@ -43,6 +44,7 @@ class LibraryBookCover extends ConsumerWidget {
   final String? assetPath;
   final List<int>? coverBytes;
   final BookCoverRequest? coverRequest;
+  final AlignmentGeometry alignment;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -75,6 +77,7 @@ class LibraryBookCover extends ConsumerWidget {
                     width: width,
                     height: height,
                     fit: BoxFit.cover,
+                    alignment: alignment,
                     gaplessPlayback: true,
                     errorBuilder: (context, error, stackTrace) => _placeholder(tokens, start, end, isLoading: false),
                   ),
@@ -88,6 +91,7 @@ class LibraryBookCover extends ConsumerWidget {
                     width: width,
                     height: height,
                     fit: BoxFit.cover,
+                    alignment: alignment,
                     errorBuilder: (context, error, stackTrace) => _placeholder(tokens, start, end, isLoading: false),
                   ),
                 ),

@@ -100,9 +100,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
               child: ListView(
                 key: const Key('search-page-scroll'),
                 controller: _scrollController,
-                padding: const EdgeInsets.fromLTRB(
+                padding: EdgeInsets.fromLTRB(
                   AppSpacing.searchPageHorizontalPadding,
-                  AppSpacing.pageHeaderTopPadding,
+                  AppSpacing.pageHeaderTopPaddingFor(context),
                   AppSpacing.searchPageHorizontalPadding,
                   AppSpacing.section,
                 ),

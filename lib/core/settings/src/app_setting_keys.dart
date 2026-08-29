@@ -11,6 +11,14 @@ final class AppSettingKeys {
     codec: SettingCodec<String>(_stringEncode, _stringDecode),
     validator: _validateThemeMode,
   );
+
+  static const homeLayoutMode = SettingKey<String>(
+    id: 'appearance.homeLayoutMode',
+    documentKind: 'settings.appearance',
+    defaultValue: 'list',
+    codec: SettingCodec<String>(_stringEncode, _stringDecode),
+    validator: _validateHomeLayoutMode,
+  );
   static const searchHistoryDocument = SettingsDocumentDefinition(id: 'app-settings:settings.search', kind: 'settings.search');
 
   static const searchHistory = SettingKey<List<String>>(
@@ -62,6 +70,7 @@ final class AppSettingKeys {
 
   static const all = <SettingKey<dynamic>>[
     themeMode,
+    homeLayoutMode,
     searchHistory,
     discoverySourceId,
     diagnosticsRealtimeDetailsEnabled,
@@ -83,6 +92,12 @@ String _stringDecode(Object? value) {
 
 void _validateThemeMode(String value) {
   if (value != 'system' && value != 'light' && value != 'dark') {
+    throw ArgumentError.value(value);
+  }
+}
+
+void _validateHomeLayoutMode(String value) {
+  if (value != 'list' && value != 'card') {
     throw ArgumentError.value(value);
   }
 }

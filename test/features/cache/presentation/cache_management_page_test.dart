@@ -64,7 +64,12 @@ void main() {
     expect(find.text('封面缓存'), findsOneWidget);
     expect(find.textContaining('4.0 KB'), findsOneWidget);
     expect(find.text('漫画正文图片缓存'), findsOneWidget);
-    expect(find.textContaining('8.0 KB。图片可按需重新下载'), findsOneWidget);
+    expect(find.textContaining('总计 8.0 KB。图片可按需重新下载'), findsOneWidget);
+    expect(find.text('各漫画缓存'), findsOneWidget);
+    expect(find.text('漫画甲'), findsOneWidget);
+    expect(find.text('漫画乙'), findsOneWidget);
+    expect(find.text('旧版缓存（无法归属）'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('manga-image-cache-entry-manga-a')), matching: find.text('6.0 KB')), findsOneWidget);
 
     await tester.ensureVisible(find.byKey(const Key('cover-cache-clear')));
     await tester.tap(find.byKey(const Key('cover-cache-clear')));
@@ -89,7 +94,9 @@ void main() {
 
     expect(mangaImageGateway.clearCalls, 1);
     expect(find.text('漫画正文图片缓存已清理完成。'), findsOneWidget);
-    expect(find.textContaining('0 B。图片可按需重新下载'), findsOneWidget);
+    expect(find.textContaining('总计 0 B。图片可按需重新下载'), findsOneWidget);
+    expect(find.byKey(const Key('manga-image-cache-unattributed')), findsNothing);
+    expect(find.descendant(of: find.byKey(const Key('manga-image-cache-entry-manga-a')), matching: find.text('0 B')), findsOneWidget);
   });
 
   testWidgets('retries manga-image cache usage after an initial failure', (tester) async {
@@ -123,7 +130,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(mangaImageGateway.usageCalls, 2);
-    expect(find.textContaining('2.0 KB。图片可按需重新下载'), findsOneWidget);
+    expect(find.textContaining('总计 2.0 KB。图片可按需重新下载'), findsOneWidget);
   });
 }
 
@@ -144,7 +151,14 @@ final class _MangaImageCacheGateway implements MangaImageCacheGateway {
   int clearCalls = 0;
 
   @override
-  Future<int> usageBytes() async => 8192;
+  Future<MangaImageCacheUsage> loadUsage() async => const MangaImageCacheUsage(
+    totalBytes: 8192,
+    unattributedBytes: 1024,
+    entries: <MangaImageCacheEntry>[
+      MangaImageCacheEntry(itemId: 'manga-a', title: '漫画甲', bytes: 6144),
+      MangaImageCacheEntry(itemId: 'manga-b', title: '漫画乙', bytes: 1024),
+    ],
+  );
 
   @override
   Future<int> clear() async {
@@ -157,10 +171,13 @@ final class _RetryingMangaImageCacheGateway implements MangaImageCacheGateway {
   int usageCalls = 0;
 
   @override
-  Future<int> usageBytes() async {
+  Future<MangaImageCacheUsage> loadUsage() async {
     usageCalls++;
     if (usageCalls == 1) throw StateError('fixture usage failure');
-    return 2048;
+    return const MangaImageCacheUsage(
+      totalBytes: 2048,
+      entries: <MangaImageCacheEntry>[MangaImageCacheEntry(itemId: 'manga-retry', title: '重试漫画', bytes: 2048)],
+    );
   }
 
   @override

@@ -3,6 +3,7 @@
 /// 职责：
 /// - 原子提交、读取和删除受控文件对象。
 /// - 维护全局封面缓存的进程内索引与严格 LRU 字节上限。
+/// - 统计漫画正文图片缓存总量，并按书架漫画归属聚合新写入的缓存。
 ///
 /// 注意：
 /// - 不向调用方泄漏绝对路径或绕过 [AppPersistence] 生命周期。
@@ -137,14 +138,14 @@ final class FileObjectStore {
   Future<int> mangaImageCacheUsageBytes() => _instrument(
     operation: 'mangaImageCacheUsageBytes',
     recordKind: 'mangaImageCache',
-    action: () async => (await _mangaImageFiles()).values.fold<int>(0, (sum, f) => sum + f.length),
+    action: () async => (await _mangaImageCacheUsage()).totalBytes,
   );
 
-  Future<int> clearMangaImageCache() => _instrument(
-    operation: 'clearMangaImageCache',
-    recordKind: 'mangaImageCache',
-    action: _clearMangaImageCache,
-  );
+  Future<({int totalBytes, Map<String, int> bytesByItem})> mangaImageCacheUsage() =>
+      _instrument(operation: 'mangaImageCacheUsage', recordKind: 'mangaImageCache', action: _mangaImageCacheUsage);
+
+  Future<int> clearMangaImageCache() =>
+      _instrument(operation: 'clearMangaImageCache', recordKind: 'mangaImageCache', action: _clearMangaImageCache);
 
   Future<void> deleteMangaAssets(String mangaId) =>
       _instrument(operation: 'deleteMangaAssets', recordKind: 'mangaAsset', count: 1, action: () => _deleteMangaAssets(mangaId));
@@ -328,6 +329,11 @@ final class FileObjectStore {
     final key = _mangaImageKey(itemId, chapterId, pageId, contentVersion);
     final root = Directory('${_root.path}${Platform.pathSeparator}manga-image-cache${Platform.pathSeparator}$key');
     await root.create(recursive: true);
+    final ownerTemp = File('${root.path}${Platform.pathSeparator}.owner.part');
+    final owner = File('${root.path}${Platform.pathSeparator}owner.id');
+    await ownerTemp.writeAsString(itemId, flush: true);
+    if (await owner.exists()) await owner.delete();
+    await ownerTemp.rename(owner.path);
     final temp = File('${root.path}${Platform.pathSeparator}.image.part');
     final target = File('${root.path}${Platform.pathSeparator}image.asset');
     await temp.writeAsBytes(bytes, flush: true);
@@ -335,24 +341,17 @@ final class FileObjectStore {
     if (await target.exists()) await target.delete();
     await temp.rename(target.path);
     final files = await _mangaImageFiles();
-    files[key] = _GlobalCoverFile(
-      file: target,
-      length: bytes.length,
-      modified: await target.lastModified(),
-    );
+    files[key] = _GlobalCoverFile(file: target, length: bytes.length, modified: await target.lastModified(), ownerId: itemId);
     await _pruneGlobalCoversFromIndex(files, maxBytes);
-    return StoredFileObject(
-      assetId: key,
-      relativePath: 'manga-image-cache/$key/image.asset',
-      byteLength: bytes.length,
-      mimeType: mimeType,
-    );
+    return StoredFileObject(assetId: key, relativePath: 'manga-image-cache/$key/image.asset', byteLength: bytes.length, mimeType: mimeType);
   }
 
   Future<List<int>?> _readMangaImage(String itemId, String chapterId, String pageId, int contentVersion) async {
     _ensureOpen();
     final key = _mangaImageKey(itemId, chapterId, pageId, contentVersion);
-    final file = File('${_root.path}${Platform.pathSeparator}manga-image-cache${Platform.pathSeparator}$key${Platform.pathSeparator}image.asset');
+    final file = File(
+      '${_root.path}${Platform.pathSeparator}manga-image-cache${Platform.pathSeparator}$key${Platform.pathSeparator}image.asset',
+    );
     if (!await file.exists() || await file.length() > _mangaImageMaxBytes) return null;
     final bytes = await file.readAsBytes();
     await file.setLastModified(DateTime.now());
@@ -373,6 +372,20 @@ final class FileObjectStore {
   /// index can be rebuilt from the directory contents.
   Future<Map<String, _GlobalCoverFile>> _mangaImageFiles() => _scanMangaImageFiles();
 
+  Future<({int totalBytes, Map<String, int> bytesByItem})> _mangaImageCacheUsage() async {
+    final files = await _mangaImageFiles();
+    var totalBytes = 0;
+    final bytesByItem = <String, int>{};
+    for (final file in files.values) {
+      totalBytes += file.length;
+      final ownerId = file.ownerId;
+      if (ownerId != null) {
+        bytesByItem[ownerId] = (bytesByItem[ownerId] ?? 0) + file.length;
+      }
+    }
+    return (totalBytes: totalBytes, bytesByItem: Map<String, int>.unmodifiable(bytesByItem));
+  }
+
   Future<Map<String, _GlobalCoverFile>> _scanMangaImageFiles() async {
     final root = Directory('${_root.path}${Platform.pathSeparator}manga-image-cache');
     final out = <String, _GlobalCoverFile>{};
@@ -389,13 +402,27 @@ final class FileObjectStore {
           // Best-effort crash recovery; clear still removes the whole root.
         }
       }
+      final ownerStaged = File('${e.path}${Platform.pathSeparator}.owner.part');
+      if (await ownerStaged.exists()) {
+        try {
+          await ownerStaged.delete();
+        } on FileSystemException {
+          // Best-effort crash recovery; an owner is optional for old entries.
+        }
+      }
       final file = File('${e.path}${Platform.pathSeparator}image.asset');
       if (await file.exists()) {
-        out[key] = _GlobalCoverFile(
-          file: file,
-          length: await file.length(),
-          modified: await file.lastModified(),
-        );
+        String? ownerId;
+        final owner = File('${e.path}${Platform.pathSeparator}owner.id');
+        if (await owner.exists() && await owner.length() <= 4096) {
+          try {
+            final value = await owner.readAsString();
+            if (value.isNotEmpty) ownerId = value;
+          } on Object {
+            // A corrupt or pre-index cache remains counted in the total.
+          }
+        }
+        out[key] = _GlobalCoverFile(file: file, length: await file.length(), modified: await file.lastModified(), ownerId: ownerId);
       }
     }
     return out;
@@ -530,9 +557,10 @@ final class StoredFileObject {
 }
 
 final class _GlobalCoverFile {
-  const _GlobalCoverFile({required this.file, required this.length, required this.modified});
+  const _GlobalCoverFile({required this.file, required this.length, required this.modified, this.ownerId});
 
   final File file;
   final int length;
   final DateTime modified;
+  final String? ownerId;
 }

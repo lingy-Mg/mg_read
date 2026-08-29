@@ -11,6 +11,13 @@ import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 
 void main() {
+  testWidgets('places the Android profile header directly below the system inset', (WidgetTester tester) async {
+    await tester.pumpWidget(_host(topInset: 24));
+    await tester.pumpAndSettle();
+
+    expect(tester.getRect(find.byType(ProfileTopBar)).top, 24);
+  });
+
   testWidgets('renders the profile hierarchy with fixed mobile proportions', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_host());
@@ -162,10 +169,21 @@ Widget _host({
   ValueChanged<AppNavigationDestination>? onDestinationRequested,
   VoidCallback? onToggleTheme,
   VoidCallback? onDiagnosticsRequested,
+  double topInset = 0,
 }) {
   return MaterialApp(
     theme: AppTheme.light(),
     darkTheme: AppTheme.dark(),
+    builder: (BuildContext context, Widget? child) {
+      final MediaQueryData mediaQuery = MediaQuery.of(context);
+      return MediaQuery(
+        data: mediaQuery.copyWith(
+          padding: EdgeInsets.only(top: topInset),
+          viewPadding: EdgeInsets.only(top: topInset),
+        ),
+        child: child ?? const SizedBox.shrink(),
+      );
+    },
     home: ProfilePage(
       onDestinationRequested: onDestinationRequested,
       onToggleTheme: onToggleTheme,

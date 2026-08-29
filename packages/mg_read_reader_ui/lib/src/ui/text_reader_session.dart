@@ -6,17 +6,22 @@ extension _TextReaderSession on _TextReaderViewState {
   void _bindController() {
     _controller.bind(
       owner: _controllerBindingOwner,
-      openChapter: (String id) => _openChapter(id),
+      openChapter: (String id) =>
+          _openChapter(id, dismissControls: true, showLoadingOverlay: true),
       nextPage: _nextPage,
       previousPage: _previousPage,
-      nextChapter: _nextChapter,
-      previousChapter: _previousChapter,
-      showBookPreview: _showBookPreview,
+      nextChapter: () =>
+          _nextChapter(dismissControls: true, showLoadingOverlay: true),
+      previousChapter: () =>
+          _previousChapter(dismissControls: true, showLoadingOverlay: true),
+      showBookPreview: () => _showBookPreview(dismissControls: true),
       toggleControls: () async => _setControlsVisible(!_controlsVisible),
       showControls: () async => _setControlsVisible(true),
       hideControls: () async => _setControlsVisible(false),
-      refresh: () =>
-          _openChapter(_content?.chapterId ?? '', forceRefresh: true),
+      refresh: () => _refreshCurrentChapter(
+        dismissControls: true,
+        showLoadingOverlay: true,
+      ),
       startAutoReading: _startAutoReading,
       stopAutoReading: () async => _stopAutoReading(),
       toggleAutoReading: _toggleAutoReading,
@@ -63,6 +68,7 @@ extension _TextReaderSession on _TextReaderViewState {
     _chapterIndex = -1;
     _pageIndex = 0;
     _changingChapter = false;
+    _chapterLoadingOverlayVisible = false;
     _awaitingPreviousChapterTail = false;
     _controlsVisible = false;
     _sliderPreview = null;
@@ -446,6 +452,7 @@ extension _TextReaderSession on _TextReaderViewState {
         _catalogLoading = false;
         _catalogCenterRetryCount = 0;
         _catalogRevision.value++;
+        unawaited(_refreshLoadedChapterStates());
         if (notify && mounted) setState(() {});
       }
     }
@@ -467,11 +474,15 @@ extension _TextReaderSession on _TextReaderViewState {
     bool openAtEnd = false,
     double? targetChapterFraction,
     bool preserveAutoReading = false,
+    bool dismissControls = false,
+    bool showLoadingOverlay = false,
+    ReaderProgress? restoreProgress,
   }) async {
     if (!preserveAutoReading) _stopAutoReading();
     if (chapterId.isEmpty) return;
     final ReaderChapterInfo? targetInfo = _catalogById[chapterId];
     if (targetInfo == null) return;
+    if (dismissControls) _setControlsVisible(false);
     final TextChapterContent? previousContent = _content;
     final int previousIndex = _chapterIndex;
     final int navigation = ++_navigationGeneration;
@@ -481,6 +492,7 @@ extension _TextReaderSession on _TextReaderViewState {
     final TextReaderDataSource dataSource = widget.dataSource;
     final String bookId = widget.bookId;
     _changingChapter = true;
+    _chapterLoadingOverlayVisible = showLoadingOverlay;
     if (!initial && mounted) setState(() {});
     try {
       TextChapterContent? chapter;
@@ -527,11 +539,13 @@ extension _TextReaderSession on _TextReaderViewState {
           openAtEnd &&
           _preferences.navigationMode == ReaderNavigationMode.horizontalPages;
 
-      final ReaderProgress? saved = _progress;
+      final ReaderProgress? saved = restoreProgress ?? _progress;
       final TextParagraph first = chapter.paragraphs.isEmpty
           ? const TextParagraph(id: '', text: '')
           : chapter.paragraphs.first;
-      if (initial && saved?.chapterId == chapterId && !saved!.isBookPreview) {
+      if ((initial || restoreProgress != null) &&
+          saved?.chapterId == chapterId &&
+          !saved!.isBookPreview) {
         final int total = _catalogTotal > 0 ? _catalogTotal : _catalog.length;
         _progress = saved.copyWith(
           chapterIndex: targetInfo.index,
@@ -594,10 +608,11 @@ extension _TextReaderSession on _TextReaderViewState {
       _failure = failure;
       if (mounted) setState(() {});
       await _reportFailure(failure);
-      unawaited(_refreshLoadedChapterStates(chapterId: chapterId));
+      unawaited(_refreshLoadedChapterStates(chapterId: chapterId, force: true));
     } finally {
       if (_isCurrent(generation)) {
         _changingChapter = false;
+        _chapterLoadingOverlayVisible = false;
         if (mounted) setState(() {});
       }
     }

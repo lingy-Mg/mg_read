@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
@@ -13,6 +14,7 @@ import 'package:mg_read/core/persistence/persistence.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/discovery/application/content_library_source_prefetcher.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/reader/application/chapter_cache_task_controller.dart';
 import 'package:mg_read/features/reader/application/reader_launch_failure.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/reader/data/content_library_source_text_reader.dart';
@@ -218,6 +220,68 @@ void main() {
     // optional remote detail is not fetched again.
     expect(gateway.requestedDetailCount, 0);
     expect(gateway.requestedContentChapterIds, <String>['chapter-1', 'chapter-2']);
+  });
+
+  test('global cache capability persists the selected chapter range', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-reader-cache-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    final container = ProviderContainer();
+    addTearDown(() async {
+      container.dispose();
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final saver = ContentLibraryDiscoveryBookshelfSaver(library);
+    await saver.save(
+      source: PluginSourceDescriptor(
+        id: 'org.example.source',
+        displayName: '示例书源',
+        pluginVersion: '1.0.0',
+        contentKinds: const <PluginContentKind>[PluginContentKind.novel],
+      ),
+      content: PluginContentSummary(
+        id: 'book-cache',
+        title: '章节缓存测试书',
+        contentKind: PluginContentKind.novel,
+        author: null,
+        url: Uri.parse('https://source.example/books/book-cache'),
+        coverUrl: null,
+        description: null,
+        language: null,
+        status: PluginContentStatus.ongoing,
+        access: PluginAccessKind.unknown,
+        wordCount: null,
+        chapterCount: 2,
+        publishedAt: null,
+        updatedAt: null,
+        latestChapter: null,
+        categories: const <String>[],
+        tags: const <String>[],
+        attributes: const <PluginContentAttribute>[],
+      ),
+    );
+    final item = (await library.listLibrary(const LibraryQuery())).items.single;
+    final gateway = _FakeGateway();
+    final tasks = container.read(chapterCacheTaskControllerProvider.notifier);
+    final request = await ContentLibrarySourceTextReader(library, gateway, null, null, tasks).launch(item.id.value);
+    final capability = request.extensions.chapterCacheCapability;
+
+    expect(capability, isNotNull);
+    await capability!.startCaching(
+      item.id.value,
+      const ReaderChapterCacheRequest(chapterCount: 2, concurrency: 1, delay: Duration(seconds: 1)),
+    );
+    for (var attempt = 0; attempt < 100; attempt += 1) {
+      if (container.read(chapterCacheTaskControllerProvider)?.status == ChapterCacheTaskStatus.completed) break;
+      await Future<void>.delayed(const Duration(milliseconds: 2));
+    }
+
+    final task = container.read(chapterCacheTaskControllerProvider);
+    expect(task?.status, ChapterCacheTaskStatus.completed);
+    expect(task?.cached, 2);
+    expect(task?.failed, 0);
+    expect(gateway.requestedContentChapterIds, <String>['chapter-1', 'chapter-2']);
+    expect((await library.listAllCatalog(item.id)).map((entry) => entry.contentStatus), everyElement('ready'));
   });
 
   test('reports the source stage and safe code when catalog loading fails', () async {

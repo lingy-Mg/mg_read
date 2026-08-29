@@ -11,12 +11,17 @@ function context(fetch, cacheDir = 'cache') {
 }
 
 const detail = `<div class="item"><a href="/51/"><img src="https://cdn.example/cover.jpg"></a><div class="itemtxt"><h1><i>12.5万字</i><a href="/51/">测试书</a></h1><p><span>连载中</span><span>都市小说</span></p><p><a href="/zuozhe/?tag=作者">作者：作者甲</a></p><ul><li><a href="/51/101.html">第一章</a></li></ul></div></div><div class="des bb"><p>简介</p></div><h2 id="dir"><span>更新时间：2026-08-24 12:10:35</span></h2><div id="list"><ul><li><a href="/51/101.html">第一章</a></li><li><a href="/51/102.html">第二章</a></li></ul></div>`;
+const completedDetail = detail
+  .replaceAll('/51/', '/53/')
+  .replaceAll('测试书', '完结精品')
+  .replace('连载中', '已完结');
 
 test('completes search, detail, catalog and content with opaque IDs', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'mgread-shudugu-hot-search-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   let homeCalls = 0;
   let detailCalls = 0;
+  let completedDetailCalls = 0;
   const state = context(async (input) => {
     const requestUrl = new URL(input);
     const path = requestUrl.pathname;
@@ -29,6 +34,10 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
     if (path === '/51/') {
       detailCalls += 1;
       return new Response(detail);
+    }
+    if (path === '/53/') {
+      completedDetailCalls += 1;
+      return new Response(completedDetail);
     }
     if (path === '/51/101.html') return new Response('<div class="container"><div class="submenu"><h1>测试书 > 第一章</h1></div><div class="con"><p>正文 canary</p></div></div>');
     if (path === '/51/102.html') return new Response('<div class="container"><div class="con"><p>第二章</p></div></div>');
@@ -43,6 +52,11 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
   assert.equal(discovery.document.components[1].layout, 'vertical');
   assert.equal(discovery.document.components[1].children[0].children[0].layout, 'compact');
   assert.equal(discovery.document.components[1].children[1].children[0].layout, 'coverGrid');
+  assert.equal(
+    discovery.document.components[1].children[1].children[0].items[0].content.coverUrl,
+    'http://127.0.0.1:1234/v1/source-resource/opaque',
+  );
+  assert.equal(discovery.document.components[1].children[1].children[0].items[0].content.status, 'completed');
   assert.equal(discovery.document.components[2].children[0].layout, 'chips');
   assert.equal(discovery.document.components[2].children[0].categories[0].icon, 'urban');
   const search = await plugin.search({ query: '测试', cursor: null, pageSize: 10 });
@@ -64,6 +78,7 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
   assert.deepEqual(suggestions.items.map((item) => item.query), ['排行热书', '第二排行热书']);
   assert.deepEqual(cachedSuggestions, suggestions);
   assert.equal(homeCalls, 2);
+  assert.equal(completedDetailCalls, 1);
   // Search hydration, opening the detail, then adding to the shelf's catalog
   // all reuse the same parsed detail page during this Runtime session.
   assert.equal(detailCalls, 1);

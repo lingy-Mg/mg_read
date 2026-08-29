@@ -21,42 +21,50 @@ extension _ComicReaderChrome on _ComicReaderViewState {
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTapUp: (_) => _setControlsVisible(!_controlsVisible),
-        child: ListView.builder(
-          key: _readingSurfaceKey,
-          controller: _scrollController,
-          padding: EdgeInsets.fromLTRB(
-            _horizontalInset,
-            _topPadding,
-            _horizontalInset,
-            MediaQuery.paddingOf(context).bottom + 48,
+        child: ScrollConfiguration(
+          behavior: ScrollConfiguration.of(context).copyWith(
+            dragDevices: <PointerDeviceKind>{
+              ...ScrollConfiguration.of(context).dragDevices,
+              PointerDeviceKind.mouse,
+            },
           ),
-          scrollCacheExtent: const ScrollCacheExtent.viewport(.7),
-          itemCount: entries.length,
-          itemBuilder: (BuildContext context, int index) {
-            final _ComicListEntry entry = entries[index];
-            return switch (entry) {
-              _ComicHeaderEntry() => _buildChapterHeader(entry, palette),
-              _ComicImageEntry() => ComicProgressiveImageTile(
-                key: _imageKeyFor(entry),
-                cache: _imageCache,
-                chapterId: entry.chapter.info.id,
-                image: entry.image,
-                width: _viewportWidth,
-                placeholderHeight: entry.placeholderExtent,
-                palette: palette,
-                decodeBudget: _decodeBudget,
-                onPresented: (bool cacheHit) =>
-                    _notifyFirstContentPresented(entry, cacheHit),
-                bookId: widget.bookId,
-                commentFeed: widget.commentFeed,
-                onOpenComments: (ReaderCommentTarget target) =>
-                    _showImageComments(target, palette),
-                onFailure: (Object error) =>
-                    unawaited(_reportFailure(_asImageFailure(error))),
-              ),
-              _ComicBoundaryEntry() => _buildBoundary(entry, palette),
-            };
-          },
+          child: ListView.builder(
+            key: _readingSurfaceKey,
+            controller: _scrollController,
+            padding: EdgeInsets.fromLTRB(
+              _horizontalInset,
+              _topPadding,
+              _horizontalInset,
+              MediaQuery.paddingOf(context).bottom + 48,
+            ),
+            scrollCacheExtent: const ScrollCacheExtent.viewport(.7),
+            itemCount: entries.length,
+            itemBuilder: (BuildContext context, int index) {
+              final _ComicListEntry entry = entries[index];
+              return switch (entry) {
+                _ComicHeaderEntry() => _buildChapterHeader(entry, palette),
+                _ComicImageEntry() => ComicProgressiveImageTile(
+                  key: _imageKeyFor(entry),
+                  cache: _imageCache,
+                  chapterId: entry.chapter.info.id,
+                  image: entry.image,
+                  width: _viewportWidth,
+                  placeholderHeight: entry.placeholderExtent,
+                  palette: palette,
+                  decodeBudget: _decodeBudget,
+                  onPresented: (bool cacheHit) =>
+                      _notifyFirstContentPresented(entry, cacheHit),
+                  bookId: widget.bookId,
+                  commentFeed: widget.commentFeed,
+                  onOpenComments: (ReaderCommentTarget target) =>
+                      _showImageComments(target, palette),
+                  onFailure: (Object error) =>
+                      unawaited(_reportFailure(_asImageFailure(error))),
+                ),
+                _ComicBoundaryEntry() => _buildBoundary(entry, palette),
+              };
+            },
+          ),
         ),
       ),
     );
