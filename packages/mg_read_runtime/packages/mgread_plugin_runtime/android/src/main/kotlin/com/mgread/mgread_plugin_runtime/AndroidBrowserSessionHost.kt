@@ -218,7 +218,10 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
     }
 
     private fun sessionFor(job: Job, profileMode: ProfileMode): Session? {
-        sessions[job.request.pluginId]?.let { return it }
+        sessions[job.request.pluginId]?.let {
+            Log.i(TAG, "browser_session_reuse plugin_id=${job.request.pluginId}")
+            return it
+        }
         if (sessions.size >= MAX_RESIDENT_WEBVIEWS) {
             val evicted = sessions.values
                 .filter { it.activeJobId == null }
@@ -345,6 +348,11 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             Log.i(TAG, "browser_session_probe ready=$ready challenge=$challenge same_origin=$sameOrigin")
             if (ready && sameOrigin && !challenge) {
                 session.verifiedAt[job.request.origin] = System.currentTimeMillis()
+                Log.i(
+                    TAG,
+                    "browser_session_manual_verification_success " +
+                        "plugin_id=${job.request.pluginId} had_challenge=${job.hadChallenge}",
+                )
                 perform(job, session, if (job.hadChallenge) "verified" else "not-required")
                 return@evaluateJavascript
             }
@@ -417,6 +425,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
     }
 
     private fun performWebViewFetch(job: Job, session: Session, verificationState: String) {
+        Log.i(TAG, "browser_session_fetch_start plugin_id=${job.request.pluginId}")
         val script = webViewFetchScript(job)
         session.webView.evaluateJavascript(script) {
             mainHandler.postDelayed(
@@ -436,12 +445,11 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
                 return@evaluateJavascript
             }
             val response = result.getJSONObject("response")
-            val state = if (looksLikeCloudflareChallenge(response.optString("body"))) {
-                "failed"
+            if (isChallengeResponse(response)) {
+                retryAfterChallenge(job, session)
             } else {
-                verificationState
+                completeSuccess(job, response, verificationState)
             }
-            completeSuccess(job, response, state)
         }
     }
 
@@ -469,12 +477,11 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
                 return@evaluateJavascript
             }
             val response = result.getJSONObject("response")
-            val state = if (looksLikeCloudflareChallenge(response.optString("body"))) {
-                "failed"
+            if (isChallengeResponse(response)) {
+                retryAfterChallenge(job, session)
             } else {
-                verificationState
+                completeSuccess(job, response, verificationState)
             }
-            completeSuccess(job, response, state)
         }
     }
 
@@ -498,18 +505,10 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
                 mainHandler.post {
                     response.setCookies.forEach { session.cookieManager.setCookie(response.finalUrl, it) }
                     session.cookieManager.flush()
-                    if (looksLikeCloudflareChallenge(response.body) && job.retries == 0) {
-                        job.hadChallenge = true
-                        job.retries += 1
-                        session.verifiedAt.remove(job.request.origin)
-                        loadForVerification(job, session)
+                    if (response.status == 403 || looksLikeCloudflareChallenge(response.body)) {
+                        retryAfterChallenge(job, session)
                     } else {
-                        val state = if (looksLikeCloudflareChallenge(response.body)) {
-                            "failed"
-                        } else {
-                            verificationState
-                        }
-                        completeSuccess(job, responseObject(response), state)
+                        completeSuccess(job, responseObject(response), verificationState)
                     }
                 }
             } catch (_: AndroidBrowserResponseTooLarge) {
@@ -530,8 +529,29 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         if (!isCurrent(job)) return
         response.put("version", 1)
         response.put("verificationState", verificationState)
+        Log.i(TAG, "browser_session_fetch_complete plugin_id=${job.request.pluginId}")
         completed[job.id] = JSONObject().put("state", "done").put("response", response).toString()
         finish(job)
+    }
+
+    private fun retryAfterChallenge(job: Job, session: Session) {
+        if (!isCurrent(job, session)) return
+        job.hadChallenge = true
+        session.verifiedAt.remove(job.request.origin)
+        Log.w(TAG, "browser_session_cf_detected phase=fetch plugin_id=${job.request.pluginId}")
+        if (job.retries > 0 || job.request.interaction == "silent" || job.request.presentation == "hidden") {
+            Log.i(TAG, "browser_session_interaction_required phase=fetch plugin_id=${job.request.pluginId}")
+            completeError(job, "interaction_required")
+            return
+        }
+        job.retries += 1
+        Log.i(TAG, "browser_session_retry phase=fetch plugin_id=${job.request.pluginId}")
+        loadForVerification(job, session)
+    }
+
+    private fun isChallengeResponse(response: JSONObject): Boolean {
+        return response.optInt("status", 200) == 403 ||
+            looksLikeCloudflareChallenge(response.optString("body"))
     }
 
     private fun completeError(job: Job, code: String) {
@@ -612,6 +632,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         }
         foregroundDialog = dialog
         foregroundPluginId = job.request.pluginId
+        Log.i(TAG, "browser_session_verification_window_shown plugin_id=${job.request.pluginId}")
         return true
     }
 

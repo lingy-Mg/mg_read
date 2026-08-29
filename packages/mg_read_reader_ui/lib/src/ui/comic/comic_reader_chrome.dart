@@ -22,6 +22,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
         behavior: HitTestBehavior.translucent,
         onTapUp: (_) => _setControlsVisible(!_controlsVisible),
         child: ListView.builder(
+          key: _readingSurfaceKey,
           controller: _scrollController,
           padding: EdgeInsets.fromLTRB(
             _horizontalInset,
@@ -31,22 +32,17 @@ extension _ComicReaderChrome on _ComicReaderViewState {
           ),
           scrollCacheExtent: const ScrollCacheExtent.viewport(.7),
           itemCount: entries.length,
-          itemExtentBuilder: (int index, _) => entries[index].extent,
           itemBuilder: (BuildContext context, int index) {
             final _ComicListEntry entry = entries[index];
             return switch (entry) {
               _ComicHeaderEntry() => _buildChapterHeader(entry, palette),
               _ComicImageEntry() => ComicProgressiveImageTile(
-                key: ValueKey<String>(
-                  '${entry.chapter.info.id}/${entry.image.id}/'
-                  '${_contentEpochs[entry.chapter.info.id] ?? 0}',
-                ),
+                key: _imageKeyFor(entry),
                 cache: _imageCache,
                 chapterId: entry.chapter.info.id,
                 image: entry.image,
                 width: _viewportWidth,
-                height: entry.imageExtent,
-                spacing: entry.spacing,
+                placeholderHeight: entry.placeholderExtent,
                 palette: palette,
                 decodeBudget: _decodeBudget,
                 onPresented: (bool cacheHit) =>
@@ -55,9 +51,8 @@ extension _ComicReaderChrome on _ComicReaderViewState {
                 commentFeed: widget.commentFeed,
                 onOpenComments: (ReaderCommentTarget target) =>
                     _showImageComments(target, palette),
-                onFailure: (Object error) => unawaited(
-                  _reportFailure(_asFailure(error, ReaderFailureKind.data)),
-                ),
+                onFailure: (Object error) =>
+                    unawaited(_reportFailure(_asImageFailure(error))),
               ),
               _ComicBoundaryEntry() => _buildBoundary(entry, palette),
             };
@@ -828,23 +823,6 @@ extension _ComicReaderChrome on _ComicReaderViewState {
                                       keepScreenOn: _preferences.keepScreenOn,
                                       immersiveMode: _preferences.immersiveMode,
                                       imageSpacing: _preferences.imageSpacing,
-                                    ),
-                                    persist: false,
-                                  ),
-                                  onChangeEnd: (double value) => commit(),
-                                ),
-                                _settingSlider(
-                                  label: ComicReaderStrings.spacing,
-                                  value: _preferences.imageSpacing,
-                                  min: 0,
-                                  max: 24,
-                                  divisions: 6,
-                                  onChanged: (double value) => update(
-                                    ComicReaderPreferences(
-                                      brightness: _preferences.brightness,
-                                      keepScreenOn: _preferences.keepScreenOn,
-                                      immersiveMode: _preferences.immersiveMode,
-                                      imageSpacing: value,
                                     ),
                                     persist: false,
                                   ),

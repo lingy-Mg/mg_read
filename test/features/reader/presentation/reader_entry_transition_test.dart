@@ -122,17 +122,19 @@ void main() {
     expect(observer.exitRequests, 1);
   });
 
-  testWidgets('comic initial image failure stays retryable in the carrier', (WidgetTester tester) async {
+  testWidgets('comic initial image failure stays local to the image tile', (WidgetTester tester) async {
     final source = _FailThenSucceedComicDataSource();
     final observer = _RecordingComicObserver();
     await tester.pumpWidget(_readerApp(_comicRequest(dataSource: source, observer: observer)));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('reader-entry-retry')), findsOneWidget);
+    expect(find.byKey(const Key('reader-entry-retry')), findsNothing);
+    expect(find.text('正文暂时无法打开'), findsNothing);
+    expect(find.byKey(const ValueKey<String>('comic-reader-image-retry-comic-chapter-1-comic-image-1')), findsOneWidget);
     expect(observer.firstFrames, isEmpty);
 
     source.succeedOnNextRequest = true;
-    await tester.tap(find.byKey(const Key('reader-entry-retry')));
+    await tester.tap(find.byKey(const ValueKey<String>('comic-reader-image-retry-comic-chapter-1-comic-image-1')));
     await tester.pumpAndSettle();
 
     expect(observer.firstFrames, hasLength(1));

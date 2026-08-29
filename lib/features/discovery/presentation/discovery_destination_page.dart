@@ -40,6 +40,7 @@ class DiscoveryDestinationPage extends ConsumerWidget {
     this.onSearchRequested,
     this.onSourceManagementRequested,
     this.onTextChapterRequested,
+    this.onComicChapterRequested,
     super.key,
   });
 
@@ -47,6 +48,7 @@ class DiscoveryDestinationPage extends ConsumerWidget {
   final ValueChanged<String?>? onSearchRequested;
   final VoidCallback? onSourceManagementRequested;
   final SourceTextChapterRequested? onTextChapterRequested;
+  final SourceComicChapterRequested? onComicChapterRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -65,6 +67,7 @@ class DiscoveryDestinationPage extends ConsumerWidget {
         onSearchRequested: onSearchRequested,
         onSourceManagementRequested: onSourceManagementRequested,
         onTextChapterRequested: onTextChapterRequested,
+        onComicChapterRequested: onComicChapterRequested,
       );
     }
 
@@ -159,6 +162,7 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
     required this.onSearchRequested,
     required this.onSourceManagementRequested,
     required this.onTextChapterRequested,
+    required this.onComicChapterRequested,
     this.isPredictiveBackRoute = false,
   });
 
@@ -167,6 +171,7 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
   final ValueChanged<String?>? onSearchRequested;
   final VoidCallback? onSourceManagementRequested;
   final SourceTextChapterRequested? onTextChapterRequested;
+  final SourceComicChapterRequested? onComicChapterRequested;
   final bool isPredictiveBackRoute;
 
   @override
@@ -209,6 +214,7 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
             initialSourceName: selectedSource.displayName,
             relatedContents: _discoveryContentSummaries(result),
             onTextChapterRequested: onTextChapterRequested,
+            onComicChapterRequested: onComicChapterRequested,
             shelfState: bookshelfMembership.contains(pluginId: state.selectedSourceId!, title: content.title)
                 ? SourceDetailShelfState.alreadyAdded
                 : SourceDetailShelfState.canAdd,
@@ -242,6 +248,7 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
           onSearchRequested: onSearchRequested,
           onSourceManagementRequested: onSourceManagementRequested,
           onTextChapterRequested: onTextChapterRequested,
+          onComicChapterRequested: onComicChapterRequested,
         ),
       ),
     );
@@ -256,6 +263,7 @@ class _DiscoveryPredictiveBackChildPage extends ConsumerWidget {
     required this.onSearchRequested,
     required this.onSourceManagementRequested,
     required this.onTextChapterRequested,
+    required this.onComicChapterRequested,
   });
 
   final int visualDepth;
@@ -263,6 +271,7 @@ class _DiscoveryPredictiveBackChildPage extends ConsumerWidget {
   final ValueChanged<String?>? onSearchRequested;
   final VoidCallback? onSourceManagementRequested;
   final SourceTextChapterRequested? onTextChapterRequested;
+  final SourceComicChapterRequested? onComicChapterRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => PopScope<void>(
@@ -276,6 +285,7 @@ class _DiscoveryPredictiveBackChildPage extends ConsumerWidget {
       onSearchRequested: onSearchRequested,
       onSourceManagementRequested: onSourceManagementRequested,
       onTextChapterRequested: onTextChapterRequested,
+      onComicChapterRequested: onComicChapterRequested,
       isPredictiveBackRoute: true,
     ),
   );

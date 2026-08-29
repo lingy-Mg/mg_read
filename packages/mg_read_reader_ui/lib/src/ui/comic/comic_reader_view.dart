@@ -17,7 +17,7 @@ import 'dart:collection';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import 'package:flutter/rendering.dart' show RenderBox, ScrollCacheExtent;
 import 'package:flutter/services.dart';
 
 import '../../api/contracts.dart';
@@ -161,6 +161,10 @@ class _ComicReaderViewState extends State<ComicReaderView> {
   List<_ComicListEntry> _entryCache = const <_ComicListEntry>[];
   List<double> _entryStarts = const <double>[];
   Map<String, int> _imageEntryIndexes = const <String, int>{};
+  final GlobalKey _readingSurfaceKey = GlobalKey(
+    debugLabel: 'ComicReaderContentSurface',
+  );
+  final Map<String, GlobalKey> _imageKeys = <String, GlobalKey>{};
   int _entryCacheSignature = 0;
   int _sheetGeneration = 0;
   BuildContext? _activeSheetContext;
@@ -384,15 +388,13 @@ class _ComicImageEntry extends _ComicListEntry {
   const _ComicImageEntry(
     this.chapter,
     this.image, {
-    required this.imageExtent,
-    required this.spacing,
+    required this.placeholderExtent,
   });
   final _LoadedComicChapter chapter;
   final ComicImageInfo image;
-  final double imageExtent;
-  final double spacing;
+  final double placeholderExtent;
   @override
-  double get extent => imageExtent + spacing;
+  double get extent => placeholderExtent;
 }
 
 class _ComicBoundaryEntry extends _ComicListEntry {

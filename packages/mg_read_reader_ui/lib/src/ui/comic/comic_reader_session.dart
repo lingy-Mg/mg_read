@@ -606,7 +606,8 @@ extension _ComicReaderSession on _ComicReaderViewState {
           saved != null &&
           entry.chapter.info.id == saved.chapterId &&
           entry.image.id == saved.imageId) {
-        anchorOffset += entry.imageExtent * saved.imageFraction.clamp(0, 1);
+        anchorOffset +=
+            entry.placeholderExtent * saved.imageFraction.clamp(0, 1);
         found = true;
         break;
       }
@@ -656,17 +657,23 @@ extension _ComicReaderSession on _ComicReaderViewState {
     final double probe =
         _scrollController.offset +
         _viewportHeight * _ComicReaderViewState._progressProbeFraction;
-    final List<_ComicListEntry> entries = _entries();
-    final int candidate = _entryIndexAt(probe - _topPadding);
-    _ComicImageEntry? selected;
-    double fraction = 0;
-    for (int index = candidate; index < entries.length; index++) {
-      final _ComicListEntry entry = entries[index];
-      if (entry is! _ComicImageEntry) continue;
-      selected = entry;
-      final double start = _entryStarts[index] + _topPadding;
-      fraction = ((probe - start) / entry.imageExtent).clamp(0, 1).toDouble();
-      break;
+    final ({_ComicImageEntry entry, double fraction})? measured =
+        _imageAtViewportProbe();
+    _ComicImageEntry? selected = measured?.entry;
+    double fraction = measured?.fraction ?? 0;
+    if (selected == null) {
+      final List<_ComicListEntry> entries = _entries();
+      final int candidate = _entryIndexAt(probe - _topPadding);
+      for (int index = candidate; index < entries.length; index++) {
+        final _ComicListEntry entry = entries[index];
+        if (entry is! _ComicImageEntry) continue;
+        selected = entry;
+        final double start = _entryStarts[index] + _topPadding;
+        fraction = ((probe - start) / entry.placeholderExtent)
+            .clamp(0, 1)
+            .toDouble();
+        break;
+      }
     }
     if (selected == null) return;
     final _LoadedComicChapter chapter = selected.chapter;
@@ -736,6 +743,36 @@ extension _ComicReaderSession on _ComicReaderViewState {
         if (loaded >= 3) break;
       }
     }
+  }
+
+  ({_ComicImageEntry entry, double fraction})? _imageAtViewportProbe() {
+    final RenderBox? surface =
+        _readingSurfaceKey.currentContext?.findRenderObject() as RenderBox?;
+    if (surface == null || !surface.hasSize) return null;
+    final double probeY = surface
+        .localToGlobal(
+          Offset(
+            0,
+            _viewportHeight * _ComicReaderViewState._progressProbeFraction,
+          ),
+        )
+        .dy;
+    for (final _ComicListEntry entry in _entries()) {
+      if (entry is! _ComicImageEntry) continue;
+      final RenderBox? image =
+          _imageKeys['${entry.chapter.info.id}\u0000${entry.image.id}']
+                  ?.currentContext
+                  ?.findRenderObject()
+              as RenderBox?;
+      if (image == null || !image.hasSize || image.size.height <= 0) continue;
+      final double top = image.localToGlobal(Offset.zero).dy;
+      if (probeY < top || probeY > top + image.size.height) continue;
+      return (
+        entry: entry,
+        fraction: ((probeY - top) / image.size.height).clamp(0, 1).toDouble(),
+      );
+    }
+    return null;
   }
 
   void _scheduleProgressSave() {

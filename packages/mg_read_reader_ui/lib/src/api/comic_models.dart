@@ -394,7 +394,8 @@ class ComicReaderPreferences {
   /// Requests immersive mode on supported platforms.
   final bool immersiveMode;
 
-  /// Logical pixels between adjacent images, normalized from 0 to 24.
+  /// Legacy setting retained for persistence compatibility. Comic pages always
+  /// render edge-to-edge, so normalized values are zero.
   final double imageSpacing;
 
   /// Returns preferences constrained to safe layout ranges.
@@ -404,9 +405,7 @@ class ComicReaderPreferences {
         : ComicReaderPreferences.defaults.brightness,
     keepScreenOn: keepScreenOn,
     immersiveMode: immersiveMode,
-    imageSpacing: imageSpacing.isFinite
-        ? imageSpacing.clamp(0, 24).toDouble()
-        : ComicReaderPreferences.defaults.imageSpacing,
+    imageSpacing: 0,
   );
 
   /// Returns a copy with the supplied fields replaced.

@@ -137,6 +137,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
   late final ReaderLaunchRequest _boundRequest;
   ReaderFailure? _failure;
   bool _firstContentPresented = false;
+  bool _readerVisible = false;
   bool _handoffComplete = false;
   int _readerEpoch = 0;
 
@@ -158,7 +159,12 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
         _ReaderEntryObserver(delegate: request.observer, firstContentHandler: _presentFirstContent, failureHandler: _presentInitialFailure),
       ),
       ComicReaderLaunchRequest request => request.withObserver(
-        _ComicEntryObserver(delegate: request.observer, firstContentHandler: _presentComicContent, failureHandler: _presentInitialFailure),
+        _ComicEntryObserver(
+          delegate: request.observer,
+          firstContentHandler: _presentComicContent,
+          failureHandler: _presentInitialFailure,
+          imageFailureHandler: _revealComicAfterImageFailure,
+        ),
       ),
     };
     _entryController.forward();
@@ -212,13 +218,25 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
     }
   }
 
+  void _revealComicAfterImageFailure() {
+    if (!mounted || _firstContentPresented || _readerVisible) return;
+    setState(() => _readerVisible = true);
+    if (_reduceMotion) {
+      _entryController.value = 1;
+      _handoffController.value = 1;
+      setState(() => _handoffComplete = true);
+    } else {
+      unawaited(_finishHandoff());
+    }
+  }
+
   Future<void> _finishHandoff() async {
     await _entryController.animateTo(
       1,
       duration: _entryController.value < .92 ? const Duration(milliseconds: 120) : const Duration(milliseconds: 72),
       curve: Curves.easeOutCubic,
     );
-    if (!mounted || !_firstContentPresented || _reduceMotion) return;
+    if (!mounted || (!_firstContentPresented && !_readerVisible) || _reduceMotion) return;
     await _handoffController.forward();
   }
 
@@ -235,7 +253,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
 
   bool _blocksInitialContent(ReaderFailure failure) => switch (failure.kind) {
     ReaderFailureKind.data || ReaderFailureKind.layout => true,
-    ReaderFailureKind.persistence || ReaderFailureKind.platform || ReaderFailureKind.unknown => false,
+    ReaderFailureKind.image || ReaderFailureKind.persistence || ReaderFailureKind.platform || ReaderFailureKind.unknown => false,
   };
 
   void _retry() {
@@ -299,7 +317,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
             Transform.translate(
               offset: Offset(0, (1 - handoff) * 7),
               child: Opacity(
-                opacity: _firstContentPresented ? handoff : 0,
+                opacity: _firstContentPresented || _readerVisible ? handoff : 0,
                 child: KeyedSubtree(
                   key: ValueKey<int>(_readerEpoch),
                   child: ReaderHostPage(request: _boundRequest),
@@ -539,10 +557,16 @@ final class _ReaderEntryObserver extends ReaderObserver {
 }
 
 final class _ComicEntryObserver extends ComicReaderObserver {
-  const _ComicEntryObserver({required this.delegate, required this.firstContentHandler, required this.failureHandler});
+  const _ComicEntryObserver({
+    required this.delegate,
+    required this.firstContentHandler,
+    required this.failureHandler,
+    required this.imageFailureHandler,
+  });
   final ComicReaderObserver? delegate;
   final void Function(ComicFirstContentPresentation) firstContentHandler;
   final void Function(ReaderFailure) failureHandler;
+  final VoidCallback imageFailureHandler;
   @override
   Future<void> onSessionStarted(String bookId) async => delegate?.onSessionStarted(bookId);
   @override
@@ -554,7 +578,11 @@ final class _ComicEntryObserver extends ComicReaderObserver {
   Future<void> onChapterChanged(ComicChapterInfo chapter) async => delegate?.onChapterChanged(chapter);
   @override
   Future<void> onFailure(ReaderFailure failure) async {
-    failureHandler(failure);
+    if (failure.kind == ReaderFailureKind.image) {
+      imageFailureHandler();
+    } else {
+      failureHandler(failure);
+    }
     await delegate?.onFailure(failure);
   }
 

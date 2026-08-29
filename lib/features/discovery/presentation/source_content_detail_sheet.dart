@@ -35,6 +35,13 @@ typedef SourceTextChapterRequested =
       required PluginChapterSummary chapter,
     });
 
+typedef SourceComicChapterRequested =
+    Future<void> Function({
+      required PluginContentDetail detail,
+      required PluginChaptersResult firstCatalogPage,
+      required PluginChapterSummary chapter,
+    });
+
 typedef SourceExternalUrlLauncher = Future<bool> Function(Uri url);
 
 typedef SourceShelfSaveRequested = Future<void> Function(PluginContentSummary content);
@@ -58,6 +65,7 @@ Future<void> showSourceContentDetailSheet(
   String? initialSourceName,
   Iterable<PluginContentSummary> relatedContents = const <PluginContentSummary>[],
   SourceTextChapterRequested? onTextChapterRequested,
+  SourceComicChapterRequested? onComicChapterRequested,
   SourceShelfSaveRequested? onAddToShelf,
   SourceDetailShelfState shelfState = SourceDetailShelfState.canAdd,
   SourceExternalUrlLauncher? onExternalUrlRequested,
@@ -74,6 +82,7 @@ Future<void> showSourceContentDetailSheet(
     initialSourceName: initialSourceName,
     relatedContents: relatedContents,
     onTextChapterRequested: onTextChapterRequested,
+    onComicChapterRequested: onComicChapterRequested,
     onAddToShelf: onAddToShelf,
     shelfState: shelfState,
     onExternalUrlRequested: onExternalUrlRequested ?? _launchSystemBrowser,
@@ -195,6 +204,7 @@ class _SourceDetailScreen extends StatefulWidget {
     required this.initialSourceName,
     required this.relatedContents,
     required this.onTextChapterRequested,
+    required this.onComicChapterRequested,
     required this.onAddToShelf,
     required this.shelfState,
     required this.onExternalUrlRequested,
@@ -210,6 +220,7 @@ class _SourceDetailScreen extends StatefulWidget {
   final String? initialSourceName;
   final Iterable<PluginContentSummary> relatedContents;
   final SourceTextChapterRequested? onTextChapterRequested;
+  final SourceComicChapterRequested? onComicChapterRequested;
   final SourceShelfSaveRequested? onAddToShelf;
   final SourceDetailShelfState shelfState;
   final SourceExternalUrlLauncher onExternalUrlRequested;
@@ -281,6 +292,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                             relatedContents: widget.relatedContents,
                             isRefreshing: true,
                             onTextChapterRequested: widget.onTextChapterRequested,
+                            onComicChapterRequested: widget.onComicChapterRequested,
                             onAddToShelf: widget.onAddToShelf,
                             shelfState: widget.shelfState,
                             onShelfAction: widget.onShelfAction,
@@ -305,6 +317,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                           relatedContents: widget.relatedContents,
                           isRefreshing: false,
                           onTextChapterRequested: widget.onTextChapterRequested,
+                          onComicChapterRequested: widget.onComicChapterRequested,
                           onAddToShelf: widget.onAddToShelf,
                           shelfState: widget.shelfState,
                           onShelfAction: widget.onShelfAction,
@@ -325,6 +338,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                         relatedContents: widget.relatedContents,
                         isRefreshing: false,
                         onTextChapterRequested: widget.onTextChapterRequested,
+                        onComicChapterRequested: widget.onComicChapterRequested,
                         onAddToShelf: widget.onAddToShelf,
                         shelfState: widget.shelfState,
                         onShelfAction: widget.onShelfAction,
@@ -350,6 +364,7 @@ class _SourceDetailView extends StatefulWidget {
     required this.relatedContents,
     required this.isRefreshing,
     required this.onTextChapterRequested,
+    required this.onComicChapterRequested,
     required this.onAddToShelf,
     required this.shelfState,
     required this.onShelfAction,
@@ -362,6 +377,7 @@ class _SourceDetailView extends StatefulWidget {
   final Iterable<PluginContentSummary> relatedContents;
   final bool isRefreshing;
   final SourceTextChapterRequested? onTextChapterRequested;
+  final SourceComicChapterRequested? onComicChapterRequested;
   final SourceShelfSaveRequested? onAddToShelf;
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested? onShelfAction;
@@ -434,6 +450,7 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
     relatedContents: widget.relatedContents,
     isRefreshing: widget.isRefreshing,
     onTextChapterRequested: widget.onTextChapterRequested,
+    onComicChapterRequested: widget.onComicChapterRequested,
     onAddToShelf: widget.onAddToShelf,
     shelfState: _shelfState,
     onShelfAction: widget.onShelfAction,
@@ -453,6 +470,7 @@ class _SourceDetailBody extends StatelessWidget {
     required this.relatedContents,
     required this.isRefreshing,
     required this.onTextChapterRequested,
+    required this.onComicChapterRequested,
     required this.onAddToShelf,
     required this.shelfState,
     required this.onShelfAction,
@@ -469,6 +487,7 @@ class _SourceDetailBody extends StatelessWidget {
   final Iterable<PluginContentSummary> relatedContents;
   final bool isRefreshing;
   final SourceTextChapterRequested? onTextChapterRequested;
+  final SourceComicChapterRequested? onComicChapterRequested;
   final SourceShelfSaveRequested? onAddToShelf;
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested? onShelfAction;
@@ -615,6 +634,7 @@ class _SourceDetailBody extends StatelessWidget {
                             firstCatalogPage: bundle.chapters,
                             chapter: firstChapter,
                             onTextChapterRequested: onTextChapterRequested,
+                            onComicChapterRequested: onComicChapterRequested,
                           ),
                         ),
                   style: FilledButton.styleFrom(
@@ -715,6 +735,7 @@ class _SourceDetailBody extends StatelessWidget {
                 firstCatalogPage: bundle.chapters,
                 chapter: chapter,
                 onTextChapterRequested: onTextChapterRequested,
+                onComicChapterRequested: onComicChapterRequested,
               ),
             ),
             onOpenUrl: _openUrl,

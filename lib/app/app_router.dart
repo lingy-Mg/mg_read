@@ -41,6 +41,8 @@ import 'package:mg_read/features/profile/presentation/profile_page.dart';
 import 'package:mg_read/features/profile/application/profile_reading_stats_loader.dart';
 import 'package:mg_read/features/profile/presentation/profile_setting_placeholder_page.dart';
 import 'package:mg_read/features/reader/presentation/reader_destination_page.dart';
+import 'package:mg_read/features/reader/application/reader_launch_request.dart';
+import 'package:mg_read/features/reader/data/transient_source_comic_reader.dart';
 import 'package:mg_read/features/reader/data/transient_source_text_reader.dart';
 import 'package:mg_read/features/reader/presentation/reader_entry_transition.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
@@ -239,6 +241,9 @@ class SearchRoute extends GoRouteData with $SearchRoute {
         onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter}) {
           return _openTransientSourceTextReader(context, detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
         },
+        onComicChapterRequested: ({required detail, required firstCatalogPage, required chapter}) {
+          return _openTransientSourceComicReader(context, detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
+        },
       ),
     );
   }
@@ -268,6 +273,9 @@ class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
         onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter}) {
           return _openTransientSourceTextReader(context, detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
         },
+        onComicChapterRequested: ({required detail, required firstCatalogPage, required chapter}) {
+          return _openTransientSourceComicReader(context, detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
+        },
       ),
     );
   }
@@ -290,7 +298,9 @@ Future<void> _openTransientSourceTextReader(
       detail.summary.coverBytes ??
       (coverUrl == null
           ? null
-          : BookCoverMemoryCache.read(BookCoverRequest(pluginId: detail.pluginId, pluginVersion: 'unknown', remoteContentId: detail.summary.id, coverUrl: coverUrl)));
+          : BookCoverMemoryCache.read(
+              BookCoverRequest(pluginId: detail.pluginId, pluginVersion: 'unknown', remoteContentId: detail.summary.id, coverUrl: coverUrl),
+            ));
   final session = TransientSourceTextReader(
     detail: detail,
     catalog: firstCatalogPage,
@@ -308,6 +318,34 @@ Future<void> _openTransientSourceTextReader(
   );
 }
 
+/// Opens a route-lifetime comic reader from a discovery/detail chapter.
+Future<void> _openTransientSourceComicReader(
+  BuildContext context, {
+  required PluginContentDetail detail,
+  required PluginChaptersResult firstCatalogPage,
+  required PluginChapterSummary chapter,
+}) async {
+  final NavigatorState? navigator = appRootNavigatorKey.currentState;
+  if (navigator == null) throw StateError('The application navigator is not ready.');
+  final gateway = ProviderScope.containerOf(context).read(sourceContentGatewayProvider);
+  final coverUrl = detail.summary.coverUrl;
+  final cachedCoverBytes =
+      detail.summary.coverBytes ??
+      (coverUrl == null
+          ? null
+          : BookCoverMemoryCache.read(
+              BookCoverRequest(pluginId: detail.pluginId, pluginVersion: 'unknown', remoteContentId: detail.summary.id, coverUrl: coverUrl),
+            ));
+  final request = ComicReaderLaunchRequest(
+    bookId: detail.summary.id,
+    entryCoverBytes: cachedCoverBytes,
+    dataSource: TransientSourceComicReaderDataSource(detail: detail, catalog: firstCatalogPage, gateway: gateway),
+    stateStore: TransientComicReaderStateStore(),
+    observer: _DismissComicReaderObserver(navigator),
+  );
+  await navigator.push<void>(MaterialPageRoute<void>(builder: (_) => ReaderEntryTransition(request: request)));
+}
+
 final class _DismissReaderObserver extends ReaderObserver {
   const _DismissReaderObserver(this._navigator);
 
@@ -318,6 +356,17 @@ final class _DismissReaderObserver extends ReaderObserver {
     // Reader exits are funneled to the host through this callback, including
     // predictive-back completions. Guard pop to avoid double-navigation if the
     // reader route is already popped elsewhere.
+    if (_navigator.mounted && _navigator.canPop()) _navigator.pop();
+  }
+}
+
+final class _DismissComicReaderObserver extends ComicReaderObserver {
+  const _DismissComicReaderObserver(this._navigator);
+
+  final NavigatorState _navigator;
+
+  @override
+  Future<void> onExitRequested(ComicReaderProgress? progress) async {
     if (_navigator.mounted && _navigator.canPop()) _navigator.pop();
   }
 }

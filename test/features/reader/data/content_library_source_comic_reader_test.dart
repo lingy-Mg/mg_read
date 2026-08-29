@@ -98,9 +98,10 @@ void main() {
     final offline = _Gateway(failChapters: true, failContent: true);
     final rebuilt = ContentLibraryComicReaderDataSource(library: fixture.library, gateway: offline, item: fixture.manga);
     expect((await rebuilt.loadChapterCatalog(fixture.manga.id.value)).items.single.id, 'chapter-1');
+    expect((await rebuilt.loadChapterContent(fixture.manga.id.value, 'chapter-1')).images.single.id, 'image-1');
     expect(await rebuilt.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1'), <int>[7, 8, 9]);
     expect(offline.chapterCalls, 0);
-    expect(offline.contentCalls, 0);
+    expect(offline.contentCalls, 1, reason: 'the adapter probes the source, then falls back to the committed offline manifest');
   });
 
   test('keeps a validated runtime manifest readable when its cache write fails', () async {

@@ -9,6 +9,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -186,6 +187,10 @@ final class WindowsBrowserSessionHost {
   }) async {
     if (_disposed) throw const WindowsBrowserSessionException('unsupported');
     final request = _WindowsBrowserRequest.parse(raw);
+    _log(
+      'browser_session_start plugin_id=${request.pluginId} '
+      'transport=${request.transport} presentation=${request.presentation}',
+    );
     if (_jobs.length >= _maximumPendingRequests)
       throw const WindowsBrowserSessionException('overloaded');
     final job = _WindowsBrowserJob(jobId, deadlineUnixMs, request);
@@ -200,6 +205,10 @@ final class WindowsBrowserSessionHost {
       if (request.presentation == 'visible') {
         try {
           await _platform.show(session.sessionId);
+          _log(
+            'browser_session_verification_window_shown '
+            'plugin_id=${request.pluginId}',
+          );
         } on PlatformException catch (error) {
           if (error.code != 'unsupported') rethrow;
           if (identical(_sessions[request.pluginId], session)) {
@@ -212,6 +221,10 @@ final class WindowsBrowserSessionHost {
           session.activeJobId = jobId;
           session.lastUsedAt = _clock();
           await _platform.show(session.sessionId);
+          _log(
+            'browser_session_verification_window_shown '
+            'plugin_id=${request.pluginId} recreated=true',
+          );
         }
       }
       final cachedAt = session.verifiedAt[request.origin];
@@ -231,9 +244,17 @@ final class WindowsBrowserSessionHost {
         return await _pageHtml(job, session, state);
       }
       return await _httpFetch(job, session, state);
-    } on WindowsBrowserSessionException {
+    } on WindowsBrowserSessionException catch (error) {
+      _log(
+        'browser_session_terminal plugin_id=${request.pluginId} '
+        'code=${error.code}',
+      );
       rethrow;
     } on MissingPluginException {
+      _log(
+        'browser_session_terminal plugin_id=${request.pluginId} '
+        'code=unsupported',
+      );
       throw const WindowsBrowserSessionException('unsupported');
     } on PlatformException catch (error) {
       const allowed = <String>{
@@ -244,12 +265,26 @@ final class WindowsBrowserSessionHost {
         'timeout',
         'unsupported',
       };
-      throw WindowsBrowserSessionException(
-        allowed.contains(error.code) ? error.code : 'plugin_execution_failed',
+      final code = allowed.contains(error.code)
+          ? error.code
+          : 'plugin_execution_failed';
+      _log(
+        'browser_session_terminal plugin_id=${request.pluginId} '
+        'code=$code',
       );
+      throw WindowsBrowserSessionException(code);
     } on TimeoutException {
+      _log(
+        'browser_session_terminal plugin_id=${request.pluginId} '
+        'code=timeout',
+      );
       throw const WindowsBrowserSessionException('timeout');
     } on Object {
+      final code = job.cancelled ? 'cancelled' : 'plugin_execution_failed';
+      _log(
+        'browser_session_terminal plugin_id=${request.pluginId} '
+        'code=$code',
+      );
       if (job.cancelled)
         throw const WindowsBrowserSessionException('cancelled');
       throw const WindowsBrowserSessionException('plugin_execution_failed');
@@ -285,7 +320,10 @@ final class WindowsBrowserSessionHost {
 
   Future<_WindowsBrowserSession> _sessionFor(String pluginId) async {
     final existing = _sessions[pluginId];
-    if (existing != null) return existing;
+    if (existing != null) {
+      _log('browser_session_reuse plugin_id=$pluginId');
+      return existing;
+    }
     final pending = _creating[pluginId];
     if (pending != null) return pending;
     final created = _createSessionSerially(pluginId);
@@ -338,6 +376,7 @@ final class WindowsBrowserSessionHost {
     );
     final session = _WindowsBrowserSession(pluginId, sessionId, _clock());
     _sessions[pluginId] = session;
+    _log('browser_session_created plugin_id=$pluginId');
     return session;
   }
 
@@ -345,6 +384,9 @@ final class WindowsBrowserSessionHost {
     _WindowsBrowserJob job,
     _WindowsBrowserSession session,
   ) async {
+    _log(
+      'browser_session_verification_start plugin_id=${job.request.pluginId}',
+    );
     await _platform.load(session.sessionId, job.request.url);
     while (true) {
       _check(job);
@@ -359,10 +401,15 @@ final class WindowsBrowserSessionHost {
       final sameOrigin = href is String && _origin(href) == job.request.origin;
       if (ready && sameOrigin && !challenge) {
         session.verifiedAt[job.request.origin] = _clock();
+        _log(
+          'browser_session_manual_verification_success '
+          'plugin_id=${job.request.pluginId} had_challenge=${job.hadChallenge}',
+        );
         return job.hadChallenge ? 'verified' : 'not-required';
       }
       if (challenge) {
         job.hadChallenge = true;
+        _log('browser_session_cf_detected plugin_id=${job.request.pluginId}');
         final elapsed = Duration(
           milliseconds:
               job.request.timeoutMs -
@@ -392,6 +439,7 @@ final class WindowsBrowserSessionHost {
     _WindowsBrowserSession session,
     String verificationState,
   ) async {
+    _log('browser_session_fetch_start plugin_id=${job.request.pluginId}');
     await _platform.executeScript(session.sessionId, _fetchScript(job));
     final key = jsonEncode(job.id);
     while (true) {
@@ -411,12 +459,36 @@ final class WindowsBrowserSessionHost {
           throw WindowsBrowserSessionException(code);
         }
         final response = _stringMap(result['response']);
+        if (_isChallengeResponse(response)) {
+          job.hadChallenge = true;
+          session.verifiedAt.remove(job.request.origin);
+          _log(
+            'browser_session_cf_detected plugin_id=${job.request.pluginId} phase=fetch',
+          );
+          if (job.retries > 0 ||
+              job.request.interaction == 'silent' ||
+              job.request.presentation == 'hidden') {
+            _log(
+              'browser_session_interaction_required '
+              'plugin_id=${job.request.pluginId} phase=fetch',
+            );
+            throw const WindowsBrowserSessionException('interaction_required');
+          }
+          job.retries += 1;
+          _log(
+            'browser_session_retry plugin_id=${job.request.pluginId} phase=fetch',
+          );
+          final refreshed = await _verify(job, session);
+          return _webViewFetch(job, session, refreshed);
+        }
+        _log(
+          'browser_session_fetch_complete plugin_id=${job.request.pluginId} '
+          'status=${response['status']}',
+        );
         return <String, Object?>{
           ...response,
           'version': 1,
-          'verificationState': _looksLikeChallenge(response['body'])
-              ? 'failed'
-              : verificationState,
+          'verificationState': verificationState,
         };
       }
       await Future<void>.delayed(_pollDelay);
@@ -564,6 +636,9 @@ final class WindowsBrowserSessionHost {
     _WindowsBrowserSession session,
     String verificationState,
   ) async {
+    _log(
+      'browser_session_fetch_start plugin_id=${job.request.pluginId} phase=html',
+    );
     final value = _decodeScriptObject(
       await _platform.executeScript(session.sessionId, _pageHtmlScript(job)),
     );
@@ -574,13 +649,35 @@ final class WindowsBrowserSessionHost {
       );
     }
     final response = _stringMap(value['response']);
-    final body = response['body'];
+    if (_isChallengeResponse(response)) {
+      job.hadChallenge = true;
+      session.verifiedAt.remove(job.request.origin);
+      _log(
+        'browser_session_cf_detected plugin_id=${job.request.pluginId} phase=html',
+      );
+      if (job.retries > 0 ||
+          job.request.interaction == 'silent' ||
+          job.request.presentation == 'hidden') {
+        _log(
+          'browser_session_interaction_required '
+          'plugin_id=${job.request.pluginId} phase=html',
+        );
+        throw const WindowsBrowserSessionException('interaction_required');
+      }
+      job.retries += 1;
+      _log(
+        'browser_session_retry plugin_id=${job.request.pluginId} phase=html',
+      );
+      final refreshed = await _verify(job, session);
+      return _pageHtml(job, session, refreshed);
+    }
+    _log(
+      'browser_session_fetch_complete plugin_id=${job.request.pluginId} phase=html',
+    );
     return <String, Object?>{
       ...response,
       'version': 1,
-      'verificationState': _looksLikeChallenge(body)
-          ? 'failed'
-          : verificationState,
+      'verificationState': verificationState,
     };
   }
 
@@ -604,6 +701,12 @@ final class WindowsBrowserSessionHost {
       session.verifiedAt.remove(job.request.origin);
       final refreshed = await _verify(job, session);
       return _httpFetch(job, session, refreshed, retried: true);
+    }
+    if (result['verificationState'] == 'failed') {
+      _log(
+        'browser_session_interaction_required plugin_id=${job.request.pluginId} phase=http',
+      );
+      throw const WindowsBrowserSessionException('interaction_required');
     }
     return result;
   }
@@ -678,6 +781,9 @@ final class WindowsBrowserSessionHost {
 
   int _remaining(_WindowsBrowserJob job) =>
       job.deadlineUnixMs - _clock().millisecondsSinceEpoch;
+
+  void _log(String message) =>
+      developer.log(message, name: 'MgReadWindowsBrowser');
 }
 
 final class _WindowsBrowserRequest {
@@ -856,6 +962,7 @@ final class _WindowsBrowserJob {
   final _WindowsBrowserRequest request;
   bool cancelled = false;
   bool hadChallenge = false;
+  int retries = 0;
   HttpClient? client;
 }
 
@@ -902,6 +1009,11 @@ bool _looksLikeChallenge(Object? value) =>
       r'cf-challenge|cf-turnstile|just a moment|checking your browser|challenge-platform',
       caseSensitive: false,
     ).hasMatch(value);
+
+bool _isChallengeResponse(Map<String, Object?> response) {
+  final status = response['status'];
+  return status == 403 || _looksLikeChallenge(response['body']);
+}
 
 double? _finiteNumber(Object? value) {
   if (value is! num || !value.isFinite) return null;

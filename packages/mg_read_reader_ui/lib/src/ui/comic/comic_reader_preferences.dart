@@ -409,6 +409,14 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
       ? error
       : ReaderFailure(kind, ComicReaderStrings.readerProblem, cause: error);
 
+  ReaderFailure _asImageFailure(Object error) => error is ReaderFailure
+      ? ReaderFailure(ReaderFailureKind.image, error.message, cause: error)
+      : ReaderFailure(
+          ReaderFailureKind.image,
+          ComicReaderStrings.imageFailed,
+          cause: error,
+        );
+
   Future<void> _reportFailure(ReaderFailure failure) {
     if (_disposed) return Future<void>.value();
     final ComicReaderObserver observer =
@@ -432,7 +440,6 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
   List<_ComicListEntry> _entries() {
     final int signature = Object.hash(
       _viewportWidth,
-      _preferences.imageSpacing,
       Object.hashAll(
         _window.map(
           (item) => Object.hash(item.info.id, identityHashCode(item.content)),
@@ -472,8 +479,7 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
           _ComicImageEntry(
             chapter,
             image,
-            imageExtent: _imageExtent(image),
-            spacing: _preferences.imageSpacing,
+            placeholderExtent: _placeholderExtent(image),
           ),
         );
       }
@@ -525,7 +531,15 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
     return high.clamp(0, _entryStarts.length - 1);
   }
 
-  double _imageExtent(ComicImageInfo image) {
+  GlobalKey _imageKeyFor(_ComicImageEntry entry) {
+    final String key = '${entry.chapter.info.id}\u0000${entry.image.id}';
+    return _imageKeys.putIfAbsent(
+      key,
+      () => GlobalKey(debugLabel: 'ComicImage:$key'),
+    );
+  }
+
+  double _placeholderExtent(ComicImageInfo image) {
     final double ratio = image.width != null && image.height != null
         ? (image.width! / image.height!).clamp(.02, 20).toDouble()
         : _ComicReaderViewState._defaultAspectRatio;
@@ -536,6 +550,6 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
       _ComicReaderViewState._chapterHeaderExtent +
       content.images.fold<double>(
         0,
-        (sum, image) => sum + _imageExtent(image) + _preferences.imageSpacing,
+        (sum, image) => sum + _placeholderExtent(image),
       );
 }

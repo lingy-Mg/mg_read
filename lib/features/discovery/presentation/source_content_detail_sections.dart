@@ -418,7 +418,18 @@ Future<void> _openTextChapter(
   required PluginChaptersResult firstCatalogPage,
   required PluginChapterSummary chapter,
   required SourceTextChapterRequested? onTextChapterRequested,
+  required SourceComicChapterRequested? onComicChapterRequested,
 }) async {
+  if (detail.summary.contentKind == PluginContentKind.manga) {
+    final callback = onComicChapterRequested;
+    if (callback == null) {
+      await _showChapterContent(context, gateway: gateway, pluginId: detail.pluginId, id: detail.summary.id, chapter: chapter);
+      return;
+    }
+    Navigator.of(context).pop();
+    await callback(detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
+    return;
+  }
   final callback = onTextChapterRequested;
   if (callback == null) {
     await _showChapterContent(context, gateway: gateway, pluginId: detail.pluginId, id: detail.summary.id, chapter: chapter);

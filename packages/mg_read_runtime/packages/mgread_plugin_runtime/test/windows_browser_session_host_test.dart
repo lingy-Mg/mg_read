@@ -116,6 +116,33 @@ void main() {
     },
   );
 
+  test(
+    'WebView fetch reopens verification once after a renewed challenge',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'mgread-windows-fetch-cf-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final platform = _FakeBrowserPlatform(fetchChallengeOnce: true);
+      final host = WindowsBrowserSessionHost(root, platform: platform);
+      addTearDown(host.dispose);
+
+      final result = await host.request(
+        jobId: 's:fetch-cf',
+        deadlineUnixMs: DateTime.now()
+            .add(const Duration(seconds: 5))
+            .millisecondsSinceEpoch,
+        raw: _request(presentation: 'visible', transport: 'webview'),
+      );
+
+      expect(result['body'], 'fixture-browser-body');
+      expect(result['verificationState'], 'verified');
+      expect(platform.createCalls, 1);
+      expect(platform.showCalls, 1);
+      expect(platform.loadedUrls, hasLength(2));
+    },
+  );
+
   test('HTML mode returns the current verified page document', () async {
     final root = await Directory.systemTemp.createTemp('mgread-windows-html-');
     addTearDown(() => root.delete(recursive: true));
@@ -276,11 +303,13 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
     this.challenge = false,
     this.createDelay = Duration.zero,
     this.failNextShow = false,
+    this.fetchChallengeOnce = false,
   });
 
   final bool challenge;
   final Duration createDelay;
   bool failNextShow;
+  bool fetchChallengeOnce;
   int createCalls = 0;
   int disposeCalls = 0;
   int showCalls = 0;
@@ -369,6 +398,20 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
       );
     }
     if (script.contains('__mgreadFetchResults?.')) {
+      if (fetchChallengeOnce) {
+        fetchChallengeOnce = false;
+        return jsonEncode(
+          jsonEncode(<String, Object?>{
+            'ok': true,
+            'response': <String, Object?>{
+              'status': 403,
+              'finalUrl': 'https://example.com/protected',
+              'headers': <String, String>{'content-type': 'text/html'},
+              'body': '403 Forbidden',
+            },
+          }),
+        );
+      }
       return jsonEncode(
         jsonEncode(<String, Object?>{
           'ok': true,

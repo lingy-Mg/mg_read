@@ -232,6 +232,12 @@ enum ReaderFailureKind {
   /// Book, catalog, chapter, or extension data could not be loaded or validated.
   data,
 
+  /// One independently recoverable comic image could not be loaded or decoded.
+  ///
+  /// The reader remains usable and keeps the image's fixed placeholder extent
+  /// so the user can retry or continue to another image.
+  image,
+
   /// Host-owned reader state could not be read or written.
   persistence,
 

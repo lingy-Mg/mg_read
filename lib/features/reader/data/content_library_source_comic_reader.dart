@@ -21,7 +21,7 @@ typedef ComicImageFetcher = Future<Uint8List> Function(Uri uri);
 /// Content Library adapter for a source-backed comic session.
 final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource {
   ContentLibraryComicReaderDataSource({required this.library, required this.gateway, required this.item, ComicImageFetcher? fetcher})
-    : fetcher = fetcher ?? _fetchHttpImage;
+    : fetcher = fetcher ?? fetchComicImage;
 
   static const _maximumImageBytes = 8 * 1024 * 1024;
 
@@ -78,7 +78,15 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
   @override
   Future<ComicChapterContent> loadChapterContent(String bookId, String chapterId) async {
     _checkBook(bookId);
-    return _readerContent(await _runtimeManifest(chapterId));
+    try {
+      return _readerContent(await _runtimeManifest(chapterId));
+    } on Object catch (error, stackTrace) {
+      // A previously committed manifest remains a usable offline snapshot.
+      // Preserve the live error when no such snapshot exists.
+      final persisted = await _persistedManifest(chapterId);
+      if (persisted == null) Error.throwWithStackTrace(error, stackTrace);
+      return _readerContent(persisted);
+    }
   }
 
   @override
@@ -305,13 +313,19 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
   }
 
   Future<Uint8List?> _readCached(String chapterId, MangaPage page) async {
-    final cached = await library.mangaImageCache.read(
-      itemId: item.id,
-      chapterId: chapterId,
-      pageId: page.pageId,
-      contentVersion: page.contentVersion,
-    );
-    return cached == null || cached.isEmpty ? null : Uint8List.fromList(cached);
+    try {
+      final cached = await library.mangaImageCache.read(
+        itemId: item.id,
+        chapterId: chapterId,
+        pageId: page.pageId,
+        contentVersion: page.contentVersion,
+      );
+      return cached == null || cached.isEmpty ? null : Uint8List.fromList(cached);
+    } on Object {
+      // Cache I/O is best effort. A readable source image must still be
+      // attempted when the cache index or file is unavailable.
+      return null;
+    }
   }
 
   ComicChapterInfo _chapterInfo(CatalogEntry entry) => ComicChapterInfo(
@@ -480,7 +494,7 @@ final class ContentLibraryComicReaderStateStore implements ComicReaderStateStore
   }
 }
 
-Future<Uint8List> _fetchHttpImage(Uri uri) async {
+Future<Uint8List> fetchComicImage(Uri uri) async {
   const maximumBytes = 8 * 1024 * 1024;
   final client = HttpClient()
     ..maxConnectionsPerHost = 4

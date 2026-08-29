@@ -37,6 +37,8 @@ abstract interface class ComicReaderDataSource {
   /// The host may download and cache the image before completing this future.
   /// Calls may overlap and may be abandoned by a newer reader generation, so
   /// implementations must tolerate duplicate requests and late completion.
+  /// A failure applies only to this image; the remaining chapter images stay
+  /// available for reading.
   Future<Uint8List> loadImageBytes(
     String bookId,
     String chapterId,

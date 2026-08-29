@@ -74,6 +74,28 @@ void main() {
     expect(startReadingCount, 1);
   });
 
+  testWidgets('manga detail starts the comic reader callback instead of a URL list', (tester) async {
+    var comicChapterCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: _MangaDetailHost(
+          onComicChapterRequested: ({required detail, required firstCatalogPage, required chapter}) async {
+            comicChapterCount += 1;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('source-detail-start-reading')));
+    await tester.pumpAndSettle();
+
+    expect(comicChapterCount, 1);
+    expect(find.byKey(const Key('source-detail-start-reading')), findsNothing);
+    expect(find.byKey(const Key('source-chapter-content-sheet')), findsNothing);
+  });
+
   testWidgets('deferred shelf detail is visible before the local seed completes', (tester) async {
     final seed = Completer<SourceContentDetailSeed>();
     await tester.pumpWidget(
@@ -205,6 +227,140 @@ class _ActionShelfDetailHost extends StatefulWidget {
   @override
   State<_ActionShelfDetailHost> createState() => _ActionShelfDetailHostState();
 }
+
+class _MangaDetailHost extends StatefulWidget {
+  const _MangaDetailHost({required this.onComicChapterRequested});
+
+  final SourceComicChapterRequested onComicChapterRequested;
+
+  @override
+  State<_MangaDetailHost> createState() => _MangaDetailHostState();
+}
+
+class _MangaDetailHostState extends State<_MangaDetailHost> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        showSourceContentDetailSheet(
+          context,
+          gateway: _MangaGateway(),
+          pluginId: 'org.example.manga',
+          id: 'manga-1',
+          initialContent: _mangaSummary,
+          initialCatalog: _mangaChapters,
+          initialSourceName: '示例漫画源',
+          onComicChapterRequested: widget.onComicChapterRequested,
+          onExternalUrlRequested: (_) async => true,
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const Scaffold();
+}
+
+final class _MangaGateway implements SourceContentGateway {
+  @override
+  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async => _mangaDetail;
+
+  @override
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async => _mangaChapters;
+
+  @override
+  Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async =>
+      PluginChapterContent(
+        pluginId: pluginId,
+        sourceName: '示例漫画源',
+        contentKind: PluginContentKind.manga,
+        chapterId: chapterId,
+        title: '第一章',
+        updatedAt: null,
+        text: null,
+        pages: <PluginMangaPage>[
+          PluginMangaPage(
+            id: 'image-1',
+            index: 0,
+            url: Uri.parse('https://example.com/manga/image-1.png'),
+            mimeType: 'image/png',
+            width: 100,
+            height: 200,
+            resourcePolicy: PluginMangaPageResourcePolicy.sessionOnly,
+            expiresAt: null,
+          ),
+        ],
+      );
+
+  @override
+  Future<List<PluginSourceDescriptor>> listSources() => throw UnimplementedError();
+
+  @override
+  Future<PluginSearchResult> search({required String pluginId, required String query, String? cursor, int pageSize = 20}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<PluginDiscoverResult> discover({
+    required String pluginId,
+    String? target,
+    String? cursor,
+    String? collectionId,
+    int pageSize = 20,
+  }) => throw UnimplementedError();
+}
+
+final _mangaSummary = PluginContentSummary(
+  id: 'manga-1',
+  title: '示例漫画',
+  contentKind: PluginContentKind.manga,
+  author: '示例作者',
+  url: null,
+  coverUrl: null,
+  description: '示例漫画简介',
+  language: 'zh-CN',
+  status: PluginContentStatus.ongoing,
+  access: PluginAccessKind.free,
+  wordCount: null,
+  chapterCount: 1,
+  publishedAt: null,
+  updatedAt: null,
+  latestChapter: null,
+  categories: const <String>[],
+  tags: const <String>[],
+  attributes: const <PluginContentAttribute>[],
+);
+
+final _mangaChapters = PluginChaptersResult(
+  pluginId: 'org.example.manga',
+  sourceName: '示例漫画源',
+  items: <PluginChapterSummary>[
+    PluginChapterSummary(
+      id: 'manga-chapter-1',
+      title: '第一章',
+      order: 0,
+      url: null,
+      volumeTitle: null,
+      wordCount: null,
+      updatedAt: null,
+      isLocked: false,
+      attributes: <PluginContentAttribute>[],
+    ),
+  ],
+);
+
+final _mangaDetail = PluginContentDetail(
+  pluginId: 'org.example.manga',
+  sourceName: '示例漫画源',
+  summary: _mangaSummary,
+  aliases: const <String>[],
+  catalogUrl: null,
+);
 
 class _ActionShelfDetailHostState extends State<_ActionShelfDetailHost> {
   @override

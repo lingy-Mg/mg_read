@@ -19,8 +19,22 @@ class AndroidBrowserSessionContractTest {
 
     @Test
     fun acceptsRenderedHtmlTransport() {
-        val request = AndroidBrowserSessionRequest.parse(
-            """{"version":1,"pluginId":"org.mgread.fixture","sessionKey":"fixture","url":"https://example.com/","method":"GET","headers":{"accept":"text/html"},"body":null,"interaction":"silent","presentation":"hidden","transport":"html","timeoutMs":5000,"maxResponseBytes":4096}""",
+        val request = AndroidBrowserSessionRequest(
+            action = "",
+            body = null,
+            headers = mapOf("accept" to "text/html"),
+            interaction = "silent",
+            maxResponseBytes = 4096,
+            method = "GET",
+            operation = "request",
+            pluginId = "org.mgread.fixture",
+            presentation = "hidden",
+            selector = "",
+            sessionKey = "fixture",
+            text = null,
+            timeoutMs = 5000L,
+            transport = "html",
+            url = "https://example.com/",
         )
         assertEquals("html", request.transport)
     }

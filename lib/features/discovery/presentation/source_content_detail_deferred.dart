@@ -37,6 +37,7 @@ Future<void> showDeferredSourceContentDetailSheet(
   required SourceShelfActionRequested onShelfAction,
   required SourceStartReadingRequested onStartReading,
   SourceTextChapterRequested? onTextChapterRequested,
+  SourceComicChapterRequested? onComicChapterRequested,
   SourceExternalUrlLauncher? onExternalUrlRequested,
 }) {
   return showModalBottomSheet<void>(
@@ -56,6 +57,7 @@ Future<void> showDeferredSourceContentDetailSheet(
           onShelfAction: onShelfAction,
           onStartReading: onStartReading,
           onTextChapterRequested: onTextChapterRequested,
+          onComicChapterRequested: onComicChapterRequested,
           onExternalUrlRequested: onExternalUrlRequested ?? _launchSystemBrowser,
         ),
       ),
@@ -72,6 +74,7 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
     required this.onShelfAction,
     required this.onStartReading,
     required this.onTextChapterRequested,
+    required this.onComicChapterRequested,
     required this.onExternalUrlRequested,
   });
 
@@ -82,6 +85,7 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
   final SourceShelfActionRequested onShelfAction;
   final SourceStartReadingRequested onStartReading;
   final SourceTextChapterRequested? onTextChapterRequested;
+  final SourceComicChapterRequested? onComicChapterRequested;
   final SourceExternalUrlLauncher onExternalUrlRequested;
 
   _SourceDetailBundle get _previewBundle => _SourceDetailBundle(
@@ -110,6 +114,7 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
           initialSourceName: data.sourceName,
           relatedContents: const <PluginContentSummary>[],
           onTextChapterRequested: onTextChapterRequested,
+          onComicChapterRequested: onComicChapterRequested,
           onAddToShelf: null,
           shelfState: shelfState,
           onExternalUrlRequested: onExternalUrlRequested,
@@ -144,6 +149,7 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
                   relatedContents: const <PluginContentSummary>[],
                   isRefreshing: !snapshot.hasError,
                   onTextChapterRequested: onTextChapterRequested,
+                  onComicChapterRequested: onComicChapterRequested,
                   onAddToShelf: null,
                   shelfState: shelfState,
                   onShelfAction: onShelfAction,
