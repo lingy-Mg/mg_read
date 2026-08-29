@@ -1,3 +1,10 @@
+/// Content Library-backed text reader launcher and session adapter.
+///
+/// Durable chapter bodies remain owned by Content Library. The live adapter
+/// keeps at most two recently used bodies within a 128 KiB logical UTF-16
+/// budget, without scanning or encoding text on the first-content path.
+library;
+
 import 'dart:convert';
 
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -349,14 +356,13 @@ final class _SessionNovelChapterAccess implements ReaderChapterStateCapability, 
   final LibraryItemSource source;
   final SourceContentGateway gateway;
   final ChapterCacheTaskController? cacheTasks;
-  final BoundedReaderSessionCache<String, String> _memoryByRemoteId =
-      BoundedReaderSessionCache<String, String>(
-        maxEntries: 2,
-        maxWeight: _maximumMemoryWeight,
-        // Dart String.length is O(1). This UTF-16 payload estimate avoids
-        // re-encoding a whole chapter on the reader's first-content path.
-        weightOf: (String _, String text) => text.length * 2,
-      );
+  final BoundedReaderSessionCache<String, String> _memoryByRemoteId = BoundedReaderSessionCache<String, String>(
+    maxEntries: 2,
+    maxWeight: _maximumMemoryWeight,
+    // Dart String.length is O(1). This UTF-16 payload estimate avoids
+    // re-encoding a whole chapter on the reader's first-content path.
+    weightOf: (String _, String text) => text.length * 2,
+  );
   final Set<String> _readChapterIds = <String>{};
   final Set<String> _cachedChapterIds = <String>{};
   final Set<String> _failedChapterIds = <String>{};

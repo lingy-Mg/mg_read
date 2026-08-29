@@ -53,11 +53,7 @@ void main() {
 
   test('keeps only three recently used preview manifests', () async {
     final gateway = _Gateway();
-    final reader = TransientSourceComicReaderDataSource(
-      detail: _detail,
-      catalog: _catalogWithChapters(4),
-      gateway: gateway,
-    );
+    final reader = TransientSourceComicReaderDataSource(detail: _detail, catalog: _catalogWithChapters(4), gateway: gateway);
 
     for (final chapterId in <String>['chapter-1', 'chapter-2', 'chapter-3']) {
       await reader.loadChapterContent('manga-1', chapterId);

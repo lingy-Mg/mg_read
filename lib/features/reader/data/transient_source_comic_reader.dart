@@ -1,8 +1,8 @@
 /// Route-lifetime comic reader adapter for discovery/detail previews.
 ///
-/// The adapter keeps only the source catalog and chapter manifests in memory.
-/// It does not write the bookshelf, Content Library, progress, bookmarks, or
-/// image bytes to disk; shelf reading uses the persistent comic adapter.
+/// The adapter keeps only the source catalog and a three-entry manifest LRU in
+/// memory. It does not write the bookshelf, Content Library, progress,
+/// bookmarks, or image bytes to disk; shelf reading uses the library adapter.
 library;
 
 import 'dart:typed_data';
@@ -26,8 +26,9 @@ final class TransientSourceComicReaderDataSource implements ComicReaderDataSourc
   final SourceContentGateway gateway;
   final ComicImageFetcher fetcher;
   late final List<PluginChapterSummary> _chapters;
-  final BoundedReaderSessionCache<String, ComicChapterContent> _contents =
-      BoundedReaderSessionCache<String, ComicChapterContent>(maxEntries: 3);
+  final BoundedReaderSessionCache<String, ComicChapterContent> _contents = BoundedReaderSessionCache<String, ComicChapterContent>(
+    maxEntries: 3,
+  );
 
   @override
   Future<ComicBookInfo> loadBookInfo(String bookId) async {

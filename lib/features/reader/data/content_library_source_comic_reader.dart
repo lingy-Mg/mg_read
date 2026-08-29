@@ -4,7 +4,8 @@
 /// the synchronized snapshot, URL-safe manifest, progress, and bookmarks.
 /// Encoded image bytes stay in the reader's bounded memory cache; this adapter
 /// does not read or write a persistent image cache. Session-only URLs and
-/// request single-flights stay in this file.
+/// request single-flights stay in this file. Live manifests use a three-entry
+/// LRU so visiting chapters cannot grow session memory without bound.
 library;
 
 import 'dart:async';
@@ -34,8 +35,7 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
   final ComicImageFetcher fetcher;
   _CatalogSnapshot? _catalog;
   Future<_CatalogSnapshot>? _catalogLoading;
-  final BoundedReaderSessionCache<String, _ChapterManifest> _manifests =
-      BoundedReaderSessionCache<String, _ChapterManifest>(maxEntries: 3);
+  final BoundedReaderSessionCache<String, _ChapterManifest> _manifests = BoundedReaderSessionCache<String, _ChapterManifest>(maxEntries: 3);
   final Map<String, Future<_ChapterManifest>> _runtimeManifestLoads = <String, Future<_ChapterManifest>>{};
   final Map<String, Future<Uint8List>> _imageLoads = <String, Future<Uint8List>>{};
 

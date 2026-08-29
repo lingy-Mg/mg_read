@@ -9,7 +9,9 @@ import '../../api/comic_models.dart';
 ///
 /// Persistent storage remains the host's responsibility. Both entry and byte
 /// limits are enforced because a count-only cache is unsafe for scan-quality
-/// images with highly variable encoded sizes.
+/// images with highly variable encoded sizes. The default 1000-entry ceiling
+/// is only a safety cap: the 48 MiB byte budget remains primary, and storage is
+/// allocated lazily as images finish downloading.
 class ComicImageByteCache {
   ComicImageByteCache({
     required this.bookId,

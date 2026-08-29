@@ -11,8 +11,8 @@
 - 指令优先级：用户当前要求 → 本核心规范 → 最近的 `AGENTS.md` 增量 → 代码公开契约与测试。
 - 架构变化直接修改本文件的最小章节，并同步公开类型、测试和调用方。历史原因由 Git 保存，不再
   新建成组 ADR、实现快照或阶段规划文档。
-- `mg_read` 是唯一 Flutter 主应用；首发 Android、Windows、macOS，Android 优先。iOS、Linux、Web、
-  账号、云同步、WebView 登录、DRM 和商店分发不在当前范围。
+- `mg_read` 是唯一 Flutter 主应用；首发 Android/Windows/macOS（Android 优先）。iOS/Linux/Web、
+  账号、云同步、WebView 登录、DRM、商店分发不在范围。
 - 每个任务只完成用户指定切片，不顺手进入其他里程碑或未来能力。
 
 ## 仓库与所有权
@@ -135,16 +135,13 @@ plugins/sources/                    真实数据源插件
 
 ## 阅读器
 
-- `novel_reader_ui` 只负责小说/漫画；音频与视频分别由 `mg_read_audio_player`、
-  `mg_read_video_player` 独立维护。三个 package 不互相深导入，也不建立统一媒体模型、Controller 或 UI。
-- 各 package 只拥有会话、交互、语义位置、生命周期和已实现平台能力；宿主提供纯业务数据、状态存储、
-  路由及授权资源，不把网络鉴权、Cookie、数据库、下载、账号、支付或 DRM 下沉到 Widget。
-- 主应用 adapter 提供纯业务数据和状态。文本锚点使用 `chapterId + paragraphId + characterOffset`；
-  漫画使用 `chapterId + imageId + imageFraction`。页码/像素偏移不能成为持久权威。
-- `ReaderObserver.onExitRequested` 只通知宿主，由主应用决定路由/确认。可选 capability 未注册时隐藏
-  UI，不显示伪造状态。
-- UI/分页不访问网络、数据库、文件或宿主 Service Locator；异步域使用请求世代/取消并有界缓存。
-  设置、窗口、字体和方向变化后恢复语义位置，所有 Controller/Timer/句柄/常亮资源成对释放。
+- 上述三个 package 分别负责阅读、音频、视频，互不依赖，不共享媒体模型、Controller 或 UI。
+- package 只持有会话、交互和生命周期；宿主拥有数据、状态、路由及授权资源。Widget 不接触鉴权、
+  Cookie、数据库、下载、账号、支付或 DRM。
+- 文本锚点为 `chapterId + paragraphId + characterOffset`，漫画为 `chapterId + imageId + imageFraction`；
+  页码/像素偏移不能成为持久权威。
+- Observer 只请求宿主退出；未注册的 capability 隐藏。UI 不访问数据库、文件或 Service Locator；
+  异步域有世代/取消和有界缓存，布局变化恢复语义位置，资源成对释放。
 
 ## UI、状态与组件
 

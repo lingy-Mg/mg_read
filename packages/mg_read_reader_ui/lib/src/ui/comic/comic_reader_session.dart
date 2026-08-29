@@ -730,9 +730,11 @@ extension _ComicReaderSession on _ComicReaderViewState {
     required int limit,
   }) {
     int loaded = 0;
-    for (int candidate = startIndex + step;
-        candidate >= 0 && candidate < entries.length && loaded < limit;
-        candidate += step) {
+    for (
+      int candidate = startIndex + step;
+      candidate >= 0 && candidate < entries.length && loaded < limit;
+      candidate += step
+    ) {
       final _ComicListEntry entry = entries[candidate];
       if (entry is! _ComicImageEntry) continue;
       _imageCache.prefetch(entry.chapter.info.id, entry.image);

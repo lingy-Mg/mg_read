@@ -67,32 +67,75 @@ void main() {
     expect(cache.maxBytes, 48 * 1024 * 1024);
     expect(cache.entryCount, 0);
     expect(cache.byteCount, 0);
-    expect(source.imageCalls, 0, reason: 'constructing the reader cache must not start image work');
-  });
-
-  test('memory pressure cancels prefetch and rejects late cache insertion', () async {
-    final source = _BlockingComicSource();
-    final cache = ComicImageByteCache(
-      bookId: 'book',
-      dataSource: source,
-      maxConcurrentLoads: 1,
+    expect(
+      source.imageCalls,
+      0,
+      reason: 'constructing the reader cache must not start image work',
     );
-    addTearDown(cache.dispose);
-
-    cache.prefetch('chapter-1', _image('one', null));
-    cache.prefetch('chapter-1', _image('two', null));
-    await Future<void>.delayed(Duration.zero);
-    expect(source.started, <String>['one']);
-
-    cache.handleMemoryPressure();
-    source.complete('one');
-    await Future<void>.delayed(Duration.zero);
-    await Future<void>.delayed(Duration.zero);
-
-    expect(source.started, <String>['one']);
-    expect(cache.entryCount, 0);
-    expect(cache.byteCount, 0);
   });
+
+  testWidgets(
+    'comic reader does not prefetch while the first image is still loading',
+    (WidgetTester tester) async {
+      tester.view
+        ..physicalSize = const Size(400, 600)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final source = _GatedFirstImageComicSource();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ComicReaderView(
+            bookId: 'book',
+            dataSource: source,
+            stateStore: _MemoryComicStateStore(),
+          ),
+        ),
+      );
+      for (
+        var frame = 0;
+        frame < 20 && source.requestedImages.isEmpty;
+        frame++
+      ) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+
+      expect(source.requestedImages, <String>['image-1']);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(source.requestedImages, <String>['image-1']);
+
+      source.releaseFirstImage();
+      await tester.pumpAndSettle();
+      expect(source.requestedImages, contains('image-2'));
+    },
+  );
+
+  test(
+    'memory pressure cancels prefetch and rejects late cache insertion',
+    () async {
+      final source = _BlockingComicSource();
+      final cache = ComicImageByteCache(
+        bookId: 'book',
+        dataSource: source,
+        maxConcurrentLoads: 1,
+      );
+      addTearDown(cache.dispose);
+
+      cache.prefetch('chapter-1', _image('one', null));
+      cache.prefetch('chapter-1', _image('two', null));
+      await Future<void>.delayed(Duration.zero);
+      expect(source.started, <String>['one']);
+
+      cache.handleMemoryPressure();
+      source.complete('one');
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(source.started, <String>['one']);
+      expect(cache.entryCount, 0);
+      expect(cache.byteCount, 0);
+    },
+  );
 
   test(
     'comic image cache schedules distinct images with a bounded concurrency',
@@ -380,6 +423,59 @@ class _BlockingComicSource extends _FakeComicSource {
     if (pending != null && !pending.isCompleted) {
       pending.complete(Uint8List.fromList(<int>[1]));
     }
+  }
+}
+
+class _GatedFirstImageComicSource extends _FakeComicSource {
+  final Completer<void> _firstImageRelease = Completer<void>();
+  final List<String> requestedImages = <String>[];
+
+  void releaseFirstImage() => _firstImageRelease.complete();
+
+  @override
+  Future<ComicChapterCatalogPage> loadChapterCatalog(
+    String bookId, {
+    String? cursor,
+    int pageSize = 50,
+  }) async => ComicChapterCatalogPage(
+    items: const <ComicChapterInfo>[
+      ComicChapterInfo(id: 'chapter-1', title: '第一章', index: 0, imageCount: 9),
+    ],
+    total: 1,
+    hasMore: false,
+  );
+
+  @override
+  Future<ComicChapterContent> loadChapterContent(
+    String bookId,
+    String chapterId,
+  ) async => ComicChapterContent(
+    chapterId: chapterId,
+    title: '第一章',
+    images: <ComicImageInfo>[
+      for (var index = 0; index < 9; index++)
+        ComicImageInfo(
+          id: 'image-${index + 1}',
+          index: index,
+          width: 100,
+          height: 1000,
+        ),
+    ],
+  );
+
+  @override
+  Future<Uint8List> loadImageBytes(
+    String bookId,
+    String chapterId,
+    String imageId,
+  ) async {
+    requestedImages.add(imageId);
+    if (imageId == 'image-1') await _firstImageRelease.future;
+    return Uint8List.fromList(
+      base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      ),
+    );
   }
 }
 

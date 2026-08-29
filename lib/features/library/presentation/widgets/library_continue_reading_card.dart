@@ -7,7 +7,7 @@
 /// 注意：
 /// - 封面状态不得阻塞卡片正文或继续阅读操作。
 /// - 不访问持久化、Runtime 或路由实现。
-/// - 首页沉浸模式下封面居左并与顶部操作栏同高起始，书名与按钮居右。
+/// - 首页沉浸模式下封面居左并与顶部操作栏同高起始，书名、作者、简介与按钮居右。
 ///
 /// TODO:
 /// - 无。
@@ -176,6 +176,55 @@ class _ContinueReadingDetails extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
+    final String? author = _nonBlank(data.author);
+    final String? description = _nonBlank(data.description);
+
+    if (!showEyebrow) {
+      final double textScale = MediaQuery.textScalerOf(context).scale(1);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            key: const Key('continue-reading-title'),
+            data.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600, height: 1.18, letterSpacing: -0.2),
+          ),
+          if (author != null) ...<Widget>[
+            const SizedBox(height: AppSpacing.compact / 2),
+            Text(
+              key: const Key('continue-reading-author'),
+              '作者 · $author',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface, fontWeight: FontWeight.w600, height: 1.25),
+            ),
+          ],
+          if (description != null) ...<Widget>[
+            const SizedBox(height: AppSpacing.compact / 2),
+            Expanded(
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: Text(
+                  key: const Key('continue-reading-description'),
+                  description,
+                  maxLines: textScale > 1.25 ? 2 : 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface, height: 1.35),
+                ),
+              ),
+            ),
+          ] else
+            const Spacer(),
+          const SizedBox(height: AppSpacing.compact),
+          Align(
+            alignment: Alignment.center,
+            child: _ContinueReadingAction(onPressed: onContinueReading, isPreparing: isPreparing, progress: data.progress),
+          ),
+        ],
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -189,6 +238,7 @@ class _ContinueReadingDetails extends StatelessWidget {
           const SizedBox(height: AppSpacing.compact),
         ],
         Text(
+          key: const Key('continue-reading-title'),
           data.title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
@@ -202,6 +252,11 @@ class _ContinueReadingDetails extends StatelessWidget {
       ],
     );
   }
+}
+
+String? _nonBlank(String? value) {
+  final String? trimmed = value?.trim();
+  return trimmed == null || trimmed.isEmpty ? null : trimmed;
 }
 
 class _ContinueReadingAction extends StatelessWidget {

@@ -1,0 +1,607 @@
+/// Widget and session tests for the independently maintained video player.
+///
+/// Responsibilities:
+/// - Verify restoration, controls, seeking, switching and lifecycle persistence.
+/// - Exercise host fullscreen/exit intents using an injected fake backend.
+///
+/// Notes:
+/// - Tests never initialize MediaKit or require native playback libraries.
+library;
+
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mg_read_video_player/mg_read_video_player.dart';
+
+void main() {
+  testWidgets('restores the saved episode and position before autoplay', (
+    WidgetTester tester,
+  ) async {
+    final backend = _FakeVideoBackend();
+    final store = _RecordingStore(
+      restored: const VideoPlaybackProgress(
+        contentId: 'show',
+        episodeId: 'episode-2',
+        position: Duration(seconds: 42),
+        duration: Duration(minutes: 2),
+      ),
+    );
+    final observer = _RecordingObserver();
+    final controller = VideoPlayerController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      _playerApp(
+        contentId: 'show',
+        backend: backend,
+        store: store,
+        observer: observer,
+        controller: controller,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(backend.openCalls, hasLength(1));
+    expect(backend.openCalls.single.episode.id, 'episode-2');
+    expect(backend.openCalls.single.position, const Duration(seconds: 42));
+    expect(backend.openCalls.single.play, isTrue);
+    expect(
+      backend.openCalls.single.episode.httpHeaders['Referer'],
+      'https://example.test/',
+    );
+    expect(controller.snapshot.activeEpisodeId, 'episode-2');
+    expect(controller.snapshot.position, const Duration(seconds: 42));
+    expect(observer.firstFrames, 1);
+    expect(find.text('演示视频'), findsOneWidget);
+  });
+
+  testWidgets('toggles controls and handles Space and arrow shortcuts', (
+    WidgetTester tester,
+  ) async {
+    final backend = _FakeVideoBackend();
+    final controller = VideoPlayerController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      _playerApp(contentId: 'show', backend: backend, controller: controller),
+    );
+    await tester.pumpAndSettle();
+
+    expect(controller.snapshot.controlsVisible, isTrue);
+    await controller.toggleControls();
+    await tester.pump();
+    expect(controller.snapshot.controlsVisible, isFalse);
+    await tester.tap(find.byKey(const Key('video-player-surface')));
+    await tester.pump();
+    expect(controller.snapshot.controlsVisible, isTrue);
+
+    expect(backend.state.value.playing, isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pump();
+    expect(backend.state.value.playing, isFalse);
+
+    backend.emitPosition(const Duration(seconds: 30));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(backend.seekCalls.last, const Duration(seconds: 40));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(backend.seekCalls.last, const Duration(seconds: 30));
+  });
+
+  testWidgets('seeks with chrome and saves before switching episodes', (
+    WidgetTester tester,
+  ) async {
+    final backend = _FakeVideoBackend();
+    final store = _RecordingStore();
+    final controller = VideoPlayerController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      _playerApp(
+        contentId: 'show',
+        backend: backend,
+        store: store,
+        controller: controller,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    backend.emitPosition(const Duration(seconds: 24));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('video-player-forward')));
+    await tester.pump();
+    expect(backend.seekCalls.last, const Duration(seconds: 34));
+
+    await tester.drag(
+      find.byKey(const Key('video-player-slider')),
+      const Offset(90, 0),
+    );
+    await tester.pump();
+    expect(backend.seekCalls.last, greaterThan(const Duration(seconds: 34)));
+
+    backend.emitPosition(const Duration(seconds: 51));
+    await tester.tap(find.byKey(const Key('video-player-episodes')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('video-player-episode-episode-2')));
+    await tester.pumpAndSettle();
+
+    expect(
+      store.saved.any(
+        (VideoPlaybackProgress value) =>
+            value.episodeId == 'episode-1' &&
+            value.position == const Duration(seconds: 51),
+      ),
+      isTrue,
+    );
+    expect(backend.openCalls.last.episode.id, 'episode-2');
+    expect(controller.snapshot.activeEpisodeId, 'episode-2');
+  });
+
+  testWidgets(
+    'background pause and Escape flush progress before one host exit',
+    (WidgetTester tester) async {
+      final backend = _FakeVideoBackend();
+      final store = _RecordingStore();
+      final navigatorKey = GlobalKey<NavigatorState>();
+      final observer = _RecordingObserver(
+        onExit: () => navigatorKey.currentState!.pop(),
+      );
+      final controller = VideoPlayerController();
+      addTearDown(controller.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigatorKey,
+          home: Builder(
+            builder: (BuildContext rootContext) => Scaffold(
+              key: const Key('video-root-route'),
+              body: TextButton(
+                key: const Key('open-middle-route'),
+                onPressed: () => Navigator.of(rootContext).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (BuildContext middleContext) => Scaffold(
+                      key: const Key('video-middle-route'),
+                      body: TextButton(
+                        key: const Key('open-player'),
+                        onPressed: () => Navigator.of(middleContext).push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (_) => _player(
+                              contentId: 'show',
+                              backend: backend,
+                              store: store,
+                              observer: observer,
+                              controller: controller,
+                            ),
+                          ),
+                        ),
+                        child: const Text('打开视频'),
+                      ),
+                    ),
+                  ),
+                ),
+                child: const Text('打开中间页'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('open-middle-route')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('open-player')));
+      await tester.pumpAndSettle();
+      backend.emitPosition(const Duration(seconds: 54));
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      expect(backend.pauseCount, greaterThan(0));
+      expect(store.saved.last.position, const Duration(seconds: 54));
+
+      await controller.requestFullscreen(true);
+      expect(observer.fullscreenRequests, <bool>[true]);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(observer.fullscreenRequests, <bool>[true, false]);
+      expect(observer.exitCount, 0);
+      expect(find.byKey(const Key('video-player-surface')), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(observer.exitCount, 1);
+      expect(find.byKey(const Key('video-player-surface')), findsNothing);
+      expect(find.byKey(const Key('video-middle-route')), findsOneWidget);
+      expect(find.byKey(const Key('video-root-route')), findsNothing);
+      expect(navigatorKey.currentState!.canPop(), isTrue);
+      expect(store.saved.last.position, const Duration(seconds: 54));
+      await tester.pumpAndSettle();
+      expect(observer.exitCount, 1);
+      expect(find.byKey(const Key('video-middle-route')), findsOneWidget);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+    },
+  );
+
+  testWidgets('system back maybePops one video route without an observer', (
+    WidgetTester tester,
+  ) async {
+    final backend = _FakeVideoBackend();
+    final navigatorKey = GlobalKey<NavigatorState>();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigatorKey,
+        home: Builder(
+          builder: (BuildContext context) => Scaffold(
+            key: const Key('no-observer-root-route'),
+            body: TextButton(
+              key: const Key('open-no-observer-player'),
+              onPressed: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => VideoPlayerView(
+                    contentId: 'show',
+                    dataSource: const _ImmediateDataSource(),
+                    stateStore: _RecordingStore(),
+                    backendFactory: () => backend,
+                    controlsAutoHideDelay: const Duration(hours: 1),
+                  ),
+                ),
+              ),
+              child: const Text('打开无 Observer 视频'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('open-no-observer-player')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('video-player-surface')), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('video-player-surface')), findsNothing);
+    expect(find.byKey(const Key('no-observer-root-route')), findsOneWidget);
+    expect(navigatorKey.currentState!.canPop(), isFalse);
+  });
+
+  testWidgets(
+    'system back exits fullscreen first and never bypasses the observer',
+    (WidgetTester tester) async {
+      final backend = _FakeVideoBackend();
+      final observer = _RecordingObserver();
+      final controller = VideoPlayerController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        _playerApp(
+          contentId: 'show',
+          backend: backend,
+          observer: observer,
+          controller: controller,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await controller.requestFullscreen(true);
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(observer.fullscreenRequests, <bool>[true, false]);
+      expect(observer.exitCount, 0);
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(observer.exitCount, 1);
+    },
+  );
+
+  testWidgets('stale content load cannot replace a newer session', (
+    WidgetTester tester,
+  ) async {
+    final backend = _FakeVideoBackend();
+    final source = _ControlledDataSource();
+    final store = _RecordingStore();
+
+    await tester.pumpWidget(
+      _playerApp(
+        contentId: 'old',
+        backend: backend,
+        source: source,
+        store: store,
+        playerKey: const ValueKey<String>('player'),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpWidget(
+      _playerApp(
+        contentId: 'new',
+        backend: backend,
+        source: source,
+        store: store,
+        playerKey: const ValueKey<String>('player'),
+      ),
+    );
+    await tester.pump();
+    source.complete('new');
+    await tester.pumpAndSettle();
+    source.complete('old');
+    await tester.pumpAndSettle();
+
+    expect(backend.openCalls, isNotEmpty);
+    expect(backend.openCalls.last.episode.id, 'new-episode-1');
+    expect(find.text('new 视频'), findsOneWidget);
+  });
+
+  testWidgets('changing content saves the old content position first', (
+    WidgetTester tester,
+  ) async {
+    final backend = _FakeVideoBackend();
+    final store = _RecordingStore();
+    const playerKey = ValueKey<String>('stable-player');
+    await tester.pumpWidget(
+      _playerApp(
+        contentId: 'old',
+        backend: backend,
+        store: store,
+        playerKey: playerKey,
+      ),
+    );
+    await tester.pumpAndSettle();
+    backend.emitPosition(const Duration(seconds: 37));
+    await tester.pump();
+
+    await tester.pumpWidget(
+      _playerApp(
+        contentId: 'new',
+        backend: backend,
+        store: store,
+        playerKey: playerKey,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      store.saved.any(
+        (VideoPlaybackProgress value) =>
+            value.contentId == 'old' &&
+            value.position == const Duration(seconds: 37),
+      ),
+      isTrue,
+    );
+    expect(backend.openCalls.last.episode.id, 'new-episode-1');
+  });
+
+  testWidgets('dispose serializes final progress after an older delayed save', (
+    WidgetTester tester,
+  ) async {
+    final backend = _FakeVideoBackend();
+    final firstSave = Completer<void>();
+    final store = _RecordingStore(firstSave: firstSave);
+    final controller = VideoPlayerController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      _playerApp(
+        contentId: 'show',
+        backend: backend,
+        store: store,
+        controller: controller,
+        progressSaveThrottle: Duration.zero,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    backend.emitPosition(const Duration(seconds: 10));
+    unawaited(controller.pause());
+    await tester.pump();
+    expect(store.saved.first.position, const Duration(seconds: 10));
+    backend.emitPosition(const Duration(seconds: 20));
+    await tester.pumpWidget(const SizedBox.shrink());
+    firstSave.complete();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    });
+
+    expect(store.saved.last.position, const Duration(seconds: 20));
+    expect(backend.disposed, isTrue);
+  });
+}
+
+Widget _playerApp({
+  required String contentId,
+  required _FakeVideoBackend backend,
+  VideoDataSource? source,
+  _RecordingStore? store,
+  _RecordingObserver? observer,
+  VideoPlayerController? controller,
+  Key? playerKey,
+  Duration progressSaveThrottle = const Duration(hours: 1),
+}) => MaterialApp(
+  home: _player(
+    contentId: contentId,
+    backend: backend,
+    source: source,
+    store: store,
+    observer: observer,
+    controller: controller,
+    playerKey: playerKey,
+    progressSaveThrottle: progressSaveThrottle,
+  ),
+);
+
+Widget _player({
+  required String contentId,
+  required _FakeVideoBackend backend,
+  VideoDataSource? source,
+  _RecordingStore? store,
+  _RecordingObserver? observer,
+  VideoPlayerController? controller,
+  Key? playerKey,
+  Duration progressSaveThrottle = const Duration(hours: 1),
+}) => VideoPlayerView(
+  key: playerKey,
+  contentId: contentId,
+  dataSource: source ?? const _ImmediateDataSource(),
+  stateStore: store ?? _RecordingStore(),
+  observer: observer ?? _RecordingObserver(),
+  controller: controller,
+  backendFactory: () => backend,
+  progressSaveThrottle: progressSaveThrottle,
+  controlsAutoHideDelay: const Duration(hours: 1),
+);
+
+final class _ImmediateDataSource implements VideoDataSource {
+  const _ImmediateDataSource();
+
+  @override
+  Future<VideoContent> load(String contentId) async => _content(contentId);
+}
+
+final class _ControlledDataSource implements VideoDataSource {
+  final Map<String, Completer<VideoContent>> _requests =
+      <String, Completer<VideoContent>>{};
+
+  @override
+  Future<VideoContent> load(String contentId) =>
+      (_requests[contentId] ??= Completer<VideoContent>()).future;
+
+  void complete(String contentId) =>
+      _requests[contentId]!.complete(_content(contentId));
+}
+
+VideoContent _content(String id) => VideoContent(
+  id: id,
+  title: id == 'show' ? '演示视频' : '$id 视频',
+  episodes: <VideoEpisode>[
+    VideoEpisode(
+      id: id == 'show' ? 'episode-1' : '$id-episode-1',
+      title: '第 1 集',
+      uri: 'https://example.test/$id/1.mp4',
+      httpHeaders: const <String, String>{'Referer': 'https://example.test/'},
+      durationHint: const Duration(minutes: 2),
+    ),
+    VideoEpisode(
+      id: id == 'show' ? 'episode-2' : '$id-episode-2',
+      title: '第 2 集',
+      uri: 'https://example.test/$id/2.mp4',
+      httpHeaders: const <String, String>{'Referer': 'https://example.test/'},
+      durationHint: const Duration(minutes: 3),
+    ),
+  ],
+);
+
+final class _RecordingStore implements VideoPlaybackStateStore {
+  _RecordingStore({this.restored, this.firstSave});
+
+  final VideoPlaybackProgress? restored;
+  final Completer<void>? firstSave;
+  final List<VideoPlaybackProgress> saved = <VideoPlaybackProgress>[];
+
+  @override
+  Future<VideoPlaybackProgress?> load(String contentId) async => restored;
+
+  @override
+  Future<void> save(VideoPlaybackProgress progress) {
+    saved.add(progress);
+    if (saved.length == 1 && firstSave != null) return firstSave!.future;
+    return Future<void>.value();
+  }
+}
+
+final class _RecordingObserver extends VideoPlayerObserver {
+  _RecordingObserver({this.onExit});
+
+  final VoidCallback? onExit;
+  int firstFrames = 0;
+  int exitCount = 0;
+  final List<bool> fullscreenRequests = <bool>[];
+  final List<VideoPlayerFailure> failures = <VideoPlayerFailure>[];
+
+  @override
+  void onFirstFrame(VideoPlayerSnapshot snapshot) => firstFrames++;
+
+  @override
+  void onFailure(VideoPlayerFailure failure) => failures.add(failure);
+
+  @override
+  void onFullscreenRequested(bool fullscreen) =>
+      fullscreenRequests.add(fullscreen);
+
+  @override
+  void onExitRequested(VideoPlaybackProgress? progress) {
+    exitCount++;
+    onExit?.call();
+  }
+}
+
+final class _OpenCall {
+  const _OpenCall(this.episode, this.position, this.play);
+
+  final VideoEpisode episode;
+  final Duration position;
+  final bool play;
+}
+
+final class _FakeVideoBackend implements VideoPlaybackBackend {
+  @override
+  final ValueNotifier<VideoPlaybackBackendState> state =
+      ValueNotifier<VideoPlaybackBackendState>(
+        const VideoPlaybackBackendState(),
+      );
+  final List<_OpenCall> openCalls = <_OpenCall>[];
+  final List<Duration> seekCalls = <Duration>[];
+  int pauseCount = 0;
+  bool disposed = false;
+
+  @override
+  Widget buildSurface({required BoxFit fit, Key? key}) =>
+      ColoredBox(key: key, color: Colors.black);
+
+  @override
+  Future<void> open(
+    VideoEpisode episode, {
+    required Duration initialPosition,
+    required bool play,
+  }) async {
+    openCalls.add(_OpenCall(episode, initialPosition, play));
+    state.value = VideoPlaybackBackendState(
+      playing: play,
+      position: initialPosition,
+      duration: episode.durationHint ?? const Duration(minutes: 2),
+      firstFrameReady: true,
+    );
+  }
+
+  @override
+  Future<void> play() async =>
+      state.value = state.value.copyWith(playing: true);
+
+  @override
+  Future<void> pause() async {
+    pauseCount++;
+    state.value = state.value.copyWith(playing: false);
+  }
+
+  @override
+  Future<void> seek(Duration position) async {
+    seekCalls.add(position);
+    state.value = state.value.copyWith(position: position);
+  }
+
+  @override
+  Future<void> setRate(double rate) async =>
+      state.value = state.value.copyWith(rate: rate);
+
+  @override
+  Future<void> setVolume(double volume) async =>
+      state.value = state.value.copyWith(volume: volume);
+
+  void emitPosition(Duration position) =>
+      state.value = state.value.copyWith(position: position);
+
+  @override
+  Future<void> dispose() async {
+    disposed = true;
+    state.dispose();
+  }
+}

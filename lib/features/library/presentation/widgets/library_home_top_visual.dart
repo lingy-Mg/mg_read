@@ -45,8 +45,10 @@ class LibraryHomeTopVisual extends StatelessWidget {
                 shaderCallback: (Rect bounds) => const LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: <Color>[Colors.white, Colors.white, Colors.transparent],
-                  stops: <double>[0, 0.78, 1],
+                  colors: <Color>[Colors.white, Colors.white, Color(0xD9FFFFFF), Color(0x66FFFFFF), Colors.transparent, Colors.transparent],
+                  // Reach full transparency before the Sliver/clip boundary so
+                  // the last sampled row cannot leave a tinted hairline.
+                  stops: <double>[0, 0.68, 0.78, 0.9, 0.97, 1],
                 ).createShader(bounds),
                 child: ExcludeSemantics(
                   child: IgnorePointer(
@@ -76,17 +78,18 @@ class LibraryHomeTopVisual extends StatelessWidget {
                               ),
                             ),
                             DecoratedBox(
-                              key: const Key('library-home-left-readability-scrim'),
+                              key: const Key('library-home-reading-readability-scrim'),
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   begin: Alignment.centerLeft,
                                   end: Alignment.centerRight,
                                   colors: <Color>[
-                                    tokens.surface.withValues(alpha: 0.34),
-                                    tokens.surface.withValues(alpha: 0.12),
-                                    Colors.transparent,
+                                    tokens.surface.withValues(alpha: 0.08),
+                                    tokens.surface.withValues(alpha: 0.16),
+                                    tokens.surface.withValues(alpha: 0.6),
+                                    tokens.surface.withValues(alpha: 0.72),
                                   ],
-                                  stops: const <double>[0, 0.48, 0.76],
+                                  stops: const <double>[0, 0.34, 0.52, 1],
                                 ),
                               ),
                             ),

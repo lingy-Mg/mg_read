@@ -1,0 +1,64 @@
+/// Host and backend contracts for the independent audio player.
+///
+/// Responsibilities:
+/// - Keep content loading and durable state owned by the host.
+/// - Allow deterministic fake playback backends in tests.
+///
+/// Notes:
+/// - Implementations must not expose database paths, cookies beyond explicit
+///   per-track headers, or native player handles through these contracts.
+library;
+
+import 'dart:async';
+
+import 'audio_models.dart';
+
+/// Loads one ordered audio queue by stable collection identity.
+abstract interface class AudioPlayerDataSource {
+  Future<AudioPlaylist> loadPlaylist(String collectionId);
+}
+
+/// Persists semantic audio progress without constraining host storage.
+abstract interface class AudioPlaybackStateStore {
+  Future<AudioPlaybackProgress?> loadProgress(String collectionId);
+  Future<void> saveProgress(AudioPlaybackProgress progress);
+}
+
+/// Optional host notifications for audio session and lifecycle events.
+class AudioPlayerObserver {
+  const AudioPlayerObserver();
+
+  FutureOr<void> onSessionStarted(String collectionId) {}
+  FutureOr<void> onSessionEnded(
+    String collectionId,
+    AudioPlaybackProgress? progress,
+  ) {}
+  FutureOr<void> onTrackChanged(AudioTrack track) {}
+  FutureOr<void> onLifecycleChanged(
+    AudioPlayerLifecycleState state,
+    AudioPlaybackProgress? progress,
+  ) {}
+  FutureOr<void> onFailure(AudioPlayerFailure failure) {}
+  FutureOr<void> onExitRequested(AudioPlaybackProgress? progress) {}
+}
+
+/// Injectible transport boundary implemented by MediaKit in production.
+abstract interface class AudioPlaybackBackend {
+  AudioPlaybackBackendSnapshot get snapshot;
+  Stream<AudioPlaybackBackendSnapshot> get snapshots;
+
+  Future<void> open(
+    List<AudioTrack> tracks, {
+    required int initialIndex,
+    bool play = false,
+  });
+  Future<void> play();
+  Future<void> pause();
+  Future<void> seek(Duration position);
+  Future<void> setRate(double rate);
+  Future<void> setVolume(double volume);
+  Future<void> previous();
+  Future<void> next();
+  Future<void> jump(int index);
+  Future<void> dispose();
+}

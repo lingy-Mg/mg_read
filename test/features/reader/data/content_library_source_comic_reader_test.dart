@@ -104,10 +104,7 @@ void main() {
     );
     expect((await rebuilt.loadChapterCatalog(fixture.manga.id.value)).items.single.id, 'chapter-1');
     expect((await rebuilt.loadChapterContent(fixture.manga.id.value, 'chapter-1')).images.single.id, 'image-1');
-    await expectLater(
-      rebuilt.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1'),
-      throwsA(isA<ReaderFailure>()),
-    );
+    await expectLater(rebuilt.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1'), throwsA(isA<ReaderFailure>()));
     expect(offline.chapterCalls, 0);
     expect(offline.contentCalls, 1, reason: 'the adapter probes the source, then falls back to the committed offline manifest');
   });
@@ -124,11 +121,7 @@ void main() {
       ],
       pages: <PluginMangaPage>[_page()],
     );
-    final adapter = ContentLibraryComicReaderDataSource(
-      library: fixture.library,
-      gateway: gateway,
-      item: fixture.manga,
-    );
+    final adapter = ContentLibraryComicReaderDataSource(library: fixture.library, gateway: gateway, item: fixture.manga);
 
     for (final chapterId in <String>['chapter-1', 'chapter-2', 'chapter-3']) {
       await adapter.loadChapterContent(fixture.manga.id.value, chapterId);
@@ -261,7 +254,7 @@ void main() {
     await store.savePreferences(preferences);
     await store.addBookmark(bookmark);
     expect(await store.loadProgress(fixture.manga.id.value), progress);
-    expect(await store.loadPreferences(), preferences);
+    expect(await store.loadPreferences(), preferences.normalized());
     expect((await store.loadBookmarks(fixture.manga.id.value)).single.id, bookmark.id);
     expect(await fixture.library.readingProgress.load(fixture.manga.id), isNull);
     expect(await fixture.library.bookmarks.load(fixture.manga.id), isEmpty);

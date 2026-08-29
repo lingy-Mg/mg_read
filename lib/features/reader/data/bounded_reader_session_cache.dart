@@ -10,19 +10,15 @@ typedef ReaderSessionCacheWeight<K, V> = int Function(K key, V value);
 
 /// A synchronous least-recently-used cache bounded by entries and weight.
 final class BoundedReaderSessionCache<K, V> {
-  BoundedReaderSessionCache({
-    required this.maxEntries,
-    this.maxWeight,
-    ReaderSessionCacheWeight<K, V>? weightOf,
-  }) : assert(maxEntries > 0),
-       assert(maxWeight == null || maxWeight > 0),
-       _weightOf = weightOf ?? ((K _, V __) => 1);
+  BoundedReaderSessionCache({required this.maxEntries, this.maxWeight, ReaderSessionCacheWeight<K, V>? weightOf})
+    : assert(maxEntries > 0),
+      assert(maxWeight == null || maxWeight > 0),
+      _weightOf = weightOf ?? ((K _, V _) => 1);
 
   final int maxEntries;
   final int? maxWeight;
   final ReaderSessionCacheWeight<K, V> _weightOf;
-  final LinkedHashMap<K, _WeightedCacheEntry<V>> _entries =
-      LinkedHashMap<K, _WeightedCacheEntry<V>>();
+  final LinkedHashMap<K, _WeightedCacheEntry<V>> _entries = LinkedHashMap<K, _WeightedCacheEntry<V>>();
   int _weight = 0;
 
   int get length => _entries.length;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_continue_reading_card.dart';
@@ -41,5 +42,49 @@ void main() {
     expect(surface.contains(cover.bottomRight), isTrue);
     expect(title.right, lessThan(cover.left));
     expect(action.right, lessThan(cover.left));
+  });
+
+  testWidgets('places book metadata above the home reading action', (WidgetTester tester) async {
+    const data = LibraryContinueReadingViewData(
+      bookId: 'metadata-book',
+      title: '书名',
+      author: '作者名',
+      description: '这是首页继续阅读区域使用的作品简介。',
+      chapter: '第1章',
+      progress: 0.5,
+      lastReadLabel: '刚刚',
+      coverVariant: LibraryCoverVariant.dusk,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: LibraryContinueReadingCard(data: data, showBackdrop: false, onContinueReading: () {}),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final Rect title = tester.getRect(find.byKey(const Key('continue-reading-title')));
+    final Rect author = tester.getRect(find.byKey(const Key('continue-reading-author')));
+    final Rect description = tester.getRect(find.byKey(const Key('continue-reading-description')));
+    final Rect action = tester.getRect(find.byKey(const Key('continue-reading-cta')));
+    final Text authorText = tester.widget<Text>(find.byKey(const Key('continue-reading-author')));
+    final Text descriptionText = tester.widget<Text>(find.byKey(const Key('continue-reading-description')));
+    final Color onSurface = Theme.of(tester.element(find.byKey(const Key('continue-reading-title')))).colorScheme.onSurface;
+
+    expect(find.text('作者 · 作者名'), findsOneWidget);
+    expect(find.text('这是首页继续阅读区域使用的作品简介。'), findsOneWidget);
+    expect(title.bottom, lessThanOrEqualTo(author.top));
+    expect(author.bottom, lessThanOrEqualTo(description.top));
+    expect(description.bottom, lessThanOrEqualTo(action.top));
+    expect(authorText.style?.color, onSurface);
+    expect(descriptionText.style?.color, onSurface);
+    expect(descriptionText.maxLines, 3);
+    expect(descriptionText.overflow, TextOverflow.ellipsis);
+    expect(tester.takeException(), isNull);
   });
 }

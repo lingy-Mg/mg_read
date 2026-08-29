@@ -43,6 +43,8 @@ final class LibraryHomeViewData {
           : LibraryContinueReadingViewData(
               bookId: current.id,
               title: current.title,
+              author: current.author,
+              description: current.description,
               chapter: '第${(current.readingChapterIndex ?? 0) + 1}章',
               progress: current.readingProgress!,
               lastReadLabel: '上次阅读',
@@ -156,6 +158,8 @@ final class LibraryContinueReadingViewData {
     required this.progress,
     required this.lastReadLabel,
     required this.coverVariant,
+    this.author,
+    this.description,
     this.coverUrl,
     this.coverBytes,
     this.coverRequest,
@@ -168,6 +172,8 @@ final class LibraryContinueReadingViewData {
 
   final String bookId;
   final String title;
+  final String? author;
+  final String? description;
   final String chapter;
   final double progress;
   final String lastReadLabel;
@@ -278,6 +284,8 @@ abstract final class LibraryHomeFixtures {
     continueReading: const LibraryContinueReadingViewData(
       bookId: 'fixture-lord-of-mysteries',
       title: '诡秘之主',
+      author: '爱潜水的乌贼',
+      description: '在蒸汽与机械的时代，追寻隐藏在历史与迷雾中的非凡真相。',
       chapter: '第1268章 不可名状的低语',
       progress: 0.72,
       lastReadLabel: '继续阅读 · 1小时10分钟前',

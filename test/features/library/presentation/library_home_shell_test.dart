@@ -64,7 +64,7 @@ void main() {
 
     expect(find.byKey(const Key('library-home-top-backdrop-cover')), findsOneWidget);
     expect(find.byKey(const Key('library-home-top-bottom-fade')), findsOneWidget);
-    expect(find.byKey(const Key('library-home-left-readability-scrim')), findsOneWidget);
+    expect(find.byKey(const Key('library-home-reading-readability-scrim')), findsOneWidget);
     expect(tester.widget<ClipRect>(find.byKey(const Key('library-home-top-backdrop'))), isA<ClipRect>());
     expect(tester.widget<LibraryBookCover>(find.byKey(const Key('library-home-top-backdrop-cover'))).alignment, Alignment.topCenter);
     expect(backdrop.left, 0);
@@ -684,6 +684,8 @@ void main() {
       continueReading: const LibraryContinueReadingViewData(
         bookId: 'long-title',
         title: longTitle,
+        author: '这是一个足够长到需要省略的作者名',
+        description: '这是一段用来验证首页窄屏排版和多行省略的很长作品简介。',
         chapter: '第999章 不应显示',
         lastReadLabel: '上次阅读 不应显示',
         progress: 0.72,
@@ -701,7 +703,7 @@ void main() {
     final Text title = tester.widget<Text>(
       find.byWidgetPredicate(
         (Widget widget) =>
-            widget is Text && widget.data == longTitle && widget.maxLines == 2 && widget.style?.fontSize == AppTypography.sectionTitle,
+            widget is Text && widget.data == longTitle && widget.maxLines == 1 && widget.style?.fontSize == AppTypography.sectionTitle,
       ),
     );
 
@@ -716,7 +718,9 @@ void main() {
     expect(find.text('阅读记录'), findsNothing);
     expect(find.text('第999章 不应显示'), findsNothing);
     expect(find.text('上次阅读 不应显示'), findsNothing);
-    expect(title.maxLines, 2);
+    expect(find.byKey(const Key('continue-reading-author')), findsOneWidget);
+    expect(find.byKey(const Key('continue-reading-description')), findsOneWidget);
+    expect(title.maxLines, 1);
     expect(title.overflow, TextOverflow.ellipsis);
     expect(title.style?.fontSize, lessThanOrEqualTo(AppTypography.sectionTitle));
     expect(title.style?.shadows, isNull);
