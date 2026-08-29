@@ -499,9 +499,9 @@ export class DesktopRuntime {
   #debugHttpStatus(): RuntimeDebugHttpStatus {
     return this.#debugHttp?.status(this.#debugHttpConfiguredEnabled) ?? Object.freeze({
       configuredEnabled: this.#debugHttpConfiguredEnabled,
-      enabled: false,
-      endpoints: Object.freeze([]),
+      enabled: false, endpoints: Object.freeze([]),
       startedAt: null,
+      usingTemporaryPort: false,
     });
   }
 
@@ -1434,7 +1434,7 @@ function emitPluginManagerDiagnostic(event: PluginManagerEvent): void {
     plugin_load_completed: "A standard Node plugin loaded successfully.",
     plugin_load_failed: "A standard Node plugin could not be loaded.",
     plugin_load_started: "A standard Node plugin load started.",
-    plugin_log_emitted: "A plugin emitted a redacted diagnostic event.",
+    plugin_log_emitted: "A plugin emitted a Debug log event.",
     plugin_quarantined: "A broken plugin source was isolated during startup.",
     plugin_uninstall_scheduled: "A plugin source was scheduled for removal at the next cold start.",
     plugin_uninstall_completed: "A pending plugin uninstall completed.",

@@ -2,32 +2,33 @@
  * MgRead Android Runtime library build configuration.
  *
  * Owns Android API and JVM compatibility for the Flutter-facing Runtime.
- * Kotlin Gradle Plugin remains required while the host keeps built-in Kotlin disabled.
+ * Uses AGP 9 built-in Kotlin; the host must keep android.builtInKotlin enabled.
  */
 plugins {
     id 'com.android.library'
-    id 'org.jetbrains.kotlin.android'
 }
 
-group 'com.mgread.mgread_plugin_runtime'
-version '1.0-SNAPSHOT'
+group = 'com.mgread.mgread_plugin_runtime'
+version = '1.0-SNAPSHOT'
 
 android {
-    namespace 'com.mgread.mgread_plugin_runtime'
-    compileSdk 35
+    namespace = 'com.mgread.mgread_plugin_runtime'
+    compileSdk = 35
 
     defaultConfig {
-        minSdk 24
+        minSdk = 24
         consumerProguardFiles 'consumer-rules.pro'
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
+}
 
-    kotlinOptions {
-        jvmTarget = '17'
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 

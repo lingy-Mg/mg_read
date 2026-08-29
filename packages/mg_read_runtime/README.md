@@ -80,7 +80,7 @@ npm.cmd run stage:flutter-windows
   HTTP/WS Core。
 - `test:flutter-desktop` 从 Runtime-owned Flutter package 启动真实 Node，验证 singleton、
   Job Object、list/discover/search/detail/chapters/content、错误投影与并发复用。
-- Debug 日志测试覆盖有界内存、分页、清空、脱敏和不创建 `runtime/diagnostics`；Runtime 不再
+- Debug 日志测试覆盖原值保留、有界内存、分页、清空和不创建 `runtime/diagnostics`；Runtime 不再
   维护结构化事件 writer 或对应性能基准。
 - `stage:flutter-windows` 只准备 Node、LICENSE 与编译 Core，不打包/复制开发数据源插件，也不替代最终
   应用包运行验收。

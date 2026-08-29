@@ -3,12 +3,13 @@
  *
  * Responsibilities:
  * - own the separately-bound LAN debug listener and its static inspector page;
- * - project source search/discovery results without exposing resource tokens;
+ * - project bounded source search/discovery fields for direct inspection;
  * - retain bounded, in-memory cover probes and a transient simple-log tail.
  *
  * Boundaries:
  * - never exposes Runtime RPC, health, cookies, headers, HTML, or raw plugin objects;
- * - simple logs are redacted, truncated, memory-only, and cleared with the listener;
+ * - Debug projections intentionally preserve URL, query, and log values verbatim;
+ * - do not add masking or redaction here; logs remain truncated, memory-only, and listener-scoped;
  * - delegates all source calls and resource reads to the owning Runtime Core.
  */
 import { randomBytes } from "node:crypto";
@@ -17,14 +18,10 @@ import { networkInterfaces } from "node:os";
 import { Readable } from "node:stream";
 
 import type { JsonObject, JsonValue } from "./protocol.js";
-import {
-  debugInspectorCss,
-  debugInspectorHtml,
-  debugInspectorScript,
-} from "./debug-ui.js";
+import { readDebugInspectorAsset } from "./debug-ui-assets.js";
 
 const debugHost = "0.0.0.0";
-/** Fixed, intentionally uncommon Debug-only LAN port owned by Runtime. */
+/** Preferred, intentionally uncommon Debug-only LAN port owned by Runtime. */
 export const runtimeDebugHttpPort = 52_173;
 const maxPageSize = 50;
 const maxQueryLength = 160;
@@ -39,6 +36,7 @@ export interface RuntimeDebugHttpStatus extends JsonObject {
   readonly enabled: boolean;
   readonly endpoints: readonly string[];
   readonly startedAt: string | null;
+  readonly usingTemporaryPort: boolean;
 }
 
 export interface RuntimeDebugHttpHost {
@@ -59,7 +57,7 @@ export class RuntimeDebugLogBuffer {
   #nextSequence = 1;
 
   append(entry: RuntimeDebugLogInput): void {
-    const message = redactDebugLogText(entry.message).slice(0, maxLogMessageLength);
+    const message = entry.message.slice(0, maxLogMessageLength);
     this.#entries.push(Object.freeze({
       level: entry.level,
       message,
@@ -119,12 +117,14 @@ interface DebugProbe {
 /** Owns one optional LAN-only Debug listener for an already-running Runtime. */
 export class RuntimeDebugHttpServer {
   readonly #host: RuntimeDebugHttpHost;
+  readonly #preferredPort: number;
   readonly #probes = new Map<string, DebugProbe>();
   #server: Server | undefined;
   #startedAt: string | undefined;
 
-  constructor(host: RuntimeDebugHttpHost) {
+  constructor(host: RuntimeDebugHttpHost, preferredPort = runtimeDebugHttpPort) {
     this.#host = host;
+    this.#preferredPort = preferredPort;
   }
 
   async setEnabled(enabled: boolean): Promise<RuntimeDebugHttpStatus> {
@@ -139,10 +139,16 @@ export class RuntimeDebugHttpServer {
   status(configuredEnabled = this.#server !== undefined): RuntimeDebugHttpStatus {
     const address = this.#server?.address();
     if (address === undefined || address === null || typeof address === "string") {
-      return Object.freeze({ configuredEnabled, enabled: false, endpoints: Object.freeze([]), startedAt: null });
+      return Object.freeze({ configuredEnabled, enabled: false, endpoints: Object.freeze([]), startedAt: null, usingTemporaryPort: false });
     }
     const endpoints = debugEndpoints(address.port);
-    return Object.freeze({ configuredEnabled, enabled: true, endpoints, startedAt: this.#startedAt ?? null });
+    return Object.freeze({
+      configuredEnabled,
+      enabled: true,
+      endpoints,
+      startedAt: this.#startedAt ?? null,
+      usingTemporaryPort: address.port !== this.#preferredPort,
+    });
   }
 
   async dispose(): Promise<void> {
@@ -153,19 +159,12 @@ export class RuntimeDebugHttpServer {
     const server = createServer((request, response) => {
       void this.#handle(request, response);
     });
-    await new Promise<void>((resolve, reject) => {
-      const onError = (error: Error): void => {
-        server.off("listening", onListening);
-        reject(error);
-      };
-      const onListening = (): void => {
-        server.off("error", onError);
-        resolve();
-      };
-      server.once("error", onError);
-      server.once("listening", onListening);
-      server.listen({ host: debugHost, port: runtimeDebugHttpPort });
-    });
+    try {
+      await listenDebugServer(server, this.#preferredPort);
+    } catch (error) {
+      if (!isPreferredPortUnavailable(error)) throw error;
+      await listenDebugServer(server, 0);
+    }
     this.#server = server;
     this.#startedAt = new Date().toISOString();
   }
@@ -189,13 +188,13 @@ export class RuntimeDebugHttpServer {
     try {
       switch (url.pathname) {
         case "/__debug":
-          writeHtml(response, debugInspectorHtml);
+          writeHtml(response, await readDebugInspectorAsset("index.html"));
           return;
         case "/__debug/app.css":
-          writeText(response, 200, debugInspectorCss, "text/css; charset=utf-8");
+          writeText(response, 200, await readDebugInspectorAsset("app.css"), "text/css; charset=utf-8");
           return;
         case "/__debug/app.js":
-          writeText(response, 200, debugInspectorScript, "text/javascript; charset=utf-8");
+          writeText(response, 200, await readDebugInspectorAsset("app.js"), "text/javascript; charset=utf-8");
           return;
         case "/__debug/api/status":
           writeJson(response, 200, await this.#host.status());
@@ -325,13 +324,33 @@ export class RuntimeDebugHttpServer {
     if (this.#probes.size >= maxProbeEntries) this.#probes.delete(this.#probes.keys().next().value as string);
     const id = randomBytes(18).toString("base64url");
     this.#probes.set(id, Object.freeze({ coverUrl, expiresAtMs: Date.now() + probeTtlMs }));
-    return Object.freeze({ displayUrl: redactUrl(coverUrl), probeId: id, type: coverUrl.includes("/v1/source-resource/") ? "runtime-proxy" : "ordinary-url" });
+    return Object.freeze({ displayUrl: coverUrl, probeId: id, type: coverUrl.includes("/v1/source-resource/") ? "runtime-proxy" : "ordinary-url" });
   }
 
   #pruneProbes(): void {
     const now = Date.now();
     for (const [id, probe] of this.#probes) if (probe.expiresAtMs <= now) this.#probes.delete(id);
   }
+}
+
+async function listenDebugServer(server: Server, port: number): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const onError = (error: Error): void => {
+      server.off("listening", onListening);
+      reject(error);
+    };
+    const onListening = (): void => {
+      server.off("error", onError);
+      resolve();
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen({ host: debugHost, port });
+  });
+}
+
+function isPreferredPortUnavailable(error: unknown): boolean {
+  return error instanceof Error && "code" in error && (error.code === "EADDRINUSE" || error.code === "EACCES");
 }
 
 function projectValue(value: JsonValue, retainProbe: (coverUrl: string) => JsonObject): JsonValue {
@@ -341,13 +360,13 @@ function projectValue(value: JsonValue, retainProbe: (coverUrl: string) => JsonO
   const projected: Record<string, JsonValue> = {};
   for (const key of ["kind", "type", "id", "title", "subtitle", "text", "layout", "target", "collectionId", "cursor", "nextCursor", "totalCount", "count", "elapsedMs", "pluginId", "sourceName", "author", "contentKind", "status", "access", "description", "language", "wordCount", "chapterCount", "publishedAt", "updatedAt", "isLocked", "order", "volumeTitle", "rank", "recommendation", "label", "value", "key", "selectedTabId", "aliases", "catalogUrl", "chapterId", "document", "tabs", "categories", "tags", "attributes", "latestChapter", "children", "components", "items", "content", "metric", "continuation"]) {
     const item = source[key];
-    if (item !== undefined) projected[key] = key.endsWith("Url") && typeof item === "string" ? redactUrl(item) : projectValue(item, retainProbe);
+    if (item !== undefined) projected[key] = projectValue(item, retainProbe);
   }
   const coverUrl = source.coverUrl;
   if (typeof coverUrl === "string") projected.cover = retainProbe(coverUrl);
   if (coverUrl === null) projected.cover = null;
   const url = source.url;
-  if (typeof url === "string") projected.url = redactUrl(url);
+  if (typeof url === "string") projected.url = url;
   if (url === null) projected.url = null;
   return Object.freeze(projected);
 }
@@ -415,26 +434,6 @@ function nullableQuery(url: URL, key: string): string | null {
 function requiredText(value: string | null, name: string): string {
   if (value === null || value.trim() === "") throw new Error(`${name}_required`);
   return value.trim();
-}
-
-function redactUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    const parts = url.pathname.split("/");
-    const token = parts.at(-1);
-    if (token !== undefined && token.length > 10) parts[parts.length - 1] = `${token.slice(0, 3)}…${token.slice(-3)}`;
-    return `${url.protocol}//${url.host}${parts.join("/")}`;
-  } catch {
-    return "invalid-url";
-  }
-}
-
-/** Removes credential-shaped fragments before a transient Debug log reaches the browser. */
-function redactDebugLogText(value: string): string {
-  return value
-    .replace(/\b(authorization|cookie|set-cookie)\s*[:=]\s*[^\s;,]+/gi, (_match, key: string) => `${key}: [redacted]`)
-    .replace(/\b(token|access[_-]?token|refresh[_-]?token|password|secret)\s*[:=]\s*[^\s;,]+/gi, (_match, key: string) => `${key}: [redacted]`)
-    .replace(/(https?:\/\/[^\s?#]+)\?[^\s]+/gi, "$1?[redacted]");
 }
 
 function stableDebugError(error: unknown): string {

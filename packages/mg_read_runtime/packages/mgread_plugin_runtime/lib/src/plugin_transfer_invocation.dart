@@ -89,6 +89,12 @@ final class PluginTransferListInvocation
   @override
   String get _wireMethod => 'plugins.transfer.list.v2';
 
+  // Listing exportable artifacts packages every Windows Debug development
+  // source before returning. Keep it on the same bounded transfer window as
+  // the other artifact operations instead of the five-second control window.
+  @override
+  Duration get _timeout => const Duration(minutes: 2);
+
   @override
   Map<String, Object?> get _wireParams => const <String, Object?>{};
 

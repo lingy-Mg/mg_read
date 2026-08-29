@@ -1,7 +1,7 @@
 /// 首页顶部操作栏。
 ///
 /// 职责：
-/// - 展示首页标题、搜索与更多操作入口。
+/// - 展示首页搜索与更多操作入口。
 /// - 通过书架私有锚点菜单转发顶层操作。
 ///
 /// 注意：
@@ -17,9 +17,8 @@ import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_anchored_menu.dart';
-import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 
-/// 首页的标题与顶层操作。
+/// 首页的顶层操作。
 class LibraryHomeTopBar extends StatelessWidget {
   const LibraryHomeTopBar({
     required this.onSearch,
@@ -48,8 +47,7 @@ class LibraryHomeTopBar extends StatelessWidget {
       height: AppSpacing.minimumTouchTarget,
       child: Row(
         children: <Widget>[
-          const Expanded(child: AppPageTitle(title: '首页')),
-          const SizedBox(width: AppSpacing.compact),
+          const Spacer(),
           _LibraryTopBarAction(tooltip: '搜索书籍', onPressed: onSearch, icon: Icons.search_rounded),
           if (AppTheme.darkModeEnabled && toggleTheme != null)
             Padding(

@@ -24,18 +24,22 @@ import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 
 void main() {
-  testWidgets('places the Android home header directly below the system inset', (WidgetTester tester) async {
+  testWidgets('extends the home artwork behind the system inset while keeping the header below it', (WidgetTester tester) async {
     await tester.pumpWidget(_host(topInset: 24));
     await tester.pumpAndSettle();
 
-    expect(tester.getRect(find.byType(LibraryHomeTopBar)).top, 24);
+    expect(tester.getRect(find.byKey(const Key('library-home-top-backdrop'))).top, 0);
+    final Rect topBar = tester.getRect(find.byType(LibraryHomeTopBar));
+    final Rect cover = tester.getRect(find.byKey(const Key('continue-reading-flat-cover')));
+    expect(topBar.top, 24);
+    expect(cover.top, topBar.top);
   });
 
   testWidgets('renders the home hierarchy with progress and book semantics', (WidgetTester tester) async {
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
 
-    expect(find.descendant(of: find.byType(LibraryHomeTopBar), matching: find.text('首页')), findsOneWidget);
+    expect(find.descendant(of: find.byType(LibraryHomeTopBar), matching: find.text('首页')), findsNothing);
     expect(find.textContaining('界面预览'), findsNothing);
     expect(find.byKey(const Key('continue-reading-cta')), findsOneWidget);
     expect(find.text('诡秘之主'), findsAtLeastNWidgets(2));
@@ -474,7 +478,6 @@ void main() {
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
 
-    final Text pageTitle = tester.widget<Text>(find.descendant(of: find.byType(LibraryHomeTopBar), matching: find.text('首页')));
     final Text updateTitle = tester.widget<Text>(
       find.descendant(of: find.byType(LibraryBookListItem).first, matching: find.text('诡秘之主')).last,
     );
@@ -484,8 +487,6 @@ void main() {
       find.descendant(of: find.byKey(const Key('continue-reading-cta')), matching: find.text('继续阅读')),
     );
 
-    expect(pageTitle.style?.fontSize, AppTypography.pageTitle);
-    expect(pageTitle.style?.fontWeight, FontWeight.w600);
     expect(updateTitle.style?.fontSize, 16);
     expect(updateTitle.style?.fontWeight, FontWeight.w600);
     expect(selectedSection.style?.fontSize, AppTypography.secondary);
@@ -659,6 +660,9 @@ void main() {
     final Rect sectionNavigation = tester.getRect(find.byType(LibrarySectionNavigation));
     final Rect continueCover = tester.getRect(find.byKey(const Key('continue-reading-flat-cover')));
     final Rect continueAction = tester.getRect(find.byKey(const Key('continue-reading-cta')));
+    final Rect continueTitle = tester.getRect(
+      find.descendant(of: find.byKey(const Key('continue-reading-surface')), matching: find.text('诡秘之主')),
+    );
 
     expect(filters.left, greaterThan(sectionNavigation.right));
     expect(filters.center.dy, closeTo(headingRow.center.dy, 0.1));
@@ -666,8 +670,9 @@ void main() {
     final Rect continueSurface = tester.getRect(find.byKey(const Key('continue-reading-surface')));
     expect(continueSurface.contains(continueCover.topLeft), isTrue);
     expect(continueSurface.contains(continueAction.bottomRight), isTrue);
-    expect(continueAction.right, lessThan(continueCover.left));
-    expect(continueAction.center.dx, closeTo((continueSurface.left + continueCover.left - AppSpacing.comfortable) / 2, 0.1));
+    expect(continueCover.right, lessThan(continueTitle.left));
+    expect(continueCover.right, lessThan(continueAction.left));
+    expect(continueAction.center.dx, closeTo((continueCover.right + AppSpacing.comfortable + continueSurface.right) / 2, 0.1));
     expect(tester.widget<FractionallySizedBox>(find.byKey(const Key('continue-reading-cta-progress'))).widthFactor, 0.72);
   });
 
@@ -702,10 +707,10 @@ void main() {
 
     expect(surface.height, greaterThanOrEqualTo(172));
     expect(readingSurface, isA<SizedBox>());
-    expect(cover.height, greaterThan(165));
+    expect(cover.height, greaterThan(210));
     expect(surface.contains(cover.topLeft), isTrue);
     expect(cover.bottom, lessThanOrEqualTo(surface.bottom));
-    expect(cover.right, closeTo(surface.right, 0.1));
+    expect(cover.left, closeTo(surface.left, 0.1));
     expect(find.ancestor(of: flatCover, matching: find.byType(RotatedBox)), findsNothing);
     expect(find.text('继续阅读'), findsOneWidget);
     expect(find.text('阅读记录'), findsNothing);
@@ -732,7 +737,7 @@ void main() {
     expect(sections.center.dy, closeTo(heading.center.dy, 0.1));
     expect(filters.center.dy, closeTo(heading.center.dy, 0.1));
     expect(cover.bottom, lessThanOrEqualTo(hero.bottom));
-    expect(cover.right, closeTo(hero.right, 0.1));
+    expect(cover.left, closeTo(hero.left, 0.1));
   });
 
   testWidgets('aligns compact row metadata with the cover and stacks the trailing controls', (WidgetTester tester) async {

@@ -199,6 +199,7 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway {
         enabled: status.enabled,
         endpoints: List<String>.unmodifiable(status.endpoints),
         startedAt: status.startedAt,
+        usingTemporaryPort: status.usingTemporaryPort,
       );
     } on PluginRuntimeException catch (error) {
       throw normalizePluginRuntimeError(error);
@@ -216,6 +217,7 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway {
         enabled: status.enabled,
         endpoints: List<String>.unmodifiable(status.endpoints),
         startedAt: status.startedAt,
+        usingTemporaryPort: status.usingTemporaryPort,
       );
     } on PluginRuntimeException catch (error) {
       throw normalizePluginRuntimeError(error);
@@ -703,12 +705,24 @@ final class PluginRuntimePrivateDirectoryController extends Notifier<bool> {
 
 /// Main-app projection of the Runtime-owned persisted Debug preference and listener.
 final class PluginRuntimeDebugHttp {
-  const PluginRuntimeDebugHttp({required this.configuredEnabled, required this.enabled, required this.endpoints, required this.startedAt});
+  const PluginRuntimeDebugHttp({
+    required this.configuredEnabled,
+    required this.enabled,
+    required this.endpoints,
+    required this.startedAt,
+    required this.usingTemporaryPort,
+  });
 
-  const PluginRuntimeDebugHttp.disabled() : configuredEnabled = false, enabled = false, endpoints = const <String>[], startedAt = null;
+  const PluginRuntimeDebugHttp.disabled()
+    : configuredEnabled = false,
+      enabled = false,
+      endpoints = const <String>[],
+      startedAt = null,
+      usingTemporaryPort = false;
 
   final bool configuredEnabled;
   final bool enabled;
   final List<String> endpoints;
   final String? startedAt;
+  final bool usingTemporaryPort;
 }

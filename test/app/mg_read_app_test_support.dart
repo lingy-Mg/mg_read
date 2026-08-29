@@ -44,8 +44,12 @@ Widget testMgReadApp(
 
 /// Keeps host-widget tests independent from a platform Runtime process.
 final class TestReadyPluginRuntimeGateway implements PluginRuntimeGateway {
-  const TestReadyPluginRuntimeGateway({this.startupRecovery = const PluginRuntimeStartupRecovery(quarantinedCount: 0)});
+  const TestReadyPluginRuntimeGateway({
+    this.debugHttpStatus = const PluginRuntimeDebugHttp.disabled(),
+    this.startupRecovery = const PluginRuntimeStartupRecovery(quarantinedCount: 0),
+  });
 
+  final PluginRuntimeDebugHttp debugHttpStatus;
   final PluginRuntimeStartupRecovery startupRecovery;
 
   @override
@@ -71,10 +75,10 @@ final class TestReadyPluginRuntimeGateway implements PluginRuntimeGateway {
   Future<void> openRuntimePrivateDirectory() async {}
 
   @override
-  Future<PluginRuntimeDebugHttp> setDebugHttpEnabled(bool enabled) async => const PluginRuntimeDebugHttp.disabled();
+  Future<PluginRuntimeDebugHttp> setDebugHttpEnabled(bool enabled) async => debugHttpStatus;
 
   @override
-  Future<PluginRuntimeDebugHttp> inspectDebugHttp() async => const PluginRuntimeDebugHttp.disabled();
+  Future<PluginRuntimeDebugHttp> inspectDebugHttp() async => debugHttpStatus;
 
   @override
   Future<PluginRuntimeConnection> inspect() async => PluginRuntimeConnection(

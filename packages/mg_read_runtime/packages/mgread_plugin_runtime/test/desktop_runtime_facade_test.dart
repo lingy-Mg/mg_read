@@ -69,6 +69,10 @@ void main() {
       final enabled = await runtime.setDebugHttpEnabled(true);
       expect(enabled.enabled, isTrue);
       expect(enabled.endpoints, isNotEmpty);
+      expect(
+        enabled.usingTemporaryPort,
+        Uri.parse(enabled.endpoints.first).port != 52173,
+      );
       final page = await HttpClient().getUrl(
         Uri.parse(enabled.endpoints.first),
       );
@@ -79,6 +83,7 @@ void main() {
       final disabled = await runtime.setDebugHttpEnabled(false);
       expect(disabled.enabled, isFalse);
       expect(disabled.endpoints, isEmpty);
+      expect(disabled.usingTemporaryPort, isFalse);
     },
   );
 

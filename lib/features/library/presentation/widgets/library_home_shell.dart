@@ -8,7 +8,7 @@
 /// 注意：
 /// - 不在 build() 中执行持久化；删除由显式回调在动画后提交。
 /// - 当前滚动控制器只由本壳持有并在销毁时释放。
-/// - 分区和状态筛选通过局部 notifier 更新，不重建顶部与继续阅读区域。
+/// - 分区筛选局部更新；顶部封面背景覆盖状态栏，交互内容仍按安全区下沿布局。
 ///
 /// TODO:
 /// - 无。
@@ -123,40 +123,37 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     return Scaffold(
       body: AppPageBackdrop(
         style: AppPageBackdropStyle.home,
-        child: SafeArea(
-          bottom: false,
-          child: FocusTraversalGroup(
-            policy: OrderedTraversalPolicy(),
-            child: LayoutBuilder(
-              builder: (BuildContext context, BoxConstraints constraints) {
-                final bool useWidePagePadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
-                final double pagePadding = useWidePagePadding ? AppSpacing.widePagePadding : AppSpacing.compactPagePadding;
-                return Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
-                    child: RefreshIndicator(
-                      onRefresh: widget.onRefresh,
-                      child: Scrollbar(
+        child: FocusTraversalGroup(
+          policy: OrderedTraversalPolicy(),
+          child: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              final bool useWidePagePadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
+              final double pagePadding = useWidePagePadding ? AppSpacing.widePagePadding : AppSpacing.compactPagePadding;
+              return Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
+                  child: RefreshIndicator(
+                    onRefresh: widget.onRefresh,
+                    child: Scrollbar(
+                      controller: _scrollController,
+                      child: CustomScrollView(
+                        key: const Key('library-home-content'),
                         controller: _scrollController,
-                        child: CustomScrollView(
-                          key: const Key('library-home-content'),
-                          controller: _scrollController,
-                          primary: false,
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          slivers: <Widget>[
-                            _buildTopSliver(context, pagePadding),
-                            SliverPadding(
-                              padding: EdgeInsets.fromLTRB(pagePadding, AppSpacing.comfortable, pagePadding, AppSpacing.page),
-                              sliver: _buildBodySlivers(context),
-                            ),
-                          ],
-                        ),
+                        primary: false,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        slivers: <Widget>[
+                          _buildTopSliver(context, pagePadding),
+                          SliverPadding(
+                            padding: EdgeInsets.fromLTRB(pagePadding, AppSpacing.comfortable, pagePadding, AppSpacing.page),
+                            sliver: _buildBodySlivers(context),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -177,7 +174,12 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       child: LibraryHomeTopVisual(
         continueReading: widget.data.continueReading,
         child: Padding(
-          padding: EdgeInsets.fromLTRB(pagePadding, AppSpacing.pageHeaderTopPaddingFor(context), pagePadding, AppSpacing.comfortable),
+          padding: EdgeInsets.fromLTRB(
+            pagePadding,
+            MediaQuery.paddingOf(context).top + AppSpacing.pageHeaderTopPaddingFor(context),
+            pagePadding,
+            AppSpacing.comfortable,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
@@ -186,14 +188,31 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    LibraryHomeTopBar(
-                      onSearch: _handleSearch,
-                      onToggleTheme: widget.onToggleTheme,
-                      onReadingHistory: _handleReadingHistory,
-                      onManageSources: _handleManageSources,
-                      onPrivacyLibrary: _handlePrivacyLibrary,
-                      layoutMode: _layoutMode,
-                      onLayoutModeToggle: _handleLayoutModeToggle,
+                    Stack(
+                      children: <Widget>[
+                        if (!widget.showLoading && !_isFirstRunEmpty)
+                          AnimatedOpacity(
+                            opacity: _contentOpacity,
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOut,
+                            child: KeyedSubtree(
+                              key: const Key('library-mobile-layout'),
+                              child: RepaintBoundary(
+                                key: const Key('library-stable-reading-surface'),
+                                child: _buildReadingSurface(context),
+                              ),
+                            ),
+                          ),
+                        LibraryHomeTopBar(
+                          onSearch: _handleSearch,
+                          onToggleTheme: widget.onToggleTheme,
+                          onReadingHistory: _handleReadingHistory,
+                          onManageSources: _handleManageSources,
+                          onPrivacyLibrary: _handlePrivacyLibrary,
+                          layoutMode: _layoutMode,
+                          onLayoutModeToggle: _handleLayoutModeToggle,
+                        ),
+                      ],
                     ),
                     if (widget.isRefreshing) ...<Widget>[
                       const SizedBox(height: AppSpacing.regular),
@@ -215,16 +234,6 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                   ],
                 ),
               ),
-              if (!widget.showLoading && !_isFirstRunEmpty)
-                AnimatedOpacity(
-                  opacity: _contentOpacity,
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOut,
-                  child: KeyedSubtree(
-                    key: const Key('library-mobile-layout'),
-                    child: RepaintBoundary(key: const Key('library-stable-reading-surface'), child: _buildReadingSurface(context)),
-                  ),
-                ),
             ],
           ),
         ),

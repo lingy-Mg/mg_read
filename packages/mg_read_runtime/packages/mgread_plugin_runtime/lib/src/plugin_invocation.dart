@@ -211,8 +211,10 @@ RuntimeDebugHttpStatus _decodeRuntimeDebugHttpStatus(Object? value) {
   final rawEndpoints = result['endpoints'];
   final enabled = result['enabled'];
   final startedAt = result['startedAt'];
+  final usingTemporaryPort = result['usingTemporaryPort'];
   if (configuredEnabled is! bool ||
       enabled is! bool ||
+      usingTemporaryPort is! bool ||
       startedAt != null && startedAt is! String ||
       rawEndpoints is! List<Object?> ||
       rawEndpoints.length > 32 ||
@@ -234,6 +236,7 @@ RuntimeDebugHttpStatus _decodeRuntimeDebugHttpStatus(Object? value) {
     enabled: enabled,
     endpoints: List<String>.unmodifiable(endpoints),
     startedAt: startedAt as String?,
+    usingTemporaryPort: usingTemporaryPort,
   );
 }
 
@@ -250,12 +253,14 @@ final class RuntimeDebugHttpStatus {
     required this.enabled,
     required this.endpoints,
     required this.startedAt,
+    required this.usingTemporaryPort,
   });
 
   final bool configuredEnabled;
   final bool enabled;
   final List<String> endpoints;
   final String? startedAt;
+  final bool usingTemporaryPort;
 }
 
 /// Lists Runtime-owned installed-plugin projections without exposing paths.

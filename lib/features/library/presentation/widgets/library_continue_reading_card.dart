@@ -7,6 +7,7 @@
 /// 注意：
 /// - 封面状态不得阻塞卡片正文或继续阅读操作。
 /// - 不访问持久化、Runtime 或路由实现。
+/// - 首页沉浸模式下封面居左并与顶部操作栏同高起始，书名与按钮居右。
 ///
 /// TODO:
 /// - 无。
@@ -47,8 +48,8 @@ class LibraryContinueReadingCard extends StatelessWidget {
         builder: (BuildContext context, BoxConstraints constraints) {
           final bool compact = constraints.maxWidth < AppSpacing.compactCardStackBreakpoint;
           final double textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.5);
-          final double cardHeight = (showBackdrop ? (compact ? 172 : 196) : (compact ? 154 : 172)) + (textScale - 1) * 48;
-          final double coverHeight = showBackdrop ? (compact ? 108 : 132) : (compact ? 146 : 170);
+          final double cardHeight = (showBackdrop ? (compact ? 172 : 196) : (compact ? 224 : 238)) + (textScale - 1) * 48;
+          final double coverHeight = showBackdrop ? (compact ? 108 : 132) : (compact ? 216 : 230);
           final double coverWidth = coverHeight * 0.68;
           final double externalBottomInset = (cardHeight - coverHeight) / 2;
           final Widget content = Stack(
@@ -96,8 +97,9 @@ class LibraryContinueReadingCard extends StatelessWidget {
                 ),
               ],
               Positioned(
-                right: showBackdrop ? AppSpacing.comfortable : 0,
-                top: (cardHeight - coverHeight) / 2,
+                left: showBackdrop ? null : 0,
+                right: showBackdrop ? AppSpacing.comfortable : null,
+                top: showBackdrop ? (cardHeight - coverHeight) / 2 : 0,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     borderRadius: AppRadii.bookCover,
@@ -120,9 +122,9 @@ class LibraryContinueReadingCard extends StatelessWidget {
               Positioned.fill(
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
-                    showBackdrop ? AppSpacing.comfortable : 0,
-                    showBackdrop ? AppSpacing.comfortable : 0,
-                    coverWidth + (showBackdrop ? AppSpacing.page : AppSpacing.comfortable),
+                    showBackdrop ? AppSpacing.comfortable : coverWidth + AppSpacing.comfortable,
+                    showBackdrop ? AppSpacing.comfortable : AppSpacing.minimumTouchTarget + AppSpacing.regular,
+                    showBackdrop ? coverWidth + AppSpacing.page : 0,
                     showBackdrop ? AppSpacing.comfortable : externalBottomInset,
                   ),
                   child: _ContinueReadingDetails(

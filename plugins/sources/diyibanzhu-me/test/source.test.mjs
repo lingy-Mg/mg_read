@@ -18,6 +18,7 @@ async function fixture(t, options = {}) {
     content: await readFile(new URL('./fixtures/content.html', import.meta.url), 'utf8'),
   };
   const calls = [];
+  const logs = [];
   let currentUrl = origin;
   let pageHtml = options.initialChallenge === true ? challenge : ready;
   let fetchGate = options.fetchChallenge === true;
@@ -50,16 +51,21 @@ async function fixture(t, options = {}) {
     cacheDir,
     app: {},
     plugin: {},
-    log: { debug() {}, info() {}, warn() {}, error() {} },
+    log: {
+      debug(message) { logs.push({ level: 'debug', message }); },
+      info(message) { logs.push({ level: 'info', message }); },
+      warn(message) { logs.push({ level: 'warn', message }); },
+      error(message) { logs.push({ level: 'error', message }); },
+    },
     resource: { proxy() { return 'http://127.0.0.1/resource'; } },
     http: { async fetch() { return new Response(new Uint8Array()); } },
     webview: { async open(openOptions) { record('open', openOptions); return page; } },
   });
-  return { calls, metrics };
+  return { calls, logs, metrics };
 }
 
-test('one hidden WebView page covers search, discovery, detail, catalog and content', async t => {
-  const { calls } = await fixture(t);
+test('one forced-visible WebView page covers search, discovery, detail, catalog and content', async t => {
+  const { calls, logs } = await fixture(t);
   const search = await plugin.search({ query: 'fixture', cursor: null, pageSize: 20 });
   assert.equal(search.items[0].coverUrl, null);
   const detail = await plugin.getDetail({ id: search.items[0].id });
@@ -71,7 +77,12 @@ test('one hidden WebView page covers search, discovery, detail, catalog and cont
   assert.equal(content.pages.length, 0);
 
   assert.equal(calls.filter(call => call.operation === 'open').length, 1);
-  assert.deepEqual(calls.slice(0, 4).map(call => call.operation), ['open', 'navigate', 'getHtml', 'hide']);
+  assert.equal(calls.find(call => call.operation === 'open').visible, true);
+  assert.equal(calls.filter(call => call.operation === 'hide').length, 0);
+  assert.ok(calls.filter(call => call.operation === 'show').length >= 4);
+  assert.deepEqual(calls.slice(0, 4).map(call => call.operation), ['open', 'show', 'navigate', 'getHtml']);
+  assert.ok(logs.some(log => log.message === 'source_browser_hide_skipped_forced_visible'));
+  assert.ok(logs.some(log => log.message === 'source_browser_initial_fetch_completed_2xx'));
   const fetches = calls.filter(call => call.operation === 'fetch');
   assert.ok(fetches.length >= 4);
   assert.ok(fetches.every(call => new URL(call.url).origin === origin && call.responseType === 'text'));
@@ -87,13 +98,15 @@ test('one hidden WebView page covers search, discovery, detail, catalog and cont
   });
 });
 
-test('initial verification shows the page, waits with a deadline and hides it after success', async t => {
+test('initial verification shows the page, waits with a deadline and keeps it visible after success', async t => {
   const { calls } = await fixture(t, { initialChallenge: true });
   const result = await plugin.search({ query: 'fixture', cursor: null, pageSize: 20 });
   assert.equal(result.items.length, 1);
   assert.deepEqual(calls.slice(0, 8).map(call => call.operation), [
-    'open', 'navigate', 'getHtml', 'show', 'waitForText', 'getUrl', 'getHtml', 'hide',
+    'open', 'show', 'navigate', 'getHtml', 'show', 'waitForText', 'getUrl', 'getHtml',
   ]);
+  assert.equal(calls.find(call => call.operation === 'open').visible, true);
+  assert.equal(calls.filter(call => call.operation === 'hide').length, 0);
   const wait = calls.find(call => call.operation === 'waitForText');
   assert.deepEqual(wait, { operation: 'waitForText', text: '第一版主', scope: 'text', timeoutMs: 120000 });
 });
@@ -103,9 +116,10 @@ test('a fetch verification response is completed visibly and retried once', asyn
   const result = await plugin.search({ query: 'fixture', cursor: null, pageSize: 20 });
   assert.equal(result.items.length, 1);
   assert.equal(calls.filter(call => call.operation === 'fetch').length, 2);
-  assert.equal(calls.filter(call => call.operation === 'show').length, 1);
+  assert.equal(calls.filter(call => call.operation === 'show').length, 2);
   assert.equal(calls.filter(call => call.operation === 'waitForText').length, 1);
-  assert.equal(calls.at(-2).operation, 'hide');
+  assert.equal(calls.filter(call => call.operation === 'hide').length, 0);
+  assert.equal(calls.at(-2).operation, 'getHtml');
   assert.equal(calls.at(-1).operation, 'fetch');
 });
 

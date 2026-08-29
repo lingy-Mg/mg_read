@@ -2,7 +2,8 @@
  * Runtime Debug inspector listener contract tests.
  *
  * Responsibilities:
- * - verify safe source projections, cover probes and transient log paging;
+ * - verify direct source projections, cover probes and transient log paging;
+ * - verify fixed-port preference and temporary-port fallback;
  * - prove Debug-gated Runtime startup creates no persistent diagnostics directory.
  *
  * Boundaries:
@@ -37,7 +38,20 @@ async function startImageServer() {
   return { server, url: `http://127.0.0.1:${address.port}/cover` };
 }
 
-test("Debug inspector is transient, isolates control routes, and redacts cover tokens", async (t) => {
+function emptyDebugHost() {
+  return {
+    chapters: async () => ({ items: [] }),
+    content: async () => ({ chapterId: "chapter:1", contentKind: "novel", pages: [], text: "", title: "", updatedAt: null }),
+    detail: async () => ({}),
+    discover: async () => ({}),
+    logs: () => ({ droppedCount: 0, items: [], nextSequence: 0 }),
+    plugins: async () => [],
+    search: async () => ({ items: [], nextCursor: null, totalCount: 0 }),
+    status: async () => ({ nodeVersion: "24.16.0", runtimeVersion: "test", status: "ready" }),
+  };
+}
+
+test("Debug inspector is transient, isolates control routes, and preserves projected values", async (t) => {
   const image = await startImageServer();
   const logs = new RuntimeDebugLogBuffer();
   logs.append({
@@ -75,28 +89,34 @@ test("Debug inspector is transient, isolates control routes, and redacts cover t
   assert.equal(enabled.enabled, true);
   const base = enabled.endpoints.find((value) => value.startsWith("http://127.0.0.1:"));
   assert.ok(base);
-  assert.equal(new URL(base).port, String(runtimeDebugHttpPort));
+  assert.equal(enabled.usingTemporaryPort, new URL(base).port !== String(runtimeDebugHttpPort));
 
   const page = await fetch(base);
   assert.equal(page.status, 200);
-  assert.match(await page.text(), /__debug\/app\.js/);
-  assert.match(await (await fetch(new URL("/__debug/app.css", base))).text(), /tree-node/);
-  assert.match(await (await fetch(new URL("/__debug/app.js", base))).text(), /createDiscoverNode/);
+  const pageHtml = await page.text();
+  assert.match(pageHtml, /<mg-debug-app/);
+  assert.match(pageHtml, /__debug\/app\.js/);
+  const pageCss = await (await fetch(new URL("/__debug/app.css", base))).text();
+  assert.match(pageCss, /\.workspace-panel/);
+  assert.match(pageCss, /\.tree-node/);
+  const pageScript = await (await fetch(new URL("/__debug/app.js", base))).text();
+  assert.match(pageScript, /customElements\.define\('mg-debug-app'/);
+  assert.match(pageScript, /customElements\.define\('mg-search-panel'/);
+  assert.match(pageScript, /customElements\.define\('mg-discovery-panel'/);
+  assert.match(pageScript, /customElements\.define\('mg-log-viewer'/);
+  assert.match(pageScript, /createDiscoveryNode/);
   assert.equal((await fetch(new URL("/v1/rpc", base))).status, 404);
 
   const liveLogs = await (await fetch(new URL("/__debug/api/logs?after=0&limit=20", base))).json();
   assert.equal(liveLogs.items.length, 1);
-  assert.match(liveLogs.items[0].message, /token: \[redacted\]/);
-  assert.match(liveLogs.items[0].message, /\?\[redacted\]/);
-  assert.doesNotMatch(JSON.stringify(liveLogs), /secret-token-123456|q=private/);
+  assert.equal(liveLogs.items[0].message, "request token=secret-token-123456 https://example.com/book?q=private");
 
   const search = await fetch(new URL("/__debug/api/search?pluginId=org.example.test&q=test&pageSize=1", base));
   assert.equal(search.status, 200);
   const result = await search.json();
   const cover = result.result.items[0].cover;
   assert.equal(cover.type, "ordinary-url");
-  assert.match(cover.displayUrl, /sec…456/);
-  assert.doesNotMatch(JSON.stringify(result), /secret-token-123456/);
+  assert.equal(cover.displayUrl, image.url + "/secret-token-123456");
 
   const discover = await fetch(new URL("/__debug/api/discover?pluginId=org.example.test&pageSize=1", base));
   assert.equal(discover.status, 200);
@@ -105,15 +125,14 @@ test("Debug inspector is transient, isolates control routes, and redacts cover t
   assert.equal(discoveryResult.result.document.components[0].children[0].content.cover.type, "ordinary-url");
   assert.equal(discoveryResult.result.document.components[0].children[0].content.chapterCount, 128);
   assert.equal(discoveryResult.result.document.components[0].children[0].content.attributes[0].label, "来源");
-  assert.match(discoveryResult.result.document.components[0].children[0].content.url, /sec…456/);
-  assert.doesNotMatch(JSON.stringify(discoveryResult), /secret-token-123456/);
+  assert.equal(discoveryResult.result.document.components[0].children[0].content.url, "https://example.com/book/secret-token-123456");
 
   const detail = await (await fetch(new URL("/__debug/api/detail?pluginId=org.example.test&id=novel%3A1", base))).json();
   assert.equal(detail.result.aliases[0], "测试别名");
-  assert.match(detail.result.catalogUrl, /sec…456/);
+  assert.equal(detail.result.catalogUrl, "https://example.com/catalog/secret-token-123456");
   const chapters = await (await fetch(new URL("/__debug/api/chapters?pluginId=org.example.test&id=novel%3A1", base))).json();
   assert.equal(chapters.result.items[0].title, "第一章");
-  assert.match(chapters.result.items[0].url, /sec…456/);
+  assert.equal(chapters.result.items[0].url, "https://example.com/chapter/secret-token-123456");
   const content = await (await fetch(new URL("/__debug/api/content?pluginId=org.example.test&id=novel%3A1&chapterId=chapter%3A1", base))).json();
   assert.equal(content.result.text, "正文测试");
 
@@ -123,7 +142,32 @@ test("Debug inspector is transient, isolates control routes, and redacts cover t
   assert.deepEqual([...new Uint8Array(await probe.arrayBuffer())], [137, 80, 78, 71]);
 
   const disabled = await inspector.setEnabled(false);
-  assert.deepEqual(disabled, { configuredEnabled: false, enabled: false, endpoints: [], startedAt: null });
+  assert.deepEqual(disabled, { configuredEnabled: false, enabled: false, endpoints: [], startedAt: null, usingTemporaryPort: false });
+});
+
+test("Debug inspector uses a temporary port when the preferred port is occupied", async (t) => {
+  const blocker = createServer();
+  await new Promise((resolve, reject) => {
+    blocker.once("error", reject);
+    blocker.once("listening", resolve);
+    blocker.listen({ host: "0.0.0.0", port: 0 });
+  });
+  const blockedAddress = blocker.address();
+  assert.ok(blockedAddress && typeof blockedAddress !== "string");
+  const inspector = new RuntimeDebugHttpServer(emptyDebugHost(), blockedAddress.port);
+  t.after(async () => {
+    await inspector.dispose();
+    await new Promise((resolve) => blocker.close(resolve));
+  });
+
+  const enabled = await inspector.setEnabled(true);
+  const loopbackEndpoint = enabled.endpoints.find((value) => value.startsWith("http://127.0.0.1:"));
+  assert.equal(enabled.configuredEnabled, true);
+  assert.equal(enabled.enabled, true);
+  assert.equal(enabled.usingTemporaryPort, true);
+  assert.ok(loopbackEndpoint);
+  assert.notEqual(new URL(loopbackEndpoint).port, String(blockedAddress.port));
+  assert.deepEqual(inspector.status(), enabled);
 });
 
 test("Runtime persists the Debug preference and restores the fixed listener", async (t) => {
@@ -139,7 +183,8 @@ test("Runtime persists the Debug preference and restores the fixed listener", as
   assert.equal(enabled.ok, true);
   assert.equal(enabled.result.configuredEnabled, true);
   assert.equal(enabled.result.enabled, true);
-  assert.match(enabled.result.endpoints[0], new RegExp(`:${runtimeDebugHttpPort}/__debug$`));
+  const enabledEndpoint = new URL(enabled.result.endpoints[0]);
+  assert.equal(enabled.result.usingTemporaryPort, enabledEndpoint.port !== String(runtimeDebugHttpPort));
   assert.deepEqual(
     JSON.parse(await readFile(join(dataRoot, "runtime-settings", "debug-http.json"), "utf8")),
     { enabled: true },
@@ -152,7 +197,8 @@ test("Runtime persists the Debug preference and restores the fixed listener", as
   assert.equal(restored.ok, true);
   assert.equal(restored.result.configuredEnabled, true);
   assert.equal(restored.result.enabled, true);
-  assert.match(restored.result.endpoints[0], new RegExp(`:${runtimeDebugHttpPort}/__debug$`));
+  const restoredEndpoint = new URL(restored.result.endpoints[0]);
+  assert.equal(restored.result.usingTemporaryPort, restoredEndpoint.port !== String(runtimeDebugHttpPort));
   await assert.rejects(access(join(dataRoot, "diagnostics")), (error) => error?.code === "ENOENT");
 });
 
@@ -171,7 +217,7 @@ test("Runtime rejects Debug listener control without the platform Debug build ga
   await assert.rejects(access(join(dataRoot, "diagnostics")), (error) => error?.code === "ENOENT");
 });
 
-test("Debug log buffer is bounded, redacted, pageable, and clearable", () => {
+test("Debug log buffer is bounded, verbatim, pageable, and clearable", () => {
   const logs = new RuntimeDebugLogBuffer();
   for (let index = 1; index <= 1_005; index += 1) {
     logs.append({
@@ -189,7 +235,7 @@ test("Debug log buffer is bounded, redacted, pageable, and clearable", () => {
   assert.equal(second.items[0].sequence, 206);
   assert.equal(second.items.at(-1).sequence, 405);
   assert.equal(first.droppedCount, 5);
-  assert.doesNotMatch(JSON.stringify([first, second]), /private/);
+  assert.equal(first.items[0].message, "entry 6 password=private");
 
   logs.clear();
   assert.deepEqual(logs.page(0, 200), { droppedCount: 0, items: [], nextSequence: 1_005 });

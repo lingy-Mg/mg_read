@@ -17,13 +17,14 @@ description: Develop, review, package, or debug MgRead data-source plugins and s
 ## 按任务路由
 
 - 数据源函数、生命周期、缓存、资源代理、项目结构或 artifact：读取 [references/source-plugin-contract.md](references/source-plugin-contract.md)。
+- 真实网页结构、当前选择器、JS 渲染 DOM、跳转、分页或验证后页面取证：必须加载 `browser:control-in-app-browser`，使用 Codex 内置浏览器，并读取 [references/real-page-browser-probing.md](references/real-page-browser-probing.md)。CLI 网络请求只能作为状态码和挑战门槛 smoke，不能替代浏览器结构取证。
 - 递归发现组件、布局枚举、nullable 字段、语义图标、Runtime/Facade 解码或宿主渲染：读取 [references/discovery-contract.md](references/discovery-contract.md)。
 - 选择发现组件、响应式组合，或修改爱丽丝/速读谷等真实来源编排：读取 [references/discovery-composition.md](references/discovery-composition.md)；只有公开形状变化时再加载发现契约。
 - 数据源调用 `ctx.webview`，或修改其公开类型和行为：读取 [references/webview-api.md](references/webview-api.md)。
 - 修改 browser provider、Android WebView、Windows WebView2、窗口控制、错误传播、输入或安全边界：读取 [references/webview-host-development.md](references/webview-host-development.md)。
 - 准备测试、打包、版本更新、真机验证或交付结论：读取 [references/verification.md](references/verification.md)，只执行受影响边界对应的矩阵。
 
-常见组合：局部解析修复读取“插件契约 + 验证”；纯发现编排读取“发现组合 + 验证”；发现公开契约变化读取“两份发现参考 + 验证”；跨平台 WebView 变化读取“两份 WebView 参考 + 验证”。
+常见组合：真实站点解析修复读取“插件契约 + 真实网页浏览器探测 + 验证”；纯发现编排读取“发现组合 + 验证”；发现公开契约变化读取“两份发现参考 + 验证”；跨平台 WebView 变化读取“两份 WebView 参考 + 验证”。
 
 ## 共享产品边界
 

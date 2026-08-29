@@ -6,13 +6,16 @@
 
 1. 类型检查和静态检查。
 2. Node/Flutter/Kotlin/C++ 自动化测试。
-3. 数据源 fixture 和网络 smoke。
-4. artifact 构建、校验、冷安装与激活。
-5. Windows 真实 WebView2。
-6. Android 授权设备上的真实 WebView。
-7. 未执行项和外部阻塞。
+3. 数据源 fixture 和 CLI 网络 smoke。
+4. Codex 内置浏览器中的真实网页结构、选择器和路由取证。
+5. artifact 构建、校验、冷安装与激活。
+6. Windows 真实 WebView2。
+7. Android 授权设备上的真实 WebView。
+8. 未执行项和外部阻塞。
 
-任何一层都不能替代另一层。Fake platform 通过不证明原生窗口状态、真实输入、静音、文件选择或 F12；Windows 通过不证明 Android。
+任何一层都不能替代另一层。CLI smoke 不证明渲染后页面结构；Codex 内置浏览器不证明 MgRead WebView
+的 Cookie/Profile、窗口或平台行为；Fake platform 通过不证明原生窗口状态、真实输入、静音、文件选择
+或 F12；Windows 通过不证明 Android。
 
 ## 数据源默认检查
 
@@ -24,7 +27,10 @@ npm.cmd test
 npm.cmd run verify
 ```
 
-线上选择器或验证行为变化时再运行明确存在的 `test:live`。不要把临时网络失败写成规则成功，也不要用线上响应覆盖脱敏 fixture。
+线上选择器、页面层级、分页、跳转或验证后结构变化时，先按
+[真实网页浏览器探测](real-page-browser-probing.md)使用 Codex 内置浏览器确认实际页面，再运行明确存在的
+`test:live` 作为网络 smoke。不要把 CLI 返回内容当作浏览器 DOM，不要把临时网络失败写成规则成功，
+也不要用线上响应覆盖脱敏 fixture。
 
 构建实际声明的 artifact 模式，并验证：
 

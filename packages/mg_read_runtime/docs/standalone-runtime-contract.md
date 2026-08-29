@@ -76,8 +76,9 @@ Node 运行状态由 `runtime.status.v1` 提供一个可扩展的安全快照：
   主项目只交给 `novel_reader_ui` 的公开 API。
 
 Debug 构建可经版本化 Facade 显式启用 Runtime-owned HTTP 检查页。Runtime 仅持久化布尔开关，
-后续冷启动在固定 `52173` 端口恢复 listener；Facade 只返回可复制的调试地址，主应用不取得
-或构造端口、资源 token。独立的 LAN listener 不承载控制协议，详细边界见
+后续冷启动优先在 `52173` 端口恢复 listener；端口占用或系统拒绝绑定时只在本次进程使用系统分配的临时端口，
+下次启动重新优先尝试 `52173`。Facade 返回本次实际 IPv4 endpoint 列表和临时端口状态，主应用
+只展示、复制或交给系统浏览器打开，不构造或持久化地址、端口、资源 token。独立的 LAN listener 不承载控制协议，详细边界见
 [核心 Runtime 规范](../../../docs/core.md#runtime-与平台宿主)。
 
 这不是“把 `RuntimeClient` 换个名字”。公开 Facade 必须屏蔽所有平台和传输细节，不允许

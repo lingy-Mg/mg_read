@@ -73,7 +73,7 @@ plugins/sources/                    真实数据源插件
 - Android/Windows 每插件一个 WebView（最多 8/16）；Android multi-profile 不可用时记录 `single_fallback`。
   `visible` 全局唯一；Windows 窗口标题显示来源/行为，页面内只显示 URL，用户关闭窗口只隐藏且仅脚本
   `close` 销毁。宿主阻止越界能力；Windows 静音，Android 暂仅禁止自动播放。
-- Debug 检查页监听 `0.0.0.0:52173`；冲突不阻断，Release 禁用。
+- Debug 检查页优先监听 `0.0.0.0:52173`，不可用时临时绑定系统端口；只持久化开关，返回实际地址和临时状态；Release 禁用。
 
 ## 标准插件项目、artifact 与安装
 

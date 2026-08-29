@@ -102,9 +102,11 @@ Runtime 测试独立覆盖 `.mgplugin` 安装器：
 ## Debug HTTP 检查页
 
 Debug 构建由 Runtime-owned Facade 显式开关独立 HTTP 检查页。开关由 Runtime 私有运行状态持久化，
-并监听固定 IPv4 LAN 端口 `52173`；端口暂时被占用时 Runtime 继续工作并在下次启动重试。
+优先监听 IPv4 LAN 端口 `52173`；该端口被占用或系统拒绝绑定时立即改用系统分配的临时可用端口，下次启动仍
+优先尝试 `52173`。Runtime 只持久化布尔开关，不保存临时端口。
 只提供页面、状态、插件、搜索、发现和封面 probe 路由；内部 WS、health 与原始资源 URL 仍在
-私有 loopback server。地址仅供复制，不经主应用构造或保存。无认证 LAN 风险与 Release 排除
+私有 loopback server。Facade 返回本次实际 IPv4 endpoint 列表与临时端口状态，主应用只展示、
+复制或交给系统浏览器打开，不构造或保存地址。无认证 LAN 风险与 Release 排除
 由[核心 Runtime 规范](../../../docs/core.md#runtime-与平台宿主)固定。
 
 [`protocol/fixtures/standard-node-plugin-v1.json`](../protocol/fixtures/standard-node-plugin-v1.json)

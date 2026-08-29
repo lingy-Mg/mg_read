@@ -34,7 +34,7 @@ export interface PluginManagerEvent {
   readonly durationMs?: number;
   /** Present only for a Debug-only in-memory ctx.log projection. */
   readonly logLevel?: "debug" | "error" | "info" | "warn";
-  /** Plugin-authored text; the Runtime Debug buffer redacts and bounds it. */
+  /** Plugin-authored text; the Runtime Debug buffer preserves it verbatim within its size bound. */
   readonly logMessage?: string;
   readonly operation?: PluginContentOperation;
   readonly outcome: "error" | "started" | "success";
