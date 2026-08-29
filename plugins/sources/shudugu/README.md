@@ -1,6 +1,6 @@
-# 速读谷 MgRead 书源
+# 速读谷 MgRead 数据源插件
 
-这是按 MgRead Plugin API v1 实现的标准 Node.js 24 小说书源，覆盖速读谷的分类发现、搜索、详情、目录和正文。
+这是按 MgRead Plugin API v1 实现的标准 Node.js 24 小说数据源插件，覆盖速读谷的分类发现、搜索、详情、目录和正文。
 网站 URL 只留在插件内部；跨插件边界传递的是 `novel:<id>` 和不透明的 `chapter:<id>`。
 
 ```powershell
@@ -19,7 +19,7 @@ npm.cmd run test:live
 请求或解析它。首页“阅读排行”热门搜索使用 24 小时缓存；正文不落盘。
 
 缓存实现来自仓库本地 `@mgread/plugin-cache`，不是 npm 发布包。它同时保存 HTML 与经过校验的详情/目录
-投影；列表补详情时优先返回任意已有投影并在后台单飞刷新，用户主动打开详情或目录仍要求一小时内的新数据。构建时自动同步到本书源的
+投影；列表补详情时优先返回任意已有投影并在后台单飞刷新，用户主动打开详情或目录仍要求一小时内的新数据。构建时自动同步到本数据源插件的
 `packages/`；默认 single-file 打包器会把实际引用的纯 JavaScript 合并进
 `artifacts/org.mgread.shudugu-0.1.4.mgplugin.js`，并把 `assets/icon.png` 内嵌进规范信封。artifact
 不携带 lock、源码、`node_modules` 或 sidecar，安装时无需安装脚本或网络下载。

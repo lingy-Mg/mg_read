@@ -164,7 +164,7 @@ export class PluginInstaller {
       await mkdir(stagingRoot, { recursive: true });
       this.#reportProgress({
         completedBytes: 0,
-        detail: "正在解压并校验数据来源包",
+        detail: "正在解压并校验数据源插件包",
         stage: "plugin_installing",
         totalBytes: 0,
       });
@@ -181,7 +181,7 @@ export class PluginInstaller {
         completedBytes: 0,
         detail: requiresNpmDependencies
           ? `已读取 package.json 和 package-lock.json，共 ${project.dependencies.length} 个 npm 依赖`
-          : "已验证单文件数据来源，npm 依赖已打包，无需安装",
+          : "已验证单文件数据源插件，npm 依赖已打包，无需安装",
         stage: "plugin_installing",
         totalBytes: requiresNpmDependencies ? Math.max(project.dependencies.length, 1) : 1,
       });
@@ -329,8 +329,8 @@ export class PluginInstaller {
       this.#reportProgress({
         completedBytes: 1,
         detail: requiresNpmDependencies
-          ? "数据来源版本已存在，复用已安装的 npm 依赖"
-          : "单文件数据来源版本已存在，无需安装 npm 依赖",
+          ? "数据源插件版本已存在，复用已安装的 npm 依赖"
+          : "单文件数据源插件版本已存在，无需安装 npm 依赖",
         stage: "plugin_installing",
         totalBytes: 1,
       });
@@ -419,8 +419,8 @@ export class PluginInstaller {
     this.#reportProgress({
       completedBytes: dependencyTotal,
       detail: requiresNpmDependencies
-        ? "npm 依赖恢复完成，正在完成数据来源安装"
-        : "单文件数据来源安装完成，无需安装 npm 依赖",
+        ? "npm 依赖恢复完成，正在完成数据源插件安装"
+        : "单文件数据源插件安装完成，无需安装 npm 依赖",
       stage: "plugin_installing",
       totalBytes: dependencyTotal,
     });

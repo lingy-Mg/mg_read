@@ -44,20 +44,20 @@ PluginRuntime.invoke<T>(PluginInvocation<T>) -> Future<T>
 和 Content Library 经自身强类型端口持久化。下载跨边界能力需先进入核心规范和强类型契约。主项目
 不得拼接 raw method 字符串或直接使用 wire envelope。
 
-书源冷加载的模块、导出或 `activate` 失败只会隔离该书源的当前版本：Runtime 持久化其
-版本化隔离标记、继续启动其他书源，并经 `plugins.recovery.consume.v1` 返回本次启动的隔离
-数量。该强类型、一次性摘要不返回书源代码、异常、路径、URL、请求内容或凭据；有效的新
+数据源插件冷加载的模块、导出或 `activate` 失败只会隔离该数据源插件的当前版本：Runtime 持久化其
+版本化隔离标记、继续启动其他数据源插件，并经 `plugins.recovery.consume.v1` 返回本次启动的隔离
+数量。该强类型、一次性摘要不返回数据源插件代码、异常、路径、URL、请求内容或凭据；有效的新
 冷激活版本会清除自身隔离标记。
 
 插件私有缓存清理由 `plugins.cache.usage.v1`、`plugins.cache.clear.v1` 与
-`plugins.cache.clearAll.v1` 三个强类型 Facade capability 表达。它们只返回数据源 ID、逻辑
+`plugins.cache.clearAll.v1` 三个强类型 Facade capability 表达。它们只返回数据源插件 ID、逻辑
 字节数及每项 `cleared/failed` 终态；Runtime 仍独占 cache 目录、文件句柄与底层失败细节，
 主应用不得扫描或清理目录。`plugins.cache.usage.v1` 允许通过可选的
-`pluginId` 只统计一个已知数据源，便于管理页先显示列表、再逐项填充缓存用量。
+`pluginId` 只统计一个已知数据源插件，便于管理页先显示列表、再逐项填充缓存用量。
 
-安装后的书源大小由 `plugins.installation.usage.v1` 提供，`scope=archive` 统计 Runtime
-保留的原始 `.mgplugin`，`scope=data` 统计书源自身文件，`scope=npm` 统计物化后的
-`node_modules`，结果只包含字节数、文件数、书源 ID、版本和统计范围，不暴露路径。三个范围
+安装后的数据源插件大小由 `plugins.installation.usage.v1` 提供，`scope=archive` 统计 Runtime
+保留的原始 `.mgplugin`，`scope=data` 统计数据源插件自身文件，`scope=npm` 统计物化后的
+`node_modules`，结果只包含字节数、文件数、数据源插件 ID、版本和统计范围，不暴露路径。三个范围
 由主应用异步分别请求，因此 Android 上 npm 文件很多时，原始包和数据文件结果可以先显示；
 Android Javet 和 Windows 桌面都调用同一个 Runtime Core 能力，但各自保留独立的启动/传输适配。
 

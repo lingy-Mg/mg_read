@@ -39,8 +39,8 @@ void main() {
     await tester.pumpWidget(_host(gateway, 'org.example.live-source'));
     await tester.pumpAndSettle();
 
-    expect(find.text('开源开发源（即时生效）'), findsOneWidget);
-    expect(find.text('工作区开源书源'), findsOneWidget);
+    expect(find.text('开发数据源插件（即时生效）'), findsOneWidget);
+    expect(find.text('工作区开发数据源插件'), findsOneWidget);
     expect(find.text('开发中（即时生效）'), findsOneWidget);
     if (Platform.isWindows) {
       expect(find.byKey(const Key('data-source-detail-package-development')), findsOneWidget);
@@ -50,7 +50,7 @@ void main() {
       await tester.tap(find.byKey(const Key('data-source-detail-open-directory')));
       await tester.pumpAndSettle();
       expect(gateway.openedPluginIds, <String>['org.example.live-source']);
-      expect(find.textContaining('下一次来源调用时生效'), findsOneWidget);
+      expect(find.textContaining('下一次数据源调用时生效'), findsOneWidget);
       await tester.ensureVisible(find.byKey(const Key('data-source-detail-package-development')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('data-source-detail-package-development')));
@@ -65,14 +65,14 @@ void main() {
     await tester.pumpWidget(_host(gateway, 'org.example.installed'));
     await tester.pumpAndSettle();
 
-    expect(find.text('已安装数据源'), findsOneWidget);
+    expect(find.text('已安装数据源插件'), findsOneWidget);
     expect(find.text('数据源简介'), findsOneWidget);
-    expect(find.text('已安装书源简介。'), findsOneWidget);
-    expect(find.text('Runtime 已安装版本'), findsOneWidget);
+    expect(find.text('已安装数据源简介。'), findsOneWidget);
+    expect(find.text('Runtime 已安装数据源插件'), findsOneWidget);
     expect(find.text('已启用'), findsOneWidget);
     expect(find.byKey(const Key('data-source-installation-size-card')), findsOneWidget);
     expect(find.text('安装后大小'), findsOneWidget);
-    expect(find.textContaining('整个书源：0 B'), findsOneWidget);
+    expect(find.textContaining('整个数据源插件：0 B'), findsOneWidget);
     expect(find.textContaining('原始安装包'), findsOneWidget);
     expect(find.textContaining('数据文件'), findsOneWidget);
     expect(find.textContaining('npm 包'), findsOneWidget);
@@ -90,6 +90,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('打开已安装源码文件夹'), findsOneWidget);
     }
+  });
+
+  testWidgets('uses the Runtime icon URL on the secondary detail page', (WidgetTester tester) async {
+    final gateway = _DirectoryGateway(_iconConnection);
+    await tester.pumpWidget(_host(gateway, 'org.example.with-icon'));
+    await tester.pumpAndSettle();
+
+    final Image image = tester.widget<Image>(find.byKey(const Key('source-icon-network-org.example.with-icon')));
+    expect(
+      image.image,
+      isA<NetworkImage>().having((NetworkImage provider) => provider.url, 'url', 'http://127.0.0.1:1/v1/plugin-icon/detail-test-token'),
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('keeps long metadata values readable on a phone-width viewport', (WidgetTester tester) async {
@@ -127,8 +140,8 @@ const _developmentConnection = PluginRuntimeConnection(
     PluginRuntimePlugin(
       activeVersion: '0.1.0',
       contentKinds: <String>['novel'],
-      description: '即时开发书源简介。',
-      displayName: '即时书源',
+      description: '即时开发数据源插件简介。',
+      displayName: '即时数据源',
       enabled: true,
       id: 'org.example.live-source',
       name: '@example/live-source',
@@ -146,8 +159,8 @@ const _installedConnection = PluginRuntimeConnection(
     PluginRuntimePlugin(
       activeVersion: '1.0.0',
       contentKinds: <String>['novel'],
-      description: '已安装书源简介。',
-      displayName: '已安装书源',
+      description: '已安装数据源简介。',
+      displayName: '已安装数据源',
       enabled: true,
       id: 'org.example.installed',
       name: '@example/installed',
@@ -170,6 +183,26 @@ const _longMetadataConnection = PluginRuntimeConnection(
       enabled: true,
       id: 'org.mgread.discovery-demo',
       name: '@mgread/discovery-demo',
+      pendingVersion: null,
+      status: 'active',
+    ),
+  ],
+);
+
+const _iconConnection = PluginRuntimeConnection(
+  isHealthy: true,
+  nodeVersion: '24.16.0',
+  runtimeVersion: 'test',
+  plugins: <PluginRuntimePlugin>[
+    PluginRuntimePlugin(
+      activeVersion: '1.0.0',
+      contentKinds: <String>['novel'],
+      description: '带图标的数据源。',
+      displayName: '带图数据源',
+      enabled: true,
+      iconUrl: 'http://127.0.0.1:1/v1/plugin-icon/detail-test-token',
+      id: 'org.example.with-icon',
+      name: '@example/with-icon',
       pendingVersion: null,
       status: 'active',
     ),

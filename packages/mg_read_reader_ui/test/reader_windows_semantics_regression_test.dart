@@ -228,7 +228,7 @@ final class _SemanticsDataSource implements TextReaderDataSource {
   Future<ReaderBookInfo> loadBookInfo(String bookId) async => ReaderBookInfo(
     id: bookId,
     title: '语义回归测试书',
-    sourceName: '测试书源',
+    sourceName: '测试数据源',
     sourceUrl: Uri.parse('https://source.example/semantics-book'),
     chapterCount: _chapters.length,
   );

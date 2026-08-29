@@ -24,6 +24,7 @@
     "displayName": "发现组件演示",
     "pluginApi": 1,
     "packageMode": "single-file",
+    "icon": "assets/icon.png",
     "contentKinds": ["novel"]
   }
 }

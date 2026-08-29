@@ -98,15 +98,15 @@ test("single-file artifact is canonical and installs into the shared cold-activa
   const installedLock = JSON.parse(await readFile(join(dataRoot, "plugins", packageJson.mgread.id, "versions", "2.1.0", "package-lock.json"), "utf8"));
   assert.deepEqual(installedLock.packages, { "": { name: packageJson.name, version: packageJson.version } });
   await assert.rejects(access(join(dataRoot, "plugins", packageJson.mgread.id, "versions", "2.1.0", "node_modules")));
-  assert.ok(installProgress.includes("已验证单文件数据来源，npm 依赖已打包，无需安装"));
-  assert.ok(installProgress.includes("单文件数据来源安装完成，无需安装 npm 依赖"));
+  assert.ok(installProgress.includes("已验证单文件数据源插件，npm 依赖已打包，无需安装"));
+  assert.ok(installProgress.includes("单文件数据源插件安装完成，无需安装 npm 依赖"));
 
   const inboxRoot = join(root, "sync-inbox");
   await mkdir(inboxRoot, { recursive: true });
   await copyFile(artifact, join(inboxRoot, "synced.mgplugin.js"));
   const syncProgress = [];
   await installPluginArtifactInbox(dataRoot, inboxRoot, (progress) => syncProgress.push(progress.detail));
-  assert.ok(syncProgress.includes("单文件数据来源版本已存在，无需安装 npm 依赖"));
+  assert.ok(syncProgress.includes("单文件数据源插件版本已存在，无需安装 npm 依赖"));
   await assert.rejects(access(join(inboxRoot, "synced.mgplugin.js")));
 
   const manager = new PluginManager(dataRoot);

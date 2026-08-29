@@ -82,7 +82,7 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
     tags: [],
     attributes: [],
   };
-  const result = validateSearchResult("org.example.nulls", "空值书源", {
+  const result = validateSearchResult("org.example.nulls", "空值数据源", {
     items: [summary],
     nextCursor: null,
     totalCount: 0,
@@ -94,7 +94,7 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
   const { author: _author, ...missingAuthor } = summary;
   assert.throws(
     () =>
-      validateSearchResult("org.example.nulls", "空值书源", {
+      validateSearchResult("org.example.nulls", "空值数据源", {
         items: [missingAuthor],
         nextCursor: null,
         totalCount: 0,
@@ -103,7 +103,7 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
   );
   assert.throws(
     () =>
-      validateSearchResult("org.example.nulls", "空值书源", {
+      validateSearchResult("org.example.nulls", "空值数据源", {
         items: [{ ...summary, author: "" }],
         nextCursor: null,
         totalCount: 0,
@@ -112,7 +112,7 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
   );
   assert.throws(
     () =>
-      validateSearchResult("org.example.nulls", "空值书源", {
+      validateSearchResult("org.example.nulls", "空值数据源", {
         items: [{ ...summary, tags: null }],
         nextCursor: null,
         totalCount: 0,
@@ -120,14 +120,14 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
     PluginContentValidationError,
   );
 
-  const discovery = validateDiscoverResult("org.example.nulls", "空值书源", {
+  const discovery = validateDiscoverResult("org.example.nulls", "空值数据源", {
     kind: "document",
     document: { components: [] },
   });
   assert.equal(discovery.kind, "document");
   assert.deepEqual(discovery.document.components, []);
 
-  const detail = validateDetailResult("org.example.nulls", "空值书源", {
+  const detail = validateDetailResult("org.example.nulls", "空值数据源", {
     ...summary,
     aliases: [],
     catalogUrl: null,
@@ -135,7 +135,7 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
   assert.deepEqual(detail.aliases, []);
   assert.equal(detail.catalogUrl, null);
 
-  const chapters = validateChaptersResult("org.example.nulls", "空值书源", {
+  const chapters = validateChaptersResult("org.example.nulls", "空值数据源", {
     items: [
       {
         id: "chapter:zero",
@@ -154,7 +154,7 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
   assert.equal(chapters.items[0].isLocked, null);
   assert.deepEqual(chapters.items[0].attributes, []);
 
-  const novelContent = validateContentResult("org.example.nulls", "空值书源", {
+  const novelContent = validateContentResult("org.example.nulls", "空值数据源", {
     contentKind: "novel",
     chapterId: "chapter:zero",
     title: null,
@@ -166,7 +166,7 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
   assert.equal(novelContent.text, "");
   assert.deepEqual(novelContent.pages, []);
 
-  const mangaContent = validateContentResult("org.example.nulls", "空值书源", {
+  const mangaContent = validateContentResult("org.example.nulls", "空值数据源", {
     contentKind: "manga",
     chapterId: "chapter:manga",
     title: null,
@@ -191,17 +191,17 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
 
   for (const [resourcePolicy, expiresAt] of [["sessionOnly", null], ["refreshable", "2026-08-28T00:00:00Z"], ["durable", null]]) {
     const page = { id: `page:${resourcePolicy}`, index: 0, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null, resourcePolicy, expiresAt };
-    assert.equal(validateContentResult("org.example.nulls", "空值书源", { contentKind: "manga", chapterId: "chapter:policy", title: null, updatedAt: null, text: null, pages: [page] }).pages[0].resourcePolicy, resourcePolicy);
+    assert.equal(validateContentResult("org.example.nulls", "空值数据源", { contentKind: "manga", chapterId: "chapter:policy", title: null, updatedAt: null, text: null, pages: [page] }).pages[0].resourcePolicy, resourcePolicy);
   }
-  assert.throws(() => validateContentResult("org.example.nulls", "空值书源", { contentKind: "manga", chapterId: "chapter:bad", title: null, updatedAt: null, text: null, pages: [{ id: "page:bad", index: 0, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null, resourcePolicy: "refreshable", expiresAt: null }] }), PluginContentValidationError);
+  assert.throws(() => validateContentResult("org.example.nulls", "空值数据源", { contentKind: "manga", chapterId: "chapter:bad", title: null, updatedAt: null, text: null, pages: [{ id: "page:bad", index: 0, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null, resourcePolicy: "refreshable", expiresAt: null }] }), PluginContentValidationError);
   const underManifestBudget = Array.from({ length: 60 }, (_, index) => ({ id: `page:${index}:${"x".repeat(8180)}`, index, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null }));
-  assert.equal(validateContentResult("org.example.nulls", "空值书源", { contentKind: "manga", chapterId: "chapter:budget", title: null, updatedAt: null, text: null, pages: underManifestBudget }).pages.length, 60);
+  assert.equal(validateContentResult("org.example.nulls", "空值数据源", { contentKind: "manga", chapterId: "chapter:budget", title: null, updatedAt: null, text: null, pages: underManifestBudget }).pages.length, 60);
   const overManifestBudget = Array.from({ length: 63 }, (_, index) => ({ id: `page:${index}:${"x".repeat(8180)}`, index, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null }));
-  assert.throws(() => validateContentResult("org.example.nulls", "空值书源", { contentKind: "manga", chapterId: "chapter:budget", title: null, updatedAt: null, text: null, pages: overManifestBudget }), PluginContentValidationError);
+  assert.throws(() => validateContentResult("org.example.nulls", "空值数据源", { contentKind: "manga", chapterId: "chapter:budget", title: null, updatedAt: null, text: null, pages: overManifestBudget }), PluginContentValidationError);
 
   assert.throws(
     () =>
-      validateSearchResult("org.example.nulls", "空值书源", {
+      validateSearchResult("org.example.nulls", "空值数据源", {
         items: [
           {
             ...summary,
@@ -219,7 +219,7 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
   );
   assert.throws(
     () =>
-      validateSearchResult("org.example.nulls", "空值书源", {
+      validateSearchResult("org.example.nulls", "空值数据源", {
         items: [summary, summary],
         nextCursor: null,
         totalCount: 2,
@@ -228,7 +228,7 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
   );
   assert.throws(
     () =>
-      validateContentResult("org.example.nulls", "空值书源", {
+      validateContentResult("org.example.nulls", "空值数据源", {
         contentKind: "manga",
         chapterId: "chapter:manga",
         title: null,

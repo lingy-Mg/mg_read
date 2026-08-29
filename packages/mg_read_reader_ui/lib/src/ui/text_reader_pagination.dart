@@ -388,6 +388,7 @@ extension _TextReaderPagination on _TextReaderViewState {
 
   Future<void> _nextPage({bool userInitiated = true}) async {
     if (_readerInteractionBlocked && userInitiated) return;
+    if (_changingChapter || _pageTurnAnimating) return;
     if (userInitiated) _stopAutoReading();
     if (_preferences.navigationMode == ReaderNavigationMode.verticalScroll) {
       if (_verticalController.hasClients) {
@@ -403,6 +404,11 @@ extension _TextReaderPagination on _TextReaderViewState {
     }
     if (_pageIndex + 1 < _pages.length) {
       await _animateToPage(_pageIndex + 1);
+    } else if (_preparedNextHorizontalChapter() != null) {
+      // The extra PageView item contains the already paginated first page of
+      // the next chapter. Move to that real page sheet first; its boundary
+      // callback commits the chapter only after the animation settles.
+      await _animateToPage(_pages.length);
     } else {
       await _nextChapter();
     }
@@ -410,6 +416,7 @@ extension _TextReaderPagination on _TextReaderViewState {
 
   Future<void> _previousPage({bool userInitiated = true}) async {
     if (_readerInteractionBlocked && userInitiated) return;
+    if (_changingChapter || _pageTurnAnimating) return;
     if (userInitiated) _stopAutoReading();
     if (_preferences.navigationMode == ReaderNavigationMode.verticalScroll) {
       if (_verticalController.hasClients) {
@@ -685,6 +692,8 @@ extension _TextReaderPagination on _TextReaderViewState {
     _pageIndex = 0;
     _pages = const <ReaderPage>[];
     _awaitingPreviousChapterTail = false;
+    _restoringHorizontalAnchor = false;
+    _restoringHorizontalRawIndex = null;
     _paragraphKeys.clear();
     _progress = const ReaderProgress.bookPreview();
     _changingChapter = false;
@@ -694,23 +703,5 @@ extension _TextReaderPagination on _TextReaderViewState {
     await _releaseAwake();
     _scheduleProgressSave(immediate: true);
     _publishSnapshot();
-  }
-
-  void _restoreCurrentHorizontalPage() {
-    if (_preferences.navigationMode != ReaderNavigationMode.horizontalPages) {
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_pageController.hasClients) return;
-      _restoreHorizontalPageWithoutProgress(_pageIndex + 1);
-    });
-  }
-
-  void _restoreHorizontalPageWithoutProgress(int rawIndex) {
-    _restoringHorizontalAnchor = true;
-    _pageController.jumpToPage(rawIndex);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _restoringHorizontalAnchor = false;
-    });
   }
 }

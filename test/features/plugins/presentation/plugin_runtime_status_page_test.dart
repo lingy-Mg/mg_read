@@ -43,11 +43,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('管理数据来源'), findsOneWidget);
-    expect(find.text('我的数据来源'), findsOneWidget);
+    expect(find.text('管理数据源'), findsOneWidget);
+    expect(find.text('我的数据源'), findsOneWidget);
     expect(find.text('阅文集团旗下原创文学平台'), findsOneWidget);
     expect(find.text('已启用 4/6'), findsOneWidget);
-    expect(find.text('数据来源分组'), findsNothing);
+    expect(find.text('数据源分组'), findsNothing);
     expect(find.byKey(const Key('data-source-management-card')), findsOneWidget);
     expect(find.byKey(const Key('data-source-add')), findsOneWidget);
     expect(find.byKey(const Key('data-source-open-runtime-directory')), findsNothing);
@@ -71,7 +71,12 @@ void main() {
 
     final Rect firstSource = tester.getRect(find.byKey(const Key('data-source-org.mgread.qidian')));
     final Rect lastSource = tester.getRect(find.byKey(const Key('data-source-org.mgread.17k')));
+    final Rect firstIcon = tester.getRect(find.byKey(const Key('data-source-icon-org.mgread.qidian')));
+    final Rect firstName = tester.getRect(find.text('起点中文网'));
     expect(firstSource.height, AppSpacing.dataSourceRowHeight + AppSpacing.compact);
+    expect(firstIcon.size, const Size.square(AppSpacing.dataSourceManagementMarkExtent));
+    expect(firstIcon.center.dy, closeTo(firstSource.center.dy, 0.1));
+    expect(firstName.left - firstIcon.right, closeTo(AppSpacing.compact, 0.1));
     expect(lastSource.bottom, greaterThan(firstSource.bottom));
     expect(tester.takeException(), isNull);
   });
@@ -130,7 +135,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('小说 · 开发源（即时生效）'), findsOneWidget);
+    expect(find.text('小说 · 开发数据源插件（即时生效）'), findsOneWidget);
     expect(find.byKey(const Key('data-source-development-badge-org.mgread.discovery-demo')), findsOneWidget);
     final toggle = tester.widget<Switch>(find.byKey(const Key('data-source-toggle-org.mgread.discovery-demo')));
     expect(toggle.value, isTrue);

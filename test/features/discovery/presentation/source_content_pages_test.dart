@@ -232,7 +232,7 @@ PluginDiscoveryDocumentResult _documentResult({
   ],
 }) => PluginDiscoveryDocumentResult(
   pluginId: 'org.example.source',
-  sourceName: '示例书源',
+  sourceName: '示例数据源',
   document: PluginDiscoveryDocument(
     components: <PluginDiscoveryComponent>[
       PluginDiscoveryTabsComponent(
@@ -249,7 +249,7 @@ PluginDiscoveryDocumentResult _documentResult({
             id: 'group',
             layout: PluginDiscoveryGroupLayout.vertical,
             children: <PluginDiscoveryComponent>[
-              const PluginDiscoveryTextComponent(id: 'text', text: '书源声明的说明文字'),
+              const PluginDiscoveryTextComponent(id: 'text', text: '数据源声明的说明文字'),
               PluginDiscoveryContentCollectionComponent(
                 id: 'books',
                 layout: PluginDiscoveryContentLayout.list,

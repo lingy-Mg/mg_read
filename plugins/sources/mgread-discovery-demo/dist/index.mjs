@@ -34,7 +34,7 @@ export async function getChapters(request) {
 
 export async function getContent(request) {
   requireContext().log.info('demo_content');
-  return { chapterId: request.chapterId, contentKind: 'novel', title: '第一章', updatedAt: null, text: '这是内置发现组件演示书源的离线正文。', pages: [] };
+  return { chapterId: request.chapterId, contentKind: 'novel', title: '第一章', updatedAt: null, text: '这是内置发现组件演示数据源的离线正文。', pages: [] };
 }
 
 function homeDocument(target) {
@@ -48,7 +48,7 @@ function homeDocument(target) {
           { id: 'ranking', label: '排行', target: 'tab:ranking' },
           { id: 'complete', label: '完本', target: 'tab:complete' },
         ] },
-        { type: 'section', id: 'demo-featured-section', title: '精选组件', subtitle: '书源按树形结构声明内容，不控制宿主样式。', children: [
+        { type: 'section', id: 'demo-featured-section', title: '精选组件', subtitle: '数据源按树形结构声明内容，不控制宿主样式。', children: [
           { type: 'contentCollection', id: 'demo-featured', layout: 'featured', continuation: null, items: [item('featured-1', '星海余烬', '编辑精选的 Hero 组件')] },
           { type: 'divider', id: 'demo-featured-divider' },
           { type: 'contentCollection', id: 'demo-carousel', layout: 'carousel', continuation: null, items: [
@@ -122,7 +122,7 @@ function book(id, title) {
     id: `demo:${id}`,
     title,
     contentKind: 'novel',
-    author: 'MgRead 演示书源',
+    author: 'MgRead 演示数据源',
     url: null,
     coverUrl: null,
     description: '固定离线模拟数据，用于验证发现组件树。',

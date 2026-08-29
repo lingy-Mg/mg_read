@@ -80,7 +80,7 @@ class _GoldenSourceGateway implements SourceContentGateway {
       Future<PluginSearchSuggestionsResult>.value(
         PluginSearchSuggestionsResult(
           pluginId: pluginId,
-          sourceName: 'Golden 书源',
+          sourceName: 'Golden 数据源',
           items: const <PluginSearchSuggestion>[],
           nextCursor: null,
         ),

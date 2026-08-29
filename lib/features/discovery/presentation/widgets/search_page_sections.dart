@@ -213,9 +213,9 @@ class SearchResultsSection extends StatelessWidget {
                     ? '输入关键词开始搜索'
                     : _sourceErrorTitle(error!),
                 message: status == SearchPageStatus.loadingSources
-                    ? '正在读取可用书源。'
+                    ? '正在读取可用数据源。'
                     : error == null
-                    ? '书源数据接入后，结果会显示在这里。'
+                    ? '数据源接入后，结果会显示在这里。'
                     : '稳定错误码：${error!.code.wireValue}',
                 loading: status == SearchPageStatus.loadingSources,
                 onRetry: error == null ? null : onRetry,
@@ -249,7 +249,7 @@ class SearchResultsSection extends StatelessWidget {
             key: Key('search-empty-result'),
             icon: Icons.search_off_rounded,
             title: '没有搜索结果',
-            message: '当前书源没有返回匹配内容。',
+            message: '当前数据源没有返回匹配内容。',
           )
         else
           Column(

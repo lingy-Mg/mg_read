@@ -95,19 +95,22 @@ class _DiscoveryCarouselBooksState extends State<DiscoveryCarouselBooks> {
             height: height,
             child: Stack(
               children: <Widget>[
-                PageView.builder(
-                  controller: _pageController,
-                  itemCount: widget.books.length,
-                  onPageChanged: (index) => setState(() {
-                    _currentIndex = index;
-                  }),
-                  itemBuilder: (context, index) {
-                    final book = widget.books[index];
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 1),
-                      child: DiscoveryCarouselHeroCard(data: book, onPressed: () => widget.onBookPressed(book)),
-                    );
-                  },
+                ScrollConfiguration(
+                  behavior: discoveryDragScrollBehavior(context),
+                  child: PageView.builder(
+                    controller: _pageController,
+                    itemCount: widget.books.length,
+                    onPageChanged: (index) => setState(() {
+                      _currentIndex = index;
+                    }),
+                    itemBuilder: (context, index) {
+                      final book = widget.books[index];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 1),
+                        child: DiscoveryCarouselHeroCard(data: book, onPressed: () => widget.onBookPressed(book)),
+                      );
+                    },
+                  ),
                 ),
                 if (widget.books.length > 1)
                   Positioned(

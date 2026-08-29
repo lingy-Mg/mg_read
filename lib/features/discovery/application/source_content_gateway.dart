@@ -1,8 +1,8 @@
-/// 书源内容网关。
+/// 数据源内容网关。
 ///
 /// 职责：
 /// - 通过强类型 Runtime Facade 查询搜索、发现与详情内容。
-/// - 返回不等待封面字节的内容投影，使页面可先显示主体。
+/// - 透传数据源图标元数据，并返回不等待封面字节的内容投影，使页面可先显示主体。
 ///
 /// 注意：
 /// - 封面由共享展示组件异步解析，网关不得耦合持久化或网络读取。
@@ -32,12 +32,14 @@ final class PluginSourceDescriptor {
     required this.displayName,
     required Iterable<PluginContentKind> contentKinds,
     this.description,
+    this.iconUrl,
     this.pluginVersion = 'unknown',
   }) : contentKinds = List<PluginContentKind>.unmodifiable(contentKinds);
 
   final String id;
   final String displayName;
   final String? description;
+  final String? iconUrl;
   final String pluginVersion;
   final List<PluginContentKind> contentKinds;
 }
@@ -92,6 +94,7 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
                   id: plugin.id,
                   displayName: plugin.displayName,
                   description: plugin.description,
+                  iconUrl: plugin.iconUrl,
                   pluginVersion: plugin.activeVersion!,
                   contentKinds: plugin.contentKinds.map(_contentKind),
                 ),

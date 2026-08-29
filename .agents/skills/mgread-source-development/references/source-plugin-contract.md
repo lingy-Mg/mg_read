@@ -9,15 +9,15 @@
 - Runtime 上下文：`packages/mg_read_runtime/src/plugin-manager-contract.ts`
 - 内容类型与校验：`packages/mg_read_runtime/src/plugin-content-types.ts`、`plugin-content-validation.ts`
 - 项目和 artifact：`packages/mg_read_runtime/src/plugin-package.ts`、`plugin-single-file.ts`、`plugin-archive.ts`
-- 真实数据源增量规则：`plugins/sources/AGENTS.md`
+- 真实数据源插件增量规则：`plugins/sources/AGENTS.md`
 
 技能说明用于决策和复核，不能替代这些当前公开类型。
 
 ## 项目与生命周期
 
-- 数据源开发项目是标准 Node.js 24 ESM 项目。`package.json.mgread` 是唯一 MgRead 元数据，`package-lock.json` v3 是开发依赖图。
+- 数据源插件开发项目是标准 Node.js 24 ESM 项目。`package.json.mgread` 是唯一 MgRead 元数据，`package-lock.json` v3 是开发依赖图。
 - Runtime 调用 `activate(ctx)` 一次并提供进程期上下文。不要在模块导入阶段访问尚未提供的上下文，也不要自行建立第二 VM、Worker、插件子进程或 native addon。
-- 安装版本不可变并在冷启动激活。Windows Debug 的 `plugins/sources/*` 是开发源，可因指纹变化重启唯一 Runtime；它不是安装包的热覆盖持久化。
+- 安装版本不可变并在冷启动激活。Windows Debug 的 `plugins/sources/*` 是开发数据源插件，可因指纹变化重启唯一 Runtime；它不是安装包的热覆盖持久化。
 - 安装目录只读；可变数据只能写 `ctx.dataDir` 或 `ctx.cacheDir`。不要把书架、进度、书签、目录或正文业务权威存进 Runtime 私有目录。
 
 ## 内容 API

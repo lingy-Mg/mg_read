@@ -2,7 +2,7 @@
  * 官方模板的离线内容契约测试。
  *
  * 职责：验证命名导出、显式空值语义和标准项目元数据。
- * 注意：测试只使用本地固定数据，不访问真实书源。
+ * 注意：测试只使用本地固定数据，不访问真实数据源。
  */
 
 import assert from 'node:assert/strict';
@@ -28,7 +28,7 @@ test('standard named exports activate and use multi-file/local-package resources
       error: (event) => events.push(event),
     },
     app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
-    plugin: { id: 'org.example.source', version: '0.1.2' },
+    plugin: { id: 'org.example.source', version: '0.1.3' },
   });
 
   const search = await plugin.search({ query: '示例', cursor: null, pageSize: 20 });
@@ -71,6 +71,7 @@ test('standard named exports activate and use multi-file/local-package resources
   assert.equal(discovery.kind, 'document');
   assert.equal(discovery.document.components[0].type, 'tabs');
   assert.equal(discovery.document.components[1].children[0].layout, 'featured');
+  assert.equal(discovery.document.components[2].children[1].children[0].layout, 'compact');
   assert.equal(detail.catalogUrl, null);
   assert.equal(chapters.items[0].order, 0);
   assert.equal(content.chapterId, chapters.items[0].id);
@@ -84,7 +85,7 @@ test('package metadata is single-source and legacy files stay absent', async () 
   assert.equal(packageJson.mgread.schemaVersion, 1);
   assert.equal(packageJson.mgread.pluginApi, 1);
   assert.equal(packageJson.mgread.packageMode, 'single-file');
-  assert.equal(packageJson.mgread.displayName, '示例书源');
+  assert.equal(packageJson.mgread.displayName, '示例数据源');
   assert.equal(lock.lockfileVersion, 3);
   assert.equal(lock.packages[''].dependencies['@mgread-plugin/example-parser'], 'file:./packages/example-parser');
 });

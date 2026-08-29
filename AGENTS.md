@@ -26,7 +26,7 @@
 
 - 根应用版本只由 `tools/update_flutter_version.ps1` 修改。仅根 Flutter 生产代码、用户可见资源或
   Android/Windows/macOS 发布配置变化时，在全部修改完成后执行一次 `-ChangeType small`；产品级
-  大改使用 `large`。纯文档、测试、工具、package、模板或独立书源改动不升级根版本。
+  大改使用 `large`。纯文档、测试、工具、package、模板或独立数据源插件改动不升级根版本。
 - 每次代码修改执行 `pwsh -File tools/check_source_file_sizes.ps1`，再运行最近 `AGENTS.md` 指定的
   静态与自动化检查；根 Flutter 代码至少执行 `dart format --output=none --set-exit-if-changed .` 和
   `flutter analyze`。纯文档任务只执行 `pwsh -File tools/check_documentation.ps1` 和 diff 检查。

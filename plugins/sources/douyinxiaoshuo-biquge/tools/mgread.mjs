@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
  * Source-local deterministic MgRead single-file artifact builder.
- * It intentionally supports only this plugin's declared Node 24 single-file mode.
+ * It intentionally supports only this plugin's declared Node 24 single-file mode
+ * and embeds the one declared PNG icon into the artifact envelope.
  */
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { builtinModules } from 'node:module';
 import { dirname, extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +14,7 @@ import { build, stop } from 'esbuild';
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const headerPrefix = '// @mgread-plugin-v1 ';
 const headerLimit = 512 * 1024;
+const iconLimit = 256 * 1024;
 const artifactLimit = 32 * 1024 * 1024;
 const bundleExtensions = new Set(['.js', '.mjs', '.cjs', '.json']);
 const nodeBuiltins = new Set(
@@ -90,6 +92,9 @@ export async function buildPluginArtifact({ versionOverride } = {}) {
       pluginApi: packageJson.mgread.pluginApi,
       contentKinds: [...packageJson.mgread.contentKinds],
       packageMode: 'single-file',
+      ...(packageJson.mgread.icon === undefined
+        ? {}
+        : { icon: packageJson.mgread.icon }),
     },
   };
   const envelope = {
@@ -98,6 +103,9 @@ export async function buildPluginArtifact({ versionOverride } = {}) {
     codeBytes: code.length,
     codeSha256: sha256(code),
   };
+  if (packageJson.mgread.icon !== undefined) {
+    envelope.icon = await readIcon(packageJson.mgread.icon);
+  }
   const header = Buffer.from(
     `${headerPrefix}${Buffer.from(canonicalJson(envelope)).toString('base64url')}\n`,
   );
@@ -134,13 +142,42 @@ function validatePackage(value, version) {
     value.mgread.contentKinds.some(
       (kind) => kind !== 'novel' && kind !== 'manga',
     ) ||
-    value.mgread.icon !== undefined ||
+    (value.mgread.icon !== undefined && typeof value.mgread.icon !== 'string') ||
     value.manifest !== undefined ||
     value.sharedDependencies !== undefined ||
     value.bundledDependencies !== undefined
   ) {
     throw new Error('package.json is not a supported single-file plugin project.');
   }
+}
+
+async function readIcon(iconPath) {
+  const normalized = iconPath.replaceAll('\\', '/').replace(/^\.\/+/u, '');
+  if (
+    !normalized.startsWith('assets/') ||
+    normalized.split('/').includes('..') ||
+    extname(normalized).toLowerCase() !== '.png'
+  ) {
+    throw new Error('mgread.icon must name a PNG below assets/.');
+  }
+  const absolute = resolve(projectRoot, ...normalized.split('/'));
+  const details = await lstat(absolute);
+  if (!details.isFile() || details.isSymbolicLink()) {
+    throw new Error('mgread.icon must name a regular file.');
+  }
+  const bytes = await readFile(absolute);
+  if (bytes.length > iconLimit) {
+    throw new Error(`Plugin icon exceeds ${iconLimit} bytes.`);
+  }
+  if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+    throw new Error('mgread.icon is not a valid PNG file.');
+  }
+  return {
+    mediaType: 'image/png',
+    bytes: bytes.length,
+    sha256: sha256(bytes),
+    data: bytes.toString('base64'),
+  };
 }
 
 function validateBundleCode(code) {

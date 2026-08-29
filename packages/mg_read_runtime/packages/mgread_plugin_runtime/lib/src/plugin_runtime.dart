@@ -143,7 +143,7 @@ final class PluginRuntime {
     final file = await openFile(
       acceptedTypeGroups: <XTypeGroup>[
         XTypeGroup(
-          label: 'MgRead 数据来源',
+          label: 'MgRead 数据源',
           extensions: <String>['mgplugin.js', 'mgplugin'],
         ),
       ],

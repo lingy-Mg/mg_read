@@ -137,7 +137,7 @@ final class _PrefetchGateway implements SourceContentGateway {
     detailCalls += 1;
     return PluginContentDetail(
       pluginId: pluginId,
-      sourceName: '预取书源',
+      sourceName: '预取数据源',
       summary: PluginContentSummary(
         id: id,
         title: '远程详情书名',
@@ -173,7 +173,7 @@ final class _PrefetchGateway implements SourceContentGateway {
     catalogCalls += 1;
     return PluginChaptersResult(
       pluginId: pluginId,
-      sourceName: '预取书源',
+      sourceName: '预取数据源',
       items: <PluginChapterSummary>[_chapter('chapter:1', '第一章', 0), _chapter('chapter:2', '第二章', 1)],
     );
   }
@@ -183,7 +183,7 @@ final class _PrefetchGateway implements SourceContentGateway {
     contentChapterIds.add(chapterId);
     return PluginChapterContent(
       pluginId: pluginId,
-      sourceName: '预取书源',
+      sourceName: '预取数据源',
       contentKind: PluginContentKind.novel,
       chapterId: chapterId,
       title: '第一章',
@@ -227,7 +227,7 @@ final class _GatedPrefetchGateway extends _PrefetchGateway {
     await _catalogRelease.future;
     return PluginChaptersResult(
       pluginId: pluginId,
-      sourceName: '预取书源',
+      sourceName: '预取数据源',
       items: <PluginChapterSummary>[_chapter('chapter:1', '第一章', 0), _chapter('chapter:2', '第二章', 1)],
     );
   }

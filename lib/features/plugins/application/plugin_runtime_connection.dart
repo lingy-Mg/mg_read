@@ -506,7 +506,7 @@ final class PluginRuntimeSourceImportController extends Notifier<PluginSourceImp
     try {
       final imported = await ref.read(pluginRuntimeGatewayProvider).importLocalPlugin();
       if (imported) {
-        state = const PluginSourceImportState(isImporting: true, message: '正在刷新数据来源列表', logs: <String>['正在刷新数据来源列表']);
+        state = const PluginSourceImportState(isImporting: true, message: '正在刷新数据源列表', logs: <String>['正在刷新数据源列表']);
         ref.invalidate(pluginRuntimeConnectionProvider);
         ref.invalidate(pluginRuntimeStatusProvider);
         await ref.read(pluginRuntimeConnectionProvider.future);
@@ -540,10 +540,10 @@ String _initializationMessage(RuntimeInitializationStage stage) {
     RuntimeInitializationStage.assetsCopied => 'Runtime 文件准备完成',
     RuntimeInitializationStage.assetsReused => '正在复用 Runtime 文件',
     RuntimeInitializationStage.nodeStarting => '正在启动 Node Runtime',
-    RuntimeInitializationStage.pluginCopying => '正在复制数据来源文件',
-    RuntimeInitializationStage.pluginCopied => '数据来源文件复制完成',
-    RuntimeInitializationStage.pluginInstalling => '正在安装数据来源',
-    RuntimeInitializationStage.ready => '数据来源运行环境已就绪',
+    RuntimeInitializationStage.pluginCopying => '正在复制数据源插件文件',
+    RuntimeInitializationStage.pluginCopied => '数据源插件文件复制完成',
+    RuntimeInitializationStage.pluginInstalling => '正在安装数据源插件',
+    RuntimeInitializationStage.ready => '数据源运行环境已就绪',
   };
 }
 

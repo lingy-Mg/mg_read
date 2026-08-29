@@ -13,13 +13,13 @@ export async function discover(request: PageRequest & { readonly target: string 
   addCollection(components, home.featured, request.pageSize, 8, 'featured', '精选推荐', '官网精选内容', 'recommendation', 'carousel');
   addCollection(components, home.recent, request.pageSize, 12, 'recent', '最近更新', '追踪最新章节', 'newRelease', 'coverGrid');
   const trendSections: object[] = [];
-  addRankedCollection(trendSections, home.rising, request.pageSize, 10, 'rising', '上升最快', '近期热度增长最快', 'trending', 'ranking');
+  addRankedCollection(trendSections, home.rising, request.pageSize, 10, 'rising', '上升最快', '近期热度增长最快', 'trending', 'compact');
   addRankedCollection(trendSections, home.popular, request.pageSize, 10, 'popular', '人气排行榜', '站内人气作品', 'hot', 'compact');
   if (trendSections.length !== 0) components.push(Object.freeze({ type: 'group', id: 'trend-group', layout: 'vertical', children: Object.freeze(trendSections) }));
   addCollection(components, home.completed, request.pageSize, 10, 'completed', '完结大作', '一次读到结局', 'completed', 'shelf');
   const rankingSections: object[] = [];
   for (const ranking of home.rankings) addRankedCollection(rankingSections, ranking.items, request.pageSize, 6, ranking.id, ranking.title, null, 'ranking', 'compact');
-  if (rankingSections.length !== 0) components.push(Object.freeze({ type: 'group', id: 'ranking-group', layout: 'grid', children: Object.freeze(rankingSections) }));
+  if (rankingSections.length !== 0) components.push(Object.freeze({ type: 'group', id: 'ranking-group', layout: 'vertical', children: Object.freeze(rankingSections) }));
   return Object.freeze({ kind: 'document', document: Object.freeze({ components: Object.freeze(components) }) });
 }
 export async function searchSuggestions() { return Object.freeze({ items: Object.freeze([]), nextCursor: null }); }

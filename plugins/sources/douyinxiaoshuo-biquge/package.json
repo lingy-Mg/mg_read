@@ -33,6 +33,7 @@
     "description": "抖音小说移动站小说源，支持搜索、分类、详情、完整目录和多页正文。",
     "pluginApi": 1,
     "packageMode": "single-file",
+    "icon": "assets/icon.png",
     "contentKinds": [
       "novel"
     ]

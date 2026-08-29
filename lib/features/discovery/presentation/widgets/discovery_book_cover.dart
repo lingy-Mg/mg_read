@@ -1,4 +1,4 @@
-/// 书源内容的异步封面组件。
+/// 数据源内容的异步封面组件。
 ///
 /// 职责：
 /// - 先渲染书籍主体可见的加载占位，再独立解析封面字节。
@@ -22,7 +22,7 @@ import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart
 import 'package:mg_read/shared/presentation/widgets/default_book_cover_artwork.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
-/// 显示不阻塞周边内容的书源封面。
+/// 显示不阻塞周边内容的数据源封面。
 class DiscoveryBookCover extends ConsumerWidget {
   const DiscoveryBookCover({
     required this.title,

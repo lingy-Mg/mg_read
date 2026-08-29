@@ -9,6 +9,8 @@
 - `vertical` 子组件占满整行并使用宿主区块间距。`group.grid` 只用于适合并排的小面板。
 - `coverGrid` 在紧凑手机为三列、较宽应用布局为四列，更宽桌面可继续增密；标题单行省略。`shelf` 保持横向滚动，`compact` 保持整行榜单密度。
 - `categoryCollection.grid` 适合入口矩阵，`chips` 适合题材快速筛选；图标由语义名选择，不按 ID 哈希随机生成。
+- 排行内容统一使用带真实 `rank/metric` 的 `compact`；`ranking` 只为旧插件输入兼容，不再作为新来源的
+  视觉选择。排行榜组使用整行 `vertical`，避免把可读列表压缩成并排小面板或产生嵌套 surface。
 
 ## 爱丽丝当前编排
 

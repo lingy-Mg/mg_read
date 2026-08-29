@@ -39,7 +39,7 @@ mg_read UI
   等字段做强类型投影与显式 null 校验。
 - Runtime 关键事件使用 4 MiB 分段 UTF-8 TXT；HTTP/JSON/HTML 详情默认完全不读取，仅在
   显式调试会话中经过有界内存 spool，并按 `memoryOnly/persistToText` 策略保留。
-- Windows Debug 直接加载工作区中的爱丽丝书屋与纯离线“发现组件演示书源”；后者覆盖全部受控
+- Windows Debug 直接加载工作区中的爱丽丝书屋与纯离线“发现组件演示数据源”；后者覆盖全部受控
   节点、嵌套分类、返回栈与集合定向分页。开发项目不进入 Flutter assets 或安装树。
 
 旧 manifest、单文件 bundle、`sharedDependencies`、自定义 dependency lock、旧模板夹具和
@@ -82,7 +82,7 @@ npm.cmd run stage:flutter-windows
   Job Object、list/discover/search/detail/chapters/content、错误投影与并发复用。
 - Debug 日志测试覆盖有界内存、分页、清空、脱敏和不创建 `runtime/diagnostics`；Runtime 不再
   维护结构化事件 writer 或对应性能基准。
-- `stage:flutter-windows` 只准备 Node、LICENSE 与编译 Core，不打包/复制开发书源，也不替代最终
+- `stage:flutter-windows` 只准备 Node、LICENSE 与编译 Core，不打包/复制开发数据源插件，也不替代最终
   应用包运行验收。
 
 ## 目录

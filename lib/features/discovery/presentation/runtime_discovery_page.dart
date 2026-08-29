@@ -5,6 +5,7 @@
 /// - 转发分类、搜索、详情和导航操作。
 /// - 将递归组件树编排为封面网格、横向书架、紧凑榜单和自适应组合容器。
 /// - 统一递归 section 的主标题、副标题、语义图标和内容间距。
+/// - 将旧 ranking 布局兼容映射到标准紧凑榜单，避免来源选择宿主尺寸。
 /// - 将加载/空/失败状态交给独立展示组件，保持页面容器聚焦。
 ///
 /// 注意：
@@ -29,6 +30,7 @@ import 'package:mg_read/features/discovery/presentation/discovery_content_state.
 import 'package:mg_read/features/discovery/presentation/discovery_semantic_icons.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_drag_scroll_behavior.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_list_tag.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
@@ -416,18 +418,21 @@ class _GroupComponent extends StatelessWidget {
           ],
         ],
       ),
-      PluginDiscoveryGroupLayout.horizontal => SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: children
-              .map(
-                (child) => Padding(
-                  padding: const EdgeInsets.only(right: AppSpacing.discoveryComponentGap),
-                  child: SizedBox(width: AppSpacing.discoveryGroupCardWidth, child: _compositeCard(child)),
-                ),
-              )
-              .toList(growable: false),
+      PluginDiscoveryGroupLayout.horizontal => ScrollConfiguration(
+        behavior: discoveryDragScrollBehavior(context),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: children
+                .map(
+                  (child) => Padding(
+                    padding: const EdgeInsets.only(right: AppSpacing.discoveryComponentGap),
+                    child: SizedBox(width: AppSpacing.discoveryGroupCardWidth, child: child),
+                  ),
+                )
+                .toList(growable: false),
+          ),
         ),
       ),
       PluginDiscoveryGroupLayout.grid => LayoutBuilder(
@@ -437,15 +442,11 @@ class _GroupComponent extends StatelessWidget {
           return Wrap(
             spacing: AppSpacing.discoveryComponentGap,
             runSpacing: AppSpacing.discoveryComponentGap,
-            children: children.map((child) => SizedBox(width: width, child: _compositeCard(child))).toList(growable: false),
+            children: children.map((child) => SizedBox(width: width, child: child)).toList(growable: false),
           );
         },
       ),
     };
-  }
-
-  Widget _compositeCard(Widget child) {
-    return DiscoveryComponentSurface(padding: const EdgeInsets.all(AppSpacing.discoveryPanelPadding), child: child);
   }
 }
 
@@ -467,9 +468,6 @@ class _ContentCollection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final heroItems = component.items.map(_heroData).toList(growable: false);
-    final rankedItems = <DiscoveryRankedBookViewData, PluginDiscoveryContentItem>{
-      for (final item in component.items) _rankedData(item): item,
-    };
     final cards = component.items
         .map(
           (item) => _DiscoveryBookCard(
@@ -505,20 +503,11 @@ class _ContentCollection extends StatelessWidget {
         onPressed: onContentPressed,
         isInBookshelf: isInBookshelf,
       ),
-      PluginDiscoveryContentLayout.compact => DiscoveryCompactBookList(
+      PluginDiscoveryContentLayout.compact || PluginDiscoveryContentLayout.ranking => DiscoveryCompactBookList(
         items: component.items,
         onPressed: onContentPressed,
         isInBookshelf: isInBookshelf,
-        showRanks: component.items.any((item) => item.rank != null),
-      ),
-      PluginDiscoveryContentLayout.ranking => SizedBox(
-        height: AppSpacing.discoveryBoardHeight,
-        child: DiscoveryRankingBoard(
-          title: '排行榜',
-          books: rankedItems.keys.toList(growable: false),
-          onPressed: (book) => onContentPressed(rankedItems[book]!.content),
-          onMorePressed: component.continuation == null ? () {} : () => onLoadMore(component),
-        ),
+        showRanks: component.layout == PluginDiscoveryContentLayout.ranking || component.items.any((item) => item.rank != null),
       ),
       PluginDiscoveryContentLayout.list => Column(children: cards),
     };
@@ -565,14 +554,6 @@ DiscoveryHeroViewData _heroData(PluginDiscoveryContentItem item) => DiscoveryHer
   remoteContentId: item.content.id,
   coverUrl: item.content.coverUrl,
   heat: item.metric == null ? null : '${item.metric!.label} ${item.metric!.value}',
-);
-
-DiscoveryRankedBookViewData _rankedData(PluginDiscoveryContentItem item) => DiscoveryRankedBookViewData(
-  rank: item.rank,
-  title: item.content.title,
-  author: item.content.author,
-  heat: item.metric?.value,
-  coverVariant: _coverVariant(item.content.id),
 );
 
 String? _nestedPageTitle(List<PluginDiscoveryComponent> components) {

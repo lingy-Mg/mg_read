@@ -11,5 +11,5 @@
   },
   "dependencies": { "@mgread/plugin-cache": "file:./packages/mgread-plugin-cache", "cheerio": "1.1.0" },
   "devDependencies": { "@types/node": "24.13.3", "esbuild": "0.28.2", "typescript": "5.9.3" },
-  "mgread": { "schemaVersion": 1, "id": "org.mgread.xiezhenji", "displayName": "写真集", "description": "xx.knit.bid 写真图集，支持分类、搜索与分页图片阅读。", "pluginApi": 1, "packageMode": "single-file", "contentKinds": ["manga"] }
+  "mgread": { "schemaVersion": 1, "id": "org.mgread.xiezhenji", "displayName": "写真集", "description": "成年美女写真图集，支持分类、搜索与分页图片阅读。", "pluginApi": 1, "packageMode": "single-file", "icon": "assets/icon.png", "contentKinds": ["manga"] }
 }

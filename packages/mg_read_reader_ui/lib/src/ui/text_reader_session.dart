@@ -70,6 +70,8 @@ extension _TextReaderSession on _TextReaderViewState {
     _changingChapter = false;
     _chapterLoadingOverlayVisible = false;
     _awaitingPreviousChapterTail = false;
+    _restoringHorizontalAnchor = false;
+    _restoringHorizontalRawIndex = null;
     _controlsVisible = false;
     _sliderPreview = null;
     _noticeMessage = null;
@@ -516,6 +518,19 @@ extension _TextReaderSession on _TextReaderViewState {
         return;
       }
       _validateChapter(chapter, expectedChapterId: chapterId);
+      if (!mounted) return;
+      ReaderLayoutFingerprint? preparedFingerprint;
+      List<ReaderPage>? preparedPages;
+      final Size? viewport = context.size;
+      if (previousContent != null &&
+          viewport != null &&
+          !viewport.isEmpty &&
+          _preferences.navigationMode == ReaderNavigationMode.horizontalPages) {
+        preparedFingerprint = _layoutFingerprintForContent(viewport, chapter);
+        preparedPages = _TextReaderViewState._layoutCache.take(
+          preparedFingerprint,
+        );
+      }
       if (openAtEnd &&
           previousContent != null &&
           previousIndex == targetInfo.index + 1) {
@@ -531,8 +546,9 @@ extension _TextReaderSession on _TextReaderViewState {
       _currentChapterInfo = targetInfo;
       _content = chapter;
       _contentEpoch++;
-      _pages = const <ReaderPage>[];
-      _currentPaginationComplete = false;
+      _layoutFingerprint = preparedPages == null ? null : preparedFingerprint;
+      _pages = preparedPages ?? const <ReaderPage>[];
+      _currentPaginationComplete = preparedPages != null;
       _pageIndex = 0;
       _paragraphKeys.clear();
       _awaitingPreviousChapterTail =
@@ -581,8 +597,21 @@ extension _TextReaderSession on _TextReaderViewState {
         );
       }
       _progress = _normalizeSemanticAnchor(_progress);
+      if (preparedPages != null) {
+        _pageIndex = _pageIndexForAnchor(
+          preparedPages,
+        ).clamp(0, preparedPages.isEmpty ? 0 : preparedPages.length - 1);
+        _firstContentPreparation = ReaderPaginationPreparation.cachedFirstPage;
+      }
       _failure = null;
       if (mounted) setState(() {});
+      if (preparedPages != null) {
+        _finishHorizontalPagination();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _reconcileAdjacentPreparation();
+        });
+        WidgetsBinding.instance.scheduleFrame();
+      }
       _publishSnapshot();
       unawaited(_notify(() => observer.onChapterChanged(targetInfo)));
       // Screen-awake is non-essential to a page turn. A slow platform queue

@@ -369,7 +369,7 @@ void main() {
 
       expect(plugins, hasLength(1));
       expect(plugins.single.id, 'org.mgread.flutter.fixture');
-      expect(plugins.single.displayName, 'Flutter 标准测试书源');
+      expect(plugins.single.displayName, 'Flutter 标准测试数据源');
       expect(plugins.single.activeVersion, '1.0.0');
       expect(plugins.single.iconUrl, isNull);
       expect(disabled.enabled, isFalse);
@@ -787,7 +787,7 @@ Future<Directory> _stageInstalledStandardPlugin() async {
   "mgread": {
     "schemaVersion": 1,
     "id": "org.mgread.flutter.fixture",
-    "displayName": "Flutter 标准测试书源",
+    "displayName": "Flutter 标准测试数据源",
     "pluginApi": 1,
     "contentKinds": ["novel"]
   }

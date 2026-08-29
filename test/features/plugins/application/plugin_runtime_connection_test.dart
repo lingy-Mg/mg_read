@@ -185,8 +185,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('管理数据来源'), findsOneWidget);
-    expect(find.text('我的数据来源'), findsOneWidget);
+    expect(find.text('管理数据源'), findsOneWidget);
+    expect(find.text('我的数据源'), findsOneWidget);
     expect(find.text('已启用 1/1'), findsOneWidget);
     expect(find.text('示例插件'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('data-source-org.example.fixture')), findsOneWidget);
@@ -215,7 +215,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(gateway.importLocalPluginCalls, 1);
-    expect(find.text('数据来源已添加。'), findsOneWidget);
+    expect(find.text('数据源已添加。'), findsOneWidget);
   });
 
   testWidgets('source management opens the typed Runtime status route', (WidgetTester tester) async {
@@ -243,7 +243,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(PluginRuntimeStatusPage), findsOneWidget);
-    expect(find.text('管理数据来源'), findsOneWidget);
+    expect(find.text('管理数据源'), findsOneWidget);
     expect(find.text('示例插件'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey<String>('data-source-org.example.fixture')));

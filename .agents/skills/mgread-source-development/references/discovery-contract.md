@@ -12,9 +12,11 @@
 ## 当前组件与布局
 
 - 容器：`tabs`、`section`、`group`、`text`、`divider`。
-- 内容集合：`featured`、`carousel`、`coverGrid`、`shelf`、`compact`、`ranking`、`list`。
+- 内容集合：`featured`、`carousel`、`coverGrid`、`shelf`、`compact`、`ranking`、`list`。`ranking` 是旧
+  插件兼容别名，宿主必须与带 rank 的 `compact` 使用同一标准榜单；新来源只输出 `compact`。
 - 分类集合：`grid`、`chips`、`list`。
-- 组合：`vertical`、`horizontal`、`grid`。
+- 组合：`vertical`、`horizontal`、`grid`。group 只负责排列，不为已有 surface 的子组件重复套面板；
+  横向组合与轮播、书架共用支持鼠标直接拖动的宿主策略。
 
 语义图标类型为 `PluginDiscoveryIcon`/`DiscoveryIcon`。tab、section、category 可选声明 `icon`；Runtime 接受缺省或 `null` 并归一化为 `null`，非白名单字符串必须失败。图标的 Material 映射只由 `lib/features/discovery/presentation/discovery_semantic_icons.dart` 持有。
 

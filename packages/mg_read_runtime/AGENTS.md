@@ -63,4 +63,4 @@ npm.cmd run check:no-native-addons
 - Windows WebView2 变更先跑 Node reverse-broker、Dart fake-platform/HTTP、Facade reverse-wire fixture，
   再跑 `flutter build windows --debug`。mock 只证明契约；只有真实 Windows WebView2 弹窗和目标站请求
   才能证明桌面浏览器层，且不能替代 Android 设备证据。
-- Runtime-only 任务不修改根 UI、reader、模板或真实书源，除非用户明确纳入同一交付包。
+- Runtime-only 任务不修改根 UI、reader、模板或真实数据源插件，除非用户纳入同一交付包。

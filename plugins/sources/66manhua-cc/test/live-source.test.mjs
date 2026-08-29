@@ -10,9 +10,10 @@ test('public home keeps varied discovery sections and a target chapter yields pr
   await plugin.activate({ dataDir: '.', cacheDir: '.', app: {}, plugin: {}, log: { debug(){}, info(){}, warn(){}, error(){} }, resource: { proxy(request) { proxied = request; homeImages.push(request.url); return `http://127.0.0.1/resource/${homeImages.length}`; } }, http: { fetch: globalThis.fetch } });
   const discovery = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });
   assert.equal(discovery.kind, 'document');
-  assert.deepEqual(discovery.document.components.map((component) => component.type === 'group' ? `${component.type}:${component.layout}` : component.children[0].layout), ['carousel', 'coverGrid', 'group:vertical', 'shelf', 'group:grid']);
+  assert.deepEqual(discovery.document.components.map((component) => component.type === 'group' ? `${component.type}:${component.layout}` : component.children[0].layout), ['carousel', 'coverGrid', 'group:vertical', 'shelf', 'group:vertical']);
   const sections = discovery.document.components.flatMap((component) => component.type === 'group' ? component.children : [component]);
   assert.deepEqual(sections.map((section) => section.title), ['精选推荐', '最近更新', '上升最快', '人气排行榜', '完结大作', '收藏榜', '打赏榜', '月票榜']);
+  assert.deepEqual(sections.slice(2, 4).concat(sections.slice(-3)).map((section) => section.children[0].layout), ['compact', 'compact', 'compact', 'compact', 'compact']);
   assert.ok(sections.every((section) => section.children[0].items.length > 0));
   assert.ok(new Set(homeImages).size >= 20);
   const detailItems = [...new Map(sections.map((section) => section.children[0].items[0].content).map((content) => [content.id, content])).values()];

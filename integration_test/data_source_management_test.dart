@@ -25,8 +25,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('管理数据来源'), findsOneWidget);
-    expect(find.text('数据来源分组'), findsNothing);
+    expect(find.text('管理数据源'), findsOneWidget);
+    expect(find.text('数据源分组'), findsNothing);
 
     await binding.convertFlutterSurfaceToImage();
     await tester.pump();

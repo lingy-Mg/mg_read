@@ -114,7 +114,7 @@ const value = await page.executeJavaScript(`
 自动销毁页面，并撤销页面内任务 token，迟到的 Promise 不再写入结果。探测窗口阻止弹窗、外部协议、下载、权限、
 文件选择与全屏；Windows 原生静音并允许 F12 DevTools，Android 目前只禁止自动播放。
 
-`importLocalPlugin()` 是生产 Facade 的本地数据源导入能力。文件选择器、私有 inbox、原子复制、
+`importLocalPlugin()` 是生产 Facade 的本地数据源插件导入能力。文件选择器、私有 inbox、原子复制、
 `.mgplugin.js` / `.mgplugin` 校验和冷激活均由本 package/Runtime 负责；主应用只接收取消或成功结果，
 不接触文件路径。
 Windows 通过受管 Node 子进程重启完成冷激活，Android 通过专用 Javet 线程有序停止并重建唯一活动
@@ -125,7 +125,7 @@ Runtime 实例完成冷激活。
 二进制的改名副本，不使用 PATH 或全局 Node。Android Javet、macOS 和最终应用包内
 运行需要各自验收，desktop 源码测试不替代这些门禁。
 
-Windows Debug 由本 package 在仓库内解析 `plugins/sources` 并把该内部目录交给 Runtime；书源
+Windows Debug 由本 package 在仓库内解析 `plugins/sources` 并把该内部目录交给 Runtime；数据源插件
 项目不复制进 assets。package/lock 或已构建输出变化后，Facade 在下一次调用前回收旧 Node/VM，
 再启动唯一的新 Runtime。同一插件 ID 同时存在开发项目和已安装包时，只加载并展示开发项目；
 已安装包保留为移除开发项目后的冷启动回退，不会并行执行或写入同一插件私有状态。Release 不启用该路径。

@@ -16,7 +16,7 @@
 
 ## 数据源默认检查
 
-在目标数据源目录使用仓库固定 Node 24，按其 `AGENTS.md` 和 scripts 运行：
+在目标数据源插件目录使用仓库固定 Node 24，按其 `AGENTS.md` 和 scripts 运行：
 
 ```powershell
 npm.cmd ci
@@ -72,7 +72,7 @@ flutter build windows --debug
 
 真实 WebView2 验收至少检查：
 
-- 顶部来源名称、当前行为、URL、隐藏和关闭按钮。
+- 顶部数据源名称、当前行为、URL、隐藏和关闭按钮。
 - API hide/show 与用户按钮双向状态一致；用户关闭后 open 能重建。
 - 隐藏页面不能接收 pointer、文本或按键。
 - 新窗口、外部协议、下载、权限、脚本对话框、文件选择、全屏和音频确实被阻止。

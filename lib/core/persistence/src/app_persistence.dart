@@ -3,10 +3,12 @@
 /// 职责：
 /// - 编排主应用元数据、内容对象和文件对象存储的生命周期。
 /// - 为持久化操作提供受控的诊断与关闭边界。
+/// - 为两个 SQLite 存储统一启用 WAL/NORMAL，并提供显式空间统计与压缩原语。
 ///
 /// 注意：
 /// - 业务调用方只能经强类型仓储访问，不得取得数据库或文件绝对路径。
 /// - 文件对象实现位于分部模块，仍受本库的生命周期与诊断约束。
+/// - 启动和普通读写不自动执行完整性检查、checkpoint 或 VACUUM。
 ///
 /// TODO:
 /// - 无。
@@ -229,20 +231,22 @@ final class ContentObjectStore {
 
   Future<int> deleteMany(Iterable<String> objectIds) {
     final copied = objectIds.toSet();
-    return _instrument(
-      operation: 'deleteMany',
-      count: copied.length,
-      action: () => _deleteMany(copied),
-      countResult: (result) => result,
-    );
+    return _instrument(operation: 'deleteMany', count: copied.length, action: () => _deleteMany(copied), countResult: (result) => result);
   }
 
-  Future<DatabaseStorageStats> storageStats() => _instrument(
-    operation: 'storageStats',
-    action: _storageStats,
-  );
+  Future<DatabaseStorageStats> storageStats() => _instrument(operation: 'storageStats', action: _storageStats);
 
   Future<void> compact() => _instrument(operation: 'compact', action: _compact);
+
+  /// Test-only evidence for connection-level SQLite configuration.
+  Future<Object?> debugPragmaForTest(String pragma) => _lifecycle.run(() async {
+    _ensureOpen();
+    if (!RegExp(r'^[a-z_]+$').hasMatch(pragma)) {
+      throw ArgumentError.value(pragma, 'pragma');
+    }
+    final row = await _database.customSelect('PRAGMA $pragma').getSingle();
+    return row.data.values.single;
+  });
 
   Future<void> close() => _lifecycle.close(() {
     final diagnostics = _diagnostics;
@@ -299,21 +303,17 @@ final class ContentObjectStore {
   Future<ContentObjectPage> _listInfo({required String? afterObjectId, required int limit}) async {
     _ensureOpen();
     if (limit < 1 || limit > 1000) throw ArgumentError.value(limit, 'limit');
-    final rows = await _database.customSelect(
-      'SELECT object_id, byte_length FROM content_objects '
-      '${afterObjectId == null ? '' : 'WHERE object_id > ? '}ORDER BY object_id ASC LIMIT ?',
-      variables: <Variable<Object>>[
-        if (afterObjectId != null) Variable.withString(afterObjectId),
-        Variable.withInt(limit + 1),
-      ],
-    ).get();
+    final rows = await _database
+        .customSelect(
+          'SELECT object_id, byte_length FROM content_objects '
+          '${afterObjectId == null ? '' : 'WHERE object_id > ? '}ORDER BY object_id ASC LIMIT ?',
+          variables: <Variable<Object>>[if (afterObjectId != null) Variable.withString(afterObjectId), Variable.withInt(limit + 1)],
+        )
+        .get();
     final hasMore = rows.length > limit;
     final objects = <StoredContentObjectInfo>[
       for (final row in rows.take(limit))
-        StoredContentObjectInfo(
-          objectId: row.data['object_id'] as String,
-          byteLength: row.data['byte_length'] as int,
-        ),
+        StoredContentObjectInfo(objectId: row.data['object_id'] as String, byteLength: row.data['byte_length'] as int),
     ];
     return ContentObjectPage(
       objects: List<StoredContentObjectInfo>.unmodifiable(objects),
@@ -331,7 +331,7 @@ final class ContentObjectStore {
     return _database.customUpdate(
       'DELETE FROM content_objects WHERE object_id IN ($placeholders)',
       variables: <Variable<Object>>[for (final id in objectIds) Variable.withString(id)],
-      updates: const <TableUpdate>{},
+      updates: {},
     );
   }
 
@@ -340,10 +340,7 @@ final class ContentObjectStore {
     final pageCount = await _pragmaInt('page_count');
     final freePages = await _pragmaInt('freelist_count');
     final pageSize = await _pragmaInt('page_size');
-    return DatabaseStorageStats(
-      allocatedBytes: pageCount * pageSize,
-      reclaimableBytes: freePages * pageSize,
-    );
+    return DatabaseStorageStats(allocatedBytes: pageCount * pageSize, reclaimableBytes: freePages * pageSize);
   }
 
   Future<void> _compact() async {

@@ -247,11 +247,148 @@ void main() {
 
     expect(scrollable.position.pixels, greaterThan(0));
   });
+
+  testWidgets('renders the legacy ranking layout with the standard compact list', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(_hostResult(_singleLayoutResult(PluginDiscoveryContentLayout.ranking)));
+    await tester.pump();
+
+    expect(find.byKey(const Key('runtime-discovery-compact-list')), findsOneWidget);
+    expect(find.byKey(const Key('discovery-ranking-board')), findsNothing);
+    expect(
+      tester.getSize(find.byKey(const ValueKey<String>('runtime-discovery-compact-legacy:1'))).height,
+      greaterThanOrEqualTo(AppSpacing.discoveryCompactRowMinHeight),
+    );
+  });
+
+  testWidgets('keeps grid groups layout-only without nested component surfaces', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(_hostResult(_groupedCompactResult(PluginDiscoveryGroupLayout.grid)));
+    await tester.pump();
+
+    expect(find.byType(DiscoveryComponentSurface), findsNWidgets(2));
+    final Rect first = tester.getRect(find.byType(DiscoveryComponentSurface).at(0));
+    final Rect second = tester.getRect(find.byType(DiscoveryComponentSurface).at(1));
+    expect(first.top, closeTo(second.top, 0.01));
+    expect(first.width, closeTo(second.width, 0.01));
+  });
+
+  testWidgets('allows a horizontal group to follow a mouse drag before release', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(_hostResult(_groupedCompactResult(PluginDiscoveryGroupLayout.horizontal)));
+    await tester.pump();
+
+    final Finder group = find.byKey(const ValueKey<String>('runtime-discovery-component-grouped'));
+    final Finder scrollableFinder = find.descendant(of: group, matching: find.byType(Scrollable));
+    final ScrollPosition position = tester.state<ScrollableState>(scrollableFinder).position;
+    final TestGesture gesture = await tester.startGesture(tester.getCenter(group), kind: PointerDeviceKind.mouse);
+    await gesture.moveBy(const Offset(-60, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(-60, 0));
+    await tester.pump();
+
+    expect(position.pixels, greaterThan(0));
+    await gesture.up();
+  });
+
+  testWidgets('renders every ranking section with one readable full-width component', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 1900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(_hostResult(_rankingOverviewResult));
+    await tester.pump();
+
+    expect(find.byType(DiscoveryComponentSurface), findsNWidgets(5));
+    expect(find.byKey(const ValueKey<String>('runtime-discovery-compact-book:1')), findsNWidgets(5));
+    for (var index = 0; index < 5; index++) {
+      expect(tester.getSize(find.byType(DiscoveryComponentSurface).at(index)).width, closeTo(358, 0.01));
+    }
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/runtime_discovery_rankings_unified_compact_light.png'));
+  });
 }
+
+Widget _hostResult(PluginDiscoveryDocumentResult result) => MaterialApp(
+  debugShowCheckedModeBanner: false,
+  theme: AppTheme.light(),
+  home: RuntimeDiscoveryPage(
+    result: result,
+    onDestinationRequested: (_) {},
+    onSourcePressed: () {},
+    onTabSelected: (_) {},
+    onCategorySelected: (_) {},
+    onContentPressed: (_) {},
+    onRefreshRequested: () {},
+    onLoadMore: (_) {},
+    canNavigateBack: false,
+    onBackRequested: () {},
+    loadingCollectionId: null,
+  ),
+);
+
+PluginDiscoveryDocumentResult _singleLayoutResult(PluginDiscoveryContentLayout layout) => PluginDiscoveryDocumentResult(
+  pluginId: 'legacy-layout.source',
+  sourceName: '兼容布局数据源',
+  document: PluginDiscoveryDocument(
+    components: <PluginDiscoveryComponent>[
+      PluginDiscoverySectionComponent(
+        id: 'legacy-ranking',
+        title: '旧榜单',
+        subtitle: null,
+        children: <PluginDiscoveryComponent>[
+          PluginDiscoveryContentCollectionComponent(
+            id: 'legacy-items',
+            layout: layout,
+            items: <PluginDiscoveryContentItem>[_item('legacy:1', '兼容榜单作品', 1)],
+            continuation: null,
+          ),
+        ],
+      ),
+    ],
+  ),
+);
+
+PluginDiscoveryDocumentResult _groupedCompactResult(PluginDiscoveryGroupLayout layout) => PluginDiscoveryDocumentResult(
+  pluginId: 'grouped.source',
+  sourceName: '组合数据源',
+  document: PluginDiscoveryDocument(
+    components: <PluginDiscoveryComponent>[
+      PluginDiscoveryGroupComponent(
+        id: 'grouped',
+        layout: layout,
+        children: <PluginDiscoveryComponent>[
+          _section('grid:first', '第一榜', PluginDiscoveryContentLayout.compact),
+          _section('grid:second', '第二榜', PluginDiscoveryContentLayout.compact),
+        ],
+      ),
+    ],
+  ),
+);
+
+final PluginDiscoveryDocumentResult _rankingOverviewResult = PluginDiscoveryDocumentResult(
+  pluginId: 'rankings.source',
+  sourceName: '榜单数据源',
+  document: PluginDiscoveryDocument(
+    components: <PluginDiscoveryComponent>[
+      PluginDiscoveryGroupComponent(
+        id: 'rankings',
+        layout: PluginDiscoveryGroupLayout.vertical,
+        children: <PluginDiscoveryComponent>[
+          _section('rising', '上升最快', PluginDiscoveryContentLayout.compact),
+          _section('popular', '人气排行榜', PluginDiscoveryContentLayout.compact),
+          _section('favorites', '收藏榜', PluginDiscoveryContentLayout.compact),
+          _section('rewards', '打赏榜', PluginDiscoveryContentLayout.compact),
+          _section('monthly', '月票榜', PluginDiscoveryContentLayout.compact),
+        ],
+      ),
+    ],
+  ),
+);
 
 final PluginDiscoveryDocumentResult _result = PluginDiscoveryDocumentResult(
   pluginId: 'composite.source',
-  sourceName: '组合书源',
+  sourceName: '组合数据源',
   document: PluginDiscoveryDocument(
     components: <PluginDiscoveryComponent>[
       _section('covers', '封面精选', PluginDiscoveryContentLayout.coverGrid),
@@ -377,7 +514,7 @@ PluginDiscoveryContentItem _item(String id, String title, int rank) => PluginDis
 
 final PluginDiscoveryDocumentResult _carouselResult = PluginDiscoveryDocumentResult(
   pluginId: 'carousel.source',
-  sourceName: '轮播书源',
+  sourceName: '轮播数据源',
   document: PluginDiscoveryDocument(
     components: <PluginDiscoveryComponent>[
       PluginDiscoverySectionComponent(

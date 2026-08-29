@@ -7,7 +7,7 @@
   "mgread": {
     "schemaVersion": 1,
     "id": "org.mgread.runtime.manga-fixture",
-    "displayName": "Runtime 漫画测试书源",
+    "displayName": "Runtime 漫画测试数据源",
     "packageMode": "archive",
     "pluginApi": 1,
     "contentKinds": ["manga"]

@@ -1,4 +1,4 @@
-/// 书源内容详情页。
+/// 数据源内容详情页。
 ///
 /// 职责：
 /// - 加载并展示书籍详情、目录和相关推荐，将操作委托给宿主回调。
@@ -6,7 +6,7 @@
 /// 注意：
 /// - 不要在 build() 中执行 Runtime、网络或磁盘 IO。
 /// - 异步加载必须由页面状态持有请求世代，并保留稳定 Key 与书架乐观更新语义。
-/// - 详情只复用发现页顶部栏，不显示顶级书源选择。
+/// - 详情只复用发现页顶部栏，不显示顶级数据源选择。
 /// - 横向推荐列表允许触摸、手写笔、触控板和鼠标直接拖动。
 library;
 
@@ -603,7 +603,7 @@ class _SourceDetailBody extends StatelessWidget {
                   onPressed: shelfState != SourceDetailShelfState.canAdd
                       ? () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('此书已在书架中。')))
                       : onAddToShelf == null
-                      ? () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('书架保存功能尚未接入此书源。')))
+                      ? () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('书架保存功能尚未接入此数据源。')))
                       : isSavingToShelf
                       ? null
                       : () => onSaveToShelf(content),

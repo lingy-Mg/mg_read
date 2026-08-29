@@ -1,4 +1,4 @@
-/// 插件管理页数据来源品牌投影。
+/// 插件管理页数据源品牌投影。
 ///
 /// 职责：
 /// - 将 Runtime 插件投影为管理列表的不可变展示数据。
@@ -42,7 +42,7 @@ String _contentKindLabel(List<String> contentKinds) {
 
 String _sourceMetadataLabel(PluginRuntimePlugin plugin) {
   final kindLabel = _contentKindLabel(plugin.contentKinds);
-  if (plugin.status == 'development') return '$kindLabel · 开发源（即时生效）';
+  if (plugin.status == 'development') return '$kindLabel · 开发数据源插件（即时生效）';
   final String? origin = switch (plugin.displayName) {
     '起点中文网' || '番茄小说' || '七猫中文网' || '纵横中文网' => '官方源',
     '晋江文学城' || '17K小说网' || '17K 小说网' => '社区源',

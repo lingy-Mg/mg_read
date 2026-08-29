@@ -3,7 +3,7 @@
 状态：项目入口与实现快照。复核基线：`c4f655d`（2026-08-20）；“当前状态/目录”只描述该基线，
 之后提交和未提交工作区必须从代码、测试与 Git 重新确认。
 
-`MgRead` 是以插件为在线数据来源的本地优先小说/漫画阅读应用。根目录是 Flutter 主应用，
+`MgRead` 是以插件为在线数据源的本地优先小说/漫画阅读应用。根目录是 Flutter 主应用，
 拥有路由、主题、页面、阅读器宿主和应用权威持久化；`packages/mg_read_runtime` 负责插件执行、
 平台 Runtime 与内部通信；`packages/mg_read_reader_ui` 只负责阅读体验。
 
@@ -34,7 +34,7 @@ Node、端口、WS 或 data-root 代码。“我的 → 调试日志”提供应
 Store 型业务持久化、大资源数据面、正式入库阅读链路、Android/Javet、macOS 包或最终应用包
 已验收。主应用业务数据权威仍是 `AppPersistence`/`ContentLibrary`。
 
-本仓库只消费这些已发布 Facade，并提供“我的 → 书源管理”的 Runtime 状态页以及真实搜索/发现
+本仓库只消费这些已发布 Facade，并提供“我的 → 数据源管理”的 Runtime 状态页以及真实搜索/发现
 投影；不得在这里引入 Node/Javet、WS/HTTP Client、Runtime 数据库/文件、Cookie、callback 或
 其他运行时代码。主应用自己的 persistence/settings 不能向 Runtime 注入路径或连接。后续能力
 仍必须先在 Runtime 仓库以版本化 Facade 发布，再由本项目增加 UI 消费。
@@ -93,7 +93,7 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 | `packages/mg_read_reader_ui` | 独立 Flutter 小说/漫画阅读器插件 |
 | `packages/mg_read_runtime` | 独立插件运行时：Flutter-facing Facade、平台承载、Node Core、内部 WS/HTTP、插件安装/私有运行数据、Plugin API、Schema 与 fixture；不拥有主应用业务库 |
 | `templates/mg_read_plugin_template` | 标准 Node 空白项目、多文件 TypeScript、本地 package、构建/校验/打包/契约测试 |
-| `plugins/sources/aisishuwu` | 爱丽丝书屋的实际标准 Node 书源；独立源码、在线 smoke 测试与 `.mgplugin` 发布物 |
+| `plugins/sources/aisishuwu` | 爱丽丝书屋的实际标准 Node 数据源插件；独立源码、在线 smoke 测试与 `.mgplugin` 发布物 |
 | 计划中的 `mg_read_plugin_registry` | 唯一官方插件索引、包和发布自动化 |
 
 ## 当前与目标目录

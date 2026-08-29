@@ -127,6 +127,13 @@ class ReaderLayoutLru {
     return value;
   }
 
+  /// Reads a completed layout without changing its LRU position.
+  ///
+  /// This is used while composing an adjacent chapter boundary. A build must
+  /// not mutate cache recency merely because Flutter requested an offscreen
+  /// page.
+  List<ReaderPage>? peek(ReaderLayoutFingerprint key) => _entries[key];
+
   /// Returns whether a completed layout is present without removing it.
   bool contains(ReaderLayoutFingerprint key) => _entries.containsKey(key);
 

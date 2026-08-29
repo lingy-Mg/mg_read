@@ -36,7 +36,7 @@ class DemoReaderDataSource
       title: '山灯未眠',
       author: '示例作者',
       description: '关于一座山城、一盏旧灯和一段归途的原创短篇。',
-      sourceName: '宿主模拟远程书源',
+      sourceName: '宿主模拟远程数据源',
       sourceKind: ReaderBookSourceKind.remote,
     );
   }

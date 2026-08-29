@@ -21,7 +21,7 @@ void main() {
 
     await tester.tap(find.byType(TextReaderView));
     await tester.pumpAndSettle();
-    expect(find.text('演示书源'), findsOneWidget);
+    expect(find.text('演示数据源'), findsOneWidget);
     expect(
       find.text('https://source.example/books/detail-book'),
       findsOneWidget,
@@ -72,7 +72,7 @@ final class _DetailDataSource implements TextReaderDataSource {
     title: '详情测试书',
     author: '测试作者',
     description: '测试简介',
-    sourceName: '演示书源',
+    sourceName: '演示数据源',
     sourceUrl: Uri.parse('https://source.example/books/detail-book'),
     wordCount: 120000,
     chapterCount: 12,

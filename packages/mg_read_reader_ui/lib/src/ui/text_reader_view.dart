@@ -4,6 +4,8 @@
 /// - 组合正文排版、章节分页、阅读工具栏与设置入口。
 /// - 将章节缓存参数交给宿主能力，并保持网络、持久化和全局任务状态在宿主侧。
 /// - 横向翻页时将背景与正文组合成同一页片参与动画。
+/// - 将已预排的下一章第一页作为连续页片，动画停止后再提交跨章状态。
+/// - 跨章回退时屏蔽 PageView 重建产生的过期页回调，保持上一章真实尾页。
 /// - 处理触摸、鼠标、滚轮和键盘的阅读交互。
 /// - 目录打开后分批补齐全部章节，并将当前章节定位到可视区域中部。
 /// - 将章节状态查询合并进阅读器会话缓存，目录重开只补查尚未覆盖的章节。
@@ -159,7 +161,8 @@ class _TextReaderViewState extends State<TextReaderView>
   late bool _ownsController;
   late AppLifecycleListener _lifecycleListener;
   late final ReaderAutoReadingCoordinator _autoReadingCoordinator;
-  final PageController _pageController = PageController(initialPage: 1);
+  PageController _pageController = PageController(initialPage: 1);
+  final Set<PageController> _retiredPageControllers = <PageController>{};
   final GlobalKey<PopupMenuButtonState<_ReaderOverflowAction>>
   _readerOverflowMenuKey =
       GlobalKey<PopupMenuButtonState<_ReaderOverflowAction>>(
@@ -229,6 +232,7 @@ class _TextReaderViewState extends State<TextReaderView>
   bool _autoScrolling = false;
   bool _restoringVerticalAnchor = false;
   bool _restoringHorizontalAnchor = false;
+  int? _restoringHorizontalRawIndex;
   bool _pageTurnForward = true;
   double _directDragDelta = 0;
   int? _mouseTapPointer;
@@ -529,6 +533,10 @@ class _TextReaderViewState extends State<TextReaderView>
       ..dispose();
     _catalogScrollController.dispose();
     _catalogRevision.dispose();
+    for (final PageController controller in _retiredPageControllers) {
+      controller.dispose();
+    }
+    _retiredPageControllers.clear();
     _pageController.dispose();
     _focusNode.dispose();
     _controller.unbind(_controllerBindingOwner);
@@ -719,11 +727,4 @@ class _TextReaderViewState extends State<TextReaderView>
     final ReaderThemePreset next = _isNightTheme(_preferences.theme)
         ? _lastNonNightTheme
         : ReaderThemePreset.night;
-    unawaited(_updatePreferences(_preferences.copyWith(theme: next)));
-  }
-
-  bool _isNightTheme(ReaderThemePreset theme) =>
-      theme == ReaderThemePreset.night ||
-      theme == ReaderThemePreset.deepNight ||
-      theme == ReaderThemePreset.charcoal;
-}
+    unawaited(_updatePreferences(_preferences.co

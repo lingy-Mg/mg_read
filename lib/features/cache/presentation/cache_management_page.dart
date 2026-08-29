@@ -1,7 +1,7 @@
 /// 统一缓存管理页面。
 ///
 /// 职责：
-/// - 分别展示和清理 Runtime 数据源网页/文件缓存、封面缓存与漫画正文图片缓存。
+/// - 分别展示和清理 Runtime 数据源网页/文件缓存、数据库缓存、封面缓存与漫画正文图片缓存。
 /// - 为漫画正文图片缓存展示总量、逐漫画用量和旧缓存余量。
 /// - 为每类可再生缓存提供独立用量、失败重试和清理反馈。
 ///
@@ -15,6 +15,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/cache/application/cover_cache_manager.dart';
+import 'package:mg_read/features/cache/application/database_cache_manager.dart';
+import 'package:mg_read/features/cache/presentation/database_cache_card.dart';
 import 'package:mg_read/features/cache/presentation/manga_image_cache_breakdown_card.dart';
 import 'package:mg_read/features/plugins/application/plugin_cache_manager.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
@@ -29,6 +31,7 @@ class CacheManagementPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pluginState = ref.watch(pluginCacheManagementProvider);
+    final databaseState = ref.watch(databaseCacheManagementProvider);
     final coverState = ref.watch(coverCacheManagementProvider);
     final mangaImageState = ref.watch(mangaImageCacheManagementProvider);
     return Scaffold(
@@ -53,6 +56,13 @@ class CacheManagementPage extends ConsumerWidget {
                       onRetry: () => ref.read(pluginCacheManagementProvider.notifier).refresh(),
                       onClearAll: (state) => _confirmAndClearAllSources(context, ref, state),
                       onClearPlugin: (entry) => _confirmAndClearPlugin(context, ref, entry),
+                    ),
+                    const SizedBox(height: AppSpacing.regular),
+                    DatabaseCacheSection(
+                      state: databaseState,
+                      onRetry: () => ref.read(databaseCacheManagementProvider.notifier).refresh(),
+                      onClear: () => _confirmAndClearDatabase(context, ref),
+                      onCompact: () => _confirmAndCompactDatabase(context, ref),
                     ),
                     const SizedBox(height: AppSpacing.regular),
                     _CoverCacheSection(
@@ -118,6 +128,30 @@ class CacheManagementPage extends ConsumerWidget {
     );
     if (!confirmed || !context.mounted) return;
     await ref.read(coverCacheManagementProvider.notifier).clear();
+  }
+
+  Future<void> _confirmAndClearDatabase(BuildContext context, WidgetRef ref) async {
+    final confirmed = await _confirm(
+      context,
+      title: '清理数据库缓存？',
+      content: '将删除废弃目录快照、无引用正文，以及已移出书架但仍保留的离线正文。当前书架、阅读进度和书签不会受到影响；被删除正文需要重新下载。',
+      action: '全部清理',
+      confirmKey: const Key('database-cache-confirm'),
+    );
+    if (!confirmed || !context.mounted) return;
+    await ref.read(databaseCacheManagementProvider.notifier).clearAll();
+  }
+
+  Future<void> _confirmAndCompactDatabase(BuildContext context, WidgetRef ref) async {
+    final confirmed = await _confirm(
+      context,
+      title: '压缩数据库？',
+      content: '压缩会回收数据库文件中的空闲页，可能需要接近当前数据库大小的临时磁盘空间。操作期间请保持应用开启。',
+      action: '开始压缩',
+      confirmKey: const Key('database-cache-compact-confirm'),
+    );
+    if (!confirmed || !context.mounted) return;
+    await ref.read(databaseCacheManagementProvider.notifier).compact();
   }
 
   Future<void> _confirmAndClearMangaImages(BuildContext context, WidgetRef ref) async {

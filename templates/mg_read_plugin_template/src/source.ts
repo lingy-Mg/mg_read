@@ -70,7 +70,7 @@ export function createLocalExampleSource(prefix: string) {
             children: Object.freeze([Object.freeze({
               type: 'contentCollection' as const,
               id: 'ranking',
-              layout: 'ranking' as const,
+              layout: 'compact' as const,
               continuation: null,
               items: Object.freeze([
               Object.freeze({
@@ -176,7 +176,7 @@ function createSummary(prefix: string, value: string): ContentSummary {
     author: '请替换为真实作者投影',
     url: `https://example.invalid/books/${encodeURIComponent(id)}`,
     coverUrl: null,
-    description: '这是离线模板数据，请替换为真实来源实现。',
+    description: '这是离线模板数据，请替换为真实数据源插件实现。',
     language: 'zh-CN',
     status: 'ongoing',
     access: 'free',

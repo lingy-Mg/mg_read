@@ -74,6 +74,19 @@ void main() {
     expect(backgroundDecoded.executionIsolateId, isNot(Isolate.current.hashCode));
     expect(backgroundDecoded.document['chapterId'], 'chapter-0');
 
+    final measuredIterations = _warmups + _measurements;
+    final deleteBatches = <List<RecordEnvelope>>[];
+    for (var iteration = 0; iteration < measuredIterations; iteration++) {
+      final ids = <String>[for (var entry = 0; entry < 128; entry++) 'delete-$iteration-$entry'];
+      await settingsRecords.createBatch(<RecordDraft>[for (final id in ids) settingDraftForProfile(id)]);
+      deleteBatches.add(
+        (await settingsRecords.readMany(
+          ids: ids,
+          scope: const ScopeKey(kind: 'profile-settings', id: 'default'),
+        )).records.values.toList(growable: false),
+      );
+    }
+
     final results = <String, Object?>{
       'jsonPrepareInline': await _measure((index) async {
         await progressCodec.prepareCurrent(_progressDocument(index));
@@ -128,6 +141,14 @@ void main() {
           ),
         );
       }),
+      'metadataBatch128RealInsert': await _measure((index) async {
+        await settingsRecords.createBatch(<RecordDraft>[
+          for (var entry = 0; entry < 128; entry++) settingDraftForProfile('insert-$index-$entry'),
+        ]);
+      }),
+      'metadataBatch128RealDelete': await _measure((index) async {
+        await settingsRecords.deleteBatch(deleteBatches[index]);
+      }),
     };
 
     binding.reportData = <String, Object?>{
@@ -141,6 +162,13 @@ void main() {
     };
   });
 }
+
+RecordDraft settingDraftForProfile(String id) => RecordDraft(
+  id: id,
+  recordKind: AppSettingKeys.appearanceDocument.kind,
+  scope: const ScopeKey(kind: 'profile-settings', id: 'default'),
+  document: const <String, Object?>{'appearance.themeMode': 'system'},
+);
 
 Map<String, Object?> _progressDocument(int index) => <String, Object?>{
   'chapterId': 'chapter-$index',

@@ -442,8 +442,9 @@ abstract final class AppSpacing {
   static const double dataSourcePageTitleSize = 24;
   static const double dataSourceHeaderIconSize = 24;
   static const double dataSourceSectionTitleSize = 22;
-  static const double dataSourceRowHeight = unit * 15;
+  static const double dataSourceRowHeight = unit * 17;
   static const double dataSourceMarkExtent = unit * 9;
+  static const double dataSourceManagementMarkExtent = unit * 12;
   static const double dataSourceNameSize = 18;
   static const double dataSourceMetadataSize = 14;
   static const double dataSourceAddIconSize = 27;
@@ -526,6 +527,7 @@ abstract final class AppMotion {
   static const Duration bottomNavigationPillMinimumTravel = Duration(milliseconds: 180);
   static const Duration bottomNavigationPillTravel = Duration(milliseconds: 300);
   static const Duration bottomNavigationTextureDrift = Duration(seconds: 8);
+  static const Duration privacyModeReveal = Duration(milliseconds: 520);
   static const Duration destinationTransition = short;
   static const Duration destinationReverseTransition = shortReverse;
   static const double bottomNavigationPillOvershoot = 0.045;

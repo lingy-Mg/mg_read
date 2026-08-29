@@ -29,9 +29,10 @@
     "schemaVersion": 1,
     "id": "org.mgread.xiezhenji2",
     "displayName": "写真集2",
-    "description": "Cosplaytele 写真图集，支持分类、搜索与分页图片阅读。",
+    "description": "成年美女 Cosplay 写真图集，支持分类、搜索与分页图片阅读。",
     "pluginApi": 1,
     "packageMode": "single-file",
+    "icon": "assets/icon.png",
     "contentKinds": ["manga"]
   }
 }

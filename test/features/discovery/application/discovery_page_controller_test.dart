@@ -2,7 +2,7 @@
 ///
 /// 职责：
 /// - 验证连续进入、逐级返回、失败重试和过期结果丢弃。
-/// - 验证导航加载诊断不包含书源 target 等内容标识。
+/// - 验证导航加载诊断不包含数据源 target 等内容标识。
 ///
 /// 注意：
 /// - 测试 gateway 仅产生受控不可变文档，不接入 Runtime。
@@ -253,8 +253,8 @@ final class _TreeGateway implements SourceContentGateway {
 
   @override
   Future<List<PluginSourceDescriptor>> listSources() async => <PluginSourceDescriptor>[
-    PluginSourceDescriptor(id: _pluginId, displayName: '树测试书源', contentKinds: const <PluginContentKind>[PluginContentKind.novel]),
-    PluginSourceDescriptor(id: alternatePluginId, displayName: '备用树测试书源', contentKinds: const <PluginContentKind>[PluginContentKind.novel]),
+    PluginSourceDescriptor(id: _pluginId, displayName: '树测试数据源', contentKinds: const <PluginContentKind>[PluginContentKind.novel]),
+    PluginSourceDescriptor(id: alternatePluginId, displayName: '备用树测试数据源', contentKinds: const <PluginContentKind>[PluginContentKind.novel]),
   ];
 
   @override
@@ -271,7 +271,7 @@ final class _TreeGateway implements SourceContentGateway {
       expect(cursor, 'page:2');
       return PluginDiscoveryAppendResult(
         pluginId: pluginId,
-        sourceName: '树测试书源',
+        sourceName: '树测试数据源',
         collectionId: collectionId,
         continuation: null,
         items: <PluginDiscoveryContentItem>[_item('fantasy:2')],
@@ -289,7 +289,7 @@ final class _TreeGateway implements SourceContentGateway {
     }
     return PluginDiscoveryDocumentResult(
       pluginId: pluginId,
-      sourceName: '树测试书源',
+      sourceName: '树测试数据源',
       document: PluginDiscoveryDocument(
         components: <PluginDiscoveryComponent>[
           PluginDiscoveryContentCollectionComponent(

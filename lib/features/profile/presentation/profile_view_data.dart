@@ -113,7 +113,7 @@ abstract final class ProfileFixtures {
       ProfileSettingsItemViewData(id: 'data-backup', title: '局域网同步', description: '同一网络传输数据源、书架与进度', icon: ProfileSettingsIcon.backup),
     ],
     about: <ProfileSettingsItemViewData>[
-      ProfileSettingsItemViewData(id: 'diagnostics', title: '调试日志', description: '查看应用与书源运行日志', icon: ProfileSettingsIcon.diagnostics),
+      ProfileSettingsItemViewData(id: 'diagnostics', title: '调试日志', description: '查看应用与数据源运行日志', icon: ProfileSettingsIcon.diagnostics),
       ProfileSettingsItemViewData(id: 'about', title: '关于我们', description: '版本 1.2.0', icon: ProfileSettingsIcon.about),
       ProfileSettingsItemViewData(id: 'feedback', title: '意见反馈', description: '告诉我们您的想法', icon: ProfileSettingsIcon.feedback),
     ],

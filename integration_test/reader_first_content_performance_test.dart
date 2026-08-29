@@ -40,7 +40,7 @@ void main() {
     await ContentLibraryDiscoveryBookshelfSaver(library).save(
       source: PluginSourceDescriptor(
         id: 'org.mgread.profile.fixture',
-        displayName: '性能探针书源',
+        displayName: '性能探针数据源',
         pluginVersion: '1.0.0',
         contentKinds: const <PluginContentKind>[PluginContentKind.novel],
       ),
@@ -354,7 +354,7 @@ final class _ProfileSourceGateway implements SourceContentGateway {
     if (rejectAllRequests) _unexpected();
     return PluginChaptersResult(
       pluginId: pluginId,
-      sourceName: '性能探针书源',
+      sourceName: '性能探针数据源',
       items: <PluginChapterSummary>[
         PluginChapterSummary(
           id: 'chapter-1',
@@ -377,7 +377,7 @@ final class _ProfileSourceGateway implements SourceContentGateway {
     contentRequests += 1;
     return PluginChapterContent(
       pluginId: pluginId,
-      sourceName: '性能探针书源',
+      sourceName: '性能探针数据源',
       contentKind: PluginContentKind.novel,
       chapterId: chapterId,
       title: '第一章',

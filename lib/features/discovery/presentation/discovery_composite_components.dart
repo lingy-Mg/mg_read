@@ -1,17 +1,16 @@
 /// 发现页组合式内容组件。
 ///
 /// 职责：
-/// - 将书源声明的封面网格、横向书架、紧凑榜单和分类布局渲染为自适应宿主 UI。
+/// - 将数据源声明的封面网格、横向书架、紧凑榜单和分类布局渲染为自适应宿主 UI。
 /// - 保持点击、书架状态、封面代理与无障碍语义由宿主统一控制。
 ///
 /// 注意：
-/// - 组件只消费 Runtime 已校验的数据，不执行 IO，也不接受书源颜色、尺寸或任意 UI 代码。
+/// - 组件只消费 Runtime 已校验的数据，不执行 IO，也不接受数据源颜色、尺寸或任意 UI 代码。
 /// - 布局名称表达内容语义；列数、间距和主题始终由 MgRead 根据可用宽度决定。
 /// - 分类 chips 按可用宽度等分列宽，最后一行保持同一列宽而不按内容收缩。
 /// - 横向书架在组件内允许触摸、手写笔、触控板和鼠标直接拖动。
 library;
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
@@ -20,6 +19,7 @@ import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart
 import 'package:mg_read/features/discovery/presentation/discovery_semantic_icons.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_bookshelf_badge.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_drag_scroll_behavior.dart';
 
 class DiscoveryCoverGrid extends StatelessWidget {
   const DiscoveryCoverGrid({required this.items, required this.onPressed, required this.isInBookshelf, super.key});
@@ -84,15 +84,7 @@ class DiscoveryBookShelf extends StatelessWidget {
       key: const Key('runtime-discovery-book-shelf'),
       height: AppSpacing.discoveryShelfHeight,
       child: ScrollConfiguration(
-        behavior: ScrollConfiguration.of(context).copyWith(
-          dragDevices: const <PointerDeviceKind>{
-            PointerDeviceKind.touch,
-            PointerDeviceKind.mouse,
-            PointerDeviceKind.stylus,
-            PointerDeviceKind.invertedStylus,
-            PointerDeviceKind.trackpad,
-          },
-        ),
+        behavior: discoveryDragScrollBehavior(context),
         child: ListView.separated(
           primary: false,
           scrollDirection: Axis.horizontal,

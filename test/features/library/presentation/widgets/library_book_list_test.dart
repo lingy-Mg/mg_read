@@ -117,7 +117,7 @@ final LibraryBookListItemViewData _book = LibraryBookListItemViewData(
   status: LibraryBookStatus.ongoing,
   hasAttentionIndicator: true,
   tags: const <LibraryMetadataTagViewData>[
-    LibraryMetadataTagViewData(label: '测试书源', tone: LibraryMetadataTone.accent),
+    LibraryMetadataTagViewData(label: '测试数据源', tone: LibraryMetadataTone.accent),
   ],
 );
 

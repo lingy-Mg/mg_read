@@ -33,7 +33,7 @@ export async function getContent(request) {}
 `main` 必须指向构建后的 `dist/` 内入口。不要把元数据复制到其他文件，也不要让 `main`
 指向源码或 `node_modules`。`mgread.displayName` 是 UI 显示的来源名，npm `name`
 不是 UI 文案。Runtime 会先冷激活该不可变版本一次，再按需调用这六个
-必需命名导出；能提供热门搜索词的书源可额外导出 `searchSuggestions`。它们不是应用自行发现的
+必需命名导出；能提供热门搜索词的数据源插件可额外导出 `searchSuggestions`。它们不是应用自行发现的
 默认导出，也不应改名。
 
 - `activate(ctx)`：生命周期初始化点。只在此保存 Runtime 提供的上下文、读取只读资源和建立
@@ -47,7 +47,7 @@ export async function getContent(request) {}
   内容类型，以及显式 nullable 的作者、URL、封面、简介、字数、章节数、更新时间、最新章节等
   字段；`id` 必须是后续 `getDetail`、`getChapters` 能识别的稳定来源 ID。
 - `getDetail({id})`、`getChapters({id})`：接收前一步的稳定 ID，分别返回完整内容元信息与单次
-  完整 `{items}` 章节列表。网站自身分页必须由书源内部追完并去重；不得返回目录 cursor，目录
+  完整 `{items}` 章节列表。网站自身分页必须由数据源插件内部追完并去重；不得返回目录 cursor，目录
   最多 5000 章且编码结果最多 2 MiB。
   不要把页码、像素位置等 UI 状态当作 ID 或进度语义。
 - `getContent({id,chapterId})`：接收内容和章节稳定 ID，返回该章节内容。正文和大对象不要写入日志、
@@ -96,17 +96,17 @@ npm run pack:plugin
 ```
 
 `npm test` 是开发期间的必跑离线回归，不能依赖目标网站；`npm run verify` 是交付前门槛，包含
-类型检查、离线测试和标准插件打包。真实书源在来源解析或请求规则变化后还必须执行一次
+类型检查、离线测试和标准插件打包。真实数据源插件在来源解析或请求规则变化后还必须执行一次
 `npm run test:live`，验证分类、搜索、详情、目录和正文。线上 smoke 不作为常规 CI 的唯一测试，
 但失败时不能宣称该来源完成。
 
 在 MgRead monorepo 的 Windows Debug 应用中，模板派生的 `plugins/sources/*` 开发项目直接从
-工作区加载；运行来源自己的 `tsc --watch`/build 更新 `dist/` 后，下一次来源调用会有序重启开发
+工作区加载；运行数据源插件自己的 `tsc --watch`/build 更新 `dist/` 后，下一次数据源调用会有序重启开发
 Runtime 并使用新代码，不需要 pack、复制或安装。下面的 pack 命令只用于 installed 插件和
 Android 安装测试。
 
 因此电脑端可以直接测试插件：先运行 `npm test` 验证 Node 代码，再启动/使用 Windows Debug
-应用实际调用书源验证 Runtime Facade 链路。Windows 直测只证明 development 工作区加载；Android
+应用实际调用数据源验证 Runtime Facade 链路。Windows 直测只证明 development 工作区加载；Android
 和发布仍必须使用正式插件 artifact 安装路线。
 
 若希望使用讨论中的原样命令，可在这个模板目录执行一次 `npm link`，随后直接运行：

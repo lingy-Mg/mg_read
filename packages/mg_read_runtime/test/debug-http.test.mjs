@@ -51,7 +51,7 @@ test("Debug inspector is transient, isolates control routes, and redacts cover t
     detail: async () => ({ access: "free", aliases: ["测试别名"], attributes: [], author: "作者", catalogUrl: "https://example.com/catalog/secret-token-123456", categories: [], chapterCount: 1, contentKind: "novel", coverUrl: image.url, description: "详情", id: "novel:1", language: null, latestChapter: null, publishedAt: null, status: "ongoing", tags: [], title: "测试书", updatedAt: null, url: "https://example.com/book/secret-token-123456", wordCount: 1 }),
     discover: async () => ({
       document: {
-        components: [{ children: [{ content: { attributes: [{ key: "origin", label: "来源", value: "测试书源" }], author: "发现作者", categories: ["都市"], chapterCount: 128, coverUrl: image.url, description: "发现书简介", id: "novel:discover", latestChapter: { id: "chapter:128", title: "终章", updatedAt: "2026-08-25", url: "https://example.com/chapter/secret-token-123456" }, tags: ["推荐"], title: "发现书", url: "https://example.com/book/secret-token-123456", wordCount: 456789 }, kind: "content" }], kind: "section", title: "推荐" }],
+        components: [{ children: [{ content: { attributes: [{ key: "origin", label: "来源", value: "测试数据源" }], author: "发现作者", categories: ["都市"], chapterCount: 128, coverUrl: image.url, description: "发现书简介", id: "novel:discover", latestChapter: { id: "chapter:128", title: "终章", updatedAt: "2026-08-25", url: "https://example.com/chapter/secret-token-123456" }, tags: ["推荐"], title: "发现书", url: "https://example.com/book/secret-token-123456", wordCount: 456789 }, kind: "content" }], kind: "section", title: "推荐" }],
         kind: "document",
       },
       kind: "document",

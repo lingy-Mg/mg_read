@@ -36,6 +36,18 @@ test('exports Plugin API v1 and builds a deterministic single-file artifact', as
   assert.equal(first.format, 'singleFile');
   assert.deepEqual(first.bytes, second.bytes);
   assert.ok(first.bytes.subarray(0, 24).toString().startsWith('// @mgread-plugin-v1 '));
+  const headerPrefix = Buffer.from('// @mgread-plugin-v1 ');
+  const headerEnd = first.bytes.indexOf(10);
+  const envelope = JSON.parse(
+    Buffer.from(
+      first.bytes.subarray(headerPrefix.length, headerEnd).toString('utf8'),
+      'base64url',
+    ).toString('utf8'),
+  );
+  const icon = await readFile(new URL('../assets/icon.png', import.meta.url));
+  assert.equal(envelope.descriptor.mgread.icon, 'assets/icon.png');
+  assert.equal(envelope.icon.mediaType, 'image/png');
+  assert.deepEqual(Buffer.from(envelope.icon.data, 'base64'), icon);
 });
 
 test('source-local cache persists a bounded public text response', async (t) => {

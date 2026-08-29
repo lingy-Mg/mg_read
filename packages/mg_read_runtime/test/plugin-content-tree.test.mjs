@@ -11,7 +11,7 @@ const content = {
 };
 
 test('recursive discovery document accepts bounded semantic components', () => {
-  const result = validateDiscoverResult('org.example.tree', '树书源', {
+  const result = validateDiscoverResult('org.example.tree', '树数据源', {
     kind: 'document',
     document: { components: [{
       type: 'tabs', id: 'tabs', tabs: [{ id: 'all', label: '全部', target: 'all', icon: 'explore' }], selectedTabId: 'all',
@@ -45,14 +45,14 @@ test('discovery document rejects unknown, duplicate, and misplaced components', 
     [{ type: 'section', id: 'bad-icon', title: 'A', subtitle: null, icon: 'arbitrary-material-icon', children: [] }],
   ]) {
     assert.throws(
-      () => validateDiscoverResult('org.example.tree', '树书源', { kind: 'document', document: { components } }),
+      () => validateDiscoverResult('org.example.tree', '树数据源', { kind: 'document', document: { components } }),
       PluginContentValidationError,
     );
   }
 });
 
 test('append response keeps only a declared collection payload', () => {
-  const append = validateDiscoverResult('org.example.tree', '树书源', {
+  const append = validateDiscoverResult('org.example.tree', '树数据源', {
     kind: 'append', collectionId: 'books', continuation: null,
     items: [{ content, rank: null, metric: null, recommendation: null }],
   });

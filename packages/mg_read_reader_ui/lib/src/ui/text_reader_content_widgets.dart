@@ -311,14 +311,18 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
         onPointerCancel: _finishMousePointer,
         child: ScrollConfiguration(
           behavior: horizontalPageScrollBehavior,
-          child: NotificationListener<ScrollUpdateNotification>(
-            onNotification: (ScrollUpdateNotification notification) {
-              if (notification.dragDetails != null) _stopAutoReading();
-              final double? page = _pageController.hasClients
-                  ? _pageController.page
-                  : null;
-              if (page != null && notification.scrollDelta != null) {
-                _pageTurnForward = notification.scrollDelta! > 0;
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (ScrollNotification notification) {
+              if (notification case ScrollUpdateNotification update) {
+                if (update.dragDetails != null) _stopAutoReading();
+                final double? page = _pageController.hasClients
+                    ? _pageController.page
+                    : null;
+                if (page != null && update.scrollDelta != null) {
+                  _pageTurnForward = update.scrollDelta! > 0;
+                }
+              } else if (notification is ScrollEndNotification) {
+                _commitHorizontalBoundaryAfterScroll();
               }
               return false;
             },
@@ -333,7 +337,7 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
                 final Widget page = index == 0
                     ? _chapterBoundary(ReaderStrings.previousChapter)
                     : index == _pages.length + 1
-                    ? _chapterBoundary(ReaderStrings.nextChapter)
+                    ? _buildNextChapterBoundary()
                     : _buildPage(_pages[index - 1], index - 1);
                 return _buildPageEffect(index, page);
               },
@@ -373,11 +377,38 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
     }
   }
 
-  Widget _chapterBoundary(String label) {
+  Widget _chapterBoundary(String label, {bool loading = false}) {
     return Center(
-      child: _changingChapter
+      child: _changingChapter || loading
           ? const CircularProgressIndicator(strokeWidth: 2)
           : Text(label, style: TextStyle(color: _palette.secondaryText)),
+    );
+  }
+
+  Widget _buildNextChapterBoundary() {
+    final _PreparedHorizontalChapter? prepared =
+        _preparedNextHorizontalChapter();
+    if (prepared == null) {
+      final bool preparing = switch (_adjacentPreparationStage) {
+        _AdjacentPreparationStage.contentLoading ||
+        _AdjacentPreparationStage.contentReady ||
+        _AdjacentPreparationStage.layoutLoading => true,
+        _AdjacentPreparationStage.pending ||
+        _AdjacentPreparationStage.ready => false,
+      };
+      return _chapterBoundary(ReaderStrings.nextChapter, loading: preparing);
+    }
+    return KeyedSubtree(
+      key: const ValueKey<String>('reader-next-chapter-page'),
+      child: _buildPage(
+        prepared.pages.first,
+        0,
+        pageContent: prepared.content,
+        pageCount: prepared.pages.length,
+        bookFraction: _catalogTotal <= 0
+            ? 0
+            : prepared.info.index / _catalogTotal,
+      ),
     );
   }
 
@@ -429,7 +460,17 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
     );
   }
 
-  Widget _buildPage(ReaderPage page, int index) {
+  Widget _buildPage(
+    ReaderPage page,
+    int index, {
+    TextChapterContent? pageContent,
+    int? pageCount,
+    double? bookFraction,
+  }) {
+    final TextChapterContent content = pageContent ?? _content!;
+    final int resolvedPageCount = pageCount ?? _pages.length;
+    final double resolvedBookFraction =
+        bookFraction ?? _progress?.bookFraction ?? 0;
     return SafeArea(
       child: Stack(
         children: <Widget>[
@@ -446,7 +487,7 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
                 children: <Widget>[
                   if (page.showsTitle) ...<Widget>[
                     Text(
-                      _content!.title,
+                      content.title,
                       style: _titleTextStyle,
                       textScaler: _textScaler,
                     ),
@@ -472,13 +513,13 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
                                 child: _inlineParagraphComment(
                                   target: ReaderCommentTarget.paragraph(
                                     widget.bookId,
-                                    _content!.chapterId,
+                                    content.chapterId,
                                     block.paragraphId,
                                   ),
                                   onPressed: () => _showComments(
                                     ReaderCommentTarget.paragraph(
                                       widget.bookId,
-                                      _content!.chapterId,
+                                      content.chapterId,
                                       block.paragraphId,
                                     ),
                                     title: ReaderCommentStrings.paragraphTitle,
@@ -495,6 +536,7 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
                   if (page.showsChapterTrailing)
                     _buildChapterCommentSummary(
                       height: page.chapterTrailingHeight,
+                      chapterContent: content,
                     ),
                 ],
               ),
@@ -510,7 +552,7 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
                 children: <Widget>[
                   Expanded(
                     child: Text(
-                      _content!.title,
+                      content.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -520,7 +562,7 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
                     ),
                   ),
                   Text(
-                    '${((_progress?.bookFraction ?? 0) * 100).toStringAsFixed(1)}% · ${index + 1}/${_pages.length}',
+                    '${(resolvedBookFraction * 100).toStringAsFixed(1)}% · ${index + 1}/$resolvedPageCount',
                     style: TextStyle(
                       color: _palette.secondaryText,
                       fontSize: 11,
@@ -543,8 +585,11 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
     );
   }
 
-  Widget _buildChapterCommentSummary({double height = 168}) {
-    final TextChapterContent? content = _content;
+  Widget _buildChapterCommentSummary({
+    double height = 168,
+    TextChapterContent? chapterContent,
+  }) {
+    final TextChapterContent? content = chapterContent ?? _content;
     if (content == null || widget.extensions.commentFeed == null) {
       return const SizedBox.shrink();
     }

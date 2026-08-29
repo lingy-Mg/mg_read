@@ -45,11 +45,54 @@ final class _AdjacentPreparationTarget {
       this.contentEpoch == contentEpoch;
 }
 
+final class _PreparedHorizontalChapter {
+  const _PreparedHorizontalChapter({
+    required this.info,
+    required this.content,
+    required this.pages,
+    required this.fingerprint,
+  });
+
+  final ReaderChapterInfo info;
+  final TextChapterContent content;
+  final List<ReaderPage> pages;
+  final ReaderLayoutFingerprint fingerprint;
+}
+
 /// 空闲时为横向阅读器准备相邻下一章的完整分页。
 ///
 /// 只使用现有 TextPainter 排版器和 layout LRU；每次 idle task 最多处理
 /// 当前策略的 8 个段落，并以会话、内容和布局世代丢弃过期结果。
 extension _TextReaderAdjacentPagination on _TextReaderViewState {
+  _PreparedHorizontalChapter? _preparedNextHorizontalChapter() {
+    if (_preferences.navigationMode != ReaderNavigationMode.horizontalPages ||
+        _adjacentPreparationStage != _AdjacentPreparationStage.ready) {
+      return null;
+    }
+    final _AdjacentPreparationTarget? target = _adjacentPreparationTarget;
+    final ReaderChapterInfo? info = _catalogByIndex[_chapterIndex + 1];
+    if (target == null ||
+        info == null ||
+        target.nextChapterId != info.id ||
+        target.chapterIndex != _chapterIndex ||
+        target.sessionGeneration != _sessionGeneration ||
+        target.contentEpoch != _contentEpoch) {
+      return null;
+    }
+    final TextChapterContent? content = _chapterCache[info.id];
+    if (content == null) return null;
+    final List<ReaderPage>? pages = _TextReaderViewState._layoutCache.peek(
+      target.layoutFingerprint,
+    );
+    if (pages == null || pages.isEmpty) return null;
+    return _PreparedHorizontalChapter(
+      info: info,
+      content: content,
+      pages: pages,
+      fingerprint: target.layoutFingerprint,
+    );
+  }
+
   void _completeChapterTransition(
     ReaderChapterPerformanceOutcome outcome, {
     int pageCount = 0,
@@ -268,6 +311,7 @@ extension _TextReaderAdjacentPagination on _TextReaderViewState {
     }
     if (_TextReaderViewState._layoutCache.contains(fingerprint)) {
       _adjacentPreparationStage = _AdjacentPreparationStage.ready;
+      if (mounted) setState(() {});
       return;
     }
     if (_adjacentSuppressedTarget?.matches(
@@ -392,6 +436,7 @@ extension _TextReaderAdjacentPagination on _TextReaderViewState {
           pageCount: pages.length,
           paragraphCount: content.paragraphs.length,
         );
+        if (mounted) setState(() {});
       } catch (_) {
         _completeAdjacentPreparation(
           ReaderChapterPerformanceOutcome.error,

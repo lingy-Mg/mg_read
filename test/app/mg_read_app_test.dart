@@ -131,7 +131,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(LibraryPage), findsOneWidget);
-    expect(find.text('无法从书源获取这本书的详情。'), findsOneWidget);
+    expect(find.text('无法从数据源获取这本书的详情。'), findsOneWidget);
     expect(find.text('重试'), findsOneWidget);
       expect(find.text('正文暂时无法打开'), findsNothing);
   });

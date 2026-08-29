@@ -5,7 +5,7 @@ enum LibraryBookDetailFailureReason {
   itemRead('item_read', '无法读取本地书架记录。'),
   itemMissing('item_missing', '书架记录不存在，可能已被删除。'),
   unsupportedContent('unsupported_content', '当前书架条目不是可阅读的小说。'),
-  sourceMissing('source_missing', '书架记录缺少书源信息，请重新加入书架。'),
+  sourceMissing('source_missing', '书架记录缺少数据源信息，请重新加入书架。'),
   catalogRead('catalog_read', '无法读取本地书架目录。'),
   presentationOpen('presentation_open', '无法显示书籍详情页面。'),
   unexpected('unexpected', '打开书架书籍详情时发生未分类错误。');

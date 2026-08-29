@@ -124,7 +124,7 @@ void main() {
     await saver.save(
       source: PluginSourceDescriptor(
         id: 'org.example.source',
-        displayName: '示例书源',
+        displayName: '示例数据源',
         pluginVersion: '1.0.0',
         contentKinds: const <PluginContentKind>[PluginContentKind.novel],
       ),
@@ -173,7 +173,7 @@ void main() {
     expect(chapterStates['chapter-2']?.availability, ReaderChapterAvailability.notDownloaded);
     final bookInfo = await firstRequest.dataSource.loadBookInfo(item.id.value);
     expect(bookInfo.description, '测试简介');
-    expect(bookInfo.sourceName, '示例书源');
+    expect(bookInfo.sourceName, '示例数据源');
     expect(bookInfo.sourceUrl, Uri.parse('https://source.example/books/book-1'));
     expect(bookInfo.wordCount, 123456);
     expect(bookInfo.chapterCount, 2);
@@ -235,7 +235,7 @@ void main() {
     await saver.save(
       source: PluginSourceDescriptor(
         id: 'org.example.source',
-        displayName: '示例书源',
+        displayName: '示例数据源',
         pluginVersion: '1.0.0',
         contentKinds: const <PluginContentKind>[PluginContentKind.novel],
       ),
@@ -482,7 +482,7 @@ final class _ColonChapterGateway extends _FakeGateway {
   @override
   Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async => PluginChaptersResult(
     pluginId: pluginId,
-    sourceName: '示例书源',
+    sourceName: '示例数据源',
     items: <PluginChapterSummary>[_chapter('chapter:1', '第一章', 0), _chapter('chapter:https://2', '第二章', 1)],
   );
 
@@ -490,7 +490,7 @@ final class _ColonChapterGateway extends _FakeGateway {
   Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async =>
       PluginChapterContent(
         pluginId: pluginId,
-        sourceName: '示例书源',
+        sourceName: '示例数据源',
         contentKind: PluginContentKind.novel,
         chapterId: chapterId,
         title: '第一章',
@@ -513,7 +513,7 @@ final class _GatedCatalogGateway extends _FakeGateway {
     await _catalogRelease.future;
     return PluginChaptersResult(
       pluginId: pluginId,
-      sourceName: '示例书源',
+      sourceName: '示例数据源',
       items: <PluginChapterSummary>[_chapter('chapter-1', '第一章', 0), _chapter('chapter-2', '第二章', 1)],
     );
   }
@@ -529,7 +529,7 @@ final class _FailOnceCatalogGateway extends _FakeGateway {
     return Future<PluginChaptersResult>.value(
       PluginChaptersResult(
         pluginId: pluginId,
-        sourceName: '示例书源',
+        sourceName: '示例数据源',
         items: <PluginChapterSummary>[_chapter('chapter-1', '第一章', 0), _chapter('chapter-2', '第二章', 1)],
       ),
     );
@@ -561,7 +561,7 @@ final class _FakeGateway implements SourceContentGateway {
     requestedCatalogCount += 1;
     return PluginChaptersResult(
       pluginId: pluginId,
-      sourceName: '示例书源',
+      sourceName: '示例数据源',
       items: <PluginChapterSummary>[
         _chapter('chapter-1', '第一章', 0, wordCount: 1234, url: 'https://source.example/books/book-1/chapter-1'),
         _chapter('chapter-2', '第二章', 1, url: 'https://source.example/books/book-1/chapter-2'),
@@ -574,7 +574,7 @@ final class _FakeGateway implements SourceContentGateway {
     requestedContentChapterIds.add(chapterId);
     return PluginChapterContent(
       pluginId: pluginId,
-      sourceName: '示例书源',
+      sourceName: '示例数据源',
       contentKind: PluginContentKind.novel,
       chapterId: chapterId,
       title: null,
@@ -589,7 +589,7 @@ final class _FakeGateway implements SourceContentGateway {
     requestedDetailCount += 1;
     return PluginContentDetail(
       pluginId: pluginId,
-      sourceName: '示例书源',
+      sourceName: '示例数据源',
       summary: PluginContentSummary(
         id: id,
         title: '测试书',

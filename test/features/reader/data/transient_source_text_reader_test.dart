@@ -12,7 +12,7 @@ void main() {
       final reader = TransientSourceTextReader(
         detail: PluginContentDetail(
           pluginId: 'org.example.source',
-          sourceName: '示例书源',
+          sourceName: '示例数据源',
           summary: _summary(),
           aliases: const <String>[],
           catalogUrl: null,
@@ -27,7 +27,7 @@ void main() {
           contentCalls += 1;
           return PluginChapterContent(
             pluginId: 'org.example.source',
-            sourceName: '示例书源',
+            sourceName: '示例数据源',
             contentKind: PluginContentKind.novel,
             chapterId: chapterId,
             title: null,
@@ -100,7 +100,7 @@ void main() {
       final reader = TransientSourceTextReader(
         detail: PluginContentDetail(
           pluginId: 'org.example.source',
-          sourceName: '示例书源',
+          sourceName: '示例数据源',
           summary: _summary(),
           aliases: const <String>[],
           catalogUrl: null,
@@ -156,7 +156,7 @@ PluginContentSummary _summary() {
 PluginChaptersResult _chapters({required List<PluginChapterSummary> items}) {
   return PluginChaptersResult(
     pluginId: 'org.example.source',
-    sourceName: '示例书源',
+    sourceName: '示例数据源',
     items: items,
   );
 }

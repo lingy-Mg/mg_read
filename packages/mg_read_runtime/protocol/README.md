@@ -19,8 +19,8 @@
 `plugins.installation.usage.v1` 的 `archive` 范围统计 Runtime 保留的原始 `.mgplugin`，
 `data` 范围排除 `node_modules`，`npm` 范围统计物化后的依赖树；三者只返回字节数和文件数。
 
-`plugins.uninstall.v1` 仅接收 `pluginId`，为已安装数据源写入删除标记；当前 Runtime 不热卸载
-ESM，下一次冷启动才会移除该数据源。开发源不能通过此能力移除。
+`plugins.uninstall.v1` 仅接收 `pluginId`，为已安装数据源插件写入删除标记；当前 Runtime 不热卸载
+ESM，下一次冷启动才会移除该数据源插件。开发数据源插件不能通过此能力移除。
 
 Node Core 测试和 Flutter↔Node 集成测试共同读取该 fixture，避免两端分别猜测版本、方法或
 上限。历史 `desktop-runtime-m1.2.json` 只保留为 bootstrap 证据，不是当前业务 fixture；旧

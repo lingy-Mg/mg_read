@@ -1,7 +1,7 @@
-/// 发现页书源语义图标映射。
+/// 发现页数据源语义图标映射。
 ///
 /// 职责：把 Plugin API 的稳定语义图标名映射为宿主 Material 图标，供发现页多种组件复用。
-/// 注意：书源不能传 IconData、字体码点、颜色或尺寸；未知图标会在 Runtime 边界被拒绝。
+/// 注意：数据源不能传 IconData、字体码点、颜色或尺寸；未知图标会在 Runtime 边界被拒绝。
 library;
 
 import 'package:flutter/material.dart';

@@ -1,4 +1,4 @@
-/// 数据来源 artifact 导入错误弹窗。
+/// 数据源插件 artifact 导入错误弹窗。
 ///
 /// 职责：
 /// - 将稳定应用错误码映射为双 artifact 格式的中文提示。
@@ -21,7 +21,7 @@ Future<void> showPluginImportErrorDialog(BuildContext context, Object error) {
   return showDialog<void>(
     context: context,
     builder: (BuildContext dialogContext) => AlertDialog(
-      title: const Text('数据来源导入失败'),
+      title: const Text('数据源导入失败'),
       content: SelectableText(
         '${pluginImportErrorMessage(appError.code)}\n\n'
         '错误码：${appError.code.wireValue}',
@@ -32,15 +32,15 @@ Future<void> showPluginImportErrorDialog(BuildContext context, Object error) {
 }
 
 String pluginImportErrorMessage(AppErrorCode code) => switch (code) {
-  AppErrorCode.invalidRequest || AppErrorCode.invalidFormat => '选择的文件不是有效的 MgRead 数据来源，请确认文件后缀为 .mgplugin.js 或 .mgplugin，且文件没有损坏。',
-  AppErrorCode.fileNameInvalid => '选择的文件名称不是 .mgplugin.js 或 .mgplugin。请重新选择 MgRead 数据来源文件。',
+  AppErrorCode.invalidRequest || AppErrorCode.invalidFormat => '选择的文件不是有效的 MgRead 数据源，请确认文件后缀为 .mgplugin.js 或 .mgplugin，且文件没有损坏。',
+  AppErrorCode.fileNameInvalid => '选择的文件名称不是 .mgplugin.js 或 .mgplugin。请重新选择 MgRead 数据源插件文件。',
   AppErrorCode.fileUnavailable => '手机找不到选择的文件。请把文件复制到手机本地存储后重新选择。',
   AppErrorCode.fileUnreadable || AppErrorCode.fileReadFailed => '手机无法读取选择的文件。请检查文件权限，并把文件复制到手机本地存储后重试。',
-  AppErrorCode.fileTooLarge => '数据来源文件超过 32 MB，无法导入。',
-  AppErrorCode.pluginInstallFailed => '文件已经读取，但数据来源安装失败。请确认这是标准 MgRead .mgplugin.js 或 .mgplugin 文件，并重新导出后再试。',
+  AppErrorCode.fileTooLarge => '数据源插件文件超过 32 MB，无法导入。',
+  AppErrorCode.pluginInstallFailed => '文件已经读取，但数据源插件安装失败。请确认这是标准 MgRead .mgplugin.js 或 .mgplugin 文件，并重新导出后再试。',
   AppErrorCode.diskFull => '手机存储空间不足，清理空间后再试。',
   AppErrorCode.runtimeStartFailed ||
   AppErrorCode.runtimeUnavailable ||
-  AppErrorCode.runtimeNotReady => '数据来源运行环境启动失败。请完全退出应用后重试；如果仍失败，请提供这个错误码。',
+  AppErrorCode.runtimeNotReady => '数据源运行环境启动失败。请完全退出应用后重试；如果仍失败，请提供这个错误码。',
   _ => '导入过程遇到未分类错误，请提供这个错误码以便继续定位。',
 };

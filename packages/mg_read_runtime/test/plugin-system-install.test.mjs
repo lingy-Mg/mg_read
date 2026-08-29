@@ -173,7 +173,7 @@ test("mgplugin archive restores npm packages and manager cold-activates named ex
   assert.equal(search.items[0].coverUrl, null);
   assert.deepEqual(search.items[0].tags, []);
   assert.equal(search.nextCursor, null);
-  assert.equal(search.sourceName, "Runtime 标准测试书源");
+  assert.equal(search.sourceName, "Runtime 标准测试数据源");
   const suggestions = await manager.searchSuggestions(
     "org.mgread.runtime.fixture",
     { cursor: null, pageSize: 20 },
@@ -182,7 +182,7 @@ test("mgplugin archive restores npm packages and manager cold-activates named ex
   );
   assert.deepEqual(suggestions.items, []);
   assert.equal(suggestions.nextCursor, null);
-  assert.equal(suggestions.sourceName, "Runtime 标准测试书源");
+  assert.equal(suggestions.sourceName, "Runtime 标准测试数据源");
   const discovery = await manager.discover(
     "org.mgread.runtime.fixture",
     { target: null, cursor: null, collectionId: null, pageSize: 20 },

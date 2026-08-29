@@ -315,6 +315,174 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
   });
 
+  testWidgets(
+    'forward chapter handoff keeps readable content visible on every frame',
+    (WidgetTester tester) async {
+      final controller = TextReaderController();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TextReaderView(
+              bookId: 'chapter-boundary-animation-book',
+              controller: controller,
+              dataSource: const _PreviousChapterDataSource(),
+              stateStore: const _EmptyStateStore(),
+            ),
+          ),
+        ),
+      );
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      });
+      for (var index = 0; index < 12; index++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+
+      final Finder surface = find.byKey(
+        const ValueKey<String>('reader-content-surface'),
+      );
+      final Rect readerSurface = tester.getRect(surface);
+      final Finder previousTail = find.textContaining(
+        _PreviousChapterDataSource.tail,
+      );
+      final Finder nextBody = find.text('第二章正文');
+      for (var turn = 0; turn < 8; turn++) {
+        final bool tailVisible =
+            previousTail.evaluate().isNotEmpty &&
+            tester.getRect(previousTail).overlaps(readerSurface);
+        if (tailVisible) break;
+        unawaited(controller.nextPage());
+        await tester.pumpAndSettle();
+      }
+      expect(controller.snapshot.chapter?.id, 'chapter-1');
+      expect(tester.getRect(previousTail).overlaps(readerSurface), isTrue);
+
+      unawaited(controller.nextPage());
+      var reachedNextChapter = false;
+      for (var frame = 0; frame < 24; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        final bool tailVisible =
+            previousTail.evaluate().isNotEmpty &&
+            tester.getRect(previousTail).overlaps(readerSurface);
+        final bool nextVisible =
+            nextBody.evaluate().isNotEmpty &&
+            tester.getRect(nextBody).overlaps(readerSurface);
+        expect(
+          tailVisible || nextVisible,
+          isTrue,
+          reason: 'frame $frame must keep either chapter boundary page visible',
+        );
+        if (controller.snapshot.chapter?.id == 'chapter-2') {
+          reachedNextChapter = true;
+          expect(
+            nextVisible,
+            isTrue,
+            reason:
+                'chapter state and its first visible page must commit together',
+          );
+        }
+      }
+
+      await tester.pumpAndSettle();
+      expect(reachedNextChapter, isTrue);
+      expect(controller.snapshot.chapter?.id, 'chapter-2');
+      expect(controller.snapshot.progress?.paragraphId, 'chapter-2-body');
+      expect(controller.snapshot.progress?.characterOffset, 0);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 16));
+    },
+  );
+
+  testWidgets(
+    'backward drag from the next chapter restores the previous chapter tail',
+    (WidgetTester tester) async {
+      final controller = TextReaderController();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TextReaderView(
+              bookId: 'chapter-boundary-backward-book',
+              controller: controller,
+              dataSource: const _PreviousChapterDataSource(),
+              stateStore: const _EmptyStateStore(),
+            ),
+          ),
+        ),
+      );
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      });
+      for (var index = 0; index < 12; index++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      final Finder initialSurface = find.byKey(
+        const ValueKey<String>('reader-content-surface'),
+      );
+      final Finder initialTail = find.textContaining(
+        _PreviousChapterDataSource.tail,
+      );
+      for (var turn = 0; turn < 8; turn++) {
+        final bool tailVisible =
+            initialTail.evaluate().isNotEmpty &&
+            tester
+                .getRect(initialTail)
+                .overlaps(tester.getRect(initialSurface));
+        if (tailVisible) break;
+        unawaited(controller.nextPage());
+        await tester.pumpAndSettle();
+      }
+      expect(
+        tester.getRect(initialTail).overlaps(tester.getRect(initialSurface)),
+        isTrue,
+      );
+      unawaited(controller.nextPage());
+      await tester.pumpAndSettle();
+      expect(controller.snapshot.chapter?.id, 'chapter-2');
+
+      final Finder surface = find.byKey(
+        const ValueKey<String>('reader-content-surface'),
+      );
+      await tester.drag(surface, const Offset(700, 0));
+      var reachedPreviousChapter = false;
+      for (var frame = 0; frame < 60; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        if (controller.snapshot.chapter?.id != 'chapter-1') continue;
+        reachedPreviousChapter = true;
+        final Finder tail = find.textContaining(
+          _PreviousChapterDataSource.tail,
+        );
+        final bool tailVisible =
+            tail.evaluate().isNotEmpty &&
+            tester.getRect(tail).overlaps(tester.getRect(surface));
+        final Finder head = find.textContaining(
+          _PreviousChapterDataSource.head,
+        );
+        final bool headVisible =
+            head.evaluate().isNotEmpty &&
+            tester.getRect(head).overlaps(tester.getRect(surface));
+        expect(
+          tailVisible,
+          isTrue,
+          reason:
+              'previous chapter state and its tail page must commit together',
+        );
+        expect(headVisible, isFalse);
+      }
+      await tester.pumpAndSettle();
+
+      expect(reachedPreviousChapter, isTrue);
+      expect(controller.snapshot.chapter?.id, 'chapter-1');
+      expect(controller.snapshot.progress?.paragraphId, 'chapter-1-tail');
+      final Finder tail = find.textContaining(_PreviousChapterDataSource.tail);
+      expect(tail, findsOneWidget);
+      expect(tester.getRect(tail).overlaps(tester.getRect(surface)), isTrue);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 16));
+    },
+  );
+
   testWidgets('idle adjacent layout hit crosses without a boundary spinner', (
     WidgetTester tester,
   ) async {
@@ -600,6 +768,7 @@ final class _DenseChapterDataSource extends _InitialChapterDataSource {
 class _PreviousChapterDataSource implements TextReaderDataSource {
   const _PreviousChapterDataSource();
 
+  static const String head = '第一章开头标记';
   static const String tail = '第一章末尾标记';
   static const ReaderChapterInfo _first = ReaderChapterInfo(
     id: 'chapter-1',
@@ -646,7 +815,8 @@ class _PreviousChapterDataSource implements TextReaderDataSource {
         for (var index = 0; index < 8; index++)
           TextParagraph(
             id: 'chapter-1-$index',
-            text: List<String>.filled(80, '正文').join(),
+            text:
+                '${index == 0 ? head : ''}${List<String>.filled(80, '正文').join()}',
           ),
         const TextParagraph(id: 'chapter-1-tail', text: tail),
       ],

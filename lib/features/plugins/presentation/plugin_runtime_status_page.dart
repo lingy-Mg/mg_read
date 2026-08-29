@@ -2,7 +2,7 @@
 ///
 /// 职责：
 /// - 展示 Runtime 数据源状态及受控管理操作。
-/// - 保持主页只承载数据来源添加、查看与启停。
+/// - 保持主页只承载数据源添加、查看与启停。
 ///
 /// 注意：
 /// - 页面只调用应用层窄端口，不接触 Runtime HTTP 或资源 token。
@@ -53,7 +53,7 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
               AppSecondaryPageTopBar(
                 headerKey: const Key('data-source-top-bar'),
                 backButtonKey: const Key('profile-detail-back'),
-                title: '管理数据来源',
+                title: '管理数据源',
                 onBack: onBackRequested,
                 actions: <Widget>[
                   if (onRuntimeStatusRequested != null)
@@ -65,7 +65,7 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
                     ),
                   AppSecondaryPageIconButton(
                     key: const Key('data-source-management-help'),
-                    label: '数据来源说明',
+                    label: '数据源说明',
                     icon: Icons.help_outline,
                     onPressed: () =>
                         Navigator.of(context).push<void>(MaterialPageRoute<void>(builder: (_) => const PluginRuntimeHelpPage())),
@@ -95,7 +95,7 @@ class _DataSourceLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const AppLoadingState(label: '正在加载数据来源', message: '正在加载数据来源', progressKey: Key('data-source-management-loading'));
+    return const AppLoadingState(label: '正在加载数据源', message: '正在加载数据源', progressKey: Key('data-source-management-loading'));
   }
 }
 
@@ -107,7 +107,7 @@ class _DataSourceFailure extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: TextButton(key: const Key('data-source-management-retry'), onPressed: onRetry, child: const Text('数据来源暂不可用，点击重试')),
+      child: TextButton(key: const Key('data-source-management-retry'), onPressed: onRetry, child: const Text('数据源暂不可用，点击重试')),
     );
   }
 }
@@ -128,7 +128,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
       await ref.read(pluginRuntimeSourceActionProvider.notifier).setEnabled(pluginId: source.id, enabled: enabled);
     } on Object {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据来源状态更新失败，请稍后重试。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源状态更新失败，请稍后重试。')));
     }
   }
 
@@ -136,7 +136,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
     try {
       final imported = await ref.read(pluginRuntimeSourceImportProvider.notifier).importLocalPlugin();
       if (!mounted || !imported) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据来源已添加。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源已添加。')));
     } on Object catch (error) {
       if (!mounted) return;
       await showPluginImportErrorDialog(context, error);
@@ -192,7 +192,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
                         ),
                         if (index < widget.sources.length - 1)
                           Padding(
-                            padding: const EdgeInsets.only(left: AppSpacing.dataSourceMarkExtent + AppSpacing.regular),
+                            padding: const EdgeInsets.only(left: AppSpacing.dataSourceManagementMarkExtent + AppSpacing.compact),
                             child: Divider(height: 1, color: tokens.divider),
                           ),
                       ],
@@ -293,7 +293,7 @@ class _DataSourceSectionHeader extends StatelessWidget {
     return Row(
       children: <Widget>[
         Expanded(
-          child: Text('我的数据来源', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700, height: 1.2, letterSpacing: -0.3)),
+          child: Text('我的数据源', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700, height: 1.2, letterSpacing: -0.3)),
         ),
         Text(
           '已启用 $enabledCount/$sourceCount',
@@ -316,7 +316,7 @@ class _DataSourceEmptyState extends StatelessWidget {
       child: Align(
         alignment: Alignment.centerLeft,
         child: Text(
-          '暂无已安装的数据来源',
+          '暂无已安装的数据源',
           key: const Key('data-source-management-empty'),
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
         ),
@@ -336,7 +336,7 @@ class _AddDataSourceButton extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Semantics(
       button: true,
-      label: '添加数据来源',
+      label: '添加数据源',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -366,7 +366,7 @@ class _AddDataSourceButton extends StatelessWidget {
                       Icon(Icons.add_rounded, color: tokens.dataSourceAccent, size: AppSpacing.dataSourceAddIconSize),
                     const SizedBox(width: AppSpacing.compact),
                     Text(
-                      isImporting ? '正在添加数据来源…' : '添加数据来源',
+                      isImporting ? '正在添加数据源…' : '添加数据源',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(color: tokens.dataSourceAccent, fontWeight: FontWeight.w600),
                     ),
                   ],

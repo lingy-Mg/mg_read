@@ -8,7 +8,7 @@ final class BookshelfRepository {
         operation: 'bookshelfAdd',
         contentKind: kind.code,
         itemCount: 1,
-        action: () => _add(title: title, author: author, kind: kind, source: source),
+        action: () => _library._withStorageMaintenance(() => _add(title: title, author: author, kind: kind, source: source)),
       );
 
   /// Adds or returns the item identified by a typed source reference.
@@ -96,8 +96,11 @@ final class BookshelfRepository {
     },
   );
 
-  Future<void> remove(LibraryItemId id, LibraryRemovalPolicy policy) =>
-      _library._trace(operation: 'bookshelfRemove', itemCount: 1, action: () => _remove(id, policy));
+  Future<void> remove(LibraryItemId id, LibraryRemovalPolicy policy) => _library._trace(
+    operation: 'bookshelfRemove',
+    itemCount: 1,
+    action: () => _library._withStorageMaintenance(() => _remove(id, policy)),
+  );
 
   /// Changes only the local shelf visibility for one item.
   ///
@@ -180,18 +183,29 @@ final class BookshelfRepository {
   Future<void> _remove(LibraryItemId id, LibraryRemovalPolicy policy) async {
     final record = await _library._persistence.metadataRecords.read(id: id.value, scope: _scope);
     if (record == null) return;
-    if (record.document['kind'] == ContentKind.manga.code) {
-      await _library._persistence.fileObjects.deleteMangaAssets(id.value);
-    }
-    await _library._persistence.fileObjects.deleteCover(id.value);
-    await _library._persistence.metadataRecords.delete(
-      previous: record,
-    ); /* objects remain unless a later bounded maintenance pass proves no references */
+    final records = <RecordEnvelope>[record];
     for (final kind in [_readingProgressKind, _bookmarkKind, _mangaProgressKind, _mangaBookmarkKind]) {
-      final related = await _library._persistence.metadataRecords.list(RecordQuery(recordKind: kind, scope: _scope, parentId: id.value, limit: 1000));
-      for (final child in related.records) {
-        await _library._persistence.metadataRecords.delete(previous: child);
+      final related = await _library._persistence.metadataRecords.list(
+        RecordQuery(recordKind: kind, scope: _scope, parentId: id.value, limit: 1000),
+      );
+      records.addAll(related.records);
+    }
+    await _library._persistence.metadataRecords.transaction(() async {
+      for (var offset = 0; offset < records.length; offset += PersistenceRecordStore.maxWriteBatchSize) {
+        final end = min(offset + PersistenceRecordStore.maxWriteBatchSize, records.length);
+        await _library._persistence.metadataRecords.deleteBatch(records.sublist(offset, end));
       }
+    }); /* retained catalog/content is reclaimed only by explicit maintenance */
+    if (policy == LibraryRemovalPolicy.removeIncludingUnreferencedContent) {
+      await _library.storageMaintenance._clearLocked();
+    }
+    try {
+      if (record.document['kind'] == ContentKind.manga.code) {
+        await _library._persistence.fileObjects.deleteMangaAssets(id.value);
+      }
+      await _library._persistence.fileObjects.deleteCover(id.value);
+    } on Object {
+      // Metadata is already authoritative. A later cache clear can retry files.
     }
   }
 }

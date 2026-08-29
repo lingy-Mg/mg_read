@@ -5,7 +5,7 @@
 /// - 向展示层隐藏 Content Library 持久化实现。
 ///
 /// 注意：
-/// - 启动数据只用于立即展示；书源新数据由详情页在后台刷新。
+/// - 启动数据只用于立即展示；数据源新数据由详情页在后台刷新。
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';

@@ -15,26 +15,77 @@ extension _TextReaderProgressNavigation on _TextReaderViewState {
 
   void _onHorizontalPageChanged(int rawIndex) {
     if (_changingChapter || _pages.isEmpty) return;
-    if (_restoringHorizontalAnchor &&
-        rawIndex > 0 &&
-        rawIndex < _pages.length + 1) {
-      _pageIndex = rawIndex - 1;
-      _reconcileAdjacentPreparation();
-      if (mounted) setState(() {});
+    if (_restoringHorizontalAnchor) {
+      final int? targetRawIndex = _restoringHorizontalRawIndex;
+      if (rawIndex == targetRawIndex &&
+          rawIndex > 0 &&
+          rawIndex < _pages.length + 1) {
+        _pageIndex = rawIndex - 1;
+        _reconcileAdjacentPreparation();
+        if (mounted) setState(() {});
+      }
+      // Replacing a chapter changes PageView's item count. It can emit a
+      // callback for the old/clamped raw page before the requested semantic
+      // anchor is applied. Never let that stale callback overwrite the tail
+      // page selected for a previous-chapter transition.
       return;
     }
     if (rawIndex == 0) {
-      unawaited(_previousChapter());
       return;
     }
     if (rawIndex == _pages.length + 1) {
-      unawaited(_nextChapter());
       return;
     }
     _pageIndex = rawIndex - 1;
     _updateProgressFromPage();
     _reconcileAdjacentPreparation();
     if (mounted) setState(() {});
+  }
+
+  void _commitHorizontalBoundaryAfterScroll() {
+    if (_changingChapter ||
+        _pages.isEmpty ||
+        !_pageController.hasClients ||
+        _restoringHorizontalAnchor) {
+      return;
+    }
+    final double? page = _pageController.page;
+    if (page == null) return;
+    final int rawIndex = page.round();
+    if ((page - rawIndex).abs() > 0.001) return;
+    if (rawIndex == 0) {
+      unawaited(_previousChapter());
+    } else if (rawIndex == _pages.length + 1) {
+      unawaited(_nextChapter());
+    }
+  }
+
+  void _restoreCurrentHorizontalPage() {
+    if (_preferences.navigationMode != ReaderNavigationMode.horizontalPages) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pageController.hasClients) return;
+      _restoreHorizontalPageWithoutProgress(_pageIndex + 1);
+    });
+  }
+
+  void _restoreHorizontalPageWithoutProgress(int rawIndex) {
+    _restoringHorizontalAnchor = true;
+    _restoringHorizontalRawIndex = rawIndex;
+    _pageController.jumpToPage(rawIndex);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _restoringHorizontalRawIndex != rawIndex) return;
+        if (rawIndex > 0 && rawIndex < _pages.length + 1) {
+          _pageIndex = rawIndex - 1;
+        }
+        _restoringHorizontalRawIndex = null;
+        _restoringHorizontalAnchor = false;
+      });
+      WidgetsBinding.instance.scheduleFrame();
+    });
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   void _updateProgressFromPage() {

@@ -17,8 +17,7 @@ final class DiscoverySourceSelected extends DiscoverySourcePickerResult {
 }
 
 /// The user requested the Runtime-owned source management surface.
-final class DiscoverySourceManagementRequested
-    extends DiscoverySourcePickerResult {
+final class DiscoverySourceManagementRequested extends DiscoverySourcePickerResult {
   const DiscoverySourceManagementRequested();
 }
 
@@ -36,39 +35,30 @@ Future<DiscoverySourcePickerResult?> showDiscoverySourcePicker(
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.30),
     elevation: 0,
-    builder: (context) => _DiscoverySourcePickerSheet(
-      sources: sources,
-      selectedSourceId: selectedSourceId,
-    ),
+    builder: (context) => _DiscoverySourcePickerSheet(sources: sources, selectedSourceId: selectedSourceId),
   );
 }
 
 enum _SourceFilter { all, enabled, recent }
 
 class _DiscoverySourcePickerSheet extends StatefulWidget {
-  const _DiscoverySourcePickerSheet({
-    required this.sources,
-    required this.selectedSourceId,
-  });
+  const _DiscoverySourcePickerSheet({required this.sources, required this.selectedSourceId});
 
   final List<PluginSourceDescriptor> sources;
   final String selectedSourceId;
 
   @override
-  State<_DiscoverySourcePickerSheet> createState() =>
-      _DiscoverySourcePickerSheetState();
+  State<_DiscoverySourcePickerSheet> createState() => _DiscoverySourcePickerSheetState();
 }
 
-class _DiscoverySourcePickerSheetState
-    extends State<_DiscoverySourcePickerSheet> {
+class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet> {
   _SourceFilter _filter = _SourceFilter.all;
   String _query = '';
 
   Iterable<PluginSourceDescriptor> get _visibleSources {
     final query = _query.trim().toLowerCase();
     return widget.sources.where((source) {
-      if (_filter == _SourceFilter.recent &&
-          source.id != widget.selectedSourceId) {
+      if (_filter == _SourceFilter.recent && source.id != widget.selectedSourceId) {
         return false;
       }
       if (query.isEmpty) return true;
@@ -100,10 +90,9 @@ class _DiscoverySourcePickerSheetState
                     alignment: Alignment.center,
                     children: <Widget>[
                       Text(
-                        '选择数据来源',
+                        '选择数据源',
                         key: Key('discovery-source-picker-title'),
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w600),
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       Positioned(
                         right: 22,
@@ -115,11 +104,7 @@ class _DiscoverySourcePickerSheetState
                             key: const Key('discovery-source-picker-close'),
                             behavior: HitTestBehavior.opaque,
                             onTap: () => Navigator.of(context).pop(),
-                            child: Icon(
-                              Icons.close_rounded,
-                              size: 20,
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
+                            child: Icon(Icons.close_rounded, size: 20, color: Theme.of(context).colorScheme.onSurface),
                           ),
                         ),
                       ),
@@ -127,9 +112,7 @@ class _DiscoverySourcePickerSheetState
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.comfortable,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.comfortable),
                   child: SizedBox(
                     height: 28,
                     child: TextField(
@@ -139,29 +122,17 @@ class _DiscoverySourcePickerSheetState
                       decoration: InputDecoration(
                         isDense: true,
                         contentPadding: EdgeInsets.zero,
-                        hintText: '搜索数据来源',
-                        hintStyle: Theme.of(context).textTheme.bodyMedium
-                            ?.copyWith(color: tokens.mutedText),
+                        hintText: '搜索数据源',
+                        hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
                         prefixIcon: IconTheme(
-                          data: IconThemeData(
-                            color: tokens.mutedText,
-                            size: 18,
-                          ),
+                          data: IconThemeData(color: tokens.mutedText, size: 18),
                           child: const Icon(Icons.search_rounded),
                         ),
-                        prefixIconConstraints: const BoxConstraints(
-                          minWidth: 36,
-                        ),
+                        prefixIconConstraints: const BoxConstraints(minWidth: 36),
                         filled: true,
                         fillColor: tokens.mutedSurface,
-                        border: const OutlineInputBorder(
-                          borderRadius: AppRadii.pill,
-                          borderSide: BorderSide.none,
-                        ),
-                        enabledBorder: const OutlineInputBorder(
-                          borderRadius: AppRadii.pill,
-                          borderSide: BorderSide.none,
-                        ),
+                        border: const OutlineInputBorder(borderRadius: AppRadii.pill, borderSide: BorderSide.none),
+                        enabledBorder: const OutlineInputBorder(borderRadius: AppRadii.pill, borderSide: BorderSide.none),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: AppRadii.pill,
                           borderSide: BorderSide(color: tokens.accent),
@@ -172,19 +143,13 @@ class _DiscoverySourcePickerSheetState
                 ),
                 const SizedBox(height: 8),
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.comfortable,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.comfortable),
                   child: Row(
                     children: <Widget>[
                       for (final filter in _SourceFilter.values)
                         Expanded(
                           child: Padding(
-                            padding: EdgeInsetsDirectional.only(
-                              end: filter == _SourceFilter.recent
-                                  ? 0
-                                  : AppSpacing.compact,
-                            ),
+                            padding: EdgeInsetsDirectional.only(end: filter == _SourceFilter.recent ? 0 : AppSpacing.compact),
                             child: _SourceFilterButton(
                               label: switch (filter) {
                                 _SourceFilter.all => '全部',
@@ -202,35 +167,23 @@ class _DiscoverySourcePickerSheetState
                 const SizedBox(height: 6),
                 Expanded(
                   child: visibleSources.isEmpty
-                      ? const Center(child: Text('没有匹配的数据来源'))
+                      ? const Center(child: Text('没有匹配的数据源'))
                       : ListView.separated(
                           key: const Key('discovery-source-picker-list'),
-                          padding: const EdgeInsets.fromLTRB(
-                            AppSpacing.comfortable,
-                            0,
-                            AppSpacing.comfortable,
-                            0,
-                          ),
+                          padding: const EdgeInsets.fromLTRB(AppSpacing.comfortable, 0, AppSpacing.comfortable, 0),
                           itemCount: visibleSources.length,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(height: 0.5),
+                          separatorBuilder: (_, _) => const SizedBox(height: 0.5),
                           itemBuilder: (context, index) {
                             final source = visibleSources[index];
                             return _SourcePickerRow(
                               source: source,
                               selected: source.id == widget.selectedSourceId,
-                              onPressed: () => Navigator.of(
-                                context,
-                              ).pop(DiscoverySourceSelected(source.id)),
+                              onPressed: () => Navigator.of(context).pop(DiscoverySourceSelected(source.id)),
                             );
                           },
                         ),
                 ),
-                _SourcePickerFooter(
-                  onManagePressed: () => Navigator.of(
-                    context,
-                  ).pop(const DiscoverySourceManagementRequested()),
-                ),
+                _SourcePickerFooter(onManagePressed: () => Navigator.of(context).pop(const DiscoverySourceManagementRequested())),
               ],
             ),
           ),
@@ -241,11 +194,7 @@ class _DiscoverySourcePickerSheetState
 }
 
 class _SourceFilterButton extends StatelessWidget {
-  const _SourceFilterButton({
-    required this.label,
-    required this.selected,
-    required this.onPressed,
-  });
+  const _SourceFilterButton({required this.label, required this.selected, required this.onPressed});
 
   final String label;
   final bool selected;
@@ -258,7 +207,7 @@ class _SourceFilterButton extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: '筛选数据来源：$label',
+      label: '筛选数据源：$label',
       child: Material(
         color: selected ? tokens.accentSoft : tokens.mutedSurface,
         borderRadius: const BorderRadius.all(Radius.circular(7)),
@@ -284,11 +233,7 @@ class _SourceFilterButton extends StatelessWidget {
 }
 
 class _SourcePickerRow extends StatelessWidget {
-  const _SourcePickerRow({
-    required this.source,
-    required this.selected,
-    required this.onPressed,
-  });
+  const _SourcePickerRow({required this.source, required this.selected, required this.onPressed});
 
   final PluginSourceDescriptor source;
   final bool selected;
@@ -314,20 +259,11 @@ class _SourcePickerRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               borderRadius: const BorderRadius.all(Radius.circular(8)),
-              border: Border.all(
-                color: selected
-                    ? tokens.accent.withValues(alpha: 0.35)
-                    : tokens.divider,
-              ),
+              border: Border.all(color: selected ? tokens.accent.withValues(alpha: 0.35) : tokens.divider),
             ),
             child: Row(
               children: <Widget>[
-                SourceIcon(
-                  sourceId: source.id,
-                  displayName: source.displayName,
-                  size: 44,
-                  borderRadius: 9,
-                ),
+                SourceIcon(sourceId: source.id, displayName: source.displayName, iconUrl: source.iconUrl, size: 44, borderRadius: 9),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -338,24 +274,14 @@ class _SourcePickerRow extends StatelessWidget {
                         source.displayName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          height: 1.1,
-                          fontWeight: FontWeight.w500,
-                        ),
+                        style: theme.textTheme.titleMedium?.copyWith(height: 1.1, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        SourceBranding.description(
-                          sourceId: source.id,
-                          displayName: source.displayName,
-                          value: source.description,
-                        ),
+                        SourceBranding.description(sourceId: source.id, displayName: source.displayName, value: source.description),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: tokens.mutedText,
-                          height: 1.1,
-                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText, height: 1.1),
                       ),
                     ],
                   ),
@@ -386,15 +312,9 @@ class _SourceSelectionIndicator extends StatelessWidget {
       decoration: BoxDecoration(
         color: selected ? tokens.accent : Colors.transparent,
         shape: BoxShape.circle,
-        border: Border.all(
-          color: selected
-              ? tokens.accent
-              : tokens.mutedText.withValues(alpha: 0.72),
-        ),
+        border: Border.all(color: selected ? tokens.accent : tokens.mutedText.withValues(alpha: 0.72)),
       ),
-      child: selected
-          ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
-          : null,
+      child: selected ? const Icon(Icons.check_rounded, size: 12, color: Colors.white) : null,
     );
   }
 }
@@ -407,9 +327,7 @@ class _SourcePickerFooter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
-    final textStyle = Theme.of(
-      context,
-    ).textTheme.titleMedium?.copyWith(color: tokens.accent);
+    final textStyle = Theme.of(context).textTheme.titleMedium?.copyWith(color: tokens.accent);
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
@@ -428,26 +346,17 @@ class _SourcePickerFooter extends StatelessWidget {
                   onPressed: onManagePressed,
                   icon: const Icon(Icons.settings_outlined, size: 18),
                   label: const Text('管理数据源'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: tokens.accent,
-                    textStyle: textStyle,
-                  ),
+                  style: TextButton.styleFrom(foregroundColor: tokens.accent, textStyle: textStyle),
                 ),
               ),
-              SizedBox(
-                height: 22,
-                child: VerticalDivider(color: tokens.divider),
-              ),
+              SizedBox(height: 22, child: VerticalDivider(color: tokens.divider)),
               Expanded(
                 child: TextButton.icon(
                   key: const Key('discovery-source-picker-add'),
                   onPressed: onManagePressed,
                   icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
                   label: const Text('添加数据源'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: tokens.accent,
-                    textStyle: textStyle,
-                  ),
+                  style: TextButton.styleFrom(foregroundColor: tokens.accent, textStyle: textStyle),
                 ),
               ),
             ],

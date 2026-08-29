@@ -1,11 +1,11 @@
-/// 数据来源说明与开发工具页面。
+/// 数据源说明与开发工具页面。
 ///
 /// 职责：
-/// - 集中展示数据来源使用说明和受控的开发辅助入口。
+/// - 集中展示数据源使用说明和受控的开发辅助入口。
 /// - 通过应用层窄端口执行目录选择、私有目录和 Debug 检查页操作。
 ///
 /// 注意：
-/// - 管理主页只保留数据来源添加和启停，不承载开发操作。
+/// - 管理主页只保留数据源添加和启停，不承载开发操作。
 /// - 不显示 Runtime 私有路径、内部端口或控制协议。
 ///
 /// TODO:
@@ -43,7 +43,7 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
       final developmentCount = connection.plugins.where((PluginRuntimePlugin source) => source.status == 'development').length;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(developmentCount > 0 ? '已识别 $developmentCount 个开发数据来源，即时生效。' : '未识别开发数据来源。请选择包含书源子目录的集合目录。')));
+      ).showSnackBar(SnackBar(content: Text(developmentCount > 0 ? '已识别 $developmentCount 个开发数据源插件，即时生效。' : '未识别开发数据源插件。请选择包含数据源插件子目录的集合目录。')));
     } on Object {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('开发目录添加失败，请检查目录后重试。')));
@@ -74,7 +74,7 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
               AppSecondaryPageTopBar(
                 headerKey: const Key('data-source-help-top-bar'),
                 backButtonKey: const Key('data-source-help-back'),
-                title: '数据来源说明',
+                title: '数据源说明',
                 onBack: () => Navigator.of(context).pop(),
               ),
               Expanded(
@@ -89,8 +89,8 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
                   children: <Widget>[
                     const _HelpSection(
                       icon: Icons.auto_stories_outlined,
-                      title: '管理数据来源',
-                      body: '在管理页查看已添加的数据来源，并直接启用或停用它们。添加数据来源会从本地选择标准 MgRead .mgplugin 文件。',
+                      title: '管理数据源',
+                      body: '在管理页查看已添加的数据源，并直接启用或停用它们。添加数据源会从本地选择标准 MgRead .mgplugin 文件。',
                     ),
                     if (canSelectDevelopmentDirectory) ...<Widget>[
                       const SizedBox(height: AppSpacing.regular),
@@ -174,15 +174,15 @@ class _DevelopmentDirectorySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) => _HelpSection(
     icon: Icons.code_rounded,
-    title: '开发数据来源',
-    body: '请选择书源集合目录，例如 …\\plugins\\sources。Runtime 只读取它的第一层子目录；不要选择单个书源目录。',
+    title: '开发数据源插件',
+    body: '请选择数据源插件集合目录，例如 …\\plugins\\sources。Runtime 只读取它的第一层子目录；不要选择单个数据源插件目录。',
     action: OutlinedButton.icon(
       key: const Key('data-source-add-development-directory'),
       onPressed: isSelecting ? null : onPressed,
       icon: isSelecting
           ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
           : const Icon(Icons.folder_open_outlined),
-      label: Text(isSelecting ? '正在识别开发数据来源…' : '选择书源集合目录'),
+      label: Text(isSelecting ? '正在识别开发数据源插件…' : '选择数据源插件集合目录'),
     ),
   );
 }

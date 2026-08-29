@@ -12,7 +12,7 @@
   "mgread": {
     "schemaVersion": 1,
     "id": "org.mgread.runtime.fixture",
-    "displayName": "Runtime 标准测试书源",
+    "displayName": "Runtime 标准测试数据源",
     "packageMode": "archive",
     "pluginApi": 1,
     "contentKinds": [

@@ -3,6 +3,7 @@
 /// 职责：
 /// - 组合首页书架布局、筛选、刷新与用户反馈。
 /// - 在保留当前 Sliver 滚动身份的前提下编排删除展示过渡。
+/// - 将底部首页图标长按映射为隐私书架扩散过渡。
 ///
 /// 注意：
 /// - 不在 build() 中执行持久化；删除由显式回调在动画后提交。
@@ -27,6 +28,7 @@ import 'package:mg_read/features/library/presentation/widgets/library_continue_r
 import 'package:mg_read/features/library/presentation/widgets/library_home_controls.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_top_bar.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_top_visual.dart';
+import 'package:mg_read/features/library/presentation/widgets/private_library_reveal.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
@@ -73,6 +75,7 @@ class LibraryHomeShell extends StatefulWidget {
 
 class _LibraryHomeShellState extends State<LibraryHomeShell> {
   final ScrollController _scrollController = ScrollController();
+  final GlobalKey _bottomNavigationKey = GlobalKey();
   final ValueNotifier<({LibraryHomeSection section, LibraryStatusFilter filter})> _selection =
       ValueNotifier<({LibraryHomeSection section, LibraryStatusFilter filter})>((
         section: LibraryHomeSection.recentUpdates,
@@ -83,6 +86,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   final Set<String> _removingBookIds = <String>{};
   late LibraryHomeLayoutMode _layoutMode;
   bool _layoutModeChangePending = false;
+  bool _privacyRevealActive = false;
 
   @override
   void initState() {
@@ -158,7 +162,12 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        child: AppBottomNavigation(selected: AppNavigationDestination.home, onSelected: _handleDestinationSelected),
+        child: AppBottomNavigation(
+          key: _bottomNavigationKey,
+          selected: AppNavigationDestination.home,
+          onSelected: _handleDestinationSelected,
+          onLongPressed: _handleDestinationLongPressed,
+        ),
       ),
     );
   }
@@ -521,6 +530,38 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     _invoke(widget.callbacks.onPrivacyLibraryRequested);
   }
 
+  void _handleDestinationLongPressed(AppNavigationDestination destination) {
+    if (destination != AppNavigationDestination.home || widget.callbacks.onPrivacyLibraryRequested == null) return;
+    unawaited(_showPrivacyReveal());
+  }
+
+  Future<void> _showPrivacyReveal() async {
+    if (_privacyRevealActive || !mounted) return;
+    _privacyRevealActive = true;
+    try {
+      final RenderBox? navigationBox = _bottomNavigationKey.currentContext?.findRenderObject() as RenderBox?;
+      final Size screenSize = MediaQuery.sizeOf(context);
+      final double bottomInset = MediaQuery.paddingOf(context).bottom;
+      final Offset origin =
+          navigationBox?.localToGlobal(
+            Offset(navigationBox.size.width / (AppNavigationDestination.values.length * 2), navigationBox.size.height / 2),
+          ) ??
+          Offset(
+            screenSize.width / (AppNavigationDestination.values.length * 2),
+            screenSize.height - bottomInset - AppSpacing.bottomNavigationHeight / 2,
+          );
+      await showPrivateLibraryReveal(
+        context: context,
+        globalOrigin: origin,
+        onCovered: () {
+          if (mounted) _handlePrivacyLibrary();
+        },
+      );
+    } finally {
+      _privacyRevealActive = false;
+    }
+  }
+
   void _handleDiscover() {
     final callback = widget.callbacks.onDiscover;
     if (callback != null) {
@@ -674,7 +715,7 @@ class _NoRecentUpdatesCard extends StatelessWidget {
               Text('暂无更新内容', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
               const SizedBox(height: AppSpacing.compact),
               Text(
-                '添加书源后，你关注的作品会显示在这里',
+                '添加数据源后，你关注的作品会显示在这里',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
               ),

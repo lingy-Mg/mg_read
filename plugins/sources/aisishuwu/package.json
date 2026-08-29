@@ -35,7 +35,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.aisishuwu",
     "displayName": "\u7231\u4e3d\u4e1d\u4e66\u5c4b",
-    "description": "专注原创网络小说的综合书源，覆盖分类、排行、搜索与章节阅读。",
+    "description": "成人向原创网络小说数据源，覆盖分类、排行、搜索与章节阅读。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

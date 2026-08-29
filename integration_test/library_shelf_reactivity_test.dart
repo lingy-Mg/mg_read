@@ -142,7 +142,7 @@ void main() {
 
 final PluginSourceDescriptor _source = PluginSourceDescriptor(
   id: 'org.mgread.integration.shelf',
-  displayName: '集成测试书源',
+  displayName: '集成测试数据源',
   pluginVersion: '1.0.0',
   contentKinds: const <PluginContentKind>[PluginContentKind.novel],
 );

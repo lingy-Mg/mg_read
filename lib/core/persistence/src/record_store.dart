@@ -1,7 +1,8 @@
 /// 主应用 metadata record 持久化入口。
 ///
-/// 职责：公开 CRUD/CAS/批处理契约并持有唯一 Drift 数据库生命周期。
-/// 注意：事务队列和文档编解码仅拆到同 library 的职责 part，数据语义不变。
+/// 职责：公开 CRUD/CAS/批处理、空间维护契约并持有唯一 Drift 数据库生命周期。
+/// 注意：metadata SQLite 固定使用 WAL/NORMAL；压缩只由显式维护操作触发。
+/// 注意：事务队列、文档编解码和维护 SQL 仅拆到同 library 的职责 part，数据语义不变。
 library;
 
 import 'dart:async';
@@ -16,6 +17,7 @@ import 'persistence_error.dart';
 import 'record.dart';
 
 part 'record_store_codec.dart';
+part 'record_store_maintenance.dart';
 part 'record_store_transaction_queue.dart';
 
 typedef UtcClock = DateTime Function();
@@ -459,38 +461,6 @@ final class PersistenceRecordStore {
     if (affected != 1) throw const PersistenceConflictError();
   }
 
-  Future<void> _deleteBatch(List<RecordEnvelope> previous) async {
-    _ensureOpen();
-    _validateWriteBatchSize(previous.length);
-    if (previous.isEmpty) return;
-    final identities = <(String, ScopeKey)>{};
-    for (final record in previous) {
-      if (record.id.isEmpty || record.scope.kind.isEmpty || record.scope.id.isEmpty || record.revision < 1) {
-        throw const PersistenceValidationError('CAS deletes require valid IDs, scope, and revision.');
-      }
-      if (!identities.add((record.id, record.scope))) {
-        throw const PersistenceValidationError('A CAS delete batch cannot contain the same record twice.');
-      }
-    }
-    final where = List<String>.filled(
-      previous.length,
-      '(record_id = ? AND scope_kind = ? AND scope_id = ? AND revision = ?)',
-    ).join(' OR ');
-    final affected = await _database.customUpdate(
-      'DELETE FROM metadata_records WHERE $where',
-      variables: <Variable<Object>>[
-        for (final record in previous) ...<Variable<Object>>[
-          Variable.withString(record.id),
-          Variable.withString(record.scope.kind),
-          Variable.withString(record.scope.id),
-          Variable.withInt(record.revision),
-        ],
-      ],
-      updates: const <TableUpdate>{},
-    );
-    if (affected != previous.length) throw const PersistenceConflictError();
-  }
-
   Future<void> _createBatch(List<RecordDraft> drafts) async {
     _ensureOpen();
     _validateWriteBatchSize(drafts.length);
@@ -686,35 +656,6 @@ final class PersistenceRecordStore {
     if (length > maxWriteBatchSize) {
       throw const PersistenceValidationError('A write batch cannot contain more than 128 documents.');
     }
-  }
-
-  Future<DatabaseStorageStats> storageStats() => _instrument(
-    operation: 'storageStats',
-    action: () async {
-      _ensureOpen();
-      final pageCount = await _pragmaInt('page_count');
-      final freePages = await _pragmaInt('freelist_count');
-      final pageSize = await _pragmaInt('page_size');
-      return DatabaseStorageStats(
-        allocatedBytes: pageCount * pageSize,
-        reclaimableBytes: freePages * pageSize,
-      );
-    },
-  );
-
-  Future<void> compact() => _instrument(
-    operation: 'compact',
-    action: () async {
-      _ensureOpen();
-      await _database.customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
-      await _database.customStatement('VACUUM');
-      await _database.customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
-    },
-  );
-
-  Future<int> _pragmaInt(String pragma) async {
-    final row = await _database.customSelect('PRAGMA $pragma').getSingle();
-    return row.data.values.single as int;
   }
 
   Future<void> _close() async {

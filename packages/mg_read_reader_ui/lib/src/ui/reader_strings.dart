@@ -23,7 +23,7 @@ abstract final class ReaderStrings {
   static const startCaching = '开始缓存';
   static const chapterCountRange = '可选范围';
   static const cacheChapterRangeHint = '从全书第 1 章开始，已缓存章节会直接计入进度';
-  static const source = '书源';
+  static const source = '数据源';
   static const sourceUnavailable = '未提供';
   static const sourceUrl = '来源链接';
   static const sourceUrlUnavailable = '未提供链接';

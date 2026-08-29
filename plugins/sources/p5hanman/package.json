@@ -33,6 +33,7 @@
     "description": "P5 韩漫公开漫画源，支持搜索、更新、排行、完结目录和图片阅读。",
     "pluginApi": 1,
     "packageMode": "single-file",
+    "icon": "assets/icon.png",
     "contentKinds": [
       "manga"
     ]

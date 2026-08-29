@@ -1,13 +1,13 @@
-# 真实书源插件共享开发规则
+# 真实数据源插件共享开发规则
 
-状态：开发规范。本文件只补充根契约对所有真实 Node 书源共同适用的增量；来源目录自己的
+状态：开发规范。本文件只补充根契约对所有真实 Node 数据源插件共同适用的增量；来源目录自己的
 `AGENTS.md` 只写站点差异。只有 capability 跨文件边界不清楚时，才读取
 [核心插件内容章节](../../docs/core.md#插件内容-api)中的相关段落，不预加载 Runtime、Flutter 或完整
 核心规范。
 
 ## 边界与返回值
 
-- 书源使用标准 Node.js 24 开发项目、`package.json.mgread`、lockfile v3 和普通 ESM 开发输出；
+- 数据源插件使用标准 Node.js 24 开发项目、`package.json.mgread`、lockfile v3 和普通 ESM 开发输出；
   发布默认生成核心规范定义的 single-file artifact。禁止 Worker、子进程、native addon、Git dependency、
   install script、自定义 loader/lock 或主应用/Runtime 内部依赖。
 - 生产代码只使用公开 `ctx.http`、`ctx.log`、`ctx.resource`、`ctx.dataDir` 和 `ctx.cacheDir`。

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
@@ -52,6 +53,42 @@ void main() {
     final reopened = await PersistenceRecordStore.open(dataRoot: root, registry: defaultRegistry);
     addTearDown(reopened.close);
     expect((await reopened.read(id: 'theme', scope: localScope))!.document['value'], 'dark');
+  });
+
+  test('WAL retains committed data and rolls back an abruptly terminated transaction', () async {
+    await kit.dispose();
+    try {
+      final root = await Directory.systemTemp.createTemp('mg-read-persistence-crash-');
+      addTearDown(() async {
+        if (await root.exists()) await root.delete(recursive: true);
+      });
+      final helper =
+          '${Directory.current.path}${Platform.pathSeparator}test${Platform.pathSeparator}'
+          'core${Platform.pathSeparator}persistence${Platform.pathSeparator}persistence_crash_probe.dart';
+
+      final dart = _dartExecutable();
+      final committed = await Process.run(dart, <String>['run', helper, root.path, 'committed', 'committed-row']);
+      expect(committed.exitCode, 0, reason: '${committed.stdout}\n${committed.stderr}');
+
+      final uncommitted = await Process.start(dart, <String>['run', helper, root.path, 'uncommitted', 'uncommitted-row']);
+      final ready = await uncommitted.stdout.transform(utf8.decoder).transform(const LineSplitter()).first;
+      expect(ready, 'uncommitted-ready');
+      expect(uncommitted.kill(), isTrue);
+      await uncommitted.exitCode.timeout(const Duration(seconds: 10));
+
+      final reopened = await PersistenceRecordStore.open(dataRoot: root, registry: defaultRegistry);
+      try {
+        expect(await reopened.debugPragmaForTest('journal_mode'), 'wal');
+        expect(await reopened.debugPragmaForTest('quick_check'), 'ok');
+        expect(await reopened.debugPragmaForTest('integrity_check'), 'ok');
+        expect(await reopened.read(id: 'committed-row', scope: localScope), isNotNull);
+        expect(await reopened.read(id: 'uncommitted-row', scope: localScope), isNull);
+      } finally {
+        await reopened.close();
+      }
+    } finally {
+      kit = await PersistenceTestkit.open();
+    }
   });
 
   test('isolates records by complete scope key', () async {
@@ -294,6 +331,31 @@ void main() {
     expect(await kit.store.read(id: 'one', scope: localScope), isNull);
   });
 
+  test('creates and CAS-deletes the maximum batch with one public operation', () async {
+    final drafts = <RecordDraft>[
+      for (var index = 0; index < PersistenceRecordStore.maxWriteBatchSize; index++) settingDraft('batch-$index'),
+    ];
+    await kit.store.createBatch(drafts);
+    final records = (await kit.store.readMany(ids: drafts.map((draft) => draft.id), scope: localScope)).records.values.toList();
+    expect(records, hasLength(PersistenceRecordStore.maxWriteBatchSize));
+
+    await kit.store.deleteBatch(records);
+
+    expect((await kit.store.readMany(ids: drafts.map((draft) => draft.id), scope: localScope)).records, isEmpty);
+  });
+
+  test('CAS delete batch rejects duplicates and rolls back every matched row on conflict', () async {
+    final first = await kit.store.create(settingDraft('delete-first'));
+    final second = await kit.store.create(settingDraft('delete-second'));
+    await expectLater(kit.store.deleteBatch(<RecordEnvelope>[first, first]), throwsA(isA<PersistenceValidationError>()));
+
+    await kit.store.update(previous: first, document: const <String, Object?>{'value': 'new'});
+    await expectLater(kit.store.deleteBatch(<RecordEnvelope>[first, second]), throwsA(isA<PersistenceConflictError>()));
+
+    expect(await kit.store.read(id: 'delete-first', scope: localScope), isNotNull);
+    expect(await kit.store.read(id: 'delete-second', scope: localScope), isNotNull);
+  });
+
   test('uses a background executor and has a defined close boundary', () async {
     expect(kit.store.usesBackgroundExecutor, isTrue);
     await kit.store.close();
@@ -321,6 +383,21 @@ void main() {
     expect(transactionFinished, isTrue);
     await expectLater(kit.store.read(id: 'theme', scope: localScope), throwsA(isA<PersistenceClosedError>()));
   });
+}
+
+String _dartExecutable() {
+  var directory = File(Platform.resolvedExecutable).parent;
+  while (true) {
+    final candidate = File(
+      '${directory.path}${Platform.pathSeparator}bin${Platform.pathSeparator}cache${Platform.pathSeparator}'
+      'dart-sdk${Platform.pathSeparator}bin${Platform.pathSeparator}dart.exe',
+    );
+    if (candidate.existsSync()) return candidate.path;
+    final parent = directory.parent;
+    if (parent.path == directory.path) break;
+    directory = parent;
+  }
+  throw StateError('Unable to locate the Flutter-bundled Dart executable.');
 }
 
 void _validateStringValue(JsonObject document) {

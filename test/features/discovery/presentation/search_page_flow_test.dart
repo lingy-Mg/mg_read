@@ -51,8 +51,8 @@ void main() {
   testWidgets('keeps the discovery source when opening search', (tester) async {
     final gateway = _SearchGateway(
       sources: <PluginSourceDescriptor>[
-        _source('source.first', '第一个书源'),
-        _source('source.second', '第二个书源'),
+        _source('source.first', '第一个数据源'),
+        _source('source.second', '第二个数据源'),
       ],
     );
     await tester.pumpWidget(
@@ -75,7 +75,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(gateway.pluginIds, isEmpty);
-    expect(find.text('第二个书源'), findsOneWidget);
+    expect(find.text('第二个数据源'), findsOneWidget);
   });
 
   testWidgets(
@@ -260,7 +260,7 @@ final class _MemoryMembershipLoader implements BookshelfMembershipLoader {
 final class _SearchGateway implements SourceContentGateway {
   _SearchGateway({List<PluginSourceDescriptor>? sources, this.searchCompletion})
     : sources =
-          sources ?? <PluginSourceDescriptor>[_source('source.test', '测试书源')];
+          sources ?? <PluginSourceDescriptor>[_source('source.test', '测试数据源')];
 
   final List<PluginSourceDescriptor> sources;
   final List<String> queries = <String>[];
@@ -289,7 +289,7 @@ final class _SearchGateway implements SourceContentGateway {
     int pageSize = 20,
   }) async => PluginSearchSuggestionsResult(
     pluginId: pluginId,
-    sourceName: '测试书源',
+    sourceName: '测试数据源',
     items: const <PluginSearchSuggestion>[
       PluginSearchSuggestion(query: '诡秘之主', metric: '12.3万'),
     ],
@@ -311,7 +311,7 @@ final class _SearchGateway implements SourceContentGateway {
     required String id,
   }) async => PluginContentDetail(
     pluginId: pluginId,
-    sourceName: '测试书源',
+    sourceName: '测试数据源',
     summary: _content(id),
     aliases: const <String>[],
     catalogUrl: null,
@@ -323,7 +323,7 @@ final class _SearchGateway implements SourceContentGateway {
     required String id,
   }) async => PluginChaptersResult(
     pluginId: pluginId,
-    sourceName: '测试书源',
+    sourceName: '测试数据源',
     items: <PluginChapterSummary>[
       PluginChapterSummary(
         id: 'chapter-1',
@@ -349,7 +349,7 @@ final class _SearchGateway implements SourceContentGateway {
 
 PluginSearchResult _searchResult(String pluginId) => PluginSearchResult(
   pluginId: pluginId,
-  sourceName: '测试书源',
+  sourceName: '测试数据源',
   items: <PluginContentSummary>[
     PluginContentSummary(
       id: 'real-result',

@@ -10,25 +10,18 @@ import 'package:mg_read/features/plugins/application/plugin_runtime_connection.d
 import '../../../core/diagnostics/diagnostics_testkit.dart';
 
 void main() {
-  test(
-    'available source projection is cached for the process session',
-    () async {
-      final gateway = _CountingSourceGateway();
-      final container = ProviderContainer(
-        overrides: [sourceContentGatewayProvider.overrideWithValue(gateway)],
-      );
-      addTearDown(container.dispose);
+  test('available source projection is cached for the process session', () async {
+    final gateway = _CountingSourceGateway();
+    final container = ProviderContainer(overrides: [sourceContentGatewayProvider.overrideWithValue(gateway)]);
+    addTearDown(container.dispose);
 
-      final first = await container.read(availablePluginSourcesProvider.future);
-      final second = await container.read(
-        availablePluginSourcesProvider.future,
-      );
+    final first = await container.read(availablePluginSourcesProvider.future);
+    final second = await container.read(availablePluginSourcesProvider.future);
 
-      expect(gateway.listCalls, 1);
-      expect(identical(first, second), isTrue);
-      expect(first.single.displayName, '缓存书源');
-    },
-  );
+    expect(gateway.listCalls, 1);
+    expect(identical(first, second), isTrue);
+    expect(first.single.displayName, '缓存数据源');
+  });
 
   test('source list waits for the shared Runtime readiness result', () async {
     final diagnostics = DiagnosticsTestkit();
@@ -43,13 +36,10 @@ void main() {
     addTearDown(container.dispose);
 
     var completed = false;
-    final sources = container
-        .read(sourceContentGatewayProvider)
-        .listSources()
-        .then((value) {
-          completed = true;
-          return value;
-        });
+    final sources = container.read(sourceContentGatewayProvider).listSources().then((value) {
+      completed = true;
+      return value;
+    });
     await Future<void>.delayed(Duration.zero);
     expect(completed, isFalse);
 
@@ -62,9 +52,10 @@ void main() {
           PluginRuntimePlugin(
             activeVersion: '1.0.0',
             contentKinds: <String>['novel'],
-            displayName: '已就绪书源',
+            displayName: '已就绪数据源',
             enabled: true,
             id: 'org.example.ready',
+            iconUrl: 'http://127.0.0.1:1/v1/plugin-icon/ready-test-token',
             name: 'ready',
             pendingVersion: null,
             status: 'active',
@@ -72,7 +63,7 @@ void main() {
           PluginRuntimePlugin(
             activeVersion: null,
             contentKinds: <String>['manga'],
-            displayName: '未激活书源',
+            displayName: '未激活数据源',
             enabled: true,
             id: 'org.example.pending',
             name: 'pending',
@@ -85,6 +76,7 @@ void main() {
 
     expect(await sources, hasLength(1));
     expect((await sources).single.id, 'org.example.ready');
+    expect((await sources).single.iconUrl, 'http://127.0.0.1:1/v1/plugin-icon/ready-test-token');
   });
 }
 
@@ -95,28 +87,17 @@ final class _CountingSourceGateway implements SourceContentGateway {
   Future<List<PluginSourceDescriptor>> listSources() async {
     listCalls += 1;
     return <PluginSourceDescriptor>[
-      PluginSourceDescriptor(
-        id: 'source.cached',
-        displayName: '缓存书源',
-        contentKinds: const <PluginContentKind>[PluginContentKind.novel],
-      ),
+      PluginSourceDescriptor(id: 'source.cached', displayName: '缓存数据源', contentKinds: const <PluginContentKind>[PluginContentKind.novel]),
     ];
   }
 
   @override
-  Future<PluginSearchResult> search({
-    required String pluginId,
-    required String query,
-    String? cursor,
-    int pageSize = 20,
-  }) => throw UnsupportedError('Not used by source cache test.');
+  Future<PluginSearchResult> search({required String pluginId, required String query, String? cursor, int pageSize = 20}) =>
+      throw UnsupportedError('Not used by source cache test.');
 
   @override
-  Future<PluginSearchSuggestionsResult> searchSuggestions({
-    required String pluginId,
-    String? cursor,
-    int pageSize = 20,
-  }) => throw UnsupportedError('Not used by source cache test.');
+  Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) =>
+      throw UnsupportedError('Not used by source cache test.');
 
   @override
   Future<PluginDiscoverResult> discover({
@@ -128,21 +109,14 @@ final class _CountingSourceGateway implements SourceContentGateway {
   }) => throw UnsupportedError('Not used by source cache test.');
 
   @override
-  Future<PluginContentDetail> getDetail({
-    required String pluginId,
-    required String id,
-  }) => throw UnsupportedError('Not used by source cache test.');
+  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) =>
+      throw UnsupportedError('Not used by source cache test.');
 
   @override
-  Future<PluginChaptersResult> getChapters({
-    required String pluginId,
-    required String id,
-  }) => throw UnsupportedError('Not used by source cache test.');
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) =>
+      throw UnsupportedError('Not used by source cache test.');
 
   @override
-  Future<PluginChapterContent> getContent({
-    required String pluginId,
-    required String id,
-    required String chapterId,
-  }) => throw UnsupportedError('Not used by source cache test.');
+  Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) =>
+      throw UnsupportedError('Not used by source cache test.');
 }

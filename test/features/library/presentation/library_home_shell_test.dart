@@ -40,7 +40,7 @@ void main() {
     expect(find.byKey(const Key('continue-reading-cta')), findsOneWidget);
     expect(find.text('诡秘之主'), findsAtLeastNWidgets(2));
     expect(find.text('最近阅读'), findsOneWidget);
-    expect(find.text('管理我的书源'), findsNothing);
+    expect(find.text('管理我的数据源'), findsNothing);
     expect(find.byType(AppBottomNavigation), findsOneWidget);
     expect(find.byWidgetPredicate((Widget widget) => widget is Semantics && widget.properties.label == '阅读进度 72%'), findsOneWidget);
     expect(
@@ -106,7 +106,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('管理数据源'), findsOneWidget);
-    expect(find.text('管理书源'), findsNothing);
   });
 
   testWidgets('switches between list and card modes from the top menu', (WidgetTester tester) async {
@@ -364,6 +363,52 @@ void main() {
     expect(privateShelfOpenCount, 1);
   });
 
+  testWidgets('long pressing the home destination reveals privacy mode before opening it', (WidgetTester tester) async {
+    var privateShelfOpenCount = 0;
+    await tester.pumpWidget(
+      _host(
+        callbacks: LibraryHomeCallbacks(
+          onPrivacyLibraryRequested: () {
+            privateShelfOpenCount++;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.byKey(const Key('app-nav-home')));
+    await tester.pump();
+
+    expect(find.byKey(const Key('private-library-reveal')), findsOneWidget);
+    expect(find.bySemanticsLabel('正在进入隐私模式'), findsOneWidget);
+    expect(privateShelfOpenCount, 0);
+
+    await tester.pump(const Duration(milliseconds: 260));
+    expect(privateShelfOpenCount, 0);
+
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(privateShelfOpenCount, 1);
+    expect(find.byKey(const Key('private-library-reveal')), findsOneWidget);
+
+    await tester.pump(AppMotion.destinationTransition);
+    await tester.pump();
+    expect(find.byKey(const Key('private-library-reveal')), findsNothing);
+  });
+
+  testWidgets('reduced motion opens privacy mode immediately on home long press', (WidgetTester tester) async {
+    var privateShelfOpenCount = 0;
+    await tester.pumpWidget(
+      _host(disableAnimations: true, callbacks: LibraryHomeCallbacks(onPrivacyLibraryRequested: () => privateShelfOpenCount++)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.byKey(const Key('app-nav-home')));
+    await tester.pump();
+
+    expect(privateShelfOpenCount, 1);
+    expect(find.byKey(const Key('private-library-reveal')), findsNothing);
+  });
+
   testWidgets('continue reading and bottom navigation invoke replaceable callbacks', (WidgetTester tester) async {
     int continueReadingCount = 0;
     AppNavigationDestination? selectedDestination;
@@ -421,7 +466,7 @@ void main() {
     expect(find.text('暂无更新内容'), findsOneWidget);
     expect(find.text('去发现好书'), findsOneWidget);
     expect(find.textContaining('界面预览'), findsNothing);
-    expect(find.text('管理我的书源'), findsNothing);
+    expect(find.text('管理我的数据源'), findsNothing);
   });
 
   testWidgets('uses the compact reference font-size and weight hierarchy', (WidgetTester tester) async {

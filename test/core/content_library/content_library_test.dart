@@ -57,6 +57,76 @@ void main() {
     expect((await library.openContent(entry.id) as NovelChapterContent).text, '正文');
   });
 
+  test('maintenance removes stale snapshots and orphan content while preserving active shelf state', () async {
+    final item = await library.bookshelf.add(title: '维护测试书', kind: ContentKind.novel, source: source);
+    await library.catalog.replaceSnapshot(
+      itemId: item.id,
+      bindingId: const SourceBindingId('binding-maintenance'),
+      entries: <IngestCatalogEntry>[
+        IngestCatalogEntry(remoteIdentity: 'old', title: '旧章节', orderKey: '000001', kindCode: 'novel', source: source),
+      ],
+    );
+    final oldEntry = (await library.listCatalog(item.id, const CatalogQuery())).items.single;
+    await library.content.putNovel(entryId: oldEntry.id, text: '待清理正文', source: source);
+    await library.readingProgress.save(
+      LibraryReadingProgress(
+        itemId: item.id,
+        chapterId: 'old',
+        paragraphId: 'p1',
+        characterOffset: 1,
+        chapterIndex: 0,
+        chapterFraction: 0.1,
+        bookFraction: 0.1,
+        updatedAtUtc: DateTime.utc(2026, 8, 29),
+      ),
+    );
+    await library.catalog.replaceSnapshot(
+      itemId: item.id,
+      bindingId: const SourceBindingId('binding-maintenance'),
+      entries: <IngestCatalogEntry>[
+        IngestCatalogEntry(remoteIdentity: 'current', title: '当前章节', orderKey: '000001', kindCode: 'novel', source: source),
+      ],
+    );
+
+    final preview = await library.storageMaintenance.inspect();
+    expect(preview.staleCatalogRecords, 1);
+    expect(preview.detachedMetadataRecords, 0);
+    expect(preview.orphanContentObjects, 1);
+    expect(preview.reclaimableContentBytes, greaterThan(0));
+
+    final result = await library.storageMaintenance.clearAll();
+    expect(result.staleCatalogRecords, 1);
+    expect(result.deletedContentObjects, 1);
+    expect(result.isPartial, isFalse);
+    expect((await library.listCatalog(item.id, const CatalogQuery())).items.single.title, '当前章节');
+    expect(await library.readingProgress.load(item.id), isNotNull);
+    expect(await library.openContent(oldEntry.id), isNull);
+    expect((await library.storageMaintenance.inspect()).isEmpty, isTrue);
+  });
+
+  test('keep-content removal is reported and reclaimed only by explicit maintenance', () async {
+    final item = await library.bookshelf.add(title: '移出书架测试', kind: ContentKind.novel, source: source);
+    await library.catalog.replaceSnapshot(
+      itemId: item.id,
+      bindingId: const SourceBindingId('binding-removed'),
+      entries: <IngestCatalogEntry>[
+        IngestCatalogEntry(remoteIdentity: 'chapter', title: '章节', orderKey: '000001', kindCode: 'novel', source: source),
+      ],
+    );
+    final entry = (await library.listCatalog(item.id, const CatalogQuery())).items.single;
+    await library.content.putNovel(entryId: entry.id, text: '移出后保留正文', source: source);
+
+    await library.bookshelf.remove(item.id, LibraryRemovalPolicy.removeFromShelfKeepContent);
+
+    final preview = await library.storageMaintenance.inspect();
+    expect(preview.detachedMetadataRecords, greaterThanOrEqualTo(2));
+    expect(preview.orphanContentObjects, 1);
+    final result = await library.storageMaintenance.clearAll();
+    expect(result.detachedMetadataRecords, preview.detachedMetadataRecords);
+    expect(result.deletedContentObjects, 1);
+    expect((await library.storageMaintenance.inspect()).isEmpty, isTrue);
+  });
+
   test('persists semantic reading progress and typed source identity', () async {
     final item = await library.bookshelf.add(title: '进度测试书', kind: ContentKind.novel, source: source);
     await library.readingProgress.save(

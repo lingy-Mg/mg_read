@@ -78,10 +78,39 @@ void main() {
     expect(persistence.metadataRecords.usesBackgroundExecutor, isTrue);
     expect(persistence.contentObjects.usesBackgroundExecutor, isTrue);
     expect(persistence.fileObjects.usesBackgroundExecutor, isTrue);
+    expect(await persistence.metadataRecords.debugPragmaForTest('journal_mode'), 'wal');
+    expect(await persistence.metadataRecords.debugPragmaForTest('synchronous'), 1);
+    expect(await persistence.contentObjects.debugPragmaForTest('journal_mode'), 'wal');
+    expect(await persistence.contentObjects.debugPragmaForTest('synchronous'), 1);
 
     await persistence.close();
     await persistence.close();
     await expectLater(persistence.metadataRecords.read(id: 'missing', scope: localScope), throwsA(isA<PersistenceClosedError>()));
+  });
+
+  test('content object inventory, bounded delete, and explicit compaction reclaim storage', () async {
+    final store = await ContentObjectStore.open(root);
+    addTearDown(store.close);
+    for (var index = 0; index < 6; index++) {
+      await store.put(
+        objectId: 'object-$index',
+        contentKind: 'novel',
+        objectType: 'text',
+        generation: 1,
+        payload: List<String>.filled(64 * 1024, String.fromCharCode(65 + index)).join(),
+      );
+    }
+    final page = await store.listInfo(limit: 10);
+    expect(page.objects, hasLength(6));
+    expect(await store.deleteMany(page.objects.map((object) => object.objectId)), 6);
+    final before = await store.storageStats();
+    expect(before.reclaimableBytes, greaterThan(0));
+
+    await store.compact();
+
+    final after = await store.storageStats();
+    expect(after.allocatedBytes, lessThan(before.allocatedBytes));
+    expect(after.reclaimableBytes, 0);
   });
 
   test('global cover reads return while the mtime touch is gated', () async {

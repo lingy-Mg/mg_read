@@ -15,7 +15,7 @@ import 'package:mg_read/shared/presentation/source_branding.dart';
 ///
 /// 职责：
 /// - 展示脱敏的 Runtime 数据源投影及安装大小。
-/// - 为 Windows Debug 开发数据源提供目录打开与用户选目录打包操作。
+/// - 为 Windows Debug 开发数据源插件提供目录打开与用户选目录打包操作。
 ///
 /// 注意：
 /// - 页面不读取项目路径、制品字节或 Runtime 内部协议。
@@ -102,6 +102,7 @@ class _DetailContent extends ConsumerWidget {
                     SourceIcon(
                       sourceId: source.id,
                       displayName: source.displayName,
+                      iconUrl: source.iconUrl,
                       size: AppSpacing.dataSourceMarkExtent,
                       borderRadius: 12,
                     ),
@@ -117,7 +118,7 @@ class _DetailContent extends ConsumerWidget {
                           ),
                           const SizedBox(height: AppSpacing.unit),
                           Text(
-                            isDevelopment ? '开源开发源（即时生效）' : '已安装数据源',
+                            isDevelopment ? '开发数据源插件（即时生效）' : '已安装数据源插件',
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
                           ),
                         ],
@@ -146,7 +147,7 @@ class _DetailContent extends ConsumerWidget {
                 ),
                 const SizedBox(height: AppSpacing.compact),
                 _DetailField(label: '名称', value: source.displayName),
-                _DetailField(label: '来源方式', value: isDevelopment ? '工作区开源书源' : 'Runtime 已安装版本'),
+                _DetailField(label: '来源方式', value: isDevelopment ? '工作区开发数据源插件' : 'Runtime 已安装数据源插件'),
                 _DetailField(label: '类型', value: _contentKinds(source)),
                 _DetailField(label: '版本', value: source.activeVersion ?? '等待激活'),
                 _DetailField(label: '状态', value: _statusLabel(source)),
@@ -172,13 +173,10 @@ class _DetailContent extends ConsumerWidget {
             onPressed: opening ? null : () => _openDirectory(context, ref, source, isDevelopment),
           )
         else
-          Text('仅 Windows 桌面端可打开数据源代码文件夹。', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
+          Text('仅 Windows 桌面端可打开数据源插件代码文件夹。', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
         if (!isDevelopment) ...<Widget>[
           const SizedBox(height: AppSpacing.comfortable),
-          _RemoveSourceButton(
-            isRemoving: removing,
-            onPressed: removing ? null : () => _scheduleUninstall(context, ref, source),
-          ),
+          _RemoveSourceButton(isRemoving: removing, onPressed: removing ? null : () => _scheduleUninstall(context, ref, source)),
         ],
       ],
     );
@@ -191,11 +189,11 @@ class _DetailContent extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已打包 $fileName。')));
     } on AppError catch (error) {
       if (!context.mounted) return;
-      final message = error.code == AppErrorCode.conflict ? '目标目录已有相同版本的书源包，请更换目录或先处理旧文件。' : '数据源打包失败，请检查开发项目和目标目录。';
+      final message = error.code == AppErrorCode.conflict ? '目标目录已有相同版本的数据源插件包，请更换目录或先处理旧文件。' : '数据源插件打包失败，请检查开发项目和目标目录。';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     } on Object {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源打包失败，请检查开发项目和目标目录。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源插件打包失败，请检查开发项目和目标目录。')));
     }
   }
 
@@ -204,8 +202,8 @@ class _DetailContent extends ConsumerWidget {
       final kind = await ref.read(pluginRuntimeSourceDirectoryProvider.notifier).open(pluginId: source.id);
       if (!context.mounted) return;
       final message = switch (kind) {
-        PluginCodeDirectoryKind.development => '已打开开发项目文件夹。代码变更会在下一次来源调用时生效。',
-        PluginCodeDirectoryKind.installed => '已打开已安装版本文件夹。该副本不会作为开发源即时生效。',
+        PluginCodeDirectoryKind.development => '已打开开发项目文件夹。代码变更会在下一次数据源调用时生效。',
+        PluginCodeDirectoryKind.installed => '已打开已安装版本文件夹。该副本不会作为开发数据源插件即时生效。',
       };
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     } on Object {
@@ -300,7 +298,7 @@ class _InstallationSizeCard extends StatelessWidget {
             Text('安装后大小', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: AppSpacing.unit),
             Text(
-              '整个书源：${total == null ? '统计中…' : _formatInstallationBytes(total)}',
+              '整个数据源插件：${total == null ? '统计中…' : _formatInstallationBytes(total)}',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.dataSourceAccent, fontWeight: FontWeight.w600),
             ),
             _InstallationSizeRow(label: '原始安装包', usage: archiveUsage),
@@ -428,7 +426,7 @@ class _PackageDevelopmentButton extends StatelessWidget {
     icon: isPackaging
         ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
         : const Icon(Icons.inventory_2_outlined),
-    label: Text(isPackaging ? '正在打包…' : '打包数据源'),
+    label: Text(isPackaging ? '正在打包…' : '打包数据源插件'),
   );
 }
 

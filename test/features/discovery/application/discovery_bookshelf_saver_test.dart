@@ -17,7 +17,7 @@ void main() {
     });
     final source = PluginSourceDescriptor(
       id: 'org.example.source',
-      displayName: '测试书源',
+      displayName: '测试数据源',
       pluginVersion: '2.4.0',
       contentKinds: <PluginContentKind>[PluginContentKind.novel],
     );
@@ -56,7 +56,7 @@ void main() {
     expect(items.single.title, '来自发现页的书');
     expect(items.single.author, '测试作者');
     expect(items.single.coverUrl, Uri.parse('https://cdn.example.com/covers/opaque.jpg'));
-    expect(items.single.sourceName, '测试书源');
+    expect(items.single.sourceName, '测试数据源');
     expect(items.single.source?.remoteContentId, content.id);
     expect(items.single.description, '完整简介');
     expect(items.single.language, 'zh-CN');
@@ -117,20 +117,20 @@ void main() {
         pluginVersion: '2.4.0',
         remoteContentId: 'repair-id',
         coverUrl: Uri.parse('https://cdn.example.com/covers/repair.jpg'),
-        sourceName: '测试书源',
+        sourceName: '测试数据源',
       ),
     );
 
     expect(repaired.id.value, first.id.value);
     expect(repaired.title, '新书名');
     expect(repaired.coverUrl, Uri.parse('https://cdn.example.com/covers/repair.jpg'));
-    expect(repaired.sourceName, '测试书源');
+    expect(repaired.sourceName, '测试数据源');
   });
 }
 
 final PluginSourceDescriptor _source = PluginSourceDescriptor(
   id: 'org.example.source',
-  displayName: '测试书源',
+  displayName: '测试数据源',
   pluginVersion: '2.4.0',
   contentKinds: <PluginContentKind>[PluginContentKind.novel],
 );

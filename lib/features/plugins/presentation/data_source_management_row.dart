@@ -1,12 +1,12 @@
 /// 数据源管理列表行与品牌标记。
 ///
 /// 职责：
-/// - 渲染数据源的品牌图标、开发源角标和启停控件。
-/// - 将开发源与已安装源的视觉状态保持一致且可访问。
+/// - 渲染数据源的品牌图标、开发数据源插件角标和启停控件。
+/// - 将开发数据源插件与已安装数据源插件的视觉状态保持一致且可访问。
 ///
 /// 注意：
 /// - 仅接收不可变展示数据，不发起 Runtime 或磁盘操作。
-/// - 开发源不允许在此处切换启停状态。
+/// - 开发数据源插件不允许在此处切换启停状态。
 ///
 /// TODO:
 /// - 无。
@@ -71,14 +71,18 @@ class DataSourceManagementRow extends StatelessWidget {
             height: AppSpacing.dataSourceRowHeight + AppSpacing.compact,
             child: Row(
               children: <Widget>[
-                _DataSourceBrandMark(
-                  sourceId: source.id,
-                  displayName: source.name,
-                  brand: source.brand,
-                  isDevelopment: source.isDevelopment,
-                  iconUrl: source.iconUrl,
+                SizedBox.square(
+                  key: ValueKey<String>('data-source-icon-${source.id}'),
+                  dimension: AppSpacing.dataSourceManagementMarkExtent,
+                  child: _DataSourceBrandMark(
+                    sourceId: source.id,
+                    displayName: source.name,
+                    brand: source.brand,
+                    isDevelopment: source.isDevelopment,
+                    iconUrl: source.iconUrl,
+                  ),
                 ),
-                const SizedBox(width: AppSpacing.regular),
+                const SizedBox(width: AppSpacing.compact),
                 Expanded(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -162,27 +166,19 @@ class _DataSourceBrandMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Widget fallback = SourceBranding.assetFor(sourceId) != null
-        ? SourceIcon(sourceId: sourceId, displayName: displayName, size: AppSpacing.dataSourceMarkExtent, borderRadius: 12)
-        : _GeneratedBrandMark(brand: brand);
-    final Uri? iconUri = Uri.tryParse(iconUrl ?? '');
-    final Widget mark = iconUri != null && (iconUri.scheme == 'http' || iconUri.scheme == 'https')
-        ? ClipRRect(
-            borderRadius: AppRadii.discoveryTile,
-            child: Image.network(
-              iconUri.toString(),
-              width: AppSpacing.dataSourceMarkExtent,
-              height: AppSpacing.dataSourceMarkExtent,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => fallback,
-            ),
-          )
-        : fallback;
+    final Widget mark = SourceIcon(
+      sourceId: sourceId,
+      displayName: displayName,
+      iconUrl: iconUrl,
+      fallback: _GeneratedBrandMark(brand: brand),
+      size: AppSpacing.dataSourceManagementMarkExtent,
+      borderRadius: 12,
+    );
     if (!isDevelopment) return mark;
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final ThemeData theme = Theme.of(context);
     return Semantics(
-      label: '开发源',
+      label: '开发数据源插件',
       child: Stack(
         clipBehavior: Clip.none,
         children: <Widget>[
@@ -236,8 +232,8 @@ class _GeneratedBrandMark extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(color: colors.background, borderRadius: AppRadii.discoveryTile),
       child: SizedBox(
-        width: AppSpacing.dataSourceMarkExtent,
-        height: AppSpacing.dataSourceMarkExtent,
+        width: AppSpacing.dataSourceManagementMarkExtent,
+        height: AppSpacing.dataSourceManagementMarkExtent,
         child: Center(
           child: _BrandGlyph(brand: brand, color: colors.foreground),
         ),
@@ -255,10 +251,19 @@ class _BrandGlyph extends StatelessWidget {
   @override
   Widget build(BuildContext context) => switch (brand) {
     DataSourceBrand.qidian => Text('起', style: _glyphTextStyle(context, color)),
-    DataSourceBrand.tomato => CustomPaint(size: const Size.square(AppSpacing.dataSourceMarkExtent), painter: _TomatoMarkPainter(color)),
-    DataSourceBrand.qimao => CustomPaint(size: const Size.square(AppSpacing.dataSourceMarkExtent), painter: _CatMarkPainter(color)),
+    DataSourceBrand.tomato => CustomPaint(
+      size: const Size.square(AppSpacing.dataSourceManagementMarkExtent),
+      painter: _TomatoMarkPainter(color),
+    ),
+    DataSourceBrand.qimao => CustomPaint(
+      size: const Size.square(AppSpacing.dataSourceManagementMarkExtent),
+      painter: _CatMarkPainter(color),
+    ),
     DataSourceBrand.zongheng => _GridBrandGlyph(color: color),
-    DataSourceBrand.jinjiang => CustomPaint(size: const Size.square(AppSpacing.dataSourceMarkExtent), painter: _JinjiangMarkPainter(color)),
+    DataSourceBrand.jinjiang => CustomPaint(
+      size: const Size.square(AppSpacing.dataSourceManagementMarkExtent),
+      painter: _JinjiangMarkPainter(color),
+    ),
     DataSourceBrand.seventeenK => Text('17K', style: _glyphTextStyle(context, color)),
     DataSourceBrand.generic => Icon(Icons.extension_rounded, color: color, size: AppSpacing.dataSourceAddIconSize),
   };
@@ -274,8 +279,8 @@ class _GridBrandGlyph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-    width: AppSpacing.dataSourceMarkExtent - AppSpacing.regular,
-    height: AppSpacing.dataSourceMarkExtent - AppSpacing.regular,
+    width: AppSpacing.dataSourceManagementMarkExtent - AppSpacing.regular,
+    height: AppSpacing.dataSourceManagementMarkExtent - AppSpacing.regular,
     child: Wrap(
       spacing: AppSpacing.unit,
       runSpacing: AppSpacing.unit,
@@ -299,7 +304,7 @@ class _TomatoMarkPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final Paint paint = Paint()..color = color;
-    final double unit = size.width / AppSpacing.dataSourceMarkExtent;
+    final double unit = size.width / AppSpacing.dataSourceManagementMarkExtent;
     final Path stem = Path()
       ..moveTo(20 * unit, 0)
       ..lineTo(27 * unit, 0)
@@ -328,7 +333,7 @@ class _CatMarkPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final double unit = size.width / AppSpacing.dataSourceMarkExtent;
+    final double unit = size.width / AppSpacing.dataSourceManagementMarkExtent;
     final Paint paint = Paint()..color = color;
     final Path cat = Path()
       ..moveTo(8 * unit, 29 * unit)
@@ -368,7 +373,7 @@ class _JinjiangMarkPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = size.width / 11
       ..strokeCap = StrokeCap.round;
-    final double unit = size.width / AppSpacing.dataSourceMarkExtent;
+    final double unit = size.width / AppSpacing.dataSourceManagementMarkExtent;
     final Path leaf = Path()
       ..moveTo(7 * unit, 29 * unit)
       ..quadraticBezierTo(10 * unit, 12 * unit, 11 * unit, 6 * unit)

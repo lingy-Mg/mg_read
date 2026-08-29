@@ -22,7 +22,7 @@ lib/                               Flutter 主应用
 packages/mg_read_reader_ui/        novel_reader_ui 阅读器 package
 packages/mg_read_runtime/          Runtime Core、平台宿主和 Flutter Facade
 templates/mg_read_plugin_template/ 官方空白 Node 插件模板
-plugins/sources/                    真实书源插件
+plugins/sources/                    真实数据源插件
 ```
 
 - 依赖方向为 `app -> features -> core/shared`。feature 只消费窄端口；Widget 不直接访问网络、
@@ -95,32 +95,29 @@ plugins/sources/                    真实书源插件
 
 ## 插件内容 API
 
-- 调用链固定为 `discover/search -> contentId -> getDetail/getChapters -> chapterId -> getContent`。
-  ID、cursor、target 都是插件作用域的不透明稳定值；URL、标题、数组位置和页码不是业务主键。
-- 必填身份/枚举缺失、null、空白或未知时拒绝；可空标量必须保留键并显式为值或 `null`；非负计数
-  区分 `0` 与未知；集合始终为数组。Runtime 不把缺键/空字符串自动补成 null。
-- `discover` 返回递归受控组件树：`tabs/section/group/contentCollection/categoryCollection/text/
-  divider`。`contentCollection` 可声明 `featured/carousel/coverGrid/shelf/compact/ranking/list`，
-  `categoryCollection` 可声明 `grid/chips/list`；这些仅是内容语义，主题、断点、尺寸与交互仍由宿主控制，
-  插件不得执行 UI 代码。tab、section、category 可声明同一白名单语义 `icon`；Runtime 校验，Flutter
-  统一映射，书源不得下发码点或图标资源。续页只追加指定 collection，target/cursor 原样回传。
-- 首页按真实来源区块组合组件，不为书源建立 Flutter 专页。榜单、题材使用整行 `vertical`；
-  `group.grid` 只用于并排小面板。`coverGrid` 由宿主决定紧凑三列、较宽四列及桌面增密。
-- `searchSuggestions` 是可选热门词能力；热门词由来源提供，宿主不混入本地伪造数据。只有用户主动
-  点击建议或提交查询才搜索。
-- `getChapters` 一次返回完整、有序、稳定 ID 唯一的目录；最多 5000 章、编码后最多 2 MiB，不向
-  宿主暴露目录分页。来源站点分页由插件内部追完并去重。
-- 小说正文使用非 null `text` 和空 `pages`；漫画使用 null `text` 和有序非空 `pages`。超限正文、
-  图片和二进制走资源数据面，不进入控制面 JSON/Base64。
-- `ctx.resource.proxy(request)` 的私有 request 最多 16 KiB；URL 只在 Runtime 进程内有效并最多保留
-  1024 个。resource body 最大 8 MiB，只接受 GET 和安全响应头。Flutter 不解析代理 URL，也不复刻
-  来源请求、Cookie 或签名逻辑。
-- Runtime 在写入 wire 前校验固定键、枚举、URL、时间、计数、唯一性和大小；无效结果统一为稳定
-  `plugin_invalid_response`，不记录原始插件对象或内容。
-- 真实书源最小读取顺序固定为目标文件头 -> 最近 `AGENTS.md` -> 该源公开类型/fixture/contract -> 本章节；
-  只有新增 Runtime capability 才再读“Runtime 与平台宿主”。每源默认命令为固定 Node 下 `npm.cmd ci`、
-  `npm.cmd test`、`npm.cmd run verify`；线上选择器变化另跑 `test:live`，Runtime 变更再跑 `typecheck`、
-  `test`、`check:no-native-addons`，并将实际 `.mgplugin.js`/`.mgplugin` 冷安装到临时 Runtime 验证激活。
+- 中文统一称“数据源”；仅在 Node 项目、artifact、安装、启停、打包和 Runtime 生命周期中称“数据源插件”。
+  英文 `source/plugin` 与普通“来源”字段保持既有契约。
+- 调用链固定为 `discover/search -> contentId -> getDetail/getChapters -> chapterId -> getContent`；ID、cursor、
+  target 是插件内稳定不透明值，URL、标题、数组位置和页码不得作主键。
+- 必填身份/枚举缺失、null、空白或未知时拒绝；可空标量显式保留值或 `null`；`0` 不等于未知，集合始终
+  为数组，Runtime 不修补缺键或空字符串。
+- `discover` 仅返回 `tabs/section/group/contentCollection/categoryCollection/text/divider`。
+  内容布局为 `featured/carousel/coverGrid/shelf/compact/ranking/list`，分类布局为 `grid/chips/list`；它们只
+  表达内容语义，UI、主题、断点、尺寸和交互归宿主。`ranking` 仅兼容旧插件；新插件用 `compact` 和真实
+  `rank/metric`。tab、section、category 的 `icon` 来自同一白名单；Runtime 校验、Flutter 映射，插件不得
+  下发 UI 代码、码点或图标资源。续页只追加指定 collection，target/cursor 原样回传。
+- 首页按真实来源区块组合，不建数据源 Flutter 专页。榜单、题材整行 `vertical`；`group.grid` 只排列真正
+  并列的小面板，不给已有 surface 再套面板；`coverGrid` 列数和横向触摸/鼠标拖动策略归宿主。
+- `searchSuggestions` 热门词必须来自来源；宿主不伪造，只有用户点击建议或提交才搜索。
+- `getChapters` 返回完整有序且 ID 唯一的目录，最多 5000 章、2 MiB；站点分页由插件追完并去重。
+- 小说为非 null `text` 和空 `pages`，漫画相反且 pages 有序非空；超限内容走资源数据面，不进控制面。
+- `ctx.resource.proxy` 私有 request 最大 16 KiB；URL 仅 Runtime 内有效且最多 1024 个。resource 只接受
+  GET、安全响应头和 8 MiB body；Flutter 不解析代理 URL，也不复刻来源请求、Cookie 或签名。
+- Runtime 写 wire 前校验固定键、枚举、URL、时间、计数、唯一性和大小；无效结果统一为
+  `plugin_invalid_response`，不记录原始对象或内容。
+- 真实数据源插件按目标文件头 -> 最近 `AGENTS.md` -> 公开类型/fixture/contract -> 本节读取；仅新增 Runtime
+  capability 再读宿主章节。固定 Node 下运行 `npm.cmd ci/test/run verify`；选择器变化加 `test:live`，Runtime
+  变化加 `typecheck/test/check:no-native-addons`，并冷安装实际 `.mgplugin.js`/`.mgplugin` 验证激活。
 - fixture 只保留触发选择器、分页、null/0/空集合和错误分支所需的最小脱敏 HTML；禁止保存线上正文、
   图片、Cookie、UA、token、完整录制或用户搜索词。更新 fixture 时记录来源 UUID/版本/散列和采集日期，
   先以网络 smoke 确认结构，再人工裁剪；网络失败不能用新 fixture 覆盖旧证据。
@@ -205,6 +202,6 @@ plugins/sources/                    真实书源插件
 - 手写源码达到 700 非空行且本次修改时按职责开始拆分，1000 行为硬上限；遗留基线只能下降。
   禁止用 `part1`、`utils`、`helpers` 或按行移动规避。
 - 根应用版本只在根 Flutter 生产代码、用户可见资源或 Android/Windows/macOS 发布配置变化后，
-  于任务末执行一次版本脚本。纯文档、测试、工具、Runtime/reader package、模板和书源不升级根版本。
+  于任务末执行一次版本脚本。纯文档、测试、工具、Runtime/reader package、模板和独立数据源插件不升级根版本。
 - 文档任务运行 `tools/check_documentation.ps1`。`docs/` 只允许本核心规范、最小路由和入口；历史、
   实现快照、规划、重复 README 或单文件说明不再保留。

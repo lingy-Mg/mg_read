@@ -2,11 +2,11 @@
 ///
 /// 职责：
 /// - 将发现页不可变状态接线到 Runtime 内容渲染器。
-/// - 将详情、书架和来源选择委派给各自应用服务。
+/// - 将详情、书架和数据源选择委派给各自应用服务。
 ///
 /// 注意：
 /// - 页面不在 build 中进行 IO；内部层级由 controller 栈而非 GoRouter 管理。
-/// - 子页面只接收其层级状态，书源选择仅显示在顶级发现页。
+/// - 子页面只接收其层级状态，数据源选择仅显示在顶级发现页。
 ///
 /// TODO:
 /// - 无。
@@ -75,7 +75,7 @@ class DiscoveryDestinationPage extends ConsumerWidget {
       DiscoveryPageStatus.loadingSources => const _DiscoveryStateContent(
         key: Key('discovery-loading-sources'),
         icon: Icons.extension_rounded,
-        title: '正在读取可用书源',
+        title: '正在读取可用数据源',
         message: 'Runtime 正在返回已启用的插件列表。',
         loading: true,
       ),
@@ -89,13 +89,13 @@ class DiscoveryDestinationPage extends ConsumerWidget {
       DiscoveryPageStatus.noSources => const _DiscoveryStateContent(
         key: Key('discovery-no-sources'),
         icon: Icons.extension_off_rounded,
-        title: '没有可用书源',
+        title: '没有可用数据源',
         message: '请先安装并启用支持小说或漫画内容的插件。',
       ),
       DiscoveryPageStatus.empty => _DiscoveryStateContent(
         key: const Key('discovery-empty'),
         icon: Icons.inbox_outlined,
-        title: '当前书源没有发现内容',
+        title: '当前数据源没有发现内容',
         message: '插件返回了空分区；这不是缺失字段，也不会用演示数据替代。',
         actionLabel: '刷新',
         onAction: () => unawaited(controller.refresh()),

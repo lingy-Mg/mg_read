@@ -1,4 +1,4 @@
-import 'dart:ui' show Tristate;
+import 'dart:ui' show PointerDeviceKind, Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -188,6 +188,32 @@ void main() {
     final Rect card = tester.getRect(find.byType(DiscoveryCarouselHeroCard));
     expect(card.height, greaterThan(184));
     expect(card.bottom, lessThanOrEqualTo(carousel.bottom));
+  });
+
+  testWidgets('allows the recommendation carousel to follow a mouse drag before release', (WidgetTester tester) async {
+    const books = <DiscoveryHeroViewData>[
+      DiscoveryHeroViewData(title: '第一本推荐书', category: null, description: null, metadata: null, coverVariant: DiscoveryCoverVariant.gothic),
+      DiscoveryHeroViewData(title: '第二本推荐书', category: null, description: null, metadata: null, coverVariant: DiscoveryCoverVariant.abyss),
+    ];
+    await _setViewport(tester, const Size(540, 320));
+    await tester.pumpWidget(_hostCarousel(books));
+    await tester.pump();
+
+    final Finder scrollable = find.descendant(of: find.byType(PageView), matching: find.byType(Scrollable));
+    final ScrollPosition position = tester.state<ScrollableState>(scrollable).position;
+    expect(position.pixels, 0);
+
+    final TestGesture gesture = await tester.startGesture(
+      tester.getCenter(find.byType(DiscoveryCarouselHeroCard)),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveBy(const Offset(-60, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(-60, 0));
+    await tester.pump();
+
+    expect(position.pixels, greaterThan(0));
+    await gesture.up();
   });
 }
 

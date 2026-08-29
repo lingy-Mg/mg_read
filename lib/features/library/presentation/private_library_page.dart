@@ -3,6 +3,7 @@
 /// 职责：
 /// - 展示被设置为隐私的书籍。
 /// - 提供取消隐私和删除操作，并保持本地书架状态即时更新。
+/// - 以隐私图标标识底部首页目的地的当前模式。
 ///
 /// 注意：
 /// - 业务持久化由书架 application adapter 负责。
@@ -87,6 +88,12 @@ class PrivateLibraryPage extends ConsumerWidget {
         top: false,
         child: AppBottomNavigation(
           selected: AppNavigationDestination.home,
+          iconOverrides: const <AppNavigationDestination, AppNavigationIconOverride>{
+            AppNavigationDestination.home: AppNavigationIconOverride(
+              icon: Icons.visibility_off_outlined,
+              selectedIcon: Icons.visibility_off_rounded,
+            ),
+          },
           onSelected: (destination) {
             if (destination == AppNavigationDestination.home) {
               unawaited(ref.read(libraryPageControllerProvider.notifier).refresh());
