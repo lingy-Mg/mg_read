@@ -1,5 +1,5 @@
 {
-  "name": "@mgread-plugin/xiezhenji", "version": "1.0.1", "private": true,
+  "name": "@mgread-plugin/xiezhenji", "version": "1.0.2", "private": true,
   "description": "MgRead conversion of the user-provided 写真集 source.", "type": "module", "main": "dist/index.mjs",
   "packageManager": "npm@11.13.0", "engines": { "node": ">=24 <25", "npm": "11.13.0" },
   "scripts": {
