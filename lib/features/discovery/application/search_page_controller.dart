@@ -65,7 +65,7 @@ class SearchPageController extends Notifier<SearchPageState> {
   Future<void> selectSource(String pluginId) async {
     if (!state.sources.any((source) => source.id == pluginId)) return;
     final query = state.query;
-    state = SearchPageState.ready(sources: state.sources, selectedSourceId: pluginId, query: query, hotSearches: state.hotSearches);
+    state = SearchPageState.ready(sources: state.sources, selectedSourceId: pluginId, query: query);
     unawaited(_loadSuggestions(pluginId, ++_latestSuggestionGeneration));
     if (query.isNotEmpty) await search(query);
   }

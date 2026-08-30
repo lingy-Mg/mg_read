@@ -64,6 +64,56 @@ void main() {
     expect(find.text('第二个数据源'), findsOneWidget);
   });
 
+  testWidgets('hides hot search when the source provides no suggestions', (tester) async {
+    final gateway = _SearchGateway(hotSearches: const <PluginSearchSuggestion>[]);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sourceContentGatewayProvider.overrideWithValue(gateway),
+          searchHistoryStoreProvider.overrideWithValue(_MemorySearchHistoryStore(const <String>['诡秘之主'])),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: SearchPage(onDestinationRequested: (_) {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('历史'), findsOneWidget);
+    expect(find.text('热门搜索'), findsNothing);
+    expect(find.byKey(const Key('search-hot-refresh')), findsNothing);
+  });
+
+  testWidgets('clears the previous hot search when the next source does not implement it', (tester) async {
+    final gateway = _SearchGateway(
+      sources: <PluginSourceDescriptor>[_source('source.first', '第一个数据源'), _source('source.second', '第二个数据源')],
+      suggestionFailurePluginIds: const <String>{'source.second'},
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sourceContentGatewayProvider.overrideWithValue(gateway),
+          searchHistoryStoreProvider.overrideWithValue(_MemorySearchHistoryStore(const <String>[])),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: SearchPage(onDestinationRequested: (_) {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('热门搜索'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('search-source-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('discovery-source-picker-source.second')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('第二个数据源'), findsOneWidget);
+    expect(find.text('热门搜索'), findsNothing);
+  });
+
   testWidgets('uses the same-source same-title shelf state in list and detail', (tester) async {
     final gateway = _SearchGateway();
     await tester.pumpWidget(
@@ -211,10 +261,17 @@ final class _MemoryMembershipLoader implements BookshelfMembershipLoader {
 }
 
 final class _SearchGateway implements SourceContentGateway {
-  _SearchGateway({List<PluginSourceDescriptor>? sources, this.searchCompletion})
-    : sources = sources ?? <PluginSourceDescriptor>[_source('source.test', '测试数据源')];
+  _SearchGateway({
+    List<PluginSourceDescriptor>? sources,
+    List<PluginSearchSuggestion>? hotSearches,
+    this.suggestionFailurePluginIds = const <String>{},
+    this.searchCompletion,
+  }) : sources = sources ?? <PluginSourceDescriptor>[_source('source.test', '测试数据源')],
+       hotSearches = hotSearches ?? const <PluginSearchSuggestion>[PluginSearchSuggestion(query: '诡秘之主', metric: '12.3万')];
 
   final List<PluginSourceDescriptor> sources;
+  final List<PluginSearchSuggestion> hotSearches;
+  final Set<String> suggestionFailurePluginIds;
   final List<String> queries = <String>[];
   final List<String> pluginIds = <String>[];
   final Completer<PluginSearchResult>? searchCompletion;
@@ -230,13 +287,12 @@ final class _SearchGateway implements SourceContentGateway {
   }
 
   @override
-  Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) async =>
-      PluginSearchSuggestionsResult(
-        pluginId: pluginId,
-        sourceName: '测试数据源',
-        items: const <PluginSearchSuggestion>[PluginSearchSuggestion(query: '诡秘之主', metric: '12.3万')],
-        nextCursor: null,
-      );
+  Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) async {
+    if (suggestionFailurePluginIds.contains(pluginId)) {
+      throw UnimplementedError();
+    }
+    return PluginSearchSuggestionsResult(pluginId: pluginId, sourceName: '测试数据源', items: hotSearches, nextCursor: null);
+  }
 
   @override
   Future<PluginDiscoverResult> discover({

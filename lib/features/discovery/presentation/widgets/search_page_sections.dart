@@ -31,54 +31,47 @@ class SearchSuggestionSections extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _SearchHistoryRow(
-          history: history,
-          onHistorySelected: onHistorySelected,
-          onHistoryCleared: onHistoryCleared,
-        ),
-        const SizedBox(height: AppSpacing.compact),
-        _SectionHeading(
-          title: '热门搜索',
-          trailing: TextButton.icon(
-            key: const Key('search-hot-refresh'),
-            onPressed: onHotSearchRefreshed,
-            icon: const Icon(Icons.refresh_rounded, size: 20),
-            label: const Text('换一换'),
+        _SearchHistoryRow(history: history, onHistorySelected: onHistorySelected, onHistoryCleared: onHistoryCleared),
+        if (hotSearches.isNotEmpty) ...<Widget>[
+          const SizedBox(height: AppSpacing.compact),
+          _SectionHeading(
+            title: '热门搜索',
+            trailing: TextButton.icon(
+              key: const Key('search-hot-refresh'),
+              onPressed: onHotSearchRefreshed,
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+              label: const Text('换一换'),
+            ),
           ),
-        ),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final columnWidth = (constraints.maxWidth - AppSpacing.section) / 2;
-            return Wrap(
-              spacing: AppSpacing.section,
-              runSpacing: AppSpacing.compact,
-              children: List<Widget>.generate(
-                hotSearches.length,
-                (index) => SizedBox(
-                  width: columnWidth,
-                  child: _HotSearchItem(
-                    rank: index + 1,
-                    label: hotSearches[index].query,
-                    metric: hotSearches[index].metric,
-                    onPressed: () =>
-                        onHotSearchSelected(hotSearches[index].query),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columnWidth = (constraints.maxWidth - AppSpacing.section) / 2;
+              return Wrap(
+                spacing: AppSpacing.section,
+                runSpacing: AppSpacing.compact,
+                children: List<Widget>.generate(
+                  hotSearches.length,
+                  (index) => SizedBox(
+                    width: columnWidth,
+                    child: _HotSearchItem(
+                      rank: index + 1,
+                      label: hotSearches[index].query,
+                      metric: hotSearches[index].metric,
+                      onPressed: () => onHotSearchSelected(hotSearches[index].query),
+                    ),
                   ),
                 ),
-              ),
-            );
-          },
-        ),
+              );
+            },
+          ),
+        ],
       ],
     );
   }
 }
 
 class _SearchHistoryRow extends StatefulWidget {
-  const _SearchHistoryRow({
-    required this.history,
-    required this.onHistorySelected,
-    required this.onHistoryCleared,
-  });
+  const _SearchHistoryRow({required this.history, required this.onHistorySelected, required this.onHistoryCleared});
 
   final List<String> history;
   final ValueChanged<String> onHistorySelected;
@@ -118,25 +111,12 @@ class _SearchHistoryRowState extends State<_SearchHistoryRow> {
                 padding: const EdgeInsets.only(bottom: AppSpacing.unit),
                 child: Row(
                   children: widget.history.isEmpty
-                      ? <Widget>[
-                          Text(
-                            '暂无历史关键词',
-                            style: textTheme.bodySmall?.copyWith(
-                              color: tokens.mutedText,
-                            ),
-                          ),
-                        ]
+                      ? <Widget>[Text('暂无历史关键词', style: textTheme.bodySmall?.copyWith(color: tokens.mutedText))]
                       : widget.history
                             .map(
                               (value) => Padding(
-                                padding: const EdgeInsets.only(
-                                  right: AppSpacing.compact,
-                                ),
-                                child: _SearchHistoryChip(
-                                  label: value,
-                                  onPressed: () =>
-                                      widget.onHistorySelected(value),
-                                ),
+                                padding: const EdgeInsets.only(right: AppSpacing.compact),
+                                child: _SearchHistoryChip(label: value, onPressed: () => widget.onHistorySelected(value)),
                               ),
                             )
                             .toList(growable: false),
@@ -192,11 +172,7 @@ class SearchResultsSection extends StatelessWidget {
         switchOutCurve: AppMotion.navigationReverseCurve,
         transitionBuilder: (child, animation) => FadeTransition(
           opacity: animation,
-          child: SizeTransition(
-            alignment: Alignment.topCenter,
-            sizeFactor: animation,
-            child: child,
-          ),
+          child: SizeTransition(alignment: Alignment.topCenter, sizeFactor: animation, child: child),
         ),
         child: isSearching
             ? _SearchInProgressState(query: query)
@@ -239,10 +215,7 @@ class SearchResultsSection extends StatelessWidget {
                 )
               : const SizedBox.shrink(),
         ),
-        if (error != null) ...<Widget>[
-          const SizedBox(height: AppSpacing.compact),
-          _InlineSearchFailure(error: error!, onRetry: onRetry),
-        ],
+        if (error != null) ...<Widget>[const SizedBox(height: AppSpacing.compact), _InlineSearchFailure(error: error!, onRetry: onRetry)],
         const SizedBox(height: AppSpacing.compact),
         if (searchResult.items.isEmpty)
           const _SearchResultMessage(
@@ -255,11 +228,7 @@ class SearchResultsSection extends StatelessWidget {
           Column(
             key: const Key('source-search-results'),
             children: <Widget>[
-              for (
-                var index = 0;
-                index < searchResult.items.length;
-                index++
-              ) ...<Widget>[
+              for (var index = 0; index < searchResult.items.length; index++) ...<Widget>[
                 SearchResultTile(
                   content: searchResult.items[index],
                   variant: _coverVariantFor(searchResult.items[index], index),
@@ -292,23 +261,11 @@ class _SearchInProgressState extends StatelessWidget {
           child: Center(
             child: Column(
               children: <Widget>[
-                const SizedBox(
-                  width: AppSpacing.section,
-                  height: AppSpacing.section,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
+                const SizedBox(width: AppSpacing.section, height: AppSpacing.section, child: CircularProgressIndicator(strokeWidth: 2)),
                 const SizedBox(height: AppSpacing.regular),
-                Text(
-                  '正在搜索“$query”',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('正在搜索“$query”', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: AppSpacing.unit),
-                Text(
-                  '搜索结果将自动显示',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
-                ),
+                Text('搜索结果将自动显示', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
               ],
             ),
           ),
@@ -341,12 +298,7 @@ class _RetainedResultsSearchProgress extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
                 const SizedBox(width: AppSpacing.compact),
-                Text(
-                  '正在搜索“$query”',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
-                ),
+                Text('正在搜索“$query”', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
               ],
             ),
             const SizedBox(height: AppSpacing.unit),
@@ -358,25 +310,15 @@ class _RetainedResultsSearchProgress extends StatelessWidget {
   }
 }
 
-DiscoveryCoverVariant _coverVariantFor(
-  PluginContentSummary content,
-  int index,
-) => switch (content.id) {
+DiscoveryCoverVariant _coverVariantFor(PluginContentSummary content, int index) => switch (content.id) {
   'preview-1' || 'preview-2' || 'preview-4' => DiscoveryCoverVariant.gothic,
   'preview-3' => DiscoveryCoverVariant.abyss,
-  _ =>
-    DiscoveryCoverVariant.values[index % DiscoveryCoverVariant.values.length],
+  _ => DiscoveryCoverVariant.values[index % DiscoveryCoverVariant.values.length],
 };
 
 /// A compact, source-neutral search result. Runtime data populates it later.
 class SearchResultTile extends StatelessWidget {
-  const SearchResultTile({
-    required this.content,
-    required this.variant,
-    required this.onPressed,
-    this.isInBookshelf = false,
-    super.key,
-  });
+  const SearchResultTile({required this.content, required this.variant, required this.onPressed, this.isInBookshelf = false, super.key});
   final PluginContentSummary content;
   final DiscoveryCoverVariant variant;
   final VoidCallback onPressed;
@@ -385,12 +327,7 @@ class SearchResultTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DiscoveryContentListItem(
-      item: PluginDiscoveryContentItem(
-        content: content,
-        rank: null,
-        metric: _searchMetric(content),
-        recommendation: null,
-      ),
+      item: PluginDiscoveryContentItem(content: content, rank: null, metric: _searchMetric(content), recommendation: null),
       variant: variant,
       onPressed: onPressed,
       isInBookshelf: isInBookshelf,
@@ -404,10 +341,7 @@ bool _neverInBookshelf(PluginContentSummary _) => false;
 PluginDiscoveryMetric? _searchMetric(PluginContentSummary content) {
   for (final attribute in content.attributes) {
     if (attribute.key == 'searchHeat' || attribute.key == 'heat') {
-      return PluginDiscoveryMetric(
-        label: attribute.label.trim().isEmpty ? '热度' : attribute.label,
-        value: attribute.value,
-      );
+      return PluginDiscoveryMetric(label: attribute.label.trim().isEmpty ? '热度' : attribute.label, value: attribute.value);
     }
   }
   return null;
@@ -420,9 +354,7 @@ class _SectionHeading extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
     children: <Widget>[
-      Expanded(
-        child: Text(title, style: Theme.of(context).textTheme.titleMedium),
-      ),
+      Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
       ?trailing,
     ],
   );
@@ -442,9 +374,7 @@ class _SearchHistoryChip extends StatelessWidget {
         onTap: onPressed,
         borderRadius: AppRadii.control,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            minHeight: AppSpacing.searchHistoryChipHeight,
-          ),
+          constraints: const BoxConstraints(minHeight: AppSpacing.searchHistoryChipHeight),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.unit),
             child: Align(
@@ -460,12 +390,7 @@ class _SearchHistoryChip extends StatelessWidget {
 }
 
 class _HotSearchItem extends StatelessWidget {
-  const _HotSearchItem({
-    required this.rank,
-    required this.label,
-    required this.metric,
-    required this.onPressed,
-  });
+  const _HotSearchItem({required this.rank, required this.label, required this.metric, required this.onPressed});
   final int rank;
   final String label;
   final String? metric;
@@ -486,30 +411,15 @@ class _HotSearchItem extends StatelessWidget {
               width: AppSpacing.section,
               child: Text(
                 '$rank',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: isTopRank ? tokens.accent : tokens.mutedText,
-                ),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(color: isTopRank ? tokens.accent : tokens.mutedText),
               ),
             ),
-            Expanded(
-              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
+            Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
             if (metric != null) ...<Widget>[
               const SizedBox(width: AppSpacing.compact),
-              Text(
-                metric!,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: tokens.mutedText),
-              ),
+              Text(metric!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
             ],
-            if (isTopRank)
-              Icon(
-                Icons.local_fire_department_rounded,
-                size: 17,
-                color: tokens.notification,
-                semanticLabel: '热门',
-              ),
+            if (isTopRank) Icon(Icons.local_fire_department_rounded, size: 17, color: tokens.notification, semanticLabel: '热门'),
           ],
         ),
       ),
@@ -530,12 +440,7 @@ class _ResultHeader extends StatelessWidget {
         const SizedBox(width: AppSpacing.compact),
         Text('（共 $count 条）', style: Theme.of(context).textTheme.bodyMedium),
         const Spacer(),
-        Text(
-          '按相关性',
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
-        ),
+        Text('按相关性', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
         Icon(Icons.arrow_drop_down_rounded, color: tokens.mutedText),
       ],
     );
@@ -585,11 +490,7 @@ class _SearchResultMessage extends StatelessWidget {
         child: Column(
           children: <Widget>[
             if (loading)
-              const SizedBox(
-                width: AppSpacing.section,
-                height: AppSpacing.section,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
+              const SizedBox(width: AppSpacing.section, height: AppSpacing.section, child: CircularProgressIndicator(strokeWidth: 2))
             else
               Icon(icon, size: AppSpacing.section, color: tokens.mutedText),
             const SizedBox(height: AppSpacing.regular),
@@ -598,12 +499,9 @@ class _SearchResultMessage extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
             ),
-            if (onRetry != null)
-              TextButton(onPressed: onRetry, child: const Text('重试')),
+            if (onRetry != null) TextButton(onPressed: onRetry, child: const Text('重试')),
           ],
         ),
       ),

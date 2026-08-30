@@ -18,7 +18,6 @@ void main() {
     await tester.pumpAndSettle(const Duration(seconds: 45));
 
     expect(find.text('搜索历史'), findsOneWidget);
-    expect(find.text('热门搜索'), findsOneWidget);
     expect(find.text('搜索结果'), findsOneWidget);
     expect(find.text('诡秘之主'), findsWidgets);
     expect(find.byKey(const Key('search-page-scroll')), findsOneWidget);
