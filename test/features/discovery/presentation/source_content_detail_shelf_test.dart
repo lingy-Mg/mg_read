@@ -65,14 +65,52 @@ void main() {
     expect(find.text('书架已满，请先清理书籍。'), findsOneWidget);
   });
 
-  testWidgets('shelf detail adapts the add action to an existing shelf item', (tester) async {
-    await tester.pumpWidget(MaterialApp(theme: AppTheme.light(), home: _ShelfDetailHost()));
+  testWidgets('discovery detail confirms removal and returns the shelf action to add', (tester) async {
+    var removeCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: _ShelfDetailHost(onRemoveFromShelf: () async => removeCount++),
+      ),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.text('已在书架'), findsOneWidget);
+    expect(find.text('已在书架 · 移出'), findsOneWidget);
     await tester.tap(find.byKey(const Key('source-detail-add-shelf')));
     await tester.pumpAndSettle();
-    expect(find.text('此书已在书架中。'), findsOneWidget);
+    expect(find.byKey(const Key('bookshelf-removal-confirmation')), findsOneWidget);
+
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(removeCount, 0);
+    expect(find.text('已在书架 · 移出'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('source-detail-add-shelf')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+
+    expect(removeCount, 1);
+    expect(find.text('加入书架'), findsOneWidget);
+    expect(find.textContaining('已从书架移出'), findsOneWidget);
+  });
+
+  testWidgets('discovery detail keeps the in-shelf action when removal fails', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: _ShelfDetailHost(onRemoveFromShelf: () => Future<void>.error(StateError('remove failed'))),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('source-detail-add-shelf')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已在书架 · 移出'), findsOneWidget);
+    expect(find.text('移出书架失败，请稍后重试。'), findsOneWidget);
   });
 
   testWidgets('shelf-owned detail uses one custom three-action bar', (tester) async {
@@ -255,6 +293,10 @@ final class _FixtureGateway implements SourceContentGateway {
 }
 
 class _ShelfDetailHost extends StatefulWidget {
+  const _ShelfDetailHost({required this.onRemoveFromShelf});
+
+  final SourceShelfRemoveRequested onRemoveFromShelf;
+
   @override
   State<_ShelfDetailHost> createState() => _ShelfDetailHostState();
 }
@@ -272,6 +314,7 @@ class _ShelfDetailHostState extends State<_ShelfDetailHost> {
           pluginId: AliceBookHouseDetailFixture.pluginId,
           id: AliceBookHouseDetailFixture.bookId,
           shelfState: SourceDetailShelfState.alreadyAdded,
+          onRemoveFromShelf: widget.onRemoveFromShelf,
           onExternalUrlRequested: (_) async => true,
         ),
       );

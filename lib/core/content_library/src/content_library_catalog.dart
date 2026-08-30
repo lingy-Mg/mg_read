@@ -635,6 +635,14 @@ Map<String, Object?> _audioProgressDocument(LibraryAudioPlaybackProgress progres
   'updatedAtUtc': progress.updatedAtUtc.toUtc().toIso8601String(),
 };
 
+Map<String, Object?> _videoProgressDocument(LibraryVideoPlaybackProgress progress) => <String, Object?>{
+  'groupId': progress.groupId,
+  'episodeId': progress.episodeId,
+  'positionMilliseconds': progress.position.inMilliseconds,
+  'durationMilliseconds': progress.duration.inMilliseconds,
+  'updatedAtUtc': progress.updatedAtUtc.toUtc().toIso8601String(),
+};
+
 LibraryAudioPlaybackProgress _audioProgress(RecordEnvelope record) {
   final document = record.document;
   final updatedAt = DateTime.tryParse(document['updatedAtUtc'] as String? ?? '');
@@ -647,6 +655,34 @@ LibraryAudioPlaybackProgress _audioProgress(RecordEnvelope record) {
     itemId: LibraryItemId(record.parentId ?? record.identityKey ?? ''),
     chapterId: chapterId,
     position: Duration(milliseconds: positionMilliseconds),
+    updatedAtUtc: updatedAt.toUtc(),
+  );
+}
+
+LibraryVideoPlaybackProgress _videoProgress(RecordEnvelope record) {
+  final document = record.document;
+  final updatedAt = DateTime.tryParse(document['updatedAtUtc'] as String? ?? '');
+  final groupId = document['groupId'];
+  final episodeId = document['episodeId'];
+  final positionMilliseconds = document['positionMilliseconds'];
+  final durationMilliseconds = document['durationMilliseconds'];
+  if (updatedAt == null ||
+      groupId is! String ||
+      groupId.isEmpty ||
+      episodeId is! String ||
+      episodeId.isEmpty ||
+      positionMilliseconds is! int ||
+      positionMilliseconds < 0 ||
+      durationMilliseconds is! int ||
+      durationMilliseconds < 0) {
+    throw const PersistenceCorruptionError();
+  }
+  return LibraryVideoPlaybackProgress(
+    itemId: LibraryItemId(record.parentId ?? record.identityKey ?? ''),
+    groupId: groupId,
+    episodeId: episodeId,
+    position: Duration(milliseconds: positionMilliseconds),
+    duration: Duration(milliseconds: durationMilliseconds),
     updatedAtUtc: updatedAt.toUtc(),
   );
 }

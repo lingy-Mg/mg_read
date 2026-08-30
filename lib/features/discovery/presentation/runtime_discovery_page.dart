@@ -591,7 +591,9 @@ class _DiscoveryBookCard extends StatelessWidget {
           AppSpacing.discoveryListCoverMaxWidth,
           math.max(AppSpacing.discoveryListCoverMinWidth, constraints.maxWidth * 0.16),
         );
-        final coverHeight = coverWidth * AppSpacing.discoveryListCoverAspectRatio;
+        final coverHeight = content.contentKind == PluginContentKind.video
+            ? coverWidth * AppSpacing.discoveryLandscapeCoverAspectRatio
+            : coverWidth * AppSpacing.discoveryListCoverAspectRatio;
         final titleStyle = theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600);
         final secondaryTextStyle = theme.textTheme.bodySmall;
         final metadataStyle = theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText);
@@ -624,6 +626,9 @@ class _DiscoveryBookCard extends StatelessWidget {
                         remoteContentId: content.id,
                         coverUrl: content.coverUrl,
                         variant: _coverVariant(content.id),
+                        presentation: content.contentKind == PluginContentKind.video
+                            ? DiscoveryCoverPresentation.landscape
+                            : DiscoveryCoverPresentation.portrait,
                         width: coverWidth,
                         height: coverHeight,
                       ),

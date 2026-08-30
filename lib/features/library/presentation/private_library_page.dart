@@ -27,6 +27,7 @@ import 'package:mg_read/features/library/presentation/library_book_list_view_dat
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list_action.dart';
+import 'package:mg_read/features/library/presentation/widgets/bookshelf_removal_confirmation.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
@@ -197,18 +198,8 @@ class _PrivateLibraryBodyState extends ConsumerState<_PrivateLibraryBody> {
   }
 
   Future<void> _confirmAndDelete(LibraryBookListItemViewData book, LibraryBookRemover remover) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('删除书籍'),
-        content: Text('确定要从书架删除《${book.title}》吗？'),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('删除')),
-        ],
-      ),
-    );
-    if (!mounted || confirmed != true) return;
+    final confirmed = await showBookshelfRemovalConfirmation(context, title: book.title);
+    if (!mounted || !confirmed) return;
     widget.controller.beginRemoval(book.id);
     try {
       await remover.removeBook(book.id);

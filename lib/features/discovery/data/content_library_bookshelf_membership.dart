@@ -13,6 +13,6 @@ final class ContentLibraryBookshelfMembershipLoader implements BookshelfMembersh
     final page = await _library.listLibrary(const LibraryQuery(limit: bookshelfMaxItemCount));
     return page.items
         .where((item) => item.source != null)
-        .map((item) => BookshelfMembershipEntry(pluginId: item.source!.pluginId, title: item.title));
+        .map((item) => BookshelfMembershipEntry(itemId: item.id.value, pluginId: item.source!.pluginId, title: item.title));
   }
 }

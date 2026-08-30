@@ -40,7 +40,19 @@ async function fetchText(url: string) { const response = await requireContext().
 async function fetchJson(url: string): Promise<Json> { const text = await fetchText(url); const value: unknown = JSON.parse(text); if (!isObject(value)) throw new Error('Source response is invalid.'); return value; }
 function rootDocument() { return frozen({ kind: 'document' as const, document: { components: [{ type: 'section', id: 'video-categories', title: '视频分类', subtitle: null, children: [{ type: 'categoryCollection', id: 'video-categories-list', layout: 'grid', categories: categories.map(([id, title]) => ({ id, title, target: `category:${id}`, count: null, url: null })) }] }] } }); }
 function suggestion(value: Json) { return summary(text(value.id), text(value.name), nullable(value.pic), null); }
-function parseList(html: string) { const entries = links(html); const unique = new Map<string, ReturnType<typeof summary>>(); for (const entry of entries) if (!unique.has(entry.id)) unique.set(entry.id, summary(entry.id, entry.title, null, null)); return [...unique.values()]; }
+function parseList(html: string) { const entries = listEntries(html); const unique = new Map<string, ReturnType<typeof summary>>(); for (const entry of entries) if (!unique.has(entry.id)) unique.set(entry.id, summary(entry.id, entry.title, entry.cover, null)); return [...unique.values()]; }
+function listEntries(html: string) {
+  const result: { id: string; title: string; cover: string | null }[] = [];
+  for (const match of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/giu)) {
+    const attributes = match[1] ?? ''; const body = match[2] ?? ''; const href = attribute(attributes, 'href');
+    const id = /\/vod\/(?:detail|play)\/id\/(\d+)/iu.exec(href)?.[1]; if (id === undefined) continue;
+    const image = /<img\b[^>]*>/iu.exec(body)?.[0] ?? '';
+    const title = attribute(attributes, 'title') || attribute(image, 'alt') || strip(body) || `视频 ${id}`;
+    const cover = attribute(image, 'data-original') || attribute(image, 'data-src') || attribute(image, 'data-lazy-src') || attribute(image, 'src');
+    result.push({ id, title, cover: cover === '' ? null : cover });
+  }
+  return result;
+}
 function parseDetail(html: string, id: string) { const title = firstText(html, /<h1[^>]*>([\s\S]*?)<\/h1>/iu) || firstText(html, /<title[^>]*>([\s\S]*?)<\/title>/iu); const cover = firstAttribute(html, /<meta[^>]+property=["']og:image["'][^>]*>/iu, 'content') || firstAttribute(html, /<img\b[^>]*>/iu, 'data-original') || firstAttribute(html, /<img\b[^>]*>/iu, 'src'); return summary(id, title || `视频 ${id}`, cover, null); }
 function summary(id: string, title: string, cover: string | null, updatedAt: string | null) { if (!/^\d+$/u.test(id)) throw new Error('Source item has no ID.'); return frozen({ id: `video:${id}`, title: decode(title) || `视频 ${id}`, contentKind: 'video', author: null, url: detailUrl(id), coverUrl: absolute(cover), description: null, language: 'zh-CN', status: 'unknown', access: 'unknown', wordCount: null, chapterCount: null, publishedAt: null, updatedAt, latestChapter: null, categories: [], tags: [], attributes: [] }); }
 function detail(item: ReturnType<typeof summary>) { return frozen({ ...item, aliases: [], catalogUrl: item.url }); }

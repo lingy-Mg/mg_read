@@ -5,16 +5,18 @@ import * as plugin from '../dist/index.mjs';
 
 test('video fixture retains neutral groups, episodes and HLS proxy metadata', async () => {
   const detail = await readFile(new URL('./fixtures/detail.html', import.meta.url), 'utf8');
+  const list = await readFile(new URL('./fixtures/list.html', import.meta.url), 'utf8');
   const player = await readFile(new URL('./fixtures/player.html', import.meta.url), 'utf8');
   const resources = [];
   await plugin.activate({ log: { info() {}, warn() {} }, resource: { proxy(value) { resources.push(value); return 'http://127.0.0.1:9000/v1/source-resource/token123456789012'; } }, http: { async fetch(input) {
     const url = String(input); if (url.includes('/ajax/suggest')) return Response.json({ list: [{ id: 101, name: 'Fixture detail', pic: '/cover.jpg' }] });
-    return new Response(url.includes('/play/') ? player : detail);
+    return new Response(url.includes('/type/id/') ? list : url.includes('/play/') ? player : detail);
   } } });
   const root = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 5 });
   assert.equal(root.document.components[0].children[0].categories.length, 5);
   const discovery = await plugin.discover({ target: 'category:1', cursor: null, collectionId: null, pageSize: 5 });
   assert.equal(discovery.document.components[0].children[0].items.length, 1);
+  assert.equal(discovery.document.components[0].children[0].items[0].content.coverUrl, 'https://hsck.la/upload/fixture-cover.jpg');
   const search = await plugin.search({ query: 'fixture', cursor: null, pageSize: 5 }); const detailResult = await plugin.getDetail({ id: search.items[0].id });
   const catalog = await plugin.getChapters({ id: detailResult.id });
   assert.equal(catalog.groups.length, 2); assert.deepEqual(catalog.groups.map((group) => group.episodes.length), [2, 2]);

@@ -19,6 +19,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
+import 'package:mg_read/features/discovery/application/discovery_bookshelf_remover.dart';
 import 'package:mg_read/features/discovery/application/search_page_controller.dart';
 import 'package:mg_read/features/discovery/application/search_page_state.dart';
 import 'package:mg_read/features/discovery/application/search_history_store.dart';
@@ -163,6 +164,11 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                                 ? SourceDetailShelfState.alreadyAdded
                                 : SourceDetailShelfState.canAdd,
                             onAddToShelf: (content) => ref.read(discoveryBookshelfSaverProvider).save(source: source, content: content),
+                            onRemoveFromShelf: ref.read(discoveryBookshelfRemoverProvider) == null
+                                ? null
+                                : () => ref
+                                      .read(discoveryBookshelfRemoverProvider)!
+                                      .remove(pluginId: pluginId, title: content.title),
                           ),
                         );
                       },

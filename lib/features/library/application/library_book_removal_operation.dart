@@ -10,6 +10,8 @@
 ///
 library;
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/library/application/library_book_remover.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
@@ -61,3 +63,14 @@ final class LibraryBookRemovalOperation {
     }
   }
 }
+
+/// Shares the complete bookshelf removal lifecycle across every entrypoint.
+final libraryBookRemovalOperationProvider = Provider<LibraryBookRemovalOperation?>((Ref ref) {
+  final remover = ref.watch(libraryBookRemoverProvider);
+  if (remover == null) return null;
+  return LibraryBookRemovalOperation(
+    remover: remover,
+    controller: ref.read(libraryPageControllerProvider.notifier),
+    diagnostics: ref.watch(diagnosticsManagerProvider),
+  );
+});

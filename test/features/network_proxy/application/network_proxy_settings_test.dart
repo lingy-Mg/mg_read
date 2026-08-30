@@ -15,8 +15,7 @@ void main() {
       host: '10.0.0.2',
       port: 1080,
       enabled: <NetworkProxyTraffic, bool>{
-        NetworkProxyTraffic.source: true,
-        NetworkProxyTraffic.novel: false,
+        NetworkProxyTraffic.runtime: true,
         NetworkProxyTraffic.manga: true,
         NetworkProxyTraffic.video: false,
         NetworkProxyTraffic.audio: true,
@@ -26,10 +25,20 @@ void main() {
     final restored = NetworkProxySettings.fromSettingValue(source.toSettingValue());
 
     expect(restored.uri, 'socks5://10.0.0.2:1080');
-    expect(restored.isEnabled(NetworkProxyTraffic.source), isTrue);
-    expect(restored.isEnabled(NetworkProxyTraffic.novel), isFalse);
+    expect(restored.isEnabled(NetworkProxyTraffic.runtime), isTrue);
     expect(restored.isEnabled(NetworkProxyTraffic.manga), isTrue);
     expect(restored.isEnabled(NetworkProxyTraffic.video), isFalse);
     expect(restored.isEnabled(NetworkProxyTraffic.audio), isTrue);
+  });
+
+  test('migrates the previous source and novel switches into one Runtime route', () {
+    final restored = NetworkProxySettings.fromSettingValue(<String, Object?>{
+      'protocol': 'http',
+      'host': '127.0.0.1',
+      'port': 9000,
+      'enabled': <String, Object?>{'source': false, 'novel': true, 'manga': false, 'video': false, 'audio': false},
+    });
+
+    expect(restored.isEnabled(NetworkProxyTraffic.runtime), isTrue);
   });
 }

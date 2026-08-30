@@ -10,6 +10,9 @@ const Duration _androidStartupTimeout = Duration(seconds: 30);
 
 /// Flutter-facing Android supervisor backed by the Runtime-owned Javet host.
 final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
+  @override
+  Future<void> configureFlutterTransportProxy(Uri? proxyUri) async {}
+
   final StreamController<RuntimeDiagnostic> _diagnosticsController =
       StreamController<RuntimeDiagnostic>.broadcast();
   final List<RuntimeDiagnostic> _latestDiagnostics = <RuntimeDiagnostic>[];

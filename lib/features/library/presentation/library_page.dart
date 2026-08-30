@@ -23,7 +23,6 @@ import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/settings/settings.dart';
-import 'package:mg_read/features/library/application/library_book_remover.dart';
 import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
 import 'package:mg_read/features/library/application/library_book_refresher.dart';
 import 'package:mg_read/features/library/application/library_book_refresh_operation.dart';
@@ -96,7 +95,6 @@ class LibraryPage extends ConsumerWidget {
     final LibraryHomeLayoutMode initialLayoutMode = LibraryHomeLayoutMode.fromSetting(settings.snapshot.get(AppSettingKeys.homeLayoutMode));
     final LibraryPageState state = ref.watch(libraryPageControllerProvider);
     final LibraryPageController controller = ref.read(libraryPageControllerProvider.notifier);
-    final LibraryBookRemover? bookRemover = ref.read(libraryBookRemoverProvider);
     final LibraryBookVisibilityChanger? visibilityChanger = ref.read(libraryBookVisibilityChangerProvider);
     final DiagnosticsManager diagnostics = ref.read(diagnosticsManagerProvider);
     final ShelfReaderLaunchState readerLaunch = ref.watch(shelfReaderLaunchCoordinatorProvider);
@@ -152,9 +150,7 @@ class LibraryPage extends ConsumerWidget {
       }());
     }
 
-    final LibraryBookRemovalOperation? removalOperation = bookRemover == null
-        ? null
-        : LibraryBookRemovalOperation(remover: bookRemover, controller: controller, diagnostics: diagnostics);
+    final LibraryBookRemovalOperation? removalOperation = ref.read(libraryBookRemovalOperationProvider);
     late LibraryHomeCallbacks resolvedCallbacks;
     Future<void> refreshBook(LibraryBookListItemViewData book) async {
       final operation = bookRefreshOperation;

@@ -15,7 +15,7 @@ import 'package:mg_read/core/settings/settings.dart';
 
 enum NetworkProxyProtocol { http, https, socks5 }
 
-enum NetworkProxyTraffic { source, novel, manga, video, audio }
+enum NetworkProxyTraffic { runtime, manga, video, audio }
 
 final class NetworkProxySettings {
   NetworkProxySettings({required this.protocol, required this.host, required this.port, required Map<NetworkProxyTraffic, bool> enabled})
@@ -26,8 +26,7 @@ final class NetworkProxySettings {
     host: '127.0.0.1',
     port: 9000,
     enabled: <NetworkProxyTraffic, bool>{
-      NetworkProxyTraffic.source: false,
-      NetworkProxyTraffic.novel: false,
+      NetworkProxyTraffic.runtime: false,
       NetworkProxyTraffic.manga: false,
       NetworkProxyTraffic.video: false,
       NetworkProxyTraffic.audio: false,
@@ -58,7 +57,11 @@ final class NetworkProxySettings {
         protocol: protocol,
         host: value['host']! as String,
         port: value['port']! as int,
-        enabled: <NetworkProxyTraffic, bool>{for (final traffic in NetworkProxyTraffic.values) traffic: rawEnabled[traffic.name] as bool},
+        enabled: <NetworkProxyTraffic, bool>{
+          NetworkProxyTraffic.runtime:
+              rawEnabled['runtime'] as bool? ?? ((rawEnabled['source'] as bool? ?? false) || (rawEnabled['novel'] as bool? ?? false)),
+          for (final traffic in NetworkProxyTraffic.values.skip(1)) traffic: rawEnabled[traffic.name] as bool? ?? false,
+        },
       );
     } on Object {
       return defaults;

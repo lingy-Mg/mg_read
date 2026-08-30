@@ -12,6 +12,8 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/media/application/source_video_data_source.dart';
 import 'package:mg_read/features/media/application/transient_source_video_playback_state_store.dart';
+import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
+import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
 
 /// Opens one selected neutral video group/episode in the video player.
 Future<void> openTransientSourceVideoPlayer(
@@ -25,7 +27,9 @@ Future<void> openTransientSourceVideoPlayer(
     (candidate) => candidate?.episodes.any((episode) => episode.id == chapter.id) ?? false,
     orElse: () => null,
   );
-  final gateway = ProviderScope.containerOf(context).read(sourceContentGatewayProvider);
+  final container = ProviderScope.containerOf(context);
+  final gateway = container.read(sourceContentGatewayProvider);
+  final proxyUri = await container.read(configuredFlutterNetworkProxyManagerProvider).proxyUriFor(NetworkProxyTraffic.video);
   await navigator.push<void>(
     MaterialPageRoute<void>(
       builder: (_) => VideoPlayerView(
@@ -37,6 +41,7 @@ Future<void> openTransientSourceVideoPlayer(
           initialEpisodeId: chapter.id,
         ),
         observer: _DismissVideoPlayerObserver(navigator),
+        backendFactory: () => createMediaKitVideoPlaybackBackend(proxyUri: proxyUri),
       ),
     ),
   );

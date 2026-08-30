@@ -222,6 +222,18 @@ final class AudioProgressRepository {
         resultState: (result) => result == null ? 'empty' : 'content',
       );
 
+  /// Reads saved audio positions for several shelf items in one metadata query.
+  Future<List<LibraryAudioPlaybackProgress>> loadMany(Iterable<LibraryItemId> itemIds) {
+    final itemIdsByValue = <String>{for (final itemId in itemIds) itemId.value};
+    return _library._trace(
+      operation: 'audioProgressLoadMany',
+      itemCount: itemIdsByValue.length,
+      action: () => _loadMany(itemIdsByValue),
+      resultCount: (result) => result.length,
+      resultState: (result) => result.isEmpty ? 'empty' : 'content',
+    );
+  }
+
   Future<void> save(LibraryAudioPlaybackProgress progress) => _library._trace(
     operation: 'audioProgressSave',
     itemCount: 1,
@@ -233,6 +245,22 @@ final class AudioProgressRepository {
       RecordQuery(recordKind: _audioProgressKind, scope: _scope, identityKey: itemId.value, limit: 1),
     );
     return page.records.isEmpty ? null : _audioProgress(page.records.single);
+  }
+
+  Future<List<LibraryAudioPlaybackProgress>> _loadMany(Set<String> itemIdsByValue) async {
+    if (itemIdsByValue.isEmpty) return const <LibraryAudioPlaybackProgress>[];
+    final records = await _library._persistence.metadataRecords.listByIdentityKeys(
+      recordKind: _audioProgressKind,
+      scope: _scope,
+      identityKeys: itemIdsByValue,
+    );
+    final progressByItemId = <String, LibraryAudioPlaybackProgress>{};
+    for (final record in records) {
+      final itemId = record.identityKey;
+      if (itemId == null || progressByItemId.containsKey(itemId)) continue;
+      progressByItemId[itemId] = _audioProgress(record);
+    }
+    return List<LibraryAudioPlaybackProgress>.unmodifiable(progressByItemId.values);
   }
 
   Future<void> _save(LibraryAudioPlaybackProgress progress) async {
@@ -248,6 +276,84 @@ final class AudioProgressRepository {
       RecordDraft(
         id: _id(),
         recordKind: _audioProgressKind,
+        scope: _scope,
+        parentId: progress.itemId.value,
+        identityKey: progress.itemId.value,
+        orderKey: _timestampOrderKey(progress.updatedAtUtc),
+        stateKey: 'active',
+        document: document,
+      ),
+    );
+  }
+}
+
+/// Persists the last neutral video group, episode and timestamp for a shelf item.
+final class VideoProgressRepository {
+  VideoProgressRepository._(this._library);
+
+  final ContentLibrary _library;
+
+  Future<LibraryVideoPlaybackProgress?> load(LibraryItemId itemId) => _library._trace(
+    operation: 'videoProgressLoad',
+    itemCount: 1,
+    action: () => _load(itemId),
+    resultCount: (result) => result == null ? 0 : 1,
+    resultState: (result) => result == null ? 'empty' : 'content',
+  );
+
+  Future<List<LibraryVideoPlaybackProgress>> loadMany(Iterable<LibraryItemId> itemIds) {
+    final itemIdsByValue = <String>{for (final itemId in itemIds) itemId.value};
+    return _library._trace(
+      operation: 'videoProgressLoadMany',
+      itemCount: itemIdsByValue.length,
+      action: () => _loadMany(itemIdsByValue),
+      resultCount: (result) => result.length,
+      resultState: (result) => result.isEmpty ? 'empty' : 'content',
+    );
+  }
+
+  Future<void> save(LibraryVideoPlaybackProgress progress) => _library._trace(
+    operation: 'videoProgressSave',
+    itemCount: 1,
+    action: () => _save(progress),
+  );
+
+  Future<LibraryVideoPlaybackProgress?> _load(LibraryItemId itemId) async {
+    final page = await _library._persistence.metadataRecords.list(
+      RecordQuery(recordKind: _videoProgressKind, scope: _scope, identityKey: itemId.value, limit: 1),
+    );
+    return page.records.isEmpty ? null : _videoProgress(page.records.single);
+  }
+
+  Future<List<LibraryVideoPlaybackProgress>> _loadMany(Set<String> itemIdsByValue) async {
+    if (itemIdsByValue.isEmpty) return const <LibraryVideoPlaybackProgress>[];
+    final records = await _library._persistence.metadataRecords.listByIdentityKeys(
+      recordKind: _videoProgressKind,
+      scope: _scope,
+      identityKeys: itemIdsByValue,
+    );
+    final progressByItemId = <String, LibraryVideoPlaybackProgress>{};
+    for (final record in records) {
+      final itemId = record.identityKey;
+      if (itemId == null || progressByItemId.containsKey(itemId)) continue;
+      progressByItemId[itemId] = _videoProgress(record);
+    }
+    return List<LibraryVideoPlaybackProgress>.unmodifiable(progressByItemId.values);
+  }
+
+  Future<void> _save(LibraryVideoPlaybackProgress progress) async {
+    final existing = await _library._persistence.metadataRecords.list(
+      RecordQuery(recordKind: _videoProgressKind, scope: _scope, identityKey: progress.itemId.value, limit: 1),
+    );
+    final document = _videoProgressDocument(progress);
+    if (existing.records.isNotEmpty) {
+      await _library._persistence.metadataRecords.update(previous: existing.records.single, document: document);
+      return;
+    }
+    await _library._persistence.metadataRecords.create(
+      RecordDraft(
+        id: _id(),
+        recordKind: _videoProgressKind,
         scope: _scope,
         parentId: progress.itemId.value,
         identityKey: progress.itemId.value,

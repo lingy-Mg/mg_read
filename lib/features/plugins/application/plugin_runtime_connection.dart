@@ -17,6 +17,8 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
+import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
+import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
 
 import 'plugin_runtime_models.dart';
 
@@ -363,6 +365,9 @@ final pluginRuntimeStatusProvider = FutureProvider<PluginRuntimeStatus>((Ref ref
 /// consumers still share the Runtime Facade's one startup operation.
 final pluginRuntimeConnectionProvider = FutureProvider<PluginRuntimeConnection>((Ref ref) async {
   final gateway = ref.watch(pluginRuntimeGatewayProvider);
+  final runtime = ref.watch(pluginRuntimeFacadeProvider);
+  final proxyManager = ref.watch(configuredFlutterNetworkProxyManagerProvider);
+  await runtime.configureFlutterTransportProxy(await proxyManager.proxyUriFor(NetworkProxyTraffic.runtime));
   final diagnostics = ref.watch(diagnosticsManagerProvider);
   final span = diagnostics.startSpan(
     AppDiagnosticEvents.runtimeFacadeCall,

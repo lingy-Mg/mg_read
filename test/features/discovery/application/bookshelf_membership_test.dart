@@ -9,6 +9,7 @@ void main() {
     () async {
       final loader = _FakeMembershipLoader(<BookshelfMembershipEntry>[
         const BookshelfMembershipEntry(
+          itemId: 'book-1',
           pluginId: 'source.a',
           title: '  诡秘   之主  ',
         ),
@@ -37,11 +38,29 @@ void main() {
       );
       expect(loader.loadCount, 1);
 
-      controller.markAdded(pluginId: 'source.a', title: '新书');
+      expect(
+        container.read(bookshelfMembershipProvider).entry(pluginId: 'source.a', title: '诡秘 之主')?.itemId,
+        'book-1',
+      );
+
+      controller.markAdded(itemId: 'book-2', pluginId: 'source.a', title: '新书');
       expect(
         container
             .read(bookshelfMembershipProvider)
             .contains(pluginId: 'source.a', title: '新书'),
+        isTrue,
+      );
+
+      final entry = container.read(bookshelfMembershipProvider).entry(pluginId: 'source.a', title: '新书')!;
+      controller.markRemoved(entry);
+      expect(
+        container.read(bookshelfMembershipProvider).contains(pluginId: 'source.a', title: '新书'),
+        isFalse,
+      );
+
+      controller.markAdded(itemId: entry.itemId, pluginId: entry.pluginId, title: entry.title);
+      expect(
+        container.read(bookshelfMembershipProvider).contains(pluginId: 'source.a', title: '新书'),
         isTrue,
       );
     },

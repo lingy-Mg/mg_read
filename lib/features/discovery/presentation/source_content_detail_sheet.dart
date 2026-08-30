@@ -2,6 +2,7 @@
 ///
 /// 职责：
 /// - 加载并展示书籍详情、目录和相关推荐，将操作委托给宿主回调。
+/// - 已在书架的发现内容提供统一确认后的移出入口，并即时切换本地按钮状态。
 ///
 /// 注意：
 /// - 不要在 build() 中执行 Runtime、网络或磁盘 IO。
@@ -25,6 +26,7 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
+import 'package:mg_read/features/library/presentation/widgets/bookshelf_removal_confirmation.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 part 'source_content_detail_sections.dart';
@@ -67,6 +69,7 @@ typedef SourceVideoEpisodeRequested =
 typedef SourceExternalUrlLauncher = Future<bool> Function(Uri url);
 
 typedef SourceShelfSaveRequested = Future<void> Function(PluginContentSummary content);
+typedef SourceShelfRemoveRequested = Future<void> Function();
 
 /// Actions available for a book that is already owned by the local shelf.
 enum SourceShelfAction { refresh, setPrivate, cancelPrivate, delete }
@@ -91,6 +94,7 @@ Future<void> showSourceContentDetailSheet(
   SourceAudioChapterRequested? onAudioChapterRequested,
   SourceVideoEpisodeRequested? onVideoEpisodeRequested,
   SourceShelfSaveRequested? onAddToShelf,
+  SourceShelfRemoveRequested? onRemoveFromShelf,
   SourceDetailShelfState shelfState = SourceDetailShelfState.canAdd,
   SourceExternalUrlLauncher? onExternalUrlRequested,
   SourceShelfActionRequested? onShelfAction,
@@ -110,6 +114,7 @@ Future<void> showSourceContentDetailSheet(
     onAudioChapterRequested: onAudioChapterRequested,
     onVideoEpisodeRequested: onVideoEpisodeRequested,
     onAddToShelf: onAddToShelf,
+    onRemoveFromShelf: onRemoveFromShelf,
     shelfState: shelfState,
     onExternalUrlRequested: onExternalUrlRequested ?? _launchSystemBrowser,
     onShelfAction: onShelfAction,
@@ -234,6 +239,7 @@ class _SourceDetailScreen extends StatefulWidget {
     required this.onAudioChapterRequested,
     required this.onVideoEpisodeRequested,
     required this.onAddToShelf,
+    required this.onRemoveFromShelf,
     required this.shelfState,
     required this.onExternalUrlRequested,
     required this.onShelfAction,
@@ -252,6 +258,7 @@ class _SourceDetailScreen extends StatefulWidget {
   final SourceAudioChapterRequested? onAudioChapterRequested;
   final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
   final SourceShelfSaveRequested? onAddToShelf;
+  final SourceShelfRemoveRequested? onRemoveFromShelf;
   final SourceDetailShelfState shelfState;
   final SourceExternalUrlLauncher onExternalUrlRequested;
 
@@ -331,6 +338,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                             onAudioChapterRequested: widget.onAudioChapterRequested,
                             onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
                             onAddToShelf: widget.onAddToShelf,
+                            onRemoveFromShelf: widget.onRemoveFromShelf,
                             shelfState: widget.shelfState,
                             onShelfAction: widget.onShelfAction,
                             onStartReading: widget.onStartReading,
@@ -358,6 +366,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                           onAudioChapterRequested: widget.onAudioChapterRequested,
                           onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
                           onAddToShelf: widget.onAddToShelf,
+                          onRemoveFromShelf: widget.onRemoveFromShelf,
                           shelfState: widget.shelfState,
                           onShelfAction: widget.onShelfAction,
                           onStartReading: widget.onStartReading,
@@ -381,6 +390,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                         onAudioChapterRequested: widget.onAudioChapterRequested,
                         onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
                         onAddToShelf: widget.onAddToShelf,
+                        onRemoveFromShelf: widget.onRemoveFromShelf,
                         shelfState: widget.shelfState,
                         onShelfAction: widget.onShelfAction,
                         onStartReading: widget.onStartReading,
@@ -409,6 +419,7 @@ class _SourceDetailView extends StatefulWidget {
     required this.onAudioChapterRequested,
     required this.onVideoEpisodeRequested,
     required this.onAddToShelf,
+    required this.onRemoveFromShelf,
     required this.shelfState,
     required this.onShelfAction,
     required this.onStartReading,
@@ -424,6 +435,7 @@ class _SourceDetailView extends StatefulWidget {
   final SourceAudioChapterRequested? onAudioChapterRequested;
   final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
   final SourceShelfSaveRequested? onAddToShelf;
+  final SourceShelfRemoveRequested? onRemoveFromShelf;
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested? onShelfAction;
   final SourceStartReadingRequested? onStartReading;
@@ -438,6 +450,7 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
   late SourceDetailShelfState _shelfState;
   var _visibleChapterCount = 20;
   bool _isSavingToShelf = false;
+  bool _isRemovingFromShelf = false;
 
   @override
   void initState() {
@@ -449,7 +462,10 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
   @override
   void didUpdateWidget(covariant _SourceDetailView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_isSavingToShelf && oldWidget.shelfState != widget.shelfState && widget.shelfState != SourceDetailShelfState.canAdd) {
+    if (!_isSavingToShelf &&
+        !_isRemovingFromShelf &&
+        oldWidget.shelfState != widget.shelfState &&
+        widget.shelfState != SourceDetailShelfState.canAdd) {
       _shelfState = widget.shelfState;
     }
   }
@@ -473,6 +489,27 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
       setState(() => _isSavingToShelf = false);
       final message = error is BookshelfCapacityExceededException ? '书架已满，请先清理书籍。' : '暂时无法加入书架，请稍后重试。';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<void> _removeFromShelf(PluginContentSummary content) async {
+    final remove = widget.onRemoveFromShelf;
+    if (remove == null || _isSavingToShelf || _isRemovingFromShelf || _shelfState == SourceDetailShelfState.canAdd) return;
+    final confirmed = await showBookshelfRemovalConfirmation(context, title: content.title);
+    if (!mounted || !confirmed) return;
+    setState(() => _isRemovingFromShelf = true);
+    try {
+      await remove();
+      if (!mounted) return;
+      setState(() {
+        _isRemovingFromShelf = false;
+        _shelfState = SourceDetailShelfState.canAdd;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已从书架移出《${content.title}》')));
+    } on Object {
+      if (!mounted) return;
+      setState(() => _isRemovingFromShelf = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('移出书架失败，请稍后重试。')));
     }
   }
 
@@ -500,11 +537,14 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
     onAudioChapterRequested: widget.onAudioChapterRequested,
     onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
     onAddToShelf: widget.onAddToShelf,
+    onRemoveFromShelf: widget.onRemoveFromShelf,
     shelfState: _shelfState,
     onShelfAction: widget.onShelfAction,
     onStartReading: widget.onStartReading,
     isSavingToShelf: _isSavingToShelf,
+    isRemovingFromShelf: _isRemovingFromShelf,
     onSaveToShelf: _saveToShelf,
+    onRemoveFromShelfRequested: _removeFromShelf,
     onExternalUrlRequested: widget.onExternalUrlRequested,
     visibleChapterCount: _visibleChapterCount,
     onLoadMore: _visibleChapterCount < _chapters.length ? _loadMore : null,
@@ -522,11 +562,14 @@ class _SourceDetailBody extends StatelessWidget {
     required this.onAudioChapterRequested,
     required this.onVideoEpisodeRequested,
     required this.onAddToShelf,
+    required this.onRemoveFromShelf,
     required this.shelfState,
     required this.onShelfAction,
     required this.onStartReading,
     required this.isSavingToShelf,
+    required this.isRemovingFromShelf,
     required this.onSaveToShelf,
+    required this.onRemoveFromShelfRequested,
     required this.onExternalUrlRequested,
     required this.visibleChapterCount,
     required this.onLoadMore,
@@ -541,11 +584,14 @@ class _SourceDetailBody extends StatelessWidget {
   final SourceAudioChapterRequested? onAudioChapterRequested;
   final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
   final SourceShelfSaveRequested? onAddToShelf;
+  final SourceShelfRemoveRequested? onRemoveFromShelf;
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested? onShelfAction;
   final SourceStartReadingRequested? onStartReading;
   final bool isSavingToShelf;
+  final bool isRemovingFromShelf;
   final ValueChanged<PluginContentSummary> onSaveToShelf;
+  final ValueChanged<PluginContentSummary> onRemoveFromShelfRequested;
   final SourceExternalUrlLauncher onExternalUrlRequested;
   final int visibleChapterCount;
   final VoidCallback? onLoadMore;
@@ -650,7 +696,11 @@ class _SourceDetailBody extends StatelessWidget {
                 child: OutlinedButton.icon(
                   key: const Key('source-detail-add-shelf'),
                   onPressed: shelfState != SourceDetailShelfState.canAdd
-                      ? () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('此书已在书架中。')))
+                      ? onRemoveFromShelf == null
+                            ? () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('移出书架功能暂不可用。')))
+                            : isRemovingFromShelf
+                            ? null
+                            : () => onRemoveFromShelfRequested(content)
                       : onAddToShelf == null
                       ? () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('书架保存功能尚未接入此数据源。')))
                       : isSavingToShelf
@@ -658,14 +708,18 @@ class _SourceDetailBody extends StatelessWidget {
                       : () => onSaveToShelf(content),
                   icon: Icon(
                     shelfState != SourceDetailShelfState.canAdd
-                        ? Icons.bookmark_added_outlined
+                        ? isRemovingFromShelf
+                              ? Icons.hourglass_top_rounded
+                              : Icons.bookmark_remove_outlined
                         : isSavingToShelf
                         ? Icons.hourglass_top_rounded
                         : Icons.library_add_outlined,
                   ),
                   label: Text(
                     shelfState != SourceDetailShelfState.canAdd
-                        ? '已在书架'
+                        ? isRemovingFromShelf
+                              ? '正在移出…'
+                              : '已在书架 · 移出'
                         : isSavingToShelf
                         ? '正在加入…'
                         : '加入书架',

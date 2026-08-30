@@ -15,6 +15,8 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/media/application/android_audio_background_service.dart';
 import 'package:mg_read/features/media/application/source_audio_playlist_data_source.dart';
 import 'package:mg_read/features/media/application/transient_source_audio_playback_state_store.dart';
+import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
+import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
 
 /// Opens an audio chapter through the independent audio player.
 Future<void> openTransientSourceAudioPlayer(
@@ -32,6 +34,7 @@ Future<void> openTransientSourceAudioPlayer(
   final savedProgress = library == null || itemId == null ? null : await library.loadAudioProgress(itemId);
   final initialTrackId = savedProgress?.chapterId ?? chapter.id;
   final controller = AudioPlayerController();
+  final proxyUri = await container.read(configuredFlutterNetworkProxyManagerProvider).proxyUriFor(NetworkProxyTraffic.audio);
   final observer = await AndroidAudioBackgroundService.instance.attach(
     controller: controller,
     observer: _DismissAudioPlayerObserver(navigator),
@@ -54,6 +57,7 @@ Future<void> openTransientSourceAudioPlayer(
           libraryItemId: itemId,
         ),
         controller: controller,
+        proxyUri: proxyUri,
         observer: observer,
         artworkBuilder: _sourceAudioArtwork,
         prefetchBatchSize: 1,

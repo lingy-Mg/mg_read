@@ -92,6 +92,7 @@ void main() {
             bookshelfMembershipLoaderProvider.overrideWithValue(
               _MemoryMembershipLoader(const <BookshelfMembershipEntry>[
                 BookshelfMembershipEntry(
+                  itemId: 'book-1',
                   pluginId: 'source.test',
                   title: '真实搜索结果',
                 ),

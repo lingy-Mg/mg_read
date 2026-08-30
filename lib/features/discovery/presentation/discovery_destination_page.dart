@@ -23,6 +23,7 @@ import 'package:mg_read/features/discovery/application/discovery_page_controller
 import 'package:mg_read/features/discovery/application/discovery_page_state.dart';
 import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
+import 'package:mg_read/features/discovery/application/discovery_bookshelf_remover.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
@@ -212,6 +213,7 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
         final result = displayedResult;
         if (result == null) return;
         final saver = ref.read(discoveryBookshelfSaverProvider);
+        final remover = ref.read(discoveryBookshelfRemoverProvider);
         unawaited(
           showSourceContentDetailSheet(
             context,
@@ -229,6 +231,9 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
                 ? SourceDetailShelfState.alreadyAdded
                 : SourceDetailShelfState.canAdd,
             onAddToShelf: (content) => saver.save(source: selectedSource, content: content),
+            onRemoveFromShelf: remover == null
+                ? null
+                : () => remover.remove(pluginId: state.selectedSourceId!, title: content.title),
           ),
         );
       },

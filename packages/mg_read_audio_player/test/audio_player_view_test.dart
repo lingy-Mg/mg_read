@@ -70,6 +70,7 @@ void main() {
       _testHost(
         backend: _FakeAudioBackend(),
         store: _FakeAudioStateStore(),
+        observer: const AudioPlayerObserver(),
         dataSource: const _FailingAudioDataSource(),
       ),
     );
@@ -78,7 +79,10 @@ void main() {
 
     expect(find.text('数据源未返回播放地址。'), findsOneWidget);
     expect(find.text('发生位置：所选章节的播放地址'), findsOneWidget);
-    expect(find.text('诊断编号：audio_selected_resource_unavailable'), findsOneWidget);
+    expect(
+      find.text('诊断编号：audio_selected_resource_unavailable'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('controls transport and saves before switching tracks', (

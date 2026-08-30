@@ -8,6 +8,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_composite_components.dart';
 import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 void main() {
@@ -175,6 +176,28 @@ void main() {
 
     await pumpAtWidth(760);
     expect(columnCount(), 4);
+  });
+
+  testWidgets('uses a landscape cover for video items in the cover grid', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: DiscoveryCoverGrid(items: <PluginDiscoveryContentItem>[_videoItem()], onPressed: (_) {}, isInBookshelf: (_) => false),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final cover = find.byType(DiscoveryBookCover);
+    final size = tester.getSize(cover);
+    expect(size.height, closeTo(size.width * 9 / 16, 0.01));
+    expect(tester.widget<DiscoveryBookCover>(cover).presentation, DiscoveryCoverPresentation.landscape);
   });
 
   testWidgets('fills each category chip row with adaptive equal-width columns', (tester) async {
@@ -509,6 +532,32 @@ PluginDiscoveryContentItem _item(String id, String title, int rank) => PluginDis
   ),
   rank: rank,
   metric: const PluginDiscoveryMetric(label: '热度', value: '1万'),
+  recommendation: null,
+);
+
+PluginDiscoveryContentItem _videoItem() => PluginDiscoveryContentItem(
+  content: PluginContentSummary(
+    id: 'video:101',
+    title: '麻豆横版电影',
+    contentKind: PluginContentKind.video,
+    author: null,
+    url: null,
+    coverUrl: Uri.parse('https://hsck.la/upload/fixture-cover.jpg'),
+    description: null,
+    language: 'zh-CN',
+    status: PluginContentStatus.ongoing,
+    access: PluginAccessKind.unknown,
+    wordCount: null,
+    chapterCount: null,
+    publishedAt: null,
+    updatedAt: null,
+    latestChapter: null,
+    categories: const <String>[],
+    tags: const <String>[],
+    attributes: const <PluginContentAttribute>[],
+  ),
+  rank: null,
+  metric: null,
   recommendation: null,
 );
 

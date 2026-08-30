@@ -194,7 +194,14 @@ final class BookshelfRepository {
     final record = await _library._persistence.metadataRecords.read(id: id.value, scope: _scope);
     if (record == null) return;
     final records = <RecordEnvelope>[record];
-    for (final kind in [_readingProgressKind, _bookmarkKind, _mangaProgressKind, _mangaBookmarkKind]) {
+    for (final kind in [
+      _readingProgressKind,
+      _bookmarkKind,
+      _mangaProgressKind,
+      _audioProgressKind,
+      _videoProgressKind,
+      _mangaBookmarkKind,
+    ]) {
       final related = await _library._persistence.metadataRecords.list(
         RecordQuery(recordKind: kind, scope: _scope, parentId: id.value, limit: 1000),
       );

@@ -95,7 +95,15 @@ final class StorageMaintenanceRepository {
         retainedCatalog.add(entry);
       }
     }
-    for (final kind in <String>[_bindingKind, _readingProgressKind, _bookmarkKind, _mangaProgressKind, _mangaBookmarkKind]) {
+    for (final kind in <String>[
+      _bindingKind,
+      _readingProgressKind,
+      _bookmarkKind,
+      _mangaProgressKind,
+      _audioProgressKind,
+      _videoProgressKind,
+      _mangaBookmarkKind,
+    ]) {
       for (final record in await _loadRecords(kind)) {
         final parentId = record.parentId;
         if (parentId == null || !activeItemIds.contains(parentId)) detached.add(record);

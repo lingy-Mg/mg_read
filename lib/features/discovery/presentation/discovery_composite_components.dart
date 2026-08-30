@@ -41,7 +41,9 @@ class DiscoveryCoverGrid extends StatelessWidget {
         };
         const gap = AppSpacing.discoveryComponentGap;
         final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
-        final coverHeight = width * AppSpacing.discoveryCoverAspectRatio;
+        final coverHeight = items
+            .map((item) => _coverHeight(width, item.content.contentKind))
+            .fold<double>(0, (maximum, value) => value > maximum ? value : maximum);
         return GridView.builder(
           key: const Key('runtime-discovery-cover-grid'),
           shrinkWrap: true,
@@ -59,7 +61,7 @@ class DiscoveryCoverGrid extends StatelessWidget {
             return _CoverTile(
               item: item,
               width: width,
-              coverHeight: coverHeight,
+              coverHeight: _coverHeight(width, item.content.contentKind),
               inBookshelf: isInBookshelf(item.content),
               onPressed: () => onPressed(item.content),
             );
@@ -98,7 +100,7 @@ class DiscoveryBookShelf extends StatelessWidget {
               child: _CoverTile(
                 item: item,
                 width: AppSpacing.discoveryShelfItemWidth,
-                coverHeight: AppSpacing.discoveryShelfItemWidth * AppSpacing.discoveryCoverAspectRatio,
+                coverHeight: _coverHeight(AppSpacing.discoveryShelfItemWidth, item.content.contentKind),
                 inBookshelf: isInBookshelf(item.content),
                 onPressed: () => onPressed(item.content),
               ),
@@ -381,6 +383,7 @@ class _CoverTile extends StatelessWidget {
                   remoteContentId: content.id,
                   coverUrl: content.coverUrl,
                   variant: _coverVariant(content.id),
+                  presentation: _coverPresentation(content.contentKind),
                   width: width,
                   height: coverHeight,
                 ),
@@ -422,6 +425,12 @@ class _CoverTile extends StatelessWidget {
     );
   }
 }
+
+DiscoveryCoverPresentation _coverPresentation(PluginContentKind kind) =>
+    kind == PluginContentKind.video ? DiscoveryCoverPresentation.landscape : DiscoveryCoverPresentation.portrait;
+
+double _coverHeight(double width, PluginContentKind kind) =>
+    width * (kind == PluginContentKind.video ? AppSpacing.discoveryLandscapeCoverAspectRatio : AppSpacing.discoveryCoverAspectRatio);
 
 class _CategoryGrid extends StatelessWidget {
   const _CategoryGrid({required this.categories, required this.onSelected});

@@ -3,12 +3,16 @@
 /// The page persists no credentials and does not make test network requests.
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
+import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
 final class NetworkProxySettingsPage extends ConsumerStatefulWidget {
@@ -104,7 +108,7 @@ final class _NetworkProxySettingsPageState extends ConsumerState<NetworkProxySet
                               title: Text(_label(traffic)),
                               subtitle: Text(_description(traffic)),
                               value: _enabled[traffic] ?? false,
-                              onChanged: _saving
+                              onChanged: _saving || !_isSupported(traffic)
                                   ? null
                                   : (value) => setState(() => _enabled = <NetworkProxyTraffic, bool>{..._enabled, traffic: value}),
                             ),
@@ -127,7 +131,7 @@ final class _NetworkProxySettingsPageState extends ConsumerState<NetworkProxySet
                     ),
                     const SizedBox(height: AppSpacing.compact),
                     Text(
-                      '默认 HTTP://127.0.0.1:9000。不保存账号或密码；关闭某项后该类流量直连。',
+                      '默认 HTTP://127.0.0.1:9000。不保存账号或密码；保存后立即用于新连接，已经建立的播放连接会在下次分片或重新打开时切换。',
                       style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
                     ),
                   ],
@@ -160,10 +164,12 @@ final class _NetworkProxySettingsPageState extends ConsumerState<NetworkProxySet
       _error = null;
     });
     try {
-      await saveNetworkProxySettings(
-        ref.read(appSettingsProvider),
-        NetworkProxySettings(protocol: _protocol, host: host, port: port, enabled: _enabled),
-      );
+      final value = NetworkProxySettings(protocol: _protocol, host: host, port: port, enabled: _enabled);
+      await saveNetworkProxySettings(ref.read(appSettingsProvider), value);
+      final proxyManager = ref.read(flutterNetworkProxyManagerProvider)..update(value);
+      await ref
+          .read(pluginRuntimeFacadeProvider)
+          .configureFlutterTransportProxy(await proxyManager.proxyUriFor(NetworkProxyTraffic.runtime));
       if (mounted) {
         setState(() => _saving = false);
       }
@@ -179,17 +185,18 @@ final class _NetworkProxySettingsPageState extends ConsumerState<NetworkProxySet
 }
 
 String _label(NetworkProxyTraffic value) => switch (value) {
-  NetworkProxyTraffic.source => '书源通讯',
-  NetworkProxyTraffic.novel => '小说',
+  NetworkProxyTraffic.runtime => '与书源 Runtime 通讯',
   NetworkProxyTraffic.manga => '漫画',
   NetworkProxyTraffic.video => '视频',
   NetworkProxyTraffic.audio => '音频',
 };
 
 String _description(NetworkProxyTraffic value) => switch (value) {
-  NetworkProxyTraffic.source => '搜索、发现、详情和目录请求',
-  NetworkProxyTraffic.novel => '小说正文与相关资源',
-  NetworkProxyTraffic.manga => '漫画图片与相关资源',
-  NetworkProxyTraffic.video => '视频清单与分片',
-  NetworkProxyTraffic.audio => '音频清单与分片',
+  NetworkProxyTraffic.runtime =>
+    Platform.isAndroid ? 'Android Runtime 在应用进程内，没有可代理的 Flutter 网络链路' : '仅 Flutter 到 Runtime 的通讯，不修改 Node.js 请求',
+  NetworkProxyTraffic.manga => 'Flutter 下载的漫画图片与相关资源',
+  NetworkProxyTraffic.video => 'MediaKit 加载的视频清单与分片',
+  NetworkProxyTraffic.audio => 'MediaKit 加载的音频清单与分片',
 };
+
+bool _isSupported(NetworkProxyTraffic value) => value != NetworkProxyTraffic.runtime || !Platform.isAndroid;

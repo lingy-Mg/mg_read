@@ -37,6 +37,7 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/discovery/data/content_library_bookshelf_membership.dart';
 import 'package:mg_read/features/discovery/data/content_library_source_cover_persistence.dart';
+import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
 import 'package:mg_read/features/reader/application/chapter_cache_task_controller.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
@@ -533,7 +534,7 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
       membership: _membership,
       onMutationStarted: onMutationStarted,
       onMutationCommitted: (mutation, item) {
-        _membership.markAdded(pluginId: mutation.request.pluginId, title: item.title);
+        _membership.markAdded(itemId: item.id.value, pluginId: mutation.request.pluginId, title: item.title);
         onMutationCommitted?.call(
           mutation,
           LibraryItemSummary(
@@ -574,12 +575,20 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
 }
 
 final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher, LocalShelfReaderPrewarmer {
-  const DeferredLibraryReaderLauncher(this._get, this._gateway, this._diagnostics, [this._settings, this._chapterCacheTasks]);
+  const DeferredLibraryReaderLauncher(
+    this._get,
+    this._gateway,
+    this._diagnostics, [
+    this._settings,
+    this._chapterCacheTasks,
+    this._proxyManager,
+  ]);
   final ContentLibraryGetter _get;
   final SourceContentGateway _gateway;
   final DiagnosticsManager _diagnostics;
   final AppSettingsManager? _settings;
   final ChapterCacheTaskController? _chapterCacheTasks;
+  final FlutterNetworkProxyManager? _proxyManager;
   @override
   Future<ReaderLaunchRequest> launch(String libraryItemId) async {
     final library = await _get();
@@ -592,7 +601,12 @@ final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher, Loca
       ContentKind.manga => ComicReaderLaunchRequest(
         bookId: item.id.value,
         entryCoverBytes: await _readCachedCover(library, item),
-        dataSource: ContentLibraryComicReaderDataSource(library: library, gateway: _gateway, item: item),
+        dataSource: ContentLibraryComicReaderDataSource(
+          library: library,
+          gateway: _gateway,
+          item: item,
+          fetcher: _proxyManager == null ? null : createProxyAwareComicImageFetcher(_proxyManager),
+        ),
         stateStore: ContentLibraryComicReaderStateStore(library, itemId: item.id, settings: _settings),
       ),
       ContentKind.audio || ContentKind.video => throw StateError('Media shelf items must be opened through their player host.'),

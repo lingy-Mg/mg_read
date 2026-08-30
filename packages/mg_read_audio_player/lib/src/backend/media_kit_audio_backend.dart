@@ -18,7 +18,7 @@ import '../api/audio_models.dart';
 
 /// MediaKit 1.2.6 implementation used when no fake backend is supplied.
 final class AudioMediaKitPlaybackBackend implements AudioPlaybackBackend {
-  AudioMediaKitPlaybackBackend() {
+  AudioMediaKitPlaybackBackend({this.proxyUri}) {
     MediaKit.ensureInitialized();
     _player = Player();
     _snapshot = _fromPlayerState(_player.state);
@@ -26,6 +26,7 @@ final class AudioMediaKitPlaybackBackend implements AudioPlaybackBackend {
   }
 
   late final Player _player;
+  final Uri? proxyUri;
   late AudioPlaybackBackendSnapshot _snapshot;
   final StreamController<AudioPlaybackBackendSnapshot> _snapshots =
       StreamController<AudioPlaybackBackendSnapshot>.broadcast(sync: true);
@@ -141,8 +142,17 @@ final class AudioMediaKitPlaybackBackend implements AudioPlaybackBackend {
         clearError: true,
       ),
     );
+    await _applyProxy();
     await _player.open(Playlist(media, index: initialIndex), play: play);
     _emit(_fromPlayerState(_player.state).copyWith(clearError: true));
+  }
+
+  Future<void> _applyProxy() async {
+    final proxy = proxyUri;
+    final platform = _player.platform;
+    if (proxy == null || platform is! NativePlayer) return;
+    await platform.setProperty('http-proxy', proxy.toString());
+    await platform.setProperty('demuxer-lavf-o', 'http_proxy=$proxy');
   }
 
   @override

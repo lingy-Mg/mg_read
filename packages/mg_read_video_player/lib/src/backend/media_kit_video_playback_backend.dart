@@ -23,15 +23,18 @@ import '../api/contracts.dart';
 import '../api/models.dart';
 
 /// Creates the package default backend without exposing MediaKit publicly.
-VideoPlaybackBackend createMediaKitVideoPlaybackBackend() =>
-    MediaKitVideoPlaybackBackend();
+VideoPlaybackBackend createMediaKitVideoPlaybackBackend({Uri? proxyUri}) =>
+    MediaKitVideoPlaybackBackend(proxyUri: proxyUri);
 
 /// MediaKit-backed implementation used by default in production hosts.
 final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
   /// Prepares MediaKit without choosing a host native-library bundle.
-  MediaKitVideoPlaybackBackend() {
+  MediaKitVideoPlaybackBackend({this.proxyUri}) {
     MediaKit.ensureInitialized();
   }
+
+  /// Optional credential-free HTTP proxy sampled for this backend session.
+  final Uri? proxyUri;
 
   final ValueNotifier<VideoPlaybackBackendState> _state =
       ValueNotifier<VideoPlaybackBackendState>(
@@ -113,7 +116,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
   }) async {
     if (!_isRequestedGeneration(generation)) return;
 
-    final session = _MediaKitEpisodeSession();
+    final session = _MediaKitEpisodeSession(proxyUri);
     _bind(session, generation, episode);
     if (!_isRequestedGeneration(generation)) {
       await session.dispose();
@@ -133,6 +136,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     if (!_isCurrent(session, generation)) return;
 
     try {
+      await session.applyProxy();
       _debugPlaybackRequest('open', episode);
       await session.player.open(
         Media(episode.uri, httpHeaders: episode.httpHeaders),
@@ -355,13 +359,14 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
 }
 
 final class _MediaKitEpisodeSession {
-  _MediaKitEpisodeSession() {
+  _MediaKitEpisodeSession(this.proxyUri) {
     player = Player();
     controller = VideoController(player);
     controllerReady = WidgetsBinding.instance.endOfFrame;
   }
 
   late final Player player;
+  final Uri? proxyUri;
   late final VideoController controller;
   late final Future<void> controllerReady;
   final List<StreamSubscription<Object?>> subscriptions =
@@ -373,6 +378,14 @@ final class _MediaKitEpisodeSession {
     controller.waitUntilFirstFrameRendered.then((_) => true),
     _closed.future.then((_) => false),
   ]);
+
+  Future<void> applyProxy() async {
+    final proxy = proxyUri;
+    final platform = player.platform;
+    if (proxy == null || platform is! NativePlayer) return;
+    await platform.setProperty('http-proxy', proxy.toString());
+    await platform.setProperty('demuxer-lavf-o', 'http_proxy=$proxy');
+  }
 
   Future<void> dispose() {
     final pending = _disposeFuture;

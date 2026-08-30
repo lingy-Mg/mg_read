@@ -5,8 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// A small source/title projection used to answer bookshelf questions without
 /// querying persistence for every search or discovery row.
 final class BookshelfMembershipEntry {
-  const BookshelfMembershipEntry({required this.pluginId, required this.title});
+  const BookshelfMembershipEntry({required this.itemId, required this.pluginId, required this.title});
 
+  final String itemId;
   final String pluginId;
   final String title;
 }
@@ -29,17 +30,20 @@ final bookshelfMembershipLoaderProvider = Provider<BookshelfMembershipLoader>(
 );
 
 final class BookshelfMembershipState {
-  const BookshelfMembershipState({required this.keys, required this.isLoaded});
+  const BookshelfMembershipState({required this.entriesByKey, required this.isLoaded});
 
   const BookshelfMembershipState.initial()
-    : keys = const <String>{},
+    : entriesByKey = const <String, BookshelfMembershipEntry>{},
       isLoaded = false;
 
-  final Set<String> keys;
+  final Map<String, BookshelfMembershipEntry> entriesByKey;
   final bool isLoaded;
 
   bool contains({required String pluginId, required String title}) =>
-      keys.contains(bookshelfMembershipKey(pluginId: pluginId, title: title));
+      entry(pluginId: pluginId, title: title) != null;
+
+  BookshelfMembershipEntry? entry({required String pluginId, required String title}) =>
+      entriesByKey[bookshelfMembershipKey(pluginId: pluginId, title: title)];
 }
 
 /// Process-scoped O(1) bookshelf membership index shared by search, discovery
@@ -55,7 +59,8 @@ class BookshelfMembershipController extends Notifier<BookshelfMembershipState> {
   int _generation = 0;
   bool _disposed = false;
   Future<void>? _loadFuture;
-  final Set<String> _optimisticAdded = <String>{};
+  final Map<String, BookshelfMembershipEntry> _optimisticAdded = <String, BookshelfMembershipEntry>{};
+  final Set<String> _optimisticRemoved = <String>{};
 
   @override
   BookshelfMembershipState build() {
@@ -76,14 +81,33 @@ class BookshelfMembershipController extends Notifier<BookshelfMembershipState> {
     return contains(pluginId: pluginId, title: title);
   }
 
+  Future<BookshelfMembershipEntry?> entryWhenReady({required String pluginId, required String title}) async {
+    if (!state.isLoaded) await reload();
+    return state.entry(pluginId: pluginId, title: title);
+  }
+
   /// Publishes a durable save immediately so a detail reopened after returning
   /// from it sees the same source/title membership without another SQL read.
-  void markAdded({required String pluginId, required String title}) {
+  void markAdded({required String itemId, required String pluginId, required String title}) {
     if (_disposed) return;
+    final entry = BookshelfMembershipEntry(itemId: itemId, pluginId: pluginId, title: title);
     final key = bookshelfMembershipKey(pluginId: pluginId, title: title);
-    _optimisticAdded.add(key);
+    _optimisticAdded[key] = entry;
+    _optimisticRemoved.remove(key);
     state = BookshelfMembershipState(
-      keys: {...state.keys, key},
+      entriesByKey: <String, BookshelfMembershipEntry>{...state.entriesByKey, key: entry},
+      isLoaded: state.isLoaded,
+    );
+  }
+
+  /// Hides one known shelf item immediately while its durable deletion runs.
+  void markRemoved(BookshelfMembershipEntry entry) {
+    if (_disposed) return;
+    final key = bookshelfMembershipKey(pluginId: entry.pluginId, title: entry.title);
+    _optimisticAdded.remove(key);
+    _optimisticRemoved.add(key);
+    state = BookshelfMembershipState(
+      entriesByKey: <String, BookshelfMembershipEntry>{...state.entriesByKey}..remove(key),
       isLoaded: state.isLoaded,
     );
   }
@@ -108,13 +132,14 @@ class BookshelfMembershipController extends Notifier<BookshelfMembershipState> {
     try {
       final entries = await _loader.load();
       if (_disposed || generation != _generation) return;
-      final keys = <String>{
+      final entriesByKey = <String, BookshelfMembershipEntry>{
         for (final entry in entries)
-          bookshelfMembershipKey(pluginId: entry.pluginId, title: entry.title),
+          if (!_optimisticRemoved.contains(bookshelfMembershipKey(pluginId: entry.pluginId, title: entry.title)))
+            bookshelfMembershipKey(pluginId: entry.pluginId, title: entry.title): entry,
         ..._optimisticAdded,
       };
       state = BookshelfMembershipState(
-        keys: Set<String>.unmodifiable(keys),
+        entriesByKey: Map<String, BookshelfMembershipEntry>.unmodifiable(entriesByKey),
         isLoaded: true,
       );
     } on Object {

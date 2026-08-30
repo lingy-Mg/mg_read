@@ -67,6 +67,8 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
 
   /// Negotiated connection after ready, HTTP probe, and hello all succeed.
   _WireConnection? _connection;
+  _RuntimeReady? _ready;
+  Uri? _flutterTransportProxy;
 
   /// Prevents new work after cleanup starts and makes disposal idempotent.
   bool _disposed = false;
@@ -103,6 +105,25 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
 
   /// Package-test-only child launch count; not a public process handle.
   int get debugProcessStartCount => _processStartCount;
+
+  @override
+  Future<void> configureFlutterTransportProxy(Uri? proxyUri) async {
+    if (_flutterTransportProxy == proxyUri) return;
+    _flutterTransportProxy = proxyUri;
+    final ready = _ready;
+    final previous = _connection;
+    if (ready == null || previous == null) return;
+    await previous.close();
+    _connection = null;
+    final replacement = await _WireConnection.connect(
+      ready,
+      dataRoot: _bundle.dataRoot,
+      proxyUri: proxyUri,
+    );
+    await replacement.hello();
+    _connection = replacement;
+    _startup = Future<_WireConnection>.value(replacement);
+  }
 
   /// Stream of safe lifecycle diagnostics emitted after subscription.
   Stream<RuntimeDiagnostic> get diagnostics => _diagnosticController.stream;
@@ -425,10 +446,12 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       _monitor = monitor;
 
       final ready = await monitor.waitForReady();
+      _ready = ready;
       await _probeHttpReady(ready);
       final connection = await _WireConnection.connect(
         ready,
         dataRoot: _bundle.dataRoot,
+        proxyUri: _flutterTransportProxy,
       );
       await connection.hello();
       _connection = connection;

@@ -18,9 +18,14 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
+import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
 import 'package:mg_read/features/reader/data/bounded_reader_session_cache.dart';
 
 typedef ComicImageFetcher = Future<Uint8List> Function(Uri uri);
+
+ComicImageFetcher createProxyAwareComicImageFetcher(FlutterNetworkProxyManager manager) =>
+    (uri) async => fetchComicImage(uri, client: await manager.createHttpClient(NetworkProxyTraffic.manga));
 
 /// Content Library adapter for a source-backed comic session.
 final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource {
@@ -472,9 +477,10 @@ final class ContentLibraryComicReaderStateStore implements ComicReaderStateStore
   }
 }
 
-Future<Uint8List> fetchComicImage(Uri uri) async {
+Future<Uint8List> fetchComicImage(Uri uri, {HttpClient? client}) async {
   const maximumBytes = 8 * 1024 * 1024;
-  final client = HttpClient()
+  final ownedClient = client ?? HttpClient();
+  ownedClient
     ..maxConnectionsPerHost = 4
     ..connectionTimeout = const Duration(seconds: 15);
   try {
@@ -483,13 +489,13 @@ Future<Uint8List> fetchComicImage(Uri uri) async {
       if (current.scheme != 'http' && current.scheme != 'https') {
         throw ArgumentError.value(current, 'uri', 'Comic images require HTTP or HTTPS.');
       }
-      if (_isLoopback(current)) {
+      if (client == null && _isLoopback(current)) {
         // Runtime source resources are private loopback URLs. They must never
         // be sent through a desktop proxy, which can turn a valid one-time
         // resource into an unrelated remote request.
-        client.findProxy = (_) => 'DIRECT';
+        ownedClient.findProxy = (_) => 'DIRECT';
       }
-      final request = await client.getUrl(current).timeout(const Duration(seconds: 15));
+      final request = await ownedClient.getUrl(current).timeout(const Duration(seconds: 15));
       request.followRedirects = false;
       final response = await request.close().timeout(const Duration(seconds: 20));
       if (response.isRedirect) {
@@ -517,7 +523,7 @@ Future<Uint8List> fetchComicImage(Uri uri) async {
       return Uint8List.fromList(bytes);
     }
   } finally {
-    client.close(force: true);
+    ownedClient.close(force: true);
   }
 }
 

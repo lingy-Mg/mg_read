@@ -109,6 +109,23 @@ final class MangaStateRepository {
     return page.records.isEmpty ? null : _mangaProgress(page.records.single);
   }
 
+  Future<List<LibraryMangaReadingProgress>> loadProgressMany(Iterable<LibraryItemId> itemIds) async {
+    final itemIdsByValue = <String>{for (final itemId in itemIds) itemId.value};
+    if (itemIdsByValue.isEmpty) return const <LibraryMangaReadingProgress>[];
+    final records = await _library._persistence.metadataRecords.listByIdentityKeys(
+      recordKind: _mangaProgressKind,
+      scope: _scope,
+      identityKeys: itemIdsByValue,
+    );
+    final progressByItemId = <String, LibraryMangaReadingProgress>{};
+    for (final record in records) {
+      final itemId = record.identityKey;
+      if (itemId == null || progressByItemId.containsKey(itemId)) continue;
+      progressByItemId[itemId] = _mangaProgress(record);
+    }
+    return List<LibraryMangaReadingProgress>.unmodifiable(progressByItemId.values);
+  }
+
   Future<void> saveProgress(LibraryMangaReadingProgress value) async {
     final page = await _library._persistence.metadataRecords.list(RecordQuery(recordKind: _mangaProgressKind, scope: _scope, parentId: value.itemId.value, limit: 1));
     final document = {'chapterId': value.chapterId, 'imageId': value.imageId, 'imageFraction': value.imageFraction, 'chapterIndex': value.chapterIndex, 'bookFraction': value.bookFraction, 'updatedAtUtc': value.updatedAtUtc.toUtc().toIso8601String(), 'readingSeconds': value.readingSeconds};

@@ -32,6 +32,7 @@ import 'package:mg_read/features/import_export/presentation/import_export_page.d
 import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
 import 'package:mg_read/features/media/application/source_audio_player_launcher.dart';
 import 'package:mg_read/features/media/application/source_video_player_launcher.dart';
+import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_health_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_detail_page.dart';
@@ -43,6 +44,7 @@ import 'package:mg_read/features/profile/application/profile_reading_stats_loade
 import 'package:mg_read/features/profile/presentation/profile_setting_placeholder_page.dart';
 import 'package:mg_read/features/reader/presentation/reader_destination_page.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
+import 'package:mg_read/features/reader/data/content_library_source_comic_reader.dart';
 import 'package:mg_read/features/reader/data/transient_source_comic_reader.dart';
 import 'package:mg_read/features/reader/data/transient_source_text_reader.dart';
 import 'package:mg_read/features/reader/presentation/reader_entry_transition.dart';
@@ -413,11 +415,17 @@ Future<void> _openTransientSourceComicReader(
 }) async {
   final NavigatorState? navigator = appRootNavigatorKey.currentState;
   if (navigator == null) throw StateError('The application navigator is not ready.');
-  final gateway = ProviderScope.containerOf(context).read(sourceContentGatewayProvider);
+  final container = ProviderScope.containerOf(context);
+  final gateway = container.read(sourceContentGatewayProvider);
   final request = ComicReaderLaunchRequest(
     bookId: detail.summary.id,
     entryCoverBytes: entryCoverBytes,
-    dataSource: TransientSourceComicReaderDataSource(detail: detail, catalog: firstCatalogPage, gateway: gateway),
+    dataSource: TransientSourceComicReaderDataSource(
+      detail: detail,
+      catalog: firstCatalogPage,
+      gateway: gateway,
+      fetcher: createProxyAwareComicImageFetcher(container.read(configuredFlutterNetworkProxyManagerProvider)),
+    ),
     stateStore: TransientComicReaderStateStore(),
     observer: _DismissComicReaderObserver(navigator),
   );

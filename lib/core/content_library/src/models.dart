@@ -234,6 +234,31 @@ final class LibraryAudioPlaybackProgress {
   final DateTime updatedAtUtc;
 }
 
+/// Durable video selection and position owned by the Content Library.
+///
+/// Group and episode identities remain source-defined and media URLs or
+/// request headers are never persisted here.
+final class LibraryVideoPlaybackProgress {
+  const LibraryVideoPlaybackProgress({
+    required this.itemId,
+    required this.groupId,
+    required this.episodeId,
+    required this.position,
+    required this.duration,
+    required this.updatedAtUtc,
+  }) : assert(groupId != ''),
+       assert(episodeId != ''),
+       assert(!position.isNegative),
+       assert(!duration.isNegative);
+
+  final LibraryItemId itemId;
+  final String groupId;
+  final String episodeId;
+  final Duration position;
+  final Duration duration;
+  final DateTime updatedAtUtc;
+}
+
 /// A durable semantic text-reader bookmark owned by the Content Library.
 final class LibraryBookmark {
   const LibraryBookmark({

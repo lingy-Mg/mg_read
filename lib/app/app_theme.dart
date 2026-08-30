@@ -408,6 +408,7 @@ abstract final class AppSpacing {
   static const double discoveryShelfItemWidth = unit * 26;
   static const double discoveryShelfHeight = unit * 47;
   static const double discoveryCoverAspectRatio = 1.38;
+  static const double discoveryLandscapeCoverAspectRatio = 9 / 16;
   static const double discoveryCoverMetadataExtent = unit * 13;
   static const double discoveryGroupCardWidth = unit * 80;
   static const double discoveryLoadMoreHeight = unit * 10;

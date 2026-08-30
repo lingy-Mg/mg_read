@@ -16,6 +16,8 @@ export 'src/api/contracts.dart'
         VideoPlaybackStateStore,
         VideoPlayerObserver;
 export 'src/api/controller.dart' show VideoPlayerController;
+export 'src/backend/media_kit_video_playback_backend.dart'
+    show createMediaKitVideoPlaybackBackend;
 export 'src/api/models.dart'
     show
         VideoContent,

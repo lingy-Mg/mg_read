@@ -62,7 +62,12 @@ final class _WireConnection {
   static Future<_WireConnection> connect(
     _RuntimeReady ready, {
     required Directory dataRoot,
+    Uri? proxyUri,
   }) async {
+    final client = proxyUri == null
+        ? null
+        : (HttpClient()
+            ..findProxy = (_) => 'PROXY ${proxyUri.host}:${proxyUri.port}');
     final socket = await WebSocket.connect(
       Uri(
         scheme: 'ws',
@@ -71,6 +76,7 @@ final class _WireConnection {
         path: '/v1/rpc',
       ).toString(),
       compression: CompressionOptions.compressionOff,
+      customClient: client,
     ).timeout(_controlTimeout);
     return _WireConnection._(
       ready,

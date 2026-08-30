@@ -31,12 +31,14 @@ import 'package:mg_read/core/persistence/persistence.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/application/library_book_remover.dart';
+import 'package:mg_read/features/library/application/library_book_removal_operation.dart';
 import 'package:mg_read/features/library/application/library_book_visibility_changer.dart';
 import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
 import 'package:mg_read/features/library/application/library_book_refresher.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/data/deferred_lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/data/mg_read_lan_sync_gateway.dart';
+import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/profile/application/profile_reading_stats_loader.dart';
 import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
@@ -50,6 +52,7 @@ import 'package:mg_read/features/cache/data/content_library_cover_cache_gateway.
 import 'package:mg_read/features/cache/data/content_library_database_cache_gateway.dart';
 import 'package:mg_read/features/cache/data/content_library_manga_image_cache_gateway.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
+import 'package:mg_read/features/discovery/application/discovery_bookshelf_remover.dart';
 import 'package:mg_read/features/diagnostics/application/diagnostics_activation.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 
@@ -264,6 +267,15 @@ Future<void> bootstrapMgReadApp({
             );
           }),
         if (contentLibrary != null || contentLibraryFactory != null)
+          discoveryBookshelfRemoverProvider.overrideWith((ref) {
+            final operation = ref.read(libraryBookRemovalOperationProvider);
+            if (operation == null) return null;
+            return CoordinatedDiscoveryBookshelfRemover(
+              membership: ref.read(bookshelfMembershipProvider.notifier),
+              removeBook: operation.removeBook,
+            );
+          }),
+        if (contentLibrary != null || contentLibraryFactory != null)
           bookCoverBytesLoaderProvider.overrideWithValue(DeferredBookCoverBytesLoader(getLibrary)),
         if (contentLibrary != null || contentLibraryFactory != null)
           coverCacheGatewayProvider.overrideWithValue(ContentLibraryCoverCacheGateway(getLibrary)),
@@ -279,6 +291,7 @@ Future<void> bootstrapMgReadApp({
               diagnostics,
               resolvedManager,
               ref.read(chapterCacheTaskControllerProvider.notifier),
+              ref.read(configuredFlutterNetworkProxyManagerProvider),
             ),
           ),
       ],

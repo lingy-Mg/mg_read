@@ -38,6 +38,8 @@ abstract interface class _RuntimeSupervisor {
 
   int get debugProcessStartCount;
 
+  Future<void> configureFlutterTransportProxy(Uri? proxyUri);
+
   Future<void> dispose();
 }
 
@@ -86,6 +88,24 @@ final class PluginRuntime {
   }
 
   final _RuntimeSupervisor _supervisor;
+
+  /// Routes only Flutter's desktop loopback control transport through [proxyUri].
+  ///
+  /// Android Runtime is in-process and therefore has no Flutter network
+  /// transport to configure. This never changes Node.js environment or HTTP.
+  Future<void> configureFlutterTransportProxy(Uri? proxyUri) {
+    if (proxyUri != null &&
+        (proxyUri.scheme != 'http' ||
+            proxyUri.host.isEmpty ||
+            !proxyUri.hasPort)) {
+      throw ArgumentError.value(
+        proxyUri,
+        'proxyUri',
+        'An explicit HTTP proxy endpoint is required.',
+      );
+    }
+    return _supervisor.configureFlutterTransportProxy(proxyUri);
+  }
 
   /// Invokes a typed Runtime capability.
   ///
