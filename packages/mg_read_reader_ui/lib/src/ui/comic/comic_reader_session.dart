@@ -37,7 +37,6 @@ extension _ComicReaderSession on _ComicReaderViewState {
     _catalogHasMore = false;
     _catalogLoading = false;
     _catalogPageCoverage = 0;
-    _beforeBoundaryIndex = null;
     _afterBoundaryIndex = null;
     _book = null;
     _currentChapter = null;
@@ -265,7 +264,6 @@ extension _ComicReaderSession on _ComicReaderViewState {
         if (replaceWindow) {
           _boundaryLoads.clear();
           _boundaryFailures.clear();
-          _beforeBoundaryIndex = null;
           _afterBoundaryIndex = null;
         }
       });
@@ -307,8 +305,7 @@ extension _ComicReaderSession on _ComicReaderViewState {
         if (!_isNavigation(navigation)) return;
         _restorePosition(resolvedRestore);
         _restoring = false;
-        unawaited(_loadAdjacent(info.index - 1, before: true));
-        unawaited(_loadAdjacent(info.index + 1, before: false));
+        unawaited(_loadNextAdjacent(info.index + 1));
       });
     } catch (error) {
       if (!_isNavigation(navigation)) return;
@@ -407,11 +404,11 @@ extension _ComicReaderSession on _ComicReaderViewState {
     return load;
   }
 
-  Future<void> _loadAdjacent(int index, {required bool before}) async {
+  Future<void> _loadNextAdjacent(int index) async {
     if (_disposed ||
         index < 0 ||
         (_catalogTotal > 0 && index >= _catalogTotal) ||
-        !_isBoundaryCursor(index, before: before) ||
+        !_isNextBoundaryCursor(index) ||
         _window.any((chapter) => chapter.info.index == index) ||
         !_boundaryLoads.add(index)) {
       return;
@@ -424,26 +421,15 @@ extension _ComicReaderSession on _ComicReaderViewState {
       final ComicChapterContent content = await _loadContent(info);
       if (!_isNavigation(navigation)) return;
       if (content.images.isEmpty && info.index != _currentChapter?.index) {
-        if (!_isBoundaryCursor(index, before: before)) return;
-        setState(() {
-          if (before) {
-            _beforeBoundaryIndex = index - 1;
-          } else {
-            _afterBoundaryIndex = index + 1;
-          }
-        });
+        if (!_isNextBoundaryCursor(index)) return;
+        setState(() => _afterBoundaryIndex = index + 1);
         scanAdvanced = true;
         return;
       }
-      if (!_isBoundaryCursor(index, before: before)) return;
-      final double insertedExtent = _chapterExtent(content);
+      if (!_isNextBoundaryCursor(index)) return;
       double removedFromTop = 0;
       setState(() {
-        if (before) {
-          _beforeBoundaryIndex = index - 1;
-        } else {
-          _afterBoundaryIndex = index + 1;
-        }
+        _afterBoundaryIndex = index + 1;
         _window
           ..add(_LoadedComicChapter(info, content))
           ..sort((a, b) => a.info.index.compareTo(b.info.index));
@@ -451,20 +437,17 @@ extension _ComicReaderSession on _ComicReaderViewState {
           aroundIndex: _currentChapter?.index ?? info.index,
         );
       });
-      final double offsetDelta =
-          (before ? _beforeInsertionExtent(index, insertedExtent) : 0) -
-          removedFromTop;
-      if (offsetDelta != 0) {
+      if (removedFromTop != 0) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!_isNavigation(navigation) || !_scrollController.hasClients) {
             return;
           }
           _restoring = true;
-          // Keep wheel/trackpad movement received during this frame instead of
-          // restoring the stale offset captured before the prepend layout.
+          // Preserve the visible content when a now-distant chapter is
+          // removed from the top of the forward-only window.
           final double liveOffset = _scrollController.offset;
           _scrollController.jumpTo(
-            (liveOffset + offsetDelta).clamp(
+            (liveOffset - removedFromTop).clamp(
               0,
               _scrollController.position.maxScrollExtent,
             ),
@@ -482,19 +465,15 @@ extension _ComicReaderSession on _ComicReaderViewState {
         _boundaryLoads.remove(index);
         if (mounted) setState(() {});
         if (scanAdvanced) {
-          unawaited(
-            _loadAdjacent(before ? index - 1 : index + 1, before: before),
-          );
+          unawaited(_loadNextAdjacent(index + 1));
         }
       }
     }
   }
 
-  bool _isBoundaryCursor(int index, {required bool before}) {
+  bool _isNextBoundaryCursor(int index) {
     if (_window.isEmpty) return false;
-    final int expected = before
-        ? (_beforeBoundaryIndex ?? _window.first.info.index - 1)
-        : (_afterBoundaryIndex ?? _window.last.info.index + 1);
+    final int expected = _afterBoundaryIndex ?? _window.last.info.index + 1;
     return index == expected;
   }
 
@@ -531,16 +510,8 @@ extension _ComicReaderSession on _ComicReaderViewState {
       final int lastDistance = (_window.last.info.index - aroundIndex).abs();
       if (firstDistance > lastDistance) {
         final _LoadedComicChapter removed = _window.first;
-        final double oldBoundary = removed.info.index > 0
-            ? _ComicReaderViewState._boundaryExtent
-            : 0;
         _window.removeAt(0);
-        _beforeBoundaryIndex = removed.info.index;
-        final double newBoundary = _window.first.info.index > 0
-            ? _ComicReaderViewState._boundaryExtent
-            : 0;
-        removedFromTop +=
-            _chapterExtent(removed.content) + oldBoundary - newBoundary;
+        removedFromTop += _chapterExtent(removed.content);
       } else {
         final _LoadedComicChapter removed = _window.removeLast();
         _afterBoundaryIndex = removed.info.index;
@@ -552,11 +523,6 @@ extension _ComicReaderSession on _ComicReaderViewState {
     }
     return removedFromTop;
   }
-
-  double _beforeInsertionExtent(int index, double chapterExtent) =>
-      chapterExtent +
-      (index > 0 ? _ComicReaderViewState._boundaryExtent : 0) -
-      _ComicReaderViewState._boundaryExtent;
 
   Future<void> _nextChapter() async {
     final ComicChapterInfo? current = _currentChapter;
@@ -640,18 +606,7 @@ extension _ComicReaderSession on _ComicReaderViewState {
     final double trigger = position.viewportDimension * 1.5;
     if (position.extentAfter < trigger && _window.isNotEmpty) {
       unawaited(
-        _loadAdjacent(
-          _afterBoundaryIndex ?? _window.last.info.index + 1,
-          before: false,
-        ),
-      );
-    }
-    if (position.extentBefore < trigger && _window.isNotEmpty) {
-      unawaited(
-        _loadAdjacent(
-          _beforeBoundaryIndex ?? _window.first.info.index - 1,
-          before: true,
-        ),
+        _loadNextAdjacent(_afterBoundaryIndex ?? _window.last.info.index + 1),
       );
     }
   }

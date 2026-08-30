@@ -472,26 +472,10 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
         ),
       ),
       _catalogTotal,
-      _beforeBoundaryIndex,
       _afterBoundaryIndex,
     );
     if (signature == _entryCacheSignature) return _entryCache;
     final List<_ComicListEntry> result = <_ComicListEntry>[];
-    if (_window.isNotEmpty) {
-      final int previousIndex =
-          _beforeBoundaryIndex ?? _window.first.info.index - 1;
-      if (previousIndex >= 0) {
-        result.add(
-          _ComicBoundaryEntry(
-            index: previousIndex,
-            loading: _boundaryLoads.contains(previousIndex),
-            failure: _boundaryFailures[previousIndex],
-            atEnd: false,
-            before: true,
-          ),
-        );
-      }
-    }
     for (final _LoadedComicChapter chapter in _window) {
       result.add(_ComicHeaderEntry(chapter));
       for (final ComicImageInfo image in chapter.content.images) {
@@ -513,7 +497,6 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
             loading: _boundaryLoads.contains(nextIndex),
             failure: _boundaryFailures[nextIndex],
             atEnd: _catalogTotal > 0 && nextIndex >= _catalogTotal,
-            before: false,
           ),
         );
       }

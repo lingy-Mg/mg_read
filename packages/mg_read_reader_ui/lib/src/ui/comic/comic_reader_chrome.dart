@@ -121,8 +121,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
               )
             : entry.failure != null
             ? TextButton.icon(
-                onPressed: () =>
-                    unawaited(_loadAdjacent(entry.index, before: entry.before)),
+                onPressed: () => unawaited(_loadNextAdjacent(entry.index)),
                 icon: const Icon(Icons.refresh_rounded),
                 label: const Text(ComicReaderStrings.retry),
               )
@@ -133,8 +132,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             : TextButton(
-                onPressed: () =>
-                    unawaited(_loadAdjacent(entry.index, before: entry.before)),
+                onPressed: () => unawaited(_loadNextAdjacent(entry.index)),
                 child: const Text(ComicReaderStrings.loadMore),
               ),
       ),

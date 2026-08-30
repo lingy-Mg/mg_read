@@ -2,7 +2,7 @@
 ///
 /// 职责：
 /// - 协调漫画章节窗口、图片缓存、语义进度和阅读器 chrome。
-/// - 通过宿主端口获取内容并维护有限的相邻章节资源。
+/// - 通过宿主端口获取内容，只向下拼接有限的后续章节资源。
 /// - 为漫画内容提供固定白色底层，并让触控与桌面鼠标共享纵向拖动语义。
 ///
 /// 注意：
@@ -42,7 +42,7 @@ part 'comic_reader_chrome.dart';
 ///
 /// The host owns networking, files, authentication, and persistent image
 /// caching through [ComicReaderDataSource]. This widget retains only the
-/// current and neighboring chapter metadata plus a bounded session byte cache.
+/// current and following chapter metadata plus a bounded session byte cache.
 class ComicReaderView extends StatefulWidget {
   /// Creates an embeddable comic reader connected to host data and state.
   const ComicReaderView({
@@ -111,7 +111,6 @@ class _ComicReaderViewState extends State<ComicReaderView>
   final Set<int> _boundaryLoads = <int>{};
   final Set<String> _catalogCursors = <String>{};
   int _catalogPageCoverage = 0;
-  int? _beforeBoundaryIndex;
   int? _afterBoundaryIndex;
 
   late ComicReaderController _controller;
@@ -416,13 +415,11 @@ class _ComicBoundaryEntry extends _ComicListEntry {
     required this.loading,
     required this.failure,
     required this.atEnd,
-    required this.before,
   });
   final int index;
   final bool loading;
   final ReaderFailure? failure;
   final bool atEnd;
-  final bool before;
   @override
   double get extent => _ComicReaderViewState._boundaryExtent;
 }
