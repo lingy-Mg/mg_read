@@ -1,33 +1,10 @@
 # mg_read_video_player
 
-独立维护的 MgRead 视频播放器 package。宿主通过 `VideoDataSource` 提供标题、通用分组、选集、URL
-和请求头，通过 `VideoPlaybackStateStore` 持久化分组、选集与播放位置，并通过 `VideoPlayerObserver`
-接收退出和全屏意图。
-测试可注入 `VideoPlaybackBackend`，无需启动原生解码器。
-
-`VideoEpisodeGroup` 不区分“季”或“线路”：group ID 在内容内唯一，episode ID 在组内唯一，不同组可
-复用相同 episode ID。恢复与切集始终使用 `groupId + episodeId`，避免多线路歧义。
-
-## 依赖与原生库
-
-- Dart `^3.12.2`，Flutter `>=3.44.0`。
-- 精确固定 `media_kit 1.2.6` 与 `media_kit_video 2.0.1`。
-- 本 package 不捆绑 native libs。最终宿主按目标平台选择一个与上述版本兼容的
-  `media_kit_libs_video`，不要同时混入 `media_kit_libs_audio`；视频库已覆盖视频播放所需的音频解码。
-- `media_kit 1.2.6` 与 `media_kit_video 2.0.1` 使用 MIT 许可证。宿主加入
-  `media_kit_libs_video` 前仍需核对其中 mpv、FFmpeg 等第三方组件的许可证、分发条件和发布 notices。
-
-## 宿主边界
-
-播放器只发送全屏请求，不直接修改系统 UI。全屏窗口、方向锁定、PiP、系统常亮和平台验收均由
-宿主实现。系统返回与 Escape 会先请求退出全屏；非全屏时播放器暂停并刷新进度。未传 observer
-时播放器随后对最近的 Navigator 执行 `maybePop`；传入 observer 后，路由退出完全由宿主回调负责。
+MgRead 独立视频播放器 package。公开入口导出视频数据源契约、播放后端、Controller、状态模型和嵌入视图。
 
 ```dart
-VideoPlayerView(
-  contentId: contentId,
-  dataSource: dataSource,
-  stateStore: stateStore,
-  observer: observer,
-)
+import 'package:mg_read_video_player/mg_read_video_player.dart';
 ```
+
+宿主负责数据、路由、授权资源刷新和进度持久化；播放器不拥有来源解析、书架或账号业务。公开 API 以
+[`lib/mg_read_video_player.dart`](lib/mg_read_video_player.dart) 为准。

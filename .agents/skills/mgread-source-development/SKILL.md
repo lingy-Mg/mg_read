@@ -1,61 +1,44 @@
 ---
 name: mgread-source-development
-description: Develop, review, package, or debug MgRead data-source plugins and source-owned discovery composition across Runtime, Flutter Facade/UI, the official template, real sources, ctx.webview, Android WebView, Windows WebView2, and source verification. Use for data-source or cross-layer source capability work; do not use for unrelated reader or library UI.
+description: Develop or debug MgRead real data-source plugins, the public Source API across Runtime and Flutter, source-owned discovery composition, or ctx.webview providers. Do not use for bookshelf/home/recent-reading state, long-press details, ordinary discovery UI, reader UI, or player-host work unless the public Source contract also changes.
 ---
 
 # MgRead 数据源开发
 
-统一处理真实数据源、发现组合、官方模板和数据源专用 Runtime/平台能力。技能记录的是决策约束和检查入口；当前公开类型、测试及目标文件头仍是实现事实。
+处理真实数据源、公开 Source 契约、源拥有的发现组合和 `ctx.webview` 宿主。先按仓库 `AGENTS.md` 读取目标
+文件头、最近规则、公开类型和直接测试；本技能只补充来源特有的非显然边界。
 
-## 安全起点
+## 选择一个首选参考
 
-1. 从包含本技能的仓库根目录工作。读取根 `AGENTS.md`，检查分支、`git status --short` 和任务相关 diff，保留无关并发修改。
-2. 读取目标文件头、最近的嵌套 `AGENTS.md`、直接测试与公开类型；通过 `docs/development/README.md` 只定位需要的 `docs/core.md` 章节。
-3. 先判断任务模式，再完整读取对应参考。不要为了了解项目一次加载全部参考、全部文档或全部平台实现。
-4. 技能中的版本、路径、来源编排和已知缺口必须用当前代码复核；发现漂移时同步修正对应参考。
+- Node 项目结构、生命周期、缓存、资源代理或 artifact：默认读取 `plugins/sources/aisishuwu/` 的最近
+  `AGENTS.md`、`package.json`、公开类型、直接测试和 `tools/mgread.mjs`。漫画、WebView、音频或视频任务
+  改读当前同类真实数据源；仓库不维护空白官方模板。
+- 当前网页结构、选择器、JS DOM、跳转或分页取证：加载 `browser:control-in-app-browser` 并读
+  [real-page-browser-probing.md](references/real-page-browser-probing.md)
+- 公开发现组件类型、Runtime/Facade 解码或宿主渲染：
+  [discovery-contract.md](references/discovery-contract.md)
+- 真实来源的发现区块选择与响应式组合：
+  [discovery-composition.md](references/discovery-composition.md)
+- 数据源调用 `ctx.webview`：参考 `diyibanzhu-me` 或 `xiezhenji`，并核对 Runtime 当前公开类型和直接测试。
+- Android/Windows browser provider、宿主状态机或原生输入：读取对应平台实现、最近 `AGENTS.md` 和直接测试。
+- 漫画参考 `baozimh-com` 或 `manhuagui-com`；音频参考 `tingchina-audio`；视频参考 `hsck-video`。
 
-## 按任务路由
+只有公共边界确实跨域时才增加第二个参考；不要默认加载所有参考或无关平台实现。
 
-- 数据源函数、生命周期、缓存、资源代理、项目结构或 artifact：读取 [references/source-plugin-contract.md](references/source-plugin-contract.md)。
-- 真实网页结构、当前选择器、JS 渲染 DOM、跳转、分页或验证后页面取证：必须加载 `browser:control-in-app-browser`，使用 Codex 内置浏览器，并读取 [references/real-page-browser-probing.md](references/real-page-browser-probing.md)。CLI 网络请求只能作为状态码和挑战门槛 smoke，不能替代浏览器结构取证。
-- 递归发现组件、布局枚举、nullable 字段、语义图标、Runtime/Facade 解码或宿主渲染：读取 [references/discovery-contract.md](references/discovery-contract.md)。
-- 选择发现组件、响应式组合，或修改爱丽丝/速读谷等真实来源编排：读取 [references/discovery-composition.md](references/discovery-composition.md)；只有公开形状变化时再加载发现契约。
-- 数据源调用 `ctx.webview`，或修改其公开类型和行为：读取 [references/webview-api.md](references/webview-api.md)。
-- 修改 browser provider、Android WebView、Windows WebView2、窗口控制、错误传播、输入或安全边界：读取 [references/webview-host-development.md](references/webview-host-development.md)。
-- 准备测试、打包、版本更新、真机验证或交付结论：读取 [references/verification.md](references/verification.md)，只执行受影响边界对应的矩阵。
-- 音频或视频来源、播放资源、Range/HLS、短时效 URL，或独立播放器宿主对接：读取
-  [references/media-source-contract.md](references/media-source-contract.md)。音频和视频必须分别实现、分别验证，
-  不得抽象成一个“通用媒体源”。
+## 不可违反的边界
 
-常见组合：真实站点解析修复读取“插件契约 + 真实网页浏览器探测 + 验证”；纯发现编排读取“发现组合 + 验证”；发现公开契约变化读取“两份发现参考 + 验证”；跨平台 WebView 变化读取“两份 WebView 参考 + 验证”。
+- 数据源只依赖公开 `MgReadPluginContext`，不依赖 Runtime 端口、wire envelope、PID、原生 WebView 对象、
+  主应用数据库或宿主路径。
+- 来源拥有真实数据和稳定不透明 ID/target/cursor；Runtime 校验，Flutter 拥有组件实现、主题、尺寸、导航
+  和交互。不得伪造来源缺失字段、热门词或线上证据。
+- 每个数据源只有一个宿主持有的 WebView 页面；Cookie、UA、Profile 和输入由宿主持有。禁止 Cookie API、
+  token 抽取/回放、CDP、DOM 合成点击和绕过；需要人工操作时返回 `interaction_required`。
+- `single-file` 与 `archive` 是独立发布模式，不互相回退，也不能把 `.mgplugin` 当成 `.mgplugin.js`。
+- 音频与视频分别建模；媒体主体、HLS 分片和 Range 只经 Runtime 数据面流转，不在插件 JS 中整体读取、
+  Base64 化、缓存或持久化签名 URL。
 
-## 共享产品边界
+## 完成与报告
 
-- 数据源是标准 Node.js 24 插件，只依赖公开 `MgReadPluginContext`。不得依赖 Runtime 端口、WS/HTTP envelope、PID、原生 WebView 对象或宿主路径。
-- 来源拥有真实数据、稳定不透明 ID/target/cursor 和内容语义；Runtime 校验边界，Flutter 宿主拥有组件实现、主题、尺寸、断点、可访问性、导航和交互。
-- 插件只能返回允许列表中的语义组件、布局和图标名；不得返回 Flutter 代码、`IconData`、字体码点、任意样式、颜色或来源控制的列数。
-- 必填值、显式 `null`、零值和空数组语义不能混用。不得伪造来源缺失的数据、热门词或线上验证证据。
-- `ctx.webview` 每个数据源强制一页，无 `sessionKey`、`onUrlChanged` 或 Cookie API。Cookie、UA、Profile、窗口和输入设备由宿主持有。
-- 禁止数据源抽取或回放挑战 token，禁止 CDP、DOM 合成点击、DOM value setter、全局输入或设备控制；Windows 仅允许用户主动按 F12 打开 DevTools。
-- `single-file` 与 `archive` 是两个独立发布模式，不能互相降级，也不能把 `.mgplugin` archive 当成 `.mgplugin.js`。
-
-## 音频与视频来源边界
-
-- 音频使用 `contentKind: 'audio'`、有序章节目录和每章一个 `media` 资源；播放器队列、进度、路由和刷新
-  由音频宿主拥有。不得把视频分组、集数或视频 UI 塞进音频来源。
-- 视频使用 `contentKind: 'video'`。`groups[]` 是中性容器，固定字段为 `groupId + episodeId`；它可代表季、
-  线路、版本或其他来源结构，通用 Runtime/Futter/UI 不得将其语义写死。每组必须有稳定顺序和非空集列表，
-  且扁平 `items[]` 与全部 episodes 一一对应。
-- 媒体返回值只携带 Runtime proxy URL、resourceType、必要 headers、mime 与 refresh 语义。`audio`、`video` 和
-  `hls` 是不同资源类型；HLS 清单及其 URI 必须经代理重写，Range 只在 Runtime 数据面转发。JS 不读取、拼接、
-  Base64 化或缓存媒体主体/分片。
-- `refreshable` 必须有 `expiresAt`，过期或播放器收到授权/签名失败时由宿主重新调用 `getContent`。不得从 URL
-  片段推测时间、长期持久化签名 URL、Cookie、Referer、UA 或 Authorization，也不得以此绕过会员、付费或验证。
-- 真实来源只解析公开可访问数据；验证码、登录、年龄/付费墙或播放器交互限制统一上报
-  `interaction_required`/`unsupported`，不取 token、不回放 token、不模拟点击。
-
-## 跨层完成条件
-
-公开边界变化必须按受影响范围交付完整链路：Runtime 类型与校验、公开导出、Flutter Facade/解码、宿主行为或渲染、官方模板、真实来源、直接测试，以及 `docs/core.md` 的唯一相关章节。不要因局部任务机械修改未受影响的平台。
-
-交付时先给结果，再分开报告静态检查、自动化测试、来源 fixture/live、artifact/冷安装、Windows、Android、真实运行和未执行项。Mock、golden、Windows 与 Android 证据不能互相替代。
+公开 Source 边界变化按受影响范围同步 Runtime 类型/校验、Facade/解码、宿主、受影响参考来源、直接测试和
+唯一相关核心章节。交付时分开报告静态检查、自动化、fixture/live、artifact/冷安装、Windows、Android、
+真实运行和未执行项；任何一层都不能替代另一层。

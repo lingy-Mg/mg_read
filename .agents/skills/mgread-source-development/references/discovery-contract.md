@@ -31,8 +31,16 @@
 - Flutter 类型：`packages/mg_read_runtime/packages/mgread_plugin_runtime/lib/src/plugin_content_invocation.dart`
 - Flutter 解码：`packages/mg_read_runtime/packages/mgread_plugin_runtime/lib/src/plugin_content_decoder.dart`
 - 主应用渲染：`lib/features/discovery/presentation/runtime_discovery_page.dart`、`discovery_composite_components.dart`
-- 插件公开模板：`templates/mg_read_plugin_template/src/mgread-api.ts`
+- 默认参考来源公开类型：`plugins/sources/aisishuwu/src/mgread-api.ts`
 - 真实来源编译期类型：各来源 `src/mgread-api.ts`
 - 稳定规范：`docs/core.md` 的“插件内容 API”章节
 
-新增 nullable 字段时优先保持旧插件兼容：允许旧输入缺省，在 Runtime 输出中显式归一化；不要让 Flutter 猜测缺键含义。新增枚举时 Runtime、Facade、宿主映射和模板必须同一轮完成。
+新增 nullable 字段时优先保持旧插件兼容：允许旧输入缺省，在 Runtime 输出中显式归一化；不要让 Flutter 猜测缺键含义。新增枚举时 Runtime、Facade、宿主映射和受影响参考来源必须同一轮完成。
+
+## 最小验证
+
+- Runtime 类型或校验：固定 Node typecheck 和直接 content-tree/validation 测试。
+- Facade/decoder：相邻 Dart 测试；触及 desktop reverse wire 时再增加 desktop fixture。
+- 主应用渲染：只格式化拥有文件，运行目标 widget/golden 和任务收尾 analyze。
+- 参考来源与其他真实来源：各自运行声明的 verify；只有请求或解析变化才增加 live smoke。
+- 根 Flutter 生产 UI 变化按根规则更新一次版本；纯 Runtime、技能或独立来源变化不升级根版本。

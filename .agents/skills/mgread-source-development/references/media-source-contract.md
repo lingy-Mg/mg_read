@@ -1,47 +1,38 @@
-# 音频与视频数据源契约
+# 音频与视频数据源
 
-## 类型矩阵
+## 事实入口
+
+- Runtime 内容类型与校验：`plugin-content-types.ts`、`plugin-content-validation.ts`
+- 媒体代理：`packages/mg_read_runtime/src/media-resource-proxy.ts`
+- Flutter 宿主：`packages/mg_read_audio_player/lib/mg_read_audio_player.dart`、
+  `packages/mg_read_video_player/lib/mg_read_video_player.dart`
+- 真实来源入口文件头和直接 contract/fixture 测试
+
+## 类型与所有权
 
 | 维度 | 音频 | 视频 |
 | --- | --- | --- |
 | contentKind | `audio` | `video` |
-| 目录 | 有序章节/曲目 | 扁平 episodes 加中性 `groups[]` |
-| 播放模型 | 一个 collection 的队列 | `groupId + episodeId` 选择 |
-| 宿主包 | `mg_read_audio_player` | `mg_read_video_player` |
-| 不允许 | 视频分组/播放器状态 | 将 group 固定称为季或线路 |
+| 目录 | 有序章节/曲目 | 扁平 episodes 和中性 `groups[]` |
+| 宿主选择 | 队列与当前章节 | `groupId + episodeId` |
 
-目录中的 `items[]` 始终是稳定、完整的扁平清单。视频有 `groups[]` 时，每个 group 的 episodes 与 items
-必须完全一一对应；group 只是一层来源结构，不表达跨来源的业务含义。
+音频和视频分别实现、分别验证，不抽成通用媒体源。视频 group 可表示季、线路或版本，Runtime/UI 不写死语义；
+存在 groups 时，全部 episode 必须与扁平 items 一一对应。
 
 ## 播放资源
 
-`getContent` 对音频/视频返回 `text: null`、`pages: []` 和 `media`：
+- `getContent` 返回 `text: null`、空 pages 和一个 Runtime proxy media；上游签名 URL、Cookie 和授权头不
+  暴露到 Flutter、日志、fixture 或持久化。
+- `audio`、`video` 和 `hls` 是不同资源类型。大文件与 Range 由 Runtime 流式转发；HLS manifest、
+  variant、key 和 segment URI 均保持在代理数据面。
+- 插件 JS 不整体读取媒体、arrayBuffer、Base64 化或缓存媒体主体。
+- 只有来源能确认过期边界时才使用 `refreshable + expiresAt`；否则使用 `sessionOnly`。宿主在失效后重新
+  调用 `getContent`，不得从 URL 猜有效期或长期持久化签名资源。
 
-```ts
-{
-  url: ctx.resource.proxy({ kind: 'audio' | 'video' | 'hls', url, headers }),
-  resourceType: 'audio' | 'video' | 'hls',
-  resourcePolicy: 'sessionOnly' | 'refreshable',
-  expiresAt: null | isoTime,
-  mimeType: null | 'audio/mpeg',
-  headers: { Referer: '...' }
-}
-```
+## 最小验证
 
-`url` 是本地 Runtime proxy URL，不能是上游签名 URL。headers 仅保存在播放资源投影和 Runtime 数据面；不得
-输出到日志、诊断、fixture、持久化书架、错误或页面。大文件和 Range 由 Runtime 流式转发，HLS 仅有小型
-manifest 可读取重写，其变体、key 和 segment URI 继续通过 proxy。不得在插件 JS 中 fetch/arrayBuffer 整段媒体。
-
-刷新不是凭 URL 字符串猜出的：来源能确认过期边界时才标记 `refreshable + expiresAt`。宿主在资源失效后重新
-调用对应 `getContent`；无法确认时使用 `sessionOnly`，把播放失败作为可重试失败而非伪造有效期。
-
-## 来源实现与证据
-
-1. 先为 discover/search/detail/catalog/playback 写脱敏 fixture，成人或受限来源 fixture 只保留协议/选择器
-   外壳，不保留标题、封面、正文或媒体 URL。
-2. 音频至少断言章节序、proxy kind、Range/header 投影和 refreshable 的重新解析；禁止一次请求任意 5000 条
-   曲目或在播放器首开时无上限并发解析。
-3. 视频至少断言多个 fixture groups、每组多集、MacCMS player_data 的 JSON/常见 encode 分支、HLS proxy 与
-   非 HLS 代理。线上只有单组时可保留该事实，但 fixture 仍覆盖多组解码。
-4. live smoke 只报告状态/链路，不保存响应。浏览器 DOM、Windows WebView2、Android WebView 与真实播放须
-   单独取证；遭遇访问控制时停在 interaction_required。
+- Fixture 覆盖 discover/search/detail/catalog/playback，受限来源只保留虚构结构，不保存标题、封面或媒体 URL。
+- 音频覆盖章节顺序、proxy kind、Range/header 和刷新重取；视频覆盖多 group、多 episode、player-data 分支、
+  HLS 与非 HLS 代理。
+- 运行来源离线测试和 `verify`；请求链变化再运行明确存在的 live smoke。播放器宿主变化另跑相邻 package
+  测试；真实播放、Windows WebView2 和 Android WebView 分开取证。
