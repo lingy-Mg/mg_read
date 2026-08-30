@@ -94,6 +94,73 @@ void main() {
     expect(backend.snapshot.currentIndex, 1);
   });
 
+  testWidgets(
+    'large catalog uses a subtle indicator instead of a giant badge',
+    (tester) async {
+      await tester.pumpWidget(
+        _host(
+          backend: _PresentationBackend(),
+          dataSource: const _LargeQueueDataSource(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byKey(const Key('audio-queue-indicator')), findsOneWidget);
+      expect(find.text('999+'), findsNothing);
+      expect(find.text('第 1 集  ·  共 2008 集'), findsOneWidget);
+    },
+  );
+
+  testWidgets('host artwork is reused by the eased blurred backdrop', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        backend: _PresentationBackend(),
+        artworkBuilder: (_, _) => const ColoredBox(
+          key: Key('presentation-artwork'),
+          color: Color(0xFF8A4B36),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final backdrop = find.byKey(const Key('audio-artwork-backdrop'));
+    expect(backdrop, findsOneWidget);
+    expect(
+      find.descendant(of: backdrop, matching: find.byType(ImageFiltered)),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('presentation-artwork')), findsNWidgets(2));
+  });
+
+  testWidgets('short portrait keeps the complete control area on first view', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      _host(
+        backend: _PresentationBackend(),
+        dataSource: const _LargeQueueDataSource(),
+        size: const Size(400, 700),
+        textScale: 1,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final settings = find.byKey(const Key('audio-settings'));
+    expect(settings, findsOneWidget);
+    expect(tester.getBottomRight(settings).dy, lessThanOrEqualTo(700));
+    expect(find.byType(Scrollbar), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('compact portrait and large text remain overflow free', (
     tester,
   ) async {
@@ -178,6 +245,7 @@ Widget _host({
   required _PresentationBackend backend,
   AudioPlayerDataSource dataSource = const _PresentationDataSource(),
   AudioPlayerController? controller,
+  AudioArtworkBuilder? artworkBuilder,
   Size size = const Size(390, 844),
   double textScale = 1.15,
 }) {
@@ -195,6 +263,7 @@ Widget _host({
         observer: const AudioPlayerObserver(),
         controller: controller,
         backend: backend,
+        artworkBuilder: artworkBuilder,
         autoplay: false,
         saveInterval: const Duration(hours: 1),
       ),
@@ -256,6 +325,33 @@ final class _QueueDataSource implements AudioPlayerDataSource {
         AudioQueueEntry(id: 'track-2', title: '第二章 风经过窗口', creator: '讲述者'),
         AudioQueueEntry(id: 'locked', title: '第三章 尚未解锁', isLocked: true),
       ],
+    );
+  }
+}
+
+final class _LargeQueueDataSource implements AudioPlayerDataSource {
+  const _LargeQueueDataSource();
+
+  @override
+  Future<AudioPlaylist> loadPlaylist(String collectionId) async {
+    final playlist = _presentationPlaylist();
+    return AudioPlaylist(
+      collectionId: playlist.collectionId,
+      title: playlist.title,
+      creator: playlist.creator,
+      tracks: playlist.tracks,
+      queueEntries: List<AudioQueueEntry>.generate(
+        2008,
+        (index) => AudioQueueEntry(
+          id: index < playlist.tracks.length
+              ? playlist.tracks[index].id
+              : 'locked-$index',
+          title: '第 ${index + 1} 集',
+          creator: '讲述者',
+          isLocked: index >= playlist.tracks.length,
+        ),
+        growable: false,
+      ),
     );
   }
 }

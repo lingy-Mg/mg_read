@@ -10,7 +10,7 @@ library;
 
 import 'package:flutter/material.dart';
 
-import 'audio_player_components.dart';
+import 'audio_player_artwork_stage.dart';
 import 'audio_player_theme.dart';
 
 final class AudioLoadingView extends StatelessWidget {

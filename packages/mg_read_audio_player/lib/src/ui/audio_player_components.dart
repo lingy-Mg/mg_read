@@ -10,74 +10,8 @@ library;
 
 import 'package:flutter/material.dart';
 
-import '../api/audio_artwork.dart';
 import '../api/audio_models.dart';
 import 'audio_player_theme.dart';
-
-final class AudioPlayerAmbientBackground extends StatelessWidget {
-  const AudioPlayerAmbientBackground({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: <Color>[
-                  AudioPlayerColors.backgroundTop,
-                  AudioPlayerColors.backgroundBottom,
-                ],
-                stops: <double>[0, 0.78],
-              ),
-            ),
-          ),
-          Positioned(
-            top: -110,
-            left: -95,
-            child: _AmbientOrb(
-              size: 290,
-              color: AudioPlayerColors.accent.withValues(alpha: 0.13),
-            ),
-          ),
-          Positioned(
-            top: 210,
-            right: -125,
-            child: _AmbientOrb(
-              size: 320,
-              color: const Color(0xFF9F6B52).withValues(alpha: 0.09),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AmbientOrb extends StatelessWidget {
-  const _AmbientOrb({required this.size, required this.color});
-
-  final double size;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: <Color>[color, color.withValues(alpha: 0)],
-        ),
-      ),
-    );
-  }
-}
 
 final class AudioPlayerTopBar extends StatelessWidget {
   const AudioPlayerTopBar({
@@ -137,18 +71,30 @@ final class AudioPlayerTopBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          Badge.count(
-            count: queueCount,
-            isLabelVisible: queueCount > 0,
-            backgroundColor: AudioPlayerColors.accent,
-            textColor: Colors.white,
-            offset: const Offset(-1, 1),
-            child: _TopBarButton(
-              key: const Key('audio-queue'),
-              tooltip: '章节列表',
-              onPressed: onQueue,
-              icon: Icons.format_list_bulleted_rounded,
-            ),
+          Stack(
+            clipBehavior: Clip.none,
+            children: <Widget>[
+              _TopBarButton(
+                key: const Key('audio-queue'),
+                tooltip: '章节列表，共 $queueCount 集',
+                onPressed: onQueue,
+                icon: Icons.format_list_bulleted_rounded,
+              ),
+              if (queueCount > 0)
+                Positioned(
+                  top: 5,
+                  right: 3,
+                  child: Container(
+                    key: const Key('audio-queue-indicator'),
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: AudioPlayerColors.accent,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ],
       ),
@@ -186,117 +132,6 @@ class _TopBarButton extends StatelessWidget {
   }
 }
 
-final class AudioPlayerCover extends StatelessWidget {
-  const AudioPlayerCover({
-    required this.track,
-    required this.artworkBuilder,
-    required this.size,
-    required this.playing,
-    required this.disableAnimations,
-    super.key,
-  });
-
-  final AudioTrack track;
-  final AudioArtworkBuilder? artworkBuilder;
-  final double size;
-  final bool playing;
-  final bool disableAnimations;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedScale(
-      key: const Key('audio-cover'),
-      scale: playing ? 1 : 0.975,
-      duration: disableAnimations
-          ? Duration.zero
-          : const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-      child: Container(
-        width: size,
-        height: size,
-        padding: const EdgeInsets.all(5),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.82),
-          borderRadius: BorderRadius.circular(34),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
-          boxShadow: const <BoxShadow>[
-            BoxShadow(
-              color: AudioPlayerColors.shadow,
-              blurRadius: 36,
-              spreadRadius: 2,
-              offset: Offset(0, 18),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(29),
-          child:
-              artworkBuilder?.call(context, track) ??
-              const AudioPlayerCoverPlaceholder(),
-        ),
-      ),
-    );
-  }
-}
-
-final class AudioPlayerCoverPlaceholder extends StatelessWidget {
-  const AudioPlayerCoverPlaceholder({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[
-            AudioPlayerColors.coverStart,
-            AudioPlayerColors.coverEnd,
-          ],
-        ),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          Positioned(
-            top: -38,
-            right: -34,
-            child: Container(
-              width: 150,
-              height: 150,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.10),
-              ),
-            ),
-          ),
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                const Icon(
-                  Icons.headphones_rounded,
-                  size: 64,
-                  color: Color(0xFFFFF7EB),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'MGREAD AUDIO',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.86),
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 2.2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 final class AudioPlayerMetadata extends StatelessWidget {
   const AudioPlayerMetadata({
     required this.snapshot,
@@ -313,25 +148,38 @@ final class AudioPlayerMetadata extends StatelessWidget {
     final creator = track.creator ?? snapshot.creator;
     return Column(
       children: <Widget>[
-        Text(
-          '第 ${snapshot.currentIndex + 1} 集  ·  共 ${snapshot.queueEntries.length} 集',
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: AudioPlayerColors.accent,
-            fontWeight: FontWeight.w700,
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: AudioPlayerColors.accentSoft.withValues(alpha: 0.64),
+            borderRadius: BorderRadius.circular(99),
+            border: Border.all(
+              color: AudioPlayerColors.accent.withValues(alpha: 0.22),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 5),
+            child: Text(
+              '第 ${snapshot.currentIndex + 1} 集  ·  共 ${snapshot.queueEntries.length} 集',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: AudioPlayerColors.accentPressed,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ),
-        const SizedBox(height: 7),
+        const SizedBox(height: 8),
         Text(
           track.title,
           key: const Key('audio-track-title'),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
-          style: theme.textTheme.titleLarge?.copyWith(
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontSize: 18,
             color: AudioPlayerColors.ink,
             fontWeight: FontWeight.w800,
-            height: 1.22,
-            letterSpacing: -0.2,
+            height: 1.24,
+            letterSpacing: -0.1,
           ),
         ),
         if (creator?.trim().isNotEmpty == true) ...<Widget>[
@@ -582,11 +430,13 @@ final class AudioSettingsLauncher extends StatelessWidget {
   const AudioSettingsLauncher({
     required this.snapshot,
     required this.onPressed,
+    this.compact = false,
     super.key,
   });
 
   final AudioPlayerSnapshot snapshot;
   final VoidCallback onPressed;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -596,62 +446,75 @@ final class AudioSettingsLauncher extends StatelessWidget {
       formatAudioVolume(snapshot.volume),
       if (timer != null) '${timer.inMinutes} 分钟',
     ].join('  ·  ');
-    return Semantics(
-      button: true,
-      label: '播放设置，$summary',
-      child: Material(
-        color: AudioPlayerColors.control,
-        borderRadius: BorderRadius.circular(AudioPlayerMetrics.controlRadius),
-        child: InkWell(
-          key: const Key('audio-settings'),
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(AudioPlayerMetrics.controlRadius),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
-              children: <Widget>[
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: AudioPlayerColors.surfaceStrong,
-                    shape: BoxShape.circle,
-                  ),
-                  child: SizedBox.square(
-                    dimension: 34,
-                    child: Icon(
-                      Icons.tune_rounded,
-                      size: 19,
-                      color: AudioPlayerColors.accent,
+    final radius = BorderRadius.circular(AudioPlayerMetrics.controlRadius);
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: AudioPlayerColors.shadow,
+            blurRadius: 20,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Semantics(
+        button: true,
+        label: '播放设置，$summary',
+        child: Material(
+          color: AudioPlayerColors.surface.withValues(alpha: 0.97),
+          borderRadius: radius,
+          child: InkWell(
+            key: const Key('audio-settings'),
+            onTap: onPressed,
+            borderRadius: radius,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 13 : 15,
+                vertical: compact ? 8 : 10,
+              ),
+              child: Row(
+                children: <Widget>[
+                  DecoratedBox(
+                    decoration: const BoxDecoration(
+                      color: AudioPlayerColors.accentSoft,
+                      shape: BoxShape.circle,
+                    ),
+                    child: SizedBox.square(
+                      dimension: compact ? 31 : 34,
+                      child: const Icon(
+                        Icons.tune_rounded,
+                        size: 19,
+                        color: AudioPlayerColors.accent,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        '播放设置',
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: AudioPlayerColors.ink,
-                          fontWeight: FontWeight.w700,
-                        ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Text(
+                      '播放设置',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: AudioPlayerColors.ink,
+                        fontWeight: FontWeight.w700,
                       ),
-                      Text(
-                        summary,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AudioPlayerColors.muted,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: AudioPlayerColors.subtle,
-                ),
-              ],
+                  Text(
+                    summary,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AudioPlayerColors.muted,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 21,
+                    color: AudioPlayerColors.subtle,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

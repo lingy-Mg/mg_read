@@ -22,6 +22,7 @@ import '../api/audio_controller.dart';
 import '../api/audio_models.dart';
 import '../backend/media_kit_audio_backend.dart';
 import '../core/audio_player_session.dart';
+import 'audio_player_artwork_stage.dart';
 import 'audio_player_components.dart';
 import 'audio_player_observer_proxy.dart';
 import 'audio_player_sheets.dart';
@@ -192,11 +193,17 @@ class _AudioViewState extends State<AudioPlayerView>
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
-        const AudioPlayerAmbientBackground(),
+        AudioPlayerArtworkBackdrop(
+          track: track,
+          artworkBuilder: widget.artworkBuilder,
+          playing: snapshot.playing,
+          disableAnimations: disableAnimations,
+        ),
         SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final compactHeight = constraints.maxHeight < 700;
+              final veryCompactHeight = constraints.maxHeight < 650;
+              final compactHeight = constraints.maxHeight < 780;
               final horizontalPadding = constraints.maxWidth < 380
                   ? 16.0
                   : 20.0;
@@ -204,7 +211,11 @@ class _AudioViewState extends State<AudioPlayerView>
                   constraints.maxWidth - horizontalPadding * 2 - 12;
               final coverSize = math.min(
                 availableWidth,
-                compactHeight ? 216.0 : 278.0,
+                veryCompactHeight
+                    ? 198.0
+                    : compactHeight
+                    ? 232.0
+                    : 268.0,
               );
               final displayedPosition = Duration(
                 milliseconds:
@@ -213,135 +224,137 @@ class _AudioViewState extends State<AudioPlayerView>
                         .clamp(0, math.max(0, snapshot.duration.inMilliseconds))
                         .round(),
               );
-              return SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  horizontalPadding,
-                  8,
-                  horizontalPadding,
-                  28,
-                ),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: AudioPlayerMetrics.pageMaxWidth,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        AudioPlayerTopBar(
-                          collectionTitle:
-                              track.collectionTitle ?? snapshot.collectionTitle,
-                          queueCount: snapshot.queueEntries.length,
-                          onBack: _requestExit,
-                          onQueue: () => showAudioQueueSheet(
-                            context,
-                            snapshot: snapshot,
-                            controller: _controller,
-                          ),
-                        ),
-                        SizedBox(height: compactHeight ? 10 : 18),
-                        Center(
-                          child: AudioPlayerCover(
-                            track: track,
-                            artworkBuilder: widget.artworkBuilder,
-                            size: coverSize,
-                            playing: snapshot.playing,
-                            disableAnimations: disableAnimations,
-                          ),
-                        ),
-                        SizedBox(height: compactHeight ? 18 : 25),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: AudioPlayerMetadata(
-                            snapshot: snapshot,
-                            track: track,
-                          ),
-                        ),
-                        SizedBox(height: compactHeight ? 15 : 20),
-                        Container(
-                          padding: EdgeInsets.fromLTRB(
-                            compactHeight ? 14 : 18,
-                            compactHeight ? 14 : 18,
-                            compactHeight ? 14 : 18,
-                            compactHeight ? 13 : 16,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AudioPlayerColors.surface.withValues(
-                              alpha: 0.96,
+              return ScrollConfiguration(
+                behavior: ScrollConfiguration.of(
+                  context,
+                ).copyWith(scrollbars: false),
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    6,
+                    horizontalPadding,
+                    20,
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: AudioPlayerMetrics.pageMaxWidth,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          AudioPlayerTopBar(
+                            collectionTitle:
+                                track.collectionTitle ??
+                                snapshot.collectionTitle,
+                            queueCount: snapshot.queueEntries.length,
+                            onBack: _requestExit,
+                            onQueue: () => showAudioQueueSheet(
+                              context,
+                              snapshot: snapshot,
+                              controller: _controller,
                             ),
-                            borderRadius: BorderRadius.circular(
-                              AudioPlayerMetrics.cardRadius,
+                          ),
+                          SizedBox(height: compactHeight ? 8 : 14),
+                          Center(
+                            child: AudioPlayerCover(
+                              track: track,
+                              artworkBuilder: widget.artworkBuilder,
+                              size: coverSize,
+                              playing: snapshot.playing,
+                              disableAnimations: disableAnimations,
                             ),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.82),
+                          ),
+                          SizedBox(height: compactHeight ? 13 : 20),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: AudioPlayerMetadata(
+                              snapshot: snapshot,
+                              track: track,
                             ),
-                            boxShadow: const <BoxShadow>[
-                              BoxShadow(
-                                color: AudioPlayerColors.shadow,
-                                blurRadius: 28,
-                                offset: Offset(0, 12),
+                          ),
+                          SizedBox(height: compactHeight ? 11 : 16),
+                          Container(
+                            padding: EdgeInsets.fromLTRB(
+                              compactHeight ? 14 : 17,
+                              compactHeight ? 12 : 16,
+                              compactHeight ? 14 : 17,
+                              compactHeight ? 13 : 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AudioPlayerColors.surface.withValues(
+                                alpha: 0.96,
                               ),
-                            ],
-                          ),
-                          child: Column(
-                            children: <Widget>[
-                              AudioProgressControl(
-                                position: displayedPosition,
-                                duration: snapshot.duration,
-                                enabled: snapshot.duration > Duration.zero,
-                                onChanged: (value) => setState(() {
-                                  _dragPositionMilliseconds = value;
-                                }),
-                                onChangeEnd: (value) {
-                                  setState(() {
-                                    _dragPositionMilliseconds = null;
-                                  });
-                                  unawaited(
-                                    _controller.seek(
-                                      Duration(milliseconds: value.round()),
-                                    ),
-                                  );
-                                },
+                              borderRadius: BorderRadius.circular(
+                                AudioPlayerMetrics.cardRadius,
                               ),
-                              SizedBox(height: compactHeight ? 8 : 11),
-                              AudioTransportControls(
-                                snapshot: snapshot,
-                                disableAnimations: disableAnimations,
-                                onPrevious: _controller.previous,
-                                onBackFifteen: () => _controller.seekBy(
-                                  const Duration(seconds: -15),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.82),
+                              ),
+                              boxShadow: const <BoxShadow>[
+                                BoxShadow(
+                                  color: AudioPlayerColors.shadow,
+                                  blurRadius: 28,
+                                  offset: Offset(0, 12),
                                 ),
-                                onToggle: _controller.toggle,
-                                onForwardFifteen: () => _controller.seekBy(
-                                  const Duration(seconds: 15),
+                              ],
+                            ),
+                            child: Column(
+                              children: <Widget>[
+                                AudioProgressControl(
+                                  position: displayedPosition,
+                                  duration: snapshot.duration,
+                                  enabled: snapshot.duration > Duration.zero,
+                                  onChanged: (value) => setState(() {
+                                    _dragPositionMilliseconds = value;
+                                  }),
+                                  onChangeEnd: (value) {
+                                    setState(() {
+                                      _dragPositionMilliseconds = null;
+                                    });
+                                    unawaited(
+                                      _controller.seek(
+                                        Duration(milliseconds: value.round()),
+                                      ),
+                                    );
+                                  },
                                 ),
-                                onNext: _controller.next,
-                              ),
-                              SizedBox(height: compactHeight ? 11 : 15),
-                              const Divider(
-                                height: 1,
-                                color: AudioPlayerColors.divider,
-                              ),
-                              SizedBox(height: compactHeight ? 11 : 14),
-                              AudioSettingsLauncher(
-                                snapshot: snapshot,
-                                onPressed: () => showAudioPlaybackSettingsSheet(
-                                  context,
+                                SizedBox(height: compactHeight ? 6 : 9),
+                                AudioTransportControls(
                                   snapshot: snapshot,
-                                  controller: _controller,
+                                  disableAnimations: disableAnimations,
+                                  onPrevious: _controller.previous,
+                                  onBackFifteen: () => _controller.seekBy(
+                                    const Duration(seconds: -15),
+                                  ),
+                                  onToggle: _controller.toggle,
+                                  onForwardFifteen: () => _controller.seekBy(
+                                    const Duration(seconds: 15),
+                                  ),
+                                  onNext: _controller.next,
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                        if (snapshot.failure != null) ...<Widget>[
-                          const SizedBox(height: 12),
-                          AudioInlineFailure(
-                            failure: snapshot.failure!,
-                            onRetry: _controller.retry,
+                          SizedBox(height: compactHeight ? 9 : 11),
+                          AudioSettingsLauncher(
+                            snapshot: snapshot,
+                            compact: compactHeight,
+                            onPressed: () => showAudioPlaybackSettingsSheet(
+                              context,
+                              snapshot: snapshot,
+                              controller: _controller,
+                            ),
                           ),
+                          if (snapshot.failure != null) ...<Widget>[
+                            const SizedBox(height: 12),
+                            AudioInlineFailure(
+                              failure: snapshot.failure!,
+                              onRetry: _controller.retry,
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
