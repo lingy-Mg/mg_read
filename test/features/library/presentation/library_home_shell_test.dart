@@ -196,6 +196,44 @@ void main() {
     expect(privateBook?.id, 'fixture-lord-of-mysteries');
   });
 
+  testWidgets('card menu stays subtle until hover or expansion', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      _host(
+        initialLayoutMode: LibraryHomeLayoutMode.card,
+        callbacks: LibraryHomeCallbacks(onSetBookPrivate: (_) async {}),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final Finder surface = find.byKey(const Key('library-grid-book-menu-surface-fixture-lord-of-mysteries'));
+    BoxDecoration decoration() => tester.widget<AnimatedContainer>(surface).decoration! as BoxDecoration;
+    double iconOpacity() => tester.widget<AnimatedOpacity>(find.descendant(of: surface, matching: find.byType(AnimatedOpacity))).opacity;
+
+    final BoxDecoration defaultDecoration = decoration();
+    expect(defaultDecoration.boxShadow, isEmpty);
+    expect(iconOpacity(), 0.68);
+
+    final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(tester.getCenter(surface));
+    await tester.pump(AppMotion.micro);
+
+    final BoxDecoration hoveredDecoration = decoration();
+    expect(hoveredDecoration.color!.a, greaterThan(defaultDecoration.color!.a));
+    expect(hoveredDecoration.boxShadow, isNotEmpty);
+    expect(iconOpacity(), 1);
+
+    await tester.tap(surface);
+    await tester.pumpAndSettle();
+    await mouse.moveTo(Offset.zero);
+    await tester.pump(AppMotion.micro);
+
+    expect(find.byKey(const Key('library-grid-book-action-fixture-lord-of-mysteries-set-private')), findsOneWidget);
+    expect(decoration().boxShadow, isNotEmpty);
+    expect(iconOpacity(), 1);
+    await mouse.removePointer();
+  });
+
   testWidgets('card mode preserves preparation, filtering, and deletion', (WidgetTester tester) async {
     LibraryBookListItemViewData? deletedBook;
     await _setViewport(tester, const Size(390, 844));

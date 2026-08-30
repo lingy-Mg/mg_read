@@ -218,7 +218,7 @@ class LibraryBookGridItem extends StatelessWidget {
   }
 }
 
-class _GridBookMenu extends StatelessWidget {
+class _GridBookMenu extends StatefulWidget {
   const _GridBookMenu({required this.bookId, required this.actions, required this.onAction, required this.onMore});
 
   final String bookId;
@@ -227,49 +227,79 @@ class _GridBookMenu extends StatelessWidget {
   final VoidCallback? onMore;
 
   @override
+  State<_GridBookMenu> createState() => _GridBookMenuState();
+}
+
+class _GridBookMenuState extends State<_GridBookMenu> {
+  bool _isHovered = false;
+  bool _isFocused = false;
+  bool _isMenuOpen = false;
+
+  @override
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    Widget triggerIcon() => DecoratedBox(
+    final bool isEmphasized = _isHovered || _isFocused || _isMenuOpen;
+    final Widget trigger = AnimatedContainer(
+      key: Key('library-grid-book-menu-surface-${widget.bookId}'),
+      duration: AppMotion.effectiveDuration(context, AppMotion.micro),
+      curve: AppMotion.navigationCurve,
       decoration: BoxDecoration(
-        color: tokens.surface.withValues(alpha: 0.9),
+        color: tokens.surface.withValues(alpha: isEmphasized ? 0.9 : 0.56),
         shape: BoxShape.circle,
-        boxShadow: <BoxShadow>[BoxShadow(color: tokens.shadow.withValues(alpha: 0.1), blurRadius: 6)],
+        boxShadow: isEmphasized ? <BoxShadow>[BoxShadow(color: tokens.shadow.withValues(alpha: 0.1), blurRadius: 6)] : const <BoxShadow>[],
       ),
-      child: const SizedBox.square(dimension: 32, child: Center(child: Icon(Icons.more_vert_rounded, size: 17))),
+      child: SizedBox.square(
+        dimension: 32,
+        child: Center(
+          child: AnimatedOpacity(
+            duration: AppMotion.effectiveDuration(context, AppMotion.micro),
+            curve: AppMotion.navigationCurve,
+            opacity: isEmphasized ? 1 : 0.68,
+            child: const Icon(Icons.more_vert_rounded, size: 17),
+          ),
+        ),
+      ),
     );
 
-    if (actions.isNotEmpty && onAction != null) {
-      return PopupMenuButton<LibraryBookListAction>(
-        key: Key('library-grid-book-overflow-menu-$bookId'),
+    final Widget button;
+    if (widget.actions.isNotEmpty && widget.onAction != null) {
+      button = PopupMenuButton<LibraryBookListAction>(
+        key: Key('library-grid-book-overflow-menu-${widget.bookId}'),
         tooltip: '书籍更多操作',
         position: PopupMenuPosition.under,
         shape: RoundedRectangleBorder(borderRadius: AppRadii.surface),
         elevation: 4,
-        onSelected: onAction,
+        onOpened: () => setState(() => _isMenuOpen = true),
+        onCanceled: () => setState(() => _isMenuOpen = false),
+        onSelected: (LibraryBookListAction action) {
+          setState(() => _isMenuOpen = false);
+          widget.onAction!(action);
+        },
         itemBuilder: (BuildContext context) => <PopupMenuEntry<LibraryBookListAction>>[
-          for (final LibraryBookListAction action in actions)
+          for (final LibraryBookListAction action in widget.actions)
             PopupMenuItem<LibraryBookListAction>(
-              key: Key('library-grid-book-action-$bookId-${action.id}'),
+              key: Key('library-grid-book-action-${widget.bookId}-${action.id}'),
               value: action,
               child: Text(action.label),
             ),
         ],
-        child: triggerIcon(),
+        child: trigger,
+      );
+    } else {
+      button = IconButton(
+        tooltip: '书籍更多操作',
+        onPressed: widget.onMore,
+        padding: EdgeInsets.zero,
+        iconSize: 17,
+        style: IconButton.styleFrom(minimumSize: const Size.square(32), fixedSize: const Size.square(32)),
+        icon: trigger,
       );
     }
-    return IconButton(
-      tooltip: '书籍更多操作',
-      onPressed: onMore,
-      padding: EdgeInsets.zero,
-      iconSize: 17,
-      style: IconButton.styleFrom(
-        minimumSize: const Size.square(32),
-        fixedSize: const Size.square(32),
-        backgroundColor: tokens.surface.withValues(alpha: 0.9),
-        shadowColor: tokens.shadow.withValues(alpha: 0.1),
-        elevation: 2,
-      ),
-      icon: const Icon(Icons.more_vert_rounded),
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: Focus(onFocusChange: (bool value) => setState(() => _isFocused = value), child: button),
     );
   }
 }
