@@ -5,20 +5,32 @@ interface RequestContext extends Context { readonly dataDir: string; readonly ap
 interface PageRequest { readonly cursor: string | null; readonly pageSize: number; }
 let context: RequestContext | undefined; let source: ManhuaSource | undefined;
 
+// Discovery cover URLs are Runtime-owned, self-contained proxy URLs. Keep all
+// homepage sections while leaving enough room under the public inline-result
+// budget for those URLs and normal upstream title/description variation.
+const discoveryItemLimits = Object.freeze({
+  completed: 8,
+  featured: 6,
+  popular: 8,
+  ranking: 4,
+  recent: 8,
+  rising: 8,
+});
+
 export async function activate(next: RequestContext) { context = next; next.log.info('source_activated'); }
 export async function search(request: PageRequest & { readonly query: string }) { rejectCursor(request.cursor); const items = (await requireSource().search(request.query)).slice(0, request.pageSize); return Object.freeze({ items, nextCursor: null, totalCount: null }); }
 export async function discover(request: PageRequest & { readonly target: string | null; readonly collectionId: string | null }) {
   if (request.target !== null || request.collectionId !== null) throw new Error('Discovery target is invalid.'); rejectCursor(request.cursor);
   const home = await requireSource().discover(); const components: object[] = [];
-  addCollection(components, home.featured, request.pageSize, 8, 'featured', '精选推荐', '官网精选内容', 'recommendation', 'carousel');
-  addCollection(components, home.recent, request.pageSize, 12, 'recent', '最近更新', '追踪最新章节', 'newRelease', 'coverGrid');
+  addCollection(components, home.featured, request.pageSize, discoveryItemLimits.featured, 'featured', '精选推荐', '官网精选内容', 'recommendation', 'carousel');
+  addCollection(components, home.recent, request.pageSize, discoveryItemLimits.recent, 'recent', '最近更新', '追踪最新章节', 'newRelease', 'coverGrid');
   const trendSections: object[] = [];
-  addRankedCollection(trendSections, home.rising, request.pageSize, 10, 'rising', '上升最快', '近期热度增长最快', 'trending', 'compact');
-  addRankedCollection(trendSections, home.popular, request.pageSize, 10, 'popular', '人气排行榜', '站内人气作品', 'hot', 'compact');
+  addRankedCollection(trendSections, home.rising, request.pageSize, discoveryItemLimits.rising, 'rising', '上升最快', '近期热度增长最快', 'trending', 'compact');
+  addRankedCollection(trendSections, home.popular, request.pageSize, discoveryItemLimits.popular, 'popular', '人气排行榜', '站内人气作品', 'hot', 'compact');
   if (trendSections.length !== 0) components.push(Object.freeze({ type: 'group', id: 'trend-group', layout: 'vertical', children: Object.freeze(trendSections) }));
-  addCollection(components, home.completed, request.pageSize, 10, 'completed', '完结大作', '一次读到结局', 'completed', 'shelf');
+  addCollection(components, home.completed, request.pageSize, discoveryItemLimits.completed, 'completed', '完结大作', '一次读到结局', 'completed', 'shelf');
   const rankingSections: object[] = [];
-  for (const ranking of home.rankings) addRankedCollection(rankingSections, ranking.items, request.pageSize, 6, ranking.id, ranking.title, null, 'ranking', 'compact');
+  for (const ranking of home.rankings) addRankedCollection(rankingSections, ranking.items, request.pageSize, discoveryItemLimits.ranking, ranking.id, ranking.title, null, 'ranking', 'compact');
   if (rankingSections.length !== 0) components.push(Object.freeze({ type: 'group', id: 'ranking-group', layout: 'vertical', children: Object.freeze(rankingSections) }));
   return Object.freeze({ kind: 'document', document: Object.freeze({ components: Object.freeze(components) }) });
 }

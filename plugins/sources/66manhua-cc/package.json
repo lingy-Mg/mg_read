@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/66manhua-cc",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "MgRead public HTML source for 66manhua.cc.",
   "type": "module",
