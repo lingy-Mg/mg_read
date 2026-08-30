@@ -70,6 +70,9 @@ final class SourceAudioPlaybackCoordinator extends Notifier<SourceAudioPlaybackS
   Completer<void>? _completion;
   bool _disposed = false;
 
+  /// Controller retained by the active root host for global mini controls.
+  AudioPlayerController? get attachedController => _controller;
+
   @override
   SourceAudioPlaybackState build() {
     ref.onDispose(() {

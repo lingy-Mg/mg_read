@@ -27,6 +27,7 @@ void main() {
     final backButtonDispatcher = RootBackButtonDispatcher();
     Future<bool> routerFallback() async => false;
     backButtonDispatcher.addCallback(routerFallback);
+    var underlyingActionCalls = 0;
     late WidgetRef rootRef;
 
     await tester.pumpWidget(
@@ -38,7 +39,21 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
-          home: const Scaffold(body: Center(child: Text('详情页'))),
+          home: Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const Text('详情页'),
+                  TextButton(
+                    key: const Key('underlying-reading-action'),
+                    onPressed: () => underlyingActionCalls++,
+                    child: const Text('继续看小说'),
+                  ),
+                ],
+              ),
+            ),
+          ),
           builder: (context, child) => Consumer(
             builder: (context, ref, _) {
               rootRef = ref;
@@ -90,6 +105,18 @@ void main() {
 
     expect(settings.get(AppSettingKeys.audioExitBehavior), 'continue');
     expect(find.text('详情页'), findsOneWidget);
+    expect(tester.getSize(find.byKey(const Key('source-audio-mini-player'))).width, lessThanOrEqualTo(520));
+
+    final Rect miniBeforeDrag = tester.getRect(find.byKey(const Key('source-audio-mini-player')));
+    await tester.drag(find.byKey(const Key('source-audio-mini-drag-region')), const Offset(70, -50));
+    await tester.pump();
+    final Rect miniAfterDrag = tester.getRect(find.byKey(const Key('source-audio-mini-player')));
+    expect(miniAfterDrag.center.dx, greaterThan(miniBeforeDrag.center.dx));
+    expect(miniAfterDrag.center.dy, lessThan(miniBeforeDrag.center.dy));
+
+    await tester.tap(find.byKey(const Key('underlying-reading-action')));
+    await tester.pump();
+    expect(underlyingActionCalls, 1);
 
     await tester.tap(find.byKey(const Key('source-audio-mini-player')));
     await _pumpUntil(tester, () => find.byKey(const Key('audio-back')).evaluate().isNotEmpty);
