@@ -48,7 +48,7 @@ function listEntries(html: string) {
     const id = /\/vod\/(?:detail|play)\/id\/(\d+)/iu.exec(href)?.[1]; if (id === undefined) continue;
     const image = /<img\b[^>]*>/iu.exec(body)?.[0] ?? '';
     const title = attribute(attributes, 'title') || attribute(image, 'alt') || strip(body) || `视频 ${id}`;
-    const cover = attribute(image, 'data-original') || attribute(image, 'data-src') || attribute(image, 'data-lazy-src') || attribute(image, 'src');
+    const cover = attribute(attributes, 'data-original') || attribute(attributes, 'data-src') || attribute(attributes, 'data-lazy-src') || attribute(image, 'data-original') || attribute(image, 'data-src') || attribute(image, 'data-lazy-src') || attribute(image, 'src');
     result.push({ id, title, cover: cover === '' ? null : cover });
   }
   return result;

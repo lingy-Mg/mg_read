@@ -196,6 +196,8 @@ void main() {
 
     final cover = find.byType(DiscoveryBookCover);
     final size = tester.getSize(cover);
+    final grid = tester.widget<GridView>(find.byKey(const Key('runtime-discovery-cover-grid')));
+    expect((grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount).crossAxisCount, 2);
     expect(size.height, closeTo(size.width * 9 / 16, 0.01));
     expect(tester.widget<DiscoveryBookCover>(cover).presentation, DiscoveryCoverPresentation.landscape);
   });

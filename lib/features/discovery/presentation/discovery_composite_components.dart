@@ -7,6 +7,7 @@
 /// 注意：
 /// - 组件只消费 Runtime 已校验的数据，不执行 IO，也不接受数据源颜色、尺寸或任意 UI 代码。
 /// - 布局名称表达内容语义；列数、间距和主题始终由 MgRead 根据可用宽度决定。
+/// - 视频封面网格按 contentKind 在紧凑宽度使用两列，小说、漫画与音频保持原有列数。
 /// - 分类 chips 按可用宽度等分列宽，最后一行保持同一列宽而不按内容收缩。
 /// - 横向书架在组件内允许触摸、手写笔、触控板和鼠标直接拖动。
 library;
@@ -33,12 +34,20 @@ class DiscoveryCoverGrid extends StatelessWidget {
     if (items.isEmpty) return const SizedBox.shrink();
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = switch (constraints.maxWidth) {
-          < 600 => 3,
-          < 1040 => 4,
-          < 1440 => 5,
-          _ => 6,
-        };
+        final videoOnly = items.every((item) => item.content.contentKind == PluginContentKind.video);
+        final columns = videoOnly
+            ? switch (constraints.maxWidth) {
+                < 600 => 2,
+                < 1040 => 3,
+                < 1440 => 4,
+                _ => 5,
+              }
+            : switch (constraints.maxWidth) {
+                < 600 => 3,
+                < 1040 => 4,
+                < 1440 => 5,
+                _ => 6,
+              };
         const gap = AppSpacing.discoveryComponentGap;
         final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
         final coverHeight = items
