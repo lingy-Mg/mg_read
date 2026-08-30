@@ -163,6 +163,53 @@ void main() {
     expect(tester.getSize(bar).height, closeTo(pausedHeight, 0.01));
   });
 
+  testWidgets('current queue title scrolls only when it overflows', (
+    tester,
+  ) async {
+    _setPortraitView(tester);
+    await tester.pumpWidget(
+      _host(
+        backend: _PresentationBackend(),
+        dataSource: const _LongLabelDataSource(),
+        disableAnimations: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('audio-queue')));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final marquee = find.byKey(const Key('audio-queue-current-title-marquee'));
+    expect(marquee, findsOneWidget);
+    final initialX = tester.getTopLeft(marquee).dx;
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(tester.getTopLeft(marquee).dx, lessThan(initialX));
+  });
+
+  testWidgets('current queue title remains still when it fits', (tester) async {
+    _setPortraitView(tester);
+    await tester.pumpWidget(
+      _host(
+        backend: _PresentationBackend(),
+        dataSource: const _QueueDataSource(),
+        disableAnimations: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('audio-queue')));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(
+      find.byKey(const Key('audio-queue-current-title-static')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('audio-queue-current-title-marquee')),
+      findsNothing,
+    );
+  });
+
   testWidgets(
     'large catalog uses a subtle indicator instead of a giant badge',
     (tester) async {

@@ -185,6 +185,15 @@ class _AudioQueueTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final titleStyle =
+        (Theme.of(context).textTheme.bodyMedium ??
+                DefaultTextStyle.of(context).style)
+            .copyWith(
+              color: entry.isLocked
+                  ? AudioPlayerColors.subtle
+                  : AudioPlayerColors.ink,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Material(
@@ -227,19 +236,17 @@ class _AudioQueueTile extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text(
-                        entry.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: entry.isLocked
-                              ? AudioPlayerColors.subtle
-                              : AudioPlayerColors.ink,
-                          fontWeight: selected
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                        ),
-                      ),
+                      selected
+                          ? _OverflowingQueueTitle(
+                              text: entry.title,
+                              style: titleStyle,
+                            )
+                          : Text(
+                              entry.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: titleStyle,
+                            ),
                       const SizedBox(height: 2),
                       Text(
                         entry.isLocked
@@ -271,6 +278,122 @@ class _AudioQueueTile extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _OverflowingQueueTitle extends StatelessWidget {
+  const _OverflowingQueueTitle({required this.text, required this.style});
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textPainter = TextPainter(
+          text: TextSpan(text: text, style: style),
+          maxLines: 1,
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+        )..layout();
+        final overflow = textPainter.width - constraints.maxWidth;
+        if (overflow <= 0.5 || MediaQuery.disableAnimationsOf(context)) {
+          return Text(
+            text,
+            key: const Key('audio-queue-current-title-static'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: style,
+          );
+        }
+        final duration = Duration(
+          milliseconds: ((overflow / 24) * 1000).round().clamp(2400, 9000),
+        );
+        return SizedBox(
+          key: const Key('audio-queue-current-title'),
+          height: textPainter.height,
+          child: ClipRect(
+            child: _QueueTitleMarquee(
+              distance: overflow,
+              duration: duration,
+              text: text,
+              textWidth: textPainter.width,
+              style: style,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _QueueTitleMarquee extends StatefulWidget {
+  const _QueueTitleMarquee({
+    required this.distance,
+    required this.duration,
+    required this.text,
+    required this.textWidth,
+    required this.style,
+  });
+
+  final double distance;
+  final Duration duration;
+  final String text;
+  final double textWidth;
+  final TextStyle style;
+
+  @override
+  State<_QueueTitleMarquee> createState() => _QueueTitleMarqueeState();
+}
+
+class _QueueTitleMarqueeState extends State<_QueueTitleMarquee>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animation = AnimationController(vsync: this, duration: widget.duration)
+      ..repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant _QueueTitleMarquee oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.duration != widget.duration) {
+      _animation.duration = widget.duration;
+      _animation.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _animation.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      child: OverflowBox(
+        alignment: Alignment.centerLeft,
+        minWidth: widget.textWidth,
+        maxWidth: widget.textWidth,
+        child: Text(
+          widget.text,
+          key: const Key('audio-queue-current-title-marquee'),
+          maxLines: 1,
+          softWrap: false,
+          style: widget.style,
+        ),
+      ),
+      builder: (context, child) => Transform.translate(
+        offset: Offset(-widget.distance * _animation.value, 0),
+        child: child,
       ),
     );
   }
