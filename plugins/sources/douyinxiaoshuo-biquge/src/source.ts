@@ -2,7 +2,8 @@
  * HTTP and parsing implementation for the Douyin Xiaoshuo mobile source.
  *
  * Runtime owns network and image proxying. This module only uses public context capabilities,
- * keeps content identities opaque, caches display projections and never records response data.
+ * keeps content identities opaque, enriches coverless listings through cached detail reads,
+ * caches display projections and never records response data.
  */
 import { Buffer } from 'node:buffer';
 import * as cheerio from 'cheerio/slim';
@@ -134,10 +135,12 @@ export class DouyinXiaoshuoSource {
       listingPolicy,
       () => this.#fetchHtml(url),
     );
-    return this.#parseListing(
-      html,
-      url,
-      categoryNumber === '0' ? null : category[1],
+    return this.#hydrateMissingCovers(
+      this.#parseListing(
+        html,
+        url,
+        categoryNumber === '0' ? null : category[1],
+      ),
     );
   }
 
@@ -366,6 +369,32 @@ export class DouyinXiaoshuoSource {
       .toArray()
       .some((element) => clean($(element).text()) === '下一页');
     return Object.freeze({ items: Object.freeze(items), hasNext });
+  }
+
+  async #hydrateMissingCovers(listing: Listing): Promise<Listing> {
+    const items: Summary[] = [];
+    for (let offset = 0; offset < listing.items.length; offset += 4) {
+      const batch = listing.items.slice(offset, offset + 4);
+      items.push(
+        ...(await Promise.all(
+          batch.map(async (item) => {
+            if (item.coverUrl !== null) return item;
+            try {
+              const detail = await this.getDetail(item.id);
+              return detail.coverUrl === null
+                ? item
+                : Object.freeze({ ...item, coverUrl: detail.coverUrl });
+            } catch {
+              return item;
+            }
+          }),
+        )),
+      );
+    }
+    return Object.freeze({
+      items: Object.freeze(items),
+      hasNext: listing.hasNext,
+    });
   }
 
   async #fetchHtml(url: URL, init?: RequestInit): Promise<string> {

@@ -19,6 +19,14 @@ test('live source completes discovery search detail catalog and content', { time
     http: { fetch },
   });
 
+  const home = await plugin.discover({
+    target: null,
+    cursor: null,
+    collectionId: null,
+    pageSize: 10,
+  });
+  const homeItem = home.document.components[0].children[0].items[0]?.content;
+  assert.match(homeItem?.coverUrl ?? '', /^http:\/\/127\.0\.0\.1\/resource/u);
   const discovery = await plugin.discover({
     target: 'category:all',
     cursor: null,
@@ -28,6 +36,7 @@ test('live source completes discovery search detail catalog and content', { time
   assert.equal(discovery.kind, 'document');
   const item = discovery.document.components[0].children[0].items[0]?.content;
   assert.ok(item);
+  assert.match(item.coverUrl ?? '', /^http:\/\/127\.0\.0\.1\/resource/u);
   const search = await plugin.search({
     query: '万族之劫',
     cursor: null,

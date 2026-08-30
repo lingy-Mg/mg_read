@@ -11,7 +11,7 @@ test('fixture covers search paging discovery continuation detail full catalog an
   t.after(() => rm(cacheDir, { recursive: true, force: true }));
   const fixtures = Object.fromEntries(
     await Promise.all(
-      ['search', 'category', 'category-next', 'detail', 'catalog-next', 'content', 'content-next'].map(
+      ['search', 'category', 'category-next', 'listing-detail', 'detail', 'catalog-next', 'content', 'content-next'].map(
         async (name) => [
           name,
           await readFile(new URL(`./fixtures/${name}.html`, import.meta.url), 'utf8'),
@@ -53,6 +53,9 @@ test('fixture covers search paging discovery continuation detail full catalog an
         if (init.method === 'POST') return html(fixtures.search);
         if (url.pathname === '/fenlei/') return html(fixtures.category);
         if (url.pathname === '/fenlei/2/') return html(fixtures['category-next']);
+        if (/^\/bqg\/(?:300|301|302)\/$/u.test(url.pathname)) {
+          return html(fixtures['listing-detail']);
+        }
         if (url.pathname === '/bqg/100/') return html(fixtures.detail);
         if (url.pathname === '/bqg/100_2/') return html(fixtures['catalog-next']);
         if (url.pathname === '/bqg/100/1001.html') return html(fixtures.content);
@@ -80,6 +83,11 @@ test('fixture covers search paging discovery continuation detail full catalog an
   const home = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 10 });
   assert.equal(home.document.components[0].children[0].layout, 'shelf');
   assert.equal(home.document.components[0].children[0].items[0].content.contentKind, 'novel');
+  assert.ok(
+    home.document.components[0].children[0].items.every(({ content }) =>
+      /^http:\/\/127\.0\.0\.1\/resource\//u.test(content.coverUrl),
+    ),
+  );
   assert.equal(home.document.components[1].children[0].layout, 'chips');
 
   const discovery = await plugin.discover({
@@ -91,6 +99,11 @@ test('fixture covers search paging discovery continuation detail full catalog an
   assert.equal(discovery.kind, 'document');
   const collection = discovery.document.components[0].children[0];
   assert.equal(collection.items.length, 2);
+  assert.ok(
+    collection.items.every(({ content }) =>
+      /^http:\/\/127\.0\.0\.1\/resource\//u.test(content.coverUrl),
+    ),
+  );
   assert.equal(collection.continuation.cursor, 'category:all:2:0');
   const append = await plugin.discover({
     target: 'category:all',
@@ -100,6 +113,7 @@ test('fixture covers search paging discovery continuation detail full catalog an
   });
   assert.equal(append.kind, 'append');
   assert.equal(append.items.length, 1);
+  assert.match(append.items[0].content.coverUrl, /^http:\/\/127\.0\.0\.1\/resource\//u);
   assert.equal(append.continuation, null);
 
   const detail = await plugin.getDetail({ id: firstSearchPage.items[0].id });

@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/douyinxiaoshuo-biquge",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "MgRead conversion of the user-provided douyinxiaoshuo-biquge source.",
   "type": "module",
