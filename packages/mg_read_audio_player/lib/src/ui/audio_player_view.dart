@@ -25,6 +25,7 @@ import '../core/audio_player_session.dart';
 import 'audio_playback_settings_sheet.dart';
 import 'audio_player_artwork_stage.dart';
 import 'audio_player_components.dart';
+import 'audio_player_detail_sheet.dart';
 import 'audio_player_observer_proxy.dart';
 import 'audio_player_sheets.dart';
 import 'audio_player_states.dart';
@@ -272,6 +273,12 @@ class _AudioViewState extends State<AudioPlayerView>
                             child: AudioPlayerMetadata(
                               snapshot: snapshot,
                               track: track,
+                              onDetails: () => showAudioDetailsSheet(
+                                context,
+                                snapshot: snapshot,
+                                controller: _controller,
+                                artworkBuilder: widget.artworkBuilder,
+                              ),
                             ),
                           ),
                           SizedBox(height: compactHeight ? 11 : 16),

@@ -136,11 +136,13 @@ final class AudioPlayerMetadata extends StatelessWidget {
   const AudioPlayerMetadata({
     required this.snapshot,
     required this.track,
+    required this.onDetails,
     super.key,
   });
 
   final AudioPlayerSnapshot snapshot;
   final AudioTrack track;
+  final VoidCallback onDetails;
 
   @override
   Widget build(BuildContext context) {
@@ -152,55 +154,69 @@ final class AudioPlayerMetadata extends StatelessWidget {
     final displayedIndex = catalogIndex >= 0
         ? catalogIndex
         : snapshot.currentIndex;
-    return Column(
-      children: <Widget>[
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: AudioPlayerColors.accentSoft.withValues(alpha: 0.64),
-            borderRadius: BorderRadius.circular(99),
-            border: Border.all(
-              color: AudioPlayerColors.accent.withValues(alpha: 0.22),
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 5),
-            child: Text(
-              '第 ${displayedIndex + 1} 集  ·  共 ${snapshot.queueEntries.length} 集',
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: AudioPlayerColors.accentPressed,
-                fontWeight: FontWeight.w700,
+    return Semantics(
+      button: true,
+      label: '查看音频详情',
+      child: InkWell(
+        key: const Key('audio-details-open'),
+        onTap: onDetails,
+        borderRadius: BorderRadius.circular(18),
+        child: Column(
+          children: <Widget>[
+            DecoratedBox(
+              key: const Key('audio-track-position'),
+              decoration: BoxDecoration(
+                color: AudioPlayerColors.accentSoft.withValues(alpha: 0.64),
+                borderRadius: BorderRadius.circular(99),
+                border: Border.all(
+                  color: AudioPlayerColors.accent.withValues(alpha: 0.22),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 13,
+                  vertical: 5,
+                ),
+                child: Text(
+                  '第 ${displayedIndex + 1} 集  ·  共 ${snapshot.queueEntries.length} 集',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: AudioPlayerColors.accentPressed,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          track.title,
-          key: const Key('audio-track-title'),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontSize: 18,
-            color: AudioPlayerColors.ink,
-            fontWeight: FontWeight.w800,
-            height: 1.24,
-            letterSpacing: -0.1,
-          ),
-        ),
-        if (creator?.trim().isNotEmpty == true) ...<Widget>[
-          const SizedBox(height: 7),
-          Text(
-            creator!,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: AudioPlayerColors.muted,
+            const SizedBox(height: 8),
+            Text(
+              track.title,
+              key: const Key('audio-track-title'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontSize: 18,
+                color: AudioPlayerColors.ink,
+                fontWeight: FontWeight.w800,
+                height: 1.24,
+                letterSpacing: -0.1,
+              ),
             ),
-          ),
-        ],
-      ],
+            if (creator?.trim().isNotEmpty == true) ...<Widget>[
+              const SizedBox(height: 7),
+              Text(
+                creator!,
+                key: const Key('audio-track-creator'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: AudioPlayerColors.muted,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

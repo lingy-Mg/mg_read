@@ -210,6 +210,90 @@ void main() {
     );
   });
 
+  testWidgets('title creator and episode metadata open live audio details', (
+    tester,
+  ) async {
+    final backend = _PresentationBackend();
+    await tester.pumpWidget(
+      _host(
+        backend: backend,
+        artworkBuilder: (_, _) => const ColoredBox(
+          key: Key('details-artwork-content'),
+          color: Color(0xFF8A4B36),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    for (final key in <Key>[
+      const Key('audio-track-title'),
+      const Key('audio-track-creator'),
+      const Key('audio-track-position'),
+    ]) {
+      await tester.tap(find.byKey(key));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('audio-details-sheet')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('audio-details-close')));
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(find.byKey(const Key('audio-track-title')));
+    await tester.pumpAndSettle();
+    final details = find.byKey(const Key('audio-details-sheet'));
+    expect(find.text('音频详情'), findsOneWidget);
+    expect(find.byKey(const Key('audio-details-artwork')), findsOneWidget);
+    expect(find.byKey(const Key('details-artwork-content')), findsNWidgets(3));
+    expect(
+      tester.widget<Text>(find.byKey(const Key('audio-details-title'))).data,
+      '风声书场',
+    );
+    expect(
+      find.descendant(of: details, matching: find.text('作者 / 播讲：讲述者')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: details, matching: find.text('第 1 集')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: details, matching: find.text('2 集')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: details, matching: find.text('2:00')),
+      findsNWidgets(2),
+    );
+    await backend.play();
+    await backend.seek(const Duration(seconds: 30));
+    await backend.setRate(1.25);
+    await backend.setVolume(0.5);
+    await tester.pump();
+    expect(
+      find.descendant(of: details, matching: find.text('正在播放')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: details, matching: find.text('0:30')),
+      findsOneWidget,
+    );
+    final progress = tester.widget<LinearProgressIndicator>(
+      find.byKey(const Key('audio-details-progress')),
+    );
+    expect(progress.value, closeTo(0.25, 0.001));
+
+    await tester.drag(details, const Offset(0, -260));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: details, matching: find.text('1.25x')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: details, matching: find.text('50%')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
     'large catalog uses a subtle indicator instead of a giant badge',
     (tester) async {
@@ -346,6 +430,29 @@ void main() {
     await expectLater(
       find.byType(Overlay),
       matchesGoldenFile('goldens/audio_player_queue_390x844.png'),
+    );
+  });
+
+  testWidgets('audio details match the portrait visual baseline', (
+    tester,
+  ) async {
+    _setPortraitView(tester);
+    await tester.pumpWidget(
+      _host(
+        backend: _PresentationBackend(),
+        textScale: 1,
+        artworkBuilder: (_, _) => const ColoredBox(color: Color(0xFF8A4B36)),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('audio-track-title')));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await expectLater(
+      find.byType(Overlay),
+      matchesGoldenFile('goldens/audio_player_details_390x844.png'),
     );
   });
 }
