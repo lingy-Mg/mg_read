@@ -38,6 +38,8 @@ import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver
 import 'package:mg_read/features/discovery/data/content_library_bookshelf_membership.dart';
 import 'package:mg_read/features/discovery/data/content_library_source_cover_persistence.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
+import 'package:mg_read/features/notifications/application/notification_center.dart';
+import 'package:mg_read/features/notifications/data/content_library_notification_center.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
 import 'package:mg_read/features/reader/application/chapter_cache_task_controller.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
@@ -490,6 +492,19 @@ final class DeferredProfileReadingStatsLoader implements ProfileReadingStatsLoad
   final ContentLibraryGetter _get;
   @override
   Future<ProfileReadingStats> load() async => ContentLibraryProfileReadingStatsLoader(await _get()).load();
+}
+
+/// Defers the first notification query until the notification page opens.
+final class DeferredNotificationCenter implements NotificationCenter {
+  const DeferredNotificationCenter(this._get);
+
+  final ContentLibraryGetter _get;
+
+  @override
+  Future<List<LibraryNotification>> load() async => ContentLibraryNotificationCenter(await _get()).load();
+
+  @override
+  Future<void> clear() async => ContentLibraryNotificationCenter(await _get()).clear();
 }
 
 final class DeferredBookshelfMembershipLoader implements BookshelfMembershipLoader {

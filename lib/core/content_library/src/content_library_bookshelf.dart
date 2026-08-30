@@ -3,13 +3,18 @@ part of 'content_library.dart';
 final class BookshelfRepository {
   BookshelfRepository._(this._library);
   final ContentLibrary _library;
-  Future<LibraryItem> add({required String title, String? author, required ContentKind kind, required ContentLibraryIngest source}) =>
-      _library._trace(
-        operation: 'bookshelfAdd',
-        contentKind: kind.code,
-        itemCount: 1,
-        action: () => _library._withStorageMaintenance(() => _add(title: title, author: author, kind: kind, source: source)),
-      );
+  Future<LibraryItem> add({required String title, String? author, required ContentKind kind, required ContentLibraryIngest source}) async {
+    final result = await _library._trace(
+      operation: 'bookshelfAdd',
+      contentKind: kind.code,
+      itemCount: 1,
+      action: () => _library._withStorageMaintenance(() => _add(title: title, author: author, kind: kind, source: source)),
+    );
+    if (result.created) {
+      _library._enqueueNotification(kind: LibraryNotificationKind.bookshelfAdded, title: result.item.title);
+    }
+    return result.item;
+  }
 
   /// Adds or returns the item identified by a typed source reference.
   ///
@@ -106,11 +111,16 @@ final class BookshelfRepository {
     action: () => _library._persistence.fileObjects.deleteCover(id.value),
   );
 
-  Future<void> remove(LibraryItemId id, LibraryRemovalPolicy policy) => _library._trace(
-    operation: 'bookshelfRemove',
-    itemCount: 1,
-    action: () => _library._withStorageMaintenance(() => _remove(id, policy)),
-  );
+  Future<void> remove(LibraryItemId id, LibraryRemovalPolicy policy) async {
+    final removed = await _library._trace(
+      operation: 'bookshelfRemove',
+      itemCount: 1,
+      action: () => _library._withStorageMaintenance(() => _remove(id, policy)),
+    );
+    if (removed != null) {
+      _library._enqueueNotification(kind: LibraryNotificationKind.bookshelfRemoved, title: removed.title);
+    }
+  }
 
   /// Changes only the local shelf visibility for one item.
   ///
@@ -119,7 +129,12 @@ final class BookshelfRepository {
   Future<void> setVisibility(LibraryItemId id, LibraryVisibility visibility) =>
       _library._trace(operation: 'bookshelfSetVisibility', itemCount: 1, action: () => _setVisibility(id, visibility));
 
-  Future<LibraryItem> _add({required String title, String? author, required ContentKind kind, required ContentLibraryIngest source}) async {
+  Future<_BookshelfAddResult> _add({
+    required String title,
+    String? author,
+    required ContentKind kind,
+    required ContentLibraryIngest source,
+  }) async {
     _safeText(title);
     final identity = '${source.pluginId}:${source.opaqueData['remoteBookId'] ?? title}';
     return _library._persistence.metadataRecords.transaction(() async {
@@ -138,7 +153,7 @@ final class BookshelfRepository {
             'summary': <String, Object?>{..._summaryFromDocument(previous.document), ...shelfSummary},
           },
         );
-        return _item(updated);
+        return _BookshelfAddResult(item: _item(updated), created: false);
       }
       await _ensureBookshelfCapacity(_library, requestedNewItems: 1);
       final id = _id();
@@ -166,7 +181,7 @@ final class BookshelfRepository {
           document: {'itemId': id, 'plugin': _plugin(source)},
         ),
       );
-      return _item(record);
+      return _BookshelfAddResult(item: _item(record), created: true);
     });
   }
 
@@ -191,9 +206,10 @@ final class BookshelfRepository {
     );
   }
 
-  Future<void> _remove(LibraryItemId id, LibraryRemovalPolicy policy) async {
+  Future<LibraryItem?> _remove(LibraryItemId id, LibraryRemovalPolicy policy) async {
     final record = await _library._persistence.metadataRecords.read(id: id.value, scope: _scope);
-    if (record == null) return;
+    if (record == null) return null;
+    final removedItem = _item(record);
     final records = <RecordEnvelope>[record];
     for (final kind in [
       _readingProgressKind,
@@ -225,7 +241,15 @@ final class BookshelfRepository {
     } on Object {
       // Metadata is already authoritative. A later cache clear can retry files.
     }
+    return removedItem;
   }
+}
+
+final class _BookshelfAddResult {
+  const _BookshelfAddResult({required this.item, required this.created});
+
+  final LibraryItem item;
+  final bool created;
 }
 
 /// Typed, metadata-only LAN synchronization for source-bound shelf items.

@@ -3,13 +3,14 @@
 /// 职责：
 /// - 编排书架、目录、正文、封面、阅读进度和显式存储维护的受控持久化访问。
 /// - 将数据源结果转换为主应用拥有的强类型内容对象。
-/// - 注册 Content Library 元数据 codec 与有界小写入策略。
+/// - 注册 Content Library 元数据 codec、通知操作记录与有界小写入策略。
 ///
 /// 注意：
 /// - 不泄漏 SQLite、路径、动态 JSON 或 Runtime 传输对象。
 /// - ContentLibrary 是业务数据权威；持久化与诊断失败必须保留既有边界。
 /// - 所有新书架条目必须在 metadata 事务内遵守全局 100 本硬上限。
 /// - 目录/正文引用写入、书架删除与清理共享可重入维护屏障，普通读取不排队。
+/// - 通知写入是有界、串行且失败开放的附属工作，书架主操作不等待它。
 ///
 library;
 
@@ -29,6 +30,7 @@ part 'content_library_bookmarks.dart';
 part 'content_library_catalog.dart';
 part 'content_library_content.dart';
 part 'content_library_maintenance.dart';
+part 'content_library_notifications.dart';
 
 const _scope = ScopeKey(kind: 'content_library', id: 'default');
 const _itemKind = 'content_library_item';
@@ -40,6 +42,7 @@ const _mangaProgressKind = 'content_library_manga_progress';
 const _audioProgressKind = 'content_library_audio_progress';
 const _videoProgressKind = 'content_library_video_progress';
 const _mangaBookmarkKind = 'content_library_manga_bookmark';
+const _notificationKind = 'content_library_notification';
 const _coverCacheMaxBytes = 100 * 1024 * 1024;
 const _metadataInlinePreparationPolicy = JsonInlinePreparationPolicy(
   maxDocuments: 8,
@@ -60,6 +63,7 @@ Iterable<RecordDocumentCodec> get contentLibraryRecordDocumentCodecs sync* {
     _audioProgressKind,
     _videoProgressKind,
     _mangaBookmarkKind,
+    _notificationKind,
   ]) {
     yield RecordDocumentCodec(
       recordKind: kind,
@@ -80,6 +84,9 @@ final class ContentLibrary {
   final DiagnosticsManager? _diagnostics;
   final bool _closePersistenceOnClose;
   final _ContentLibraryMaintenanceBarrier _maintenanceBarrier = _ContentLibraryMaintenanceBarrier();
+  Future<void> _notificationWriteTail = Future<void>.value();
+  Future<void>? _closeFuture;
+  bool _closing = false;
   late final BookshelfRepository bookshelf = BookshelfRepository._(this);
   late final CatalogRepository catalog = CatalogRepository._(this);
   late final ContentRepository content = ContentRepository._(this);
@@ -92,6 +99,7 @@ final class ContentLibrary {
   late final CoverRepository covers = CoverRepository._(this);
   late final MangaImageCacheRepository mangaImageCache = MangaImageCacheRepository._(this);
   late final StorageMaintenanceRepository storageMaintenance = StorageMaintenanceRepository._(this);
+  late final LibraryNotificationRepository notifications = LibraryNotificationRepository._(this);
   static Future<ContentLibrary> open({required Directory dataRoot, DiagnosticsManager? diagnostics}) async => ContentLibrary._(
     await AppPersistence.open(dataRoot: dataRoot, registry: _registry, diagnostics: diagnostics),
     diagnostics,
@@ -105,7 +113,21 @@ final class ContentLibrary {
   /// [AppPersistence]; [close] therefore leaves it open.
   factory ContentLibrary.fromPersistence(AppPersistence persistence, {DiagnosticsManager? diagnostics}) =>
       ContentLibrary._(persistence, diagnostics, closePersistenceOnClose: false);
-  Future<void> close() => _closePersistenceOnClose ? _persistence.close() : Future<void>.value();
+  Future<void> close() => _closeFuture ??= _beginClose();
+  Future<void> _beginClose() async {
+    _closing = true;
+    await _notificationWriteTail;
+    if (_closePersistenceOnClose) await _persistence.close();
+  }
+
+  void _enqueueNotification({required LibraryNotificationKind kind, required String title}) {
+    if (_closing) return;
+    _notificationWriteTail = _notificationWriteTail.then((_) => notifications._append(kind: kind, title: title)).catchError((Object _) {
+      // Notifications are non-critical. A failed log write must never
+      // change the bookshelf result or poison later queued records.
+    });
+  }
+
   Future<T> _withStorageMaintenance<T>(Future<T> Function() action) => _maintenanceBarrier.run(action);
   Future<Page<LibraryItem>> listLibrary(LibraryQuery query) => bookshelf.list(query);
   Future<LibraryItem?> getLibraryItem(LibraryItemId id) => bookshelf.get(id);

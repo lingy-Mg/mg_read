@@ -17,6 +17,37 @@ const int bookshelfMaxItemCount = 100;
 
 const String bookshelfCapacityExceededCode = 'bookshelf_capacity_exceeded';
 
+/// Maximum number of lightweight operation notifications retained locally.
+const int libraryNotificationMaxCount = 100;
+
+/// Stable notification kinds. Content updates are reserved for the future
+/// background-refresh producer while shelf mutations are live today.
+enum LibraryNotificationKind {
+  bookshelfAdded('bookshelf_added'),
+  bookshelfRemoved('bookshelf_removed'),
+  contentUpdated('content_updated');
+
+  const LibraryNotificationKind(this.code);
+  final String code;
+
+  static LibraryNotificationKind? fromCode(String code) => switch (code) {
+    'bookshelf_added' => bookshelfAdded,
+    'bookshelf_removed' => bookshelfRemoved,
+    'content_updated' => contentUpdated,
+    _ => null,
+  };
+}
+
+/// One bounded, credential-free local notification projection.
+final class LibraryNotification {
+  const LibraryNotification({required this.id, required this.kind, required this.title, required this.occurredAt});
+
+  final String id;
+  final LibraryNotificationKind kind;
+  final String title;
+  final DateTime occurredAt;
+}
+
 /// Stable business failure raised when a write would create item 101.
 final class BookshelfCapacityExceededException implements Exception {
   const BookshelfCapacityExceededException({required this.currentCount, required this.requestedNewItems});

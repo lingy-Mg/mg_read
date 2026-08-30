@@ -18,10 +18,32 @@ import 'package:mg_read/features/profile/presentation/about_page.dart';
 import 'package:mg_read/features/profile/presentation/feedback_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
+import 'package:mg_read/features/notifications/presentation/notifications_page.dart';
 
 import '../../../app/mg_read_app_test_support.dart';
 
 void main() {
+  testWidgets('profile bell opens the notification route and back returns', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 900));
+    final settings = await createTestAppSettings();
+    addTearDown(settings.close);
+    await tester.pumpWidget(testMgReadApp(settings));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('app-nav-profile')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('通知'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(NotificationsPage), findsOneWidget);
+    expect(find.text('暂无通知'), findsOneWidget);
+    expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('notifications-back')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfilePage), findsOneWidget);
+  });
+
   testWidgets('profile opens typed about and feedback routes and back returns', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     final settings = await createTestAppSettings();

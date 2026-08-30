@@ -42,6 +42,7 @@ class ProfilePage extends StatefulWidget {
     this.onPendingSettingRequested,
     this.onDiagnosticsRequested,
     this.onEditRequested,
+    this.onNotificationsRequested,
     this.profileIdentity = ProfileIdentity.defaults,
     this.readingStats,
     super.key,
@@ -61,6 +62,7 @@ class ProfilePage extends StatefulWidget {
   final ValueChanged<String>? onPendingSettingRequested;
   final VoidCallback? onDiagnosticsRequested;
   final VoidCallback? onEditRequested;
+  final VoidCallback? onNotificationsRequested;
   final ProfileIdentity profileIdentity;
 
   /// Local Content Library totals when this page is created by the app route.
@@ -118,7 +120,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         children: <Widget>[
                           ProfileTopBar(
                             onToggleTheme: _themeModeActionEnabled ? () => _handleToggleTheme(context) : null,
-                            onNotifications: _showUnavailableMessage,
+                            onNotifications: widget.onNotificationsRequested ?? _showUnavailableMessage,
                           ),
                           const SizedBox(height: AppSpacing.compact + 2),
                           ProfileOverviewCard(

@@ -4,6 +4,7 @@
 /// - 验证书架、目录、正文、封面与阅读进度的应用自有持久化语义。
 /// - 覆盖全局封面缓存的 LRU 上限与路径隔离。
 /// - 覆盖漫画图片缓存的无总量上限写入和主动维护边界。
+/// - 覆盖书架成功操作生成的有界、可清理本地通知。
 ///
 /// 注意：
 /// - 每个用例使用独立临时目录，不能依赖真实应用数据或网络。
@@ -124,6 +125,27 @@ void main() {
     expect(result.detachedMetadataRecords, preview.detachedMetadataRecords);
     expect(result.deletedContentObjects, 1);
     expect((await library.storageMaintenance.inspect()).isEmpty, isTrue);
+  });
+
+  test('records successful shelf additions and removals without duplicating idempotent adds', () async {
+    final item = await library.bookshelf.add(title: '通知测试书', kind: ContentKind.novel, source: source);
+    await library.bookshelf.add(title: '通知测试书', kind: ContentKind.novel, source: source);
+
+    var notifications = await library.notifications.list();
+    expect(notifications, hasLength(1));
+    expect(notifications.single.kind, LibraryNotificationKind.bookshelfAdded);
+    expect(notifications.single.title, '通知测试书');
+
+    await library.bookshelf.remove(item.id, LibraryRemovalPolicy.removeFromShelfKeepContent);
+    notifications = await library.notifications.list();
+    expect(notifications.map((entry) => entry.kind), <LibraryNotificationKind>[
+      LibraryNotificationKind.bookshelfRemoved,
+      LibraryNotificationKind.bookshelfAdded,
+    ]);
+    expect(notifications.first.title, '通知测试书');
+
+    await library.notifications.clear();
+    expect(await library.notifications.list(), isEmpty);
   });
 
   test('persists semantic reading progress and typed source identity', () async {

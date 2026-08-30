@@ -97,6 +97,22 @@ void main() {
     expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsOneWidget);
   });
 
+  testWidgets('delegates the notification bell to the app layer', (WidgetTester tester) async {
+    var notificationsRequested = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProfilePage(onNotificationsRequested: () => notificationsRequested = true),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('通知'));
+
+    expect(notificationsRequested, isTrue);
+    expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsNothing);
+  });
+
   testWidgets('shows LAN sync as an explicit on-demand action', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_host());
