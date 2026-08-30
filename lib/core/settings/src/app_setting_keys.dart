@@ -39,6 +39,17 @@ final class AppSettingKeys {
     validator: _validateDiscoverySourceId,
   );
 
+  static const profileDocument = SettingsDocumentDefinition(id: 'app-settings:settings.profile', kind: 'settings.profile');
+
+  /// Local-only display identity for the profile summary card.
+  static const profileIdentity = SettingKey<Map<String, Object?>>(
+    id: 'profile.identity',
+    documentKind: 'settings.profile',
+    defaultValue: <String, Object?>{'displayName': '书海行者', 'motto': '书山有路勤为径，阅读点亮生活。'},
+    codec: SettingCodec<Map<String, Object?>>(_profileIdentityEncode, _profileIdentityDecode, freeze: freezeJsonSettingMap),
+    validator: _validateProfileIdentity,
+  );
+
   static const diagnosticsDocument = SettingsDocumentDefinition(id: 'app-settings:settings.diagnostics', kind: 'settings.diagnostics');
 
   static const diagnosticsRealtimeDetailsEnabled = SettingKey<bool>(
@@ -102,6 +113,7 @@ final class AppSettingKeys {
     homeLayoutMode,
     searchHistory,
     discoverySourceId,
+    profileIdentity,
     diagnosticsEnabled,
     diagnosticsRealtimeDetailsEnabled,
     networkProxyPreferences,
@@ -115,6 +127,7 @@ final class AppSettingKeys {
       appearanceDocument,
       searchHistoryDocument,
       discoveryDocument,
+      profileDocument,
       diagnosticsDocument,
       networkProxyDocument,
       readerPreferencesDocument,
@@ -218,6 +231,32 @@ void _validateReaderPreferences(Map<String, Object?> value) {
 
 void _validateDiscoverySourceId(String? value) {
   if (value != null && (value.trim().isEmpty || value.length > 512)) {
+    throw ArgumentError.value(value);
+  }
+}
+
+Object? _profileIdentityEncode(Map<String, Object?> value) => value;
+
+Map<String, Object?> _profileIdentityDecode(Object? value) {
+  if (value is! Map) {
+    throw const FormatException('Expected a profile identity map.');
+  }
+  if (value.length != 2 || value['displayName'] is! String || value['motto'] is! String) {
+    throw const FormatException('Invalid profile identity fields.');
+  }
+  return <String, Object?>{'displayName': value['displayName'] as String, 'motto': value['motto'] as String};
+}
+
+void _validateProfileIdentity(Map<String, Object?> value) {
+  if (value.length != 2) throw ArgumentError.value(value);
+  final displayName = value['displayName'];
+  final motto = value['motto'];
+  if (displayName is! String ||
+      displayName.trim().isEmpty ||
+      displayName.length > 20 ||
+      motto is! String ||
+      motto.trim().isEmpty ||
+      motto.length > 50) {
     throw ArgumentError.value(value);
   }
 }

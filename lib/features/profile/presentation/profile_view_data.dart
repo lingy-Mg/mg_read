@@ -1,12 +1,13 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:mg_read/features/profile/domain/profile_reading_stats.dart';
+import 'package:mg_read/features/profile/domain/profile_identity.dart';
 
 /// Immutable, presentation-only data for the profile and settings screen.
 ///
 /// This projection intentionally contains no account identity, Runtime Store,
-/// account identity or cloud state. The current identity values remain a
-/// disclosed visual fixture; the sync action itself is wired separately.
+/// or cloud state. Display identity comes only from the local settings store;
+/// the sync action itself is wired separately.
 @immutable
 final class ProfileViewData {
   /// Creates one display-ready profile projection.
@@ -30,6 +31,18 @@ final class ProfileViewData {
   final String lastSyncLabel;
   final List<ProfileSettingsItemViewData> settings;
   final List<ProfileSettingsItemViewData> about;
+
+  ProfileViewData withIdentity(ProfileIdentity identity) {
+    return ProfileViewData(
+      displayName: identity.displayName,
+      motto: identity.motto,
+      stats: stats,
+      syncLabel: syncLabel,
+      lastSyncLabel: lastSyncLabel,
+      settings: settings,
+      about: about,
+    );
+  }
 
   /// Reuses the established summary-card design with local, non-account data.
   ProfileViewData withReadingStats(ProfileReadingStats readingStats) {

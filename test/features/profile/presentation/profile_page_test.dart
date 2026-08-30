@@ -7,6 +7,7 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_overview_card.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_settings_list.dart';
+import 'package:mg_read/features/profile/domain/profile_identity.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 
@@ -108,6 +109,26 @@ void main() {
     expect(find.descendant(of: backupRow, matching: find.text('局域网同步')), findsOneWidget);
     expect(find.descendant(of: backupRow, matching: find.text('同一网络传输数据源、书架与进度')), findsOneWidget);
     expect(find.text('已开启'), findsNothing);
+  });
+
+  testWidgets('shows local identity and delegates profile editing', (WidgetTester tester) async {
+    var editRequested = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ProfilePage(
+          profileIdentity: const ProfileIdentity(displayName: '纸间旅人', motto: '在每一页里遇见新的世界。'),
+          onEditRequested: () => editRequested = true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('纸间旅人'), findsOneWidget);
+    expect(find.text('在每一页里遇见新的世界。'), findsOneWidget);
+    await tester.tap(find.text('编辑资料'));
+
+    expect(editRequested, isTrue);
   });
 
   testWidgets('delegates a destination selection to the app layer', (WidgetTester tester) async {

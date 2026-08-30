@@ -39,8 +39,11 @@ import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_deta
 import 'package:mg_read/features/profile/presentation/about_page.dart';
 import 'package:mg_read/features/profile/presentation/about_item_placeholder_page.dart';
 import 'package:mg_read/features/profile/presentation/feedback_page.dart';
+import 'package:mg_read/features/profile/presentation/edit_profile_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 import 'package:mg_read/features/profile/application/profile_reading_stats_loader.dart';
+import 'package:mg_read/features/profile/application/profile_identity_store.dart';
+import 'package:mg_read/features/profile/domain/profile_identity.dart';
 import 'package:mg_read/features/profile/presentation/profile_setting_placeholder_page.dart';
 import 'package:mg_read/features/reader/presentation/reader_destination_page.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
@@ -116,6 +119,7 @@ String _stableRouteName(Uri uri) {
     'profile' when segments.length > 2 && segments[1] == 'about' => 'profile.about.${segments[2]}',
     'profile' when segments.length > 1 && segments[1] == 'about' => 'profile.about',
     'profile' when segments.length > 1 && segments[1] == 'feedback' => 'profile.feedback',
+    'profile' when segments.length > 1 && segments[1] == 'edit' => 'profile.edit',
     'profile' when segments.length > 2 && segments[1] == 'plugins' => 'profile.plugins.${segments[2]}',
     'profile' when segments.length > 1 && segments[1] == 'plugins' => 'profile.plugins',
     'profile' when segments.length > 1 && segments[1] == 'plugin-cache' => 'profile.pluginCache',
@@ -462,6 +466,7 @@ final class _DismissComicReaderObserver extends ComicReaderObserver {
 @TypedGoRoute<ProfileRoute>(
   path: '/profile',
   routes: <TypedRoute<RouteData>>[
+    TypedGoRoute<EditProfileRoute>(path: 'edit'),
     TypedGoRoute<AboutRoute>(
       path: 'about',
       routes: <TypedRoute<RouteData>>[TypedGoRoute<AboutItemPlaceholderRoute>(path: ':itemId')],
@@ -488,8 +493,13 @@ class ProfileRoute extends GoRouteData with $ProfileRoute {
       child: Consumer(
         builder: (BuildContext context, WidgetRef ref, Widget? child) {
           final stats = ref.watch(profileReadingStatsProvider).asData?.value;
+          final identity = ref.watch(profileIdentityProvider).asData?.value ?? ProfileIdentity.defaults;
           return ProfilePage(
             readingStats: stats,
+            profileIdentity: identity,
+            onEditRequested: () {
+              const EditProfileRoute().push(context);
+            },
             onDestinationRequested: (AppNavigationDestination destination) {
               _goToDestination(context, destination);
             },
@@ -521,6 +531,16 @@ class ProfileRoute extends GoRouteData with $ProfileRoute {
         },
       ),
     );
+  }
+}
+
+/// Edits the profile card's local-only display identity.
+class EditProfileRoute extends GoRouteData with $EditProfileRoute {
+  const EditProfileRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) {
+    return EditProfilePage(onBackRequested: () => _returnToProfile(context));
   }
 }
 

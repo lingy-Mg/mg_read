@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/features/profile/presentation/profile_view_data.dart';
+import 'package:mg_read/features/profile/domain/profile_identity.dart';
 import 'package:mg_read/features/profile/domain/profile_reading_stats.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_overview_card.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_settings_list.dart';
@@ -40,6 +41,8 @@ class ProfilePage extends StatefulWidget {
     this.onLanSyncRequested,
     this.onPendingSettingRequested,
     this.onDiagnosticsRequested,
+    this.onEditRequested,
+    this.profileIdentity = ProfileIdentity.defaults,
     this.readingStats,
     super.key,
   });
@@ -57,6 +60,8 @@ class ProfilePage extends StatefulWidget {
   final VoidCallback? onLanSyncRequested;
   final ValueChanged<String>? onPendingSettingRequested;
   final VoidCallback? onDiagnosticsRequested;
+  final VoidCallback? onEditRequested;
+  final ProfileIdentity profileIdentity;
 
   /// Local Content Library totals when this page is created by the app route.
   final ProfileReadingStats? readingStats;
@@ -77,7 +82,10 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    final data = widget.readingStats == null ? ProfileFixtures.preview : ProfileFixtures.preview.withReadingStats(widget.readingStats!);
+    var data = ProfileFixtures.preview.withIdentity(widget.profileIdentity);
+    if (widget.readingStats case final stats?) {
+      data = data.withReadingStats(stats);
+    }
     return Scaffold(
       body: AppPageBackdrop(
         style: AppPageBackdropStyle.profile,
@@ -115,7 +123,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           const SizedBox(height: AppSpacing.compact + 2),
                           ProfileOverviewCard(
                             data: data,
-                            onEdit: _showUnavailableMessage,
+                            onEdit: widget.onEditRequested ?? _showUnavailableMessage,
                             onSyncPressed: widget.onLanSyncRequested ?? _showUnavailableMessage,
                           ),
                           if (_actionFeedback != null) ...<Widget>[
