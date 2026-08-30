@@ -199,10 +199,22 @@ void main() {
 
   testWidgets('deferred shelf detail is visible before the local seed completes', (tester) async {
     final seed = Completer<SourceContentDetailSeed>();
+    BookCoverMemoryCache.write(
+      BookCoverRequest(
+        pluginId: _cachedPreviewDetail.pluginId,
+        pluginVersion: '2.4.0',
+        remoteContentId: _cachedPreview.id,
+        coverUrl: _cachedPreview.coverUrl!,
+      ),
+      _mangaCoverBytes,
+    );
+    addTearDown(BookCoverMemoryCache.clear);
     await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light(),
-        home: _DeferredShelfDetailHost(seed: seed.future),
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: _DeferredShelfDetailHost(seed: seed.future),
+        ),
       ),
     );
     await tester.pump();
@@ -210,6 +222,8 @@ void main() {
 
     expect(find.text('缓存书名'), findsWidgets);
     expect(find.text('565.2万'), findsWidgets);
+    expect(find.text('当前来源：完整缓存源'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('source-detail-cover')), matching: find.byType(Image)), findsOneWidget);
     expect(find.byKey(const Key('source-detail-privacy-action')), findsOneWidget);
     expect(find.byKey(const Key('source-detail-delete-action')), findsOneWidget);
     expect(find.byKey(const Key('source-detail-start-reading')), findsOneWidget);
@@ -217,10 +231,10 @@ void main() {
     seed.complete(
       SourceContentDetailSeed(
         pluginId: AliceBookHouseDetailFixture.pluginId,
+        pluginVersion: '1.0.0',
         id: AliceBookHouseDetailFixture.bookId,
-        initialContent: AliceBookHouseDetailFixture.detail.summary,
+        initialDetail: AliceBookHouseDetailFixture.detail,
         initialCatalog: AliceBookHouseDetailFixture.firstCatalogPage,
-        sourceName: AliceBookHouseDetailFixture.detail.sourceName,
       ),
     );
     await tester.pumpAndSettle();
@@ -516,7 +530,8 @@ class _DeferredShelfDetailHostState extends State<_DeferredShelfDetailHost> {
         showDeferredSourceContentDetailSheet(
           context,
           seed: widget.seed,
-          previewContent: _cachedPreview,
+          previewDetail: _cachedPreviewDetail,
+          previewPluginVersion: '2.4.0',
           gateway: _FixtureGateway(),
           shelfState: SourceDetailShelfState.alreadyAdded,
           onShelfAction: (_) async {},
@@ -536,7 +551,7 @@ final PluginContentSummary _cachedPreview = PluginContentSummary(
   contentKind: PluginContentKind.novel,
   author: '缓存作者',
   url: null,
-  coverUrl: null,
+  coverUrl: Uri.parse('https://source.example/cached-cover.png'),
   description: '缓存简介',
   language: 'zh-CN',
   status: PluginContentStatus.ongoing,
@@ -549,4 +564,12 @@ final PluginContentSummary _cachedPreview = PluginContentSummary(
   categories: const <String>['都市'],
   tags: const <String>[],
   attributes: const <PluginContentAttribute>[PluginContentAttribute(key: 'heat', label: '热度', value: '565.2万')],
+);
+
+final PluginContentDetail _cachedPreviewDetail = PluginContentDetail(
+  pluginId: 'org.example.cached',
+  sourceName: '完整缓存源',
+  summary: _cachedPreview,
+  aliases: const <String>[],
+  catalogUrl: Uri.parse('https://source.example/catalog/cached-book'),
 );

@@ -491,6 +491,7 @@ LibraryItem _item(RecordEnvelope r) => LibraryItem(
   categories: _stringListFromSummary(r.document, 'categories'),
   tags: _stringListFromSummary(r.document, 'tags'),
   attributes: _attributesFromSummary(r.document),
+  sourceDetail: _mapFromSummary(r.document, 'sourceDetail'),
   labels: _stringListFromSummary(r.document, 'labels'),
   source: _itemSource(r.document['plugin']),
   visibility: _visibilityFromDocument(r.document),
@@ -545,6 +546,10 @@ Map<String, Object?> _shelfSummary(ContentLibraryIngest source) {
     }
     if (values.isNotEmpty) summary['attributes'] = values;
   }
+  final sourceDetail = source.opaqueData['sourceDetail'];
+  if (sourceDetail is Map<String, Object?> && sourceDetail.isNotEmpty) {
+    summary['sourceDetail'] = sourceDetail;
+  }
   return summary;
 }
 
@@ -598,6 +603,15 @@ List<String> _stringListFromSummary(Map<String, Object?> document, String key) {
   final value = _summaryFromDocument(document)[key];
   if (value is! List<Object?>) return const <String>[];
   return List<String>.unmodifiable(value.whereType<String>().where((item) => item.isNotEmpty));
+}
+
+Map<String, Object?> _mapFromSummary(Map<String, Object?> document, String key) {
+  final value = _summaryFromDocument(document)[key];
+  if (value is! Map) return const <String, Object?>{};
+  return Map<String, Object?>.unmodifiable(<String, Object?>{
+    for (final entry in value.entries)
+      if (entry.key is String) entry.key as String: entry.value,
+  });
 }
 
 LibraryItemSource? _itemSource(Object? rawPlugin) {

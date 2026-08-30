@@ -12,6 +12,7 @@ library;
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
+import 'package:mg_read/features/discovery/application/persisted_source_detail.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/library/application/library_book_refresher.dart';
 
@@ -83,6 +84,7 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher {
           for (final attribute in summary.attributes)
             LibraryItemAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
         ],
+        sourceDetail: encodePersistedSourceDetail(detail),
         labels: <String>[...summary.categories, ...summary.tags, for (final attribute in summary.attributes) attribute.value],
       ),
     );

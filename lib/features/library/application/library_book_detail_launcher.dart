@@ -1,7 +1,7 @@
 /// 书架详情启动契约。
 ///
 /// 职责：
-/// - 以稳定书架 ID 解析本地优先的详情摘要与目录预览。
+/// - 以稳定书架 ID 解析本地优先的完整详情快照与目录预览。
 /// - 向展示层隐藏 Content Library 持久化实现。
 ///
 /// 注意：
@@ -15,17 +15,20 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 final class LibraryBookDetailLaunchData {
   const LibraryBookDetailLaunchData({
     required this.pluginId,
+    required this.pluginVersion,
     required this.remoteContentId,
-    required this.initialContent,
+    required this.initialDetail,
     required this.initialCatalog,
-    required this.sourceName,
   });
 
   final String pluginId;
+  final String pluginVersion;
   final String remoteContentId;
-  final PluginContentSummary initialContent;
+  final PluginContentDetail initialDetail;
   final PluginChaptersResult initialCatalog;
-  final String sourceName;
+
+  PluginContentSummary get initialContent => initialDetail.summary;
+  String get sourceName => initialDetail.sourceName;
 }
 
 /// Resolves a stable shelf ID without exposing Content Library persistence.

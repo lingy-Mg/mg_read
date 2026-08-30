@@ -219,6 +219,7 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
             context,
             gateway: ref.read(sourceContentGatewayProvider),
             pluginId: state.selectedSourceId!,
+            pluginVersion: selectedSource.pluginVersion,
             id: content.id,
             initialContent: content,
             initialSourceName: selectedSource.displayName,
@@ -230,7 +231,7 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
             shelfState: bookshelfMembership.contains(pluginId: state.selectedSourceId!, title: content.title)
                 ? SourceDetailShelfState.alreadyAdded
                 : SourceDetailShelfState.canAdd,
-            onAddToShelf: (content) => saver.save(source: selectedSource, content: content),
+            onAddToShelf: (detail) => saver.save(source: selectedSource, detail: detail),
             onRemoveFromShelf: remover == null
                 ? null
                 : () => remover.remove(pluginId: state.selectedSourceId!, title: content.title),

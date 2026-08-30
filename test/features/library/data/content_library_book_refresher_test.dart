@@ -52,6 +52,8 @@ void main() {
     expect(refreshed?.chapterCount, 2);
     expect(refreshed?.latestChapterTitle, '第二章');
     expect(refreshed?.attributes.single.value, '98.7万');
+    expect(refreshed?.sourceDetail['sourceName'], '刷新数据源');
+    expect(refreshed?.sourceDetail['catalogUrl'], 'https://source.example/book-original-url');
     expect((await library.listAllCatalog(item.id)).map((entry) => entry.remoteIdentity), <String>['chapter-1', 'chapter-2']);
     expect(await library.covers.read(oldCoverKey), isNull);
     expect(await library.bookshelf.readCover(item.id), isNull);
@@ -188,7 +190,8 @@ final class _RefreshGateway implements SourceContentGateway {
 
 final class _FailingRefreshGateway extends _RefreshGateway {
   @override
-  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) => Future<PluginContentDetail>.error(StateError('offline'));
+  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) =>
+      Future<PluginContentDetail>.error(StateError('offline'));
 }
 
 PluginChapterSummary _chapter(String id, String title, int order) => PluginChapterSummary(

@@ -35,6 +35,25 @@ void main() {
         accessCode: 'free',
         categories: const <String>['都市'],
         attributes: const <LibraryItemAttribute>[LibraryItemAttribute(key: 'heat', label: '热度', value: '565.2万')],
+        sourceDetail: const <String, Object?>{
+          'sourceName': '完整详情源',
+          'catalogUrl': 'https://source.example/catalog/book-7',
+          'aliases': <Object?>['书架详情别名'],
+          'summary': <String, Object?>{
+            'id': 'book-7',
+            'title': '书架详情测试',
+            'contentKind': 'novel',
+            'author': '测试作者',
+            'language': 'zh-CN',
+            'status': 'ongoing',
+            'access': 'free',
+            'chapterCount': 1,
+            'categories': <Object?>['都市'],
+            'attributes': <Object?>[
+              <String, Object?>{'key': 'heat', 'label': '热度', 'value': '565.2万'},
+            ],
+          },
+        },
       ),
     );
     await library.catalog.replaceSnapshot(
@@ -56,6 +75,7 @@ void main() {
     final detail = await ContentLibraryBookDetailLauncher(library).load(item.id.value);
 
     expect(detail.pluginId, 'org.example.source');
+    expect(detail.pluginVersion, '1.0.0');
     expect(detail.remoteContentId, 'book-7');
     expect(detail.initialContent.title, '书架详情测试');
     expect(detail.initialContent.contentKind, PluginContentKind.novel);
@@ -65,6 +85,9 @@ void main() {
     expect(detail.initialContent.categories, <String>['都市']);
     expect(detail.initialContent.attributes.single.key, 'heat');
     expect(detail.initialContent.attributes.single.value, '565.2万');
+    expect(detail.initialDetail.sourceName, '完整详情源');
+    expect(detail.initialDetail.aliases, <String>['书架详情别名']);
+    expect(detail.initialDetail.catalogUrl, Uri.parse('https://source.example/catalog/book-7'));
     expect(detail.initialCatalog.items, hasLength(1));
     expect(detail.initialCatalog.items.single.id, 'chapter-1');
     expect(detail.initialCatalog.items.single.wordCount, 1234);

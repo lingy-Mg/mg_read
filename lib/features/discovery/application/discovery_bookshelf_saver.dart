@@ -14,12 +14,15 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
+import 'package:mg_read/features/discovery/application/persisted_source_detail.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/application/content_library_source_prefetcher.dart';
 
 /// Application port for saving one typed discovery result to the local shelf.
 abstract interface class DiscoveryBookshelfSaver {
-  Future<void> save({required PluginSourceDescriptor source, required PluginContentSummary content});
+  /// Saves a full detail from the detail page, or a legacy summary from a
+  /// non-detail host. New UI entrypoints should always provide [detail].
+  Future<void> save({required PluginSourceDescriptor source, PluginContentSummary? content, PluginContentDetail? detail});
 }
 
 /// One source-detail shelf request as observed by app composition.
@@ -53,12 +56,14 @@ final class ContentLibraryDiscoveryBookshelfSaver implements DiscoveryBookshelfS
   final BookshelfMembershipController? membership;
 
   @override
-  Future<void> save({required PluginSourceDescriptor source, required PluginContentSummary content}) async {
+  Future<void> save({required PluginSourceDescriptor source, PluginContentSummary? content, PluginContentDetail? detail}) async {
+    final resolvedDetail = detail ?? _detailFromSummary(source, content);
+    final summary = resolvedDetail.summary;
     final mutation = DiscoveryBookshelfMutation(
       BookshelfAddRequest(
-        title: content.title,
-        author: content.author,
-        kind: switch (content.contentKind) {
+        title: summary.title,
+        author: summary.author,
+        kind: switch (summary.contentKind) {
           PluginContentKind.novel => ContentKind.novel,
           PluginContentKind.manga => ContentKind.manga,
           PluginContentKind.audio => ContentKind.audio,
@@ -66,29 +71,30 @@ final class ContentLibraryDiscoveryBookshelfSaver implements DiscoveryBookshelfS
         },
         pluginId: source.id,
         pluginVersion: source.pluginVersion,
-        remoteContentId: content.id,
-        coverUrl: content.coverUrl,
-        sourceName: source.displayName,
-        sourceUrl: content.url,
-        description: content.description,
-        language: content.language,
-        accessCode: content.access.code,
-        wordCount: content.wordCount,
-        chapterCount: content.chapterCount,
-        publishedAt: content.publishedAt,
-        updatedAt: content.updatedAt,
-        statusLabel: _statusLabel(content.status),
-        latestChapterId: content.latestChapter?.id,
-        latestChapterTitle: content.latestChapter?.title,
-        latestChapterUrl: content.latestChapter?.url,
-        latestChapterUpdatedAt: content.latestChapter?.updatedAt,
-        categories: content.categories,
-        tags: content.tags,
+        remoteContentId: summary.id,
+        coverUrl: summary.coverUrl,
+        sourceName: resolvedDetail.sourceName.isEmpty ? source.displayName : resolvedDetail.sourceName,
+        sourceUrl: resolvedDetail.catalogUrl ?? summary.url,
+        description: summary.description,
+        language: summary.language,
+        accessCode: summary.access.code,
+        wordCount: summary.wordCount,
+        chapterCount: summary.chapterCount,
+        publishedAt: summary.publishedAt,
+        updatedAt: summary.updatedAt,
+        statusLabel: _statusLabel(summary.status),
+        latestChapterId: summary.latestChapter?.id,
+        latestChapterTitle: summary.latestChapter?.title,
+        latestChapterUrl: summary.latestChapter?.url,
+        latestChapterUpdatedAt: summary.latestChapter?.updatedAt,
+        categories: summary.categories,
+        tags: summary.tags,
         attributes: <LibraryItemAttribute>[
-          for (final attribute in content.attributes)
+          for (final attribute in summary.attributes)
             LibraryItemAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
         ],
-        labels: <String>[...content.categories, ...content.tags, for (final attribute in content.attributes) attribute.value],
+        sourceDetail: encodePersistedSourceDetail(resolvedDetail),
+        labels: <String>[...summary.categories, ...summary.tags, for (final attribute in summary.attributes) attribute.value],
       ),
     );
     if (await membership?.containsWhenReady(pluginId: mutation.request.pluginId, title: mutation.request.title) ?? false) {
@@ -116,10 +122,21 @@ String? _statusLabel(PluginContentStatus status) => switch (status) {
 /// Test-only default: real app composition overrides this with Content Library.
 final discoveryBookshelfSaverProvider = Provider<DiscoveryBookshelfSaver>((Ref ref) => const _UnavailableDiscoveryBookshelfSaver());
 
+PluginContentDetail _detailFromSummary(PluginSourceDescriptor source, PluginContentSummary? content) {
+  if (content == null) throw ArgumentError('Either detail or content must be provided.');
+  return PluginContentDetail(
+    pluginId: source.id,
+    sourceName: source.displayName,
+    summary: content,
+    aliases: const <String>[],
+    catalogUrl: content.url,
+  );
+}
+
 final class _UnavailableDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
   const _UnavailableDiscoveryBookshelfSaver();
 
   @override
-  Future<void> save({required PluginSourceDescriptor source, required PluginContentSummary content}) =>
+  Future<void> save({required PluginSourceDescriptor source, PluginContentSummary? content, PluginContentDetail? detail}) =>
       Future<void>.error(StateError('Local bookshelf is unavailable.'));
 }

@@ -152,6 +152,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                             context,
                             gateway: ref.read(sourceContentGatewayProvider),
                             pluginId: pluginId,
+                            pluginVersion: source.pluginVersion,
                             id: content.id,
                             initialContent: content,
                             initialSourceName: source.displayName,
@@ -163,7 +164,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                             shelfState: bookshelfMembership.contains(pluginId: pluginId, title: content.title)
                                 ? SourceDetailShelfState.alreadyAdded
                                 : SourceDetailShelfState.canAdd,
-                            onAddToShelf: (content) => ref.read(discoveryBookshelfSaverProvider).save(source: source, content: content),
+                            onAddToShelf: (detail) => ref.read(discoveryBookshelfSaverProvider).save(source: source, detail: detail),
                             onRemoveFromShelf: ref.read(discoveryBookshelfRemoverProvider) == null
                                 ? null
                                 : () => ref

@@ -46,17 +46,25 @@ void main() {
       tags: const <String>['NPC'],
       attributes: const <PluginContentAttribute>[PluginContentAttribute(key: 'heat', label: '热度', value: '565.2万')],
     );
+    final detail = PluginContentDetail(
+      pluginId: source.id,
+      sourceName: '详情数据源',
+      summary: content,
+      aliases: const <String>['发现页别名'],
+      catalogUrl: Uri.parse('https://source.example/catalog/opaque-content-id'),
+    );
     final saver = ContentLibraryDiscoveryBookshelfSaver(library);
 
-    await saver.save(source: source, content: content);
-    await saver.save(source: source, content: content);
+    await saver.save(source: source, detail: detail);
+    await saver.save(source: source, detail: detail);
 
     final items = (await library.listLibrary(const LibraryQuery())).items;
     expect(items, hasLength(1));
     expect(items.single.title, '来自发现页的书');
     expect(items.single.author, '测试作者');
     expect(items.single.coverUrl, Uri.parse('https://cdn.example.com/covers/opaque.jpg'));
-    expect(items.single.sourceName, '测试数据源');
+    expect(items.single.sourceName, '详情数据源');
+    expect(items.single.sourceUrl, Uri.parse('https://source.example/catalog/opaque-content-id'));
     expect(items.single.source?.remoteContentId, content.id);
     expect(items.single.description, '完整简介');
     expect(items.single.language, 'zh-CN');
@@ -67,6 +75,8 @@ void main() {
     expect(items.single.attributes.single.key, 'heat');
     expect(items.single.attributes.single.value, '565.2万');
     expect(items.single.latestChapterId, 'chapter-999');
+    expect(items.single.sourceDetail['aliases'], <Object?>['发现页别名']);
+    expect(items.single.sourceDetail['catalogUrl'], 'https://source.example/catalog/opaque-content-id');
   });
 
   test('reports a committed shelf mutation without awaiting reconciliation', () async {
@@ -83,7 +93,7 @@ void main() {
       onMutationCommitted: (mutation, item) => events.add('commit:${item.id.value}'),
     );
 
-    await saver.save(source: _source, content: _content);
+    await saver.save(source: _source, detail: _detail(_source, _content));
 
     expect(events, hasLength(2));
     expect(events.first, 'start:${_source.id}:${_content.id}');
@@ -107,25 +117,31 @@ void main() {
           pluginVersion: '1.0.0',
           contentKinds: <PluginContentKind>[contentKind],
         ),
-        content: PluginContentSummary(
-          id: '${contentKind.name}-content',
-          title: '${contentKind.name} 内容',
-          contentKind: contentKind,
-          author: null,
-          url: null,
-          coverUrl: null,
-          description: null,
-          language: null,
-          status: PluginContentStatus.unknown,
-          access: PluginAccessKind.free,
-          wordCount: null,
-          chapterCount: 1,
-          publishedAt: null,
-          updatedAt: null,
-          latestChapter: null,
-          categories: const <String>[],
-          tags: const <String>[],
-          attributes: const <PluginContentAttribute>[],
+        detail: PluginContentDetail(
+          pluginId: 'org.example.${contentKind.name}',
+          sourceName: '媒体测试源',
+          aliases: const <String>[],
+          catalogUrl: null,
+          summary: PluginContentSummary(
+            id: '${contentKind.name}-content',
+            title: '${contentKind.name} 内容',
+            contentKind: contentKind,
+            author: null,
+            url: null,
+            coverUrl: null,
+            description: null,
+            language: null,
+            status: PluginContentStatus.unknown,
+            access: PluginAccessKind.free,
+            wordCount: null,
+            chapterCount: 1,
+            publishedAt: null,
+            updatedAt: null,
+            latestChapter: null,
+            categories: const <String>[],
+            tags: const <String>[],
+            attributes: const <PluginContentAttribute>[],
+          ),
         ),
       );
     }
@@ -198,4 +214,12 @@ final PluginContentSummary _content = PluginContentSummary(
   categories: const <String>[],
   tags: const <String>[],
   attributes: const <PluginContentAttribute>[],
+);
+
+PluginContentDetail _detail(PluginSourceDescriptor source, PluginContentSummary content) => PluginContentDetail(
+  pluginId: source.id,
+  sourceName: source.displayName,
+  summary: content,
+  aliases: const <String>[],
+  catalogUrl: content.url,
 );

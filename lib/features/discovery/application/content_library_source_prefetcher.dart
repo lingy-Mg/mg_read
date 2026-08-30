@@ -4,6 +4,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
+import 'package:mg_read/features/discovery/application/persisted_source_detail.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 
 /// Warms the app-owned source data immediately after a book is added.
@@ -131,6 +132,7 @@ final class ContentLibrarySourcePrefetcher {
               for (final attribute in detail.summary.attributes)
                 LibraryItemAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
             ],
+            sourceDetail: encodePersistedSourceDetail(detail),
             labels: <String>[
               ...detail.summary.categories,
               ...detail.summary.tags,

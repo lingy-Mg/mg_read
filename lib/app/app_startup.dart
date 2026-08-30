@@ -525,7 +525,7 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
   final void Function(DiscoveryBookshelfMutation mutation)? onMutationFailed;
 
   @override
-  Future<void> save({required PluginSourceDescriptor source, required PluginContentSummary content}) async {
+  Future<void> save({required PluginSourceDescriptor source, PluginContentSummary? content, PluginContentDetail? detail}) async {
     final library = await _get();
     final prefetcher = ContentLibrarySourcePrefetcher(library, _gateway, diagnostics: _diagnostics);
     await ContentLibraryDiscoveryBookshelfSaver(
@@ -570,7 +570,7 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
         );
       },
       onMutationFailed: onMutationFailed,
-    ).save(source: source, content: content);
+    ).save(source: source, content: content, detail: detail);
   }
 }
 

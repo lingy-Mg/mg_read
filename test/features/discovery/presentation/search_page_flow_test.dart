@@ -203,7 +203,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(saver.source?.id, 'source.test');
       expect(saver.source?.pluginVersion, '1.2.3');
-      expect(saver.content?.id, 'real-result');
+      expect(saver.detail?.summary.id, 'real-result');
 
       await tester.tap(find.byKey(const Key('source-detail-start-reading')));
       await tester.pumpAndSettle();
@@ -237,15 +237,16 @@ final class _MemorySearchHistoryStore implements SearchHistoryStore {
 
 final class _RecordingBookshelfSaver implements DiscoveryBookshelfSaver {
   PluginSourceDescriptor? source;
-  PluginContentSummary? content;
+  PluginContentDetail? detail;
 
   @override
   Future<void> save({
     required PluginSourceDescriptor source,
-    required PluginContentSummary content,
+    PluginContentSummary? content,
+    PluginContentDetail? detail,
   }) async {
     this.source = source;
-    this.content = content;
+    this.detail = detail;
   }
 }
 

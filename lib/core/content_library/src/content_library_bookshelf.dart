@@ -47,6 +47,7 @@ final class BookshelfRepository {
             for (final attribute in request.attributes)
               <String, String>{'key': attribute.key, 'label': attribute.label, 'value': attribute.value},
           ],
+        if (request.sourceDetail.isNotEmpty) 'sourceDetail': request.sourceDetail,
         if (request.labels.isNotEmpty) 'labels': request.labels,
       },
     ),

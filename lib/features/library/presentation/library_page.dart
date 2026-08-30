@@ -205,16 +205,17 @@ class LibraryPage extends ConsumerWidget {
           .then<SourceContentDetailSeed>(
             (detail) => SourceContentDetailSeed(
               pluginId: detail.pluginId,
+              pluginVersion: detail.pluginVersion,
               id: detail.remoteContentId,
-              initialContent: detail.initialContent,
+              initialDetail: detail.initialDetail,
               initialCatalog: detail.initialCatalog,
-              sourceName: detail.sourceName,
             ),
           );
       await showDeferredSourceContentDetailSheet(
         context,
         seed: seed,
-        previewContent: _libraryDetailPreview(summary, book),
+        previewDetail: _libraryDetailPreview(summary, book),
+        previewPluginVersion: summary?.coverPluginVersion ?? book.coverRequest?.pluginVersion ?? 'unknown',
         gateway: sourceGateway,
         shelfState: SourceDetailShelfState.alreadyAdded,
         onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) async {
@@ -453,53 +454,60 @@ class LibraryPage extends ConsumerWidget {
   }
 }
 
-PluginContentSummary _libraryDetailPreview(LibraryItemSummary? item, LibraryBookListItemViewData book) {
+PluginContentDetail _libraryDetailPreview(LibraryItemSummary? item, LibraryBookListItemViewData book) {
   final latestTitle = item?.latestChapterTitle;
-  return PluginContentSummary(
-    id: item?.coverRemoteContentId ?? book.id,
-    title: item?.title ?? book.title,
-    contentKind: switch (item?.contentKind) {
-      ContentKind.audio => PluginContentKind.audio,
-      ContentKind.video => PluginContentKind.video,
-      ContentKind.manga => PluginContentKind.manga,
-      _ => PluginContentKind.novel,
-    },
-    author: item?.author,
-    url: item?.sourceUrl,
-    coverUrl: item?.coverUrl ?? book.coverUrl,
-    coverBytes: item?.coverBytes ?? book.coverBytes,
-    description: item?.description,
-    language: item?.language,
-    status: switch (item?.statusLabel) {
-      '连载' => PluginContentStatus.ongoing,
-      '已完结' => PluginContentStatus.completed,
-      '暂停更新' => PluginContentStatus.hiatus,
-      _ => PluginContentStatus.unknown,
-    },
-    access: switch (item?.accessCode) {
-      'free' => PluginAccessKind.free,
-      'paid' => PluginAccessKind.paid,
-      'mixed' => PluginAccessKind.mixed,
-      _ => PluginAccessKind.unknown,
-    },
-    wordCount: item?.wordCount,
-    chapterCount: item?.chapterCount,
-    publishedAt: item?.publishedAt,
-    updatedAt: item?.updatedAt,
-    latestChapter: latestTitle == null
-        ? null
-        : PluginLatestChapter(
-            id: item?.latestChapterId,
-            title: latestTitle,
-            url: item?.latestChapterUrl,
-            updatedAt: item?.latestChapterUpdatedAt,
-          ),
-    categories: item?.categories ?? const <String>[],
-    tags: item?.tags ?? const <String>[],
-    attributes: <PluginContentAttribute>[
-      for (final attribute in item?.attributes ?? const <LibraryItemSummaryAttribute>[])
-        PluginContentAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
-    ],
+  final pluginId = item?.coverPluginId ?? book.coverRequest?.pluginId ?? 'library-preview';
+  return PluginContentDetail(
+    pluginId: pluginId,
+    sourceName: item?.sourceName ?? '书架来源',
+    aliases: const <String>[],
+    catalogUrl: item?.sourceUrl,
+    summary: PluginContentSummary(
+      id: item?.coverRemoteContentId ?? book.id,
+      title: item?.title ?? book.title,
+      contentKind: switch (item?.contentKind) {
+        ContentKind.audio => PluginContentKind.audio,
+        ContentKind.video => PluginContentKind.video,
+        ContentKind.manga => PluginContentKind.manga,
+        _ => PluginContentKind.novel,
+      },
+      author: item?.author,
+      url: item?.sourceUrl,
+      coverUrl: item?.coverUrl ?? book.coverUrl,
+      coverBytes: item?.coverBytes ?? book.coverBytes,
+      description: item?.description,
+      language: item?.language,
+      status: switch (item?.statusLabel) {
+        '连载' => PluginContentStatus.ongoing,
+        '已完结' => PluginContentStatus.completed,
+        '暂停更新' => PluginContentStatus.hiatus,
+        _ => PluginContentStatus.unknown,
+      },
+      access: switch (item?.accessCode) {
+        'free' => PluginAccessKind.free,
+        'paid' => PluginAccessKind.paid,
+        'mixed' => PluginAccessKind.mixed,
+        _ => PluginAccessKind.unknown,
+      },
+      wordCount: item?.wordCount,
+      chapterCount: item?.chapterCount,
+      publishedAt: item?.publishedAt,
+      updatedAt: item?.updatedAt,
+      latestChapter: latestTitle == null
+          ? null
+          : PluginLatestChapter(
+              id: item?.latestChapterId,
+              title: latestTitle,
+              url: item?.latestChapterUrl,
+              updatedAt: item?.latestChapterUpdatedAt,
+            ),
+      categories: item?.categories ?? const <String>[],
+      tags: item?.tags ?? const <String>[],
+      attributes: <PluginContentAttribute>[
+        for (final attribute in item?.attributes ?? const <LibraryItemSummaryAttribute>[])
+          PluginContentAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
+      ],
+    ),
   );
 }
 

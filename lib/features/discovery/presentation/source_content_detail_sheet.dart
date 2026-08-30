@@ -7,6 +7,7 @@
 /// 注意：
 /// - 不要在 build() 中执行 Runtime、网络或磁盘 IO。
 /// - 异步加载必须由页面状态持有请求世代，并保留稳定 Key 与书架乐观更新语义。
+/// - 封面作用域必须携带真实插件版本，确保发现页与书架详情命中同一持久化缓存键。
 /// - 详情只复用发现页顶部栏，不显示顶级数据源选择。
 /// - 横向推荐列表允许触摸、手写笔、触控板和鼠标直接拖动。
 library;
@@ -68,7 +69,7 @@ typedef SourceVideoEpisodeRequested =
 
 typedef SourceExternalUrlLauncher = Future<bool> Function(Uri url);
 
-typedef SourceShelfSaveRequested = Future<void> Function(PluginContentSummary content);
+typedef SourceShelfSaveRequested = Future<void> Function(PluginContentDetail detail);
 typedef SourceShelfRemoveRequested = Future<void> Function();
 
 /// Actions available for a book that is already owned by the local shelf.
@@ -85,7 +86,9 @@ Future<void> showSourceContentDetailSheet(
   required SourceContentGateway gateway,
   required String pluginId,
   required String id,
+  String pluginVersion = 'unknown',
   PluginContentSummary? initialContent,
+  PluginContentDetail? initialDetail,
   PluginChaptersResult? initialCatalog,
   String? initialSourceName,
   Iterable<PluginContentSummary> relatedContents = const <PluginContentSummary>[],
@@ -104,8 +107,10 @@ Future<void> showSourceContentDetailSheet(
   final Widget detail = _SourceDetailScreen(
     gateway: gateway,
     pluginId: pluginId,
+    pluginVersion: pluginVersion,
     id: id,
     initialContent: initialContent,
+    initialDetail: initialDetail,
     initialCatalog: initialCatalog,
     initialSourceName: initialSourceName,
     relatedContents: relatedContents,
@@ -229,8 +234,10 @@ class _SourceDetailScreen extends StatefulWidget {
   const _SourceDetailScreen({
     required this.gateway,
     required this.pluginId,
+    required this.pluginVersion,
     required this.id,
     required this.initialContent,
+    required this.initialDetail,
     required this.initialCatalog,
     required this.initialSourceName,
     required this.relatedContents,
@@ -248,8 +255,10 @@ class _SourceDetailScreen extends StatefulWidget {
   });
   final SourceContentGateway gateway;
   final String pluginId;
+  final String pluginVersion;
   final String id;
   final PluginContentSummary? initialContent;
+  final PluginContentDetail? initialDetail;
   final PluginChaptersResult? initialCatalog;
   final String? initialSourceName;
   final Iterable<PluginContentSummary> relatedContents;
@@ -284,14 +293,20 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final _SourceDetailBundle? previewBundle = widget.initialContent == null
+    final previewDetail =
+        widget.initialDetail ??
+        (widget.initialContent == null
+            ? null
+            : _previewDetail(pluginId: widget.pluginId, content: widget.initialContent!, sourceName: widget.initialSourceName));
+    final _SourceDetailBundle? previewBundle = previewDetail == null
         ? null
         : _SourceDetailBundle(
-            detail: _previewDetail(pluginId: widget.pluginId, content: widget.initialContent!, sourceName: widget.initialSourceName),
+            detail: previewDetail,
             chapters: widget.initialCatalog ?? _emptyChapters(pluginId: widget.pluginId, sourceName: widget.initialSourceName),
           );
     return BookCoverSourceScope(
       pluginId: widget.pluginId,
+      pluginVersion: widget.pluginVersion,
       child: Scaffold(
         body: SafeArea(
           child: Column(
@@ -470,14 +485,14 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
     }
   }
 
-  Future<void> _saveToShelf(PluginContentSummary content) async {
+  Future<void> _saveToShelf(PluginContentDetail detail) async {
     final save = widget.onAddToShelf;
     if (save == null || _isSavingToShelf || _shelfState != SourceDetailShelfState.canAdd) {
       return;
     }
     setState(() => _isSavingToShelf = true);
     try {
-      await save(content);
+      await save(detail);
       if (!mounted) return;
       setState(() {
         _isSavingToShelf = false;
@@ -590,7 +605,7 @@ class _SourceDetailBody extends StatelessWidget {
   final SourceStartReadingRequested? onStartReading;
   final bool isSavingToShelf;
   final bool isRemovingFromShelf;
-  final ValueChanged<PluginContentSummary> onSaveToShelf;
+  final ValueChanged<PluginContentDetail> onSaveToShelf;
   final ValueChanged<PluginContentSummary> onRemoveFromShelfRequested;
   final SourceExternalUrlLauncher onExternalUrlRequested;
   final int visibleChapterCount;
@@ -705,7 +720,7 @@ class _SourceDetailBody extends StatelessWidget {
                       ? () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('书架保存功能尚未接入此数据源。')))
                       : isSavingToShelf
                       ? null
-                      : () => onSaveToShelf(content),
+                      : () => onSaveToShelf(detail),
                   icon: Icon(
                     shelfState != SourceDetailShelfState.canAdd
                         ? isRemovingFromShelf

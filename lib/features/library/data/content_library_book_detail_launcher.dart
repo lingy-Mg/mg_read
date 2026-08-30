@@ -1,8 +1,8 @@
 /// Content Library 书架详情启动适配器。
 ///
 /// 职责：
-/// - 将持久化书架摘要和有界目录预览映射为共享详情页输入。
-/// - 保留热度等结构化属性供本地优先渲染。
+/// - 将持久化完整详情快照和有界目录预览映射为共享详情页输入。
+/// - 旧记录缺少动态快照时，从强类型投影恢复可展示字段。
 ///
 /// 注意：
 /// - 只读取首批目录，避免长按等待完整大目录反序列化。
@@ -13,6 +13,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/errors/app_error.dart';
+import 'package:mg_read/features/discovery/application/persisted_source_detail.dart';
 import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
 import 'package:mg_read/features/library/application/library_book_detail_failure.dart';
 
@@ -33,45 +34,54 @@ final class ContentLibraryBookDetailLauncher implements LibraryBookDetailLaunche
     }
     final source = item.source!;
     final catalog = await _loadCatalogPreview(item.id);
+    final fallbackSummary = PluginContentSummary(
+      id: source.remoteContentId,
+      title: item.title,
+      contentKind: switch (item.kind) {
+        ContentKind.audio => PluginContentKind.audio,
+        ContentKind.novel => PluginContentKind.novel,
+        ContentKind.manga => PluginContentKind.manga,
+        ContentKind.video => PluginContentKind.video,
+      },
+      author: item.author,
+      url: item.sourceUrl,
+      coverUrl: item.coverUrl,
+      description: item.description,
+      language: item.language,
+      status: _statusFromLabel(item.statusLabel),
+      access: _accessFromCode(item.accessCode),
+      wordCount: item.wordCount,
+      chapterCount: item.chapterCount ?? catalog.length,
+      publishedAt: item.publishedAt,
+      updatedAt: item.updatedAt,
+      latestChapter: item.latestChapterTitle == null
+          ? null
+          : PluginLatestChapter(
+              id: item.latestChapterId,
+              title: item.latestChapterTitle!,
+              url: item.latestChapterUrl,
+              updatedAt: item.latestChapterUpdatedAt,
+            ),
+      categories: item.categories.isEmpty ? item.labels : item.categories,
+      tags: item.tags,
+      attributes: <PluginContentAttribute>[
+        for (final attribute in item.attributes) PluginContentAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
+      ],
+    );
+    final persistedDetail = decodePersistedSourceDetail(pluginId: source.pluginId, data: item.sourceDetail);
     return LibraryBookDetailLaunchData(
       pluginId: source.pluginId,
+      pluginVersion: source.pluginVersion,
       remoteContentId: source.remoteContentId,
-      sourceName: item.sourceName ?? '书架来源',
-      initialContent: PluginContentSummary(
-        id: source.remoteContentId,
-        title: item.title,
-        contentKind: switch (item.kind) {
-          ContentKind.audio => PluginContentKind.audio,
-          ContentKind.novel => PluginContentKind.novel,
-          ContentKind.manga => PluginContentKind.manga,
-          ContentKind.video => PluginContentKind.video,
-        },
-        author: item.author,
-        url: item.sourceUrl,
-        coverUrl: item.coverUrl,
-        description: item.description,
-        language: item.language,
-        status: _statusFromLabel(item.statusLabel),
-        access: _accessFromCode(item.accessCode),
-        wordCount: item.wordCount,
-        chapterCount: item.chapterCount ?? catalog.length,
-        publishedAt: item.publishedAt,
-        updatedAt: item.updatedAt,
-        latestChapter: item.latestChapterTitle == null
-            ? null
-            : PluginLatestChapter(
-                id: item.latestChapterId,
-                title: item.latestChapterTitle!,
-                url: item.latestChapterUrl,
-                updatedAt: item.latestChapterUpdatedAt,
-              ),
-        categories: item.categories.isEmpty ? item.labels : item.categories,
-        tags: item.tags,
-        attributes: <PluginContentAttribute>[
-          for (final attribute in item.attributes)
-            PluginContentAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
-        ],
-      ),
+      initialDetail:
+          persistedDetail ??
+          PluginContentDetail(
+            pluginId: source.pluginId,
+            sourceName: item.sourceName ?? '书架来源',
+            summary: fallbackSummary,
+            aliases: const <String>[],
+            catalogUrl: item.sourceUrl,
+          ),
       initialCatalog: PluginChaptersResult(
         pluginId: source.pluginId,
         sourceName: item.sourceName ?? '书架来源',

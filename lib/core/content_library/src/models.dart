@@ -2,11 +2,11 @@
 ///
 /// 职责：
 /// - 定义书架、来源、目录、正文、进度、书签和同步边界的数据结构。
-/// - 保存数据源展示摘要时保留结构化字段，不暴露 Runtime DTO 或持久化 JSON。
+/// - 保存少量可查询展示字段，并允许携带宿主校验后的 JSON 兼容详情快照。
 /// - 公开书架唯一容量上限和可识别的容量业务错误。
 ///
 /// 注意：
-/// - 模型不得包含数据库路径、动态传输对象或平台资源句柄。
+/// - 模型不得包含数据库路径、未校验传输对象或平台资源句柄。
 /// - 可再生数据源详情只作为本地优先展示摘要，远端仍可在后台刷新。
 library;
 
@@ -101,6 +101,7 @@ final class LibraryItem {
     this.categories = const <String>[],
     this.tags = const <String>[],
     this.attributes = const <LibraryItemAttribute>[],
+    this.sourceDetail = const <String, Object?>{},
     this.labels = const <String>[],
     this.source,
   });
@@ -134,6 +135,9 @@ final class LibraryItem {
   final List<String> categories;
   final List<String> tags;
   final List<LibraryItemAttribute> attributes;
+
+  /// JSON-compatible host snapshot used only to restore source detail fields.
+  final Map<String, Object?> sourceDetail;
   final List<String> labels;
 
   /// Stable source identity needed to resolve a shelf item for reading.
@@ -284,10 +288,9 @@ final class LibraryBookmark {
 
 /// Narrow, host-owned request for adding a typed source item to the shelf.
 ///
-/// It intentionally keeps stable source identity and a small typed display
-/// projection. Runtime payloads, cookies, and dynamic data never cross into a
-/// feature or widget through this type; the optional cover URL is only a
-/// source-provided display reference.
+/// It keeps stable source identity and a small typed display projection. The
+/// optional dynamic detail is host-normalized JSON, never a Runtime transport
+/// object, Cookie/header payload, or platform resource.
 final class BookshelfAddRequest {
   const BookshelfAddRequest({
     required this.title,
@@ -314,6 +317,7 @@ final class BookshelfAddRequest {
     this.categories = const <String>[],
     this.tags = const <String>[],
     this.attributes = const <LibraryItemAttribute>[],
+    this.sourceDetail = const <String, Object?>{},
     this.labels = const <String>[],
   }) : assert(title != ''),
        assert(pluginId != ''),
@@ -344,6 +348,7 @@ final class BookshelfAddRequest {
   final List<String> categories;
   final List<String> tags;
   final List<LibraryItemAttribute> attributes;
+  final Map<String, Object?> sourceDetail;
   final List<String> labels;
 }
 

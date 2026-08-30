@@ -13,17 +13,17 @@ part of 'source_content_detail_sheet.dart';
 final class SourceContentDetailSeed {
   const SourceContentDetailSeed({
     required this.pluginId,
+    required this.pluginVersion,
     required this.id,
-    required this.initialContent,
+    required this.initialDetail,
     required this.initialCatalog,
-    required this.sourceName,
   });
 
   final String pluginId;
+  final String pluginVersion;
   final String id;
-  final PluginContentSummary initialContent;
+  final PluginContentDetail initialDetail;
   final PluginChaptersResult initialCatalog;
-  final String sourceName;
 }
 
 /// Opens the shelf detail surface immediately, then replaces its in-memory
@@ -31,7 +31,8 @@ final class SourceContentDetailSeed {
 Future<void> showDeferredSourceContentDetailSheet(
   BuildContext context, {
   required Future<SourceContentDetailSeed> seed,
-  required PluginContentSummary previewContent,
+  required PluginContentDetail previewDetail,
+  required String previewPluginVersion,
   required SourceContentGateway gateway,
   required SourceDetailShelfState shelfState,
   required SourceShelfActionRequested onShelfAction,
@@ -53,7 +54,8 @@ Future<void> showDeferredSourceContentDetailSheet(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         child: _DeferredSourceDetailScreen(
           seed: seed,
-          previewContent: previewContent,
+          previewDetail: previewDetail,
+          previewPluginVersion: previewPluginVersion,
           gateway: gateway,
           shelfState: shelfState,
           onShelfAction: onShelfAction,
@@ -72,7 +74,8 @@ Future<void> showDeferredSourceContentDetailSheet(
 class _DeferredSourceDetailScreen extends StatelessWidget {
   const _DeferredSourceDetailScreen({
     required this.seed,
-    required this.previewContent,
+    required this.previewDetail,
+    required this.previewPluginVersion,
     required this.gateway,
     required this.shelfState,
     required this.onShelfAction,
@@ -85,7 +88,8 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
   });
 
   final Future<SourceContentDetailSeed> seed;
-  final PluginContentSummary previewContent;
+  final PluginContentDetail previewDetail;
+  final String previewPluginVersion;
   final SourceContentGateway gateway;
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested onShelfAction;
@@ -97,14 +101,12 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
   final SourceExternalUrlLauncher onExternalUrlRequested;
 
   _SourceDetailBundle get _previewBundle => _SourceDetailBundle(
-    detail: PluginContentDetail(
-      pluginId: 'library-preview',
-      sourceName: '书架缓存',
-      summary: previewContent,
-      aliases: const <String>[],
-      catalogUrl: previewContent.url,
+    detail: previewDetail,
+    chapters: PluginChaptersResult(
+      pluginId: previewDetail.pluginId,
+      sourceName: previewDetail.sourceName,
+      items: const <PluginChapterSummary>[],
     ),
-    chapters: PluginChaptersResult(pluginId: 'library-preview', sourceName: '书架缓存', items: const <PluginChapterSummary>[]),
   );
 
   @override
@@ -116,10 +118,12 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
         return _SourceDetailScreen(
           gateway: gateway,
           pluginId: data.pluginId,
+          pluginVersion: data.pluginVersion,
           id: data.id,
-          initialContent: data.initialContent,
+          initialContent: data.initialDetail.summary,
+          initialDetail: data.initialDetail,
           initialCatalog: data.initialCatalog,
-          initialSourceName: data.sourceName,
+          initialSourceName: data.initialDetail.sourceName,
           relatedContents: const <PluginContentSummary>[],
           onTextChapterRequested: onTextChapterRequested,
           onComicChapterRequested: onComicChapterRequested,
@@ -134,49 +138,53 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
           isModalSheet: true,
         );
       }
-      return Scaffold(
-        body: SafeArea(
-          child: Column(
-            children: <Widget>[
-              const Padding(
-                padding: EdgeInsets.only(top: 10, bottom: 2),
-                child: SizedBox(
-                  width: 42,
-                  height: 5,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.all(Radius.circular(99))),
+      return BookCoverSourceScope(
+        pluginId: previewDetail.pluginId,
+        pluginVersion: previewPluginVersion,
+        child: Scaffold(
+          body: SafeArea(
+            child: Column(
+              children: <Widget>[
+                const Padding(
+                  padding: EdgeInsets.only(top: 10, bottom: 2),
+                  child: SizedBox(
+                    width: 42,
+                    height: 5,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.all(Radius.circular(99))),
+                    ),
                   ),
                 ),
-              ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  AppSpacing.discoveryPagePadding,
-                  AppSpacing.pageHeaderTopPaddingFor(context),
-                  AppSpacing.discoveryPagePadding,
-                  AppSpacing.pageHeaderTopPadding,
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    AppSpacing.discoveryPagePadding,
+                    AppSpacing.pageHeaderTopPaddingFor(context),
+                    AppSpacing.discoveryPagePadding,
+                    AppSpacing.pageHeaderTopPadding,
+                  ),
+                  child: _DetailHeader(isModalSheet: true),
                 ),
-                child: _DetailHeader(isModalSheet: true),
-              ),
-              Expanded(
-                child: _SourceDetailView(
-                  key: const ValueKey<String>('source-detail-deferred-preview'),
-                  bundle: _previewBundle,
-                  gateway: gateway,
-                  relatedContents: const <PluginContentSummary>[],
-                  isRefreshing: !snapshot.hasError,
-                  onTextChapterRequested: onTextChapterRequested,
-                  onComicChapterRequested: onComicChapterRequested,
-                  onAudioChapterRequested: onAudioChapterRequested,
-                  onVideoEpisodeRequested: onVideoEpisodeRequested,
-                  onAddToShelf: null,
-                  onRemoveFromShelf: null,
-                  shelfState: shelfState,
-                  onShelfAction: onShelfAction,
-                  onStartReading: onStartReading,
-                  onExternalUrlRequested: onExternalUrlRequested,
+                Expanded(
+                  child: _SourceDetailView(
+                    key: const ValueKey<String>('source-detail-deferred-preview'),
+                    bundle: _previewBundle,
+                    gateway: gateway,
+                    relatedContents: const <PluginContentSummary>[],
+                    isRefreshing: !snapshot.hasError,
+                    onTextChapterRequested: onTextChapterRequested,
+                    onComicChapterRequested: onComicChapterRequested,
+                    onAudioChapterRequested: onAudioChapterRequested,
+                    onVideoEpisodeRequested: onVideoEpisodeRequested,
+                    onAddToShelf: null,
+                    onRemoveFromShelf: null,
+                    shelfState: shelfState,
+                    onShelfAction: onShelfAction,
+                    onStartReading: onStartReading,
+                    onExternalUrlRequested: onExternalUrlRequested,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       );
