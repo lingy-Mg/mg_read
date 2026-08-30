@@ -71,11 +71,40 @@ void main() {
     final Rect lastSource = tester.getRect(find.byKey(const Key('data-source-org.mgread.17k')));
     final Rect firstIcon = tester.getRect(find.byKey(const Key('data-source-icon-org.mgread.qidian')));
     final Rect firstName = tester.getRect(find.text('起点中文网'));
-    expect(firstSource.height, AppSpacing.dataSourceRowHeight + AppSpacing.compact);
+    expect(firstSource.height, AppSpacing.dataSourceRowHeight + AppSpacing.comfortable);
     expect(firstIcon.size, const Size.square(AppSpacing.dataSourceManagementMarkExtent));
     expect(firstIcon.center.dy, closeTo(firstSource.center.dy, 0.1));
-    expect(firstName.left - firstIcon.right, closeTo(AppSpacing.compact, 0.1));
+    expect(firstName.left - firstIcon.right, closeTo(AppSpacing.regular, 0.1));
     expect(lastSource.bottom, greaterThan(firstSource.bottom));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('searches and filters installed data sources locally', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 690));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => dataSourceManagementFixture)],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: PluginRuntimeStatusPage(onBackRequested: () {}, onDestinationRequested: (_) {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('data-source-search')), '晋江');
+    await tester.pump();
+    expect(find.text('晋江文学城'), findsOneWidget);
+    expect(find.text('起点中文网'), findsNothing);
+    expect(find.text('1 / 6'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('data-source-search-clear')));
+    await tester.tap(find.byKey(const Key('data-source-filter-disabled')));
+    await tester.pump();
+    expect(find.text('晋江文学城'), findsOneWidget);
+    expect(find.text('17K小说网'), findsOneWidget);
+    expect(find.text('起点中文网'), findsNothing);
+    expect(find.text('2 / 6'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

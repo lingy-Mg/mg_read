@@ -64,69 +64,81 @@ class DataSourceManagementRow extends StatelessWidget {
         child: InkWell(
           key: ValueKey<String>('data-source-${source.id}'),
           onTap: onPressed,
-          borderRadius: AppRadii.discoveryTile,
+          borderRadius: AppRadii.detailControl,
           child: SizedBox(
-            height: AppSpacing.dataSourceRowHeight + AppSpacing.compact,
-            child: Row(
-              children: <Widget>[
-                SizedBox.square(
-                  key: ValueKey<String>('data-source-icon-${source.id}'),
-                  dimension: AppSpacing.dataSourceManagementMarkExtent,
-                  child: _DataSourceBrandMark(
-                    sourceId: source.id,
-                    displayName: source.name,
-                    brand: source.brand,
-                    isDevelopment: source.isDevelopment,
-                    iconUrl: source.iconUrl,
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.compact),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        source.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, height: 1.12),
-                      ),
-                      const SizedBox(height: AppSpacing.unit),
-                      Text(
-                        source.description,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText, height: 1.1),
-                      ),
-                      const SizedBox(height: AppSpacing.unit),
-                      Text(
-                        source.kindLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText, height: 1.1),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(
-                  width: AppSpacing.minimumTouchTarget,
-                  height: AppSpacing.minimumTouchTarget,
-                  child: Transform.scale(
-                    scale: 0.70,
-                    child: Switch(
-                      key: ValueKey<String>('data-source-toggle-${source.id}'),
-                      value: source.enabled,
-                      onChanged: isPending || source.isDevelopment ? null : onChanged,
-                      activeTrackColor: tokens.dataSourceAccent,
-                      activeThumbColor: theme.colorScheme.onPrimary,
-                      inactiveTrackColor: tokens.mutedSurface,
-                      inactiveThumbColor: tokens.surface,
-                      trackOutlineColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
+            height: AppSpacing.dataSourceRowHeight + AppSpacing.comfortable,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.comfortable, AppSpacing.compact, AppSpacing.compact, AppSpacing.compact),
+              child: Row(
+                children: <Widget>[
+                  SizedBox.square(
+                    key: ValueKey<String>('data-source-icon-${source.id}'),
+                    dimension: AppSpacing.dataSourceManagementMarkExtent,
+                    child: _DataSourceBrandMark(
+                      sourceId: source.id,
+                      displayName: source.name,
+                      brand: source.brand,
+                      isDevelopment: source.isDevelopment,
+                      iconUrl: source.iconUrl,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: AppSpacing.regular),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          source.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, height: 1.12),
+                        ),
+                        const SizedBox(height: AppSpacing.unit),
+                        Text(
+                          source.description,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText, height: 1.1),
+                        ),
+                        const SizedBox(height: AppSpacing.unit),
+                        Row(
+                          children: <Widget>[
+                            Icon(source.isDevelopment ? Icons.bolt_rounded : Icons.extension_outlined, size: 12, color: tokens.mutedText),
+                            const SizedBox(width: AppSpacing.unit),
+                            Expanded(
+                              child: Text(
+                                source.kindLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText, height: 1.1),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.unit),
+                  SizedBox(
+                    width: AppSpacing.minimumTouchTarget,
+                    height: AppSpacing.minimumTouchTarget,
+                    child: Transform.scale(
+                      scale: 0.76,
+                      child: Switch(
+                        key: ValueKey<String>('data-source-toggle-${source.id}'),
+                        value: source.enabled,
+                        onChanged: isPending || source.isDevelopment ? null : onChanged,
+                        activeTrackColor: tokens.dataSourceAccent,
+                        activeThumbColor: theme.colorScheme.onPrimary,
+                        inactiveTrackColor: tokens.mutedSurface,
+                        inactiveThumbColor: tokens.surface,
+                        trackOutlineColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
