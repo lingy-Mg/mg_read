@@ -86,7 +86,8 @@ plugins/sources/                    真实数据源及其他能力参考实现
   拥有各媒体的统一主题、尺寸、断点、可访问性、导航和交互实现。
 - 热门词必须来自来源；默认进入搜索页不触发搜索，只有用户提交或点击建议才执行。
 - 目录完整、有序且 ID 唯一。小说正文使用 `text`；漫画 `pages`、封面及音视频只登记由数据源校验过的
-  `kind + url + headers` Runtime proxy 请求。Runtime 持有上游 HTTP 请求、取消和正文流，数据源不得导出
+  `kind + url + headers` Runtime proxy 请求。loopback URL 以明文可逆 Base64URL JSON 自包含该请求，不依赖
+  进程内 token 映射；此编码不提供加密或认证。Runtime 持有上游 HTTP 请求、取消和正文流，数据源不得导出
   `resource` 字节能力或缓冲媒体正文；大资源不进入插件返回值或控制面。
 - fixture 只保留选择器、分页、null/0/空集合和错误分支需要的最小脱敏结构；不得保存线上正文、图片、
   Cookie、UA、token、完整录制或用户搜索词。

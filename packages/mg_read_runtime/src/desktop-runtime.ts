@@ -380,7 +380,7 @@ export class DesktopRuntime {
       type: "diagnostic",
     });
 
-    const server = createServer((request, response) => {
+    const server = createServer({ maxHeaderSize: 32 * 1024 }, (request, response) => {
       this.#handleHttp(request, response);
     });
     server.on("upgrade", (request, socket, head) => {
@@ -511,7 +511,7 @@ export class DesktopRuntime {
   #handleHttp(request: IncomingMessage, response: ServerResponse): void {
     const url = new URL(request.url ?? "/", `http://${LOOPBACK_HOST}`);
     const finish = (_statusCode: number, _downloadedBytes = 0): void => {};
-    const resourceMatch = /^\/v1\/source-resource\/([A-Za-z0-9_-]{32,128})$/.exec(url.pathname);
+    const resourceMatch = /^\/v1\/source-resource\/([A-Za-z0-9_-]{16,24576})$/.exec(url.pathname);
     if (resourceMatch !== null) {
       if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); finish(405); return; }
       void serveSourceResource(this.#pluginManager, resourceMatch[1]!, response, finish, request);

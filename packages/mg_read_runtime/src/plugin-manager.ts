@@ -13,7 +13,7 @@
  * TODO:
  * - 将剩余 VM 编排方法继续下沉到显式内部端口。
  */
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createRequire } from "node:module";
 import {
@@ -51,6 +51,10 @@ import {
   waitForPluginOperation,
 } from "./plugin-operation-wait.js";
 import { openSourceProxyResource } from "./source-resource-proxy.js";
+import {
+  decodeSourceResourceToken,
+  encodeSourceResourceToken,
+} from "./source-resource-token.js";
 import {
   type PluginPackageDescriptor,
   readPluginProject,
@@ -153,7 +157,6 @@ export class PluginManager {
   readonly #debugLogEnabled: () => boolean;
   readonly #http: PluginRuntimeHttpClient;
   readonly #browserSession: PluginBrowserSessionProvider | undefined;
-  readonly #resources = new Map<string, { pluginId: string; request: JsonObject }>();
   readonly #pluginIcons: PluginIconResources;
   #resourceOrigin = "http://127.0.0.1";
   readonly #invocationScope = new AsyncLocalStorage<PluginInvocationScope>();
@@ -236,18 +239,13 @@ export class PluginManager {
 
   createResourceUrl(pluginId: string, request: JsonObject): string {
     if (!isPluginId(pluginId) || Buffer.byteLength(JSON.stringify(request), "utf8") > 16 * 1024) throw new PluginManagerError("invalid_request");
-    if (this.#resources.size >= 1024) {
-      const oldest = this.#resources.keys().next().value;
-      if (typeof oldest === "string") this.#resources.delete(oldest);
-    }
-    const token = randomBytes(32).toString("base64url");
-    this.#resources.set(token, { pluginId, request });
+    const token = encodeSourceResourceToken(pluginId, request);
     if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.resource_proxy", logLevel: "debug", logMessage: `资源代理已创建：参数=${JSON.stringify(request)}`, outcome: "success", pluginId });
     return `${this.#resourceOrigin}/v1/source-resource/${token}`;
   }
 
   openSourceResource(token: string, requestHeaders: Readonly<Record<string, string>>, signal: AbortSignal) {
-    const entry = this.#resources.get(token);
+    const entry = decodeSourceResourceToken(token);
     return openSourceProxyResource(entry === undefined ? undefined : { fetch: this.#http.fetch.bind(this.#http), proxy: (next) => this.createResourceUrl(entry.pluginId, next), request: entry.request }, requestHeaders, signal);
   }
 

@@ -24,9 +24,9 @@
 - 来源返回内容语义；Flutter 拥有组件、主题、断点、尺寸、导航和交互。
 - 小说使用 `text`，漫画使用有序 `pages`，封面与音视频使用 Runtime proxy。正文和媒体主体不进入日志、
   fixture、缓存或控制面。
-- `ctx.resource.proxy` 只登记数据源已校验的 `kind + url + headers` 请求；Runtime 持有上游 fetch、取消与
-  流式响应。数据源不得导出 `resource` 字节能力、调用 `arrayBuffer()` 缓冲媒体，或向 Flutter 暴露 Cookie、
-  签名头和上游临时 URL。
+- `ctx.resource.proxy` 只登记数据源已校验的 `kind + url + headers` 请求；Runtime 以明文可逆 Base64URL
+  JSON 把完整描述放进 loopback URL，不依赖进程内 token 映射；此编码不提供加密或认证。Runtime 持有上游
+  fetch、取消与流式响应。数据源不得导出 `resource` 字节能力或调用 `arrayBuffer()` 缓冲媒体。
 - 私有缓存只保存可重复 GET 的展示投影。发现/搜索、详情/目录分别使用项目已声明的策略；stale 可读、
   刷新单飞，失败按 miss。正文、媒体、登录数据和写响应不得缓存。
 - capability 日志只写有界阶段和稳定错误码，不写 URL/query、搜索词、标题、HTML、正文、Cookie、token、

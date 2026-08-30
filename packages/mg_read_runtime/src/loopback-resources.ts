@@ -2,14 +2,14 @@
  * Runtime 私有 loopback 资源响应。
  *
  * 职责：
- * - 消费由 PluginManager 签发的短期资源与插件传输 token；
+ * - 解码自包含的数据源资源描述，并消费插件传输 token；
  * - 提供有界插件图标投影，不暴露安装路径或原始 descriptor；
  * - 重写 HLS 清单时区分子清单与二进制媒体资源，避免把分片再次解析为清单；
  * - 仅向 Runtime 内部 HTTP listener 写入 no-store 响应。
  *
  * 注意：
  * - 本模块不创建 listener，也不处理外部 Debug HTTP 请求；
- * - token 校验和资源所有权始终由 PluginManager 保持。
+ * - 数据源资源 payload 只做路径安全编码，不提供加密或认证。
  */
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";

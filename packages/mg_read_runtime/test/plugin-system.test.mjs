@@ -821,10 +821,29 @@ test("media catalogs preserve neutral groups and require proxy playback metadata
   }), PluginContentValidationError);
 });
 
-test("media proxy requests resolve from the owning Manager token table", async (t) => {
+test("source proxy requests recover from their self-contained token without Manager memory", async (t) => {
   const dataRoot = await temporaryDirectory(t, "mgread-media-proxy-");
   const calls = [];
-  const manager = new PluginManager(dataRoot, {
+  const issuingManager = new PluginManager(dataRoot);
+  issuingManager.setResourceOrigin("http://127.0.0.1:9000");
+  const url = issuingManager.createResourceUrl("org.example.media", {
+    kind: "hls",
+    url: "https://media.example/playlist.m3u8",
+    headers: { Referer: "https://source.example/watch" },
+  });
+  await issuingManager.close();
+  const token = new URL(url).pathname.split("/").at(-1);
+  assert.deepEqual(JSON.parse(Buffer.from(token, "base64url").toString("utf8")), {
+    pluginId: "org.example.media",
+    request: {
+      kind: "hls",
+      url: "https://media.example/playlist.m3u8",
+      headers: { Referer: "https://source.example/watch" },
+    },
+    version: 1,
+  });
+
+  const recoveringManager = new PluginManager(dataRoot, {
     http: {
       async fetch(input, init) {
         calls.push({ input: String(input), init });
@@ -834,14 +853,8 @@ test("media proxy requests resolve from the owning Manager token table", async (
       },
     },
   });
-  manager.setResourceOrigin("http://127.0.0.1:9000");
-  const url = manager.createResourceUrl("org.example.media", {
-    kind: "hls",
-    url: "https://media.example/playlist.m3u8",
-    headers: { Referer: "https://source.example/watch" },
-  });
-  const token = new URL(url).pathname.split("/").at(-1);
-  const resource = await manager.openSourceResource(token, { range: "bytes=0-1023" }, new AbortController().signal);
+  recoveringManager.setResourceOrigin("http://127.0.0.1:9000");
+  const resource = await recoveringManager.openSourceResource(token, { range: "bytes=0-1023" }, new AbortController().signal);
 
   assert.equal(resource?.response.status, 200);
   assert.equal(calls.length, 1);
@@ -850,6 +863,7 @@ test("media proxy requests resolve from the owning Manager token table", async (
     Referer: "https://source.example/watch",
     range: "bytes=0-1023",
   });
+  await recoveringManager.close();
 });
 
 test("source proxy rejects the removed plugin-owned resource descriptor shape", async (t) => {

@@ -408,7 +408,7 @@ test("source resource URLs are reusable, bounded, and forward binary responses",
   }));
   assert.equal(response.type, "response", JSON.stringify(response));
   const resourceUrl = response.result.items[0].coverUrl;
-  assert.match(resourceUrl, new RegExp(`^http://${ready.host}:${ready.port}/v1/source-resource/[A-Za-z0-9_-]{43}$`));
+  assert.match(resourceUrl, new RegExp(`^http://${ready.host}:${ready.port}/v1/source-resource/[A-Za-z0-9_-]{64,}$`));
   for (let index = 0; index < 2; index += 1) {
     const fetched = await fetch(resourceUrl);
     assert.equal(fetched.status, 206);
