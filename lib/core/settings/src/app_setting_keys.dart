@@ -108,6 +108,23 @@ final class AppSettingKeys {
     validator: _validateReaderPreferences,
   );
 
+  /// Host-owned behavior when the user leaves an active audio player.
+  ///
+  /// `ask` keeps the choice explicit, while `continue` and `stop` are durable
+  /// answers selected either from the exit dialog or the profile settings UI.
+  static const mediaPlaybackDocument = SettingsDocumentDefinition(
+    id: 'app-settings:settings.mediaPlayback',
+    kind: 'settings.mediaPlayback',
+  );
+
+  static const audioExitBehavior = SettingKey<String>(
+    id: 'mediaPlayback.audioExitBehavior',
+    documentKind: 'settings.mediaPlayback',
+    defaultValue: 'ask',
+    codec: SettingCodec<String>(_stringEncode, _stringDecode),
+    validator: _validateAudioExitBehavior,
+  );
+
   static const all = <SettingKey<dynamic>>[
     themeMode,
     homeLayoutMode,
@@ -119,6 +136,7 @@ final class AppSettingKeys {
     networkProxyPreferences,
     readerPreferences,
     comicReaderPreferences,
+    audioExitBehavior,
   ];
 
   static final registry = SettingsRegistry(
@@ -131,6 +149,7 @@ final class AppSettingKeys {
       diagnosticsDocument,
       networkProxyDocument,
       readerPreferencesDocument,
+      mediaPlaybackDocument,
     ],
   );
 }
@@ -227,6 +246,12 @@ Map<String, Object?> _readerPreferencesDecode(Object? value) {
 
 void _validateReaderPreferences(Map<String, Object?> value) {
   if (value.length > 32) throw ArgumentError.value(value);
+}
+
+void _validateAudioExitBehavior(String value) {
+  if (value != 'ask' && value != 'continue' && value != 'stop') {
+    throw ArgumentError.value(value);
+  }
 }
 
 void _validateDiscoverySourceId(String? value) {

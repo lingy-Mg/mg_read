@@ -130,7 +130,7 @@ abstract final class ProfileFixtures {
     syncLabel: '局域网同步',
     lastSyncLabel: '仅在你主动操作时传输',
     settings: <ProfileSettingsItemViewData>[
-      ProfileSettingsItemViewData(id: 'reading-settings', title: '阅读设置', description: '字体、排版、翻页等', icon: ProfileSettingsIcon.reading),
+      ProfileSettingsItemViewData(id: 'reading-settings', title: '阅读播放设置', description: '阅读偏好、后台播放等', icon: ProfileSettingsIcon.reading),
       ProfileSettingsItemViewData(id: 'source-management', title: '数据源管理', description: '管理数据源与启用状态', icon: ProfileSettingsIcon.sources),
       ProfileSettingsItemViewData(
         id: 'network-proxy',

@@ -14,6 +14,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/app/app_startup.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/media/application/source_audio_playback_coordinator.dart';
 import 'package:mg_read/features/media/application/source_video_data_source.dart';
 import 'package:mg_read/features/media/application/transient_source_video_playback_state_store.dart';
 import 'package:mg_read/features/media/presentation/media_entry_cover.dart';
@@ -34,6 +35,8 @@ Future<void> openTransientSourceVideoPlayer(
     orElse: () => null,
   );
   final container = ProviderScope.containerOf(context, listen: false);
+  await container.read(sourceAudioPlaybackCoordinatorProvider.notifier).stop();
+  if (!navigator.mounted) return;
   return navigator.push<void>(
     MaterialPageRoute<void>(
       builder: (_) => _SourceVideoPlayerDestination(

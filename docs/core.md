@@ -86,6 +86,8 @@ plugins/sources/                    真实数据源及其他能力参考实现
 - 小说/漫画阅读器、音频播放器和视频播放器互相独立，不共享媒体模型、Controller 或 UI。
 - package 只拥有会话、交互和生命周期；宿主拥有数据、路由和授权资源。package 不接触账号、支付、DRM、
   主应用数据库或下载权威。
+- 音频后台会话由主应用根层持有：返回时按持久化偏好询问、继续或停止，继续后以应用内播放条恢复，Android
+  同时使用系统媒体通知；打开视频前必须先暂停并移除现有后台音频。不得为此申请系统悬浮窗权限。
 - 文本锚点为 `chapterId + paragraphId + characterOffset`，漫画为
   `chapterId + imageId + imageFraction`；视频分组使用中性的 `groupId + episodeId`。
 - Observer 只请求宿主动作；未注册 capability 隐藏。异步域必须有世代/取消，资源成对释放。
