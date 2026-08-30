@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
@@ -59,6 +60,25 @@ void main() {
             .having((error) => error.location, 'location', '所选章节的播放地址'),
       ),
     );
+  });
+
+  test('loads the next available chapters in bounded batches', () async {
+    final gateway = _AudioGateway();
+    final source = SourceAudioPlaylistDataSource(
+      gateway: gateway,
+      pluginId: _pluginId,
+      initialDetail: _detail(),
+      initialCatalog: _catalog(),
+    );
+
+    final tracks = await source.loadFollowingTracks(
+      'audio:book-1',
+      afterTrackId: 'chapter:free-2',
+      limit: 2,
+    );
+
+    expect(tracks.map((track) => track.id), <String>['chapter:free-3']);
+    expect(gateway.contentCalls, <String>['chapter:free-3']);
   });
 }
 

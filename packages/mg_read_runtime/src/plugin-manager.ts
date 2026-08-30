@@ -198,7 +198,7 @@ export class PluginManager {
     }
     const token = randomBytes(32).toString("base64url");
     this.#resources.set(token, { pluginId, request }); registerMediaProxyResource(token, { active: () => this.#resources.has(token), fetch: this.#http.fetch.bind(this.#http), pluginId, proxy: (next) => this.createResourceUrl(pluginId, next), request });
-    if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logLevel: "debug", logMessage: `资源代理已创建：参数=${JSON.stringify(request)}`, outcome: "success", pluginId });
+    if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.resource_proxy", logLevel: "debug", logMessage: `资源代理已创建：参数=${JSON.stringify(request)}`, outcome: "success", pluginId });
     return `${this.#resourceOrigin}/v1/source-resource/${token}`;
   }
 
@@ -209,7 +209,7 @@ export class PluginManager {
     const loaded = this.#developmentLoaded.get(entry.pluginId)?.loaded ?? this.#installedLoaded.get(entry.pluginId);
     if (loaded === undefined) throw new PluginManagerError("plugin_not_found");
     const startedAt = performance.now();
-    if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logLevel: "debug", logMessage: `资源代理请求开始：参数=${JSON.stringify(entry.request)}`, outcome: "success", pluginId: entry.pluginId });
+    if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.resource_proxy", logLevel: "debug", logMessage: `资源代理请求开始：参数=${JSON.stringify(entry.request)}`, outcome: "success", pluginId: entry.pluginId });
     const result = await loaded.module.resource(entry.request);
     if (typeof result !== "object" || result === null) throw new PluginManagerError("invalid_request");
     const value = result as Record<string, unknown>;
@@ -225,7 +225,7 @@ export class PluginManager {
         headers[key] = header;
       }
     }
-    if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logLevel: "debug", logMessage: `资源代理请求完成：状态=${status}，字节=${body.byteLength}，耗时毫秒=${Math.round(performance.now() - startedAt)}`, outcome: "success", pluginId: entry.pluginId });
+    if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.resource_proxy", logLevel: "debug", logMessage: `资源代理请求完成：状态=${status}，字节=${body.byteLength}，耗时毫秒=${Math.round(performance.now() - startedAt)}`, outcome: "success", pluginId: entry.pluginId });
     return { status, headers, body };
   }
 
@@ -565,19 +565,13 @@ export class PluginManager {
   ): Promise<TResult> {
     await this.initialize();
     await this.#refreshDevelopmentPlugins();
-    if (!isPluginId(pluginId)) {
-      throw new PluginManagerError("invalid_request");
-    }
+    if (!isPluginId(pluginId)) throw new PluginManagerError("invalid_request");
     const queuedAt = performance.now();
     const releaseCacheOperation = await this.#acquireCacheOperation(pluginId);
-    if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logLevel: "debug", logMessage: `插件调用取得队列：操作=${operation}，等待毫秒=${Math.round(performance.now() - queuedAt)}`, outcome: "success", pluginId });
-    const releaseDevelopmentInvocation = this.#developmentLoaded.has(pluginId)
-      ? await this.#acquireDevelopmentInvocation(pluginId)
-      : undefined;
+    if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.invocation", logLevel: "debug", logMessage: `插件调用取得队列：操作=${operation}，等待毫秒=${Math.round(performance.now() - queuedAt)}`, outcome: "success", pluginId });
+    const releaseDevelopmentInvocation = this.#developmentLoaded.has(pluginId) ? await this.#acquireDevelopmentInvocation(pluginId) : undefined;
     try {
-      if (releaseDevelopmentInvocation !== undefined) {
-        await this.#refreshDevelopmentPlugins();
-      }
+      if (releaseDevelopmentInvocation !== undefined) await this.#refreshDevelopmentPlugins();
       return await this.#invokeLoadedContent(
         pluginId,
         operation,
@@ -605,18 +599,9 @@ export class PluginManager {
     validateCorrelation?: (result: TResult) => boolean,
   ): Promise<TResult> {
     const snapshot = this.#combinedSnapshots().find((item) => item.id === pluginId);
-    if (snapshot?.enabled != true) {
-      throw new PluginManagerError(
-        snapshot === undefined ? "plugin_not_found" : "plugin_disabled",
-      );
-    }
-    const plugin = this.#developmentLoaded.get(pluginId)?.loaded ??
-      this.#installedLoaded.get(pluginId);
-    if (plugin === undefined) {
-      throw new PluginManagerError(
-        snapshot?.status === "disabled" ? "plugin_disabled" : "plugin_not_found",
-      );
-    }
+    if (snapshot?.enabled != true) throw new PluginManagerError(snapshot === undefined ? "plugin_not_found" : "plugin_disabled");
+    const plugin = this.#developmentLoaded.get(pluginId)?.loaded ?? this.#installedLoaded.get(pluginId);
+    if (plugin === undefined) throw new PluginManagerError(snapshot?.status === "disabled" ? "plugin_disabled" : "plugin_not_found");
 
     const startedAt = performance.now();
     this.#events({
@@ -625,7 +610,7 @@ export class PluginManager {
       outcome: "started",
       pluginId,
     });
-    if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logLevel: "info", logMessage: `能力请求：操作=${operation}，参数=${JSON.stringify(request)}`, outcome: "success", pluginId });
+    if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.invocation", logLevel: "info", logMessage: `能力请求：操作=${operation}，参数=${JSON.stringify(request)}`, outcome: "success", pluginId });
     try {
       this.#throwIfCancelled(signal, deadlineUnixMs);
       const value = await this.#invocationScope.run(
@@ -652,7 +637,7 @@ export class PluginManager {
         outcome: "success",
         pluginId,
       });
-      if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logLevel: "info", logMessage: `能力响应：操作=${operation}，耗时毫秒=${Math.round(performance.now() - startedAt)}，结果=${JSON.stringify(result).slice(0, 2000)}`, outcome: "success", pluginId });
+      if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.invocation", logLevel: "info", logMessage: `能力响应：操作=${operation}，耗时毫秒=${Math.round(performance.now() - startedAt)}，结果=${JSON.stringify(result).slice(0, 2000)}`, outcome: "success", pluginId });
       return result;
     } catch (error) {
       this.#events({
@@ -662,7 +647,7 @@ export class PluginManager {
         outcome: "error",
         pluginId,
       });
-      if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logLevel: "error", logMessage: `能力调用出错：操作=${operation}，耗时毫秒=${Math.round(performance.now() - startedAt)}，错误=${error instanceof PluginManagerError ? error.code : error instanceof Error ? error.name : "unknown"}`, outcome: "error", pluginId });
+      if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.invocation", logLevel: "error", logMessage: `能力调用出错：操作=${operation}，耗时毫秒=${Math.round(performance.now() - startedAt)}，错误=${error instanceof PluginManagerError ? error.code : error instanceof Error ? error.name : "unknown"}`, outcome: "error", pluginId });
       if (isPluginManagerError(error)) throw new PluginManagerError(error.code);
       this.#throwIfCancelled(signal, deadlineUnixMs);
       if (error instanceof PluginContentValidationError) {

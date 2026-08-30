@@ -35,6 +35,9 @@ class AudioPlayerView extends StatefulWidget {
     this.backend,
     this.artworkBuilder,
     this.saveInterval = const Duration(milliseconds: 800),
+    this.autoplay = true,
+    this.prefetchThreshold = 1,
+    this.prefetchBatchSize = 3,
     super.key,
   });
 
@@ -55,12 +58,16 @@ class AudioPlayerView extends StatefulWidget {
   /// Position persistence throttle; exposed to keep tests deterministic.
   final Duration saveInterval;
 
+  final bool autoplay;
+
+  final int prefetchThreshold;
+  final int prefetchBatchSize;
+
   @override
-  State<AudioPlayerView> createState() => _AudioPlayerViewState();
+  State<AudioPlayerView> createState() => _AudioViewState();
 }
 
-class _AudioPlayerViewState extends State<AudioPlayerView>
-    with WidgetsBindingObserver {
+class _AudioViewState extends State<AudioPlayerView> with WidgetsBindingObserver {
   late final AudioPlayerController _controller;
   late final bool _ownsController;
   late final AudioPlayerSession _session;
@@ -86,6 +93,9 @@ class _AudioPlayerViewState extends State<AudioPlayerView>
         authorizeExit: _authorizeExit,
       ),
       saveInterval: widget.saveInterval,
+      autoplay: widget.autoplay,
+      prefetchThreshold: widget.prefetchThreshold,
+      prefetchBatchSize: widget.prefetchBatchSize,
     )..addListener(_onSessionChanged);
     unawaited(_session.initialize());
   }
@@ -188,7 +198,7 @@ class _AudioPlayerViewState extends State<AudioPlayerView>
                     collectionTitle:
                         track.collectionTitle ?? snapshot.collectionTitle,
                     onBack: _requestExit,
-                    onQueue: () => _showQueue(context, snapshot),
+                    onQueue: () => _queue(context, snapshot),
                   ),
                   const SizedBox(height: 18),
                   Center(
@@ -245,7 +255,7 @@ class _AudioPlayerViewState extends State<AudioPlayerView>
                     snapshot: snapshot,
                     onRate: () => _cycleRate(snapshot.rate),
                     onTimer: () => _showSleepTimer(context),
-                    onQueue: () => _showQueue(context, snapshot),
+                    onQueue: () => _queue(context, snapshot),
                   ),
                   if (snapshot.failure != null) ...<Widget>[
                     const SizedBox(height: 16),
@@ -355,10 +365,7 @@ class _AudioPlayerViewState extends State<AudioPlayerView>
     return _controller.setRate(next);
   }
 
-  Future<void> _showQueue(
-    BuildContext context,
-    AudioPlayerSnapshot snapshot,
-  ) async {
+  Future<void> _queue(BuildContext context, AudioPlayerSnapshot snapshot) async {
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: AudioPlayerColors.sheet,

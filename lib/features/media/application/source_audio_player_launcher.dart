@@ -10,6 +10,7 @@ import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/media/application/android_audio_background_service.dart';
 import 'package:mg_read/features/media/application/source_audio_playlist_data_source.dart';
 import 'package:mg_read/features/media/application/transient_source_audio_playback_state_store.dart';
 
@@ -22,6 +23,11 @@ Future<void> openTransientSourceAudioPlayer(
   required PluginChapterSummary chapter,
 }) async {
   final gateway = ProviderScope.containerOf(context).read(sourceContentGatewayProvider);
+  final controller = AudioPlayerController();
+  final observer = await AndroidAudioBackgroundService.instance.attach(
+    controller: controller,
+    observer: _DismissAudioPlayerObserver(navigator),
+  );
   await navigator.push<void>(
     MaterialPageRoute<void>(
       builder: (_) => AudioPlayerView(
@@ -34,10 +40,12 @@ Future<void> openTransientSourceAudioPlayer(
           initialCatalog: firstCatalogPage,
         ),
         stateStore: TransientSourceAudioPlaybackStateStore(collectionId: detail.summary.id, initialTrackId: chapter.id),
-        observer: _DismissAudioPlayerObserver(navigator),
+        controller: controller,
+        observer: observer,
       ),
     ),
   );
+  controller.dispose();
 }
 
 final class _DismissAudioPlayerObserver extends AudioPlayerObserver {

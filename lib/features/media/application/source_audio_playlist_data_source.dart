@@ -1,7 +1,7 @@
 /// Audio-source to independent-player adapter.
 ///
 /// Responsibilities:
-/// - Resolve the selected track first, then a very small adjacent queue.
+/// - Resolve the selected track, a small adjacent queue and later bounded tail batches.
 /// - Preserve proxy URLs, request headers and refresh policy as opaque data.
 ///
 /// Notes:
@@ -16,7 +16,8 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 
 /// Converts one audio source collection into the audio player's host port.
-final class SourceAudioPlaylistDataSource implements AudioPlayerDataSource {
+final class SourceAudioPlaylistDataSource
+    implements AudioPlaylistContinuationDataSource {
   SourceAudioPlaylistDataSource({
     required this.gateway,
     required this.pluginId,
@@ -104,7 +105,9 @@ final class SourceAudioPlaylistDataSource implements AudioPlayerDataSource {
   List<PluginChapterSummary> _selectCandidates(
     List<PluginChapterSummary> catalog,
   ) {
-    final available = catalog.where((chapter) => !chapter.isLocked).toList();
+    final available = catalog
+        .where((chapter) => chapter.isLocked != true)
+        .toList();
     if (available.isEmpty) return const <PluginChapterSummary>[];
     final requestedIndex = initialTrackId == null
         ? 0
@@ -117,6 +120,47 @@ final class SourceAudioPlaylistDataSource implements AudioPlayerDataSource {
       );
     }
     return available.skip(requestedIndex).take(maximumTracks).toList();
+  }
+
+  @override
+  Future<List<AudioTrack>> loadFollowingTracks(
+    String collectionId, {
+    required String afterTrackId,
+    required int limit,
+  }) async {
+    if (limit <= 0) return const <AudioTrack>[];
+    final detail = initialDetail ??
+        await gateway.getDetail(pluginId: pluginId, id: collectionId);
+    if (detail.summary.id != collectionId ||
+        detail.summary.contentKind != PluginContentKind.audio) {
+      return const <AudioTrack>[];
+    }
+    final catalog = initialCatalog ??
+        await gateway.getChapters(pluginId: pluginId, id: collectionId);
+    final available = catalog.items
+        .where((chapter) => chapter.isLocked != true)
+        .toList(growable: false);
+    final currentIndex = available.indexWhere(
+      (chapter) => chapter.id == afterTrackId,
+    );
+    if (currentIndex < 0) return const <AudioTrack>[];
+    final tracks = <AudioTrack>[];
+    for (final chapter in available.skip(currentIndex + 1)) {
+      if (tracks.length >= limit) break;
+      try {
+        tracks.add(
+          await _loadTrack(
+            detail: detail,
+            collectionId: collectionId,
+            chapter: chapter,
+          ),
+        );
+      } on Object {
+        // Skip expired or locked-in-practice resources. The next available
+        // chapter is still useful for uninterrupted sequential listening.
+      }
+    }
+    return tracks;
   }
 
   Future<AudioTrack> _loadTrack({

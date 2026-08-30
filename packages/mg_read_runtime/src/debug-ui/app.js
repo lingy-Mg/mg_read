@@ -7,11 +7,21 @@
   'use strict';
 
   const defaultPlugin = 'org.mgread.shudugu';
+  // Keep the live view scannable while retaining every entry for filters/copy.
+  const defaultVisibleLogEntryLimit = 10;
   const workspaceRoutes = Object.freeze({
     search: '/__debug/search',
     discover: '/__debug/discover',
     logs: '/__debug/logs',
   });
+  const logCategories = Object.freeze([
+    Object.freeze({ id: 'runtime.diagnostic', label: '运行时诊断' }),
+    Object.freeze({ id: 'runtime.plugin.invocation', label: '插件调用' }),
+    Object.freeze({ id: 'runtime.plugin.resource_proxy', label: '资源代理' }),
+    Object.freeze({ id: 'plugin.custom', label: '插件自定义' }),
+    Object.freeze({ id: 'plugin.http', label: '插件 HTTP' }),
+    Object.freeze({ id: 'plugin.webview', label: '插件 WebView' }),
+  ]);
   const text = (value) => value === null || value === undefined || value === '' ? '--' : String(value);
   const element = (tag, className, content) => {
     const node = document.createElement(tag);
@@ -415,6 +425,9 @@
       this.entries = [];
       this.nextSequence = 0;
       this.active = false;
+      this.loading = false;
+      this.sessionStarted = false;
+      this.entriesExpanded = false;
       this.userPaused = false;
       this.timer = undefined;
     }
@@ -427,7 +440,8 @@
         '<div class="heading-actions"><span class="live-badge paused">已暂停</span><span class="last-updated">等待日志</span></div>',
         '<select class="filter-control" aria-label="日志级别"><option value="all">全部级别</option><option value="error">Error</option><option value="warn">Warn</option><option value="info">Info</option><option value="debug">Debug</option></select>',
         '<input class="filter-control" type="search" aria-label="筛选日志" placeholder="按来源、代码或消息筛选">',
-        '<div class="heading-actions"><button class="button secondary compact" data-action="copy" type="button">复制日志</button><button class="button secondary compact" data-action="pause" type="button">继续接收</button><button class="button ghost compact" data-action="clear" type="button">清空当前视图</button></div>',
+        '<fieldset class="log-category-filters"><legend>显示类别</legend>' + logCategories.map((category) => '<label><input checked type="checkbox" value="' + category.id + '">' + category.label + '</label>').join('') + '</fieldset>',
+        '<div class="heading-actions"><button class="button secondary compact" data-action="copy" type="button">复制日志</button><button class="button secondary compact" data-action="pause" type="button">继续接收</button></div>',
         '</div>',
         '<div class="log-view"><div class="log-empty">切换到日志工作区后开始接收。</div></div>',
       ].join('');
@@ -436,19 +450,17 @@
       this.view = this.querySelector('.log-view');
       this.level = this.querySelector('select');
       this.filter = this.querySelector('input');
+      this.categories = [...this.querySelectorAll('.log-category-filters input')];
       this.copy = this.querySelector('[data-action="copy"]');
       this.pause = this.querySelector('[data-action="pause"]');
       this.copy.addEventListener('click', () => void this.copyEntries());
-      this.querySelector('[data-action="clear"]').addEventListener('click', () => {
-        this.entries = [];
-        this.renderEntries();
-      });
       this.pause.addEventListener('click', () => {
         this.userPaused = !this.userPaused;
         this.syncPolling();
       });
       this.level.addEventListener('change', () => this.renderEntries());
       this.filter.addEventListener('input', () => this.renderEntries());
+      for (const category of this.categories) category.addEventListener('change', () => this.renderEntries());
     }
 
     disconnectedCallback() { this.stopPolling(); }
@@ -475,33 +487,52 @@
     }
 
     async load() {
+      if (this.loading) return;
+      this.loading = true;
       try {
-        let droppedCount = 0;
+        if (!this.sessionStarted) {
+          const payload = await api('/__debug/api/logs?after=0&limit=0');
+          const latestSequence = Number(payload.latestSequence);
+          if (!Number.isSafeInteger(latestSequence) || latestSequence < 0) throw new Error('invalid_log_cursor');
+          this.nextSequence = latestSequence;
+          this.sessionStarted = true;
+          this.updated.textContent = '当前网页日志会话已开始';
+          return;
+        }
         let changed = false;
-        for (let page = 0; page < 5; page += 1) {
+        let targetSequence;
+        while (true) {
           const payload = await api('/__debug/api/logs?after=' + this.nextSequence + '&limit=200');
           const items = Array.isArray(payload.items) ? payload.items : [];
+          const nextSequence = Number(payload.nextSequence);
+          if (!Number.isSafeInteger(nextSequence) || nextSequence < this.nextSequence) throw new Error('invalid_log_cursor');
+          if (targetSequence === undefined) {
+            const latestSequence = Number(payload.latestSequence);
+            targetSequence = Number.isSafeInteger(latestSequence) ? Math.max(this.nextSequence, latestSequence) : nextSequence;
+          }
           if (items.length) {
             this.entries.push(...items);
-            if (this.entries.length > 1000) this.entries.splice(0, this.entries.length - 1000);
             changed = true;
           }
-          this.nextSequence = Number(payload.nextSequence) || this.nextSequence;
-          droppedCount = Number(payload.droppedCount) || 0;
-          if (items.length < 200) break;
+          this.nextSequence = nextSequence;
+          if (!items.length || this.nextSequence >= targetSequence) break;
         }
         if (changed) this.renderEntries();
-        this.updated.textContent = droppedCount > 0 ? '已淘汰 ' + droppedCount + ' 条旧日志' : '更新于 ' + new Date().toLocaleTimeString();
+        this.updated.textContent = '本页已接收 ' + this.entries.length + ' 条 · 更新于 ' + new Date().toLocaleTimeString();
       } catch (cause) {
         this.updated.textContent = '日志读取失败：' + (cause.message || 'unknown_error');
+      } finally {
+        this.loading = false;
       }
     }
 
     filteredEntries() {
       const query = this.filter.value.trim().toLocaleLowerCase();
       const level = this.level.value;
+      const categories = new Set(this.categories.filter((input) => input.checked).map((input) => input.value));
       return this.entries.filter((entry) => {
         if (level !== 'all' && entry.level !== level) return false;
+        if (!categories.has(entry.category)) return false;
         if (!query) return true;
         return [entry.pluginId, entry.source, entry.code, entry.message].some((value) => text(value).toLocaleLowerCase().includes(query));
       });
@@ -520,8 +551,9 @@
       try {
         const content = entries.map((entry) => {
           const source = entry.pluginId || entry.source || '--';
+          const category = entry.category ? ' [' + entry.category + ']' : '';
           const code = entry.code ? ' [' + entry.code + ']' : '';
-          return entry.timestamp + ' [' + text(entry.level).toUpperCase() + '] [' + source + ']' + code + ' ' + text(entry.message);
+          return entry.timestamp + ' [' + text(entry.level).toUpperCase() + '] [' + source + ']' + category + code + ' ' + text(entry.message);
         }).join('\n');
         await copyText(content);
         this.copy.textContent = '已复制 ' + entries.length + ' 条';
@@ -540,16 +572,31 @@
         this.view.replaceChildren(element('div', 'log-empty', this.entries.length ? '没有符合筛选条件的日志。' : '暂无日志。'));
         return;
       }
-      this.view.replaceChildren(...entries.map((entry) => {
+      const hasHiddenEntries = !this.entriesExpanded && entries.length > defaultVisibleLogEntryLimit;
+      const visibleEntries = hasHiddenEntries ? entries.slice(-defaultVisibleLogEntryLimit) : entries;
+      const rows = visibleEntries.map((entry) => {
         const row = element('div', 'log-row');
         row.append(
           element('span', 'log-time', new Date(entry.timestamp).toLocaleTimeString()),
           element('span', 'log-level ' + text(entry.level), entry.level),
           element('span', 'log-source', entry.pluginId || entry.source),
+          element('span', 'log-category', entry.category),
           element('span', 'log-message', entry.message),
         );
         return row;
-      }));
+      });
+      if (hasHiddenEntries) {
+        const showAll = button('显示全部（共 ' + entries.length + ' 条）', () => {
+          this.entriesExpanded = true;
+          this.renderEntries();
+          this.view.scrollTop = 0;
+        }, 'secondary compact log-show-all');
+        showAll.dataset.action = 'show-all';
+        showAll.setAttribute('aria-expanded', 'false');
+        this.view.replaceChildren(...rows, showAll);
+      } else {
+        this.view.replaceChildren(...rows);
+      }
       if (nearBottom) this.view.scrollTop = this.view.scrollHeight;
     }
   }

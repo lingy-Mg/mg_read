@@ -1,7 +1,7 @@
 /// Route-independent state machine for one audio playback session.
 ///
 /// Responsibilities:
-/// - Load and validate a queue, restore semantic position and bind commands.
+/// - Load, autoplay and extend a queue, restore semantic position and bind commands.
 /// - Reject stale async results and serialize backend initialization and saves.
 /// - Flush progress on pause, track change, lifecycle, exit and close.
 ///
@@ -28,8 +28,13 @@ final class AudioPlayerSession extends ChangeNotifier {
     required this.controller,
     this.observer,
     this.saveInterval = const Duration(milliseconds: 800),
+    this.autoplay = true,
+    this.prefetchThreshold = 1,
+    this.prefetchBatchSize = 3,
     DateTime Function()? clock,
-  }) : _clock = clock ?? DateTime.now,
+  }) : assert(prefetchThreshold >= 0),
+       assert(prefetchBatchSize > 0),
+       _clock = clock ?? DateTime.now,
        _snapshot = AudioPlayerSnapshot.initial() {
     controller.bind(
       owner: this,
@@ -57,6 +62,11 @@ final class AudioPlayerSession extends ChangeNotifier {
   final AudioPlayerController controller;
   final AudioPlayerObserver? observer;
   final Duration saveInterval;
+
+  /// Starts the selected track after its resource and restored position load.
+  final bool autoplay;
+  final int prefetchThreshold;
+  final int prefetchBatchSize;
   final DateTime Function() _clock;
 
   AudioPlayerSnapshot _snapshot;
@@ -69,6 +79,7 @@ final class AudioPlayerSession extends ChangeNotifier {
   Future<void> _saveTail = Future<void>.value();
   Future<void>? _closeFuture;
   Future<void>? _exitRequest;
+  Future<void>? _prefetchRequest;
   String? _lastBackendErrorMessage;
   int _generation = 0;
   bool _backendSnapshotsEnabled = false;
@@ -125,7 +136,7 @@ final class AudioPlayerSession extends ChangeNotifier {
         await backend.open(
           playlist.tracks,
           initialIndex: restoredIndex,
-          play: false,
+          play: autoplay,
         );
         if (!_isCurrent(generation)) return;
         if (progress != null &&
@@ -143,6 +154,7 @@ final class AudioPlayerSession extends ChangeNotifier {
       _playlist = playlist;
       _backendSnapshotsEnabled = true;
       _applyReadySnapshot(backend.snapshot);
+      _prefetchIfNeeded(restoredIndex);
       _handleBackendError(backend.snapshot.errorMessage);
       await _notify(() => observer?.onSessionStarted(collectionId));
       if (!_isCurrent(generation)) return;
@@ -210,8 +222,70 @@ final class AudioPlayerSession extends ChangeNotifier {
         _notify(() => observer?.onTrackChanged(queue[value.currentIndex])),
       );
     }
+    _prefetchIfNeeded(value.currentIndex);
     if (value.playing) _scheduleThrottledSave();
     _handleBackendError(value.errorMessage);
+  }
+
+  void _prefetchIfNeeded(int currentIndex) {
+    final playlist = _playlist;
+    final dataSource = this.dataSource;
+    if (playlist == null ||
+        dataSource is! AudioPlaylistContinuationDataSource ||
+        currentIndex + prefetchThreshold < playlist.tracks.length - 1 ||
+        _prefetchRequest != null ||
+        _closing ||
+        _closed) {
+      return;
+    }
+    final generation = _generation;
+    final afterTrackId = playlist.tracks.last.id;
+    _prefetchRequest = _loadFollowingTracks(
+      dataSource,
+      generation: generation,
+      afterTrackId: afterTrackId,
+    ).whenComplete(() {
+      _prefetchRequest = null;
+    });
+  }
+
+  Future<void> _loadFollowingTracks(
+    AudioPlaylistContinuationDataSource dataSource, {
+    required int generation,
+    required String afterTrackId,
+  }) async {
+    try {
+      final loaded = await dataSource.loadFollowingTracks(
+        collectionId,
+        afterTrackId: afterTrackId,
+        limit: prefetchBatchSize,
+      );
+      if (!_isCurrent(generation) || loaded.isEmpty) return;
+      final playlist = _playlist;
+      if (playlist == null || playlist.tracks.last.id != afterTrackId) return;
+      final knownIds = playlist.tracks.map((track) => track.id).toSet();
+      final additions = loaded
+          .where(
+            (track) =>
+                track.id.trim().isNotEmpty &&
+                track.resource.hasScheme &&
+                knownIds.add(track.id),
+          )
+          .toList(growable: false);
+      if (additions.isEmpty || !_isCurrent(generation)) return;
+      await backend.append(additions);
+      if (!_isCurrent(generation)) return;
+      _playlist = AudioPlaylist(
+        collectionId: playlist.collectionId,
+        title: playlist.title,
+        creator: playlist.creator,
+        tracks: <AudioTrack>[...playlist.tracks, ...additions],
+      );
+      _applyReadySnapshot(backend.snapshot);
+    } catch (_) {
+      // The already buffered chapter remains playable. A later track change
+      // retries the bounded prefetch instead of interrupting current audio.
+    }
   }
 
   void _handleBackendError(String? rawMessage) {

@@ -365,12 +365,15 @@ void main() {
       );
       await _waitForDiagnosticCodes(diagnostics, const <String>[
         'plugin_load_started',
-        'plugin_log_emitted',
         'plugin_load_completed',
         'plugin_runtime_initialized',
         'plugin_invocation_started',
         'plugin_invocation_completed',
       ]);
+      expect(
+        diagnostics.map((diagnostic) => diagnostic.code),
+        isNot(contains('plugin_log_emitted')),
+      );
 
       expect(plugins, hasLength(1));
       expect(plugins.single.id, 'org.mgread.flutter.fixture');

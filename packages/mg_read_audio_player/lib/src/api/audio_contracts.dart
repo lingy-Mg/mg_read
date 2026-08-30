@@ -18,6 +18,20 @@ abstract interface class AudioPlayerDataSource {
   Future<AudioPlaylist> loadPlaylist(String collectionId);
 }
 
+/// Optional incremental queue loader for long-running spoken-audio playlists.
+///
+/// The player calls this before it reaches the tail of the currently loaded
+/// queue. Implementations must return only tracks after [afterTrackId], and
+/// must not return the supplied track again.
+abstract interface class AudioPlaylistContinuationDataSource
+    implements AudioPlayerDataSource {
+  Future<List<AudioTrack>> loadFollowingTracks(
+    String collectionId, {
+    required String afterTrackId,
+    required int limit,
+  });
+}
+
 /// Persists semantic audio progress without constraining host storage.
 abstract interface class AudioPlaybackStateStore {
   Future<AudioPlaybackProgress?> loadProgress(String collectionId);
@@ -52,6 +66,7 @@ abstract interface class AudioPlaybackBackend {
     required int initialIndex,
     bool play = false,
   });
+  Future<void> append(List<AudioTrack> tracks);
   Future<void> play();
   Future<void> pause();
   Future<void> seek(Duration position);

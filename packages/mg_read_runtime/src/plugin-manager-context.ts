@@ -36,8 +36,12 @@ export async function createPluginContext(options: {
   const dataDir = resolve(dataRoot, "plugin-data", descriptor.id);
   const cacheDir = resolve(dataRoot, "plugin-cache", descriptor.id);
   await Promise.all([mkdir(dataDir, { recursive: true }), mkdir(cacheDir, { recursive: true })]);
-  const emitLog = (logLevel: NonNullable<PluginManagerEvent["logLevel"]>, logMessage: string): void => {
-    if (debugLogEnabled()) events({ code: "plugin_log_emitted", logLevel, logMessage, outcome: "success", pluginId: descriptor.id });
+  const emitLog = (
+    logLevel: NonNullable<PluginManagerEvent["logLevel"]>,
+    logMessage: string,
+    logCategory: NonNullable<PluginManagerEvent["logCategory"]> = "plugin.custom",
+  ): void => {
+    if (debugLogEnabled()) events({ code: "plugin_log_emitted", logCategory, logLevel, logMessage, outcome: "success", pluginId: descriptor.id });
   };
   const withScope = <T>(operation: (scope: PluginInvocationScope) => Promise<T>): Promise<T> => {
     const scope = invocationScope();
@@ -66,7 +70,7 @@ export async function createPluginContext(options: {
         }, scope.signal, scope.deadlineUnixMs)),
     }) }),
     webview: createPluginWebViewApi({
-      log: emitLog,
+      log: (level, message) => emitLog(level, message, "plugin.webview"),
       pluginId: descriptor.id,
       pluginName: descriptor.displayName,
       provider: browserSession,
@@ -81,7 +85,7 @@ export async function createPluginContext(options: {
         signals.push(scope.signal, AbortSignal.timeout(Math.max(1, Number(scope.deadlineUnixMs) - Date.now())));
       }
       if (init.signal != null) signals.push(init.signal);
-      if (debugLogEnabled()) emitLog("debug", `HTTP 请求：地址=${String(input)}，初始化参数=${JSON.stringify(init)}`);
+      if (debugLogEnabled()) emitLog("debug", `HTTP 请求：地址=${String(input)}，初始化参数=${JSON.stringify(init)}`, "plugin.http");
       const startedAt = performance.now();
       return http.fetch(input, {
         ...init,
@@ -89,11 +93,11 @@ export async function createPluginContext(options: {
         ...(signals.length === 0 ? {} : { signal: signals.length === 1 ? signals[0] : AbortSignal.any(signals) }),
       }, scope?.trace).then((response) => {
         if (debugLogEnabled()) {
-          emitLog("debug", `HTTP 响应：状态=${response.status}，耗时毫秒=${Math.round(performance.now() - startedAt)}，响应头=${JSON.stringify(Object.fromEntries(response.headers))}`);
-          void response.clone().text().then((body) => emitLog("debug", `HTTP 响应预览：正文=${body.slice(0, 2000)}`), () => emitLog("warn", "HTTP 响应预览失败"));
+          emitLog("debug", `HTTP 响应：状态=${response.status}，耗时毫秒=${Math.round(performance.now() - startedAt)}，响应头=${JSON.stringify(Object.fromEntries(response.headers))}`, "plugin.http");
+          void response.clone().text().then((body) => emitLog("debug", `HTTP 响应预览：正文=${body.slice(0, 2000)}`, "plugin.http"), () => emitLog("warn", "HTTP 响应预览失败", "plugin.http"));
         }
         return response;
-      }, (error) => { if (debugLogEnabled()) emitLog("error", `HTTP 请求出错：耗时毫秒=${Math.round(performance.now() - startedAt)}，错误=${error instanceof Error ? error.name : "unknown"}`); throw error; });
+      }, (error) => { if (debugLogEnabled()) emitLog("error", `HTTP 请求出错：耗时毫秒=${Math.round(performance.now() - startedAt)}，错误=${error instanceof Error ? error.name : "unknown"}`, "plugin.http"); throw error; });
     } }),
     log: Object.freeze({
       debug: (message: string) => emitLog("debug", message),

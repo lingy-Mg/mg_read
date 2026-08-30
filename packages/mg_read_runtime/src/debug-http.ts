@@ -4,12 +4,12 @@
  * Responsibilities:
  * - own the separately-bound LAN debug listener and its static inspector page;
  * - project bounded source search/discovery fields for direct inspection;
- * - retain bounded, in-memory cover probes and a transient simple-log tail.
+ * - retain bounded, in-memory cover probes and an unbounded listener-scoped log stream.
  *
  * Boundaries:
  * - never exposes Runtime RPC, health, cookies, headers, HTML, or raw plugin objects;
  * - Debug projections intentionally preserve URL, query, and log values verbatim;
- * - do not add masking or redaction here; logs remain truncated, memory-only, and listener-scoped;
+ * - do not add masking, redaction, persistence, or automatic log pruning here;
  * - delegates all source calls and resource reads to the owning Runtime Core.
  */
 import { randomBytes } from "node:crypto";
@@ -27,9 +27,17 @@ const maxPageSize = 50;
 const maxQueryLength = 160;
 const probeTtlMs = 15 * 60 * 1_000;
 const maxProbeEntries = 300;
-const maxLogEntries = 1_000;
 const maxLogMessageLength = 64_000;
-const maxLogPageSize = 200;
+const maxLogPageSize = 1_000;
+
+/** Fixed categories make high-volume Runtime internals independently filterable. */
+export type RuntimeDebugLogCategory =
+  | "plugin.custom"
+  | "plugin.http"
+  | "plugin.webview"
+  | "runtime.diagnostic"
+  | "runtime.plugin.invocation"
+  | "runtime.plugin.resource_proxy";
 
 export interface RuntimeDebugHttpStatus extends JsonObject {
   readonly configuredEnabled: boolean;
@@ -50,15 +58,15 @@ export interface RuntimeDebugHttpHost {
   readonly status: () => Promise<JsonObject>;
 }
 
-/** A Debug-only, bounded log tail. Entries live only while the listener runs. */
+/** Debug-only in-memory logs retained for the listener lifetime and never persisted. */
 export class RuntimeDebugLogBuffer {
   readonly #entries: RuntimeDebugLogEntry[] = [];
-  #droppedCount = 0;
   #nextSequence = 1;
 
   append(entry: RuntimeDebugLogInput): void {
     const message = entry.message.slice(0, maxLogMessageLength);
     this.#entries.push(Object.freeze({
+      category: entry.category,
       level: entry.level,
       message,
       source: entry.source,
@@ -67,16 +75,10 @@ export class RuntimeDebugLogBuffer {
       ...(entry.code === undefined ? {} : { code: entry.code }),
       ...(entry.pluginId === undefined ? {} : { pluginId: entry.pluginId }),
     }));
-    if (this.#entries.length > maxLogEntries) {
-      const overflow = this.#entries.length - maxLogEntries;
-      this.#entries.splice(0, overflow);
-      this.#droppedCount += overflow;
-    }
   }
 
   clear(): void {
     this.#entries.length = 0;
-    this.#droppedCount = 0;
   }
 
   page(after: number, limit: number): JsonObject {
@@ -84,14 +86,15 @@ export class RuntimeDebugLogBuffer {
     // advance past older entries when a burst exceeds its per-request limit.
     const items = this.#entries.filter((entry) => entry.sequence > after).slice(0, limit);
     return Object.freeze({
-      droppedCount: this.#droppedCount,
       items: Object.freeze(items.map((entry) => Object.freeze({ ...entry }))),
+      latestSequence: this.#nextSequence - 1,
       nextSequence: items.at(-1)?.sequence ?? Math.max(after, this.#nextSequence - 1),
     });
   }
 }
 
 export interface RuntimeDebugLogInput {
+  readonly category: RuntimeDebugLogCategory;
   readonly code?: string;
   readonly level: "debug" | "error" | "info" | "warn";
   readonly message: string;
@@ -100,6 +103,7 @@ export interface RuntimeDebugLogInput {
 }
 
 export interface RuntimeDebugLogEntry extends JsonObject {
+  readonly category: RuntimeDebugLogCategory;
   readonly code?: string;
   readonly level: "debug" | "error" | "info" | "warn";
   readonly message: string;

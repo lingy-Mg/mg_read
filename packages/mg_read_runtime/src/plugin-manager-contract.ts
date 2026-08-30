@@ -14,6 +14,10 @@ import type { JsonObject } from "./protocol.js";
 import type { PluginPackageDescriptor } from "./plugin-package.js";
 import type { PluginContentOperation } from "./plugin-content.js";
 import type { PluginWebViewApi } from "./plugin-webview-page.js";
+import type { RuntimeDebugLogCategory } from "./debug-http.js";
+
+/** Runtime-owned categories for Debug-only plugin log projections. */
+export type PluginManagerLogCategory = Exclude<RuntimeDebugLogCategory, "runtime.diagnostic">;
 
 export type PluginManagerEventCode =
   | "plugin_disabled"
@@ -33,6 +37,7 @@ export interface PluginManagerEvent {
   readonly code: PluginManagerEventCode;
   readonly durationMs?: number;
   /** Present only for a Debug-only in-memory ctx.log projection. */
+  readonly logCategory?: PluginManagerLogCategory;
   readonly logLevel?: "debug" | "error" | "info" | "warn";
   /** Plugin-authored text; the Runtime Debug buffer preserves it verbatim within its size bound. */
   readonly logMessage?: string;

@@ -133,9 +133,13 @@ mg-book-card { display: block; min-width: 0; }
 .node-cover .cover-box { width: 56px; height: 78px; }
 .node-children { display: grid; gap: 6px; margin-top: 6px; }
 
-.log-toolbar { display: grid; grid-template-columns: auto 150px minmax(220px, 1fr) auto; gap: 8px; align-items: center; margin: 0 0 8px; padding-bottom: 8px; border-bottom: 1px dashed #344152; }
+.log-toolbar { display: grid; grid-template-columns: auto 150px minmax(220px, 1fr) minmax(300px, 1.3fr) auto; gap: 8px; align-items: center; margin: 0 0 8px; padding-bottom: 8px; border-bottom: 1px dashed #344152; }
+.log-category-filters { display: flex; flex-wrap: wrap; gap: 4px 9px; min-width: 0; margin: 0; padding: 5px 8px; border: 1px solid #38475a; color: #a8b9cc; }
+.log-category-filters legend { padding: 0 4px; color: #7792ae; font-size: 10px; font-weight: 800; }
+.log-category-filters label { display: inline-flex; align-items: center; gap: 4px; color: #c5d6e8; font-size: 11px; white-space: nowrap; cursor: pointer; }
+.log-category-filters input { accent-color: var(--accent); }
 .log-view { flex: 1; min-height: 0; overflow: auto; border: 1px solid #263545; border-radius: 0; background: #05090e; }
-.log-row { display: grid; grid-template-columns: 82px 58px minmax(100px, 180px) 1fr; gap: 9px; padding: 7px 10px; border-bottom: 1px solid #172331; color: #c5d6e8; font: 12px/1.45 ui-monospace, "Cascadia Code", Consolas, monospace; }
+.log-row { display: grid; grid-template-columns: 82px 58px minmax(100px, 180px) minmax(120px, 170px) 1fr; gap: 9px; padding: 7px 10px; border-bottom: 1px solid #172331; color: #c5d6e8; font: 12px/1.45 ui-monospace, "Cascadia Code", Consolas, monospace; }
 .log-row:hover { background: #0c1720; }
 .log-row:last-child { border-bottom: 0; }
 .log-time { color: #7792ae; }
@@ -145,7 +149,9 @@ mg-book-card { display: block; min-width: 0; }
 .log-level.info { color: #7dd3fc; }
 .log-level.debug { color: #c4b5fd; }
 .log-source { overflow: hidden; color: #86efac; text-overflow: ellipsis; white-space: nowrap; }
+.log-category { overflow: hidden; color: #f0abfc; text-overflow: ellipsis; white-space: nowrap; }
 .log-message { white-space: pre-wrap; overflow-wrap: anywhere; }
+.log-show-all { display: flex; width: calc(100% - 20px); margin: 10px; }
 .log-empty { padding: 36px 18px; color: #6f879f; text-align: center; }
 .live-badge { display: inline-flex; align-items: center; gap: 6px; color: var(--success); font-size: 11px; font-weight: 800; }
 .live-badge::before { width: 7px; height: 7px; border-radius: 50%; background: currentColor; content: ""; }
@@ -185,8 +191,8 @@ dialog::backdrop { background: rgba(0,0,0,.7); }
   .workspace-panel { padding: 9px; }
   .form-grid, .form-grid.discover, .advanced-grid, .log-toolbar { grid-template-columns: 1fr; }
   .book-grid { grid-template-columns: 1fr; }
-  .log-row { grid-template-columns: 70px 52px 1fr; }
-  .log-source { display: none; }
+  .log-row { grid-template-columns: 70px 52px minmax(0, 1fr); }
+  .log-source, .log-category { display: none; }
   .chapter-button { grid-template-columns: 54px minmax(0,1fr); }
   .chapter-volume { grid-column: 2; }
 }

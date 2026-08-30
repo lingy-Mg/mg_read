@@ -284,7 +284,6 @@ export class DesktopRuntime {
   /** Optional, separately-bound Debug inspector; never carries Runtime RPC. */
   #debugHttp: RuntimeDebugHttpServer | undefined;
   #debugHttpConfiguredEnabled = false;
-  /** Transient tail for the Debug inspector; never persisted to disk. */
   readonly #debugLogs = new RuntimeDebugLogBuffer();
   #removeDebugDiagnosticObserver: (() => void) | undefined;
   constructor(options: DesktopRuntimeOptions = {}) {
@@ -303,7 +302,7 @@ export class DesktopRuntime {
     this.#removeDebugDiagnosticObserver = observeRuntimeDiagnostics((record) => {
       if (!this.#debugHttp?.status().enabled) return;
       this.#debugLogs.append({
-        code: record.code,
+        category: "runtime.diagnostic", code: record.code,
         level: record.level === "warning" ? "warn" : record.level ?? "info",
         message: record.message,
         source: "runtime",
@@ -480,17 +479,17 @@ export class DesktopRuntime {
 
   /** Mirrors plugin ctx.log only while the separately enabled Debug listener is live. */
   #handlePluginManagerEvent(event: PluginManagerEvent): void {
-    if (
-      event.code === "plugin_log_emitted" &&
-      event.logMessage !== undefined &&
-      this.#debugHttp?.status().enabled
-    ) {
-      this.#debugLogs.append({
-        level: event.logLevel ?? "info",
-        message: event.logMessage,
-        source: "plugin",
-        ...(event.pluginId === undefined ? {} : { pluginId: event.pluginId }),
-      });
+    if (event.code === "plugin_log_emitted") {
+      if (event.logMessage !== undefined && this.#debugHttp?.status().enabled) {
+        this.#debugLogs.append({
+          category: event.logCategory ?? "plugin.custom",
+          level: event.logLevel ?? "info",
+          message: event.logMessage,
+          source: "plugin",
+          ...(event.pluginId === undefined ? {} : { pluginId: event.pluginId }),
+        });
+      }
+      return;
     }
     emitPluginManagerDiagnostic(event);
   }
@@ -1423,9 +1422,11 @@ export class DesktopRuntime {
   }
 }
 
-/** Emits only stable plugin lifecycle codes; plugin log text is discarded. */
+/** Emits only stable plugin lifecycle diagnostics; Debug-only plugin logs are not diagnostics. */
 function emitPluginManagerDiagnostic(event: PluginManagerEvent): void {
-  const messages: Record<PluginManagerEvent["code"], string> = {
+  if (event.code === "plugin_log_emitted") return;
+  const code = event.code;
+  const messages: Record<Exclude<PluginManagerEvent["code"], "plugin_log_emitted">, string> = {
     plugin_disabled: "插件数据源已停用。",
     plugin_enabled: "插件数据源已启用。",
     plugin_invocation_completed: "插件能力调用已成功完成。",
@@ -1434,19 +1435,18 @@ function emitPluginManagerDiagnostic(event: PluginManagerEvent): void {
     plugin_load_completed: "标准 Node 插件已成功加载。",
     plugin_load_failed: "无法加载标准 Node 插件。",
     plugin_load_started: "标准 Node 插件开始加载。",
-    plugin_log_emitted: "插件输出了一条调试日志。",
     plugin_quarantined: "启动时发现的异常插件数据源已隔离。",
     plugin_uninstall_scheduled: "插件数据源已标记为在下次冷启动时移除。",
     plugin_uninstall_completed: "待卸载的插件已完成卸载。",
   };
   emitRuntimeDiagnostic({
-    code: event.code,
+    code,
     component: "runtime.plugin",
     ...(event.durationMs === undefined
       ? {}
       : { durationMicros: Math.max(0, Math.round(event.durationMs * 1_000)) }),
     level: event.outcome === "error" ? "error" : "info",
-    message: messages[event.code],
+    message: messages[code],
     outcome: event.outcome,
     type: "diagnostic",
   });

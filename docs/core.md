@@ -158,7 +158,8 @@ plugins/sources/                    真实数据源插件
 ## 诊断
 
 - App 诊断默认关闭；总开关由普通设置存储持有。显式启用才创建 writer；关闭从下次启动生效，
-  使当前日志安全收尾。Runtime 只保留 Debug 启用窗口内的有界瞬时日志。
+  使当前日志安全收尾。Runtime Debug 日志只在启用 listener 期间驻留内存、不持久化且不自动裁剪；网页当前
+  会话也不裁剪，刷新页面后由新的网页会话重新开始接收。
 - 每个已启用的 App 启动只写一个 UTF-8 TXT，内存只持有当前启动目录。历史文件完全冷存储：
   启动不读取、修复、反序列化或重建历史；查看器只用文件名、mtime、length 列表，用户选择单个
   文件后才读取。损坏只隔离所选文件；删除和保留按文件元数据执行，当前文件只能在安全关闭时结束。
@@ -184,8 +185,9 @@ plugins/sources/                    真实数据源插件
 
 ## 验证与平台证据
 
-- 根 Flutter 生产代码运行 `dart format --output=none --set-exit-if-changed .`、`flutter analyze` 和
-  受影响测试；子项目只运行最近 `AGENTS.md`/README 的对应命令。每次代码修改还运行源码规模检查。
+- 根 Flutter 生产代码只检查拥有文件：编辑用目标分析和测试，收尾 `flutter analyze`。全仓格式、
+  `flutter test` 仅回归/发布；用 `tools/run_flutter_checks.ps1`。子项目按
+  `AGENTS.md`/README；每次做源码规模检查。
 - 页面、路由和跨层真实流程只用 Android `integration_test`，交互经 Finder、语义和稳定 `Key`；
   禁止坐标、鼠标/键盘注入、`adb input`、系统截图、Computer Use 或人工点击取证。
 - 只有用户对当前任务明确授权视觉/运行验收时才运行。获得任务授权后，connected/ready 的

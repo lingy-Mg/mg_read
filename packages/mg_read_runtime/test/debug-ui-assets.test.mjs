@@ -33,6 +33,12 @@ test("Debug inspector ships native static assets with a Web Components entrypoin
   assert.match(script, /customElements\.define\('mg-search-panel'/);
   assert.match(script, /customElements\.define\('mg-discovery-panel'/);
   assert.match(script, /customElements\.define\('mg-log-viewer'/);
+  assert.match(script, /runtime\.plugin\.resource_proxy/);
+  assert.match(script, /log-category-filters/);
+  assert.match(script, /defaultVisibleLogEntryLimit = 10/);
+  assert.match(script, /entries\.slice\(-defaultVisibleLogEntryLimit\)/);
+  assert.match(script, /dataset\.action = 'show-all'/);
+  assert.match(script, /latestSequence/);
   assert.match(script, /workspaceRoutes/);
   assert.match(script, /window\.history\.pushState/);
   assert.match(script, /data-action="copy"/);

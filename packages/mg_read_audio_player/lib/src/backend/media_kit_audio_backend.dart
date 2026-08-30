@@ -146,6 +146,20 @@ final class AudioMediaKitPlaybackBackend implements AudioPlaybackBackend {
   }
 
   @override
+  Future<void> append(List<AudioTrack> tracks) async {
+    _ensureUsable();
+    for (final track in tracks) {
+      await _player.add(
+        Media(
+          track.resource.toString(),
+          httpHeaders: track.httpHeaders,
+          extras: <String, dynamic>{'audioTrackId': track.id},
+        ),
+      );
+    }
+  }
+
+  @override
   Future<void> play() {
     _ensureUsable();
     return _player.play();

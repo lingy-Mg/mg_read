@@ -55,6 +55,7 @@ test("Debug inspector is transient, isolates control routes, and preserves proje
   const image = await startImageServer();
   const logs = new RuntimeDebugLogBuffer();
   logs.append({
+    category: "plugin.custom",
     level: "info",
     message: "request token=secret-token-123456 https://example.com/book?q=private",
     source: "plugin",
@@ -114,6 +115,7 @@ test("Debug inspector is transient, isolates control routes, and preserves proje
 
   const liveLogs = await (await fetch(new URL("/__debug/api/logs?after=0&limit=20", base))).json();
   assert.equal(liveLogs.items.length, 1);
+  assert.equal(liveLogs.items[0].category, "plugin.custom");
   assert.equal(liveLogs.items[0].message, "request token=secret-token-123456 https://example.com/book?q=private");
 
   const search = await fetch(new URL("/__debug/api/search?pluginId=org.example.test&q=test&pageSize=1", base));
@@ -222,10 +224,11 @@ test("Runtime rejects Debug listener control without the platform Debug build ga
   await assert.rejects(access(join(dataRoot, "diagnostics")), (error) => error?.code === "ENOENT");
 });
 
-test("Debug log buffer is bounded, verbatim, pageable, and clearable", () => {
+test("Debug log buffer retains every listener-lifetime entry, is pageable, and clearable", () => {
   const logs = new RuntimeDebugLogBuffer();
   for (let index = 1; index <= 1_005; index += 1) {
     logs.append({
+      category: "runtime.diagnostic",
       level: "info",
       message: `entry ${index} password=private`,
       source: "runtime",
@@ -235,13 +238,14 @@ test("Debug log buffer is bounded, verbatim, pageable, and clearable", () => {
   const first = logs.page(0, 200);
   const second = logs.page(first.nextSequence, 200);
   assert.equal(first.items.length, 200);
-  assert.equal(first.items[0].sequence, 6);
-  assert.equal(first.items.at(-1).sequence, 205);
-  assert.equal(second.items[0].sequence, 206);
-  assert.equal(second.items.at(-1).sequence, 405);
-  assert.equal(first.droppedCount, 5);
-  assert.equal(first.items[0].message, "entry 6 password=private");
+  assert.equal(first.items[0].sequence, 1);
+  assert.equal(first.items.at(-1).sequence, 200);
+  assert.equal(second.items[0].sequence, 201);
+  assert.equal(second.items.at(-1).sequence, 400);
+  assert.equal(first.latestSequence, 1_005);
+  assert.equal(first.items[0].category, "runtime.diagnostic");
+  assert.equal(first.items[0].message, "entry 1 password=private");
 
   logs.clear();
-  assert.deepEqual(logs.page(0, 200), { droppedCount: 0, items: [], nextSequence: 1_005 });
+  assert.deepEqual(logs.page(0, 200), { items: [], latestSequence: 1_005, nextSequence: 1_005 });
 });

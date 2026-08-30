@@ -43,7 +43,7 @@
   "legacyBaseline": {
       "packages/mg_read_runtime/src/desktop-runtime.ts": 1375,
     "packages/mobile_scanner/darwin/mobile_scanner/Sources/mobile_scanner/MobileScannerPlugin.swift": 1184,
-    "packages/mg_read_runtime/src/plugin-manager.ts": 1011
+    "packages/mg_read_runtime/src/plugin-manager.ts": 1009
   },
   "legacyRationale": {
       "packages/mg_read_runtime/src/desktop-runtime.ts": "Construction-only progress, browser-provider and launch option types moved to desktop-runtime-options.ts. The remaining HTTP, WebSocket, cache/source-content control, shutdown and owner-span state shares ECMAScript private fields; the next split is a cache/source-content dispatch port with protocol characterization.",

@@ -35,6 +35,8 @@ final class VideoSessionStatusLayer extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool failure = snapshot.status == VideoPlayerStatus.failure;
     final bool empty = snapshot.status == VideoPlayerStatus.empty;
+    final String? failureLocation = snapshot.failure?.location;
+    final String? failureCode = snapshot.failure?.code;
     return ColoredBox(
       color: const Color(0xFF090A0C),
       child: SafeArea(
@@ -81,19 +83,19 @@ final class VideoSessionStatusLayer extends StatelessWidget {
                       key: const Key('video-player-status-message'),
                       textAlign: TextAlign.center,
                     ),
-                    if (failure && snapshot.failure?.location case final String location) ...<Widget>[
+                    if (failure && failureLocation != null) ...<Widget>[
                       const SizedBox(height: 8),
                       Text(
-                        '发生位置：$location',
+                        '发生位置：$failureLocation',
                         key: const Key('video-player-status-location'),
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 12, color: Color(0xFFBEC1C7)),
                       ),
                     ],
-                    if (failure && snapshot.failure?.code case final String code) ...<Widget>[
+                    if (failure && failureCode != null) ...<Widget>[
                       const SizedBox(height: 4),
                       Text(
-                        '诊断编号：$code',
+                        '诊断编号：$failureCode',
                         key: const Key('video-player-status-code'),
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 12, color: Color(0xFFBEC1C7)),

@@ -126,6 +126,53 @@ void main() {
     expect(find.text('第二章 风经过窗口'), findsOneWidget);
   });
 
+  testWidgets('autoplays the selected chapter by default', (tester) async {
+    final backend = _FakeAudioBackend();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AudioPlayerView(
+          collectionId: 'book',
+          dataSource: _FakeAudioDataSource(),
+          stateStore: _FakeAudioStateStore(),
+          backend: backend,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(backend.playCalls, 0);
+    expect(backend.snapshot.playing, isTrue);
+  });
+
+  testWidgets('prefetches source tracks before the queue reaches its tail', (
+    tester,
+  ) async {
+    final backend = _FakeAudioBackend();
+    final dataSource = _ContinuableAudioDataSource();
+
+    await tester.pumpWidget(
+      _testHost(
+        backend: backend,
+        store: _FakeAudioStateStore(),
+        observer: const AudioPlayerObserver(),
+        dataSource: dataSource,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    backend.emitPosition(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    expect(dataSource.followingCalls, 1);
+    expect(backend.tracks.map((track) => track.id), <String>[
+      'track-1',
+      'track-2',
+    ]);
+  });
+
   testWidgets('sleep timer pauses and exit flushes the latest position', (
     tester,
   ) async {
@@ -517,6 +564,7 @@ Widget _testHost({
         observer: observer,
         controller: controller,
         backend: backend,
+        autoplay: false,
         saveInterval: const Duration(hours: 1),
       ),
     ),
@@ -561,6 +609,32 @@ AudioPlaylist _singleTrackPlaylist({required String title}) => AudioPlaylist(
 final class _FakeAudioDataSource implements AudioPlayerDataSource {
   @override
   Future<AudioPlaylist> loadPlaylist(String collectionId) async => _playlist();
+}
+
+final class _ContinuableAudioDataSource
+    implements AudioPlaylistContinuationDataSource {
+  int followingCalls = 0;
+
+  @override
+  Future<AudioPlaylist> loadPlaylist(String collectionId) async =>
+      _singleTrackPlaylist(title: '连续播放');
+
+  @override
+  Future<List<AudioTrack>> loadFollowingTracks(
+    String collectionId, {
+    required String afterTrackId,
+    required int limit,
+  }) async {
+    followingCalls++;
+    if (afterTrackId != 'track-1') return const <AudioTrack>[];
+    return <AudioTrack>[
+      AudioTrack(
+        id: 'track-2',
+        title: '下一章',
+        resource: Uri.parse('https://example.test/audio/2.mp3'),
+      ),
+    ];
+  }
 }
 
 final class _FailingAudioDataSource implements AudioPlayerDataSource {
@@ -729,6 +803,11 @@ final class _FakeAudioBackend implements AudioPlaybackBackend {
         playing: play,
       ),
     );
+  }
+
+  @override
+  Future<void> append(List<AudioTrack> tracks) async {
+    this.tracks = <AudioTrack>[...this.tracks, ...tracks];
   }
 
   @override

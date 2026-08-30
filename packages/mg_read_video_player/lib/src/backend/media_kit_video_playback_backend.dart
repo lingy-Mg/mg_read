@@ -114,7 +114,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     if (!_isRequestedGeneration(generation)) return;
 
     final session = _MediaKitEpisodeSession();
-    _bind(session, generation);
+    _bind(session, generation, episode);
     if (!_isRequestedGeneration(generation)) {
       await session.dispose();
       return;
@@ -124,7 +124,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     _session = session;
     _surfaceGeneration++;
     _emit(_value.copyWith(firstFrameReady: false));
-    unawaited(_markFirstFrame(session, generation));
+    unawaited(_markFirstFrame(session, generation, episode));
 
     // VideoController initializes after a frame. This frame also detaches the
     // previous keyed Video subtree before its Player-owned notifiers are freed.
@@ -133,6 +133,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     if (!_isCurrent(session, generation)) return;
 
     try {
+      _debugPlaybackRequest('open', episode);
       await session.player.open(
         Media(episode.uri, httpHeaders: episode.httpHeaders),
         play: false,
@@ -156,12 +157,17 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
       _emit(_value.copyWith(buffering: false, clearError: true));
     } on Object catch (error, stackTrace) {
       if (!_isCurrent(session, generation)) return;
+      _debugPlaybackFailure('open-exception', episode, error);
       _emit(_value.copyWith(errorMessage: error.toString(), buffering: false));
       Error.throwWithStackTrace(error, stackTrace);
     }
   }
 
-  void _bind(_MediaKitEpisodeSession session, int generation) {
+  void _bind(
+    _MediaKitEpisodeSession session,
+    int generation,
+    VideoEpisode episode,
+  ) {
     session.subscriptions.addAll(<StreamSubscription<Object?>>[
       session.player.stream.playing.listen(
         (bool value) => _updateFrom(
@@ -207,6 +213,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
       ),
       session.player.stream.error.listen((String value) {
         if (value.trim().isEmpty) return;
+        _debugPlaybackFailure('stream-error', episode, value);
         _updateFrom(
           session,
           generation,
@@ -219,6 +226,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
   Future<void> _markFirstFrame(
     _MediaKitEpisodeSession session,
     int generation,
+    VideoEpisode episode,
   ) async {
     try {
       final rendered = await session.waitForFirstFrame();
@@ -226,8 +234,32 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
       _emit(_value.copyWith(firstFrameReady: true));
     } on Object catch (error) {
       if (!_isCurrent(session, generation)) return;
+      _debugPlaybackFailure('first-frame-exception', episode, error);
       _emit(_value.copyWith(errorMessage: error.toString(), buffering: false));
     }
+  }
+
+  void _debugPlaybackRequest(String event, VideoEpisode episode) {
+    if (!kDebugMode) return;
+    debugPrint(
+      'MgRead video backend [$event] '
+      'uri=${episode.uri} '
+      'headers=${episode.httpHeaders}',
+    );
+  }
+
+  void _debugPlaybackFailure(
+    String event,
+    VideoEpisode episode,
+    Object error,
+  ) {
+    if (!kDebugMode) return;
+    debugPrint(
+      'MgRead video backend [$event] '
+      'uri=${episode.uri} '
+      'headers=${episode.httpHeaders} '
+      'error=$error',
+    );
   }
 
   void _updateFrom(

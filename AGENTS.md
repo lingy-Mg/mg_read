@@ -28,8 +28,11 @@
   Android/Windows/macOS 发布配置变化时，在全部修改完成后执行一次 `-ChangeType small`；产品级
   大改使用 `large`。纯文档、测试、工具、package、模板或独立数据源插件改动不升级根版本。
 - 每次代码修改执行 `pwsh -File tools/check_source_file_sizes.ps1`，再运行最近 `AGENTS.md` 指定的
-  静态与自动化检查；根 Flutter 代码至少执行 `dart format --output=none --set-exit-if-changed .` 和
-  `flutter analyze`。纯文档任务只执行 `pwsh -File tools/check_documentation.ps1` 和 diff 检查。
+  静态与自动化检查。根 Flutter 代码只格式化本次拥有的 Dart 文件；任务收尾时执行一次
+  `flutter analyze` 和直接受影响的测试，不得无条件执行 `flutter test`。使用
+  `tools/run_flutter_checks.ps1 -Mode Fast|Final -DartPath <owned files> -TestPath <direct tests>`；
+  全仓格式检查和全量测试仅限明确要求的回归/发布，使用 `-Mode Full`。纯文档任务只执行
+  `pwsh -File tools/check_documentation.ps1` 和 diff 检查。
 - Runtime 的 Windows Node 命令使用仓库内固定 Node，不回退到全局 Node。
 - 真实页面和跨层流程只在用户明确授权后使用 Android `integration_test`；仅可使用已连接且 ready
   的 `emulator-5556`，或回退到 `127.0.0.1:7555`。不得启动、控制或重置设备，也不得用桌面操作、
