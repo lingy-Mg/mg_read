@@ -21,6 +21,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:mg_read/app/app.dart';
+import 'package:mg_read/app/app_content_library_source_prefetcher_coordinator.dart';
 import 'package:mg_read/app/app_diagnostics_boundary.dart';
 import 'package:mg_read/app/app_fatal_error_reporter.dart';
 import 'package:mg_read/app/app_settings_lifecycle.dart';
@@ -218,6 +219,7 @@ Future<void> bootstrapMgReadApp({
     isCurrentRunEnabled: () => persistentDiagnostics != null,
   );
   Future<ContentLibrary> getLibrary() => startup.contentLibrary;
+  final sourcePrefetchers = AppContentLibrarySourcePrefetcherCoordinator(diagnostics);
   startup.recordStage('composition', resultState: 'mounted');
   // Do this before any application-support lookup and first-run database open.
   appRunner(
@@ -261,8 +263,8 @@ Future<void> bootstrapMgReadApp({
             return DeferredDiscoveryBookshelfSaver(
               getLibrary,
               ref.read(sourceContentGatewayProvider),
-              diagnostics,
               membership,
+              prefetchers: sourcePrefetchers,
               onMutationStarted: (mutation) => ref
                   .read(libraryPageControllerProvider.notifier)
                   .beginAddition(mutationId: mutation.id, provisionalItem: _summaryFromShelfRequest(mutation.id, mutation.request)),
@@ -293,7 +295,7 @@ Future<void> bootstrapMgReadApp({
             (ref) => DeferredLibraryReaderLauncher(
               getLibrary,
               ref.read(sourceContentGatewayProvider),
-              diagnostics,
+              sourcePrefetchers,
               resolvedManager,
               ref.read(chapterCacheTaskControllerProvider.notifier),
               ref.read(configuredFlutterNetworkProxyManagerProvider),

@@ -96,6 +96,89 @@ void main() {
     expect(jsonEncode(events.map(const DiagnosticEventCodec().encode).toList()), isNot(contains('并发预取测试书')));
   });
 
+  test('removes a failed task so a later start can retry the same book', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-prefetch-retry-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final item = await library.bookshelf.addFromSource(
+      const BookshelfAddRequest(
+        title: '失败重试测试书',
+        author: null,
+        kind: ContentKind.novel,
+        pluginId: 'org.example.source',
+        pluginVersion: '1.0.0',
+        remoteContentId: 'book-retry',
+      ),
+    );
+    final gateway = _FailOncePrefetchGateway();
+    final prefetcher = ContentLibrarySourcePrefetcher(library, gateway);
+
+    prefetcher.start(item);
+    await prefetcher.waitFor(item.id.value);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(prefetcher.hasInFlight(item.id.value), isFalse);
+    expect(gateway.catalogCalls, 1);
+
+    prefetcher.start(item);
+    await prefetcher.waitFor(item.id.value);
+
+    expect(gateway.catalogCalls, 2);
+    expect(gateway.contentChapterIds, <String>['chapter:1']);
+    expect((await library.listAllCatalog(item.id)).first.contentStatus, 'ready');
+  });
+
+  test('prefetches different books concurrently without a global lock', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-prefetch-independent-books-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final first = await library.bookshelf.addFromSource(
+      const BookshelfAddRequest(
+        title: '并行测试书一',
+        author: null,
+        kind: ContentKind.novel,
+        pluginId: 'org.example.source',
+        pluginVersion: '1.0.0',
+        remoteContentId: 'book-parallel-1',
+      ),
+    );
+    final second = await library.bookshelf.addFromSource(
+      const BookshelfAddRequest(
+        title: '并行测试书二',
+        author: null,
+        kind: ContentKind.novel,
+        pluginId: 'org.example.source',
+        pluginVersion: '1.0.0',
+        remoteContentId: 'book-parallel-2',
+      ),
+    );
+    final gateway = _PerBookGatedPrefetchGateway();
+    final prefetcher = ContentLibrarySourcePrefetcher(library, gateway);
+
+    prefetcher.start(first);
+    prefetcher.start(second);
+    await Future.wait<void>(<Future<void>>[
+      gateway.waitUntilRequested('book-parallel-1'),
+      gateway.waitUntilRequested('book-parallel-2'),
+    ]).timeout(const Duration(seconds: 2));
+
+    expect(gateway.catalogIds, <String>['book-parallel-1', 'book-parallel-2']);
+    final firstDone = prefetcher.waitFor(first.id.value);
+    final secondDone = prefetcher.waitFor(second.id.value);
+    gateway.release('book-parallel-1');
+    gateway.release('book-parallel-2');
+    await Future.wait<void>(<Future<void>>[firstDone, secondDone]);
+
+    expect(await library.listAllCatalog(first.id), hasLength(2));
+    expect(await library.listAllCatalog(second.id), hasLength(2));
+  });
+
   test('splits a catalog snapshot larger than one metadata write batch', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-prefetch-large-');
     final library = await ContentLibrary.open(dataRoot: root);
@@ -225,6 +308,46 @@ final class _GatedPrefetchGateway extends _PrefetchGateway {
     catalogCalls += 1;
     if (!catalogRequested.isCompleted) catalogRequested.complete();
     await _catalogRelease.future;
+    return PluginChaptersResult(
+      pluginId: pluginId,
+      sourceName: '预取数据源',
+      items: <PluginChapterSummary>[_chapter('chapter:1', '第一章', 0), _chapter('chapter:2', '第二章', 1)],
+    );
+  }
+}
+
+final class _FailOncePrefetchGateway extends _PrefetchGateway {
+  @override
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async {
+    catalogCalls += 1;
+    if (catalogCalls == 1) throw StateError('Injected catalog failure.');
+    return PluginChaptersResult(
+      pluginId: pluginId,
+      sourceName: '预取数据源',
+      items: <PluginChapterSummary>[_chapter('chapter:1', '第一章', 0), _chapter('chapter:2', '第二章', 1)],
+    );
+  }
+}
+
+final class _PerBookGatedPrefetchGateway extends _PrefetchGateway {
+  final Map<String, Completer<void>> _requested = <String, Completer<void>>{};
+  final Map<String, Completer<void>> _releases = <String, Completer<void>>{};
+  final List<String> catalogIds = <String>[];
+
+  Future<void> waitUntilRequested(String id) => _requested.putIfAbsent(id, Completer<void>.new).future;
+
+  void release(String id) {
+    final completer = _releases.putIfAbsent(id, Completer<void>.new);
+    if (!completer.isCompleted) completer.complete();
+  }
+
+  @override
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async {
+    catalogCalls += 1;
+    catalogIds.add(id);
+    final requested = _requested.putIfAbsent(id, Completer<void>.new);
+    if (!requested.isCompleted) requested.complete();
+    await _releases.putIfAbsent(id, Completer<void>.new).future;
     return PluginChaptersResult(
       pluginId: pluginId,
       sourceName: '预取数据源',

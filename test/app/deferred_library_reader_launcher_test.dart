@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
+import 'package:mg_read/app/app_content_library_source_prefetcher_coordinator.dart';
 import 'package:mg_read/app/app_startup.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
@@ -51,7 +52,8 @@ void main() {
       bytes: mangaCoverBytes,
       mimeType: 'image/png',
     );
-    final launcher = DeferredLibraryReaderLauncher(() async => library, const _Gateway(), diagnostics);
+    const gateway = _Gateway();
+    final launcher = DeferredLibraryReaderLauncher(() async => library, gateway, AppContentLibrarySourcePrefetcherCoordinator(diagnostics));
 
     final novelRequest = await launcher.launch(novel.id.value);
     final mangaRequest = await launcher.launch(manga.id.value);

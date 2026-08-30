@@ -3,6 +3,8 @@
 /// The startup controller is deliberately independent from routing. It owns
 /// one resource attempt, exposes safe retry, and keeps the Riverpod container
 /// stable while persistence and the local Content Library open asynchronously.
+/// Source-backed shelf saves and reader launches receive one lifecycle-scoped
+/// prefetch coordinator from bootstrap so their per-book work stays single-flight.
 library;
 
 import 'dart:async';
@@ -11,6 +13,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
+import 'package:mg_read/app/app_content_library_source_prefetcher_coordinator.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
@@ -32,7 +35,6 @@ import 'package:mg_read/features/profile/application/profile_reading_stats_loade
 import 'package:mg_read/features/profile/data/content_library_profile_reading_stats_loader.dart';
 import 'package:mg_read/features/profile/domain/profile_reading_stats.dart';
 import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
-import 'package:mg_read/features/discovery/application/content_library_source_prefetcher.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/discovery/data/content_library_bookshelf_membership.dart';
@@ -525,16 +527,16 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
   const DeferredDiscoveryBookshelfSaver(
     this._get,
     this._gateway,
-    this._diagnostics,
     this._membership, {
+    required this.prefetchers,
     this.onMutationStarted,
     this.onMutationCommitted,
     this.onMutationFailed,
   });
   final ContentLibraryGetter _get;
   final SourceContentGateway _gateway;
-  final DiagnosticsManager _diagnostics;
   final BookshelfMembershipController _membership;
+  final AppContentLibrarySourcePrefetcherCoordinator prefetchers;
   final void Function(DiscoveryBookshelfMutation mutation)? onMutationStarted;
   final void Function(DiscoveryBookshelfMutation mutation, LibraryItemSummary item)? onMutationCommitted;
   final void Function(DiscoveryBookshelfMutation mutation)? onMutationFailed;
@@ -542,10 +544,9 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
   @override
   Future<void> save({required PluginSourceDescriptor source, PluginContentSummary? content, PluginContentDetail? detail}) async {
     final library = await _get();
-    final prefetcher = ContentLibrarySourcePrefetcher(library, _gateway, diagnostics: _diagnostics);
     await ContentLibraryDiscoveryBookshelfSaver(
       library,
-      prefetcher: prefetcher,
+      prefetcher: prefetchers.resolve(library, _gateway),
       membership: _membership,
       onMutationStarted: onMutationStarted,
       onMutationCommitted: (mutation, item) {
@@ -593,14 +594,14 @@ final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher, Loca
   const DeferredLibraryReaderLauncher(
     this._get,
     this._gateway,
-    this._diagnostics, [
+    this._prefetchers, [
     this._settings,
     this._chapterCacheTasks,
     this._proxyManager,
   ]);
   final ContentLibraryGetter _get;
   final SourceContentGateway _gateway;
-  final DiagnosticsManager _diagnostics;
+  final AppContentLibrarySourcePrefetcherCoordinator _prefetchers;
   final AppSettingsManager? _settings;
   final ChapterCacheTaskController? _chapterCacheTasks;
   final FlutterNetworkProxyManager? _proxyManager;
@@ -636,13 +637,8 @@ final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher, Loca
     return _textReader(library).warmLocal(libraryItemId);
   }
 
-  ContentLibrarySourceTextReader _textReader(ContentLibrary library) => ContentLibrarySourceTextReader(
-    library,
-    _gateway,
-    ContentLibrarySourcePrefetcher(library, _gateway, diagnostics: _diagnostics),
-    _settings,
-    _chapterCacheTasks,
-  );
+  ContentLibrarySourceTextReader _textReader(ContentLibrary library) =>
+      ContentLibrarySourceTextReader(library, _gateway, _prefetchers.resolve(library, _gateway), _settings, _chapterCacheTasks);
 
   Future<List<int>?> _readCachedCover(ContentLibrary library, LibraryItem item) async {
     try {
