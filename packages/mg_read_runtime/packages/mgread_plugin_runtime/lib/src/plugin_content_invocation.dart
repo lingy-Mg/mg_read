@@ -127,6 +127,7 @@ enum PluginDiscoveryIcon {
   timeTravel('timeTravel'),
   trending('trending'),
   urban('urban'),
+  video('video'),
   weeklyRanking('weeklyRanking'),
   wuxia('wuxia');
 
@@ -738,16 +739,25 @@ final class SourceChaptersInvocation
     ).map(_decodeChapterSummary).toList(growable: false);
     _requireUnique(items.map((item) => item.id), 'Source chapters result');
     final groups = result.containsKey('groups')
-        ? _contentList(result, 'groups', 'Source chapters result')
-            .map(_decodeMediaGroup)
-            .toList(growable: false)
+        ? _contentList(
+            result,
+            'groups',
+            'Source chapters result',
+          ).map(_decodeMediaGroup).toList(growable: false)
         : const <PluginMediaGroup>[];
     _requireUnique(groups.map((group) => group.id), 'Source media groups');
     for (var index = 0; index < groups.length; index += 1) {
-      if (groups[index].order != index) _contentInvalid('Source media groups are not ordered.');
+      if (groups[index].order != index)
+        _contentInvalid('Source media groups are not ordered.');
     }
-    final episodeIds = groups.expand((group) => group.episodes).map((episode) => episode.id).toList(growable: false);
-    if (groups.isNotEmpty && (episodeIds.length != items.length || episodeIds.toSet().length != episodeIds.length || !episodeIds.every((id) => items.any((item) => item.id == id)))) {
+    final episodeIds = groups
+        .expand((group) => group.episodes)
+        .map((episode) => episode.id)
+        .toList(growable: false);
+    if (groups.isNotEmpty &&
+        (episodeIds.length != items.length ||
+            episodeIds.toSet().length != episodeIds.length ||
+            !episodeIds.every((id) => items.any((item) => item.id == id)))) {
       _contentInvalid('Source media groups do not match the episode catalog.');
     }
     return PluginChaptersResult(
@@ -881,9 +891,12 @@ final class SourceContentInvocation
         _contentInvalid('Source content pages are not zero-based and ordered.');
       }
     }
-    if ((contentKind == PluginContentKind.novel && (text == null || pages.isNotEmpty || media != null)) ||
-        (contentKind == PluginContentKind.manga && (text != null || pages.isEmpty || media != null)) ||
-        ((contentKind == PluginContentKind.audio || contentKind == PluginContentKind.video) &&
+    if ((contentKind == PluginContentKind.novel &&
+            (text == null || pages.isNotEmpty || media != null)) ||
+        (contentKind == PluginContentKind.manga &&
+            (text != null || pages.isEmpty || media != null)) ||
+        ((contentKind == PluginContentKind.audio ||
+                contentKind == PluginContentKind.video) &&
             (text != null || pages.isNotEmpty || media == null))) {
       _contentInvalid('Source content result has inconsistent content fields.');
     }

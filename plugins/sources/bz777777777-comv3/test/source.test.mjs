@@ -23,6 +23,9 @@ test('browser fixture covers search detail full catalog text cover proxy and no 
     http: { async fetch() { return new Response(new Uint8Array([9])); } },
     browser: { sessionV1: { async request(request) { calls.push(request); const path = new URL(request.url).pathname; return { status: 200, body: path.endsWith('.html') && path.startsWith('/book/') ? content : path === '/book/123/' ? detail : list }; } } },
   });
+  const home = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 10 });
+  assert.equal(home.document.components[0].children[0].layout, 'shelf');
+  assert.equal(home.document.components[1].children[0].layout, 'chips');
   const search = await plugin.search({ query: 'fixture', cursor: null, pageSize: 20 });
   assert.equal(search.items[0].title, 'Fixture Novel');
   const discovery = await plugin.discover({ target: 'category:all', cursor: null, collectionId: null, pageSize: 20 });

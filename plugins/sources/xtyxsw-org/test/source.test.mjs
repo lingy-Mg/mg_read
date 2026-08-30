@@ -31,6 +31,7 @@ test('fixtures cover POST search, cached GET projections, paged content, and cov
     } },
   });
   const root = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 30 });
+  assert.equal(root.document.components.find(({ id }) => id === 'latest-section').children[0].items[0].content.title, 'Fixture Novel');
   assert.equal(root.document.components.find(({ id }) => id === 'categories-section').children[0].categories.length, 22);
   const discovery = await plugin.discover({ target: 'category:fantasy', cursor: null, collectionId: null, pageSize: 20 });
   assert.equal(discovery.document.components[0].children[0].items[0].content.title, 'Fixture Novel');

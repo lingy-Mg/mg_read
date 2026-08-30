@@ -428,7 +428,7 @@ void main() {
             .categories
             .single
             .icon,
-        PluginDiscoveryIcon.fantasy,
+        PluginDiscoveryIcon.video,
       );
       expect(detail.catalogUrl, isNull);
       expect(chapters.items.single.order, 0);
@@ -903,7 +903,7 @@ export async function discover(request) {
         type: 'categoryCollection',
         id: 'category-chips',
         layout: 'chips',
-        categories: [{ id: 'fantasy', title: '玄幻', target: 'fantasy', count: null, url: null, icon: 'fantasy' }],
+        categories: [{ id: 'video', title: '视频', target: 'video', count: null, url: null, icon: 'video' }],
       }],
     }] },
   };

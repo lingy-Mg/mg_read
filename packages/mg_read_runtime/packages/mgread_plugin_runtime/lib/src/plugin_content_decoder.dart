@@ -205,8 +205,12 @@ PluginMediaResource _decodeMediaResource(Object? value) {
     'video' => PluginMediaResourceType.video,
     _ => _contentInvalid('$context contains an unknown resource type.'),
   };
-  final headers = _contentObject(_contentField(item, 'headers', context), context);
-  if (headers.length > 16) _contentInvalid('$context contains too many headers.');
+  final headers = _contentObject(
+    _contentField(item, 'headers', context),
+    context,
+  );
+  if (headers.length > 16)
+    _contentInvalid('$context contains too many headers.');
   final typedHeaders = <String, String>{};
   for (final entry in headers.entries) {
     final header = entry.value;
@@ -239,13 +243,16 @@ bool _isRuntimeMediaProxyUri(Uri url) =>
 PluginMediaGroup _decodeMediaGroup(Object? value) {
   const context = 'Source media group';
   final item = _contentObject(value, context);
-  final episodes = _contentList(item, 'episodes', context)
-      .map(_decodeChapterSummary)
-      .toList(growable: false);
+  final episodes = _contentList(
+    item,
+    'episodes',
+    context,
+  ).map(_decodeChapterSummary).toList(growable: false);
   if (episodes.isEmpty) _contentInvalid('$context cannot be empty.');
   _requireUnique(episodes.map((episode) => episode.id), context);
   for (var index = 0; index < episodes.length; index += 1) {
-    if (episodes[index].order != index) _contentInvalid('$context episodes are not ordered.');
+    if (episodes[index].order != index)
+      _contentInvalid('$context episodes are not ordered.');
   }
   return PluginMediaGroup(
     id: _contentString(item, 'id', context),
@@ -486,6 +493,7 @@ PluginDiscoveryIcon? _discoveryIcon(Object? value, String context) =>
       'timeTravel' => PluginDiscoveryIcon.timeTravel,
       'trending' => PluginDiscoveryIcon.trending,
       'urban' => PluginDiscoveryIcon.urban,
+      'video' => PluginDiscoveryIcon.video,
       'weeklyRanking' => PluginDiscoveryIcon.weeklyRanking,
       'wuxia' => PluginDiscoveryIcon.wuxia,
       _ => _contentInvalid('$context contains an unknown discovery icon.'),

@@ -46,6 +46,7 @@ IconData discoverySemanticIcon(PluginDiscoveryIcon? icon, {IconData fallback = I
   PluginDiscoveryIcon.timeTravel => Icons.history_rounded,
   PluginDiscoveryIcon.trending => Icons.trending_up_rounded,
   PluginDiscoveryIcon.urban => Icons.location_city_rounded,
+  PluginDiscoveryIcon.video => Icons.movie_rounded,
   PluginDiscoveryIcon.weeklyRanking => Icons.date_range_rounded,
   PluginDiscoveryIcon.wuxia => Icons.sports_martial_arts_rounded,
 };

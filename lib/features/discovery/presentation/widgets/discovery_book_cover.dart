@@ -103,6 +103,9 @@ class DiscoveryBookCover extends ConsumerWidget {
   }
 
   Widget _placeholder(Color foreground, Color start, Color end, {required bool isLoading}) {
+    if (presentation == DiscoveryCoverPresentation.landscape) {
+      return _LandscapeCoverPlaceholder(foreground: foreground, start: start, end: end, width: width, isLoading: isLoading);
+    }
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
@@ -141,7 +144,56 @@ class DiscoveryBookCover extends ConsumerWidget {
     };
   }
 
-  BorderRadius get _borderRadius => presentation == DiscoveryCoverPresentation.landscape
-      ? BorderRadius.circular(10)
-      : AppRadii.discoveryCover;
+  BorderRadius get _borderRadius =>
+      presentation == DiscoveryCoverPresentation.landscape ? BorderRadius.circular(10) : AppRadii.discoveryCover;
+}
+
+class _LandscapeCoverPlaceholder extends StatelessWidget {
+  const _LandscapeCoverPlaceholder({
+    required this.foreground,
+    required this.start,
+    required this.end,
+    required this.width,
+    required this.isLoading,
+  });
+
+  final Color foreground;
+  final Color start;
+  final Color end;
+  final double width;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: <Widget>[
+      DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[start.withValues(alpha: 0.88), end],
+          ),
+        ),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: width >= 180 ? 18 : 12, vertical: width >= 180 ? 14 : 9),
+          child: Align(
+            alignment: Alignment.bottomLeft,
+            child: Icon(Icons.movie_rounded, size: width >= 180 ? 28 : 21, color: foreground.withValues(alpha: 0.86)),
+          ),
+        ),
+      ),
+      if (isLoading)
+        ColoredBox(
+          color: Colors.black.withValues(alpha: 0.14),
+          child: Center(
+            child: SizedBox(
+              width: width >= 180 ? 22 : 16,
+              height: width >= 180 ? 22 : 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: foreground),
+            ),
+          ),
+        ),
+    ],
+  );
 }

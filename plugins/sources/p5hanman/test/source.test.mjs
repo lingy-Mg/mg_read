@@ -57,6 +57,15 @@ test('fixture chain emits proxied ordered manga pages with guarded Referer reque
     },
   });
 
+  const home = await plugin.discover({
+    target: null,
+    cursor: null,
+    collectionId: null,
+    pageSize: 20,
+  });
+  assert.equal(home.document.components[0].children[0].layout, 'coverGrid');
+  assert.equal(home.document.components[1].children[0].layout, 'chips');
+
   const firstSearch = await plugin.search({ query: 'fixture-secret', cursor: null, pageSize: 1 });
   assert.equal(firstSearch.items.length, 1);
   assert.equal(firstSearch.nextCursor, 'search:1');

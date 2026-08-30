@@ -7,11 +7,21 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_composite_components.dart';
+import 'package:mg_read/features/discovery/presentation/discovery_semantic_icons.dart';
+import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_content_list_item.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_portrait_content_list_item.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_video_collection.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_video_list_item.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 void main() {
+  test('maps the public video semantic icon to the host movie glyph', () {
+    expect(discoverySemanticIcon(PluginDiscoveryIcon.video), Icons.movie_rounded);
+  });
+
   setUpAll(() async {
     final miSans = FontLoader('packages/novel_reader_ui/MiSans')
       ..addFont(rootBundle.load('packages/novel_reader_ui/assets/fonts/MiSansVF.ttf'));
@@ -178,16 +188,17 @@ void main() {
     expect(columnCount(), 4);
   });
 
-  testWidgets('uses a landscape cover for video items in the cover grid', (tester) async {
+  testWidgets('routes video cover grids to the dedicated landscape component', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
+        debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         home: Scaffold(
           body: Padding(
             padding: const EdgeInsets.all(16),
-            child: DiscoveryCoverGrid(items: <PluginDiscoveryContentItem>[_videoItem()], onPressed: (_) {}, isInBookshelf: (_) => false),
+            child: DiscoveryVideoGrid(items: <PluginDiscoveryContentItem>[_videoItem()], onPressed: (_) {}, isInBookshelf: (_) => false),
           ),
         ),
       ),
@@ -196,10 +207,74 @@ void main() {
 
     final cover = find.byType(DiscoveryBookCover);
     final size = tester.getSize(cover);
-    final grid = tester.widget<GridView>(find.byKey(const Key('runtime-discovery-cover-grid')));
+    final grid = tester.widget<GridView>(find.byKey(const Key('runtime-discovery-video-grid')));
     expect((grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount).crossAxisCount, 2);
     expect(size.height, closeTo(size.width * 9 / 16, 0.01));
     expect(tester.widget<DiscoveryBookCover>(cover).presentation, DiscoveryCoverPresentation.landscape);
+    expect(find.byType(DiscoveryCoverGrid), findsNothing);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/runtime_discovery_video_grid_phone_light.png'));
+  });
+
+  testWidgets('routes video list rows away from the novel component', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 360));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: DiscoveryContentListItem(
+              item: _videoItem(),
+              variant: DiscoveryCoverVariant.dawn,
+              onPressed: () {},
+              keyPrefix: 'video-list-test',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(DiscoveryVideoListItem), findsOneWidget);
+    expect(find.byType(DiscoveryNovelListItem), findsNothing);
+    final cover = tester.widget<DiscoveryBookCover>(find.byType(DiscoveryBookCover));
+    expect(cover.presentation, DiscoveryCoverPresentation.landscape);
+    expect(
+      tester.getSize(find.byType(DiscoveryBookCover)).height,
+      closeTo(tester.getSize(find.byType(DiscoveryBookCover)).width * 9 / 16, 0.01),
+    );
+  });
+
+  testWidgets('falls back to media-specific list rows for a mixed collection', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: RuntimeDiscoveryPage(
+            result: _mixedMediaResult,
+            onDestinationRequested: (_) {},
+            onSourcePressed: () {},
+            onTabSelected: (_) {},
+            onCategorySelected: (_) {},
+            onContentPressed: (_) {},
+            onRefreshRequested: () {},
+            onLoadMore: (_) {},
+            canNavigateBack: false,
+            onBackRequested: () {},
+            loadingCollectionId: null,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(DiscoveryNovelListItem), findsOneWidget);
+    expect(find.byType(DiscoveryVideoListItem), findsOneWidget);
+    expect(find.byType(DiscoveryCoverGrid), findsNothing);
+    expect(find.byType(DiscoveryVideoGrid), findsNothing);
   });
 
   testWidgets('fills each category chip row with adaptive equal-width columns', (tester) async {
@@ -561,6 +636,28 @@ PluginDiscoveryContentItem _videoItem() => PluginDiscoveryContentItem(
   rank: null,
   metric: null,
   recommendation: null,
+);
+
+final PluginDiscoveryDocumentResult _mixedMediaResult = PluginDiscoveryDocumentResult(
+  pluginId: 'mixed.source',
+  sourceName: '混合媒体测试数据源',
+  document: PluginDiscoveryDocument(
+    components: <PluginDiscoveryComponent>[
+      PluginDiscoverySectionComponent(
+        id: 'mixed-section',
+        title: '混合媒体',
+        subtitle: null,
+        children: <PluginDiscoveryComponent>[
+          PluginDiscoveryContentCollectionComponent(
+            id: 'mixed-content',
+            layout: PluginDiscoveryContentLayout.coverGrid,
+            items: <PluginDiscoveryContentItem>[_item('novel:101', '小说条目', 1), _videoItem()],
+            continuation: null,
+          ),
+        ],
+      ),
+    ],
+  ),
 );
 
 final PluginDiscoveryDocumentResult _carouselResult = PluginDiscoveryDocumentResult(

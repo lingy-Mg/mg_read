@@ -52,7 +52,15 @@ export async function discover(
   },
 ) {
   return invoke('discover', async () => {
-    if (request.target === null) return categoriesDocument();
+    if (request.target === null) {
+      if (request.cursor !== null || request.collectionId !== null) {
+        throw new Error('Initial discovery request is invalid.');
+      }
+      const listing = await requireSource().discover('all', 1);
+      return categoriesDocument(
+        listing.items.slice(0, Math.min(request.pageSize, 10)),
+      );
+    }
 
     const target = /^category:([a-z-]+)$/u.exec(request.target)?.[1];
     if (target === undefined || !categories.some(([id]) => id === target)) {
@@ -159,21 +167,54 @@ function requireSource(): DouyinXiaoshuoSource {
   return (source ??= new DouyinXiaoshuoSource(context));
 }
 
-function categoriesDocument() {
+function categoriesDocument(
+  content: readonly Awaited<ReturnType<DouyinXiaoshuoSource['discover']>>['items'][number][],
+) {
+  const items = Object.freeze(
+    content.map((value) =>
+      Object.freeze({
+        content: value,
+        rank: null,
+        metric: null,
+        recommendation: null,
+      }),
+    ),
+  );
   return Object.freeze({
     kind: 'document' as const,
     document: {
       components: Object.freeze([
+        ...(items.length === 0
+          ? []
+          : [
+              {
+                type: 'section' as const,
+                id: 'latest-section',
+                title: '最近更新',
+                subtitle: '全站新近更新作品',
+                icon: 'ongoing' as const,
+                children: Object.freeze([
+                  {
+                    type: 'contentCollection' as const,
+                    id: 'latest-books',
+                    layout: 'shelf' as const,
+                    items,
+                    continuation: null,
+                  },
+                ]),
+              },
+            ]),
         {
           type: 'section' as const,
           id: 'categories-section',
-          title: '分类',
-          subtitle: null,
+          title: '探索分类',
+          subtitle: '按频道继续发现',
+          icon: 'explore' as const,
           children: Object.freeze([
             {
               type: 'categoryCollection' as const,
               id: 'categories',
-              layout: 'grid' as const,
+              layout: 'chips' as const,
               categories: Object.freeze(
                 categories.map(([id, title]) =>
                   Object.freeze({
@@ -182,6 +223,7 @@ function categoriesDocument() {
                     target: `category:${id}`,
                     count: null,
                     url: null,
+                    icon: categoryIcon(id),
                   }),
                 ),
               ),
@@ -191,6 +233,23 @@ function categoriesDocument() {
       ]),
     },
   });
+}
+
+function categoryIcon(id: string) {
+  return ({
+    all: 'books',
+    fantasy: 'fantasy',
+    martial: 'wuxia',
+    cultivation: 'wuxia',
+    urban: 'urban',
+    military: 'military',
+    history: 'history',
+    sports: 'sports',
+    scifi: 'scienceFiction',
+    horror: 'horror',
+    game: 'game',
+    female: 'romance',
+  } as const)[id as 'all'] ?? 'category';
 }
 
 async function invoke<T>(

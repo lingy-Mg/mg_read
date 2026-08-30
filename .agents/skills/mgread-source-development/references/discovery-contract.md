@@ -18,7 +18,7 @@
 - 组合：`vertical`、`horizontal`、`grid`。group 只负责排列，不为已有 surface 的子组件重复套面板；
   横向组合与轮播、书架共用支持鼠标直接拖动的宿主策略。
 
-语义图标类型为 `PluginDiscoveryIcon`/`DiscoveryIcon`。tab、section、category 可选声明 `icon`；Runtime 接受缺省或 `null` 并归一化为 `null`，非白名单字符串必须失败。图标的 Material 映射只由 `lib/features/discovery/presentation/discovery_semantic_icons.dart` 持有。
+语义图标类型为 `PluginDiscoveryIcon`/`DiscoveryIcon`，包含小说/书籍、漫画、音频与视频等媒介语义。tab、section、category 可选声明 `icon`；Runtime 接受缺省或 `null` 并归一化为 `null`，非白名单字符串必须失败。图标的 Material 映射只由 `lib/features/discovery/presentation/discovery_semantic_icons.dart` 持有。
 
 ## 跨层修改清单
 
@@ -30,7 +30,10 @@
 - 公开导出：`packages/mg_read_runtime/src/plugin-content.ts`、`src/index.ts`
 - Flutter 类型：`packages/mg_read_runtime/packages/mgread_plugin_runtime/lib/src/plugin_content_invocation.dart`
 - Flutter 解码：`packages/mg_read_runtime/packages/mgread_plugin_runtime/lib/src/plugin_content_decoder.dart`
-- 主应用渲染：`lib/features/discovery/presentation/runtime_discovery_page.dart`、`discovery_composite_components.dart`
+- 主应用路由：`lib/features/discovery/presentation/runtime_discovery_page.dart`
+- 竖版集合与列表：`discovery_composite_components.dart`、
+  `widgets/discovery_portrait_content_list_item.dart`
+- 视频横版集合与列表：`widgets/discovery_video_collection.dart`、`widgets/discovery_video_list_item.dart`
 - 默认参考来源公开类型：`plugins/sources/aisishuwu/src/mgread-api.ts`
 - 真实来源编译期类型：各来源 `src/mgread-api.ts`
 - 稳定规范：`docs/core.md` 的“插件内容 API”章节

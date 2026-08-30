@@ -13,7 +13,12 @@ test('video fixture retains neutral groups, episodes and HLS proxy metadata', as
     return new Response(url.includes('/type/id/') ? list : url.includes('/play/') ? player : detail);
   } } });
   const root = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 5 });
-  assert.equal(root.document.components[0].children[0].categories.length, 5);
+  assert.equal(root.document.components[0].title, '热门视频');
+  assert.equal(root.document.components[0].children[0].layout, 'coverGrid');
+  assert.equal(root.document.components[0].children[0].items[0].content.contentKind, 'video');
+  assert.equal(root.document.components[1].children[0].layout, 'chips');
+  assert.equal(root.document.components[1].children[0].categories.length, 5);
+  assert.ok(root.document.components[1].children[0].categories.every((category) => category.icon === 'video'));
   const discovery = await plugin.discover({ target: 'category:1', cursor: null, collectionId: null, pageSize: 5 });
   assert.equal(discovery.document.components[0].children[0].items.length, 1);
   assert.equal(discovery.document.components[0].children[0].items[0].content.coverUrl, 'https://hsck.la/upload/fixture-cover.jpg');

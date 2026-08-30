@@ -67,6 +67,9 @@ async function fixture(t, options = {}) {
 
 test('one forced-visible WebView page covers search, discovery, detail, catalog and content', async t => {
   const { calls, logs } = await fixture(t);
+  const home = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 10 });
+  assert.equal(home.document.components[0].children[0].layout, 'shelf');
+  assert.equal(home.document.components[1].children[0].layout, 'chips');
   const search = await plugin.search({ query: 'fixture', cursor: null, pageSize: 20 });
   assert.equal(search.items[0].coverUrl, null);
   const detail = await plugin.getDetail({ id: search.items[0].id });
@@ -80,15 +83,24 @@ test('one forced-visible WebView page covers search, discovery, detail, catalog 
   assert.equal(calls.filter(call => call.operation === 'open').length, 1);
   assert.equal(calls.find(call => call.operation === 'open').visible, true);
   assert.equal(calls.filter(call => call.operation === 'hide').length, 0);
-  assert.ok(calls.filter(call => call.operation === 'show').length >= 4);
+  assert.ok(calls.filter(call => call.operation === 'show').length >= 5);
   assert.deepEqual(calls.slice(0, 4).map(call => call.operation), ['open', 'show', 'navigate', 'getHtml']);
   assert.ok(logs.some(log => log.message === 'source_browser_hide_skipped_forced_visible'));
   assert.ok(logs.some(log => log.message === 'source_browser_initial_fetch_completed_2xx'));
   const fetches = calls.filter(call => call.operation === 'fetch');
-  assert.ok(fetches.length >= 4);
+  assert.ok(fetches.length >= 5);
   assert.ok(fetches.every(call => new URL(call.url).origin === origin && call.responseType === 'text'));
   assert.ok(fetches.every(call => call.headers.cookie === undefined && call.headers['user-agent'] === undefined));
   assert.deepEqual(fetches[0], {
+    operation: 'fetch',
+    url: `${origin}/wap.php?action=shuku`,
+    method: 'GET',
+    headers: { accept: 'text/html' },
+    body: null,
+    responseType: 'text',
+    timeoutMs: 120000,
+  });
+  assert.deepEqual(fetches[1], {
     operation: 'fetch',
     url: `${origin}/wap.php?action=search`,
     method: 'POST',

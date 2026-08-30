@@ -17,7 +17,11 @@ export async function search(request: SearchRequest) {
 }
 
 export async function discover(request: DiscoverRequest) {
-  if (request.target === null) return categoriesDocument();
+  if (request.target === null) {
+    if (request.cursor !== null || request.collectionId !== null) throw new Error('Initial discovery request is invalid.');
+    const content = await invoke('discover_home', (active) => active.discover('fantasy', 1));
+    return categoriesDocument(content.slice(0, Math.min(request.pageSize, 10)));
+  }
   const match = /^category:([a-z-]+)$/u.exec(request.target);
   if (match?.[1] === undefined) throw new Error('Discovery target is invalid.');
   const categoryId = match[1];
@@ -47,14 +51,22 @@ export async function getChapters(request: ChaptersRequest) { return invoke('get
 export async function getContent(request: ContentRequest) { return invoke('get_content', (active) => active.getContent(request.id, request.chapterId)); }
 export async function resource(request: Record<string, unknown>) { return invoke('resource', (active) => active.resource(request)); }
 
-function categoriesDocument() {
-  return Object.freeze({ kind: 'document' as const, document: { components: Object.freeze([{
-    type: 'section' as const, id: 'categories-section', title: '分类', subtitle: null,
-    children: Object.freeze([{ type: 'categoryCollection' as const, id: 'categories', layout: 'grid' as const,
-      categories: Object.freeze(categories.map(([id, title]) => Object.freeze({ id, title, target: `category:${id}`, count: null, url: null }))),
+function categoriesDocument(content: readonly Awaited<ReturnType<ThirtyFiveSource['discover']>>[number][]) {
+  const items = Object.freeze(content.map((value) => Object.freeze({ content: value, rank: null, metric: null, recommendation: null })));
+  return Object.freeze({ kind: 'document' as const, document: { components: Object.freeze([
+    ...(items.length === 0 ? [] : [{
+      type: 'section' as const, id: 'featured-section', title: '站内精选', subtitle: '从玄幻魔法频道开始探索', icon: 'recommendation' as const,
+      children: Object.freeze([{ type: 'contentCollection' as const, id: 'featured-books', layout: 'shelf' as const, items, continuation: null }]),
     }]),
-  }]) } });
+    {
+      type: 'section' as const, id: 'categories-section', title: '小说分类', subtitle: '按题材继续发现', icon: 'explore' as const,
+      children: Object.freeze([{ type: 'categoryCollection' as const, id: 'categories', layout: 'chips' as const,
+        categories: Object.freeze(categories.map(([id, title]) => Object.freeze({ id, title, target: `category:${id}`, count: null, url: null, icon: categoryIcon(id) }))),
+      }]),
+    },
+  ]) } });
 }
+function categoryIcon(id: string) { return ({ fantasy: 'fantasy', wuxia: 'wuxia', urban: 'urban', history: 'history', game: 'game', 'science-fiction': 'scienceFiction', completed: 'completed' } as const)[id as 'fantasy'] ?? 'other'; }
 function requireSource(): ThirtyFiveSource { if (context === undefined) throw new Error('Source is not activated.'); return source ??= new ThirtyFiveSource(context); }
 async function invoke<T>(operation: string, action: (active: ThirtyFiveSource) => Promise<T>): Promise<T> {
   if (context === undefined) throw new Error('Source is not activated.');

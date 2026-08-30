@@ -23,6 +23,7 @@ test('fixtures cover categories search detail catalog content bounded list reque
     } },
   });
   const root = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });
+  assert.equal(root.document.components.find(({ id }) => id === 'featured-section').children[0].layout, 'shelf');
   assert.equal(root.document.components.find(({ id }) => id === 'categories-section').children[0].categories.length, 8);
   const discovery = await plugin.discover({ target: 'category:fantasy', cursor: null, collectionId: null, pageSize: 20 });
   assert.equal(discovery.document.components[0].children[0].items[0].content.coverUrl, null);

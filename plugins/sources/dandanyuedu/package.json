@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/dandanyuedu",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Minimal MgRead novel conversion of the user-provided Dandan Yuedu source.",
   "type": "module",

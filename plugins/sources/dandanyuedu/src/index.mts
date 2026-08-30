@@ -56,7 +56,15 @@ export async function discover(
   },
 ) {
   return invoke('discover', async () => {
-    if (request.target === null) return categoriesDocument();
+    if (request.target === null) {
+      if (request.cursor !== null || request.collectionId !== null) {
+        throw new Error('Initial discovery request is invalid.');
+      }
+      const listing = await requireSource().discover('ancient-romance', 1);
+      return categoriesDocument(
+        listing.items.slice(0, Math.min(request.pageSize, 10)),
+      );
+    }
     const categoryId = /^category:([a-z-]+)$/u.exec(request.target)?.[1];
     if (
       categoryId === undefined ||
@@ -167,21 +175,54 @@ function requireSource(): DandanYueduSource {
   return source;
 }
 
-function categoriesDocument() {
+function categoriesDocument(
+  content: readonly Awaited<ReturnType<DandanYueduSource['discover']>>['items'][number][],
+) {
+  const items = Object.freeze(
+    content.map((value) =>
+      Object.freeze({
+        content: value,
+        rank: null,
+        metric: null,
+        recommendation: null,
+      }),
+    ),
+  );
   return Object.freeze({
     kind: 'document' as const,
     document: {
       components: Object.freeze([
+        ...(items.length === 0
+          ? []
+          : [
+              Object.freeze({
+                type: 'section' as const,
+                id: 'featured-section',
+                title: '古言新作',
+                subtitle: '女频原创内容精选',
+                icon: 'newRelease' as const,
+                children: Object.freeze([
+                  Object.freeze({
+                    type: 'contentCollection' as const,
+                    id: 'featured-books',
+                    layout: 'shelf' as const,
+                    items,
+                    continuation: null,
+                  }),
+                ]),
+              }),
+            ]),
         Object.freeze({
           type: 'section' as const,
           id: 'categories-section',
           title: '小说分类',
-          subtitle: null,
+          subtitle: '按题材继续发现',
+          icon: 'explore' as const,
           children: Object.freeze([
             Object.freeze({
               type: 'categoryCollection' as const,
               id: 'categories',
-              layout: 'grid' as const,
+              layout: 'chips' as const,
               categories: Object.freeze(
                 categories.map(([id, title]) =>
                   Object.freeze({
@@ -190,6 +231,7 @@ function categoriesDocument() {
                     target: `category:${id}`,
                     count: null,
                     url: null,
+                    icon: categoryIcon(id),
                   }),
                 ),
               ),
@@ -199,6 +241,20 @@ function categoriesDocument() {
       ]),
     },
   });
+}
+
+function categoryIcon(id: string) {
+  return ({
+    'ancient-romance': 'romance',
+    'modern-romance': 'romance',
+    'fantasy-romance': 'fantasy',
+    cultivation: 'wuxia',
+    youth: 'school',
+    game: 'game',
+    'science-fiction': 'scienceFiction',
+    mystery: 'mystery',
+    'light-novel': 'lightNovel',
+  } as const)[id as 'ancient-romance'] ?? 'book';
 }
 
 async function invoke<T>(

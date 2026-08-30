@@ -19,12 +19,16 @@ export async function search(request: { query: string; cursor: string | null; pa
 }
 export async function searchSuggestions(_request: { cursor: string | null; pageSize: number }) { return frozen({ items: [], nextCursor: null }); }
 export async function discover(request: { target: string | null; cursor: string | null; collectionId: string | null; pageSize: number }) {
-  if (request.target === null) return rootDocument(); const category = categories.find(([id]) => request.target === `category:${id}`);
+  if (request.target === null) {
+    if (request.cursor !== null || request.collectionId !== null) throw new Error('Initial discovery request is invalid.');
+    return rootDocument(request.pageSize);
+  }
+  const category = categories.find(([id]) => request.target === `category:${id}`);
   if (category === undefined) throw new Error('Discovery target is invalid.'); const page = cursorPage(request.cursor, request.target); const [id, title] = category;
   const html = await fetchText(categoryUrl(id, page)); const collectionId = `video:${id}`; const values = parseList(html).slice(0, clamp(request.pageSize));
   const items = values.map((content) => frozen({ content, rank: null, metric: null, recommendation: null })); const continuation = values.length >= clamp(request.pageSize) && page < 50 ? frozen({ target: request.target, cursor: `${request.target}:${page + 1}` }) : null;
   if (request.collectionId !== null) { if (request.collectionId !== collectionId) throw new Error('Discovery collection is invalid.'); return frozen({ kind: 'append' as const, collectionId, items, continuation }); }
-  return frozen({ kind: 'document' as const, document: { components: [{ type: 'section', id: `${collectionId}:section`, title, subtitle: null, children: [{ type: 'contentCollection', id: collectionId, layout: 'coverGrid', items, continuation }] }] } });
+  return frozen({ kind: 'document' as const, document: { components: [{ type: 'section', id: `${collectionId}:section`, title, subtitle: null, icon: 'video', children: [{ type: 'contentCollection', id: collectionId, layout: 'coverGrid', items, continuation }] }] } });
 }
 export async function getDetail(request: { id: string }) { const id = contentId(request.id); const html = await fetchText(detailUrl(id)); return detail(parseDetail(html, id)); }
 export async function getChapters(request: { id: string }) { const id = contentId(request.id); const groups = parseGroups(await fetchText(detailUrl(id)), id); return frozen({ items: groups.flatMap((group) => group.episodes), groups }); }
@@ -38,7 +42,15 @@ export async function resource(_request: Record<string, unknown>) { return { sta
 
 async function fetchText(url: string) { const response = await requireContext().http.fetch(url, { headers }); if (!response.ok) throw new Error('Source request failed.'); return response.text(); }
 async function fetchJson(url: string): Promise<Json> { const text = await fetchText(url); const value: unknown = JSON.parse(text); if (!isObject(value)) throw new Error('Source response is invalid.'); return value; }
-function rootDocument() { return frozen({ kind: 'document' as const, document: { components: [{ type: 'section', id: 'video-categories', title: '视频分类', subtitle: null, children: [{ type: 'categoryCollection', id: 'video-categories-list', layout: 'grid', categories: categories.map(([id, title]) => ({ id, title, target: `category:${id}`, count: null, url: null })) }] }] } }); }
+async function rootDocument(pageSize: number) {
+  const limit = Math.min(clamp(pageSize), 10);
+  const values = parseList(await fetchText(categoryUrl('1', 1))).slice(0, limit);
+  const items = values.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
+  const components: object[] = [];
+  if (items.length > 0) components.push({ type: 'section', id: 'video-featured', title: '热门视频', subtitle: '横版封面快速浏览', icon: 'hot', children: [{ type: 'contentCollection', id: 'video-featured-list', layout: 'coverGrid', items, continuation: null }] });
+  components.push({ type: 'section', id: 'video-categories', title: '视频分类', subtitle: '按频道继续发现', icon: 'video', children: [{ type: 'categoryCollection', id: 'video-categories-list', layout: 'chips', categories: categories.map(([id, title]) => ({ id, title, target: `category:${id}`, count: null, url: null, icon: 'video' })) }] });
+  return frozen({ kind: 'document' as const, document: { components } });
+}
 function suggestion(value: Json) { return summary(text(value.id), text(value.name), nullable(value.pic), null); }
 function parseList(html: string) { const entries = listEntries(html); const unique = new Map<string, ReturnType<typeof summary>>(); for (const entry of entries) if (!unique.has(entry.id)) unique.set(entry.id, summary(entry.id, entry.title, entry.cover, null)); return [...unique.values()]; }
 function listEntries(html: string) {

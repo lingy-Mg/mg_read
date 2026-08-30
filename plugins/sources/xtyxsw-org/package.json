@@ -1,5 +1,5 @@
 {
-  "name":"@mgread-plugin/xtyxsw-org","version":"1.0.1","private":true,
+  "name":"@mgread-plugin/xtyxsw-org","version":"1.0.2","private":true,
   "description":"MgRead conversion of the user-provided 天悦小说 source.","type":"module","main":"dist/index.mjs",
   "packageManager":"npm@11.13.0","engines":{"node":">=24 <25","npm":"11.13.0"},
   "scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc -p tsconfig.json --noEmit","test":"npm run build && node --test test/contract.test.mjs test/source.test.mjs","test:live":"npm run build && node --use-env-proxy --test test/live-source.test.mjs","pack:plugin":"npm run build && node tools/mgread.mjs pack","verify":"npm run typecheck && npm test && npm run pack:plugin"},

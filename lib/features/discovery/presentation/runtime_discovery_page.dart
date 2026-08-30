@@ -14,8 +14,6 @@
 ///
 library;
 
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -27,9 +25,9 @@ import 'package:mg_read/features/discovery/presentation/discovery_composite_comp
 import 'package:mg_read/features/discovery/presentation/discovery_content_state.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_semantic_icons.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
-import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_content_list_item.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_drag_scroll_behavior.dart';
-import 'package:mg_read/features/discovery/presentation/widgets/discovery_list_tag.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_video_collection.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
@@ -466,49 +464,73 @@ class _ContentCollection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final heroItems = component.items.map(_heroData).toList(growable: false);
+    final hasMixedContentKinds = component.items.map((item) => item.content.contentKind).toSet().length > 1;
+    final isVideoCollection =
+        component.items.isNotEmpty && component.items.every((item) => item.content.contentKind == PluginContentKind.video);
     final cards = component.items
         .map(
-          (item) => _DiscoveryBookCard(
+          (item) => DiscoveryContentListItem(
             item: item,
+            variant: _coverVariant(item.content.id),
             onPressed: () => onContentPressed(item.content),
-            showRank: component.layout == PluginDiscoveryContentLayout.ranking,
+            keyPrefix: 'runtime-discovery-item',
+            showRank: component.layout == PluginDiscoveryContentLayout.ranking || item.rank != null,
             isInBookshelf: isInBookshelf(item.content),
           ),
         )
         .toList(growable: false);
-    final body = switch (component.layout) {
-      PluginDiscoveryContentLayout.featured => Column(
-        children: <Widget>[
-          if (component.items.isNotEmpty)
-            DiscoveryHeroCard(data: _heroData(component.items.first), onPressed: () => onContentPressed(component.items.first.content)),
-          ...cards.skip(1),
-        ],
-      ),
-      PluginDiscoveryContentLayout.carousel => DiscoveryCarouselBooks(
-        books: heroItems,
-        onBookPressed: (book) {
-          final index = heroItems.indexOf(book);
-          if (index >= 0) onContentPressed(component.items[index].content);
-        },
-      ),
-      PluginDiscoveryContentLayout.coverGrid => DiscoveryCoverGrid(
-        items: component.items,
-        onPressed: onContentPressed,
-        isInBookshelf: isInBookshelf,
-      ),
-      PluginDiscoveryContentLayout.shelf => DiscoveryBookShelf(
-        items: component.items,
-        onPressed: onContentPressed,
-        isInBookshelf: isInBookshelf,
-      ),
-      PluginDiscoveryContentLayout.compact || PluginDiscoveryContentLayout.ranking => DiscoveryCompactBookList(
-        items: component.items,
-        onPressed: onContentPressed,
-        isInBookshelf: isInBookshelf,
-        showRanks: component.layout == PluginDiscoveryContentLayout.ranking || component.items.any((item) => item.rank != null),
-      ),
-      PluginDiscoveryContentLayout.list => Column(children: cards),
-    };
+    final body = hasMixedContentKinds
+        ? Column(children: cards)
+        : switch (component.layout) {
+            PluginDiscoveryContentLayout.featured =>
+              isVideoCollection
+                  ? DiscoveryVideoGrid(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)
+                  : Column(
+                      children: <Widget>[
+                        if (component.items.isNotEmpty)
+                          DiscoveryHeroCard(
+                            data: _heroData(component.items.first),
+                            onPressed: () => onContentPressed(component.items.first.content),
+                          ),
+                        ...cards.skip(1),
+                      ],
+                    ),
+            PluginDiscoveryContentLayout.carousel =>
+              isVideoCollection
+                  ? DiscoveryVideoShelf(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)
+                  : DiscoveryCarouselBooks(
+                      books: heroItems,
+                      onBookPressed: (book) {
+                        final index = heroItems.indexOf(book);
+                        if (index >= 0) onContentPressed(component.items[index].content);
+                      },
+                    ),
+            PluginDiscoveryContentLayout.coverGrid =>
+              isVideoCollection
+                  ? DiscoveryVideoGrid(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)
+                  : DiscoveryCoverGrid(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf),
+            PluginDiscoveryContentLayout.shelf =>
+              isVideoCollection
+                  ? DiscoveryVideoShelf(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)
+                  : DiscoveryBookShelf(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf),
+            PluginDiscoveryContentLayout.compact || PluginDiscoveryContentLayout.ranking =>
+              isVideoCollection
+                  ? DiscoveryVideoCompactList(
+                      items: component.items,
+                      onPressed: onContentPressed,
+                      isInBookshelf: isInBookshelf,
+                      showRanks:
+                          component.layout == PluginDiscoveryContentLayout.ranking || component.items.any((item) => item.rank != null),
+                    )
+                  : DiscoveryCompactBookList(
+                      items: component.items,
+                      onPressed: onContentPressed,
+                      isInBookshelf: isInBookshelf,
+                      showRanks:
+                          component.layout == PluginDiscoveryContentLayout.ranking || component.items.any((item) => item.rank != null),
+                    ),
+            PluginDiscoveryContentLayout.list => Column(children: cards),
+          };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -568,165 +590,6 @@ String? _nestedPageTitle(List<PluginDiscoveryComponent> components) {
 
 extension on List<String> {
   String? get firstOrNull => isEmpty ? null : first;
-}
-
-class _DiscoveryBookCard extends StatelessWidget {
-  const _DiscoveryBookCard({required this.item, required this.onPressed, required this.showRank, required this.isInBookshelf});
-
-  final PluginDiscoveryContentItem item;
-  final VoidCallback onPressed;
-  final bool showRank;
-  final bool isInBookshelf;
-
-  @override
-  Widget build(BuildContext context) {
-    final content = item.content;
-    final theme = Theme.of(context);
-    final tokens = AppThemeTokens.of(context);
-    final tags = <String>[...content.categories, ...content.tags].take(3).toList(growable: false);
-    final description = item.recommendation ?? content.description;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final coverWidth = math.min(
-          AppSpacing.discoveryListCoverMaxWidth,
-          math.max(AppSpacing.discoveryListCoverMinWidth, constraints.maxWidth * 0.16),
-        );
-        final coverHeight = content.contentKind == PluginContentKind.video
-            ? coverWidth * AppSpacing.discoveryLandscapeCoverAspectRatio
-            : coverWidth * AppSpacing.discoveryListCoverAspectRatio;
-        final titleStyle = theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600);
-        final secondaryTextStyle = theme.textTheme.bodySmall;
-        final metadataStyle = theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText);
-        final rowBackground = isInBookshelf ? tokens.featureSurface.withValues(alpha: 0.48) : tokens.surface;
-        return Semantics(
-          button: true,
-          label: '查看 ${content.title}${isInBookshelf ? '，已在书架' : ''}',
-          child: Material(
-            color: rowBackground,
-            child: InkWell(
-              key: ValueKey<String>('runtime-discovery-item-${content.id}'),
-              onTap: onPressed,
-              child: Container(
-                constraints: BoxConstraints(minHeight: coverHeight),
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.regular),
-                decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: tokens.divider, width: 0.8)),
-                ),
-                child: IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      if (showRank && item.rank != null) ...<Widget>[
-                        Text('${item.rank}', style: titleStyle),
-                        const SizedBox(width: AppSpacing.compact),
-                      ],
-                      DiscoveryBookCover(
-                        title: content.title,
-                        coverBytes: content.coverBytes,
-                        remoteContentId: content.id,
-                        coverUrl: content.coverUrl,
-                        variant: _coverVariant(content.id),
-                        presentation: content.contentKind == PluginContentKind.video
-                            ? DiscoveryCoverPresentation.landscape
-                            : DiscoveryCoverPresentation.portrait,
-                        width: coverWidth,
-                        height: coverHeight,
-                      ),
-                      const SizedBox(width: AppSpacing.regular),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(content.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
-                            const SizedBox(height: AppSpacing.unit),
-                            Text(_authorAndCategory(content), maxLines: 1, overflow: TextOverflow.ellipsis, style: secondaryTextStyle),
-                            if (tags.isNotEmpty) ...<Widget>[
-                              const SizedBox(height: AppSpacing.unit),
-                              Wrap(
-                                spacing: AppSpacing.compact,
-                                runSpacing: AppSpacing.unit,
-                                children: tags.map((tag) => DiscoveryListTag(label: tag)).toList(growable: false),
-                              ),
-                            ],
-                            if (description != null) ...<Widget>[
-                              const SizedBox(height: AppSpacing.unit),
-                              Text(description, maxLines: 2, overflow: TextOverflow.ellipsis, style: secondaryTextStyle),
-                            ],
-                            const Spacer(),
-                            Row(
-                              children: <Widget>[
-                                Expanded(
-                                  child: Text(_bookMetadata(content), maxLines: 1, overflow: TextOverflow.ellipsis, style: metadataStyle),
-                                ),
-                                if (item.metric != null) ...<Widget>[
-                                  const SizedBox(width: AppSpacing.compact),
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: AppSpacing.comfortable),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: <Widget>[
-                                        Icon(Icons.local_fire_department_rounded, size: 16, color: tokens.notification),
-                                        const SizedBox(width: AppSpacing.unit),
-                                        Text('${item.metric!.value}${item.metric!.label}', style: metadataStyle),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-String _authorAndCategory(PluginContentSummary content) {
-  return <String>[
-    if (content.author != null && content.author!.trim().isNotEmpty) content.author!,
-    if (content.categories.isNotEmpty) content.categories.first,
-  ].join(' · ');
-}
-
-String _bookMetadata(PluginContentSummary content) {
-  final updateLabel = _attributeValue(content.attributes, 'discoveryUpdatedLabel');
-  final resolvedUpdateLabel = updateLabel ?? _relativeUpdateLabel(content.updatedAt);
-  return <String>[
-    if (content.chapterCount != null) '${content.chapterCount}章',
-    _statusLabel(content.status),
-    ?resolvedUpdateLabel,
-  ].join(' · ');
-}
-
-String? _relativeUpdateLabel(DateTime? updatedAt) {
-  if (updatedAt == null) return null;
-  final elapsed = DateTime.now().toUtc().difference(updatedAt.toUtc());
-  if (elapsed.inDays > 0) return '${elapsed.inDays}天前更新';
-  if (elapsed.inHours > 0) return '${elapsed.inHours}小时前更新';
-  if (elapsed.inMinutes > 0) return '${elapsed.inMinutes}分钟前更新';
-  return '刚刚更新';
-}
-
-String _statusLabel(PluginContentStatus value) => switch (value) {
-  PluginContentStatus.ongoing => '连载中',
-  PluginContentStatus.completed => '完结',
-  PluginContentStatus.hiatus => '暂停',
-  PluginContentStatus.unknown => '未知',
-};
-
-String? _attributeValue(Iterable<PluginContentAttribute> attributes, String key) {
-  for (final attribute in attributes) {
-    if (attribute.key == key) return attribute.value;
-  }
-  return null;
 }
 
 DiscoveryCoverVariant _coverVariant(String id) {

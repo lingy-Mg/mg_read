@@ -67,6 +67,11 @@ test('fixture chain covers paged search discovery detail complete catalog and re
   assert.equal(secondSearch.items.length, 1);
   assert.equal(secondSearch.items[0].id, 'qqbook:1100000200');
 
+  const home = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 10 });
+  assert.equal(home.document.components[0].children[0].layout, 'shelf');
+  assert.equal(home.document.components[0].children[0].items[0].content.contentKind, 'novel');
+  assert.equal(home.document.components[1].children[0].layout, 'chips');
+
   const discovery = await plugin.discover({
     target: 'category:ancient-romance',
     cursor: null,

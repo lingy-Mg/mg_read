@@ -15,7 +15,11 @@ test('audio fixture covers search, catalog, locked items and proxy playback meta
     return Response.json(fixture.search);
   } } });
   const root = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 5 });
-  assert.equal(root.document.components[0].children[0].categories.length, 8);
+  assert.equal(root.document.components[0].title, '热门听书');
+  assert.equal(root.document.components[0].children[0].layout, 'shelf');
+  assert.equal(root.document.components[0].children[0].items[0].content.contentKind, 'audio');
+  assert.equal(root.document.components[1].children[0].layout, 'chips');
+  assert.equal(root.document.components[1].children[0].categories.length, 8);
   const discovery = await plugin.discover({ target: 'category:popular', cursor: null, collectionId: null, pageSize: 5 });
   assert.equal(discovery.document.components[0].children[0].items.length, 1);
   const search = await plugin.search({ query: 'fixture', cursor: null, pageSize: 5 });

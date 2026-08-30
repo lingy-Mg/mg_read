@@ -29,7 +29,10 @@ export async function search(request: { query: string; cursor: string | null; pa
 export async function searchSuggestions(_request: { cursor: string | null; pageSize: number }) { return frozen({ items: [], nextCursor: null }); }
 
 export async function discover(request: { target: string | null; cursor: string | null; collectionId: string | null; pageSize: number }) {
-  if (request.target === null) return rootDocument();
+  if (request.target === null) {
+    if (request.cursor !== null || request.collectionId !== null) throw new Error('Initial discovery request is invalid.');
+    return rootDocument(request.pageSize);
+  }
   const category = categories.find(([id]) => request.target === `category:${id}`);
   if (category === undefined) throw new Error('Discovery target is invalid.');
   const page = pageFromCursor(request.cursor, request.target);
@@ -95,8 +98,15 @@ async function chapterPage(id: string, page: number) {
   const data = await fetchJson(`${api}chapter?size=200&page=${page}&sort=asc&bookId=${encodeURIComponent(id)}`); const value = object(data.data);
   return { count: number(value.count), list: records(value.list) };
 }
-function rootDocument() { return frozen({ kind: 'document' as const, document: { components: [{ type: 'section', id: 'audio-categories', title: '听书分类', subtitle: null, children: [{ type: 'categoryCollection', id: 'audio-categories-list', layout: 'grid', categories: categories.map(([id, title]) => ({ id, title, target: `category:${id}`, count: null, url: null, icon: 'audio' })) }] }] } }); }
-function section(id: string, title: string, items: readonly unknown[], continuation: unknown) { return { type: 'section', id: `${id}:section`, title, subtitle: null, children: [{ type: 'contentCollection', id, layout: 'coverGrid', items, continuation }] }; }
+async function rootDocument(pageSize: number) {
+  const data = await fetchJson(`${api}appHome`);
+  const items = popular(data).slice(0, Math.min(clamp(pageSize), 10)).map((value) => frozen({ content: summary(value), rank: null, metric: null, recommendation: null }));
+  const components: object[] = [];
+  if (items.length > 0) components.push(section('audio-popular', '热门听书', items, null, 'shelf', 'audio', '主播与连载节目精选'));
+  components.push({ type: 'section', id: 'audio-categories', title: '听书分类', subtitle: '按题材选择想听的内容', icon: 'explore', children: [{ type: 'categoryCollection', id: 'audio-categories-list', layout: 'chips', categories: categories.map(([id, title]) => ({ id, title, target: `category:${id}`, count: null, url: null, icon: 'audio' })) }] });
+  return frozen({ kind: 'document' as const, document: { components } });
+}
+function section(id: string, title: string, items: readonly unknown[], continuation: unknown, layout = 'coverGrid', icon = 'audio', subtitle: string | null = null) { return { type: 'section', id: `${id}:section`, title, subtitle, icon, children: [{ type: 'contentCollection', id, layout, items, continuation }] }; }
 function summary(value: Json, idOverride?: string) {
   const id = idOverride ?? (text(value.id) || text(value.bookId)); if (id === '') throw new Error('Source item has no ID.');
   const count = number(value.count); return frozen({ id: `audio:${id}`, title: text(value.bookTitle) || text(value.title) || '未命名音频', contentKind: 'audio', author: nullable(value.bookAnchor) ?? nullable(value.anchor), url: `${base}/book/${id}`, coverUrl: nullable(value.bookImage) ?? nullable(value.image), description: nullable(value.bookDesc) ?? nullable(value.desc), language: 'zh-CN', status: status(value.bookUpdateStatus), access: 'mixed', wordCount: null, chapterCount: count || null, publishedAt: null, updatedAt: null, latestChapter: count > 0 ? { id: null, title: `共${count}集`, url: null, updatedAt: null } : null, categories: nullable(value.categoryName) === null ? [] : [nullable(value.categoryName) as string], tags: [], attributes: [] });

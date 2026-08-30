@@ -7,7 +7,7 @@
 /// 注意：
 /// - 组件只消费 Runtime 已校验的数据，不执行 IO，也不接受数据源颜色、尺寸或任意 UI 代码。
 /// - 布局名称表达内容语义；列数、间距和主题始终由 MgRead 根据可用宽度决定。
-/// - 视频封面网格按 contentKind 在紧凑宽度使用两列，小说、漫画与音频保持原有列数。
+/// - 本文件的封面网格和横向栏只负责纵向封面的小说、漫画与音频；视频集合由独立横版组件负责。
 /// - 分类 chips 按可用宽度等分列宽，最后一行保持同一列宽而不按内容收缩。
 /// - 横向书架在组件内允许触摸、手写笔、触控板和鼠标直接拖动。
 library;
@@ -34,25 +34,15 @@ class DiscoveryCoverGrid extends StatelessWidget {
     if (items.isEmpty) return const SizedBox.shrink();
     return LayoutBuilder(
       builder: (context, constraints) {
-        final videoOnly = items.every((item) => item.content.contentKind == PluginContentKind.video);
-        final columns = videoOnly
-            ? switch (constraints.maxWidth) {
-                < 600 => 2,
-                < 1040 => 3,
-                < 1440 => 4,
-                _ => 5,
-              }
-            : switch (constraints.maxWidth) {
-                < 600 => 3,
-                < 1040 => 4,
-                < 1440 => 5,
-                _ => 6,
-              };
+        final columns = switch (constraints.maxWidth) {
+          < 600 => 3,
+          < 1040 => 4,
+          < 1440 => 5,
+          _ => 6,
+        };
         const gap = AppSpacing.discoveryComponentGap;
         final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
-        final coverHeight = items
-            .map((item) => _coverHeight(width, item.content.contentKind))
-            .fold<double>(0, (maximum, value) => value > maximum ? value : maximum);
+        final coverHeight = width * AppSpacing.discoveryCoverAspectRatio;
         return GridView.builder(
           key: const Key('runtime-discovery-cover-grid'),
           shrinkWrap: true,
@@ -70,7 +60,7 @@ class DiscoveryCoverGrid extends StatelessWidget {
             return _CoverTile(
               item: item,
               width: width,
-              coverHeight: _coverHeight(width, item.content.contentKind),
+              coverHeight: coverHeight,
               inBookshelf: isInBookshelf(item.content),
               onPressed: () => onPressed(item.content),
             );
@@ -109,7 +99,7 @@ class DiscoveryBookShelf extends StatelessWidget {
               child: _CoverTile(
                 item: item,
                 width: AppSpacing.discoveryShelfItemWidth,
-                coverHeight: _coverHeight(AppSpacing.discoveryShelfItemWidth, item.content.contentKind),
+                coverHeight: AppSpacing.discoveryShelfItemWidth * AppSpacing.discoveryCoverAspectRatio,
                 inBookshelf: isInBookshelf(item.content),
                 onPressed: () => onPressed(item.content),
               ),
@@ -392,7 +382,7 @@ class _CoverTile extends StatelessWidget {
                   remoteContentId: content.id,
                   coverUrl: content.coverUrl,
                   variant: _coverVariant(content.id),
-                  presentation: _coverPresentation(content.contentKind),
+                  presentation: DiscoveryCoverPresentation.portrait,
                   width: width,
                   height: coverHeight,
                 ),
@@ -423,7 +413,7 @@ class _CoverTile extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              content.author ?? (content.categories.isEmpty ? '来源精选' : content.categories.first),
+              content.author ?? (content.categories.isEmpty ? _contentKindLabel(content.contentKind) : content.categories.first),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
@@ -435,11 +425,12 @@ class _CoverTile extends StatelessWidget {
   }
 }
 
-DiscoveryCoverPresentation _coverPresentation(PluginContentKind kind) =>
-    kind == PluginContentKind.video ? DiscoveryCoverPresentation.landscape : DiscoveryCoverPresentation.portrait;
-
-double _coverHeight(double width, PluginContentKind kind) =>
-    width * (kind == PluginContentKind.video ? AppSpacing.discoveryLandscapeCoverAspectRatio : AppSpacing.discoveryCoverAspectRatio);
+String _contentKindLabel(PluginContentKind kind) => switch (kind) {
+  PluginContentKind.novel => '小说',
+  PluginContentKind.manga => '漫画',
+  PluginContentKind.audio => '音频',
+  PluginContentKind.video => '视频',
+};
 
 class _CategoryGrid extends StatelessWidget {
   const _CategoryGrid({required this.categories, required this.onSelected});

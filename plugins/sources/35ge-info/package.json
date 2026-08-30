@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/35ge-info",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "MgRead conversion of the user-provided 35小说 source.",
   "type": "module",

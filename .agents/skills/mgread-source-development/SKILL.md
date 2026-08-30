@@ -17,7 +17,7 @@ description: Develop or debug MgRead real data-source plugins, the public Source
   [real-page-browser-probing.md](references/real-page-browser-probing.md)
 - 公开发现组件类型、Runtime/Facade 解码或宿主渲染：
   [discovery-contract.md](references/discovery-contract.md)
-- 真实来源的发现区块选择与响应式组合：
+- 真实来源的发现区块、小说/漫画/音频/视频组件选型、简单首页补全与响应式组合：
   [discovery-composition.md](references/discovery-composition.md)
 - 数据源调用 `ctx.webview`：读 [webview-api.md](references/webview-api.md)，再核对 Runtime 当前公开类型、
   直接测试和一个真实 WebView 来源。

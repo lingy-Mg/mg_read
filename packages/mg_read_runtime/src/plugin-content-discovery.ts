@@ -70,7 +70,7 @@ const discoveryIcons = new Set<PluginDiscoveryIcon>([
   "manga", "military", "monthlyRanking", "mystery", "newRelease",
   "ongoing", "other", "ranking", "recommendation", "romance", "rural",
   "school", "scienceFiction", "sports", "star", "system", "timeTravel",
-  "trending", "urban", "weeklyRanking", "wuxia",
+  "trending", "urban", "video", "weeklyRanking", "wuxia",
 ]);
 
 export function validateDiscoverResult(

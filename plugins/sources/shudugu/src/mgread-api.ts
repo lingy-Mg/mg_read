@@ -19,7 +19,7 @@ export type AccessKind = 'free' | 'paid' | 'mixed' | 'unknown';
 export type DiscoveryContentLayout = 'featured' | 'carousel' | 'coverGrid' | 'shelf' | 'compact' | 'ranking' | 'list';
 export type DiscoveryCategoryLayout = 'grid' | 'chips' | 'list';
 export type DiscoveryGroupLayout = 'vertical' | 'horizontal' | 'grid';
-export type DiscoveryIcon = 'allTimeRanking' | 'audio' | 'book' | 'books' | 'category' | 'classic' | 'completed' | 'dailyRanking' | 'explore' | 'fanFiction' | 'fantasy' | 'free' | 'game' | 'globe' | 'history' | 'horror' | 'hot' | 'lightNovel' | 'manga' | 'military' | 'monthlyRanking' | 'mystery' | 'newRelease' | 'ongoing' | 'other' | 'ranking' | 'recommendation' | 'romance' | 'rural' | 'school' | 'scienceFiction' | 'sports' | 'star' | 'system' | 'timeTravel' | 'trending' | 'urban' | 'weeklyRanking' | 'wuxia';
+export type DiscoveryIcon = 'allTimeRanking' | 'audio' | 'book' | 'books' | 'category' | 'classic' | 'completed' | 'dailyRanking' | 'explore' | 'fanFiction' | 'fantasy' | 'free' | 'game' | 'globe' | 'history' | 'horror' | 'hot' | 'lightNovel' | 'manga' | 'military' | 'monthlyRanking' | 'mystery' | 'newRelease' | 'ongoing' | 'other' | 'ranking' | 'recommendation' | 'romance' | 'rural' | 'school' | 'scienceFiction' | 'sports' | 'star' | 'system' | 'timeTravel' | 'trending' | 'urban' | 'video' | 'weeklyRanking' | 'wuxia';
 export interface ContentAttribute { readonly key: string; readonly label: string; readonly value: string; }
 export interface LatestChapter { readonly id: string | null; readonly title: string; readonly url: string | null; readonly updatedAt: string | null; }
 export interface ContentSummary {

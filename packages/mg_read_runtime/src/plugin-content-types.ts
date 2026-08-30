@@ -98,6 +98,7 @@ export type PluginDiscoveryIcon =
   | "timeTravel"
   | "trending"
   | "urban"
+  | "video"
   | "weeklyRanking"
   | "wuxia";
 

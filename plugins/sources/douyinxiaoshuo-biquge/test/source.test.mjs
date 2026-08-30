@@ -77,6 +77,11 @@ test('fixture covers search paging discovery continuation detail full catalog an
   assert.equal(secondSearchPage.items.length, 1);
   assert.equal(secondSearchPage.nextCursor, null);
 
+  const home = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 10 });
+  assert.equal(home.document.components[0].children[0].layout, 'shelf');
+  assert.equal(home.document.components[0].children[0].items[0].content.contentKind, 'novel');
+  assert.equal(home.document.components[1].children[0].layout, 'chips');
+
   const discovery = await plugin.discover({
     target: 'category:all',
     cursor: null,

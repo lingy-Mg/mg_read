@@ -31,7 +31,11 @@ export async function search(request: SearchRequest) {
 }
 
 export async function discover(request: DiscoverRequest) {
-  if (request.target === null) return categoriesDocument();
+  if (request.target === null) {
+    if (request.cursor !== null || request.collectionId !== null) throw new Error('Initial discovery request is invalid.');
+    const result = await invoke('discover_home', (active) => active.discover('new', 1));
+    return categoriesDocument(result.items.slice(0, Math.min(request.pageSize, 10)));
+  }
   const match = /^category:([a-z-]+)$/u.exec(request.target);
   if (match?.[1] === undefined) throw new Error('Discovery target is invalid.');
   const categoryId = match[1];
@@ -87,26 +91,17 @@ export async function resource(request: Record<string, unknown>) {
   return invoke('resource', (active) => active.resource(request));
 }
 
-function categoriesDocument() {
-  return Object.freeze({ kind: 'document' as const, document: { components: Object.freeze([{
-    type: 'section' as const,
-    id: 'categories-section',
-    title: '分类',
-    subtitle: null,
-    children: Object.freeze([{
-      type: 'categoryCollection' as const,
-      id: 'categories',
-      layout: 'grid' as const,
-      categories: Object.freeze(categories.map(([id, title]) => Object.freeze({
-        id,
-        title,
-        target: `category:${id}`,
-        count: null,
-        url: null,
-      }))),
-    }]),
-  }]) } });
+function categoriesDocument(content: readonly Awaited<ReturnType<ShukugeSource['discover']>>['items'][number][]) {
+  const items = Object.freeze(content.map((value) => Object.freeze({ content: value, rank: null, metric: null, recommendation: null })));
+  return Object.freeze({ kind: 'document' as const, document: { components: Object.freeze([
+    ...(items.length === 0 ? [] : [{ type: 'section' as const, id: 'latest-section', title: '最新小说', subtitle: '官网最新入库作品', icon: 'newRelease' as const,
+      children: Object.freeze([{ type: 'contentCollection' as const, id: 'latest-books', layout: 'shelf' as const, items, continuation: null }]) }]),
+    { type: 'section' as const, id: 'categories-section', title: '探索分类', subtitle: '按题材继续发现', icon: 'explore' as const,
+      children: Object.freeze([{ type: 'categoryCollection' as const, id: 'categories', layout: 'chips' as const,
+        categories: Object.freeze(categories.map(([id, title]) => Object.freeze({ id, title, target: `category:${id}`, count: null, url: null, icon: categoryIcon(id) }))) }]) },
+  ]) } });
 }
+function categoryIcon(id: string) { return ({ fantasy: 'fantasy', romance: 'romance', wuxia: 'wuxia', xianxia: 'wuxia', urban: 'urban', military: 'military', game: 'game', mystery: 'mystery', 'science-fiction': 'scienceFiction', history: 'history', new: 'newRelease', ranking: 'ranking' } as const)[id as 'fantasy'] ?? 'category'; }
 
 function requireSource(): ShukugeSource {
   if (context === undefined) throw new Error('Source is not activated.');

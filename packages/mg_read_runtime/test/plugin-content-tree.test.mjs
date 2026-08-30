@@ -22,7 +22,7 @@ test('recursive discovery document accepts bounded semantic components', () => {
           items: [{ content, rank: null, metric: null, recommendation: null }],
         }, {
           type: 'categoryCollection', id: 'categories', layout: 'chips', categories: [
-            { id: 'category:1', title: '玄幻', target: 'category:1', count: null, url: null, icon: 'fantasy' },
+            { id: 'category:1', title: '视频', target: 'category:1', count: null, url: null, icon: 'video' },
           ],
         }],
       }],
@@ -34,7 +34,7 @@ test('recursive discovery document accepts bounded semantic components', () => {
   assert.equal(result.document.components[1].type, 'section');
   assert.equal(result.document.components[1].children[0].children[0].layout, 'coverGrid');
   assert.equal(result.document.components[1].children[0].children[1].layout, 'chips');
-  assert.equal(result.document.components[1].children[0].children[1].categories[0].icon, 'fantasy');
+  assert.equal(result.document.components[1].children[0].children[1].categories[0].icon, 'video');
 });
 
 test('discovery document rejects unknown, duplicate, and misplaced components', () => {

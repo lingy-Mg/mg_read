@@ -48,7 +48,15 @@ export async function discover(
   },
 ) {
   return invoke('discover', async () => {
-    if (request.target === null) return categoriesDocument();
+    if (request.target === null) {
+      if (request.cursor !== null || request.collectionId !== null) {
+        throw new Error('Initial discovery request is invalid.');
+      }
+      const listing = await requireSource().discover('latest', 1);
+      return categoriesDocument(
+        listing.items.slice(0, Math.min(request.pageSize, 10)),
+      );
+    }
     const categoryId = /^category:([a-z-]+)$/u.exec(request.target)?.[1];
     if (
       categoryId === undefined ||
@@ -159,21 +167,54 @@ function requireSource(): P5HanmanSource {
   return (source ??= new P5HanmanSource(context));
 }
 
-function categoriesDocument() {
+function categoriesDocument(
+  content: readonly Awaited<ReturnType<P5HanmanSource['discover']>>['items'][number][],
+) {
+  const items = Object.freeze(
+    content.map((value) =>
+      Object.freeze({
+        content: value,
+        rank: null,
+        metric: null,
+        recommendation: null,
+      }),
+    ),
+  );
   return Object.freeze({
     kind: 'document' as const,
     document: {
       components: Object.freeze([
+        ...(items.length === 0
+          ? []
+          : [
+              Object.freeze({
+                type: 'section' as const,
+                id: 'latest-section',
+                title: '最新韩漫',
+                subtitle: '官网最近更新作品',
+                icon: 'newRelease' as const,
+                children: Object.freeze([
+                  Object.freeze({
+                    type: 'contentCollection' as const,
+                    id: 'latest-manga',
+                    layout: 'coverGrid' as const,
+                    items,
+                    continuation: null,
+                  }),
+                ]),
+              }),
+            ]),
         Object.freeze({
           type: 'section' as const,
           id: 'categories-section',
           title: '漫画分类',
-          subtitle: null,
+          subtitle: '查看更新、热门与完结内容',
+          icon: 'explore' as const,
           children: Object.freeze([
             Object.freeze({
               type: 'categoryCollection' as const,
               id: 'categories',
-              layout: 'grid' as const,
+              layout: 'chips' as const,
               categories: Object.freeze(
                 categories.map(([id, title]) =>
                   Object.freeze({
@@ -182,6 +223,12 @@ function categoriesDocument() {
                     target: `category:${id}`,
                     count: null,
                     url: null,
+                    icon:
+                      id === 'latest'
+                        ? 'newRelease'
+                        : id === 'popular'
+                          ? 'hot'
+                          : 'completed',
                   }),
                 ),
               ),
