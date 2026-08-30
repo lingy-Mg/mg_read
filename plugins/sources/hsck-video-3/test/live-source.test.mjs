@@ -30,9 +30,11 @@ test('live mirror discovery, search, detail, catalog and playback projection are
   assert.ok(matched);
 
   const detail = await plugin.getDetail({ id: matched.id });
+  assert.match(detail.updatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u);
   const chapters = await plugin.getChapters({ id: detail.id });
   assert.equal(chapters.groups.length, 1);
   assert.equal(chapters.items.length, 1);
+  assert.equal(chapters.items[0].updatedAt, detail.updatedAt);
 
   const content = await plugin.getContent({ id: detail.id, chapterId: chapters.items[0].id });
   assert.equal(content.contentKind, 'video');

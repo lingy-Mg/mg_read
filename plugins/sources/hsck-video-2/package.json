@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/hsck-video-2",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "MgRead video source for the user-provided HSCK mirror 2.",
   "type": "module",

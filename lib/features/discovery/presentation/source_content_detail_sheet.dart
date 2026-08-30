@@ -151,12 +151,27 @@ Future<bool> _launchSystemBrowser(Uri url) => launchUrl(url, mode: LaunchMode.ex
 
 Future<_SourceDetailBundle> _loadDetail(SourceContentGateway gateway, String pluginId, String id) async {
   final results = await Future.wait<Object>(<Future<Object>>[
-    gateway.getDetail(pluginId: pluginId, id: id),
-    gateway.getChapters(pluginId: pluginId, id: id),
+    _loadDetailPart('source.getDetail.v1', gateway.getDetail(pluginId: pluginId, id: id)),
+    _loadDetailPart('source.getChapters.v1', gateway.getChapters(pluginId: pluginId, id: id)),
   ]);
   final detail = results[0] as PluginContentDetail;
   final chapters = results[1] as PluginChaptersResult;
   return _SourceDetailBundle(detail: detail, chapters: chapters);
+}
+
+Future<T> _loadDetailPart<T>(String capability, Future<T> request) async {
+  try {
+    return await request;
+  } on Object catch (error, stackTrace) {
+    Error.throwWithStackTrace(_SourceDetailLoadFailure(capability: capability, error: AppError.fromUnknown(error)), stackTrace);
+  }
+}
+
+final class _SourceDetailLoadFailure implements Exception {
+  const _SourceDetailLoadFailure({required this.capability, required this.error});
+
+  final String capability;
+  final AppError error;
 }
 
 final class _SourceDetailBundle {
@@ -285,7 +300,7 @@ class _SourceDetailScreen extends StatefulWidget {
 }
 
 class _SourceDetailScreenState extends State<_SourceDetailScreen> {
-  late final Future<_SourceDetailBundle> _detailFuture;
+  late Future<_SourceDetailBundle> _detailFuture;
 
   @override
   void initState() {
@@ -294,6 +309,12 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
     // its error handler before a synchronous source failure can surface as an
     // uncaught framework error.
     _detailFuture = _loadDetail(widget.gateway, widget.pluginId, widget.id);
+  }
+
+  void _retryDetail() {
+    setState(() {
+      _detailFuture = _loadDetail(widget.gateway, widget.pluginId, widget.id);
+    });
   }
 
   @override
@@ -342,14 +363,15 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                   initialData: previewBundle,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState != ConnectionState.done) {
-                      if (snapshot.hasData) {
+                      final loadingBundle = snapshot.data ?? previewBundle;
+                      if (loadingBundle != null) {
                         return AnimatedSwitcher(
                           duration: const Duration(milliseconds: 260),
                           switchInCurve: Curves.easeOutCubic,
                           switchOutCurve: Curves.easeInCubic,
                           child: _SourceDetailView(
                             key: const ValueKey<String>('source-detail-preview'),
-                            bundle: snapshot.requireData,
+                            bundle: loadingBundle,
                             gateway: widget.gateway,
                             relatedContents: widget.relatedContents,
                             isRefreshing: true,
@@ -375,27 +397,53 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                       );
                     }
                     if (snapshot.hasError) {
+                      final failure = snapshot.error is _SourceDetailLoadFailure
+                          ? snapshot.error! as _SourceDetailLoadFailure
+                          : _SourceDetailLoadFailure(
+                              capability: 'source.getDetail.v1 / source.getChapters.v1',
+                              error: AppError.fromUnknown(snapshot.error!),
+                            );
                       if (previewBundle != null) {
-                        return _SourceDetailView(
+                        return Column(
                           key: const ValueKey<String>('source-detail-preview-error'),
-                          bundle: previewBundle,
-                          gateway: widget.gateway,
-                          relatedContents: widget.relatedContents,
-                          isRefreshing: false,
-                          onTextChapterRequested: widget.onTextChapterRequested,
-                          onComicChapterRequested: widget.onComicChapterRequested,
-                          onAudioChapterRequested: widget.onAudioChapterRequested,
-                          onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
-                          onAddToShelf: widget.onAddToShelf,
-                          onRemoveFromShelf: widget.onRemoveFromShelf,
-                          shelfState: widget.shelfState,
-                          onShelfAction: widget.onShelfAction,
-                          onStartReading: widget.onStartReading,
-                          onRecommendationRequested: widget.onRecommendationRequested,
-                          onExternalUrlRequested: widget.onExternalUrlRequested,
+                          children: <Widget>[
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                AppSpacing.discoveryPagePadding,
+                                0,
+                                AppSpacing.discoveryPagePadding,
+                                AppSpacing.regular,
+                              ),
+                              child: _DetailFailure(
+                                error: failure.error,
+                                capability: failure.capability,
+                                hasRetainedData: true,
+                                onRetry: _retryDetail,
+                              ),
+                            ),
+                            Expanded(
+                              child: _SourceDetailView(
+                                bundle: previewBundle,
+                                gateway: widget.gateway,
+                                relatedContents: widget.relatedContents,
+                                isRefreshing: false,
+                                onTextChapterRequested: widget.onTextChapterRequested,
+                                onComicChapterRequested: widget.onComicChapterRequested,
+                                onAudioChapterRequested: widget.onAudioChapterRequested,
+                                onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
+                                onAddToShelf: widget.onAddToShelf,
+                                onRemoveFromShelf: widget.onRemoveFromShelf,
+                                shelfState: widget.shelfState,
+                                onShelfAction: widget.onShelfAction,
+                                onStartReading: widget.onStartReading,
+                                onRecommendationRequested: widget.onRecommendationRequested,
+                                onExternalUrlRequested: widget.onExternalUrlRequested,
+                              ),
+                            ),
+                          ],
                         );
                       }
-                      return _DetailFailure(error: AppError.fromUnknown(snapshot.error!));
+                      return _DetailFailure(error: failure.error, capability: failure.capability, onRetry: _retryDetail);
                     }
                     return AnimatedSwitcher(
                       duration: const Duration(milliseconds: 260),

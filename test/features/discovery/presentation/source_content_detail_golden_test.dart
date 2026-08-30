@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
 
@@ -149,6 +150,27 @@ void main() {
 
     gateway.complete();
     await tester.pumpAndSettle();
+    expect(find.text('来源页面已验证的作品简介。'), findsOneWidget);
+  });
+
+  testWidgets('shows stable error details over retained preview and can retry', (tester) async {
+    await _setViewport(tester, const Size(390, 900));
+    final gateway = _RetryingDetailGateway();
+    await tester.pumpWidget(_DetailGoldenHost(gateway: gateway));
+    await tester.pumpAndSettle();
+
+    expect(find.text('详情加载失败'), findsOneWidget);
+    expect(find.textContaining('错误码：invalid_format'), findsOneWidget);
+    expect(find.textContaining('失败阶段：source.getDetail.v1'), findsOneWidget);
+    expect(find.text('已保留列表预览；实时详情和可播放选集尚未加载。'), findsOneWidget);
+    expect(find.byKey(const Key('source-detail-start-reading')), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.byKey(const Key('source-detail-start-reading'))).onPressed, isNull);
+
+    await tester.tap(find.byKey(const Key('source-detail-retry')));
+    await tester.pumpAndSettle();
+
+    expect(gateway.detailRequests, 2);
+    expect(find.byKey(const Key('source-content-sheet-failure')), findsNothing);
     expect(find.text('来源页面已验证的作品简介。'), findsOneWidget);
   });
 }
@@ -304,6 +326,19 @@ final class _DelayedDetailGateway extends _GoldenDetailGateway {
   void complete() {
     _detail.complete(detail);
     _chapters.complete(AliceBookHouseDetailFixture.firstCatalogPage);
+  }
+}
+
+final class _RetryingDetailGateway extends _GoldenDetailGateway {
+  var detailRequests = 0;
+
+  @override
+  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async {
+    detailRequests += 1;
+    if (detailRequests == 1) {
+      throw AppError.fromCode(AppErrorCode.invalidFormat);
+    }
+    return detail;
   }
 }
 

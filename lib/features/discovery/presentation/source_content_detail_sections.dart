@@ -564,12 +564,74 @@ Future<void> _showChapterContent(
 }
 
 class _DetailFailure extends StatelessWidget {
-  const _DetailFailure({required this.error});
+  const _DetailFailure({required this.error, this.capability = 'source.getContent.v1', this.hasRetainedData = false, this.onRetry});
+
   final AppError error;
+  final String capability;
+  final bool hasRetainedData;
+  final VoidCallback? onRetry;
+
   @override
-  Widget build(BuildContext context) =>
-      Center(child: Text('无法加载内容（${error.code.wireValue}）', key: const Key('source-content-sheet-failure')));
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Semantics(
+      liveRegion: true,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620),
+          child: Material(
+            key: const Key('source-content-sheet-failure'),
+            color: colors.errorContainer,
+            shape: RoundedRectangleBorder(
+              borderRadius: AppRadii.surface,
+              side: BorderSide(color: colors.error),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.regular),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Icon(Icons.error_outline_rounded, color: colors.onErrorContainer),
+                      const SizedBox(width: AppSpacing.compact),
+                      Expanded(
+                        child: Text('详情加载失败', style: theme.textTheme.titleSmall?.copyWith(color: colors.onErrorContainer)),
+                      ),
+                      if (onRetry != null) TextButton(key: const Key('source-detail-retry'), onPressed: onRetry, child: const Text('重试')),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.unit),
+                  Text(_detailErrorDescription(error), style: theme.textTheme.bodyMedium?.copyWith(color: colors.onErrorContainer)),
+                  if (hasRetainedData) ...<Widget>[
+                    const SizedBox(height: AppSpacing.unit),
+                    Text('已保留列表预览；实时详情和可播放选集尚未加载。', style: theme.textTheme.bodySmall?.copyWith(color: colors.onErrorContainer)),
+                  ],
+                  const SizedBox(height: AppSpacing.compact),
+                  SelectableText(
+                    '错误码：${error.code.wireValue}\n失败阶段：$capability\n自动重试：${error.retryable ? '允许' : '不建议'}',
+                    key: const Key('source-detail-error-details'),
+                    style: theme.textTheme.bodySmall?.copyWith(color: colors.onErrorContainer, fontFamily: 'monospace'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
+
+String _detailErrorDescription(AppError error) => switch (error.code) {
+  AppErrorCode.invalidFormat => '数据源返回的详情或目录格式不符合规范。请更新插件后重试。',
+  AppErrorCode.runtimeUnavailable || AppErrorCode.runtimeStartFailed || AppErrorCode.runtimeNotReady => '数据源运行环境当前不可用，请重启应用后重试。',
+  AppErrorCode.pluginNotFound || AppErrorCode.pluginDisabled || AppErrorCode.pluginDamaged => '当前数据源不可用，请在数据源管理中检查插件状态。',
+  AppErrorCode.timeout || AppErrorCode.rateLimited || AppErrorCode.overloaded => '请求暂时没有完成，请稍后重试。',
+  _ => '无法安全加载实时详情，请根据下方稳定错误信息继续定位。',
+};
 
 DiscoveryCoverVariant _coverVariant(String id) {
   final checksum = id.codeUnits.fold<int>(0, (value, unit) => value + unit);

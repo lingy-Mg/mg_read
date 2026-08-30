@@ -4,7 +4,7 @@
  * 职责：解析镜像站的分类、搜索、详情与单集 HLS 播放信息。
  * 生命周期：activate 仅保存宿主公开上下文；所有网络访问发生在 Source 调用期间。
  * IO：HTML 由 ctx.http 获取，视频资源只登记到 ctx.resource.proxy。
- * 状态所有权：插件只持有当前宿主上下文，不缓存正文、媒体、Cookie 或签名地址。
+ * 状态所有权：插件只持有当前宿主上下文，并合并同一详情的并发请求；不缓存正文、媒体、Cookie 或签名地址。
  * 注意：稳定 ID 不包含域名；镜像 origin 只由本文件的 base 常量拥有。
  */
 type Context = {
@@ -38,9 +38,11 @@ const categories = Object.freeze<Category[]>([
   { code: 'dm', title: '动漫剧情' },
 ]);
 let context: Context | undefined;
+const detailLoads = new Map<string, Promise<string>>();
 
 export async function activate(next: Context): Promise<void> {
   context = next;
+  detailLoads.clear();
   next.log.info('source_activated');
 }
 
@@ -105,12 +107,12 @@ export async function discover(request: {
 
 export async function getDetail(request: { id: string }) {
   const id = contentId(request.id);
-  return parseDetail(await fetchText(detailUrl(id)), id).item;
+  return parseDetail(await fetchDetail(id), id).item;
 }
 
 export async function getChapters(request: { id: string }) {
   const id = contentId(request.id);
-  const parsed = parseDetail(await fetchText(detailUrl(id)), id);
+  const parsed = parseDetail(await fetchDetail(id), id);
   const episode = frozen({
     id: chapterId(id),
     title: '正片',
@@ -135,7 +137,7 @@ export async function getContent(request: { id: string; chapterId: string }) {
   const id = contentId(request.id);
   if (request.chapterId !== chapterId(id)) throw new Error('Chapter ID is invalid.');
   const pageUrl = detailUrl(id);
-  const parsed = parseDetail(await fetchText(pageUrl), id);
+  const parsed = parseDetail(await fetchDetail(id), id);
   if (parsed.mediaUrl === null || !safeMediaUrl(parsed.mediaUrl)) throw new Error('Playback address is unavailable.');
   const resourceType = /\.m3u8(?:$|[?#])/iu.test(parsed.mediaUrl) ? 'hls' : 'video';
   const mediaHeaders = { Referer: pageUrl, 'User-Agent': headers['User-Agent'] };
@@ -207,9 +209,32 @@ async function rootDocument(pageSize: number) {
 }
 
 async function fetchText(url: string) {
-  const response = await requireContext().http.fetch(url, { headers });
-  if (!response.ok) throw new Error('Source request failed.');
-  return response.text();
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (attempt > 0) await new Promise<void>((resolve) => setTimeout(resolve, attempt * 100));
+    try {
+      const response = await requireContext().http.fetch(url, { headers });
+      lastStatus = response.status;
+      if (response.ok) return await response.text();
+      if (response.status < 500) break;
+    } catch {
+      requireContext().log.warn('source_request_retry');
+    }
+  }
+  if (lastStatus > 0) throw new Error('Source request failed with status ' + lastStatus + '.');
+  throw new Error('Source request failed.');
+}
+
+async function fetchDetail(id: string) {
+  const existing = detailLoads.get(id);
+  if (existing !== undefined) return existing;
+  const request = fetchText(detailUrl(id));
+  detailLoads.set(id, request);
+  try {
+    return await request;
+  } finally {
+    if (detailLoads.get(id) === request) detailLoads.delete(id);
+  }
 }
 
 function parseList(html: string): ContentSummary[] {
@@ -241,7 +266,7 @@ function parseDetail(html: string, id: string) {
   const videoTag = /<img\b[^>]*id=["']video_img["'][^>]*>/iu.exec(html)?.[0] ?? '';
   const poster = attribute(videoTag, 'alt') || null;
   const mediaUrl = absolute(attribute(videoTag, 'src'));
-  const updatedAt = /时间\s*[：:]\s*(\d{4}-\d{2}-\d{2})/u.exec(strip(html))?.[1] ?? null;
+  const updatedAt = dateTimestamp(/时间\s*[：:]\s*(\d{4}-\d{2}-\d{2})/u.exec(strip(html))?.[1]);
   const item = summary(id, headings[0] || ('视频 ' + id), poster, updatedAt, 1);
   return frozen({ item: frozen({ ...item, aliases: [], catalogUrl: item.url }), mediaUrl });
 }
@@ -268,6 +293,17 @@ function summary(id: string, title: string, cover: string | null, updatedAt: str
     tags: [],
     attributes: [],
   });
+}
+
+function dateTimestamp(value: string | undefined) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value ?? '');
+  if (match === null) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) return null;
+  return value + 'T00:00:00+08:00';
 }
 
 function categoryCounts(html: string) {
