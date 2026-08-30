@@ -1,5 +1,6 @@
 /**
  * Baozimh manga parser and HTTP/resource boundary.
+ * Requests start from the stable public origin and accept only the two currently verified official mirror origins.
  * Detail and catalog share one bounded book-page projection; image bytes are fetched and streamed only by Runtime.
  * HTML, manga pages, credentials, signed media URLs, and user input are never cached or logged.
  */
@@ -10,7 +11,8 @@ import * as cheerio from 'cheerio/slim';
 import type { ContentDetail, ContentSummary, MgReadPluginContext } from './contracts.js';
 import { ProjectionCache } from './projection-cache.js';
 
-const origin = 'https://www.baozimh.com';
+const origin = 'https://cn.bzmgcn.com';
+const trustedOrigins = new Set([origin, 'https://www.baozimh.com']);
 export const categories = Object.freeze([
   ['china', '國漫', '/classify?type=all&region=cn&state=all&filter=*'],
   ['japan', '日本', '/classify?type=all&region=jp&state=all&filter=*'],
@@ -126,10 +128,10 @@ export class BaozimhSource {
   async #html(url: URL): Promise<{ readonly body: string; readonly url: URL }> {
     const response = await this.context.http.fetch(url, { redirect: 'follow', headers: { accept: 'text/html,application/xhtml+xml', 'accept-language': 'zh-TW,zh;q=0.9', referer: `${origin}/` } });
     const body = await response.text(); if (!response.ok || isChallenge(body)) throw new Error('Source page is unavailable.');
-    const finalUrl = new URL(response.url || url.toString()); if (finalUrl.origin !== origin) throw new Error('Source redirect is invalid.');
+    const finalUrl = new URL(response.url || url.toString()); if (!isTrustedOrigin(finalUrl)) throw new Error('Source redirect is invalid.');
     return Object.freeze({ body, url: finalUrl });
   }
-  #proxyImage(url: URL, referer: URL): string | null { return isImageUrl(url) && referer.origin === origin ? this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/avif,image/webp,image/*,*/*;q=0.8', Referer: referer.toString() } }) : null; }
+  #proxyImage(url: URL, referer: URL): string | null { return isImageUrl(url) && isTrustedOrigin(referer) ? this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/avif,image/webp,image/*,*/*;q=0.8', Referer: referer.toString() } }) : null; }
 }
 
 function summary(input: { readonly id: string; readonly url: URL; readonly title: string; readonly author: string | null; readonly coverUrl: string | null;
@@ -147,9 +149,10 @@ function encodeChapterId(bookId: string, url: URL): string { return `chapter:${t
 function decodeChapterId(id: string, bookId: string): URL { const match = /^chapter:([A-Za-z0-9_-]+):([A-Za-z0-9_-]+)$/u.exec(id); if (match?.[1] === undefined || match[2] === undefined || Buffer.from(match[1], 'base64url').toString('utf8') !== bookId) throw new Error('Chapter ID is invalid.'); const url = new URL(Buffer.from(match[2], 'base64url').toString('utf8'), origin); if (!isChapterUrl(url)) throw new Error('Chapter ID is invalid.'); return url; }
 function token(value: string): string { return Buffer.from(value, 'utf8').toString('base64url'); }
 function cacheKey(scope: string, value: string): string { return `${scope}:${createHash('sha256').update(value).digest('base64url')}`; }
-function isBookUrl(url: URL): boolean { return url.origin === origin && /^\/comic\/[A-Za-z0-9_-]+\/?$/u.test(url.pathname); }
-function isChapterUrl(url: URL): boolean { return url.origin === origin && /^\/comic\/chapter\/[A-Za-z0-9_-]+\/\d+_\d+\.html$/u.test(url.pathname); }
-function directChapterUrl(url: URL): URL | null { if (url.origin !== origin || url.pathname !== '/user/page_direct') return isChapterUrl(url) ? url : null; const comicId = url.searchParams.get('comic_id'); const section = url.searchParams.get('section_slot'); const chapter = url.searchParams.get('chapter_slot'); if (comicId === null || !/^[A-Za-z0-9_-]+$/u.test(comicId) || !/^\d+$/u.test(section ?? '') || !/^\d+$/u.test(chapter ?? '')) return null; return new URL(`/comic/chapter/${comicId}/${section}_${chapter}.html`, origin); }
+function isTrustedOrigin(url: URL): boolean { return url.protocol === 'https:' && trustedOrigins.has(url.origin); }
+function isBookUrl(url: URL): boolean { return isTrustedOrigin(url) && /^\/comic\/[A-Za-z0-9_-]+\/?$/u.test(url.pathname); }
+function isChapterUrl(url: URL): boolean { return isTrustedOrigin(url) && /^\/comic\/chapter\/[A-Za-z0-9_-]+\/\d+_\d+\.html$/u.test(url.pathname); }
+function directChapterUrl(url: URL): URL | null { if (!isTrustedOrigin(url) || url.pathname !== '/user/page_direct') return isChapterUrl(url) ? url : null; const comicId = url.searchParams.get('comic_id'); const section = url.searchParams.get('section_slot'); const chapter = url.searchParams.get('chapter_slot'); if (comicId === null || !/^[A-Za-z0-9_-]+$/u.test(comicId) || !/^\d+$/u.test(section ?? '') || !/^\d+$/u.test(chapter ?? '')) return null; return new URL(`/comic/chapter/${comicId}/${section}_${chapter}.html`, url.origin); }
 function isImageUrl(url: URL): boolean { return url.protocol === 'https:' && (url.hostname === 'static-tw.baozimh.com' || url.hostname.endsWith('.bzcdn.net')); }
 function imageMime(url: URL): string | null { const ext = /\.([A-Za-z0-9]+)$/u.exec(url.pathname)?.[1]?.toLowerCase(); return ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : null; }
 function dimension(value: string | undefined): number | null { const number = Number(value); return Number.isSafeInteger(number) && number > 0 ? number : null; }
