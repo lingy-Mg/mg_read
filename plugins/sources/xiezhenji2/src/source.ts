@@ -2,6 +2,7 @@
  * Cosplaytele source parser and network boundary.
  * Search/discovery/detail HTML is cached; gallery content and image bodies are never cached.
  * Listing covers accept the site's lazy/responsive image fields but never proxy placeholders.
+ * HTML and image requests rely on Runtime's global desktop Chrome UA; this source owns no browser session.
  */
 import { Buffer } from 'node:buffer';
 import * as cheerio from 'cheerio/slim';
@@ -10,7 +11,6 @@ import { PluginCache } from '@mgread/plugin-cache';
 import type { ContentDetail, ContentSummary, MgReadPluginContext } from './contracts.js';
 
 const origin = 'https://cosplaytele.com';
-const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const listingPolicy = Object.freeze({ namespace: 'listing', staleAfterMs: 10 * 60 * 1000, serveStaleWhileRevalidate: true });
 const detailPolicy = Object.freeze({ namespace: 'detail', staleAfterMs: 60 * 60 * 1000, allowStaleOnError: false });
 export const categories = Object.freeze([
@@ -99,16 +99,12 @@ export class Xiezhenji2Source {
 
   async #cachedHtml(url: URL, policy: typeof listingPolicy | typeof detailPolicy): Promise<string> { return this.#cache.getOrFetchText(url, policy, () => this.#html(url)); }
   async #html(url: URL): Promise<string> {
-    const response = await this.context.http.fetch(url, { headers: { accept: 'text/html,application/xhtml+xml', 'accept-language': 'zh-CN,zh;q=0.9', referer: `${origin}/`, 'user-agent': userAgent } });
+    const response = await this.context.http.fetch(url, { headers: { accept: 'text/html,application/xhtml+xml', 'accept-language': 'zh-CN,zh;q=0.9', referer: `${origin}/` } });
     const body = await response.text();
-    if (!response.ok || isCloudflare(body)) {
-      const browser = await this.context.browser.sessionV1.request({ version: 1, sessionKey: 'cosplaytele', url: url.toString(), method: 'GET', headers: { accept: 'text/html', referer: `${origin}/` }, body: null, interaction: 'allow', timeoutMs: 120_000, maxResponseBytes: 2 * 1024 * 1024 });
-      if (browser.status >= 400 || isCloudflare(browser.body)) throw new Error('Browser verification is incomplete.');
-      return browser.body;
-    }
+    if (!response.ok) throw new Error('Source request failed.');
     return body;
   }
-  #proxyImage(url: URL, referer: URL): string { if (url.protocol !== 'https:' || url.hostname !== 'cosplaytele.com' || referer.origin !== origin) throw new Error('Image request is invalid.'); return this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/*', Referer: referer.toString(), 'User-Agent': userAgent } }); }
+  #proxyImage(url: URL, referer: URL): string { if (url.protocol !== 'https:' || url.hostname !== 'cosplaytele.com' || referer.origin !== origin) throw new Error('Image request is invalid.'); return this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/*', Referer: referer.toString() } }); }
 }
 
 function summary(id: string, title: string, url: URL, coverUrl: string | null, description: string | null, author: string | null, tags: readonly string[]): ContentSummary { return Object.freeze({ id, title, contentKind: 'manga', author, url: url.toString(), coverUrl, description, language: null, status: 'unknown', access: 'free', wordCount: null, chapterCount: 1, publishedAt: null, updatedAt: null, latestChapter: { id: `gallery:${token(url)}`, title: '全部图片', url: url.toString(), updatedAt: null }, categories: tags, tags, attributes: Object.freeze([]) }); }
@@ -125,4 +121,3 @@ function parseCount(value: string): number | null { const match = /(\d+)\s+photo
 function collectPageUrls(html: string, base: URL): readonly URL[] { const $ = cheerio.load(html); return uniqueUrls($('.entry-content a[href], .page-links a[href], .nav-links a[href]').toArray().flatMap((element) => { const href = $(element).attr('href'); if (href === undefined) return []; const url = new URL(href, base); return url.origin === origin && /\/(?:page\/)?\d+\/?$/u.test(url.pathname) ? [url] : []; })); }
 function parseImages(html: string, base: URL): readonly URL[] { const $ = cheerio.load(html); const links = $('.entry-content .gallery a[href]').toArray().flatMap((element) => { const href = $(element).attr('href'); return href === undefined ? [] : [new URL(href, base)]; }); const images = links.length === 0 ? $('.entry-content .gallery img, .entry-content img.attachment-full').toArray().flatMap((element) => { const raw = $(element).attr('data-src') ?? $(element).attr('data-lazy-src') ?? $(element).attr('src'); return raw === undefined ? [] : [new URL(raw, base)]; }) : links; return uniqueUrls(images.filter((url) => url.hostname === 'cosplaytele.com' && /\/wp-content\/uploads\//u.test(url.pathname) && /\.(?:jpe?g|png|webp|gif)$/iu.test(url.pathname) && !url.pathname.includes('cropped-icon-'))); }
 function imageMime(url: URL): string | null { const extension = /\.([A-Za-z0-9]+)$/u.exec(url.pathname)?.[1]?.toLowerCase(); return extension === 'jpg' || extension === 'jpeg' ? 'image/jpeg' : extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : extension === 'gif' ? 'image/gif' : null; }
-function isCloudflare(body: string): boolean { return /(?:cf-challenge|cf-turnstile|Just a moment|Checking your browser)/iu.test(body); }
