@@ -22,6 +22,7 @@ import '../api/audio_controller.dart';
 import '../api/audio_models.dart';
 import '../backend/media_kit_audio_backend.dart';
 import '../core/audio_player_session.dart';
+import 'audio_playback_settings_sheet.dart';
 import 'audio_player_artwork_stage.dart';
 import 'audio_player_components.dart';
 import 'audio_player_observer_proxy.dart';

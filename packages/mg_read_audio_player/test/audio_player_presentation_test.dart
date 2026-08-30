@@ -39,6 +39,11 @@ void main() {
     expect(find.byKey(const Key('audio-rate')), findsOneWidget);
     expect(find.byKey(const Key('audio-volume')), findsOneWidget);
     expect(find.byKey(const Key('audio-timer')), findsOneWidget);
+    expect(find.byKey(const Key('audio-settings-summary')), findsOneWidget);
+    expect(find.text('播放调节'), findsOneWidget);
+    expect(find.text('0.5'), findsOneWidget);
+    expect(find.text('0.75'), findsOneWidget);
+    expect(find.textContaining(r'$'), findsNothing);
 
     await tester.tap(find.byKey(const Key('audio-rate-175')));
     await tester.pump();
@@ -63,7 +68,35 @@ void main() {
     await tester.pump();
     expect(controller.snapshot.sleepTimerDuration, isNull);
 
+    await tester.tap(find.byKey(const Key('audio-settings-done')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('audio-settings-sheet')), findsNothing);
+
     controller.dispose();
+  });
+
+  testWidgets('compact portrait keeps every settings group and done action', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _host(backend: _PresentationBackend(), size: const Size(400, 700)),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('audio-settings')));
+    await tester.tap(find.byKey(const Key('audio-settings')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('audio-rate')), findsOneWidget);
+    expect(find.byKey(const Key('audio-volume')), findsOneWidget);
+    expect(find.byKey(const Key('audio-timer')), findsOneWidget);
+    expect(find.byKey(const Key('audio-settings-done')), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('queue sheet highlights current and protects locked chapters', (

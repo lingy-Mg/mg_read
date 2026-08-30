@@ -56,9 +56,13 @@ String formatAudioDuration(Duration value) {
 
 String formatAudioRate(double rate) {
   final rounded = rate.toStringAsFixed(2);
-  return rounded
-      .replaceFirst(RegExp(r'\.0+$'), '')
-      .replaceFirst(RegExp(r'(\.\d*[1-9])0+$'), r'$1');
+  if (rounded.endsWith('.00')) {
+    return rounded.substring(0, rounded.length - 3);
+  }
+  if (rounded.endsWith('0')) {
+    return rounded.substring(0, rounded.length - 1);
+  }
+  return rounded;
 }
 
 String formatAudioVolume(double volume) =>
