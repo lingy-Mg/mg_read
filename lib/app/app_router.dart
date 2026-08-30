@@ -191,7 +191,7 @@ class LibraryRoute extends GoRouteData with $LibraryRoute {
             libraryItemId: libraryItemId,
           );
         },
-        onVideoEpisodeRequested: ({required detail, required firstCatalogPage, required chapter}) {
+        onVideoEpisodeRequested: ({required detail, required firstCatalogPage, required chapter, String? libraryItemId}) {
           final navigator = appRootNavigatorKey.currentState;
           if (navigator == null) return Future<void>.error(StateError('The application navigator is not ready.'));
           return openTransientSourceVideoPlayer(
@@ -200,6 +200,7 @@ class LibraryRoute extends GoRouteData with $LibraryRoute {
             detail: detail,
             firstCatalogPage: firstCatalogPage,
             chapter: chapter,
+            libraryItemId: libraryItemId,
           );
         },
         onPrivacyLibraryRequested: () {

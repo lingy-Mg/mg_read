@@ -9,6 +9,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read_video_player/mg_read_video_player.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
+import 'package:mg_read/app/app_startup.dart';
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/media/application/source_video_data_source.dart';
 import 'package:mg_read/features/media/application/transient_source_video_playback_state_store.dart';
@@ -22,6 +24,7 @@ Future<void> openTransientSourceVideoPlayer(
   required PluginContentDetail detail,
   required PluginChaptersResult firstCatalogPage,
   required PluginChapterSummary chapter,
+  String? libraryItemId,
 }) async {
   final group = firstCatalogPage.groups.cast<PluginMediaGroup?>().firstWhere(
     (candidate) => candidate?.episodes.any((episode) => episode.id == chapter.id) ?? false,
@@ -29,6 +32,8 @@ Future<void> openTransientSourceVideoPlayer(
   );
   final container = ProviderScope.containerOf(context);
   final gateway = container.read(sourceContentGatewayProvider);
+  final ContentLibrary? library = libraryItemId == null ? null : await container.read(appStartupControllerProvider).contentLibrary;
+  final itemId = libraryItemId == null ? null : LibraryItemId(libraryItemId);
   final proxyUri = await container.read(configuredFlutterNetworkProxyManagerProvider).proxyUriFor(NetworkProxyTraffic.video);
   await navigator.push<void>(
     MaterialPageRoute<void>(
@@ -39,6 +44,8 @@ Future<void> openTransientSourceVideoPlayer(
           contentId: detail.summary.id,
           initialGroupId: group?.id ?? 'default',
           initialEpisodeId: chapter.id,
+          library: library,
+          libraryItemId: itemId,
         ),
         observer: _DismissVideoPlayerObserver(navigator),
         backendFactory: () => createMediaKitVideoPlaybackBackend(proxyUri: proxyUri),

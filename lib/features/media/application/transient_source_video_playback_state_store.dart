@@ -1,11 +1,12 @@
-/// Route-lifetime video progress for a discovery source playback session.
+/// Video progress for a discovery or persisted-shelf source playback session.
 ///
-/// The independent video player owns the session. This adapter only supplies
-/// the requested neutral group/episode selection and never persists signed
-/// resource URLs, headers, cookies or other Runtime session data.
+/// The independent video player owns the session. This adapter optionally
+/// persists only stable group/episode identities and playback position for a
+/// shelf item; signed resources and Runtime session data remain transient.
 library;
 
 import 'package:mg_read_video_player/mg_read_video_player.dart';
+import 'package:mg_read/core/content_library/content_library.dart';
 
 /// Keeps one transient source-video selection and its current position.
 final class TransientSourceVideoPlaybackStateStore implements VideoPlaybackStateStore {
@@ -13,28 +14,61 @@ final class TransientSourceVideoPlaybackStateStore implements VideoPlaybackState
     required this.contentId,
     required this.initialGroupId,
     required this.initialEpisodeId,
-  });
+    this.library,
+    this.libraryItemId,
+  }) : assert((library == null) == (libraryItemId == null));
 
   final String contentId;
   final String initialGroupId;
   final String initialEpisodeId;
+  final ContentLibrary? library;
+  final LibraryItemId? libraryItemId;
   VideoPlaybackProgress? _progress;
 
   @override
   Future<VideoPlaybackProgress?> load(String requestedContentId) async {
     if (requestedContentId != contentId) return null;
-    return _progress ??
-        VideoPlaybackProgress(
+    final existing = _progress;
+    if (existing != null) return existing;
+    final library = this.library;
+    final itemId = libraryItemId;
+    if (library != null && itemId != null) {
+      final durable = await library.loadVideoProgress(itemId);
+      if (durable != null) {
+        return _progress = VideoPlaybackProgress(
           contentId: contentId,
-          groupId: initialGroupId,
-          episodeId: initialEpisodeId,
-          position: Duration.zero,
-          duration: Duration.zero,
+          groupId: durable.groupId,
+          episodeId: durable.episodeId,
+          position: durable.position,
+          duration: durable.duration,
         );
+      }
+    }
+    return _progress = VideoPlaybackProgress(
+      contentId: contentId,
+      groupId: initialGroupId,
+      episodeId: initialEpisodeId,
+      position: Duration.zero,
+      duration: Duration.zero,
+    );
   }
 
   @override
   Future<void> save(VideoPlaybackProgress progress) async {
-    if (progress.contentId == contentId) _progress = progress;
+    if (progress.contentId != contentId) return;
+    _progress = progress;
+    final library = this.library;
+    final itemId = libraryItemId;
+    if (library == null || itemId == null) return;
+    await library.saveVideoProgress(
+      LibraryVideoPlaybackProgress(
+        itemId: itemId,
+        groupId: progress.groupId,
+        episodeId: progress.episodeId,
+        position: progress.position,
+        duration: progress.duration,
+        updatedAtUtc: DateTime.now().toUtc(),
+      ),
+    );
   }
 }

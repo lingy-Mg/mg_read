@@ -3,8 +3,7 @@ import 'package:mg_read/features/library/domain/library_item_summary.dart';
 /// Immutable view projection for the local library landing page.
 final class LibraryOverview {
   /// Creates an overview while defensively freezing its item list.
-  LibraryOverview({required Iterable<LibraryItemSummary> items})
-    : items = List<LibraryItemSummary>.unmodifiable(items);
+  LibraryOverview({required Iterable<LibraryItemSummary> items}) : items = List<LibraryItemSummary>.unmodifiable(items);
 
   /// Creates an empty local overview.
   const LibraryOverview.empty() : items = const <LibraryItemSummary>[];
@@ -19,9 +18,8 @@ final class LibraryOverview {
   LibraryItemSummary? get continueReading {
     LibraryItemSummary? latest;
     for (final item in items) {
-      if (item.lastReadAtUtc == null || item.readingProgress == null) continue;
-      if (latest == null ||
-          item.lastReadAtUtc!.isAfter(latest.lastReadAtUtc!)) {
+      if (item.lastReadAtUtc == null) continue;
+      if (latest == null || item.lastReadAtUtc!.isAfter(latest.lastReadAtUtc!)) {
         latest = item;
       }
     }

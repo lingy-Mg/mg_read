@@ -2,7 +2,7 @@
 ///
 /// 职责：
 /// - 将书架生命周期状态映射为首页展示和显式用户回调。
-/// - 编排阅读预热、书架删除与隐私可见性变更。
+/// - 按内容类型编排继续阅读/播放、阅读预热、书架删除与隐私可见性变更。
 ///
 /// 注意：
 /// - 书架持久化只通过 application 窄用例和 Content Library adapter 执行。
@@ -41,6 +41,22 @@ import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
+typedef LibraryAudioChapterRequested =
+    Future<void> Function({
+      required PluginContentDetail detail,
+      required PluginChaptersResult firstCatalogPage,
+      required PluginChapterSummary chapter,
+      String? libraryItemId,
+    });
+
+typedef LibraryVideoEpisodeRequested =
+    Future<void> Function({
+      required PluginContentDetail detail,
+      required PluginChaptersResult firstCatalogPage,
+      required PluginChapterSummary chapter,
+      String? libraryItemId,
+    });
+
 /// The library landing page driven by immutable lifecycle and display state.
 class LibraryPage extends ConsumerWidget {
   /// Creates the library landing page.
@@ -71,10 +87,10 @@ class LibraryPage extends ConsumerWidget {
   final ValueChanged<String>? onReaderRequested;
 
   /// Opens a persisted audio source through the dedicated audio-player host.
-  final SourceAudioChapterRequested? onAudioChapterRequested;
+  final LibraryAudioChapterRequested? onAudioChapterRequested;
 
   /// Opens a persisted video source through the dedicated video-player host.
-  final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
+  final LibraryVideoEpisodeRequested? onVideoEpisodeRequested;
 
   /// Lets the app layer open a persisted shelf item's detail surface.
   final ValueChanged<String>? onBookDetailRequested;
@@ -207,14 +223,13 @@ class LibraryPage extends ConsumerWidget {
         onAudioChapterRequested: ({required detail, required firstCatalogPage, required chapter, String? libraryItemId}) {
           final callback = onAudioChapterRequested;
           if (callback == null) return Future<void>.error(StateError('An audio-player host has not been registered.'));
-          return callback(
-            detail: detail,
-            firstCatalogPage: firstCatalogPage,
-            chapter: chapter,
-            libraryItemId: libraryItemId ?? book.id,
-          );
+          return callback(detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter, libraryItemId: book.id);
         },
-        onVideoEpisodeRequested: onVideoEpisodeRequested,
+        onVideoEpisodeRequested: ({required detail, required firstCatalogPage, required chapter}) {
+          final callback = onVideoEpisodeRequested;
+          if (callback == null) return Future<void>.error(StateError('A video-player host has not been registered.'));
+          return callback(detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter, libraryItemId: book.id);
+        },
         onStartReading: () async => prepareAndOpen(book.id),
         onShelfAction: (SourceShelfAction action) async {
           switch (action) {
@@ -269,6 +284,36 @@ class LibraryPage extends ConsumerWidget {
       }
     }
 
+    Future<void> openShelfVideo(LibraryBookListItemViewData book) async {
+      final callback = onVideoEpisodeRequested;
+      if (callback == null || detailLauncher == null) {
+        await openBookDetail(book);
+        return;
+      }
+      try {
+        final seed = await detailLauncher.load(book.id);
+        final results = await Future.wait<Object>(<Future<Object>>[
+          sourceGateway.getDetail(pluginId: seed.pluginId, id: seed.remoteContentId),
+          sourceGateway.getChapters(pluginId: seed.pluginId, id: seed.remoteContentId),
+        ]);
+        final detail = results[0] as PluginContentDetail;
+        final catalog = results[1] as PluginChaptersResult;
+        PluginChapterSummary? chapter;
+        for (final item in catalog.items) {
+          if (item.isLocked != true) {
+            chapter = item;
+            break;
+          }
+        }
+        if (chapter == null) throw StateError('video_catalog_no_playable_episode');
+        await callback(detail: detail, firstCatalogPage: catalog, chapter: chapter, libraryItemId: book.id);
+      } on Object {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法打开上次的视频进度，请检查网络后重试。')));
+        }
+      }
+    }
+
     resolvedCallbacks = callbacks.copyWith(
       onNavigationSelected: destinationRequested == null
           ? callbacks.onNavigationSelected
@@ -295,7 +340,7 @@ class LibraryPage extends ConsumerWidget {
                       if (item?.contentKind == ContentKind.audio) {
                         unawaited(openShelfAudio(book));
                       } else {
-                        unawaited(openBookDetail(book));
+                        unawaited(openShelfVideo(book));
                       }
                       return;
                     }
@@ -312,11 +357,28 @@ class LibraryPage extends ConsumerWidget {
               await callbacks.onRefreshBook?.call(book);
               await refreshBook(book);
             },
-      onContinueReading: readerRequested == null || data.continueReading == null
+      onContinueReading: data.continueReading == null
           ? callbacks.onContinueReading
           : () {
               callbacks.onContinueReading?.call();
-              prepareAndOpen(data.continueReading!.bookId);
+              final bookId = data.continueReading!.bookId;
+              final item = state.overview!.items.cast<LibraryItemSummary?>().firstWhere(
+                (candidate) => candidate?.id == bookId,
+                orElse: () => null,
+              );
+              final book = data.books.cast<LibraryBookListItemViewData?>().firstWhere(
+                (candidate) => candidate?.id == bookId,
+                orElse: () => null,
+              );
+              if (item?.contentKind == ContentKind.audio && book != null) {
+                unawaited(openShelfAudio(book));
+                return;
+              }
+              if (item?.contentKind == ContentKind.video && book != null) {
+                unawaited(openShelfVideo(book));
+                return;
+              }
+              prepareAndOpen(bookId);
             },
       onDeleteBook: removalOperation == null
           ? null
@@ -357,10 +419,20 @@ class LibraryPage extends ConsumerWidget {
               onManageSourcesRequested!();
             },
     );
+    final currentId = data.continueReading?.bookId;
+    final readerWarmBookIds = <String>[
+      if (currentId != null &&
+          state.overview!.items.any(
+            (item) => item.id == currentId && (item.contentKind == ContentKind.novel || item.contentKind == ContentKind.manga),
+          ))
+        currentId,
+      for (final item in state.overview!.items)
+        if (item.id != currentId && (item.contentKind == ContentKind.novel || item.contentKind == ContentKind.manga)) item.id,
+    ].take(3).toList(growable: false);
     return _LibraryTerminalFrameSignal(
       startup: startup,
       child: _ShelfReaderLifecycleHost(
-        warmBookIds: <String>[if (data.continueReading case final current?) current.bookId, for (final book in data.books.take(2)) book.id],
+        warmBookIds: readerWarmBookIds,
         contentGeneration: state.overview!,
         coordinator: readerCoordinator,
         child: LibraryHomeShell(

@@ -176,6 +176,30 @@ void main() {
     expect(restored?.updatedAtUtc, DateTime.utc(2026, 8, 30, 8));
   });
 
+  test('persists a video episode and position across reopen', () async {
+    final item = await library.bookshelf.add(title: '视频进度', kind: ContentKind.video, source: source);
+    await library.saveVideoProgress(
+      LibraryVideoPlaybackProgress(
+        itemId: item.id,
+        groupId: 'line-2',
+        episodeId: 'episode-8',
+        position: const Duration(minutes: 17, seconds: 2),
+        duration: const Duration(minutes: 48),
+        updatedAtUtc: DateTime.utc(2026, 8, 30, 9),
+      ),
+    );
+    await library.close();
+    library = await ContentLibrary.open(dataRoot: root);
+
+    final restored = await library.loadVideoProgress(item.id);
+
+    expect(restored?.groupId, 'line-2');
+    expect(restored?.episodeId, 'episode-8');
+    expect(restored?.position, const Duration(minutes: 17, seconds: 2));
+    expect(restored?.duration, const Duration(minutes: 48));
+    expect(restored?.updatedAtUtc, DateTime.utc(2026, 8, 30, 9));
+  });
+
   test('persists semantic bookmarks by book and keeps repeated saves idempotent', () async {
     final first = await library.bookshelf.add(title: '书签一', kind: ContentKind.novel, source: source);
     final second = await library.bookshelf.add(

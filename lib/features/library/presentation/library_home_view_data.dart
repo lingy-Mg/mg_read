@@ -44,7 +44,7 @@ final class LibraryHomeViewData {
               author: current.author,
               description: current.description,
               chapter: '第${(current.readingChapterIndex ?? 0) + 1}章',
-              progress: current.readingProgress!,
+              progress: current.readingProgress ?? 0,
               lastReadLabel: '上次阅读',
               coverVariant: LibraryCoverVariant.values[currentIndex % LibraryCoverVariant.values.length],
               coverUrl: current.coverUrl,

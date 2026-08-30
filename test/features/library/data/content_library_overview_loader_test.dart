@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/content_library/src/models.dart';
 import 'package:mg_read/features/library/data/content_library_overview_loader.dart';
+import 'package:mg_read/features/library/domain/library_item_summary.dart';
 
 void main() {
   test('reads persisted bookshelf items through the feature projection', () async {
@@ -88,6 +89,59 @@ void main() {
     await root.delete(recursive: true);
   });
 
+  test('projects the latest progress across novel, manga, audio, and video shelf items', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-library-all-progress-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final novel = await library.bookshelf.add(title: '小说', kind: ContentKind.novel, source: _source('novel'));
+    final manga = await library.bookshelf.add(title: '漫画', kind: ContentKind.manga, source: _source('manga'));
+    final audio = await library.bookshelf.add(title: '音乐', kind: ContentKind.audio, source: _source('audio'));
+    final video = await library.bookshelf.add(title: '视频', kind: ContentKind.video, source: _source('video'));
+    await library.readingProgress.save(_progress(novel.id, 1));
+    await library.saveMangaProgress(
+      LibraryMangaReadingProgress(
+        itemId: manga.id,
+        chapterId: 'manga-chapter',
+        imageId: 'image-3',
+        imageFraction: 0.5,
+        chapterIndex: 2,
+        bookFraction: 0.4,
+        updatedAtUtc: DateTime.utc(2026, 8, 24, 5),
+      ),
+    );
+    await library.saveAudioProgress(
+      LibraryAudioPlaybackProgress(
+        itemId: audio.id,
+        chapterId: 'track-7',
+        position: const Duration(minutes: 8),
+        updatedAtUtc: DateTime.utc(2026, 8, 24, 3),
+      ),
+    );
+    await library.saveVideoProgress(
+      LibraryVideoPlaybackProgress(
+        itemId: video.id,
+        groupId: 'group-2',
+        episodeId: 'episode-4',
+        position: const Duration(minutes: 15),
+        duration: const Duration(hours: 1),
+        updatedAtUtc: DateTime.utc(2026, 8, 24, 4),
+      ),
+    );
+
+    final overview = await ContentLibraryOverviewLoader(library).load();
+    final byKind = <ContentKind, LibraryItemSummary>{for (final item in overview.items) item.contentKind: item};
+
+    expect(byKind[ContentKind.novel]?.readingProgress, 0.5);
+    expect(byKind[ContentKind.manga]?.readingProgress, 0.4);
+    expect(byKind[ContentKind.audio]?.readingProgress, isNull);
+    expect(byKind[ContentKind.video]?.readingProgress, isNull);
+    expect(byKind.values.every((item) => item.lastReadAtUtc != null), isTrue);
+    expect(overview.continueReading?.contentKind, ContentKind.manga);
+  });
+
   test('normal overview and continue reading exclude private books', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-library-private-overview-');
     final library = await ContentLibrary.open(dataRoot: root);
@@ -138,4 +192,11 @@ LibraryReadingProgress _progress(LibraryItemId id, int hour) => LibraryReadingPr
   chapterFraction: 0.5,
   bookFraction: 0.5,
   updatedAtUtc: DateTime.utc(2026, 8, 24, hour),
+);
+
+ContentLibraryIngest _source(String remoteBookId) => ContentLibraryIngest(
+  pluginId: 'fixture',
+  producerPluginVersion: '1.0.0',
+  dataVersion: 1,
+  opaqueData: <String, Object?>{'remoteBookId': remoteBookId},
 );

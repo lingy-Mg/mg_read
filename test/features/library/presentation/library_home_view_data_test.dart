@@ -25,4 +25,15 @@ void main() {
     expect(data.continueReading?.author, '测试作者');
     expect(data.continueReading?.description, '测试简介');
   });
+
+  test('projects media playback as current without inventing a full-book fraction', () {
+    final data = LibraryHomeViewData.fromLocalOverview(
+      LibraryOverview(
+        items: <LibraryItemSummary>[LibraryItemSummary(id: 'current-video', title: '测试视频', lastReadAtUtc: DateTime.utc(2026, 8, 30))],
+      ),
+    );
+
+    expect(data.continueReading?.title, '测试视频');
+    expect(data.continueReading?.progress, 0);
+  });
 }

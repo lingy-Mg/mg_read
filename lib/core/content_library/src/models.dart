@@ -239,7 +239,7 @@ final class LibraryAudioPlaybackProgress {
 /// Group and episode identities remain source-defined and media URLs or
 /// request headers are never persisted here.
 final class LibraryVideoPlaybackProgress {
-  const LibraryVideoPlaybackProgress({
+  LibraryVideoPlaybackProgress({
     required this.itemId,
     required this.groupId,
     required this.episodeId,
