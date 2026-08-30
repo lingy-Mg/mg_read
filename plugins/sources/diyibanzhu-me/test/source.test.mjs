@@ -65,7 +65,7 @@ async function fixture(t, options = {}) {
   return { calls, logs, metrics };
 }
 
-test('one forced-visible WebView page covers search, discovery, detail, catalog and content', async t => {
+test('one hidden WebView page covers search, discovery, detail, catalog and content', async t => {
   const { calls, logs } = await fixture(t);
   const home = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 10 });
   assert.equal(home.document.components[0].children[0].layout, 'shelf');
@@ -81,11 +81,11 @@ test('one forced-visible WebView page covers search, discovery, detail, catalog 
   assert.equal(content.pages.length, 0);
 
   assert.equal(calls.filter(call => call.operation === 'open').length, 1);
-  assert.equal(calls.find(call => call.operation === 'open').visible, true);
+  assert.equal(calls.find(call => call.operation === 'open').visible, false);
   assert.equal(calls.filter(call => call.operation === 'hide').length, 0);
-  assert.ok(calls.filter(call => call.operation === 'show').length >= 5);
-  assert.deepEqual(calls.slice(0, 4).map(call => call.operation), ['open', 'show', 'navigate', 'getHtml']);
-  assert.ok(logs.some(log => log.message === 'source_browser_hide_skipped_forced_visible'));
+  assert.equal(calls.filter(call => call.operation === 'show').length, 0);
+  assert.deepEqual(calls.slice(0, 4).map(call => call.operation), ['open', 'navigate', 'getHtml', 'fetch']);
+  assert.equal(logs.some(log => log.message.includes('force_show')), false);
   assert.ok(logs.some(log => log.message === 'source_browser_initial_fetch_completed_2xx'));
   const fetches = calls.filter(call => call.operation === 'fetch');
   assert.ok(fetches.length >= 5);
@@ -111,15 +111,16 @@ test('one forced-visible WebView page covers search, discovery, detail, catalog 
   });
 });
 
-test('initial verification shows the page, waits with a deadline and keeps it visible after success', async t => {
+test('initial verification shows the page only while needed and hides it after success', async t => {
   const { calls } = await fixture(t, { initialChallenge: true });
   const result = await plugin.search({ query: 'fixture', cursor: null, pageSize: 20 });
   assert.equal(result.items.length, 1);
   assert.deepEqual(calls.slice(0, 8).map(call => call.operation), [
-    'open', 'show', 'navigate', 'getHtml', 'show', 'waitForText', 'getUrl', 'getHtml',
+    'open', 'navigate', 'getHtml', 'show', 'waitForText', 'getUrl', 'getHtml', 'hide',
   ]);
-  assert.equal(calls.find(call => call.operation === 'open').visible, true);
-  assert.equal(calls.filter(call => call.operation === 'hide').length, 0);
+  assert.equal(calls.find(call => call.operation === 'open').visible, false);
+  assert.equal(calls.filter(call => call.operation === 'show').length, 1);
+  assert.equal(calls.filter(call => call.operation === 'hide').length, 1);
   const wait = calls.find(call => call.operation === 'waitForText');
   assert.deepEqual(wait, { operation: 'waitForText', text: '第一版主', scope: 'text', timeoutMs: 120000 });
 });
@@ -145,10 +146,10 @@ test('a fetch verification response is completed visibly and retried once', asyn
   const result = await plugin.search({ query: 'fixture', cursor: null, pageSize: 20 });
   assert.equal(result.items.length, 1);
   assert.equal(calls.filter(call => call.operation === 'fetch').length, 2);
-  assert.equal(calls.filter(call => call.operation === 'show').length, 2);
+  assert.equal(calls.filter(call => call.operation === 'show').length, 1);
   assert.equal(calls.filter(call => call.operation === 'waitForText').length, 1);
-  assert.equal(calls.filter(call => call.operation === 'hide').length, 0);
-  assert.equal(calls.at(-2).operation, 'getHtml');
+  assert.equal(calls.filter(call => call.operation === 'hide').length, 1);
+  assert.equal(calls.at(-2).operation, 'hide');
   assert.equal(calls.at(-1).operation, 'fetch');
 });
 
