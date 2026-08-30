@@ -29,6 +29,8 @@ test("Debug inspector ships native static assets with a Web Components entrypoin
   assert.doesNotMatch(html, /customElements\.define/);
   assert.match(css, /mg-debug-app, mg-runtime-status/);
   assert.match(css, /\.workspace-panel/);
+  assert.match(css, /--log-toolbar-control-height: 34px/);
+  assert.match(css, /\.log-status \{/);
   assert.doesNotThrow(() => new vm.Script(script, { filename: "debug-inspector-app.js" }));
   assert.match(script, /customElements\.define\('mg-debug-app'/);
   assert.match(script, /customElements\.define\('mg-search-panel'/);
@@ -36,6 +38,8 @@ test("Debug inspector ships native static assets with a Web Components entrypoin
   assert.match(script, /customElements\.define\('mg-log-viewer'/);
   assert.match(script, /runtime\.plugin\.resource_proxy/);
   assert.match(script, /log-category-filters/);
+  assert.match(script, /role="group" aria-label="显示类别"/);
+  assert.match(script, /heading-actions log-status/);
   assert.match(script, /defaultVisibleLogEntryLimit = 10/);
   assert.match(script, /entries\.slice\(-defaultVisibleLogEntryLimit\)/);
   assert.match(script, /dataset\.action = 'show-all'/);

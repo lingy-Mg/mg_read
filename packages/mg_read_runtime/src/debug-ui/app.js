@@ -456,11 +456,11 @@
       this.dataset.ready = 'true';
       this.innerHTML = [
         '<div class="log-toolbar">',
-        '<div class="heading-actions"><span class="live-badge paused">已暂停</span><span class="last-updated">等待日志</span></div>',
+        '<div class="heading-actions log-status"><span class="live-badge paused">已暂停</span><span class="last-updated">等待日志</span></div>',
         '<select class="filter-control" aria-label="日志级别"><option value="all">全部级别</option><option value="error">Error</option><option value="warn">Warn</option><option value="info">Info</option><option value="debug">Debug</option></select>',
         '<input class="filter-control" type="search" aria-label="筛选日志" placeholder="按来源、代码或消息筛选">',
-        '<fieldset class="log-category-filters"><legend>显示类别</legend>' + logCategories.map((category) => '<label><input checked type="checkbox" value="' + category.id + '">' + category.label + '</label>').join('') + '</fieldset>',
-        '<div class="heading-actions"><button class="button secondary compact" data-action="copy" type="button">复制日志</button><button class="button secondary compact" data-action="pause" type="button">继续接收</button></div>',
+        '<div class="log-category-filters" role="group" aria-label="显示类别"><span class="log-category-label">显示类别</span>' + logCategories.map((category) => '<label><input checked type="checkbox" value="' + category.id + '">' + category.label + '</label>').join('') + '</div>',
+        '<div class="heading-actions log-actions"><button class="button secondary compact" data-action="copy" type="button">复制日志</button><button class="button secondary compact" data-action="pause" type="button">继续接收</button></div>',
         '</div>',
         '<div class="log-view"><div class="log-empty">切换到日志工作区后开始接收。</div></div>',
       ].join('');
