@@ -15,11 +15,10 @@
 
 import { createHash } from 'node:crypto';
 import { lstat, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { builtinModules } from 'node:module';
+import { builtinModules, createRequire } from 'node:module';
 import { dirname, extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
-import { build, stop } from 'esbuild';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const HEADER_PREFIX = '// @mgread-plugin-v1 ';
@@ -46,11 +45,11 @@ if (isMainModule()) {
 
 /** Builds this project without writing either the workspace or an output path. */
 export async function buildPluginArtifact({ versionOverride } = {}) {
-  return buildPluginArtifactForProject(projectRoot, { versionOverride });
+  return buildPluginArtifactForProject(projectRoot, { versionOverride, toolingRoot: projectRoot });
 }
 
 /** Project-root variant used by deterministic offline contract tests. */
-export async function buildPluginArtifactForProject(root, { versionOverride } = {}) {
+export async function buildPluginArtifactForProject(root, { versionOverride, toolingRoot = projectRoot } = {}) {
   const originalPackage = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
   const packageMode = originalPackage?.mgread?.packageMode ?? 'single-file';
   validatePackage(originalPackage, packageMode, versionOverride);
@@ -67,7 +66,7 @@ export async function buildPluginArtifactForProject(root, { versionOverride } = 
     };
   }
 
-  const bytes = await buildSingleFile(root, packageJson);
+  const bytes = await buildSingleFile(root, packageJson, toolingRoot);
   assertArtifactSize(bytes);
   return {
     bytes,
@@ -76,8 +75,9 @@ export async function buildPluginArtifactForProject(root, { versionOverride } = 
   };
 }
 
-async function buildSingleFile(root, packageJson) {
+async function buildSingleFile(root, packageJson, toolingRoot) {
   await validateSingleFileAssets(root, packageJson.mgread.icon);
+  const { build, stop } = createRequire(resolve(toolingRoot, 'package.json'))('esbuild');
   let result;
   try {
     result = await build({
@@ -278,7 +278,9 @@ function validatePackage(value, mode, versionOverride) {
     (value.mgread.description !== undefined &&
       (typeof value.mgread.description !== 'string' || value.mgread.description.trim().length === 0)) ||
     !Array.isArray(value?.mgread?.contentKinds) || value.mgread.contentKinds.length === 0 ||
-    value.mgread.contentKinds.some((kind) => kind !== 'novel' && kind !== 'manga') ||
+    value.mgread.contentKinds.some(
+      (kind) => !['novel', 'manga', 'audio', 'video'].includes(kind),
+    ) ||
     (value.mgread.icon !== undefined && typeof value.mgread.icon !== 'string') ||
     !['single-file', 'archive'].includes(mode) || value.manifest !== undefined ||
     value.sharedDependencies !== undefined || value.bundledDependencies !== undefined
