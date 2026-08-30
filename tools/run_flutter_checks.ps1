@@ -5,6 +5,7 @@
 .DESCRIPTION
 职责：将编辑循环、任务收尾和明确的全量回归分开，避免对共享脏工作区执行全仓格式化或
 无条件全量测试。调用者必须传入本次拥有的 Dart 文件；默认不枚举或格式化工作区中的其他文件。
+每个阶段的完整输出写入被忽略的 .dart_tool/ai-checks，终端只显示阶段状态和有界失败摘要。
 边界：此脚本不管理并发、不会终止进程，也不替代 Android integration_test 或发布构建。
 #>
 [CmdletBinding()]
@@ -21,6 +22,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$logDirectory = Join-Path $repositoryRoot '.dart_tool/ai-checks'
 
 function Resolve-OwnedFile {
   param(
@@ -46,11 +48,37 @@ function Invoke-NativeCheck {
     [string[]]$Arguments
   )
 
-  Write-Host "==> $Label"
-  & $Program @Arguments
-  if ($LASTEXITCODE -ne 0) {
-    throw "$Label failed with exit code $LASTEXITCODE."
+  [System.IO.Directory]::CreateDirectory($logDirectory) | Out-Null
+  $safeLabel = [regex]::Replace($Label.ToLowerInvariant(), '[^a-z0-9]+', '-').Trim('-')
+  if ([string]::IsNullOrWhiteSpace($safeLabel)) {
+    $safeLabel = 'check'
   }
+  $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
+  $logPath = Join-Path $logDirectory "$timestamp-$safeLabel.log"
+  $relativeLogPath = [System.IO.Path]::GetRelativePath($repositoryRoot, $logPath).Replace('\', '/')
+  $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+  Write-Host "RUN $Label"
+  try {
+    & $Program @Arguments *> $logPath
+    $exitCode = $LASTEXITCODE
+  } catch {
+    $_ | Out-File -LiteralPath $logPath -Append
+    $exitCode = 1
+  } finally {
+    $stopwatch.Stop()
+  }
+
+  if ($exitCode -eq 0) {
+    Write-Host "PASS $Label duration_ms=$($stopwatch.ElapsedMilliseconds) log=$relativeLogPath"
+    return
+  }
+
+  Write-Host "FAIL $Label exit_code=$exitCode duration_ms=$($stopwatch.ElapsedMilliseconds) log=$relativeLogPath"
+  Write-Host 'FAILURE_TAIL_BEGIN'
+  Get-Content -LiteralPath $logPath -Tail 40 | ForEach-Object { Write-Host $_ }
+  Write-Host 'FAILURE_TAIL_END'
+  throw "$Label failed with exit code $exitCode. Full log: $relativeLogPath"
 }
 
 $dartFiles = @($DartPath | ForEach-Object { Resolve-OwnedFile -Path $_ -Label 'DartPath' } | Sort-Object -Unique)
@@ -76,10 +104,11 @@ try {
   Write-Host "DART_FILES=$($dartFiles.Count)"
   Write-Host "TEST_FILES=$($testFiles.Count)"
 
-  & (Join-Path $PSScriptRoot 'check_source_file_sizes.ps1')
-  if ($LASTEXITCODE -ne 0) {
-    throw "Source file-size policy failed with exit code $LASTEXITCODE."
-  }
+  Invoke-NativeCheck -Label 'Source file-size policy' -Program 'pwsh' -Arguments @(
+    '-NoProfile'
+    '-File'
+    (Join-Path $PSScriptRoot 'check_source_file_sizes.ps1')
+  )
 
   Invoke-NativeCheck -Label 'Dart format (owned files)' -Program 'dart' -Arguments (@('format', '--output=none', '--set-exit-if-changed') + $dartFiles)
 

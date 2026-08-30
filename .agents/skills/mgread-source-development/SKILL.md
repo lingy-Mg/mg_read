@@ -10,18 +10,21 @@ description: Develop or debug MgRead real data-source plugins, the public Source
 
 ## 选择一个首选参考
 
-- Node 项目结构、生命周期、缓存、资源代理或 artifact：默认读取 `plugins/sources/aisishuwu/` 的最近
-  `AGENTS.md`、`package.json`、公开类型、直接测试和 `tools/mgread.mjs`。漫画、WebView、音频或视频任务
-  改读当前同类真实数据源；仓库不维护空白官方模板。
+- Node 项目结构、生命周期、缓存、资源代理或 artifact：读
+  [source-plugin-contract.md](references/source-plugin-contract.md)，再从当前同类真实数据源读取最近
+  `AGENTS.md`、`package.json`、公开类型、入口和直接测试；仓库不维护空白官方模板。
 - 当前网页结构、选择器、JS DOM、跳转或分页取证：加载 `browser:control-in-app-browser` 并读
   [real-page-browser-probing.md](references/real-page-browser-probing.md)
 - 公开发现组件类型、Runtime/Facade 解码或宿主渲染：
   [discovery-contract.md](references/discovery-contract.md)
 - 真实来源的发现区块选择与响应式组合：
   [discovery-composition.md](references/discovery-composition.md)
-- 数据源调用 `ctx.webview`：参考 `diyibanzhu-me` 或 `xiezhenji`，并核对 Runtime 当前公开类型和直接测试。
-- Android/Windows browser provider、宿主状态机或原生输入：读取对应平台实现、最近 `AGENTS.md` 和直接测试。
-- 漫画参考 `baozimh-com` 或 `manhuagui-com`；音频参考 `tingchina-audio`；视频参考 `hsck-video`。
+- 数据源调用 `ctx.webview`：读 [webview-api.md](references/webview-api.md)，再核对 Runtime 当前公开类型、
+  直接测试和一个真实 WebView 来源。
+- Android/Windows browser provider、宿主状态机或原生输入：读
+  [webview-host-development.md](references/webview-host-development.md)及对应平台实现和直接测试。
+- 音频或视频来源：读 [media-source-contract.md](references/media-source-contract.md)，再选择一个同媒体类型来源。
+- 漫画来源只选择 `baozimh-com` 或 `manhuagui-com` 中与目标最接近的一个。
 
 只有公共边界确实跨域时才增加第二个参考；不要默认加载所有参考或无关平台实现。
 
