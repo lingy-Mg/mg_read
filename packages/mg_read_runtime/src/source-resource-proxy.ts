@@ -1,24 +1,24 @@
-/** Runtime data-plane media proxy registry. Plugin code never sees a body. */
+/** Runtime data-plane source resource proxy. Plugin code never sees a body. */
 import type { JsonObject } from "./protocol.js";
 import type { PluginRuntimeHttpClient } from "./plugin-manager-contract.js";
 
-export type MediaProxyEntry = {
+export type SourceProxyEntry = {
   readonly fetch: PluginRuntimeHttpClient["fetch"];
   readonly proxy: (request: JsonObject) => string;
   readonly request: JsonObject;
 };
 
-/** Opens a Manager-owned media resource without duplicating its token registry. */
-export async function openMediaProxyResource(
-  entry: MediaProxyEntry | undefined,
+/** Opens a Manager-owned source resource without duplicating its token registry. */
+export async function openSourceProxyResource(
+  entry: SourceProxyEntry | undefined,
   requestHeaders: Readonly<Record<string, string>>,
   signal: AbortSignal,
-): Promise<{ readonly request: JsonObject; readonly response: Response; readonly proxy: MediaProxyEntry["proxy"] } | undefined> {
-  if (entry === undefined || signal.aborted || !isMediaProxyRequest(entry.request)) return undefined;
+): Promise<{ readonly request: JsonObject; readonly response: Response; readonly proxy: SourceProxyEntry["proxy"] } | undefined> {
+  if (entry === undefined || signal.aborted) return undefined;
   const rawUrl = entry.request.url;
-  const headers = entry.request.headers;
-  if (typeof rawUrl !== "string" || !isHeaderRecord(headers)) return undefined;
-  const forwarded: Record<string, string> = { ...headers };
+  if (typeof entry.request.kind !== "string" || typeof rawUrl !== "string" || !isHttpUrl(rawUrl)) return undefined;
+  const forwarded = sourceHeaders(entry.request);
+  if (forwarded === undefined) return undefined;
   for (const name of ["range", "if-range"]) {
     const value = requestHeaders[name];
     if (value !== undefined && value.length <= 512) forwarded[name] = value;
@@ -27,10 +27,10 @@ export async function openMediaProxyResource(
   return Object.freeze({ proxy: entry.proxy, request: entry.request, response });
 }
 
-function isMediaProxyRequest(request: JsonObject): boolean {
-  const kind = request.kind;
-  const url = request.url;
-  return (kind === "audio" || kind === "video" || kind === "hls") && typeof url === "string" && isHttpUrl(url) && isHeaderRecord(request.headers);
+function sourceHeaders(request: JsonObject): Record<string, string> | undefined {
+  const configured = request.headers;
+  if (!isHeaderRecord(configured)) return undefined;
+  return { ...configured };
 }
 
 function isHttpUrl(value: string): boolean {

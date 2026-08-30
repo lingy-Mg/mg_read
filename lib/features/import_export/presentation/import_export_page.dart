@@ -330,24 +330,63 @@ class _ScopeNotice extends StatelessWidget {
   const _ScopeNotice();
 
   @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(AppSpacing.regular),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          const Icon(Icons.inventory_2_outlined),
-          const SizedBox(width: AppSpacing.compact),
-          Expanded(
-            child: Text(
-              '可导入导出数据源、书架和阅读进度，不包含正文、缓存、Cookie、凭据或设置。Windows 实时开发数据源会先打包，只导出 artifact，不导出源码。',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ),
-        ],
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final AppThemeTokens tokens = AppThemeTokens.of(context);
+    return DecoratedBox(
+      key: const Key('import-export-overview'),
+      decoration: BoxDecoration(
+        color: tokens.featureSurface,
+        borderRadius: AppRadii.detailCard,
+        border: Border.all(color: tokens.accent.withValues(alpha: 0.14)),
       ),
-    ),
-  );
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.comfortable),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                SizedBox.square(
+                  dimension: 48,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(color: tokens.accent, borderRadius: AppRadii.detailControl),
+                    child: Icon(Icons.inventory_2_outlined, color: theme.colorScheme.onPrimary, size: 24),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.regular),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text('本地备份', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: AppSpacing.unit),
+                      Text('选择数据源、书架与阅读进度', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                    ],
+                  ),
+                ),
+                DecoratedBox(
+                  decoration: BoxDecoration(color: tokens.surface, borderRadius: AppRadii.pill),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.regular, vertical: AppSpacing.compact),
+                    child: Text(
+                      '本地文件',
+                      style: theme.textTheme.bodySmall?.copyWith(color: tokens.accent, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.regular),
+            Text(
+              '不包含正文、缓存、Cookie、凭据或设置。Windows 实时开发数据源会先打包，只导出 artifact，不导出源码。',
+              style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ActionCard extends StatelessWidget {
@@ -358,32 +397,52 @@ class _ActionCard extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Card(
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: AppRadii.control,
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.section),
-        child: Row(
-          children: <Widget>[
-            Icon(icon, size: 32),
-            const SizedBox(width: AppSpacing.regular),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(title, style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: AppSpacing.unit),
-                  Text(description),
-                ],
-              ),
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final AppThemeTokens tokens = AppThemeTokens.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tokens.surface,
+        borderRadius: AppRadii.detailCard,
+        border: Border.all(color: tokens.divider),
+        boxShadow: <BoxShadow>[BoxShadow(color: tokens.shadow.withValues(alpha: 0.07), blurRadius: 14, offset: const Offset(0, 4))],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: AppRadii.detailCard,
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.comfortable),
+            child: Row(
+              children: <Widget>[
+                SizedBox.square(
+                  dimension: 44,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(color: tokens.accentSoft, borderRadius: AppRadii.detailControl),
+                    child: Icon(icon, size: 23, color: tokens.accent),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.regular),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(title, style: theme.textTheme.titleMedium),
+                      const SizedBox(height: AppSpacing.unit),
+                      Text(description, style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.compact),
+                Icon(Icons.chevron_right_rounded, color: tokens.mutedText),
+              ],
             ),
-            const Icon(Icons.chevron_right_rounded),
-          ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _SelectionPanel extends StatelessWidget {

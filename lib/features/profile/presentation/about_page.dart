@@ -174,7 +174,6 @@ class _AboutSettingsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final List<_AboutItem> items = <_AboutItem>[
-      const _AboutItem(id: 'update', title: '检查更新', icon: Icons.cloud_upload_outlined, trailing: '当前版本 1.2.0'),
       const _AboutItem(id: 'agreement', title: '用户协议', icon: Icons.description_outlined),
       const _AboutItem(id: 'privacy', title: '隐私政策', icon: Icons.shield_outlined),
       const _AboutItem(id: 'licenses', title: '开源许可', icon: Icons.code_rounded),
@@ -183,7 +182,7 @@ class _AboutSettingsCard extends StatelessWidget {
 
     return SizedBox(
       key: const Key('about-settings-card'),
-      height: AppDetailMetrics.aboutCardHeight,
+      height: items.length * AppDetailMetrics.aboutRowHeight,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: tokens.surface,
@@ -247,18 +246,6 @@ class _AboutSettingsRow extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (item.trailing != null) ...<Widget>[
-                        const SizedBox(width: 8),
-                        Text(
-                          item.trailing!,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: tokens.mutedText,
-                            fontWeight: FontWeight.w400,
-                            height: 1.2,
-                            letterSpacing: 0,
-                          ),
-                        ),
-                      ],
                       const SizedBox(width: 11),
                       Icon(Icons.arrow_forward_ios_rounded, color: tokens.mutedText, size: 15),
                     ],
@@ -281,10 +268,9 @@ class _AboutSettingsRow extends StatelessWidget {
 }
 
 class _AboutItem {
-  const _AboutItem({required this.id, required this.title, required this.icon, this.trailing});
+  const _AboutItem({required this.id, required this.title, required this.icon});
 
   final String id;
   final String title;
   final IconData icon;
-  final String? trailing;
 }

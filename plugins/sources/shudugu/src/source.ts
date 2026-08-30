@@ -350,7 +350,8 @@ export class ShuduguSource {
   #sourceUrl(value: string, base: URL): URL { const url = new URL(value, base); if (url.origin !== this.#baseUrl.origin || url.protocol !== 'https:') throw new Error('Source URL is invalid.'); return url; }
   #proxyCoverUrl(value: string | undefined, base: URL): string | null {
     const url = publicHttpUrl(value, base);
-    return url === null ? null : this.context.resource.proxy({ url });
+    if (url === null || new URL(url).origin !== this.#baseUrl.origin) return null;
+    return this.context.resource.proxy({ kind: 'image', url, headers: { Accept: 'image/*' } });
   }
   #chapterId(url: URL): string { if (!/^\/\d+\/\d+(?:-\d+)?\.html$/u.test(url.pathname)) throw new Error('Chapter URL is invalid.'); return `chapter:${Buffer.from(url.pathname).toString('base64url')}`; }
   #decodeChapterId(id: string): URL { if (!id.startsWith('chapter:')) throw new Error('Chapter ID is invalid.'); const path = Buffer.from(id.slice(8), 'base64url').toString('utf8'); return this.#sourceUrl(path, this.#baseUrl); }

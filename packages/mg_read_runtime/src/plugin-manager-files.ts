@@ -25,7 +25,6 @@ export function normalizePluginModule(imported: Record<string, unknown>): Loaded
   const discover = imported.discover;
   const search = imported.search;
   const searchSuggestions = imported.searchSuggestions;
-  const resource = imported.resource;
   const getDetail = imported.getDetail;
   const getChapters = imported.getChapters;
   const getContent = imported.getContent;
@@ -51,7 +50,6 @@ export function normalizePluginModule(imported: Record<string, unknown>): Loaded
     searchSuggestions: typeof searchSuggestions === "function"
       ? searchSuggestions as PluginContentFunction
       : () => ({ items: [], nextCursor: null }),
-    resource: typeof resource === "function" ? resource as PluginContentFunction : async () => ({ status: 404, body: "" }),
   });
 }
 

@@ -44,9 +44,10 @@ test('live source completes category, search, detail, catalog, and content flow'
   const navigation = categories.document.components.find((component) => component.id === 'source-navigation-group');
   assert.equal(navigation?.type, 'group');
   assert.ok(resourceRequests.length > 0);
-  const coverResource = await plugin.resource(resourceRequests[0]);
+  const coverResource = await fetch(resourceRequests[0].url, { headers: resourceRequests[0].headers });
   assert.ok(coverResource.status >= 200 && coverResource.status < 300);
-  assert.match(coverResource.headers['content-type'] ?? '', /^image\//u);
+  assert.match(coverResource.headers.get('content-type') ?? '', /^image\//u);
+  await coverResource.body?.cancel();
   assert.ok(coverResource.body.byteLength > 0);
   const categorySection = navigation.children.find((component) => component.id === 'source-categories-section');
   assert.equal(categorySection?.type, 'section');

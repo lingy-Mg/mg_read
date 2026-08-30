@@ -51,6 +51,8 @@ class CacheManagementPage extends ConsumerWidget {
                   key: const Key('cache-management-content'),
                   padding: const EdgeInsets.all(AppDetailMetrics.horizontalPadding),
                   children: <Widget>[
+                    const _CacheOverviewHero(),
+                    const SizedBox(height: AppSpacing.section),
                     _SourceCacheSection(
                       state: pluginState,
                       onRetry: () => ref.read(pluginCacheManagementProvider.notifier).refresh(),
@@ -185,6 +187,59 @@ class CacheManagementPage extends ConsumerWidget {
         ),
       ) ??
       false;
+}
+
+class _CacheOverviewHero extends StatelessWidget {
+  const _CacheOverviewHero();
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final AppThemeTokens tokens = AppThemeTokens.of(context);
+    return DecoratedBox(
+      key: const Key('cache-management-overview'),
+      decoration: BoxDecoration(
+        color: tokens.featureSurface,
+        borderRadius: AppRadii.detailCard,
+        border: Border.all(color: tokens.accent.withValues(alpha: 0.14)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.comfortable),
+        child: Row(
+          children: <Widget>[
+            SizedBox.square(
+              dimension: 48,
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: tokens.accent, borderRadius: AppRadii.detailControl),
+                child: Icon(Icons.storage_rounded, color: theme.colorScheme.onPrimary, size: 25),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.regular),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text('存储空间', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: AppSpacing.unit),
+                  Text('按类型查看用量，精确清理可重新生成的缓存', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                ],
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(color: tokens.surface, borderRadius: AppRadii.pill),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.regular, vertical: AppSpacing.compact),
+                child: Text(
+                  '安全可清理',
+                  style: theme.textTheme.bodySmall?.copyWith(color: tokens.accent, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _SourceCacheSection extends StatelessWidget {
@@ -348,11 +403,13 @@ class _CacheSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
+    final theme = Theme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
         color: tokens.surface,
-        borderRadius: AppRadii.profileList,
+        borderRadius: AppRadii.detailCard,
         border: Border.all(color: tokens.divider),
+        boxShadow: <BoxShadow>[BoxShadow(color: tokens.shadow.withValues(alpha: 0.07), blurRadius: 14, offset: const Offset(0, 4))],
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.comfortable),
@@ -361,7 +418,15 @@ class _CacheSummaryCard extends StatelessWidget {
           children: <Widget>[
             Row(
               children: <Widget>[
-                Expanded(child: Text(title, style: Theme.of(context).textTheme.titleLarge)),
+                SizedBox.square(
+                  dimension: 38,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(color: tokens.accentSoft, borderRadius: AppRadii.discoveryTile),
+                    child: Icon(_cacheIcon(title), size: 20, color: tokens.accent),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.regular),
+                Expanded(child: Text(title, style: theme.textTheme.titleMedium)),
                 ...switch (trailing) {
                   final Widget widget => <Widget>[widget],
                   null => const <Widget>[],
@@ -369,7 +434,7 @@ class _CacheSummaryCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.compact),
-            Text(description, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
+            Text(description, style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
             if (action != null) ...<Widget>[const SizedBox(height: AppSpacing.regular), action!],
           ],
         ),
@@ -393,7 +458,7 @@ class _PluginCacheEntryCard extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: tokens.surface,
-          borderRadius: AppRadii.profileList,
+          borderRadius: AppRadii.detailCard,
           border: Border.all(color: tokens.divider),
         ),
         child: ListTile(
@@ -449,10 +514,32 @@ class _EmptyCacheCard extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(AppSpacing.comfortable),
-    child: Center(child: Text(text)),
-  );
+  Widget build(BuildContext context) {
+    final AppThemeTokens tokens = AppThemeTokens.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(color: tokens.mutedSurface, borderRadius: AppRadii.detailControl),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.comfortable),
+        child: Row(
+          children: <Widget>[
+            Icon(Icons.check_circle_outline_rounded, size: 18, color: tokens.mutedText),
+            const SizedBox(width: AppSpacing.compact),
+            Expanded(
+              child: Text(text, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+IconData _cacheIcon(String title) {
+  if (title.startsWith('数据源')) return Icons.extension_outlined;
+  if (title.startsWith('数据库')) return Icons.dns_outlined;
+  if (title.startsWith('封面')) return Icons.image_outlined;
+  if (title.startsWith('漫画')) return Icons.auto_stories_outlined;
+  return Icons.folder_outlined;
 }
 
 String _pluginFeedbackText(PluginCacheFeedback feedback) => switch (feedback.kind) {

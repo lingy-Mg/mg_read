@@ -50,8 +50,7 @@ import {
   settlePluginOperation,
   waitForPluginOperation,
 } from "./plugin-operation-wait.js";
-import { invokePluginResource } from "./plugin-resource-invocation.js";
-import { openMediaProxyResource } from "./media-resource-proxy.js";
+import { openSourceProxyResource } from "./source-resource-proxy.js";
 import {
   type PluginPackageDescriptor,
   readPluginProject,
@@ -101,7 +100,6 @@ import {
   type PluginCodeDirectory,
   type PluginInstallationUsage,
   type PluginIconResource,
-  type PluginResourceResponse,
   type PluginStartupRecoverySummary,
   type DevelopmentPlugin,
   type InstalledPluginSnapshot,
@@ -127,7 +125,6 @@ import {
 } from "./plugin-manager-files.js";
 
 const DEFAULT_CACHE_CLEAR_TIMEOUT_MS = 5_000;
-const DEFAULT_RESOURCE_OPERATION_TIMEOUT_MS = 30_000;
 
 export {
   PluginManagerError,
@@ -141,7 +138,6 @@ export {
   type PluginManagerEvent,
   type PluginManagerEventCode,
   type PluginManagerEventSink,
-  type PluginResourceResponse,
   type PluginRuntimeHttpClient,
   type PluginRuntimeTraceContext,
   type PluginStartupRecoverySummary,
@@ -250,39 +246,9 @@ export class PluginManager {
     return `${this.#resourceOrigin}/v1/source-resource/${token}`;
   }
 
-  openMediaResource(token: string, requestHeaders: Readonly<Record<string, string>>, signal: AbortSignal) {
+  openSourceResource(token: string, requestHeaders: Readonly<Record<string, string>>, signal: AbortSignal) {
     const entry = this.#resources.get(token);
-    return openMediaProxyResource(entry === undefined ? undefined : { fetch: this.#http.fetch.bind(this.#http), proxy: (next) => this.createResourceUrl(entry.pluginId, next), request: entry.request }, requestHeaders, signal);
-  }
-
-  async consumeResource(token: string, signal: AbortSignal): Promise<PluginResourceResponse> {
-    const entry = this.#resources.get(token);
-    if (entry === undefined) throw new PluginManagerError("invalid_request");
-    if (signal.aborted) throw new PluginManagerError("cancelled");
-    await this.initialize();
-    const loaded = this.#developmentLoaded.get(entry.pluginId)?.loaded ?? this.#installedLoaded.get(entry.pluginId);
-    if (loaded === undefined) throw new PluginManagerError("plugin_not_found");
-    const deadlineUnixMs = String(Date.now() + DEFAULT_RESOURCE_OPERATION_TIMEOUT_MS);
-    const release = await this.#pluginOperations.acquireInvocation(
-      entry.pluginId,
-      signal,
-      deadlineUnixMs,
-    );
-    const operation = invokePluginResource({
-      debugLogEnabled: this.#debugLogEnabled,
-      deadlineUnixMs,
-      events: this.#events,
-      invocationScope: this.#invocationScope,
-      loaded,
-      pluginId: entry.pluginId,
-      request: entry.request,
-      signal,
-    }).finally(release);
-    return waitForPluginOperation(
-      settlePluginOperation(operation),
-      signal,
-      deadlineUnixMs,
-    );
+    return openSourceProxyResource(entry === undefined ? undefined : { fetch: this.#http.fetch.bind(this.#http), proxy: (next) => this.createResourceUrl(entry.pluginId, next), request: entry.request }, requestHeaders, signal);
   }
 
 

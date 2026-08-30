@@ -46,8 +46,9 @@ test('live public QQ chain completes without login signature Cookie or fixed GUI
   assert.ok(discovery.document.components[0].children[0].items.length > 0);
   const coverRequest = proxied.find((request) => request.kind === 'qq-cover');
   assert.ok(coverRequest);
-  const cover = await plugin.resource(coverRequest);
-  assert.equal(cover.status, 200);
-  assert.match(cover.headers['content-type'], /^image\//u);
+  const cover = await fetch(coverRequest.url, { headers: coverRequest.headers });
+  assert.equal(cover.ok, true);
+  assert.match(cover.headers.get('content-type') ?? '', /^image\//u);
+  await cover.body?.cancel();
   assert.ok(cover.body.byteLength > 0);
 });

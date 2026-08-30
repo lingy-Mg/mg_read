@@ -40,7 +40,9 @@ abstract interface class _RuntimeSupervisor {
 
   int get debugProcessStartCount;
 
-  Future<void> configureFlutterTransportProxy(Uri? proxyUri);
+  Future<void> configureNodeEnvironmentProxy(bool enabled);
+
+  Future<void> configurePluginHttpProxy(Uri? proxyUri);
 
   Future<void> dispose();
 }
@@ -98,22 +100,37 @@ final class PluginRuntime {
   Stream<DevelopmentPluginChangeBatch> get developmentChanges =>
       _supervisor.developmentChanges;
 
-  /// Routes only Flutter's desktop loopback control transport through [proxyUri].
+  /// Controls Node's ambient environment-proxy support on Windows.
   ///
-  /// Android Runtime is in-process and therefore has no Flutter network
-  /// transport to configure. This never changes Node.js environment or HTTP.
-  Future<void> configureFlutterTransportProxy(Uri? proxyUri) {
+  /// Enabling this restarts an already-running desktop Runtime with
+  /// `--use-env-proxy` and exposes only HTTP_PROXY, HTTPS_PROXY and NO_PROXY
+  /// (falling back to the Windows manual proxy). Android intentionally ignores
+  /// this Windows-only startup preference. The explicit source HTTP dispatcher
+  /// configured by [configurePluginHttpProxy] remains independent.
+  Future<void> configureNodeEnvironmentProxy(bool enabled) =>
+      _supervisor.configureNodeEnvironmentProxy(enabled);
+
+  /// Routes only data-source `ctx.http.fetch` requests through [proxyUri].
+  ///
+  /// Runtime source resources share this direct upstream route. Runtime control
+  /// traffic, dependency installation, WebView and ambient Node.js requests
+  /// keep their existing routing behavior.
+  Future<void> configurePluginHttpProxy(Uri? proxyUri) {
     if (proxyUri != null &&
-        (proxyUri.scheme != 'http' ||
+        (!const <String>{'http', 'https', 'socks5'}.contains(proxyUri.scheme) ||
             proxyUri.host.isEmpty ||
-            !proxyUri.hasPort)) {
+            !proxyUri.hasPort ||
+            proxyUri.userInfo.isNotEmpty ||
+            proxyUri.path.isNotEmpty && proxyUri.path != '/' ||
+            proxyUri.hasQuery ||
+            proxyUri.hasFragment)) {
       throw ArgumentError.value(
         proxyUri,
         'proxyUri',
-        'An explicit HTTP proxy endpoint is required.',
+        'A credential-free HTTP, HTTPS or SOCKS5 proxy endpoint is required.',
       );
     }
-    return _supervisor.configureFlutterTransportProxy(proxyUri);
+    return _supervisor.configurePluginHttpProxy(proxyUri);
   }
 
   /// Invokes a typed Runtime capability.

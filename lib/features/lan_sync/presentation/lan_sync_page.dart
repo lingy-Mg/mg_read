@@ -25,6 +25,7 @@ import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
 import 'lan_sync_qr_scanner_page.dart';
+import 'lan_sync_overview_widgets.dart';
 
 class LanSyncPage extends ConsumerStatefulWidget {
   const LanSyncPage({required this.onBackRequested, required this.onDestinationRequested, super.key});
@@ -75,10 +76,10 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
                       AppSpacing.page,
                     ),
                     children: <Widget>[
-                      const _TrustNotice(),
+                      const LanSyncOverviewCard(),
                       const SizedBox(height: AppSpacing.regular),
                       if (state.phase == LanSyncPhase.idle || state.phase == LanSyncPhase.cancelled)
-                        _RoleChooser(
+                        LanSyncRoleChooser(
                           onSend: () => ref.read(lanSyncControllerProvider.notifier).startSending(),
                           onReceive: () => ref.read(lanSyncControllerProvider.notifier).startReceiving(),
                           onScan: _supportsQrScanner ? () => unawaited(_scanAndReceive()) : null,
@@ -237,107 +238,6 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
   }
 
   Future<void> _cancel() => ref.read(lanSyncControllerProvider.notifier).cancel();
-}
-
-class _TrustNotice extends StatelessWidget {
-  const _TrustNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppThemeTokens.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: tokens.accentSoft,
-        borderRadius: AppRadii.control,
-        border: Border.all(color: tokens.divider),
-      ),
-      child: const Padding(
-        padding: EdgeInsets.all(AppSpacing.regular),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Icon(Icons.wifi_rounded),
-            SizedBox(width: AppSpacing.compact),
-            Expanded(child: Text('仅在可信的家庭或办公局域网使用。首版传输不加密，不会发送 Cookie、凭据、正文或封面文件。')),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RoleChooser extends StatelessWidget {
-  const _RoleChooser({required this.onSend, required this.onReceive, this.onScan});
-  final VoidCallback onSend;
-  final VoidCallback onReceive;
-  final VoidCallback? onScan;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    children: <Widget>[
-      _RoleCard(
-        key: const Key('lan-sync-send'),
-        icon: Icons.upload_rounded,
-        title: '发送数据',
-        description: '把本机已安装或正在开发的数据源、书架和阅读进度发送给另一台设备。',
-        onTap: onSend,
-      ),
-      const SizedBox(height: AppSpacing.regular),
-      _RoleCard(
-        key: const Key('lan-sync-receive'),
-        icon: Icons.download_rounded,
-        title: '接收数据',
-        description: '发现发送设备，预览插件版本和书架冲突后再导入。',
-        onTap: onReceive,
-      ),
-      if (onScan != null) ...<Widget>[
-        const SizedBox(height: AppSpacing.regular),
-        _RoleCard(
-          key: const Key('lan-sync-receive-qr'),
-          icon: Icons.qr_code_scanner_rounded,
-          title: '扫码接收',
-          description: '扫描发送设备显示的二维码，直接建立局域网连接。',
-          onTap: onScan!,
-        ),
-      ],
-    ],
-  );
-}
-
-class _RoleCard extends StatelessWidget {
-  const _RoleCard({required this.icon, required this.title, required this.description, required this.onTap, super.key});
-  final IconData icon;
-  final String title;
-  final String description;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Card(
-    child: InkWell(
-      borderRadius: AppRadii.control,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.section),
-        child: Row(
-          children: <Widget>[
-            Icon(icon, size: 34),
-            const SizedBox(width: AppSpacing.regular),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(title, style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: AppSpacing.unit),
-                  Text(description),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded),
-          ],
-        ),
-      ),
-    ),
-  );
 }
 
 class _StatusCard extends StatelessWidget {

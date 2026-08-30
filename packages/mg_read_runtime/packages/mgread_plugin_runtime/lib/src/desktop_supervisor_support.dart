@@ -303,9 +303,12 @@ final RegExp _diagnosticCodePattern = RegExp(r'^[a-z0-9_]{1,64}$');
 ///
 /// Returns the minimal Windows environment required to start the staged Node
 /// binary. Parent environment inheritance stays disabled so PATH, Node options
-/// and application secrets cannot change Runtime behavior. System proxy values
-/// are the narrow exception required by Node's `--use-env-proxy` mode.
-Map<String, String> _allowlistedEnvironment() {
+/// and application secrets cannot change Runtime behavior. Proxy variables and
+/// the Windows manual proxy are exposed only for the explicit opt-in startup
+/// mode; they remain absent by default.
+Map<String, String> _allowlistedEnvironment({
+  required bool useEnvironmentProxy,
+}) {
   const allowedNames = <String>[
     'ComSpec',
     'SystemRoot',
@@ -318,23 +321,29 @@ Map<String, String> _allowlistedEnvironment() {
     for (final name in allowedNames)
       if (inherited[name] case final value?) name: value,
   };
-  for (final name in const <String>['HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY']) {
-    final value = _environmentValueIgnoringCase(inherited, name);
-    if (value != null && value.isNotEmpty) environment[name] = value;
-  }
-  for (final entry in _WindowsSystemProxy.environment().entries) {
-    environment.putIfAbsent(entry.key, () => entry.value);
+  if (useEnvironmentProxy) {
+    for (final name in const <String>[
+      'HTTP_PROXY',
+      'HTTPS_PROXY',
+      'NO_PROXY',
+    ]) {
+      final value = _environmentValueIgnoringCase(inherited, name);
+      if (value != null && value.isNotEmpty) environment[name] = value;
+    }
+    for (final entry in _WindowsSystemProxy.environment().entries) {
+      environment.putIfAbsent(entry.key, () => entry.value);
+    }
   }
   return environment;
 }
 
-/// Windows environment names are case-insensitive even when Dart's map is not.
 String? _environmentValueIgnoringCase(
   Map<String, String> environment,
   String name,
 ) {
+  final expected = name.toLowerCase();
   for (final entry in environment.entries) {
-    if (entry.key.toUpperCase() == name) return entry.value;
+    if (entry.key.toLowerCase() == expected) return entry.value;
   }
   return null;
 }

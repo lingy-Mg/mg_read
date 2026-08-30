@@ -27,6 +27,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('导入导出'), findsOneWidget);
+    expect(find.byKey(const Key('import-export-overview')), findsOneWidget);
     expect(find.textContaining('只导出 artifact，不导出源码'), findsOneWidget);
     await tester.tap(find.byKey(const Key('prepare-export')));
     await tester.pumpAndSettle();
@@ -37,7 +38,13 @@ void main() {
 
     await tester.tap(find.byKey(Key('export-shelf-${_shelf.identity}')));
     await tester.pump();
-    await tester.ensureVisible(find.byKey(const Key('export-selected')));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('export-selected')),
+      200,
+      scrollable: find.descendant(of: find.byKey(const Key('import-export-content')), matching: find.byType(Scrollable)),
+    );
+    await tester.drag(find.byKey(const Key('import-export-content')), const Offset(0, -80));
+    await tester.pump();
     await tester.tap(find.byKey(const Key('export-selected')));
     await tester.pumpAndSettle();
 

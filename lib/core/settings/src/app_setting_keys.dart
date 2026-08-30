@@ -83,9 +83,11 @@ final class AppSettingKeys {
       'protocol': 'http',
       'host': '127.0.0.1',
       'port': 9000,
-      'enabled': <String, Object?>{'source': false, 'novel': false, 'manga': false, 'video': false, 'audio': false},
+      'useEnvironmentProxy': false,
+      'forcePlayerLocalProxy': false,
+      'enabled': <String, Object?>{'sourceHttp': false, 'cover': false, 'manga': false, 'video': false, 'audio': false},
     },
-    codec: SettingCodec<Map<String, Object?>>(_readerPreferencesEncode, _readerPreferencesDecode, freeze: freezeJsonSettingMap),
+    codec: SettingCodec<Map<String, Object?>>(_readerPreferencesEncode, _networkProxyPreferencesDecode, freeze: freezeJsonSettingMap),
     validator: _validateNetworkProxyPreferences,
   );
 
@@ -228,7 +230,13 @@ bool _boolDecode(Object? value) {
 void _validateBool(bool value) {}
 
 void _validateNetworkProxyPreferences(Map<String, Object?> value) {
-  if (value.length != 4 || value['protocol'] is! String || value['host'] is! String || value['port'] is! int || value['enabled'] is! Map) {
+  if (value.length != 6 ||
+      value['protocol'] is! String ||
+      value['host'] is! String ||
+      value['port'] is! int ||
+      value['useEnvironmentProxy'] is! bool ||
+      value['forcePlayerLocalProxy'] is! bool ||
+      value['enabled'] is! Map) {
     throw ArgumentError.value(value);
   }
   final protocol = value['protocol'] as String;
@@ -242,10 +250,44 @@ void _validateNetworkProxyPreferences(Map<String, Object?> value) {
   }
   if (port < 1 || port > 65535) throw ArgumentError.value(value);
   final enabled = value['enabled'] as Map<Object?, Object?>;
-  const expected = <String>{'source', 'novel', 'manga', 'video', 'audio'};
+  const expected = <String>{'sourceHttp', 'cover', 'manga', 'video', 'audio'};
   if (enabled.length != expected.length || !enabled.keys.every(expected.contains) || enabled.values.any((item) => item is! bool)) {
     throw ArgumentError.value(value);
   }
+}
+
+Map<String, Object?> _networkProxyPreferencesDecode(Object? value) {
+  final decoded = _readerPreferencesDecode(value);
+  final normalized = <String, Object?>{
+    ...decoded,
+    if (!decoded.containsKey('useEnvironmentProxy')) 'useEnvironmentProxy': false,
+    if (!decoded.containsKey('forcePlayerLocalProxy')) 'forcePlayerLocalProxy': false,
+  };
+  final enabled = normalized['enabled'];
+  if (enabled is! Map) return normalized;
+  const currentKeys = <String>{'sourceHttp', 'cover', 'manga', 'video', 'audio'};
+  if (enabled.length == currentKeys.length && enabled.keys.every(currentKeys.contains)) return normalized;
+  const historicalKeySets = <Set<String>>[
+    <String>{'sourceHttp', 'cover', 'manga'},
+    <String>{'runtime', 'sourceHttp', 'cover', 'manga', 'video', 'audio'},
+    <String>{'runtime', 'cover', 'manga', 'video', 'audio'},
+    <String>{'runtime', 'manga', 'video', 'audio'},
+    <String>{'source', 'novel', 'manga', 'video', 'audio'},
+  ];
+  final recognized = historicalKeySets.any((keys) => enabled.length == keys.length && enabled.keys.every(keys.contains));
+  if (!recognized || enabled.values.any((item) => item is! bool)) {
+    return normalized;
+  }
+  return <String, Object?>{
+    ...normalized,
+    'enabled': <String, Object?>{
+      'sourceHttp': enabled['sourceHttp'] as bool? ?? false,
+      'cover': enabled['cover'] as bool? ?? false,
+      'manga': enabled['manga'] as bool,
+      'video': enabled['video'] as bool? ?? false,
+      'audio': enabled['audio'] as bool? ?? false,
+    },
+  };
 }
 
 Object? _readerPreferencesEncode(Map<String, Object?> value) => value;

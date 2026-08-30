@@ -40,6 +40,7 @@ import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver
 import 'package:mg_read/features/discovery/data/content_library_bookshelf_membership.dart';
 import 'package:mg_read/features/discovery/data/content_library_source_cover_persistence.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
+import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
 import 'package:mg_read/features/notifications/application/notification_center.dart';
 import 'package:mg_read/features/notifications/data/content_library_notification_center.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
@@ -517,10 +518,14 @@ final class DeferredBookshelfMembershipLoader implements BookshelfMembershipLoad
 }
 
 final class DeferredBookCoverBytesLoader implements BookCoverBytesLoader {
-  const DeferredBookCoverBytesLoader(this._get);
+  const DeferredBookCoverBytesLoader(this._get, this._proxyManager);
   final ContentLibraryGetter _get;
+  final FlutterNetworkProxyManager _proxyManager;
   @override
-  Future<List<int>?> resolve(BookCoverRequest request) async => ContentLibrarySourceCoverPersistence(await _get()).resolve(request);
+  Future<List<int>?> resolve(BookCoverRequest request) async => ContentLibrarySourceCoverPersistence(
+    await _get(),
+    clientFactory: () => _proxyManager.createHttpClient(NetworkProxyTraffic.cover),
+  ).resolve(request);
 }
 
 final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {

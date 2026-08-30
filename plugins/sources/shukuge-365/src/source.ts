@@ -202,17 +202,6 @@ export class ShukugeSource {
     });
   }
 
-  async resource(request: Record<string, unknown>) {
-    if (request.kind !== 'image' || typeof request.url !== 'string' || typeof request.referer !== 'string') return emptyResource(400);
-    const url = new URL(request.url);
-    const referer = new URL(request.referer);
-    if (url.origin !== origin || referer.origin !== origin) return emptyResource(400);
-    const response = await this.context.http.fetch(url, { headers: { accept: 'image/*', referer: referer.toString() } });
-    const body = new Uint8Array(await response.arrayBuffer());
-    const type = response.headers.get('content-type');
-    return Object.freeze({ status: response.status, headers: type === null ? {} : { 'content-type': type }, body });
-  }
-
   async #html(url: URL): Promise<string> {
     const response = await this.context.http.fetch(url, { headers: {
       accept: 'text/html,application/xhtml+xml',
@@ -226,7 +215,7 @@ export class ShukugeSource {
 
   #proxyImage(url: URL, referer: URL): string | null {
     if (url.origin !== origin) return null;
-    return this.context.resource.proxy({ kind: 'image', url: url.toString(), referer: referer.toString() });
+    return this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/*', Referer: referer.toString() } });
   }
 }
 
@@ -312,4 +301,3 @@ function cleanDescription(value: string): string | null {
 function parseInteger(value: string | undefined): number | null { const number = Number(value); return Number.isSafeInteger(number) && number >= 0 ? number : null; }
 function uniqueUrls(values: readonly URL[]): readonly URL[] { const seen = new Set<string>(); return values.filter((url) => { const key = url.toString(); if (seen.has(key)) return false; seen.add(key); return true; }); }
 function isChallenge(body: string): boolean { return /(?:cf-challenge|cf-turnstile|Just a moment|Checking your browser|challenge-platform)/iu.test(body); }
-function emptyResource(status: number) { return Object.freeze({ status, headers: Object.freeze({}), body: new Uint8Array() }); }

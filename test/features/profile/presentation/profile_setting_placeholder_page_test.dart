@@ -13,8 +13,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/features/cache/presentation/cache_management_page.dart';
-import 'package:mg_read/features/profile/presentation/about_item_placeholder_page.dart';
+import 'package:mg_read/features/profile/presentation/about_document_page.dart';
 import 'package:mg_read/features/profile/presentation/about_page.dart';
+import 'package:mg_read/features/profile/presentation/contact_page.dart';
+import 'package:mg_read/features/profile/presentation/feedback_page.dart';
+import 'package:mg_read/features/profile/presentation/open_source_licenses_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_setting_placeholder_page.dart';
 
@@ -34,7 +37,17 @@ void main() {
 
     expect(find.byType(CacheManagementPage), findsOneWidget);
     expect(find.text('数据源网页与文件缓存'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('封面缓存'),
+      220,
+      scrollable: find.descendant(of: find.byKey(const Key('cache-management-content')), matching: find.byType(Scrollable)),
+    );
     expect(find.text('封面缓存'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('漫画正文图片缓存'),
+      220,
+      scrollable: find.descendant(of: find.byKey(const Key('cache-management-content')), matching: find.byType(Scrollable)),
+    );
     expect(find.text('漫画正文图片缓存'), findsOneWidget);
     expect(find.byKey(const Key('profile-setting-clear-cache')), findsNothing);
   });
@@ -57,8 +70,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ProfileSettingPlaceholderPage), findsOneWidget);
-    expect(find.text('阅读设置'), findsOneWidget);
-    expect(find.text('功能建设中'), findsOneWidget);
+    expect(find.text('阅读播放设置'), findsOneWidget);
+    expect(find.byKey(const Key('reading-settings-preview')), findsOneWidget);
+    expect(find.text('功能建设中'), findsNothing);
     expect(tester.getTopLeft(find.byKey(const Key('secondary-placeholder-top-bar'))).dy, 0);
     expect(find.byKey(const Key('secondary-placeholder-back')), findsOneWidget);
     expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
@@ -69,7 +83,7 @@ void main() {
     expect(find.byType(ProfilePage), findsOneWidget);
   });
 
-  testWidgets('about page opens a real third-level placeholder route', (WidgetTester tester) async {
+  testWidgets('about page excludes update and opens every completed detail route', (WidgetTester tester) async {
     final settings = await createTestAppSettings();
     addTearDown(settings.close);
     await tester.pumpWidget(testMgReadApp(settings));
@@ -83,16 +97,46 @@ void main() {
     await tester.tap(find.text('关于我们'));
     await tester.pumpAndSettle();
     expect(find.byType(AboutPage), findsOneWidget);
+    expect(find.byKey(const Key('about-action-update')), findsNothing);
+    expect(find.byKey(const Key('about-action-agreement')), findsOneWidget);
+    expect(find.byKey(const Key('about-action-privacy')), findsOneWidget);
+    expect(find.byKey(const Key('about-action-licenses')), findsOneWidget);
+    expect(find.byKey(const Key('about-action-contact')), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('about-action-update')));
+    await tester.tap(find.byKey(const Key('about-action-agreement')));
     await tester.pumpAndSettle();
-    expect(find.byType(AboutItemPlaceholderPage), findsOneWidget);
-    expect(find.text('检查更新'), findsOneWidget);
-    expect(find.text('功能建设中'), findsOneWidget);
+    expect(find.byType(AboutDocumentPage), findsOneWidget);
+    expect(find.text('用户协议'), findsOneWidget);
+    expect(find.textContaining('服务内容'), findsOneWidget);
+    expect(find.text('功能建设中'), findsNothing);
     expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
 
-    await tester.tap(find.byKey(const Key('secondary-placeholder-back')));
+    await tester.tap(find.byKey(const Key('profile-detail-back')));
     await tester.pumpAndSettle();
     expect(find.byType(AboutPage), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('about-action-privacy')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AboutDocumentPage), findsOneWidget);
+    expect(find.text('隐私政策'), findsOneWidget);
+    expect(find.textContaining('设备内数据'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('profile-detail-back')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('about-action-licenses')));
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenSourceLicensesPage), findsOneWidget);
+    expect(find.text('功能建设中'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('profile-detail-back')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('about-action-contact')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ContactPage), findsOneWidget);
+    expect(find.byKey(const Key('contact-open-feedback')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('contact-open-feedback')));
+    await tester.pumpAndSettle();
+    expect(find.byType(FeedbackPage), findsOneWidget);
   });
 }

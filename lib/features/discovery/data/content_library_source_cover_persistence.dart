@@ -18,7 +18,8 @@ import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart
 
 /// 搜索、发现、详情和书架共用的封面解析实现。
 final class ContentLibrarySourceCoverPersistence implements BookCoverBytesLoader {
-  ContentLibrarySourceCoverPersistence(this._library, {SourceCoverFetcher? fetcher}) : _fetcher = fetcher ?? _fetchCover;
+  ContentLibrarySourceCoverPersistence(this._library, {SourceCoverFetcher? fetcher, SourceCoverHttpClientFactory? clientFactory})
+    : _fetcher = fetcher ?? ((uri) => _fetchCover(uri, clientFactory ?? _createDirectHttpClient));
 
   final ContentLibrary _library;
   final SourceCoverFetcher _fetcher;
@@ -65,9 +66,12 @@ final class ContentLibrarySourceCoverPersistence implements BookCoverBytesLoader
 }
 
 typedef SourceCoverFetcher = Future<List<int>?> Function(Uri uri);
+typedef SourceCoverHttpClientFactory = Future<HttpClient> Function();
 
-Future<List<int>?> _fetchCover(Uri uri) async {
-  final client = HttpClient()
+Future<HttpClient> _createDirectHttpClient() async => HttpClient();
+
+Future<List<int>?> _fetchCover(Uri uri, SourceCoverHttpClientFactory clientFactory) async {
+  final client = await clientFactory()
     ..connectionTimeout = const Duration(seconds: 10)
     ..idleTimeout = const Duration(seconds: 10);
   try {

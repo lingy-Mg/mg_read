@@ -166,9 +166,3 @@ export interface ChapterContent {
   readonly text: string | null;
   readonly pages: readonly [];
 }
-
-export interface ResourceResponse {
-  readonly status: number;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly body: Uint8Array;
-}

@@ -26,7 +26,6 @@ export async function searchSuggestions() { return Object.freeze({ items: Object
 export async function getDetail(request: { readonly id: string }) { return requireSource().detail(request.id); }
 export async function getChapters(request: { readonly id: string }) { return requireSource().chapters(request.id); }
 export async function getContent(request: { readonly id: string; readonly chapterId: string }) { return requireSource().content(request.id, request.chapterId); }
-export async function resource(request: Record<string, unknown>) { return requireSource().resource(request); }
 function requireSource() { if (context === undefined) throw new Error('Source is not activated.'); return source ??= new ManhuaSource(context); }
 function rejectCursor(cursor: string | null) { if (cursor !== null) throw new Error('Cursor is invalid.'); }
 function addCollection(components: object[], contents: readonly Summary[], pageSize: number, maximumItems: number, id: string, title: string, subtitle: string | null, icon: string, layout: string) {

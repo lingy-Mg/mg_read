@@ -1,7 +1,8 @@
 /// Video-source route launcher for the independently maintained player.
 ///
-/// This host keeps source groups neutral and creates only video playback
-/// sessions. It retains no media URL, request header, cookie or Runtime state.
+/// This host keeps source groups neutral, creates video playback sessions, and
+/// owns their route-scoped platform fullscreen lifetime. It retains no media
+/// URL, request header, cookie or Runtime state.
 library;
 
 import 'dart:async';
@@ -16,6 +17,7 @@ import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/media/application/source_audio_playback_coordinator.dart';
 import 'package:mg_read/features/media/application/source_video_data_source.dart';
+import 'package:mg_read/features/media/application/source_video_fullscreen_controller.dart';
 import 'package:mg_read/features/media/application/transient_source_video_playback_state_store.dart';
 import 'package:mg_read/features/media/presentation/media_entry_cover.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
@@ -73,6 +75,7 @@ final class _SourceVideoPlayerDestination extends StatefulWidget {
 }
 
 final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerDestination> {
+  late final SourceVideoFullscreenController _fullscreenController;
   _VideoPlayerSetup? _setup;
   Object? _setupFailure;
   bool _firstFramePresented = false;
@@ -81,6 +84,7 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
   @override
   void initState() {
     super.initState();
+    _fullscreenController = SourceVideoFullscreenController();
     unawaited(_prepare());
   }
 
@@ -94,7 +98,7 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
     try {
       final library = widget.libraryItemId == null ? null : await widget.container.read(appStartupControllerProvider).contentLibrary;
       final itemId = widget.libraryItemId == null ? null : LibraryItemId(widget.libraryItemId!);
-      final proxyUri = await widget.container.read(configuredFlutterNetworkProxyManagerProvider).proxyUriFor(NetworkProxyTraffic.video);
+      final proxyUri = widget.container.read(configuredFlutterNetworkProxyManagerProvider).playerProxyUriFor(NetworkProxyTraffic.video);
       if (!mounted || generation != _generation) return;
       setState(() => _setup = _VideoPlayerSetup(library: library, itemId: itemId, proxyUri: proxyUri));
     } on Object catch (error) {
@@ -147,7 +151,10 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
           library: setup.library,
           libraryItemId: setup.itemId,
         ),
-        observer: _VideoEntryObserver(delegate: _DismissVideoPlayerObserver(widget.navigator), onPresented: _presentPlayer),
+        observer: _VideoEntryObserver(
+          delegate: _DismissVideoPlayerObserver(widget.navigator, _fullscreenController),
+          onPresented: _presentPlayer,
+        ),
         backendFactory: () => createMediaKitVideoPlaybackBackend(proxyUri: setup.proxyUri),
       ),
     );
@@ -156,6 +163,7 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
   @override
   void dispose() {
     _generation++;
+    unawaited(_fullscreenController.restoreAndClose());
     super.dispose();
   }
 }
@@ -194,12 +202,17 @@ final class _VideoEntryObserver extends VideoPlayerObserver {
 }
 
 final class _DismissVideoPlayerObserver extends VideoPlayerObserver {
-  const _DismissVideoPlayerObserver(this._navigator);
+  const _DismissVideoPlayerObserver(this._navigator, this._fullscreenController);
 
   final NavigatorState _navigator;
+  final SourceVideoFullscreenController _fullscreenController;
+
+  @override
+  Future<void> onFullscreenRequested(bool fullscreen) => _fullscreenController.setFullscreen(fullscreen);
 
   @override
   Future<void> onExitRequested(VideoPlaybackProgress? progress) async {
+    await _fullscreenController.restoreAndClose();
     if (_navigator.mounted && _navigator.canPop()) _navigator.pop();
   }
 }

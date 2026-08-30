@@ -25,7 +25,7 @@ test('synthetic fixture covers public discovery, search, detail, catalog, image 
   assert.equal(chapters.items.length, 2); assert.equal(chapters.items[1].isLocked, true);
   const content = await plugin.getContent({ id: detailResult.id, chapterId: chapters.items[0].id }); assert.equal(content.text, null); assert.equal(content.pages.length, 2);
   await assert.rejects(plugin.getContent({ id: detailResult.id, chapterId: chapters.items[1].id }), /requires public access/u);
-  const image = await plugin.resource(proxied.at(-1)); assert.equal(image.status, 200); assert.deepEqual([...image.body], [7, 8]);
-  const rejected = await plugin.resource({ kind: 'image', url: 'https://invalid.example/image.jpg', referer: 'https://66manhua.cc/index.php/chapter/123' }); assert.equal(rejected.status, 400);
+  assert.equal(new URL(proxied.at(-1).url).hostname, 'mh.aikanhanman.top');
+  assert.equal(requests.some(({ url }) => url.hostname === 'mh.aikanhanman.top'), false);
   assert.ok(requests.every(({ init }) => init?.headers?.cookie === undefined && init?.headers?.['user-agent'] === undefined));
 });

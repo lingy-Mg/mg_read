@@ -40,7 +40,7 @@ import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_health_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_detail_page.dart';
 import 'package:mg_read/features/profile/presentation/about_page.dart';
-import 'package:mg_read/features/profile/presentation/about_item_placeholder_page.dart';
+import 'package:mg_read/features/profile/presentation/about_item_page.dart';
 import 'package:mg_read/features/profile/presentation/feedback_page.dart';
 import 'package:mg_read/features/profile/presentation/edit_profile_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
@@ -475,7 +475,7 @@ final class _DismissComicReaderObserver extends ComicReaderObserver {
     TypedGoRoute<EditProfileRoute>(path: 'edit'),
     TypedGoRoute<AboutRoute>(
       path: 'about',
-      routes: <TypedRoute<RouteData>>[TypedGoRoute<AboutItemPlaceholderRoute>(path: ':itemId')],
+      routes: <TypedRoute<RouteData>>[TypedGoRoute<AboutItemRoute>(path: ':itemId')],
     ),
     TypedGoRoute<FeedbackRoute>(path: 'feedback'),
     TypedGoRoute<NotificationsRoute>(path: 'notifications'),
@@ -579,21 +579,21 @@ class AboutRoute extends GoRouteData with $AboutRoute {
         _goToDestination(context, destination);
       },
       onItemRequested: (String itemId) {
-        AboutItemPlaceholderRoute(itemId: itemId).push(context);
+        AboutItemRoute(itemId: itemId).push(context);
       },
     );
   }
 }
 
-/// Empty third-level page for an item under the profile's about page.
-class AboutItemPlaceholderRoute extends GoRouteData with $AboutItemPlaceholderRoute {
-  const AboutItemPlaceholderRoute({required this.itemId});
+/// A completed third-level page under the profile's about page.
+class AboutItemRoute extends GoRouteData with $AboutItemRoute {
+  const AboutItemRoute({required this.itemId});
 
   final String itemId;
 
   @override
   Widget build(BuildContext context, GoRouterState state) {
-    return AboutItemPlaceholderPage(
+    return AboutItemPage(
       itemId: itemId,
       onBackRequested: () {
         if (context.canPop()) {
@@ -602,8 +602,8 @@ class AboutItemPlaceholderRoute extends GoRouteData with $AboutItemPlaceholderRo
         }
         const AboutRoute().go(context);
       },
-      onDestinationRequested: (AppNavigationDestination destination) {
-        _goToDestination(context, destination);
+      onFeedbackRequested: () {
+        const FeedbackRoute().push(context);
       },
     );
   }

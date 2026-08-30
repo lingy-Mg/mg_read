@@ -10,7 +10,7 @@ function context(fetch, cacheDir = 'cache') {
   return { events, value: { dataDir: 'data', cacheDir, http: { fetch }, resource: { proxy: () => 'http://127.0.0.1:1234/v1/source-resource/opaque' }, log: { debug: (e) => events.push(e), info: (e) => events.push(e), warn: (e) => events.push(e), error: (e) => events.push(e) }, app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 }, plugin: { id: 'org.mgread.shudugu', version: '0.1.1' } } };
 }
 
-const detail = `<div class="item"><a href="/51/"><img src="https://cdn.example/cover.jpg"></a><div class="itemtxt"><h1><i>12.5万字</i><a href="/51/">测试书</a></h1><p><span>连载中</span><span>都市小说</span></p><p><a href="/zuozhe/?tag=作者">作者：作者甲</a></p><ul><li><a href="/51/101.html">第一章</a></li></ul></div></div><div class="des bb"><p>简介</p></div><h2 id="dir"><span>更新时间：2026-08-24 12:10:35</span></h2><div id="list"><ul><li><a href="/51/101.html">第一章</a></li><li><a href="/51/102.html">第二章</a></li></ul></div>`;
+const detail = `<div class="item"><a href="/51/"><img src="https://www.shudugu.org/cover.jpg"></a><div class="itemtxt"><h1><i>12.5万字</i><a href="/51/">测试书</a></h1><p><span>连载中</span><span>都市小说</span></p><p><a href="/zuozhe/?tag=作者">作者：作者甲</a></p><ul><li><a href="/51/101.html">第一章</a></li></ul></div></div><div class="des bb"><p>简介</p></div><h2 id="dir"><span>更新时间：2026-08-24 12:10:35</span></h2><div id="list"><ul><li><a href="/51/101.html">第一章</a></li><li><a href="/51/102.html">第二章</a></li></ul></div>`;
 const completedDetail = detail
   .replaceAll('/51/', '/53/')
   .replaceAll('测试书', '完结精品')
@@ -26,10 +26,10 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
     const requestUrl = new URL(input);
     const path = requestUrl.pathname;
     if (requestUrl.searchParams.get('key') === 'secret-canary-do-not-log') return new Response('upstream failure', { status: 503 });
-    if (path === '/i/sor.aspx') return new Response(`<div class="item"><a href="/51/"><img src="https://cdn.example/cover.jpg"></a><div class="itemtxt"><h3><a href="/51/">测试书</a></h3><p><span>连载中</span><span>都市小说</span></p><p><a href="/zuozhe/?tag=作者">作者：作者甲</a></p></div></div><div class="page">共1本小说</div>`);
+    if (path === '/i/sor.aspx') return new Response(`<div class="item"><a href="/51/"><img src="https://www.shudugu.org/cover.jpg"></a><div class="itemtxt"><h3><a href="/51/">测试书</a></h3><p><span>连载中</span><span>都市小说</span></p><p><a href="/zuozhe/?tag=作者">作者：作者甲</a></p></div></div><div class="page">共1本小说</div>`);
     if (path === '/') {
       homeCalls += 1;
-      return new Response(`<div class="container"><h2><a href="/zuixin/">最新更新</a></h2><div class="item"><a href="/51/"><img src="https://cdn.example/cover.jpg"></a><div class="itemtxt"><h3><a href="/51/">不应作为热门词</a></h3><p><span>连载中</span><span>都市小说</span></p></div></div></div><div class="container"><h2><a href="/paihang/">阅读排行</a></h2><ul class="list top clear"><li><p><a href="/51/">排行热书</a></p></li><li><p><a href="/52/">第二排行热书</a></p></li></ul></div><div class="container"><h2><a href="/wanben/">完结小说</a></h2><ul class="list"><li><p><a href="/53/">完结精品</a></p></li></ul></div>`);
+      return new Response(`<div class="container"><h2><a href="/zuixin/">最新更新</a></h2><div class="item"><a href="/51/"><img src="https://www.shudugu.org/cover.jpg"></a><div class="itemtxt"><h3><a href="/51/">不应作为热门词</a></h3><p><span>连载中</span><span>都市小说</span></p></div></div></div><div class="container"><h2><a href="/paihang/">阅读排行</a></h2><ul class="list top clear"><li><p><a href="/51/">排行热书</a></p></li><li><p><a href="/52/">第二排行热书</a></p></li></ul></div><div class="container"><h2><a href="/wanben/">完结小说</a></h2><ul class="list"><li><p><a href="/53/">完结精品</a></p></li></ul></div>`);
     }
     if (path === '/51/') {
       detailCalls += 1;
@@ -88,7 +88,7 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
   assert.doesNotMatch(state.events.join('\n'), /secret-canary-do-not-log|正文 canary/u);
 });
 
-test('resource proxy rejects foreign URLs without fetching them', async () => {
+test('source does not expose a plugin-owned resource byte handler', async () => {
   let fetchCount = 0;
   const state = context(async () => {
     fetchCount += 1;
@@ -96,10 +96,7 @@ test('resource proxy rejects foreign URLs without fetching them', async () => {
   });
   await plugin.activate(state.value);
 
-  const result = await plugin.resource({ url: 'https://evil.example/cover.jpg' });
-
-  assert.equal(result.status, 400);
-  assert.equal(result.body.byteLength, 0);
+  assert.equal('resource' in plugin, false);
   assert.equal(fetchCount, 0);
 });
 

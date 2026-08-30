@@ -39,4 +39,3 @@ export interface ChapterContent {
   readonly chapterId: string; readonly contentKind: 'manga'; readonly title: string | null; readonly updatedAt: null;
   readonly text: null; readonly pages: readonly MangaPage[];
 }
-export interface ResourceResponse { readonly status: number; readonly headers: Readonly<Record<string, string>>; readonly body: Uint8Array }

@@ -49,15 +49,11 @@ test('fixtures cover categories search detail paged catalog content and image pr
   assert.deepEqual(chapters.items.map((chapter) => chapter.title), ['Fixture One', 'Fixture Two', 'Fixture Three']);
   const body = await plugin.getContent({ id: detailResult.id, chapterId: chapters.items[0].id });
   assert.match(body.text, /Fixture first paragraph\.\n\nFixture second paragraph\./u);
-  const image = await plugin.resource(resources[0]);
-  assert.equal(image.status, 200);
-  assert.deepEqual([...image.body], [1, 2, 3]);
+  assert.equal(new URL(resources[0].url).origin, 'http://www.shukuge.com');
   assert.ok(calls.every(({ init }) => init.headers.cookie === undefined && init.headers['user-agent'] === undefined));
   assert.ok(calls.every(({ init }) => init.method === undefined || init.method === 'GET'));
 });
 
-test('invalid opaque ids, cross-book chapters and resource origins are rejected', async () => {
+test('invalid opaque ids and cross-book chapters are rejected', async () => {
   await assert.rejects(plugin.getDetail({ id: 'book:invalid' }), /Content ID is invalid/u);
-  const invalid = await plugin.resource({ kind: 'image', url: 'http://example.test/a.jpg', referer: 'http://www.shukuge.com/' });
-  assert.equal(invalid.status, 400);
 });

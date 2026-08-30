@@ -28,6 +28,7 @@ const stagedNodeExecutable = resolve(stagedNodeDirectory, "MgReadNode.exe");
 const stagedBuildNodeExecutable = resolve(stagedNodeDirectory, "node.exe");
 const stagedNodeLicense = resolve(stagedNodeDirectory, "LICENSE");
 const stagedDist = resolve(assetsRoot, "dist");
+const stagedNodeModules = resolve(assetsRoot, "node_modules");
 const stagedDefaultPluginsDirectory = resolve(assetsRoot, "default-plugins");
 
 /**
@@ -70,6 +71,7 @@ assertInsideRepository(stagedNodeExecutable);
 assertInsideRepository(stagedBuildNodeExecutable);
 assertInsideRepository(stagedNodeLicense);
 assertInsideRepository(stagedDist);
+assertInsideRepository(stagedNodeModules);
 assertInsideRepository(stagedDefaultPluginsDirectory);
 await requireReadable(sourceNodeDirectory, "the exact bundled Node distribution");
 await requireReadable(sourceNodeExecutable, "the exact bundled Node executable");
@@ -82,6 +84,7 @@ await requireReadable(sourceEntrypoint, "the compiled Runtime main script");
 // source checkout still passes Flutter asset discovery before staging.
 await rm(stagedNodeDirectory, { force: true, recursive: true });
 await rm(stagedDist, { force: true, recursive: true });
+await rm(stagedNodeModules, { force: true, recursive: true });
 await rm(stagedDefaultPluginsDirectory, { force: true, recursive: true });
 await mkdir(assetsRoot, { recursive: true });
 await mkdir(stagedNodeDirectory, { recursive: true });

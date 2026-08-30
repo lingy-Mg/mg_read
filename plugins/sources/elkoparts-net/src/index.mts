@@ -13,7 +13,6 @@ import type {
   DiscoverRequest,
   DiscoverResult,
   MgReadPluginContext,
-  ResourceResponse,
   SearchRequest,
   SearchResult,
   SearchSuggestionsRequest,
@@ -52,10 +51,6 @@ export async function getChapters(request: ChaptersRequest): Promise<ChaptersRes
 
 export async function getContent(request: ContentRequest): Promise<ChapterContent> {
   return invoke('get_content', (activeSource) => activeSource.getContent(request));
-}
-
-export async function resource(request: Record<string, unknown>): Promise<ResourceResponse> {
-  return invoke('resource', (activeSource) => activeSource.resource(request));
 }
 
 type Operation =

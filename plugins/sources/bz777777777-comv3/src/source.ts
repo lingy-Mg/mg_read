@@ -94,10 +94,8 @@ export class BzSource {
     const text = lines.join('\n\n'); if (text === '') throw new Error('Chapter text is empty.'); return Object.freeze({ chapterId, contentKind: 'novel' as const, title: null, updatedAt: null, text, pages: Object.freeze([]) });
   }
 
-  async resource(request: Record<string, unknown>) { if (request.kind !== 'image' || typeof request.url !== 'string' || typeof request.referer !== 'string') return empty(400); const url = new URL(request.url); const referer = new URL(request.referer); if (url.origin !== origin || referer.origin !== origin) return empty(400); const response = await this.context.http.fetch(url, { headers: { accept: 'image/*', referer: referer.toString() } }); const body = new Uint8Array(await response.arrayBuffer()); const type = response.headers.get('content-type'); return Object.freeze({ status: response.status, headers: type === null ? {} : { 'content-type': type }, body }); }
-
   async #browser(url: URL, method: 'GET' | 'POST', body: string | null) { const response = await this.context.browser.sessionV1.request({ version: 1, sessionKey: 'bz777777777', url: url.toString(), method, headers: method === 'POST' ? { 'content-type': 'application/x-www-form-urlencoded', accept: 'text/html', referer: `${origin}/` } : { accept: 'text/html', referer: `${origin}/` }, body, interaction: 'allow', presentation: 'visible', transport: 'webview', timeoutMs: 120000, maxResponseBytes: 2 * 1024 * 1024 }); if (response.status >= 400 || isChallenge(response.body)) throw new Error('Browser verification is incomplete.'); return response.body; }
-  #proxy(url: URL, referer: URL) { return this.context.resource.proxy({ kind: 'image', url: url.toString(), referer: referer.toString() }); }
+  #proxy(url: URL, referer: URL) { if (url.origin !== origin || referer.origin !== origin) throw new Error('Image URL is invalid.'); return this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/*', Referer: referer.toString() } }); }
 }
 
 function summary(url: URL, title: string, author: string | null, coverUrl: string | null, description: string | null, latest: string | null, categories: readonly string[]): Summary { return Object.freeze({ id: `book:${token(url)}`, title: title.replace(/^\s*\[[^\]]+\]\s*/u, ''), contentKind: 'novel', author, url: url.toString(), coverUrl, description, language: 'zh-CN', status: 'unknown', access: 'free', wordCount: null, chapterCount: null, publishedAt: null, updatedAt: null, latestChapter: latest === null ? null : { id: null, title: latest, url: null, updatedAt: null }, categories: Object.freeze(categories), tags: Object.freeze([]), attributes: Object.freeze([]) }); }
@@ -107,4 +105,3 @@ function isBook(url: URL) { return url.origin === origin && (/\/book\/\d+\/?$/u.
 function isChapter(url: URL) { return url.origin === origin && (/\/book\/\d+\/\d+\.html$/u.test(url.pathname) || /\/(?:xs|look)\/\d+\/\d+\.html$/u.test(url.pathname)); }
 function clean(value: string | undefined) { const result = value?.replace(/\s+/gu, ' ').trim() ?? ''; return result === '' ? null : result; }
 function isChallenge(body: string) { return /(?:cf-challenge|cf-turnstile|Just a moment|Checking your browser|challenge-platform)/iu.test(body); }
-function empty(status: number) { return Object.freeze({ status, headers: Object.freeze({}), body: new Uint8Array() }); }

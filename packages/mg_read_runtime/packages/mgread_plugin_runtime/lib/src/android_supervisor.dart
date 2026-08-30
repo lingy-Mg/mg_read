@@ -11,7 +11,77 @@ const Duration _androidStartupTimeout = Duration(seconds: 30);
 /// Flutter-facing Android supervisor backed by the Runtime-owned Javet host.
 final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
   @override
-  Future<void> configureFlutterTransportProxy(Uri? proxyUri) async {}
+  Future<void> configureNodeEnvironmentProxy(bool enabled) async {
+    if (_disposed) {
+      throw const PluginRuntimeException(
+        'runtime_unavailable',
+        'The Android Runtime has been closed.',
+      );
+    }
+  }
+
+  @override
+  Future<void> configurePluginHttpProxy(Uri? proxyUri) async {
+    if (_disposed) {
+      throw const PluginRuntimeException(
+        'runtime_unavailable',
+        'The Android Runtime has been closed.',
+      );
+    }
+    final deadline = DateTime.now()
+        .add(_androidStartupTimeout)
+        .millisecondsSinceEpoch;
+    try {
+      final encoded = await _androidRuntimeChannel
+          .invokeMethod<String>('invoke', <String, Object?>{
+            'method': 'runtime.pluginHttpProxy.configure.v1',
+            'params': <String, Object?>{'proxyUrl': proxyUri?.toString()},
+            'deadlineUnixMs': deadline,
+          })
+          .timeout(_androidStartupTimeout);
+      if (encoded == null) {
+        throw const PluginRuntimeException(
+          'runtime_no_response',
+          'The Android Runtime returned no proxy configuration result.',
+        );
+      }
+      _started = true;
+      final decoded = jsonDecode(encoded);
+      if (decoded is! Map<Object?, Object?> || decoded['ok'] != true) {
+        final error = decoded is Map<Object?, Object?>
+            ? decoded['error']
+            : null;
+        final code = error is Map<Object?, Object?> && error['code'] is String
+            ? error['code'] as String
+            : 'invalid_response';
+        throw PluginRuntimeException(
+          code,
+          'The Android Runtime rejected the plugin HTTP proxy setting.',
+        );
+      }
+      final result = decoded['result'];
+      if (result is! Map<Object?, Object?> ||
+          result.length != 1 ||
+          result['enabled'] != (proxyUri != null)) {
+        throw const PluginRuntimeException(
+          'invalid_response',
+          'The Android Runtime returned an invalid plugin HTTP proxy result.',
+        );
+      }
+    } on PluginRuntimeException {
+      rethrow;
+    } on PlatformException catch (error) {
+      throw PluginRuntimeException(
+        error.code,
+        'The Android Runtime proxy configuration failed.',
+      );
+    } on TimeoutException {
+      throw const PluginRuntimeException(
+        'timeout',
+        'The Android Runtime proxy configuration timed out.',
+      );
+    }
+  }
 
   final StreamController<RuntimeDiagnostic> _diagnosticsController =
       StreamController<RuntimeDiagnostic>.broadcast();

@@ -479,7 +479,7 @@ abstract final class AppDetailMetrics {
   static const double aboutIconExtent = 106;
   // Preserves the measured about-page card baseline after compact typography.
   static const double aboutCardTopGap = 49;
-  static const double aboutCardHeight = 320;
+  static const double aboutCardHeight = 256;
   static const double aboutRowHeight = 64;
 
   static const double feedbackBannerHeight = 108;

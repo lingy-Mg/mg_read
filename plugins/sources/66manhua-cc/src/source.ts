@@ -122,17 +122,6 @@ export class ManhuaSource {
     return Object.freeze({ chapterId, contentKind: 'manga' as const, title: null, updatedAt: null, text: null, pages: Object.freeze(pages) });
   }
 
-  async resource(request: Record<string, unknown>) {
-    if (request.kind !== 'image' || typeof request.url !== 'string' || typeof request.referer !== 'string') return empty(400);
-    let url: URL; let referer: URL;
-    try { url = new URL(request.url); referer = new URL(request.referer); } catch { return empty(400); }
-    if (!isImage(url) || !isSite(referer)) return empty(400);
-    const response = await this.context.http.fetch(url, { headers: { accept: 'image/*', referer: referer.toString() } });
-    const bytes = Number(response.headers.get('content-length')); if (Number.isFinite(bytes) && bytes > 8 * 1024 * 1024) return empty(413);
-    const body = new Uint8Array(await response.arrayBuffer()); if (body.byteLength > 8 * 1024 * 1024) return empty(413);
-    const type = response.headers.get('content-type'); return Object.freeze({ status: response.status, headers: type === null ? Object.freeze({}) : Object.freeze({ 'content-type': type }), body });
-  }
-
   async #html(url: URL): Promise<string> {
     if (!isSite(url)) throw new Error('Source URL is invalid.');
     const response = await this.context.http.fetch(url, { headers: { accept: 'text/html,application/xhtml+xml', referer: `${origin}/` } });
@@ -184,7 +173,7 @@ export class ManhuaSource {
     try { const url = new URL(raw, referer); return isImage(url) ? this.#proxyImage(url, referer) : null; } catch { return null; }
   }
 
-  #proxyImage(url: URL, referer: URL): string { if (!isImage(url) || !isSite(referer)) throw new Error('Image URL is invalid.'); return this.context.resource.proxy({ kind: 'image', url: url.toString(), referer: referer.toString() }); }
+  #proxyImage(url: URL, referer: URL): string { if (!isImage(url) || !isSite(referer)) throw new Error('Image URL is invalid.'); return this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/*', Referer: referer.toString() } }); }
 }
 
 function summary(url: URL, title: string, coverUrl: string | null, description: string | null, author: string | null = null, latestChapterTitle: string | null = null): Summary { return Object.freeze({ id: encodeComic(url), title, contentKind: 'manga', author, url: url.toString(), coverUrl, description, language: 'zh-CN', status: 'unknown', access: 'unknown', wordCount: null, chapterCount: null, publishedAt: null, updatedAt: null, latestChapter: latestChapterTitle === null ? null : Object.freeze({ id: null, title: latestChapterTitle, url: null, updatedAt: null }), categories: Object.freeze([]), tags: Object.freeze([]), attributes: Object.freeze([]) }); }
@@ -208,4 +197,3 @@ function isImage(url: URL): boolean { return url.protocol === 'https:' && imageO
 function imageMime(url: URL): string | null { const ext = /\.([a-z]+)(?:$|\?)/iu.exec(url.pathname + url.search)?.[1]?.toLowerCase(); return ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : null; }
 function clean(value: string | undefined): string | null { const result = value?.replace(/\s+/gu, ' ').trim() ?? ''; return result === '' ? null : result; }
 function hasAccessMarker(root: cheerio.Cheerio<any>): boolean { return root.is('[class*="vip" i], [class*="pay" i], [class*="lock" i]') || root.find('[class*="vip" i], [class*="pay" i], [class*="lock" i]').length > 0; }
-function empty(status: number) { return Object.freeze({ status, headers: Object.freeze({}), body: new Uint8Array() }); }

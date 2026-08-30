@@ -158,10 +158,6 @@ export async function getContent(request: {
   );
 }
 
-export async function resource(request: Record<string, unknown>) {
-  return requireSource().resource(request);
-}
-
 function requireSource(): P5HanmanSource {
   if (context === undefined) throw new Error('Source is not activated.');
   return (source ??= new P5HanmanSource(context));

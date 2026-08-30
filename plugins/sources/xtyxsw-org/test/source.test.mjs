@@ -53,10 +53,9 @@ test('fixtures cover POST search, cached GET projections, paged content, and cov
   const body = await plugin.getContent({ id: detailResult.id, chapterId: chapters.items[0].id });
   assert.equal(body.text, 'Fixture first paragraph.\n\nFixture second paragraph.');
   assert.ok(calls.some(({ url }) => url.pathname.endsWith('/789_2.html')));
-  const categoryResource = resources.find(({ referer }) => referer === 'https://www.xtyxsw.org/sort/1_1/');
-  const image = await plugin.resource(categoryResource); assert.equal(image.status, 200);
-  const imageCall = calls.find(({ url, init }) => url.hostname === 'img.xtyxsw.org' && init.headers.referer === categoryResource.referer);
-  assert.equal(imageCall.init.headers.referer, categoryResource.referer);
+  const categoryResource = resources.find(({ headers }) => headers?.Referer === 'https://www.xtyxsw.org/sort/1_1/');
+  assert.equal(new URL(categoryResource.url).hostname, 'img.xtyxsw.org');
+  assert.equal(calls.some(({ url }) => url.hostname === 'img.xtyxsw.org'), false);
   assert.ok(calls.every(({ init }) => init.headers.cookie === undefined && init.headers['user-agent'] === undefined));
 });
 
@@ -117,10 +116,8 @@ test('projection cache is single-flight, stale-readable, failure-cleaning, concu
   let evictedLoads = 0; assert.equal(await differentKeys.get('y', async () => { evictedLoads += 1; return 'y2'; }), 'y2'); assert.equal(evictedLoads, 1);
 });
 
-test('invalid ids and foreign images are rejected', async () => {
+test('invalid ids are rejected', async () => {
   await assert.rejects(plugin.getDetail({ id: 'book:invalid' }), /Content ID is invalid/u);
-  const foreign = await plugin.resource({ kind: 'image', url: 'https://example.test/a.jpg', referer: 'https://www.xtyxsw.org/' });
-  assert.equal(foreign.status, 400);
 });
 
 function fixtureContext(fetch) {

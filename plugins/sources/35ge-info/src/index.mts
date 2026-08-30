@@ -49,7 +49,6 @@ export async function searchSuggestions(_request: SearchSuggestionsRequest) { re
 export async function getDetail(request: ContentReferenceRequest) { return invoke('get_detail', (active) => active.getDetail(request.id)); }
 export async function getChapters(request: ChaptersRequest) { return invoke('get_chapters', (active) => active.getChapters(request.id)); }
 export async function getContent(request: ContentRequest) { return invoke('get_content', (active) => active.getContent(request.id, request.chapterId)); }
-export async function resource(request: Record<string, unknown>) { return invoke('resource', (active) => active.resource(request)); }
 
 function categoriesDocument(content: readonly Awaited<ReturnType<ThirtyFiveSource['discover']>>[number][]) {
   const items = Object.freeze(content.map((value) => Object.freeze({ content: value, rank: null, metric: null, recommendation: null })));

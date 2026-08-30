@@ -44,7 +44,8 @@ test('fixtures cover categories search detail catalog content bounded list reque
   assert.equal(calls.filter(({ url }) => /\/xs\/123\/456\/$/u.test(url.pathname)).length, 1);
   const content = await plugin.getContent({ id: detail.id, chapterId: chapters.items[0].id });
   assert.equal(content.text, 'Fixture first paragraph.\n\nFixture second paragraph.');
-  const image = await plugin.resource(resources[0]); assert.equal(image.status, 200); assert.deepEqual([...image.body], [4, 5, 6]);
+  assert.equal(new URL(resources[0].url).origin, 'http://www.35ge.info');
+  assert.equal(calls.some(({ url }) => url.pathname.endsWith('.jpg')), false);
   assert.ok(calls.every(({ init }) => init.headers.cookie === undefined && init.headers['user-agent'] === undefined));
 });
 
@@ -90,8 +91,6 @@ test('projection cache is single-flight, stale-readable, failure-cleaning, concu
   assert.equal(evictedLoads, 1);
 });
 
-test('invalid ids and foreign image origins are rejected', async () => {
+test('invalid ids are rejected', async () => {
   await assert.rejects(plugin.getDetail({ id: 'book:invalid' }), /Content ID is invalid/u);
-  const result = await plugin.resource({ kind: 'image', url: 'http://example.test/a.jpg', referer: 'http://www.35ge.info/' });
-  assert.equal(result.status, 400);
 });

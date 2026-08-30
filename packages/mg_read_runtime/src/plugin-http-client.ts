@@ -1,0 +1,87 @@
+/**
+ * Runtime-owned HTTP client used only by the public `ctx.http.fetch` API.
+ *
+ * Responsibilities:
+ * - keep direct requests on Node's built-in fetch implementation while
+ *   allowing HTTP/2 negotiation with transparent HTTP/1.1 fallback;
+ * - route plugin HTTP and Runtime source-resource requests directly through
+ *   one explicitly configured upstream proxy with the same negotiation;
+ * - switch future requests without mutating process environment or global fetch.
+ *
+ * Notes:
+ * - the app supplies the credential-free upstream HTTP, HTTPS or SOCKS5 URL;
+ * - existing requests retain the dispatcher sampled when they started.
+ */
+import {
+  Agent,
+  ProxyAgent,
+  Socks5ProxyAgent,
+  setGlobalDispatcher,
+  type Dispatcher,
+} from "undici";
+
+import type { PluginRuntimeHttpClient, PluginRuntimeTraceContext } from "./plugin-manager-contract.js";
+
+const http2TlsOptions = Object.freeze({ allowH2: true as const });
+
+type Socks5Http2Options = NonNullable<ConstructorParameters<typeof Socks5ProxyAgent>[1]> & {
+  readonly requestTls: {
+    readonly ALPNProtocols: readonly ["h2", "http/1.1"];
+  };
+};
+const socks5Http2Options: Socks5Http2Options = Object.freeze({
+  requestTls: Object.freeze({ ALPNProtocols: ["h2", "http/1.1"] as const }),
+});
+
+// Node's built-in fetch and the bundled Undici package share the process-global
+// dispatcher slot. Installing this once keeps the public ctx.http API unchanged
+// while allowing HTTPS origins to negotiate h2 and fall back to HTTP/1.1.
+setGlobalDispatcher(new Agent({ allowH2: true }));
+
+export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
+  #proxyAgent: Dispatcher | undefined;
+  #proxyUrl: string | undefined;
+  readonly #retiring = new Set<Promise<void>>();
+
+  configure(proxyUrl: string | undefined): void {
+    if (this.#proxyUrl === proxyUrl) return;
+    const next = proxyUrl === undefined
+      ? undefined
+      : proxyUrl.startsWith("socks5:")
+        ? new Socks5ProxyAgent(proxyUrl, socks5Http2Options)
+        : new ProxyAgent({
+            allowH2: true,
+            requestTls: http2TlsOptions,
+            uri: proxyUrl,
+          });
+    const previous = this.#proxyAgent;
+    this.#proxyAgent = next;
+    this.#proxyUrl = proxyUrl;
+    if (previous !== undefined) this.#retire(previous);
+  }
+
+  fetch(
+    input: string | URL,
+    init: RequestInit,
+    _trace?: PluginRuntimeTraceContext,
+  ): Promise<Response> {
+    const dispatcher = this.#proxyAgent;
+    if (dispatcher === undefined) return fetch(input, init);
+    const proxiedInit = { ...init, dispatcher } as RequestInit & { readonly dispatcher: Dispatcher };
+    return fetch(input, proxiedInit);
+  }
+
+  async close(): Promise<void> {
+    const current = this.#proxyAgent;
+    this.#proxyAgent = undefined;
+    this.#proxyUrl = undefined;
+    if (current !== undefined) this.#retire(current);
+    await Promise.allSettled([...this.#retiring]);
+  }
+
+  #retire(agent: Dispatcher): void {
+    let operation: Promise<void>;
+    operation = agent.close().catch(() => {}).finally(() => this.#retiring.delete(operation));
+    this.#retiring.add(operation);
+  }
+}

@@ -14,6 +14,6 @@ test('fixture flow unpacks bounded image data and proxies cover/pages with Refer
   const info=await plugin.getDetail({id:item.id});assert.equal(info.author,'作者甲');assert.equal(info.status,'ongoing');assert.equal(info.chapterCount,2);
   const chapters=await plugin.getChapters({id:item.id});assert.deepEqual(chapters.items.map(c=>c.id),['chapter:123:456','chapter:123:457']);
   const content=await plugin.getContent({id:item.id,chapterId:chapters.items[0].id});assert.equal(content.text,null);assert.equal(content.pages.length,2);assert.equal(content.pages[0].url,'http://127.0.0.1/resource/5');assert.equal(content.pages[0].resourcePolicy,undefined);
-  const request=proxied.find(r=>r.url.includes('/fixture/001.jpg'));assert.equal(request.referer,'https://www.manhuagui.com/comic/123/456.html');const image=await plugin.resource(request);assert.equal(image.status,200);assert.deepEqual([...image.body],[1,2]);
-  assert.equal((await plugin.resource({kind:'manhuagui-image',url:'https://example.com/x.jpg',referer:'https://www.manhuagui.com/'})).status,400);assert.ok(logs.every(e=>/^[a-z_]+$/u.test(e)));
+  const request=proxied.find(r=>r.url.includes('/fixture/001.jpg'));assert.equal(request.headers.Referer,'https://www.manhuagui.com/comic/123/456.html');assert.equal(new URL(request.url).hostname,'i.hamreus.com');
+  assert.ok(logs.every(e=>/^[a-z_]+$/u.test(e)));
 });

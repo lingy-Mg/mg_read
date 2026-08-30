@@ -5,7 +5,7 @@
 import LZString from 'lz-string';
 import type {
   Chapter, ChapterContent, Continuation, Detail, DiscoveryItem, MgReadPluginContext,
-  ResourceResponse, Status, Summary,
+  Status, Summary,
 } from './mgread-api.js';
 
 const desktopOrigin = 'https://www.manhuagui.com';
@@ -120,17 +120,6 @@ export class ManhuaguiSource {
     };
   }
 
-  async resource(request: Record<string, unknown>): Promise<ResourceResponse> {
-    if (request.kind !== 'manhuagui-image' || typeof request.url !== 'string' || typeof request.referer !== 'string') return empty(400);
-    let url: URL; let referer: URL;
-    try { url = new URL(request.url); referer = new URL(request.referer); } catch { return empty(400); }
-    if (!allowedImage(url) || !allowedReferer(referer)) return empty(400);
-    const response = await this.context.http.fetch(url, { headers: { accept: 'image/*', referer: referer.toString() } });
-    const contentType = response.headers.get('content-type');
-    if (contentType !== null && !contentType.toLowerCase().startsWith('image/')) return empty(502);
-    return { status: response.status, headers: contentType === null ? {} : { 'content-type': contentType }, body: new Uint8Array(await response.arrayBuffer()) };
-  }
-
   #parseCards(html: string, pageUrl: URL): Summary[] {
     const list = firstCapture(html, /<div\s+class=["'][^"']*cont-list[^"']*["'][^>]*>[\s\S]*?<ul[^>]*id=["']detail["'][^>]*>([\s\S]*?)<\/ul>/iu) ?? html;
     const output: Summary[] = []; const seen = new Set<string>();
@@ -163,7 +152,7 @@ export class ManhuaguiSource {
   }
 
   #proxyImage(url: URL | null, referer: URL): string | null {
-    return url === null ? null : this.context.resource.proxy({ kind: 'manhuagui-image', url: url.toString(), referer: referer.toString() });
+    return url === null || !allowedImage(url) || !allowedReferer(referer) ? null : this.context.resource.proxy({ kind: 'manhuagui-image', url: url.toString(), headers: { Accept: 'image/*', Referer: referer.toString() } });
   }
 }
 
@@ -267,7 +256,6 @@ function normalizeImageUrl(value: string | undefined, base: URL): URL | null { i
 function normalizeHost(value: string) { const normalized = value.startsWith('//') ? `https:${value}` : /^https?:\/\//iu.test(value) ? value : `https://${value}`; const url = new URL(normalized); if (!allowedImage(new URL('/placeholder.jpg', url))) throw new Error('Source image host is invalid.'); return url; }
 function joinPath(path: string, file: string) { return `/${[path, file].map((value) => value.replace(/^\/+|\/+$/gu, '')).filter(Boolean).join('/')}`; }
 function mimeType(url: URL) { const extension = /\.([^.]+)$/u.exec(url.pathname)?.[1]?.toLowerCase(); return extension === 'jpg' || extension === 'jpeg' ? 'image/jpeg' : extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : extension === 'gif' ? 'image/gif' : null; }
-function empty(status: number): ResourceResponse { return { status, headers: {}, body: new Uint8Array() }; }
 
 function readPackedArgs(input: string, offset: number) {
   const packed = readQuoted(input, offset); if (packed === null) throw new Error('Packed source argument is invalid.');

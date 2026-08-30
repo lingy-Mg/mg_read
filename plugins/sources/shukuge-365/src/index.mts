@@ -87,10 +87,6 @@ export async function getContent(request: ContentRequest) {
   return invoke('get_content', (active) => active.getContent(request.id, request.chapterId));
 }
 
-export async function resource(request: Record<string, unknown>) {
-  return invoke('resource', (active) => active.resource(request));
-}
-
 function categoriesDocument(content: readonly Awaited<ReturnType<ShukugeSource['discover']>>['items'][number][]) {
   const items = Object.freeze(content.map((value) => Object.freeze({ content: value, rank: null, metric: null, recommendation: null })));
   return Object.freeze({ kind: 'document' as const, document: { components: Object.freeze([

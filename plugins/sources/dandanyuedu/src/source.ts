@@ -372,37 +372,6 @@ export class DandanYueduSource {
     });
   }
 
-  async resource(request: Record<string, unknown>) {
-    if (
-      request.kind !== 'qq-cover' ||
-      typeof request.url !== 'string' ||
-      typeof request.referer !== 'string'
-    ) {
-      return emptyResource(400);
-    }
-    const cover = readCoverUrl(request.url);
-    const referer = readCoverReferer(request.referer);
-    if (cover === null || referer === null) return emptyResource(400);
-    const response = await this.context.http.fetch(cover, {
-      headers: { accept: 'image/*', referer: referer.toString() },
-    });
-    if (!response.ok) return emptyResource(response.status);
-    const finalUrl = response.url === '' ? cover : new URL(response.url);
-    const contentType = response.headers.get('content-type');
-    if (
-      readCoverUrl(finalUrl.toString()) === null ||
-      contentType === null ||
-      !/^image\//iu.test(contentType)
-    ) {
-      return emptyResource(502);
-    }
-    return Object.freeze({
-      status: response.status,
-      headers: Object.freeze({ 'content-type': contentType }),
-      body: new Uint8Array(await response.arrayBuffer()),
-    });
-  }
-
   async #fetchText(url: URL, referer: string): Promise<string> {
     const allowed = new Set([
       new URL(searchEndpoint).origin,
@@ -418,10 +387,13 @@ export class DandanYueduSource {
   }
 
   #proxyCover(url: URL, referer: string): string {
+    const cover = readCoverUrl(url.toString());
+    const page = readCoverReferer(referer);
+    if (cover === null || page === null) throw new Error('Cover request is invalid.');
     return this.context.resource.proxy({
       kind: 'qq-cover',
-      url: url.toString(),
-      referer,
+      url: cover.toString(),
+      headers: { Accept: 'image/*', Referer: page.toString() },
     });
   }
 }
@@ -604,12 +576,4 @@ function unixSeconds(value: number | null): string | null {
 function clean(value: string | undefined): string | null {
   const normalized = value?.replace(/[\u00a0\u3000]/gu, ' ').replace(/\s+/gu, ' ').trim() ?? '';
   return normalized === '' ? null : normalized;
-}
-
-function emptyResource(status: number) {
-  return Object.freeze({
-    status,
-    headers: Object.freeze({}),
-    body: new Uint8Array(),
-  });
 }

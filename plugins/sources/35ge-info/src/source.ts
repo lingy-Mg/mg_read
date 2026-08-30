@@ -94,16 +94,6 @@ export class ThirtyFiveSource {
     });
   }
 
-  async resource(request: Record<string, unknown>) {
-    if (request.kind !== 'image' || typeof request.url !== 'string' || typeof request.referer !== 'string') return emptyResource(400);
-    const url = new URL(request.url); const referer = new URL(request.referer);
-    if (url.origin !== origin || referer.origin !== origin) return emptyResource(400);
-    const response = await this.context.http.fetch(url, { headers: { accept: 'image/*', referer: referer.toString() } });
-    const body = new Uint8Array(await response.arrayBuffer());
-    const type = response.headers.get('content-type');
-    return Object.freeze({ status: response.status, headers: type === null ? {} : { 'content-type': type }, body });
-  }
-
   #parseRows($: cheerio.CheerioAPI, selector: string, pageUrl: URL, fallbackCategory: string | null): readonly ContentSummary[] {
     const seen = new Set<string>(); const items: ContentSummary[] = [];
     for (const element of $(selector).toArray()) {
@@ -184,7 +174,7 @@ export class ThirtyFiveSource {
     if (!response.ok || /(?:cf-challenge|cf-turnstile|Just a moment|Checking your browser|challenge-platform)/iu.test(body)) throw new Error('Source page is unavailable.');
     return body;
   }
-  #proxyImage(url: URL, referer: URL): string | null { return url.origin === origin ? this.context.resource.proxy({ kind: 'image', url: url.toString(), referer: referer.toString() }) : null; }
+  #proxyImage(url: URL, referer: URL): string | null { return url.origin === origin && referer.origin === origin ? this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/*', Referer: referer.toString() } }) : null; }
 }
 
 function summary(input: { readonly url: URL; readonly title: string; readonly author: string | null; readonly coverUrl: string | null; readonly description: string | null; readonly status: ContentSummary['status']; readonly updatedAt: string | null; readonly latestTitle: string | null; readonly latestUrl: URL | null; readonly categories: readonly string[] }): ContentSummary {
@@ -221,4 +211,3 @@ function normalizeIntro(value: string | null): string | null { return value === 
 function clean(value: string | undefined): string | null { const result = value?.replace(/\s+/gu, ' ').trim() ?? ''; return result === '' ? null : result; }
 function stripBrackets(value: string | null): string | null { return value === null ? null : clean(value.replace(/^\[|\]$/gu, '')); }
 function parseStatus(value: string | null): ContentSummary['status'] { if (value === null) return 'unknown'; if (/(?:全本|完本|完结)/u.test(value)) return 'completed'; if (/连载/u.test(value)) return 'ongoing'; if (/(?:停更|暂停)/u.test(value)) return 'hiatus'; return 'unknown'; }
-function emptyResource(status: number) { return Object.freeze({ status, headers: Object.freeze({}), body: new Uint8Array() }); }

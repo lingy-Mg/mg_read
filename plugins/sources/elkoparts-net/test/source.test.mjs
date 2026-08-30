@@ -82,11 +82,7 @@ test('projects discovery, search, detail, catalog, content, and cover resources'
   assert.equal(chapter.text, '第一段。\n\n第二段。\n\n第三段。');
   assert.deepEqual(chapter.pages, []);
 
-  const cover = await plugin.resource(proxyRequests[0]);
-  assert.equal(cover.status, 200);
-  assert.equal(cover.headers['content-type'], 'image/jpeg');
-  assert.deepEqual([...cover.body], [1, 2, 3]);
-  assert.equal((await plugin.resource({ url: 'https://example.com/image.jpg' })).status, 400);
+  assert.deepEqual(proxyRequests[0].headers, { Accept: 'image/*' });
+  assert.equal(new URL(proxyRequests[0].url).origin, 'http://www.elkoparts.net');
   assert.ok(logEvents.every((event) => /^[a-z_]+$/u.test(event)));
 });
-

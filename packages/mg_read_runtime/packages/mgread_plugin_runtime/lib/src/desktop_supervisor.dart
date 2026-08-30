@@ -71,8 +71,8 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
 
   /// Negotiated connection after ready, HTTP probe, and hello all succeed.
   _WireConnection? _connection;
-  _RuntimeReady? _ready;
-  Uri? _flutterTransportProxy;
+  Uri? _pluginHttpProxy;
+  bool _useEnvironmentProxy = false;
 
   /// Prevents new work after cleanup starts and makes disposal idempotent.
   bool _disposed = false;
@@ -107,23 +107,72 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   int get debugProcessStartCount => _processStartCount;
 
   @override
-  Future<void> configureFlutterTransportProxy(Uri? proxyUri) async {
-    if (_flutterTransportProxy == proxyUri) return;
-    _flutterTransportProxy = proxyUri;
-    final ready = _ready;
-    final previous = _connection;
-    if (ready == null || previous == null) return;
-    await previous.close();
-    _connection = null;
-    final replacement = await _WireConnection.connect(
-      ready,
-      dataRoot: _bundle.dataRoot,
-      onDevelopmentChange: _recordDevelopmentChange,
-      proxyUri: proxyUri,
+  Future<void> configureNodeEnvironmentProxy(bool enabled) async {
+    if (_disposed) {
+      throw const PluginRuntimeException(
+        'runtime_unavailable',
+        'The Windows Runtime has been closed.',
+      );
+    }
+    if (_useEnvironmentProxy == enabled) return;
+    _useEnvironmentProxy = enabled;
+    if (_process == null && _startup == null) return;
+
+    _controlledRestarting = true;
+    try {
+      final connection = _connection;
+      if (connection != null) {
+        try {
+          await connection
+              .request(
+                method: 'runtime.shutdown',
+                params: const <String, Object?>{},
+                idempotencyKey: 'node-environment-proxy-change',
+              )
+              .timeout(_startupTimeout);
+        } on Object {
+          // The owned Job Object remains the bounded cleanup authority.
+        }
+        await connection.close();
+        _connection = null;
+      }
+      await _terminateOwnedProcessTree();
+      await _disposeMonitor();
+      _startup = null;
+      _recordDiagnostic(
+        const RuntimeDiagnostic(
+          code: 'runtime_node_environment_proxy_rebound',
+          level: RuntimeDiagnosticLevel.info,
+          message: 'The Windows Node environment proxy preference was rebound.',
+        ),
+      );
+    } finally {
+      _controlledRestarting = false;
+    }
+  }
+
+  @override
+  Future<void> configurePluginHttpProxy(Uri? proxyUri) async {
+    if (_pluginHttpProxy == proxyUri) return;
+    _pluginHttpProxy = proxyUri;
+    final connection = _connection;
+    if (connection != null) await _applyPluginHttpProxy(connection);
+  }
+
+  Future<void> _applyPluginHttpProxy(_WireConnection connection) async {
+    final result = _jsonObject(
+      await connection.request(
+        method: 'runtime.pluginHttpProxy.configure.v1',
+        params: <String, Object?>{'proxyUrl': _pluginHttpProxy?.toString()},
+      ),
+      'Plugin HTTP proxy configuration result',
     );
-    await replacement.hello();
-    _connection = replacement;
-    _startup = Future<_WireConnection>.value(replacement);
+    if (result.length != 1 || result['enabled'] != (_pluginHttpProxy != null)) {
+      throw const PluginRuntimeException(
+        'invalid_response',
+        'The Runtime returned an invalid plugin HTTP proxy result.',
+      );
+    }
   }
 
   /// Stream of safe lifecycle diagnostics emitted after subscription.
@@ -419,8 +468,8 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       final process = await Process.start(
         _bundle.nodeExecutable.path,
         <String>[
-          '--use-env-proxy',
           if (_developmentPluginDirectory != null) '--preserve-symlinks',
+          if (_useEnvironmentProxy) '--use-env-proxy',
           _bundle.entrypoint.path,
           '--data-root=${_bundle.dataRoot.path}',
           if (kDebugMode) '--debug-http-enabled=1',
@@ -434,7 +483,9 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
             '--test-exit-after-ready-millis='
                 '${_bundle.testExitAfterReady!.inMilliseconds}',
         ],
-        environment: _allowlistedEnvironment(),
+        environment: _allowlistedEnvironment(
+          useEnvironmentProxy: _useEnvironmentProxy,
+        ),
         includeParentEnvironment: false,
         runInShell: false,
         workingDirectory: _bundle.workingDirectory.path,
@@ -457,15 +508,14 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       _monitor = monitor;
 
       final ready = await monitor.waitForReady();
-      _ready = ready;
       await _probeHttpReady(ready);
       final connection = await _WireConnection.connect(
         ready,
         dataRoot: _bundle.dataRoot,
         onDevelopmentChange: _recordDevelopmentChange,
-        proxyUri: _flutterTransportProxy,
       );
       await connection.hello();
+      await _applyPluginHttpProxy(connection);
       _connection = connection;
       return connection;
     } on PluginRuntimeException catch (error) {

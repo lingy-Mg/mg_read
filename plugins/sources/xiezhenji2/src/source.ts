@@ -75,15 +75,6 @@ export class Xiezhenji2Source {
     return Object.freeze({ chapterId, contentKind: 'manga' as const, title: '全部图片', updatedAt: null, text: null, pages: Object.freeze(pages) });
   }
 
-  async resource(request: Record<string, unknown>) {
-    if (request.kind !== 'image' || typeof request.url !== 'string' || typeof request.referer !== 'string') return emptyResource(400);
-    const url = new URL(request.url); const referer = new URL(request.referer);
-    if (url.protocol !== 'https:' || referer.origin !== origin || url.hostname !== 'cosplaytele.com') return emptyResource(400);
-    const response = await this.context.http.fetch(url, { headers: { accept: 'image/*', referer: referer.toString() } });
-    const body = new Uint8Array(await response.arrayBuffer());
-    return Object.freeze({ status: response.status, headers: response.headers.get('content-type') === null ? {} : { 'content-type': response.headers.get('content-type')! }, body });
-  }
-
   parseList(html: string, pageUrl: URL): readonly ContentSummary[] {
     const $ = cheerio.load(html); const seen = new Set<string>(); const items: ContentSummary[] = [];
     $('#post-list .post-item, main .post-item, .post-item').each((_, element) => {
@@ -111,7 +102,7 @@ export class Xiezhenji2Source {
     }
     return body;
   }
-  #proxyImage(url: URL, referer: URL): string { return this.context.resource.proxy({ kind: 'image', url: url.toString(), referer: referer.toString() }); }
+  #proxyImage(url: URL, referer: URL): string { if (url.protocol !== 'https:' || url.hostname !== 'cosplaytele.com' || referer.origin !== origin) throw new Error('Image request is invalid.'); return this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/*', Referer: referer.toString() } }); }
 }
 
 function summary(id: string, title: string, url: URL, coverUrl: string | null, description: string | null, author: string | null, tags: readonly string[]): ContentSummary { return Object.freeze({ id, title, contentKind: 'manga', author, url: url.toString(), coverUrl, description, language: null, status: 'unknown', access: 'free', wordCount: null, chapterCount: 1, publishedAt: null, updatedAt: null, latestChapter: { id: `gallery:${token(url)}`, title: '全部图片', url: url.toString(), updatedAt: null }, categories: tags, tags, attributes: Object.freeze([]) }); }
@@ -127,4 +118,3 @@ function collectPageUrls(html: string, base: URL): readonly URL[] { const $ = ch
 function parseImages(html: string, base: URL): readonly URL[] { const $ = cheerio.load(html); const links = $('.entry-content .gallery a[href]').toArray().flatMap((element) => { const href = $(element).attr('href'); return href === undefined ? [] : [new URL(href, base)]; }); const images = links.length === 0 ? $('.entry-content .gallery img, .entry-content img.attachment-full').toArray().flatMap((element) => { const raw = $(element).attr('data-src') ?? $(element).attr('data-lazy-src') ?? $(element).attr('src'); return raw === undefined ? [] : [new URL(raw, base)]; }) : links; return uniqueUrls(images.filter((url) => url.hostname === 'cosplaytele.com' && /\/wp-content\/uploads\//u.test(url.pathname) && /\.(?:jpe?g|png|webp|gif)$/iu.test(url.pathname) && !url.pathname.includes('cropped-icon-'))); }
 function imageMime(url: URL): string | null { const extension = /\.([A-Za-z0-9]+)$/u.exec(url.pathname)?.[1]?.toLowerCase(); return extension === 'jpg' || extension === 'jpeg' ? 'image/jpeg' : extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : extension === 'gif' ? 'image/gif' : null; }
 function isCloudflare(body: string): boolean { return /(?:cf-challenge|cf-turnstile|Just a moment|Checking your browser)/iu.test(body); }
-function emptyResource(status: number) { return Object.freeze({ status, headers: Object.freeze({}), body: new Uint8Array() }); }

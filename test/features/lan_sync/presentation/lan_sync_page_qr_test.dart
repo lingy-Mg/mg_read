@@ -12,15 +12,9 @@ import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
 
 void main() {
-  testWidgets('Android entry offers scanning and connection card renders QR', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('Android entry offers scanning and connection card renders QR', (WidgetTester tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    final container = ProviderContainer(
-      overrides: [
-        lanSyncGatewayProvider.overrideWithValue(const _EmptyGateway()),
-      ],
-    );
+    final container = ProviderContainer(overrides: [lanSyncGatewayProvider.overrideWithValue(const _EmptyGateway())]);
     addTearDown(container.dispose);
 
     await tester.pumpWidget(
@@ -28,15 +22,13 @@ void main() {
         container: container,
         child: MaterialApp(
           theme: AppTheme.light(),
-          home: LanSyncPage(
-            onBackRequested: () {},
-            onDestinationRequested: (_) {},
-          ),
+          home: LanSyncPage(onBackRequested: () {}, onDestinationRequested: (_) {}),
         ),
       ),
     );
     await tester.pump();
 
+    expect(find.byKey(const Key('lan-sync-overview')), findsOneWidget);
     expect(find.byKey(const Key('lan-sync-receive-qr')), findsOneWidget);
 
     await tester.pumpWidget(
@@ -44,11 +36,7 @@ void main() {
         theme: AppTheme.light(),
         home: Scaffold(
           body: LanSyncConnectionQrCard(
-            offer: LanSyncConnectionOffer(
-              sessionId: 'session_12345678',
-              port: 47231,
-              addresses: <String>['192.168.1.20', '10.10.0.8'],
-            ),
+            offer: LanSyncConnectionOffer(sessionId: 'session_12345678', port: 47231, addresses: <String>['192.168.1.20', '10.10.0.8']),
           ),
         ),
       ),
@@ -67,38 +55,26 @@ final class _EmptyGateway implements LanSyncGateway {
   const _EmptyGateway();
 
   @override
-  Future<LanSyncManifest> createManifest() async => const LanSyncManifest(
-    plugins: <LanSyncPluginDescriptor>[],
-    shelfItems: <LanSyncShelfItem>[],
-    skippedShelfItems: 0,
-  );
+  Future<LanSyncManifest> createManifest() async =>
+      const LanSyncManifest(plugins: <LanSyncPluginDescriptor>[], shelfItems: <LanSyncShelfItem>[], skippedShelfItems: 0);
 
   @override
   Future<void> cancelPluginImports() async {}
 
   @override
-  Future<void> preparePluginImports(
-    List<LanSyncPluginDescriptor> plugins,
-  ) async {}
+  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins) async {}
 
   @override
-  Future<Stream<List<int>>> openPluginArchive(
-    LanSyncPluginDescriptor plugin,
-  ) async => const Stream<List<int>>.empty();
+  Future<Stream<List<int>>> openPluginArchive(LanSyncPluginDescriptor plugin) async => const Stream<List<int>>.empty();
 
   @override
-  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest) =>
-      throw UnimplementedError();
+  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest) => throw UnimplementedError();
 
   @override
-  Future<void> importPluginArchive(
-    LanSyncPluginDescriptor plugin,
-    Stream<List<int>> bytes,
-  ) => throw UnimplementedError();
+  Future<void> importPluginArchive(LanSyncPluginDescriptor plugin, Stream<List<int>> bytes) => throw UnimplementedError();
 
   @override
-  Future<LanSyncPluginImportResult> finishPluginImports() =>
-      throw UnimplementedError();
+  Future<LanSyncPluginImportResult> finishPluginImports() => throw UnimplementedError();
 
   @override
   Future<LanSyncApplyResult> applyImport({

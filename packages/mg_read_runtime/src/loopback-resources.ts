@@ -4,6 +4,7 @@
  * 职责：
  * - 消费由 PluginManager 签发的短期资源与插件传输 token；
  * - 提供有界插件图标投影，不暴露安装路径或原始 descriptor；
+ * - 重写 HLS 清单时区分子清单与二进制媒体资源，避免把分片再次解析为清单；
  * - 仅向 Runtime 内部 HTTP listener 写入 no-store 响应。
  *
  * 注意：
@@ -11,6 +12,7 @@
  * - token 校验和资源所有权始终由 PluginManager 保持。
  */
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { JsonObject } from "./protocol.js";
@@ -25,22 +27,29 @@ export async function serveSourceResource(
   finish: LoopbackHttpFinish,
   request?: IncomingMessage,
 ): Promise<void> {
+  const cancellation = new AbortController();
+  const abort = (): void => cancellation.abort();
+  request?.once("aborted", abort);
+  response.once("close", () => {
+    if (!response.writableFinished) abort();
+  });
   try {
-    const media = await pluginManager?.openMediaResource(
+    const resource = await pluginManager?.openSourceResource(
       token,
       request === undefined ? {} : requestHeaders(request),
-      new AbortController().signal,
+      cancellation.signal,
     );
-    if (media !== undefined) {
-      await serveMediaResource(media, response, finish);
-      return;
-    }
-    const result = await pluginManager?.consumeResource(token, new AbortController().signal);
-    if (result === undefined) { response.writeHead(404); response.end(); finish(404); return; }
-    response.writeHead(result.status, { "Cache-Control": "no-store", ...result.headers, "Content-Length": result.body.byteLength });
-    response.end(result.body); finish(result.status);
+    if (resource === undefined) { response.writeHead(404); response.end(); finish(404); return; }
+    await serveUpstreamResource(resource, response, finish);
   } catch {
-    response.writeHead(404); response.end(); finish(404);
+    if (response.headersSent) {
+      response.destroy();
+      finish(502);
+    } else {
+      response.writeHead(404); response.end(); finish(404);
+    }
+  } finally {
+    request?.off("aborted", abort);
   }
 }
 
@@ -66,7 +75,7 @@ export async function servePluginTransferResource(
   }
 }
 
-async function serveMediaResource(
+async function serveUpstreamResource(
   media: { readonly request: JsonObject; readonly response: Response; readonly proxy: (request: JsonObject) => string },
   response: ServerResponse,
   finish: LoopbackHttpFinish,
@@ -82,8 +91,12 @@ async function serveMediaResource(
   if (media.response.body === null) { response.writeHead(media.response.status, { "Cache-Control": "no-store", ...headers }); response.end(); finish(media.response.status); return; }
   response.writeHead(media.response.status, { "Cache-Control": "no-store", ...headers });
   const stream = Readable.fromWeb(media.response.body as import("node:stream/web").ReadableStream);
-  stream.on("error", () => { response.destroy(); finish(502); });
-  stream.pipe(response).on("finish", () => finish(media.response.status));
+  let downloadedBytes = 0;
+  stream.on("data", (chunk: Buffer | string) => {
+    downloadedBytes += typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.byteLength;
+  });
+  await pipeline(stream, response);
+  finish(media.response.status, downloadedBytes);
 }
 
 function responseHeaders(headers: Headers): Record<string, string> {
@@ -101,11 +114,38 @@ async function readManifest(response: Response): Promise<string> {
 }
 
 function rewriteHls(text: string, base: string, request: JsonObject, createProxy: (request: JsonObject) => string): string {
-  const proxy = (raw: string) => createProxy({ ...request, url: new URL(raw, base).toString() });
+  const proxy = (raw: string, kind: "hls" | "video") => createProxy({
+    ...request,
+    kind,
+    url: new URL(raw, base).toString(),
+  });
+  let nextPlainUriIsPlaylist = false;
   return text.split(/\r?\n/u).map((line) => {
-    if (line === "" || line.startsWith("#") === false) return line === "" ? line : proxy(line);
-    return line.replace(/URI="([^"]+)"/gu, (_whole, uri: string) => `URI="${proxy(uri)}"`);
+    if (line === "") return line;
+    if (line.startsWith("#") === false) {
+      const kind = nextPlainUriIsPlaylist || isHlsPlaylistUri(line) ? "hls" : "video";
+      nextPlainUriIsPlaylist = false;
+      return proxy(line, kind);
+    }
+    const separator = line.indexOf(":");
+    const tag = separator === -1 ? line : line.slice(0, separator);
+    if (tag === "#EXT-X-STREAM-INF") nextPlainUriIsPlaylist = true;
+    const kind = hlsPlaylistUriTags.has(tag) ? "hls" : "video";
+    return line.replace(/URI="([^"]+)"/gu, (_whole, uri: string) => (
+      `URI="${proxy(uri, kind === "hls" || isHlsPlaylistUri(uri) ? "hls" : "video")}"`
+    ));
   }).join("\n");
+}
+
+const hlsPlaylistUriTags = new Set([
+  "#EXT-X-I-FRAME-STREAM-INF",
+  "#EXT-X-MEDIA",
+  "#EXT-X-RENDITION-REPORT",
+]);
+
+function isHlsPlaylistUri(raw: string): boolean {
+  try { return new URL(raw, "https://mgread.invalid/").pathname.toLowerCase().endsWith(".m3u8"); }
+  catch { return false; }
 }
 
 function requestHeaders(request: IncomingMessage): Record<string, string> {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { access, cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -383,12 +384,27 @@ test("desktop Runtime loads and searches an installed standard Node plugin", asy
 });
 
 test("source resource URLs are reusable, bounded, and forward binary responses", async (t) => {
+  const upstreamCalls = [];
+  const upstream = createServer((request, response) => {
+    upstreamCalls.push(request.headers);
+    response.writeHead(206, { "content-type": "image/test" });
+    response.end(Uint8Array.from([77, 71, 82, 69, 65, 68]));
+  });
+  await new Promise((resolve, reject) => {
+    upstream.once("error", reject);
+    upstream.listen(0, "127.0.0.1", resolve);
+  });
+  t.after(() => new Promise((resolve) => upstream.close(resolve)));
+  const upstreamAddress = upstream.address();
+  assert.notEqual(upstreamAddress, null);
+  assert.equal(typeof upstreamAddress, "object");
+  const upstreamUrl = `http://127.0.0.1:${upstreamAddress.port}/cover`;
   const runtime = await createRuntime(t, { installFixture: true });
   const ready = await runtime.start();
   const socket = await openRuntimeSocket(ready);
   t.after(() => socket.close());
   const response = await sendRequest(socket, makeRequest(ready, "c:resource-search", "source.search.v1", {
-    params: { query: "proxy-resource", cursor: null, pageSize: 1, pluginId: desktopFixture.plugin.id },
+    params: { query: `proxy-resource:${upstreamUrl}`, cursor: null, pageSize: 1, pluginId: desktopFixture.plugin.id },
   }));
   assert.equal(response.type, "response", JSON.stringify(response));
   const resourceUrl = response.result.items[0].coverUrl;
@@ -399,6 +415,8 @@ test("source resource URLs are reusable, bounded, and forward binary responses",
     assert.equal(fetched.headers.get("content-type"), "image/test");
     assert.deepEqual([...new Uint8Array(await fetched.arrayBuffer())], [77, 71, 82, 69, 65, 68]);
   }
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].accept, "image/test");
   assert.equal((await fetch(`${resourceUrl}x`)).status, 404);
 });
 

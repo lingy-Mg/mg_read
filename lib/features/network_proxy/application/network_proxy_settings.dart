@@ -15,18 +15,27 @@ import 'package:mg_read/core/settings/settings.dart';
 
 enum NetworkProxyProtocol { http, https, socks5 }
 
-enum NetworkProxyTraffic { runtime, manga, video, audio }
+enum NetworkProxyTraffic { sourceHttp, cover, manga, video, audio }
 
 final class NetworkProxySettings {
-  NetworkProxySettings({required this.protocol, required this.host, required this.port, required Map<NetworkProxyTraffic, bool> enabled})
-    : enabled = Map<NetworkProxyTraffic, bool>.unmodifiable(enabled);
+  NetworkProxySettings({
+    required this.protocol,
+    required this.host,
+    required this.port,
+    this.useEnvironmentProxy = false,
+    this.forcePlayerLocalProxy = false,
+    required Map<NetworkProxyTraffic, bool> enabled,
+  }) : enabled = Map<NetworkProxyTraffic, bool>.unmodifiable(enabled);
 
   static final defaults = NetworkProxySettings(
     protocol: NetworkProxyProtocol.http,
     host: '127.0.0.1',
     port: 9000,
+    useEnvironmentProxy: false,
+    forcePlayerLocalProxy: false,
     enabled: <NetworkProxyTraffic, bool>{
-      NetworkProxyTraffic.runtime: false,
+      NetworkProxyTraffic.sourceHttp: false,
+      NetworkProxyTraffic.cover: false,
       NetworkProxyTraffic.manga: false,
       NetworkProxyTraffic.video: false,
       NetworkProxyTraffic.audio: false,
@@ -36,9 +45,16 @@ final class NetworkProxySettings {
   final NetworkProxyProtocol protocol;
   final String host;
   final int port;
+  final bool useEnvironmentProxy;
+  final bool forcePlayerLocalProxy;
   final Map<NetworkProxyTraffic, bool> enabled;
 
   bool isEnabled(NetworkProxyTraffic traffic) => enabled[traffic] ?? false;
+
+  bool get shouldForcePlayerLocalProxy =>
+      forcePlayerLocalProxy &&
+      protocol == NetworkProxyProtocol.http &&
+      (isEnabled(NetworkProxyTraffic.video) || isEnabled(NetworkProxyTraffic.audio));
 
   String get uri => '${protocol.name}://$host:$port';
 
@@ -46,6 +62,8 @@ final class NetworkProxySettings {
     'protocol': protocol.name,
     'host': host,
     'port': port,
+    'useEnvironmentProxy': useEnvironmentProxy,
+    'forcePlayerLocalProxy': forcePlayerLocalProxy,
     'enabled': <String, Object?>{for (final traffic in NetworkProxyTraffic.values) traffic.name: isEnabled(traffic)},
   };
 
@@ -57,10 +75,10 @@ final class NetworkProxySettings {
         protocol: protocol,
         host: value['host']! as String,
         port: value['port']! as int,
+        useEnvironmentProxy: value['useEnvironmentProxy'] as bool? ?? false,
+        forcePlayerLocalProxy: value['forcePlayerLocalProxy'] as bool? ?? false,
         enabled: <NetworkProxyTraffic, bool>{
-          NetworkProxyTraffic.runtime:
-              rawEnabled['runtime'] as bool? ?? ((rawEnabled['source'] as bool? ?? false) || (rawEnabled['novel'] as bool? ?? false)),
-          for (final traffic in NetworkProxyTraffic.values.skip(1)) traffic: rawEnabled[traffic.name] as bool? ?? false,
+          for (final traffic in NetworkProxyTraffic.values) traffic: rawEnabled[traffic.name] as bool? ?? false,
         },
       );
     } on Object {

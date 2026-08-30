@@ -23,6 +23,7 @@ import 'package:file_selector/file_selector.dart';
 import 'src/windows_job_object.dart';
 import 'src/windows_browser_session_host.dart';
 
+part 'src/windows_system_proxy.dart';
 part 'src/desktop_supervisor.dart';
 part 'src/desktop_plugin_artifact_io.dart';
 part 'src/desktop_development_synchronization.dart';
@@ -38,4 +39,3 @@ part 'src/plugin_transfer_invocation.dart';
 part 'src/plugin_runtime.dart';
 part 'src/runtime_error.dart';
 part 'src/wire_connection.dart';
-part 'src/windows_system_proxy.dart';

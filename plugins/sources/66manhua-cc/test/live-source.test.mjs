@@ -20,5 +20,5 @@ test('public home keeps varied discovery sections and a target chapter yields pr
   for (const item of detailItems) { const detail = await plugin.getDetail({ id: item.id }); assert.equal(detail.id, item.id); assert.ok(detail.title.length > 0); }
   const content = await plugin.getContent({ id: encode('comic', '/index.php/comic/meinuzishangshideyejianzhenliaoshi'), chapterId: encode('chapter', '/index.php/chapter/101382') });
   assert.equal(content.text, null); assert.ok(content.pages.length > 0); assert.ok(content.pages.every((page) => /^http:\/\/127\.0\.0\.1\/resource\/\d+$/u.test(page.url)));
-  const image = await plugin.resource(proxied); assert.equal(image.status, 200); assert.ok(image.body.byteLength > 0);
+  const image = await fetch(proxied.url, { headers: proxied.headers }); assert.equal(image.ok, true); assert.ok(image.body); await image.body.cancel();
 });

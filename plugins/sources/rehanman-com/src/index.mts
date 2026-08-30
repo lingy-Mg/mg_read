@@ -36,7 +36,6 @@ export async function searchSuggestions() { return Object.freeze({ items: Object
 export async function getDetail(request: { readonly id: string }) { return requireSource().detail(request.id); }
 export async function getChapters(request: { readonly id: string }) { return requireSource().chapters(request.id); }
 export async function getContent(request: { readonly id: string; readonly chapterId: string }) { return requireSource().content(request.id, request.chapterId); }
-export async function resource(request: Record<string, unknown>) { return requireSource().resource(request); }
 
 function requireSource() { if (source === undefined) throw new Error('Source is not activated.'); return source; }
 function parseCursor(value: string | null, scope = 'latest') { if (value === null) return 1; const match = new RegExp(`^${scope}:(\\d+)$`, 'u').exec(value); const page = Number(match?.[1]); if (!Number.isSafeInteger(page) || page < 2) throw new Error('Cursor is invalid.'); return page; }

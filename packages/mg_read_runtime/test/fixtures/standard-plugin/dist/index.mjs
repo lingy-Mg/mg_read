@@ -21,13 +21,14 @@ export async function activate(nextContext) {
 
 function contentSummary(query) {
   const id = `fixture:${query}`;
+  const proxyResourceUrl = query.startsWith("proxy-resource:") ? query.slice("proxy-resource:".length) : null;
   return {
     id,
     title: formatFixtureTitle(prefix, query),
     contentKind: "novel",
     author: context.plugin.id,
     url: `https://example.invalid/books/${encodeURIComponent(id)}`,
-    coverUrl: query === "proxy-resource" ? context.resource.proxy({ kind: "fixture" }) : null,
+    coverUrl: proxyResourceUrl === null ? null : context.resource.proxy({ kind: "image", url: proxyResourceUrl, headers: { Accept: "image/test" } }),
     description: "标准插件富字段测试内容。",
     language: "zh-CN",
     status: "ongoing",
@@ -46,11 +47,6 @@ function contentSummary(query) {
     tags: [],
     attributes: [],
   };
-}
-
-export async function resource(request) {
-  if (request.kind !== "fixture") return { status: 404, body: "" };
-  return { status: 206, headers: { "content-type": "image/test" }, body: new Uint8Array([77, 71, 82, 69, 65, 68]) };
 }
 
 export async function discover(_request) {

@@ -1,6 +1,6 @@
 /**
  * Baozimh manga parser and HTTP/resource boundary.
- * Detail and catalog share one bounded book-page projection; image bytes always flow through resource().
+ * Detail and catalog share one bounded book-page projection; image bytes are fetched and streamed only by Runtime.
  * HTML, manga pages, credentials, signed media URLs, and user input are never cached or logged.
  */
 import { Buffer } from 'node:buffer';
@@ -92,15 +92,6 @@ export class BaozimhSource {
       updatedAt: null, text: null, pages: Object.freeze(pages) });
   }
 
-  async resource(request: Record<string, unknown>) {
-    if (request.kind !== 'image' || typeof request.url !== 'string' || typeof request.referer !== 'string') return emptyResource(400);
-    const url = new URL(request.url); const referer = new URL(request.referer);
-    if (!isImageUrl(url) || referer.origin !== origin) return emptyResource(400);
-    const response = await this.context.http.fetch(url, { headers: { accept: 'image/avif,image/webp,image/*,*/*;q=0.8', referer: referer.toString() } });
-    const body = new Uint8Array(await response.arrayBuffer()); const type = response.headers.get('content-type');
-    return Object.freeze({ status: response.status, headers: type === null ? {} : { 'content-type': type }, body });
-  }
-
   async #getBookProjection(id: string): Promise<BookProjection> {
     const requestedUrl = decodeBookId(id);
     return this.#bookCache.get(`book:${requestedUrl.pathname}`, async () => {
@@ -138,7 +129,7 @@ export class BaozimhSource {
     const finalUrl = new URL(response.url || url.toString()); if (finalUrl.origin !== origin) throw new Error('Source redirect is invalid.');
     return Object.freeze({ body, url: finalUrl });
   }
-  #proxyImage(url: URL, referer: URL): string | null { return isImageUrl(url) && referer.origin === origin ? this.context.resource.proxy({ kind: 'image', url: url.toString(), referer: referer.toString() }) : null; }
+  #proxyImage(url: URL, referer: URL): string | null { return isImageUrl(url) && referer.origin === origin ? this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/avif,image/webp,image/*,*/*;q=0.8', Referer: referer.toString() } }) : null; }
 }
 
 function summary(input: { readonly id: string; readonly url: URL; readonly title: string; readonly author: string | null; readonly coverUrl: string | null;
@@ -168,4 +159,3 @@ function decodeEntities(value: string): string { return value.replaceAll('&amp;'
 function clean(value: string | undefined): string | null { const result = value?.replace(/\s+/gu, ' ').trim() ?? ''; return result === '' ? null : result; }
 function parseStatus(value: string | null): ContentSummary['status'] { if (value === null) return 'unknown'; if (/(?:完結|完本|已完結)/u.test(value)) return 'completed'; if (/(?:連載|更新中)/u.test(value)) return 'ongoing'; if (/(?:停更|暫停)/u.test(value)) return 'hiatus'; return 'unknown'; }
 function isChallenge(body: string): boolean { return /(?:cf-challenge|cf-turnstile|Just a moment|Checking your browser|challenge-platform)/iu.test(body); }
-function emptyResource(status: number) { return Object.freeze({ status, headers: Object.freeze({}), body: new Uint8Array() }); }

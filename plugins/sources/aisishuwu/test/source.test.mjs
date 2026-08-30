@@ -19,7 +19,7 @@ test('list results expose source covers through the Runtime proxy', async () => 
           new URL(input).pathname.startsWith('/novel/')
               ? new Response(`
                 <h1 class="novel_title">封面测试书</h1>
-                <section class="pic"><img data-original="//cdn.example.com/covers/42.jpg"></section>
+                <section class="pic"><img data-original="//img.321cdn.com/covers/42.jpg"></section>
               `)
               : new Response(`
             <article class="list-group-item">
@@ -54,7 +54,7 @@ test('list results expose source covers through the Runtime proxy', async () => 
     'http://127.0.0.1:1234/v1/source-resource/opaque',
   );
   assert.equal(proxyCalls, 1);
-  assert.deepEqual(proxyRequest, { url: 'https://cdn.example.com/covers/42.jpg' });
+  assert.deepEqual(proxyRequest, { kind: 'image', url: 'https://img.321cdn.com/covers/42.jpg', headers: { Accept: 'image/*' } });
 });
 
 test('category detail hydration uses eight workers, preserves order, and degrades one failed row once', async () => {
@@ -97,7 +97,7 @@ test('category detail hydration uses eight workers, preserves order, and degrade
             if (id === '5') throw new Error('Detail unavailable.');
             return new Response(`
               <h1 class="novel_title">列表书${id}</h1>
-              <section class="pic"><img src="https://cdn.example.com/${id}.jpg"></section>
+              <section class="pic"><img src="https://img.321cdn.com/${id}.jpg"></section>
               <div class="novel_info">
                 <a href="/search.html?q=detail-${id}&f=author">详情作者${id}</a>
                 <a href="/lists/71.html">科幻</a>
@@ -133,7 +133,7 @@ test('category detail hydration uses eight workers, preserves order, and degrade
     items.map((item) => item.content.id),
     Array.from({ length: 20 }, (_, index) => `novel:${index + 1}`),
   );
-  assert.equal(items[0].content.coverUrl, 'https://cdn.example.com/1.jpg');
+  assert.equal(items[0].content.coverUrl, 'https://img.321cdn.com/1.jpg');
   assert.equal(items[0].content.description, '详情简介1');
   assert.equal(items[4].content.coverUrl, null);
   assert.equal(items[4].content.author, '列表作者5');
@@ -161,7 +161,7 @@ test('discovery home exposes source rankings and ranking targets return the full
             return new Response(`
               <h1 class="novel_title">${title}</h1>
               <div class="novel_info"><a href="/lists/71.html">科幻</a><span>字数：12345</span></div>
-              <section class="pic"><img src="https://cdn.example.com/${novelId}.jpg"></section>
+              <section class="pic"><img src="https://img.321cdn.com/${novelId}.jpg"></section>
               <div class="jianjie"><p>这是排行页详情。</p></div>
             `);
           }
@@ -175,8 +175,8 @@ test('discovery home exposes source rankings and ranking targets return the full
               <div class="hot-box">
                 <div class="hot-title"><h2>重磅推荐</h2></div>
                 <div class="hot-data">
-                  <a href="/novel/11.html"><img src="https://cdn.example.com/11.jpg"></a><a href="/novel/11.html">推荐一</a>
-                  <a href="/novel/12.html"><img src="https://cdn.example.com/12.jpg"></a><a href="/novel/12.html">推荐二</a>
+                  <a href="/novel/11.html"><img src="https://img.321cdn.com/11.jpg"></a><a href="/novel/11.html">推荐一</a>
+                  <a href="/novel/12.html"><img src="https://img.321cdn.com/12.jpg"></a><a href="/novel/12.html">推荐二</a>
                 </div>
               </div>
               <div class="innerss">
@@ -218,7 +218,7 @@ test('discovery home exposes source rankings and ranking targets return the full
   assert.equal(home.document.components[1].children[0].layout, 'coverGrid');
   assert.deepEqual(
     home.document.components[1].children[0].items.map((item) => item.content.coverUrl),
-    ['https://cdn.example.com/21.jpg', 'https://cdn.example.com/22.jpg'],
+    ['https://img.321cdn.com/21.jpg', 'https://img.321cdn.com/22.jpg'],
   );
   const navigationGroup = home.document.components[2];
   assert.equal(navigationGroup.layout, 'vertical');
@@ -247,7 +247,7 @@ test('discovery home exposes source rankings and ranking targets return the full
   assert.equal(collection.layout, 'list');
   assert.deepEqual(collection.items.map((item) => item.rank), [null, null, null]);
   assert.equal(collection.continuation, null);
-  assert.equal(collection.items[0].content.coverUrl, 'https://cdn.example.com/1.jpg');
+  assert.equal(collection.items[0].content.coverUrl, 'https://img.321cdn.com/1.jpg');
   assert.equal(collection.items[0].content.description, '这是排行页详情。');
 });
 
@@ -260,7 +260,7 @@ test('detail results retain a lazy-loaded cover from the source page', async () 
         fetch: async () =>
           new Response(`
             <h1 class="novel_title">封面测试书</h1>
-            <section class="pic"><img data-original="https://cdn.example.com/covers/42.jpg"></section>
+            <section class="pic"><img data-original="https://img.321cdn.com/covers/42.jpg"></section>
           `),
       },
       log: { debug() {}, info() {}, warn() {}, error() {} },
@@ -272,10 +272,10 @@ test('detail results retain a lazy-loaded cover from the source page', async () 
 
   const detail = await source.getDetail({ id: 'novel:42' });
 
-  assert.equal(detail.coverUrl, 'https://cdn.example.com/covers/42.jpg');
+  assert.equal(detail.coverUrl, 'https://img.321cdn.com/covers/42.jpg');
 });
 
-test('Alice cover results use the Runtime proxy and the resource handler accepts the live CDN', async () => {
+test('Alice cover results emit a validated Runtime-owned image request', async () => {
   let proxyRequest;
   let fetchCount = 0;
   const context = {
@@ -295,17 +295,8 @@ test('Alice cover results use the Runtime proxy and the resource handler accepts
   const source = new AliceBookHouseSource(context, { origin: 'https://www.alicesw.com', categories: [] });
   const detail = await source.getDetail({ id: 'novel:42' });
   assert.equal(detail.coverUrl, 'http://127.0.0.1:1234/v1/source-resource/opaque');
-  assert.deepEqual(proxyRequest, { url: 'https://img.321cdn.com/covers/42.webp' });
-
-  await plugin.activate(context);
-  const accepted = await plugin.resource(proxyRequest);
-  assert.equal(accepted.status, 200);
-  assert.equal(accepted.headers['content-type'], 'image/webp');
-  assert.deepEqual([...accepted.body], [1, 2, 3]);
-  const rejected = await plugin.resource({ url: 'https://evil.example/covers/42.jpg' });
-  assert.equal(rejected.status, 400);
-  assert.equal(rejected.body.byteLength, 0);
-  assert.equal(fetchCount, 2);
+  assert.deepEqual(proxyRequest, { kind: 'image', url: 'https://img.321cdn.com/covers/42.webp', headers: { Accept: 'image/*' } });
+  assert.equal(fetchCount, 1);
 });
 
 test('detail projects real source metadata into the v1 summary fields', async () => {
@@ -317,7 +308,7 @@ test('detail projects real source metadata into the v1 summary fields', async ()
         fetch: async () =>
           new Response(`
             <h1 class="novel_title">字段测试书</h1>
-            <div class="pic"><img src="https://cdn.example.com/covers/fields.jpg"></div>
+            <div class="pic"><img src="https://img.321cdn.com/covers/fields.jpg"></div>
             <div class="novel_info">
               <p>作 者：<a href="/search.html?q=test&f=author">字段作者</a></p>
               <p>分 类：<a href="/lists/71.html">科幻</a></p>
@@ -366,7 +357,7 @@ test('search hydrates list items with the same cover and rich metadata as discov
           if (path === '/novel/42.html') {
             return new Response(`
               <h1 class="novel_title">字段测试书</h1>
-              <div class="pic"><img src="https://cdn.example.com/covers/fields.jpg"></div>
+              <div class="pic"><img src="https://img.321cdn.com/covers/fields.jpg"></div>
               <div class="novel_info">
                 <p>作 者：<a href="/search.html?q=test&f=author">字段作者</a></p>
                 <p>分 类：<a href="/lists/71.html">科幻</a></p>
@@ -405,7 +396,7 @@ test('search hydrates list items with the same cover and rich metadata as discov
   });
   const item = result.items[0];
   assert.equal(item.author, '字段作者');
-  assert.equal(item.coverUrl, 'https://cdn.example.com/covers/fields.jpg');
+  assert.equal(item.coverUrl, 'https://img.321cdn.com/covers/fields.jpg');
   assert.equal(item.description, '这是分类页应该展示的短简介。');
   assert.equal(item.wordCount, 1859600);
   assert.equal(item.chapterCount, 733);
@@ -598,7 +589,7 @@ test('public API completes the opaque content chain without duplicating Runtime 
     <article class="list-group-item">
       <a href="/novel/42.html">测试书名</a>
       <a href="/lists/71.html">科幻</a>
-      <img src="https://cdn.example.com/covers/42.jpg">
+      <img src="https://img.321cdn.com/covers/42.jpg">
     </article>
     <div class="innerss">
       <div class="title">热门推荐小说</div>

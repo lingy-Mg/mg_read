@@ -305,38 +305,6 @@ export class DouyinXiaoshuoSource {
     });
   }
 
-  async resource(request: Record<string, unknown>) {
-    if (
-      request.kind !== 'image' ||
-      typeof request.url !== 'string' ||
-      typeof request.referer !== 'string'
-    ) {
-      return emptyResource(400);
-    }
-    const url = new URL(request.url);
-    const referer = new URL(request.referer);
-    if (
-      url.protocol !== 'https:' ||
-      !imageHosts.has(url.hostname) ||
-      referer.origin !== origin
-    ) {
-      return emptyResource(400);
-    }
-    const response = await this.context.http.fetch(url, {
-      headers: { accept: 'image/*', referer: referer.toString() },
-    });
-    const body = new Uint8Array(await response.arrayBuffer());
-    const contentType = response.headers.get('content-type');
-    return Object.freeze({
-      status: response.status,
-      headers:
-        contentType === null
-          ? Object.freeze({})
-          : Object.freeze({ 'content-type': contentType }),
-      body,
-    });
-  }
-
   #parseListing(
     html: string,
     baseUrl: URL,
@@ -419,7 +387,7 @@ export class DouyinXiaoshuoSource {
     return this.context.resource.proxy({
       kind: 'image',
       url: url.toString(),
-      referer: new URL('/', referer).toString(),
+      headers: { Accept: 'image/*', Referer: new URL('/', referer).toString() },
     });
   }
 }
@@ -606,12 +574,4 @@ function isChallenge(body: string): boolean {
   return /(?:cf-challenge|cf-turnstile|Just a moment|Checking your browser|challenge-platform)/iu.test(
     body,
   );
-}
-
-function emptyResource(status: number) {
-  return Object.freeze({
-    status,
-    headers: Object.freeze({}),
-    body: new Uint8Array(),
-  });
 }

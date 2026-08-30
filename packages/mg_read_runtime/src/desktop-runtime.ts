@@ -3,6 +3,7 @@
  *
  * Responsibilities:
  * - own the Node Runtime lifecycle, private loopback plane and Debug inspector;
+ * - apply the app-owned upstream proxy only to Runtime-owned source HTTP;
  * - resolve source directories for the Flutter Supervisor without launching
  *   user-facing shell processes from the Job-managed Node child.
  *
@@ -50,6 +51,19 @@ import { createRuntimeDebugHttpServer } from "./debug-http-bridge.js";
 import { DesktopBrowserSessionBroker } from "./desktop-browser-session.js";
 import { readDebugHttpEnabled } from "./debug-http-control.js";
 import { RuntimeDebugHttpSettings } from "./debug-http-settings.js";
+import { ConfigurablePluginHttpClient } from "./plugin-http-client.js";
+import { readPluginHttpProxyConfiguration } from "./plugin-http-proxy-control.js";
+import type {
+  InFlightRequestsBySession,
+  RuntimeDispatchFailure,
+  RuntimeDispatchResult,
+  RuntimeHealthResponse,
+  RuntimeHelloResponse,
+  RuntimeInFlightRequest,
+  RuntimePingResponse,
+  RuntimeShutdownResponse,
+  RuntimeStatusResponse,
+} from "./desktop-runtime-types.js";
 import { servePluginIconResource, servePluginTransferResource, serveSourceResource } from "./loopback-resources.js";
 import { isPluginManagerError, PluginManager, PluginManagerError, type PluginManagerEvent } from "./plugin-manager.js";
 import { pluginManagerErrorMessage } from "./plugin-manager-error-message.js";
@@ -87,6 +101,7 @@ const RUNTIME_CONTROL_METHOD = Object.freeze({
   debugHttpStatus: "runtime.debugHttp.status.v1",
   debugHttpSetEnabled: "runtime.debugHttp.setEnabled.v1",
   hello: "runtime.hello",
+  pluginHttpProxyConfigure: "runtime.pluginHttpProxy.configure.v1",
   ping: "runtime.ping",
   status: "runtime.status.v1",
   pluginsCacheClear: "plugins.cache.clear.v1",
@@ -115,6 +130,7 @@ const RUNTIME_CONTROL_METHOD = Object.freeze({
 const RUNTIME_CONTROL_CAPABILITIES = Object.freeze([
   RUNTIME_CONTROL_METHOD.ping,
   RUNTIME_CONTROL_METHOD.status,
+  RUNTIME_CONTROL_METHOD.pluginHttpProxyConfigure,
   RUNTIME_CONTROL_METHOD.pluginsCacheUsage,
   RUNTIME_CONTROL_METHOD.pluginsInstallationUsage,
   RUNTIME_CONTROL_METHOD.pluginsCacheClear,
@@ -139,85 +155,6 @@ const RUNTIME_CONTROL_CAPABILITIES = Object.freeze([
 ]);
 const RUNTIME_RPC_PATH = "/v1/rpc";
 const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-
-/** Result of a control handler before it is encoded on the WebSocket. */
-type RuntimeDispatchResult = RuntimeDispatchFailure | RuntimeDispatchSuccess;
-
-/** A handler failure that will become a correlated protocol error envelope. */
-interface RuntimeDispatchFailure {
-  readonly error: RuntimeProtocolError;
-}
-
-/** A handler success that will become a correlated protocol response envelope. */
-interface RuntimeDispatchSuccess {
-  readonly result: JsonValue;
-}
-
-/** Request cancellations grouped by the connection that owns them. */
-type InFlightRequestsBySession = Map<
-  ServerWebSocketSession,
-  Map<string, RuntimeInFlightRequest>
->;
-
-interface RuntimeInFlightRequest {
-  readonly cancellation: AbortController;
-}
-
-/** Shape returned by the two loopback health endpoints. */
-interface RuntimeHealthResponse extends JsonObject {
-  readonly bootId: string;
-  readonly nodeVersion: string;
-  readonly protocolVersion: string;
-  readonly runtimeVersion: string;
-  readonly status: "live" | "ready";
-}
-
-/** Negotiated limits and identity returned by `runtime.hello`. */
-interface RuntimeHelloResponse extends JsonObject {
-  readonly bootId: string;
-  readonly capabilities: readonly string[];
-  readonly maxFrameBytes: number;
-  readonly maxInFlightRequests: number;
-  readonly maxInlineBytes: number;
-  readonly maxOutboundQueueBytes: number;
-  readonly nodeVersion: string;
-  readonly protocolVersion: string;
-  readonly runtimeVersion: string;
-  readonly supportsCancellation: boolean;
-}
-
-/** Result of the minimal diagnostic capability used by the desktop tests. */
-interface RuntimePingResponse extends JsonObject {
-  readonly bootId: string;
-  readonly nodeVersion: string;
-  readonly ok: boolean;
-  readonly runtimeVersion: string;
-}
-
-/** Safe process snapshot exposed to the Flutter status page. */
-interface RuntimeStatusResponse extends JsonObject {
-  readonly arch: string;
-  readonly bootId: string;
-  readonly memory: {
-    readonly arrayBuffers: number;
-    readonly external: number;
-    readonly heapTotal: number;
-    readonly heapUsed: number;
-    readonly rss: number;
-  };
-  readonly nodeVersion: string;
-  readonly ok: boolean;
-  readonly platform: string;
-  readonly plugins: readonly JsonObject[];
-  readonly runtimeVersion: string;
-  readonly runtimeKind: "android-javet" | "desktop-node";
-  readonly uptimeMs: number;
-}
-
-/** Acknowledgement sent before the Core begins asynchronous shutdown. */
-interface RuntimeShutdownResponse extends JsonObject {
-  readonly accepted: boolean;
-}
 
 /**
  * One stdout-only startup record emitted after the loopback server is usable.
@@ -288,6 +225,7 @@ export class DesktopRuntime {
   #startPromise: Promise<DesktopRuntimeReady> | undefined;
   #stopPromise: Promise<void> | undefined;
   #pluginManager: PluginManager | undefined;
+  readonly #pluginHttp = new ConfigurablePluginHttpClient();
   /** Optional, separately-bound Debug inspector; never carries Runtime RPC. */
   #debugHttp: RuntimeDebugHttpServer | undefined;
   #debugHttpConfiguredEnabled = false;
@@ -405,7 +343,9 @@ export class DesktopRuntime {
               ? {}
               : { developmentNpmCli: this.#developmentNpmCli }),
           }),
-      events: (event) => this.#handlePluginManagerEvent(event), debugLogEnabled: () => this.#debugHttp?.status().enabled === true,
+      events: (event) => this.#handlePluginManagerEvent(event),
+      debugLogEnabled: () => this.#debugHttp?.status().enabled === true,
+      http: this.#pluginHttp,
     });
     try {
       await pluginManager.initialize();
@@ -563,6 +503,7 @@ export class DesktopRuntime {
       this.#removeDebugDiagnosticObserver = undefined;
       await this.#pluginManager?.close();
       this.#pluginManager = undefined;
+      await this.#pluginHttp.close();
     }
   }
 
@@ -884,6 +825,12 @@ export class DesktopRuntime {
           uptimeMs: Math.max(0, Math.floor(process.uptime() * 1000)),
         };
         return { result: status };
+      }
+      case RUNTIME_CONTROL_METHOD.pluginHttpProxyConfigure: {
+        const configuration = readPluginHttpProxyConfiguration(request);
+        if ("error" in configuration) return configuration;
+        this.#pluginHttp.configure(configuration.proxyUrl);
+        return { result: { enabled: configuration.proxyUrl !== undefined } };
       }
       case RUNTIME_CONTROL_METHOD.debugHttpSetEnabled:
         if (!this.#debugHttpAllowed) {

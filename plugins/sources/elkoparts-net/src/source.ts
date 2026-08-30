@@ -19,7 +19,6 @@ import type {
   DiscoveryContentItem,
   DiscoveryContinuation,
   MgReadPluginContext,
-  ResourceResponse,
   SearchRequest,
   SearchResult,
   SearchSuggestionsRequest,
@@ -254,28 +253,6 @@ export class ElkopartsSource {
     };
   }
 
-  async resource(request: Record<string, unknown>): Promise<ResourceResponse> {
-    const rawUrl = request.url;
-    if (typeof rawUrl !== 'string') return emptyResource(400);
-    let url: URL;
-    try {
-      url = new URL(rawUrl);
-    } catch {
-      return emptyResource(400);
-    }
-    if (url.origin !== sourceOrigin || !/^\/(?:files\/article\/image|images)\//u.test(url.pathname)) {
-      return emptyResource(400);
-    }
-    const response = await this.#context.http.fetch(url, { method: 'GET' });
-    const contentType = response.headers.get('content-type');
-    if (contentType !== null && !contentType.toLowerCase().startsWith('image/')) return emptyResource(502);
-    return {
-      status: response.status,
-      headers: contentType === null ? {} : { 'content-type': contentType },
-      body: new Uint8Array(await response.arrayBuffer()),
-    };
-  }
-
   #parseRowBooks(html: string, pageUrl: URL): ContentSummary[] {
     const results: ContentSummary[] = [];
     const seen = new Set<string>();
@@ -373,7 +350,7 @@ export class ElkopartsSource {
 
   #coverProxy(url: URL | null): string | null {
     if (url === null) return null;
-    return this.#context.resource.proxy({ url: url.toString() });
+    return this.#context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/*' } });
   }
 }
 
@@ -623,8 +600,4 @@ function normalizeSourceUrl(value: string | undefined, base: URL): URL | null {
 
 function assertSourceUrl(url: URL): void {
   if (url.origin !== sourceOrigin || url.protocol !== 'http:') throw new Error('Source URL is outside the allowed origin.');
-}
-
-function emptyResource(status: number): ResourceResponse {
-  return { status, headers: {}, body: new Uint8Array() };
 }

@@ -41,7 +41,6 @@ export async function searchSuggestions() { return { items: [], nextCursor: null
 export async function getDetail(request: { readonly id: string }) { return invoke('get_detail', (active) => active.detail(request.id)); }
 export async function getChapters(request: { readonly id: string }) { return invoke('get_chapters', (active) => active.chapters(request.id)); }
 export async function getContent(request: { readonly id: string; readonly chapterId: string }) { return invoke('get_content', (active) => active.content(request.id, request.chapterId)); }
-export async function resource(request: Record<string, unknown>) { return invoke('resource', (active) => active.resource(request)); }
 
 async function invoke<T>(operation: string, action: (active: ManhuaguiSource) => Promise<T>): Promise<T> {
   const activeContext = requireValue(context); const active = requireValue(source); activeContext.log.info(`source_${operation}_started`);

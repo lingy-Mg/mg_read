@@ -15,7 +15,6 @@ test('exports Plugin API v1 and builds a deterministic single-file artifact', as
     'getChapters',
     'getContent',
     'getDetail',
-    'resource',
     'search',
     'searchSuggestions',
   ]);

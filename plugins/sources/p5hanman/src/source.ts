@@ -189,39 +189,6 @@ export class P5HanmanSource {
     });
   }
 
-  async resource(request: Record<string, unknown>) {
-    if (
-      request.kind !== 'p5-image' ||
-      (request.purpose !== 'cover' && request.purpose !== 'page') ||
-      typeof request.url !== 'string' ||
-      typeof request.referer !== 'string'
-    ) {
-      return emptyResource(400);
-    }
-    const purpose = request.purpose as ImagePurpose;
-    const url = readImageUrl(request.url, purpose);
-    const referer = this.#readAllowedReferer(request.referer, purpose);
-    if (url === null || referer === null) return emptyResource(400);
-    const response = await this.context.http.fetch(url, {
-      headers: { accept: 'image/*', referer: referer.toString() },
-    });
-    if (!response.ok) return emptyResource(response.status);
-    const finalUrl = response.url === '' ? url : new URL(response.url);
-    const contentType = response.headers.get('content-type');
-    if (
-      readImageUrl(finalUrl.toString(), purpose) === null ||
-      contentType === null ||
-      !/^image\//iu.test(contentType)
-    ) {
-      return emptyResource(502);
-    }
-    return Object.freeze({
-      status: response.status,
-      headers: Object.freeze({ 'content-type': contentType }),
-      body: new Uint8Array(await response.arrayBuffer()),
-    });
-  }
-
   #parseCards(
     html: string,
     baseUrl: URL,
@@ -402,11 +369,14 @@ export class P5HanmanSource {
   }
 
   #proxyImage(url: URL, referer: URL, purpose: ImagePurpose): string {
+    const image = readImageUrl(url.toString(), purpose);
+    const page = this.#readAllowedReferer(referer.toString(), purpose);
+    if (image === null || page === null) throw new Error('Image request is invalid.');
     return this.context.resource.proxy({
       kind: 'p5-image',
       purpose,
-      url: url.toString(),
-      referer: referer.toString(),
+      url: image.toString(),
+      headers: { Accept: 'image/*', Referer: page.toString() },
     });
   }
 
@@ -566,12 +536,4 @@ function clean(value: string | undefined): string | null {
 
 function isChallenge(body: string): boolean {
   return /(?:cf-challenge|cf-turnstile|Just a moment|Checking your browser|challenge-platform)/iu.test(body);
-}
-
-function emptyResource(status: number) {
-  return Object.freeze({
-    status,
-    headers: Object.freeze({}),
-    body: new Uint8Array(),
-  });
 }

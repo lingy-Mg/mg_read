@@ -113,13 +113,9 @@ test('fixture chain emits proxied ordered manga pages with guarded Referer reque
     kind: 'p5-image',
     purpose: 'page',
     url: 'https://cfpic.se8manhua.club/fixture/001.jpg',
-    referer: 'https://www.4p5mha.work/chapter/9001',
+    headers: { Accept: 'image/*', Referer: 'https://www.4p5mha.work/chapter/9001' },
   });
-  const image = await plugin.resource(pageRequest);
-  assert.equal(image.status, 200);
-  assert.equal(image.headers['content-type'], 'image/jpeg');
-  const imageCall = calls.find((call) => call.url.hostname === 'cfpic.se8manhua.club');
-  assert.equal(imageCall.init.headers.referer, 'https://www.4p5mha.work/chapter/9001');
+  assert.equal(calls.some((call) => call.url.hostname === 'cfpic.se8manhua.club'), false);
   assert.ok(
     calls.every((call) => {
       const headers = call.init.headers ?? {};
@@ -130,25 +126,11 @@ test('fixture chain emits proxied ordered manga pages with guarded Referer reque
   assert.ok(logs.every((entry) => !entry.includes('Fixture')));
 });
 
-test('rejects cross-book chapters, off-host images and forged Referers', async () => {
+test('rejects cross-book chapters before emitting image requests', async () => {
   await assert.rejects(
     plugin.getContent({ id: 'manga:200', chapterId: 'chapter:100:9001' }),
     /does not belong/u,
   );
-  const offHost = await plugin.resource({
-    kind: 'p5-image',
-    purpose: 'page',
-    url: 'https://example.com/001.jpg',
-    referer: 'https://www.4p5mha.work/chapter/9001',
-  });
-  assert.equal(offHost.status, 400);
-  const forgedReferer = await plugin.resource({
-    kind: 'p5-image',
-    purpose: 'page',
-    url: 'https://cfpic.se8manhua.club/fixture/001.jpg',
-    referer: 'https://example.com/chapter/9001',
-  });
-  assert.equal(forgedReferer.status, 400);
 });
 
 function html(body) {

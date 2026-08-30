@@ -164,10 +164,6 @@ export async function getContent(request: {
   );
 }
 
-export async function resource(request: Record<string, unknown>) {
-  return requireSource().resource(request);
-}
-
 function requireSource(): DandanYueduSource {
   if (context === undefined || source === undefined) {
     throw new Error('Source is not activated.');

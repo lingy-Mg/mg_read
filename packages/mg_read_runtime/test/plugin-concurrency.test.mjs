@@ -137,10 +137,6 @@ export async function getContent(request) {
     media: null,
   };
 }
-export async function resource(request) {
-  await run("resource", request.label);
-  return { body: "probe", headers: {}, status: 200 };
-}
 `;
   await Promise.all([
     writeFile(join(root, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`),
@@ -401,7 +397,7 @@ test("a never-settling call times out without blocking later same-plugin capabil
   t.diagnostic(`hang=${hangingState.reason?.code} followUps=${followUpStates.length}xfulfilled cacheClear=${cacheState.value.items[0].status} otherPlugin=${unrelated.state}`);
 });
 
-test("resource plugin work observes cancellation without blocking later capabilities", async (t) => {
+test("Runtime-owned resource fetch observes cancellation without occupying plugin capability", async (t) => {
   const root = await temporaryDirectory(t, "mgread-concurrency-resource-");
   const dataRoot = join(root, "runtime-data");
   const pluginId = "org.example.concurrent.resource";
@@ -410,19 +406,30 @@ test("resource plugin work observes cancellation without blocking later capabili
   globalThis[recorderKey] = events;
   t.after(() => { delete globalThis[recorderKey]; });
   await installProbe(dataRoot, join(root, "project"), pluginId, recorderKey);
-  const manager = new PluginManager(dataRoot);
+  let fetchAborted = false;
+  const manager = new PluginManager(dataRoot, { http: { fetch(_input, init) {
+    return new Promise((_resolve, reject) => {
+      const abort = () => {
+        fetchAborted = true;
+        reject(new DOMException("The operation was aborted", "AbortError"));
+      };
+      if (init?.signal?.aborted) abort();
+      else init?.signal?.addEventListener("abort", abort, { once: true });
+    });
+  } } });
   await manager.initialize();
-  const url = manager.createResourceUrl(pluginId, { label: "hang-resource" });
+  const url = manager.createResourceUrl(pluginId, { kind: "image", url: "https://resource.example/hang", headers: {} });
   const token = new URL(url).pathname.split("/").at(-1);
   const controller = new AbortController();
 
   const startedAt = performance.now();
-  const resource = manager.consumeResource(token, controller.signal);
+  const resource = manager.openSourceResource(token, {}, controller.signal);
   setTimeout(() => controller.abort(), 10);
-  await assert.rejects(resource, (error) => error?.code === "cancelled");
+  await assert.rejects(resource, (error) => error?.name === "AbortError");
   const elapsedMs = performance.now() - startedAt;
   const followUp = await settleWithin(search(manager, pluginId, "fast"), 300);
   assert.equal(followUp.state, "fulfilled");
+  assert.equal(fetchAborted, true);
   assert.ok(elapsedMs < 100);
   t.diagnostic(`resourceCancelMs=${elapsedMs.toFixed(1)} followUp=${followUp.state}`);
 });

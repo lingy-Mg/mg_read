@@ -17,11 +17,6 @@ import { AliceBookHouseSource, type SourceRules } from './source.js';
 
 let source: AliceBookHouseSource | undefined;
 
-const allowedCoverOrigins = new Set([
-  'https://www.alicesw.com',
-  'https://img.321cdn.com',
-]);
-
 const categoryRules: SourceRules['categories'] = Object.freeze([
   Object.freeze({ id: '71', title: '科幻' }),
   Object.freeze({ id: '79', title: '经典' }),
@@ -102,35 +97,6 @@ export async function getContent(request: ContentRequest): Promise<ChapterConten
   return invoke(async (activeContext) =>
     (await loadSource(activeContext)).getContent(request),
   );
-}
-
-/** Runtime-owned cover proxy handler; credentials and network access stay in Node. */
-export async function resource(request: Record<string, unknown>): Promise<{
-  readonly status: number;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly body: Uint8Array;
-}> {
-  return invoke(async (activeContext) => {
-    const url = request.url;
-    if (typeof url !== 'string') return { status: 400, headers: {}, body: new Uint8Array() };
-    let coverUrl: URL;
-    try {
-      coverUrl = new URL(url);
-      if (coverUrl.protocol !== 'https:' || !allowedCoverOrigins.has(coverUrl.origin)) {
-        return { status: 400, headers: {}, body: new Uint8Array() };
-      }
-    } catch {
-      return { status: 400, headers: {}, body: new Uint8Array() };
-    }
-    const response = await activeContext.http.fetch(coverUrl, { method: 'GET' });
-    const body = new Uint8Array(await response.arrayBuffer());
-    const contentType = response.headers.get('content-type');
-    return {
-      status: response.status,
-      headers: contentType === null ? {} : { 'content-type': contentType },
-      body,
-    };
-  });
 }
 
 let globalThisContext: MgReadPluginContext | undefined;

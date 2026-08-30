@@ -63,6 +63,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('缓存管理'), findsOneWidget);
+    expect(find.byKey(const Key('cache-management-overview')), findsOneWidget);
     expect(find.text('数据源网页与文件缓存'), findsOneWidget);
     expect(find.text('测试数据源'), findsOneWidget);
     expect(find.text('1.5 KB'), findsOneWidget);

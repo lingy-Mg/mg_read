@@ -17,5 +17,5 @@ test('fixture chain covers discovery, search, detail, complete gallery and resou
   const detailResult = await plugin.getDetail({ id: search.items[0].id }); assert.equal(detailResult.author, 'Fixture Author'); assert.equal(detailResult.chapterCount, 1);
   const chapters = await plugin.getChapters({ id: detailResult.id }); assert.equal(chapters.items.length, 1);
   const content = await plugin.getContent({ id: detailResult.id, chapterId: chapters.items[0].id }); assert.equal(content.text, null); assert.equal(content.pages.length, 2); assert.ok(content.pages.every((page) => page.url.startsWith('http://127.0.0.1/resource/')));
-  const image = await plugin.resource(proxied.at(-1)); assert.equal(image.status, 200); assert.deepEqual([...image.body], [1, 2, 3]);
+  assert.equal(new URL(proxied.at(-1).url).hostname, 'cosplaytele.com');
 });

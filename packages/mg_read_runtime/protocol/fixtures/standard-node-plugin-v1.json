@@ -19,6 +19,7 @@
       "runtime.hello",
       "runtime.ping",
       "runtime.status.v1",
+      "runtime.pluginHttpProxy.configure.v1",
       "plugins.cache.usage.v1",
       "plugins.installation.usage.v1",
       "plugins.cache.clear.v1",

@@ -87,8 +87,6 @@ export async function getContent(request: { id: string; chapterId: string }) {
   }
 }
 
-export async function resource(_request: Record<string, unknown>) { return { status: 404, body: '' }; }
-
 async function fetchJson(url: string): Promise<Json> {
   const response = await requireContext().http.fetch(url, { headers: appHeaders });
   if (!response.ok) throw new Error('Source request failed.');

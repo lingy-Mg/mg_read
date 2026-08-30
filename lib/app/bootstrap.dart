@@ -283,7 +283,9 @@ Future<void> bootstrapMgReadApp({
             );
           }),
         if (contentLibrary != null || contentLibraryFactory != null)
-          bookCoverBytesLoaderProvider.overrideWithValue(DeferredBookCoverBytesLoader(getLibrary)),
+          bookCoverBytesLoaderProvider.overrideWith(
+            (ref) => DeferredBookCoverBytesLoader(getLibrary, ref.read(configuredFlutterNetworkProxyManagerProvider)),
+          ),
         if (contentLibrary != null || contentLibraryFactory != null)
           coverCacheGatewayProvider.overrideWithValue(ContentLibraryCoverCacheGateway(getLibrary)),
         if (contentLibrary != null || contentLibraryFactory != null)

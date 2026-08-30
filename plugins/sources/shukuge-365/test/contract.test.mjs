@@ -7,7 +7,7 @@ import * as plugin from '../dist/index.mjs';
 import { buildPluginArtifact } from '../tools/mgread.mjs';
 
 test('exports Plugin API v1 and builds a deterministic self-contained artifact', async () => {
-  assert.deepEqual(Object.keys(plugin).sort(), ['activate', 'discover', 'getChapters', 'getContent', 'getDetail', 'resource', 'search', 'searchSuggestions']);
+  assert.deepEqual(Object.keys(plugin).sort(), ['activate', 'discover', 'getChapters', 'getContent', 'getDetail', 'search', 'searchSuggestions']);
   const descriptor = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(descriptor.mgread.id, 'org.mgread.shukuge-365');
   assert.equal(descriptor.mgread.displayName, '365小说网');

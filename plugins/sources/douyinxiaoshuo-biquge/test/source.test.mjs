@@ -129,9 +129,8 @@ test('fixture covers search paging discovery continuation detail full catalog an
     /does not belong/u,
   );
 
-  const resource = await plugin.resource(resources[0]);
-  assert.equal(resource.status, 200);
-  assert.equal(resource.headers['content-type'], 'image/jpeg');
+  assert.equal(resources[0].kind, 'image');
+  assert.ok(resources[0].url.startsWith('https://'));
   const sourceCalls = calls.filter((call) => call.url.hostname === 'm.douyinxs.com');
   assert.ok(
     sourceCalls.every((call) => {
@@ -145,17 +144,11 @@ test('fixture covers search paging discovery continuation detail full catalog an
   assert.ok(logs.every((entry) => !entry.includes('Fixture')));
 });
 
-test('rejects forged opaque ids, cross-origin resources and invalid continuation state', async () => {
+test('rejects forged opaque ids and invalid continuation state', async () => {
   await assert.rejects(
     plugin.getDetail({ id: 'book:aHR0cHM6Ly9leGFtcGxlLmNvbS8' }),
     /Opaque ID/u,
   );
-  const resource = await plugin.resource({
-    kind: 'image',
-    url: 'https://example.com/image.jpg',
-    referer: 'https://m.douyinxs.com/',
-  });
-  assert.equal(resource.status, 400);
   await assert.rejects(
     plugin.discover({
       target: 'category:all',

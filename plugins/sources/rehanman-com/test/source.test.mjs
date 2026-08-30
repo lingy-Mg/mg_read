@@ -24,14 +24,13 @@ test('fixture chain emits Runtime-proxied session manga manifests and restricts 
   const search = await plugin.search({ query: 'Fixture', cursor: null, pageSize: 20 }); assert.deepEqual(search.items.map((value) => value.id), ['webtoon:1234567']);
   const detail = await plugin.getDetail({ id: item.id }); assert.equal(detail.author, 'Fixture Author');
   const chapters = await plugin.getChapters({ id: item.id }); assert.deepEqual(chapters.items.map((chapter) => chapter.id), ['chapter:1234567:0', 'chapter:1234567:1']);
-  const content = await plugin.getContent({ id: item.id, chapterId: chapters.items[0].id }); assert.equal(content.text, null); assert.equal(content.pages.length, 2); assert.deepEqual(proxied, [{ kind: 'rehanman-image', url: 'https://img.rehanman.com/uploads/data/china18sky/1234567/token/0001.jpg', referer: 'https://rehanman.com/webtoon/1234567/00/ch-1' }, { kind: 'rehanman-image', url: 'https://img.rehanman.com/uploads/data/china18sky/1234567/token/0002.webp', referer: 'https://rehanman.com/webtoon/1234567/00/ch-1' }]); assert.equal(content.pages[0].url, 'http://127.0.0.1/resource/1'); assert.equal(content.pages[0].resourcePolicy, undefined);
-  const response = await plugin.resource(proxied[0]); assert.equal(response.status, 200); assert.equal(response.headers['content-type'], 'image/jpeg'); assert.ok(requests.some((url) => url.origin === 'https://img.rehanman.com'));
+  const content = await plugin.getContent({ id: item.id, chapterId: chapters.items[0].id }); assert.equal(content.text, null); assert.equal(content.pages.length, 2); assert.deepEqual(proxied, [{ kind: 'rehanman-image', url: 'https://img.rehanman.com/uploads/data/china18sky/1234567/token/0001.jpg', headers: { Accept: 'image/*', Referer: 'https://rehanman.com/' } }, { kind: 'rehanman-image', url: 'https://img.rehanman.com/uploads/data/china18sky/1234567/token/0002.webp', headers: { Accept: 'image/*', Referer: 'https://rehanman.com/' } }]); assert.equal(content.pages[0].url, 'http://127.0.0.1/resource/1'); assert.equal(content.pages[0].resourcePolicy, undefined);
+  assert.equal(requests.some((url) => url.origin === 'https://img.rehanman.com'), false);
 });
 
-test('refuses premium and off-host image resource requests', async () => {
+test('refuses premium chapters before emitting image resources', async () => {
   await plugin.activate({ dataDir: 'unused', app: {}, plugin: {}, log: { debug() {}, info() {}, warn() {}, error() {} }, resource: { proxy() { return ''; } }, http: { async fetch() { return new Response(page({ entrySSR: { title: 'Premium', title_normalized: '1234567', entries_data: { volume_name: '00', chapters: [{ name: 'Episode', index: 0, images: ['1234567/token/0001.jpg'] }] }, entries_setting: [{ premium: true, isHide: false }] } })); } } });
   await assert.rejects(() => plugin.getChapters({ id: 'webtoon:1234567' }), /not publicly available/u);
-  const response = await plugin.resource({ kind: 'rehanman-image', url: 'https://example.com/image.jpg' }); assert.equal(response.status, 400);
 });
 
 function page(pageProps) { return `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps } })}</script></html>`; }

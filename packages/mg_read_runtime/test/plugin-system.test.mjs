@@ -260,7 +260,12 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
 test("installed manga fixture exposes catalog, page manifests, policies, and bounded resources", async (t) => {
   const dataRoot = await temporaryDirectory(t, "mgread-manga-fixture-");
   await new PluginInstaller(dataRoot).installProject(mangaFixtureRoot);
-  const manager = new PluginManager(dataRoot);
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+  const calls = [];
+  const manager = new PluginManager(dataRoot, { http: { async fetch(input, init) {
+    calls.push({ input, init });
+    return new Response(png, { headers: { "content-type": "image/png" } });
+  } } });
   await manager.initialize();
   const signal = new AbortController().signal;
   const deadline = String(Date.now() + 5_000);
@@ -280,10 +285,13 @@ test("installed manga fixture exposes catalog, page manifests, policies, and bou
   assert.equal(new URL(second.pages[0].url).host, "example.invalid");
   assert.match(new URL(second.pages[0].url).pathname, /\/manga\/fixture-book\/manga:fixture-book:chapter-2\/page-0\.png$/u);
   const token = new URL(first.pages[0].url).pathname.split("/").at(-1);
-  const resource = await manager.consumeResource(token, signal);
-  assert.equal(resource.body.length > 32, true);
-  assert.deepEqual([...resource.body.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
-  assert.equal(resource.headers["content-type"], "image/png");
+  const resource = await manager.openSourceResource(token, {}, signal);
+  assert.equal(resource?.response.headers.get("content-type"), "image/png");
+  const body = new Uint8Array(await resource.response.arrayBuffer());
+  assert.equal(body.length > 32, true);
+  assert.deepEqual([...body.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.equal(calls[0].input, `https://fixture.invalid/${chapters.items[0].id}/page-0.png`);
+  assert.deepEqual(calls[0].init.headers, { Accept: "image/png", Referer: "https://example.invalid/manga/fixture-book" });
 });
 
 test("complete chapter catalogs enforce count, byte, uniqueness, and shape limits", () => {
@@ -833,7 +841,7 @@ test("media proxy requests resolve from the owning Manager token table", async (
     headers: { Referer: "https://source.example/watch" },
   });
   const token = new URL(url).pathname.split("/").at(-1);
-  const resource = await manager.openMediaResource(token, { range: "bytes=0-1023" }, new AbortController().signal);
+  const resource = await manager.openSourceResource(token, { range: "bytes=0-1023" }, new AbortController().signal);
 
   assert.equal(resource?.response.status, 200);
   assert.equal(calls.length, 1);
@@ -842,4 +850,22 @@ test("media proxy requests resolve from the owning Manager token table", async (
     Referer: "https://source.example/watch",
     range: "bytes=0-1023",
   });
+});
+
+test("source proxy rejects the removed plugin-owned resource descriptor shape", async (t) => {
+  const dataRoot = await temporaryDirectory(t, "mgread-removed-resource-shape-");
+  let fetches = 0;
+  const manager = new PluginManager(dataRoot, { http: { async fetch() {
+    fetches += 1;
+    return new Response("unexpected");
+  } } });
+  const url = manager.createResourceUrl("org.example.legacy", {
+    kind: "image",
+    url: "https://images.example/legacy.jpg",
+    referer: "https://source.example/",
+  });
+  const token = new URL(url).pathname.split("/").at(-1);
+
+  assert.equal(await manager.openSourceResource(token, {}, new AbortController().signal), undefined);
+  assert.equal(fetches, 0);
 });

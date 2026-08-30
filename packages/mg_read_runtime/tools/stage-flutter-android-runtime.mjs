@@ -40,9 +40,11 @@ const assetRoot = resolve(
   "packages/mgread_plugin_runtime/assets/runtime/android",
 );
 const assetDist = resolve(assetRoot, "dist");
+const assetNodeModules = resolve(assetRoot, "node_modules");
 const defaultPluginsRoot = resolve(assetRoot, "default-plugins");
 
 await rm(assetDist, { force: true, recursive: true });
+await rm(assetNodeModules, { force: true, recursive: true });
 await rm(defaultPluginsRoot, { force: true, recursive: true });
 await mkdir(assetRoot, { recursive: true });
 await cp(distRoot, assetDist, { recursive: true });

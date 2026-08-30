@@ -38,7 +38,6 @@ export async function getContent(request: { id: string; chapterId: string }) {
   if (!safeMediaUrl(upstream)) throw new Error('Playback address is unavailable.'); const resourceType = /\.m3u8(?:$|[?#])/iu.test(upstream) ? 'hls' : 'video'; const mediaHeaders = { Referer: page, 'User-Agent': headers['User-Agent'] };
   return frozen({ chapterId: request.chapterId, contentKind: 'video', title: selected.title, updatedAt: null, text: null, pages: [], media: { url: requireContext().resource.proxy({ kind: resourceType, url: upstream, headers: mediaHeaders }), resourceType, resourcePolicy: 'sessionOnly', expiresAt: null, mimeType: resourceType === 'hls' ? 'application/vnd.apple.mpegurl' : 'video/mp4', headers: mediaHeaders } });
 }
-export async function resource(_request: Record<string, unknown>) { return { status: 404, body: '' }; }
 
 async function fetchText(url: string) { const response = await requireContext().http.fetch(url, { headers }); if (!response.ok) throw new Error('Source request failed.'); return response.text(); }
 async function fetchJson(url: string): Promise<Json> { const text = await fetchText(url); const value: unknown = JSON.parse(text); if (!isObject(value)) throw new Error('Source response is invalid.'); return value; }

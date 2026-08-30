@@ -49,6 +49,15 @@ plugins/sources/                    真实数据源及其他能力参考实现
   API、安装、私有数据根、瞬时诊断和 Flutter Facade。
 - Runtime 数据只包含不可变安装版本、插件私有 data/cache、Cookie、临时资源和运行状态，不包含主应用
   业务权威。installed 版本只在冷启动激活；development 变化先回收旧 VM，再启动唯一新 Runtime。
+- Runtime 来源 HTTP 客户端可接收应用传入的瞬时上游 HTTP、HTTPS 或 SOCKS5 代理，覆盖
+  `ctx.http.fetch` 与 Runtime 代取的来源资源；必须直连上游，不得增加 Flutter 回环转发服务器，也不得修改
+  Node.js 环境、全局 `fetch`、WebView 或依赖下载，关闭后新请求恢复直连。
+- Windows Node 环境代理是另一个默认关闭的独立启动开关：开启时 Runtime 以 `--use-env-proxy` 重启，只传入
+  `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`，缺失项可由 Windows 手动代理补齐。它影响 Node 环境感知的请求，
+  不取代来源 HTTP 的显式 dispatcher；Android 忽略该 Windows 专用选项。
+- 视频和音频代理只控制 MediaKit 播放器到 Runtime 回环资源 URL 的本地一跳，并且只接受 HTTP 代理。
+  Windows 可显式启用“强制代理本地 Runtime”：宿主临时从进程 `no_proxy` 删除 loopback 规则，同时更新 Win32
+  环境和 Windows CRT，关闭后恢复原值；该开关不改变 Runtime 到外部媒体源的请求路由。
 - 内部 PID、端口、URL、ready、bootId 和 wire envelope 不暴露给主应用；控制帧有界，大资源走 HTTP 数据面。
 - `ctx.webview` 每个数据源只有一个宿主页；Cookie、UA、Profile、窗口和输入由宿主持有。普通操作串行，
   显隐/关闭走控制旁路；超时与取消必须清理结果但保留可复用页面。
@@ -76,8 +85,9 @@ plugins/sources/                    真实数据源及其他能力参考实现
 - 数据源只返回允许的语义组件、布局和图标名，并按小说、漫画、音频、视频选择对应媒体语义；Flutter 宿主
   拥有各媒体的统一主题、尺寸、断点、可访问性、导航和交互实现。
 - 热门词必须来自来源；默认进入搜索页不触发搜索，只有用户提交或点击建议才执行。
-- 目录完整、有序且 ID 唯一。小说正文使用 `text`，漫画使用有序 `pages`，音视频只返回 Runtime proxy
-  资源；大资源不进入控制面。
+- 目录完整、有序且 ID 唯一。小说正文使用 `text`；漫画 `pages`、封面及音视频只登记由数据源校验过的
+  `kind + url + headers` Runtime proxy 请求。Runtime 持有上游 HTTP 请求、取消和正文流，数据源不得导出
+  `resource` 字节能力或缓冲媒体正文；大资源不进入插件返回值或控制面。
 - fixture 只保留选择器、分页、null/0/空集合和错误分支需要的最小脱敏结构；不得保存线上正文、图片、
   Cookie、UA、token、完整录制或用户搜索词。
 - 受保护来源只使用宿主持有的 WebView 和真实人工交互；禁止 token 抽取/回放、CDP、DOM 点击注入和绕过。

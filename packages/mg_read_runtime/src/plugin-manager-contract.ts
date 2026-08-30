@@ -197,7 +197,6 @@ export interface LoadedPluginModule {
   getDetail: PluginContentFunction;
   search: PluginContentFunction;
   searchSuggestions: PluginContentFunction;
-  resource: PluginContentFunction;
 }
 
 export interface LoadedPlugin {
@@ -230,10 +229,4 @@ export interface PluginRuntimeHttpClient {
     init: RequestInit,
     trace?: PluginRuntimeTraceContext,
   ): Promise<Response>;
-}
-
-export interface PluginResourceResponse {
-  readonly status: number;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly body: Uint8Array;
 }

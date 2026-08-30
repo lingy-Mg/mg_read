@@ -53,6 +53,8 @@ import {
   requiredText,
   textOrNull,
 } from './source-parsing.js';
+
+const allowedCoverOrigins = new Set(['https://www.alicesw.com', 'https://img.321cdn.com']);
 import {
   buildHomeDiscoveryComponents,
   type HomeDiscoveryCollections,
@@ -924,10 +926,16 @@ export class AliceBookHouseSource {
   #withProxiedCover<T extends ContentSummary>(content: T): T {
     const coverUrl = content.coverUrl;
     if (coverUrl === null) return content;
+    let parsed: URL;
+    try { parsed = new URL(coverUrl); }
+    catch { return Object.freeze({ ...content, coverUrl: null }); }
+    if (parsed.protocol !== 'https:' || !allowedCoverOrigins.has(parsed.origin)) {
+      return Object.freeze({ ...content, coverUrl: null });
+    }
     let proxied = this.#proxiedCoverUrls.get(coverUrl);
     if (proxied === undefined) {
       try {
-        proxied = this.context.resource.proxy({ url: coverUrl });
+        proxied = this.context.resource.proxy({ kind: 'image', url: coverUrl, headers: { Accept: 'image/*' } });
         this.#proxiedCoverUrls.set(coverUrl, proxied);
       } catch {
         return content;
