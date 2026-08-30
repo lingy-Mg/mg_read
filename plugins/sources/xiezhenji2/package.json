@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/xiezhenji2",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "MgRead conversion of the user-provided 写真集2 source.",
   "type": "module",

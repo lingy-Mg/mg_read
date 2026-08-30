@@ -1,6 +1,7 @@
 /**
  * Cosplaytele source parser and network boundary.
  * Search/discovery/detail HTML is cached; gallery content and image bodies are never cached.
+ * Listing covers accept the site's lazy/responsive image fields but never proxy placeholders.
  */
 import { Buffer } from 'node:buffer';
 import * as cheerio from 'cheerio/slim';
@@ -9,6 +10,7 @@ import { PluginCache } from '@mgread/plugin-cache';
 import type { ContentDetail, ContentSummary, MgReadPluginContext } from './contracts.js';
 
 const origin = 'https://cosplaytele.com';
+const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const listingPolicy = Object.freeze({ namespace: 'listing', staleAfterMs: 10 * 60 * 1000, serveStaleWhileRevalidate: true });
 const detailPolicy = Object.freeze({ namespace: 'detail', staleAfterMs: 60 * 60 * 1000, allowStaleOnError: false });
 export const categories = Object.freeze([
@@ -84,8 +86,12 @@ export class Xiezhenji2Source {
       const url = new URL(href, pageUrl);
       if (!isPostUrl(url) || seen.has(url.pathname)) return;
       seen.add(url.pathname);
-      const rawCover = root.find('img.wp-post-image, img').first().attr('data-src') ?? root.find('img.wp-post-image, img').first().attr('src');
-      const cover = rawCover === undefined ? null : this.#proxyImage(new URL(rawCover, pageUrl), pageUrl);
+      const image = root.find('img.wp-post-image, img').first();
+      const coverImage = firstListingImageUrl([
+        image.attr('data-src'), image.attr('data-lazy-src'), image.attr('data-original-src'), image.attr('data-original'),
+        ...srcsetUrls(image.attr('data-srcset')), image.attr('src'), ...srcsetUrls(image.attr('srcset')),
+      ], pageUrl);
+      const cover = coverImage === null ? null : this.#proxyImage(coverImage, pageUrl);
       items.push(summary(encodeId(url), title, url, cover, text(root.find('.from_the_blog_excerpt').text()), null, unique([root.find('.cat-label').text()])));
     });
     return Object.freeze(items);
@@ -93,7 +99,7 @@ export class Xiezhenji2Source {
 
   async #cachedHtml(url: URL, policy: typeof listingPolicy | typeof detailPolicy): Promise<string> { return this.#cache.getOrFetchText(url, policy, () => this.#html(url)); }
   async #html(url: URL): Promise<string> {
-    const response = await this.context.http.fetch(url, { headers: { accept: 'text/html,application/xhtml+xml', 'accept-language': 'zh-CN,zh;q=0.9', referer: `${origin}/` } });
+    const response = await this.context.http.fetch(url, { headers: { accept: 'text/html,application/xhtml+xml', 'accept-language': 'zh-CN,zh;q=0.9', referer: `${origin}/`, 'user-agent': userAgent } });
     const body = await response.text();
     if (!response.ok || isCloudflare(body)) {
       const browser = await this.context.browser.sessionV1.request({ version: 1, sessionKey: 'cosplaytele', url: url.toString(), method: 'GET', headers: { accept: 'text/html', referer: `${origin}/` }, body: null, interaction: 'allow', timeoutMs: 120_000, maxResponseBytes: 2 * 1024 * 1024 });
@@ -102,7 +108,7 @@ export class Xiezhenji2Source {
     }
     return body;
   }
-  #proxyImage(url: URL, referer: URL): string { if (url.protocol !== 'https:' || url.hostname !== 'cosplaytele.com' || referer.origin !== origin) throw new Error('Image request is invalid.'); return this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/*', Referer: referer.toString() } }); }
+  #proxyImage(url: URL, referer: URL): string { if (url.protocol !== 'https:' || url.hostname !== 'cosplaytele.com' || referer.origin !== origin) throw new Error('Image request is invalid.'); return this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/*', Referer: referer.toString(), 'User-Agent': userAgent } }); }
 }
 
 function summary(id: string, title: string, url: URL, coverUrl: string | null, description: string | null, author: string | null, tags: readonly string[]): ContentSummary { return Object.freeze({ id, title, contentKind: 'manga', author, url: url.toString(), coverUrl, description, language: null, status: 'unknown', access: 'free', wordCount: null, chapterCount: 1, publishedAt: null, updatedAt: null, latestChapter: { id: `gallery:${token(url)}`, title: '全部图片', url: url.toString(), updatedAt: null }, categories: tags, tags, attributes: Object.freeze([]) }); }
@@ -113,6 +119,8 @@ function isPostUrl(url: URL): boolean { return url.origin === origin && /^\/[^/?
 function text(value: string | undefined): string | null { const result = value?.replace(/\s+/gu, ' ').trim() ?? ''; return result === '' ? null : result; }
 function unique(values: readonly string[]): readonly string[] { return Object.freeze([...new Set(values.map((value) => value.replace(/\s+/gu, ' ').trim()).filter(Boolean))]); }
 function uniqueUrls(values: readonly URL[]): readonly URL[] { const seen = new Set<string>(); return values.filter((url) => { const key = `${url.origin}${url.pathname}`; if (seen.has(key)) return false; seen.add(key); return true; }); }
+function firstListingImageUrl(values: readonly (string | undefined)[], base: URL): URL | null { for (const value of values) { if (value === undefined) continue; try { const url = new URL(value.trim(), base); if (url.origin === origin && /\/wp-content\/uploads\//u.test(url.pathname) && /\.(?:jpe?g|png|webp|gif)$/iu.test(url.pathname)) return url; } catch { /* Ignore malformed and placeholder candidates. */ } } return null; }
+function srcsetUrls(value: string | undefined): readonly string[] { return value === undefined ? Object.freeze([]) : Object.freeze(value.split(',').map((candidate) => candidate.trim().split(/\s+/u)[0]).filter((candidate): candidate is string => candidate !== undefined && candidate !== '')); }
 function parseCount(value: string): number | null { const match = /(\d+)\s+photos?/iu.exec(value); const count = Number(match?.[1]); return Number.isSafeInteger(count) && count >= 0 ? count : null; }
 function collectPageUrls(html: string, base: URL): readonly URL[] { const $ = cheerio.load(html); return uniqueUrls($('.entry-content a[href], .page-links a[href], .nav-links a[href]').toArray().flatMap((element) => { const href = $(element).attr('href'); if (href === undefined) return []; const url = new URL(href, base); return url.origin === origin && /\/(?:page\/)?\d+\/?$/u.test(url.pathname) ? [url] : []; })); }
 function parseImages(html: string, base: URL): readonly URL[] { const $ = cheerio.load(html); const links = $('.entry-content .gallery a[href]').toArray().flatMap((element) => { const href = $(element).attr('href'); return href === undefined ? [] : [new URL(href, base)]; }); const images = links.length === 0 ? $('.entry-content .gallery img, .entry-content img.attachment-full').toArray().flatMap((element) => { const raw = $(element).attr('data-src') ?? $(element).attr('data-lazy-src') ?? $(element).attr('src'); return raw === undefined ? [] : [new URL(raw, base)]; }) : links; return uniqueUrls(images.filter((url) => url.hostname === 'cosplaytele.com' && /\/wp-content\/uploads\//u.test(url.pathname) && /\.(?:jpe?g|png|webp|gif)$/iu.test(url.pathname) && !url.pathname.includes('cropped-icon-'))); }
