@@ -143,16 +143,25 @@ final class AudioPlayerSession extends ChangeNotifier {
         _,
       ) async {
         if (!_isCurrent(generation)) return;
+        final restoredPosition =
+            progress != null &&
+                progress.trackId == playlist.tracks[restoredIndex].id &&
+                progress.position > Duration.zero
+            ? progress.position
+            : Duration.zero;
         await backend.open(
           playlist.tracks,
           initialIndex: restoredIndex,
-          play: autoplay,
+          // A restored timestamp must be applied before playback starts.
+          // Otherwise the backend can publish an early zero position and the
+          // first persistence tick may overwrite the durable timestamp.
+          play: autoplay && restoredPosition == Duration.zero,
         );
         if (!_isCurrent(generation)) return;
-        if (progress != null &&
-            progress.trackId == playlist.tracks[restoredIndex].id &&
-            progress.position > Duration.zero) {
-          await backend.seek(progress.position);
+        if (restoredPosition > Duration.zero) {
+          await backend.seek(restoredPosition);
+          if (!_isCurrent(generation)) return;
+          if (autoplay) await backend.play();
         }
       });
       _backendInitializationTail = backendInitialization.then<void>(
