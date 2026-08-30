@@ -1,0 +1,81 @@
+{
+  "navList": {
+    "data": {
+      "list": [
+        { "code": "featured", "name": "精选" }
+      ]
+    }
+  },
+  "searchConf": {
+    "data": {
+      "categories": [
+        { "id": "7", "name": "精选" },
+        { "id": "8", "name": "都市" },
+        { "id": "900009", "name": "国产传媒" }
+      ]
+    }
+  },
+  "navFilter": {
+    "data": {
+      "list": [
+        { "filter": { "cat_id": "7", "order": "hot" } }
+      ]
+    }
+  },
+  "list": {
+    "data": {
+      "list": [
+        {
+          "id": "rp_101",
+          "name": "Fixture drama",
+          "source": "Fixture studio",
+          "img_y": "https://images.example/fixture-cover.jpg",
+          "category": "都市",
+          "description": "Fixture description",
+          "episode_count": 2,
+          "update_label": "更新至2集",
+          "update_status": 0,
+          "pay_type": "free"
+        }
+      ]
+    }
+  },
+  "rank": {
+    "data": {
+      "list": [
+        {
+          "drama_id": "101",
+          "name": "Fixture drama",
+          "img": "https://images.example/fixture-cover.jpg",
+          "episode_count": 2,
+          "update_status": 0
+        }
+      ]
+    }
+  },
+  "detail": {
+    "data": {
+      "id": "101",
+      "name": "Fixture drama",
+      "publisher": "Fixture studio",
+      "img_y": "https://images.example/fixture-cover.jpg",
+      "category": "都市",
+      "description": "Fixture description",
+      "episode_count": 2,
+      "update_label": "更新至2集",
+      "update_status": 0,
+      "episodes": [
+        { "seq": 1, "name": "第1集", "type": "free", "is_buy": "y" },
+        { "seq": 2, "name": "第2集", "type": "coin", "price": 3, "is_buy": "n", "preview_m3u8": "https://media.example/fixture-preview.m3u8" }
+      ]
+    }
+  },
+  "play": {
+    "data": {
+      "m3u8": "https://media.example/fixture.m3u8",
+      "lines": [
+        { "name": "默认线路", "url": "https://media.example/fixture.m3u8" }
+      ]
+    }
+  }
+}

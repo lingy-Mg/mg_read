@@ -1,0 +1,33 @@
+{
+  "name": "@mgread-plugin/huangdou-duanju",
+  "version": "1.0.1",
+  "private": true,
+  "description": "MgRead conversion of the user-provided Huangdou short-drama source.",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "bin": { "mgread": "tools/mgread.mjs" },
+  "packageManager": "npm@11.13.0",
+  "engines": { "node": ">=24 <25", "npm": "11.13.0" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/contract.test.mjs test/source.test.mjs",
+    "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
+    "pack:plugin": "npm run build && node tools/mgread.mjs pack",
+    "verify": "npm run typecheck && npm test && npm run pack:plugin"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.huangdou-duanju",
+    "displayName": "黄豆短剧",
+    "description": "黄豆短剧加密 API 视频数据源。",
+    "pluginApi": 1,
+    "packageMode": "single-file",
+    "contentKinds": ["video"]
+  }
+}
