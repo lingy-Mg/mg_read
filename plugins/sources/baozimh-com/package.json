@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/baozimh-com",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "MgRead conversion of the user-provided 包子漫画 source.",
   "type": "module",
