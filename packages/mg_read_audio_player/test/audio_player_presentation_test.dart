@@ -254,44 +254,44 @@ void main() {
     );
     expect(
       find.descendant(of: details, matching: find.text('第 1 集')),
-      findsOneWidget,
+      findsNWidgets(2),
     );
     expect(
       find.descendant(of: details, matching: find.text('2 集')),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: details, matching: find.text('2:00')),
-      findsNWidgets(2),
-    );
-    await backend.play();
-    await backend.seek(const Duration(seconds: 30));
-    await backend.setRate(1.25);
-    await backend.setVolume(0.5);
-    await tester.pump();
-    expect(
-      find.descendant(of: details, matching: find.text('正在播放')),
+      find.descendant(
+        of: details,
+        matching: find.byKey(const Key('audio-details-current-track')),
+      ),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: details, matching: find.text('0:30')),
-      findsOneWidget,
+      tester
+          .widget<SelectableText>(
+            find.byKey(const Key('audio-details-resource')),
+          )
+          .data,
+      'https://example.test/audio/1.mp3',
     );
-    final progress = tester.widget<LinearProgressIndicator>(
-      find.byKey(const Key('audio-details-progress')),
-    );
-    expect(progress.value, closeTo(0.25, 0.001));
+    expect(find.byKey(const Key('audio-details-progress')), findsNothing);
+    expect(find.text('播放信息'), findsNothing);
+    expect(find.text('播放速度'), findsNothing);
+    expect(find.text('音量'), findsNothing);
 
     await tester.drag(details, const Offset(0, -260));
     await tester.pumpAndSettle();
     expect(
-      find.descendant(of: details, matching: find.text('1.25x')),
+      find.byKey(const Key('audio-details-comment-composer')),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: details, matching: find.text('50%')),
+      find.byKey(const Key('audio-details-comments-placeholder')),
       findsOneWidget,
     );
+    expect(find.text('即将开放'), findsOneWidget);
+    expect(find.text('评论功能正在准备中'), findsOneWidget);
   });
 
   testWidgets(

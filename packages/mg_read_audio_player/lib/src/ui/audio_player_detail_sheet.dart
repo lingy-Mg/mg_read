@@ -2,7 +2,7 @@
 ///
 /// Responsibilities:
 /// - Present only metadata already available in the live player snapshot.
-/// - Keep playback progress and transport facts current while the sheet is open.
+/// - Show the active chapter resource and a clearly unavailable comment area.
 ///
 /// Notes:
 /// - The sheet owns no media state and performs no host or network I/O.
@@ -69,10 +69,6 @@ class _AudioDetailsSheet extends StatelessWidget {
     final displayedIndex = catalogIndex >= 0
         ? catalogIndex
         : snapshot.currentIndex;
-    final progress = snapshot.duration.inMilliseconds <= 0
-        ? 0.0
-        : (snapshot.position.inMilliseconds / snapshot.duration.inMilliseconds)
-              .clamp(0.0, 1.0);
     return SafeArea(
       top: false,
       child: FractionallySizedBox(
@@ -206,18 +202,13 @@ class _AudioDetailsSheet extends StatelessWidget {
                               label: '总集数',
                               value: '${snapshot.queueEntries.length} 集',
                             ),
-                            const _DetailStatDivider(),
-                            _DetailStat(
-                              label: '本集时长',
-                              value: formatAudioDuration(snapshot.duration),
-                            ),
                           ],
                         ),
                       ),
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      '当前播放',
+                      '当前章节',
                       style: theme.textTheme.titleMedium?.copyWith(
                         color: AudioPlayerColors.ink,
                         fontWeight: FontWeight.w800,
@@ -247,31 +238,55 @@ class _AudioDetailsSheet extends StatelessWidget {
                                 height: 1.35,
                               ),
                             ),
-                            const SizedBox(height: 14),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(99),
-                              child: LinearProgressIndicator(
-                                key: const Key('audio-details-progress'),
-                                value: progress,
-                                minHeight: 5,
-                                color: AudioPlayerColors.accent,
-                                backgroundColor: AudioPlayerColors.track,
+                            const SizedBox(height: 7),
+                            Text(
+                              '第 ${displayedIndex + 1} 集',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: AudioPlayerColors.accentPressed,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
-                            const SizedBox(height: 7),
+                            const SizedBox(height: 14),
+                            const Divider(
+                              height: 1,
+                              color: AudioPlayerColors.divider,
+                            ),
+                            const SizedBox(height: 13),
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: <Widget>[
-                                Text(
-                                  formatAudioDuration(snapshot.position),
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: AudioPlayerColors.muted,
-                                  ),
+                                const Icon(
+                                  Icons.link_rounded,
+                                  size: 20,
+                                  color: AudioPlayerColors.accent,
                                 ),
-                                Text(
-                                  formatAudioDuration(snapshot.duration),
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: AudioPlayerColors.muted,
+                                const SizedBox(width: 9),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Text(
+                                        '章节地址',
+                                        style: theme.textTheme.labelMedium
+                                            ?.copyWith(
+                                              color: AudioPlayerColors.muted,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 5),
+                                      SelectableText(
+                                        track.resource.toString(),
+                                        key: const Key(
+                                          'audio-details-resource',
+                                        ),
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: AudioPlayerColors.ink,
+                                              height: 1.45,
+                                            ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -281,25 +296,126 @@ class _AudioDetailsSheet extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    Text(
-                      '播放信息',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: AudioPlayerColors.ink,
-                        fontWeight: FontWeight.w800,
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            '评论',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: AudioPlayerColors.ink,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: AudioPlayerColors.control,
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            child: Text(
+                              '即将开放',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: AudioPlayerColors.muted,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    DecoratedBox(
+                      key: const Key('audio-details-comment-composer'),
+                      decoration: BoxDecoration(
+                        color: AudioPlayerColors.control.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(13),
+                        child: Row(
+                          children: <Widget>[
+                            const CircleAvatar(
+                              radius: 18,
+                              backgroundColor: AudioPlayerColors.accentSoft,
+                              foregroundColor: AudioPlayerColors.accent,
+                              child: Icon(
+                                Icons.person_outline_rounded,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 11),
+                            Expanded(
+                              child: Text(
+                                '说说你对本集的看法…',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: AudioPlayerColors.subtle,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton(
+                              onPressed: null,
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size(58, 38),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                ),
+                              ),
+                              child: const Text('发布'),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    _DetailInfoRow(
-                      icon: Icons.speed_rounded,
-                      label: '播放速度',
-                      value: '${formatAudioRate(snapshot.rate)}x',
-                    ),
-                    _DetailInfoRow(
-                      icon: snapshot.volume <= 0
-                          ? Icons.volume_off_rounded
-                          : Icons.volume_up_rounded,
-                      label: '音量',
-                      value: formatAudioVolume(snapshot.volume),
+                    const SizedBox(height: 10),
+                    DecoratedBox(
+                      key: const Key('audio-details-comments-placeholder'),
+                      decoration: BoxDecoration(
+                        color: AudioPlayerColors.surfaceStrong,
+                        border: Border.all(color: AudioPlayerColors.divider),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 18,
+                        ),
+                        child: Row(
+                          children: <Widget>[
+                            const Icon(
+                              Icons.chat_bubble_outline_rounded,
+                              color: AudioPlayerColors.subtle,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Text(
+                                    '评论功能正在准备中',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: AudioPlayerColors.ink,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    '后续可在这里查看并发表本集评论',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: AudioPlayerColors.muted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -354,56 +470,6 @@ class _DetailStatDivider extends StatelessWidget {
     return const SizedBox(
       height: 34,
       child: VerticalDivider(width: 1, color: AudioPlayerColors.divider),
-    );
-  }
-}
-
-class _DetailInfoRow extends StatelessWidget {
-  const _DetailInfoRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: AudioPlayerColors.control.withValues(alpha: 0.54),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          child: Row(
-            children: <Widget>[
-              Icon(icon, size: 20, color: AudioPlayerColors.accent),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Text(
-                  label,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: AudioPlayerColors.ink,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              Text(
-                value,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: AudioPlayerColors.muted,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
