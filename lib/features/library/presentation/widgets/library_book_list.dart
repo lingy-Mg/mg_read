@@ -8,8 +8,6 @@
 /// - 条目移除只改变局部展示高度，不替换父滚动容器或控制器。
 /// - 业务持久化由调用方负责；本组件只转发不可变数据与动作。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

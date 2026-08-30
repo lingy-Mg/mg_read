@@ -8,8 +8,6 @@
 /// - 字段值按调用方提供的内容原样编码，不做检测或改写。
 /// - 事件名与字段语义变更必须版本化。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:collection';
@@ -429,6 +427,8 @@ abstract final class AppDiagnosticEvents {
       'bytes': _int64,
       'resultState': _string,
       'errorCode': _string,
+      'errorText': _string,
+      'stackTrace': _string,
       'thresholdMicros': _int64,
     },
   );

@@ -8,8 +8,6 @@
 /// - 只处理展示过渡，不拥有持久化或滚动控制器。
 /// - reduce motion 时直接切换，避免无意义的动态效果。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

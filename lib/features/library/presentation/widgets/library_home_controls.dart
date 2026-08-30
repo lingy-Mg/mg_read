@@ -7,8 +7,6 @@
 /// 注意：
 /// - 窄屏状态筛选保持单行横向滚动，不压缩或换行。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

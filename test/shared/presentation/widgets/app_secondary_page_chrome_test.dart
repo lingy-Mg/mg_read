@@ -6,8 +6,6 @@
 /// 注意：
 /// - 仅验证确定性的组件几何，不替代页面或设备验收。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

@@ -3,7 +3,6 @@
  *
  * 职责：解析 package.json.mgread v1，校验 Node 24 项目与 lockfile v3。
  * 注意：packageMode 仅决定发布 artifact，development 始终保持标准项目加载。
- * TODO: - 无。
  */
 import { access, lstat, readFile } from "node:fs/promises";
 import { isAbsolute, resolve, sep } from "node:path";

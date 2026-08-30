@@ -8,8 +8,6 @@
 /// - 页面只调用应用层窄端口，不接触 Runtime HTTP 或资源 token。
 /// - 开发工具统一收纳到问号说明页，调试持久化仍归 Runtime 所有。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

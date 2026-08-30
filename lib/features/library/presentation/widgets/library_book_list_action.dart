@@ -7,8 +7,6 @@
 /// 注意：
 /// - 此类型只描述展示动作，不执行持久化或导航。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/foundation.dart';

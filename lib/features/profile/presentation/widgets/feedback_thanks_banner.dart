@@ -8,8 +8,6 @@
 /// - 不发起上传、网络或持久化操作。
 /// - 插画仅依赖当前主题 token，避免保存用户内容。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

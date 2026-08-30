@@ -8,8 +8,6 @@
 /// - 书架持久化只通过 application 窄用例和 Content Library adapter 执行。
 /// - 页面异步回调在路由离开后不得继续导航。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';
@@ -28,6 +26,7 @@ import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/library/application/library_book_remover.dart';
 import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
 import 'package:mg_read/features/library/application/library_book_refresher.dart';
+import 'package:mg_read/features/library/application/library_book_refresh_operation.dart';
 import 'package:mg_read/features/library/application/library_book_removal_operation.dart';
 import 'package:mg_read/features/library/application/library_book_visibility_changer.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
@@ -123,6 +122,9 @@ class LibraryPage extends ConsumerWidget {
     final ValueChanged<String>? bookDetailRequested = onBookDetailRequested;
     final LibraryBookDetailLauncher? detailLauncher = ref.read(libraryBookDetailLauncherProvider);
     final LibraryBookRefresher? bookRefresher = ref.read(libraryBookRefresherProvider);
+    final LibraryBookRefreshOperation? bookRefreshOperation = bookRefresher == null
+        ? null
+        : LibraryBookRefreshOperation(refresher: bookRefresher, diagnostics: diagnostics);
     final SourceContentGateway sourceGateway = ref.read(sourceContentGatewayProvider);
     void prepareAndOpen(String bookId) {
       final callback = readerRequested;
@@ -155,14 +157,15 @@ class LibraryPage extends ConsumerWidget {
         : LibraryBookRemovalOperation(remover: bookRemover, controller: controller, diagnostics: diagnostics);
     late LibraryHomeCallbacks resolvedCallbacks;
     Future<void> refreshBook(LibraryBookListItemViewData book) async {
-      final refresher = bookRefresher;
-      if (refresher == null) throw StateError('Book refresh is unavailable.');
+      final operation = bookRefreshOperation;
+      if (operation == null) throw StateError('Book refresh is unavailable.');
       final request = book.coverRequest;
-      await refresher.refresh(book.id);
+      await operation.refresh(book.id);
       if (request != null) {
         BookCoverMemoryCache.remove(request);
         try {
-          await ref.refresh(bookCoverBytesProvider(request).future);
+          final refreshedCover = ref.refresh(bookCoverBytesProvider(request).future);
+          await refreshedCover;
         } on Object {
           // The refreshed metadata remains usable when one cover request fails;
           // the cover widget will retain its normal fallback state.
@@ -205,7 +208,16 @@ class LibraryPage extends ConsumerWidget {
         onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) async {
           prepareAndOpen(book.id);
         },
-        onAudioChapterRequested: onAudioChapterRequested,
+        onAudioChapterRequested: ({required detail, required firstCatalogPage, required chapter, String? libraryItemId}) {
+          final callback = onAudioChapterRequested;
+          if (callback == null) return Future<void>.error(StateError('An audio-player host has not been registered.'));
+          return callback(
+            detail: detail,
+            firstCatalogPage: firstCatalogPage,
+            chapter: chapter,
+            libraryItemId: libraryItemId ?? book.id,
+          );
+        },
         onVideoEpisodeRequested: onVideoEpisodeRequested,
         onStartReading: () async => prepareAndOpen(book.id),
         onShelfAction: (SourceShelfAction action) async {
@@ -224,6 +236,41 @@ class LibraryPage extends ConsumerWidget {
           }
         },
       );
+    }
+
+    Future<void> openShelfAudio(LibraryBookListItemViewData book) async {
+      final callback = onAudioChapterRequested;
+      if (callback == null || detailLauncher == null) {
+        await openBookDetail(book);
+        return;
+      }
+      try {
+        final seed = await detailLauncher.load(book.id);
+        final results = await Future.wait<Object>(<Future<Object>>[
+          sourceGateway.getDetail(pluginId: seed.pluginId, id: seed.remoteContentId),
+          sourceGateway.getChapters(pluginId: seed.pluginId, id: seed.remoteContentId),
+        ]);
+        final detail = results[0] as PluginContentDetail;
+        final catalog = results[1] as PluginChaptersResult;
+        PluginChapterSummary? chapter;
+        for (final item in catalog.items) {
+          if (item.isLocked != true) {
+            chapter = item;
+            break;
+          }
+        }
+        if (chapter == null) throw StateError('audio_catalog_no_playable_chapter');
+        await callback(
+          detail: detail,
+          firstCatalogPage: catalog,
+          chapter: chapter,
+          libraryItemId: book.id,
+        );
+      } on Object {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法打开上次的听书进度，请检查网络后重试。')));
+        }
+      }
     }
 
     resolvedCallbacks = callbacks.copyWith(
@@ -249,7 +296,11 @@ class LibraryPage extends ConsumerWidget {
                       orElse: () => null,
                     );
                     if (item?.contentKind == ContentKind.audio || item?.contentKind == ContentKind.video) {
-                      unawaited(openBookDetail(book));
+                      if (item?.contentKind == ContentKind.audio) {
+                        unawaited(openShelfAudio(book));
+                      } else {
+                        unawaited(openBookDetail(book));
+                      }
                       return;
                     }
                     prepareAndOpen(book.id);

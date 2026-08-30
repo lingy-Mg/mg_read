@@ -6,8 +6,6 @@
 /// 注意：
 /// - 使用 Finder 和稳定 Key，不替代 Android 实机验收。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

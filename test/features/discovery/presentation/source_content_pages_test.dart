@@ -6,8 +6,6 @@
 /// 注意：
 /// - 此处只验证 Widget 连接；真实 Android 流程由 Integration Test 另行验收。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

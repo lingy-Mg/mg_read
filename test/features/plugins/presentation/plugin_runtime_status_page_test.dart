@@ -6,8 +6,6 @@
 /// 注意：
 /// - 仅覆盖 Widget 层契约，不替代 Runtime 或 Android 验收。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

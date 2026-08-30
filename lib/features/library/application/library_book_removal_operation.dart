@@ -8,8 +8,6 @@
 /// - 诊断属性不得包含书名、作者或稳定书籍标识。
 /// - 仅控制应用内投影；持久化仍经 LibraryBookRemover 的窄端口执行。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:mg_read/core/diagnostics/diagnostics.dart';

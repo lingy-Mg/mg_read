@@ -629,6 +629,28 @@ Map<String, Object?> _readingProgressDocument(LibraryReadingProgress progress) =
   'totalReadingSeconds': progress.totalReadingSeconds,
 };
 
+Map<String, Object?> _audioProgressDocument(LibraryAudioPlaybackProgress progress) => <String, Object?>{
+  'chapterId': progress.chapterId,
+  'positionMilliseconds': progress.position.inMilliseconds,
+  'updatedAtUtc': progress.updatedAtUtc.toUtc().toIso8601String(),
+};
+
+LibraryAudioPlaybackProgress _audioProgress(RecordEnvelope record) {
+  final document = record.document;
+  final updatedAt = DateTime.tryParse(document['updatedAtUtc'] as String? ?? '');
+  final positionMilliseconds = document['positionMilliseconds'];
+  final chapterId = document['chapterId'];
+  if (updatedAt == null || chapterId is! String || chapterId.isEmpty || positionMilliseconds is! int || positionMilliseconds < 0) {
+    throw const PersistenceCorruptionError();
+  }
+  return LibraryAudioPlaybackProgress(
+    itemId: LibraryItemId(record.parentId ?? record.identityKey ?? ''),
+    chapterId: chapterId,
+    position: Duration(milliseconds: positionMilliseconds),
+    updatedAtUtc: updatedAt.toUtc(),
+  );
+}
+
 LibraryReadingProgress _readingProgress(RecordEnvelope record) {
   final document = record.document;
   final updatedAt = DateTime.tryParse(document['updatedAtUtc'] as String? ?? '');

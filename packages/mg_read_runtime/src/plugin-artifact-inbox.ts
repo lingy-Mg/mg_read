@@ -9,8 +9,6 @@
  * - 输入数量和单 artifact 大小有界，处理后一次性清理 inbox 文件。
  * - 不记录或返回路径、代码、图标字节和原始异常。
  *
- * TODO:
- * - 无。
  */
 import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { resolve } from "node:path";

@@ -9,8 +9,6 @@ part of 'text_reader_view.dart';
 /// 注意：
 /// - 组件只接收不可变显示数据，不执行 IO 或修改会话状态。
 ///
-/// TODO:
-/// - 无。
 
 class _CenteredStatus extends StatelessWidget {
   const _CenteredStatus({required this.color, required this.child});

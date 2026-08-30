@@ -15,7 +15,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { JsonObject } from "./protocol.js";
 import type { PluginManager } from "./plugin-manager.js";
-import { openMediaProxyResource } from "./media-resource-proxy.js";
 
 export type LoopbackHttpFinish = (status: number, downloadedBytes?: number) => void;
 
@@ -27,7 +26,7 @@ export async function serveSourceResource(
   request?: IncomingMessage,
 ): Promise<void> {
   try {
-    const media = await openMediaProxyResource(
+    const media = await pluginManager?.openMediaResource(
       token,
       request === undefined ? {} : requestHeaders(request),
       new AbortController().signal,

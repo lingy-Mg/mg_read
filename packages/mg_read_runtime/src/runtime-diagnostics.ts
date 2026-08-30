@@ -9,8 +9,6 @@
  * - 不持久化事件、异常原文、插件正文或绝对路径；
  * - 观察者失败不得改变 Runtime 业务结果。
  *
- * TODO:
- * - 无。
  */
 
 /** Severities permitted in the structured, Flutter-safe diagnostic stream. */

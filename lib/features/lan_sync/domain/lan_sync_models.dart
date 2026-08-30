@@ -8,8 +8,6 @@
 /// - artifact 字节保持原格式传输，不在领域层转换 ZIP。
 /// - 领域模型不暴露 Runtime 路径或传输 token。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/foundation.dart';

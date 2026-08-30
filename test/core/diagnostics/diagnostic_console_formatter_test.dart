@@ -100,6 +100,27 @@ void main() {
       ),
     );
   });
+
+  test('preserves complete error text and stack traces for the developer console', () {
+    const errorText = 'StateError: the complete refresh failure context must remain visible in the console';
+    const stackTrace = '#0 refresh (library_book_refresh_operation.dart:42)\n#1 callback (library_page.dart:166)';
+    final event = _event(
+      severity: DiagnosticSeverity.error,
+      eventName: 'library.operation.error',
+      component: 'core.content-library',
+      phase: DiagnosticPhase.terminal,
+      outcome: DiagnosticOutcome.error,
+      attributes: <String, DiagnosticValue>{
+        'operation': DiagnosticValue.string('bookshelfRefresh'),
+        'errorCode': DiagnosticValue.string('refresh_failed'),
+        'errorText': DiagnosticValue.string(errorText),
+        'stackTrace': DiagnosticValue.string(stackTrace),
+      },
+    );
+
+    expect(formatter.format(event), contains(errorText));
+    expect(formatter.format(event), contains(stackTrace));
+  });
 }
 
 DiagnosticEvent _event({

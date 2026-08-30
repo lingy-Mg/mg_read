@@ -9,8 +9,6 @@
 /// - 不要在 build() 中执行网络、Runtime 或磁盘 IO。
 /// - 内容区域组件保持在本 feature 的私有 library 内，稳定 Key 和 Golden 布局不得改变。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';

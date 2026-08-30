@@ -8,8 +8,6 @@
 /// - 动画遵从系统的减少动态效果设置，并在不可见时停止。
 /// - 不承载数据源请求或阅读动作。
 ///
-/// TODO:
-/// - 无。
 part of 'source_content_detail_sheet.dart';
 
 class _SourceDetailLoadingView extends StatelessWidget {

@@ -2,7 +2,6 @@
  * Runtime 双 artifact 安装器。
  * 职责：将 archive/single-file 归一化为同一不可变版本树并维护 pending/依赖事务。
  * 注意：安装不执行插件代码、npm 或 lifecycle script，原始 artifact 仅保存在 Runtime 私有目录。
- * TODO: - 无。
  */
 import { randomUUID } from "node:crypto";
 import {

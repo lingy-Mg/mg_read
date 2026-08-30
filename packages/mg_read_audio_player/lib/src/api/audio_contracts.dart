@@ -32,6 +32,16 @@ abstract interface class AudioPlaylistContinuationDataSource
   });
 }
 
+/// A source that exposes its complete safe-to-cache chapter catalog while
+/// resolving transient media URLs only for an explicit playback request.
+abstract interface class AudioPlaylistQueueDataSource
+    implements AudioPlaylistContinuationDataSource {
+  Future<AudioTrack> loadTrackById(
+    String collectionId, {
+    required String trackId,
+  });
+}
+
 /// Persists semantic audio progress without constraining host storage.
 abstract interface class AudioPlaybackStateStore {
   Future<AudioPlaybackProgress?> loadProgress(String collectionId);

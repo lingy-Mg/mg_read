@@ -6,8 +6,6 @@
 /// 注意：
 /// - 测试固定浅色 Widget 几何，不宣称设备视觉验收。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:ui' show Tristate;

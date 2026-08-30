@@ -9,8 +9,6 @@
 /// - 每个用例使用独立临时目录，不能依赖真实应用数据或网络。
 /// - 文件对象测试只经公开仓储 API，不暴露生产路径。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:io';
@@ -156,6 +154,26 @@ void main() {
     expect(progress?.characterOffset, 18);
     expect(progress?.bookFraction, 0.25);
     expect(progress?.totalReadingSeconds, 3723);
+  });
+
+  test('persists an audio chapter and millisecond position across reopen', () async {
+    final item = await library.bookshelf.add(title: '听书进度', kind: ContentKind.audio, source: source);
+    await library.saveAudioProgress(
+      LibraryAudioPlaybackProgress(
+        itemId: item.id,
+        chapterId: 'episode-3021',
+        position: const Duration(minutes: 12, seconds: 34, milliseconds: 567),
+        updatedAtUtc: DateTime.utc(2026, 8, 30, 8),
+      ),
+    );
+    await library.close();
+    library = await ContentLibrary.open(dataRoot: root);
+
+    final restored = await library.loadAudioProgress(item.id);
+
+    expect(restored?.chapterId, 'episode-3021');
+    expect(restored?.position, const Duration(minutes: 12, seconds: 34, milliseconds: 567));
+    expect(restored?.updatedAtUtc, DateTime.utc(2026, 8, 30, 8));
   });
 
   test('persists semantic bookmarks by book and keeps repeated saves idempotent', () async {

@@ -7,8 +7,6 @@
 /// 注意：
 /// - 在 started 回调内触发失效条件，避免依赖测试调度器的 idle 时序。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';

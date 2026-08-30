@@ -1,13 +1,14 @@
 import 'diagnostic_event.dart';
 import 'diagnostic_value.dart';
 
-/// Creates short, human-readable developer-console summaries from safe events.
+/// Creates human-readable developer-console output from safe events.
 ///
 /// The persisted TXT envelope remains the complete structured diagnostic
 /// record. The console intentionally shows only user-flow milestones and all
 /// warnings/errors, so it remains useful while a feature is running. ANSI
 /// styling is applied only by [formatForConsole]; [format] stays plain text for
-/// storage, copying, and tests that inspect diagnostic content.
+/// storage, copying, and tests that inspect diagnostic content. Error events
+/// retain their complete explicit error text and stack trace for debugging.
 final class DiagnosticConsoleFormatter {
   const DiagnosticConsoleFormatter();
 
@@ -31,8 +32,10 @@ final class DiagnosticConsoleFormatter {
     if (event.durationMicros case final duration?) {
       fields.add('duration=${_duration(duration)}');
     }
-    for (final entry in _orderedAttributes(event.attributes).take(8)) {
-      fields.add('${_label(entry.key)}=${_value(entry.value, key: entry.key)}');
+    final fullError = event.severity.index >= DiagnosticSeverity.error.index;
+    final attributes = _orderedAttributes(event.attributes);
+    for (final entry in fullError ? attributes : attributes.take(8)) {
+      fields.add('${_label(entry.key)}=${_value(entry.value, key: entry.key, preserveText: fullError)}');
     }
     return fields.join(' ');
   }
@@ -113,10 +116,10 @@ final class DiagnosticConsoleFormatter {
         '${value.millisecond.toString().padLeft(3, '0')}';
   }
 
-  String _value(DiagnosticValue value, {required String key}) => switch (value) {
+  String _value(DiagnosticValue value, {required String key, required bool preserveText}) => switch (value) {
     DiagnosticNullValue() => 'null',
     DiagnosticBoolValue(:final value) => '$value',
-    DiagnosticStringValue(:final value) => _shortText(value),
+    DiagnosticStringValue(:final value) => preserveText ? value : _shortText(value),
     DiagnosticInt64Value(:final decimal) when key.endsWith('Micros') => _duration(int.parse(decimal)),
     DiagnosticInt64Value(:final decimal) when key.toLowerCase().contains('bytes') => _bytes(int.parse(decimal)),
     DiagnosticInt64Value(:final decimal) => decimal,

@@ -12,7 +12,85 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../api/audio_controller.dart';
 import '../api/audio_models.dart';
+
+Future<void> showAudioQueueSheet(
+  BuildContext context, {
+  required AudioPlayerSnapshot snapshot,
+  required AudioPlayerController controller,
+}) => showModalBottomSheet<void>(
+  context: context,
+  backgroundColor: AudioPlayerColors.sheet,
+  showDragHandle: true,
+  isScrollControlled: true,
+  builder: (sheetContext) => SafeArea(
+    child: FractionallySizedBox(
+      heightFactor: 0.72,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
+            child: Text(
+              '播放队列 · ${snapshot.queueEntries.length}',
+              style: Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AudioPlayerColors.ink,
+              ),
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.builder(
+              key: const Key('audio-queue-list'),
+              itemCount: snapshot.queueEntries.length,
+              itemBuilder: (context, index) {
+                final entry = snapshot.queueEntries[index];
+                final selected = entry.id == snapshot.currentTrack?.id;
+                return ListTile(
+                  key: Key('audio-queue-track-${entry.id}'),
+                  selected: selected,
+                  selectedColor: AudioPlayerColors.accent,
+                  leading: SizedBox(
+                    width: 32,
+                    child: selected
+                        ? const Icon(Icons.graphic_eq_rounded)
+                        : Text('${index + 1}', textAlign: TextAlign.center),
+                  ),
+                  title: Text(
+                    entry.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: entry.isLocked
+                      ? const Text('需解锁')
+                      : entry.creator == null
+                      ? null
+                      : Text(
+                          entry.creator!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                  onTap: entry.isLocked
+                      ? null
+                      : selected
+                      ? () => Navigator.of(sheetContext).pop()
+                      : () async {
+                          await controller.selectQueueEntry(entry.id);
+                          if (sheetContext.mounted) {
+                            Navigator.of(sheetContext).pop();
+                          }
+                        },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    ),
+  ),
+);
 
 final class AudioUtilityControls extends StatelessWidget {
   const AudioUtilityControls({

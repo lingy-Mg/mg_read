@@ -19,6 +19,7 @@ final class DeferredDiagnosticEventSink implements DiagnosticEventSink {
     this.maxBytes = 64 * 1024,
     Set<String> traceComponents = const <String>{},
     this.bufferBeforeAttach = true,
+    this.mirrorSink,
   }) : traceComponents = Set<String>.unmodifiable(traceComponents) {
     if (maxEvents <= 0 || maxBytes <= 0) {
       throw ArgumentError('Deferred diagnostics bounds must be positive.');
@@ -34,6 +35,10 @@ final class DeferredDiagnosticEventSink implements DiagnosticEventSink {
   /// production default-disabled diagnostics path: it allocates no event
   /// envelopes and retains no startup history before explicit activation.
   final bool bufferBeforeAttach;
+
+  /// Optional best-effort observer, such as the developer Debug Console.
+  /// It receives accepted events even while persistent diagnostics are off.
+  final DiagnosticEventSink? mirrorSink;
   DiagnosticEventSink? _fallbackSink;
   final ListQueue<_DeferredDiagnosticEvent> _events = ListQueue<_DeferredDiagnosticEvent>();
   DiagnosticEventSink? _attachedSink;
@@ -61,54 +66,79 @@ final class DeferredDiagnosticEventSink implements DiagnosticEventSink {
 
   @override
   bool isEnabled({required String component, required DiagnosticSeverity severity, required DiagnosticPayloadKind payloadKind}) {
-    if (_closing || _closed || !_enabled) {
+    if (_closing || _closed) return false;
+    final mirror = mirrorSink;
+    final mirrorEnabled = mirror != null && _isMirrorEnabled(mirror, component: component, severity: severity, payloadKind: payloadKind);
+    if (!_enabled) {
       final fallback = _fallbackSink;
-      if (fallback == null || _closing || _closed) return false;
+      if (fallback == null) return mirrorEnabled;
       try {
-        return fallback.isEnabled(component: component, severity: severity, payloadKind: payloadKind);
+        return mirrorEnabled || fallback.isEnabled(component: component, severity: severity, payloadKind: payloadKind);
       } catch (_) {
-        return false;
+        return mirrorEnabled;
       }
     }
     final sink = _attachedSink;
     if (sink != null) {
       try {
-        return sink.isEnabled(component: component, severity: severity, payloadKind: payloadKind);
+        return mirrorEnabled || sink.isEnabled(component: component, severity: severity, payloadKind: payloadKind);
       } catch (_) {
-        return false;
+        return mirrorEnabled;
       }
     }
-    if (!bufferBeforeAttach) return false;
+    if (!bufferBeforeAttach) return mirrorEnabled;
     if (payloadKind != DiagnosticPayloadKind.metadataOnly) return false;
     if (severity == DiagnosticSeverity.trace && !traceComponents.contains(component)) {
       return false;
     }
-    return severity.index >= minimumSeverity.index;
+    return mirrorEnabled || severity.index >= minimumSeverity.index;
   }
 
   @override
   bool add(DiagnosticEvent event) {
     if (_closing || _closed) return false;
-    if (!_enabled) return _forwardToFallback(event);
+    final mirrored = _forwardToMirror(event);
+    if (!_enabled) return _forwardToFallback(event) || mirrored;
     final sink = _attachedSink;
-    if (sink != null) return _forward(sink, event);
-    if (!bufferBeforeAttach) return false;
+    if (sink != null) return _forward(sink, event) || mirrored;
+    if (!bufferBeforeAttach) return mirrored;
 
     // Direct callers may bypass isEnabled; keep the startup buffer's contract
     // identical in that case as well.
     if (event.severity.index < minimumSeverity.index ||
         (event.severity == DiagnosticSeverity.trace && !traceComponents.contains(event.component))) {
-      return false;
+      return mirrored;
     }
 
     final estimatedBytes = _estimateBytes(event);
     if (_events.length >= maxEvents || estimatedBytes > maxBytes || _bufferedBytes + estimatedBytes > maxBytes) {
       _droppedEvents += 1;
-      return false;
+      return mirrored;
     }
     _events.addLast(_DeferredDiagnosticEvent(event, estimatedBytes));
     _bufferedBytes += estimatedBytes;
     return true;
+  }
+
+  bool _isMirrorEnabled(
+    DiagnosticEventSink sink, {
+    required String component,
+    required DiagnosticSeverity severity,
+    required DiagnosticPayloadKind payloadKind,
+  }) {
+    try {
+      return sink.isEnabled(component: component, severity: severity, payloadKind: payloadKind);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _forwardToMirror(DiagnosticEvent event) {
+    final mirror = mirrorSink;
+    if (mirror == null || !_isMirrorEnabled(mirror, component: event.component, severity: event.severity, payloadKind: DiagnosticPayloadKind.metadataOnly)) {
+      return false;
+    }
+    return _forward(mirror, event);
   }
 
   /// Attach one real sink and drain the accepted startup events in order.

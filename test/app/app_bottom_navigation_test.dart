@@ -6,8 +6,6 @@
 /// 注意：
 /// - 这是共享组件测试，不替代 Android 页面或路由验收。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

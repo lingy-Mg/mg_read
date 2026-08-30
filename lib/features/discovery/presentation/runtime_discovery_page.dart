@@ -12,8 +12,6 @@
 /// - 页面只渲染已由 application 层准备好的数据，不在 build() 中执行 IO。
 /// - 分类列表标签需与复用的发现内容列表项保持一致的视觉规格。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:math' as math;

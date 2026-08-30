@@ -8,7 +8,6 @@
 /// - Node Runtime 仍由根应用首帧后的独立预热流程启动。
 /// - 启动期资源失败必须关闭已打开的资源，不能让启动界面持有业务状态。
 ///
-/// TODO:
 /// - 无。
 library;
 
@@ -97,6 +96,7 @@ Future<void> bootstrapMgReadApp({
   final deferredDiagnostics = DeferredDiagnosticEventSink(
     minimumSeverity: kReleaseMode ? DiagnosticSeverity.warn : DiagnosticSeverity.debug,
     bufferBeforeAttach: false,
+    mirrorSink: kReleaseMode ? null : _DebugConsoleEventSink(),
   );
   final diagnostics =
       diagnosticsManager ??
@@ -424,6 +424,28 @@ final class _DebugConsoleEventMirror {
       scheduleMicrotask(_drain);
     }
   }
+}
+
+/// Debug-only terminal sink that remains available when persistent app logs
+/// are disabled. It mirrors warnings and errors without retaining them.
+final class _DebugConsoleEventSink implements DiagnosticEventSink {
+  final _DebugConsoleEventMirror _mirror = _DebugConsoleEventMirror();
+
+  @override
+  bool isEnabled({required String component, required DiagnosticSeverity severity, required DiagnosticPayloadKind payloadKind}) =>
+      severity.index >= DiagnosticSeverity.warn.index;
+
+  @override
+  bool add(DiagnosticEvent event) {
+    _mirror.add(event);
+    return true;
+  }
+
+  @override
+  Future<void> close({required Duration timeout}) => Future<void>.value();
+
+  @override
+  Future<void> flush({required Duration timeout}) => Future<void>.value();
 }
 
 Future<ContentLibrary> _openDefaultContentLibrary(Directory dataRoot, DiagnosticsManager diagnostics, AppPersistence? persistence) =>

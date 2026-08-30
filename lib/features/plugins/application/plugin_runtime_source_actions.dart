@@ -2,7 +2,6 @@
 ///
 /// 职责：串行化单个数据源的 Runtime 写操作、刷新共享投影并记录受控诊断终态。
 /// 注意：删除仅安排下一次 Runtime 冷启动执行，不热卸载当前 Node VM 中的模块。
-/// TODO: - 无。
 part of 'plugin_runtime_connection.dart';
 
 /// Serializes source enable/disable and cold-start removal requests.

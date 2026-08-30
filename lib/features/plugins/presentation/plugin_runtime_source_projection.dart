@@ -8,8 +8,6 @@
 /// - 仅供插件管理页使用，不改变发现页的图标来源。
 /// - 不发起网络请求或 Runtime 调用。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';

@@ -7,8 +7,6 @@
 /// 注意：
 /// - 首帧与失败通知由外层 ReaderEntryTransition 或宿主 Observer 消费。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

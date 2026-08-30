@@ -2,30 +2,19 @@
 import type { JsonObject } from "./protocol.js";
 import type { PluginRuntimeHttpClient } from "./plugin-manager-contract.js";
 
-type Entry = {
-  readonly active: () => boolean;
+export type MediaProxyEntry = {
   readonly fetch: PluginRuntimeHttpClient["fetch"];
-  readonly pluginId: string;
   readonly proxy: (request: JsonObject) => string;
   readonly request: JsonObject;
 };
 
-const entries = new Map<string, Entry>();
-
-export function registerMediaProxyResource(token: string, entry: Entry): void {
-  if (!isMediaProxyRequest(entry.request)) return;
-  const oldest = entries.keys().next().value;
-  if (entries.size >= 1024 && typeof oldest === "string") entries.delete(oldest);
-  entries.set(token, entry);
-}
-
+/** Opens a Manager-owned media resource without duplicating its token registry. */
 export async function openMediaProxyResource(
-  token: string,
+  entry: MediaProxyEntry | undefined,
   requestHeaders: Readonly<Record<string, string>>,
   signal: AbortSignal,
-): Promise<{ readonly request: JsonObject; readonly response: Response; readonly proxy: Entry["proxy"] } | undefined> {
-  const entry = entries.get(token);
-  if (entry === undefined || !entry.active() || signal.aborted || !isMediaProxyRequest(entry.request)) return undefined;
+): Promise<{ readonly request: JsonObject; readonly response: Response; readonly proxy: MediaProxyEntry["proxy"] } | undefined> {
+  if (entry === undefined || signal.aborted || !isMediaProxyRequest(entry.request)) return undefined;
   const rawUrl = entry.request.url;
   const headers = entry.request.headers;
   if (typeof rawUrl !== "string" || !isHeaderRecord(headers)) return undefined;

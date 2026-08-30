@@ -801,3 +801,34 @@ test("media catalogs preserve neutral groups and require proxy playback metadata
     },
   }), PluginContentValidationError);
 });
+
+test("media proxy requests resolve from the owning Manager token table", async (t) => {
+  const dataRoot = await temporaryDirectory(t, "mgread-media-proxy-");
+  const calls = [];
+  const manager = new PluginManager(dataRoot, {
+    http: {
+      async fetch(input, init) {
+        calls.push({ input: String(input), init });
+        return new Response("#EXTM3U\nsegment.ts\n", {
+          headers: { "content-type": "application/vnd.apple.mpegurl" },
+        });
+      },
+    },
+  });
+  manager.setResourceOrigin("http://127.0.0.1:9000");
+  const url = manager.createResourceUrl("org.example.media", {
+    kind: "hls",
+    url: "https://media.example/playlist.m3u8",
+    headers: { Referer: "https://source.example/watch" },
+  });
+  const token = new URL(url).pathname.split("/").at(-1);
+  const resource = await manager.openMediaResource(token, { range: "bytes=0-1023" }, new AbortController().signal);
+
+  assert.equal(resource?.response.status, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].input, "https://media.example/playlist.m3u8");
+  assert.deepEqual(calls[0].init.headers, {
+    Referer: "https://source.example/watch",
+    range: "bytes=0-1023",
+  });
+});

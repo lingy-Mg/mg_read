@@ -6,7 +6,7 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/media/application/source_audio_playlist_data_source.dart';
 
 void main() {
-  test('opens the selected free track and isolates locked adjacent tracks', () async {
+  test('loads only the selected URL while exposing the complete catalog', () async {
     final gateway = _AudioGateway();
     final source = SourceAudioPlaylistDataSource(
       gateway: gateway,
@@ -14,19 +14,22 @@ void main() {
       initialTrackId: 'chapter:free-2',
       initialDetail: _detail(),
       initialCatalog: _catalog(),
-      maximumTracks: 3,
     );
 
     final playlist = await source.loadPlaylist('audio:book-1');
 
-    expect(playlist.tracks.map((track) => track.id), <String>[
+    expect(playlist.tracks.map((track) => track.id), <String>['chapter:free-2']);
+    expect(playlist.queueEntries.map((entry) => entry.id), <String>[
+      'chapter:free-1',
+      'chapter:locked',
       'chapter:free-2',
       'chapter:free-3',
     ]);
-    expect(gateway.contentCalls, <String>['chapter:free-2', 'chapter:free-3']);
+    expect(playlist.queueEntries[1].isLocked, isTrue);
+    expect(gateway.contentCalls, <String>['chapter:free-2']);
   });
 
-  test('does not fail the selected track when the next resource is unavailable', () async {
+  test('does not resolve a neighbouring expiring resource at startup', () async {
     final gateway = _AudioGateway(failingChapterId: 'chapter:free-3');
     final source = SourceAudioPlaylistDataSource(
       gateway: gateway,
@@ -34,13 +37,12 @@ void main() {
       initialTrackId: 'chapter:free-2',
       initialDetail: _detail(),
       initialCatalog: _catalog(),
-      maximumTracks: 3,
     );
 
     final playlist = await source.loadPlaylist('audio:book-1');
 
     expect(playlist.tracks.single.id, 'chapter:free-2');
-    expect(gateway.contentCalls, <String>['chapter:free-2', 'chapter:free-3']);
+    expect(gateway.contentCalls, <String>['chapter:free-2']);
   });
 
   test('reports a safe location when the selected resource is unavailable', () async {
@@ -71,13 +73,24 @@ void main() {
       initialCatalog: _catalog(),
     );
 
-    final tracks = await source.loadFollowingTracks(
-      'audio:book-1',
-      afterTrackId: 'chapter:free-2',
-      limit: 2,
-    );
+    final tracks = await source.loadFollowingTracks('audio:book-1', afterTrackId: 'chapter:free-2', limit: 2);
 
     expect(tracks.map((track) => track.id), <String>['chapter:free-3']);
+    expect(gateway.contentCalls, <String>['chapter:free-3']);
+  });
+
+  test('resolves a catalog selection only when the listener chooses it', () async {
+    final gateway = _AudioGateway();
+    final source = SourceAudioPlaylistDataSource(
+      gateway: gateway,
+      pluginId: _pluginId,
+      initialDetail: _detail(),
+      initialCatalog: _catalog(),
+    );
+
+    final track = await source.loadTrackById('audio:book-1', trackId: 'chapter:free-3');
+
+    expect(track.id, 'chapter:free-3');
     expect(gateway.contentCalls, <String>['chapter:free-3']);
   });
 }
@@ -122,18 +135,17 @@ PluginChaptersResult _catalog() => PluginChaptersResult(
   ],
 );
 
-PluginChapterSummary _chapter(String id, int order, {bool isLocked = false}) =>
-    PluginChapterSummary(
-      id: id,
-      title: '第${order + 1}集',
-      order: order,
-      url: null,
-      volumeTitle: null,
-      wordCount: null,
-      updatedAt: null,
-      isLocked: isLocked,
-      attributes: const <PluginContentAttribute>[],
-    );
+PluginChapterSummary _chapter(String id, int order, {bool isLocked = false}) => PluginChapterSummary(
+  id: id,
+  title: '第${order + 1}集',
+  order: order,
+  url: null,
+  volumeTitle: null,
+  wordCount: null,
+  updatedAt: null,
+  isLocked: isLocked,
+  attributes: const <PluginContentAttribute>[],
+);
 
 final class _AudioGateway implements SourceContentGateway {
   _AudioGateway({this.failingChapterId});
@@ -142,11 +154,7 @@ final class _AudioGateway implements SourceContentGateway {
   final List<String> contentCalls = <String>[];
 
   @override
-  Future<PluginChapterContent> getContent({
-    required String pluginId,
-    required String id,
-    required String chapterId,
-  }) async {
+  Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async {
     contentCalls.add(chapterId);
     if (chapterId == failingChapterId) throw StateError('fixture unavailable');
     return PluginChapterContent(
@@ -179,11 +187,19 @@ final class _AudioGateway implements SourceContentGateway {
   Future<List<PluginSourceDescriptor>> listSources() => throw UnimplementedError();
 
   @override
-  Future<PluginDiscoverResult> discover({required String pluginId, String? target, String? cursor, String? collectionId, int pageSize = 20}) => throw UnimplementedError();
+  Future<PluginDiscoverResult> discover({
+    required String pluginId,
+    String? target,
+    String? cursor,
+    String? collectionId,
+    int pageSize = 20,
+  }) => throw UnimplementedError();
 
   @override
-  Future<PluginSearchResult> search({required String pluginId, required String query, String? cursor, int pageSize = 20}) => throw UnimplementedError();
+  Future<PluginSearchResult> search({required String pluginId, required String query, String? cursor, int pageSize = 20}) =>
+      throw UnimplementedError();
 
   @override
-  Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) => throw UnimplementedError();
+  Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) =>
+      throw UnimplementedError();
 }

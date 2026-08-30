@@ -8,8 +8,6 @@
 /// - Flutter 只能调用 [PluginRuntime.invoke]，不得获得 PID、端口或 WebSocket。
 /// - 每个进程只能有一个 Node Runtime/VM，插件协议错误必须经 typed Facade 返回。
 ///
-/// TODO:
-/// - 无。
 library mgread_plugin_runtime;
 
 import 'dart:async';

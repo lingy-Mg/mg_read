@@ -10,8 +10,6 @@
 /// - 内容壳不负责路由、异步加载或业务状态。
 /// - 二级及更深页面不得显示主导航栏。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

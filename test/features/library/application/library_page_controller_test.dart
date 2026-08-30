@@ -7,8 +7,6 @@
 /// 注意：
 /// - 使用受控内存 loader，不触及真实 SQLite 或文件系统。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';
@@ -20,7 +18,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/library/application/library_overview_loader.dart';
 import 'package:mg_read/features/library/application/library_book_removal_operation.dart';
+import 'package:mg_read/features/library/application/library_book_refresh_operation.dart';
 import 'package:mg_read/features/library/application/library_book_remover.dart';
+import 'package:mg_read/features/library/application/library_book_refresher.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/application/library_page_state.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
@@ -233,6 +233,23 @@ void main() {
     expect(error.outcome, DiagnosticOutcome.error);
     expect(jsonEncode(const DiagnosticEventCodec().encode(error)), isNot(contains(secretCanary)));
   });
+
+  test('failed refresh records complete exception context for the developer console', () async {
+    const failure = 'StateError: original refresh failure';
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    final operation = LibraryBookRefreshOperation(
+      refresher: _FailingBookRefresher(StateError(failure)),
+      diagnostics: diagnostics.manager,
+    );
+
+    await expectLater(operation.refresh('book-durable'), throwsStateError);
+
+    final error = diagnostics.sink.events.singleWhere((event) => event.eventName == 'library.operation.error');
+    expect(error.outcome, DiagnosticOutcome.error);
+    expect((error.attributes.values['errorText'] as DiagnosticStringValue).value, contains(failure));
+    expect((error.attributes.values['stackTrace'] as DiagnosticStringValue).value, isNotEmpty);
+  });
 }
 
 Future<void> _flush() => Future<void>.delayed(Duration.zero);
@@ -276,4 +293,13 @@ final class _FailingBookRemover implements LibraryBookRemover {
 
   @override
   Future<void> removeBook(String bookId) => Future<void>.error(error);
+}
+
+final class _FailingBookRefresher implements LibraryBookRefresher {
+  const _FailingBookRefresher(this.error);
+
+  final Object error;
+
+  @override
+  Future<void> refresh(String bookId) => Future<void>.error(error);
 }

@@ -8,8 +8,6 @@
 /// - 封面由共享展示组件异步解析，网关不得耦合持久化或网络读取。
 /// - 仅在这里将 Runtime 失败归一化为应用错误。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/foundation.dart';

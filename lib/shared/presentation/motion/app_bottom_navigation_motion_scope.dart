@@ -8,8 +8,6 @@
 /// - 只管理无业务的视觉状态，不决定路由或选中目的地。
 /// - 环境纹理在不可见、TickerMode 禁用或减少动态效果时不得继续运行。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

@@ -9,8 +9,6 @@
 /// - 交互仅通过稳定 Key 和 WidgetTester 手势完成。
 /// - 耗时只作为机器可读证据，不设置主观毫秒门槛。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/foundation.dart';

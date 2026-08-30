@@ -3,7 +3,6 @@
  *
  * 职责：按原始顺序并发补全列表投影，并在可选截止时间到达时返回不可变快照。
  * 注意：截止后仍在执行的任务只能填充内部缓存，不能改写已经返回的列表。
- * TODO: - 无。
  */
 
 export interface DetailHydrationOptions<T> {

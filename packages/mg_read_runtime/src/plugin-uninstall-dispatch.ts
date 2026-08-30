@@ -3,7 +3,6 @@
  *
  * 职责：验证 path-free 启停/删除请求，并把已安装数据源插件安排到下一次 Runtime 冷启动移除。
  * 注意：不热卸载 Node ESM，不返回路径、插件私有文件或原始异常。
- * TODO: - 无。
  */
 import { PluginManager, PluginManagerError } from "./plugin-manager.js";
 import type {

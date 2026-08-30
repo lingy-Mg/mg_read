@@ -8,8 +8,6 @@
 /// - 只消费 Library Page 的已投影状态，不直接访问 persistence。
 /// - 页面不显示主导航栏；阅读条目打开行为由路由层提供。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

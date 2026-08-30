@@ -9,8 +9,6 @@
 /// - 跨路由移动、减少动态效果和资源释放属于 sibling MotionScope。
 /// - 本模块不处理导航路由或业务状态。
 ///
-/// TODO:
-/// - 无。
 library;
 
 export 'package:mg_read/shared/presentation/motion/app_bottom_navigation_motion_scope.dart';

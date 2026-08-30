@@ -6,8 +6,6 @@
 /// 注意：
 /// - 只响应显式回调，不能访问页面状态或发起 IO。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

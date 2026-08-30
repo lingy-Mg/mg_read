@@ -9,8 +9,6 @@
 /// - 不保存可变控制器或 Runtime 句柄。
 /// - target 仅作不透明请求标识，不能用于展示或诊断内容。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/foundation.dart';

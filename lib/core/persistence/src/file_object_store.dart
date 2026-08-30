@@ -10,8 +10,6 @@
 /// - 全局封面索引仅在首次维护时扫描；命中读取不触发扫描。
 /// - 漫画图片写入不设总容量上限且不扫描缓存目录；统计、清理和按书删除可按需扫描。
 ///
-/// TODO:
-/// - 无。
 part of 'app_persistence.dart';
 
 /// Files are staged then atomically renamed under an app-private relative path.

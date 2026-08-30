@@ -8,8 +8,6 @@
 /// - 持久化细节只保留在 Content Library 内部。
 /// - 封面由展示层在主体显示后异步解析。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:mg_read/core/content_library/content_library.dart';

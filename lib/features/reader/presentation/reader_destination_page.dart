@@ -9,8 +9,6 @@
 /// - 路由销毁、失败与重复解析必须结束既有启动 span。
 /// - 视觉入场不创建额外 owner span，真实正文或图片首帧才是成功语义。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';

@@ -8,8 +8,6 @@
 /// - 只覆盖隔离展示组件，不替代页面或 Android Integration Test。
 /// - 测试固定使用浅色主题。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

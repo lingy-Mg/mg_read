@@ -11,8 +11,6 @@ part of 'text_reader_view.dart';
 /// - 正文完成或失败均回到相邻准备协调器，由下一真实阅读事件决定是否继续。
 /// - 网络、文件和持久化仍由宿主数据源拥有。
 ///
-/// TODO:
-/// - 无。
 
 extension _TextReaderChapterPrefetch on _TextReaderViewState {
   TextChapterContent? _takeCached(String id) {

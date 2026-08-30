@@ -58,7 +58,7 @@ final class AndroidAudioBackgroundService {
         androidStopForegroundOnPause: true,
       ),
     );
-    return handler as _MgReadAudioHandler;
+    return handler;
   }
 
   Future<void> _configureAudioSession() async {

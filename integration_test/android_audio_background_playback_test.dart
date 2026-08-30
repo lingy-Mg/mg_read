@@ -6,8 +6,6 @@
 /// manual device check because this suite must not control the emulator.
 library;
 
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -64,7 +62,6 @@ void main() {
               initialTrackId: playable.first.id,
               initialDetail: detail,
               initialCatalog: catalog,
-              maximumTracks: 2,
             ),
             stateStore: TransientSourceAudioPlaybackStateStore(
               collectionId: detail.summary.id,

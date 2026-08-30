@@ -9,8 +9,6 @@
 /// - 只保存模式偏好，不保存捕获会话；页面销毁时会话仍必须停止。
 /// - “保存详情 TXT”是一次性显式操作，不在此处持久化。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';

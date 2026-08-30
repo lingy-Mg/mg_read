@@ -37,6 +37,25 @@ final class AudioTrack {
   final Map<String, String> httpHeaders;
 }
 
+/// One visible queue entry. Unlike [AudioTrack], it deliberately has no media
+/// URL or headers, so a complete source catalog can stay in memory safely.
+@immutable
+final class AudioQueueEntry {
+  const AudioQueueEntry({
+    required this.id,
+    required this.title,
+    this.creator,
+    this.artwork,
+    this.isLocked = false,
+  });
+
+  final String id;
+  final String title;
+  final String? creator;
+  final Uri? artwork;
+  final bool isLocked;
+}
+
 /// A host-owned ordered queue for one audio collection.
 @immutable
 final class AudioPlaylist {
@@ -44,15 +63,33 @@ final class AudioPlaylist {
     required this.collectionId,
     required this.title,
     required List<AudioTrack> tracks,
+    List<AudioQueueEntry>? queueEntries,
     this.creator,
   }) : tracks = UnmodifiableListView<AudioTrack>(
          List<AudioTrack>.of(tracks, growable: false),
+       ),
+       queueEntries = UnmodifiableListView<AudioQueueEntry>(
+         List<AudioQueueEntry>.of(
+           queueEntries ??
+               tracks
+                   .map(
+                     (track) => AudioQueueEntry(
+                       id: track.id,
+                       title: track.title,
+                       creator: track.creator,
+                       artwork: track.artwork,
+                     ),
+                   )
+                   .toList(growable: false),
+           growable: false,
+         ),
        );
 
   final String collectionId;
   final String title;
   final String? creator;
   final List<AudioTrack> tracks;
+  final List<AudioQueueEntry> queueEntries;
 }
 
 /// Durable, queue-order-independent playback position.
@@ -159,6 +196,7 @@ final class AudioPlayerSnapshot {
   AudioPlayerSnapshot({
     required this.status,
     required List<AudioTrack> queue,
+    List<AudioQueueEntry>? queueEntries,
     this.collectionId,
     this.collectionTitle,
     this.creator,
@@ -173,6 +211,22 @@ final class AudioPlayerSnapshot {
     this.failure,
   }) : queue = UnmodifiableListView<AudioTrack>(
          List<AudioTrack>.of(queue, growable: false),
+       ),
+       queueEntries = UnmodifiableListView<AudioQueueEntry>(
+         List<AudioQueueEntry>.of(
+           queueEntries ??
+               queue
+                   .map(
+                     (track) => AudioQueueEntry(
+                       id: track.id,
+                       title: track.title,
+                       creator: track.creator,
+                       artwork: track.artwork,
+                     ),
+                   )
+                   .toList(growable: false),
+           growable: false,
+         ),
        );
 
   AudioPlayerSnapshot.initial()
@@ -183,6 +237,7 @@ final class AudioPlayerSnapshot {
   final String? collectionTitle;
   final String? creator;
   final List<AudioTrack> queue;
+  final List<AudioQueueEntry> queueEntries;
   final int currentIndex;
   final bool playing;
   final bool buffering;
@@ -207,6 +262,7 @@ final class AudioPlayerSnapshot {
     String? collectionTitle,
     String? creator,
     List<AudioTrack>? queue,
+    List<AudioQueueEntry>? queueEntries,
     int? currentIndex,
     bool? playing,
     bool? buffering,
@@ -224,6 +280,7 @@ final class AudioPlayerSnapshot {
     collectionTitle: collectionTitle ?? this.collectionTitle,
     creator: creator ?? this.creator,
     queue: queue ?? this.queue,
+    queueEntries: queueEntries ?? this.queueEntries,
     currentIndex: currentIndex ?? this.currentIndex,
     playing: playing ?? this.playing,
     buffering: buffering ?? this.buffering,

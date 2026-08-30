@@ -62,6 +62,22 @@ final class AppSettingKeys {
     validator: _validateBool,
   );
 
+  /// One credential-free endpoint plus independently enabled traffic classes.
+  static const networkProxyDocument = SettingsDocumentDefinition(id: 'app-settings:settings.networkProxy', kind: 'settings.networkProxy');
+
+  static const networkProxyPreferences = SettingKey<Map<String, Object?>>(
+    id: 'networkProxy.preferences',
+    documentKind: 'settings.networkProxy',
+    defaultValue: <String, Object?>{
+      'protocol': 'http',
+      'host': '127.0.0.1',
+      'port': 9000,
+      'enabled': <String, Object?>{'source': false, 'novel': false, 'manga': false, 'video': false, 'audio': false},
+    },
+    codec: SettingCodec<Map<String, Object?>>(_readerPreferencesEncode, _readerPreferencesDecode, freeze: freezeJsonSettingMap),
+    validator: _validateNetworkProxyPreferences,
+  );
+
   /// JSON-shaped snapshot of all host-independent text reader preferences.
   static const readerPreferencesDocument = SettingsDocumentDefinition(id: 'app-settings:settings.reader', kind: 'settings.reader');
 
@@ -88,13 +104,21 @@ final class AppSettingKeys {
     discoverySourceId,
     diagnosticsEnabled,
     diagnosticsRealtimeDetailsEnabled,
+    networkProxyPreferences,
     readerPreferences,
     comicReaderPreferences,
   ];
 
   static final registry = SettingsRegistry(
     keys: all,
-    documents: const [appearanceDocument, searchHistoryDocument, discoveryDocument, diagnosticsDocument, readerPreferencesDocument],
+    documents: const [
+      appearanceDocument,
+      searchHistoryDocument,
+      discoveryDocument,
+      diagnosticsDocument,
+      networkProxyDocument,
+      readerPreferencesDocument,
+    ],
   );
 }
 
@@ -150,6 +174,27 @@ bool _boolDecode(Object? value) {
 }
 
 void _validateBool(bool value) {}
+
+void _validateNetworkProxyPreferences(Map<String, Object?> value) {
+  if (value.length != 4 || value['protocol'] is! String || value['host'] is! String || value['port'] is! int || value['enabled'] is! Map) {
+    throw ArgumentError.value(value);
+  }
+  final protocol = value['protocol'] as String;
+  final host = value['host'] as String;
+  final port = value['port'] as int;
+  if (protocol != 'http' && protocol != 'https' && protocol != 'socks5') {
+    throw ArgumentError.value(value);
+  }
+  if (host.trim().isEmpty || host.length > 255 || host.contains(RegExp(r'[\\s/@]'))) {
+    throw ArgumentError.value(value);
+  }
+  if (port < 1 || port > 65535) throw ArgumentError.value(value);
+  final enabled = value['enabled'] as Map<Object?, Object?>;
+  const expected = <String>{'source', 'novel', 'manga', 'video', 'audio'};
+  if (enabled.length != expected.length || !enabled.keys.every(expected.contains) || enabled.values.any((item) => item is! bool)) {
+    throw ArgumentError.value(value);
+  }
+}
 
 Object? _readerPreferencesEncode(Map<String, Object?> value) => value;
 

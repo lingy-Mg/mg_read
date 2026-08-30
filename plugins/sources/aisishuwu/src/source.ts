@@ -3,7 +3,6 @@
  *
  * 职责：解析发现、搜索、详情、目录和正文，并复用插件私有的 HTML/投影缓存。
  * 注意：分类/首页封面补全有并发与时间预算；封面只对外暴露 Runtime 代理，缓存仍保存来源 URL。
- * TODO: - 无。
  */
 import * as cheerio from 'cheerio/slim';
 import type { Element } from 'domhandler';

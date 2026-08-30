@@ -8,8 +8,6 @@
 /// - 页面构建不得在此处触发封面、Runtime 或持久化读取。
 /// - 无来源身份的封面由组件使用本地降级插画。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/foundation.dart';

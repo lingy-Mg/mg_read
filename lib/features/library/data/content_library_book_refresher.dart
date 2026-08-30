@@ -38,7 +38,10 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher {
     final item = await _library.getLibraryItem(LibraryItemId(bookId));
     final source = item?.source;
     if (item == null) throw StateError('The bookshelf item no longer exists.');
-    if (source == null || item.sourceUrl == null) throw StateError('The bookshelf item has no original source URL.');
+    // The persisted source identity is the durable refresh key. Early shelf
+    // records may predate sourceUrl persistence, but they are still refreshable
+    // when pluginId and remoteContentId are present.
+    if (source == null) throw StateError('The bookshelf item has no source identity.');
 
     final results = await Future.wait<Object>(<Future<Object>>[
       _gateway.getDetail(pluginId: source.pluginId, id: source.remoteContentId),

@@ -81,7 +81,7 @@ void main() {
 
     expect(tester.getSize(find.byType(DiscoveryBookCover)), const Size(112, 74));
     final cover = tester.widget<DecoratedBox>(find.byType(DecoratedBox).first);
-    expect((cover.decoration! as BoxDecoration).borderRadius, BorderRadius.circular(10));
+    expect((cover.decoration as BoxDecoration).borderRadius, BorderRadius.circular(10));
   });
 }
 

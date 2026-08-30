@@ -11,8 +11,6 @@
 /// - 所有新书架条目必须在 metadata 事务内遵守全局 100 本硬上限。
 /// - 目录/正文引用写入、书架删除与清理共享可重入维护屏障，普通读取不排队。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';
@@ -39,6 +37,7 @@ const _entryKind = 'content_catalog_entry';
 const _readingProgressKind = 'content_library_reading_progress';
 const _bookmarkKind = 'content_library_bookmark';
 const _mangaProgressKind = 'content_library_manga_progress';
+const _audioProgressKind = 'content_library_audio_progress';
 const _mangaBookmarkKind = 'content_library_manga_bookmark';
 const _coverCacheMaxBytes = 100 * 1024 * 1024;
 const _metadataInlinePreparationPolicy = JsonInlinePreparationPolicy(
@@ -50,7 +49,7 @@ const _metadataInlinePreparationPolicy = JsonInlinePreparationPolicy(
 );
 
 Iterable<RecordDocumentCodec> get contentLibraryRecordDocumentCodecs sync* {
-  for (final kind in [_itemKind, _bindingKind, _entryKind, _readingProgressKind, _bookmarkKind, _mangaProgressKind, _mangaBookmarkKind]) {
+  for (final kind in [_itemKind, _bindingKind, _entryKind, _readingProgressKind, _bookmarkKind, _mangaProgressKind, _audioProgressKind, _mangaBookmarkKind]) {
     yield RecordDocumentCodec(
       recordKind: kind,
       scopeKind: _scope.kind,
@@ -74,6 +73,7 @@ final class ContentLibrary {
   late final CatalogRepository catalog = CatalogRepository._(this);
   late final ContentRepository content = ContentRepository._(this);
   late final ReadingProgressRepository readingProgress = ReadingProgressRepository._(this);
+  late final AudioProgressRepository audioProgress = AudioProgressRepository._(this);
   late final BookmarkRepository bookmarks = BookmarkRepository._(this);
   late final MangaStateRepository mangaState = MangaStateRepository._(this);
   late final LibrarySyncRepository sync = LibrarySyncRepository._(this);
@@ -110,6 +110,8 @@ final class ContentLibrary {
       content.cacheMangaChapter(entryId: entryId, pages: pages);
   Future<LibraryMangaReadingProgress?> loadMangaProgress(LibraryItemId itemId) => mangaState.loadProgress(itemId);
   Future<void> saveMangaProgress(LibraryMangaReadingProgress value) => mangaState.saveProgress(value);
+  Future<LibraryAudioPlaybackProgress?> loadAudioProgress(LibraryItemId itemId) => audioProgress.load(itemId);
+  Future<void> saveAudioProgress(LibraryAudioPlaybackProgress value) => audioProgress.save(value);
   Future<List<LibraryMangaBookmark>> listMangaBookmarks(LibraryItemId itemId) => mangaState.listBookmarks(itemId);
   Future<void> addMangaBookmark(LibraryMangaBookmark value) => mangaState.addBookmark(value);
   Future<void> removeMangaBookmark(LibraryItemId itemId, String bookmarkId) => mangaState.removeBookmark(itemId, bookmarkId);

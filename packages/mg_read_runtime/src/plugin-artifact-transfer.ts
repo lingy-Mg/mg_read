@@ -4,7 +4,6 @@
  * 职责：索引双格式原始 artifact、规划版本同步、调用开发项目构建工具并签发一次性资源。
  * - 为局域网临时同步生成 devsync 版本，为用户主动打包保留项目声明版本。
  * 注意：开发构建工具在唯一 Runtime VM 内动态导入；Runtime 信任其 artifact 结果，不重复解析；wire 不暴露路径、代码或图标字节。
- * TODO: - 无。
  */
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";

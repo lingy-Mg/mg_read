@@ -2,7 +2,6 @@
  * Runtime 已安装插件 artifact/data/npm 用量统计。
  * 职责：解析兼容双格式的原始 artifact 路径并递归计算受控字节与文件数。
  * 注意：结果仅为 path-free 数值投影，data 统计排除 node_modules。
- * TODO: - 无。
  */
 import { lstat, readdir } from "node:fs/promises";
 import { resolve } from "node:path";

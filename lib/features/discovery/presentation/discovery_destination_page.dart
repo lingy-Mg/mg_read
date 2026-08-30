@@ -8,8 +8,6 @@
 /// - 页面不在 build 中进行 IO；内部层级由 controller 栈而非 GoRouter 管理。
 /// - 子页面只接收其层级状态，数据源选择仅显示在顶级发现页。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';

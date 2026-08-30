@@ -8,8 +8,6 @@
 /// - 路由不携带可变依赖或内容正文。
 /// - 系统减少动态效果时过渡必须立即完成。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';
@@ -179,7 +177,7 @@ class LibraryRoute extends GoRouteData with $LibraryRoute {
         onReaderRequested: (String bookId) {
           ReaderRoute(bookId: bookId).push(context);
         },
-        onAudioChapterRequested: ({required detail, required firstCatalogPage, required chapter}) {
+        onAudioChapterRequested: ({required detail, required firstCatalogPage, required chapter, String? libraryItemId}) {
           final navigator = appRootNavigatorKey.currentState;
           if (navigator == null) return Future<void>.error(StateError('The application navigator is not ready.'));
           return openTransientSourceAudioPlayer(
@@ -188,6 +186,7 @@ class LibraryRoute extends GoRouteData with $LibraryRoute {
             detail: detail,
             firstCatalogPage: firstCatalogPage,
             chapter: chapter,
+            libraryItemId: libraryItemId,
           );
         },
         onVideoEpisodeRequested: ({required detail, required firstCatalogPage, required chapter}) {
@@ -281,7 +280,7 @@ class SearchRoute extends GoRouteData with $SearchRoute {
             entryCoverBytes: entryCoverBytes,
           );
         },
-        onAudioChapterRequested: ({required detail, required firstCatalogPage, required chapter}) {
+        onAudioChapterRequested: ({required detail, required firstCatalogPage, required chapter, String? libraryItemId}) {
           final navigator = appRootNavigatorKey.currentState;
           if (navigator == null) return Future<void>.error(StateError('The application navigator is not ready.'));
           return openTransientSourceAudioPlayer(
@@ -347,7 +346,7 @@ class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
             entryCoverBytes: entryCoverBytes,
           );
         },
-        onAudioChapterRequested: ({required detail, required firstCatalogPage, required chapter}) {
+        onAudioChapterRequested: ({required detail, required firstCatalogPage, required chapter, String? libraryItemId}) {
           final navigator = appRootNavigatorKey.currentState;
           if (navigator == null) return Future<void>.error(StateError('The application navigator is not ready.'));
           return openTransientSourceAudioPlayer(

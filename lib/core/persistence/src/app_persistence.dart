@@ -10,8 +10,6 @@
 /// - 文件对象实现位于分部模块，仍受本库的生命周期与诊断约束。
 /// - 启动和普通读写不自动执行完整性检查、checkpoint 或 VACUUM。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';

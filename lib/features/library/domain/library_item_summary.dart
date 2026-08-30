@@ -8,8 +8,6 @@
 /// - 不携带持久化路径、Runtime DTO 或网络响应。
 /// - 缺失封面身份时由展示层降级，不影响条目可见性。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:mg_read/core/content_library/content_library.dart';

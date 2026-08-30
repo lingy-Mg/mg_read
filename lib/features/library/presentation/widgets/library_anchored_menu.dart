@@ -8,8 +8,6 @@
 /// - 菜单仅承载已提供的本地回调，不拥有书架业务状态。
 /// - Overlay 与焦点节点必须随组件销毁释放，避免快速开合残留。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

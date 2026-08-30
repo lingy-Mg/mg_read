@@ -19,6 +19,7 @@ typedef AudioPlayerCommand = Future<void> Function();
 typedef AudioSeekCommand = Future<void> Function(Duration position);
 typedef AudioDoubleCommand = Future<void> Function(double value);
 typedef AudioIndexCommand = Future<void> Function(int index);
+typedef AudioTrackIdCommand = Future<void> Function(String trackId);
 typedef AudioSleepTimerCommand = Future<void> Function(Duration? duration);
 
 /// Optional controller for [AudioPlayerView] commands and state observation.
@@ -35,6 +36,7 @@ class AudioPlayerController extends ChangeNotifier {
   AudioPlayerCommand? _previous;
   AudioPlayerCommand? _next;
   AudioIndexCommand? _jump;
+  AudioTrackIdCommand? _selectQueueEntry;
   AudioDoubleCommand? _setRate;
   AudioDoubleCommand? _setVolume;
   AudioSleepTimerCommand? _setSleepTimer;
@@ -53,6 +55,8 @@ class AudioPlayerController extends ChangeNotifier {
   Future<void> previous() => _invoke(_previous);
   Future<void> next() => _invoke(_next);
   Future<void> jump(int index) => _invokeArg(_jump, index);
+  Future<void> selectQueueEntry(String trackId) =>
+      _invokeArg(_selectQueueEntry, trackId);
   Future<void> setRate(double rate) => _invokeArg(_setRate, rate);
   Future<void> setVolume(double volume) => _invokeArg(_setVolume, volume);
   Future<void> setSleepTimer(Duration? duration) =>
@@ -81,6 +85,7 @@ class AudioPlayerController extends ChangeNotifier {
     required AudioPlayerCommand previous,
     required AudioPlayerCommand next,
     required AudioIndexCommand jump,
+    required AudioTrackIdCommand selectQueueEntry,
     required AudioDoubleCommand setRate,
     required AudioDoubleCommand setVolume,
     required AudioSleepTimerCommand setSleepTimer,
@@ -97,6 +102,7 @@ class AudioPlayerController extends ChangeNotifier {
     _previous = previous;
     _next = next;
     _jump = jump;
+    _selectQueueEntry = selectQueueEntry;
     _setRate = setRate;
     _setVolume = setVolume;
     _setSleepTimer = setSleepTimer;
@@ -127,6 +133,7 @@ class AudioPlayerController extends ChangeNotifier {
     _previous = null;
     _next = null;
     _jump = null;
+    _selectQueueEntry = null;
     _setRate = null;
     _setVolume = null;
     _setSleepTimer = null;

@@ -3,7 +3,6 @@
  *
  * 职责：把已加载 development 项目投影为受限 artifact 构建输入，并生成声明版本的本地发布包资源。
  * 注意：本模块不读写工作区，也不暴露路径；artifact 数据继续停留在 Runtime 私有传输管理器。
- * TODO: - 无。
  */
 import {
   PluginArtifactTransferManager,

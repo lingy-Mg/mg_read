@@ -7,8 +7,6 @@
 /// 注意：
 /// - 测试只替换组合依赖，不启动真实 Runtime 或平台窗口。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';

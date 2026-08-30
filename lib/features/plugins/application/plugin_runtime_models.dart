@@ -8,8 +8,6 @@
 /// - 不包含 Runtime wire DTO、路径、端口或资源 token。
 /// - 模型不可变，异步更新由 application controller 负责。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/foundation.dart';

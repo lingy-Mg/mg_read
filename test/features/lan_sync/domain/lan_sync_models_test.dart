@@ -7,8 +7,6 @@
 /// 注意：
 /// - 仅验证纯模型，不替代真实局域网传输。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter_test/flutter_test.dart';

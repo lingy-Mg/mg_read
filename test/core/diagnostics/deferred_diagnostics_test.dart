@@ -57,6 +57,34 @@ void main() {
     expect(recording.closed, isTrue);
   });
 
+  test('mirrors errors to the developer sink while persistence is disabled', () async {
+    final mirror = RecordingDiagnosticEventSink(minimumSeverity: DiagnosticSeverity.warn);
+    final deferred = DeferredDiagnosticEventSink(bufferBeforeAttach: false, mirrorSink: mirror);
+    final manager = DiagnosticsManager(
+      sink: deferred,
+      registry: AppDiagnosticEvents.registry,
+      source: DiagnosticSource.app,
+      idGenerator: SequentialDiagnosticIdGenerator(),
+      clock: FixedDiagnosticClock(),
+      sourceRunId: 'run_000000000000000000000002',
+    );
+    addTearDown(manager.close);
+
+    manager.emit(
+      AppDiagnosticEvents.unhandledError,
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'boundary': DiagnosticValue.string('test'),
+        'errorCode': DiagnosticValue.string('refresh_failed'),
+        'errorText': DiagnosticValue.string('complete error'),
+        'stackTrace': DiagnosticValue.string('stack line'),
+        'fatal': DiagnosticValue.boolean(false),
+      }),
+    );
+
+    expect(mirror.events, hasLength(1));
+    expect(deferred.bufferedEventCount, 0);
+  });
+
   test('persistent open attaches an existing manager and keeps one run', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-deferred-');
     addTearDown(() => root.delete(recursive: true));

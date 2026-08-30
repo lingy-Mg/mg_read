@@ -9,8 +9,6 @@
  * - 只能缓存稳定、可重复取得的展示投影，不能缓存正文、Cookie 或凭据。
  * - 调用方必须为 JSON 投影提供解码器；损坏或旧结构一律按未命中处理。
  *
- * TODO:
- * - 无。
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';

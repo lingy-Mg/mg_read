@@ -7,8 +7,6 @@
 /// 注意：
 /// - 测试 gateway 仅产生受控不可变文档，不接入 Runtime。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';

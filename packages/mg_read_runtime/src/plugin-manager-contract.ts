@@ -7,8 +7,6 @@
  * 注意：
  * - 这些类型不构成 Flutter Facade，也不得包含主应用路径或 transport。
  *
- * TODO:
- * - 无。
  */
 import type { JsonObject } from "./protocol.js";
 import type { PluginPackageDescriptor } from "./plugin-package.js";

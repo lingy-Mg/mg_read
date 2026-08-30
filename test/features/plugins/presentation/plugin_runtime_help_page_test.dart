@@ -6,8 +6,6 @@
 /// 注意：
 /// - 仅覆盖 Flutter Widget 层，不替代 Runtime listener 或平台验收。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

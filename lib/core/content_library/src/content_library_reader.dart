@@ -10,8 +10,6 @@
 /// - 漫画正文图片写入不设总容量上限；总量统计和清理只由用户主动管理触发。
 /// - 会话不得越过 active snapshot；异步访问保持在 ContentLibrary 所有权内。
 ///
-/// TODO:
-/// - 无。
 part of 'content_library.dart';
 
 final class CoverRepository {
@@ -198,6 +196,58 @@ final class ReadingProgressRepository {
       RecordDraft(
         id: _id(),
         recordKind: _readingProgressKind,
+        scope: _scope,
+        parentId: progress.itemId.value,
+        identityKey: progress.itemId.value,
+        orderKey: _timestampOrderKey(progress.updatedAtUtc),
+        stateKey: 'active',
+        document: document,
+      ),
+    );
+  }
+}
+
+/// Persists the last spoken-audio chapter and timestamp for a shelf item.
+final class AudioProgressRepository {
+  AudioProgressRepository._(this._library);
+
+  final ContentLibrary _library;
+
+  Future<LibraryAudioPlaybackProgress?> load(LibraryItemId itemId) =>
+      _library._trace(
+        operation: 'audioProgressLoad',
+        itemCount: 1,
+        action: () => _load(itemId),
+        resultCount: (result) => result == null ? 0 : 1,
+        resultState: (result) => result == null ? 'empty' : 'content',
+      );
+
+  Future<void> save(LibraryAudioPlaybackProgress progress) => _library._trace(
+    operation: 'audioProgressSave',
+    itemCount: 1,
+    action: () => _save(progress),
+  );
+
+  Future<LibraryAudioPlaybackProgress?> _load(LibraryItemId itemId) async {
+    final page = await _library._persistence.metadataRecords.list(
+      RecordQuery(recordKind: _audioProgressKind, scope: _scope, identityKey: itemId.value, limit: 1),
+    );
+    return page.records.isEmpty ? null : _audioProgress(page.records.single);
+  }
+
+  Future<void> _save(LibraryAudioPlaybackProgress progress) async {
+    final existing = await _library._persistence.metadataRecords.list(
+      RecordQuery(recordKind: _audioProgressKind, scope: _scope, identityKey: progress.itemId.value, limit: 1),
+    );
+    final document = _audioProgressDocument(progress);
+    if (existing.records.isNotEmpty) {
+      await _library._persistence.metadataRecords.update(previous: existing.records.single, document: document);
+      return;
+    }
+    await _library._persistence.metadataRecords.create(
+      RecordDraft(
+        id: _id(),
+        recordKind: _audioProgressKind,
         scope: _scope,
         parentId: progress.itemId.value,
         identityKey: progress.itemId.value,

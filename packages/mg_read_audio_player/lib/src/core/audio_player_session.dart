@@ -31,6 +31,7 @@ final class AudioPlayerSession extends ChangeNotifier {
     this.autoplay = true,
     this.prefetchThreshold = 1,
     this.prefetchBatchSize = 3,
+    this.prefetchLeadTime,
     DateTime Function()? clock,
   }) : assert(prefetchThreshold >= 0),
        assert(prefetchBatchSize > 0),
@@ -46,6 +47,7 @@ final class AudioPlayerSession extends ChangeNotifier {
       previous: previous,
       next: next,
       jump: jump,
+      selectQueueEntry: selectQueueEntry,
       setRate: setRate,
       setVolume: setVolume,
       setSleepTimer: setSleepTimer,
@@ -67,6 +69,10 @@ final class AudioPlayerSession extends ChangeNotifier {
   final bool autoplay;
   final int prefetchThreshold;
   final int prefetchBatchSize;
+
+  /// When set, source URLs are resolved only shortly before the current track
+  /// ends instead of merely because it is near a loaded queue boundary.
+  final Duration? prefetchLeadTime;
   final DateTime Function() _clock;
 
   AudioPlayerSnapshot _snapshot;
@@ -98,6 +104,7 @@ final class AudioPlayerSession extends ChangeNotifier {
       AudioPlayerSnapshot(
         status: AudioPlayerStatus.loading,
         queue: _snapshot.queue,
+        queueEntries: _snapshot.queueEntries,
         collectionId: collectionId,
         collectionTitle: _snapshot.collectionTitle,
         creator: _snapshot.creator,
@@ -126,6 +133,7 @@ final class AudioPlayerSession extends ChangeNotifier {
           collectionTitle: playlist.title,
           creator: playlist.creator,
           queue: playlist.tracks,
+          queueEntries: playlist.queueEntries,
           currentIndex: restoredIndex,
         ),
       );
@@ -154,7 +162,7 @@ final class AudioPlayerSession extends ChangeNotifier {
       _playlist = playlist;
       _backendSnapshotsEnabled = true;
       _applyReadySnapshot(backend.snapshot);
-      _prefetchIfNeeded(restoredIndex);
+      _prefetchIfNeeded(restoredIndex, snapshot: _snapshot);
       _handleBackendError(backend.snapshot.errorMessage);
       await _notify(() => observer?.onSessionStarted(collectionId));
       if (!_isCurrent(generation)) return;
@@ -222,17 +230,31 @@ final class AudioPlayerSession extends ChangeNotifier {
         _notify(() => observer?.onTrackChanged(queue[value.currentIndex])),
       );
     }
-    _prefetchIfNeeded(value.currentIndex);
+    _prefetchIfNeeded(value.currentIndex, snapshot: _snapshot);
     if (value.playing) _scheduleThrottledSave();
     _handleBackendError(value.errorMessage);
   }
 
-  void _prefetchIfNeeded(int currentIndex) {
+  void _prefetchIfNeeded(
+    int currentIndex, {
+    required AudioPlayerSnapshot snapshot,
+  }) {
     final playlist = _playlist;
     final dataSource = this.dataSource;
+    final leadTime = prefetchLeadTime;
+    final isPrefetchWindow = switch (leadTime) {
+      null =>
+        playlist != null &&
+            currentIndex + prefetchThreshold >= playlist.tracks.length - 1,
+      final Duration lead =>
+        playlist != null &&
+            currentIndex == playlist.tracks.length - 1 &&
+            snapshot.duration > Duration.zero &&
+            snapshot.duration - snapshot.position <= lead,
+    };
     if (playlist == null ||
         dataSource is! AudioPlaylistContinuationDataSource ||
-        currentIndex + prefetchThreshold < playlist.tracks.length - 1 ||
+        !isPrefetchWindow ||
         _prefetchRequest != null ||
         _closing ||
         _closed) {
@@ -240,13 +262,14 @@ final class AudioPlayerSession extends ChangeNotifier {
     }
     final generation = _generation;
     final afterTrackId = playlist.tracks.last.id;
-    _prefetchRequest = _loadFollowingTracks(
-      dataSource,
-      generation: generation,
-      afterTrackId: afterTrackId,
-    ).whenComplete(() {
-      _prefetchRequest = null;
-    });
+    _prefetchRequest =
+        _loadFollowingTracks(
+          dataSource,
+          generation: generation,
+          afterTrackId: afterTrackId,
+        ).whenComplete(() {
+          _prefetchRequest = null;
+        });
   }
 
   Future<void> _loadFollowingTracks(
@@ -280,6 +303,7 @@ final class AudioPlayerSession extends ChangeNotifier {
         title: playlist.title,
         creator: playlist.creator,
         tracks: <AudioTrack>[...playlist.tracks, ...additions],
+        queueEntries: playlist.queueEntries,
       );
       _applyReadySnapshot(backend.snapshot);
     } catch (_) {
@@ -320,6 +344,7 @@ final class AudioPlayerSession extends ChangeNotifier {
         collectionTitle: playlist.title,
         creator: playlist.creator,
         queue: playlist.tracks,
+        queueEntries: playlist.queueEntries,
         currentIndex: index,
         playing: value.playing,
         buffering: value.buffering,
@@ -374,6 +399,62 @@ final class AudioPlayerSession extends ChangeNotifier {
         index != _snapshot.currentIndex,
     command: () => backend.jump(index),
   );
+
+  /// Resolves a visible catalog entry only when the listener selects it.
+  Future<void> selectQueueEntry(String trackId) async {
+    final playlist = _playlist;
+    if (playlist == null ||
+        _snapshot.status != AudioPlayerStatus.ready ||
+        trackId.isEmpty ||
+        trackId == _snapshot.currentTrack?.id) {
+      return;
+    }
+    final source = dataSource;
+    if (source is! AudioPlaylistQueueDataSource) {
+      final loadedIndex = playlist.tracks.indexWhere(
+        (track) => track.id == trackId,
+      );
+      if (loadedIndex >= 0) await jump(loadedIndex);
+      return;
+    }
+    final generation = ++_generation;
+    await flushProgress();
+    try {
+      final track = await source.loadTrackById(collectionId, trackId: trackId);
+      if (!_isCurrent(generation)) return;
+      _backendSnapshotsEnabled = false;
+      final opening = _backendInitializationTail.then<void>((_) async {
+        if (!_isCurrent(generation)) return;
+        await backend.open(<AudioTrack>[track], initialIndex: 0, play: true);
+      });
+      _backendInitializationTail = opening.then<void>(
+        (_) {},
+        onError: (Object _, StackTrace _) {},
+      );
+      await opening;
+      if (!_isCurrent(generation)) return;
+      _playlist = AudioPlaylist(
+        collectionId: playlist.collectionId,
+        title: playlist.title,
+        creator: playlist.creator,
+        tracks: <AudioTrack>[track],
+        queueEntries: playlist.queueEntries,
+      );
+      _backendSnapshotsEnabled = true;
+      _applyReadySnapshot(backend.snapshot);
+      _prefetchIfNeeded(0, snapshot: _snapshot);
+      await _notify(() => observer?.onTrackChanged(track));
+    } on Object {
+      if (!_isCurrent(generation)) return;
+      const failure = AudioPlayerFailure(
+        code: 'audio_selected_resource_unavailable',
+        location: '所选章节的播放地址',
+        message: '当前章节暂时无法播放，请稍后重试。',
+      );
+      _emit(_snapshot.copyWith(failure: failure));
+      await _notify(() => observer?.onFailure(failure));
+    }
+  }
 
   Future<void> _switchTrack({
     required bool canSwitch,

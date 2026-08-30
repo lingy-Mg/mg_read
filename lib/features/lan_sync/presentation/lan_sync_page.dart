@@ -8,8 +8,6 @@
 /// - 页面不显示主导航栏；它始终是“我的”下的子级页面。
 /// - 业务状态和网络操作仅由 LanSyncController 管理。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';

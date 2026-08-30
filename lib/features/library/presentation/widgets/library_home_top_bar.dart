@@ -8,8 +8,6 @@
 /// - 不读取或写入书架数据。
 /// - 触控入口保持 48dp 命中区，视觉规格仍来自全局主题。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

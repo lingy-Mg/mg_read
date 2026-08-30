@@ -7,8 +7,6 @@
 /// 注意：
 /// - 本测试不启动 Android 设备，也不替代双设备验收。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:io';

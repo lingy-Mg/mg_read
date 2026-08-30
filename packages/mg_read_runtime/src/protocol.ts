@@ -2,7 +2,6 @@
  * Runtime 内部控制协议信封与稳定错误类型。
  * 职责：解析、校验并构造有界 JSON RPC 请求、响应和取消信封。
  * 注意：不得把路径、端口实现细节或任意动态错误穿透到 Flutter Facade。
- * TODO: - 无。
  */
 import { protocolVersion } from "./runtime-version.js";
 

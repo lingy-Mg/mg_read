@@ -10,8 +10,6 @@
  * - uses temporary data roots and listeners only;
  * - never relies on a running MgRead application or external network service.
  *
- * TODO:
- * - None.
  */
 import assert from "node:assert/strict";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";

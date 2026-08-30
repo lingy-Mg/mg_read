@@ -53,6 +53,7 @@ typedef SourceAudioChapterRequested =
       required PluginContentDetail detail,
       required PluginChaptersResult firstCatalogPage,
       required PluginChapterSummary chapter,
+      String? libraryItemId,
     });
 
 /// Opens a source-owned video episode in the independently maintained player.

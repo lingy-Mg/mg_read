@@ -8,8 +8,6 @@
 /// - 只能由已授权的 Android 模拟器执行；
 /// - 网络数据源的真实页面验收由人工在 Debug listener 页面完成。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:convert';

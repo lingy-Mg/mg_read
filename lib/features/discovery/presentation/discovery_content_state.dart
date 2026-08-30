@@ -8,8 +8,6 @@
 /// - 只接收展示状态和显式重试回调，不发起 IO。
 /// - 外层页面负责入场/返回过渡和无障碍 reduce motion。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

@@ -8,8 +8,6 @@
 /// - 不在 build() 中读取或写入持久化、Runtime 数据。
 /// - 根页与二级页必须消费同一顶部间距和最小操作命中区 token。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

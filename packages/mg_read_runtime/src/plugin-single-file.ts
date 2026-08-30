@@ -10,8 +10,6 @@
  * - 单文件代码的运行时依赖由实际 Node 启动处理，不在安装阶段静态扫描。
  * - canonical JSON 的键递归排序，header 必须逐字节匹配该规范形式。
  *
- * TODO:
- * - 无。
  */
 import { createHash } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";

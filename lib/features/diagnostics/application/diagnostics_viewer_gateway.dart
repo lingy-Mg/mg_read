@@ -7,8 +7,6 @@
 /// 注意：
 /// - Runtime 的旧结构化事件 Facade 已移除；实时日志由 Runtime Debug 检查页提供。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';

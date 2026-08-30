@@ -38,6 +38,7 @@ class AudioPlayerView extends StatefulWidget {
     this.autoplay = true,
     this.prefetchThreshold = 1,
     this.prefetchBatchSize = 3,
+    this.prefetchLeadTime,
     super.key,
   });
 
@@ -62,12 +63,14 @@ class AudioPlayerView extends StatefulWidget {
 
   final int prefetchThreshold;
   final int prefetchBatchSize;
+  final Duration? prefetchLeadTime;
 
   @override
   State<AudioPlayerView> createState() => _AudioViewState();
 }
 
-class _AudioViewState extends State<AudioPlayerView> with WidgetsBindingObserver {
+class _AudioViewState extends State<AudioPlayerView>
+    with WidgetsBindingObserver {
   late final AudioPlayerController _controller;
   late final bool _ownsController;
   late final AudioPlayerSession _session;
@@ -96,6 +99,7 @@ class _AudioViewState extends State<AudioPlayerView> with WidgetsBindingObserver
       autoplay: widget.autoplay,
       prefetchThreshold: widget.prefetchThreshold,
       prefetchBatchSize: widget.prefetchBatchSize,
+      prefetchLeadTime: widget.prefetchLeadTime,
     )..addListener(_onSessionChanged);
     unawaited(_session.initialize());
   }
@@ -198,7 +202,11 @@ class _AudioViewState extends State<AudioPlayerView> with WidgetsBindingObserver
                     collectionTitle:
                         track.collectionTitle ?? snapshot.collectionTitle,
                     onBack: _requestExit,
-                    onQueue: () => _queue(context, snapshot),
+                    onQueue: () => showAudioQueueSheet(
+                      context,
+                      snapshot: snapshot,
+                      controller: _controller,
+                    ),
                   ),
                   const SizedBox(height: 18),
                   Center(
@@ -255,7 +263,11 @@ class _AudioViewState extends State<AudioPlayerView> with WidgetsBindingObserver
                     snapshot: snapshot,
                     onRate: () => _cycleRate(snapshot.rate),
                     onTimer: () => _showSleepTimer(context),
-                    onQueue: () => _queue(context, snapshot),
+                    onQueue: () => showAudioQueueSheet(
+                      context,
+                      snapshot: snapshot,
+                      controller: _controller,
+                    ),
                   ),
                   if (snapshot.failure != null) ...<Widget>[
                     const SizedBox(height: 16),
@@ -363,77 +375,6 @@ class _AudioViewState extends State<AudioPlayerView> with WidgetsBindingObserver
     );
     final next = rates[(currentIndex + 1) % rates.length];
     return _controller.setRate(next);
-  }
-
-  Future<void> _queue(BuildContext context, AudioPlayerSnapshot snapshot) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AudioPlayerColors.sheet,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (sheetContext) => SafeArea(
-        child: FractionallySizedBox(
-          heightFactor: 0.72,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
-                child: Text(
-                  '播放队列 · ${snapshot.queue.length}',
-                  style: Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: AudioPlayerColors.ink,
-                  ),
-                ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: ListView.builder(
-                  key: const Key('audio-queue-list'),
-                  itemCount: snapshot.queue.length,
-                  itemBuilder: (context, index) {
-                    final track = snapshot.queue[index];
-                    final selected = index == snapshot.currentIndex;
-                    return ListTile(
-                      key: Key('audio-queue-track-${track.id}'),
-                      selected: selected,
-                      selectedColor: AudioPlayerColors.accent,
-                      leading: SizedBox(
-                        width: 32,
-                        child: selected
-                            ? const Icon(Icons.graphic_eq_rounded)
-                            : Text('${index + 1}', textAlign: TextAlign.center),
-                      ),
-                      title: Text(
-                        track.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: track.creator == null
-                          ? null
-                          : Text(
-                              track.creator!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                      onTap: selected
-                          ? () => Navigator.of(sheetContext).pop()
-                          : () async {
-                              await _controller.jump(index);
-                              if (sheetContext.mounted) {
-                                Navigator.of(sheetContext).pop();
-                              }
-                            },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   Future<void> _showSleepTimer(BuildContext context) async {

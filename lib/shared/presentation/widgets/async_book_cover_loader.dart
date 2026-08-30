@@ -8,8 +8,6 @@
 /// - 页面主体不得等待该 Provider；缺失、失败和取消均由封面组件降级显示。
 /// - 解析器只能返回显示字节，不得暴露持久化路径、Runtime 传输或原始网络响应。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:collection';

@@ -8,8 +8,6 @@
 /// - 仅接收不可变展示数据，不发起 Runtime 或磁盘操作。
 /// - 开发数据源插件不允许在此处切换启停状态。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

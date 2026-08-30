@@ -8,8 +8,6 @@
 /// - 封面请求由组件异步解析，构造展示数据不得等待图片。
 /// - 业务动作只由页面通过显式回调处理。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/foundation.dart';

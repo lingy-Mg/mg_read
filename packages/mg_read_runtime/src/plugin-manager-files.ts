@@ -7,8 +7,6 @@
  * 注意：
  * - 不启动第二个 VM 或执行安装脚本。
  *
- * TODO:
- * - 无。
  */
 import { createHash, randomUUID } from "node:crypto";
 import { access, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";

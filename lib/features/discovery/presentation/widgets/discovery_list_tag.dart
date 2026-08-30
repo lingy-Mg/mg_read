@@ -8,8 +8,6 @@
 /// - 组件只负责展示文本，不处理点击、网络或持久化。
 /// - IntrinsicWidth 用于保留标签按内容收缩的宽度，避免 Wrap 中被拉伸。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

@@ -8,8 +8,6 @@
 /// - 不展示原始异常、路径或文件内容。
 /// - 文件内容是否合法最终由 Runtime 校验。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

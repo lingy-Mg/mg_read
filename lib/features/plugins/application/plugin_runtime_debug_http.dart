@@ -8,8 +8,6 @@
 /// - 不持有端口、路径或 Runtime 控制协议。
 /// - 开关配置由 Runtime 数据根持久化，页面只展示强类型投影。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';

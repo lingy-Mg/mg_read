@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
+import 'network_proxy_settings_page.dart';
+
 /// Empty secondary page for a profile setting whose capability is not ready.
 ///
 /// The route is real and navigable now, while the page content makes the
@@ -21,6 +23,9 @@ class ProfileSettingPlaceholderPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (settingId == 'network-proxy') {
+      return NetworkProxySettingsPage(onBackRequested: onBackRequested);
+    }
     final _SettingCopy copy = _copyFor(settingId);
     return AppSecondaryPlaceholderPage(
       title: copy.title,

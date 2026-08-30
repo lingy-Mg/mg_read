@@ -21,8 +21,6 @@ import 'package:mg_read/shared/presentation/source_branding.dart';
 /// - 页面不读取项目路径、制品字节或 Runtime 内部协议。
 /// - 打包和目录选择均经 application port 与 Runtime Facade 完成。
 ///
-/// TODO:
-/// - 无。
 class PluginRuntimeSourceDetailPage extends ConsumerWidget {
   const PluginRuntimeSourceDetailPage({required this.pluginId, required this.onBackRequested, super.key});
 

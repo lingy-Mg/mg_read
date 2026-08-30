@@ -9,8 +9,6 @@
  * - 不执行网络请求或写入缓存。
  * - 仅返回不可变、已校验的插件契约数据。
  *
- * TODO:
- * - 无。
  */
 import * as cheerio from 'cheerio/slim';
 import type { Element } from 'domhandler';

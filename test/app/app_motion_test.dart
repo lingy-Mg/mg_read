@@ -6,8 +6,6 @@
 /// 注意：
 /// - 不把 token 测试当作页面视觉或平台性能验收。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

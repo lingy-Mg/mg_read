@@ -3,7 +3,6 @@
  *
  * 职责：定义 HTML/解析投影的 TTL、过期行为和稳定排行入口。
  * 注意：发现详情可以过期即返并后台刷新；显式详情和目录必须严格刷新。
- * TODO: - 无。
  */
 import type { HtmlCachePolicy } from './html-cache.js';
 import type { DiscoveryIcon } from './mgread-api.js';

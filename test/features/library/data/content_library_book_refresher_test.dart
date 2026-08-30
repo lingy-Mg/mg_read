@@ -84,6 +84,31 @@ void main() {
     expect(retained?.description, '保留简介');
     expect(await library.listAllCatalog(item.id), isEmpty);
   });
+
+  test('refreshes legacy source-bound shelf items that have no persisted source URL', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-book-refresh-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final item = await library.bookshelf.addFromSource(
+      BookshelfAddRequest(
+        title: '旧版书籍',
+        author: null,
+        kind: ContentKind.novel,
+        pluginId: 'org.example.source',
+        pluginVersion: '1.0.0',
+        remoteContentId: 'legacy-book',
+        sourceUrl: null,
+        description: null,
+      ),
+    );
+
+    await ContentLibraryBookRefresher(library, _RefreshGateway()).refresh(item.id.value);
+
+    expect((await library.getLibraryItem(item.id))?.title, '新书名');
+  });
 }
 
 final class _RefreshGateway implements SourceContentGateway {

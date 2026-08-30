@@ -3,7 +3,6 @@
  *
  * 职责：为已验证的 installed/development 图标签发有界 loopback token 并读取受限字节。
  * 注意：不向 wire 暴露路径或图标字节，资源总量限制为每 Runtime 进程 1024 项。
- * TODO: - 无。
  */
 import { randomBytes } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";

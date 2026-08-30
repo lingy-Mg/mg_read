@@ -8,8 +8,6 @@
 /// - 仅通过显式回调改变捕获状态，不直接访问诊断存储或 Runtime。
 /// - 控件不保存异步状态，页面负责处理请求世代与生命周期。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'package:flutter/material.dart';

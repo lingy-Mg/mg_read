@@ -9,8 +9,6 @@
 /// - 连接、计时器和流必须在完成、失败或取消时释放。
 /// - Android 的 Dart Socket 不支持 reusePort，发现套接字不得启用该选项。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';

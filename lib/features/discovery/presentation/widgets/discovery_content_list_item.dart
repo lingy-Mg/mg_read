@@ -8,8 +8,6 @@
 /// - 组件只接收已完成封面 hydration 的数据，不直接访问网络或持久化。
 /// - 分类列表标签的视觉规格需与运行时发现页保持一致。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:math' as math;

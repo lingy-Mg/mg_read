@@ -9,8 +9,6 @@
 /// - Constructing this adapter performs no library, Runtime, or network IO.
 /// - The delegate factory must return a gateway whose lifetime is owned elsewhere.
 ///
-/// TODO:
-/// - None.
 library;
 
 import 'dart:async';

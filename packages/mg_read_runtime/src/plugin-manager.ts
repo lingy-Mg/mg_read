@@ -30,7 +30,7 @@ import { dirname, resolve } from "node:path";
 import type { JsonObject } from "./protocol.js";
 import type { PluginBrowserSessionProvider } from "./plugin-browser-session.js";
 import { createPluginContext } from "./plugin-manager-context.js";
-import { registerMediaProxyResource } from "./media-resource-proxy.js";
+import { openMediaProxyResource } from "./media-resource-proxy.js";
 import {
   type PluginPackageDescriptor,
   readPluginProject,
@@ -197,25 +197,26 @@ export class PluginManager {
       if (typeof oldest === "string") this.#resources.delete(oldest);
     }
     const token = randomBytes(32).toString("base64url");
-    this.#resources.set(token, { pluginId, request }); registerMediaProxyResource(token, { active: () => this.#resources.has(token), fetch: this.#http.fetch.bind(this.#http), pluginId, proxy: (next) => this.createResourceUrl(pluginId, next), request });
+    this.#resources.set(token, { pluginId, request });
     if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.resource_proxy", logLevel: "debug", logMessage: `资源代理已创建：参数=${JSON.stringify(request)}`, outcome: "success", pluginId });
     return `${this.#resourceOrigin}/v1/source-resource/${token}`;
   }
 
-  async consumeResource(token: string, signal: AbortSignal): Promise<PluginResourceResponse> {
+  openMediaResource(token: string, requestHeaders: Readonly<Record<string, string>>, signal: AbortSignal) {
     const entry = this.#resources.get(token);
-    if (entry === undefined || signal.aborted) throw new PluginManagerError("invalid_request");
+    return openMediaProxyResource(entry === undefined ? undefined : { fetch: this.#http.fetch.bind(this.#http), proxy: (next) => this.createResourceUrl(entry.pluginId, next), request: entry.request }, requestHeaders, signal);
+  }
+
+  async consumeResource(token: string, signal: AbortSignal): Promise<PluginResourceResponse> {
+    const entry = this.#resources.get(token); if (entry === undefined || signal.aborted) throw new PluginManagerError("invalid_request");
     await this.initialize(); await this.#refreshDevelopmentPlugins();
-    const loaded = this.#developmentLoaded.get(entry.pluginId)?.loaded ?? this.#installedLoaded.get(entry.pluginId);
-    if (loaded === undefined) throw new PluginManagerError("plugin_not_found");
+    const loaded = this.#developmentLoaded.get(entry.pluginId)?.loaded ?? this.#installedLoaded.get(entry.pluginId); if (loaded === undefined) throw new PluginManagerError("plugin_not_found");
     const startedAt = performance.now();
     if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.resource_proxy", logLevel: "debug", logMessage: `资源代理请求开始：参数=${JSON.stringify(entry.request)}`, outcome: "success", pluginId: entry.pluginId });
     const result = await loaded.module.resource(entry.request);
     if (typeof result !== "object" || result === null) throw new PluginManagerError("invalid_request");
     const value = result as Record<string, unknown>;
-    const status = value.status === undefined ? 200 : value.status;
-    const bodyValue = value.body;
-    const body = typeof bodyValue === "string" ? Buffer.from(bodyValue, "utf8") : bodyValue instanceof Uint8Array ? Buffer.from(bodyValue) : undefined;
+    const status = value.status === undefined ? 200 : value.status; const bodyValue = value.body; const body = typeof bodyValue === "string" ? Buffer.from(bodyValue, "utf8") : bodyValue instanceof Uint8Array ? Buffer.from(bodyValue) : undefined;
     if (typeof status !== "number" || !Number.isInteger(status) || status < 100 || status > 599 || body === undefined || body.byteLength > 8 * 1024 * 1024) throw new PluginManagerError("invalid_request");
     const headers: Record<string, string> = {};
     if (value.headers !== undefined) {

@@ -9,8 +9,6 @@
 /// - 业务持久化由书架 application adapter 负责。
 /// - 页面操作必须通过显式回调和稳定的书籍 ID 执行。
 ///
-/// TODO:
-/// - 无。
 library;
 
 import 'dart:async';

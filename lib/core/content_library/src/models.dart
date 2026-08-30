@@ -217,6 +217,23 @@ final class LibraryReadingProgress {
   final int totalReadingSeconds;
 }
 
+/// Durable spoken-audio position, identified by source chapter rather than a
+/// transient player queue index.
+final class LibraryAudioPlaybackProgress {
+  LibraryAudioPlaybackProgress({
+    required this.itemId,
+    required this.chapterId,
+    required this.position,
+    required this.updatedAtUtc,
+  }) : assert(chapterId != ''),
+       assert(!position.isNegative);
+
+  final LibraryItemId itemId;
+  final String chapterId;
+  final Duration position;
+  final DateTime updatedAtUtc;
+}
+
 /// A durable semantic text-reader bookmark owned by the Content Library.
 final class LibraryBookmark {
   const LibraryBookmark({
