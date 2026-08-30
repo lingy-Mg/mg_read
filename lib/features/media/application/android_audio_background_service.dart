@@ -49,6 +49,14 @@ final class AndroidAudioBackgroundService {
     );
   }
 
+  /// Releases a route that was dismissed while Android attachment was still
+  /// completing and therefore never mounted an audio session observer.
+  Future<void> detach(AudioPlayerController controller) async {
+    if (!Platform.isAndroid || _handlerFuture == null) return;
+    final handler = await _handlerFuture;
+    await handler?.detach(controller);
+  }
+
   Future<_MgReadAudioHandler> _initializeHandler() async {
     final handler = await AudioService.init(
       builder: _MgReadAudioHandler.new,

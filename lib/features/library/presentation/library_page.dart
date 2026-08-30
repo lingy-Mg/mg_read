@@ -33,6 +33,7 @@ import 'package:mg_read/features/library/application/library_page_state.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
+import 'package:mg_read/features/library/presentation/library_media_entry_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
@@ -214,7 +215,7 @@ class LibraryPage extends ConsumerWidget {
       await showDeferredSourceContentDetailSheet(
         context,
         seed: seed,
-        previewDetail: _libraryDetailPreview(summary, book),
+        previewDetail: libraryDetailPreview(summary, book),
         previewPluginVersion: summary?.coverPluginVersion ?? book.coverRequest?.pluginVersion ?? 'unknown',
         gateway: sourceGateway,
         shelfState: SourceDetailShelfState.alreadyAdded,
@@ -257,22 +258,23 @@ class LibraryPage extends ConsumerWidget {
         return;
       }
       try {
-        final seed = await detailLauncher.load(book.id);
-        final results = await Future.wait<Object>(<Future<Object>>[
-          sourceGateway.getDetail(pluginId: seed.pluginId, id: seed.remoteContentId),
-          sourceGateway.getChapters(pluginId: seed.pluginId, id: seed.remoteContentId),
-        ]);
-        final detail = results[0] as PluginContentDetail;
-        final catalog = results[1] as PluginChaptersResult;
-        PluginChapterSummary? chapter;
-        for (final item in catalog.items) {
-          if (item.isLocked != true) {
-            chapter = item;
-            break;
-          }
+        final item = state.overview!.items.cast<LibraryItemSummary?>().firstWhere(
+          (candidate) => candidate?.id == book.id,
+          orElse: () => null,
+        );
+        final immediateEntry = immediateLibraryMediaEntry(item, book);
+        if (immediateEntry != null) {
+          await callback(
+            detail: immediateEntry.detail,
+            firstCatalogPage: immediateEntry.catalog,
+            chapter: immediateEntry.chapter,
+            libraryItemId: book.id,
+          );
+          return;
         }
-        if (chapter == null) throw StateError('audio_catalog_no_playable_chapter');
-        await callback(detail: detail, firstCatalogPage: catalog, chapter: chapter, libraryItemId: book.id);
+        final seed = await detailLauncher.load(book.id);
+        final entry = persistedLibraryMediaEntry(detail: seed.initialDetail, catalog: seed.initialCatalog, book: book);
+        await callback(detail: entry.detail, firstCatalogPage: entry.catalog, chapter: entry.chapter, libraryItemId: book.id);
       } on Object {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法打开上次的听书进度，请检查网络后重试。')));
@@ -287,22 +289,23 @@ class LibraryPage extends ConsumerWidget {
         return;
       }
       try {
-        final seed = await detailLauncher.load(book.id);
-        final results = await Future.wait<Object>(<Future<Object>>[
-          sourceGateway.getDetail(pluginId: seed.pluginId, id: seed.remoteContentId),
-          sourceGateway.getChapters(pluginId: seed.pluginId, id: seed.remoteContentId),
-        ]);
-        final detail = results[0] as PluginContentDetail;
-        final catalog = results[1] as PluginChaptersResult;
-        PluginChapterSummary? chapter;
-        for (final item in catalog.items) {
-          if (item.isLocked != true) {
-            chapter = item;
-            break;
-          }
+        final item = state.overview!.items.cast<LibraryItemSummary?>().firstWhere(
+          (candidate) => candidate?.id == book.id,
+          orElse: () => null,
+        );
+        final immediateEntry = immediateLibraryMediaEntry(item, book);
+        if (immediateEntry != null) {
+          await callback(
+            detail: immediateEntry.detail,
+            firstCatalogPage: immediateEntry.catalog,
+            chapter: immediateEntry.chapter,
+            libraryItemId: book.id,
+          );
+          return;
         }
-        if (chapter == null) throw StateError('video_catalog_no_playable_episode');
-        await callback(detail: detail, firstCatalogPage: catalog, chapter: chapter, libraryItemId: book.id);
+        final seed = await detailLauncher.load(book.id);
+        final entry = persistedLibraryMediaEntry(detail: seed.initialDetail, catalog: seed.initialCatalog, book: book);
+        await callback(detail: entry.detail, firstCatalogPage: entry.catalog, chapter: entry.chapter, libraryItemId: book.id);
       } on Object {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法打开上次的视频进度，请检查网络后重试。')));
@@ -447,63 +450,6 @@ class LibraryPage extends ConsumerWidget {
       ),
     );
   }
-}
-
-PluginContentDetail _libraryDetailPreview(LibraryItemSummary? item, LibraryBookListItemViewData book) {
-  final latestTitle = item?.latestChapterTitle;
-  final pluginId = item?.coverPluginId ?? book.coverRequest?.pluginId ?? 'library-preview';
-  return PluginContentDetail(
-    pluginId: pluginId,
-    sourceName: item?.sourceName ?? '书架来源',
-    aliases: const <String>[],
-    catalogUrl: item?.sourceUrl,
-    summary: PluginContentSummary(
-      id: item?.coverRemoteContentId ?? book.id,
-      title: item?.title ?? book.title,
-      contentKind: switch (item?.contentKind) {
-        ContentKind.audio => PluginContentKind.audio,
-        ContentKind.video => PluginContentKind.video,
-        ContentKind.manga => PluginContentKind.manga,
-        _ => PluginContentKind.novel,
-      },
-      author: item?.author,
-      url: item?.sourceUrl,
-      coverUrl: item?.coverUrl ?? book.coverUrl,
-      coverBytes: item?.coverBytes ?? book.coverBytes,
-      description: item?.description,
-      language: item?.language,
-      status: switch (item?.statusLabel) {
-        '连载' => PluginContentStatus.ongoing,
-        '已完结' => PluginContentStatus.completed,
-        '暂停更新' => PluginContentStatus.hiatus,
-        _ => PluginContentStatus.unknown,
-      },
-      access: switch (item?.accessCode) {
-        'free' => PluginAccessKind.free,
-        'paid' => PluginAccessKind.paid,
-        'mixed' => PluginAccessKind.mixed,
-        _ => PluginAccessKind.unknown,
-      },
-      wordCount: item?.wordCount,
-      chapterCount: item?.chapterCount,
-      publishedAt: item?.publishedAt,
-      updatedAt: item?.updatedAt,
-      latestChapter: latestTitle == null
-          ? null
-          : PluginLatestChapter(
-              id: item?.latestChapterId,
-              title: latestTitle,
-              url: item?.latestChapterUrl,
-              updatedAt: item?.latestChapterUpdatedAt,
-            ),
-      categories: item?.categories ?? const <String>[],
-      tags: item?.tags ?? const <String>[],
-      attributes: <PluginContentAttribute>[
-        for (final attribute in item?.attributes ?? const <LibraryItemSummaryAttribute>[])
-          PluginContentAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
-      ],
-    ),
-  );
 }
 
 final class _LibraryTerminalFrameSignal extends StatefulWidget {
