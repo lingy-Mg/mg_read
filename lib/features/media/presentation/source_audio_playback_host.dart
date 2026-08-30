@@ -13,6 +13,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -501,6 +502,8 @@ final class _DraggableSourceAudioMiniPlayerState extends State<_DraggableSourceA
   Offset _resolvedPosition = Offset.zero;
   Offset _minimumPosition = Offset.zero;
   Offset _maximumPosition = Offset.zero;
+  Offset _dragPointerOrigin = Offset.zero;
+  Offset _dragPlayerOrigin = Offset.zero;
 
   @override
   void initState() {
@@ -516,10 +519,16 @@ final class _DraggableSourceAudioMiniPlayerState extends State<_DraggableSourceA
     }
   }
 
+  void _startDrag(DragStartDetails details) {
+    _dragPointerOrigin = details.globalPosition;
+    _dragPlayerOrigin = _resolvedPosition;
+  }
+
   void _drag(DragUpdateDetails details) {
+    final pointerDelta = details.globalPosition - _dragPointerOrigin;
     final next = Offset(
-      (_resolvedPosition.dx + details.delta.dx).clamp(_minimumPosition.dx, _maximumPosition.dx).toDouble(),
-      (_resolvedPosition.dy + details.delta.dy).clamp(_minimumPosition.dy, _maximumPosition.dy).toDouble(),
+      (_dragPlayerOrigin.dx + pointerDelta.dx).clamp(_minimumPosition.dx, _maximumPosition.dx).toDouble(),
+      (_dragPlayerOrigin.dy + pointerDelta.dy).clamp(_minimumPosition.dy, _maximumPosition.dy).toDouble(),
     );
     setState(() => _position = next);
     widget.onPositionChanged(next);
@@ -558,6 +567,8 @@ final class _DraggableSourceAudioMiniPlayerState extends State<_DraggableSourceA
                 child: GestureDetector(
                   key: const Key('source-audio-mini-drag-region'),
                   behavior: HitTestBehavior.opaque,
+                  dragStartBehavior: DragStartBehavior.down,
+                  onPanStart: _startDrag,
                   onPanUpdate: _drag,
                   child: _SourceAudioMiniPlayer(controller: widget.controller, onExpand: widget.onExpand, onStop: widget.onStop),
                 ),

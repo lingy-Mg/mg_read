@@ -108,11 +108,15 @@ void main() {
     expect(tester.getSize(find.byKey(const Key('source-audio-mini-player'))).width, lessThanOrEqualTo(520));
 
     final Rect miniBeforeDrag = tester.getRect(find.byKey(const Key('source-audio-mini-player')));
-    await tester.drag(find.byKey(const Key('source-audio-mini-drag-region')), const Offset(70, -50));
+    final TestGesture dragGesture = await tester.startGesture(miniBeforeDrag.center);
+    await dragGesture.moveBy(const Offset(20, -15));
+    await dragGesture.moveBy(const Offset(20, -15));
+    await dragGesture.moveBy(const Offset(20, -15));
     await tester.pump();
+    await dragGesture.up();
     final Rect miniAfterDrag = tester.getRect(find.byKey(const Key('source-audio-mini-player')));
-    expect(miniAfterDrag.center.dx, greaterThan(miniBeforeDrag.center.dx));
-    expect(miniAfterDrag.center.dy, lessThan(miniBeforeDrag.center.dy));
+    expect(miniAfterDrag.center.dx, closeTo(miniBeforeDrag.center.dx + 60, 1));
+    expect(miniAfterDrag.center.dy, closeTo(miniBeforeDrag.center.dy - 45, 1));
 
     await tester.tap(find.byKey(const Key('underlying-reading-action')));
     await tester.pump();
