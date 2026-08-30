@@ -32,9 +32,49 @@ import 'package:mg_read/features/network_proxy/application/flutter_network_proxy
 import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
+/// Owns a dedicated overlay for global playback mounted above the app router.
+///
+/// [MaterialApp.builder] is above the router's Navigator overlay. Mounting the
+/// playback host there directly would leave tooltips and other overlay clients
+/// without an [Overlay] ancestor.
+final class SourceAudioPlaybackOverlay extends StatefulWidget {
+  const SourceAudioPlaybackOverlay({required this.backButtonDispatcher, super.key});
+
+  final BackButtonDispatcher backButtonDispatcher;
+
+  @override
+  State<SourceAudioPlaybackOverlay> createState() => _SourceAudioPlaybackOverlayState();
+}
+
+final class _SourceAudioPlaybackOverlayState extends State<SourceAudioPlaybackOverlay> {
+  late final OverlayEntry _entry = OverlayEntry(
+    builder: (context) => Positioned.fill(child: SourceAudioPlaybackHost(backButtonDispatcher: widget.backButtonDispatcher)),
+  );
+
+  @override
+  void didUpdateWidget(covariant SourceAudioPlaybackOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.backButtonDispatcher, widget.backButtonDispatcher)) {
+      _entry.markNeedsBuild();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Overlay(initialEntries: <OverlayEntry>[_entry]);
+
+  @override
+  void dispose() {
+    _entry.remove();
+    _entry.dispose();
+    super.dispose();
+  }
+}
+
 /// Renders the active playback above the router while keeping it route-free.
 final class SourceAudioPlaybackHost extends ConsumerWidget {
-  const SourceAudioPlaybackHost({super.key});
+  const SourceAudioPlaybackHost({required this.backButtonDispatcher, super.key});
+
+  final BackButtonDispatcher backButtonDispatcher;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -45,22 +85,30 @@ final class SourceAudioPlaybackHost extends ConsumerWidget {
       sessionId: state.sessionId!,
       request: state.request!,
       presentation: state.presentation,
+      backButtonDispatcher: backButtonDispatcher,
     );
   }
 }
 
 final class _ActiveSourceAudioPlaybackHost extends ConsumerStatefulWidget {
-  const _ActiveSourceAudioPlaybackHost({required this.sessionId, required this.request, required this.presentation, super.key});
+  const _ActiveSourceAudioPlaybackHost({
+    required this.sessionId,
+    required this.request,
+    required this.presentation,
+    required this.backButtonDispatcher,
+    super.key,
+  });
 
   final int sessionId;
   final SourceAudioPlaybackRequest request;
   final SourceAudioPresentation presentation;
+  final BackButtonDispatcher backButtonDispatcher;
 
   @override
   ConsumerState<_ActiveSourceAudioPlaybackHost> createState() => _ActiveSourceAudioPlaybackHostState();
 }
 
-final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSourceAudioPlaybackHost> with WidgetsBindingObserver {
+final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSourceAudioPlaybackHost> {
   late final AudioPlayerController _controller;
   _AudioPlayerSetup? _setup;
   Object? _setupFailure;
@@ -69,12 +117,13 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
   Completer<_AudioExitDecision?>? _exitDecision;
   int _generation = 0;
   late final SourceAudioPlaybackCoordinator _coordinator;
+  late ChildBackButtonDispatcher _backButtonDispatcher;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    _attachBackButtonDispatcher(widget.backButtonDispatcher);
     _coordinator = ref.read(sourceAudioPlaybackCoordinatorProvider.notifier);
     _controller = AudioPlayerController();
     if (!_coordinator.attachController(widget.sessionId, _controller)) {
@@ -84,11 +133,34 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
     unawaited(_prepare());
   }
 
-  @override
-  Future<bool> didPopRoute() async {
+  Future<bool> _handlePlatformBack() async {
     if (widget.presentation != SourceAudioPresentation.expanded) return false;
     await _requestBack();
     return true;
+  }
+
+  void _syncBackButtonPriority() {
+    if (widget.presentation == SourceAudioPresentation.expanded) {
+      _backButtonDispatcher.takePriority();
+    } else {
+      widget.backButtonDispatcher.forget(_backButtonDispatcher);
+    }
+  }
+
+  void _attachBackButtonDispatcher(BackButtonDispatcher parent) {
+    _backButtonDispatcher = parent.createChildBackButtonDispatcher()..addCallback(_handlePlatformBack);
+    _syncBackButtonPriority();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ActiveSourceAudioPlaybackHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.backButtonDispatcher, widget.backButtonDispatcher)) {
+      _backButtonDispatcher.removeCallback(_handlePlatformBack);
+      _attachBackButtonDispatcher(widget.backButtonDispatcher);
+    } else if (oldWidget.presentation != widget.presentation) {
+      _syncBackButtonPriority();
+    }
   }
 
   bool _handleKeyEvent(KeyEvent event) {
@@ -321,8 +393,8 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
   @override
   void dispose() {
     _generation++;
-    WidgetsBinding.instance.removeObserver(this);
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    _backButtonDispatcher.removeCallback(_handlePlatformBack);
     final exitDecision = _exitDecision;
     if (exitDecision != null && !exitDecision.isCompleted) {
       exitDecision.complete(null);

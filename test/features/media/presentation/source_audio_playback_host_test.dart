@@ -24,6 +24,9 @@ void main() {
     addTearDown(settings.close);
     final request = _request();
     final backend = _FakeAudioBackend();
+    final backButtonDispatcher = RootBackButtonDispatcher();
+    Future<bool> routerFallback() async => false;
+    backButtonDispatcher.addCallback(routerFallback);
     late WidgetRef rootRef;
 
     await tester.pumpWidget(
@@ -35,14 +38,15 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
-          home: Consumer(
+          home: const Scaffold(body: Center(child: Text('详情页'))),
+          builder: (context, child) => Consumer(
             builder: (context, ref, _) {
               rootRef = ref;
-              return const Stack(
+              return Stack(
                 fit: StackFit.expand,
                 children: <Widget>[
-                  Scaffold(body: Center(child: Text('详情页'))),
-                  SourceAudioPlaybackHost(),
+                  child ?? const SizedBox.shrink(),
+                  SourceAudioPlaybackOverlay(backButtonDispatcher: backButtonDispatcher),
                 ],
               );
             },
@@ -71,7 +75,9 @@ void main() {
     await tester.tap(find.byKey(const Key('source-audio-mini-player')));
     await _pumpUntil(tester, () => find.byKey(const Key('audio-back')).evaluate().isNotEmpty);
 
-    expect(await tester.binding.handlePopRoute(), isTrue);
+    final Future<bool> backHandled = backButtonDispatcher.invokeCallback(Future<bool>.value(false));
+    await tester.pump();
+    expect(await backHandled, isTrue);
     await _pumpUntil(tester, () => find.byKey(const Key('source-audio-mini-player')).evaluate().isNotEmpty);
     expect(find.byKey(const Key('audio-background-exit-dialog')), findsNothing);
 
@@ -82,6 +88,7 @@ void main() {
     expect(backend.pauseCalls, greaterThanOrEqualTo(1));
     await settings.flush();
     await tester.pump(const Duration(milliseconds: 350));
+    backButtonDispatcher.removeCallback(routerFallback);
   });
 }
 
