@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -5,11 +6,12 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/reader/data/content_library_source_comic_reader.dart';
 import 'package:mg_read/features/reader/data/transient_source_comic_reader.dart';
 
 void main() {
-  test('adapts a discovery manga catalog and refreshes image URLs per request', () async {
-    final gateway = _Gateway();
+  test('loads one manifest for every image in a discovery manga chapter', () async {
+    final gateway = _Gateway(pageCount: 3);
     final fetched = <Uri>[];
     final reader = TransientSourceComicReaderDataSource(
       detail: _detail,
@@ -31,16 +33,64 @@ void main() {
 
     final content = await reader.loadChapterContent('manga-1', 'chapter-1');
     expect(
-      content.images.single,
+      content.images.first,
       const ComicImageInfo(id: 'image-1', index: 0, width: 100, height: 200, contentType: 'image/png', contentVersion: '1'),
     );
-    expect(await reader.loadImageBytes('manga-1', 'chapter-1', 'image-1'), <int>[1, 2, 3]);
-    expect(await reader.loadImageBytes('manga-1', 'chapter-1', 'image-1'), <int>[1, 2, 3]);
-    expect(gateway.contentCalls, 3);
+    expect(content.images, hasLength(3));
+    expect(
+      await Future.wait<Uint8List>([for (final image in content.images) reader.loadImageBytes('manga-1', 'chapter-1', image.id)]),
+      everyElement(<int>[1, 2, 3]),
+    );
+    expect(gateway.contentCalls, 1);
     expect(fetched, <Uri>[
-      Uri.parse('https://example.com/chapter-1/image-1.png?generation=2'),
-      Uri.parse('https://example.com/chapter-1/image-1.png?generation=3'),
+      Uri.parse('https://example.com/chapter-1/image-1.png?generation=1'),
+      Uri.parse('https://example.com/chapter-1/image-2.png?generation=1'),
+      Uri.parse('https://example.com/chapter-1/image-3.png?generation=1'),
     ]);
+  });
+
+  test('single-flights concurrent loads of the same chapter manifest', () async {
+    final release = Completer<void>();
+    final gateway = _Gateway(contentRelease: release);
+    final reader = TransientSourceComicReaderDataSource(
+      detail: _detail,
+      catalog: _catalog,
+      gateway: gateway,
+      fetcher: (_) async => Uint8List(1),
+    );
+
+    final first = reader.loadChapterContent('manga-1', 'chapter-1');
+    final second = reader.loadChapterContent('manga-1', 'chapter-1');
+    await gateway.contentStarted.future.timeout(const Duration(seconds: 5));
+    expect(gateway.contentCalls, 1);
+    release.complete();
+
+    final contents = await Future.wait<ComicChapterContent>(<Future<ComicChapterContent>>[first, second]);
+    expect(identical(contents.first, contents.last), isTrue);
+    expect(gateway.contentCalls, 1);
+  });
+
+  test('refreshes and retries only once after an explicit authorization failure', () async {
+    final gateway = _Gateway(varyUrlByCall: true);
+    final fetched = <Uri>[];
+    final reader = TransientSourceComicReaderDataSource(
+      detail: _detail,
+      catalog: _catalog,
+      gateway: gateway,
+      fetcher: (uri) async {
+        fetched.add(uri);
+        throw ComicImageHttpStatusException(403, uri);
+      },
+    );
+    await reader.loadChapterContent('manga-1', 'chapter-1');
+
+    await expectLater(
+      reader.loadImageBytes('manga-1', 'chapter-1', 'image-1'),
+      throwsA(isA<ReaderFailure>().having((failure) => failure.code, 'code', 'source_comic_image_load_failed')),
+    );
+
+    expect(gateway.contentCalls, 2);
+    expect(fetched.map((uri) => uri.queryParameters['generation']), <String?>['1', '2']);
   });
 
   test('keeps progress in the route-lifetime state store', () async {
@@ -87,11 +137,19 @@ void main() {
 }
 
 final class _Gateway implements SourceContentGateway {
+  _Gateway({this.pageCount = 1, this.varyUrlByCall = true, this.contentRelease});
+
+  final int pageCount;
+  final bool varyUrlByCall;
+  final Completer<void>? contentRelease;
+  final Completer<void> contentStarted = Completer<void>();
   int contentCalls = 0;
 
   @override
   Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async {
     contentCalls += 1;
+    if (!contentStarted.isCompleted) contentStarted.complete();
+    await contentRelease?.future;
     return PluginChapterContent(
       pluginId: pluginId,
       sourceName: '示例漫画源',
@@ -101,16 +159,17 @@ final class _Gateway implements SourceContentGateway {
       updatedAt: null,
       text: null,
       pages: <PluginMangaPage>[
-        PluginMangaPage(
-          id: 'image-1',
-          index: 0,
-          url: Uri.parse('https://example.com/$chapterId/image-1.png?generation=$contentCalls'),
-          mimeType: 'image/png',
-          width: 100,
-          height: 200,
-          resourcePolicy: PluginMangaPageResourcePolicy.sessionOnly,
-          expiresAt: null,
-        ),
+        for (var index = 0; index < pageCount; index++)
+          PluginMangaPage(
+            id: 'image-${index + 1}',
+            index: index,
+            url: Uri.parse('https://example.com/$chapterId/image-${index + 1}.png${varyUrlByCall ? '?generation=$contentCalls' : ''}'),
+            mimeType: 'image/png',
+            width: 100,
+            height: 200,
+            resourcePolicy: PluginMangaPageResourcePolicy.sessionOnly,
+            expiresAt: null,
+          ),
       ],
     );
   }

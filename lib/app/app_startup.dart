@@ -620,7 +620,7 @@ final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher, Loca
           library: library,
           gateway: _gateway,
           item: item,
-          fetcher: _proxyManager == null ? null : createProxyAwareComicImageFetcher(_proxyManager),
+          httpClientFactory: _proxyManager == null ? null : createProxyAwareComicHttpClientFactory(_proxyManager),
         ),
         stateStore: ContentLibraryComicReaderStateStore(library, itemId: item.id, settings: _settings),
       ),

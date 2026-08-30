@@ -5,7 +5,9 @@
 /// Encoded image bytes stay in the reader's bounded memory cache; this adapter
 /// does not read or write a persistent image cache. Session-only URLs and
 /// request single-flights stay in this file. Live manifests use a three-entry
-/// LRU so visiting chapters cannot grow session memory without bound.
+/// LRU so visiting chapters cannot grow session memory without bound. Unless
+/// a caller-owned fetcher is injected, this adapter lazily owns one bounded
+/// HttpClient and closes it when the reader route disposes the data source.
 library;
 
 import 'dart:async';
@@ -20,29 +22,47 @@ import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
 import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
+import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/reader/data/bounded_reader_session_cache.dart';
 
 typedef ComicImageFetcher = Future<Uint8List> Function(Uri uri);
+typedef ComicHttpClientFactory = Future<HttpClient> Function();
 
-ComicImageFetcher createProxyAwareComicImageFetcher(FlutterNetworkProxyManager manager) =>
-    (uri) async => fetchComicImage(uri, client: await manager.createHttpClient(NetworkProxyTraffic.manga));
+ComicHttpClientFactory createProxyAwareComicHttpClientFactory(FlutterNetworkProxyManager manager) =>
+    () => manager.createHttpClient(NetworkProxyTraffic.manga);
+
+/// HTTP status failure retained for the reader's one bounded URL refresh.
+final class ComicImageHttpStatusException extends HttpException {
+  ComicImageHttpStatusException(this.statusCode, Uri uri) : super('Image status $statusCode.', uri: uri);
+
+  final int statusCode;
+}
 
 /// Content Library adapter for a source-backed comic session.
-final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource {
-  ContentLibraryComicReaderDataSource({required this.library, required this.gateway, required this.item, ComicImageFetcher? fetcher})
-    : fetcher = fetcher ?? fetchComicImage;
+final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource, DisposableReaderDataSource {
+  ContentLibraryComicReaderDataSource({
+    required this.library,
+    required this.gateway,
+    required this.item,
+    ComicImageFetcher? fetcher,
+    ComicHttpClientFactory? httpClientFactory,
+  }) : assert(fetcher == null || httpClientFactory == null),
+       _externalFetcher = fetcher,
+       _httpClientOwner = fetcher == null ? createComicImageHttpClientOwner(httpClientFactory) : null;
 
   static const _maximumImageBytes = 8 * 1024 * 1024;
 
   final ContentLibrary library;
   final SourceContentGateway gateway;
   final LibraryItem item;
-  final ComicImageFetcher fetcher;
+  final ComicImageFetcher? _externalFetcher;
+  final ComicImageHttpClientOwner? _httpClientOwner;
   _CatalogSnapshot? _catalog;
   Future<_CatalogSnapshot>? _catalogLoading;
   final BoundedReaderSessionCache<String, _ChapterManifest> _manifests = BoundedReaderSessionCache<String, _ChapterManifest>(maxEntries: 3);
   final Map<String, Future<_ChapterManifest>> _runtimeManifestLoads = <String, Future<_ChapterManifest>>{};
   final Map<String, Future<Uint8List>> _imageLoads = <String, Future<Uint8List>>{};
+  bool _disposed = false;
 
   @override
   Future<ComicBookInfo> loadBookInfo(String bookId) async {
@@ -92,6 +112,7 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
     } on Object catch (error, stackTrace) {
       // A previously committed manifest remains a usable offline snapshot.
       // Preserve the live error when no such snapshot exists.
+      _ensureActive();
       final persisted = await _persistedManifest(chapterId);
       if (persisted == null) Error.throwWithStackTrace(error, stackTrace);
       return _readerContent(persisted);
@@ -109,6 +130,18 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
     return task.whenComplete(() {
       if (identical(_imageLoads[key], task)) _imageLoads.remove(key);
     });
+  }
+
+  @override
+  Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    _catalog = null;
+    _catalogLoading = null;
+    _manifests.clear();
+    _runtimeManifestLoads.clear();
+    _imageLoads.clear();
+    await _httpClientOwner?.dispose();
   }
 
   Future<_CatalogSnapshot> _ensureCatalog({bool synchronize = false}) async {
@@ -175,6 +208,7 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
     if (entry == null) throw ArgumentError.value(chapterId, 'chapterId', 'Unknown chapter.');
     final source = _requireSource();
     final remote = await gateway.getContent(pluginId: source.pluginId, id: source.remoteContentId, chapterId: chapterId);
+    _ensureActive();
     final descriptors = _validatedPages(remote, chapterId);
     final sessionOnlyUrls = <String, Uri>{
       for (final page in remote.pages)
@@ -287,29 +321,54 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
     if (page == null) throw StateError('Comic image is not in the chapter manifest.');
 
     var uri = manifest.downloadUri(page);
+    var refreshed = false;
     if (uri == null || manifest.needsRefresh(page)) {
-      manifest = await _runtimeManifest(chapterId, forceRefresh: true);
+      manifest = await _refreshRuntimeManifest(chapterId, manifest);
+      refreshed = true;
       page = manifest.page(imageId);
       if (page == null) throw StateError('Comic image is not in the refreshed chapter manifest.');
       uri = manifest.downloadUri(page);
     }
     if (uri == null) throw StateError('Comic image URL is unavailable.');
-    final Uint8List bytes;
+    Uint8List bytes;
     try {
-      bytes = await fetcher(uri);
+      bytes = await _fetchImage(uri);
     } on Object catch (error) {
-      throw ReaderFailure(
-        ReaderFailureKind.image,
-        '漫画图片下载失败，请检查网络后重试。',
-        code: 'library_comic_image_download_failed',
-        location: '下载漫画图片',
-        cause: error,
-      );
+      if (!refreshed && _isAuthorizationFailure(error)) {
+        manifest = await _refreshRuntimeManifest(chapterId, manifest);
+        page = manifest.page(imageId);
+        if (page == null) throw StateError('Comic image is not in the refreshed chapter manifest.');
+        uri = manifest.downloadUri(page);
+        if (uri == null) throw StateError('Comic image URL is unavailable after refresh.');
+        try {
+          bytes = await _fetchImage(uri);
+        } on Object catch (retryError) {
+          throw _imageFailure(retryError);
+        }
+      } else {
+        throw _imageFailure(error);
+      }
     }
     if (bytes.isEmpty) throw StateError('Comic image is empty.');
     if (bytes.length > _maximumImageBytes) throw StateError('Comic image exceeds 8 MiB.');
     return bytes;
   }
+
+  Future<_ChapterManifest> _refreshRuntimeManifest(String chapterId, _ChapterManifest stale) {
+    final current = _manifests[chapterId];
+    if (current != null && !identical(current, stale)) return Future<_ChapterManifest>.value(current);
+    return _runtimeManifest(chapterId, forceRefresh: true);
+  }
+
+  Future<Uint8List> _fetchImage(Uri uri) => _externalFetcher?.call(uri) ?? _httpClientOwner!.fetch(uri);
+
+  ReaderFailure _imageFailure(Object error) => ReaderFailure(
+    ReaderFailureKind.image,
+    '漫画图片下载失败，请检查网络后重试。',
+    code: 'library_comic_image_download_failed',
+    location: '下载漫画图片',
+    cause: error,
+  );
 
   ComicChapterInfo _chapterInfo(CatalogEntry entry) => ComicChapterInfo(
     id: entry.remoteIdentity,
@@ -338,7 +397,12 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
 
   LibraryItemSource _requireSource() => item.source ?? (throw StateError('Comic source is missing.'));
   void _checkBook(String bookId) {
+    _ensureActive();
     if (bookId != item.id.value) throw ArgumentError.value(bookId, 'bookId');
+  }
+
+  void _ensureActive() {
+    if (_disposed) throw StateError('Comic reader data source is disposed.');
   }
 }
 
@@ -480,9 +544,11 @@ final class ContentLibraryComicReaderStateStore implements ComicReaderStateStore
 Future<Uint8List> fetchComicImage(Uri uri, {HttpClient? client}) async {
   const maximumBytes = 8 * 1024 * 1024;
   final ownedClient = client ?? HttpClient();
-  ownedClient
-    ..maxConnectionsPerHost = 4
-    ..connectionTimeout = const Duration(seconds: 15);
+  if (client == null) {
+    ownedClient
+      ..maxConnectionsPerHost = 4
+      ..connectionTimeout = const Duration(seconds: 15);
+  }
   try {
     var current = uri;
     for (var redirects = 0; ; redirects++) {
@@ -505,7 +571,9 @@ Future<Uint8List> fetchComicImage(Uri uri, {HttpClient? client}) async {
         current = current.resolve(location);
         continue;
       }
-      if (response.statusCode < 200 || response.statusCode >= 300) throw HttpException('Image status ${response.statusCode}.');
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw ComicImageHttpStatusException(response.statusCode, current);
+      }
       final mime = response.headers.contentType?.mimeType ?? '';
       if (!RegExp(r'^image/[^\s/]+$', caseSensitive: false).hasMatch(mime)) {
         throw HttpException('Image MIME is invalid.');
@@ -523,7 +591,81 @@ Future<Uint8List> fetchComicImage(Uri uri, {HttpClient? client}) async {
       return Uint8List.fromList(bytes);
     }
   } finally {
-    ownedClient.close(force: true);
+    if (client == null) ownedClient.close(force: true);
+  }
+}
+
+Future<HttpClient> _createDirectComicHttpClient() async =>
+    HttpClient()..findProxy = (uri) => _isLoopback(uri) ? 'DIRECT' : HttpClient.findProxyFromEnvironment(uri);
+
+ComicImageHttpClientOwner createComicImageHttpClientOwner(ComicHttpClientFactory? factory) =>
+    ComicImageHttpClientOwner(factory ?? _createDirectComicHttpClient);
+
+bool _isAuthorizationFailure(Object error) =>
+    error is ComicImageHttpStatusException && (error.statusCode == HttpStatus.unauthorized || error.statusCode == HttpStatus.forbidden);
+
+/// Owns one lazy HTTP client for a single reader data-source lifetime.
+final class ComicImageHttpClientOwner {
+  ComicImageHttpClientOwner(this._factory);
+
+  final ComicHttpClientFactory _factory;
+  final Set<Future<void>> _loads = <Future<void>>{};
+  HttpClient? _client;
+  Future<HttpClient>? _clientLoading;
+  bool _disposed = false;
+
+  Future<Uint8List> fetch(Uri uri) {
+    if (_disposed) return Future<Uint8List>.error(StateError('Comic image HTTP client is disposed.'));
+    final task = _fetch(uri);
+    late final Future<void> tracked;
+    tracked = task.then<void>((_) {}, onError: (Object _, StackTrace _) {}).whenComplete(() => _loads.remove(tracked));
+    _loads.add(tracked);
+    return task;
+  }
+
+  Future<Uint8List> _fetch(Uri uri) async => fetchComicImage(uri, client: await _ensureClient());
+
+  Future<HttpClient> _ensureClient() async {
+    if (_disposed) throw StateError('Comic image HTTP client is disposed.');
+    final current = _client;
+    if (current != null) return current;
+    final active = _clientLoading;
+    if (active != null) return active;
+    final task = _initializeClient();
+    _clientLoading = task;
+    try {
+      return await task;
+    } finally {
+      if (identical(_clientLoading, task)) _clientLoading = null;
+    }
+  }
+
+  Future<HttpClient> _initializeClient() async {
+    final created = await _factory();
+    if (_disposed) {
+      created.close(force: true);
+      throw StateError('Comic image HTTP client is disposed.');
+    }
+    created
+      ..maxConnectionsPerHost = 4
+      ..connectionTimeout = const Duration(seconds: 15);
+    return _client = created;
+  }
+
+  Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    _client?.close(force: true);
+    final loading = _clientLoading;
+    if (loading != null) {
+      try {
+        (await loading).close(force: true);
+      } on Object {
+        // A failed client factory has already completed its caller-facing
+        // request. Disposal remains best-effort and never leaks that error.
+      }
+    }
+    if (_loads.isNotEmpty) await Future.wait<void>(_loads.toList(growable: false));
   }
 }
 

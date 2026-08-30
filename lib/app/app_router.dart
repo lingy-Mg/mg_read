@@ -432,7 +432,7 @@ Future<void> _openTransientSourceComicReader(
       detail: detail,
       catalog: firstCatalogPage,
       gateway: gateway,
-      fetcher: createProxyAwareComicImageFetcher(container.read(configuredFlutterNetworkProxyManagerProvider)),
+      httpClientFactory: createProxyAwareComicHttpClientFactory(container.read(configuredFlutterNetworkProxyManagerProvider)),
     ),
     stateStore: TransientComicReaderStateStore(),
     observer: _DismissComicReaderObserver(navigator),

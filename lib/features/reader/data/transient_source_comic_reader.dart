@@ -3,32 +3,46 @@
 /// The adapter keeps only the source catalog and a three-entry manifest LRU in
 /// memory. It does not write the bookshelf, Content Library, progress,
 /// bookmarks, or image bytes to disk; shelf reading uses the library adapter.
+/// One lazy HttpClient belongs to this route unless a caller-owned fetcher is
+/// injected, and route disposal closes only the client owned here.
 library;
 
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/reader/data/bounded_reader_session_cache.dart';
 import 'package:mg_read/features/reader/data/content_library_source_comic_reader.dart';
 
 /// Serves one discovery/detail comic session without requiring a shelf item.
-final class TransientSourceComicReaderDataSource implements ComicReaderDataSource {
-  TransientSourceComicReaderDataSource({required this.detail, required this.catalog, required this.gateway, ComicImageFetcher? fetcher})
-    : fetcher = fetcher ?? fetchComicImage {
+final class TransientSourceComicReaderDataSource implements ComicReaderDataSource, DisposableReaderDataSource {
+  TransientSourceComicReaderDataSource({
+    required this.detail,
+    required this.catalog,
+    required this.gateway,
+    ComicImageFetcher? fetcher,
+    ComicHttpClientFactory? httpClientFactory,
+  }) : assert(fetcher == null || httpClientFactory == null),
+       _externalFetcher = fetcher,
+       _httpClientOwner = fetcher == null ? createComicImageHttpClientOwner(httpClientFactory) : null {
     _chapters = List<PluginChapterSummary>.unmodifiable(catalog.items);
   }
 
   final PluginContentDetail detail;
   final PluginChaptersResult catalog;
   final SourceContentGateway gateway;
-  final ComicImageFetcher fetcher;
+  final ComicImageFetcher? _externalFetcher;
+  final ComicImageHttpClientOwner? _httpClientOwner;
   late final List<PluginChapterSummary> _chapters;
-  final BoundedReaderSessionCache<String, ComicChapterContent> _contents = BoundedReaderSessionCache<String, ComicChapterContent>(
-    maxEntries: 3,
-  );
+  final BoundedReaderSessionCache<String, _TransientChapterManifest> _manifests =
+      BoundedReaderSessionCache<String, _TransientChapterManifest>(maxEntries: 3);
+  final Map<String, Future<_TransientChapterManifest>> _manifestLoads = <String, Future<_TransientChapterManifest>>{};
+  final Map<String, Future<Uint8List>> _imageLoads = <String, Future<Uint8List>>{};
+  bool _disposed = false;
 
   @override
   Future<ComicBookInfo> loadBookInfo(String bookId) async {
@@ -70,15 +84,27 @@ final class TransientSourceComicReaderDataSource implements ComicReaderDataSourc
   @override
   Future<ComicChapterContent> loadChapterContent(String bookId, String chapterId) async {
     _checkBook(bookId);
-    final cached = _contents[chapterId];
-    if (cached != null) return cached;
+    return (await _manifest(chapterId)).content;
+  }
+
+  Future<_TransientChapterManifest> _manifest(String chapterId, {bool forceRefresh = false}) async {
+    final cached = _manifests[chapterId];
+    if (!forceRefresh && cached != null) return cached;
+    final active = _manifestLoads[chapterId];
+    if (active != null) return active;
+    final task = _loadManifest(chapterId);
+    _manifestLoads[chapterId] = task;
+    try {
+      return await task;
+    } finally {
+      if (identical(_manifestLoads[chapterId], task)) _manifestLoads.remove(chapterId);
+    }
+  }
+
+  Future<_TransientChapterManifest> _loadManifest(String chapterId) async {
     final PluginChapterContent remote;
     try {
-      remote = await gateway.getContent(
-        pluginId: detail.pluginId,
-        id: detail.summary.id,
-        chapterId: chapterId,
-      );
+      remote = await gateway.getContent(pluginId: detail.pluginId, id: detail.summary.id, chapterId: chapterId);
     } on ReaderFailure {
       rethrow;
     } on Object catch (error) {
@@ -90,21 +116,18 @@ final class TransientSourceComicReaderDataSource implements ComicReaderDataSourc
         cause: error,
       );
     }
+    _ensureActive();
     if (remote.contentKind != PluginContentKind.manga || remote.chapterId != chapterId || remote.pages.isEmpty) {
-      throw const ReaderFailure(
-        ReaderFailureKind.data,
-        '数据源没有返回有效的漫画图片清单。',
-        code: 'source_comic_manifest_invalid',
-        location: '解析漫画章节图片清单',
-      );
+      throw const ReaderFailure(ReaderFailureKind.data, '数据源没有返回有效的漫画图片清单。', code: 'source_comic_manifest_invalid', location: '解析漫画章节图片清单');
     }
     final version = remote.updatedAt?.toUtc().millisecondsSinceEpoch ?? 1;
+    final pages = List<PluginMangaPage>.unmodifiable(remote.pages);
     final content = ComicChapterContent(
       chapterId: chapterId,
       title: remote.title ?? _chapterById(chapterId).title,
       contentVersion: '$version',
       images: [
-        for (final page in remote.pages)
+        for (final page in pages)
           ComicImageInfo(
             id: page.id,
             index: page.index,
@@ -116,26 +139,58 @@ final class TransientSourceComicReaderDataSource implements ComicReaderDataSourc
       ],
     );
     _validateImages(content);
-    _contents[chapterId] = content;
-    return content;
+    final manifest = _TransientChapterManifest(content: content, pages: pages);
+    _manifests[chapterId] = manifest;
+    return manifest;
   }
 
   @override
-  Future<Uint8List> loadImageBytes(String bookId, String chapterId, String imageId) async {
+  Future<Uint8List> loadImageBytes(String bookId, String chapterId, String imageId) {
     _checkBook(bookId);
-    final content = _contents[chapterId] ?? await loadChapterContent(bookId, chapterId);
-    final image = content.images.firstWhere(
-      (candidate) => candidate.id == imageId,
-      orElse: () => throw StateError('Source comic image is not in the chapter.'),
-    );
-    final PluginChapterContent remote;
+    final key = '$chapterId\u0000$imageId';
+    final active = _imageLoads[key];
+    if (active != null) return active;
+    final task = _loadImageBytes(chapterId, imageId);
+    _imageLoads[key] = task;
+    return task.whenComplete(() {
+      if (identical(_imageLoads[key], task)) _imageLoads.remove(key);
+    });
+  }
+
+  Future<Uint8List> _loadImageBytes(String chapterId, String imageId) async {
+    var manifest = await _manifest(chapterId);
+    var page = manifest.page(imageId);
+    if (page == null) throw StateError('Source comic image is not in the chapter.');
+    var refreshed = false;
+    if (manifest.needsRefresh(page)) {
+      manifest = await _refreshManifest(chapterId, manifest);
+      refreshed = true;
+      page = manifest.page(imageId);
+      if (page == null) throw StateError('Source comic image is not in the refreshed chapter.');
+    }
     try {
-      remote = await gateway.getContent(
-        pluginId: detail.pluginId,
-        id: detail.summary.id,
-        chapterId: chapterId,
-      );
+      return await _fetchImage(page.url);
     } on Object catch (error) {
+      if (!refreshed && _isAuthorizationFailure(error)) {
+        manifest = await _refreshManifest(chapterId, manifest);
+        page = manifest.page(imageId);
+        if (page == null) throw StateError('Source comic image is not in the refreshed chapter.');
+        try {
+          return await _fetchImage(page.url);
+        } on Object catch (retryError) {
+          throw _imageFailure(retryError);
+        }
+      }
+      throw _imageFailure(error);
+    }
+  }
+
+  Future<_TransientChapterManifest> _refreshManifest(String chapterId, _TransientChapterManifest stale) async {
+    final current = _manifests[chapterId];
+    if (current != null && !identical(current, stale)) return current;
+    try {
+      return await _manifest(chapterId, forceRefresh: true);
+    } on ReaderFailure catch (error) {
       throw ReaderFailure(
         ReaderFailureKind.image,
         '漫画图片清单暂时无法刷新，请稍后重试。',
@@ -144,21 +199,26 @@ final class TransientSourceComicReaderDataSource implements ComicReaderDataSourc
         cause: error,
       );
     }
-    final page = remote.pages.firstWhere(
-      (candidate) => candidate.id == image.id,
-      orElse: () => throw StateError('Source comic image is not in the refreshed chapter.'),
-    );
-    try {
-      return await fetcher(page.url);
-    } on Object catch (error) {
-      throw ReaderFailure(
-        ReaderFailureKind.image,
-        '漫画图片暂时无法加载，请检查网络后重试。',
-        code: 'source_comic_image_load_failed',
-        location: '下载漫画图片',
-        cause: error,
-      );
-    }
+  }
+
+  Future<Uint8List> _fetchImage(Uri uri) => _externalFetcher?.call(uri) ?? _httpClientOwner!.fetch(uri);
+
+  ReaderFailure _imageFailure(Object error) => ReaderFailure(
+    ReaderFailureKind.image,
+    '漫画图片暂时无法加载，请检查网络后重试。',
+    code: 'source_comic_image_load_failed',
+    location: '下载漫画图片',
+    cause: error,
+  );
+
+  @override
+  Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    _manifests.clear();
+    _manifestLoads.clear();
+    _imageLoads.clear();
+    await _httpClientOwner?.dispose();
   }
 
   ComicChapterInfo _chapterInfo(int index) {
@@ -190,9 +250,34 @@ final class TransientSourceComicReaderDataSource implements ComicReaderDataSourc
   }
 
   void _checkBook(String bookId) {
+    _ensureActive();
     if (bookId != detail.summary.id) throw ArgumentError.value(bookId, 'bookId');
   }
+
+  void _ensureActive() {
+    if (_disposed) throw StateError('Comic reader data source is disposed.');
+  }
 }
+
+final class _TransientChapterManifest {
+  const _TransientChapterManifest({required this.content, required this.pages});
+
+  final ComicChapterContent content;
+  final List<PluginMangaPage> pages;
+
+  PluginMangaPage? page(String imageId) {
+    for (final page in pages) {
+      if (page.id == imageId) return page;
+    }
+    return null;
+  }
+
+  bool needsRefresh(PluginMangaPage page) =>
+      page.resourcePolicy == PluginMangaPageResourcePolicy.refreshable && !page.expiresAt!.isAfter(DateTime.now().toUtc());
+}
+
+bool _isAuthorizationFailure(Object error) =>
+    error is ComicImageHttpStatusException && (error.statusCode == HttpStatus.unauthorized || error.statusCode == HttpStatus.forbidden);
 
 /// Route-lifetime state for an unsaved discovery comic session.
 final class TransientComicReaderStateStore implements ComicReaderStateStore {

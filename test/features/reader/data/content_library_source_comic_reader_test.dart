@@ -171,6 +171,31 @@ void main() {
     expect(fetched.single.queryParameters['generation'], '2');
   });
 
+  test('refreshes and retries only once after an explicit authorization failure', () async {
+    final fixture = await _LibraryFixture.open();
+    addTearDown(fixture.close);
+    final gateway = _Gateway(pages: <PluginMangaPage>[_page()], varyUrlByCall: true);
+    final fetched = <Uri>[];
+    final adapter = ContentLibraryComicReaderDataSource(
+      library: fixture.library,
+      gateway: gateway,
+      item: fixture.manga,
+      fetcher: (uri) async {
+        fetched.add(uri);
+        throw ComicImageHttpStatusException(HttpStatus.unauthorized, uri);
+      },
+    );
+    await adapter.loadChapterContent(fixture.manga.id.value, 'chapter-1');
+
+    await expectLater(
+      adapter.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1'),
+      throwsA(isA<ReaderFailure>().having((failure) => failure.code, 'code', 'library_comic_image_download_failed')),
+    );
+
+    expect(gateway.contentCalls, 2);
+    expect(fetched.map((uri) => uri.queryParameters['generation']), <String?>['1', '2']);
+  });
+
   test('persists durable and refreshable resource metadata', () async {
     final fixture = await _LibraryFixture.open();
     addTearDown(fixture.close);
@@ -218,6 +243,84 @@ void main() {
     release.complete();
     expect(await Future.wait(<Future<Uint8List>>[first, second]), everyElement(<int>[9]));
     expect(gateway.contentCalls, 1);
+  });
+
+  test('reuses one owned HTTP client for multiple images and closes it on dispose', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((request) async {
+      request.response.headers.contentType = ContentType('image', 'png');
+      request.response.add(<int>[1, 2, 3]);
+      await request.response.close();
+    });
+    final fixture = await _LibraryFixture.open();
+    addTearDown(fixture.close);
+    final baseUri = Uri.parse('http://${server.address.address}:${server.port}');
+    final client = HttpClient()..findProxy = (_) => 'DIRECT';
+    var clientFactoryCalls = 0;
+    final adapter = ContentLibraryComicReaderDataSource(
+      library: fixture.library,
+      gateway: _Gateway(
+        pages: <PluginMangaPage>[
+          _page(url: baseUri.resolve('/image-1')),
+          _page(id: 'image-2', index: 1, url: baseUri.resolve('/image-2')),
+        ],
+      ),
+      item: fixture.manga,
+      httpClientFactory: () async {
+        clientFactoryCalls++;
+        return client;
+      },
+    );
+
+    await Future.wait<Uint8List>(<Future<Uint8List>>[
+      adapter.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1'),
+      adapter.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-2'),
+    ]);
+    expect(clientFactoryCalls, 1);
+
+    await adapter.dispose().timeout(const Duration(seconds: 5));
+    expect(() => client.getUrl(baseUri.resolve('/after-dispose')), throwsStateError);
+    expect(() => adapter.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1'), throwsStateError);
+  });
+
+  test('does not close a caller-owned HTTP client', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((request) async {
+      request.response.headers.contentType = ContentType('image', 'png');
+      request.response.add(<int>[4]);
+      await request.response.close();
+    });
+    final uri = Uri.parse('http://${server.address.address}:${server.port}/image');
+    final client = HttpClient()..findProxy = (_) => 'DIRECT';
+    addTearDown(() => client.close(force: true));
+
+    expect(await fetchComicImage(uri, client: client), <int>[4]);
+    expect(await fetchComicImage(uri, client: client), <int>[4]);
+  });
+
+  test('dispose completes an active owned request without an unhandled error', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final requestStarted = Completer<void>();
+    server.listen((request) {
+      if (!requestStarted.isCompleted) requestStarted.complete();
+    });
+    final fixture = await _LibraryFixture.open();
+    addTearDown(fixture.close);
+    final uri = Uri.parse('http://${server.address.address}:${server.port}/pending');
+    final adapter = ContentLibraryComicReaderDataSource(
+      library: fixture.library,
+      gateway: _Gateway(pages: <PluginMangaPage>[_page(url: uri)]),
+      item: fixture.manga,
+      httpClientFactory: () async => HttpClient()..findProxy = (_) => 'DIRECT',
+    );
+
+    final pending = adapter.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1');
+    await requestStarted.future.timeout(const Duration(seconds: 5));
+    await adapter.dispose().timeout(const Duration(seconds: 5));
+    await expectLater(pending.timeout(const Duration(seconds: 5)), throwsA(isA<ReaderFailure>()));
   });
 
   test('rejects non-manga, empty, duplicate and incomplete refreshable manifests', () async {

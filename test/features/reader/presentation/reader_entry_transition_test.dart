@@ -101,6 +101,18 @@ void main() {
     expect(find.byType(TextReaderView), findsNothing);
   });
 
+  testWidgets('disposes a comic session data source when the entry host unmounts', (WidgetTester tester) async {
+    final source = _DisposableComicDataSource();
+    await tester.pumpWidget(_readerApp(_comicRequest(dataSource: source)));
+    await tester.pump();
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    await source.disposed.future.timeout(const Duration(seconds: 5));
+    expect(source.disposeCalls, 1);
+  });
+
   testWidgets('comic handoff waits for the first real image and keeps exit', (WidgetTester tester) async {
     final source = _ControlledComicDataSource();
     final observer = _RecordingComicObserver();
@@ -466,6 +478,17 @@ final class _FailThenSucceedComicDataSource extends _ImmediateComicDataSource {
       throw StateError('expected comic image failure');
     }
     return Uint8List.fromList(_onePixelPng);
+  }
+}
+
+final class _DisposableComicDataSource extends _ImmediateComicDataSource implements DisposableReaderDataSource {
+  final Completer<void> disposed = Completer<void>();
+  int disposeCalls = 0;
+
+  @override
+  Future<void> dispose() async {
+    disposeCalls++;
+    if (!disposed.isCompleted) disposed.complete();
   }
 }
 

@@ -292,6 +292,10 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
 
   @override
   void dispose() {
+    final ReaderLaunchRequest request = _boundRequest;
+    if (request case ComicReaderLaunchRequest(dataSource: final DisposableReaderDataSource dataSource)) {
+      unawaited(dataSource.dispose().onError((Object _, StackTrace _) {}));
+    }
     _entryController.dispose();
     _handoffController.dispose();
     super.dispose();

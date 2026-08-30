@@ -1,5 +1,15 @@
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
+/// Optional app-owned lifecycle for reader data sources that hold session
+/// resources such as reusable HTTP clients.
+abstract interface class DisposableReaderDataSource {
+  /// Releases resources owned by this reader session.
+  ///
+  /// Implementations must be idempotent and must not close dependencies that
+  /// were supplied by the caller without an explicit ownership transfer.
+  Future<void> dispose();
+}
+
 /// Stable preparation path categories used by bounded performance diagnostics.
 enum ReaderLaunchPreparationKind {
   memory('memory'),
