@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import * as plugin from '../dist/index.mjs';
+
+test('live public flow reaches discovery, search, detail, catalog and playback resolution', { timeout: 120_000 }, async () => {
+  const resources = [];
+  const liveFetch = (input, init = {}) => fetch(input, { ...init, signal: AbortSignal.timeout(20_000) });
+  await plugin.activate({
+    log: { info() {}, warn() {} },
+    resource: {
+      proxy(value) {
+        resources.push(value);
+        return `http://127.0.0.1/live-resource/${resources.length}`;
+      },
+    },
+    http: { fetch: liveFetch },
+  });
+  const discovery = await plugin.discover({ target: 'category:today', cursor: null, collectionId: null, pageSize: 3 });
+  const items = discovery.document.components[0].children[0].items;
+  assert.ok(items.length > 0);
+  assert.ok(items.every((item) => item.content.coverUrl !== null));
+  const first = items[0].content;
+  const search = await plugin.search({ query: first.title, cursor: null, pageSize: 3 });
+  assert.ok(search.items.length > 0);
+  const detail = await plugin.getDetail({ id: first.id });
+  const catalog = await plugin.getChapters({ id: detail.id });
+  assert.ok(catalog.groups.length > 0);
+  assert.equal(catalog.items.length, catalog.groups.reduce((count, group) => count + group.episodes.length, 0));
+  const content = await plugin.getContent({ id: detail.id, chapterId: catalog.items[0].id });
+  assert.equal(content.contentKind, 'video');
+  assert.ok(['hls', 'video'].includes(content.media.resourceType));
+  assert.equal(content.media.resourcePolicy, 'sessionOnly');
+  assert.ok(resources.length > 0);
+  assert.ok(['http:', 'https:'].includes(new URL(resources[0].url).protocol));
+});
