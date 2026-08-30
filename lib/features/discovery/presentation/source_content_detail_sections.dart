@@ -60,8 +60,9 @@ class _DetailStats extends StatelessWidget {
 }
 
 class _ShelfActionBar extends StatefulWidget {
-  const _ShelfActionBar({required this.shelfState, required this.onAction, required this.onStartReading});
+  const _ShelfActionBar({required this.title, required this.shelfState, required this.onAction, required this.onStartReading});
 
+  final String? title;
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested onAction;
   final SourceStartReadingRequested onStartReading;
@@ -150,18 +151,8 @@ class _ShelfActionBarState extends State<_ShelfActionBar> {
   }
 
   Future<void> _confirmDelete(BuildContext context) async {
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('删除书籍'),
-        content: const Text('确定要从书架删除这本书吗？'),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('删除')),
-        ],
-      ),
-    );
-    if (confirmed == true && mounted) await _run(SourceShelfAction.delete);
+    final confirmed = await showBookshelfRemovalConfirmation(context, title: widget.title);
+    if (confirmed && mounted) await _run(SourceShelfAction.delete);
   }
 
   Future<void> _run(SourceShelfAction action) async {

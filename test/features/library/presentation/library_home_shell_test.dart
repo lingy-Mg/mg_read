@@ -259,7 +259,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('删除书籍'), findsOneWidget);
-    expect(find.textContaining('确定要从书架删除'), findsOneWidget);
+    expect(find.textContaining('确定要从书架移除'), findsOneWidget);
     expect(deletedBook, isNull);
 
     await tester.tap(find.widgetWithText(FilledButton, '删除'));

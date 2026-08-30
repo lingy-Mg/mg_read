@@ -9,13 +9,14 @@ library;
 
 import 'package:flutter/material.dart';
 
-Future<bool> showBookshelfRemovalConfirmation(BuildContext context, {required String title}) async {
+Future<bool> showBookshelfRemovalConfirmation(BuildContext context, {String? title}) async {
+  final normalizedTitle = title?.trim();
   return await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           key: const Key('bookshelf-removal-confirmation'),
           title: const Text('删除书籍'),
-          content: Text('确定要从书架移除《${title.trim()}》吗？'),
+          content: Text(normalizedTitle == null || normalizedTitle.isEmpty ? '确定要从书架移除这本书吗？' : '确定要从书架移除《$normalizedTitle》吗？'),
           actions: <Widget>[
             TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
             FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('删除')),

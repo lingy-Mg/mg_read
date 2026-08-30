@@ -82,7 +82,7 @@ class _SourceDetailLoadingView extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.section),
         if (shelfState != SourceDetailShelfState.canAdd && onShelfAction != null && onStartReading != null)
-          _ShelfActionBar(shelfState: shelfState, onAction: onShelfAction!, onStartReading: onStartReading!)
+          _ShelfActionBar(title: content?.title, shelfState: shelfState, onAction: onShelfAction!, onStartReading: onStartReading!)
         else
           Row(
             children: <Widget>[
