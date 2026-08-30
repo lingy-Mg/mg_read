@@ -6,26 +6,37 @@ const int maxPluginTransferBatchBytes = 512 * 1024 * 1024;
 
 enum PluginArtifactFormat { singleFile, archive }
 
+enum PluginArtifactProvenance { installed, development, developmentReplica }
+
 @immutable
 final class PluginTransferArtifact {
   const PluginTransferArtifact({
     required this.bytes,
+    required this.developmentFingerprint,
+    required this.developmentRevision,
     required this.format,
     required this.pluginId,
+    required this.provenance,
     required this.sha256,
     required this.version,
   });
 
   final int bytes;
+  final String? developmentFingerprint;
+  final int? developmentRevision;
   final PluginArtifactFormat format;
   final String pluginId;
+  final PluginArtifactProvenance provenance;
   final String sha256;
   final String version;
 
   Map<String, Object?> toJson() => <String, Object?>{
     'bytes': bytes,
+    'developmentFingerprint': developmentFingerprint,
+    'developmentRevision': developmentRevision,
     'format': format.name,
     'id': pluginId,
+    'provenance': provenance.name,
     'sha256': sha256,
     'version': version,
   };
@@ -44,6 +55,7 @@ final class PluginDevelopmentPackage {
 }
 
 enum PluginTransferPlanAction {
+  developmentConflict,
   missing,
   upgrade,
   same,
@@ -140,6 +152,7 @@ final class PluginTransferPlanInvocation
       value.map((raw) {
         final item = _jsonObject(raw, 'Plugin transfer plan item');
         final action = switch (item['action']) {
+          'developmentConflict' => PluginTransferPlanAction.developmentConflict,
           'missing' => PluginTransferPlanAction.missing,
           'upgrade' => PluginTransferPlanAction.upgrade,
           'same' => PluginTransferPlanAction.same,
@@ -175,12 +188,20 @@ final class PluginTransferPlanInvocation
 PluginTransferArtifact _decodePluginTransferArtifact(Object? value) {
   final item = _jsonObject(value, 'Plugin transfer artifact');
   final bytes = item['bytes'];
+  final developmentFingerprint = item['developmentFingerprint'];
+  final developmentRevision = item['developmentRevision'];
   final format = switch (item['format']) {
     'singleFile' => PluginArtifactFormat.singleFile,
     'archive' => PluginArtifactFormat.archive,
     _ => null,
   };
   final pluginId = item['id'];
+  final provenance = switch (item['provenance']) {
+    'installed' => PluginArtifactProvenance.installed,
+    'development' => PluginArtifactProvenance.development,
+    'developmentReplica' => PluginArtifactProvenance.developmentReplica,
+    _ => null,
+  };
   final sha256 = item['sha256'];
   final version = item['version'];
   if (bytes is! int ||
@@ -188,9 +209,17 @@ PluginTransferArtifact _decodePluginTransferArtifact(Object? value) {
       bytes > maxPluginTransferBytes ||
       format == null ||
       pluginId is! String ||
+      provenance == null ||
       version is! String ||
       sha256 is! String ||
-      !RegExp(r'^[a-f0-9]{64}$').hasMatch(sha256)) {
+      !RegExp(r'^[a-f0-9]{64}$').hasMatch(sha256) ||
+      (provenance == PluginArtifactProvenance.installed &&
+          (developmentFingerprint != null || developmentRevision != null)) ||
+      (provenance != PluginArtifactProvenance.installed &&
+          (developmentFingerprint is! String ||
+              !RegExp(r'^[a-f0-9]{64}$').hasMatch(developmentFingerprint) ||
+              developmentRevision is! int ||
+              developmentRevision <= 0))) {
     throw const PluginRuntimeException(
       'invalid_response',
       'The Runtime returned an invalid plugin transfer artifact.',
@@ -198,8 +227,11 @@ PluginTransferArtifact _decodePluginTransferArtifact(Object? value) {
   }
   return PluginTransferArtifact(
     bytes: bytes,
+    developmentFingerprint: developmentFingerprint as String?,
+    developmentRevision: developmentRevision as int?,
     format: format,
     pluginId: pluginId,
+    provenance: provenance,
     sha256: sha256,
     version: version,
   );

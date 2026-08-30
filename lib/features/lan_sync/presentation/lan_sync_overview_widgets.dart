@@ -40,9 +40,9 @@ class LanSyncOverviewCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text('设备间传输', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                      Text('设备同步', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                       const SizedBox(height: AppSpacing.unit),
-                      Text('无需云端，同一网络内直接发送', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                      Text('首次配对一次，之后自动发现和同步', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
                     ],
                   ),
                 ),
@@ -59,7 +59,10 @@ class LanSyncOverviewCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.regular),
-            Text('仅在可信的家庭或办公局域网使用。当前传输不加密，不会发送 Cookie、凭据、正文或封面文件。', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+            Text(
+              '已配对设备使用认证加密连接；IP 变化后会重新发现。只同步数据源插件、书架与阅读进度，不发送 Cookie、凭据、正文或封面文件。',
+              style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+            ),
           ],
         ),
       ),

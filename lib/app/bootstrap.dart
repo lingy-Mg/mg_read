@@ -37,8 +37,12 @@ import 'package:mg_read/features/library/application/library_book_visibility_cha
 import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
 import 'package:mg_read/features/library/application/library_book_refresher.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
+import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
+import 'package:mg_read/features/lan_sync/application/paired_device_repository.dart';
 import 'package:mg_read/features/lan_sync/data/deferred_lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/data/mg_read_lan_sync_gateway.dart';
+import 'package:mg_read/features/lan_sync/data/persistent_paired_device_repository.dart';
+import 'package:mg_read/features/lan_sync/data/secure_device_identity_store.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
 import 'package:mg_read/features/notifications/application/notification_center.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
@@ -219,6 +223,13 @@ Future<void> bootstrapMgReadApp({
     isCurrentRunEnabled: () => persistentDiagnostics != null,
   );
   Future<ContentLibrary> getLibrary() => startup.contentLibrary;
+  Future<AppPersistence> getPersistence() async {
+    await startup.start();
+    final persistence = sharedPersistence;
+    if (persistence == null) throw StateError('app_persistence_unavailable');
+    return persistence;
+  }
+
   final sourcePrefetchers = AppContentLibrarySourcePrefetcherCoordinator(diagnostics);
   startup.recordStage('composition', resultState: 'mounted');
   // Do this before any application-support lookup and first-run database open.
@@ -229,6 +240,8 @@ Future<void> bootstrapMgReadApp({
         appSettingsProvider.overrideWithValue(resolvedManager),
         diagnosticsManagerProvider.overrideWithValue(diagnostics),
         fatalErrorReporterProvider.overrideWithValue(fatalErrorReporter),
+        deviceIdentityStoreProvider.overrideWithValue(SecureDeviceIdentityStore()),
+        pairedDeviceRepositoryProvider.overrideWithValue(DeferredPairedDeviceRepository(getPersistence)),
         diagnosticsQueryProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),
         diagnosticsCaptureProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),
         diagnosticsMaintenanceProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),
@@ -412,15 +425,32 @@ final class _AppDiagnosticsActivation implements DiagnosticsActivation {
 /// path. On a VS Code desktop debug session [stderr] is the Debug Console;
 /// Flutter's platform tooling owns the corresponding device stream on mobile.
 final class _DebugConsoleEventMirror {
+  _DebugConsoleEventMirror() {
+    // A Windows GUI process launched without a console can accept writeln()
+    // synchronously and then fail the IOSink asynchronously with ERROR_INVALID_HANDLE.
+    // Observe that terminal error so best-effort diagnostics never reach the
+    // root uncaught-error boundary.
+    unawaited(
+      stderr.done.then<void>(
+        (_) {},
+        onError: (Object _, StackTrace _) {
+          _available = false;
+          _pending.clear();
+        },
+      ),
+    );
+  }
+
   static const int _maximumQueuedEvents = 256;
   static const int _maximumDrainBatch = 32;
 
   final DiagnosticConsoleFormatter _formatter = const DiagnosticConsoleFormatter();
   final ListQueue<String> _pending = ListQueue<String>();
   var _drainScheduled = false;
+  var _available = true;
 
   void add(DiagnosticEvent event) {
-    if (!_formatter.shouldMirror(event)) return;
+    if (!_available || !_formatter.shouldMirror(event)) return;
     final String line;
     try {
       line = _formatter.formatForConsole(event);
@@ -436,6 +466,10 @@ final class _DebugConsoleEventMirror {
 
   void _drain() {
     _drainScheduled = false;
+    if (!_available) {
+      _pending.clear();
+      return;
+    }
     for (var index = 0; index < _maximumDrainBatch && _pending.isNotEmpty; index += 1) {
       final line = _pending.removeFirst();
       try {
@@ -482,6 +516,7 @@ Future<AppPersistence> _openDefaultAppPersistence(Directory dataRoot, Diagnostic
   dataRoot: dataRoot,
   registry: RecordDocumentRegistry(<RecordDocumentCodec>[
     ...contentLibraryRecordDocumentCodecs,
+    pairedDeviceRecordDocumentCodec,
     ...settingsRecordDocumentCodecs(AppSettingKeys.registry, scopeKind: 'app'),
   ]),
   diagnostics: diagnostics,

@@ -175,8 +175,34 @@ test("artifact transfer v2 lists both retained formats and rejects v1-shaped ite
     { id: "org.example.single", activeVersion: "1.0.0", pendingVersion: null },
   ]);
   assert.deepEqual(listed, [
-    { bytes: single.length, format: "singleFile", id: "org.example.single", sha256: createHash("sha256").update(single).digest("hex"), version: "1.0.0" },
-    { bytes: archive.length, format: "archive", id: "org.example.source", sha256: createHash("sha256").update(archive).digest("hex"), version: "1.2.0" },
+    { bytes: single.length, developmentFingerprint: null, developmentRevision: null, format: "singleFile", id: "org.example.single", provenance: "installed", sha256: createHash("sha256").update(single).digest("hex"), version: "1.0.0" },
+    { bytes: archive.length, developmentFingerprint: null, developmentRevision: null, format: "archive", id: "org.example.source", provenance: "installed", sha256: createHash("sha256").update(archive).digest("hex"), version: "1.2.0" },
   ]);
   assert.equal(isPluginTransferArtifact({ bytes: 1, id: "org.example.old", sha256: "0".repeat(64), version: "1.0.0" }), false);
+});
+
+test("development planning updates replicas but never overwrites a different live project", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-development-plan-");
+  const manager = new PluginArtifactTransferManager(root);
+  t.after(() => manager.dispose());
+  const incoming = {
+    bytes: 16,
+    developmentFingerprint: "a".repeat(64),
+    developmentRevision: 11,
+    format: "archive",
+    id: "org.example.development",
+    provenance: "development",
+    sha256: "b".repeat(64),
+    version: `0.1.1-devsync.11.${"a".repeat(64)}`,
+  };
+
+  assert.equal(manager.plan([incoming], [])[0].action, "missing");
+  assert.equal(manager.plan([incoming], [{ id: incoming.id, activeVersion: `0.1.1-devsync.10.${"c".repeat(64)}`, pendingVersion: null }])[0].action, "upgrade");
+  assert.equal(manager.plan([{ ...incoming, developmentRevision: 9, version: `0.1.1-devsync.9.${"a".repeat(64)}` }], [
+    { id: incoming.id, activeVersion: `0.1.1-devsync.10.${"c".repeat(64)}`, pendingVersion: null },
+  ])[0].action, "receiverNewer");
+  assert.equal(manager.plan([incoming], [{ id: incoming.id, activeVersion: incoming.version, pendingVersion: null }])[0].action, "same");
+  assert.equal(manager.plan([incoming], [{ id: incoming.id, activeVersion: "0.1.0", pendingVersion: null }], [
+    { id: incoming.id, fingerprint: "c".repeat(64), syncRevision: 12 },
+  ])[0].action, "developmentConflict");
 });

@@ -365,6 +365,7 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
       );
       if (plan.any(
         (item) =>
+            item.action == PluginTransferPlanAction.developmentConflict ||
             item.action == PluginTransferPlanAction.receiverNewer ||
             item.action == PluginTransferPlanAction.same ||
             item.action == PluginTransferPlanAction.unavailable,

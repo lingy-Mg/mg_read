@@ -125,6 +125,7 @@ final class _DesktopPluginArtifactIo {
     )._decodeResult(planRaw);
     if (plan.any(
       (item) =>
+          item.action == PluginTransferPlanAction.developmentConflict ||
           item.action == PluginTransferPlanAction.receiverNewer ||
           item.action == PluginTransferPlanAction.same ||
           item.action == PluginTransferPlanAction.unavailable,

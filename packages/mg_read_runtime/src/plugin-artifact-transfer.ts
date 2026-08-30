@@ -15,6 +15,7 @@ import {
   MAX_PLUGIN_ARTIFACT_BYTES,
   type PluginArtifactFormat,
 } from "./plugin-single-file.js";
+import { developmentProjectFingerprint } from "./plugin-manager-files.js";
 import type { JsonObject } from "./protocol.js";
 
 export const MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH = 32;
@@ -22,14 +23,17 @@ export const MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH_BYTES = 512 * 1024 * 1024;
 
 export interface PluginTransferArtifact extends JsonObject {
   readonly bytes: number;
+  readonly developmentFingerprint: string | null;
+  readonly developmentRevision: number | null;
   readonly format: PluginArtifactFormat;
   readonly id: string;
+  readonly provenance: "development" | "developmentReplica" | "installed";
   readonly sha256: string;
   readonly version: string;
 }
 
 export interface PluginTransferPlanItem extends JsonObject {
-  readonly action: "missing" | "upgrade" | "same" | "receiverNewer" | "unavailable";
+  readonly action: "developmentConflict" | "missing" | "upgrade" | "same" | "receiverNewer" | "unavailable";
   readonly id: string;
   readonly receiverVersion: string | null;
   readonly version: string;
@@ -64,9 +68,11 @@ interface TransferEntry {
 }
 
 export interface DevelopmentTransferProject {
+  readonly fingerprint: string;
   readonly id: string;
   readonly packageMode: "archive" | "single-file";
   readonly projectRoot: string;
+  readonly syncRevision: number;
   readonly version: string;
 }
 
@@ -95,16 +101,22 @@ export class PluginArtifactTransferManager {
       const retained = await findRetainedArtifact(this.#dataRoot, plugin.id, version);
       if (retained === undefined || retained.bytes > MAX_PLUGIN_ARTIFACT_BYTES) continue;
       output.push(Object.freeze({
-        bytes: retained.bytes, format: retained.format, id: plugin.id,
-        sha256: await hashFile(retained.path), version,
+        bytes: retained.bytes,
+        ...developmentMetadataForVersion(version),
+        format: retained.format,
+        id: plugin.id,
+        sha256: await hashFile(retained.path),
+        version,
       }));
     }
     await mkdir(this.#stagingRoot, { recursive: true });
-    const generatedAt = Date.now();
-    for (let index = 0; index < development.length; index += 1) {
-      const project = development[index]!;
-      const version = developmentVersion(project.version, generatedAt + index);
-      const entry = await this.#buildDevelopment(project, version);
+    for (const project of development) {
+      const version = developmentVersion(
+        project.version,
+        project.syncRevision,
+        project.fingerprint,
+      );
+      const entry = await this.#buildDevelopment(project, version, "development");
       if (entry === undefined) continue;
       this.#development.set(key(project.id, version), entry);
       output.push(entry.artifact);
@@ -116,11 +128,32 @@ export class PluginArtifactTransferManager {
   plan(
     incoming: readonly PluginTransferArtifact[],
     installed: readonly { readonly id: string; readonly activeVersion: string | null; readonly pendingVersion: string | null }[],
+    development: readonly { readonly fingerprint: string; readonly id: string; readonly syncRevision: number }[] = [],
   ): readonly PluginTransferPlanItem[] {
     validateArtifactBatch(incoming);
     const receiver = new Map(installed.map((item) => [item.id, item.activeVersion ?? item.pendingVersion]));
+    const receiverDevelopment = new Map(development.map((item) => [item.id, item]));
     return Object.freeze(incoming.map((artifact) => {
       const current = receiver.get(artifact.id) ?? null;
+      const liveDevelopment = receiverDevelopment.get(artifact.id);
+      if (liveDevelopment !== undefined) {
+        const sameBuild = artifact.developmentFingerprint === liveDevelopment.fingerprint;
+        const action = artifact.provenance === "development" && !sameBuild
+          ? "developmentConflict"
+          : sameBuild ? "same" : "receiverNewer";
+        return Object.freeze({ action, id: artifact.id, receiverVersion: current, version: artifact.version });
+      }
+      if (artifact.provenance !== "installed") {
+        const currentDevelopment = current === null ? undefined : parseDevelopmentVersion(current);
+        const action = current === null
+          ? "missing"
+          : currentDevelopment?.fingerprint === artifact.developmentFingerprint
+            ? "same"
+            : currentDevelopment !== undefined
+              ? artifact.developmentRevision! > currentDevelopment.revision ? "upgrade" : "receiverNewer"
+              : artifact.provenance === "development" ? "upgrade" : compareSemver(artifact.version, current) > 0 ? "upgrade" : "receiverNewer";
+        return Object.freeze({ action, id: artifact.id, receiverVersion: current, version: artifact.version });
+      }
       const comparison = current === null ? 1 : compareSemver(artifact.version, current);
       const action = current === null ? "missing" : comparison > 0 ? "upgrade" : comparison === 0 ? "same" : "receiverNewer";
       return Object.freeze({ action, id: artifact.id, receiverVersion: current, version: artifact.version });
@@ -135,7 +168,14 @@ export class PluginArtifactTransferManager {
       if (retained === undefined) throw new PluginArtifactTransferError("plugin_transfer_artifact_missing");
       if (retained.bytes > MAX_PLUGIN_ARTIFACT_BYTES) throw new PluginArtifactTransferError("plugin_transfer_artifact_too_large");
       entry = Object.freeze({
-        artifact: Object.freeze({ bytes: retained.bytes, format: retained.format, id, sha256: await hashFile(retained.path), version }),
+        artifact: Object.freeze({
+          bytes: retained.bytes,
+          ...developmentMetadataForVersion(version),
+          format: retained.format,
+          id,
+          sha256: await hashFile(retained.path),
+          version,
+        }),
         expiresAt: Number.MAX_SAFE_INTEGER,
         path: retained.path,
       });
@@ -150,7 +190,7 @@ export class PluginArtifactTransferManager {
     project: DevelopmentTransferProject,
   ): Promise<{ readonly artifact: PluginTransferArtifact; readonly token: string }> {
     await mkdir(this.#stagingRoot, { recursive: true });
-    const entry = await this.#buildDevelopment(project, project.version);
+    const entry = await this.#buildDevelopment(project, project.version, "installed");
     if (entry === undefined) {
       throw new PluginArtifactTransferError("plugin_transfer_artifact_missing");
     }
@@ -191,7 +231,11 @@ export class PluginArtifactTransferManager {
     await rm(this.#stagingRoot, { force: true, recursive: true });
   }
 
-  async #buildDevelopment(project: DevelopmentTransferProject, version: string): Promise<TransferEntry | undefined> {
+  async #buildDevelopment(
+    project: DevelopmentTransferProject,
+    version: string,
+    provenance: "development" | "installed",
+  ): Promise<TransferEntry | undefined> {
     const format: PluginArtifactFormat = project.packageMode === "single-file" ? "singleFile" : "archive";
     const extension = format === "singleFile" ? ".mgplugin.js" : ".mgplugin";
     const path = resolve(this.#stagingRoot, `${project.id}-${randomUUID()}${extension}`);
@@ -200,8 +244,18 @@ export class PluginArtifactTransferManager {
       if (typeof tool.buildPluginArtifact !== "function") return undefined;
       const built = await (tool.buildPluginArtifact as (input: { versionOverride: string }) => unknown)({ versionOverride: version });
       if (!isBuildResult(built) || built.format !== format || !built.fileName.endsWith(extension) || built.bytes.byteLength > MAX_PLUGIN_ARTIFACT_BYTES) return undefined;
+      if (project.fingerprint !== await developmentProjectFingerprint(project.projectRoot)) return undefined;
       await writeFile(path, built.bytes, { flag: "wx", mode: 0o444 });
-      const artifact = Object.freeze({ bytes: built.bytes.byteLength, format, id: project.id, sha256: sha256(built.bytes), version });
+      const artifact = Object.freeze({
+        bytes: built.bytes.byteLength,
+        developmentFingerprint: provenance === "development" ? project.fingerprint : null,
+        developmentRevision: provenance === "development" ? project.syncRevision : null,
+        format,
+        id: project.id,
+        provenance,
+        sha256: sha256(built.bytes),
+        version,
+      });
       return Object.freeze({ artifact, expiresAt: Number.MAX_SAFE_INTEGER, path });
     } catch { await rm(path, { force: true }); return undefined; }
   }
@@ -218,10 +272,14 @@ export function validateArtifactBatch(artifacts: readonly PluginTransferArtifact
 }
 
 export function isPluginTransferArtifact(value: unknown): value is PluginTransferArtifact {
-  if (!isRecord(value) || Object.keys(value).length !== 5) return false;
+  if (!isRecord(value) || Object.keys(value).length !== 8) return false;
   return isPluginId(value.id) && typeof value.version === "string" && parseSemver(value.version) !== null &&
     typeof value.bytes === "number" && Number.isSafeInteger(value.bytes) && value.bytes > 0 && value.bytes <= MAX_PLUGIN_ARTIFACT_BYTES &&
-    typeof value.sha256 === "string" && /^[a-f0-9]{64}$/.test(value.sha256) && (value.format === "archive" || value.format === "singleFile");
+    typeof value.sha256 === "string" && /^[a-f0-9]{64}$/.test(value.sha256) && (value.format === "archive" || value.format === "singleFile") &&
+    (value.provenance === "installed" || value.provenance === "development" || value.provenance === "developmentReplica") &&
+    ((value.provenance === "installed" && value.developmentFingerprint === null && value.developmentRevision === null) ||
+      (value.provenance !== "installed" && typeof value.developmentFingerprint === "string" && /^[a-f0-9]{64}$/.test(value.developmentFingerprint) &&
+        typeof value.developmentRevision === "number" && Number.isSafeInteger(value.developmentRevision) && value.developmentRevision > 0));
 }
 
 async function findRetainedArtifact(dataRoot: string, id: string, version: string) {
@@ -243,7 +301,9 @@ function sha256(bytes: Uint8Array): string { return createHash("sha256").update(
 interface Semver { major: number; minor: number; patch: number; prerelease: string[] }
 function parseSemver(value: string): Semver | null { const m = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(value); return m === null ? null : { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]), prerelease: m[4]?.split(".") ?? [] }; }
 function compareSemver(left: string, right: string): number { const a = parseSemver(left)!; const b = parseSemver(right)!; for (const k of ["major", "minor", "patch"] as const) if (a[k] !== b[k]) return a[k] > b[k] ? 1 : -1; if (!a.prerelease.length && b.prerelease.length) return 1; if (a.prerelease.length && !b.prerelease.length) return -1; return a.prerelease.join(".").localeCompare(b.prerelease.join(".")); }
-function developmentVersion(version: string, at: number): string { const v = parseSemver(version); if (v === null || v.patch >= Number.MAX_SAFE_INTEGER) throw new PluginArtifactTransferError("invalid_request"); return `${v.major}.${v.minor}.${v.patch + 1}-devsync.${at}`; }
+function developmentVersion(version: string, revision: number, fingerprint: string): string { const v = parseSemver(version); if (v === null || v.patch >= Number.MAX_SAFE_INTEGER || !Number.isSafeInteger(revision) || revision <= 0 || !/^[a-f0-9]{64}$/.test(fingerprint)) throw new PluginArtifactTransferError("invalid_request"); return `${v.major}.${v.minor}.${v.patch + 1}-devsync.${revision}.${fingerprint}`; }
+function parseDevelopmentVersion(version: string): { readonly fingerprint: string; readonly revision: number } | undefined { const match = /^\d+\.\d+\.\d+-devsync\.(\d+)\.([a-f0-9]{64})$/.exec(version); const revision = match === null ? undefined : Number(match[1]); return match === null || !Number.isSafeInteger(revision) || revision! <= 0 ? undefined : { fingerprint: match[2]!, revision: revision! }; }
+function developmentMetadataForVersion(version: string): Pick<PluginTransferArtifact, "developmentFingerprint" | "developmentRevision" | "provenance"> { const development = parseDevelopmentVersion(version); return development === undefined ? { developmentFingerprint: null, developmentRevision: null, provenance: "installed" } : { developmentFingerprint: development.fingerprint, developmentRevision: development.revision, provenance: "developmentReplica" }; }
 function key(id: string, version: string): string { return `${id}\u001f${version}`; }
 function isPluginId(value: unknown): value is string { return typeof value === "string" && /^[a-z0-9][a-z0-9.-]{0,127}$/.test(value); }
 function isArtifactName(value: string): boolean { return value.endsWith(".mgplugin") || value.endsWith(".mgplugin.js"); }

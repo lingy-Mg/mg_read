@@ -49,9 +49,11 @@ enum LanSyncPhase {
 
 enum LanSyncConflictChoice { smartMerge, useSender, keepLocal }
 
-enum LanSyncPluginPlanState { missing, upgrade, sameVersion, receiverNewer, unavailable }
+enum LanSyncPluginPlanState { developmentConflict, missing, upgrade, sameVersion, receiverNewer, unavailable }
 
 enum LanSyncPluginArtifactFormat { singleFile, archive }
+
+enum LanSyncPluginProvenance { installed, development, developmentReplica }
 
 @immutable
 final class LanSyncBookConflict {
@@ -161,7 +163,10 @@ final class LanSyncPluginDescriptor {
     required this.artifactFormat,
     required this.sha256,
     required this.transferable,
+    this.developmentFingerprint,
+    this.developmentRevision,
     this.displayName,
+    this.provenance = LanSyncPluginProvenance.installed,
     this.reason,
   });
 
@@ -169,16 +174,22 @@ final class LanSyncPluginDescriptor {
   final String version;
   final int bytes;
   final LanSyncPluginArtifactFormat artifactFormat;
+  final String? developmentFingerprint;
+  final int? developmentRevision;
   final String sha256;
   final bool transferable;
   final String? displayName;
+  final LanSyncPluginProvenance provenance;
   final String? reason;
 
   Map<String, Object?> toJson() => <String, Object?>{
     'id': id,
     'version': version,
     'bytes': bytes,
+    'developmentFingerprint': developmentFingerprint,
+    'developmentRevision': developmentRevision,
     'artifactFormat': artifactFormat.name,
+    'provenance': provenance.name,
     'sha256': sha256,
     'transferable': transferable,
     if (displayName != null) 'displayName': displayName,
@@ -195,14 +206,28 @@ final class LanSyncPluginDescriptor {
         'archive' => LanSyncPluginArtifactFormat.archive,
         _ => throw const FormatException('invalid_artifact_format'),
       },
+      developmentFingerprint: _nullableString(json, 'developmentFingerprint', maxLength: 64),
+      developmentRevision: _nullableInt(json, 'developmentRevision', min: 1, max: 9007199254740991),
       sha256: _requiredString(json, 'sha256', maxLength: 128),
       transferable: _requiredBool(json, 'transferable'),
       displayName: _optionalString(json, 'displayName', maxLength: 512),
+      provenance: switch (_requiredString(json, 'provenance', maxLength: 32)) {
+        'installed' => LanSyncPluginProvenance.installed,
+        'development' => LanSyncPluginProvenance.development,
+        'developmentReplica' => LanSyncPluginProvenance.developmentReplica,
+        _ => throw const FormatException('invalid_plugin_provenance'),
+      },
       reason: _optionalString(json, 'reason', maxLength: 128),
     );
     if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(descriptor.sha256) ||
         (descriptor.transferable && descriptor.bytes == 0) ||
-        (!descriptor.transferable && descriptor.bytes != 0)) {
+        (!descriptor.transferable && descriptor.bytes != 0) ||
+        (descriptor.provenance == LanSyncPluginProvenance.installed &&
+            (descriptor.developmentFingerprint != null || descriptor.developmentRevision != null)) ||
+        (descriptor.provenance != LanSyncPluginProvenance.installed &&
+            (descriptor.developmentFingerprint == null ||
+                !RegExp(r'^[a-f0-9]{64}$').hasMatch(descriptor.developmentFingerprint!) ||
+                descriptor.developmentRevision == null))) {
       throw const FormatException('invalid_plugin_descriptor');
     }
     return descriptor;
@@ -424,8 +449,23 @@ String? _optionalString(Map<String, Object?> json, String key, {required int max
   return value;
 }
 
+String? _nullableString(Map<String, Object?> json, String key, {required int maxLength}) {
+  if (!json.containsKey(key)) throw FormatException('invalid_$key');
+  return _optionalString(json, key, maxLength: maxLength);
+}
+
 int _requiredInt(Map<String, Object?> json, String key, {int? min, int? max}) {
   final value = json[key];
+  if (value is! int || (min != null && value < min) || (max != null && value > max)) {
+    throw FormatException('invalid_$key');
+  }
+  return value;
+}
+
+int? _nullableInt(Map<String, Object?> json, String key, {int? min, int? max}) {
+  if (!json.containsKey(key)) throw FormatException('invalid_$key');
+  final value = json[key];
+  if (value == null) return null;
   if (value is! int || (min != null && value < min) || (max != null && value > max)) {
     throw FormatException('invalid_$key');
   }

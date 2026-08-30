@@ -161,7 +161,7 @@ final class LanSyncSenderService {
     final server = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     final announcementSocket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
     announcementSocket.broadcastEnabled = true;
-    final addresses = await _eligibleAddresses();
+    final addresses = await eligibleLanSyncAddresses();
     final service = LanSyncSenderService._(
       sessionId: sessionId,
       manifest: manifest,
@@ -582,8 +582,8 @@ final class LanSyncFramedConnection {
     await _sendFrame(0, bytes);
   }
 
-  Future<void> sendBinary(Uint8List bytes) async {
-    if (bytes.isEmpty || bytes.length > lanSyncMaxBinaryChunkBytes) {
+  Future<void> sendBinary(Uint8List bytes, {int maxBytes = lanSyncMaxBinaryChunkBytes}) async {
+    if (bytes.isEmpty || bytes.length > maxBytes) {
       throw const LanSyncTransportException('lan_sync_binary_too_large');
     }
     await _sendFrame(1, bytes);
@@ -609,10 +609,13 @@ final class LanSyncFramedConnection {
     return frame.value;
   }
 
-  Future<LanSyncFrame> readFrame({int controlMaxBytes = lanSyncMaxControlFrameBytes}) async {
+  Future<LanSyncFrame> readFrame({
+    int binaryMaxBytes = lanSyncMaxBinaryChunkBytes,
+    int controlMaxBytes = lanSyncMaxControlFrameBytes,
+  }) async {
     final header = await _readExactly(4);
     final length = ByteData.sublistView(header).getUint32(0, Endian.big);
-    final maxFrameBytes = max(controlMaxBytes, lanSyncMaxBinaryChunkBytes) + 1;
+    final maxFrameBytes = max(controlMaxBytes, binaryMaxBytes) + 1;
     if (length < 2 || length > maxFrameBytes) {
       throw const LanSyncTransportException('lan_sync_frame_too_large');
     }
@@ -620,7 +623,7 @@ final class LanSyncFramedConnection {
     final kind = payload[0];
     final body = Uint8List.sublistView(payload, 1);
     if (kind == 1) {
-      if (body.isEmpty || body.length > lanSyncMaxBinaryChunkBytes) {
+      if (body.isEmpty || body.length > binaryMaxBytes) {
         throw const LanSyncTransportException('lan_sync_binary_too_large');
       }
       return LanSyncBinaryFrame(Uint8List.fromList(body));
@@ -671,7 +674,7 @@ final class LanSyncFramedConnection {
   }
 }
 
-Future<List<String>> _eligibleAddresses() async {
+Future<List<String>> eligibleLanSyncAddresses() async {
   final candidates = <LanSyncNetworkAddress>[];
   for (final interface in await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false)) {
     for (final address in interface.addresses) {

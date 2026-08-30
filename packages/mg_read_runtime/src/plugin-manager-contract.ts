@@ -209,6 +209,7 @@ export interface DevelopmentPlugin {
   readonly generationRoot: string;
   readonly loaded: LoadedPlugin;
   readonly projectRoot: string;
+  readonly syncRevision: number;
 }
 
 export interface PluginInvocationScope {

@@ -51,6 +51,7 @@ async function createProject(projectRoot, pluginId, prefix) {
   await Promise.all([
     mkdir(join(projectRoot, "src"), { recursive: true }),
     mkdir(join(projectRoot, "dist"), { recursive: true }),
+    mkdir(join(projectRoot, "tools"), { recursive: true }),
   ]);
   const packageJson = {
     name: `@mgread-plugin/${pluginId.split(".").at(-1)}`,
@@ -76,6 +77,10 @@ async function createProject(projectRoot, pluginId, prefix) {
     ),
     writeFile(join(projectRoot, "src", "index.mjs"), source(prefix)),
     writeFile(join(projectRoot, "dist", "index.mjs"), source(prefix)),
+    writeFile(
+      join(projectRoot, "tools", "mgread.mjs"),
+      "export function buildPluginArtifact({ versionOverride }) { return { bytes: new TextEncoder().encode(versionOverride), fileName: 'fixture.mgplugin.js', format: 'singleFile' }; }\n",
+    ),
   ]);
 }
 
@@ -103,12 +108,21 @@ test("development builds hot swap generations and retain the old version on fail
   t.after(() => manager.close());
   await manager.initialize();
   assert.equal((await search(manager, "org.example.watched")).items[0].title, "第一版：测试");
+  const initialArtifact = (await manager.listExportableArtifacts())[0];
+  const repeatedArtifact = (await manager.listExportableArtifacts())[0];
+  assert.equal(initialArtifact.provenance, "development");
+  assert.equal(repeatedArtifact.version, initialArtifact.version);
+  assert.equal(repeatedArtifact.developmentFingerprint, initialArtifact.developmentFingerprint);
+  assert.equal(repeatedArtifact.developmentRevision, initialArtifact.developmentRevision);
 
   const reloadStartedAt = performance.now();
   await writeFile(join(firstRoot, "src", "index.mjs"), source("第二版", 3_000));
   await waitFor(() => events.some((event) => event.code === "development_plugin_updated"));
   console.log(JSON.stringify({ developmentHotReloadMs: Math.round(performance.now() - reloadStartedAt) }));
   assert.equal((await search(manager, "org.example.watched")).items[0].title, "第二版：测试");
+  const updatedArtifact = (await manager.listExportableArtifacts())[0];
+  assert.notEqual(updatedArtifact.developmentFingerprint, initialArtifact.developmentFingerprint);
+  assert.ok(updatedArtifact.developmentRevision > initialArtifact.developmentRevision);
 
   const staleRequest = search(manager, "org.example.watched");
   await writeFile(join(firstRoot, "src", "index.mjs"), source("第三版"));

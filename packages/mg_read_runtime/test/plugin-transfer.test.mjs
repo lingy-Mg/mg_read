@@ -22,11 +22,20 @@ test("plugin transfer v2 lists retained artifacts and plans SemVer", async (t) =
   const sha256 = createHash("sha256").update(archive).digest("hex");
   const manager = new PluginTransferManager(root);
   const listed = await manager.listExportable([{ id: "org.example.source", activeVersion: "1.2.0", pendingVersion: null }]);
-  assert.deepEqual(listed, [{ bytes: archive.length, format: "archive", id: "org.example.source", sha256, version: "1.2.0" }]);
+  assert.deepEqual(listed, [{
+    bytes: archive.length,
+    developmentFingerprint: null,
+    developmentRevision: null,
+    format: "archive",
+    id: "org.example.source",
+    provenance: "installed",
+    sha256,
+    version: "1.2.0",
+  }]);
   const installed = [{ id: "org.example.source", activeVersion: "1.0.0", pendingVersion: null }];
   const plan = manager.plan([
-    { bytes: archive.length, format: "archive", id: "org.example.source", sha256, version: "1.2.0" },
-    { bytes: archive.length, format: "singleFile", id: "org.new.source", sha256, version: "1.0.0" },
+    { bytes: archive.length, developmentFingerprint: null, developmentRevision: null, format: "archive", id: "org.example.source", provenance: "installed", sha256, version: "1.2.0" },
+    { bytes: archive.length, developmentFingerprint: null, developmentRevision: null, format: "singleFile", id: "org.new.source", provenance: "installed", sha256, version: "1.0.0" },
   ], installed);
   assert.deepEqual(plan.map((item) => item.action), ["upgrade", "missing"]);
   assert.ok(MAX_PLUGIN_TRANSFER_BYTES >= archive.length);

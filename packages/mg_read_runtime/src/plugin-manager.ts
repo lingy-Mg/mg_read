@@ -275,7 +275,18 @@ export class PluginManager {
   }
 
   /** Compares sender SemVer against this Runtime's installed versions. */
-  async planPluginTransfer(incoming: readonly PluginTransferArtifact[]): Promise<readonly PluginTransferPlanItem[]> { await this.initialize(); return this.#pluginTransfer.plan(incoming, this.#installedSnapshots); }
+  async planPluginTransfer(incoming: readonly PluginTransferArtifact[]): Promise<readonly PluginTransferPlanItem[]> {
+    await this.initialize();
+    return this.#pluginTransfer.plan(
+      incoming,
+      this.#combinedSnapshots(),
+      [...this.#developmentLoaded.values()].map((plugin) => ({
+        fingerprint: plugin.fingerprint,
+        id: plugin.loaded.descriptor.id,
+        syncRevision: plugin.syncRevision,
+      })),
+    );
+  }
 
   /** Creates a one-shot Runtime-private resource for bounded artifact streaming. */
   async createPluginTransferResource(id: string, version: string): Promise<{ readonly token: string; readonly artifact: PluginTransferArtifact }> { await this.initialize(); return this.#pluginTransfer.createResource(id, version); }

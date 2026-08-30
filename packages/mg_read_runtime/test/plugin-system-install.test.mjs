@@ -295,7 +295,14 @@ test("development projects load in place without creating an installed version",
   const exportable = await manager.listExportableArtifacts();
   assert.equal(exportable.length, 1);
   assert.equal(exportable[0].id, "org.example.live-source");
-  assert.match(exportable[0].version, /^0\.1\.1-devsync\.\d+$/);
+  assert.match(exportable[0].version, /^0\.1\.1-devsync\.\d+\.[a-f0-9]{64}$/);
+  assert.equal(exportable[0].provenance, "development");
+  assert.match(exportable[0].developmentFingerprint, /^[a-f0-9]{64}$/);
+  assert.ok(Number.isSafeInteger(exportable[0].developmentRevision));
+  const unchangedExportable = await manager.listExportableArtifacts();
+  assert.equal(unchangedExportable[0].version, exportable[0].version);
+  assert.equal(unchangedExportable[0].developmentFingerprint, exportable[0].developmentFingerprint);
+  assert.equal(unchangedExportable[0].developmentRevision, exportable[0].developmentRevision);
   const resourceMetadata = await manager.createPluginTransferResource(
     exportable[0].id,
     exportable[0].version,
@@ -324,6 +331,9 @@ test("development projects load in place without creating an installed version",
   assert.equal(packaged.artifact.id, "org.example.live-source");
   assert.equal(packaged.artifact.version, "0.1.0");
   assert.equal(packaged.artifact.format, "archive");
+  assert.equal(packaged.artifact.provenance, "installed");
+  assert.equal(packaged.artifact.developmentFingerprint, null);
+  assert.equal(packaged.artifact.developmentRevision, null);
   assert.equal(
     packaged.fileName,
     "org.example.live-source-0.1.0.mgplugin",

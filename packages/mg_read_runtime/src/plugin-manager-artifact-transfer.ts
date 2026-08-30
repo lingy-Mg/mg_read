@@ -21,9 +21,11 @@ export function listExportablePluginArtifacts(
   return transfer.listExportable(
     installed,
     [...development].map((plugin) => ({
+      fingerprint: plugin.fingerprint,
       id: plugin.loaded.descriptor.id,
       packageMode: plugin.loaded.descriptor.packageMode,
       projectRoot: plugin.projectRoot,
+      syncRevision: plugin.syncRevision,
       version: plugin.loaded.descriptor.version,
     })),
   );
@@ -38,9 +40,11 @@ export async function createDevelopmentPackageArtifactResource(
   readonly token: string;
 }> {
   const resource = await transfer.createDevelopmentPackageResource({
+    fingerprint: development.fingerprint,
     id: development.loaded.descriptor.id,
     packageMode: development.loaded.descriptor.packageMode,
     projectRoot: development.projectRoot,
+    syncRevision: development.syncRevision,
     version: development.loaded.descriptor.version,
   });
   const suffix = resource.artifact.format === "singleFile" ? ".mgplugin.js" : ".mgplugin";

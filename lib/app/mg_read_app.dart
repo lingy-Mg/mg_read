@@ -15,6 +15,7 @@ import 'package:mg_read/app/data_source_system_error_dialog_host.dart';
 import 'package:mg_read/app/data_source_system_error_reporter.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/lan_sync/application/device_sync_controller.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
@@ -33,10 +34,11 @@ class MgReadApp extends ConsumerStatefulWidget {
   ConsumerState<MgReadApp> createState() => _MgReadAppState();
 }
 
-class _MgReadAppState extends ConsumerState<MgReadApp> {
+class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Subscribe before warmup so a Runtime startup failure and later Node
     // lifecycle diagnostics both reach the same root-level fatal boundary.
     ref.read(runtimeFatalErrorObserverProvider);
@@ -54,6 +56,8 @@ class _MgReadAppState extends ConsumerState<MgReadApp> {
     try {
       final runtimeReady = await _warmPluginRuntime();
       startup.recordStage('runtimeReady', resultState: runtimeReady ? 'ready' : 'failure');
+      await ref.read(deviceSyncControllerProvider.notifier).start();
+      startup.recordStage('deviceSyncReady', resultState: ref.read(deviceSyncControllerProvider).started ? 'ready' : 'failure');
     } finally {
       // Retention is maintenance, not startup; it must follow Runtime warmup.
       final maintenanceResult = await startup.runDeferredDiagnosticsMaintenance();
@@ -92,6 +96,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> {
       ref.invalidate(pluginRuntimeConnectionProvider);
       ref.invalidate(pluginRuntimeStatusProvider);
       ref.invalidate(availablePluginSourcesProvider);
+      unawaited(_syncDevelopmentChanges());
     }
     for (final change in batch.changes.where((change) => change.isFailure)) {
       ref
@@ -100,6 +105,35 @@ class _MgReadAppState extends ConsumerState<MgReadApp> {
             errorCode: change.kind == DevelopmentPluginChangeKind.buildFailed ? 'plugin_build_failed' : 'plugin_load_failed',
           );
     }
+  }
+
+  Future<void> _syncDevelopmentChanges() async {
+    try {
+      await ref.read(availablePluginSourcesProvider.future);
+      await ref.read(deviceSyncControllerProvider.notifier).syncAvailablePeers(pushChanges: true);
+    } on Object {
+      // 自动同步会在下一轮设备广播时重试；开发热更新本身保持成功。
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        unawaited(ref.read(deviceSyncControllerProvider.notifier).start());
+        break;
+      case AppLifecycleState.hidden || AppLifecycleState.paused || AppLifecycleState.detached:
+        unawaited(ref.read(deviceSyncControllerProvider.notifier).stop());
+        break;
+      case AppLifecycleState.inactive:
+        break;
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override

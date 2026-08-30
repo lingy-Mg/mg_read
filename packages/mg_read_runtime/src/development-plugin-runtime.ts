@@ -4,9 +4,9 @@
  * Candidate activation finishes before callers replace the active map. Retired
  * generations stay on disk only while a request still owns them.
  */
-import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 
+import { resolveDevelopmentSyncRevision } from "./development-sync-revision.js";
 import { stageDevelopmentGeneration } from "./development-plugin-generation.js";
 import { activatePlugin } from "./plugin-activation.js";
 import {
@@ -16,7 +16,11 @@ import {
   PluginManagerError,
   type PluginManagerEventSink,
 } from "./plugin-manager-contract.js";
-import { normalizePluginModule, snapshotFrom } from "./plugin-manager-files.js";
+import {
+  developmentProjectFingerprint,
+  normalizePluginModule,
+  snapshotFrom,
+} from "./plugin-manager-files.js";
 import { type PluginPackageDescriptor, resolveInside } from "./plugin-package.js";
 import { readPluginProject } from "./plugin-package.js";
 
@@ -58,6 +62,12 @@ export async function loadDevelopmentPlugin(
       await options.createContext(generation.descriptor),
       options.activationTimeoutMs,
     );
+    const fingerprint = await developmentProjectFingerprint(options.projectRoot);
+    const syncRevision = await resolveDevelopmentSyncRevision(
+      options.dataRoot,
+      generation.descriptor.id,
+      fingerprint,
+    );
     const loaded = Object.freeze({
       descriptor: generation.descriptor,
       module: candidate,
@@ -69,10 +79,11 @@ export async function loadDevelopmentPlugin(
       pluginId: options.descriptor.id,
     });
     return Object.freeze({
-      fingerprint: randomUUID(),
+      fingerprint,
       generationRoot: generation.generationRoot,
       loaded,
       projectRoot: options.projectRoot,
+      syncRevision,
     });
   } catch {
     if (generationRoot !== undefined) {

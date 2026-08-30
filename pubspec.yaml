@@ -1,7 +1,7 @@
 name: mg_read
 description: "Main Flutter application for MgRead."
 publish_to: 'none'
-version: 0.9.103+221
+version: 0.9.104+222
 
 environment:
   sdk: ^3.12.2
@@ -10,10 +10,12 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_riverpod: 3.4.2
+  cryptography: 2.9.0
   ffi: 2.2.0
   go_router: 17.3.0
   drift: 2.34.3
   file_selector: 1.1.0
+  flutter_secure_storage: 10.2.0
   path_provider: 2.1.6
   mobile_scanner:
     path: packages/mobile_scanner

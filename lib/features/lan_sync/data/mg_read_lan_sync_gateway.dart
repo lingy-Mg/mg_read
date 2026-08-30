@@ -68,9 +68,12 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
           version: entry.value,
           bytes: artifact?.bytes ?? 0,
           artifactFormat: _toLanArtifactFormat(artifact?.format ?? PluginArtifactFormat.archive),
+          developmentFingerprint: artifact?.developmentFingerprint,
+          developmentRevision: artifact?.developmentRevision,
           sha256: artifact?.sha256 ?? ''.padLeft(64, '0'),
           transferable: artifact != null,
           displayName: installedPlugin?.displayName,
+          provenance: artifact == null ? LanSyncPluginProvenance.installed : _toLanProvenance(artifact.provenance),
           reason: artifact == null ? 'artifact_unavailable' : null,
         ),
       );
@@ -295,11 +298,14 @@ PluginTransferArtifact? _findArtifact(List<PluginTransferArtifact> artifacts, St
 
 PluginTransferArtifact _toRuntimeArtifact(LanSyncPluginDescriptor plugin) => PluginTransferArtifact(
   bytes: plugin.bytes,
+  developmentFingerprint: plugin.developmentFingerprint,
+  developmentRevision: plugin.developmentRevision,
   format: switch (plugin.artifactFormat) {
     LanSyncPluginArtifactFormat.singleFile => PluginArtifactFormat.singleFile,
     LanSyncPluginArtifactFormat.archive => PluginArtifactFormat.archive,
   },
   pluginId: plugin.id,
+  provenance: _toRuntimeProvenance(plugin.provenance),
   sha256: plugin.sha256,
   version: plugin.version,
 );
@@ -309,7 +315,20 @@ LanSyncPluginArtifactFormat _toLanArtifactFormat(PluginArtifactFormat format) =>
   PluginArtifactFormat.archive => LanSyncPluginArtifactFormat.archive,
 };
 
+LanSyncPluginProvenance _toLanProvenance(PluginArtifactProvenance provenance) => switch (provenance) {
+  PluginArtifactProvenance.installed => LanSyncPluginProvenance.installed,
+  PluginArtifactProvenance.development => LanSyncPluginProvenance.development,
+  PluginArtifactProvenance.developmentReplica => LanSyncPluginProvenance.developmentReplica,
+};
+
+PluginArtifactProvenance _toRuntimeProvenance(LanSyncPluginProvenance provenance) => switch (provenance) {
+  LanSyncPluginProvenance.installed => PluginArtifactProvenance.installed,
+  LanSyncPluginProvenance.development => PluginArtifactProvenance.development,
+  LanSyncPluginProvenance.developmentReplica => PluginArtifactProvenance.developmentReplica,
+};
+
 LanSyncPluginPlanState _toFeaturePlan(PluginTransferPlanAction action) => switch (action) {
+  PluginTransferPlanAction.developmentConflict => LanSyncPluginPlanState.developmentConflict,
   PluginTransferPlanAction.missing => LanSyncPluginPlanState.missing,
   PluginTransferPlanAction.upgrade => LanSyncPluginPlanState.upgrade,
   PluginTransferPlanAction.same => LanSyncPluginPlanState.sameVersion,
