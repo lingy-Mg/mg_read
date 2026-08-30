@@ -1,7 +1,8 @@
 /**
  * Native Web Components application served by the Runtime Debug listener.
  * Dynamic Runtime projections are always rendered with DOM text nodes, while
- * the three workspaces retain a refresh-safe browser-history route.
+ * the three workspaces retain a refresh-safe browser-history route. Log
+ * category visibility is browser-local UI state and survives page refreshes.
  */
 (() => {
   'use strict';
@@ -9,6 +10,7 @@
   const defaultPlugin = 'org.mgread.shudugu';
   // Keep the live view scannable while retaining every entry for filters/copy.
   const defaultVisibleLogEntryLimit = 10;
+  const hiddenLogCategoriesStorageKey = 'mgread.debug.logs.hiddenCategories.v1';
   const workspaceRoutes = Object.freeze({
     search: '/__debug/search',
     discover: '/__debug/discover',
@@ -22,6 +24,23 @@
     Object.freeze({ id: 'plugin.http', label: '插件 HTTP' }),
     Object.freeze({ id: 'plugin.webview', label: '插件 WebView' }),
   ]);
+  const readHiddenLogCategories = () => {
+    try {
+      const value = JSON.parse(window.localStorage.getItem(hiddenLogCategoriesStorageKey) || '[]');
+      if (!Array.isArray(value)) return new Set();
+      const knownCategories = new Set(logCategories.map((category) => category.id));
+      return new Set(value.filter((category) => knownCategories.has(category)));
+    } catch {
+      return new Set();
+    }
+  };
+  const writeHiddenLogCategories = (categories) => {
+    try {
+      window.localStorage.setItem(hiddenLogCategoriesStorageKey, JSON.stringify(categories));
+    } catch {
+      // The debug inspector stays usable when browser storage is unavailable.
+    }
+  };
   const text = (value) => value === null || value === undefined || value === '' ? '--' : String(value);
   const element = (tag, className, content) => {
     const node = document.createElement(tag);
@@ -451,6 +470,7 @@
       this.level = this.querySelector('select');
       this.filter = this.querySelector('input');
       this.categories = [...this.querySelectorAll('.log-category-filters input')];
+      this.restoreCategoryVisibility();
       this.copy = this.querySelector('[data-action="copy"]');
       this.pause = this.querySelector('[data-action="pause"]');
       this.copy.addEventListener('click', () => void this.copyEntries());
@@ -460,11 +480,25 @@
       });
       this.level.addEventListener('change', () => this.renderEntries());
       this.filter.addEventListener('input', () => this.renderEntries());
-      for (const category of this.categories) category.addEventListener('change', () => this.renderEntries());
+      for (const category of this.categories) {
+        category.addEventListener('change', () => {
+          this.persistCategoryVisibility();
+          this.renderEntries();
+        });
+      }
     }
 
     disconnectedCallback() { this.stopPolling(); }
     setActive(value) { this.active = value; this.syncPolling(); }
+
+    restoreCategoryVisibility() {
+      const hiddenCategories = readHiddenLogCategories();
+      for (const category of this.categories) category.checked = !hiddenCategories.has(category.value);
+    }
+
+    persistCategoryVisibility() {
+      writeHiddenLogCategories(this.categories.filter((category) => !category.checked).map((category) => category.value));
+    }
 
     syncPolling() {
       const running = this.active && !this.userPaused;
