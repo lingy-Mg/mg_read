@@ -7,7 +7,8 @@
 
 ## 边界与返回值
 
-- 数据源插件使用标准 Node.js 24 开发项目、`package.json.mgread`、lockfile v3 和普通 ESM 开发输出；
+- 数据源插件使用标准 Node.js 24 开发项目、`package.json.mgread` 和普通 ESM 开发输出；single-file
+  的外部开发依赖由 Node.js 解析且不进入 artifact，只有 archive 将 lockfile v3 作为恢复依赖图；
   发布默认生成核心规范定义的 single-file artifact。禁止 Worker、子进程、native addon、Git dependency、
   install script、自定义 loader/lock 或主应用/Runtime 内部依赖。
 - 生产代码只使用公开 `ctx.http`、`ctx.webview`、`ctx.log`、`ctx.resource`、`ctx.dataDir` 和

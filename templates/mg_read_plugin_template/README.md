@@ -10,7 +10,7 @@ TypeScript 由 `tsc` 编译为多个 JavaScript 文件；发布默认用精确 `
 ```text
 mg_read_plugin_template/
 ├─ package.json              # Node、依赖和唯一 mgread 元数据
-├─ package-lock.json         # npm lockfile v3，发布必需
+├─ package-lock.json         # npm 开发复现用；只有 archive 发布必需
 ├─ src/                      # TypeScript 与由代码 import 的 JSON
 ├─ dist/                     # tsc 多文件开发输出
 ├─ packages/example-parser/  # 包内 file: Node package 示例

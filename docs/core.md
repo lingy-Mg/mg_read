@@ -36,7 +36,7 @@ plugins/sources/                    真实数据源插件
 ## 主应用持久化与 Content Library
 
 - `AppPersistence` 为权威；metadata 版本、schema、JSON 和容器生命周期仅留在 core persistence。
-- `ContentLibrary` 拥有书架、目录、正文、漫画文件、进度和书签；Runtime 不打开 SQLite 或获取内容路径。
+- `ContentLibrary` 拥有书架、目录、正文、漫画文件、小说/漫画/音频/视频进度和书签；Runtime 不打开 SQLite 或获取内容路径。
 - 书架唯一上限为 `bookshelfMaxItemCount`（100）；新增须在 metadata 事务内校验，超限抛
   `BookshelfCapacityExceededException`，更新不占名额。
 - metadata、不可变正文对象和受控文件之间没有跨库原子事务：先写入并校验对象，再以 metadata
@@ -47,6 +47,8 @@ plugins/sources/                    真实数据源插件
   数组位置或全量内存载入作为持久权威。
 - Runtime 结果经公开 Facade 和强类型 adapter 校验后才能入库；无公开协议时保持 `unsupported`，
   不得用 raw transport 或 `host.*` 回调补齐。
+- 书架可保留一份有界、JSON 兼容的宿主详情快照以恢复低频附加字段；稳定来源身份和列表查询字段仍
+  使用强类型模型，快照不得包含封面字节、Cookie、请求头或原始 Runtime transport。
 - 漫画正文图片缓存返回总量与按 `LibraryItemId` 的用量；无归属旧缓存只计总量。
 - 发现页临时阅读会话退出即丢弃，不替代正式入库、目录、正文、进度和书签流程。
 - 本地 `.mgread` v1 仅含所选 artifact、书架和进度；导入先预览选择，再复用 Runtime 校验与 Content Library 事务。
@@ -77,22 +79,22 @@ plugins/sources/                    真实数据源插件
 
 ## 标准插件项目、artifact 与安装
 
-- 插件是可信 Node.js 24 项目；`package.json.mgread` 是唯一元数据，lockfile v3 是依赖图。开发使用普通
-  `node_modules`/多文件 ESM；禁止 Git dependency、install script、native addon、第二 VM 或自定义协议。
-- `mgread.packageMode` 为 `single-file|archive`，默认 `single-file`。single-file 使用精确
-  `esbuild 0.28.2` 生成 Node 24 ESM，不 minify、不带 source map/时间戳，只 externalize Node builtin；
-  unresolved/dynamic import、非 builtin external、Wasm/native/binary/sidecar 必须构建失败。
-- single-file 名为 `<id>-<version>.mgplugin.js`，首行是版本化自描述信封，包含规范 descriptor、
-  code 字节数/SHA-256 和可选内嵌图标；信封 512 KiB、图标 256 KiB、artifact 32 MiB 上限。
-- 显式 archive 为确定性 `.mgplugin` ZIP，保留 package/lock/dist/assets/packages 和 lock 恢复语义。
-  两种模式都不携带 `node_modules` 或源码，不运行 install script，不自动互相回退。
-- `buildPluginArtifact({versionOverride})` 只返回内存 bytes/fileName/format，CLI 才写盘。Windows
-  development 同步或本地导出先调用它；发送端校验形状/格式/大小并计算 SHA-256，接收端校验字节与摘要。
-- 安装写入不可变版本目录并原子切换 pending；失败不破坏当前版本。archive 依赖按 lock/SRI 精确
-  恢复，Runtime 不求解 SemVer、不运行 npm 生命周期脚本。
-- 插件私有缓存只保存可重复 GET 展示投影：发现/搜索 10 分钟，详情/目录 1 小时；使用哈希键、原子
-  写、single-flight、每项 1 MiB/每插件 100 MiB LRU。刷新失败可读 stale；不得缓存正文/媒体、登录
-  数据、写响应或主应用业务数据，缓存失败视为 miss。
+- 插件为可信 Node.js 24 ESM 项目，`package.json.mgread` 是元数据。single-file 外部依赖
+  由 Node.js 加载，Runtime 不校验依赖声明或 lockfile。
+- `mgread.packageMode` 为 `single-file|archive`，默认前者。single-file 用精确 `esbuild 0.28.2`
+  生成 Node 24 ESM，仅 externalize Node builtin；unresolved/dynamic import、非 builtin external、
+  Wasm/native/binary/sidecar 均构建失败。
+- single-file 为 `<id>-<version>.mgplugin.js`，信封含 descriptor、code 字节数/SHA-256 和图标；
+  信封/图标/artifact 上限分别为 512 KiB/256 KiB/32 MiB。
+- archive 是确定性 `.mgplugin` ZIP，保留 package/lock/dist/assets/packages；仅它要求 lockfile v3，
+  并校验本地包路径、registry HTTPS/SHA-512 和 native addon。两种模式都不携带 `node_modules`
+  或源码、不运行 install script、不互相回退。
+- `buildPluginArtifact({versionOverride})` 内存返回 bytes/fileName/format，CLI 才写盘；
+  传输两端复核格式、大小和 SHA-256。
+- 安装写入不可变版本并原子切换 pending，失败保留当前版本；archive 按 lock/SRI 恢复，
+  不求解 SemVer 或运行 npm 脚本。
+- 插件私有缓存的发现/搜索 TTL 为 10 分钟，详情/目录为 1 小时；每项 1 MiB、每插件 100 MiB
+  LRU。可读 stale，不存正文/媒体、登录/写数据或主应用业务数据，缓存失败视为 miss。
 
 ## 插件内容 API
 

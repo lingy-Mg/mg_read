@@ -7,6 +7,7 @@ import {
   readFile,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -348,6 +349,92 @@ test("development projects load in place without creating an installed version",
   );
   assert.equal(first.items[0].title, "第一版：测试");
 
+});
+
+test("single-file development loads Node-resolvable external dependencies without a lockfile", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-single-file-development-");
+  const developmentRoot = join(root, "sources");
+  const projectRoot = join(developmentRoot, "external-source");
+  const externalRoot = join(root, "shared-package");
+  const dependencyLink = join(projectRoot, "node_modules", "@fixture", "external");
+  await Promise.all([
+    mkdir(join(projectRoot, "dist"), { recursive: true }),
+    mkdir(join(projectRoot, "node_modules", "@fixture"), { recursive: true }),
+    mkdir(externalRoot, { recursive: true }),
+  ]);
+  await Promise.all([
+    writeFile(
+      join(externalRoot, "package.json"),
+      '{"name":"@fixture/external","version":"1.0.0","type":"module","exports":"./index.js"}\n',
+    ),
+    writeFile(join(externalRoot, "index.js"), "export const marker = 'external-loaded';\n"),
+  ]);
+  await symlink(externalRoot, dependencyLink, process.platform === "win32" ? "junction" : "dir");
+  const packageJson = {
+    name: "@mgread-plugin/external-source",
+    version: "1.0.0",
+    type: "module",
+    main: "dist/index.mjs",
+    engines: { node: ">=24 <25" },
+    dependencies: { "@fixture/external": "file:../../../shared-package" },
+    mgread: {
+      schemaVersion: 1,
+      id: "org.mgread.external-source",
+      displayName: "External source",
+      pluginApi: 1,
+      contentKinds: ["novel"],
+    },
+  };
+  await Promise.all([
+    writeFile(join(projectRoot, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`),
+    writeFile(
+      join(projectRoot, "dist", "index.mjs"),
+      `import { marker } from "@fixture/external";
+export function activate() { if (marker !== "external-loaded") throw new Error("external dependency missing"); }
+export function discover() { return { kind: "document", document: { components: [] } }; }
+export function search() { return { items: [], nextCursor: null, totalCount: 0 }; }
+export function getDetail() { throw new Error("unused"); }
+export function getChapters() { return { items: [] }; }
+export function getContent() { throw new Error("unused"); }
+`,
+    ),
+  ]);
+
+  const project = await readPluginProject(projectRoot);
+  assert.equal(project.descriptor.packageMode, "single-file");
+  assert.deepEqual(project.dependencies, []);
+  assert.deepEqual(project.lock, {});
+
+  const manager = new PluginManager(join(root, "runtime"), {
+    developmentPluginRoot: developmentRoot,
+  });
+  await manager.initialize();
+  assert.deepEqual(
+    (await manager.listInstalled()).map((plugin) => plugin.id),
+    ["org.mgread.external-source"],
+  );
+});
+
+test("archive projects still reject external local dependency restoration", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-archive-external-dependency-");
+  await cp(fixtureRoot, root, { recursive: true });
+  const packagePath = join(root, "package.json");
+  const lockPath = join(root, "package-lock.json");
+  const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+  const lock = JSON.parse(await readFile(lockPath, "utf8"));
+  packageJson.dependencies = { "local-helper": "file:../../../shared-package" };
+  lock.packages[""].dependencies = packageJson.dependencies;
+  lock.packages["node_modules/local-helper"].resolved = "../../../shared-package";
+  await Promise.all([
+    writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`),
+    writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`),
+  ]);
+  await assert.rejects(
+    readPluginProject(root),
+    (error) =>
+      error instanceof PluginPackageError &&
+      error.code === "plugin_package_unsupported_dependency",
+  );
 });
 
 test("single cache usage queries reuse the current development snapshot", async (t) => {

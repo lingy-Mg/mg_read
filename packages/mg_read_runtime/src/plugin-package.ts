@@ -1,8 +1,8 @@
 /**
- * 标准插件项目元数据与 lockfile 校验。
+ * 标准插件项目元数据与 archive lockfile 校验。
  *
- * 职责：解析 package.json.mgread v1，校验 Node 24 项目与 lockfile v3。
- * 注意：packageMode 仅决定发布 artifact，development 始终保持标准项目加载。
+ * 职责：解析 package.json.mgread v1，并为 archive 校验可恢复的 lockfile v3 依赖图。
+ * 注意：single-file 的开发依赖只由 Node.js 解析，发布时已全部 bundle，不属于 Runtime 安装契约。
  */
 import { access, lstat, readFile } from "node:fs/promises";
 import { isAbsolute, resolve, sep } from "node:path";
@@ -61,7 +61,7 @@ export interface LockedPluginDependency {
   readonly version: string;
 }
 
-/** Complete validated input required to restore a plugin's node_modules. */
+/** Validated project input; single-file projects always expose an empty dependency graph. */
 export interface ValidatedPluginProject {
   readonly dependencies: readonly LockedPluginDependency[];
   readonly descriptor: PluginPackageDescriptor;
@@ -69,7 +69,7 @@ export interface ValidatedPluginProject {
   readonly packageJson: Readonly<Record<string, unknown>>;
 }
 
-/** Reads package.json/package-lock.json and rejects every legacy/custom format. */
+/** Reads package metadata and validates a lockfile only when archive restoration needs it. */
 export async function readPluginProject(
   projectRoot: string,
 ): Promise<ValidatedPluginProject> {
@@ -108,11 +108,15 @@ export async function readPluginProject(
     }
   }
 
-  const lock = await readJsonObject(
-    resolve(normalizedRoot, "package-lock.json"),
-    "plugin_lock_invalid",
-  );
-  const dependencies = parseLockfile(lock, descriptor, packageJson);
+  const lock = descriptor.packageMode === "archive"
+    ? await readJsonObject(
+        resolve(normalizedRoot, "package-lock.json"),
+        "plugin_lock_invalid",
+      )
+    : {};
+  const dependencies = descriptor.packageMode === "archive"
+    ? parseArchiveLockfile(lock, descriptor, packageJson)
+    : [];
   return Object.freeze({
     dependencies: Object.freeze(dependencies),
     descriptor,
@@ -247,9 +251,6 @@ export function parsePluginPackageDescriptor(
   ) {
     throw new PluginPackageError("plugin_package_invalid");
   }
-  validateDeclaredDependencies(packageJson.dependencies);
-  validateDeclaredDependencies(packageJson.optionalDependencies);
-
   return Object.freeze({
     contentKinds: Object.freeze([...contentKinds] as PluginContentKind[]),
     ...(description === undefined ? {} : { description }),
@@ -275,7 +276,7 @@ function isSupportedIconPath(value: unknown): value is string {
   }
 }
 
-function parseLockfile(
+function parseArchiveLockfile(
   lock: Record<string, unknown>,
   descriptor: PluginPackageDescriptor,
   packageJson: Record<string, unknown>,
@@ -378,29 +379,16 @@ function normalizeLockInstallPath(value: string): string {
 
 function normalizeLocalDependencyPath(value: string): string {
   const withoutPrefix = value.startsWith("file:") ? value.slice(5) : value;
-  const normalized = normalizePluginRelativePath(withoutPrefix.replace(/^\.\//, ""));
+  let normalized: string;
+  try {
+    normalized = normalizePluginRelativePath(withoutPrefix.replace(/^\.\//, ""));
+  } catch {
+    throw new PluginPackageError("plugin_package_unsupported_dependency");
+  }
   if (!normalized.startsWith("packages/")) {
     throw new PluginPackageError("plugin_package_unsupported_dependency");
   }
   return normalized;
-}
-
-function validateDeclaredDependencies(value: unknown): void {
-  if (value === undefined) {
-    return;
-  }
-  if (!isRecord(value)) {
-    throw new PluginPackageError("plugin_package_invalid");
-  }
-  for (const [name, specifier] of Object.entries(value)) {
-    if (
-      !isNpmPackageName(name) ||
-      typeof specifier !== "string" ||
-      (!isExactSemver(specifier) && !isSupportedLocalSpecifier(specifier))
-    ) {
-      throw new PluginPackageError("plugin_package_unsupported_dependency");
-    }
-  }
 }
 
 function assertDependencyProjectionMatches(
@@ -419,18 +407,6 @@ function assertDependencyProjectionMatches(
 
 function sortedRecord(value: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
-}
-
-function isSupportedLocalSpecifier(value: string): boolean {
-  if (!value.startsWith("file:")) {
-    return false;
-  }
-  try {
-    normalizeLocalDependencyPath(value);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function isRegistryTarballUrl(value: string): boolean {

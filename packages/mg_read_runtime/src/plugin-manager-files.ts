@@ -112,7 +112,10 @@ export function removePluginStorage(dataRoot: string, pluginId: string): Promise
 }
 
 export async function developmentProjectFingerprint(projectRoot: string): Promise<string> {
-  const paths = ["package.json", "package-lock.json"];
+  const paths = ["package.json"];
+  if (await exists(resolve(projectRoot, "package-lock.json"))) {
+    paths.push("package-lock.json");
+  }
   for (const directory of ["dist", "assets", "packages", "tools"]) {
     await collectDevelopmentFiles(projectRoot, directory, paths);
   }
