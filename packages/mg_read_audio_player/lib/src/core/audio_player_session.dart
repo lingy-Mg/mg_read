@@ -86,6 +86,7 @@ final class AudioPlayerSession extends ChangeNotifier {
   Future<void>? _closeFuture;
   Future<void>? _exitRequest;
   Future<void>? _prefetchRequest;
+  String? _lastPrefetchTriggerTrackId;
   String? _lastBackendErrorMessage;
   int _generation = 0;
   bool _backendSnapshotsEnabled = false;
@@ -99,6 +100,7 @@ final class AudioPlayerSession extends ChangeNotifier {
     final generation = ++_generation;
     _backendSnapshotsEnabled = false;
     _lastBackendErrorMessage = null;
+    _lastPrefetchTriggerTrackId = null;
     _playlist = null;
     _emit(
       AudioPlayerSnapshot(
@@ -198,8 +200,15 @@ final class AudioPlayerSession extends ChangeNotifier {
       !_closing && !_closed && generation == _generation;
 
   void _validatePlaylist(AudioPlaylist playlist) {
-    if (playlist.collectionId != collectionId || playlist.tracks.isEmpty) {
-      throw const FormatException('Invalid audio playlist identity or size.');
+    if (playlist.collectionId != collectionId) {
+      throw const FormatException('Invalid audio playlist identity.');
+    }
+    if (playlist.tracks.isEmpty) {
+      throw const AudioPlayerLoadException(
+        code: 'audio_queue_empty',
+        location: '播放队列',
+        message: '当前内容暂无可播放章节。',
+      );
     }
     final ids = <String>{};
     for (final track in playlist.tracks) {
@@ -260,6 +269,9 @@ final class AudioPlayerSession extends ChangeNotifier {
         _closed) {
       return;
     }
+    final triggerTrackId = playlist.tracks[currentIndex].id;
+    if (_lastPrefetchTriggerTrackId == triggerTrackId) return;
+    _lastPrefetchTriggerTrackId = triggerTrackId;
     final generation = _generation;
     final afterTrackId = playlist.tracks.last.id;
     _prefetchRequest =

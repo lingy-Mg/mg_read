@@ -111,9 +111,14 @@ void main() {
     await tester.pump();
     expect(backend.seeks.last, const Duration(seconds: 35));
 
-    await tester.tap(find.byKey(const Key('audio-rate')));
+    await tester.ensureVisible(find.byKey(const Key('audio-settings')));
+    await tester.tap(find.byKey(const Key('audio-settings')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('audio-rate-125')));
     await tester.pump();
     expect(backend.rates.last, 1.25);
+    await tester.tap(find.byKey(const Key('audio-settings-close')));
+    await tester.pumpAndSettle();
 
     backend.emitPosition(const Duration(seconds: 37));
     await tester.pump();
@@ -554,6 +559,7 @@ Widget _testHost({
   AudioPlayerDataSource? dataSource,
 }) {
   return MaterialApp(
+    debugShowCheckedModeBanner: false,
     theme: ThemeData.light(useMaterial3: true),
     home: MediaQuery(
       data: const MediaQueryData(
