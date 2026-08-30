@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 /// Stable app-owned presentation metadata for well-known bundled sources.
 ///
@@ -45,8 +47,8 @@ abstract final class SourceBranding {
   }
 }
 
-/// Prefers the Runtime-published icon and falls back to app-owned branding or
-/// the caller's generated brand mark when the remote icon is unavailable.
+/// Prefers the Runtime-published icon through the app cover cache and falls
+/// back to direct loading only in isolated trees without that app composition.
 class SourceIcon extends StatelessWidget {
   const SourceIcon({
     required this.sourceId,
@@ -76,18 +78,51 @@ class SourceIcon extends StatelessWidget {
           );
     final Uri? iconUri = Uri.tryParse(iconUrl ?? '');
     if (iconUri == null || (iconUri.scheme != 'http' && iconUri.scheme != 'https')) return fallbackIcon;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
-      child: Image.network(
-        iconUri.toString(),
-        key: ValueKey<String>('source-icon-network-$sourceId'),
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => fallbackIcon,
-      ),
+    late final ProviderContainer container;
+    try {
+      container = ProviderScope.containerOf(context, listen: false);
+    } on StateError {
+      return _networkIcon(iconUri, fallbackIcon);
+    }
+    if (!container.read(bookCoverBytesLoaderAvailableProvider)) return _networkIcon(iconUri, fallbackIcon);
+    return Consumer(
+      builder: (context, ref, _) {
+        final asyncBytes = ref.watch(
+          bookCoverBytesProvider(
+            BookCoverRequest(pluginId: sourceId, pluginVersion: 'source-icon-v1', remoteContentId: 'source-icon', coverUrl: iconUri),
+          ),
+        );
+        final bytes = switch (asyncBytes) {
+          AsyncData<List<int>?>(:final value) when value != null && value.isNotEmpty => normalizeBookCoverBytes(value),
+          _ => null,
+        };
+        if (bytes == null) return fallbackIcon;
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(borderRadius),
+          child: Image.memory(
+            bytes,
+            key: ValueKey<String>('source-icon-memory-$sourceId'),
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => fallbackIcon,
+          ),
+        );
+      },
     );
   }
+
+  Widget _networkIcon(Uri iconUri, Widget fallbackIcon) => ClipRRect(
+    borderRadius: BorderRadius.circular(borderRadius),
+    child: Image.network(
+      iconUri.toString(),
+      key: ValueKey<String>('source-icon-network-$sourceId'),
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => fallbackIcon,
+    ),
+  );
 }
 
 class _FallbackSourceIcon extends StatelessWidget {

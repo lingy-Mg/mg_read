@@ -10,8 +10,6 @@
 ///
 library;
 
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -43,6 +41,7 @@ class LibraryBookCover extends ConsumerWidget {
   final String? assetPath;
   final List<int>? coverBytes;
   final BookCoverRequest? coverRequest;
+
   /// Shows a transient overlay while the source refreshes this cover.
   final bool isRefreshing;
   final AlignmentGeometry alignment;
@@ -77,7 +76,7 @@ class LibraryBookCover extends ConsumerWidget {
                   ? ClipRRect(
                       borderRadius: AppRadii.bookCover,
                       child: Image.memory(
-                        Uint8List.fromList(bytes),
+                        normalizeBookCoverBytes(bytes),
                         width: width,
                         height: height,
                         fit: BoxFit.cover,

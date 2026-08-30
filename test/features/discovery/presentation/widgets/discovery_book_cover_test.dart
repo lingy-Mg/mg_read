@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +10,7 @@ import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
+import 'package:mg_read/shared/presentation/source_branding.dart';
 import 'package:mg_read/shared/presentation/widgets/default_book_cover_artwork.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
@@ -83,6 +86,58 @@ void main() {
     final cover = tester.widget<DecoratedBox>(find.byType(DecoratedBox).first);
     expect((cover.decoration as BoxDecoration).borderRadius, BorderRadius.circular(10));
   });
+
+  testWidgets('loads remote source icons through the shared persistent cover loader', (WidgetTester tester) async {
+    BookCoverMemoryCache.clear();
+    addTearDown(BookCoverMemoryCache.clear);
+    final completion = Completer<List<int>?>();
+    final requests = <BookCoverRequest>[];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          bookCoverBytesLoaderProvider.overrideWithValue(_RecordingBookCoverLoader(requests, completion)),
+          bookCoverBytesLoaderAvailableProvider.overrideWithValue(true),
+        ],
+        child: _host(const SourceIcon(sourceId: 'org.example.source', displayName: '示例源', iconUrl: 'https://icons.example/source.png')),
+      ),
+    );
+    await tester.pump();
+
+    expect(requests, hasLength(1));
+    expect(requests.single.pluginId, 'org.example.source');
+    expect(requests.single.remoteContentId, 'source-icon');
+    expect(find.byKey(const ValueKey<String>('source-icon-memory-org.example.source')), findsNothing);
+
+    completion.complete(base64Decode(_onePixelPngBase64));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey<String>('source-icon-memory-org.example.source')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('cover memory cache preserves typed identity and ignores legacy migration hints', () {
+    BookCoverMemoryCache.clear();
+    addTearDown(BookCoverMemoryCache.clear);
+    final bytes = Uint8List.fromList(<int>[1, 2, 3]);
+    final discovery = _request(1);
+    final shelf = _request(1, legacyLibraryItemId: 'legacy-item');
+
+    BookCoverMemoryCache.write(discovery, bytes);
+
+    expect(identical(BookCoverMemoryCache.peek(shelf), bytes), isTrue);
+  });
+
+  test('cover memory cache evicts by encoded byte budget', () {
+    BookCoverMemoryCache.clear();
+    addTearDown(BookCoverMemoryCache.clear);
+    for (var index = 0; index < 5; index += 1) {
+      BookCoverMemoryCache.write(_request(index), Uint8List(4 * 1024 * 1024));
+    }
+
+    expect(BookCoverMemoryCache.peek(_request(0)), isNull);
+    expect(BookCoverMemoryCache.peek(_request(4)), isNotNull);
+  });
 }
 
 Widget _host(Widget child) => MaterialApp(
@@ -98,3 +153,26 @@ final class _CompletingBookCoverLoader implements BookCoverBytesLoader {
   @override
   Future<List<int>?> resolve(BookCoverRequest request) => completion.future;
 }
+
+final class _RecordingBookCoverLoader implements BookCoverBytesLoader {
+  const _RecordingBookCoverLoader(this.requests, this.completion);
+
+  final List<BookCoverRequest> requests;
+  final Completer<List<int>?> completion;
+
+  @override
+  Future<List<int>?> resolve(BookCoverRequest request) {
+    requests.add(request);
+    return completion.future;
+  }
+}
+
+BookCoverRequest _request(int index, {String? legacyLibraryItemId}) => BookCoverRequest(
+  pluginId: 'fixture-source',
+  pluginVersion: '1.0.0',
+  remoteContentId: 'book-$index',
+  coverUrl: Uri.parse('https://covers.example/book-$index.png'),
+  legacyLibraryItemId: legacyLibraryItemId,
+);
+
+const String _onePixelPngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';

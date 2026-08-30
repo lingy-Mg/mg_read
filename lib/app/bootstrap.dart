@@ -283,9 +283,12 @@ Future<void> bootstrapMgReadApp({
             );
           }),
         if (contentLibrary != null || contentLibraryFactory != null)
-          bookCoverBytesLoaderProvider.overrideWith(
-            (ref) => DeferredBookCoverBytesLoader(getLibrary, ref.read(configuredFlutterNetworkProxyManagerProvider)),
-          ),
+          bookCoverBytesLoaderProvider.overrideWith((ref) {
+            final loader = DeferredBookCoverBytesLoader(getLibrary, ref.read(configuredFlutterNetworkProxyManagerProvider));
+            ref.onDispose(() => unawaited(loader.dispose()));
+            return loader;
+          }),
+        if (contentLibrary != null || contentLibraryFactory != null) bookCoverBytesLoaderAvailableProvider.overrideWithValue(true),
         if (contentLibrary != null || contentLibraryFactory != null)
           coverCacheGatewayProvider.overrideWithValue(ContentLibraryCoverCacheGateway(getLibrary)),
         if (contentLibrary != null || contentLibraryFactory != null)

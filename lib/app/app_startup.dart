@@ -5,6 +5,8 @@
 /// stable while persistence and the local Content Library open asynchronously.
 /// Source-backed shelf saves and reader launches receive one lifecycle-scoped
 /// prefetch coordinator from bootstrap so their per-book work stays single-flight.
+/// The deferred cover loader likewise owns one disposable, proxy-aware HTTP
+/// session for the surrounding ProviderScope instead of rebuilding per cover.
 library;
 
 import 'dart:async';
@@ -518,14 +520,59 @@ final class DeferredBookshelfMembershipLoader implements BookshelfMembershipLoad
 }
 
 final class DeferredBookCoverBytesLoader implements BookCoverBytesLoader {
-  const DeferredBookCoverBytesLoader(this._get, this._proxyManager);
+  DeferredBookCoverBytesLoader(this._get, this._proxyManager);
+
   final ContentLibraryGetter _get;
   final FlutterNetworkProxyManager _proxyManager;
+  ContentLibrarySourceCoverPersistence? _persistence;
+  Future<ContentLibrarySourceCoverPersistence>? _persistenceLoading;
+  bool _disposed = false;
+
   @override
-  Future<List<int>?> resolve(BookCoverRequest request) async => ContentLibrarySourceCoverPersistence(
+  Future<List<int>?> resolve(BookCoverRequest request) async => (await _ensurePersistence()).resolve(request);
+
+  Future<ContentLibrarySourceCoverPersistence> _ensurePersistence() async {
+    if (_disposed) throw StateError('Deferred book cover loader is disposed.');
+    final current = _persistence;
+    if (current != null) return current;
+    final active = _persistenceLoading;
+    if (active != null) return active;
+    final operation = _createPersistence();
+    _persistenceLoading = operation;
+    try {
+      final created = await operation;
+      if (_disposed) {
+        await created.dispose();
+        throw StateError('Deferred book cover loader is disposed.');
+      }
+      return _persistence = created;
+    } finally {
+      if (identical(_persistenceLoading, operation)) _persistenceLoading = null;
+    }
+  }
+
+  Future<ContentLibrarySourceCoverPersistence> _createPersistence() async => ContentLibrarySourceCoverPersistence(
     await _get(),
     clientFactory: () => _proxyManager.createHttpClient(NetworkProxyTraffic.cover),
-  ).resolve(request);
+    clientConfigurationKey: () => _proxyManager.proxyUriFor(NetworkProxyTraffic.cover),
+  );
+
+  Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    final current = _persistence;
+    if (current != null) {
+      await current.dispose();
+      return;
+    }
+    final loading = _persistenceLoading;
+    if (loading == null) return;
+    try {
+      await (await loading).dispose();
+    } on Object {
+      // A late initialization observes disposal and closes its own client.
+    }
+  }
 }
 
 final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {

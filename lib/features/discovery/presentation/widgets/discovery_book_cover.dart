@@ -10,8 +10,6 @@
 ///
 library;
 
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -91,7 +89,7 @@ class DiscoveryBookCover extends ConsumerWidget {
               child: !hasCoverBytes
                   ? _placeholder(foreground, start, end, isLoading: isLoading)
                   : Image.memory(
-                      Uint8List.fromList(bytes!),
+                      normalizeBookCoverBytes(bytes!),
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) => _placeholder(foreground, start, end, isLoading: false),
                     ),
