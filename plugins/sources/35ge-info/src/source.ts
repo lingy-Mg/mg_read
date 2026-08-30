@@ -1,8 +1,14 @@
-/** 35中文网 parser and HTTP/resource boundary. Response bodies and user input are never logged. */
+/**
+ * 35中文网 parser and HTTP/resource boundary.
+ * List pages never hydrate missing covers with per-book requests; detail remains the authoritative cover projection.
+ * Only bounded list/book projections are cached in memory. HTML, chapter text, credentials, and user input are never cached or logged.
+ */
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import * as cheerio from 'cheerio/slim';
 
 import type { ContentDetail, ContentSummary, MgReadPluginContext } from './contracts.js';
+import { ProjectionCache } from './projection-cache.js';
 
 const origin = 'http://www.35ge.info';
 export const categories = Object.freeze([
@@ -16,15 +22,31 @@ export const categories = Object.freeze([
   ['completed', '完本小说', '/xs/0-default-0-0-0-0-2-0-1.html'],
 ] as const);
 
+export const projectionCachePolicy = Object.freeze({
+  lists: Object.freeze({ capacity: 32, freshTtlMs: 5 * 60_000, staleTtlMs: 30 * 60_000 }),
+  books: Object.freeze({ capacity: 64, freshTtlMs: 10 * 60_000, staleTtlMs: 60 * 60_000 }),
+});
+
+type ChaptersProjection = Readonly<{ readonly items: readonly Readonly<Record<string, unknown>>[] }>;
+interface BookProjection { readonly detail: ContentDetail; readonly chapters: ChaptersProjection }
+export interface ThirtyFiveSourceOptions { readonly now?: () => number }
+
 export class ThirtyFiveSource {
-  constructor(private readonly context: MgReadPluginContext) {}
+  readonly #listCache: ProjectionCache<readonly ContentSummary[]>;
+  readonly #bookCache: ProjectionCache<BookProjection>;
+
+  constructor(private readonly context: MgReadPluginContext, options: ThirtyFiveSourceOptions = {}) {
+    this.#listCache = new ProjectionCache(projectionCachePolicy.lists, options.now);
+    this.#bookCache = new ProjectionCache(projectionCachePolicy.books, options.now);
+  }
 
   async search(query: string): Promise<readonly ContentSummary[]> {
     const url = new URL('/modules/article/search.php', origin);
     url.searchParams.set('searchkey', query);
-    const $ = cheerio.load(await this.#html(url));
-    const items = this.#parseRows($, '.novelslist2 ul li', url, null);
-    return this.#fillCovers(items);
+    return this.#listCache.get(cacheKey('search', query), async () => {
+      const $ = cheerio.load(await this.#html(url));
+      return this.#parseRows($, '.novelslist2 ul li', url, null);
+    });
   }
 
   async discover(categoryId: string, page: number): Promise<readonly ContentSummary[]> {
@@ -32,65 +54,19 @@ export class ThirtyFiveSource {
     if (category === undefined) throw new Error('Unknown category.');
     const path = category[2].replace(/-\d+\.html$/u, `-${page}.html`);
     const url = new URL(path, origin);
-    const $ = cheerio.load(await this.#html(url));
-    const selector = categoryId === 'completed' ? '#main div.topbooks ul li' : '#newscontent .l ul li';
-    const items = this.#parseRows($, selector, url, category[1]);
-    return this.#fillCovers(items);
+    return this.#listCache.get(`discover:${categoryId}:${page}`, async () => {
+      const $ = cheerio.load(await this.#html(url));
+      const selector = categoryId === 'completed' ? '#main div.topbooks ul li' : '#newscontent .l ul li';
+      return this.#parseRows($, selector, url, category[1]);
+    });
   }
 
   async getDetail(id: string): Promise<ContentDetail> {
-    const url = decodeBookId(id);
-    const $ = cheerio.load(await this.#html(url));
-    const title = meta($, 'og:novel:book_name') ?? clean($('#info h1').first().text());
-    if (title === null) throw new Error('Detail title is missing.');
-    const author = meta($, 'og:novel:author');
-    const category = meta($, 'og:novel:category');
-    const latestTitle = meta($, 'og:novel:latest_chapter_name');
-    const latestRaw = meta($, 'og:novel:latest_chapter_url');
-    const latestUrl = latestRaw === null ? null : new URL(latestRaw, url);
-    const updatedAt = meta($, 'og:novel:update_time');
-    const coverRaw = meta($, 'og:image');
-    return Object.freeze({
-      ...summary({
-        url,
-        title,
-        author,
-        coverUrl: coverRaw === null ? null : this.#proxyImage(new URL(coverRaw, url), url),
-        description: normalizeIntro(clean($('#intro').first().text()) ?? meta($, 'og:description')),
-        status: parseStatus(meta($, 'og:novel:status')),
-        updatedAt,
-        latestTitle,
-        latestUrl,
-        categories: category === null ? [] : [category],
-      }),
-      aliases: Object.freeze([]),
-      catalogUrl: url.toString(),
-    });
+    return (await this.#getBookProjection(id)).detail;
   }
 
   async getChapters(id: string) {
-    const bookUrl = decodeBookId(id);
-    const $ = cheerio.load(await this.#html(bookUrl));
-    const headings = $('#list dl dt').toArray();
-    const bodyHeading = headings.find((element) => /正文/u.test($(element).text()));
-    if (bodyHeading === undefined) throw new Error('Catalog body section is missing.');
-    const seen = new Set<string>();
-    const chapters: Array<Readonly<Record<string, unknown>>> = [];
-    $(bodyHeading).nextAll('dd').find('a[href]').each((_, element) => {
-      const href = $(element).attr('href');
-      const title = clean($(element).text());
-      if (href === undefined || title === null) return;
-      const chapterUrl = new URL(href, bookUrl);
-      if (!sameBookChapter(chapterUrl, bookUrl) || seen.has(chapterUrl.pathname)) return;
-      seen.add(chapterUrl.pathname);
-      chapters.push(Object.freeze({
-        id: encodeChapterId(chapterUrl), title, order: chapters.length, url: chapterUrl.toString(),
-        volumeTitle: null, wordCount: null, updatedAt: null, isLocked: false, attributes: Object.freeze([]),
-      }));
-    });
-    if (chapters.length === 0) throw new Error('Catalog is empty.');
-    if (chapters.length > 5000) throw new Error('Catalog exceeds the Runtime chapter limit.');
-    return Object.freeze({ items: Object.freeze(chapters) });
+    return (await this.#getBookProjection(id)).chapters;
   }
 
   async getContent(id: string, chapterId: string) {
@@ -151,21 +127,55 @@ export class ThirtyFiveSource {
     return Object.freeze(items);
   }
 
-  async #fillCovers(items: readonly ContentSummary[]): Promise<readonly ContentSummary[]> {
-    const results = [...items]; let next = 0;
-    const worker = async () => {
-      for (;;) {
-        const index = next; next += 1;
-        const item = results[index]; if (item === undefined) return;
-        try {
-          const $ = cheerio.load(await this.#html(new URL(item.url)));
-          const raw = meta($, 'og:image');
-          if (raw !== null) results[index] = Object.freeze({ ...item, coverUrl: this.#proxyImage(new URL(raw, item.url), new URL(item.url)) });
-        } catch { /* Cover enrichment is optional; the list item remains usable. */ }
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(8, results.length) }, worker));
-    return Object.freeze(results);
+  async #getBookProjection(id: string): Promise<BookProjection> {
+    const bookUrl = decodeBookId(id);
+    return this.#bookCache.get(`book:${bookIdentity(bookUrl)}`, async () => {
+      const $ = cheerio.load(await this.#html(bookUrl));
+      const title = meta($, 'og:novel:book_name') ?? clean($('#info h1').first().text());
+      if (title === null) throw new Error('Detail title is missing.');
+      const category = meta($, 'og:novel:category');
+      const latestTitle = meta($, 'og:novel:latest_chapter_name');
+      const latestRaw = meta($, 'og:novel:latest_chapter_url');
+      const latestUrl = latestRaw === null ? null : new URL(latestRaw, bookUrl);
+      const updatedAt = meta($, 'og:novel:update_time');
+      const coverRaw = meta($, 'og:image');
+      const detail = Object.freeze({
+        ...summary({
+          url: bookUrl,
+          title,
+          author: meta($, 'og:novel:author'),
+          coverUrl: coverRaw === null ? null : this.#proxyImage(new URL(coverRaw, bookUrl), bookUrl),
+          description: normalizeIntro(clean($('#intro').first().text()) ?? meta($, 'og:description')),
+          status: parseStatus(meta($, 'og:novel:status')),
+          updatedAt,
+          latestTitle,
+          latestUrl,
+          categories: category === null ? [] : [category],
+        }),
+        aliases: Object.freeze([]),
+        catalogUrl: bookUrl.toString(),
+      });
+      const headings = $('#list dl dt').toArray();
+      const bodyHeading = headings.find((element) => /正文/u.test($(element).text()));
+      if (bodyHeading === undefined) throw new Error('Catalog body section is missing.');
+      const seen = new Set<string>();
+      const chapters: Array<Readonly<Record<string, unknown>>> = [];
+      $(bodyHeading).nextAll('dd').find('a[href]').each((_, element) => {
+        const href = $(element).attr('href');
+        const chapterTitle = clean($(element).text());
+        if (href === undefined || chapterTitle === null) return;
+        const chapterUrl = new URL(href, bookUrl);
+        if (!sameBookChapter(chapterUrl, bookUrl) || seen.has(chapterUrl.pathname)) return;
+        seen.add(chapterUrl.pathname);
+        chapters.push(Object.freeze({
+          id: encodeChapterId(chapterUrl), title: chapterTitle, order: chapters.length, url: chapterUrl.toString(),
+          volumeTitle: null, wordCount: null, updatedAt: null, isLocked: false, attributes: Object.freeze([]),
+        }));
+      });
+      if (chapters.length === 0) throw new Error('Catalog is empty.');
+      if (chapters.length > 5000) throw new Error('Catalog exceeds the Runtime chapter limit.');
+      return Object.freeze({ detail, chapters: Object.freeze({ items: Object.freeze(chapters) }) });
+    });
   }
 
   async #html(url: URL): Promise<string> {
@@ -191,6 +201,7 @@ function meta($: cheerio.CheerioAPI, property: string): string | null { return c
 function encodeBookId(url: URL): string { return `book:${token(bookIdentity(url))}`; }
 function encodeChapterId(url: URL): string { return `chapter:${token(url.pathname)}`; }
 function token(value: string): string { return Buffer.from(value, 'utf8').toString('base64url'); }
+function cacheKey(scope: string, value: string): string { return `${scope}:${createHash('sha256').update(value).digest('base64url')}`; }
 function decodeBookId(id: string): URL {
   const value = /^book:([A-Za-z0-9_-]+)$/u.exec(id)?.[1]; if (value === undefined) throw new Error('Content ID is invalid.');
   const identity = Buffer.from(value, 'base64url').toString('utf8');

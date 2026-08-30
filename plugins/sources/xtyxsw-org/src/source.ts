@@ -1,29 +1,40 @@
-/** Tianyue parser using public PC HTTP only; no browser, Cookie, or user-agent fallback. */
+/**
+ * Tianyue parser using public PC HTTP only; no browser, Cookie, or user-agent fallback.
+ * If direct search is empty, only the first four catalog categories are inspected, with two requests at most in flight and early cancellation at 20 matches.
+ * Only bounded GET display projections are cached; POST search, HTML, chapter text, credentials, and user input are never cached or logged.
+ */
 import * as cheerio from 'cheerio/slim';
 import type {ContentDetail,ContentSummary,MgReadPluginContext} from './contracts.js';
+import {ProjectionCache} from './projection-cache.js';
 
 const origin='https://www.xtyxsw.org';
 export const categories=Object.freeze([
   ['fantasy','玄幻','sort','1'],['fantasy-west','奇幻','sort','2'],['wuxia','武侠','sort','3'],['urban','都市','sort','4'],['history','历史','sort','5'],['military','军事','sort','6'],['mystery','悬疑','sort','7'],['game','游戏','sort','8'],['science-fiction','科幻','sort','9'],['sports','体育','sort','10'],['ancient-romance','古言','sort','11'],['modern-romance','现言','sort','12'],['fantasy-romance','幻言','sort','13'],['xianxia','仙侠','sort','14'],['youth','青春','sort','15'],['transmigration','穿越','sort','16'],['women','女生','sort','17'],['other','其他','sort','18'],['visits','点击榜','ranking','allvisit'],['votes','推荐榜','ranking','allvote'],['favorites','收藏榜','ranking','goodnum'],['new','新书入库','ranking','postdate'],
 ] as const);
 interface ListResult{readonly items:readonly ContentSummary[];readonly hasNext:boolean}
+type ChaptersProjection=Readonly<{readonly items:readonly Readonly<Record<string,unknown>>[]}>;
+export const projectionCachePolicy=Object.freeze({lists:Object.freeze({capacity:32,freshTtlMs:5*60_000,staleTtlMs:30*60_000}),details:Object.freeze({capacity:64,freshTtlMs:10*60_000,staleTtlMs:60*60_000}),chapters:Object.freeze({capacity:64,freshTtlMs:10*60_000,staleTtlMs:60*60_000})});
+export const searchFallbackPolicy=Object.freeze({categoryBudget:4,concurrency:2,maxResults:20});
+export interface TianyueSourceOptions{readonly now?:()=>number}
 
 export class TianyueSource{
-  constructor(private readonly context:MgReadPluginContext){}
+  readonly #listCache:ProjectionCache<ListResult>;readonly #detailCache:ProjectionCache<ContentDetail>;readonly #chaptersCache:ProjectionCache<ChaptersProjection>;
+  constructor(private readonly context:MgReadPluginContext,options:TianyueSourceOptions={}){this.#listCache=new ProjectionCache(projectionCachePolicy.lists,options.now);this.#detailCache=new ProjectionCache(projectionCachePolicy.details,options.now);this.#chaptersCache=new ProjectionCache(projectionCachePolicy.chapters,options.now);}
   async search(query:string):Promise<readonly ContentSummary[]>{
     if(query.trim()==='')return Object.freeze([]);
     const url=new URL('/search.html',origin);const body=new URLSearchParams({searchkey:query}).toString();
     const response=await this.#fetch(url,{method:'POST',headers:{accept:'text/html,application/xhtml+xml','accept-language':'zh-CN,zh;q=0.9','content-type':'application/x-www-form-urlencoded; charset=UTF-8',origin,referer:`${origin}/`},body});
     const direct=this.parseList(response,url,null);
     if(direct.length>0)return direct;
-    const needle=query.trim().toLocaleLowerCase('zh-CN');const matches:ContentSummary[]=[];const seen=new Set<string>();
-    for(const [id] of categories){const result=await this.discover(id,1);for(const item of result.items){const hay=`${item.title} ${item.author??''}`.toLocaleLowerCase('zh-CN');if(hay.includes(needle)&&!seen.has(item.id)){seen.add(item.id);matches.push(item);}}if(matches.length>=20)break;}
-    return Object.freeze(matches);
+    return this.#fallbackSearch(query);
   }
   async discover(categoryId:string,page:number):Promise<ListResult>{
     const category=categories.find(([id])=>id===categoryId);if(category===undefined)throw new Error('Unknown category.');
+    return this.#listCache.get(`discover:${categoryId}:${page}`,()=>this.#loadDiscovery(category,page));
+  }
+  async #loadDiscovery(category:typeof categories[number],page:number,signal?:AbortSignal):Promise<ListResult>{
     const path=category[2]==='sort'?(page===1?`/sort/${category[3]}_1/`:`/sort/${category[3]}/${page}.html`):(page===1?`/${category[3]}/`:`/${category[3]}/${page}.html`);
-    const url=new URL(path,origin);const html=await this.#fetch(url);const $=cheerio.load(html);const items=this.parseList(html,url,category[1]);
+    const url=new URL(path,origin);const init:RequestInit={headers:{accept:'text/html,application/xhtml+xml','accept-language':'zh-CN,zh;q=0.9',referer:`${origin}/`},...(signal===undefined?{}:{signal})};const html=await this.#fetch(url,init);const $=cheerio.load(html);const items=this.parseList(html,url,category[1]);
     const hasNext=$('a').toArray().some(element=>clean($(element).text())==='下一页');return Object.freeze({items,hasNext});
   }
   parseList(html:string,pageUrl:URL,fallbackCategory:string|null):readonly ContentSummary[]{
@@ -34,16 +45,16 @@ export class TianyueSource{
     return Object.freeze(items);
   }
   async getDetail(id:string):Promise<ContentDetail>{
-    const bookId=decodeBookId(id);const url=new URL(`/book/${bookId}.html`,origin);const $=cheerio.load(await this.#fetch(url));
-    const heading=$('.bookname h1').first();const author=clean(heading.find('em').text())?.replace(/^作者[：:]?\s*/u,'')??null;heading.find('em').remove();const title=clean(heading.text());if(title===null)throw new Error('Detail title is missing.');
-    const table=clean($('.box_info table').text())??'';const category=clean(/小说分类[：:]?\s*([^首]+?)(?:首发状态|小说状态)/u.exec(table)?.[1]);const status=parseStatus(/小说状态[：:]?\s*([^收]+?)(?:收藏总数|$)/u.exec(table)?.[1]??null);
-    const latest=$('.book_newchap p.ti').last();const href=latest.find('a[href]').attr('href');const updatedAt=clean(latest.find('em').text());const cover=$('.box_intro .pic img').first().attr('src');
-    return Object.freeze({...summary({bookId,title,author,url:readUrl(bookId),coverUrl:cover===undefined?null:this.#proxyImage(new URL(cover,url),url),description:clean($('.box_info .intro').text()),status,updatedAt,latestTitle:clean(latest.find('a').text()),latestUrl:href===undefined?null:new URL(href,url),categories:category===null?[]:[category]}),aliases:Object.freeze([]),catalogUrl:readUrl(bookId).toString()});
+    const bookId=decodeBookId(id);return this.#detailCache.get(`detail:${bookId}`,async()=>{const url=new URL(`/book/${bookId}.html`,origin);const $=cheerio.load(await this.#fetch(url));
+      const heading=$('.bookname h1').first();const author=clean(heading.find('em').text())?.replace(/^作者[：:]?\s*/u,'')??null;heading.find('em').remove();const title=clean(heading.text());if(title===null)throw new Error('Detail title is missing.');
+      const table=clean($('.box_info table').text())??'';const category=clean(/小说分类[：:]?\s*([^首]+?)(?:首发状态|小说状态)/u.exec(table)?.[1]);const status=parseStatus(/小说状态[：:]?\s*([^收]+?)(?:收藏总数|$)/u.exec(table)?.[1]??null);
+      const latest=$('.book_newchap p.ti').last();const href=latest.find('a[href]').attr('href');const updatedAt=clean(latest.find('em').text());const cover=$('.box_intro .pic img').first().attr('src');
+      return Object.freeze({...summary({bookId,title,author,url:readUrl(bookId),coverUrl:cover===undefined?null:this.#proxyImage(new URL(cover,url),url),description:clean($('.box_info .intro').text()),status,updatedAt,latestTitle:clean(latest.find('a').text()),latestUrl:href===undefined?null:new URL(href,url),categories:category===null?[]:[category]}),aliases:Object.freeze([]),catalogUrl:readUrl(bookId).toString()});});
   }
   async getChapters(id:string){
-    const bookId=decodeBookId(id);const url=readUrl(bookId);const $=cheerio.load(await this.#fetch(url));const seen=new Set<string>();const chapters:Array<Readonly<Record<string,unknown>>>=[];
-    $('.link_14 dl dd a[href]').each((_,element)=>{const href=$(element).attr('href');const title=clean($(element).text());if(href===undefined||title===null)return;const chapter=new URL(href,url);const chapterNumberValue=chapterNumber(chapter,bookId);if(chapterNumberValue===null||seen.has(chapterNumberValue))return;seen.add(chapterNumberValue);chapters.push(Object.freeze({id:`chapter:${bookId}:${chapterNumberValue}`,title,order:chapters.length,url:chapter.toString(),volumeTitle:null,wordCount:null,updatedAt:null,isLocked:false,attributes:Object.freeze([])}));});
-    if(chapters.length===0)throw new Error('Catalog is empty.');if(chapters.length>5000)throw new Error('Catalog exceeds the Runtime chapter limit.');return Object.freeze({items:Object.freeze(chapters)});
+    const bookId=decodeBookId(id);return this.#chaptersCache.get(`chapters:${bookId}`,async()=>{const url=readUrl(bookId);const $=cheerio.load(await this.#fetch(url));const seen=new Set<string>();const chapters:Array<Readonly<Record<string,unknown>>>=[];
+      $('.link_14 dl dd a[href]').each((_,element)=>{const href=$(element).attr('href');const title=clean($(element).text());if(href===undefined||title===null)return;const chapter=new URL(href,url);const chapterNumberValue=chapterNumber(chapter,bookId);if(chapterNumberValue===null||seen.has(chapterNumberValue))return;seen.add(chapterNumberValue);chapters.push(Object.freeze({id:`chapter:${bookId}:${chapterNumberValue}`,title,order:chapters.length,url:chapter.toString(),volumeTitle:null,wordCount:null,updatedAt:null,isLocked:false,attributes:Object.freeze([])}));});
+      if(chapters.length===0)throw new Error('Catalog is empty.');if(chapters.length>5000)throw new Error('Catalog exceeds the Runtime chapter limit.');return Object.freeze({items:Object.freeze(chapters)});});
   }
   async getContent(id:string,chapterId:string){
     const bookId=decodeBookId(id);const chapterNumberValue=decodeChapterId(chapterId,bookId);let url=new URL(`/read/${bookId}/${chapterNumberValue}.html`,origin);const visited=new Set<string>();const paragraphs:string[]=[];let title:string|null=null;
@@ -51,10 +62,15 @@ export class TianyueSource{
     throw new Error('Chapter page count exceeds the source limit.');
   }
   async resource(request:Record<string,unknown>){if(request.kind!=='image'||typeof request.url!=='string'||typeof request.referer!=='string')return emptyResource(400);const url=new URL(request.url);const referer=new URL(request.referer);if(url.protocol!=='https:'||url.hostname!=='img.xtyxsw.org'||referer.origin!==origin)return emptyResource(400);const response=await this.context.http.fetch(url,{headers:{accept:'image/*',referer:referer.toString()}});const body=new Uint8Array(await response.arrayBuffer());const type=response.headers.get('content-type');return Object.freeze({status:response.status,headers:type===null?{}:{'content-type':type},body});}
+  async #fallbackSearch(query:string):Promise<readonly ContentSummary[]>{const needle=query.trim().toLocaleLowerCase('zh-CN');const matches:ContentSummary[]=[];const seen=new Set<string>();const candidates=categories.slice(0,searchFallbackPolicy.categoryBudget);const controller=new AbortController();let next=0;let stopped=false;
+    const worker=async()=>{for(;;){if(stopped)return;const index=next;next+=1;const category=candidates[index];if(category===undefined)return;let result:ListResult;try{result=await this.#loadDiscovery(category,1,controller.signal);}catch(error){if(stopped&&isAbortError(error))return;throw error;}if(stopped)return;for(const item of result.items){const hay=`${item.title} ${item.author??''}`.toLocaleLowerCase('zh-CN');if(hay.includes(needle)&&!seen.has(item.id)){seen.add(item.id);matches.push(item);if(matches.length>=searchFallbackPolicy.maxResults){stopped=true;controller.abort();return;}}}}};
+    try{await Promise.all(Array.from({length:searchFallbackPolicy.concurrency},worker));}catch(error){stopped=true;controller.abort();throw error;}return Object.freeze(matches);
+  }
   async #fetch(url:URL,init?:RequestInit){const response=await this.context.http.fetch(url,init??{headers:{accept:'text/html,application/xhtml+xml','accept-language':'zh-CN,zh;q=0.9',referer:`${origin}/`}});const body=await response.text();if(!response.ok||/(?:cf-challenge|cf-turnstile|Just a moment|Checking your browser|challenge-platform)/iu.test(body))throw new Error('Source page is unavailable.');return body;}
   #proxyImage(url:URL,referer:URL){return url.protocol==='https:'&&url.hostname==='img.xtyxsw.org'&&referer.origin===origin?this.context.resource.proxy({kind:'image',url:url.toString(),referer:referer.toString()}):null;}
 }
 function summary(input:{readonly bookId:string;readonly title:string;readonly author:string|null;readonly url:URL;readonly coverUrl:string|null;readonly description:string|null;readonly status:ContentSummary['status'];readonly updatedAt:string|null;readonly latestTitle:string|null;readonly latestUrl:URL|null;readonly categories:readonly string[]}):ContentSummary{const chapter=input.latestUrl===null?null:chapterNumber(input.latestUrl,input.bookId);return Object.freeze({id:`book:${input.bookId}`,title:input.title,contentKind:'novel',author:input.author,url:input.url.toString(),coverUrl:input.coverUrl,description:input.description,language:'zh-CN',status:input.status,access:'free',wordCount:null,chapterCount:null,publishedAt:null,updatedAt:input.updatedAt,latestChapter:input.latestTitle===null?null:Object.freeze({id:chapter===null?null:`chapter:${input.bookId}:${chapter}`,title:input.latestTitle,url:chapter===null?null:input.latestUrl!.toString(),updatedAt:input.updatedAt}),categories:Object.freeze(input.categories),tags:Object.freeze([]),attributes:Object.freeze([])});}
 function readUrl(bookId:string){return new URL(`/read/${bookId}/`,origin);}function bookNumber(url:URL){return /^\/(?:book|read)\/(\d+)(?:\.html|\/)?$/u.exec(url.pathname)?.[1]??null;}function chapterNumber(url:URL,bookId:string){return new RegExp(`^/read/${bookId}/(\\d+)\\.html$`,'u').exec(url.pathname)?.[1]??null;}function decodeBookId(id:string){const value=/^book:(\d+)$/u.exec(id)?.[1];if(value===undefined)throw new Error('Content ID is invalid.');return value;}function decodeChapterId(id:string,bookId:string){const match=/^chapter:(\d+):(\d+)$/u.exec(id);if(match?.[1]!==bookId||match[2]===undefined)throw new Error('Chapter ID is invalid.');return match[2];}
 function isChapterContinuation(url:URL,bookId:string,chapterId:string){return url.origin===origin&&new RegExp(`^/read/${bookId}/${chapterId}(?:_\\d+)?\\.html$`,'u').test(url.pathname);}
+function isAbortError(error:unknown){return error instanceof DOMException&&error.name==='AbortError';}
 function clean(value:string|undefined){const result=value?.replace(/\s+/gu,' ').trim()??'';return result===''?null:result;}function stripAuthor(value:string|null){return value===null?null:clean(value.replace(/^作者[：:]?\s*/u,''));}function parseStatus(value:string|null):ContentSummary['status']{if(value===null)return'unknown';if(/(?:完结|已完结|完本)/u.test(value))return'completed';if(/(?:连载|更新)/u.test(value))return'ongoing';if(/(?:停更|暂停)/u.test(value))return'hiatus';return'unknown';}function isNoise(value:string){return/(?:天悦小说网|手机阅读|无弹窗|小主，这个章节后面还有哦|请点击下一页继续阅读|请大家收藏：|更新速度全网最快|章节报错|加入书签)/u.test(value);}function emptyResource(status:number){return Object.freeze({status,headers:Object.freeze({}),body:new Uint8Array()});}

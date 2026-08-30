@@ -1,8 +1,14 @@
-/** Baozimh manga parser and HTTP/resource boundary. Image bytes always flow through resource(). */
+/**
+ * Baozimh manga parser and HTTP/resource boundary.
+ * Detail and catalog share one bounded book-page projection; image bytes always flow through resource().
+ * HTML, manga pages, credentials, signed media URLs, and user input are never cached or logged.
+ */
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import * as cheerio from 'cheerio/slim';
 
 import type { ContentDetail, ContentSummary, MgReadPluginContext } from './contracts.js';
+import { ProjectionCache } from './projection-cache.js';
 
 const origin = 'https://www.baozimh.com';
 export const categories = Object.freeze([
@@ -16,19 +22,34 @@ export const categories = Object.freeze([
   ['comedy', '搞笑', '/classify?type=gaoxiao&region=all&state=all&filter=*'],
 ] as const);
 
+export const projectionCachePolicy = Object.freeze({
+  lists: Object.freeze({ capacity: 32, freshTtlMs: 5 * 60_000, staleTtlMs: 30 * 60_000 }),
+  books: Object.freeze({ capacity: 64, freshTtlMs: 10 * 60_000, staleTtlMs: 60 * 60_000 }),
+});
+
+type ChaptersProjection = Readonly<{ readonly items: readonly Readonly<Record<string, unknown>>[] }>;
+interface BookProjection { readonly detail: ContentDetail; readonly chapters: ChaptersProjection }
+export interface BaozimhSourceOptions { readonly now?: () => number }
+
 export class BaozimhSource {
-  constructor(private readonly context: MgReadPluginContext) {}
+  readonly #listCache: ProjectionCache<readonly ContentSummary[]>;
+  readonly #bookCache: ProjectionCache<BookProjection>;
+
+  constructor(private readonly context: MgReadPluginContext, options: BaozimhSourceOptions = {}) {
+    this.#listCache = new ProjectionCache(projectionCachePolicy.lists, options.now);
+    this.#bookCache = new ProjectionCache(projectionCachePolicy.books, options.now);
+  }
 
   async search(query: string): Promise<readonly ContentSummary[]> {
     const url = new URL('/search', origin); url.searchParams.set('q', query);
-    return this.parseCards((await this.#html(url)).body, url);
+    return this.#listCache.get(cacheKey('search', query), async () => this.parseCards((await this.#html(url)).body, url));
   }
 
   async discover(categoryId: string): Promise<readonly ContentSummary[]> {
     const category = categories.find(([id]) => id === categoryId);
     if (category === undefined) throw new Error('Unknown category.');
     const url = new URL(category[2], origin);
-    return this.parseCards((await this.#html(url)).body, url);
+    return this.#listCache.get(`discover:${categoryId}`, async () => this.parseCards((await this.#html(url)).body, url));
   }
 
   parseCards(html: string, pageUrl: URL): readonly ContentSummary[] {
@@ -48,35 +69,11 @@ export class BaozimhSource {
   }
 
   async getDetail(id: string): Promise<ContentDetail> {
-    const requestedUrl = decodeBookId(id); const response = await this.#html(requestedUrl); const finalUrl = response.url;
-    const $ = cheerio.load(response.body);
-    const title = meta($, 'og:novel:book_name') ?? clean($('title').text())?.replace(/^\P{L}+/u, '').replace(/\s+-\s+包子漫畫.*$/u, '') ?? null;
-    if (title === null) throw new Error('Detail title is missing.');
-    const categories = splitTags(meta($, 'og:novel:category'));
-    const coverRaw = meta($, 'og:image'); const latestTitle = meta($, 'og:novel:latest_chapter_name'); const latestRaw = meta($, 'og:novel:latest_chapter_url');
-    const latestUrl = latestRaw === null ? null : new URL(latestRaw, finalUrl);
-    return Object.freeze({
-      ...summary({ id, url: finalUrl, title, author: meta($, 'og:novel:author'), coverUrl: coverRaw === null ? null : this.#proxyImage(new URL(coverRaw, finalUrl), finalUrl),
-        description: meta($, 'og:description') ?? clean($('.comics-detail__desc').first().text()), status: parseStatus(meta($, 'og:novel:status')),
-        latest: latestTitle === null ? null : { title: latestTitle, url: latestUrl }, categories }),
-      aliases: Object.freeze([]), catalogUrl: finalUrl.toString(),
-    });
+    return (await this.#getBookProjection(id)).detail;
   }
 
   async getChapters(id: string) {
-    const requestedUrl = decodeBookId(id); const response = await this.#html(requestedUrl); const $ = cheerio.load(response.body);
-    const chapters: Array<Readonly<Record<string, unknown>>> = []; const seen = new Set<string>();
-    $('#chapter-items a.comics-chapters__item[href]').each((_, element) => {
-      const link = $(element); const href = link.attr('href'); const title = clean(link.find('span').first().text()) ?? clean(link.text());
-      if (href === undefined || title === null) return;
-      const direct = directChapterUrl(new URL(decodeEntities(href), response.url));
-      if (direct === null || seen.has(direct.pathname)) return; seen.add(direct.pathname);
-      chapters.push(Object.freeze({ id: encodeChapterId(id, direct), title, order: chapters.length, url: direct.toString(), volumeTitle: null,
-        wordCount: null, updatedAt: null, isLocked: false, attributes: Object.freeze([]) }));
-    });
-    if (chapters.length === 0) throw new Error('Catalog is empty.');
-    if (chapters.length > 5000) throw new Error('Catalog exceeds the Runtime chapter limit.');
-    return Object.freeze({ items: Object.freeze(chapters) });
+    return (await this.#getBookProjection(id)).chapters;
   }
 
   async getContent(id: string, chapterId: string) {
@@ -104,6 +101,37 @@ export class BaozimhSource {
     return Object.freeze({ status: response.status, headers: type === null ? {} : { 'content-type': type }, body });
   }
 
+  async #getBookProjection(id: string): Promise<BookProjection> {
+    const requestedUrl = decodeBookId(id);
+    return this.#bookCache.get(`book:${requestedUrl.pathname}`, async () => {
+      const response = await this.#html(requestedUrl); const finalUrl = response.url;
+      const $ = cheerio.load(response.body);
+      const title = meta($, 'og:novel:book_name') ?? clean($('title').text())?.replace(/^\P{L}+/u, '').replace(/\s+-\s+包子漫畫.*$/u, '') ?? null;
+      if (title === null) throw new Error('Detail title is missing.');
+      const categories = splitTags(meta($, 'og:novel:category'));
+      const coverRaw = meta($, 'og:image'); const latestTitle = meta($, 'og:novel:latest_chapter_name'); const latestRaw = meta($, 'og:novel:latest_chapter_url');
+      const latestUrl = latestRaw === null ? null : new URL(latestRaw, finalUrl);
+      const detail = Object.freeze({
+        ...summary({ id, url: finalUrl, title, author: meta($, 'og:novel:author'), coverUrl: coverRaw === null ? null : this.#proxyImage(new URL(coverRaw, finalUrl), finalUrl),
+          description: meta($, 'og:description') ?? clean($('.comics-detail__desc').first().text()), status: parseStatus(meta($, 'og:novel:status')),
+          latest: latestTitle === null ? null : { title: latestTitle, url: latestUrl }, categories }),
+        aliases: Object.freeze([]), catalogUrl: finalUrl.toString(),
+      });
+      const chapters: Array<Readonly<Record<string, unknown>>> = []; const seen = new Set<string>();
+      $('#chapter-items a.comics-chapters__item[href]').each((_, element) => {
+        const link = $(element); const href = link.attr('href'); const chapterTitle = clean(link.find('span').first().text()) ?? clean(link.text());
+        if (href === undefined || chapterTitle === null) return;
+        const direct = directChapterUrl(new URL(decodeEntities(href), finalUrl));
+        if (direct === null || seen.has(direct.pathname)) return; seen.add(direct.pathname);
+        chapters.push(Object.freeze({ id: encodeChapterId(id, direct), title: chapterTitle, order: chapters.length, url: direct.toString(), volumeTitle: null,
+          wordCount: null, updatedAt: null, isLocked: false, attributes: Object.freeze([]) }));
+      });
+      if (chapters.length === 0) throw new Error('Catalog is empty.');
+      if (chapters.length > 5000) throw new Error('Catalog exceeds the Runtime chapter limit.');
+      return Object.freeze({ detail, chapters: Object.freeze({ items: Object.freeze(chapters) }) });
+    });
+  }
+
   async #html(url: URL): Promise<{ readonly body: string; readonly url: URL }> {
     const response = await this.context.http.fetch(url, { redirect: 'follow', headers: { accept: 'text/html,application/xhtml+xml', 'accept-language': 'zh-TW,zh;q=0.9', referer: `${origin}/` } });
     const body = await response.text(); if (!response.ok || isChallenge(body)) throw new Error('Source page is unavailable.');
@@ -127,6 +155,7 @@ function decodeBookId(id: string): URL { const value = /^comic:([A-Za-z0-9_-]+)$
 function encodeChapterId(bookId: string, url: URL): string { return `chapter:${token(bookId)}:${token(url.pathname)}`; }
 function decodeChapterId(id: string, bookId: string): URL { const match = /^chapter:([A-Za-z0-9_-]+):([A-Za-z0-9_-]+)$/u.exec(id); if (match?.[1] === undefined || match[2] === undefined || Buffer.from(match[1], 'base64url').toString('utf8') !== bookId) throw new Error('Chapter ID is invalid.'); const url = new URL(Buffer.from(match[2], 'base64url').toString('utf8'), origin); if (!isChapterUrl(url)) throw new Error('Chapter ID is invalid.'); return url; }
 function token(value: string): string { return Buffer.from(value, 'utf8').toString('base64url'); }
+function cacheKey(scope: string, value: string): string { return `${scope}:${createHash('sha256').update(value).digest('base64url')}`; }
 function isBookUrl(url: URL): boolean { return url.origin === origin && /^\/comic\/[A-Za-z0-9_-]+\/?$/u.test(url.pathname); }
 function isChapterUrl(url: URL): boolean { return url.origin === origin && /^\/comic\/chapter\/[A-Za-z0-9_-]+\/\d+_\d+\.html$/u.test(url.pathname); }
 function directChapterUrl(url: URL): URL | null { if (url.origin !== origin || url.pathname !== '/user/page_direct') return isChapterUrl(url) ? url : null; const comicId = url.searchParams.get('comic_id'); const section = url.searchParams.get('section_slot'); const chapter = url.searchParams.get('chapter_slot'); if (comicId === null || !/^[A-Za-z0-9_-]+$/u.test(comicId) || !/^\d+$/u.test(section ?? '') || !/^\d+$/u.test(chapter ?? '')) return null; return new URL(`/comic/chapter/${comicId}/${section}_${chapter}.html`, origin); }
