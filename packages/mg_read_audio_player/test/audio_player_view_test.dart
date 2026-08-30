@@ -361,13 +361,15 @@ void main() {
     );
     navigatorKey.currentState!.push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => AudioPlayerView(
-          collectionId: 'book',
-          dataSource: _FakeAudioDataSource(),
-          stateStore: store,
-          observer: observer,
-          backend: backend,
-          saveInterval: const Duration(hours: 1),
+        builder: (_) => _motionDisabled(
+          AudioPlayerView(
+            collectionId: 'book',
+            dataSource: _FakeAudioDataSource(),
+            stateStore: store,
+            observer: observer,
+            backend: backend,
+            saveInterval: const Duration(hours: 1),
+          ),
         ),
       ),
     );
@@ -408,13 +410,15 @@ void main() {
     navigatorKey.currentState!.push<void>(hostRoute);
     await tester.pumpAndSettle();
     final playerRoute = MaterialPageRoute<void>(
-      builder: (_) => AudioPlayerView(
-        collectionId: 'book',
-        dataSource: _FakeAudioDataSource(),
-        stateStore: store,
-        observer: observer,
-        backend: backend,
-        saveInterval: const Duration(hours: 1),
+      builder: (_) => _motionDisabled(
+        AudioPlayerView(
+          collectionId: 'book',
+          dataSource: _FakeAudioDataSource(),
+          stateStore: store,
+          observer: observer,
+          backend: backend,
+          saveInterval: const Duration(hours: 1),
+        ),
       ),
     );
     navigatorKey.currentState!.push<void>(playerRoute);
@@ -454,13 +458,15 @@ void main() {
         ),
       );
       final playerRoute = MaterialPageRoute<void>(
-        builder: (_) => AudioPlayerView(
-          collectionId: 'book',
-          dataSource: _FakeAudioDataSource(),
-          stateStore: store,
-          controller: controller,
-          backend: backend,
-          saveInterval: const Duration(hours: 1),
+        builder: (_) => _motionDisabled(
+          AudioPlayerView(
+            collectionId: 'book',
+            dataSource: _FakeAudioDataSource(),
+            stateStore: store,
+            controller: controller,
+            backend: backend,
+            saveInterval: const Duration(hours: 1),
+          ),
         ),
       );
       navigatorKey.currentState!.push<void>(playerRoute);
@@ -532,11 +538,13 @@ void main() {
     );
     navigatorKey.currentState!.push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => AudioPlayerView(
-          collectionId: 'book',
-          dataSource: _FakeAudioDataSource(),
-          stateStore: _FakeAudioStateStore(),
-          backend: backend,
+        builder: (_) => _motionDisabled(
+          AudioPlayerView(
+            collectionId: 'book',
+            dataSource: _FakeAudioDataSource(),
+            stateStore: _FakeAudioStateStore(),
+            backend: backend,
+          ),
         ),
       ),
     );
@@ -550,6 +558,11 @@ void main() {
     expect(navigatorKey.currentState!.canPop(), isFalse);
   });
 }
+
+Widget _motionDisabled(Widget child) => MediaQuery(
+  data: const MediaQueryData(disableAnimations: true),
+  child: child,
+);
 
 Widget _testHost({
   required _FakeAudioBackend backend,

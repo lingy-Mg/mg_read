@@ -16,12 +16,15 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: AudioPlayerView(
-            collectionId: 'book',
-            dataSource: dataSource,
-            stateStore: const _MemoryStateStore(),
-            backend: backend,
-            autoplay: false,
+          home: MediaQuery(
+            data: const MediaQueryData(disableAnimations: true),
+            child: AudioPlayerView(
+              collectionId: 'book',
+              dataSource: dataSource,
+              stateStore: const _MemoryStateStore(),
+              backend: backend,
+              autoplay: false,
+            ),
           ),
         ),
       );

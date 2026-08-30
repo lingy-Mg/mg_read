@@ -11,12 +11,16 @@ library;
 import 'package:flutter/material.dart';
 
 import '../api/audio_models.dart';
+import 'audio_player_motion.dart';
 import 'audio_player_theme.dart';
 
 final class AudioPlayerTopBar extends StatelessWidget {
   const AudioPlayerTopBar({
     required this.collectionTitle,
     required this.queueCount,
+    required this.playing,
+    required this.buffering,
+    required this.disableAnimations,
     required this.onBack,
     required this.onQueue,
     super.key,
@@ -24,6 +28,9 @@ final class AudioPlayerTopBar extends StatelessWidget {
 
   final String? collectionTitle;
   final int queueCount;
+  final bool playing;
+  final bool buffering;
+  final bool disableAnimations;
   final VoidCallback onBack;
   final VoidCallback onQueue;
 
@@ -45,14 +52,25 @@ final class AudioPlayerTopBar extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
-                Text(
-                  '正在播放',
-                  maxLines: 1,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: AudioPlayerColors.accent,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.2,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    AudioPlayingIndicator(
+                      playing: playing,
+                      buffering: buffering,
+                      disableAnimations: disableAnimations,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      buffering ? '正在缓冲' : '正在播放',
+                      maxLines: 1,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: AudioPlayerColors.accent,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -221,11 +239,15 @@ final class AudioPlayerMetadata extends StatelessWidget {
   }
 }
 
-final class AudioProgressControl extends StatelessWidget {
+final class AudioProgressControl extends StatefulWidget {
   const AudioProgressControl({
     required this.position,
     required this.duration,
     required this.enabled,
+    required this.playing,
+    required this.buffering,
+    required this.dragging,
+    required this.disableAnimations,
     required this.onChanged,
     required this.onChangeEnd,
     super.key,
@@ -234,13 +256,64 @@ final class AudioProgressControl extends StatelessWidget {
   final Duration position;
   final Duration duration;
   final bool enabled;
+  final bool playing;
+  final bool buffering;
+  final bool dragging;
+  final bool disableAnimations;
   final ValueChanged<double> onChanged;
   final ValueChanged<double> onChangeEnd;
 
   @override
+  State<AudioProgressControl> createState() => _AudioProgressControlState();
+}
+
+class _AudioProgressControlState extends State<AudioProgressControl>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _glowController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1700),
+  );
+
+  bool get _glowActive =>
+      widget.playing && !widget.buffering && !widget.disableAnimations;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncGlow();
+  }
+
+  @override
+  void didUpdateWidget(AudioProgressControl oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.playing != widget.playing ||
+        oldWidget.buffering != widget.buffering ||
+        oldWidget.disableAnimations != widget.disableAnimations) {
+      _syncGlow();
+    }
+  }
+
+  void _syncGlow() {
+    if (_glowActive) {
+      _glowController.repeat(reverse: true);
+    } else {
+      _glowController.stop();
+      _glowController.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _glowController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final durationMs = duration.inMilliseconds.clamp(1, 1 << 62).toDouble();
-    final currentMs = position.inMilliseconds
+    final durationMs = widget.duration.inMilliseconds
+        .clamp(1, 1 << 62)
+        .toDouble();
+    final currentMs = widget.position.inMilliseconds
         .clamp(0, durationMs.round())
         .toDouble();
     return Column(
@@ -248,24 +321,31 @@ final class AudioProgressControl extends StatelessWidget {
         Semantics(
           label: '播放进度',
           value:
-              '${formatAudioDuration(position)} / ${formatAudioDuration(duration)}',
-          child: SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: 5,
-              activeTrackColor: AudioPlayerColors.accent,
-              inactiveTrackColor: AudioPlayerColors.track,
-              thumbColor: AudioPlayerColors.accent,
-              overlayColor: AudioPlayerColors.accentSoft,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
+              '${formatAudioDuration(widget.position)} / ${formatAudioDuration(widget.duration)}',
+          child: AnimatedBuilder(
+            animation: _glowController,
+            builder: (context, child) => SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 5,
+                activeTrackColor: AudioPlayerColors.accent,
+                inactiveTrackColor: AudioPlayerColors.track,
+                thumbColor: AudioPlayerColors.accent,
+                overlayColor: AudioPlayerColors.accentSoft,
+                thumbShape: AudioPlayerProgressThumbShape(
+                  pulse: _glowController.value,
+                  dragging: widget.dragging,
+                ),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
+              ),
+              child: child!,
             ),
             child: Slider(
               key: const Key('audio-progress-slider'),
               min: 0,
               max: durationMs,
               value: currentMs,
-              onChanged: enabled ? onChanged : null,
-              onChangeEnd: enabled ? onChangeEnd : null,
+              onChanged: widget.enabled ? widget.onChanged : null,
+              onChangeEnd: widget.enabled ? widget.onChangeEnd : null,
             ),
           ),
         ),
@@ -275,7 +355,7 @@ final class AudioProgressControl extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: <Widget>[
               Text(
-                formatAudioDuration(position),
+                formatAudioDuration(widget.position),
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   color: AudioPlayerColors.muted,
                   fontFeatures: const <FontFeature>[
@@ -284,7 +364,7 @@ final class AudioProgressControl extends StatelessWidget {
                 ),
               ),
               Text(
-                formatAudioDuration(duration),
+                formatAudioDuration(widget.duration),
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   color: AudioPlayerColors.muted,
                   fontFeatures: const <FontFeature>[
@@ -331,53 +411,24 @@ final class AudioTransportControls extends StatelessWidget {
           onPressed: snapshot.canGoPrevious ? onPrevious : null,
           icon: const Icon(Icons.skip_previous_rounded, size: 25),
         ),
-        _TransportButton(
+        AudioAnimatedSeekButton(
           key: const Key('audio-seek-back'),
           tooltip: '后退 15 秒',
+          forward: false,
+          disableAnimations: disableAnimations,
           onPressed: onBackFifteen,
-          icon: const _SeekFifteenIcon(),
         ),
-        SizedBox.square(
-          dimension: 74,
-          child: FilledButton(
-            key: const Key('audio-play-pause'),
-            style: FilledButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              backgroundColor: AudioPlayerColors.accent,
-              foregroundColor: Colors.white,
-              shadowColor: AudioPlayerColors.shadow,
-              elevation: 8,
-            ),
-            onPressed: onToggle,
-            child: AnimatedSwitcher(
-              duration: disableAnimations
-                  ? Duration.zero
-                  : const Duration(milliseconds: 160),
-              child: snapshot.buffering
-                  ? const SizedBox.square(
-                      key: Key('audio-buffering'),
-                      dimension: 26,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.6,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Icon(
-                      snapshot.playing
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      key: ValueKey<bool>(snapshot.playing),
-                      size: 40,
-                    ),
-            ),
-          ),
+        AudioAnimatedPlayPauseButton(
+          snapshot: snapshot,
+          disableAnimations: disableAnimations,
+          onPressed: onToggle,
         ),
-        _TransportButton(
+        AudioAnimatedSeekButton(
           key: const Key('audio-seek-forward'),
           tooltip: '前进 15 秒',
+          forward: true,
+          disableAnimations: disableAnimations,
           onPressed: onForwardFifteen,
-          icon: const _SeekFifteenIcon(forward: true),
         ),
         _TransportButton(
           key: const Key('audio-next'),
@@ -415,35 +466,6 @@ class _TransportButton extends StatelessWidget {
       color: AudioPlayerColors.ink,
       disabledColor: AudioPlayerColors.disabled,
       icon: icon,
-    );
-  }
-}
-
-class _SeekFifteenIcon extends StatelessWidget {
-  const _SeekFifteenIcon({this.forward = false});
-
-  final bool forward;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox.square(
-      dimension: 30,
-      child: Stack(
-        alignment: Alignment.center,
-        children: <Widget>[
-          Icon(
-            forward ? Icons.rotate_right_rounded : Icons.rotate_left_rounded,
-            size: 28,
-          ),
-          Text(
-            '15',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontSize: 8.5,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

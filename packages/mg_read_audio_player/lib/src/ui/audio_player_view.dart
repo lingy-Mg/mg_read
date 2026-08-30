@@ -88,6 +88,7 @@ class _AudioViewState extends State<AudioPlayerView>
   double? _dragPositionMilliseconds;
   Future<void>? _exitRequest;
   bool _exitAuthorized = false;
+  bool _motionVisible = true;
 
   @override
   void initState() {
@@ -129,6 +130,10 @@ class _AudioViewState extends State<AudioPlayerView>
       AppLifecycleState.hidden => AudioPlayerLifecycleState.hidden,
       AppLifecycleState.detached => AudioPlayerLifecycleState.detached,
     };
+    final motionVisible = state == AppLifecycleState.resumed;
+    if (_motionVisible != motionVisible && mounted) {
+      setState(() => _motionVisible = motionVisible);
+    }
     unawaited(_session.handleLifecycle(normalized));
   }
 
@@ -191,14 +196,16 @@ class _AudioViewState extends State<AudioPlayerView>
       );
     }
     final disableAnimations =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+        (MediaQuery.maybeOf(context)?.disableAnimations ?? false) ||
+        !_motionVisible;
+    final playbackActive = snapshot.playing && !snapshot.buffering;
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
         AudioPlayerArtworkBackdrop(
           track: track,
           artworkBuilder: widget.artworkBuilder,
-          playing: snapshot.playing,
+          playing: playbackActive,
           disableAnimations: disableAnimations,
         ),
         SafeArea(
@@ -250,6 +257,9 @@ class _AudioViewState extends State<AudioPlayerView>
                                 track.collectionTitle ??
                                 snapshot.collectionTitle,
                             queueCount: snapshot.queueEntries.length,
+                            playing: snapshot.playing,
+                            buffering: snapshot.buffering,
+                            disableAnimations: disableAnimations,
                             onBack: _requestExit,
                             onQueue: () => showAudioQueueSheet(
                               context,
@@ -263,7 +273,9 @@ class _AudioViewState extends State<AudioPlayerView>
                               track: track,
                               artworkBuilder: widget.artworkBuilder,
                               size: coverSize,
+                              currentIndex: snapshot.currentIndex,
                               playing: snapshot.playing,
+                              buffering: snapshot.buffering,
                               disableAnimations: disableAnimations,
                             ),
                           ),
@@ -313,6 +325,10 @@ class _AudioViewState extends State<AudioPlayerView>
                                   position: displayedPosition,
                                   duration: snapshot.duration,
                                   enabled: snapshot.duration > Duration.zero,
+                                  playing: snapshot.playing,
+                                  buffering: snapshot.buffering,
+                                  dragging: _dragPositionMilliseconds != null,
+                                  disableAnimations: disableAnimations,
                                   onChanged: (value) => setState(() {
                                     _dragPositionMilliseconds = value;
                                   }),
