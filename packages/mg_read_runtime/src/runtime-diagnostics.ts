@@ -26,6 +26,11 @@ export type RuntimeLifecycleDiagnosticCode =
 
 /** Reviewed standard-project lifecycle identifiers; no plugin text is retained. */
 export type PluginDiagnosticCode =
+  | "development_plugin_activation_failed"
+  | "development_plugin_added"
+  | "development_plugin_build_failed"
+  | "development_plugin_removed"
+  | "development_plugin_updated"
   | "plugin_disabled"
   | "plugin_enabled"
   | "plugin_invocation_completed"

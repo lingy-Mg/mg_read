@@ -437,7 +437,7 @@ test("archive projects still reject external local dependency restoration", asyn
   );
 });
 
-test("single cache usage queries reuse the current development snapshot", async (t) => {
+test("Runtime calls reuse the current development snapshot without rescanning directories", async (t) => {
   const root = await temporaryDirectory(t, "mgread-development-cache-usage-");
   const dataRoot = join(root, "runtime-data");
   const developmentRoot = join(root, "sources");
@@ -458,7 +458,7 @@ test("single cache usage queries reuse the current development snapshot", async 
   const refreshed = await manager.listCacheUsage();
   assert.deepEqual(
     refreshed.map((usage) => usage.pluginId).sort(),
-    ["org.example.live-source", "org.example.live-source-later"],
+    ["org.example.live-source"],
   );
 });
 

@@ -241,8 +241,11 @@ int _componentItemCount(PluginDiscoveryComponent component) => switch (component
 };
 
 final sourceContentGatewayProvider = Provider<SourceContentGateway>((Ref ref) {
-  final runtimeConnection = ref.watch(pluginRuntimeConnectionProvider.future);
-  return MgReadSourceContentGateway(ref.watch(pluginRuntimeFacadeProvider), ref.watch(diagnosticsManagerProvider), () => runtimeConnection);
+  return MgReadSourceContentGateway(
+    ref.watch(pluginRuntimeFacadeProvider),
+    ref.watch(diagnosticsManagerProvider),
+    () => ref.read(pluginRuntimeConnectionProvider.future),
+  );
 });
 
 /// Process-scoped cache of all enabled, source-capable plugins.
@@ -257,9 +260,9 @@ final availablePluginSourcesProvider = FutureProvider<List<PluginSourceDescripto
 });
 
 bool _isUsableSource(PluginRuntimePlugin plugin) {
-  return plugin.enabled && plugin.activeVersion != null && plugin.contentKinds.any(
-    (kind) => kind == 'novel' || kind == 'manga' || kind == 'audio' || kind == 'video',
-  );
+  return plugin.enabled &&
+      plugin.activeVersion != null &&
+      plugin.contentKinds.any((kind) => kind == 'novel' || kind == 'manga' || kind == 'audio' || kind == 'video');
 }
 
 PluginContentKind _contentKind(String value) => switch (value) {

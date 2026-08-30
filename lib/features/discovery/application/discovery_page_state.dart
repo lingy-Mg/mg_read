@@ -144,4 +144,18 @@ final class DiscoveryPageState {
   final String? target;
   final PluginDiscoveryDocumentResult? previousResult;
   final List<PluginDiscoveryDocumentResult> retainedParents;
+
+  DiscoveryPageState withSources(Iterable<PluginSourceDescriptor> value) => DiscoveryPageState._(
+    status: status,
+    sources: value,
+    selectedSourceId: selectedSourceId,
+    result: result,
+    error: error,
+    canNavigateBack: canNavigateBack,
+    loadingCollectionId: loadingCollectionId,
+    navigationDepth: navigationDepth,
+    target: target,
+    previousResult: previousResult,
+    retainedParents: retainedParents,
+  );
 }

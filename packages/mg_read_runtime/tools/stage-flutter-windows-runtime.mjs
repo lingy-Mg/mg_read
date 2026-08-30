@@ -25,6 +25,7 @@ const assetsRoot = resolve(
 );
 const stagedNodeDirectory = resolve(assetsRoot, "node");
 const stagedNodeExecutable = resolve(stagedNodeDirectory, "MgReadNode.exe");
+const stagedBuildNodeExecutable = resolve(stagedNodeDirectory, "node.exe");
 const stagedNodeLicense = resolve(stagedNodeDirectory, "LICENSE");
 const stagedDist = resolve(assetsRoot, "dist");
 const stagedDefaultPluginsDirectory = resolve(assetsRoot, "default-plugins");
@@ -66,6 +67,7 @@ assertInsideRepository(sourceEntrypoint);
 assertInsideRepository(assetsRoot);
 assertInsideRepository(stagedNodeDirectory);
 assertInsideRepository(stagedNodeExecutable);
+assertInsideRepository(stagedBuildNodeExecutable);
 assertInsideRepository(stagedNodeLicense);
 assertInsideRepository(stagedDist);
 assertInsideRepository(stagedDefaultPluginsDirectory);
@@ -84,6 +86,9 @@ await rm(stagedDefaultPluginsDirectory, { force: true, recursive: true });
 await mkdir(assetsRoot, { recursive: true });
 await mkdir(stagedNodeDirectory, { recursive: true });
 await copyFile(sourceNodeExecutable, stagedNodeExecutable);
+// npm lifecycle shims invoke `node` by name. Keep an exact duplicate beside
+// the Job-managed executable so Debug builds never resolve an ambient Node.
+await copyFile(sourceNodeExecutable, stagedBuildNodeExecutable);
 await copyFile(sourceNodeLicense, stagedNodeLicense);
 await cp(sourceDist, stagedDist, { recursive: true });
 

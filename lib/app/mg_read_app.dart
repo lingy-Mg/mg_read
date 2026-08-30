@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_router.dart';
 import 'package:mg_read/app/app_startup.dart';
@@ -84,8 +85,27 @@ class _MgReadAppState extends ConsumerState<MgReadApp> {
     // temporary light-only product mode is active.
   }
 
+  void _handleDevelopmentChanges(DevelopmentPluginChangeBatch batch) {
+    final successful = batch.changes.any((change) => !change.isFailure);
+    if (successful) {
+      ref.invalidate(pluginRuntimeConnectionProvider);
+      ref.invalidate(pluginRuntimeStatusProvider);
+      ref.invalidate(availablePluginSourcesProvider);
+    }
+    for (final change in batch.changes.where((change) => change.isFailure)) {
+      ref
+          .read(dataSourceSystemErrorReporterProvider)
+          .reportDevelopmentReloadFailure(
+            errorCode: change.kind == DevelopmentPluginChangeKind.buildFailed ? 'plugin_build_failed' : 'plugin_load_failed',
+          );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen(pluginRuntimeDevelopmentChangesProvider, (_, next) {
+      next.whenData(_handleDevelopmentChanges);
+    });
     final router = ref.watch(appRouterProvider);
     return MaterialApp.router(
       title: 'MgRead',

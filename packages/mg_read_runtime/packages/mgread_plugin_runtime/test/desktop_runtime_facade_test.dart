@@ -457,7 +457,7 @@ void main() {
   );
 
   test(
-    'Windows development source changes restart the owned Runtime before the next call',
+    'Windows development source changes build and hot reload without restarting Runtime',
     () async {
       final repositoryRoot = Directory.current.parent.parent;
       final root = await Directory.systemTemp.createTemp(
@@ -489,7 +489,15 @@ void main() {
       expect(first.items.single.title, '第一版：测试');
       expect(runtime.debugDesktopProcessStartCount, 1);
 
+      final changed = runtime.developmentChanges.firstWhere(
+        (batch) => batch.changes.any(
+          (change) =>
+              change.kind == DevelopmentPluginChangeKind.updated &&
+              change.pluginId == 'org.example.flutter-live',
+        ),
+      );
       await _writeDevelopmentPlugin(developmentRoot, '第二版');
+      await changed.timeout(const Duration(seconds: 15));
       final second = await runtime.invoke(
         const SourceSearchInvocation(
           pluginId: 'org.example.flutter-live',
@@ -497,7 +505,7 @@ void main() {
         ),
       );
       expect(second.items.single.title, '第二版：测试');
-      expect(runtime.debugDesktopProcessStartCount, 2);
+      expect(runtime.debugDesktopProcessStartCount, 1);
       expect(
         Directory(
           <String>[
@@ -969,7 +977,13 @@ Future<void> _writeDevelopmentPlugin(
   final dist = Directory(
     <String>[projectRoot.path, 'dist'].join(Platform.pathSeparator),
   );
-  await dist.create(recursive: true);
+  final src = Directory(
+    <String>[projectRoot.path, 'src'].join(Platform.pathSeparator),
+  );
+  await Future.wait(<Future<void>>[
+    dist.create(recursive: true),
+    src.create(recursive: true),
+  ]);
   const packageName = '@mgread-plugin/flutter-live';
   const version = '0.1.0';
   await File(
@@ -980,6 +994,7 @@ Future<void> _writeDevelopmentPlugin(
       'version': version,
       'type': 'module',
       'main': 'dist/index.mjs',
+      'scripts': <String, String>{'build': 'node build.mjs'},
       'engines': <String, String>{'node': '>=24 <25'},
       'mgread': <String, Object?>{
         'schemaVersion': 1,
@@ -1007,21 +1022,32 @@ Future<void> _writeDevelopmentPlugin(
     })}\n',
   );
   await File(
-    <String>[dist.path, 'index.mjs'].join(Platform.pathSeparator),
-  ).writeAsString('''
-export function activate() {}
-const summary = (query) => ({
+    <String>[projectRoot.path, 'build.mjs'].join(Platform.pathSeparator),
+  ).writeAsString(
+    "import { copyFile } from 'node:fs/promises';\n"
+    "await copyFile(new URL('./src/index.mjs', import.meta.url), "
+    "new URL('./dist/index.mjs', import.meta.url));\n",
+  );
+  final source =
+      '''
+export function activate() {} const summary = (query) => ({
   id: 'live:' + query,
   title: ${jsonEncode(prefix)} + '：' + query,
-  contentKind: 'novel', author: null, url: null, coverUrl: null,
-  description: null, language: null, status: 'unknown', access: 'unknown',
-  wordCount: null, chapterCount: 0, publishedAt: null, updatedAt: null,
-  latestChapter: null, categories: [], tags: [], attributes: [],
+  contentKind: 'novel', author: null, url: null, coverUrl: null, description: null, language: null, status: 'unknown', access: 'unknown',
+  wordCount: null, chapterCount: 0, publishedAt: null, updatedAt: null, latestChapter: null, categories: [], tags: [], attributes: [],
 });
-export function discover() { return { kind: 'document', document: { components: [] } }; }
-export function search(request) { return { items: [summary(request.query)], nextCursor: null, totalCount: 1 }; }
-export function getDetail(request) { return { ...summary(request.id), id: request.id, aliases: [], catalogUrl: null }; }
-export function getChapters() { return { items: [], nextCursor: null, totalCount: 0 }; }
+export function discover() { return { kind: 'document', document: { components: [] } }; } export function search(request) { return { items: [summary(request.query)], nextCursor: null, totalCount: 1 }; }
+export function getDetail(request) { return { ...summary(request.id), id: request.id, aliases: [], catalogUrl: null }; } export function getChapters() { return { items: [], nextCursor: null, totalCount: 0 }; }
 export function getContent(request) { return { contentKind: 'novel', chapterId: request.chapterId, title: null, updatedAt: null, text: 'text', pages: [] }; }
-''');
+''';
+  await File(
+    <String>[src.path, 'index.mjs'].join(Platform.pathSeparator),
+  ).writeAsString(source);
+  if (!await File(
+    <String>[dist.path, 'index.mjs'].join(Platform.pathSeparator),
+  ).exists()) {
+    await File(
+      <String>[dist.path, 'index.mjs'].join(Platform.pathSeparator),
+    ).writeAsString(source);
+  }
 }

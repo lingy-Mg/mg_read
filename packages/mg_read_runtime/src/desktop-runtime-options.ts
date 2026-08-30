@@ -31,6 +31,7 @@ export interface DesktopRuntimeOptions {
   readonly port?: number;
   readonly dataRoot?: string;
   readonly developmentPluginRoot?: string;
+  readonly developmentNpmCli?: string;
   readonly pluginImportInboxRoot?: string;
   readonly bundledPluginRoot?: string;
   readonly embedded?: boolean;

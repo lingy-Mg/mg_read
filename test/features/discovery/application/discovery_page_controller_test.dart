@@ -18,6 +18,7 @@ import 'package:mg_read/features/discovery/application/discovery_page_controller
 import 'package:mg_read/features/discovery/application/discovery_page_state.dart';
 import 'package:mg_read/features/discovery/application/discovery_source_selection_store.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import '../../../core/diagnostics/diagnostics_testkit.dart';
@@ -218,6 +219,102 @@ void main() {
       expect(event.attributes.values.keys, isNot(contains('sourceName')));
     }
   });
+
+  test('current development source update returns discovery to its root', () async {
+    final changes = StreamController<DevelopmentPluginChangeBatch>.broadcast();
+    addTearDown(changes.close);
+    final gateway = _TreeGateway();
+    final container = ProviderContainer(
+      overrides: [
+        sourceContentGatewayProvider.overrideWithValue(gateway),
+        discoverySourceSelectionStoreProvider.overrideWithValue(_MemoryDiscoverySourceSelectionStore(null)),
+        pluginRuntimeDevelopmentChangesProvider.overrideWith((ref) => changes.stream),
+      ],
+    );
+    addTearDown(container.dispose);
+    final listener = container.listen<DiscoveryPageState>(discoveryPageControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(listener.close);
+    await _waitUntil(() => _isLoaded(container));
+    await container.read(discoveryPageControllerProvider.notifier).openCategory('category:fantasy');
+
+    changes.add(
+      DevelopmentPluginChangeBatch(
+        revision: 1,
+        changes: const <DevelopmentPluginChange>[
+          DevelopmentPluginChange(kind: DevelopmentPluginChangeKind.updated, pluginId: _TreeGateway._pluginId),
+        ],
+      ),
+    );
+    await _waitUntil(() => container.read(discoveryPageControllerProvider).navigationDepth == 0);
+
+    expect(_collection(container.read(discoveryPageControllerProvider).result!).id, 'home-books');
+    expect(gateway.documentRequestCount, 3);
+  });
+
+  test('unrelated development source update preserves the current document', () async {
+    final changes = StreamController<DevelopmentPluginChangeBatch>.broadcast();
+    addTearDown(changes.close);
+    final gateway = _TreeGateway();
+    final container = ProviderContainer(
+      overrides: [
+        sourceContentGatewayProvider.overrideWithValue(gateway),
+        discoverySourceSelectionStoreProvider.overrideWithValue(_MemoryDiscoverySourceSelectionStore(null)),
+        pluginRuntimeDevelopmentChangesProvider.overrideWith((ref) => changes.stream),
+      ],
+    );
+    addTearDown(container.dispose);
+    final listener = container.listen<DiscoveryPageState>(discoveryPageControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(listener.close);
+    await _waitUntil(() => _isLoaded(container));
+    await container.read(discoveryPageControllerProvider.notifier).openCategory('category:fantasy');
+    final requestCount = gateway.documentRequestCount;
+
+    changes.add(
+      DevelopmentPluginChangeBatch(
+        revision: 2,
+        changes: const <DevelopmentPluginChange>[
+          DevelopmentPluginChange(kind: DevelopmentPluginChangeKind.updated, pluginId: _TreeGateway.alternatePluginId),
+        ],
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    final state = container.read(discoveryPageControllerProvider);
+    expect(state.navigationDepth, 1);
+    expect(_collection(state.result!).id, 'fantasy-books');
+    expect(gateway.documentRequestCount, requestCount);
+  });
+
+  test('removed current development source falls back to an available source', () async {
+    final changes = StreamController<DevelopmentPluginChangeBatch>.broadcast();
+    addTearDown(changes.close);
+    final gateway = _TreeGateway();
+    final container = ProviderContainer(
+      overrides: [
+        sourceContentGatewayProvider.overrideWithValue(gateway),
+        discoverySourceSelectionStoreProvider.overrideWithValue(_MemoryDiscoverySourceSelectionStore(null)),
+        pluginRuntimeDevelopmentChangesProvider.overrideWith((ref) => changes.stream),
+      ],
+    );
+    addTearDown(container.dispose);
+    final listener = container.listen<DiscoveryPageState>(discoveryPageControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(listener.close);
+    await _waitUntil(() => _isLoaded(container));
+    gateway.includePrimary = false;
+
+    changes.add(
+      DevelopmentPluginChangeBatch(
+        revision: 3,
+        changes: const <DevelopmentPluginChange>[
+          DevelopmentPluginChange(kind: DevelopmentPluginChangeKind.removed, pluginId: _TreeGateway._pluginId),
+        ],
+      ),
+    );
+    await _waitUntil(() => container.read(discoveryPageControllerProvider).selectedSourceId == _TreeGateway.alternatePluginId);
+
+    expect(container.read(discoveryPageControllerProvider).navigationDepth, 0);
+    expect(gateway.documentPluginIds.last, _TreeGateway.alternatePluginId);
+  });
 }
 
 ProviderContainer _container(_TreeGateway gateway, {DiagnosticsTestkit? diagnostics}) => ProviderContainer(
@@ -248,11 +345,17 @@ final class _TreeGateway implements SourceContentGateway {
   final List<String> documentPluginIds = <String>[];
   Completer<void>? categoryGate;
   bool failFirstBrokenCategory = false;
+  bool includePrimary = true;
 
   @override
   Future<List<PluginSourceDescriptor>> listSources() async => <PluginSourceDescriptor>[
-    PluginSourceDescriptor(id: _pluginId, displayName: '树测试数据源', contentKinds: const <PluginContentKind>[PluginContentKind.novel]),
-    PluginSourceDescriptor(id: alternatePluginId, displayName: '备用树测试数据源', contentKinds: const <PluginContentKind>[PluginContentKind.novel]),
+    if (includePrimary)
+      PluginSourceDescriptor(id: _pluginId, displayName: '树测试数据源', contentKinds: const <PluginContentKind>[PluginContentKind.novel]),
+    PluginSourceDescriptor(
+      id: alternatePluginId,
+      displayName: '备用树测试数据源',
+      contentKinds: const <PluginContentKind>[PluginContentKind.novel],
+    ),
   ];
 
   @override

@@ -393,57 +393,6 @@ Future<void> _writeConfiguredDevelopmentPluginDirectory(
   await temporary.rename(file.path);
 }
 
-Future<String> _fingerprintDevelopmentPlugins(Directory root) async {
-  final rootPath = root.absolute.path;
-  final files = <File>[];
-  await for (final entity in root.list(recursive: true, followLinks: false)) {
-    if (entity is! File) continue;
-    final relativePath = entity.path
-        .substring(rootPath.length)
-        .replaceAll('\\', '/')
-        .replaceFirst(RegExp('^/+'), '');
-    final segments = relativePath.split('/');
-    if (segments.length < 2) continue;
-    final projectPath = segments.sublist(1);
-    if (projectPath.length == 1 &&
-        (projectPath.single == 'package.json' ||
-            projectPath.single == 'package-lock.json')) {
-      files.add(entity);
-    } else if (projectPath.length > 1 &&
-        const <String>{
-          'dist',
-          'assets',
-          'packages',
-        }.contains(projectPath.first)) {
-      files.add(entity);
-    }
-  }
-  files.sort((left, right) => left.path.compareTo(right.path));
-  if (files.length > 4096) {
-    throw const PluginRuntimeException(
-      'runtime_development_plugin_budget_exceeded',
-      'The Windows development source tree exceeds its file budget.',
-    );
-  }
-  var hash = 0xcbf29ce484222325;
-  var totalBytes = 0;
-  for (final file in files) {
-    final bytes = await file.readAsBytes();
-    totalBytes += bytes.length;
-    if (totalBytes > 32 * 1024 * 1024) {
-      throw const PluginRuntimeException(
-        'runtime_development_plugin_budget_exceeded',
-        'The Windows development source tree exceeds its byte budget.',
-      );
-    }
-    for (final value in <int>[...utf8.encode(file.path), 0, ...bytes, 0]) {
-      hash ^= value;
-      hash = (hash * 0x100000001b3) & 0xffffffffffffffff;
-    }
-  }
-  return hash.toRadixString(16).padLeft(16, '0');
-}
-
 /// Validated subset of the child stdout ready record required by the supervisor.
 final class _RuntimeReady {
   const _RuntimeReady({

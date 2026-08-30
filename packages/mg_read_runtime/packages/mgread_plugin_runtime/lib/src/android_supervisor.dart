@@ -43,6 +43,10 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
       _initializationController.stream;
 
   @override
+  Stream<DevelopmentPluginChangeBatch> get developmentChanges =>
+      const Stream<DevelopmentPluginChangeBatch>.empty();
+
+  @override
   List<RuntimeDiagnostic> get latestDiagnostics =>
       List<RuntimeDiagnostic>.unmodifiable(_latestDiagnostics);
 

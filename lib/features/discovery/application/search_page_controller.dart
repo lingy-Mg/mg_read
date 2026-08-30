@@ -1,15 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/search_page_state.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 
-final searchPageControllerProvider =
-    NotifierProvider.autoDispose<SearchPageController, SearchPageState>(
-      SearchPageController.new,
-    );
+final searchPageControllerProvider = NotifierProvider.autoDispose<SearchPageController, SearchPageState>(SearchPageController.new);
 
 /// Owns source selection and search request generations for the search page.
 class SearchPageController extends Notifier<SearchPageState> {
@@ -21,10 +20,40 @@ class SearchPageController extends Notifier<SearchPageState> {
   @override
   SearchPageState build() {
     _gateway = ref.watch(sourceContentGatewayProvider);
+    ref.listen(pluginRuntimeDevelopmentChangesProvider, (_, next) {
+      next.whenData((batch) => unawaited(_applyDevelopmentChanges(batch)));
+    });
     ref.onDispose(() => _disposed = true);
     final generation = ++_latestGeneration;
     scheduleMicrotask(() => unawaited(_loadSources(generation)));
     return SearchPageState.loadingSources();
+  }
+
+  Future<void> _applyDevelopmentChanges(DevelopmentPluginChangeBatch batch) async {
+    final changes = batch.changes.where((change) => !change.isFailure).toList();
+    if (changes.isEmpty) return;
+    final selected = state.selectedSourceId;
+    final affectsSelected = selected != null && changes.any((change) => change.pluginId == selected);
+    if (affectsSelected) ++_latestGeneration;
+    ref.invalidate(availablePluginSourcesProvider);
+    try {
+      final sources = await ref.read(availablePluginSourcesProvider.future);
+      if (_disposed) return;
+      if (sources.isEmpty) {
+        state = SearchPageState.ready(sources: const <PluginSourceDescriptor>[], selectedSourceId: null);
+        return;
+      }
+      final nextSelected = selected != null && sources.any((source) => source.id == selected) ? selected : sources.first.id;
+      if (affectsSelected || nextSelected != selected) {
+        final query = nextSelected == selected ? state.query : '';
+        state = SearchPageState.ready(sources: sources, selectedSourceId: nextSelected, query: query);
+        unawaited(_loadSuggestions(nextSelected, ++_latestSuggestionGeneration));
+        return;
+      }
+      state = state.withSources(sources);
+    } on Object {
+      // Keep the current search projection until an explicit retry.
+    }
   }
 
   Future<void> retrySources() {
@@ -36,23 +65,14 @@ class SearchPageController extends Notifier<SearchPageState> {
   Future<void> selectSource(String pluginId) async {
     if (!state.sources.any((source) => source.id == pluginId)) return;
     final query = state.query;
-    state = SearchPageState.ready(
-      sources: state.sources,
-      selectedSourceId: pluginId,
-      query: query,
-      hotSearches: state.hotSearches,
-    );
+    state = SearchPageState.ready(sources: state.sources, selectedSourceId: pluginId, query: query, hotSearches: state.hotSearches);
     unawaited(_loadSuggestions(pluginId, ++_latestSuggestionGeneration));
     if (query.isNotEmpty) await search(query);
   }
 
   Future<void> clear() async {
     _latestGeneration += 1;
-    state = SearchPageState.ready(
-      sources: state.sources,
-      selectedSourceId: state.selectedSourceId,
-      hotSearches: state.hotSearches,
-    );
+    state = SearchPageState.ready(sources: state.sources, selectedSourceId: state.selectedSourceId, hotSearches: state.hotSearches);
   }
 
   Future<void> search(String rawQuery) async {
@@ -101,14 +121,9 @@ class SearchPageController extends Notifier<SearchPageState> {
     try {
       final sources = await ref.read(availablePluginSourcesProvider.future);
       if (!_isCurrent(generation)) return;
-      state = SearchPageState.ready(
-        sources: sources,
-        selectedSourceId: sources.isEmpty ? null : sources.first.id,
-      );
+      state = SearchPageState.ready(sources: sources, selectedSourceId: sources.isEmpty ? null : sources.first.id);
       if (sources.isNotEmpty) {
-        unawaited(
-          _loadSuggestions(sources.first.id, ++_latestSuggestionGeneration),
-        );
+        unawaited(_loadSuggestions(sources.first.id, ++_latestSuggestionGeneration));
       }
     } on Object catch (error) {
       if (!_isCurrent(generation)) return;
@@ -136,8 +151,7 @@ class SearchPageController extends Notifier<SearchPageState> {
   Future<void> _loadSuggestions(String pluginId, int generation) async {
     try {
       final suggestions = await _gateway.searchSuggestions(pluginId: pluginId);
-      if (!_isCurrentSuggestion(generation) ||
-          state.selectedSourceId != pluginId) {
+      if (!_isCurrentSuggestion(generation) || state.selectedSourceId != pluginId) {
         return;
       }
       state = state.withHotSearches(suggestions.items);
@@ -147,6 +161,5 @@ class SearchPageController extends Notifier<SearchPageState> {
     }
   }
 
-  bool _isCurrentSuggestion(int generation) =>
-      !_disposed && generation == _latestSuggestionGeneration;
+  bool _isCurrentSuggestion(int generation) => !_disposed && generation == _latestSuggestionGeneration;
 }

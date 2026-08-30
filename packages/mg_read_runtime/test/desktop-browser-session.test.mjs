@@ -49,7 +49,7 @@ test("desktop broker correlates one bounded host response without credentials", 
   assert.equal("script" in envelope.params, false);
 
   assert.equal(broker.handleIncoming(host, {
-    v: "1.1",
+    v: "1.2",
     type: "host_response",
     bootId: "boot:fixture",
     id: envelope.id,
@@ -113,7 +113,7 @@ test("desktop broker forwards only a scoped WebView interaction", async () => {
     timeoutMs: 5_000,
   });
   broker.handleIncoming(host, {
-    v: "1.1",
+    v: "1.2",
     type: "host_response",
     bootId: "boot:fixture",
     id: envelope.id,

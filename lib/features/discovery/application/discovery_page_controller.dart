@@ -20,6 +20,7 @@ import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/discovery_page_state.dart';
 import 'package:mg_read/features/discovery/application/discovery_source_selection_store.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 
 /// Keeps the first resolved discovery document for the lifetime of the app and
 /// owns cancellation of in-flight category navigation.
@@ -45,6 +46,9 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     _gateway = ref.watch(sourceContentGatewayProvider);
     _sourceSelectionStore = ref.watch(discoverySourceSelectionStoreProvider);
     _diagnostics = ref.watch(diagnosticsManagerProvider);
+    ref.listen(pluginRuntimeDevelopmentChangesProvider, (_, next) {
+      next.whenData((batch) => unawaited(_applyDevelopmentChanges(batch)));
+    });
     ref.onDispose(() {
       _disposed = true;
       _endActiveLoad(DiagnosticOutcome.cancelled);
@@ -52,6 +56,46 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     final generation = ++_latestGeneration;
     scheduleMicrotask(() => unawaited(_initialize(generation)));
     return DiscoveryPageState.loadingSources();
+  }
+
+  Future<void> _applyDevelopmentChanges(DevelopmentPluginChangeBatch batch) async {
+    final changes = batch.changes.where((change) => !change.isFailure).toList();
+    if (changes.isEmpty) return;
+    final selected = state.selectedSourceId;
+    final affectsSelected = selected != null && changes.any((change) => change.pluginId == selected);
+    final generation = affectsSelected ? ++_latestGeneration : null;
+    if (affectsSelected) {
+      _endActiveLoad(DiagnosticOutcome.cancelled);
+    }
+    ref.invalidate(availablePluginSourcesProvider);
+    try {
+      final sources = await ref.read(availablePluginSourcesProvider.future);
+      if (_disposed || (generation != null && !_isCurrent(generation))) return;
+      if (sources.isEmpty) {
+        ++_latestGeneration;
+        _stack.clear();
+        state = DiscoveryPageState.noSources();
+        return;
+      }
+      if (selected == null || !sources.any((source) => source.id == selected)) {
+        final saved = await _loadSavedSourceId();
+        if (_disposed || (generation != null && !_isCurrent(generation))) return;
+        final fallback = sources.any((source) => source.id == saved) ? saved! : sources.first.id;
+        await _saveSelectedSource(fallback);
+        _stack.clear();
+        await _loadDocument(pluginId: fallback, target: null, sources: sources, resetStack: true);
+        return;
+      }
+      if (affectsSelected) {
+        _stack.clear();
+        await _loadDocument(pluginId: selected, target: null, sources: sources, resetStack: true);
+        return;
+      }
+      state = state.withSources(sources);
+    } on Object {
+      // The retained document remains usable. Runtime diagnostics and the
+      // normal source provider surface a later explicit retry failure.
+    }
   }
 
   Future<void> retry() {

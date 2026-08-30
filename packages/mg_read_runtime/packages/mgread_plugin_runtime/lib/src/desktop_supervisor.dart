@@ -4,7 +4,7 @@ part of mgread_plugin_runtime;
 const _expectedNodeVersion = '24.16.0';
 
 /// Version of the internal Runtime control protocol negotiated during hello.
-const _protocolVersion = '1.1';
+const _protocolVersion = '1.2';
 
 /// Upper bound for child startup and readiness probes.
 // Release may install defaults before ready; Debug validates workspace projects.
@@ -62,6 +62,10 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   _initializationController =
       StreamController<RuntimeInitializationProgress>.broadcast();
 
+  final StreamController<DevelopmentPluginChangeBatch>
+  _developmentChangeController =
+      StreamController<DevelopmentPluginChangeBatch>.broadcast();
+
   /// Oldest-to-newest bounded snapshot used when constructing safe failures.
   final List<RuntimeDiagnostic> _diagnostics = <RuntimeDiagnostic>[];
 
@@ -94,10 +98,6 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   /// Serializes bounded fallback appends without introducing another service.
   Future<void> _preBootFallbackWrites = Future<void>.value();
 
-  /// Serializes debug fingerprint checks and clean one-VM-at-a-time restarts.
-  Future<void> _developmentSynchronization = Future<void>.value();
-  String? _developmentFingerprint;
-  bool _developmentRestarting = false;
   bool _controlledRestarting = false;
   Directory? _developmentPluginDirectory;
   late final _DesktopPluginArtifactIo _pluginArtifactIo =
@@ -118,6 +118,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
     final replacement = await _WireConnection.connect(
       ready,
       dataRoot: _bundle.dataRoot,
+      onDevelopmentChange: _recordDevelopmentChange,
       proxyUri: proxyUri,
     );
     await replacement.hello();
@@ -131,6 +132,10 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   @override
   Stream<RuntimeInitializationProgress> get initialization =>
       _initializationController.stream;
+
+  @override
+  Stream<DevelopmentPluginChangeBatch> get developmentChanges =>
+      _developmentChangeController.stream;
 
   /// Immutable copy of all currently retained diagnostics, oldest first.
   List<RuntimeDiagnostic> get latestDiagnostics =>
@@ -157,7 +162,6 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       return null as T;
     }
 
-    await _synchronizeDevelopmentRuntime();
     try {
       final connection = await _ensureStarted();
       final result = await connection.request(
@@ -197,7 +201,6 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   Future<PluginCodeDirectoryKind> _openPluginCodeDirectory(
     OpenPluginCodeDirectoryInvocation invocation,
   ) async {
-    await _synchronizeDevelopmentRuntime();
     final connection = await _ensureStarted();
     final raw = await connection.request(
       method: invocation._wireMethod,
@@ -296,8 +299,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       );
     }
     _developmentPluginDirectory = directory;
-    _developmentFingerprint = null;
-    await _restartForDevelopmentChange();
+    await _restartForDevelopmentDirectoryChange();
   }
 
   Future<void> _restartForPluginImport() async {
@@ -360,6 +362,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
     await _disposeMonitor();
     await _diagnosticController.close();
     await _initializationController.close();
+    await _developmentChangeController.close();
   }
 
   void _emitInitializationProgress({
@@ -380,6 +383,12 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   void _recordInitializationProgress(RuntimeInitializationProgress progress) {
     if (!_initializationController.isClosed) {
       _initializationController.add(progress);
+    }
+  }
+
+  void _recordDevelopmentChange(DevelopmentPluginChangeBatch change) {
+    if (!_developmentChangeController.isClosed) {
+      _developmentChangeController.add(change);
     }
   }
 
@@ -411,6 +420,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
         _bundle.nodeExecutable.path,
         <String>[
           '--use-env-proxy',
+          if (_developmentPluginDirectory != null) '--preserve-symlinks',
           _bundle.entrypoint.path,
           '--data-root=${_bundle.dataRoot.path}',
           if (kDebugMode) '--debug-http-enabled=1',
@@ -418,6 +428,8 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
             '--bundled-plugin-root=${_bundle.bundledPluginDirectory!.path}',
           if (_developmentPluginDirectory != null)
             '--development-plugin-root=${_developmentPluginDirectory!.path}',
+          if (_developmentPluginDirectory != null)
+            '--development-npm-cli=${_bundle.developmentNpmCli!.path}',
           if (_bundle.testExitAfterReady != null)
             '--test-exit-after-ready-millis='
                 '${_bundle.testExitAfterReady!.inMilliseconds}',
@@ -430,9 +442,8 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       _process = process;
       _processStartCount += 1;
 
-      // The Core is forbidden from spawning child processes. Assign it before
-      // consuming startup output so every permitted later descendant belongs to
-      // the Job and is kernel-terminated with the Flutter owner.
+      // Debug builds may spawn the pinned npm build child. Assign the Core
+      // first so every descendant belongs to the same kill-on-close Job.
       jobObject.assignProcess(process.pid);
 
       final monitor = _RuntimeChildMonitor(
@@ -451,6 +462,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       final connection = await _WireConnection.connect(
         ready,
         dataRoot: _bundle.dataRoot,
+        onDevelopmentChange: _recordDevelopmentChange,
         proxyUri: _flutterTransportProxy,
       );
       await connection.hello();
@@ -553,6 +565,14 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
         'The Windows development source directory is unavailable.',
       );
     }
+    final developmentNpmCli = _bundle.developmentNpmCli;
+    if (developmentPluginDirectory != null &&
+        (developmentNpmCli == null || !await developmentNpmCli.exists())) {
+      throw _failure(
+        'runtime_development_build_tool_missing',
+        'The pinned Windows development build tool is unavailable.',
+      );
+    }
   }
 
   /// Converts a post-ready child exit into a safe transport failure/diagnostic.
@@ -563,7 +583,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
     _startup = null;
     _process = null;
     _closeJobObject();
-    if (!_disposed && !_developmentRestarting && !_controlledRestarting) {
+    if (!_disposed && !_controlledRestarting) {
       _recordFatal(
         'runtime_process_exited',
         'The desktop Runtime process exited unexpectedly.',

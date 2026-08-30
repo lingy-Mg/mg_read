@@ -74,6 +74,33 @@ final class DataSourceSystemErrorReporter {
     );
   }
 
+  void reportDevelopmentReloadFailure({required String errorCode}) {
+    if (_disposed) return;
+    final traceId = _newTraceId();
+    try {
+      _diagnostics.emit(
+        AppDiagnosticEvents.unhandledError,
+        traceContext: DiagnosticTraceContext(traceId: traceId, spanId: _diagnostics.idGenerator.nextId('datasourceerror')),
+        severity: DiagnosticSeverity.error,
+        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+          'boundary': DiagnosticValue.string('data-source-development-reload'),
+          'errorCode': DiagnosticValue.string(errorCode),
+          'fatal': DiagnosticValue.boolean(false),
+        }),
+      );
+    } catch (_) {
+      // Error presentation must not alter the retained active generation.
+    }
+    _enqueue(
+      DataSourceSystemDiagnosticReport(
+        errorCode: errorCode,
+        quarantinedCount: 0,
+        traceId: traceId,
+        diagnosticsMarker: 'runtime_source_development_reload_failed',
+      ),
+    );
+  }
+
   void dispose() {
     if (_disposed) return;
     _disposed = true;

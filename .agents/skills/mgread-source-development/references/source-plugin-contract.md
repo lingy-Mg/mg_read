@@ -37,6 +37,15 @@
 - 产物不得包含源码或 `node_modules`；descriptor、图标、大小和 SHA-256 必须可复核。
 - 构建库返回内存 bytes/fileName/format，只有 CLI 写入 artifact 目录。
 
+## Windows Debug 开发生命周期
+
+- Node Runtime 监听开发根下的项目变更；每个项目静默 1.5 秒后，通过仓库固定 Node/npm 执行该项目
+  声明的 `npm run build`，不直接加载 TypeScript、不启动 `tsc -w`、不自动安装依赖。
+- 开发构建成功后，Runtime 从唯一私有 generation 路径加载新的 `dist` 并完成候选激活；只有激活成功才
+  替换当前 generation。构建或激活失败保留旧版本。
+- 此处的构建不是 artifact 打包，不生成 `.mgplugin`/`.mgplugin.js`，也不进入安装流程。Flutter 只消费
+  路径无关的变更事件并刷新来源快照；Android 不接入目录监听或构建链路。
+
 ## 最小验证
 
 在目标数据源目录使用仓库固定 Node/npm，运行实际声明的 typecheck、离线测试和 `verify`。请求、选择器、

@@ -5,6 +5,7 @@ final class _DesktopRuntimeBundle {
     required this.dataRoot,
     required this.bundledPluginDirectory,
     required this.developmentPluginDirectory,
+    required this.developmentNpmCli,
     required this.directoryLauncher,
     required this.entrypoint,
     required this.nodeExecutable,
@@ -20,6 +21,9 @@ final class _DesktopRuntimeBundle {
 
   /// Debug-only workspace projects loaded directly without installation.
   final Directory? developmentPluginDirectory;
+
+  /// Repository-pinned npm CLI used only for Windows Debug source builds.
+  final File? developmentNpmCli;
 
   /// Opens a Runtime-owned directory through the Flutter Windows shell layer.
   final _DesktopDirectoryLauncher directoryLauncher;
@@ -75,10 +79,19 @@ final class _DesktopRuntimeBundle {
                 appDirectory,
               ])
         : null;
+    final developmentNpmCli = kDebugMode
+        ? _findDevelopmentNpmCli(<Directory>[
+            if (developmentPluginDirectory != null)
+              developmentPluginDirectory.parent.parent,
+            Directory.current,
+            appDirectory,
+          ])
+        : null;
     return _DesktopRuntimeBundle(
       dataRoot: dataRoot,
       bundledPluginDirectory: null,
       developmentPluginDirectory: developmentPluginDirectory,
+      developmentNpmCli: developmentNpmCli,
       directoryLauncher: _openWithWindowsExplorer,
       entrypoint: File(_joinPath(<String>[bundleRoot.path, 'dist', 'cli.js'])),
       nodeExecutable: File(
@@ -114,6 +127,17 @@ final class _DesktopRuntimeBundle {
           ),
       bundledPluginDirectory: null,
       developmentPluginDirectory: developmentPluginDirectory,
+      developmentNpmCli: File(
+        _joinPath(<String>[
+          runtimeRepositoryRoot.path,
+          'tools',
+          'node-v24.16.0-win-x64',
+          'node_modules',
+          'npm',
+          'bin',
+          'npm-cli.js',
+        ]),
+      ),
       directoryLauncher: directoryLauncher ?? _discardDirectoryOpen,
       entrypoint:
           entrypointOverride ??
@@ -134,6 +158,32 @@ final class _DesktopRuntimeBundle {
       workingDirectory: runtimeRepositoryRoot,
     );
   }
+}
+
+File? _findDevelopmentNpmCli(Iterable<Directory> roots) {
+  for (final root in roots) {
+    var candidateRoot = root.absolute;
+    for (var depth = 0; depth < 6; depth += 1) {
+      final candidate = File(
+        _joinPath(<String>[
+          candidateRoot.path,
+          'packages',
+          'mg_read_runtime',
+          'tools',
+          'node-v24.16.0-win-x64',
+          'node_modules',
+          'npm',
+          'bin',
+          'npm-cli.js',
+        ]),
+      );
+      if (candidate.existsSync()) return candidate;
+      final parent = candidateRoot.parent;
+      if (parent.path == candidateRoot.path) break;
+      candidateRoot = parent;
+    }
+  }
+  return null;
 }
 
 /// Starts Explorer from the Flutter owner, outside the Node Job Object.

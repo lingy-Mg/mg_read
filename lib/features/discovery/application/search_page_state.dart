@@ -33,8 +33,7 @@ final class SearchPageState {
     required Iterable<PluginSourceDescriptor> sources,
     required String? selectedSourceId,
     String query = '',
-    Iterable<PluginSearchSuggestion> hotSearches =
-        const <PluginSearchSuggestion>[],
+    Iterable<PluginSearchSuggestion> hotSearches = const <PluginSearchSuggestion>[],
   }) => SearchPageState._(
     status: SearchPageStatus.ready,
     sources: sources,
@@ -50,8 +49,7 @@ final class SearchPageState {
     required String selectedSourceId,
     required String query,
     PluginSearchResult? retainedResult,
-    Iterable<PluginSearchSuggestion> hotSearches =
-        const <PluginSearchSuggestion>[],
+    Iterable<PluginSearchSuggestion> hotSearches = const <PluginSearchSuggestion>[],
   }) => SearchPageState._(
     status: SearchPageStatus.searching,
     sources: sources,
@@ -67,8 +65,7 @@ final class SearchPageState {
     required String selectedSourceId,
     required String query,
     required PluginSearchResult result,
-    Iterable<PluginSearchSuggestion> hotSearches =
-        const <PluginSearchSuggestion>[],
+    Iterable<PluginSearchSuggestion> hotSearches = const <PluginSearchSuggestion>[],
   }) => SearchPageState._(
     status: SearchPageStatus.loaded,
     sources: sources,
@@ -85,8 +82,7 @@ final class SearchPageState {
     required String query,
     required AppError error,
     PluginSearchResult? retainedResult,
-    Iterable<PluginSearchSuggestion> hotSearches =
-        const <PluginSearchSuggestion>[],
+    Iterable<PluginSearchSuggestion> hotSearches = const <PluginSearchSuggestion>[],
   }) => SearchPageState._(
     status: SearchPageStatus.failure,
     sources: sources,
@@ -107,14 +103,23 @@ final class SearchPageState {
 
   bool get hasSources => sources.isNotEmpty;
 
-  SearchPageState withHotSearches(Iterable<PluginSearchSuggestion> value) =>
-      SearchPageState._(
-        status: status,
-        sources: sources,
-        selectedSourceId: selectedSourceId,
-        query: query,
-        result: result,
-        error: error,
-        hotSearches: value,
-      );
+  SearchPageState withSources(Iterable<PluginSourceDescriptor> value) => SearchPageState._(
+    status: status,
+    sources: value,
+    selectedSourceId: selectedSourceId,
+    query: query,
+    result: result,
+    error: error,
+    hotSearches: hotSearches,
+  );
+
+  SearchPageState withHotSearches(Iterable<PluginSearchSuggestion> value) => SearchPageState._(
+    status: status,
+    sources: sources,
+    selectedSourceId: selectedSourceId,
+    query: query,
+    result: result,
+    error: error,
+    hotSearches: value,
+  );
 }

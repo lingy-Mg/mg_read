@@ -41,13 +41,11 @@
     ".mocks.dart"
   ],
   "legacyBaseline": {
-      "packages/mg_read_runtime/src/desktop-runtime.ts": 1375,
-    "packages/mobile_scanner/darwin/mobile_scanner/Sources/mobile_scanner/MobileScannerPlugin.swift": 1184,
-    "packages/mg_read_runtime/src/plugin-manager.ts": 1009
+    "packages/mg_read_runtime/src/desktop-runtime.ts": 1371,
+    "packages/mobile_scanner/darwin/mobile_scanner/Sources/mobile_scanner/MobileScannerPlugin.swift": 1184
   },
   "legacyRationale": {
-      "packages/mg_read_runtime/src/desktop-runtime.ts": "Construction-only progress, browser-provider and launch option types moved to desktop-runtime-options.ts. The remaining HTTP, WebSocket, cache/source-content control, shutdown and owner-span state shares ECMAScript private fields; the next split is a cache/source-content dispatch port with protocol characterization.",
-    "packages/mobile_scanner/darwin/mobile_scanner/Sources/mobile_scanner/MobileScannerPlugin.swift": "Unmodified mobile_scanner 7.4.0 upstream Darwin implementation vendored with its license while MgRead carries an Android built-in Kotlin build patch. Freeze it at the upstream size; remove this baseline when an upstream release supports built-in Kotlin and the path dependency is retired.",
-    "packages/mg_read_runtime/src/plugin-manager.ts": "Icon resources, installation usage and artifact-transfer coordination moved to dedicated modules. Installed activation, development refresh and invocation cancellation still share the single VM queues and AsyncLocalStorage; the next split is an explicit activation port."
+    "packages/mg_read_runtime/src/desktop-runtime.ts": "Construction-only progress, browser-provider, launch option types and path-free plugin event projections moved to dedicated modules. The remaining HTTP, WebSocket, cache/source-content control, shutdown and owner-span state shares ECMAScript private fields; the next split is a cache/source-content dispatch port with protocol characterization.",
+    "packages/mobile_scanner/darwin/mobile_scanner/Sources/mobile_scanner/MobileScannerPlugin.swift": "Unmodified mobile_scanner 7.4.0 upstream Darwin implementation vendored with its license while MgRead carries an Android built-in Kotlin build patch. Freeze it at the upstream size; remove this baseline when an upstream release supports built-in Kotlin and the path dependency is retired."
   }
 }

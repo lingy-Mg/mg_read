@@ -172,6 +172,44 @@ export interface RuntimeErrorEnvelope extends JsonObject {
   readonly v: typeof protocolVersion;
 }
 
+export type DevelopmentPluginChangeKind =
+  | "activation_failed"
+  | "added"
+  | "build_failed"
+  | "removed"
+  | "updated";
+
+/** One path-free Windows Debug development-source change. */
+export interface RuntimeDevelopmentPluginChange extends JsonObject {
+  readonly kind: DevelopmentPluginChangeKind;
+  readonly pluginId?: string;
+}
+
+/** Uncorrelated server event delivered beside normal RPC responses. */
+export interface RuntimeEventEnvelope extends JsonObject {
+  readonly bootId: string;
+  readonly changes: readonly RuntimeDevelopmentPluginChange[];
+  readonly event: "development.plugins.changed";
+  readonly revision: number;
+  readonly type: "event";
+  readonly v: typeof protocolVersion;
+}
+
+export function makeDevelopmentPluginEvent(
+  bootId: string,
+  revision: number,
+  changes: readonly RuntimeDevelopmentPluginChange[],
+): RuntimeEventEnvelope {
+  return Object.freeze({
+    bootId,
+    changes: Object.freeze([...changes]),
+    event: "development.plugins.changed",
+    revision,
+    type: "event",
+    v: protocolVersion,
+  });
+}
+
 /** Result of validating a normal request envelope. */
 export type ParseRequestResult =
   | { readonly error: RuntimeProtocolError; readonly ok: false }

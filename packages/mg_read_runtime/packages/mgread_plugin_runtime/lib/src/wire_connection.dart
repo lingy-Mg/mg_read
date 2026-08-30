@@ -23,7 +23,12 @@ typedef _PendingRequestMap = Map<String, _PendingRequest>;
 /// all transport failures into stable Facade exceptions. It is not exposed to
 /// the Flutter application.
 final class _WireConnection {
-  _WireConnection._(this._ready, this._socket, this._browserSessionHost) {
+  _WireConnection._(
+    this._ready,
+    this._socket,
+    this._browserSessionHost,
+    this._onDevelopmentChange,
+  ) {
     _messages = _socket.cast<Object?>().listen(
       _onMessage,
       cancelOnError: false,
@@ -38,6 +43,7 @@ final class _WireConnection {
   /// Internal loopback socket; package callers never receive this value.
   final WebSocket _socket;
   final WindowsBrowserSessionHost? _browserSessionHost;
+  final void Function(DevelopmentPluginChangeBatch) _onDevelopmentChange;
   final Set<String> _hostJobs = <String>{};
 
   /// Typed stream subscription that accepts text only after explicit validation.
@@ -62,6 +68,7 @@ final class _WireConnection {
   static Future<_WireConnection> connect(
     _RuntimeReady ready, {
     required Directory dataRoot,
+    required void Function(DevelopmentPluginChangeBatch) onDevelopmentChange,
     Uri? proxyUri,
   }) async {
     final client = proxyUri == null
@@ -82,6 +89,7 @@ final class _WireConnection {
       ready,
       socket,
       Platform.isWindows ? WindowsBrowserSessionHost(dataRoot) : null,
+      onDevelopmentChange,
     );
   }
 
@@ -344,6 +352,14 @@ final class _WireConnection {
       }
       if (envelope['type'] == 'host_cancel') {
         _handleHostCancel(envelope);
+        return;
+      }
+      if (envelope['type'] == 'event') {
+        if (envelope['event'] != 'development.plugins.changed') {
+          _failAllPending();
+          return;
+        }
+        _onDevelopmentChange(_decodeDevelopmentPluginChangeBatch(envelope));
         return;
       }
       final id = envelope['id'];

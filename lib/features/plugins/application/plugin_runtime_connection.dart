@@ -53,14 +53,22 @@ abstract interface class PluginRuntimeGateway {
   Future<PluginRuntimeDebugHttp> inspectDebugHttp();
 }
 
+/// Optional event capability for the Windows Debug development lifecycle.
+abstract interface class PluginRuntimeDevelopmentGateway {
+  Stream<DevelopmentPluginChangeBatch> get developmentChanges;
+}
+
 /// Production adapter over the Runtime-owned, versioned Flutter Facade.
-final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway {
+final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway, PluginRuntimeDevelopmentGateway {
   MgReadPluginRuntimeGateway({PluginRuntime? runtime}) : _runtime = runtime ?? PluginRuntime();
 
   final PluginRuntime _runtime;
 
   @override
   Stream<RuntimeInitializationProgress> get initialization => _runtime.initialization;
+
+  @override
+  Stream<DevelopmentPluginChangeBatch> get developmentChanges => _runtime.developmentChanges;
 
   @override
   Future<PluginInstallationSize> inspectInstallationSize({required String pluginId, required PluginInstallationSizeScope scope}) async {
@@ -315,6 +323,15 @@ AppError normalizePluginRuntimeError(PluginRuntimeException error) {
 
 /// Process-scoped public Facade shared by every main-application capability.
 final pluginRuntimeFacadeProvider = Provider<PluginRuntime>((Ref ref) => PluginRuntime());
+
+/// Path-free Windows Debug development-source events from the shared Facade.
+/// Android exposes the same typed contract as an empty stream.
+final pluginRuntimeDevelopmentChangesProvider = StreamProvider<DevelopmentPluginChangeBatch>((Ref ref) {
+  final gateway = ref.watch(pluginRuntimeGatewayProvider);
+  return gateway is PluginRuntimeDevelopmentGateway
+      ? (gateway as PluginRuntimeDevelopmentGateway).developmentChanges
+      : const Stream<DevelopmentPluginChangeBatch>.empty();
+});
 
 final pluginRuntimeGatewayProvider = Provider<PluginRuntimeGateway>(
   (Ref ref) => MgReadPluginRuntimeGateway(runtime: ref.watch(pluginRuntimeFacadeProvider)),

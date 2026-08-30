@@ -69,13 +69,16 @@ function parseLaunchOptions(arguments_: readonly string[]): DesktopRuntimeOption
   const dataRoot = values.get("--data-root");
   const bundledPluginRoot = values.get("--bundled-plugin-root");
   const developmentPluginRoot = values.get("--development-plugin-root");
+  const developmentNpmCli = values.get("--development-npm-cli");
   const debugHttpEnabled = values.get("--debug-http-enabled");
   const expectedValueCount = 1 +
     (bundledPluginRoot === undefined ? 0 : 1) +
     (developmentPluginRoot === undefined ? 0 : 1) +
+    (developmentNpmCli === undefined ? 0 : 1) +
     (debugHttpEnabled === undefined ? 0 : 1);
   if (
     dataRoot === undefined ||
+    ((developmentPluginRoot === undefined) !== (developmentNpmCli === undefined)) ||
     (debugHttpEnabled !== undefined && debugHttpEnabled !== "1") ||
     values.size !== expectedValueCount
   ) {
@@ -85,6 +88,7 @@ function parseLaunchOptions(arguments_: readonly string[]): DesktopRuntimeOption
     dataRoot,
     ...(bundledPluginRoot === undefined ? {} : { bundledPluginRoot }),
     ...(developmentPluginRoot === undefined ? {} : { developmentPluginRoot }),
+    ...(developmentNpmCli === undefined ? {} : { developmentNpmCli }),
     ...(debugHttpEnabled === undefined ? {} : { debugHttpAllowed: true }),
     onProgress: emitProgress,
   };

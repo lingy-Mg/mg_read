@@ -34,6 +34,8 @@ abstract interface class _RuntimeSupervisor {
 
   Stream<RuntimeInitializationProgress> get initialization;
 
+  Stream<DevelopmentPluginChangeBatch> get developmentChanges;
+
   List<RuntimeDiagnostic> get latestDiagnostics;
 
   int get debugProcessStartCount;
@@ -88,6 +90,13 @@ final class PluginRuntime {
   }
 
   final _RuntimeSupervisor _supervisor;
+
+  /// Emits Windows Debug development-source build and activation changes.
+  ///
+  /// Android returns an empty stream and never starts a directory watcher or
+  /// development build chain.
+  Stream<DevelopmentPluginChangeBatch> get developmentChanges =>
+      _supervisor.developmentChanges;
 
   /// Routes only Flutter's desktop loopback control transport through [proxyUri].
   ///

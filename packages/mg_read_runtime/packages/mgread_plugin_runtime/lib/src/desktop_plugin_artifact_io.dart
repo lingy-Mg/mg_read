@@ -10,7 +10,6 @@ final class _DesktopPluginArtifactIo {
     PluginTransferArtifact artifact,
   ) async {
     _assertOpen();
-    await _supervisor._synchronizeDevelopmentRuntime();
     final connection = await _supervisor._ensureStarted();
     final raw = await connection.request(
       method: 'plugins.transfer.export.v2',
@@ -45,7 +44,6 @@ final class _DesktopPluginArtifactIo {
     Directory outputDirectory,
   ) async {
     _assertOpen();
-    await _supervisor._synchronizeDevelopmentRuntime();
     if (!await outputDirectory.exists()) {
       throw const PluginRuntimeException(
         'file_unavailable',

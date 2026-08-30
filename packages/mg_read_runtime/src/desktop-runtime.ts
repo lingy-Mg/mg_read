@@ -26,6 +26,7 @@ import {
   type JsonObject,
   type JsonValue,
   isRuntimeCancellationEnvelope,
+  makeDevelopmentPluginEvent,
   makeError,
   makeResponse,
   parseRuntimeCancellation,
@@ -35,6 +36,10 @@ import {
   type RuntimeRequest,
 } from "./protocol.js";
 import { expectedNodeVersion, protocolVersion, runtimeVersion } from "./runtime-version.js";
+import {
+  developmentPluginChangeFromManagerEvent,
+  emitPluginManagerDiagnostic,
+} from "./plugin-manager-events.js";
 import {
   maxWebSocketControlFrameBytes,
   maxWebSocketOutboundQueueBytes,
@@ -261,6 +266,7 @@ export class DesktopRuntime {
   /** Runtime-owned plugin/dependency/data root, never exposed through Facade. */
   readonly #dataRoot: string;
   readonly #developmentPluginRoot: string | undefined;
+  readonly #developmentNpmCli: string | undefined;
   readonly #pluginImportInboxRoot: string | undefined;
 
   /** Immutable platform-package seed directory, if this launch supplies one. */
@@ -273,6 +279,7 @@ export class DesktopRuntime {
 
   /** All currently open RPC sessions, closed before server shutdown. */
   readonly #sessions = new Set<ServerWebSocketSession>();
+  #developmentEventRevision = 0;
 
   /** Fixed start timestamp included in the stdout readiness record. */
   readonly #startedAt = new Date().toISOString();
@@ -292,6 +299,7 @@ export class DesktopRuntime {
       options.dataRoot ??
       resolve(tmpdir(), "mgread-runtime-tests", process.pid.toString());
     this.#developmentPluginRoot = options.developmentPluginRoot;
+    this.#developmentNpmCli = options.developmentNpmCli;
     this.#pluginImportInboxRoot = options.pluginImportInboxRoot;
     this.#bundledPluginRoot = options.bundledPluginRoot;
     this.#embedded = options.embedded ?? false;
@@ -391,7 +399,12 @@ export class DesktopRuntime {
       embedded: this.#embedded,
       ...(this.#developmentPluginRoot === undefined
         ? {}
-        : { developmentPluginRoot: this.#developmentPluginRoot }),
+        : {
+            developmentPluginRoot: this.#developmentPluginRoot,
+            ...(this.#developmentNpmCli === undefined
+              ? {}
+              : { developmentNpmCli: this.#developmentNpmCli }),
+          }),
       events: (event) => this.#handlePluginManagerEvent(event), debugLogEnabled: () => this.#debugHttp?.status().enabled === true,
     });
     try {
@@ -490,6 +503,18 @@ export class DesktopRuntime {
         });
       }
       return;
+    }
+    const developmentChange = developmentPluginChangeFromManagerEvent(event);
+    if (developmentChange !== undefined) {
+      this.#developmentEventRevision += 1;
+      const envelope = makeDevelopmentPluginEvent(
+        this.#bootId,
+        this.#developmentEventRevision,
+        [developmentChange],
+      );
+      for (const session of this.#sessions) {
+        if (!session.isClosed) this.#sendJson(session, envelope);
+      }
     }
     emitPluginManagerDiagnostic(event);
   }
@@ -1420,34 +1445,4 @@ export class DesktopRuntime {
     });
     response.end(payload);
   }
-}
-
-/** Emits only stable plugin lifecycle diagnostics; Debug-only plugin logs are not diagnostics. */
-function emitPluginManagerDiagnostic(event: PluginManagerEvent): void {
-  if (event.code === "plugin_log_emitted") return;
-  const code = event.code;
-  const messages: Record<Exclude<PluginManagerEvent["code"], "plugin_log_emitted">, string> = {
-    plugin_disabled: "插件数据源已停用。",
-    plugin_enabled: "插件数据源已启用。",
-    plugin_invocation_completed: "插件能力调用已成功完成。",
-    plugin_invocation_failed: "插件能力调用失败。",
-    plugin_invocation_started: "插件能力调用已开始。",
-    plugin_load_completed: "标准 Node 插件已成功加载。",
-    plugin_load_failed: "无法加载标准 Node 插件。",
-    plugin_load_started: "标准 Node 插件开始加载。",
-    plugin_quarantined: "启动时发现的异常插件数据源已隔离。",
-    plugin_uninstall_scheduled: "插件数据源已标记为在下次冷启动时移除。",
-    plugin_uninstall_completed: "待卸载的插件已完成卸载。",
-  };
-  emitRuntimeDiagnostic({
-    code,
-    component: "runtime.plugin",
-    ...(event.durationMs === undefined
-      ? {}
-      : { durationMicros: Math.max(0, Math.round(event.durationMs * 1_000)) }),
-    level: event.outcome === "error" ? "error" : "info",
-    message: messages[code],
-    outcome: event.outcome,
-    type: "diagnostic",
-  });
 }

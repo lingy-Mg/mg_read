@@ -12,7 +12,7 @@
  * TODO:
  * - 将剩余 VM 编排方法继续下沉到显式内部端口。
  */
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createRequire } from "node:module";
 import {
@@ -29,6 +29,15 @@ import { dirname, resolve } from "node:path";
 
 import type { JsonObject } from "./protocol.js";
 import type { PluginBrowserSessionProvider } from "./plugin-browser-session.js";
+import { DevelopmentPluginMonitor } from "./development-plugin-monitor.js";
+import {
+  developmentPluginIdentity,
+  developmentSnapshots,
+  DevelopmentGenerationLifetime,
+  loadDevelopmentPlugin,
+  reloadDevelopmentPlugin,
+  removeDevelopmentPlugin,
+} from "./development-plugin-runtime.js";
 import { createPluginContext } from "./plugin-manager-context.js";
 import { openMediaProxyResource } from "./media-resource-proxy.js";
 import {
@@ -97,8 +106,6 @@ import {
 } from "./plugin-manager-contract.js";
 import {
   atomicWrite,
-  collectDevelopmentFiles,
-  developmentProjectFingerprint,
   exists,
   isMissingPath,
   isPluginId,
@@ -132,6 +139,7 @@ export class PluginManager {
   readonly #dataRoot: string;
   readonly #embedded: boolean;
   readonly #developmentPluginRoot: string | undefined;
+  readonly #developmentNpmCli: string | undefined;
   readonly #events: PluginManagerEventSink;
   readonly #debugLogEnabled: () => boolean;
   readonly #http: PluginRuntimeHttpClient;
@@ -144,17 +152,19 @@ export class PluginManager {
   readonly #developmentLoaded = new Map<string, DevelopmentPlugin>();
   readonly #cacheOperationTails = new Map<string, Promise<void>>();
   readonly #pluginTransfer: PluginArtifactTransferManager;
-  readonly #developmentInvocationTails = new Map<string, Promise<void>>();
+  readonly #developmentLifetime = new DevelopmentGenerationLifetime();
   #initializePromise: Promise<void> | undefined;
   #startupQuarantinedCount = 0;
   #installedSnapshots: readonly InstalledPluginSnapshot[] = Object.freeze([]);
   #developmentSnapshots: readonly InstalledPluginSnapshot[] = Object.freeze([]);
-  #developmentRefreshTail: Promise<void> = Promise.resolve();
+  #developmentMutationTail: Promise<void> = Promise.resolve();
+  #developmentMonitor: DevelopmentPluginMonitor | undefined;
 
   constructor(
     runtimeDataRoot: string,
     options: {
       readonly developmentPluginRoot?: string;
+      readonly developmentNpmCli?: string;
       readonly embedded?: boolean;
       readonly events?: PluginManagerEventSink;
       readonly http?: PluginRuntimeHttpClient;
@@ -167,6 +177,9 @@ export class PluginManager {
     this.#developmentPluginRoot = options.developmentPluginRoot === undefined
       ? undefined
       : resolve(options.developmentPluginRoot);
+    this.#developmentNpmCli = options.developmentNpmCli === undefined
+      ? undefined
+      : resolve(options.developmentNpmCli);
     this.#events = options.events ?? (() => {});
     this.#debugLogEnabled = options.debugLogEnabled ?? (() => false);
     this.#http = options.http ?? { fetch: (input, init) => fetch(input, init) };
@@ -209,7 +222,7 @@ export class PluginManager {
 
   async consumeResource(token: string, signal: AbortSignal): Promise<PluginResourceResponse> {
     const entry = this.#resources.get(token); if (entry === undefined || signal.aborted) throw new PluginManagerError("invalid_request");
-    await this.initialize(); await this.#refreshDevelopmentPlugins();
+    await this.initialize();
     const loaded = this.#developmentLoaded.get(entry.pluginId)?.loaded ?? this.#installedLoaded.get(entry.pluginId); if (loaded === undefined) throw new PluginManagerError("plugin_not_found");
     const startedAt = performance.now();
     if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.resource_proxy", logLevel: "debug", logMessage: `资源代理请求开始：参数=${JSON.stringify(entry.request)}`, outcome: "success", pluginId: entry.pluginId });
@@ -233,7 +246,7 @@ export class PluginManager {
 
   /** Returns the immutable cold-start installation projection. */
   async listInstalled(): Promise<readonly InstalledPluginSnapshot[]> {
-    await this.initialize(); await this.#refreshDevelopmentPlugins();
+    await this.initialize();
     return Object.freeze(await Promise.all(this.#combinedSnapshots().map((snapshot) =>
       this.#pluginIcons.project(snapshot, this.#developmentLoaded, this.#resourceOrigin))));
   }
@@ -241,11 +254,17 @@ export class PluginManager {
   /** Lists retained artifacts plus explicit, temporary development exports. */
   async listExportableArtifacts(): Promise<readonly PluginTransferArtifact[]> {
     await this.initialize();
-    await this.#refreshDevelopmentPlugins();
     return listExportablePluginArtifacts(this.#pluginTransfer, this.#installedSnapshots, this.#developmentLoaded.values());
   }
 
   async close(): Promise<void> {
+    await this.#developmentMonitor?.close();
+    await this.#developmentMutationTail.catch(() => {});
+    await this.#developmentLifetime.close(this.#developmentLoaded.values());
+    await rm(resolve(this.#dataRoot, "development-generations"), {
+      force: true,
+      recursive: true,
+    }).catch(() => {});
     await this.#pluginTransfer.dispose();
   }
 
@@ -258,7 +277,6 @@ export class PluginManager {
   /** Packages one loaded Windows Debug development source without exposing its path. */
   async createDevelopmentPackageResource(pluginId: string): Promise<{ readonly artifact: PluginTransferArtifact; readonly fileName: string; readonly token: string }> {
     await this.initialize();
-    await this.#refreshDevelopmentPlugins();
     if (!isPluginId(pluginId)) throw new PluginManagerError("invalid_request");
     const development = this.#developmentLoaded.get(pluginId);
     if (development === undefined) throw new PluginManagerError("plugin_not_found");
@@ -283,7 +301,6 @@ export class PluginManager {
    */
   async resolveCodeDirectory(pluginId: string): Promise<PluginCodeDirectory> {
     await this.initialize();
-    await this.#refreshDevelopmentPlugins();
     if (!isPluginId(pluginId)) throw new PluginManagerError("invalid_request");
     const development = this.#developmentLoaded.get(pluginId);
     if (development !== undefined) {
@@ -312,7 +329,6 @@ export class PluginManager {
   /** Reports byte usage for installed plugins without exposing cache paths. */
   async listCacheUsage(pluginId?: string): Promise<readonly PluginCacheUsage[]> {
     await this.initialize();
-    if (pluginId === undefined) await this.#refreshDevelopmentPlugins();
     const selected = this.#combinedSnapshots().filter((snapshot) => pluginId === undefined || snapshot.id === pluginId);
     return Object.freeze(await Promise.all(selected.map(async (snapshot) =>
       Object.freeze({
@@ -340,7 +356,6 @@ export class PluginManager {
     ) {
       throw new PluginManagerError("invalid_request");
     }
-    await this.#refreshDevelopmentPlugins();
     const snapshot = this.#installedSnapshots.find((item) => item.id === pluginId);
     if (snapshot === undefined) throw new PluginManagerError("plugin_not_found");
     const version = snapshot.activeVersion ?? snapshot.pendingVersion;
@@ -370,7 +385,6 @@ export class PluginManager {
   /** Clears one installed plugin's private cache and returns a stable outcome. */
   async clearPluginCache(pluginId: string): Promise<PluginCacheClearResult> {
     await this.initialize();
-    await this.#refreshDevelopmentPlugins();
     if (!isPluginId(pluginId)) throw new PluginManagerError("invalid_request");
     if (!this.#combinedSnapshots().some((item) => item.id === pluginId)) {
       throw new PluginManagerError("plugin_not_found");
@@ -383,7 +397,6 @@ export class PluginManager {
   /** Clears every currently installed plugin cache, preserving per-plugin status. */
   async clearAllPluginCaches(): Promise<PluginCacheClearResult> {
     await this.initialize();
-    await this.#refreshDevelopmentPlugins();
     const pluginIds = this.#combinedSnapshots().map((item) => item.id);
     return Object.freeze({
       items: Object.freeze(await Promise.all(pluginIds.map((pluginId) =>
@@ -399,7 +412,6 @@ export class PluginManager {
   async setEnabled(pluginId: string, enabled: boolean): Promise<InstalledPluginSnapshot> {
     await this.initialize();
     if (!isPluginId(pluginId)) throw new PluginManagerError("invalid_request");
-    await this.#refreshDevelopmentPlugins();
     if (this.#developmentLoaded.has(pluginId)) {
       throw new PluginManagerError("invalid_request");
     }
@@ -421,7 +433,6 @@ export class PluginManager {
   async scheduleUninstall(pluginId: string): Promise<void> {
     await this.initialize();
     if (!isPluginId(pluginId)) throw new PluginManagerError("invalid_request");
-    await this.#refreshDevelopmentPlugins();
     if (this.#developmentLoaded.has(pluginId)) {
       throw new PluginManagerError("invalid_request");
     }
@@ -565,14 +576,13 @@ export class PluginManager {
     validateCorrelation?: (result: TResult) => boolean,
   ): Promise<TResult> {
     await this.initialize();
-    await this.#refreshDevelopmentPlugins();
     if (!isPluginId(pluginId)) throw new PluginManagerError("invalid_request");
     const queuedAt = performance.now();
     const releaseCacheOperation = await this.#acquireCacheOperation(pluginId);
     if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.invocation", logLevel: "debug", logMessage: `插件调用取得队列：操作=${operation}，等待毫秒=${Math.round(performance.now() - queuedAt)}`, outcome: "success", pluginId });
-    const releaseDevelopmentInvocation = this.#developmentLoaded.has(pluginId) ? await this.#acquireDevelopmentInvocation(pluginId) : undefined;
+    const development = this.#developmentLoaded.get(pluginId);
+    if (development !== undefined) this.#developmentLifetime.retain(development);
     try {
-      if (releaseDevelopmentInvocation !== undefined) await this.#refreshDevelopmentPlugins();
       return await this.#invokeLoadedContent(
         pluginId,
         operation,
@@ -582,9 +592,10 @@ export class PluginManager {
         validate,
         trace,
         validateCorrelation,
+        development,
       );
     } finally {
-      releaseDevelopmentInvocation?.();
+      if (development !== undefined) await this.#developmentLifetime.release(development);
       releaseCacheOperation();
     }
   }
@@ -598,10 +609,13 @@ export class PluginManager {
     validate: (pluginId: string, sourceName: string, value: unknown) => TResult,
     trace?: PluginRuntimeTraceContext,
     validateCorrelation?: (result: TResult) => boolean,
+    development?: DevelopmentPlugin,
   ): Promise<TResult> {
     const snapshot = this.#combinedSnapshots().find((item) => item.id === pluginId);
-    if (snapshot?.enabled != true) throw new PluginManagerError(snapshot === undefined ? "plugin_not_found" : "plugin_disabled");
-    const plugin = this.#developmentLoaded.get(pluginId)?.loaded ?? this.#installedLoaded.get(pluginId);
+    if (development === undefined && snapshot?.enabled != true) {
+      throw new PluginManagerError(snapshot === undefined ? "plugin_not_found" : "plugin_disabled");
+    }
+    const plugin = development?.loaded ?? this.#installedLoaded.get(pluginId);
     if (plugin === undefined) throw new PluginManagerError(snapshot?.status === "disabled" ? "plugin_disabled" : "plugin_not_found");
 
     const startedAt = performance.now();
@@ -622,6 +636,9 @@ export class PluginManager {
         }),
         () => plugin.module[operation](request),
       );
+      if (development !== undefined && this.#developmentLoaded.get(pluginId) !== development) {
+        throw new PluginManagerError("plugin_execution_failed");
+      }
       this.#throwIfCancelled(signal, deadlineUnixMs);
       const result = validate(
         pluginId,
@@ -630,6 +647,9 @@ export class PluginManager {
       );
       if (validateCorrelation !== undefined && !validateCorrelation(result)) {
         throw new PluginContentValidationError();
+      }
+      if (development !== undefined && this.#developmentLoaded.get(pluginId) !== development) {
+        throw new PluginManagerError("plugin_execution_failed");
       }
       this.#events({
         code: "plugin_invocation_completed",
@@ -662,7 +682,11 @@ export class PluginManager {
   async #initialize(): Promise<void> {
     const pluginsRoot = resolve(this.#dataRoot, "plugins");
     await mkdir(pluginsRoot, { recursive: true });
-    await this.#refreshDevelopmentPlugins();
+    await rm(resolve(this.#dataRoot, "development-generations"), {
+      force: true,
+      recursive: true,
+    });
+    await this.#initializeDevelopmentPlugins();
     const snapshots: InstalledPluginSnapshot[] = [];
     const entries = await readdir(pluginsRoot, { withFileTypes: true });
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
@@ -684,105 +708,87 @@ export class PluginManager {
     this.#installedSnapshots = Object.freeze(snapshots);
   }
 
-  #refreshDevelopmentPlugins(): Promise<void> {
-    if (this.#developmentPluginRoot === undefined) return Promise.resolve();
-    const refresh = this.#developmentRefreshTail.then(() =>
-      this.#refreshDevelopmentPluginsNow()
-    );
-    this.#developmentRefreshTail = refresh.catch(() => {});
-    return refresh;
-  }
-
-  async #refreshDevelopmentPluginsNow(): Promise<void> {
+  async #initializeDevelopmentPlugins(): Promise<void> {
     const developmentRoot = this.#developmentPluginRoot;
     if (developmentRoot === undefined) return;
-    const nextLoaded = new Map<string, DevelopmentPlugin>();
-    const nextSnapshots: InstalledPluginSnapshot[] = [];
+    const npmCli = this.#developmentNpmCli;
+    if (npmCli !== undefined) {
+      this.#developmentMonitor = new DevelopmentPluginMonitor({
+        developmentRoot,
+        npmCliPath: npmCli,
+        onBuildFailed: (projectRoot) => this.#queueDevelopmentMutation(async () => {
+          this.#events({
+            code: "development_plugin_build_failed",
+            outcome: "error",
+            ...developmentPluginIdentity(this.#developmentLoaded, projectRoot),
+          });
+        }),
+        onBuilt: (projectRoot) => this.#queueDevelopmentMutation(
+          () => reloadDevelopmentPlugin(
+            projectRoot,
+            this.#developmentRegistryOptions(),
+          ),
+        ),
+        onRemoved: (projectRoot) => this.#queueDevelopmentMutation(
+          async () => removeDevelopmentPlugin(
+            projectRoot,
+            this.#developmentRegistryOptions(),
+          ),
+        ),
+      });
+      await this.#developmentMonitor.start();
+    }
     const entries = await readdir(developmentRoot, { withFileTypes: true });
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       if (!entry.isDirectory()) continue;
       const projectRoot = resolve(developmentRoot, entry.name);
-      const previousByPath = [...this.#developmentLoaded.values()].find(
-        (candidate) => candidate.projectRoot === projectRoot,
-      );
       try {
         const project = await readPluginProject(projectRoot);
-        if (nextLoaded.has(project.descriptor.id)) continue;
-        const fingerprint = await developmentProjectFingerprint(projectRoot);
-        const previous = this.#developmentLoaded.get(project.descriptor.id);
-        const loaded = previous?.projectRoot === projectRoot
-          ? previous.loaded
-          : await this.#loadDevelopmentProject(projectRoot, project.descriptor);
-        nextLoaded.set(project.descriptor.id, Object.freeze({
-          fingerprint: previous?.projectRoot === projectRoot
-            ? previous.fingerprint
-            : fingerprint,
-          loaded,
-          projectRoot,
-        }));
-        nextSnapshots.push(snapshotFrom(
-          loaded.descriptor,
-          loaded.descriptor.id,
-          loaded.descriptor.version,
-          null,
-          true,
-          "development",
-        ));
+        if (this.#developmentLoaded.has(project.descriptor.id)) continue;
+        const development = await this.#loadDevelopmentProject(projectRoot, project.descriptor);
+        this.#developmentLoaded.set(project.descriptor.id, development);
       } catch {
-        if (previousByPath === undefined || nextLoaded.has(previousByPath.loaded.descriptor.id)) {
-          continue;
-        }
-        nextLoaded.set(previousByPath.loaded.descriptor.id, previousByPath);
-        nextSnapshots.push(snapshotFrom(
-          previousByPath.loaded.descriptor,
-          previousByPath.loaded.descriptor.id,
-          previousByPath.loaded.descriptor.version,
-          null,
-          true,
-          "development",
-        ));
+        // One broken development project must not block unrelated sources.
       }
     }
-    this.#developmentLoaded.clear();
-    for (const [pluginId, development] of nextLoaded) {
-      this.#developmentLoaded.set(pluginId, development);
-    }
-    this.#developmentSnapshots = Object.freeze(nextSnapshots);
+    this.#rebuildDevelopmentSnapshots();
   }
 
   async #loadDevelopmentProject(
     projectRoot: string,
     descriptor: PluginPackageDescriptor,
-  ): Promise<LoadedPlugin> {
-    const startedAt = performance.now();
-    this.#events({
-      code: "plugin_load_started",
-      outcome: "started",
-      pluginId: descriptor.id,
+  ): Promise<DevelopmentPlugin> {
+    return loadDevelopmentPlugin({
+      createContext: (candidate) => this.#createContext(candidate),
+      dataRoot: this.#dataRoot,
+      descriptor,
+      events: this.#events,
+      loadModule: (entryPath) => this.#loadModule(entryPath),
+      projectRoot,
     });
-    try {
-      const entryPath = resolveInside(projectRoot, descriptor.entry);
-      const imported = await this.#loadModule(entryPath);
-      const candidate = normalizePluginModule(imported);
-      if (candidate === undefined) throw new PluginManagerError("plugin_load_failed");
-      await candidate.activate(await this.#createContext(descriptor));
-      const loaded = Object.freeze({ descriptor, module: candidate });
-      this.#events({
-        code: "plugin_load_completed",
-        durationMs: performance.now() - startedAt,
-        outcome: "success",
-        pluginId: descriptor.id,
-      });
-      return loaded;
-    } catch {
-      this.#events({
-        code: "plugin_load_failed",
-        durationMs: performance.now() - startedAt,
-        outcome: "error",
-        pluginId: descriptor.id,
-      });
-      throw new PluginManagerError("plugin_load_failed");
-    }
+  }
+
+  #queueDevelopmentMutation(operation: () => Promise<void>): Promise<void> {
+    const next = this.#developmentMutationTail.then(operation);
+    this.#developmentMutationTail = next.catch(() => {});
+    return next;
+  }
+
+  #developmentRegistryOptions() {
+    return {
+      events: this.#events,
+      lifetime: this.#developmentLifetime,
+      load: (projectRoot: string, descriptor: PluginPackageDescriptor) =>
+        this.#loadDevelopmentProject(projectRoot, descriptor),
+      loaded: this.#developmentLoaded,
+      onSnapshots: (snapshots: readonly InstalledPluginSnapshot[]) => {
+        this.#developmentSnapshots = snapshots;
+      },
+    };
+  }
+
+  #rebuildDevelopmentSnapshots(): void {
+    this.#developmentSnapshots = developmentSnapshots(this.#developmentLoaded);
   }
 
   #combinedSnapshots(): readonly InstalledPluginSnapshot[] {
@@ -792,23 +798,6 @@ export class PluginManager {
     return Object.freeze(
       [...combined.values()].sort((left, right) => left.id.localeCompare(right.id)),
     );
-  }
-
-  async #acquireDevelopmentInvocation(pluginId: string): Promise<() => void> {
-    const previous = this.#developmentInvocationTails.get(pluginId) ?? Promise.resolve();
-    let releaseGate!: () => void;
-    const gate = new Promise<void>((resolveGate) => {
-      releaseGate = resolveGate;
-    });
-    const tail = previous.then(() => gate);
-    this.#developmentInvocationTails.set(pluginId, tail);
-    await previous;
-    return () => {
-      releaseGate();
-      if (this.#developmentInvocationTails.get(pluginId) === tail) {
-        this.#developmentInvocationTails.delete(pluginId);
-      }
-    };
   }
 
   /** Serializes cache cleanup with plugin code that may be using that cache. */

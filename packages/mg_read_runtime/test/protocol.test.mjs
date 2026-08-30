@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  makeDevelopmentPluginEvent,
   makeError,
   parseRuntimeCancellation,
   parseRuntimeRequest,
@@ -102,6 +103,21 @@ test("desktop protocol never writes an orphan error envelope", () => {
     }),
     undefined,
   );
+});
+
+test("development change events expose revision and plugin identity without paths", () => {
+  const event = makeDevelopmentPluginEvent(bootId, 7, [
+    { kind: "updated", pluginId: "org.example.source" },
+  ]);
+  assert.deepEqual(event, {
+    v: protocolVersion,
+    type: "event",
+    bootId,
+    event: "development.plugins.changed",
+    revision: 7,
+    changes: [{ kind: "updated", pluginId: "org.example.source" }],
+  });
+  assert.equal(JSON.stringify(event).includes("path"), false);
 });
 
 test("desktop protocol parses only a matching client cancellation envelope", () => {
