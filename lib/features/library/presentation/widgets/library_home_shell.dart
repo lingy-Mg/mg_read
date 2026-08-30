@@ -476,10 +476,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     _showUnavailableMessage();
   }
 
-  Future<void> _refreshBook(
-    LibraryBookListItemViewData book,
-    Future<void> Function(LibraryBookListItemViewData) refreshBook,
-  ) async {
+  Future<void> _refreshBook(LibraryBookListItemViewData book, Future<void> Function(LibraryBookListItemViewData) refreshBook) async {
     if (!_refreshingBookIds.add(book.id)) return;
     setState(() {});
     try {

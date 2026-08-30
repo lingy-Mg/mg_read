@@ -84,7 +84,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Android 即时书架'), findsNothing);
 
-    final save = saver.save(source: _source, content: _content);
+    final save = saver.save(
+      source: _source,
+      detail: PluginContentDetail(
+        pluginId: _source.id,
+        sourceName: _source.displayName,
+        summary: _content,
+        aliases: const <String>[],
+        catalogUrl: _content.url,
+      ),
+    );
     await tester.pump();
     expect(find.text('Android 即时书架'), findsWidgets);
     await save;

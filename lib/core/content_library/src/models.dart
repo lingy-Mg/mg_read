@@ -224,13 +224,9 @@ final class LibraryReadingProgress {
 /// Durable spoken-audio position, identified by source chapter rather than a
 /// transient player queue index.
 final class LibraryAudioPlaybackProgress {
-  LibraryAudioPlaybackProgress({
-    required this.itemId,
-    required this.chapterId,
-    required this.position,
-    required this.updatedAtUtc,
-  }) : assert(chapterId != ''),
-       assert(!position.isNegative);
+  LibraryAudioPlaybackProgress({required this.itemId, required this.chapterId, required this.position, required this.updatedAtUtc})
+    : assert(chapterId != ''),
+      assert(!position.isNegative);
 
   final LibraryItemId itemId;
   final String chapterId;

@@ -11,10 +11,7 @@ void main() {
     final membership = container.read(bookshelfMembershipProvider.notifier);
     await membership.reload();
     String? removedId;
-    final remover = CoordinatedDiscoveryBookshelfRemover(
-      membership: membership,
-      removeBook: (bookId) async => removedId = bookId,
-    );
+    final remover = CoordinatedDiscoveryBookshelfRemover(membership: membership, removeBook: (bookId) async => removedId = bookId);
 
     await remover.remove(pluginId: 'source.test', title: '测试书');
 
@@ -35,15 +32,12 @@ void main() {
     await expectLater(remover.remove(pluginId: 'source.test', title: '测试书'), throwsStateError);
 
     expect(membership.contains(pluginId: 'source.test', title: '测试书'), isTrue);
-    expect(
-      container.read(bookshelfMembershipProvider).entry(pluginId: 'source.test', title: '测试书')?.itemId,
-      'book-1',
-    );
+    expect(container.read(bookshelfMembershipProvider).entry(pluginId: 'source.test', title: '测试书')?.itemId, 'book-1');
   });
 }
 
 ProviderContainer _container() => ProviderContainer(
-  overrides: <Override>[
+  overrides: [
     bookshelfMembershipLoaderProvider.overrideWithValue(
       const _MemoryMembershipLoader(<BookshelfMembershipEntry>[
         BookshelfMembershipEntry(itemId: 'book-1', pluginId: 'source.test', title: '测试书'),

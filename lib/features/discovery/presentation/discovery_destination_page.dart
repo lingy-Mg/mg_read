@@ -232,9 +232,7 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
                 ? SourceDetailShelfState.alreadyAdded
                 : SourceDetailShelfState.canAdd,
             onAddToShelf: (detail) => saver.save(source: selectedSource, detail: detail),
-            onRemoveFromShelf: remover == null
-                ? null
-                : () => remover.remove(pluginId: state.selectedSourceId!, title: content.title),
+            onRemoveFromShelf: remover == null ? null : () => remover.remove(pluginId: state.selectedSourceId!, title: content.title),
           ),
         );
       },

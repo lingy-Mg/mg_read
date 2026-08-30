@@ -359,11 +359,7 @@ void main() {
   testWidgets('shows a cover refresh animation until the bookshelf refresh completes', (WidgetTester tester) async {
     final Completer<void> refreshCompleter = Completer<void>();
     await tester.pumpWidget(
-      _host(
-        callbacks: LibraryHomeCallbacks(
-          onRefreshBook: (LibraryBookListItemViewData book) => refreshCompleter.future,
-        ),
-      ),
+      _host(callbacks: LibraryHomeCallbacks(onRefreshBook: (LibraryBookListItemViewData book) => refreshCompleter.future)),
     );
     await tester.pumpAndSettle();
 

@@ -213,14 +213,13 @@ final class AudioProgressRepository {
 
   final ContentLibrary _library;
 
-  Future<LibraryAudioPlaybackProgress?> load(LibraryItemId itemId) =>
-      _library._trace(
-        operation: 'audioProgressLoad',
-        itemCount: 1,
-        action: () => _load(itemId),
-        resultCount: (result) => result == null ? 0 : 1,
-        resultState: (result) => result == null ? 'empty' : 'content',
-      );
+  Future<LibraryAudioPlaybackProgress?> load(LibraryItemId itemId) => _library._trace(
+    operation: 'audioProgressLoad',
+    itemCount: 1,
+    action: () => _load(itemId),
+    resultCount: (result) => result == null ? 0 : 1,
+    resultState: (result) => result == null ? 'empty' : 'content',
+  );
 
   /// Reads saved audio positions for several shelf items in one metadata query.
   Future<List<LibraryAudioPlaybackProgress>> loadMany(Iterable<LibraryItemId> itemIds) {
@@ -234,11 +233,8 @@ final class AudioProgressRepository {
     );
   }
 
-  Future<void> save(LibraryAudioPlaybackProgress progress) => _library._trace(
-    operation: 'audioProgressSave',
-    itemCount: 1,
-    action: () => _save(progress),
-  );
+  Future<void> save(LibraryAudioPlaybackProgress progress) =>
+      _library._trace(operation: 'audioProgressSave', itemCount: 1, action: () => _save(progress));
 
   Future<LibraryAudioPlaybackProgress?> _load(LibraryItemId itemId) async {
     final page = await _library._persistence.metadataRecords.list(
@@ -312,11 +308,8 @@ final class VideoProgressRepository {
     );
   }
 
-  Future<void> save(LibraryVideoPlaybackProgress progress) => _library._trace(
-    operation: 'videoProgressSave',
-    itemCount: 1,
-    action: () => _save(progress),
-  );
+  Future<void> save(LibraryVideoPlaybackProgress progress) =>
+      _library._trace(operation: 'videoProgressSave', itemCount: 1, action: () => _save(progress));
 
   Future<LibraryVideoPlaybackProgress?> _load(LibraryItemId itemId) async {
     final page = await _library._persistence.metadataRecords.list(

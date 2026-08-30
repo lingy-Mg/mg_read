@@ -105,7 +105,9 @@ final class MangaStateRepository {
   final ContentLibrary _library;
 
   Future<LibraryMangaReadingProgress?> loadProgress(LibraryItemId itemId) async {
-    final page = await _library._persistence.metadataRecords.list(RecordQuery(recordKind: _mangaProgressKind, scope: _scope, parentId: itemId.value, limit: 1));
+    final page = await _library._persistence.metadataRecords.list(
+      RecordQuery(recordKind: _mangaProgressKind, scope: _scope, parentId: itemId.value, limit: 1),
+    );
     return page.records.isEmpty ? null : _mangaProgress(page.records.single);
   }
 
@@ -127,32 +129,92 @@ final class MangaStateRepository {
   }
 
   Future<void> saveProgress(LibraryMangaReadingProgress value) async {
-    final page = await _library._persistence.metadataRecords.list(RecordQuery(recordKind: _mangaProgressKind, scope: _scope, parentId: value.itemId.value, limit: 1));
-    final document = {'chapterId': value.chapterId, 'imageId': value.imageId, 'imageFraction': value.imageFraction, 'chapterIndex': value.chapterIndex, 'bookFraction': value.bookFraction, 'updatedAtUtc': value.updatedAtUtc.toUtc().toIso8601String(), 'readingSeconds': value.readingSeconds};
+    final page = await _library._persistence.metadataRecords.list(
+      RecordQuery(recordKind: _mangaProgressKind, scope: _scope, parentId: value.itemId.value, limit: 1),
+    );
+    final document = {
+      'chapterId': value.chapterId,
+      'imageId': value.imageId,
+      'imageFraction': value.imageFraction,
+      'chapterIndex': value.chapterIndex,
+      'bookFraction': value.bookFraction,
+      'updatedAtUtc': value.updatedAtUtc.toUtc().toIso8601String(),
+      'readingSeconds': value.readingSeconds,
+    };
     if (page.records.isEmpty) {
-      await _library._persistence.metadataRecords.create(RecordDraft(id: _id(), recordKind: _mangaProgressKind, scope: _scope, parentId: value.itemId.value, identityKey: value.itemId.value, stateKey: 'active', document: document));
+      await _library._persistence.metadataRecords.create(
+        RecordDraft(
+          id: _id(),
+          recordKind: _mangaProgressKind,
+          scope: _scope,
+          parentId: value.itemId.value,
+          identityKey: value.itemId.value,
+          stateKey: 'active',
+          document: document,
+        ),
+      );
     } else {
       await _library._persistence.metadataRecords.update(previous: page.records.single, document: document);
     }
   }
 
   Future<List<LibraryMangaBookmark>> listBookmarks(LibraryItemId itemId) async {
-    final page = await _library._persistence.metadataRecords.list(RecordQuery(recordKind: _mangaBookmarkKind, scope: _scope, parentId: itemId.value, limit: 1000));
+    final page = await _library._persistence.metadataRecords.list(
+      RecordQuery(recordKind: _mangaBookmarkKind, scope: _scope, parentId: itemId.value, limit: 1000),
+    );
     return List.unmodifiable(page.records.map(_mangaBookmark));
   }
 
   Future<void> addBookmark(LibraryMangaBookmark value) async {
-    final existing = await _library._persistence.metadataRecords.list(RecordQuery(recordKind: _mangaBookmarkKind, scope: _scope, parentId: value.itemId.value, identityKey: value.id, limit: 1));
-    final document = {'chapterId': value.chapterId, 'imageId': value.imageId, 'imageFraction': value.imageFraction, 'createdAtUtc': value.createdAtUtc.toUtc().toIso8601String()};
-    if (existing.records.isNotEmpty) { await _library._persistence.metadataRecords.update(previous: existing.records.single, document: document); return; }
-    await _library._persistence.metadataRecords.create(RecordDraft(id: _id(), recordKind: _mangaBookmarkKind, scope: _scope, parentId: value.itemId.value, identityKey: value.id, stateKey: 'active', document: document));
+    final existing = await _library._persistence.metadataRecords.list(
+      RecordQuery(recordKind: _mangaBookmarkKind, scope: _scope, parentId: value.itemId.value, identityKey: value.id, limit: 1),
+    );
+    final document = {
+      'chapterId': value.chapterId,
+      'imageId': value.imageId,
+      'imageFraction': value.imageFraction,
+      'createdAtUtc': value.createdAtUtc.toUtc().toIso8601String(),
+    };
+    if (existing.records.isNotEmpty) {
+      await _library._persistence.metadataRecords.update(previous: existing.records.single, document: document);
+      return;
+    }
+    await _library._persistence.metadataRecords.create(
+      RecordDraft(
+        id: _id(),
+        recordKind: _mangaBookmarkKind,
+        scope: _scope,
+        parentId: value.itemId.value,
+        identityKey: value.id,
+        stateKey: 'active',
+        document: document,
+      ),
+    );
   }
 
   Future<void> removeBookmark(LibraryItemId itemId, String id) async {
-    final page = await _library._persistence.metadataRecords.list(RecordQuery(recordKind: _mangaBookmarkKind, scope: _scope, parentId: itemId.value, identityKey: id, limit: 1));
+    final page = await _library._persistence.metadataRecords.list(
+      RecordQuery(recordKind: _mangaBookmarkKind, scope: _scope, parentId: itemId.value, identityKey: id, limit: 1),
+    );
     if (page.records.isNotEmpty) await _library._persistence.metadataRecords.delete(previous: page.records.single);
   }
 }
 
-LibraryMangaReadingProgress _mangaProgress(RecordEnvelope r) => LibraryMangaReadingProgress(itemId: LibraryItemId(r.parentId!), chapterId: r.document['chapterId']! as String, imageId: r.document['imageId']! as String, imageFraction: (r.document['imageFraction']! as num).toDouble(), chapterIndex: r.document['chapterIndex']! as int, bookFraction: (r.document['bookFraction']! as num).toDouble(), updatedAtUtc: DateTime.parse(r.document['updatedAtUtc']! as String), readingSeconds: r.document['readingSeconds']! as int);
-LibraryMangaBookmark _mangaBookmark(RecordEnvelope r) => LibraryMangaBookmark(id: r.identityKey!, itemId: LibraryItemId(r.parentId!), chapterId: r.document['chapterId']! as String, imageId: r.document['imageId']! as String, imageFraction: (r.document['imageFraction']! as num).toDouble(), createdAtUtc: DateTime.parse(r.document['createdAtUtc']! as String));
+LibraryMangaReadingProgress _mangaProgress(RecordEnvelope r) => LibraryMangaReadingProgress(
+  itemId: LibraryItemId(r.parentId!),
+  chapterId: r.document['chapterId']! as String,
+  imageId: r.document['imageId']! as String,
+  imageFraction: (r.document['imageFraction']! as num).toDouble(),
+  chapterIndex: r.document['chapterIndex']! as int,
+  bookFraction: (r.document['bookFraction']! as num).toDouble(),
+  updatedAtUtc: DateTime.parse(r.document['updatedAtUtc']! as String),
+  readingSeconds: r.document['readingSeconds']! as int,
+);
+LibraryMangaBookmark _mangaBookmark(RecordEnvelope r) => LibraryMangaBookmark(
+  id: r.identityKey!,
+  itemId: LibraryItemId(r.parentId!),
+  chapterId: r.document['chapterId']! as String,
+  imageId: r.document['imageId']! as String,
+  imageFraction: (r.document['imageFraction']! as num).toDouble(),
+  createdAtUtc: DateTime.parse(r.document['createdAtUtc']! as String),
+);

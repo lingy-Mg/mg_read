@@ -16,31 +16,24 @@ abstract interface class BookshelfMembershipLoader {
   Future<Iterable<BookshelfMembershipEntry>> load();
 }
 
-final class EmptyBookshelfMembershipLoader
-    implements BookshelfMembershipLoader {
+final class EmptyBookshelfMembershipLoader implements BookshelfMembershipLoader {
   const EmptyBookshelfMembershipLoader();
 
   @override
-  Future<Iterable<BookshelfMembershipEntry>> load() async =>
-      const <BookshelfMembershipEntry>[];
+  Future<Iterable<BookshelfMembershipEntry>> load() async => const <BookshelfMembershipEntry>[];
 }
 
-final bookshelfMembershipLoaderProvider = Provider<BookshelfMembershipLoader>(
-  (Ref ref) => const EmptyBookshelfMembershipLoader(),
-);
+final bookshelfMembershipLoaderProvider = Provider<BookshelfMembershipLoader>((Ref ref) => const EmptyBookshelfMembershipLoader());
 
 final class BookshelfMembershipState {
   const BookshelfMembershipState({required this.entriesByKey, required this.isLoaded});
 
-  const BookshelfMembershipState.initial()
-    : entriesByKey = const <String, BookshelfMembershipEntry>{},
-      isLoaded = false;
+  const BookshelfMembershipState.initial() : entriesByKey = const <String, BookshelfMembershipEntry>{}, isLoaded = false;
 
   final Map<String, BookshelfMembershipEntry> entriesByKey;
   final bool isLoaded;
 
-  bool contains({required String pluginId, required String title}) =>
-      entry(pluginId: pluginId, title: title) != null;
+  bool contains({required String pluginId, required String title}) => entry(pluginId: pluginId, title: title) != null;
 
   BookshelfMembershipEntry? entry({required String pluginId, required String title}) =>
       entriesByKey[bookshelfMembershipKey(pluginId: pluginId, title: title)];
@@ -49,10 +42,9 @@ final class BookshelfMembershipState {
 /// Process-scoped O(1) bookshelf membership index shared by search, discovery
 /// and source details. Loading is one bounded-paged pass, never one query per
 /// result row.
-final bookshelfMembershipProvider =
-    NotifierProvider<BookshelfMembershipController, BookshelfMembershipState>(
-      BookshelfMembershipController.new,
-    );
+final bookshelfMembershipProvider = NotifierProvider<BookshelfMembershipController, BookshelfMembershipState>(
+  BookshelfMembershipController.new,
+);
 
 class BookshelfMembershipController extends Notifier<BookshelfMembershipState> {
   late BookshelfMembershipLoader _loader;
@@ -70,13 +62,9 @@ class BookshelfMembershipController extends Notifier<BookshelfMembershipState> {
     return const BookshelfMembershipState.initial();
   }
 
-  bool contains({required String pluginId, required String title}) =>
-      state.contains(pluginId: pluginId, title: title);
+  bool contains({required String pluginId, required String title}) => state.contains(pluginId: pluginId, title: title);
 
-  Future<bool> containsWhenReady({
-    required String pluginId,
-    required String title,
-  }) async {
+  Future<bool> containsWhenReady({required String pluginId, required String title}) async {
     if (!state.isLoaded) await reload();
     return contains(pluginId: pluginId, title: title);
   }
@@ -138,10 +126,7 @@ class BookshelfMembershipController extends Notifier<BookshelfMembershipState> {
             bookshelfMembershipKey(pluginId: entry.pluginId, title: entry.title): entry,
         ..._optimisticAdded,
       };
-      state = BookshelfMembershipState(
-        entriesByKey: Map<String, BookshelfMembershipEntry>.unmodifiable(entriesByKey),
-        isLoaded: true,
-      );
+      state = BookshelfMembershipState(entriesByKey: Map<String, BookshelfMembershipEntry>.unmodifiable(entriesByKey), isLoaded: true);
     } on Object {
       // Membership is optional display state. Keep the last known projection
       // and allow the app to remain usable if the local read is unavailable.
@@ -149,12 +134,8 @@ class BookshelfMembershipController extends Notifier<BookshelfMembershipState> {
   }
 }
 
-String bookshelfMembershipKey({
-  required String pluginId,
-  required String title,
-}) {
+String bookshelfMembershipKey({required String pluginId, required String title}) {
   return '${pluginId.trim()}\u001f${_normalizeBookTitle(title)}';
 }
 
-String _normalizeBookTitle(String title) =>
-    title.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+String _normalizeBookTitle(String title) => title.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();

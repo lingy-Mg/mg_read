@@ -221,7 +221,7 @@ class LibraryPage extends ConsumerWidget {
         onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) async {
           prepareAndOpen(book.id);
         },
-        onAudioChapterRequested: ({required detail, required firstCatalogPage, required chapter, String? libraryItemId}) {
+        onAudioChapterRequested: ({required detail, required firstCatalogPage, required chapter}) {
           final callback = onAudioChapterRequested;
           if (callback == null) return Future<void>.error(StateError('An audio-player host has not been registered.'));
           return callback(detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter, libraryItemId: book.id);
@@ -272,12 +272,7 @@ class LibraryPage extends ConsumerWidget {
           }
         }
         if (chapter == null) throw StateError('audio_catalog_no_playable_chapter');
-        await callback(
-          detail: detail,
-          firstCatalogPage: catalog,
-          chapter: chapter,
-          libraryItemId: book.id,
-        );
+        await callback(detail: detail, firstCatalogPage: catalog, chapter: chapter, libraryItemId: book.id);
       } on Object {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法打开上次的听书进度，请检查网络后重试。')));

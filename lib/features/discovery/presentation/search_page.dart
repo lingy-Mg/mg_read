@@ -167,9 +167,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                             onAddToShelf: (detail) => ref.read(discoveryBookshelfSaverProvider).save(source: source, detail: detail),
                             onRemoveFromShelf: ref.read(discoveryBookshelfRemoverProvider) == null
                                 ? null
-                                : () => ref
-                                      .read(discoveryBookshelfRemoverProvider)!
-                                      .remove(pluginId: pluginId, title: content.title),
+                                : () => ref.read(discoveryBookshelfRemoverProvider)!.remove(pluginId: pluginId, title: content.title),
                           ),
                         );
                       },

@@ -13,17 +13,13 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 
 void main() {
-  testWidgets('does not search until the user selects a history keyword', (
-    tester,
-  ) async {
+  testWidgets('does not search until the user selects a history keyword', (tester) async {
     final gateway = _SearchGateway();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           sourceContentGatewayProvider.overrideWithValue(gateway),
-          searchHistoryStoreProvider.overrideWithValue(
-            _MemorySearchHistoryStore(const <String>['诡秘之主']),
-          ),
+          searchHistoryStoreProvider.overrideWithValue(_MemorySearchHistoryStore(const <String>['诡秘之主'])),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -36,9 +32,7 @@ void main() {
     expect(gateway.queries, isEmpty);
     expect(find.text('输入关键词开始搜索'), findsOneWidget);
     expect(find.text('真实搜索结果'), findsNothing);
-    final historyScroll = tester.widget<SingleChildScrollView>(
-      find.byKey(const Key('search-history-scroll')),
-    );
+    final historyScroll = tester.widget<SingleChildScrollView>(find.byKey(const Key('search-history-scroll')));
     expect(historyScroll.scrollDirection, Axis.horizontal);
 
     await tester.tap(find.text('诡秘之主').first);
@@ -50,25 +44,17 @@ void main() {
 
   testWidgets('keeps the discovery source when opening search', (tester) async {
     final gateway = _SearchGateway(
-      sources: <PluginSourceDescriptor>[
-        _source('source.first', '第一个数据源'),
-        _source('source.second', '第二个数据源'),
-      ],
+      sources: <PluginSourceDescriptor>[_source('source.first', '第一个数据源'), _source('source.second', '第二个数据源')],
     );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           sourceContentGatewayProvider.overrideWithValue(gateway),
-          searchHistoryStoreProvider.overrideWithValue(
-            _MemorySearchHistoryStore(const <String>['诡秘之主']),
-          ),
+          searchHistoryStoreProvider.overrideWithValue(_MemorySearchHistoryStore(const <String>['诡秘之主'])),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
-          home: SearchPage(
-            initialSourceId: 'source.second',
-            onDestinationRequested: (_) {},
-          ),
+          home: SearchPage(initialSourceId: 'source.second', onDestinationRequested: (_) {}),
         ),
       ),
     );
@@ -78,57 +64,44 @@ void main() {
     expect(find.text('第二个数据源'), findsOneWidget);
   });
 
-  testWidgets(
-    'uses the same-source same-title shelf state in list and detail',
-    (tester) async {
-      final gateway = _SearchGateway();
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            sourceContentGatewayProvider.overrideWithValue(gateway),
-            searchHistoryStoreProvider.overrideWithValue(
-              _MemorySearchHistoryStore(const <String>['诡秘之主']),
-            ),
-            bookshelfMembershipLoaderProvider.overrideWithValue(
-              _MemoryMembershipLoader(const <BookshelfMembershipEntry>[
-                BookshelfMembershipEntry(
-                  itemId: 'book-1',
-                  pluginId: 'source.test',
-                  title: '真实搜索结果',
-                ),
-              ]),
-            ),
-          ],
-          child: MaterialApp(
-            theme: AppTheme.light(),
-            home: SearchPage(onDestinationRequested: (_) {}),
+  testWidgets('uses the same-source same-title shelf state in list and detail', (tester) async {
+    final gateway = _SearchGateway();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sourceContentGatewayProvider.overrideWithValue(gateway),
+          searchHistoryStoreProvider.overrideWithValue(_MemorySearchHistoryStore(const <String>['诡秘之主'])),
+          bookshelfMembershipLoaderProvider.overrideWithValue(
+            _MemoryMembershipLoader(const <BookshelfMembershipEntry>[
+              BookshelfMembershipEntry(itemId: 'book-1', pluginId: 'source.test', title: '真实搜索结果'),
+            ]),
           ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: SearchPage(onDestinationRequested: (_) {}),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.text('诡秘之主').first);
-      await tester.pumpAndSettle();
-      expect(find.text('已在书架'), findsNothing);
+    await tester.tap(find.text('诡秘之主').first);
+    await tester.pumpAndSettle();
+    expect(find.text('已在书架'), findsNothing);
 
-      await tester.tap(find.text('真实搜索结果').first);
-      await tester.pumpAndSettle();
-      expect(find.text('已在书架 · 移出'), findsOneWidget);
-    },
-  );
+    await tester.tap(find.text('真实搜索结果').first);
+    await tester.pumpAndSettle();
+    expect(find.text('已在书架 · 移出'), findsOneWidget);
+  });
 
-  testWidgets('shows Material search progress until results arrive', (
-    tester,
-  ) async {
+  testWidgets('shows Material search progress until results arrive', (tester) async {
     final completion = Completer<PluginSearchResult>();
     final gateway = _SearchGateway(searchCompletion: completion);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           sourceContentGatewayProvider.overrideWithValue(gateway),
-          searchHistoryStoreProvider.overrideWithValue(
-            _MemorySearchHistoryStore(const <String>['诡秘之主']),
-          ),
+          searchHistoryStoreProvider.overrideWithValue(_MemorySearchHistoryStore(const <String>['诡秘之主'])),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -141,10 +114,7 @@ void main() {
     await tester.tap(find.text('诡秘之主').first);
     await tester.pump();
 
-    expect(
-      find.byKey(const Key('source-search-field-progress')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('source-search-field-progress')), findsOneWidget);
     expect(find.byKey(const Key('source-search-progress')), findsOneWidget);
     expect(find.text('正在搜索“诡秘之主”'), findsOneWidget);
 
@@ -155,72 +125,57 @@ void main() {
     expect(find.text('真实搜索结果'), findsWidgets);
   });
 
-  testWidgets(
-    'uses the reader callback and selected source from search detail',
-    (tester) async {
-      final gateway = _SearchGateway();
-      final saver = _RecordingBookshelfSaver();
-      PluginContentDetail? requestedDetail;
-      PluginChaptersResult? requestedCatalog;
-      PluginChapterSummary? requestedChapter;
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            sourceContentGatewayProvider.overrideWithValue(gateway),
-            searchHistoryStoreProvider.overrideWithValue(
-              _MemorySearchHistoryStore(const <String>['诡秘之主']),
-            ),
-            discoveryBookshelfSaverProvider.overrideWithValue(saver),
-          ],
-          child: MaterialApp(
-            theme: AppTheme.light(),
-            home: SearchPage(
-              onDestinationRequested: (_) {},
-              onTextChapterRequested:
-                  ({
-                    required detail,
-                    required firstCatalogPage,
-                    required chapter,
-                    required entryCoverBytes,
-                  }) async {
-                    requestedDetail = detail;
-                    requestedCatalog = firstCatalogPage;
-                    requestedChapter = chapter;
-                  },
-            ),
+  testWidgets('uses the reader callback and selected source from search detail', (tester) async {
+    final gateway = _SearchGateway();
+    final saver = _RecordingBookshelfSaver();
+    PluginContentDetail? requestedDetail;
+    PluginChaptersResult? requestedCatalog;
+    PluginChapterSummary? requestedChapter;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sourceContentGatewayProvider.overrideWithValue(gateway),
+          searchHistoryStoreProvider.overrideWithValue(_MemorySearchHistoryStore(const <String>['诡秘之主'])),
+          discoveryBookshelfSaverProvider.overrideWithValue(saver),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: SearchPage(
+            onDestinationRequested: (_) {},
+            onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) async {
+              requestedDetail = detail;
+              requestedCatalog = firstCatalogPage;
+              requestedChapter = chapter;
+            },
           ),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.text('诡秘之主').first);
-      await tester.pumpAndSettle();
+    await tester.tap(find.text('诡秘之主').first);
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.text('真实搜索结果').first);
-      await tester.pumpAndSettle();
+    await tester.tap(find.text('真实搜索结果').first);
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('source-detail-add-shelf')));
-      await tester.pumpAndSettle();
-      expect(saver.source?.id, 'source.test');
-      expect(saver.source?.pluginVersion, '1.2.3');
-      expect(saver.detail?.summary.id, 'real-result');
+    await tester.tap(find.byKey(const Key('source-detail-add-shelf')));
+    await tester.pumpAndSettle();
+    expect(saver.source?.id, 'source.test');
+    expect(saver.source?.pluginVersion, '1.2.3');
+    expect(saver.detail?.summary.id, 'real-result');
 
-      await tester.tap(find.byKey(const Key('source-detail-start-reading')));
-      await tester.pumpAndSettle();
-      expect(requestedDetail?.summary.id, 'real-result');
-      expect(requestedCatalog?.items.single.id, 'chapter-1');
-      expect(requestedChapter?.id, 'chapter-1');
-      expect(
-        find.byKey(const Key('source-chapter-content-sheet')),
-        findsNothing,
-      );
-    },
-  );
+    await tester.tap(find.byKey(const Key('source-detail-start-reading')));
+    await tester.pumpAndSettle();
+    expect(requestedDetail?.summary.id, 'real-result');
+    expect(requestedCatalog?.items.single.id, 'chapter-1');
+    expect(requestedChapter?.id, 'chapter-1');
+    expect(find.byKey(const Key('source-chapter-content-sheet')), findsNothing);
+  });
 }
 
 final class _MemorySearchHistoryStore implements SearchHistoryStore {
-  _MemorySearchHistoryStore(Iterable<String> initial)
-    : _history = List<String>.of(initial);
+  _MemorySearchHistoryStore(Iterable<String> initial) : _history = List<String>.of(initial);
 
   final List<String> _history;
 
@@ -240,11 +195,7 @@ final class _RecordingBookshelfSaver implements DiscoveryBookshelfSaver {
   PluginContentDetail? detail;
 
   @override
-  Future<void> save({
-    required PluginSourceDescriptor source,
-    PluginContentSummary? content,
-    PluginContentDetail? detail,
-  }) async {
+  Future<void> save({required PluginSourceDescriptor source, PluginContentSummary? content, PluginContentDetail? detail}) async {
     this.source = source;
     this.detail = detail;
   }
@@ -261,8 +212,7 @@ final class _MemoryMembershipLoader implements BookshelfMembershipLoader {
 
 final class _SearchGateway implements SourceContentGateway {
   _SearchGateway({List<PluginSourceDescriptor>? sources, this.searchCompletion})
-    : sources =
-          sources ?? <PluginSourceDescriptor>[_source('source.test', '测试数据源')];
+    : sources = sources ?? <PluginSourceDescriptor>[_source('source.test', '测试数据源')];
 
   final List<PluginSourceDescriptor> sources;
   final List<String> queries = <String>[];
@@ -273,30 +223,20 @@ final class _SearchGateway implements SourceContentGateway {
   Future<List<PluginSourceDescriptor>> listSources() async => sources;
 
   @override
-  Future<PluginSearchResult> search({
-    required String pluginId,
-    required String query,
-    String? cursor,
-    int pageSize = 20,
-  }) async {
+  Future<PluginSearchResult> search({required String pluginId, required String query, String? cursor, int pageSize = 20}) async {
     queries.add(query);
     pluginIds.add(pluginId);
     return searchCompletion?.future ?? _searchResult(pluginId);
   }
 
   @override
-  Future<PluginSearchSuggestionsResult> searchSuggestions({
-    required String pluginId,
-    String? cursor,
-    int pageSize = 20,
-  }) async => PluginSearchSuggestionsResult(
-    pluginId: pluginId,
-    sourceName: '测试数据源',
-    items: const <PluginSearchSuggestion>[
-      PluginSearchSuggestion(query: '诡秘之主', metric: '12.3万'),
-    ],
-    nextCursor: null,
-  );
+  Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) async =>
+      PluginSearchSuggestionsResult(
+        pluginId: pluginId,
+        sourceName: '测试数据源',
+        items: const <PluginSearchSuggestion>[PluginSearchSuggestion(query: '诡秘之主', metric: '12.3万')],
+        nextCursor: null,
+      );
 
   @override
   Future<PluginDiscoverResult> discover({
@@ -308,22 +248,11 @@ final class _SearchGateway implements SourceContentGateway {
   }) => throw UnimplementedError();
 
   @override
-  Future<PluginContentDetail> getDetail({
-    required String pluginId,
-    required String id,
-  }) async => PluginContentDetail(
-    pluginId: pluginId,
-    sourceName: '测试数据源',
-    summary: _content(id),
-    aliases: const <String>[],
-    catalogUrl: null,
-  );
+  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async =>
+      PluginContentDetail(pluginId: pluginId, sourceName: '测试数据源', summary: _content(id), aliases: const <String>[], catalogUrl: null);
 
   @override
-  Future<PluginChaptersResult> getChapters({
-    required String pluginId,
-    required String id,
-  }) async => PluginChaptersResult(
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async => PluginChaptersResult(
     pluginId: pluginId,
     sourceName: '测试数据源',
     items: <PluginChapterSummary>[
@@ -342,11 +271,8 @@ final class _SearchGateway implements SourceContentGateway {
   );
 
   @override
-  Future<PluginChapterContent> getContent({
-    required String pluginId,
-    required String id,
-    required String chapterId,
-  }) => throw UnimplementedError();
+  Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) =>
+      throw UnimplementedError();
 }
 
 PluginSearchResult _searchResult(String pluginId) => PluginSearchResult(
@@ -399,10 +325,9 @@ PluginContentSummary _content(String id) => PluginContentSummary(
   attributes: const <PluginContentAttribute>[],
 );
 
-PluginSourceDescriptor _source(String id, String displayName) =>
-    PluginSourceDescriptor(
-      id: id,
-      displayName: displayName,
-      pluginVersion: '1.2.3',
-      contentKinds: const <PluginContentKind>[PluginContentKind.novel],
-    );
+PluginSourceDescriptor _source(String id, String displayName) => PluginSourceDescriptor(
+  id: id,
+  displayName: displayName,
+  pluginVersion: '1.2.3',
+  contentKinds: const <PluginContentKind>[PluginContentKind.novel],
+);

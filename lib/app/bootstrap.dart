@@ -240,7 +240,9 @@ Future<void> bootstrapMgReadApp({
         if (contentLibrary != null || contentLibraryFactory != null)
           libraryBookDetailLauncherProvider.overrideWithValue(DeferredLibraryBookDetailLauncher(getLibrary)),
         if (contentLibrary != null || contentLibraryFactory != null)
-          libraryBookRefresherProvider.overrideWith((ref) => DeferredLibraryBookRefresher(getLibrary, ref.read(sourceContentGatewayProvider))),
+          libraryBookRefresherProvider.overrideWith(
+            (ref) => DeferredLibraryBookRefresher(getLibrary, ref.read(sourceContentGatewayProvider)),
+          ),
         if (contentLibrary != null || contentLibraryFactory != null)
           profileReadingStatsLoaderProvider.overrideWithValue(DeferredProfileReadingStatsLoader(getLibrary)),
         if (contentLibrary != null || contentLibraryFactory != null)

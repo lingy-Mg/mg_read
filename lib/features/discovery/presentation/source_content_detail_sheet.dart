@@ -56,7 +56,6 @@ typedef SourceAudioChapterRequested =
       required PluginContentDetail detail,
       required PluginChaptersResult firstCatalogPage,
       required PluginChapterSummary chapter,
-      String? libraryItemId,
     });
 
 /// Opens a source-owned video episode in the independently maintained player.
@@ -775,12 +774,10 @@ class _SourceDetailBody extends StatelessWidget {
                   ),
                   child: isRefreshing
                       ? const _DetailLoadingButtonLabel()
-                      : Text(
-                          switch (content.contentKind) {
-                            PluginContentKind.audio || PluginContentKind.video => '开始播放',
-                            _ => '开始阅读',
-                          },
-                        ),
+                      : Text(switch (content.contentKind) {
+                          PluginContentKind.audio || PluginContentKind.video => '开始播放',
+                          _ => '开始阅读',
+                        }),
                 ),
               ),
             ],
