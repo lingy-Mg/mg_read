@@ -127,6 +127,42 @@ void main() {
     expect(backend.snapshot.currentIndex, 1);
   });
 
+  testWidgets('queue indicator moves while playing and stops when paused', (
+    tester,
+  ) async {
+    final backend = _PresentationBackend();
+
+    await tester.pumpWidget(
+      _host(
+        backend: backend,
+        dataSource: const _QueueDataSource(),
+        disableAnimations: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('audio-play-pause')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('audio-queue')));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final bar = find.byKey(const Key('audio-queue-playing-bar-0'));
+    expect(
+      find.byKey(const Key('audio-queue-playing-indicator')),
+      findsOneWidget,
+    );
+    final movingHeight = tester.getSize(bar).height;
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(tester.getSize(bar).height, isNot(closeTo(movingHeight, 0.01)));
+
+    await backend.pause();
+    await tester.pump();
+    final pausedHeight = tester.getSize(bar).height;
+    await tester.pump(const Duration(milliseconds: 160));
+    expect(tester.getSize(bar).height, closeTo(pausedHeight, 0.01));
+  });
+
   testWidgets(
     'large catalog uses a subtle indicator instead of a giant badge',
     (tester) async {
@@ -281,14 +317,17 @@ Widget _host({
   AudioArtworkBuilder? artworkBuilder,
   Size size = const Size(390, 844),
   double textScale = 1.15,
+  bool disableAnimations = true,
 }) {
   return MaterialApp(
     debugShowCheckedModeBanner: false,
     theme: ThemeData.light(useMaterial3: true),
     home: MediaQuery(
-      data: const MediaQueryData(
-        disableAnimations: true,
-      ).copyWith(size: size, textScaler: TextScaler.linear(textScale)),
+      data: const MediaQueryData().copyWith(
+        size: size,
+        textScaler: TextScaler.linear(textScale),
+        disableAnimations: disableAnimations,
+      ),
       child: AudioPlayerView(
         collectionId: 'book',
         dataSource: dataSource,

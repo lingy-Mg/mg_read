@@ -45,6 +45,7 @@ class _AudioQueueSheetState extends State<_AudioQueueSheet> {
   @override
   void initState() {
     super.initState();
+    widget.controller.addListener(_handlePlayerChanged);
     final currentIndex = widget.snapshot.queueEntries.indexWhere(
       (entry) => entry.id == widget.snapshot.currentTrack?.id,
     );
@@ -57,13 +58,21 @@ class _AudioQueueSheetState extends State<_AudioQueueSheet> {
 
   @override
   void dispose() {
+    widget.controller.removeListener(_handlePlayerChanged);
     _scrollController.dispose();
     super.dispose();
   }
 
+  void _handlePlayerChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
-    final snapshot = widget.snapshot;
+    final liveSnapshot = widget.controller.snapshot;
+    final snapshot = liveSnapshot.status == AudioPlayerStatus.ready
+        ? liveSnapshot
+        : widget.snapshot;
     return SafeArea(
       top: false,
       child: FractionallySizedBox(
@@ -133,6 +142,7 @@ class _AudioQueueSheetState extends State<_AudioQueueSheet> {
                             entry: entry,
                             index: index,
                             selected: selected,
+                            playing: selected && snapshot.playing,
                             onTap: entry.isLocked
                                 ? null
                                 : () async {
@@ -162,6 +172,7 @@ class _AudioQueueTile extends StatelessWidget {
     required this.entry,
     required this.index,
     required this.selected,
+    required this.playing,
     required this.onTap,
     super.key,
   });
@@ -169,6 +180,7 @@ class _AudioQueueTile extends StatelessWidget {
   final AudioQueueEntry entry;
   final int index;
   final bool selected;
+  final bool playing;
   final VoidCallback? onTap;
 
   @override
@@ -196,11 +208,7 @@ class _AudioQueueTile extends StatelessWidget {
                     ),
                     child: Center(
                       child: selected
-                          ? const Icon(
-                              Icons.graphic_eq_rounded,
-                              color: Colors.white,
-                              size: 20,
-                            )
+                          ? _AudioPlayingIndicator(playing: playing)
                           : Text(
                               '${index + 1}',
                               style: Theme.of(context).textTheme.labelLarge
@@ -262,6 +270,95 @@ class _AudioQueueTile extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AudioPlayingIndicator extends StatefulWidget {
+  const _AudioPlayingIndicator({required this.playing});
+
+  final bool playing;
+
+  @override
+  State<_AudioPlayingIndicator> createState() => _AudioPlayingIndicatorState();
+}
+
+class _AudioPlayingIndicatorState extends State<_AudioPlayingIndicator>
+    with SingleTickerProviderStateMixin {
+  static const _barCount = 5;
+  late final AnimationController _animation;
+  bool _disableAnimations = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _animation = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 820),
+      value: 0.08,
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _disableAnimations = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    _syncAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AudioPlayingIndicator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.playing != widget.playing) _syncAnimation();
+  }
+
+  @override
+  void dispose() {
+    _animation.dispose();
+    super.dispose();
+  }
+
+  void _syncAnimation() {
+    if (widget.playing && !_disableAnimations) {
+      _animation.repeat();
+      return;
+    }
+    _animation.stop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: widget.playing ? '正在播放' : '当前章节',
+      child: SizedBox(
+        key: const Key('audio-queue-playing-indicator'),
+        width: 22,
+        height: 20,
+        child: AnimatedBuilder(
+          animation: _animation,
+          builder: (context, child) {
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: List<Widget>.generate(_barCount, (index) {
+                final phase = (_animation.value * math.pi * 2) + index * 1.14;
+                final height = 5.0 + ((math.sin(phase) + 1) * 6.5);
+                return SizedBox(
+                  key: Key('audio-queue-playing-bar-$index'),
+                  width: 2.4,
+                  height: height,
+                  child: const DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.all(Radius.circular(2)),
+                    ),
+                  ),
+                );
+              }),
+            );
+          },
         ),
       ),
     );
