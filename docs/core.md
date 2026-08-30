@@ -51,7 +51,8 @@ plugins/sources/                    真实数据源及其他能力参考实现
   业务权威。installed 版本只在冷启动激活；development 变化先回收旧 VM，再启动唯一新 Runtime。
 - Runtime 来源 HTTP 客户端可接收应用传入的瞬时上游 HTTP、HTTPS 或 SOCKS5 代理，覆盖
   `ctx.http.fetch` 与 Runtime 代取的来源资源；必须直连上游，不得增加 Flutter 回环转发服务器，也不得修改
-  Node.js 环境、全局 `fetch`、WebView 或依赖下载，关闭后新请求恢复直连。
+  Node.js 环境、全局 `fetch`、WebView 或依赖下载，关闭后新请求恢复直连。两类来源请求在未显式提供
+  `User-Agent` 时统一使用 Runtime 固定的 reduced Windows 桌面 Chrome UA；数据源显式值优先。
 - Windows Node 环境代理是另一个默认关闭的独立启动开关：开启时 Runtime 以 `--use-env-proxy` 重启，只传入
   `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`，缺失项可由 Windows 手动代理补齐。它影响 Node 环境感知的请求，
   不取代来源 HTTP 的显式 dispatcher；Android 忽略该 Windows 专用选项。

@@ -7,12 +7,14 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { DesktopRuntime, PluginInstaller } from "../dist/index.js";
-import { ConfigurablePluginHttpClient } from "../dist/plugin-http-client.js";
+import { ConfigurablePluginHttpClient, defaultPluginUserAgent } from "../dist/plugin-http-client.js";
 
 test("plugin HTTP client switches future requests between direct and explicit proxy routing", async (t) => {
   let originRequests = 0;
-  const origin = http.createServer((_request, response) => {
+  const userAgents = [];
+  const origin = http.createServer((request, response) => {
     originRequests += 1;
+    userAgents.push(request.headers["user-agent"] ?? null);
     response.end(`origin-${originRequests}`);
   });
   await listen(origin);
@@ -66,14 +68,18 @@ test("plugin HTTP client switches future requests between direct and explicit pr
   assert.equal(proxyTunnels, 1);
 
   client.configure(`socks5://127.0.0.1:${socksAddress.port}/`);
-  assert.equal(await (await client.fetch(target, {})).text(), "origin-4");
+  assert.equal(await (await client.fetch(target, { headers: { "User-Agent": "source-specific" } })).text(), "origin-4");
   assert.equal(socksTunnels, 1);
+  assert.equal(defaultPluginUserAgent, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36");
+  assert.deepEqual(userAgents, [defaultPluginUserAgent, defaultPluginUserAgent, defaultPluginUserAgent, "source-specific"]);
 });
 
 test("Runtime configuration routes the installed plugin ctx.http.fetch boundary only", async (t) => {
   let originRequests = 0;
-  const origin = http.createServer((_request, response) => {
+  const userAgents = [];
+  const origin = http.createServer((request, response) => {
     originRequests += 1;
+    userAgents.push(request.headers["user-agent"] ?? null);
     response.end("ok");
   });
   await listen(origin);
@@ -139,6 +145,7 @@ test("Runtime configuration routes the installed plugin ctx.http.fetch boundary 
   assert.equal(direct.ok, true);
   assert.equal(originRequests, 2);
   assert.equal(proxyTunnels, 1);
+  assert.deepEqual(userAgents, [defaultPluginUserAgent, defaultPluginUserAgent]);
 });
 
 function listen(server) {

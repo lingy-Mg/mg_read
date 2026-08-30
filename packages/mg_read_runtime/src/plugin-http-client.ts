@@ -6,6 +6,8 @@
  *   allowing HTTP/2 negotiation with transparent HTTP/1.1 fallback;
  * - route plugin HTTP and Runtime source-resource requests directly through
  *   one explicitly configured upstream proxy with the same negotiation;
+ * - supply the Runtime-owned reduced desktop Chrome user-agent unless a
+ *   source explicitly overrides it;
  * - switch future requests without mutating process environment or global fetch.
  *
  * Notes:
@@ -21,6 +23,9 @@ import {
 } from "undici";
 
 import type { PluginRuntimeHttpClient, PluginRuntimeTraceContext } from "./plugin-manager-contract.js";
+
+/** Chrome Stable 152.0.7977.64 reduced desktop UA, verified on 2026-08-31. */
+export const defaultPluginUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
 
 const http2TlsOptions = Object.freeze({ allowH2: true as const });
 
@@ -65,9 +70,10 @@ export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
     init: RequestInit,
     _trace?: PluginRuntimeTraceContext,
   ): Promise<Response> {
+    const requestInit = withDefaultUserAgent(init);
     const dispatcher = this.#proxyAgent;
-    if (dispatcher === undefined) return fetch(input, init);
-    const proxiedInit = { ...init, dispatcher } as RequestInit & { readonly dispatcher: Dispatcher };
+    if (dispatcher === undefined) return fetch(input, requestInit);
+    const proxiedInit = { ...requestInit, dispatcher } as RequestInit & { readonly dispatcher: Dispatcher };
     return fetch(input, proxiedInit);
   }
 
@@ -84,4 +90,10 @@ export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
     operation = agent.close().catch(() => {}).finally(() => this.#retiring.delete(operation));
     this.#retiring.add(operation);
   }
+}
+
+function withDefaultUserAgent(init: RequestInit): RequestInit {
+  const headers = new Headers(init.headers);
+  if (!headers.has("user-agent")) headers.set("user-agent", defaultPluginUserAgent);
+  return { ...init, headers };
 }
