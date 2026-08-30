@@ -217,9 +217,10 @@ List<PluginContentSummary> _recommendationCandidates(Iterable<PluginContentSumma
 }
 
 class _RecommendationsSection extends StatefulWidget {
-  const _RecommendationsSection({required this.candidates});
+  const _RecommendationsSection({required this.candidates, required this.onRecommendationRequested});
 
   final List<PluginContentSummary> candidates;
+  final SourceRecommendationRequested? onRecommendationRequested;
 
   @override
   State<_RecommendationsSection> createState() => _RecommendationsSectionState();
@@ -321,7 +322,7 @@ class _RecommendationsSectionState extends State<_RecommendationsSection> {
                     .map(
                       (item) => Padding(
                         padding: const EdgeInsets.only(right: 12),
-                        child: _RecommendationCard(content: item),
+                        child: _RecommendationCard(content: item, onPressed: widget.onRecommendationRequested),
                       ),
                     )
                     .toList(growable: false),
@@ -335,36 +336,52 @@ class _RecommendationsSectionState extends State<_RecommendationsSection> {
 }
 
 class _RecommendationCard extends StatelessWidget {
-  const _RecommendationCard({required this.content});
+  const _RecommendationCard({required this.content, required this.onPressed});
 
   final PluginContentSummary content;
+  final SourceRecommendationRequested? onPressed;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 96,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        DiscoveryBookCover(
-          title: content.title,
-          coverBytes: content.coverBytes,
-          remoteContentId: content.id,
-          coverUrl: content.coverUrl,
-          variant: _coverVariant(content.id),
-          width: 96,
-          height: 140,
+  Widget build(BuildContext context) => Semantics(
+    button: onPressed != null,
+    label: '查看${content.title}详情',
+    child: InkWell(
+      key: ValueKey<String>('source-detail-recommendation-${content.id}'),
+      onTap: onPressed == null ? null : () => unawaited(onPressed!(content)),
+      borderRadius: AppRadii.discoveryCover,
+      child: SizedBox(
+        width: 96,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            DiscoveryBookCover(
+              title: content.title,
+              coverBytes: content.coverBytes,
+              remoteContentId: content.id,
+              coverUrl: content.coverUrl,
+              variant: _coverVariant(content.id),
+              width: 96,
+              height: 140,
+            ),
+            const SizedBox(height: 7),
+            Text(
+              content.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              content.author ?? '作者未知',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppThemeTokens.of(context).mutedText),
+            ),
+          ],
         ),
-        const SizedBox(height: 7),
-        Text(content.title, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: Theme.of(context).textTheme.bodyMedium),
-        const SizedBox(height: 2),
-        Text(
-          content.author ?? '作者未知',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          softWrap: false,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppThemeTokens.of(context).mutedText),
-        ),
-      ],
+      ),
     ),
   );
 }

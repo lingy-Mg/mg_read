@@ -92,6 +92,35 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     final SearchPageController controller = ref.read(searchPageControllerProvider.notifier);
     final bookshelfMembership = ref.watch(bookshelfMembershipProvider);
     final PluginSearchResult? displayedResult = state.result;
+
+    Future<void> openContent(PluginContentSummary content) {
+      final String? pluginId = state.selectedSourceId;
+      if (pluginId == null) return Future<void>.value();
+      final source = state.sources.firstWhere((source) => source.id == pluginId);
+      final remover = ref.read(discoveryBookshelfRemoverProvider);
+      final currentMembership = ref.read(bookshelfMembershipProvider);
+      return showSourceContentDetailSheet(
+        context,
+        gateway: ref.read(sourceContentGatewayProvider),
+        pluginId: pluginId,
+        pluginVersion: source.pluginVersion,
+        id: content.id,
+        initialContent: content,
+        initialSourceName: source.displayName,
+        relatedContents: displayedResult?.items ?? const <PluginContentSummary>[],
+        onTextChapterRequested: widget.onTextChapterRequested,
+        onComicChapterRequested: widget.onComicChapterRequested,
+        onAudioChapterRequested: widget.onAudioChapterRequested,
+        onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
+        shelfState: currentMembership.contains(pluginId: pluginId, title: content.title)
+            ? SourceDetailShelfState.alreadyAdded
+            : SourceDetailShelfState.canAdd,
+        onAddToShelf: (detail) => ref.read(discoveryBookshelfSaverProvider).save(source: source, detail: detail),
+        onRemoveFromShelf: remover == null ? null : () => remover.remove(pluginId: pluginId, title: content.title),
+        onRecommendationRequested: openContent,
+      );
+    }
+
     return Scaffold(
       body: AppPageBackdrop(
         style: AppPageBackdropStyle.search,
@@ -143,34 +172,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                         final pluginId = state.selectedSourceId;
                         return pluginId != null && bookshelfMembership.contains(pluginId: pluginId, title: content.title);
                       },
-                      onContentPressed: (PluginContentSummary content) {
-                        final String? pluginId = state.selectedSourceId;
-                        if (pluginId == null) return;
-                        final source = state.sources.firstWhere((source) => source.id == pluginId);
-                        unawaited(
-                          showSourceContentDetailSheet(
-                            context,
-                            gateway: ref.read(sourceContentGatewayProvider),
-                            pluginId: pluginId,
-                            pluginVersion: source.pluginVersion,
-                            id: content.id,
-                            initialContent: content,
-                            initialSourceName: source.displayName,
-                            relatedContents: displayedResult?.items ?? const <PluginContentSummary>[],
-                            onTextChapterRequested: widget.onTextChapterRequested,
-                            onComicChapterRequested: widget.onComicChapterRequested,
-                            onAudioChapterRequested: widget.onAudioChapterRequested,
-                            onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
-                            shelfState: bookshelfMembership.contains(pluginId: pluginId, title: content.title)
-                                ? SourceDetailShelfState.alreadyAdded
-                                : SourceDetailShelfState.canAdd,
-                            onAddToShelf: (detail) => ref.read(discoveryBookshelfSaverProvider).save(source: source, detail: detail),
-                            onRemoveFromShelf: ref.read(discoveryBookshelfRemoverProvider) == null
-                                ? null
-                                : () => ref.read(discoveryBookshelfRemoverProvider)!.remove(pluginId: pluginId, title: content.title),
-                          ),
-                        );
-                      },
+                      onContentPressed: (PluginContentSummary content) => unawaited(openContent(content)),
                       onRetry: () {
                         if (state.sources.isEmpty) {
                           unawaited(controller.retrySources());

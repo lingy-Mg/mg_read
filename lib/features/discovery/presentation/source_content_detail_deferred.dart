@@ -180,6 +180,7 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
                     shelfState: shelfState,
                     onShelfAction: onShelfAction,
                     onStartReading: onStartReading,
+                    onRecommendationRequested: null,
                     onExternalUrlRequested: onExternalUrlRequested,
                   ),
                 ),

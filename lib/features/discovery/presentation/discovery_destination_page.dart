@@ -200,6 +200,35 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
     final bool isActiveLayer = !isCoveredByChild;
     final bool canNavigateBack = visualDepth > 0;
 
+    Future<void> openContent(PluginContentSummary content) {
+      final result = displayedResult;
+      if (result == null) return Future<void>.value();
+      final pluginId = state.selectedSourceId!;
+      final saver = ref.read(discoveryBookshelfSaverProvider);
+      final remover = ref.read(discoveryBookshelfRemoverProvider);
+      final currentMembership = ref.read(bookshelfMembershipProvider);
+      return showSourceContentDetailSheet(
+        context,
+        gateway: ref.read(sourceContentGatewayProvider),
+        pluginId: pluginId,
+        pluginVersion: selectedSource.pluginVersion,
+        id: content.id,
+        initialContent: content,
+        initialSourceName: selectedSource.displayName,
+        relatedContents: _discoveryContentSummaries(result),
+        onTextChapterRequested: onTextChapterRequested,
+        onComicChapterRequested: onComicChapterRequested,
+        onAudioChapterRequested: onAudioChapterRequested,
+        onVideoEpisodeRequested: onVideoEpisodeRequested,
+        shelfState: currentMembership.contains(pluginId: pluginId, title: content.title)
+            ? SourceDetailShelfState.alreadyAdded
+            : SourceDetailShelfState.canAdd,
+        onAddToShelf: (detail) => saver.save(source: selectedSource, detail: detail),
+        onRemoveFromShelf: remover == null ? null : () => remover.remove(pluginId: pluginId, title: content.title),
+        onRecommendationRequested: openContent,
+      );
+    }
+
     return RuntimeDiscoveryPage(
       result: displayedResult,
       sourceName: selectedSource.displayName,
@@ -209,33 +238,7 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
       onTabSelected: (target) => unawaited(controller.selectTab(target)),
       onCategorySelected: (target) => _pushCategoryRoute(context, ref, controller, target),
       isInBookshelf: (content) => bookshelfMembership.contains(pluginId: state.selectedSourceId!, title: content.title),
-      onContentPressed: (content) {
-        final result = displayedResult;
-        if (result == null) return;
-        final saver = ref.read(discoveryBookshelfSaverProvider);
-        final remover = ref.read(discoveryBookshelfRemoverProvider);
-        unawaited(
-          showSourceContentDetailSheet(
-            context,
-            gateway: ref.read(sourceContentGatewayProvider),
-            pluginId: state.selectedSourceId!,
-            pluginVersion: selectedSource.pluginVersion,
-            id: content.id,
-            initialContent: content,
-            initialSourceName: selectedSource.displayName,
-            relatedContents: _discoveryContentSummaries(result),
-            onTextChapterRequested: onTextChapterRequested,
-            onComicChapterRequested: onComicChapterRequested,
-            onAudioChapterRequested: onAudioChapterRequested,
-            onVideoEpisodeRequested: onVideoEpisodeRequested,
-            shelfState: bookshelfMembership.contains(pluginId: state.selectedSourceId!, title: content.title)
-                ? SourceDetailShelfState.alreadyAdded
-                : SourceDetailShelfState.canAdd,
-            onAddToShelf: (detail) => saver.save(source: selectedSource, detail: detail),
-            onRemoveFromShelf: remover == null ? null : () => remover.remove(pluginId: state.selectedSourceId!, title: content.title),
-          ),
-        );
-      },
+      onContentPressed: (content) => unawaited(openContent(content)),
       onRefreshRequested: () => unawaited(controller.refresh()),
       onLoadMore: (collection) => unawaited(controller.loadMore(collection)),
       canNavigateBack: canNavigateBack,

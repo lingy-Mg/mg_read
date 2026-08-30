@@ -2,6 +2,7 @@
 ///
 /// 职责：
 /// - 加载并展示书籍详情、目录和相关推荐，将操作委托给宿主回调。
+/// - 将相关推荐点击委托给宿主重新解析目标作品的书架状态与详情路由。
 /// - 已在书架的发现内容提供统一确认后的移出入口，并即时切换本地按钮状态。
 ///
 /// 注意：
@@ -76,6 +77,7 @@ enum SourceShelfAction { refresh, setPrivate, cancelPrivate, delete }
 
 typedef SourceShelfActionRequested = Future<void> Function(SourceShelfAction action);
 typedef SourceStartReadingRequested = Future<void> Function();
+typedef SourceRecommendationRequested = Future<void> Function(PluginContentSummary content);
 
 /// Whether this detail is being viewed from discovery or the local shelf.
 enum SourceDetailShelfState { canAdd, alreadyAdded, private }
@@ -101,6 +103,7 @@ Future<void> showSourceContentDetailSheet(
   SourceExternalUrlLauncher? onExternalUrlRequested,
   SourceShelfActionRequested? onShelfAction,
   SourceStartReadingRequested? onStartReading,
+  SourceRecommendationRequested? onRecommendationRequested,
   bool useModalBottomSheet = false,
 }) {
   final Widget detail = _SourceDetailScreen(
@@ -123,6 +126,7 @@ Future<void> showSourceContentDetailSheet(
     onExternalUrlRequested: onExternalUrlRequested ?? _launchSystemBrowser,
     onShelfAction: onShelfAction,
     onStartReading: onStartReading,
+    onRecommendationRequested: onRecommendationRequested,
     isModalSheet: useModalBottomSheet,
   );
   if (useModalBottomSheet) {
@@ -250,6 +254,7 @@ class _SourceDetailScreen extends StatefulWidget {
     required this.onExternalUrlRequested,
     required this.onShelfAction,
     required this.onStartReading,
+    this.onRecommendationRequested,
     required this.isModalSheet,
   });
   final SourceContentGateway gateway;
@@ -272,6 +277,7 @@ class _SourceDetailScreen extends StatefulWidget {
 
   final SourceShelfActionRequested? onShelfAction;
   final SourceStartReadingRequested? onStartReading;
+  final SourceRecommendationRequested? onRecommendationRequested;
   final bool isModalSheet;
 
   @override
@@ -356,6 +362,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                             shelfState: widget.shelfState,
                             onShelfAction: widget.onShelfAction,
                             onStartReading: widget.onStartReading,
+                            onRecommendationRequested: widget.onRecommendationRequested,
                             onExternalUrlRequested: widget.onExternalUrlRequested,
                           ),
                         );
@@ -384,6 +391,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                           shelfState: widget.shelfState,
                           onShelfAction: widget.onShelfAction,
                           onStartReading: widget.onStartReading,
+                          onRecommendationRequested: widget.onRecommendationRequested,
                           onExternalUrlRequested: widget.onExternalUrlRequested,
                         );
                       }
@@ -408,6 +416,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                         shelfState: widget.shelfState,
                         onShelfAction: widget.onShelfAction,
                         onStartReading: widget.onStartReading,
+                        onRecommendationRequested: widget.onRecommendationRequested,
                         onExternalUrlRequested: widget.onExternalUrlRequested,
                       ),
                     );
@@ -437,6 +446,7 @@ class _SourceDetailView extends StatefulWidget {
     required this.shelfState,
     required this.onShelfAction,
     required this.onStartReading,
+    required this.onRecommendationRequested,
     required this.onExternalUrlRequested,
     super.key,
   });
@@ -453,6 +463,7 @@ class _SourceDetailView extends StatefulWidget {
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested? onShelfAction;
   final SourceStartReadingRequested? onStartReading;
+  final SourceRecommendationRequested? onRecommendationRequested;
   final SourceExternalUrlLauncher onExternalUrlRequested;
 
   @override
@@ -555,6 +566,7 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
     shelfState: _shelfState,
     onShelfAction: widget.onShelfAction,
     onStartReading: widget.onStartReading,
+    onRecommendationRequested: widget.onRecommendationRequested,
     isSavingToShelf: _isSavingToShelf,
     isRemovingFromShelf: _isRemovingFromShelf,
     onSaveToShelf: _saveToShelf,
@@ -580,6 +592,7 @@ class _SourceDetailBody extends StatelessWidget {
     required this.shelfState,
     required this.onShelfAction,
     required this.onStartReading,
+    required this.onRecommendationRequested,
     required this.isSavingToShelf,
     required this.isRemovingFromShelf,
     required this.onSaveToShelf,
@@ -602,6 +615,7 @@ class _SourceDetailBody extends StatelessWidget {
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested? onShelfAction;
   final SourceStartReadingRequested? onStartReading;
+  final SourceRecommendationRequested? onRecommendationRequested;
   final bool isSavingToShelf;
   final bool isRemovingFromShelf;
   final ValueChanged<PluginContentDetail> onSaveToShelf;
@@ -824,7 +838,7 @@ class _SourceDetailBody extends StatelessWidget {
           const SizedBox(height: AppSpacing.section),
           Divider(color: tokens.divider, height: 1),
           const SizedBox(height: AppSpacing.comfortable),
-          _RecommendationsSection(candidates: recommendationCandidates),
+          _RecommendationsSection(candidates: recommendationCandidates, onRecommendationRequested: onRecommendationRequested),
           const SizedBox(height: AppSpacing.regular),
           Material(
             color: tokens.accentSoft.withValues(alpha: .52),

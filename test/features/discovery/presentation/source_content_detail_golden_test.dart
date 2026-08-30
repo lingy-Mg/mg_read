@@ -79,6 +79,25 @@ void main() {
     expect(state.position.pixels, greaterThan(0));
   });
 
+  testWidgets('delegates a recommendation tap with the selected content', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 900));
+    PluginContentSummary? requestedContent;
+    await tester.pumpWidget(
+      _DetailGoldenHost(useReference: true, onRecommendationRequested: (content) async => requestedContent = content),
+    );
+    await tester.pumpAndSettle();
+
+    final recommendation = find.byKey(const ValueKey<String>('source-detail-recommendation-great-dawn'));
+    await tester.scrollUntilVisible(recommendation, 280, scrollable: _detailVerticalScrollableFinder());
+    await tester.ensureVisible(recommendation);
+    await tester.pumpAndSettle();
+    await tester.tap(recommendation);
+    await tester.pump();
+
+    expect(requestedContent?.id, 'great-dawn');
+    expect(requestedContent?.title, '大道朝天');
+  });
+
   testWidgets('reveals more chapters locally without another source request', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     final gateway = _GoldenDetailGateway(catalogItemCount: 22);
@@ -138,11 +157,12 @@ Finder _detailVerticalScrollableFinder() =>
     find.byWidgetPredicate((Widget widget) => widget is Scrollable && widget.axisDirection == AxisDirection.down);
 
 class _DetailGoldenHost extends StatelessWidget {
-  const _DetailGoldenHost({this.gateway, this.useReference = false, this.includeInitialContent = true});
+  const _DetailGoldenHost({this.gateway, this.useReference = false, this.includeInitialContent = true, this.onRecommendationRequested});
 
   final _GoldenDetailGateway? gateway;
   final bool useReference;
   final bool includeInitialContent;
+  final SourceRecommendationRequested? onRecommendationRequested;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -159,15 +179,17 @@ class _DetailGoldenHost extends StatelessWidget {
     home: _DetailEntry(
       gateway: gateway ?? _GoldenDetailGateway(useReference: useReference),
       includeInitialContent: includeInitialContent,
+      onRecommendationRequested: onRecommendationRequested,
     ),
   );
 }
 
 class _DetailEntry extends StatefulWidget {
-  const _DetailEntry({required this.gateway, required this.includeInitialContent});
+  const _DetailEntry({required this.gateway, required this.includeInitialContent, required this.onRecommendationRequested});
 
   final _GoldenDetailGateway gateway;
   final bool includeInitialContent;
+  final SourceRecommendationRequested? onRecommendationRequested;
 
   @override
   State<_DetailEntry> createState() => _DetailEntryState();
@@ -189,6 +211,7 @@ class _DetailEntryState extends State<_DetailEntry> {
           initialSourceName: widget.includeInitialContent ? widget.gateway.detail.sourceName : null,
           relatedContents: widget.gateway.recommendations,
           onExternalUrlRequested: (_) async => true,
+          onRecommendationRequested: widget.onRecommendationRequested,
         ),
       );
     });
