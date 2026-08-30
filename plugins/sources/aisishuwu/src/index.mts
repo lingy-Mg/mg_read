@@ -57,12 +57,11 @@ const categoryRules: SourceRules['categories'] = Object.freeze([
 /** Runtime cold activation retains only the lightweight category projection. */
 export async function activate(context: MgReadPluginContext): Promise<void> {
   globalThisContext = context;
-  context.log.info('source_activated');
 }
 
 /** Maps source categories and category pages to the host discovery screen. */
 export async function discover(request: DiscoverRequest): Promise<DiscoverResult> {
-  return invoke('discover', async (activeContext) => {
+  return invoke(async (activeContext) => {
     if (request.target === null) activeContext.log.info('source_discover_category_branch');
     return (await loadSource(activeContext)).discover(request);
   });
@@ -70,7 +69,7 @@ export async function discover(request: DiscoverRequest): Promise<DiscoverResult
 
 /** Maps a user query to this source's search endpoint. */
 export async function search(request: SearchRequest): Promise<SearchResult> {
-  return invoke('search', async (activeContext) =>
+  return invoke(async (activeContext) =>
     (await loadSource(activeContext)).search(request),
   );
 }
@@ -79,28 +78,28 @@ export async function search(request: SearchRequest): Promise<SearchResult> {
 export async function searchSuggestions(
   request: SearchSuggestionsRequest,
 ): Promise<SearchSuggestionsResult> {
-  return invoke('search_suggestions', async (activeContext) =>
+  return invoke(async (activeContext) =>
     (await loadSource(activeContext)).searchSuggestions(request),
   );
 }
 
 /** Resolves one opaque `novel:<id>` reference to its metadata. */
 export async function getDetail(request: ContentReferenceRequest): Promise<ContentDetail> {
-  return invoke('get_detail', async (activeContext) =>
+  return invoke(async (activeContext) =>
     (await loadSource(activeContext)).getDetail(request),
   );
 }
 
 /** Resolves a novel reference to ordered opaque chapter IDs. */
 export async function getChapters(request: ChaptersRequest): Promise<ChaptersResult> {
-  return invoke('get_chapters', async (activeContext) =>
+  return invoke(async (activeContext) =>
     (await loadSource(activeContext)).getChapters(request),
   );
 }
 
 /** Resolves one opaque chapter reference to clean text content. */
 export async function getContent(request: ContentRequest): Promise<ChapterContent> {
-  return invoke('get_content', async (activeContext) =>
+  return invoke(async (activeContext) =>
     (await loadSource(activeContext)).getContent(request),
   );
 }
@@ -111,7 +110,7 @@ export async function resource(request: Record<string, unknown>): Promise<{
   readonly headers: Readonly<Record<string, string>>;
   readonly body: Uint8Array;
 }> {
-  return invoke('resource', async (activeContext) => {
+  return invoke(async (activeContext) => {
     const url = request.url;
     if (typeof url !== 'string') return { status: 400, headers: {}, body: new Uint8Array() };
     let coverUrl: URL;
@@ -141,23 +140,13 @@ function requireContext(): MgReadPluginContext {
   return globalThisContext;
 }
 
-type Operation = 'discover' | 'search' | 'search_suggestions' | 'get_detail' | 'get_chapters' | 'get_content' | 'resource';
-
 async function invoke<T>(
-  operation: Operation,
   action: (context: MgReadPluginContext) => Promise<T>,
 ): Promise<T> {
   const activeContext = requireContext();
-  activeContext.log.info(`source_${operation}_started`);
   try {
-    activeContext.log.debug(`source_${operation}_validated`);
-    const result = await action(activeContext);
-    activeContext.log.debug(`source_${operation}_parsed`);
-    activeContext.log.info(`source_${operation}_result_ready`);
-    activeContext.log.info(`source_${operation}_completed`);
-    return result;
+    return await action(activeContext);
   } catch {
-    activeContext.log.warn(`source_${operation}_failed`);
     throw new Error('Source operation failed.');
   }
 }

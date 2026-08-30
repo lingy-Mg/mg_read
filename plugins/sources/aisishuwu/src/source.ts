@@ -490,7 +490,6 @@ export class AliceBookHouseSource {
     cachePolicy?: HtmlCachePolicy,
   ): Promise<{ readonly body: string; readonly storedAtMs: number }> {
     const request = async (): Promise<string> => {
-      this.context.log.debug('source_http_fetch_started');
       const response = await this.context.http.fetch(url, {
         headers: {
           Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',

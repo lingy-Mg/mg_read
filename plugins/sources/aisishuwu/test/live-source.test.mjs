@@ -24,7 +24,7 @@ test('live source completes category, search, detail, catalog, and content flow'
     },
     log: { debug() {}, info() {}, warn() {}, error() {} },
     app: { runtimeVersion: 'live-test', nodeVersion: process.versions.node, pluginApi: 1 },
-    plugin: { id: 'org.mgread.aisishuwu', version: '0.2.11' },
+    plugin: { id: 'org.mgread.aisishuwu', version: '0.2.12' },
   });
 
   const categories = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });

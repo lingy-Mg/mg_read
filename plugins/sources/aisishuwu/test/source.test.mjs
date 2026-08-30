@@ -588,7 +588,7 @@ test('catalog follows source pagination internally and returns one deduplicated 
   assert.equal(new Set(chapters.items.map((chapter) => chapter.id)).size, 3);
 });
 
-test('public API completes the opaque content chain with safe diagnostic phases', async () => {
+test('public API completes the opaque content chain without duplicating Runtime lifecycle logs', async () => {
   const events = [];
   const secret = 'credential-canary-do-not-log';
   const chapterBody = 'chapter-body-canary-do-not-log';
@@ -697,20 +697,18 @@ test('public API completes the opaque content chain with safe diagnostic phases'
   assert.equal(catalogFetches, 1);
   await plugin.getChapters({ id: contentId });
   assert.equal(catalogFetches, 1);
-  for (const operation of ['discover', 'search', 'search_suggestions', 'get_detail', 'get_chapters', 'get_content']) {
-    assert.ok(events.includes(`source_${operation}_started`));
-    assert.ok(events.includes(`source_${operation}_validated`));
-    assert.ok(events.includes(`source_${operation}_parsed`));
-    assert.ok(events.includes(`source_${operation}_result_ready`));
-    assert.ok(events.includes(`source_${operation}_completed`));
-  }
-  assert.ok(events.includes('source_http_fetch_started'));
+  assert.ok(events.includes('source_discover_category_branch'));
+  assert.doesNotMatch(
+    events.join('\n'),
+    /^source_(?:discover|search|search_suggestions|get_detail|get_chapters|get_content|resource)_(?:started|validated|parsed|result_ready|completed|failed)$/mu,
+  );
+  assert.ok(!events.includes('source_activated'));
+  assert.ok(!events.includes('source_http_fetch_started'));
 
   await assert.rejects(
     plugin.search({ query: secret, cursor: null, pageSize: 5 }),
     /Source operation failed/u,
   );
-  assert.ok(events.includes('source_search_failed'));
   assert.doesNotMatch(events.join('\n'), new RegExp(`${secret}|${chapterBody}`, 'u'));
 });
 
