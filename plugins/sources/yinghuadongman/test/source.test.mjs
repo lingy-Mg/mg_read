@@ -45,12 +45,18 @@ test('fixture flow covers discovery, search, detail, neutral groups and both pla
   const results = await plugin.search({ query: 'fixture', cursor: null, pageSize: 5 });
   assert.equal(results.items[0].id, 'video:101');
   assert.equal(results.items[0].coverUrl, 'https://www.yinhuadm.xyz/upload/fixture-one.jpg');
+  assert.deepEqual(results.items[0].latestChapter, {
+    id: null, title: '更新至第02集', updatedAt: null, url: null,
+  });
 
   const info = await plugin.getDetail({ id: results.items[0].id });
   assert.equal(info.title, 'Fixture Animation One');
   assert.deepEqual(info.tags, ['Fixture Region']);
+  assert.deepEqual(info.latestChapter, {
+    id: null, title: '更新至第02集', updatedAt: null, url: null,
+  });
   const catalog = await plugin.getChapters({ id: info.id });
-  assert.deepEqual(catalog.groups.map((group) => group.title), ['线路 3', '线路 5']);
+  assert.deepEqual(catalog.groups.map((group) => group.title), ['线路 5', '线路 3']);
   assert.deepEqual(catalog.groups.map((group) => group.episodes.length), [2, 2]);
   assert.equal(catalog.items.length, 4);
 

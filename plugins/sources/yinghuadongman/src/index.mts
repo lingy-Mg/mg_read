@@ -1,8 +1,9 @@
 /**
  * Yinghua Dongman video source.
  *
- * Owns the public site routes, stable video/line/episode identities, HTML parsing and
- * MCUE player decryption. Media bytes always remain in Runtime's resource proxy.
+ * Owns the public site routes, stable video/line/episode identities, source-priority
+ * line ordering, HTML parsing and MCUE player decryption. Media bytes always remain
+ * in Runtime's resource proxy.
  */
 import { createDecipheriv, createHash } from 'node:crypto';
 
@@ -208,7 +209,7 @@ function summary(
   id: string,
   title: string,
   cover: string | null,
-  latestChapter: string | null,
+  latestChapterTitle: string | null,
   description: string | null = null,
   tags: string[] = [],
 ) {
@@ -228,7 +229,7 @@ function summary(
     chapterCount: null,
     publishedAt: null,
     updatedAt: null,
-    latestChapter,
+    latestChapter: projectLatestChapter(latestChapterTitle),
     categories: tags,
     tags,
     attributes: [],
@@ -252,7 +253,7 @@ function parseGroups(html: string, id: string) {
     entries.push({ episode, title });
     byLine.set(line, entries);
   }
-  const groups = [...byLine.entries()].sort(([left], [right]) => left - right).map(([line, entries], groupOrder) => {
+  const groups = [...byLine.entries()].map(([line, entries], groupOrder) => {
     entries.sort((left, right) => left.episode - right.episode);
     const groupTitle = `线路 ${line}`;
     const episodes = entries.map((entry, order) => frozen({
@@ -395,6 +396,11 @@ function cleanTitle(value: string): string {
 function cleanEpisodeTitle(value: string, episode: number): string {
   const title = strip(value);
   return title === '' || !/第|集|话|期/u.test(title) ? `第${String(episode).padStart(2, '0')}集` : title;
+}
+function projectLatestChapter(value: string | null) {
+  const title = value === null ? '' : strip(value);
+  if (title === '' || title.length > 256) return null;
+  return frozen({ id: null, title, updatedAt: null, url: null });
 }
 function attribute(value: string, name: string): string {
   const quoted = new RegExp(`\\s${escape(name)}\\s*=\\s*(["'])(.*?)\\1`, 'iu').exec(value);
