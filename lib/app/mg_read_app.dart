@@ -137,7 +137,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> {
               ),
             ),
             const ChapterCacheTaskBar(),
-            SourceAudioPlaybackOverlay(backButtonDispatcher: router.backButtonDispatcher),
+            SourceAudioPlaybackNavigator(backButtonDispatcher: router.backButtonDispatcher),
           ],
         );
       },

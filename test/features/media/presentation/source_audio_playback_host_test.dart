@@ -46,7 +46,7 @@ void main() {
                 fit: StackFit.expand,
                 children: <Widget>[
                   child ?? const SizedBox.shrink(),
-                  SourceAudioPlaybackOverlay(backButtonDispatcher: backButtonDispatcher),
+                  SourceAudioPlaybackNavigator(backButtonDispatcher: backButtonDispatcher),
                 ],
               );
             },
@@ -62,6 +62,25 @@ void main() {
           find.byKey(const Key('audio-back')).evaluate().isNotEmpty &&
           find.byKey(const Key('media-entry-cover-transition')).evaluate().isEmpty,
     );
+
+    await tester.tap(find.byKey(const Key('audio-queue')));
+    await _pumpUntil(tester, () => find.byKey(const Key('audio-queue-list')).evaluate().isNotEmpty);
+    expect(find.byKey(const Key('audio-queue-list')), findsOneWidget);
+    final Future<bool> queueBackHandled = backButtonDispatcher.invokeCallback(Future<bool>.value(false));
+    await tester.pump();
+    expect(await queueBackHandled, isTrue);
+    await _pumpUntil(tester, () => find.byKey(const Key('audio-queue-list')).evaluate().isEmpty);
+    expect(find.byKey(const Key('audio-queue-list')), findsNothing);
+
+    await tester.ensureVisible(find.byKey(const Key('audio-settings')));
+    await tester.tap(find.byKey(const Key('audio-settings')));
+    await _pumpUntil(tester, () => find.byKey(const Key('audio-settings-sheet')).evaluate().isNotEmpty);
+    expect(find.byKey(const Key('audio-settings-sheet')), findsOneWidget);
+    final Future<bool> settingsBackHandled = backButtonDispatcher.invokeCallback(Future<bool>.value(false));
+    await tester.pump();
+    expect(await settingsBackHandled, isTrue);
+    await _pumpUntil(tester, () => find.byKey(const Key('audio-settings-sheet')).evaluate().isEmpty);
+    expect(find.byKey(const Key('audio-settings-sheet')), findsNothing);
 
     await tester.tap(find.byKey(const Key('audio-back')));
     await _pumpUntil(tester, () => find.byKey(const Key('audio-background-exit-dialog')).evaluate().isNotEmpty);

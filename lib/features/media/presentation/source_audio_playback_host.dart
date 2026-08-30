@@ -32,49 +32,50 @@ import 'package:mg_read/features/network_proxy/application/flutter_network_proxy
 import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
-/// Owns a dedicated overlay for global playback mounted above the app router.
+/// Owns a transparent local Navigator for playback above the app router.
 ///
-/// [MaterialApp.builder] is above the router's Navigator overlay. Mounting the
-/// playback host there directly would leave tooltips and other overlay clients
-/// without an [Overlay] ancestor.
-final class SourceAudioPlaybackOverlay extends StatefulWidget {
-  const SourceAudioPlaybackOverlay({required this.backButtonDispatcher, super.key});
+/// [MaterialApp.builder] is above the router's Navigator. Mounting the playback
+/// host there directly leaves tooltips without an [Overlay] and bottom sheets
+/// without a [Navigator]. The local route is non-opaque so routed app content
+/// remains visible whenever playback is minimized.
+final class SourceAudioPlaybackNavigator extends ConsumerStatefulWidget {
+  const SourceAudioPlaybackNavigator({required this.backButtonDispatcher, super.key});
 
   final BackButtonDispatcher backButtonDispatcher;
 
   @override
-  State<SourceAudioPlaybackOverlay> createState() => _SourceAudioPlaybackOverlayState();
+  ConsumerState<SourceAudioPlaybackNavigator> createState() => _SourceAudioPlaybackNavigatorState();
 }
 
-final class _SourceAudioPlaybackOverlayState extends State<SourceAudioPlaybackOverlay> {
-  late final OverlayEntry _entry = OverlayEntry(
-    builder: (context) => Positioned.fill(child: SourceAudioPlaybackHost(backButtonDispatcher: widget.backButtonDispatcher)),
-  );
+final class _SourceAudioPlaybackNavigatorState extends ConsumerState<SourceAudioPlaybackNavigator> {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>(debugLabel: 'sourceAudioPlaybackNavigator');
 
   @override
-  void didUpdateWidget(covariant SourceAudioPlaybackOverlay oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.backButtonDispatcher, widget.backButtonDispatcher)) {
-      _entry.markNeedsBuild();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => Overlay(initialEntries: <OverlayEntry>[_entry]);
-
-  @override
-  void dispose() {
-    _entry.remove();
-    _entry.dispose();
-    super.dispose();
+  Widget build(BuildContext context) {
+    final playback = ref.watch(sourceAudioPlaybackCoordinatorProvider);
+    if (!playback.isActive) return const SizedBox.shrink();
+    return HeroControllerScope.none(
+      child: Navigator(
+        key: _navigatorKey,
+        onGenerateRoute: (settings) => PageRouteBuilder<void>(
+          settings: settings,
+          opaque: false,
+          transitionDuration: Duration.zero,
+          reverseTransitionDuration: Duration.zero,
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              SourceAudioPlaybackHost(backButtonDispatcher: widget.backButtonDispatcher, playbackNavigatorKey: _navigatorKey),
+        ),
+      ),
+    );
   }
 }
 
 /// Renders the active playback above the router while keeping it route-free.
 final class SourceAudioPlaybackHost extends ConsumerWidget {
-  const SourceAudioPlaybackHost({required this.backButtonDispatcher, super.key});
+  const SourceAudioPlaybackHost({required this.backButtonDispatcher, required this.playbackNavigatorKey, super.key});
 
   final BackButtonDispatcher backButtonDispatcher;
+  final GlobalKey<NavigatorState> playbackNavigatorKey;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -86,6 +87,7 @@ final class SourceAudioPlaybackHost extends ConsumerWidget {
       request: state.request!,
       presentation: state.presentation,
       backButtonDispatcher: backButtonDispatcher,
+      playbackNavigatorKey: playbackNavigatorKey,
     );
   }
 }
@@ -96,6 +98,7 @@ final class _ActiveSourceAudioPlaybackHost extends ConsumerStatefulWidget {
     required this.request,
     required this.presentation,
     required this.backButtonDispatcher,
+    required this.playbackNavigatorKey,
     super.key,
   });
 
@@ -103,6 +106,7 @@ final class _ActiveSourceAudioPlaybackHost extends ConsumerStatefulWidget {
   final SourceAudioPlaybackRequest request;
   final SourceAudioPresentation presentation;
   final BackButtonDispatcher backButtonDispatcher;
+  final GlobalKey<NavigatorState> playbackNavigatorKey;
 
   @override
   ConsumerState<_ActiveSourceAudioPlaybackHost> createState() => _ActiveSourceAudioPlaybackHostState();
@@ -135,6 +139,10 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
 
   Future<bool> _handlePlatformBack() async {
     if (widget.presentation != SourceAudioPresentation.expanded) return false;
+    final navigator = widget.playbackNavigatorKey.currentState;
+    if (navigator != null && navigator.canPop()) {
+      return navigator.maybePop();
+    }
     await _requestBack();
     return true;
   }
@@ -169,7 +177,7 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
         event.logicalKey != LogicalKeyboardKey.escape) {
       return false;
     }
-    unawaited(_requestBack());
+    unawaited(_handlePlatformBack());
     return true;
   }
 
