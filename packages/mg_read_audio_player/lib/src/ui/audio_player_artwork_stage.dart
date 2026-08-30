@@ -40,7 +40,7 @@ final class AudioPlayerAmbientBackground extends StatelessWidget {
   }
 }
 
-final class AudioPlayerArtworkBackdrop extends StatelessWidget {
+final class AudioPlayerArtworkBackdrop extends StatefulWidget {
   const AudioPlayerArtworkBackdrop({
     required this.track,
     required this.artworkBuilder,
@@ -55,14 +55,58 @@ final class AudioPlayerArtworkBackdrop extends StatelessWidget {
   final bool disableAnimations;
 
   @override
+  State<AudioPlayerArtworkBackdrop> createState() =>
+      _AudioPlayerArtworkBackdropState();
+}
+
+class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _motionController = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 16),
+  );
+
+  bool get _motionActive => widget.playing && !widget.disableAnimations;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncMotion();
+  }
+
+  @override
+  void didUpdateWidget(AudioPlayerArtworkBackdrop oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.playing != widget.playing ||
+        oldWidget.disableAnimations != widget.disableAnimations) {
+      _syncMotion();
+    }
+  }
+
+  void _syncMotion() {
+    if (_motionActive) {
+      _motionController.repeat(reverse: true);
+    } else {
+      _motionController.stop();
+      _motionController.value = 0.5;
+    }
+  }
+
+  @override
+  void dispose() {
+    _motionController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final depthDuration = disableAnimations
+    final depthDuration = widget.disableAnimations
         ? Duration.zero
         : const Duration(milliseconds: 760);
-    final switchDuration = disableAnimations
+    final switchDuration = widget.disableAnimations
         ? Duration.zero
         : const Duration(milliseconds: 620);
-    final artwork = artworkBuilder?.call(context, track);
+    final artwork = widget.artworkBuilder?.call(context, widget.track);
     return IgnorePointer(
       child: Stack(
         key: const Key('audio-artwork-backdrop'),
@@ -71,17 +115,28 @@ final class AudioPlayerArtworkBackdrop extends StatelessWidget {
           const AudioPlayerAmbientBackground(),
           ClipRect(
             child: AnimatedOpacity(
+              key: const Key('audio-artwork-backdrop-opacity'),
               duration: depthDuration,
               curve: Curves.easeOutCubic,
-              opacity: playing ? 0.30 : 0.23,
-              child: AnimatedScale(
-                duration: depthDuration,
-                curve: Curves.easeOutQuart,
-                scale: playing ? 1.48 : 1.42,
+              opacity: widget.playing ? 0.58 : 0.42,
+              child: AnimatedBuilder(
+                animation: _motionController,
+                builder: (context, child) {
+                  final phase = _motionController.value;
+                  final breathe = math.sin(phase * math.pi);
+                  return Transform.translate(
+                    key: const Key('audio-artwork-backdrop-motion'),
+                    offset: Offset(-12 + phase * 24, 8 - phase * 16),
+                    child: Transform.scale(
+                      scale: 1.44 + breathe * 0.05,
+                      child: child,
+                    ),
+                  );
+                },
                 child: ImageFiltered(
                   imageFilter: ImageFilter.blur(
-                    sigmaX: 36,
-                    sigmaY: 36,
+                    sigmaX: 26,
+                    sigmaY: 26,
                     tileMode: TileMode.decal,
                   ),
                   child: AnimatedSwitcher(
@@ -104,9 +159,11 @@ final class AudioPlayerArtworkBackdrop extends StatelessWidget {
                         ),
                       );
                     },
-                    child: SizedBox.expand(
-                      key: ValueKey<String>(track.id),
-                      child: artwork ?? const AudioPlayerCoverPlaceholder(),
+                    child: RepaintBoundary(
+                      key: ValueKey<String>(widget.track.id),
+                      child: SizedBox.expand(
+                        child: artwork ?? const AudioPlayerCoverPlaceholder(),
+                      ),
                     ),
                   ),
                 ),
@@ -119,9 +176,9 @@ final class AudioPlayerArtworkBackdrop extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: <Color>[
-                  Color(0xB8FFFAF3),
-                  Color(0xC9FFF8EE),
-                  Color(0xEAF7EDDF),
+                  Color(0x72FFFAF3),
+                  Color(0xA0FFF8EE),
+                  Color(0xD0F7EDDF),
                 ],
                 stops: <double>[0, 0.48, 1],
               ),

@@ -23,6 +23,12 @@ void main() {
     final pausedCoverY = tester
         .getTopLeft(find.byKey(const Key('audio-cover')))
         .dy;
+    final backdropMotion = find.byKey(
+      const Key('audio-artwork-backdrop-motion'),
+    );
+    final pausedBackdropTransform = List<double>.of(
+      tester.widget<Transform>(backdropMotion).transform.storage,
+    );
     expect(
       tester.widget<Opacity>(find.byKey(const Key('audio-play-pulse'))).opacity,
       0,
@@ -35,11 +41,22 @@ void main() {
       tester.widget<Opacity>(find.byKey(const Key('audio-play-pulse'))).opacity,
       greaterThan(0),
     );
-
+    expect(
+      tester
+          .widget<AnimatedOpacity>(
+            find.byKey(const Key('audio-artwork-backdrop-opacity')),
+          )
+          .opacity,
+      0.58,
+    );
     await tester.pump(const Duration(milliseconds: 1540));
     expect(
       tester.getTopLeft(find.byKey(const Key('audio-cover'))).dy,
       isNot(closeTo(pausedCoverY, 0.01)),
+    );
+    expect(
+      tester.widget<Transform>(backdropMotion).transform.storage,
+      isNot(orderedEquals(pausedBackdropTransform)),
     );
     expect(find.byKey(const Key('audio-cover-atmosphere')), findsOneWidget);
   });
@@ -59,11 +76,21 @@ void main() {
     final initialCoverY = tester
         .getTopLeft(find.byKey(const Key('audio-cover')))
         .dy;
+    final backdropMotion = find.byKey(
+      const Key('audio-artwork-backdrop-motion'),
+    );
+    final initialBackdropTransform = List<double>.of(
+      tester.widget<Transform>(backdropMotion).transform.storage,
+    );
     await tester.pump(const Duration(seconds: 2));
     expect(tester.getSize(indicatorBar).height, initialBarHeight);
     expect(
       tester.getTopLeft(find.byKey(const Key('audio-cover'))).dy,
       closeTo(initialCoverY, 0.01),
+    );
+    expect(
+      tester.widget<Transform>(backdropMotion).transform.storage,
+      orderedEquals(initialBackdropTransform),
     );
     expect(
       tester.widget<Opacity>(find.byKey(const Key('audio-play-pulse'))).opacity,
