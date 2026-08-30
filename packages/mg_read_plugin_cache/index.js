@@ -28,6 +28,7 @@ export class PluginCache {
   #now;
   #maximumCacheBytes;
   #maximumEntryBytes;
+  #logger;
   #inflight = new Map();
   #backgroundRefreshes = new Map();
 
@@ -36,6 +37,8 @@ export class PluginCache {
     this.#now = options.now ?? Date.now;
     this.#maximumCacheBytes = positiveLimit(options.maximumCacheBytes ?? maximumCacheBytes);
     this.#maximumEntryBytes = positiveLimit(options.maximumEntryBytes ?? maximumEntryBytes);
+    this.#logger = options.logger;
+    this.#debug('缓存已启用');
   }
 
   getOrFetchText(url, policy, fetcher) { return this.getOrFetchTextResult(url, policy, fetcher).then((result) => result.value); }
@@ -49,7 +52,7 @@ export class PluginCache {
   #getOrFetch(key, policy, fetcher, decode) {
     if (this.#root === undefined) return fetcher();
     const existing = this.#inflight.get(key);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) { this.#debug('缓存合并进行中的请求'); return existing; }
     const pending = this.#readOrFetch(key, policy, fetcher, decode);
     this.#inflight.set(key, pending);
     void pending.then(() => this.#inflight.delete(key), () => this.#inflight.delete(key));
@@ -58,21 +61,23 @@ export class PluginCache {
 
   async #readOrFetch(key, policy, fetcher, decode) {
     const cached = await this.#read(key, decode);
-    if (cached !== undefined && this.#now() - cached.storedAtMs <= policy.staleAfterMs) { void this.#touch(key); return cached; }
-    if (cached !== undefined && policy.serveStaleWhileRevalidate === true) { void this.#refreshInBackground(key, fetcher); void this.#touch(key); return cached; }
+    if (cached !== undefined && this.#now() - cached.storedAtMs <= policy.staleAfterMs) { this.#debug(`缓存命中：命名空间=${policy.namespace}`); void this.#touch(key); return cached; }
+    if (cached !== undefined && policy.serveStaleWhileRevalidate === true) { this.#debug(`缓存命中旧数据并后台刷新：命名空间=${policy.namespace}`); void this.#refreshInBackground(key, fetcher); void this.#touch(key); return cached; }
     const backgroundRefresh = this.#backgroundRefreshes.get(key);
     if (backgroundRefresh !== undefined) {
-      await backgroundRefresh;
+      this.#debug(`等待缓存刷新：命名空间=${policy.namespace}`); await backgroundRefresh;
       const refreshed = await this.#read(key, decode);
       if (refreshed !== undefined && this.#now() - refreshed.storedAtMs <= policy.staleAfterMs) return refreshed;
     }
     try {
+      this.#debug(`缓存未命中：命名空间=${policy.namespace}`);
       const fetched = await fetcher();
       const storedAtMs = validStoredAt(fetched.storedAtMs) ? fetched.storedAtMs : this.#now();
       await this.#write(key, fetched.value, storedAtMs);
-      return Object.freeze({ value: fetched.value, storedAtMs });
+      this.#debug(`缓存请求完成：命名空间=${policy.namespace}`); return Object.freeze({ value: fetched.value, storedAtMs });
     } catch (error) {
-      if (cached !== undefined && policy.allowStaleOnError !== false) return cached;
+      if (cached !== undefined && policy.allowStaleOnError !== false) { this.#warn(`缓存请求失败，回退旧数据：命名空间=${policy.namespace}`); return cached; }
+      this.#warn(`缓存请求失败：命名空间=${policy.namespace}`);
       throw error;
     }
   }
@@ -82,9 +87,11 @@ export class PluginCache {
     if (existing !== undefined) return existing;
     const refresh = (async () => {
       try {
+        this.#debug('cache_refresh_started');
         const fetched = await fetcher();
         await this.#write(key, fetched.value, validStoredAt(fetched.storedAtMs) ? fetched.storedAtMs : this.#now());
-      } catch { /* Stale discovery data is already usable. */ }
+        this.#debug('cache_refresh_completed');
+      } catch { this.#warn('cache_refresh_failed'); }
     })();
     this.#backgroundRefreshes.set(key, refresh);
     void refresh.then(() => this.#backgroundRefreshes.delete(key), () => this.#backgroundRefreshes.delete(key));
@@ -109,9 +116,9 @@ export class PluginCache {
     try {
       await mkdir(this.#root, { recursive: true });
       const encoded = JSON.stringify({ schemaVersion, storedAtMs, value });
-      if (Buffer.byteLength(encoded, 'utf8') > this.#maximumEntryBytes) return;
-      await writeFile(temporary, encoded, 'utf8'); await rename(temporary, this.#entryPath(key)); await this.#enforceCapacity();
-    } catch { /* Cache I/O is best effort. */
+      if (Buffer.byteLength(encoded, 'utf8') > this.#maximumEntryBytes) { this.#warn('cache_write_skipped_entry_too_large'); return; }
+      await writeFile(temporary, encoded, 'utf8'); await rename(temporary, this.#entryPath(key)); await this.#enforceCapacity(); this.#debug('cache_store_completed');
+    } catch { this.#warn('cache_write_failed');
     } finally { await rm(temporary, { force: true }).catch(() => undefined); }
   }
 
@@ -123,9 +130,13 @@ export class PluginCache {
       const path = resolve(this.#root, entry.name); const metadata = await stat(path); return { path, size: metadata.size, accessedAtMs: metadata.mtimeMs };
     }));
     let total = candidates.reduce((sum, entry) => sum + entry.size, 0);
-    for (const entry of candidates.sort((left, right) => left.accessedAtMs - right.accessedAtMs)) { if (total <= this.#maximumCacheBytes) return; await rm(entry.path, { force: true }); total -= entry.size; }
+    let evicted = 0;
+    for (const entry of candidates.sort((left, right) => left.accessedAtMs - right.accessedAtMs)) { if (total <= this.#maximumCacheBytes) break; await rm(entry.path, { force: true }); total -= entry.size; evicted += 1; }
+    if (evicted > 0) this.#debug(`cache_capacity_evicted count=${evicted}`);
   }
   #entryPath(key) { if (this.#root === undefined || !/^[a-f0-9]{64}$/u.test(key)) throw new Error('Cache key is invalid.'); return resolve(this.#root, `${key}.json`); }
+  #debug(message) { try { this.#logger?.debug(message); } catch {} }
+  #warn(message) { try { this.#logger?.warn(message); } catch {} }
 }
 
 /** Backward-compatible HTML facade for existing standard plugins. */

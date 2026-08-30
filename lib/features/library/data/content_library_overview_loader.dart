@@ -35,6 +35,7 @@ final class ContentLibraryOverviewLoader implements LibraryOverviewLoader {
       return LibraryItemSummary(
         id: item.id.value,
         title: item.title,
+        contentKind: item.kind,
         author: item.author,
         coverUrl: item.coverUrl,
         coverPluginId: source?.pluginId,

@@ -33,6 +33,7 @@ class LibraryBookSliverGrid extends StatelessWidget {
     this.onBookAction,
     this.preparingBookId,
     this.removingBookIds = const <String>{},
+    this.refreshingBookIds = const <String>{},
     super.key,
   }) : books = List<LibraryBookListItemViewData>.unmodifiable(books);
 
@@ -44,6 +45,7 @@ class LibraryBookSliverGrid extends StatelessWidget {
   final LibraryBookGridActionSelected? onBookAction;
   final String? preparingBookId;
   final Set<String> removingBookIds;
+  final Set<String> refreshingBookIds;
 
   @override
   Widget build(BuildContext context) {
@@ -77,6 +79,7 @@ class LibraryBookSliverGrid extends StatelessWidget {
                 actions: actions,
                 onAction: onBookAction == null ? null : (LibraryBookListAction action) => onBookAction!(book, action),
                 isPreparing: preparingBookId == book.id,
+                isRefreshing: refreshingBookIds.contains(book.id),
               ),
             );
           },
@@ -96,6 +99,7 @@ class LibraryBookGridItem extends StatelessWidget {
     this.actions = const <LibraryBookListAction>[],
     this.onAction,
     this.isPreparing = false,
+    this.isRefreshing = false,
     super.key,
   });
 
@@ -106,6 +110,7 @@ class LibraryBookGridItem extends StatelessWidget {
   final List<LibraryBookListAction> actions;
   final ValueChanged<LibraryBookListAction>? onAction;
   final bool isPreparing;
+  final bool isRefreshing;
 
   @override
   Widget build(BuildContext context) {
@@ -149,6 +154,7 @@ class LibraryBookGridItem extends StatelessWidget {
                               assetPath: data.coverAssetPath,
                               width: constraints.maxWidth,
                               height: constraints.maxHeight,
+                              isRefreshing: isRefreshing,
                             ),
                           );
                         },

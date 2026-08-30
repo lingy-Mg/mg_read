@@ -26,6 +26,7 @@ export 'src/api/models.dart'
         VideoPlaybackProgress,
         VideoPlayerFailure,
         VideoPlayerFailureKind,
+        VideoPlayerLoadException,
         VideoPlayerSnapshot,
         VideoPlayerStatus;
 export 'src/ui/video_player_view.dart' show VideoPlayerView;

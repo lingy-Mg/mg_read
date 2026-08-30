@@ -28,11 +28,15 @@ final class SourceVideoDataSource implements VideoDataSource {
 
   @override
   Future<VideoContent> load(String contentId) async {
-    final detail = await gateway.getDetail(pluginId: pluginId, id: contentId);
+    final detail = await _loadDetail(contentId);
     if (detail.summary.contentKind != PluginContentKind.video) {
-      throw StateError('Source content is not video.');
+      throw const VideoPlayerLoadException(
+        code: 'video_content_kind_invalid',
+        location: '校验视频内容类型',
+        message: '数据源返回的内容不是视频。',
+      );
     }
-    final catalog = await gateway.getChapters(pluginId: pluginId, id: contentId);
+    final catalog = await _loadCatalog(contentId);
     final groups = catalog.groups.isEmpty
         ? <PluginMediaGroup>[
             PluginMediaGroup(
@@ -45,20 +49,24 @@ final class SourceVideoDataSource implements VideoDataSource {
         : catalog.groups;
     final episodeCount = groups.fold<int>(0, (total, group) => total + group.episodes.length);
     if (episodeCount == 0 || episodeCount > maximumEpisodes) {
-      throw StateError('Video catalog exceeds the bounded player selection.');
+      throw const VideoPlayerLoadException(
+        code: 'video_catalog_unavailable',
+        location: '校验视频分组和选集',
+        message: '数据源没有返回可播放选集，或选集数量超出当前播放器限制。',
+      );
     }
     final resolvedGroups = await Future.wait<VideoEpisodeGroup>(
       groups.map((group) async {
         final episodes = await Future.wait<VideoEpisode>(
           group.episodes.map((episode) async {
-            final content = await gateway.getContent(
-              pluginId: pluginId,
-              id: contentId,
-              chapterId: episode.id,
-            );
+            final content = await _loadEpisode(contentId, episode.id);
             final media = content.media;
             if (content.contentKind != PluginContentKind.video || media == null) {
-              throw StateError('Source video episode has no playable resource.');
+              throw const VideoPlayerLoadException(
+                code: 'video_episode_resource_missing',
+                location: '解析所选集的播放资源',
+                message: '数据源没有返回可播放的视频资源。',
+              );
             }
             return VideoEpisode(
               id: episode.id,
@@ -72,5 +80,54 @@ final class SourceVideoDataSource implements VideoDataSource {
       }),
     );
     return VideoContent(id: contentId, title: detail.summary.title, groups: resolvedGroups);
+  }
+
+  Future<PluginContentDetail> _loadDetail(String contentId) async {
+    try {
+      return await gateway.getDetail(pluginId: pluginId, id: contentId);
+    } on VideoPlayerLoadException {
+      rethrow;
+    } on Object {
+      throw const VideoPlayerLoadException(
+        code: 'video_detail_load_failed',
+        location: '加载视频详情',
+        message: '视频详情暂时无法加载，请检查数据源或网络后重试。',
+      );
+    }
+  }
+
+  Future<PluginChaptersResult> _loadCatalog(String contentId) async {
+    try {
+      return await gateway.getChapters(pluginId: pluginId, id: contentId);
+    } on VideoPlayerLoadException {
+      rethrow;
+    } on Object {
+      throw const VideoPlayerLoadException(
+        code: 'video_catalog_load_failed',
+        location: '加载视频分组和选集',
+        message: '视频分组或选集暂时无法加载，请稍后重试。',
+      );
+    }
+  }
+
+  Future<PluginChapterContent> _loadEpisode(
+    String contentId,
+    String episodeId,
+  ) async {
+    try {
+      return await gateway.getContent(
+        pluginId: pluginId,
+        id: contentId,
+        chapterId: episodeId,
+      );
+    } on VideoPlayerLoadException {
+      rethrow;
+    } on Object {
+      throw const VideoPlayerLoadException(
+        code: 'video_episode_resource_load_failed',
+        location: '请求选集播放资源',
+        message: '所选集的播放资源暂时无法获取，请稍后重试。',
+      );
+    }
   }
 }

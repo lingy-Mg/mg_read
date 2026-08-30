@@ -5,12 +5,14 @@ content-source plugins. It keeps bounded, atomic, SHA-256-keyed text and
 validated JSON projection records under the Runtime-provided absolute
 `ctx.cacheDir` only.
 
-It is deliberately not published to npm. A source declares the local package
-as `file:./packages/mgread-plugin-cache`; its build runs
-`tools/sync_plugin_cache.mjs`, and `mgread pack` automatically includes
-that `packages/` directory in the `.mgplugin`. Runtime then restores it as the
-ordinary locked `node_modules/@mgread/plugin-cache` dependency during
-installation, with no network download or install script.
+It is deliberately not published to npm. Every source declares the one shared
+repository package as `file:../../../packages/mg_read_plugin_cache`. `npm ci`
+links that one source into the development dependency graph; the single-file
+packager still bundles it into each self-contained artifact. There is no
+per-source `packages/mgread-plugin-cache` copy or sync step.
+
+Pass the plugin context's `log` object as `logger` to emit bounded cache
+lifecycle events into Runtime Debug. Cache logging never changes cache results.
 
 Use `serveStaleWhileRevalidate` for low-volatility discovery list/detail
 projections so an old projection renders immediately and one background refresh

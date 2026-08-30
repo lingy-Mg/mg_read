@@ -96,6 +96,11 @@ test("Debug inspector is transient, isolates control routes, and preserves proje
   const pageHtml = await page.text();
   assert.match(pageHtml, /<mg-debug-app/);
   assert.match(pageHtml, /__debug\/app\.js/);
+  for (const route of ["/__debug/search", "/__debug/discover", "/__debug/logs"]) {
+    const routedPage = await fetch(new URL(route, base));
+    assert.equal(routedPage.status, 200);
+    assert.match(await routedPage.text(), /<mg-debug-app/);
+  }
   const pageCss = await (await fetch(new URL("/__debug/app.css", base))).text();
   assert.match(pageCss, /\.workspace-panel/);
   assert.match(pageCss, /\.tree-node/);

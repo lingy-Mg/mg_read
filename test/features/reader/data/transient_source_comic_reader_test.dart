@@ -64,6 +64,26 @@ void main() {
 
     expect(gateway.contentCalls, 5, reason: 'touching chapter-1 makes chapter-2 the least recently used manifest');
   });
+
+  test('reports a safe image location when a preview image request fails', () async {
+    final reader = TransientSourceComicReaderDataSource(
+      detail: _detail,
+      catalog: _catalog,
+      gateway: _Gateway(),
+      fetcher: (_) => throw StateError('https://private.example/signed-image'),
+    );
+    await reader.loadChapterContent('manga-1', 'chapter-1');
+
+    await expectLater(
+      reader.loadImageBytes('manga-1', 'chapter-1', 'image-1'),
+      throwsA(
+        isA<ReaderFailure>()
+            .having((failure) => failure.code, 'code', 'source_comic_image_load_failed')
+            .having((failure) => failure.location, 'location', '下载漫画图片')
+            .having((failure) => failure.message, 'message', '漫画图片暂时无法加载，请检查网络后重试。'),
+      ),
+    );
+  });
 }
 
 final class _Gateway implements SourceContentGateway {

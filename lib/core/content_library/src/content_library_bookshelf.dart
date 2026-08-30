@@ -96,6 +96,15 @@ final class BookshelfRepository {
     },
   );
 
+  /// Invalidates the legacy per-item cover so the next source request cannot
+  /// repopulate a newer shared cover with stale bytes.
+  Future<void> removeCover(LibraryItemId id) => _library._trace(
+    operation: 'bookshelfCoverRemove',
+    contentKind: 'image',
+    itemCount: 1,
+    action: () => _library._persistence.fileObjects.deleteCover(id.value),
+  );
+
   Future<void> remove(LibraryItemId id, LibraryRemovalPolicy policy) => _library._trace(
     operation: 'bookshelfRemove',
     itemCount: 1,

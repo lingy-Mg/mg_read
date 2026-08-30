@@ -81,6 +81,24 @@ final class VideoSessionStatusLayer extends StatelessWidget {
                       key: const Key('video-player-status-message'),
                       textAlign: TextAlign.center,
                     ),
+                    if (failure && snapshot.failure?.location case final String location) ...<Widget>[
+                      const SizedBox(height: 8),
+                      Text(
+                        '发生位置：$location',
+                        key: const Key('video-player-status-location'),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 12, color: Color(0xFFBEC1C7)),
+                      ),
+                    ],
+                    if (failure && snapshot.failure?.code case final String code) ...<Widget>[
+                      const SizedBox(height: 4),
+                      Text(
+                        '诊断编号：$code',
+                        key: const Key('video-player-status-code'),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 12, color: Color(0xFFBEC1C7)),
+                      ),
+                    ],
                     if (failure) ...<Widget>[
                       const SizedBox(height: 16),
                       FilledButton.icon(

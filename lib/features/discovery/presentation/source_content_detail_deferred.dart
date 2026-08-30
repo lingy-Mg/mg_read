@@ -38,6 +38,8 @@ Future<void> showDeferredSourceContentDetailSheet(
   required SourceStartReadingRequested onStartReading,
   SourceTextChapterRequested? onTextChapterRequested,
   SourceComicChapterRequested? onComicChapterRequested,
+  SourceAudioChapterRequested? onAudioChapterRequested,
+  SourceVideoEpisodeRequested? onVideoEpisodeRequested,
   SourceExternalUrlLauncher? onExternalUrlRequested,
 }) {
   return showModalBottomSheet<void>(
@@ -58,6 +60,8 @@ Future<void> showDeferredSourceContentDetailSheet(
           onStartReading: onStartReading,
           onTextChapterRequested: onTextChapterRequested,
           onComicChapterRequested: onComicChapterRequested,
+          onAudioChapterRequested: onAudioChapterRequested,
+          onVideoEpisodeRequested: onVideoEpisodeRequested,
           onExternalUrlRequested: onExternalUrlRequested ?? _launchSystemBrowser,
         ),
       ),
@@ -75,6 +79,8 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
     required this.onStartReading,
     required this.onTextChapterRequested,
     required this.onComicChapterRequested,
+    required this.onAudioChapterRequested,
+    required this.onVideoEpisodeRequested,
     required this.onExternalUrlRequested,
   });
 
@@ -86,6 +92,8 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
   final SourceStartReadingRequested onStartReading;
   final SourceTextChapterRequested? onTextChapterRequested;
   final SourceComicChapterRequested? onComicChapterRequested;
+  final SourceAudioChapterRequested? onAudioChapterRequested;
+  final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
   final SourceExternalUrlLauncher onExternalUrlRequested;
 
   _SourceDetailBundle get _previewBundle => _SourceDetailBundle(
@@ -115,6 +123,8 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
           relatedContents: const <PluginContentSummary>[],
           onTextChapterRequested: onTextChapterRequested,
           onComicChapterRequested: onComicChapterRequested,
+          onAudioChapterRequested: onAudioChapterRequested,
+          onVideoEpisodeRequested: onVideoEpisodeRequested,
           onAddToShelf: null,
           shelfState: shelfState,
           onExternalUrlRequested: onExternalUrlRequested,
@@ -155,6 +165,8 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
                   isRefreshing: !snapshot.hasError,
                   onTextChapterRequested: onTextChapterRequested,
                   onComicChapterRequested: onComicChapterRequested,
+                  onAudioChapterRequested: onAudioChapterRequested,
+                  onVideoEpisodeRequested: onVideoEpisodeRequested,
                   onAddToShelf: null,
                   shelfState: shelfState,
                   onShelfAction: onShelfAction,

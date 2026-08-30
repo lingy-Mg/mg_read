@@ -63,6 +63,24 @@ void main() {
     expect(find.text('第一章 从这里开始'), findsOneWidget);
   });
 
+  testWidgets('shows a host-safe failure location and diagnostic code', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _testHost(
+        backend: _FakeAudioBackend(),
+        store: _FakeAudioStateStore(),
+        dataSource: const _FailingAudioDataSource(),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('数据源未返回播放地址。'), findsOneWidget);
+    expect(find.text('发生位置：所选章节的播放地址'), findsOneWidget);
+    expect(find.text('诊断编号：audio_selected_resource_unavailable'), findsOneWidget);
+  });
+
   testWidgets('controls transport and saves before switching tracks', (
     tester,
   ) async {
@@ -543,6 +561,18 @@ AudioPlaylist _singleTrackPlaylist({required String title}) => AudioPlaylist(
 final class _FakeAudioDataSource implements AudioPlayerDataSource {
   @override
   Future<AudioPlaylist> loadPlaylist(String collectionId) async => _playlist();
+}
+
+final class _FailingAudioDataSource implements AudioPlayerDataSource {
+  const _FailingAudioDataSource();
+
+  @override
+  Future<AudioPlaylist> loadPlaylist(String collectionId) =>
+      throw const AudioPlayerLoadException(
+        code: 'audio_selected_resource_unavailable',
+        location: '所选章节的播放地址',
+        message: '数据源未返回播放地址。',
+      );
 }
 
 final class _SequencedDataSource implements AudioPlayerDataSource {

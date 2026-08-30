@@ -65,6 +65,24 @@ void main() {
     expect(find.byType(DefaultBookCoverArtwork), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
+
+  testWidgets('uses the landscape cover presentation for video posters', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      _host(
+        const DiscoveryBookCover(
+          title: '视频海报',
+          variant: DiscoveryCoverVariant.gothic,
+          width: 112,
+          height: 74,
+          presentation: DiscoveryCoverPresentation.landscape,
+        ),
+      ),
+    );
+
+    expect(tester.getSize(find.byType(DiscoveryBookCover)), const Size(112, 74));
+    final cover = tester.widget<DecoratedBox>(find.byType(DecoratedBox).first);
+    expect((cover.decoration! as BoxDecoration).borderRadius, BorderRadius.circular(10));
+  });
 }
 
 Widget _host(Widget child) => MaterialApp(

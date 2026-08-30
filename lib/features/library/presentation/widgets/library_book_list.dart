@@ -90,10 +90,12 @@ class LibraryBookList extends StatelessWidget {
     this.showDividers = true,
     this.preparingBookId,
     Iterable<String> removingBookIds = const <String>[],
+    Iterable<String> refreshingBookIds = const <String>[],
     super.key,
   }) : books = List<LibraryBookListItemViewData>.unmodifiable(books),
        actions = List<LibraryBookListAction>.unmodifiable(actions),
-       removingBookIds = Set<String>.unmodifiable(removingBookIds);
+       removingBookIds = Set<String>.unmodifiable(removingBookIds),
+       refreshingBookIds = Set<String>.unmodifiable(refreshingBookIds);
 
   final List<LibraryBookListItemViewData> books;
   final ValueChanged<LibraryBookListItemViewData> onOpenBook;
@@ -105,6 +107,7 @@ class LibraryBookList extends StatelessWidget {
   final bool showDividers;
   final String? preparingBookId;
   final Set<String> removingBookIds;
+  final Set<String> refreshingBookIds;
 
   @override
   Widget build(BuildContext context) {
@@ -124,6 +127,7 @@ class LibraryBookList extends StatelessWidget {
           dividerColor: tokens.divider,
           isPreparing: books[index].id == preparingBookId,
           isRemoving: removingBookIds.contains(books[index].id),
+          isRefreshing: refreshingBookIds.contains(books[index].id),
         ),
       ),
     );
@@ -147,10 +151,12 @@ class LibraryBookSliverList extends StatelessWidget {
     this.showDividers = true,
     this.preparingBookId,
     Iterable<String> removingBookIds = const <String>[],
+    Iterable<String> refreshingBookIds = const <String>[],
     super.key,
   }) : books = List<LibraryBookListItemViewData>.unmodifiable(books),
        actions = List<LibraryBookListAction>.unmodifiable(actions),
-       removingBookIds = Set<String>.unmodifiable(removingBookIds);
+       removingBookIds = Set<String>.unmodifiable(removingBookIds),
+       refreshingBookIds = Set<String>.unmodifiable(refreshingBookIds);
 
   final List<LibraryBookListItemViewData> books;
   final ValueChanged<LibraryBookListItemViewData> onOpenBook;
@@ -162,6 +168,7 @@ class LibraryBookSliverList extends StatelessWidget {
   final bool showDividers;
   final String? preparingBookId;
   final Set<String> removingBookIds;
+  final Set<String> refreshingBookIds;
 
   @override
   Widget build(BuildContext context) {
@@ -182,6 +189,7 @@ class LibraryBookSliverList extends StatelessWidget {
             dividerColor: tokens.divider,
             isPreparing: books[index].id == preparingBookId,
             isRemoving: removingBookIds.contains(books[index].id),
+            isRefreshing: refreshingBookIds.contains(books[index].id),
           ),
         ),
         childCount: books.length,
@@ -203,6 +211,7 @@ class _LibraryBookListRow extends StatelessWidget {
     required this.dividerColor,
     required this.isPreparing,
     required this.isRemoving,
+    required this.isRefreshing,
   });
 
   final LibraryBookListItemViewData book;
@@ -216,6 +225,7 @@ class _LibraryBookListRow extends StatelessWidget {
   final Color dividerColor;
   final bool isPreparing;
   final bool isRemoving;
+  final bool isRefreshing;
 
   @override
   Widget build(BuildContext context) {
@@ -228,6 +238,7 @@ class _LibraryBookListRow extends StatelessWidget {
       onAction: onBookAction == null ? null : (action) => onBookAction!(book, action),
       presentation: presentation,
       isPreparing: isPreparing,
+      isRefreshing: isRefreshing,
     );
     final Widget interactiveRow = presentation.showSwipeActions && actions.isNotEmpty && onBookAction != null
         ? LibraryBookSwipeActions(actions: actions, onAction: (action) => onBookAction!(book, action), child: row)
@@ -260,6 +271,7 @@ class LibraryBookListItem extends StatelessWidget {
     this.onAction,
     this.presentation = LibraryBookListPresentation.recentUpdates,
     this.isPreparing = false,
+    this.isRefreshing = false,
     super.key,
   });
 
@@ -271,6 +283,7 @@ class LibraryBookListItem extends StatelessWidget {
   final ValueChanged<LibraryBookListAction>? onAction;
   final LibraryBookListPresentation presentation;
   final bool isPreparing;
+  final bool isRefreshing;
 
   @override
   Widget build(BuildContext context) {
@@ -307,6 +320,7 @@ class LibraryBookListItem extends StatelessWidget {
                   assetPath: data.coverAssetPath,
                   width: AppSpacing.listCoverWidth,
                   height: AppSpacing.listCoverHeight,
+                  isRefreshing: isRefreshing,
                 ),
                 const SizedBox(width: AppSpacing.compact + AppSpacing.unit),
                 Expanded(

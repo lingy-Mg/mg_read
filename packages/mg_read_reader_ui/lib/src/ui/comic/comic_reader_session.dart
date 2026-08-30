@@ -175,7 +175,12 @@ extension _ComicReaderSession on _ComicReaderViewState {
       );
     } catch (error) {
       if (!_isSession(session, bookId, dataSource, store)) return;
-      final ReaderFailure failure = _asFailure(error, ReaderFailureKind.data);
+      final ReaderFailure failure = _asFailure(
+        error,
+        ReaderFailureKind.data,
+        code: 'comic_reader_initial_load_failed',
+        location: '加载漫画信息、目录或首章',
+      );
       setState(() {
         _loading = false;
         _failure = failure;
@@ -307,7 +312,12 @@ extension _ComicReaderSession on _ComicReaderViewState {
       });
     } catch (error) {
       if (!_isNavigation(navigation)) return;
-      final ReaderFailure failure = _asFailure(error, ReaderFailureKind.data);
+      final ReaderFailure failure = _asFailure(
+        error,
+        ReaderFailureKind.data,
+        code: 'comic_chapter_load_failed',
+        location: '加载漫画章节内容',
+      );
       setState(() {
         _loading = false;
         _failure = failure;

@@ -401,19 +401,39 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
   ReaderFailure _stateFailure(Object error) => ReaderFailure(
     ReaderFailureKind.persistence,
     ComicReaderStrings.readerProblem,
+    code: 'comic_reader_persistence_failed',
+    location: '恢复或保存漫画阅读状态',
     cause: error,
   );
 
-  ReaderFailure _asFailure(Object error, ReaderFailureKind kind) =>
-      error is ReaderFailure
+  ReaderFailure _asFailure(
+    Object error,
+    ReaderFailureKind kind, {
+    String? code,
+    String? location,
+  }) => error is ReaderFailure
       ? error
-      : ReaderFailure(kind, ComicReaderStrings.readerProblem, cause: error);
+      : ReaderFailure(
+          kind,
+          ComicReaderStrings.readerProblem,
+          code: code ?? 'comic_reader_${kind.name}_failed',
+          location: location ?? '漫画阅读器',
+          cause: error,
+        );
 
   ReaderFailure _asImageFailure(Object error) => error is ReaderFailure
-      ? ReaderFailure(ReaderFailureKind.image, error.message, cause: error)
+      ? ReaderFailure(
+          ReaderFailureKind.image,
+          error.message,
+          code: error.code,
+          location: error.location ?? '加载漫画图片',
+          cause: error,
+        )
       : ReaderFailure(
           ReaderFailureKind.image,
           ComicReaderStrings.imageFailed,
+          code: 'comic_image_load_failed',
+          location: '加载漫画图片',
           cause: error,
         );
 

@@ -127,7 +127,7 @@ export class AliceBookHouseSource {
         return Object.freeze({ id: category.id, title: category.title });
       }),
     );
-    this.#htmlCache = new PluginCache(context.cacheDir);
+    this.#htmlCache = new PluginCache(context.cacheDir, { logger: context.log });
   }
 
   async discover(request: DiscoverRequest): Promise<DiscoverResult> {

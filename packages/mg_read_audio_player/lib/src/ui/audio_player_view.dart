@@ -139,6 +139,8 @@ class _AudioPlayerViewState extends State<AudioPlayerView>
                 AudioPlayerStatus.loading => const AudioLoadingView(),
                 AudioPlayerStatus.error => AudioErrorView(
                   message: snapshot.failure?.message ?? '音频加载失败。',
+                  location: snapshot.failure?.location,
+                  diagnosticCode: snapshot.failure?.code,
                   onBack: _requestExit,
                   onRetry: _controller.retry,
                 ),

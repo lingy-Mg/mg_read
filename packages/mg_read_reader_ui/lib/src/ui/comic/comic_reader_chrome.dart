@@ -304,6 +304,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
   }
 
   Widget _buildFailureOverlay(ReaderPalette palette) {
+    final ReaderFailure? failure = _failure;
     return ColoredBox(
       color: const Color(0xFF101112),
       child: Center(
@@ -313,9 +314,27 @@ extension _ComicReaderChrome on _ComicReaderViewState {
             Icon(Icons.broken_image_outlined, color: palette.secondaryText),
             const SizedBox(height: 12),
             Text(
-              ComicReaderStrings.chapterFailed,
+              failure?.message ?? ComicReaderStrings.chapterFailed,
               style: TextStyle(color: palette.text),
             ),
+            if (failure?.location case final String location) ...<Widget>[
+              const SizedBox(height: 6),
+              Text(
+                '发生位置：$location',
+                key: const Key('comic-reader-status-location'),
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: palette.secondaryText),
+              ),
+            ],
+            if (failure?.code case final String code) ...<Widget>[
+              const SizedBox(height: 3),
+              Text(
+                '诊断编号：$code',
+                key: const Key('comic-reader-status-code'),
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: palette.secondaryText),
+              ),
+            ],
             const SizedBox(height: 10),
             FilledButton.tonal(
               onPressed: _currentChapter == null
@@ -330,6 +349,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
   }
 
   Widget _buildInlineFailure(ReaderPalette palette) {
+    final ReaderFailure? failure = _failure;
     return SafeArea(
       child: Align(
         alignment: Alignment.topCenter,
@@ -345,9 +365,31 @@ extension _ComicReaderChrome on _ComicReaderViewState {
           child: Row(
             children: <Widget>[
               Expanded(
-                child: Text(
-                  ComicReaderStrings.chapterFailed,
-                  style: TextStyle(color: palette.text, fontSize: 13),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      failure?.message ?? ComicReaderStrings.chapterFailed,
+                      style: TextStyle(color: palette.text, fontSize: 13),
+                    ),
+                    if (failure?.location case final String location)
+                      Text(
+                        '发生位置：$location',
+                        style: TextStyle(
+                          color: palette.secondaryText,
+                          fontSize: 11,
+                        ),
+                      ),
+                    if (failure?.code case final String code)
+                      Text(
+                        '诊断编号：$code',
+                        style: TextStyle(
+                          color: palette.secondaryText,
+                          fontSize: 11,
+                        ),
+                      ),
+                  ],
                 ),
               ),
               TextButton(

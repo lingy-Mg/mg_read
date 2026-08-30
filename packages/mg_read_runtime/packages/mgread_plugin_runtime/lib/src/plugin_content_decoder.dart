@@ -207,16 +207,17 @@ PluginMediaResource _decodeMediaResource(Object? value) {
   };
   final headers = _contentObject(_contentField(item, 'headers', context), context);
   if (headers.length > 16) _contentInvalid('$context contains too many headers.');
-  final typedHeaders = <String, String>{
-    for (final entry in headers.entries)
-      if (RegExp(r'^[A-Za-z0-9-]{1,64}$').hasMatch(entry.key) &&
-          entry.value is String &&
-          (entry.value as String).length <= 4096 &&
-          !(entry.value as String).contains(RegExp(r'[\r\n]')))
-        entry.key: entry.value as String
-      else
-        throw PluginRuntimeException('invalid_response', '$context contains an invalid header.'),
-  };
+  final typedHeaders = <String, String>{};
+  for (final entry in headers.entries) {
+    final header = entry.value;
+    if (!RegExp(r'^[A-Za-z0-9-]{1,64}$').hasMatch(entry.key) ||
+        header is! String ||
+        header.length > 4096 ||
+        header.contains(RegExp(r'[\r\n]'))) {
+      _contentInvalid('$context contains an invalid header.');
+    }
+    typedHeaders[entry.key] = header;
+  }
   final url = _contentUri(item, 'url', context);
   if (!(_isRuntimeMediaProxyUri(url))) {
     _contentInvalid('$context must use a Runtime media proxy URL.');

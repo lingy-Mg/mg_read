@@ -83,17 +83,22 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher {
         labels: <String>[...summary.categories, ...summary.tags, for (final attribute in summary.attributes) attribute.value],
       ),
     );
-    final oldCover = item.coverUrl;
-    if (oldCover != null) {
-      await _library.covers.remove(
-        CoverKey(
-          pluginId: source.pluginId,
-          pluginVersion: source.pluginVersion,
-          remoteContentId: source.remoteContentId,
-          coverUrl: oldCover,
+    final coverUrls = <Uri>{
+      if (item.coverUrl case final Uri oldCover) oldCover,
+      if (summary.coverUrl case final Uri refreshedCover) refreshedCover,
+    };
+    await Future.wait<void>(<Future<void>>[
+      _library.bookshelf.removeCover(item.id),
+      for (final coverUrl in coverUrls)
+        _library.covers.remove(
+          CoverKey(
+            pluginId: source.pluginId,
+            pluginVersion: source.pluginVersion,
+            remoteContentId: source.remoteContentId,
+            coverUrl: coverUrl,
+          ),
         ),
-      );
-    }
+    ]);
   }
 
   Future<void> _syncCatalog(LibraryItem item, PluginChaptersResult chapters) => switch (item.kind) {
@@ -122,11 +127,17 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher {
           ),
       ],
     ),
+    // Media catalogs are session-owned because their playable resources may
+    // contain short-lived proxy state. The detail/player refreshes them from
+    // the source instead of persisting a stale playback catalog.
+    ContentKind.audio || ContentKind.video => Future<void>.value(),
   }.then<void>((_) {});
 
   PluginContentKind _contentKind(ContentKind kind) => switch (kind) {
+    ContentKind.audio => PluginContentKind.audio,
     ContentKind.novel => PluginContentKind.novel,
     ContentKind.manga => PluginContentKind.manga,
+    ContentKind.video => PluginContentKind.video,
   };
 
   String? _statusLabel(PluginContentStatus status) => switch (status) {

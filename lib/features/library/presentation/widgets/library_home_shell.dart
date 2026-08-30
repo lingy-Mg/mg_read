@@ -85,6 +85,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   String? _actionFeedback;
   double _contentOpacity = 1;
   final Set<String> _removingBookIds = <String>{};
+  final Set<String> _refreshingBookIds = <String>{};
   late LibraryHomeLayoutMode _layoutMode;
   bool _layoutModeChangePending = false;
   bool _privacyRevealActive = false;
@@ -315,6 +316,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
         onBookAction: _handleBookAction,
         preparingBookId: widget.preparingBookId,
         removingBookIds: _removingBookIds,
+        refreshingBookIds: _refreshingBookIds,
       );
     }
     return LibraryBookSliverList(
@@ -327,6 +329,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       presentation: _listPresentation(section),
       preparingBookId: widget.preparingBookId,
       removingBookIds: _removingBookIds,
+      refreshingBookIds: _refreshingBookIds,
     );
   }
 
@@ -478,6 +481,8 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     LibraryBookListItemViewData book,
     Future<void> Function(LibraryBookListItemViewData) refreshBook,
   ) async {
+    if (!_refreshingBookIds.add(book.id)) return;
+    setState(() {});
     try {
       await refreshBook(book);
       if (!mounted) return;
@@ -487,6 +492,12 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
     } on Object {
       if (!mounted) return;
       setState(() => _actionFeedback = '刷新书籍失败，请稍后重试。');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _refreshingBookIds.remove(book.id);
+        });
+      }
     }
   }
 

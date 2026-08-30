@@ -77,9 +77,31 @@ enum AudioPlayerLifecycleState { resumed, inactive, paused, hidden, detached }
 /// Stable player failure exposed to UI and host observers.
 @immutable
 final class AudioPlayerFailure {
-  const AudioPlayerFailure({required this.code, required this.message});
+  const AudioPlayerFailure({
+    required this.code,
+    required this.message,
+    required this.location,
+  });
 
   final String code;
+  final String message;
+  final String location;
+}
+
+/// A host-supplied failure that is safe to show in the audio player.
+///
+/// The host must use a stable code, a user-understandable location and a
+/// redacted explanation. Raw URLs, headers, cookies, signatures and upstream
+/// response bodies are deliberately not represented here.
+final class AudioPlayerLoadException implements Exception {
+  const AudioPlayerLoadException({
+    required this.code,
+    required this.location,
+    required this.message,
+  });
+
+  final String code;
+  final String location;
   final String message;
 }
 

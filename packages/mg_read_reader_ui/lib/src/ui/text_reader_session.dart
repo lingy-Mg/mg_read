@@ -176,7 +176,12 @@ extension _TextReaderSession on _TextReaderViewState {
       _publishSnapshot();
     } catch (error) {
       if (!_isSessionCurrent(generation)) return;
-      final ReaderFailure failure = _asFailure(error, ReaderFailureKind.data);
+      final ReaderFailure failure = _asFailure(
+        error,
+        ReaderFailureKind.data,
+        code: 'text_reader_initial_load_failed',
+        location: '加载小说信息、目录或首章',
+      );
       if (mounted) {
         setState(() {
           _loading = false;

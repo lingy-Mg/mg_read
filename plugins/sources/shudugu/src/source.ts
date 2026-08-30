@@ -52,7 +52,7 @@ export class ShuduguSource {
       if (!/^[a-z]+$/.test(item.id) || nonBlank(item.title) === null) throw new Error('Source categories are invalid.');
       return Object.freeze({ id: item.id, title: item.title });
     }));
-    this.#cache = new PluginCache(context.cacheDir);
+    this.#cache = new PluginCache(context.cacheDir, { logger: context.log });
   }
 
   async discover(request: DiscoverRequest): Promise<DiscoverResult> {

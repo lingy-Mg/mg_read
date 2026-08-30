@@ -54,6 +54,8 @@ class LibraryPage extends ConsumerWidget {
     this.callbacks = const LibraryHomeCallbacks(),
     this.onDestinationRequested,
     this.onReaderRequested,
+    this.onAudioChapterRequested,
+    this.onVideoEpisodeRequested,
     this.onBookDetailRequested,
     this.onPrivacyLibraryRequested,
     this.onReadingHistoryRequested,
@@ -69,6 +71,12 @@ class LibraryPage extends ConsumerWidget {
 
   /// Lets the app layer resolve a persisted shelf item for reading.
   final ValueChanged<String>? onReaderRequested;
+
+  /// Opens a persisted audio source through the dedicated audio-player host.
+  final SourceAudioChapterRequested? onAudioChapterRequested;
+
+  /// Opens a persisted video source through the dedicated video-player host.
+  final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
 
   /// Lets the app layer open a persisted shelf item's detail surface.
   final ValueChanged<String>? onBookDetailRequested;
@@ -153,7 +161,12 @@ class LibraryPage extends ConsumerWidget {
       await refresher.refresh(book.id);
       if (request != null) {
         BookCoverMemoryCache.remove(request);
-        ref.invalidate(bookCoverBytesProvider(request));
+        try {
+          await ref.refresh(bookCoverBytesProvider(request).future);
+        } on Object {
+          // The refreshed metadata remains usable when one cover request fails;
+          // the cover widget will retain its normal fallback state.
+        }
       }
       await controller.refresh();
     }
@@ -192,6 +205,8 @@ class LibraryPage extends ConsumerWidget {
         onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) async {
           prepareAndOpen(book.id);
         },
+        onAudioChapterRequested: onAudioChapterRequested,
+        onVideoEpisodeRequested: onVideoEpisodeRequested,
         onStartReading: () async => prepareAndOpen(book.id),
         onShelfAction: (SourceShelfAction action) async {
           switch (action) {
@@ -229,6 +244,14 @@ class LibraryPage extends ConsumerWidget {
                 ? callbacks.onOpenBook
                 : (book) {
                     callbacks.onOpenBook?.call(book);
+                    final item = state.overview!.items.cast<LibraryItemSummary?>().firstWhere(
+                      (candidate) => candidate?.id == book.id,
+                      orElse: () => null,
+                    );
+                    if (item?.contentKind == ContentKind.audio || item?.contentKind == ContentKind.video) {
+                      unawaited(openBookDetail(book));
+                      return;
+                    }
                     prepareAndOpen(book.id);
                   }
           : (book) {
@@ -316,7 +339,12 @@ PluginContentSummary _libraryDetailPreview(LibraryItemSummary? item, LibraryBook
   return PluginContentSummary(
     id: item?.coverRemoteContentId ?? book.id,
     title: item?.title ?? book.title,
-    contentKind: PluginContentKind.novel,
+    contentKind: switch (item?.contentKind) {
+      ContentKind.audio => PluginContentKind.audio,
+      ContentKind.video => PluginContentKind.video,
+      ContentKind.manga => PluginContentKind.manga,
+      _ => PluginContentKind.novel,
+    },
     author: item?.author,
     url: item?.sourceUrl,
     coverUrl: item?.coverUrl ?? book.coverUrl,

@@ -41,8 +41,10 @@ final class ContentLibraryBookDetailLauncher implements LibraryBookDetailLaunche
         id: source.remoteContentId,
         title: item.title,
         contentKind: switch (item.kind) {
+          ContentKind.audio => PluginContentKind.audio,
           ContentKind.novel => PluginContentKind.novel,
           ContentKind.manga => PluginContentKind.manga,
+          ContentKind.video => PluginContentKind.video,
         },
         author: item.author,
         url: item.sourceUrl,

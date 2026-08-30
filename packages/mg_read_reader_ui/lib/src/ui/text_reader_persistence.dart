@@ -331,11 +331,18 @@ extension _TextReaderPersistence on _TextReaderViewState {
     );
   }
 
-  ReaderFailure _asFailure(Object error, ReaderFailureKind fallbackKind) {
+  ReaderFailure _asFailure(
+    Object error,
+    ReaderFailureKind fallbackKind, {
+    String? code,
+    String? location,
+  }) {
     if (error is ReaderFailure) return error;
     return ReaderFailure(
       fallbackKind,
       ReaderStrings.readerProblem,
+      code: code ?? 'text_reader_${fallbackKind.name}_failed',
+      location: location ?? '文本阅读器',
       cause: error,
     );
   }

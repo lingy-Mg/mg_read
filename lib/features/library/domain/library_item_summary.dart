@@ -12,11 +12,14 @@
 /// - 无。
 library;
 
+import 'package:mg_read/core/content_library/content_library.dart';
+
 final class LibraryItemSummary {
   /// Creates one stable library-item projection.
   const LibraryItemSummary({
     required this.id,
     required this.title,
+    this.contentKind = ContentKind.novel,
     this.author,
     this.coverUrl,
     this.coverBytes,
@@ -49,6 +52,9 @@ final class LibraryItemSummary {
 
   /// Stable identifier generated and owned by the host application.
   final String id;
+
+  /// Source-declared type retained for the appropriate player/reader host.
+  final ContentKind contentKind;
 
   /// User-visible title from the current local projection.
   final String title;

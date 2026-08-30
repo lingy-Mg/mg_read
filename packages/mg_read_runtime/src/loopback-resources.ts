@@ -13,6 +13,7 @@
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import type { JsonObject } from "./protocol.js";
 import type { PluginManager } from "./plugin-manager.js";
 import { openMediaProxyResource } from "./media-resource-proxy.js";
 
@@ -67,7 +68,7 @@ export async function servePluginTransferResource(
 }
 
 async function serveMediaResource(
-  media: { readonly request: Record<string, unknown>; readonly response: Response; readonly proxy: (request: Record<string, unknown>) => string },
+  media: { readonly request: JsonObject; readonly response: Response; readonly proxy: (request: JsonObject) => string },
   response: ServerResponse,
   finish: LoopbackHttpFinish,
 ): Promise<void> {
@@ -100,7 +101,7 @@ async function readManifest(response: Response): Promise<string> {
   return new TextDecoder().decode(body);
 }
 
-function rewriteHls(text: string, base: string, request: Record<string, unknown>, createProxy: (request: Record<string, unknown>) => string): string {
+function rewriteHls(text: string, base: string, request: JsonObject, createProxy: (request: JsonObject) => string): string {
   const proxy = (raw: string) => createProxy({ ...request, url: new URL(raw, base).toString() });
   return text.split(/\r?\n/u).map((line) => {
     if (line === "" || line.startsWith("#") === false) return line === "" ? line : proxy(line);

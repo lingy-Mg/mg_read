@@ -3,6 +3,7 @@ import type { JsonObject } from "./protocol.js";
 import type { PluginRuntimeHttpClient } from "./plugin-manager-contract.js";
 
 type Entry = {
+  readonly active: () => boolean;
   readonly fetch: PluginRuntimeHttpClient["fetch"];
   readonly pluginId: string;
   readonly proxy: (request: JsonObject) => string;
@@ -12,7 +13,10 @@ type Entry = {
 const entries = new Map<string, Entry>();
 
 export function registerMediaProxyResource(token: string, entry: Entry): void {
-  if (isMediaProxyRequest(entry.request)) entries.set(token, entry);
+  if (!isMediaProxyRequest(entry.request)) return;
+  const oldest = entries.keys().next().value;
+  if (entries.size >= 1024 && typeof oldest === "string") entries.delete(oldest);
+  entries.set(token, entry);
 }
 
 export async function openMediaProxyResource(
@@ -21,7 +25,7 @@ export async function openMediaProxyResource(
   signal: AbortSignal,
 ): Promise<{ readonly request: JsonObject; readonly response: Response; readonly proxy: Entry["proxy"] } | undefined> {
   const entry = entries.get(token);
-  if (entry === undefined || signal.aborted || !isMediaProxyRequest(entry.request)) return undefined;
+  if (entry === undefined || !entry.active() || signal.aborted || !isMediaProxyRequest(entry.request)) return undefined;
   const rawUrl = entry.request.url;
   const headers = entry.request.headers;
   if (typeof rawUrl !== "string" || !isHeaderRecord(headers)) return undefined;

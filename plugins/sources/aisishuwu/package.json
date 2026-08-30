@@ -14,8 +14,7 @@
     "npm": "11.13.0"
   },
   "scripts": {
-    "sync:cache": "node ../../../tools/sync_plugin_cache.mjs aisishuwu",
-    "build": "npm run sync:cache && tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/contract.test.mjs test/html-cache.test.mjs test/packaging.test.mjs test/source-detail-hydration.test.mjs test/source.test.mjs",
     "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
@@ -23,7 +22,7 @@
     "verify": "npm run typecheck && npm test && npm run pack:plugin"
   },
   "dependencies": {
-    "@mgread/plugin-cache": "file:./packages/mgread-plugin-cache",
+    "@mgread/plugin-cache": "file:../../../packages/mg_read_plugin_cache",
     "cheerio": "1.1.0"
   },
   "devDependencies": {

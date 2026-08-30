@@ -489,6 +489,23 @@ void main() {
 
     expect(store.saved.last.position, const Duration(seconds: 20));
   });
+
+  testWidgets('shows a safe host content failure with its location and code', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      _playerApp(
+        contentId: 'show',
+        backend: _FakeVideoBackend(),
+        source: const _FailingDataSource(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('所选集的播放资源暂时无法获取，请稍后重试。'), findsOneWidget);
+    expect(find.text('发生位置：请求选集播放资源'), findsOneWidget);
+    expect(find.text('诊断编号：video_episode_resource_load_failed'), findsOneWidget);
+  });
 }
 
 Widget _playerApp({
@@ -548,6 +565,19 @@ final class _FixedDataSource implements VideoDataSource {
 
   @override
   Future<VideoContent> load(String contentId) async => content;
+}
+
+final class _FailingDataSource implements VideoDataSource {
+  const _FailingDataSource();
+
+  @override
+  Future<VideoContent> load(String contentId) => Future<VideoContent>.error(
+    const VideoPlayerLoadException(
+      code: 'video_episode_resource_load_failed',
+      location: '请求选集播放资源',
+      message: '所选集的播放资源暂时无法获取，请稍后重试。',
+    ),
+  );
 }
 
 final class _ControlledDataSource implements VideoDataSource {

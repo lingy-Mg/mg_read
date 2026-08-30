@@ -71,7 +71,10 @@ class _ShelfActionBar extends StatefulWidget {
 }
 
 class _ShelfActionBarState extends State<_ShelfActionBar> {
-  bool _isRunning = false;
+  SourceShelfAction? _runningAction;
+
+  bool get _isRunning => _runningAction != null;
+  bool get _isRefreshing => _runningAction == SourceShelfAction.refresh;
 
   @override
   Widget build(BuildContext context) {
@@ -97,8 +100,10 @@ class _ShelfActionBarState extends State<_ShelfActionBar> {
               child: OutlinedButton.icon(
                 key: const Key('source-detail-refresh-action'),
                 onPressed: _isRunning ? null : () => _run(SourceShelfAction.refresh),
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('刷新'),
+                icon: _isRefreshing
+                    ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.refresh_rounded),
+                label: Text(_isRefreshing ? '刷新中' : '刷新'),
                 style: style(tokens.accent, tokens.accent),
               ),
             ),
@@ -161,15 +166,16 @@ class _ShelfActionBarState extends State<_ShelfActionBar> {
 
   Future<void> _run(SourceShelfAction action) async {
     if (_isRunning) return;
-    setState(() => _isRunning = true);
+    setState(() => _runningAction = action);
     try {
       await widget.onAction(action);
       if (!mounted) return;
       if (action != SourceShelfAction.refresh) Navigator.of(context).pop();
     } on Object {
       if (!mounted) return;
-      setState(() => _isRunning = false);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('操作未能完成，请稍后重试。')));
+    } finally {
+      if (mounted) setState(() => _runningAction = null);
     }
   }
 }
@@ -448,7 +454,27 @@ Future<void> _openTextChapter(
   required PluginChapterSummary chapter,
   required SourceTextChapterRequested? onTextChapterRequested,
   required SourceComicChapterRequested? onComicChapterRequested,
+  required SourceAudioChapterRequested? onAudioChapterRequested,
+  required SourceVideoEpisodeRequested? onVideoEpisodeRequested,
 }) async {
+  if (detail.summary.contentKind == PluginContentKind.audio) {
+    final callback = onAudioChapterRequested;
+    if (callback == null) {
+      throw StateError('An audio-player host has not been registered.');
+    }
+    Navigator.of(context).pop();
+    await callback(detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
+    return;
+  }
+  if (detail.summary.contentKind == PluginContentKind.video) {
+    final callback = onVideoEpisodeRequested;
+    if (callback == null) {
+      throw StateError('A video-player host has not been registered.');
+    }
+    Navigator.of(context).pop();
+    await callback(detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
+    return;
+  }
   if (detail.summary.contentKind == PluginContentKind.manga) {
     final callback = onComicChapterRequested;
     if (callback == null) {

@@ -160,10 +160,28 @@ final class _TransientSourceTextReaderDataSource
     _requireBook(bookId);
     final chapter = _chapterByIndex[_indexByChapterId[chapterId]];
     if (chapter == null) throw ArgumentError.value(chapterId, 'chapterId');
-    final content = await _loadChapterContent(chapterId);
+    final PluginChapterContent content;
+    try {
+      content = await _loadChapterContent(chapterId);
+    } on ReaderFailure {
+      rethrow;
+    } on Object catch (error) {
+      throw ReaderFailure(
+        ReaderFailureKind.data,
+        '小说正文暂时无法加载，请检查数据源或网络后重试。',
+        code: 'source_text_content_load_failed',
+        location: '请求小说章节正文',
+        cause: error,
+      );
+    }
     if (content.contentKind != PluginContentKind.novel ||
         content.text == null) {
-      throw StateError('The source chapter is not a text-reader chapter.');
+      throw const ReaderFailure(
+        ReaderFailureKind.data,
+        '数据源没有返回可阅读的小说正文。',
+        code: 'source_text_content_invalid',
+        location: '解析小说章节正文',
+      );
     }
     return TextChapterContent(
       chapterId: content.chapterId,

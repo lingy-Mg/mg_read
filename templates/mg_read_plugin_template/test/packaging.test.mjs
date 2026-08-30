@@ -82,6 +82,16 @@ test('packageMode defaults to single-file and archive remains explicit', async (
   assert.equal(JSON.parse(readZipEntry(overridden.bytes, 'package-lock.json')).version, '1.2.4-devsync.1');
 });
 
+test('audio and video content kinds are accepted in both artifact modes', async (t) => {
+  const audioRoot = await createFixture(t, { contentKinds: ['audio'] });
+  const audio = await tool.buildPluginArtifactForProject(audioRoot);
+  assert.deepEqual(decodeSingleFile(audio.bytes).envelope.descriptor.mgread.contentKinds, ['audio']);
+
+  const videoRoot = await createFixture(t, { contentKinds: ['video'], packageMode: 'archive' });
+  const video = await tool.buildPluginArtifactForProject(videoRoot);
+  assert.deepEqual(JSON.parse(readZipEntry(video.bytes, 'package.json')).mgread.contentKinds, ['video']);
+});
+
 test('single-file fails on sidecars, unresolved imports, dynamic imports, and oversized icons', async (t) => {
   const sidecarRoot = await createFixture(t, {});
   await mkdir(resolve(sidecarRoot, 'assets'));

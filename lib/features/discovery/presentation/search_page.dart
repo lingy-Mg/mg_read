@@ -43,6 +43,8 @@ class SearchPage extends ConsumerStatefulWidget {
     this.onSourceManagementRequested,
     this.onTextChapterRequested,
     this.onComicChapterRequested,
+    this.onAudioChapterRequested,
+    this.onVideoEpisodeRequested,
     super.key,
   });
 
@@ -51,6 +53,8 @@ class SearchPage extends ConsumerStatefulWidget {
   final VoidCallback? onSourceManagementRequested;
   final SourceTextChapterRequested? onTextChapterRequested;
   final SourceComicChapterRequested? onComicChapterRequested;
+  final SourceAudioChapterRequested? onAudioChapterRequested;
+  final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
 
   @override
   ConsumerState<SearchPage> createState() => _SearchPageState();
@@ -155,6 +159,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                             relatedContents: displayedResult?.items ?? const <PluginContentSummary>[],
                             onTextChapterRequested: widget.onTextChapterRequested,
                             onComicChapterRequested: widget.onComicChapterRequested,
+                            onAudioChapterRequested: widget.onAudioChapterRequested,
+                            onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
                             shelfState: bookshelfMembership.contains(pluginId: pluginId, title: content.title)
                                 ? SourceDetailShelfState.alreadyAdded
                                 : SourceDetailShelfState.canAdd,

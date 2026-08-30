@@ -7,7 +7,16 @@ export interface PluginCachePolicy {
 export type HtmlCachePolicy = PluginCachePolicy;
 export interface CachedResult<T> { readonly value: T; readonly storedAtMs: number; }
 export interface CachedHtmlResult { readonly body: string; readonly storedAtMs: number; }
-export interface PluginCacheOptions { readonly maximumCacheBytes?: number; readonly maximumEntryBytes?: number; readonly now?: () => number; }
+export interface PluginCacheLogger {
+  debug(message: string): void;
+  warn(message: string): void;
+}
+export interface PluginCacheOptions {
+  readonly logger?: PluginCacheLogger;
+  readonly maximumCacheBytes?: number;
+  readonly maximumEntryBytes?: number;
+  readonly now?: () => number;
+}
 export type PluginHtmlCacheOptions = PluginCacheOptions;
 export class PluginCache {
   constructor(cacheDir: string, options?: PluginCacheOptions);

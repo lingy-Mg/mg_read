@@ -31,14 +31,18 @@ final class BookshelfCapacityExceededException implements Exception {
 }
 
 enum ContentKind {
+  audio('audio'),
   novel('novel'),
-  manga('manga');
+  manga('manga'),
+  video('video');
 
   const ContentKind(this.code);
   final String code;
   static ContentKind? fromCode(String code) => switch (code) {
     'novel' => novel,
     'manga' => manga,
+    'audio' => audio,
+    'video' => video,
     _ => null,
   };
 }

@@ -22,6 +22,13 @@ import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart
 import 'package:mg_read/shared/presentation/widgets/default_book_cover_artwork.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
+/// The source-declared display shape for its cover art.
+///
+/// Video posters are normally landscape, while text, comic and audio covers
+/// retain the portrait presentation. This only controls presentation; source
+/// URLs and decoded bytes keep their existing typed boundary.
+enum DiscoveryCoverPresentation { portrait, landscape }
+
 /// 显示不阻塞周边内容的数据源封面。
 class DiscoveryBookCover extends ConsumerWidget {
   const DiscoveryBookCover({
@@ -29,6 +36,7 @@ class DiscoveryBookCover extends ConsumerWidget {
     required this.variant,
     required this.width,
     required this.height,
+    this.presentation = DiscoveryCoverPresentation.portrait,
     this.coverBytes,
     this.remoteContentId,
     this.coverUrl,
@@ -39,6 +47,7 @@ class DiscoveryBookCover extends ConsumerWidget {
   final DiscoveryCoverVariant variant;
   final double width;
   final double height;
+  final DiscoveryCoverPresentation presentation;
   final List<int>? coverBytes;
   final String? remoteContentId;
   final Uri? coverUrl;
@@ -73,14 +82,14 @@ class DiscoveryBookCover extends ConsumerWidget {
           height: height,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              borderRadius: AppRadii.discoveryCover,
+              borderRadius: _borderRadius,
               boxShadow: <BoxShadow>[
                 BoxShadow(color: tokens.shadow, blurRadius: width >= 80 ? 8 : 3, offset: Offset(0, width >= 80 ? 4 : 1.5)),
               ],
               gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: <Color>[start, end]),
             ),
             child: ClipRRect(
-              borderRadius: AppRadii.discoveryCover,
+              borderRadius: _borderRadius,
               child: !hasCoverBytes
                   ? _placeholder(foreground, start, end, isLoading: isLoading)
                   : Image.memory(
@@ -106,7 +115,7 @@ class DiscoveryBookCover extends ConsumerWidget {
           startColor: start,
           endColor: end,
           foregroundColor: foreground,
-          borderRadius: AppRadii.discoveryCover,
+          borderRadius: _borderRadius,
         ),
         if (isLoading)
           ColoredBox(
@@ -133,4 +142,8 @@ class DiscoveryBookCover extends ConsumerWidget {
       DiscoveryCoverVariant.abyss => (tokens.coverOceanStart, tokens.coverIndigoStart),
     };
   }
+
+  BorderRadius get _borderRadius => presentation == DiscoveryCoverPresentation.landscape
+      ? BorderRadius.circular(10)
+      : AppRadii.discoveryCover;
 }

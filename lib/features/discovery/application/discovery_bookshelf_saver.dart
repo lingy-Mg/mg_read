@@ -61,6 +61,8 @@ final class ContentLibraryDiscoveryBookshelfSaver implements DiscoveryBookshelfS
         kind: switch (content.contentKind) {
           PluginContentKind.novel => ContentKind.novel,
           PluginContentKind.manga => ContentKind.manga,
+          PluginContentKind.audio => ContentKind.audio,
+          PluginContentKind.video => ContentKind.video,
         },
         pluginId: source.id,
         pluginVersion: source.pluginVersion,

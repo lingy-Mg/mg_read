@@ -96,6 +96,37 @@ void main() {
     expect(startReadingCount, 1);
   });
 
+  testWidgets('shelf detail shows and clears the refresh animation', (tester) async {
+    final Completer<void> refresh = Completer<void>();
+    final List<SourceShelfAction> actions = <SourceShelfAction>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: _ActionShelfDetailHost(
+          onStartReading: () async {},
+          onShelfAction: (SourceShelfAction action) async {
+            actions.add(action);
+            await refresh.future;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('source-detail-refresh-action')));
+    await tester.pump();
+
+    expect(actions, <SourceShelfAction>[SourceShelfAction.refresh]);
+    expect(find.text('刷新中'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    refresh.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.text('刷新'), findsOneWidget);
+    expect(find.text('刷新中'), findsNothing);
+  });
+
   testWidgets('manga detail starts the comic reader callback instead of a URL list', (tester) async {
     var comicChapterCount = 0;
     List<int>? forwardedCoverBytes;
@@ -252,9 +283,10 @@ class _ShelfDetailHostState extends State<_ShelfDetailHost> {
 }
 
 class _ActionShelfDetailHost extends StatefulWidget {
-  const _ActionShelfDetailHost({required this.onStartReading});
+  const _ActionShelfDetailHost({required this.onStartReading, this.onShelfAction});
 
   final SourceStartReadingRequested onStartReading;
+  final SourceShelfActionRequested? onShelfAction;
 
   @override
   State<_ActionShelfDetailHost> createState() => _ActionShelfDetailHostState();
@@ -410,7 +442,7 @@ class _ActionShelfDetailHostState extends State<_ActionShelfDetailHost> {
           pluginId: AliceBookHouseDetailFixture.pluginId,
           id: AliceBookHouseDetailFixture.bookId,
           shelfState: SourceDetailShelfState.alreadyAdded,
-          onShelfAction: (_) async {},
+          onShelfAction: widget.onShelfAction ?? (_) async {},
           onStartReading: widget.onStartReading,
           useModalBottomSheet: true,
         ),

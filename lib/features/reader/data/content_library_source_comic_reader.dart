@@ -293,7 +293,13 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
     try {
       bytes = await fetcher(uri);
     } on Object catch (error) {
-      throw ReaderFailure(ReaderFailureKind.data, '漫画图片下载失败', cause: error);
+      throw ReaderFailure(
+        ReaderFailureKind.image,
+        '漫画图片下载失败，请检查网络后重试。',
+        code: 'library_comic_image_download_failed',
+        location: '下载漫画图片',
+        cause: error,
+      );
     }
     if (bytes.isEmpty) throw StateError('Comic image is empty.');
     if (bytes.length > _maximumImageBytes) throw StateError('Comic image exceeds 8 MiB.');

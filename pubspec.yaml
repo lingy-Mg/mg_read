@@ -1,7 +1,7 @@
 name: mg_read
 description: "Main Flutter application for MgRead."
 publish_to: 'none'
-version: 0.9.68+186
+version: 0.9.70+188
 
 environment:
   sdk: ^3.12.2
@@ -27,6 +27,9 @@ dependencies:
     path: packages/mg_read_audio_player
   mg_read_video_player:
     path: packages/mg_read_video_player
+  # Video native libraries include audio support and package Windows libmpv.
+  # Do not add media_kit_libs_audio alongside this package.
+  media_kit_libs_video: 1.0.7
 
 dev_dependencies:
   build_runner: 2.15.1

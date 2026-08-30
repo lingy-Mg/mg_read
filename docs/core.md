@@ -114,6 +114,7 @@ plugins/sources/                    真实数据源插件
 - 小说为非 null `text` 和空 `pages`，漫画相反且 pages 有序非空；超限内容走资源数据面，不进控制面。
 - `ctx.resource.proxy` 私有 request 最大 16 KiB；URL 仅 Runtime 内有效且最多 1024 个。resource 只接受
   GET、安全响应头和 8 MiB body；Flutter 不解析代理 URL，也不复刻来源请求、Cookie 或签名。
+- 媒体仅 proxy；视频分组中性；刷新重调。
 - Runtime 写 wire 前校验固定键、枚举、URL、时间、计数、唯一性和大小；无效结果统一为
   `plugin_invalid_response`，不记录原始对象或内容。
 - 真实数据源插件按目标文件头 -> 最近 `AGENTS.md` -> 公开类型/fixture/contract -> 本节读取；仅新增 Runtime

@@ -28,7 +28,7 @@ const maxQueryLength = 160;
 const probeTtlMs = 15 * 60 * 1_000;
 const maxProbeEntries = 300;
 const maxLogEntries = 1_000;
-const maxLogMessageLength = 2_000;
+const maxLogMessageLength = 64_000;
 const maxLogPageSize = 200;
 
 export interface RuntimeDebugHttpStatus extends JsonObject {
@@ -188,6 +188,9 @@ export class RuntimeDebugHttpServer {
     try {
       switch (url.pathname) {
         case "/__debug":
+        case "/__debug/search":
+        case "/__debug/discover":
+        case "/__debug/logs":
           writeHtml(response, await readDebugInspectorAsset("index.html"));
           return;
         case "/__debug/app.css":

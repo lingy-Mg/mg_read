@@ -36,6 +36,7 @@ void main() {
       coverUrl: oldCover,
     );
     await library.covers.save(key: oldCoverKey, bytes: const <int>[1, 2, 3]);
+    await library.bookshelf.saveCover(id: item.id, bytes: const <int>[4, 5, 6], mimeType: 'image/png');
 
     final gateway = _RefreshGateway();
     await ContentLibraryBookRefresher(library, gateway).refresh(item.id.value);
@@ -53,6 +54,7 @@ void main() {
     expect(refreshed?.attributes.single.value, '98.7万');
     expect((await library.listAllCatalog(item.id)).map((entry) => entry.remoteIdentity), <String>['chapter-1', 'chapter-2']);
     expect(await library.covers.read(oldCoverKey), isNull);
+    expect(await library.bookshelf.readCover(item.id), isNull);
   });
 
   test('retains the existing shelf item when a source refresh fails', () async {

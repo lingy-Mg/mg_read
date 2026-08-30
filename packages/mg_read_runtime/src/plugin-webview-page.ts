@@ -79,6 +79,7 @@ export interface PluginWebViewFetchResponse {
 interface WebViewCallOptions { readonly timeoutMs?: number }
 
 export function createPluginWebViewApi(options: {
+  readonly log?: (level: "debug" | "error" | "info" | "warn", message: string) => void;
   readonly pluginId: string;
   readonly pluginName: string;
   readonly provider: PluginBrowserSessionProvider | undefined;
@@ -87,6 +88,7 @@ export function createPluginWebViewApi(options: {
     readonly signal: AbortSignal;
   }) => Promise<T>) => Promise<T>;
 }): PluginWebViewApi {
+  const log = options.log ?? (() => {});
   let ordinaryTail: Promise<void> = Promise.resolve();
   const page = Object.freeze<PluginWebViewPage>({
     navigate: (url, callOptions) => invoke("page.navigate", { url: absoluteHttpUrl(url) }, callOptions).then(ignoreResult),
@@ -124,6 +126,7 @@ export function createPluginWebViewApi(options: {
     const timeoutMs = timeout(callOptions?.timeoutMs);
     return options.withScope(scope => {
       const execute = async (): Promise<unknown> => {
+        log("debug", `WebView 请求：操作=${operation}，参数=${JSON.stringify(params)}`);
         if (options.provider === undefined) throw new PluginManagerError("unsupported");
         const remainingMs = Number(scope.deadlineUnixMs) - Date.now();
         if (scope.signal.aborted) throw new PluginManagerError("cancelled");
@@ -143,8 +146,10 @@ export function createPluginWebViewApi(options: {
           const response = await options.provider.request(request);
           const hostErrorCode = browserSessionErrorCode(response);
           if (hostErrorCode !== undefined) throw new PluginManagerError(hostErrorCode);
+          log("debug", `WebView 响应：操作=${operation}，结果=${JSON.stringify(response).slice(0, 2000)}`);
           return response;
         } catch (error) {
+          log("error", `WebView 调用出错：操作=${operation}，错误=${error instanceof PluginManagerError ? error.code : error instanceof Error ? error.name : "unknown"}`);
           if (error instanceof PluginManagerError) throw error;
           if (isBrowserError(error)) throw new PluginManagerError(error.code);
           if (signal.aborted) throw new PluginManagerError(scope.signal.aborted ? "cancelled" : "timeout");

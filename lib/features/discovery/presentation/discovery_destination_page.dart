@@ -41,6 +41,8 @@ class DiscoveryDestinationPage extends ConsumerWidget {
     this.onSourceManagementRequested,
     this.onTextChapterRequested,
     this.onComicChapterRequested,
+    this.onAudioChapterRequested,
+    this.onVideoEpisodeRequested,
     super.key,
   });
 
@@ -49,6 +51,8 @@ class DiscoveryDestinationPage extends ConsumerWidget {
   final VoidCallback? onSourceManagementRequested;
   final SourceTextChapterRequested? onTextChapterRequested;
   final SourceComicChapterRequested? onComicChapterRequested;
+  final SourceAudioChapterRequested? onAudioChapterRequested;
+  final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -68,6 +72,8 @@ class DiscoveryDestinationPage extends ConsumerWidget {
         onSourceManagementRequested: onSourceManagementRequested,
         onTextChapterRequested: onTextChapterRequested,
         onComicChapterRequested: onComicChapterRequested,
+        onAudioChapterRequested: onAudioChapterRequested,
+        onVideoEpisodeRequested: onVideoEpisodeRequested,
       );
     }
 
@@ -163,6 +169,8 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
     required this.onSourceManagementRequested,
     required this.onTextChapterRequested,
     required this.onComicChapterRequested,
+    required this.onAudioChapterRequested,
+    required this.onVideoEpisodeRequested,
     this.isPredictiveBackRoute = false,
   });
 
@@ -172,6 +180,8 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
   final VoidCallback? onSourceManagementRequested;
   final SourceTextChapterRequested? onTextChapterRequested;
   final SourceComicChapterRequested? onComicChapterRequested;
+  final SourceAudioChapterRequested? onAudioChapterRequested;
+  final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
   final bool isPredictiveBackRoute;
 
   @override
@@ -215,6 +225,8 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
             relatedContents: _discoveryContentSummaries(result),
             onTextChapterRequested: onTextChapterRequested,
             onComicChapterRequested: onComicChapterRequested,
+            onAudioChapterRequested: onAudioChapterRequested,
+            onVideoEpisodeRequested: onVideoEpisodeRequested,
             shelfState: bookshelfMembership.contains(pluginId: state.selectedSourceId!, title: content.title)
                 ? SourceDetailShelfState.alreadyAdded
                 : SourceDetailShelfState.canAdd,
@@ -249,6 +261,8 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
           onSourceManagementRequested: onSourceManagementRequested,
           onTextChapterRequested: onTextChapterRequested,
           onComicChapterRequested: onComicChapterRequested,
+          onAudioChapterRequested: onAudioChapterRequested,
+          onVideoEpisodeRequested: onVideoEpisodeRequested,
         ),
       ),
     );
@@ -264,6 +278,8 @@ class _DiscoveryPredictiveBackChildPage extends ConsumerWidget {
     required this.onSourceManagementRequested,
     required this.onTextChapterRequested,
     required this.onComicChapterRequested,
+    required this.onAudioChapterRequested,
+    required this.onVideoEpisodeRequested,
   });
 
   final int visualDepth;
@@ -272,6 +288,8 @@ class _DiscoveryPredictiveBackChildPage extends ConsumerWidget {
   final VoidCallback? onSourceManagementRequested;
   final SourceTextChapterRequested? onTextChapterRequested;
   final SourceComicChapterRequested? onComicChapterRequested;
+  final SourceAudioChapterRequested? onAudioChapterRequested;
+  final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => PopScope<void>(
@@ -286,6 +304,8 @@ class _DiscoveryPredictiveBackChildPage extends ConsumerWidget {
       onSourceManagementRequested: onSourceManagementRequested,
       onTextChapterRequested: onTextChapterRequested,
       onComicChapterRequested: onComicChapterRequested,
+      onAudioChapterRequested: onAudioChapterRequested,
+      onVideoEpisodeRequested: onVideoEpisodeRequested,
       isPredictiveBackRoute: true,
     ),
   );

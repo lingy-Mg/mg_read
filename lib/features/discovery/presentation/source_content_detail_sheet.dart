@@ -47,6 +47,22 @@ typedef SourceComicChapterRequested =
       required List<int>? entryCoverBytes,
     });
 
+/// Opens a source-owned audio chapter in the independently maintained player.
+typedef SourceAudioChapterRequested =
+    Future<void> Function({
+      required PluginContentDetail detail,
+      required PluginChaptersResult firstCatalogPage,
+      required PluginChapterSummary chapter,
+    });
+
+/// Opens a source-owned video episode in the independently maintained player.
+typedef SourceVideoEpisodeRequested =
+    Future<void> Function({
+      required PluginContentDetail detail,
+      required PluginChaptersResult firstCatalogPage,
+      required PluginChapterSummary chapter,
+    });
+
 typedef SourceExternalUrlLauncher = Future<bool> Function(Uri url);
 
 typedef SourceShelfSaveRequested = Future<void> Function(PluginContentSummary content);
@@ -71,6 +87,8 @@ Future<void> showSourceContentDetailSheet(
   Iterable<PluginContentSummary> relatedContents = const <PluginContentSummary>[],
   SourceTextChapterRequested? onTextChapterRequested,
   SourceComicChapterRequested? onComicChapterRequested,
+  SourceAudioChapterRequested? onAudioChapterRequested,
+  SourceVideoEpisodeRequested? onVideoEpisodeRequested,
   SourceShelfSaveRequested? onAddToShelf,
   SourceDetailShelfState shelfState = SourceDetailShelfState.canAdd,
   SourceExternalUrlLauncher? onExternalUrlRequested,
@@ -88,6 +106,8 @@ Future<void> showSourceContentDetailSheet(
     relatedContents: relatedContents,
     onTextChapterRequested: onTextChapterRequested,
     onComicChapterRequested: onComicChapterRequested,
+    onAudioChapterRequested: onAudioChapterRequested,
+    onVideoEpisodeRequested: onVideoEpisodeRequested,
     onAddToShelf: onAddToShelf,
     shelfState: shelfState,
     onExternalUrlRequested: onExternalUrlRequested ?? _launchSystemBrowser,
@@ -210,6 +230,8 @@ class _SourceDetailScreen extends StatefulWidget {
     required this.relatedContents,
     required this.onTextChapterRequested,
     required this.onComicChapterRequested,
+    required this.onAudioChapterRequested,
+    required this.onVideoEpisodeRequested,
     required this.onAddToShelf,
     required this.shelfState,
     required this.onExternalUrlRequested,
@@ -226,6 +248,8 @@ class _SourceDetailScreen extends StatefulWidget {
   final Iterable<PluginContentSummary> relatedContents;
   final SourceTextChapterRequested? onTextChapterRequested;
   final SourceComicChapterRequested? onComicChapterRequested;
+  final SourceAudioChapterRequested? onAudioChapterRequested;
+  final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
   final SourceShelfSaveRequested? onAddToShelf;
   final SourceDetailShelfState shelfState;
   final SourceExternalUrlLauncher onExternalUrlRequested;
@@ -303,6 +327,8 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                             isRefreshing: true,
                             onTextChapterRequested: widget.onTextChapterRequested,
                             onComicChapterRequested: widget.onComicChapterRequested,
+                            onAudioChapterRequested: widget.onAudioChapterRequested,
+                            onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
                             onAddToShelf: widget.onAddToShelf,
                             shelfState: widget.shelfState,
                             onShelfAction: widget.onShelfAction,
@@ -328,6 +354,8 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                           isRefreshing: false,
                           onTextChapterRequested: widget.onTextChapterRequested,
                           onComicChapterRequested: widget.onComicChapterRequested,
+                          onAudioChapterRequested: widget.onAudioChapterRequested,
+                          onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
                           onAddToShelf: widget.onAddToShelf,
                           shelfState: widget.shelfState,
                           onShelfAction: widget.onShelfAction,
@@ -349,6 +377,8 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                         isRefreshing: false,
                         onTextChapterRequested: widget.onTextChapterRequested,
                         onComicChapterRequested: widget.onComicChapterRequested,
+                        onAudioChapterRequested: widget.onAudioChapterRequested,
+                        onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
                         onAddToShelf: widget.onAddToShelf,
                         shelfState: widget.shelfState,
                         onShelfAction: widget.onShelfAction,
@@ -375,6 +405,8 @@ class _SourceDetailView extends StatefulWidget {
     required this.isRefreshing,
     required this.onTextChapterRequested,
     required this.onComicChapterRequested,
+    required this.onAudioChapterRequested,
+    required this.onVideoEpisodeRequested,
     required this.onAddToShelf,
     required this.shelfState,
     required this.onShelfAction,
@@ -388,6 +420,8 @@ class _SourceDetailView extends StatefulWidget {
   final bool isRefreshing;
   final SourceTextChapterRequested? onTextChapterRequested;
   final SourceComicChapterRequested? onComicChapterRequested;
+  final SourceAudioChapterRequested? onAudioChapterRequested;
+  final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
   final SourceShelfSaveRequested? onAddToShelf;
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested? onShelfAction;
@@ -462,6 +496,8 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
     isRefreshing: widget.isRefreshing,
     onTextChapterRequested: widget.onTextChapterRequested,
     onComicChapterRequested: widget.onComicChapterRequested,
+    onAudioChapterRequested: widget.onAudioChapterRequested,
+    onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
     onAddToShelf: widget.onAddToShelf,
     shelfState: _shelfState,
     onShelfAction: widget.onShelfAction,
@@ -482,6 +518,8 @@ class _SourceDetailBody extends StatelessWidget {
     required this.isRefreshing,
     required this.onTextChapterRequested,
     required this.onComicChapterRequested,
+    required this.onAudioChapterRequested,
+    required this.onVideoEpisodeRequested,
     required this.onAddToShelf,
     required this.shelfState,
     required this.onShelfAction,
@@ -499,6 +537,8 @@ class _SourceDetailBody extends StatelessWidget {
   final bool isRefreshing;
   final SourceTextChapterRequested? onTextChapterRequested;
   final SourceComicChapterRequested? onComicChapterRequested;
+  final SourceAudioChapterRequested? onAudioChapterRequested;
+  final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
   final SourceShelfSaveRequested? onAddToShelf;
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested? onShelfAction;
@@ -544,7 +584,10 @@ class _SourceDetailBody extends StatelessWidget {
                 coverUrl: content.coverUrl,
                 variant: _coverVariant(content.id),
                 width: 112,
-                height: 174,
+                presentation: content.contentKind == PluginContentKind.video
+                    ? DiscoveryCoverPresentation.landscape
+                    : DiscoveryCoverPresentation.portrait,
+                height: content.contentKind == PluginContentKind.video ? 74 : 174,
               ),
             ),
             const SizedBox(width: 16),
@@ -594,7 +637,10 @@ class _SourceDetailBody extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.section),
-        if (shelfState != SourceDetailShelfState.canAdd && onShelfAction != null && onStartReading != null)
+        if (shelfState != SourceDetailShelfState.canAdd &&
+            onShelfAction != null &&
+            onStartReading != null &&
+            (content.contentKind == PluginContentKind.novel || content.contentKind == PluginContentKind.manga))
           _ShelfActionBar(shelfState: shelfState, onAction: onShelfAction!, onStartReading: onStartReading!)
         else
           Row(
@@ -646,6 +692,8 @@ class _SourceDetailBody extends StatelessWidget {
                             chapter: firstChapter,
                             onTextChapterRequested: onTextChapterRequested,
                             onComicChapterRequested: onComicChapterRequested,
+                            onAudioChapterRequested: onAudioChapterRequested,
+                            onVideoEpisodeRequested: onVideoEpisodeRequested,
                           ),
                         ),
                   style: FilledButton.styleFrom(
@@ -655,7 +703,14 @@ class _SourceDetailBody extends StatelessWidget {
                     disabledForegroundColor: tokens.surface,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
-                  child: isRefreshing ? const _DetailLoadingButtonLabel() : const Text('开始阅读'),
+                  child: isRefreshing
+                      ? const _DetailLoadingButtonLabel()
+                      : Text(
+                          switch (content.contentKind) {
+                            PluginContentKind.audio || PluginContentKind.video => '开始播放',
+                            _ => '开始阅读',
+                          },
+                        ),
                 ),
               ),
             ],
@@ -747,6 +802,8 @@ class _SourceDetailBody extends StatelessWidget {
                 chapter: chapter,
                 onTextChapterRequested: onTextChapterRequested,
                 onComicChapterRequested: onComicChapterRequested,
+                onAudioChapterRequested: onAudioChapterRequested,
+                onVideoEpisodeRequested: onVideoEpisodeRequested,
               ),
             ),
             onOpenUrl: _openUrl,

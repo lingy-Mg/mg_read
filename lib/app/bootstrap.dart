@@ -443,6 +443,7 @@ Future<AppPersistence> _openDefaultAppPersistence(Directory dataRoot, Diagnostic
 LibraryItemSummary _summaryFromShelfRequest(String mutationId, BookshelfAddRequest request) => LibraryItemSummary(
   id: 'pending-shelf:$mutationId',
   title: request.title,
+  contentKind: request.kind,
   author: request.author,
   coverUrl: request.coverUrl,
   coverPluginId: request.pluginId,

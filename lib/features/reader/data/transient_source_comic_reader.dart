@@ -72,9 +72,31 @@ final class TransientSourceComicReaderDataSource implements ComicReaderDataSourc
     _checkBook(bookId);
     final cached = _contents[chapterId];
     if (cached != null) return cached;
-    final remote = await gateway.getContent(pluginId: detail.pluginId, id: detail.summary.id, chapterId: chapterId);
+    final PluginChapterContent remote;
+    try {
+      remote = await gateway.getContent(
+        pluginId: detail.pluginId,
+        id: detail.summary.id,
+        chapterId: chapterId,
+      );
+    } on ReaderFailure {
+      rethrow;
+    } on Object catch (error) {
+      throw ReaderFailure(
+        ReaderFailureKind.data,
+        '漫画章节暂时无法加载，请检查数据源或网络后重试。',
+        code: 'source_comic_chapter_load_failed',
+        location: '请求漫画章节内容',
+        cause: error,
+      );
+    }
     if (remote.contentKind != PluginContentKind.manga || remote.chapterId != chapterId || remote.pages.isEmpty) {
-      throw StateError('Source comic chapter content is invalid.');
+      throw const ReaderFailure(
+        ReaderFailureKind.data,
+        '数据源没有返回有效的漫画图片清单。',
+        code: 'source_comic_manifest_invalid',
+        location: '解析漫画章节图片清单',
+      );
     }
     final version = remote.updatedAt?.toUtc().millisecondsSinceEpoch ?? 1;
     final content = ComicChapterContent(
@@ -106,12 +128,37 @@ final class TransientSourceComicReaderDataSource implements ComicReaderDataSourc
       (candidate) => candidate.id == imageId,
       orElse: () => throw StateError('Source comic image is not in the chapter.'),
     );
-    final remote = await gateway.getContent(pluginId: detail.pluginId, id: detail.summary.id, chapterId: chapterId);
+    final PluginChapterContent remote;
+    try {
+      remote = await gateway.getContent(
+        pluginId: detail.pluginId,
+        id: detail.summary.id,
+        chapterId: chapterId,
+      );
+    } on Object catch (error) {
+      throw ReaderFailure(
+        ReaderFailureKind.image,
+        '漫画图片清单暂时无法刷新，请稍后重试。',
+        code: 'source_comic_image_manifest_refresh_failed',
+        location: '刷新漫画图片清单',
+        cause: error,
+      );
+    }
     final page = remote.pages.firstWhere(
       (candidate) => candidate.id == image.id,
       orElse: () => throw StateError('Source comic image is not in the refreshed chapter.'),
     );
-    return fetcher(page.url);
+    try {
+      return await fetcher(page.url);
+    } on Object catch (error) {
+      throw ReaderFailure(
+        ReaderFailureKind.image,
+        '漫画图片暂时无法加载，请检查网络后重试。',
+        code: 'source_comic_image_load_failed',
+        location: '下载漫画图片',
+        cause: error,
+      );
+    }
   }
 
   ComicChapterInfo _chapterInfo(int index) {

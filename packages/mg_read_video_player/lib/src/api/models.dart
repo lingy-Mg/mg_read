@@ -161,7 +161,10 @@ enum VideoPlayerFailureKind {
 @immutable
 final class VideoPlayerFailure {
   /// Creates a stable failure safe for presentation.
-  const VideoPlayerFailure(this.kind, this.message, {this.code});
+  const VideoPlayerFailure(this.kind, this.message, {
+    this.code,
+    this.location,
+  });
 
   /// Failure domain.
   final VideoPlayerFailureKind kind;
@@ -171,6 +174,34 @@ final class VideoPlayerFailure {
 
   /// Optional stable host or backend error code.
   final String? code;
+
+  /// Safe, user-facing operation where this failure happened.
+  ///
+  /// This deliberately excludes media URLs, request headers, cookies, signed
+  /// parameters and raw backend exception text.
+  final String? location;
+}
+
+/// A safe host-to-player error for a content-resolution operation.
+///
+/// Hosts should use this only for a concise, redacted explanation. The player
+/// keeps raw transport and backend failures out of the visible UI.
+final class VideoPlayerLoadException implements Exception {
+  /// Creates a safe content-resolution failure.
+  const VideoPlayerLoadException({
+    required this.code,
+    required this.location,
+    required this.message,
+  });
+
+  /// Stable diagnostic identifier.
+  final String code;
+
+  /// Safe operation where resolution stopped.
+  final String location;
+
+  /// Actionable user-facing explanation.
+  final String message;
 }
 
 /// Engine-facing state exposed by an injectable playback backend.

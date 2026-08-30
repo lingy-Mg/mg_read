@@ -278,7 +278,9 @@ function validatePackage(value, mode, versionOverride) {
     (value.mgread.description !== undefined &&
       (typeof value.mgread.description !== 'string' || value.mgread.description.trim().length === 0)) ||
     !Array.isArray(value?.mgread?.contentKinds) || value.mgread.contentKinds.length === 0 ||
-    value.mgread.contentKinds.some((kind) => kind !== 'novel' && kind !== 'manga') ||
+    value.mgread.contentKinds.some(
+      (kind) => !['novel', 'manga', 'audio', 'video'].includes(kind),
+    ) ||
     (value.mgread.icon !== undefined && typeof value.mgread.icon !== 'string') ||
     !['single-file', 'archive'].includes(mode) || value.manifest !== undefined ||
     value.sharedDependencies !== undefined || value.bundledDependencies !== undefined

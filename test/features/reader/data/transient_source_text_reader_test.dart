@@ -127,6 +127,31 @@ void main() {
       expect(third.hasMore, isFalse);
     },
   );
+
+  test('reports a safe source location when a novel chapter request fails', () async {
+    final reader = TransientSourceTextReader(
+      detail: PluginContentDetail(
+        pluginId: 'org.example.source',
+        sourceName: '示例数据源',
+        summary: _summary(),
+        aliases: const <String>[],
+        catalogUrl: null,
+      ),
+      catalog: _chapters(items: <PluginChapterSummary>[_chapter('chapter-1', '第一章')]),
+      loadChapterContent: (_) => throw StateError('https://private.example/signed-url'),
+    );
+    final request = reader.createLaunchRequest(initialChapterId: 'chapter-1');
+
+    await expectLater(
+      request.dataSource.loadChapterContent(request.bookId, 'chapter-1'),
+      throwsA(
+        isA<ReaderFailure>()
+            .having((failure) => failure.code, 'code', 'source_text_content_load_failed')
+            .having((failure) => failure.location, 'location', '请求小说章节正文')
+            .having((failure) => failure.message, 'message', '小说正文暂时无法加载，请检查数据源或网络后重试。'),
+      ),
+    );
+  });
 }
 
 PluginContentSummary _summary() {

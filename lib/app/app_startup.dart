@@ -539,6 +539,7 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
           LibraryItemSummary(
             id: item.id.value,
             title: item.title,
+            contentKind: item.kind,
             author: item.author,
             coverUrl: item.coverUrl,
             coverPluginId: item.source?.pluginId,
@@ -594,6 +595,7 @@ final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher, Loca
         dataSource: ContentLibraryComicReaderDataSource(library: library, gateway: _gateway, item: item),
         stateStore: ContentLibraryComicReaderStateStore(library, itemId: item.id, settings: _settings),
       ),
+      ContentKind.audio || ContentKind.video => throw StateError('Media shelf items must be opened through their player host.'),
     };
   }
 

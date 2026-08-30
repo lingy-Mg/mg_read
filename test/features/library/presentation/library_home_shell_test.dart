@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' show Tristate;
 
@@ -353,6 +354,31 @@ void main() {
 
     expect(refreshedBook?.id, 'fixture-lord-of-mysteries');
     expect(find.text('《诡秘之主》已刷新'), findsOneWidget);
+  });
+
+  testWidgets('shows a cover refresh animation until the bookshelf refresh completes', (WidgetTester tester) async {
+    final Completer<void> refreshCompleter = Completer<void>();
+    await tester.pumpWidget(
+      _host(
+        callbacks: LibraryHomeCallbacks(
+          onRefreshBook: (LibraryBookListItemViewData book) => refreshCompleter.future,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('library-book-overflow-menu-fixture-lord-of-mysteries')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('刷新'));
+    await tester.pump();
+
+    expect(find.bySemanticsLabel('诡秘之主 的封面刷新中'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsWidgets);
+
+    refreshCompleter.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.bySemanticsLabel('诡秘之主 的封面刷新中'), findsNothing);
   });
 
   testWidgets('offers privacy actions from book swipe actions and home overflow menu', (WidgetTester tester) async {

@@ -178,6 +178,17 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     VideoContent content;
     try {
       content = await dataSource.load(contentId);
+    } on VideoPlayerLoadException catch (error) {
+      if (!_isCurrentLoad(generation)) return;
+      _setFailure(
+        VideoPlayerFailure(
+          VideoPlayerFailureKind.data,
+          error.message,
+          code: error.code,
+          location: error.location,
+        ),
+      );
+      return;
     } on Object {
       if (!_isCurrentLoad(generation)) return;
       _setFailure(
@@ -185,6 +196,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
           VideoPlayerFailureKind.data,
           '视频内容暂时无法打开',
           code: 'content_load_failed',
+          location: '加载视频信息和选集',
         ),
       );
       return;
@@ -196,6 +208,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
           VideoPlayerFailureKind.data,
           '视频内容标识不匹配',
           code: 'content_identity_mismatch',
+          location: '校验视频内容标识',
         ),
       );
       return;
@@ -211,6 +224,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
           VideoPlayerFailureKind.persistence,
           '播放进度恢复失败，将从头开始',
           code: 'progress_load_failed',
+          location: '恢复播放进度',
         ),
       );
     }
@@ -299,6 +313,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
           VideoPlayerFailureKind.playback,
           '视频播放失败，请重试',
           code: 'episode_open_failed',
+          location: '打开所选视频资源',
         ),
       );
     }
@@ -325,6 +340,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
           VideoPlayerFailureKind.playback,
           '播放引擎发生错误',
           code: 'backend_error',
+          location: '视频播放引擎',
         ),
       );
       return;
@@ -493,6 +509,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
             VideoPlayerFailureKind.playback,
             '播放操作失败，请重试',
             code: code,
+            location: '执行视频播放操作',
           ),
         );
       }
@@ -535,6 +552,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
           VideoPlayerFailureKind.persistence,
           '播放进度保存失败',
           code: 'progress_save_failed',
+          location: '保存播放进度',
         ),
       );
     }

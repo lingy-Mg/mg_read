@@ -43,7 +43,7 @@ export const categories = Object.freeze([
 
 export class BzSource {
   readonly #cache: PluginCache;
-  constructor(private readonly context: Context) { this.#cache = new PluginCache(context.cacheDir); }
+  constructor(private readonly context: Context) { this.#cache = new PluginCache(context.cacheDir, { logger: context.log }); }
 
   async search(query: string) {
     const urls = [`/s.php?q=${encodeURIComponent(query)}`, `/search/?searchkey=${encodeURIComponent(query)}`, `/ss/?searchkey=${encodeURIComponent(query)}&submit=`];

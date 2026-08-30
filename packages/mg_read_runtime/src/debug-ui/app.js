@@ -1,11 +1,17 @@
 /**
  * Native Web Components application served by the Runtime Debug listener.
- * Dynamic Runtime projections are always rendered with DOM text nodes.
+ * Dynamic Runtime projections are always rendered with DOM text nodes, while
+ * the three workspaces retain a refresh-safe browser-history route.
  */
 (() => {
   'use strict';
 
   const defaultPlugin = 'org.mgread.shudugu';
+  const workspaceRoutes = Object.freeze({
+    search: '/__debug/search',
+    discover: '/__debug/discover',
+    logs: '/__debug/logs',
+  });
   const text = (value) => value === null || value === undefined || value === '' ? '--' : String(value);
   const element = (tag, className, content) => {
     const node = document.createElement(tag);
@@ -146,8 +152,9 @@
       this.replaceChildren();
       const heading = element('div', 'section-heading');
       const copy = element('div');
-      copy.append(element('h2', '', '运行概览'), element('p', '', '确认当前 Runtime、Node 环境和已加载数据源。'));
+      copy.append(element('h2', '', '信息面板'), element('p', '', 'Runtime 运行状态与当前调试入口。'));
       const actions = element('div', 'heading-actions');
+      actions.append(element('span', 'debug-safety-note', '局域网调试 · 无认证'));
       this.updated = element('span', 'last-updated', '尚未刷新');
       this.refresh = button('↻ 刷新状态', () => void this.load(), 'secondary compact');
       actions.append(this.updated, this.refresh);
@@ -191,7 +198,6 @@
       this.dataset.ready = 'true';
       this.innerHTML = [
         '<div class="tool-layout">',
-        '<div class="section-heading"><div><h3>搜索调试</h3><p>输入关键词后沿真实 Runtime 调用链搜索，选择结果可继续查看详情、目录与正文。</p></div></div>',
         '<form class="form-grid" novalidate>',
         '<label class="field">数据源<select name="pluginId" aria-label="搜索数据源"></select></label>',
         '<label class="field">关键词<input name="query" autocomplete="off" maxlength="160" placeholder="输入书名或作者，按 Enter 搜索" required></label>',
@@ -334,7 +340,6 @@
       this.dataset.ready = 'true';
       this.innerHTML = [
         '<div class="tool-layout">',
-        '<div class="section-heading"><div><h3>发现调试</h3><p>加载来源首页或指定分类，递归查看组件、内容节点和分页引用。</p></div></div>',
         '<form novalidate>',
         '<div class="form-grid discover">',
         '<label class="field">数据源<select name="pluginId" aria-label="发现数据源"></select></label>',
@@ -418,9 +423,8 @@
       if (this.dataset.ready) return;
       this.dataset.ready = 'true';
       this.innerHTML = [
-        '<div class="section-heading"><div><h3>实时简单日志</h3><p>日志只存在于当前 Debug listener 内存中；内容按 Runtime Debug 记录直接显示，单条仍受长度上限约束。</p></div>',
-        '<div class="heading-actions"><span class="live-badge paused">已暂停</span><span class="last-updated">等待日志</span></div></div>',
         '<div class="log-toolbar">',
+        '<div class="heading-actions"><span class="live-badge paused">已暂停</span><span class="last-updated">等待日志</span></div>',
         '<select class="filter-control" aria-label="日志级别"><option value="all">全部级别</option><option value="error">Error</option><option value="warn">Warn</option><option value="info">Info</option><option value="debug">Debug</option></select>',
         '<input class="filter-control" type="search" aria-label="筛选日志" placeholder="按来源、代码或消息筛选">',
         '<div class="heading-actions"><button class="button secondary compact" data-action="copy" type="button">复制日志</button><button class="button secondary compact" data-action="pause" type="button">继续接收</button><button class="button ghost compact" data-action="clear" type="button">清空当前视图</button></div>',
@@ -650,15 +654,10 @@
       if (this.dataset.ready) return;
       this.dataset.ready = 'true';
       this.innerHTML = [
-        '<div class="app-shell">',
-        '<header class="topbar"><div class="topbar-inner">',
-        '<div><div class="brand-row"><span class="brand-mark">Mg</span><p class="eyebrow">NODE RUNTIME · DEBUG ONLY</p></div><h1>Runtime Debug Inspector</h1><p class="subtitle">用同一条 Runtime 调用链检查搜索、发现、封面代理、目录和正文，所有可见字段按 Runtime 调试投影直接显示。</p></div>',
-        '<aside class="risk-card"><p class="risk-title"><span class="risk-dot"></span>局域网调试已开启且无认证</p><p>仅在受信任网络中短时使用。调试完成后，请回到 MgRead 关闭 Runtime Debug 开关。</p></aside>',
-        '</div></header>',
         '<main class="content-shell">',
-        '<mg-runtime-status class="surface overview"></mg-runtime-status>',
-        '<section class="surface workspace">',
-        '<header class="workspace-bar"><nav class="tabs" role="tablist" aria-label="调试工作区"><button class="tab" role="tab" aria-selected="true" data-tab="search" type="button">搜索</button><button class="tab" role="tab" aria-selected="false" data-tab="discover" type="button">发现</button><button class="tab" role="tab" aria-selected="false" data-tab="logs" type="button">实时日志</button></nav><span class="workspace-note">点击书籍即可继续调试完整内容链路</span></header>',
+        '<mg-runtime-status class="information-panel"></mg-runtime-status>',
+        '<section class="workspace">',
+        '<header class="workspace-bar"><nav class="tabs" role="tablist" aria-label="调试工作区"><button class="tab" role="tab" aria-selected="true" data-tab="search" type="button">搜索</button><button class="tab" role="tab" aria-selected="false" data-tab="discover" type="button">发现</button><button class="tab" role="tab" aria-selected="false" data-tab="logs" type="button">实时日志</button></nav></header>',
         '<div class="workspace-panel" role="tabpanel" data-panel="search"><mg-search-panel></mg-search-panel></div>',
         '<div class="workspace-panel" role="tabpanel" data-panel="discover" hidden><mg-discovery-panel></mg-discovery-panel></div>',
         '<div class="workspace-panel" role="tabpanel" data-panel="logs" hidden><mg-log-viewer></mg-log-viewer></div>',
@@ -671,16 +670,23 @@
       this.discovery = this.querySelector('mg-discovery-panel');
       this.logs = this.querySelector('mg-log-viewer');
       this.detail = this.querySelector('mg-detail-dialog');
-      for (const tab of this.querySelectorAll('[role="tab"]')) tab.addEventListener('click', () => this.selectTab(tab.dataset.tab));
+      for (const tab of this.querySelectorAll('[role="tab"]')) tab.addEventListener('click', () => this.selectTab(tab.dataset.tab, true));
       this.addEventListener('mg-open-book', (event) => void this.detail.openBook(event.detail.pluginId, event.detail.item));
       document.addEventListener('visibilitychange', () => this.syncLogs());
+      window.addEventListener('popstate', () => this.selectTab(this.tabFromLocation(), false));
       void this.loadPlugins();
-      this.syncLogs();
+      this.selectTab(this.tabFromLocation(), false);
     }
 
-    selectTab(name) {
-      for (const tab of this.querySelectorAll('[role="tab"]')) tab.setAttribute('aria-selected', String(tab.dataset.tab === name));
-      for (const panel of this.querySelectorAll('[role="tabpanel"]')) panel.hidden = panel.dataset.panel !== name;
+    tabFromLocation() {
+      return Object.entries(workspaceRoutes).find(([, route]) => window.location.pathname === route)?.[0] || 'search';
+    }
+
+    selectTab(name, writeHistory) {
+      const selected = Object.hasOwn(workspaceRoutes, name) ? name : 'search';
+      if (writeHistory && window.location.pathname !== workspaceRoutes[selected]) window.history.pushState({ tab: selected }, '', workspaceRoutes[selected]);
+      for (const tab of this.querySelectorAll('[role="tab"]')) tab.setAttribute('aria-selected', String(tab.dataset.tab === selected));
+      for (const panel of this.querySelectorAll('[role="tabpanel"]')) panel.hidden = panel.dataset.panel !== selected;
       this.syncLogs();
     }
 

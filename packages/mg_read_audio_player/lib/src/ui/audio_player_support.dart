@@ -112,12 +112,16 @@ final class AudioLoadingView extends StatelessWidget {
 final class AudioErrorView extends StatelessWidget {
   const AudioErrorView({
     required this.message,
+    this.location,
+    this.diagnosticCode,
     required this.onBack,
     required this.onRetry,
     super.key,
   });
 
   final String message;
+  final String? location;
+  final String? diagnosticCode;
   final VoidCallback onBack;
   final VoidCallback onRetry;
 
@@ -147,6 +151,26 @@ final class AudioErrorView extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(message, textAlign: TextAlign.center),
+                  if (location != null) ...<Widget>[
+                    const SizedBox(height: 8),
+                    Text(
+                      '发生位置：$location',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AudioPlayerColors.muted,
+                      ),
+                    ),
+                  ],
+                  if (diagnosticCode != null) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Text(
+                      '诊断编号：$diagnosticCode',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AudioPlayerColors.muted,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 18),
                   FilledButton.icon(
                     key: const Key('audio-retry'),

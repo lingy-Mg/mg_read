@@ -21,7 +21,7 @@ export const categories = Object.freeze([
 
 export class Xiezhenji2Source {
   readonly #cache: PluginCache;
-  constructor(private readonly context: MgReadPluginContext) { this.#cache = new PluginCache(context.cacheDir); }
+  constructor(private readonly context: MgReadPluginContext) { this.#cache = new PluginCache(context.cacheDir, { logger: context.log }); }
 
   async search(query: string, page: number): Promise<readonly ContentSummary[]> {
     const url = new URL(page === 1 ? '/' : `/page/${page}/`, origin);

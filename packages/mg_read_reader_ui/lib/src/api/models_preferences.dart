@@ -580,8 +580,14 @@ bool _isNightThemePreset(ReaderThemePreset theme) =>
 @immutable
 /// A recoverable reader error suitable for host diagnostics.
 class ReaderFailure implements Exception {
-  /// Creates a recoverable failure with an optional original [cause].
-  const ReaderFailure(this.kind, this.message, {this.cause});
+  /// Creates a recoverable failure with optional safe diagnostics and cause.
+  const ReaderFailure(
+    this.kind,
+    this.message, {
+    this.code,
+    this.location,
+    this.cause,
+  });
 
   /// Stable category suitable for host diagnostics and filtering.
   final ReaderFailureKind kind;
@@ -589,9 +595,18 @@ class ReaderFailure implements Exception {
   /// Concise message suitable for diagnostics or actionable reader UI.
   final String message;
 
+  /// Stable, safe diagnostic identifier.
+  final String? code;
+
+  /// Safe operation where the failure happened.
+  ///
+  /// This never contains source URLs, headers, cookies, signed parameters or
+  /// raw Runtime/backend exception text.
+  final String? location;
+
   /// Optional original error retained for diagnostics.
   final Object? cause;
 
   @override
-  String toString() => 'ReaderFailure($kind, $message)';
+  String toString() => 'ReaderFailure($kind, $message, $code, $location)';
 }

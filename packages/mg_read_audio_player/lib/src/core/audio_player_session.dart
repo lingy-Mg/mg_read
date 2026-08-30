@@ -149,17 +149,29 @@ final class AudioPlayerSession extends ChangeNotifier {
       await _notify(
         () => observer?.onTrackChanged(playlist.tracks[restoredIndex]),
       );
-    } catch (_) {
+    } on Object catch (error) {
       if (!_isCurrent(generation)) return;
-      const failure = AudioPlayerFailure(
-        code: 'audio_initialization_failed',
-        message: '音频加载失败，请重试。',
-      );
+      final failure = _initializationFailure(error);
       _emit(
         _snapshot.copyWith(status: AudioPlayerStatus.error, failure: failure),
       );
       await _notify(() => observer?.onFailure(failure));
     }
+  }
+
+  AudioPlayerFailure _initializationFailure(Object error) {
+    if (error is AudioPlayerLoadException) {
+      return AudioPlayerFailure(
+        code: error.code,
+        message: error.message,
+        location: error.location,
+      );
+    }
+    return const AudioPlayerFailure(
+      code: 'audio_initialization_failed',
+      location: '播放器初始化',
+      message: '播放准备失败。请重试；若仍失败，请在运行日志中查看音频资源事件。',
+    );
   }
 
   bool _isCurrent(int generation) =>
@@ -216,6 +228,7 @@ final class AudioPlayerSession extends ChangeNotifier {
     _lastBackendErrorMessage = message;
     const failure = AudioPlayerFailure(
       code: 'audio_backend_error',
+      location: '播放器读取音频资源',
       message: '播放遇到错误，请稍后重试。',
     );
     _emit(_snapshot.copyWith(failure: failure));
@@ -312,6 +325,7 @@ final class AudioPlayerSession extends ChangeNotifier {
     } catch (_) {
       const failure = AudioPlayerFailure(
         code: 'audio_transport_failed',
+        location: '播放控制',
         message: '播放操作失败，请重试。',
       );
       _emit(_snapshot.copyWith(failure: failure));
@@ -373,6 +387,7 @@ final class AudioPlayerSession extends ChangeNotifier {
       } catch (_) {
         const failure = AudioPlayerFailure(
           code: 'audio_progress_save_failed',
+          location: '播放进度保存',
           message: '播放进度暂未保存。',
         );
         await _notify(() => observer?.onFailure(failure));

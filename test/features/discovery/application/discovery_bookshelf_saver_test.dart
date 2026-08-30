@@ -90,6 +90,50 @@ void main() {
     expect(events.last, startsWith('commit:'));
   });
 
+  test('saves audio and video source items with their independent shelf kinds', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-discovery-media-save-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final saver = ContentLibraryDiscoveryBookshelfSaver(library);
+
+    for (final contentKind in <PluginContentKind>[PluginContentKind.audio, PluginContentKind.video]) {
+      await saver.save(
+        source: PluginSourceDescriptor(
+          id: 'org.example.${contentKind.name}',
+          displayName: '媒体测试源',
+          pluginVersion: '1.0.0',
+          contentKinds: <PluginContentKind>[contentKind],
+        ),
+        content: PluginContentSummary(
+          id: '${contentKind.name}-content',
+          title: '${contentKind.name} 内容',
+          contentKind: contentKind,
+          author: null,
+          url: null,
+          coverUrl: null,
+          description: null,
+          language: null,
+          status: PluginContentStatus.unknown,
+          access: PluginAccessKind.free,
+          wordCount: null,
+          chapterCount: 1,
+          publishedAt: null,
+          updatedAt: null,
+          latestChapter: null,
+          categories: const <String>[],
+          tags: const <String>[],
+          attributes: const <PluginContentAttribute>[],
+        ),
+      );
+    }
+
+    final kinds = (await library.listLibrary(const LibraryQuery())).items.map((item) => item.kind).toSet();
+    expect(kinds, containsAll(<ContentKind>{ContentKind.audio, ContentKind.video}));
+  });
+
   test('repairs metadata when an existing source item is saved again', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-discovery-save-repair-');
     final library = await ContentLibrary.open(dataRoot: root);

@@ -393,7 +393,7 @@ export class DesktopRuntime {
       ...(this.#developmentPluginRoot === undefined
         ? {}
         : { developmentPluginRoot: this.#developmentPluginRoot }),
-      events: (event) => this.#handlePluginManagerEvent(event),
+      events: (event) => this.#handlePluginManagerEvent(event), debugLogEnabled: () => this.#debugHttp?.status().enabled === true,
     });
     try {
       await pluginManager.initialize();
@@ -415,7 +415,7 @@ export class DesktopRuntime {
           emitRuntimeDiagnostic({
             code: "runtime_debug_http_port_unavailable",
             level: "warning",
-            message: "The fixed Debug inspector port was unavailable.",
+            message: "固定调试检查器端口不可用。",
             type: "diagnostic",
           });
         }
@@ -424,7 +424,7 @@ export class DesktopRuntime {
     emitRuntimeDiagnostic({
       code: "plugin_runtime_initialized",
       level: "info",
-      message: "The standard Node plugin runtime initialized successfully.",
+      message: "标准 Node 插件运行时已初始化。",
       type: "diagnostic",
     });
 
@@ -1426,18 +1426,18 @@ export class DesktopRuntime {
 /** Emits only stable plugin lifecycle codes; plugin log text is discarded. */
 function emitPluginManagerDiagnostic(event: PluginManagerEvent): void {
   const messages: Record<PluginManagerEvent["code"], string> = {
-    plugin_disabled: "A plugin source was disabled.",
-    plugin_enabled: "A plugin source was enabled.",
-    plugin_invocation_completed: "A plugin capability completed successfully.",
-    plugin_invocation_failed: "A plugin capability failed.",
-    plugin_invocation_started: "A plugin capability started.",
-    plugin_load_completed: "A standard Node plugin loaded successfully.",
-    plugin_load_failed: "A standard Node plugin could not be loaded.",
-    plugin_load_started: "A standard Node plugin load started.",
-    plugin_log_emitted: "A plugin emitted a Debug log event.",
-    plugin_quarantined: "A broken plugin source was isolated during startup.",
-    plugin_uninstall_scheduled: "A plugin source was scheduled for removal at the next cold start.",
-    plugin_uninstall_completed: "A pending plugin uninstall completed.",
+    plugin_disabled: "插件数据源已停用。",
+    plugin_enabled: "插件数据源已启用。",
+    plugin_invocation_completed: "插件能力调用已成功完成。",
+    plugin_invocation_failed: "插件能力调用失败。",
+    plugin_invocation_started: "插件能力调用已开始。",
+    plugin_load_completed: "标准 Node 插件已成功加载。",
+    plugin_load_failed: "无法加载标准 Node 插件。",
+    plugin_load_started: "标准 Node 插件开始加载。",
+    plugin_log_emitted: "插件输出了一条调试日志。",
+    plugin_quarantined: "启动时发现的异常插件数据源已隔离。",
+    plugin_uninstall_scheduled: "插件数据源已标记为在下次冷启动时移除。",
+    plugin_uninstall_completed: "待卸载的插件已完成卸载。",
   };
   emitRuntimeDiagnostic({
     code: event.code,
