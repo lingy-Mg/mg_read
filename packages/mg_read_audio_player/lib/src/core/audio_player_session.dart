@@ -396,13 +396,16 @@ final class AudioPlayerSession extends ChangeNotifier {
 
   Future<void> seekBy(Duration offset) => seek(_snapshot.position + offset);
 
-  Future<void> previous() => _switchTrack(
-    canSwitch: _snapshot.canGoPrevious,
-    command: backend.previous,
-  );
+  Future<void> previous() => dataSource is AudioPlaylistQueueDataSource
+      ? _selectAdjacentQueueEntry(-1)
+      : _switchTrack(
+          canSwitch: _snapshot.canGoPrevious,
+          command: backend.previous,
+        );
 
-  Future<void> next() =>
-      _switchTrack(canSwitch: _snapshot.canGoNext, command: backend.next);
+  Future<void> next() => dataSource is AudioPlaylistQueueDataSource
+      ? _selectAdjacentQueueEntry(1)
+      : _switchTrack(canSwitch: _snapshot.canGoNext, command: backend.next);
 
   Future<void> jump(int index) => _switchTrack(
     canSwitch:
@@ -421,14 +424,15 @@ final class AudioPlayerSession extends ChangeNotifier {
         trackId == _snapshot.currentTrack?.id) {
       return;
     }
-    final source = dataSource;
-    if (source is! AudioPlaylistQueueDataSource) {
-      final loadedIndex = playlist.tracks.indexWhere(
-        (track) => track.id == trackId,
-      );
-      if (loadedIndex >= 0) await jump(loadedIndex);
+    final loadedIndex = playlist.tracks.indexWhere(
+      (track) => track.id == trackId,
+    );
+    if (loadedIndex >= 0) {
+      await jump(loadedIndex);
       return;
     }
+    final source = dataSource;
+    if (source is! AudioPlaylistQueueDataSource) return;
     final generation = ++_generation;
     await flushProgress();
     try {
@@ -465,6 +469,24 @@ final class AudioPlayerSession extends ChangeNotifier {
       );
       _emit(_snapshot.copyWith(failure: failure));
       await _notify(() => observer?.onFailure(failure));
+    }
+  }
+
+  Future<void> _selectAdjacentQueueEntry(int direction) async {
+    if (_snapshot.status != AudioPlayerStatus.ready || direction == 0) return;
+    final currentTrackId = _snapshot.currentTrack?.id;
+    final currentCatalogIndex = _snapshot.queueEntries.indexWhere(
+      (entry) => entry.id == currentTrackId,
+    );
+    if (currentCatalogIndex < 0) return;
+    var targetIndex = currentCatalogIndex + direction;
+    while (targetIndex >= 0 && targetIndex < _snapshot.queueEntries.length) {
+      final target = _snapshot.queueEntries[targetIndex];
+      if (!target.isLocked) {
+        await selectQueueEntry(target.id);
+        return;
+      }
+      targetIndex += direction;
     }
   }
 

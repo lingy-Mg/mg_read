@@ -253,8 +253,25 @@ final class AudioPlayerSnapshot {
       ? queue[currentIndex]
       : null;
 
-  bool get canGoPrevious => currentIndex > 0;
-  bool get canGoNext => currentIndex >= 0 && currentIndex + 1 < queue.length;
+  bool get canGoPrevious {
+    final catalogIndex = _currentQueueEntryIndex;
+    if (catalogIndex < 0) return currentIndex > 0;
+    return queueEntries.take(catalogIndex).any((entry) => !entry.isLocked);
+  }
+
+  bool get canGoNext {
+    final catalogIndex = _currentQueueEntryIndex;
+    if (catalogIndex < 0) {
+      return currentIndex >= 0 && currentIndex + 1 < queue.length;
+    }
+    return queueEntries.skip(catalogIndex + 1).any((entry) => !entry.isLocked);
+  }
+
+  int get _currentQueueEntryIndex {
+    final trackId = currentTrack?.id;
+    if (trackId == null) return -1;
+    return queueEntries.indexWhere((entry) => entry.id == trackId);
+  }
 
   AudioPlayerSnapshot copyWith({
     AudioPlayerStatus? status,

@@ -146,6 +146,12 @@ final class AudioPlayerMetadata extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final creator = track.creator ?? snapshot.creator;
+    final catalogIndex = snapshot.queueEntries.indexWhere(
+      (entry) => entry.id == track.id,
+    );
+    final displayedIndex = catalogIndex >= 0
+        ? catalogIndex
+        : snapshot.currentIndex;
     return Column(
       children: <Widget>[
         DecoratedBox(
@@ -159,7 +165,7 @@ final class AudioPlayerMetadata extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 5),
             child: Text(
-              '第 ${snapshot.currentIndex + 1} 集  ·  共 ${snapshot.queueEntries.length} 集',
+              '第 ${displayedIndex + 1} 集  ·  共 ${snapshot.queueEntries.length} 集',
               style: theme.textTheme.labelMedium?.copyWith(
                 color: AudioPlayerColors.accentPressed,
                 fontWeight: FontWeight.w700,
