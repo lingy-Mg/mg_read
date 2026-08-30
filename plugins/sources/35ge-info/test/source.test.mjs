@@ -23,16 +23,20 @@ test('fixtures cover categories search detail catalog content bounded list reque
     } },
   });
   const root = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });
-  assert.equal(root.document.components.find(({ id }) => id === 'featured-section').children[0].layout, 'shelf');
+  const featured = root.document.components.find(({ id }) => id === 'featured-section').children[0];
+  assert.equal(featured.layout, 'shelf');
+  assert.equal(featured.items[0].content.coverUrl, 'http://127.0.0.1/resource/1');
   assert.equal(root.document.components.find(({ id }) => id === 'categories-section').children[0].categories.length, 8);
   const discovery = await plugin.discover({ target: 'category:fantasy', cursor: null, collectionId: null, pageSize: 20 });
-  assert.equal(discovery.document.components[0].children[0].items[0].content.coverUrl, null);
+  assert.equal(discovery.document.components[0].children[0].items[0].content.coverUrl, 'http://127.0.0.1/resource/1');
   await plugin.discover({ target: 'category:fantasy', cursor: null, collectionId: null, pageSize: 20 });
   assert.equal(calls.filter(({ url }) => url.pathname.includes('1-default')).length, 1);
   const append = await plugin.discover({ target: 'category:fantasy', cursor: 'category:fantasy:2', collectionId: 'category-books:fantasy', pageSize: 20 });
-  assert.equal(append.kind, 'append'); assert.ok(calls.some(({ url }) => url.pathname.endsWith('-2.html')));
+  assert.equal(append.kind, 'append'); assert.equal(append.items[0].content.coverUrl, 'http://127.0.0.1/resource/2');
+  assert.ok(calls.some(({ url }) => url.pathname.endsWith('-2.html')));
   const search = await plugin.search({ query: 'fixture', cursor: null, pageSize: 20 });
   assert.equal(search.items[0].status, 'completed');
+  assert.equal(search.items[0].coverUrl, 'http://127.0.0.1/resource/3');
   await plugin.search({ query: 'fixture', cursor: null, pageSize: 20 });
   assert.equal(calls.filter(({ url }) => url.pathname.includes('/modules/article/search.php')).length, 1);
   const [detail, chapters] = await Promise.all([
@@ -44,7 +48,13 @@ test('fixtures cover categories search detail catalog content bounded list reque
   assert.equal(calls.filter(({ url }) => /\/xs\/123\/456\/$/u.test(url.pathname)).length, 1);
   const content = await plugin.getContent({ id: detail.id, chapterId: chapters.items[0].id });
   assert.equal(content.text, 'Fixture first paragraph.\n\nFixture second paragraph.');
-  assert.equal(new URL(resources[0].url).origin, 'http://www.35ge.info');
+  assert.deepEqual(resources.map(({ url }) => new URL(url).pathname), [
+    '/files/article/image/123/456/456s.jpg',
+    '/files/article/image/123/456/456s.jpg',
+    '/files/article/image/123/456/456s.jpg',
+    '/images/fixture.jpg',
+  ]);
+  assert.ok(resources.every(({ url }) => new URL(url).origin === 'http://www.35ge.info'));
   assert.equal(calls.some(({ url }) => url.pathname.endsWith('.jpg')), false);
   assert.ok(calls.every(({ init }) => init.headers.cookie === undefined && init.headers['user-agent'] === undefined));
 });

@@ -1,6 +1,6 @@
 /**
  * 35中文网 parser and HTTP/resource boundary.
- * List pages never hydrate missing covers with per-book requests; detail remains the authoritative cover projection.
+ * List/search pages derive the site's stable cover path from the book identity, avoiding per-book detail requests.
  * Only bounded list/book projections are cached in memory. HTML, chapter text, credentials, and user input are never cached or logged.
  */
 import { Buffer } from 'node:buffer';
@@ -107,8 +107,10 @@ export class ThirtyFiveSource {
       const category = stripBrackets(clean(root.find('.s1').first().text())) ?? fallbackCategory;
       const latestLink = root.find('.s3 a[href]').first();
       const latestHref = latestLink.attr('href');
+      const coverUrl = inferredCoverUrl(url);
       items.push(summary({
-        url, title, author: clean(root.find('.s4, .s5').last().text()), coverUrl: null, description: null,
+        url, title, author: clean(root.find('.s4, .s5').last().text()),
+        coverUrl: coverUrl === null ? null : this.#proxyImage(coverUrl, pageUrl), description: null,
         status: parseStatus(clean(root.find('.s7').first().text())), updatedAt: null,
         latestTitle: clean(latestLink.text()), latestUrl: latestHref === undefined ? null : new URL(latestHref, pageUrl),
         categories: category === null ? [] : [category],
@@ -206,6 +208,12 @@ function decodeChapterId(id: string, bookUrl: URL): URL {
 }
 function isBookUrl(url: URL): boolean { return url.origin === origin && /^\/(?:xs\/)?\d+\/\d+\/?$/u.test(url.pathname); }
 function bookIdentity(url: URL): string { const match = /^\/(?:xs\/)?(\d+\/\d+)\/?$/u.exec(url.pathname); return match?.[1] === undefined ? '' : `/${match[1]}/`; }
+function inferredCoverUrl(url: URL): URL | null {
+  const match = /^\/(?:xs\/)?(\d+)\/(\d+)\/?$/u.exec(url.pathname);
+  return match?.[1] === undefined || match[2] === undefined
+    ? null
+    : new URL(`/files/article/image/${match[1]}/${match[2]}/${match[2]}s.jpg`, origin);
+}
 function sameBookChapter(chapter: URL, book: URL): boolean { const key = bookIdentity(book); return key !== '' && chapter.origin === origin && new RegExp(`^/xs?${key.replaceAll('/', '\\/')}\\d+\\.html$`, 'u').test(chapter.pathname); }
 function normalizeIntro(value: string | null): string | null { return value === null ? null : clean(value.replace(/\\[nr]/gu, '').replace(/[\r\n\u2028\u2029]+/gu, ' ')); }
 function clean(value: string | undefined): string | null { const result = value?.replace(/\s+/gu, ' ').trim() ?? ''; return result === '' ? null : result; }
