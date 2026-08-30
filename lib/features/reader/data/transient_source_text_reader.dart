@@ -4,8 +4,7 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 
 /// Loads one Runtime-owned source chapter without exposing transport to reader UI.
-typedef SourceChapterContentLoader =
-    Future<PluginChapterContent> Function(String chapterId);
+typedef SourceChapterContentLoader = Future<PluginChapterContent> Function(String chapterId);
 
 /// Builds one non-persistent text-reader session from an already resolved source.
 ///
@@ -19,6 +18,7 @@ final class TransientSourceTextReader {
     required SourceChapterContentLoader loadChapterContent,
     List<int>? entryCoverBytes,
     String? bookId,
+    this.chapterPreloadCount = 1,
   }) : _entryCoverBytes = entryCoverBytes ?? detail.summary.coverBytes,
        _dataSource = _TransientSourceTextReaderDataSource(
          detail: detail,
@@ -31,6 +31,9 @@ final class TransientSourceTextReader {
   final PluginContentDetail detail;
   final List<int>? _entryCoverBytes;
 
+  /// Host-selected number of following chapters to load for this route.
+  final int chapterPreloadCount;
+
   final _TransientSourceTextReaderDataSource _dataSource;
 
   /// Creates a launch request whose selected source chapter opens immediately.
@@ -42,33 +45,23 @@ final class TransientSourceTextReader {
   }) {
     final initialIndex = _dataSource.indexOf(initialChapterId);
     if (initialIndex == null) {
-      throw ArgumentError.value(
-        initialChapterId,
-        'initialChapterId',
-        'The selected source chapter is not in the catalog.',
-      );
+      throw ArgumentError.value(initialChapterId, 'initialChapterId', 'The selected source chapter is not in the catalog.');
     }
     return NovelReaderLaunchRequest(
       bookId: _dataSource.bookId,
       entryCoverBytes: _entryCoverBytes,
       dataSource: _dataSource,
+      chapterPreloadCount: chapterPreloadCount,
       stateStore:
           stateStore ??
-          _EphemeralTextReaderStateStore(
-            ReaderProgress(
-              chapterId: initialChapterId,
-              paragraphId: '',
-              chapterIndex: initialIndex,
-            ),
-          ),
+          _EphemeralTextReaderStateStore(ReaderProgress(chapterId: initialChapterId, paragraphId: '', chapterIndex: initialIndex)),
       observer: observer,
       extensions: extensions,
     );
   }
 }
 
-final class _TransientSourceTextReaderDataSource
-    implements TextReaderDataSource {
+final class _TransientSourceTextReaderDataSource implements TextReaderDataSource {
   _TransientSourceTextReaderDataSource({
     required this.detail,
     required PluginChaptersResult catalog,
@@ -82,8 +75,7 @@ final class _TransientSourceTextReaderDataSource
   final String bookId;
   final SourceChapterContentLoader _loadChapterContent;
   late final PluginChaptersResult _catalog;
-  final Map<int, PluginChapterSummary> _chapterByIndex =
-      <int, PluginChapterSummary>{};
+  final Map<int, PluginChapterSummary> _chapterByIndex = <int, PluginChapterSummary>{};
   final Map<String, int> _indexByChapterId = <String, int>{};
 
   @override
@@ -120,11 +112,7 @@ final class _TransientSourceTextReaderDataSource
   };
 
   @override
-  Future<ChapterCatalogPage> loadChapterCatalog(
-    String bookId, {
-    String? cursor,
-    int pageSize = 100,
-  }) async {
+  Future<ChapterCatalogPage> loadChapterCatalog(String bookId, {String? cursor, int pageSize = 100}) async {
     _requireBook(bookId);
     final offset = _catalogOffset(cursor);
     final boundedPageSize = pageSize.clamp(1, 500);
@@ -132,10 +120,7 @@ final class _TransientSourceTextReaderDataSource
     final items = _catalog.items.sublist(offset, end);
     final hasMore = end < _catalog.items.length;
     return ChapterCatalogPage(
-      items: <ReaderChapterInfo>[
-        for (var index = 0; index < items.length; index += 1)
-          _toReaderChapter(items[index], offset + index),
-      ],
+      items: <ReaderChapterInfo>[for (var index = 0; index < items.length; index += 1) _toReaderChapter(items[index], offset + index)],
       total: _catalog.items.length,
       hasMore: hasMore,
       nextCursor: hasMore ? 'catalog-offset:$end' : null,
@@ -153,10 +138,7 @@ final class _TransientSourceTextReaderDataSource
   }
 
   @override
-  Future<TextChapterContent> loadChapterContent(
-    String bookId,
-    String chapterId,
-  ) async {
+  Future<TextChapterContent> loadChapterContent(String bookId, String chapterId) async {
     _requireBook(bookId);
     final chapter = _chapterByIndex[_indexByChapterId[chapterId]];
     if (chapter == null) throw ArgumentError.value(chapterId, 'chapterId');
@@ -174,14 +156,8 @@ final class _TransientSourceTextReaderDataSource
         cause: error,
       );
     }
-    if (content.contentKind != PluginContentKind.novel ||
-        content.text == null) {
-      throw const ReaderFailure(
-        ReaderFailureKind.data,
-        '数据源没有返回可阅读的小说正文。',
-        code: 'source_text_content_invalid',
-        location: '解析小说章节正文',
-      );
+    if (content.contentKind != PluginContentKind.novel || content.text == null) {
+      throw const ReaderFailure(ReaderFailureKind.data, '数据源没有返回可阅读的小说正文。', code: 'source_text_content_invalid', location: '解析小说章节正文');
     }
     return TextChapterContent(
       chapterId: content.chapterId,
@@ -199,11 +175,8 @@ final class _TransientSourceTextReaderDataSource
     for (var index = 0; index < catalog.items.length; index += 1) {
       final absoluteIndex = index;
       final chapter = catalog.items[index];
-      if (_chapterByIndex.containsKey(absoluteIndex) ||
-          _indexByChapterId.containsKey(chapter.id)) {
-        throw StateError(
-          'Source catalog contains duplicate chapter positions.',
-        );
+      if (_chapterByIndex.containsKey(absoluteIndex) || _indexByChapterId.containsKey(chapter.id)) {
+        throw StateError('Source catalog contains duplicate chapter positions.');
       }
       _chapterByIndex[absoluteIndex] = chapter;
       _indexByChapterId[chapter.id] = absoluteIndex;
@@ -242,16 +215,9 @@ List<TextParagraph> _paragraphs(String chapterId, String text) {
   for (final line in text.split(RegExp(r'\r?\n\s*\r?\n'))) {
     final value = line.trim();
     if (value.isEmpty) continue;
-    paragraphs.add(
-      TextParagraph(
-        id: '$chapterId:paragraph:${paragraphs.length}',
-        text: value,
-      ),
-    );
+    paragraphs.add(TextParagraph(id: '$chapterId:paragraph:${paragraphs.length}', text: value));
   }
-  return paragraphs.isEmpty
-      ? <TextParagraph>[TextParagraph(id: '$chapterId:paragraph:0', text: '')]
-      : paragraphs;
+  return paragraphs.isEmpty ? <TextParagraph>[TextParagraph(id: '$chapterId:paragraph:0', text: '')] : paragraphs;
 }
 
 /// A reader state store with no backing store beyond the current route.

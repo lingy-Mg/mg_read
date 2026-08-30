@@ -210,6 +210,7 @@ extension _TextReaderPersistence on _TextReaderViewState {
     final bool foreground = normalized == ReaderLifecycleState.foreground;
     _foreground = foreground;
     if (!foreground) {
+      _chapterPreloadGeneration++;
       _cancelAdjacentPreparation();
       _stopAutoReading();
       _commitPreferencePreview();
@@ -218,7 +219,9 @@ extension _TextReaderPersistence on _TextReaderViewState {
     } else {
       unawaited(_syncAwake());
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_disposed) _reconcileAdjacentPreparation();
+        if (!_disposed && _chapterIndex >= 0) {
+          unawaited(_prefetchNext(_chapterIndex));
+        }
       });
     }
     final ReaderObserver observer = _observer;

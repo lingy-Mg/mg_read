@@ -140,6 +140,7 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
         entryCoverBytes: novel.entryCoverBytes,
         dataSource: _MeasuredTextReaderDataSource(novel.dataSource, stageReporter),
         stateStore: _MeasuredTextReaderStateStore(novel.stateStore, stageReporter),
+        chapterPreloadCount: novel.chapterPreloadCount,
         observer: _ReaderObserverChain(<ReaderObserver>[
           ?novel.observer,
           _ReaderChapterPerformanceObserver(_diagnostics),

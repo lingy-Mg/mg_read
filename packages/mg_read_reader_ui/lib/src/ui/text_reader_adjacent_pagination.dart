@@ -211,6 +211,7 @@ extension _TextReaderAdjacentPagination on _TextReaderViewState {
   void _reconcileAdjacentPreparation() {
     if (_disposed ||
         !_foreground ||
+        widget.chapterPreloadCount == 0 ||
         _horizontalPageScrollActive ||
         !_currentPaginationComplete ||
         _content == null ||
@@ -552,6 +553,15 @@ extension _TextReaderAdjacentPagination on _TextReaderViewState {
       }
       _validateChapter(content, expectedChapterId: next.id);
       _cacheChapter(content);
+      if (widget.chapterPreloadCount > 1) {
+        unawaited(
+          _prefetchFollowingChapters(
+            target.chapterIndex,
+            startOffset: 2,
+            preloadGeneration: _chapterPreloadGeneration,
+          ),
+        );
+      }
       if (!mounted || _disposed) return;
       final Size? size = context.size;
       if (size == null || size.isEmpty) return;

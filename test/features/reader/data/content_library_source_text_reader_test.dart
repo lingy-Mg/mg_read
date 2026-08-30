@@ -20,6 +20,8 @@ import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/reader/data/content_library_source_text_reader.dart';
 import 'package:mg_read/features/reader/data/content_library_text_reader_state_store.dart';
 
+import '../../../core/settings/settings_testkit.dart';
+
 void main() {
   test('shares and round-trips global reader preferences across book stores', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-reader-settings-');
@@ -156,10 +158,15 @@ void main() {
     );
     final item = (await library.listLibrary(const LibraryQuery())).items.single;
     final gateway = _FakeGateway();
-    final reader = ContentLibrarySourceTextReader(library, gateway);
+    final settings = AppSettingsManager(store: FakeSettingsStore(), registry: AppSettingKeys.registry);
+    await settings.initialize();
+    await settings.set(AppSettingKeys.novelPreloadChapterCount, 3);
+    addTearDown(settings.close);
+    final reader = ContentLibrarySourceTextReader(library, gateway, null, settings);
 
     final firstRequest = await reader.launch(item.id.value);
     expect(firstRequest.bookId, item.id.value);
+    expect(firstRequest.chapterPreloadCount, 3);
     expect(gateway.requestedCatalogCount, 1);
     expect(gateway.requestedDetailCount, 0);
     expect(firstRequest.extensions.chapterStateCapability, isNotNull);

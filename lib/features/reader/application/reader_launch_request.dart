@@ -55,16 +55,22 @@ final class NovelReaderLaunchRequest extends ReaderLaunchRequest {
     required this.dataSource,
     required this.stateStore,
     super.entryCoverBytes,
+    this.chapterPreloadCount = 1,
     this.observer,
     this.controller,
     this.extensions = const ReaderExtensions(),
     super.estimatedWarmBytes,
     super.preparationKind,
     super.networkPreparationElapsed,
-  }) : super._();
+  }) : assert(chapterPreloadCount >= 0 && chapterPreloadCount <= 5),
+       super._();
 
   final TextReaderDataSource dataSource;
   final TextReaderStateStore stateStore;
+
+  /// Number of following novel chapters the reader may load speculatively.
+  final int chapterPreloadCount;
+
   final ReaderObserver? observer;
   final TextReaderController? controller;
   final ReaderExtensions extensions;
@@ -75,6 +81,7 @@ final class NovelReaderLaunchRequest extends ReaderLaunchRequest {
     dataSource: dataSource,
     stateStore: stateStore,
     entryCoverBytes: entryCoverBytes,
+    chapterPreloadCount: chapterPreloadCount,
     observer: observer,
     controller: controller,
     extensions: extensions,
@@ -89,6 +96,7 @@ final class NovelReaderLaunchRequest extends ReaderLaunchRequest {
     dataSource: dataSource,
     stateStore: stateStore,
     entryCoverBytes: bytes,
+    chapterPreloadCount: chapterPreloadCount,
     observer: observer,
     controller: controller,
     extensions: extensions,

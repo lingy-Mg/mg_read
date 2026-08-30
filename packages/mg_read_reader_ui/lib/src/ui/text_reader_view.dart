@@ -3,6 +3,7 @@
 /// 职责：
 /// - 组合正文排版、章节分页、阅读工具栏与设置入口。
 /// - 将章节缓存参数交给宿主能力，并保持网络、持久化和全局任务状态在宿主侧。
+/// - 按宿主给定的有界数量顺序预加载后续小说章节，只为相邻一章执行空闲排版。
 /// - 横向翻页时将背景与正文组合成同一页片参与动画。
 /// - 将已预排的下一章第一页作为连续页片，动画停止后再提交跨章状态。
 /// - 跨章提交重建不保留 PageStorage 页码的控制器，并在目标页挂载前保留交接页。
@@ -73,10 +74,11 @@ class TextReaderView extends StatefulWidget {
     required this.bookId,
     required this.dataSource,
     required this.stateStore,
+    this.chapterPreloadCount = 1,
     this.observer,
     this.controller,
     this.extensions = const ReaderExtensions(),
-  });
+  }) : assert(chapterPreloadCount >= 0 && chapterPreloadCount <= 5);
 
   /// Stable host identifier for the book being read.
   final String bookId;
@@ -86,6 +88,12 @@ class TextReaderView extends StatefulWidget {
 
   /// Host-owned persistence for progress, preferences, and bookmarks.
   final TextReaderStateStore stateStore;
+
+  /// Number of following chapters to load speculatively, excluding current.
+  ///
+  /// Supported values are 0 through 5. Content loading remains sequential and
+  /// best effort; only the immediately adjacent chapter may be pre-paginated.
+  final int chapterPreloadCount;
 
   /// Optional notification sink for lifecycle, errors, and exit requests.
   final ReaderObserver? observer;
@@ -103,7 +111,6 @@ class TextReaderView extends StatefulWidget {
 class _TextReaderViewState extends State<TextReaderView>
     with WidgetsBindingObserver {
   static const Duration _saveDelay = Duration(milliseconds: 800);
-  static const int _chapterCacheLimit = 2;
   static const int _commentSummaryBatchSize = 100;
   static const int _chapterStateBatchSize = 100;
   static const int _catalogCompletionPageSize = 500;
@@ -256,6 +263,7 @@ class _TextReaderViewState extends State<TextReaderView>
   int _fontLoadGeneration = 0;
   int _paginationGeneration = 0;
   int _contentEpoch = 0;
+  int _chapterPreloadGeneration = 0;
   bool _currentPaginationComplete = false;
   int _adjacentPreparationGeneration = 0;
   int _adjacentLayoutGeneration = 0;
@@ -483,6 +491,12 @@ class _TextReaderViewState extends State<TextReaderView>
       if (mounted) setState(() {});
       unawaited(_refreshCommentSummaries());
     }
+    if (oldWidget.chapterPreloadCount != widget.chapterPreloadCount) {
+      _retainCurrentChapterOnly();
+      _cancelAdjacentPreparation();
+      final ReaderChapterInfo? chapter = _currentChapterInfo;
+      if (chapter != null) unawaited(_prefetchNext(chapter.index));
+    }
   }
 
   @override
@@ -554,7 +568,9 @@ class _TextReaderViewState extends State<TextReaderView>
 
   @override
   void didHaveMemoryPressure() {
+    _chapterPreloadGeneration++;
     _cancelAdjacentPreparation();
+    _retainCurrentChapterOnly();
     _layoutCache.clear();
   }
 

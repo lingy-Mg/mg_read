@@ -1,5 +1,6 @@
 ## Unreleased
 
+* Added a host-configurable 0-5 chapter text preload window. Following chapter bodies load sequentially with generation checks and bounded memory retention, while only the immediately adjacent chapter is pre-paginated.
 * Added an optional host-owned chapter-cache task capability and a wide reader overflow dialog with a whole-book-bounded chapter slider plus inline concurrency and delay controls; already-persisted chapters skip request delays, and the reader still performs no network or persistent-cache I/O.
 * Horizontal text pages now move their selected background treatment together with the page content for slide, cover, and simulated page-curl transitions.
 * Text reader content now defaults to an 8dp top margin after the system safe area; explicitly supplied or persisted larger margins remain unchanged.

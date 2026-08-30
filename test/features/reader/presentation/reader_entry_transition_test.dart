@@ -101,6 +101,16 @@ void main() {
     expect(find.byType(TextReaderView), findsNothing);
   });
 
+  testWidgets('ReaderHostPage forwards the novel preload window', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderHostPage(request: _request(dataSource: const _ImmediateDataSource(), chapterPreloadCount: 4)),
+      ),
+    );
+
+    expect(tester.widget<TextReaderView>(find.byType(TextReaderView)).chapterPreloadCount, 4);
+  });
+
   testWidgets('disposes a comic session data source when the entry host unmounts', (WidgetTester tester) async {
     final source = _DisposableComicDataSource();
     await tester.pumpWidget(_readerApp(_comicRequest(dataSource: source)));
@@ -253,14 +263,19 @@ Future<void> _pumpReader(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 220));
 }
 
-ReaderLaunchRequest _request({required TextReaderDataSource dataSource, ReaderObserver? observer, List<int>? coverBytes}) =>
-    NovelReaderLaunchRequest(
-      bookId: 'reader-entry-test-book',
-      dataSource: dataSource,
-      stateStore: const _StateStore(),
-      observer: observer,
-      entryCoverBytes: coverBytes,
-    );
+NovelReaderLaunchRequest _request({
+  required TextReaderDataSource dataSource,
+  ReaderObserver? observer,
+  List<int>? coverBytes,
+  int chapterPreloadCount = 1,
+}) => NovelReaderLaunchRequest(
+  bookId: 'reader-entry-test-book',
+  dataSource: dataSource,
+  stateStore: const _StateStore(),
+  chapterPreloadCount: chapterPreloadCount,
+  observer: observer,
+  entryCoverBytes: coverBytes,
+);
 
 ComicReaderLaunchRequest _comicRequest({ComicReaderDataSource? dataSource, ComicReaderObserver? observer, List<int>? coverBytes}) =>
     ComicReaderLaunchRequest(

@@ -264,6 +264,7 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
       bookId: item.id.value,
       dataSource: dataSource,
       stateStore: stateStore,
+      chapterPreloadCount: _settings?.get(AppSettingKeys.novelPreloadChapterCount) ?? 1,
       observer: _TimedReaderObserver(stateStore, null),
       extensions: ReaderExtensions(
         chapterStateCapability: chapterAccess,

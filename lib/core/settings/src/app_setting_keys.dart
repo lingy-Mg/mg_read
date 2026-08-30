@@ -100,6 +100,19 @@ final class AppSettingKeys {
     validator: _validateReaderPreferences,
   );
 
+  /// Number of following novel chapters the host may load speculatively.
+  ///
+  /// The current chapter is not included. Zero disables speculative chapter
+  /// loading, while the default of one preserves the reader's existing
+  /// adjacent-chapter behavior.
+  static const novelPreloadChapterCount = SettingKey<int>(
+    id: 'reader.novelPreloadChapterCount',
+    documentKind: 'settings.reader',
+    defaultValue: 1,
+    codec: SettingCodec<int>(_intEncode, _intDecode),
+    validator: _validateNovelPreloadChapterCount,
+  );
+
   static const comicReaderPreferences = SettingKey<Map<String, Object?>>(
     id: 'reader.comicPreferences',
     documentKind: 'settings.reader',
@@ -135,6 +148,7 @@ final class AppSettingKeys {
     diagnosticsRealtimeDetailsEnabled,
     networkProxyPreferences,
     readerPreferences,
+    novelPreloadChapterCount,
     comicReaderPreferences,
     audioExitBehavior,
   ];
@@ -157,6 +171,12 @@ final class AppSettingKeys {
 Object? _stringEncode(String value) => value;
 String _stringDecode(Object? value) {
   if (value is! String) throw FormatException('Expected a string setting.');
+  return value;
+}
+
+Object? _intEncode(int value) => value;
+int _intDecode(Object? value) {
+  if (value is! int) throw FormatException('Expected an integer setting.');
   return value;
 }
 
@@ -246,6 +266,10 @@ Map<String, Object?> _readerPreferencesDecode(Object? value) {
 
 void _validateReaderPreferences(Map<String, Object?> value) {
   if (value.length > 32) throw ArgumentError.value(value);
+}
+
+void _validateNovelPreloadChapterCount(int value) {
+  if (value < 0 || value > 5) throw ArgumentError.value(value);
 }
 
 void _validateAudioExitBehavior(String value) {

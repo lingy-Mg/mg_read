@@ -20,6 +20,7 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
+import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/cache/presentation/cache_management_page.dart';
 import 'package:mg_read/features/diagnostics/presentation/diagnostics_viewer_page.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
@@ -395,11 +396,13 @@ Future<void> _openTransientSourceTextReader(
   if (navigator == null) {
     throw StateError('The application navigator is not ready.');
   }
-  final gateway = ProviderScope.containerOf(context).read(sourceContentGatewayProvider);
+  final container = ProviderScope.containerOf(context);
+  final gateway = container.read(sourceContentGatewayProvider);
   final session = TransientSourceTextReader(
     detail: detail,
     catalog: firstCatalogPage,
     entryCoverBytes: entryCoverBytes,
+    chapterPreloadCount: container.read(appSettingsProvider).get(AppSettingKeys.novelPreloadChapterCount),
     loadChapterContent: (String chapterId) {
       return gateway.getContent(pluginId: detail.pluginId, id: detail.summary.id, chapterId: chapterId);
     },
