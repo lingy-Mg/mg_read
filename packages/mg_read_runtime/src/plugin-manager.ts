@@ -3,11 +3,12 @@
  *
  * 职责：
  * - 在唯一 Node VM 中管理插件冷激活、开发刷新与内容调用。
- * - 维护受限插件上下文、资源代理、缓存和传输队列。
+ * - 维护受限插件上下文、资源代理、共享调用/独占清缓存协调和传输队列。
  *
  * 注意：
  * - 不暴露路径、端口、PID 或 raw transport 给 Flutter。
  * - 已安装插件只在 Runtime 冷启动激活；取消和超时必须只有一个终态。
+ * - 客户端终态可以早于插件真实结束；未结束工作继续占用每插件有界容量。
  *
  * TODO:
  * - 将剩余 VM 编排方法继续下沉到显式内部端口。
@@ -28,6 +29,7 @@ import {
 import { dirname, resolve } from "node:path";
 
 import type { JsonObject } from "./protocol.js";
+import { activatePlugin, defaultPluginActivationTimeoutMs } from "./plugin-activation.js";
 import type { PluginBrowserSessionProvider } from "./plugin-browser-session.js";
 import { DevelopmentPluginMonitor } from "./development-plugin-monitor.js";
 import {
@@ -39,6 +41,16 @@ import {
   removeDevelopmentPlugin,
 } from "./development-plugin-runtime.js";
 import { createPluginContext } from "./plugin-manager-context.js";
+import {
+  PluginOperationCoordinator,
+  type PluginOperationCoordinatorOptions,
+} from "./plugin-operation-coordinator.js";
+import {
+  positiveMilliseconds,
+  settlePluginOperation,
+  waitForPluginOperation,
+} from "./plugin-operation-wait.js";
+import { invokePluginResource } from "./plugin-resource-invocation.js";
 import { openMediaProxyResource } from "./media-resource-proxy.js";
 import {
   type PluginPackageDescriptor,
@@ -72,7 +84,6 @@ import {
   type PluginSearchResult,
   type PluginSearchSuggestionsRequest,
   type PluginSearchSuggestionsResult,
-  PluginContentValidationError,
   validateChaptersResult,
   validateContentResult,
   validateDetailResult,
@@ -80,10 +91,10 @@ import {
   validateSearchResult,
   validateSearchSuggestionsResult,
 } from "./plugin-content.js";
+import { invokeLoadedPluginContent } from "./plugin-content-invocation.js";
 
 import {
   PluginManagerError,
-  isPluginManagerError,
   type PluginCacheClearItem,
   type PluginCacheClearResult,
   type PluginCacheUsage,
@@ -95,15 +106,14 @@ import {
   type DevelopmentPlugin,
   type InstalledPluginSnapshot,
   type LoadedPlugin,
-  type LoadedPluginModule,
   type MgReadPluginContext,
-  type PluginContentFunction,
   type PluginInvocationScope,
   type PluginManagerEvent,
   type PluginManagerEventSink,
   type PluginRuntimeHttpClient,
   type PluginRuntimeTraceContext,
 } from "./plugin-manager-contract.js";
+
 import {
   atomicWrite,
   exists,
@@ -115,6 +125,9 @@ import {
   snapshotFrom,
   withEnabledPluginSnapshot,
 } from "./plugin-manager-files.js";
+
+const DEFAULT_CACHE_CLEAR_TIMEOUT_MS = 5_000;
+const DEFAULT_RESOURCE_OPERATION_TIMEOUT_MS = 30_000;
 
 export {
   PluginManagerError,
@@ -150,9 +163,11 @@ export class PluginManager {
   readonly #invocationScope = new AsyncLocalStorage<PluginInvocationScope>();
   readonly #installedLoaded = new Map<string, LoadedPlugin>();
   readonly #developmentLoaded = new Map<string, DevelopmentPlugin>();
-  readonly #cacheOperationTails = new Map<string, Promise<void>>();
+  readonly #pluginOperations: PluginOperationCoordinator;
   readonly #pluginTransfer: PluginArtifactTransferManager;
   readonly #developmentLifetime = new DevelopmentGenerationLifetime();
+  readonly #cacheClearTimeoutMs: number;
+  readonly #pluginActivationTimeoutMs: number;
   #initializePromise: Promise<void> | undefined;
   #startupQuarantinedCount = 0;
   #installedSnapshots: readonly InstalledPluginSnapshot[] = Object.freeze([]);
@@ -170,6 +185,10 @@ export class PluginManager {
       readonly http?: PluginRuntimeHttpClient;
       readonly browserSession?: PluginBrowserSessionProvider;
       readonly debugLogEnabled?: () => boolean;
+      readonly cacheClearTimeoutMs?: number;
+      readonly maxActiveInvocationsPerPlugin?: number;
+      readonly maxQueuedOperationsPerPlugin?: number;
+      readonly pluginActivationTimeoutMs?: number;
     } = {},
   ) {
     this.#dataRoot = resolve(runtimeDataRoot);
@@ -184,6 +203,22 @@ export class PluginManager {
     this.#debugLogEnabled = options.debugLogEnabled ?? (() => false);
     this.#http = options.http ?? { fetch: (input, init) => fetch(input, init) };
     this.#browserSession = options.browserSession;
+    this.#cacheClearTimeoutMs = positiveMilliseconds(
+      options.cacheClearTimeoutMs,
+      DEFAULT_CACHE_CLEAR_TIMEOUT_MS,
+    );
+    this.#pluginActivationTimeoutMs = positiveMilliseconds(
+      options.pluginActivationTimeoutMs,
+      defaultPluginActivationTimeoutMs,
+    );
+    this.#pluginOperations = new PluginOperationCoordinator({
+      ...(options.maxActiveInvocationsPerPlugin === undefined
+        ? {}
+        : { maxActiveInvocations: options.maxActiveInvocationsPerPlugin }),
+      ...(options.maxQueuedOperationsPerPlugin === undefined
+        ? {}
+        : { maxQueuedOperations: options.maxQueuedOperationsPerPlugin }),
+    } satisfies PluginOperationCoordinatorOptions);
     this.#pluginTransfer = new PluginArtifactTransferManager(this.#dataRoot);
     this.#pluginIcons = new PluginIconResources(this.#dataRoot);
   }
@@ -221,26 +256,33 @@ export class PluginManager {
   }
 
   async consumeResource(token: string, signal: AbortSignal): Promise<PluginResourceResponse> {
-    const entry = this.#resources.get(token); if (entry === undefined || signal.aborted) throw new PluginManagerError("invalid_request");
+    const entry = this.#resources.get(token);
+    if (entry === undefined) throw new PluginManagerError("invalid_request");
+    if (signal.aborted) throw new PluginManagerError("cancelled");
     await this.initialize();
-    const loaded = this.#developmentLoaded.get(entry.pluginId)?.loaded ?? this.#installedLoaded.get(entry.pluginId); if (loaded === undefined) throw new PluginManagerError("plugin_not_found");
-    const startedAt = performance.now();
-    if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.resource_proxy", logLevel: "debug", logMessage: `资源代理请求开始：参数=${JSON.stringify(entry.request)}`, outcome: "success", pluginId: entry.pluginId });
-    const result = await loaded.module.resource(entry.request);
-    if (typeof result !== "object" || result === null) throw new PluginManagerError("invalid_request");
-    const value = result as Record<string, unknown>;
-    const status = value.status === undefined ? 200 : value.status; const bodyValue = value.body; const body = typeof bodyValue === "string" ? Buffer.from(bodyValue, "utf8") : bodyValue instanceof Uint8Array ? Buffer.from(bodyValue) : undefined;
-    if (typeof status !== "number" || !Number.isInteger(status) || status < 100 || status > 599 || body === undefined || body.byteLength > 8 * 1024 * 1024) throw new PluginManagerError("invalid_request");
-    const headers: Record<string, string> = {};
-    if (value.headers !== undefined) {
-      if (typeof value.headers !== "object" || value.headers === null) throw new PluginManagerError("invalid_request");
-      for (const [key, header] of Object.entries(value.headers as Record<string, unknown>)) {
-        if (!/^(content-type|cache-control|content-disposition|etag|expires|last-modified)$/i.test(key) || typeof header !== "string" || header.length > 1024) throw new PluginManagerError("invalid_request");
-        headers[key] = header;
-      }
-    }
-    if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.resource_proxy", logLevel: "debug", logMessage: `资源代理请求完成：状态=${status}，字节=${body.byteLength}，耗时毫秒=${Math.round(performance.now() - startedAt)}`, outcome: "success", pluginId: entry.pluginId });
-    return { status, headers, body };
+    const loaded = this.#developmentLoaded.get(entry.pluginId)?.loaded ?? this.#installedLoaded.get(entry.pluginId);
+    if (loaded === undefined) throw new PluginManagerError("plugin_not_found");
+    const deadlineUnixMs = String(Date.now() + DEFAULT_RESOURCE_OPERATION_TIMEOUT_MS);
+    const release = await this.#pluginOperations.acquireInvocation(
+      entry.pluginId,
+      signal,
+      deadlineUnixMs,
+    );
+    const operation = invokePluginResource({
+      debugLogEnabled: this.#debugLogEnabled,
+      deadlineUnixMs,
+      events: this.#events,
+      invocationScope: this.#invocationScope,
+      loaded,
+      pluginId: entry.pluginId,
+      request: entry.request,
+      signal,
+    }).finally(release);
+    return waitForPluginOperation(
+      settlePluginOperation(operation),
+      signal,
+      deadlineUnixMs,
+    );
   }
 
 
@@ -383,24 +425,35 @@ export class PluginManager {
   }
 
   /** Clears one installed plugin's private cache and returns a stable outcome. */
-  async clearPluginCache(pluginId: string): Promise<PluginCacheClearResult> {
+  async clearPluginCache(
+    pluginId: string,
+    signal?: AbortSignal,
+    deadlineUnixMs?: string,
+  ): Promise<PluginCacheClearResult> {
     await this.initialize();
     if (!isPluginId(pluginId)) throw new PluginManagerError("invalid_request");
     if (!this.#combinedSnapshots().some((item) => item.id === pluginId)) {
       throw new PluginManagerError("plugin_not_found");
     }
+    const cancellation = signal ?? new AbortController().signal;
+    const deadline = deadlineUnixMs ?? String(Date.now() + this.#cacheClearTimeoutMs);
     return Object.freeze({
-      items: Object.freeze([await this.#clearCache(pluginId)]),
+      items: Object.freeze([await this.#clearCache(pluginId, cancellation, deadline)]),
     } satisfies PluginCacheClearResult);
   }
 
   /** Clears every currently installed plugin cache, preserving per-plugin status. */
-  async clearAllPluginCaches(): Promise<PluginCacheClearResult> {
+  async clearAllPluginCaches(
+    signal?: AbortSignal,
+    deadlineUnixMs?: string,
+  ): Promise<PluginCacheClearResult> {
     await this.initialize();
     const pluginIds = this.#combinedSnapshots().map((item) => item.id);
+    const cancellation = signal ?? new AbortController().signal;
+    const deadline = deadlineUnixMs ?? String(Date.now() + this.#cacheClearTimeoutMs);
     return Object.freeze({
       items: Object.freeze(await Promise.all(pluginIds.map((pluginId) =>
-        this.#clearCache(pluginId)
+        this.#clearCache(pluginId, cancellation, deadline)
       ))),
     } satisfies PluginCacheClearResult);
   }
@@ -578,104 +631,59 @@ export class PluginManager {
     await this.initialize();
     if (!isPluginId(pluginId)) throw new PluginManagerError("invalid_request");
     const queuedAt = performance.now();
-    const releaseCacheOperation = await this.#acquireCacheOperation(pluginId);
-    if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.invocation", logLevel: "debug", logMessage: `插件调用取得队列：操作=${operation}，等待毫秒=${Math.round(performance.now() - queuedAt)}`, outcome: "success", pluginId });
-    const development = this.#developmentLoaded.get(pluginId);
-    if (development !== undefined) this.#developmentLifetime.retain(development);
+    const releaseOperation = await this.#pluginOperations.acquireInvocation(
+      pluginId,
+      signal,
+      deadlineUnixMs,
+    );
+    let development: DevelopmentPlugin | undefined;
+    let operationStarted = false;
     try {
-      return await this.#invokeLoadedContent(
-        pluginId,
-        operation,
-        request,
+      if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.invocation", logLevel: "debug", logMessage: `插件调用取得队列：操作=${operation}，等待毫秒=${Math.round(performance.now() - queuedAt)}`, outcome: "success", pluginId });
+      development = this.#developmentLoaded.get(pluginId);
+      if (development !== undefined) this.#developmentLifetime.retain(development);
+      const execution = (async () => {
+        try {
+          return await invokeLoadedPluginContent({
+            debugLogEnabled: this.#debugLogEnabled,
+            ...(development === undefined
+              ? {}
+              : { developmentIsCurrent: () => this.#developmentLoaded.get(pluginId) === development }),
+            deadlineUnixMs,
+            events: this.#events,
+            invocationScope: this.#invocationScope,
+            operation,
+            plugin: development?.loaded ?? this.#installedLoaded.get(pluginId),
+            pluginId,
+            request,
+            signal,
+            snapshot: this.#combinedSnapshots().find((item) => item.id === pluginId),
+            ...(trace === undefined ? {} : { trace }),
+            validate,
+            ...(validateCorrelation === undefined ? {} : { validateCorrelation }),
+          });
+        } finally {
+          try {
+            if (development !== undefined) await this.#developmentLifetime.release(development);
+          } finally {
+            releaseOperation();
+          }
+        }
+      })();
+      operationStarted = true;
+      return await waitForPluginOperation(
+        settlePluginOperation(execution),
         signal,
         deadlineUnixMs,
-        validate,
-        trace,
-        validateCorrelation,
-        development,
       );
     } finally {
-      if (development !== undefined) await this.#developmentLifetime.release(development);
-      releaseCacheOperation();
-    }
-  }
-
-  async #invokeLoadedContent<TResult extends JsonObject>(
-    pluginId: string,
-    operation: PluginContentOperation,
-    request: JsonObject,
-    signal: AbortSignal,
-    deadlineUnixMs: string,
-    validate: (pluginId: string, sourceName: string, value: unknown) => TResult,
-    trace?: PluginRuntimeTraceContext,
-    validateCorrelation?: (result: TResult) => boolean,
-    development?: DevelopmentPlugin,
-  ): Promise<TResult> {
-    const snapshot = this.#combinedSnapshots().find((item) => item.id === pluginId);
-    if (development === undefined && snapshot?.enabled != true) {
-      throw new PluginManagerError(snapshot === undefined ? "plugin_not_found" : "plugin_disabled");
-    }
-    const plugin = development?.loaded ?? this.#installedLoaded.get(pluginId);
-    if (plugin === undefined) throw new PluginManagerError(snapshot?.status === "disabled" ? "plugin_disabled" : "plugin_not_found");
-
-    const startedAt = performance.now();
-    this.#events({
-      code: "plugin_invocation_started",
-      operation,
-      outcome: "started",
-      pluginId,
-    });
-    if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.invocation", logLevel: "info", logMessage: `能力请求：操作=${operation}，参数=${JSON.stringify(request)}`, outcome: "success", pluginId });
-    try {
-      this.#throwIfCancelled(signal, deadlineUnixMs);
-      const value = await this.#invocationScope.run(
-        Object.freeze({
-          deadlineUnixMs,
-          signal,
-          ...(trace === undefined ? {} : { trace }),
-        }),
-        () => plugin.module[operation](request),
-      );
-      if (development !== undefined && this.#developmentLoaded.get(pluginId) !== development) {
-        throw new PluginManagerError("plugin_execution_failed");
+      if (!operationStarted) {
+        try {
+          if (development !== undefined) await this.#developmentLifetime.release(development);
+        } finally {
+          releaseOperation();
+        }
       }
-      this.#throwIfCancelled(signal, deadlineUnixMs);
-      const result = validate(
-        pluginId,
-        plugin.descriptor.displayName,
-        value,
-      );
-      if (validateCorrelation !== undefined && !validateCorrelation(result)) {
-        throw new PluginContentValidationError();
-      }
-      if (development !== undefined && this.#developmentLoaded.get(pluginId) !== development) {
-        throw new PluginManagerError("plugin_execution_failed");
-      }
-      this.#events({
-        code: "plugin_invocation_completed",
-        durationMs: performance.now() - startedAt,
-        operation,
-        outcome: "success",
-        pluginId,
-      });
-      if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.invocation", logLevel: "info", logMessage: `能力响应：操作=${operation}，耗时毫秒=${Math.round(performance.now() - startedAt)}，结果=${JSON.stringify(result).slice(0, 2000)}`, outcome: "success", pluginId });
-      return result;
-    } catch (error) {
-      this.#events({
-        code: "plugin_invocation_failed",
-        durationMs: performance.now() - startedAt,
-        operation,
-        outcome: "error",
-        pluginId,
-      });
-      if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.invocation", logLevel: "error", logMessage: `能力调用出错：操作=${operation}，耗时毫秒=${Math.round(performance.now() - startedAt)}，错误=${error instanceof PluginManagerError ? error.code : error instanceof Error ? error.name : "unknown"}`, outcome: "error", pluginId });
-      if (isPluginManagerError(error)) throw new PluginManagerError(error.code);
-      this.#throwIfCancelled(signal, deadlineUnixMs);
-      if (error instanceof PluginContentValidationError) {
-        throw new PluginManagerError("plugin_invalid_response");
-      }
-      // Plugin code rejection is recoverable but never retains error text, stacks, request data, or response content.
-      throw new PluginManagerError("plugin_execution_failed");
     }
   }
 
@@ -764,6 +772,7 @@ export class PluginManager {
       descriptor,
       events: this.#events,
       loadModule: (entryPath) => this.#loadModule(entryPath),
+      activationTimeoutMs: this.#pluginActivationTimeoutMs,
       projectRoot,
     });
   }
@@ -800,28 +809,20 @@ export class PluginManager {
     );
   }
 
-  /** Serializes cache cleanup with plugin code that may be using that cache. */
-  async #acquireCacheOperation(pluginId: string): Promise<() => void> {
-    const previous = this.#cacheOperationTails.get(pluginId) ?? Promise.resolve();
-    let releaseGate!: () => void;
-    const gate = new Promise<void>((resolveGate) => {
-      releaseGate = resolveGate;
-    });
-    const tail = previous.then(() => gate);
-    this.#cacheOperationTails.set(pluginId, tail);
-    await previous;
-    return () => {
-      releaseGate();
-      if (this.#cacheOperationTails.get(pluginId) === tail) {
-        this.#cacheOperationTails.delete(pluginId);
-      }
-    };
-  }
-
-  async #clearCache(pluginId: string): Promise<PluginCacheClearItem> {
-    const release = await this.#acquireCacheOperation(pluginId);
+  /** Clears cache only after current source/resource calls have released shared leases. */
+  async #clearCache(
+    pluginId: string,
+    signal: AbortSignal,
+    deadlineUnixMs: string,
+  ): Promise<PluginCacheClearItem> {
+    let release: (() => void) | undefined;
     let bytesBefore = 0;
     try {
+      release = await this.#pluginOperations.acquireCacheClear(
+        pluginId,
+        signal,
+        deadlineUnixMs,
+      );
       bytesBefore = await this.#cacheBytes(pluginId);
       const cacheDir = this.#cacheDirectory(pluginId);
       let entries: string[];
@@ -856,7 +857,7 @@ export class PluginManager {
         status: "failed",
       } satisfies PluginCacheClearItem);
     } finally {
-      release();
+      release?.();
     }
   }
 
@@ -980,7 +981,7 @@ export class PluginManager {
         throw new PluginManagerError("plugin_load_failed");
       }
       const context = await this.#createContext(project.descriptor);
-      await candidate.activate?.(context);
+      await activatePlugin(candidate, context, this.#pluginActivationTimeoutMs);
       const loaded = Object.freeze({ descriptor: project.descriptor, module: candidate });
       this.#events({
         code: "plugin_load_completed",
@@ -1047,10 +1048,4 @@ export class PluginManager {
     }
   }
 
-  #throwIfCancelled(signal: AbortSignal, deadlineUnixMs: string): void {
-    if (signal.aborted) throw new PluginManagerError("cancelled");
-    if (Number(deadlineUnixMs) <= Date.now()) {
-      throw new PluginManagerError("timeout");
-    }
-  }
 }

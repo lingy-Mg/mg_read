@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 
 import { stageDevelopmentGeneration } from "./development-plugin-generation.js";
+import { activatePlugin } from "./plugin-activation.js";
 import {
   type DevelopmentPlugin,
   type InstalledPluginSnapshot,
@@ -20,6 +21,7 @@ import { type PluginPackageDescriptor, resolveInside } from "./plugin-package.js
 import { readPluginProject } from "./plugin-package.js";
 
 export interface LoadDevelopmentPluginOptions {
+  readonly activationTimeoutMs: number;
   readonly createContext: (descriptor: PluginPackageDescriptor) => Promise<MgReadPluginContext>;
   readonly dataRoot: string;
   readonly descriptor: PluginPackageDescriptor;
@@ -51,7 +53,11 @@ export async function loadDevelopmentPlugin(
     );
     const candidate = normalizePluginModule(imported);
     if (candidate === undefined) throw new PluginManagerError("plugin_load_failed");
-    await candidate.activate(await options.createContext(generation.descriptor));
+    await activatePlugin(
+      candidate,
+      await options.createContext(generation.descriptor),
+      options.activationTimeoutMs,
+    );
     const loaded = Object.freeze({
       descriptor: generation.descriptor,
       module: candidate,

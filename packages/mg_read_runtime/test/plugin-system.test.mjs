@@ -60,6 +60,14 @@ async function temporaryDirectory(t, prefix) {
   return root;
 }
 
+async function waitFor(predicate, timeoutMs = 500) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("Timed out waiting for plugin terminal event.");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 
 test("content v1 requires explicit null keys and preserves zero and empty arrays", () => {
   const summary = {
@@ -644,9 +652,12 @@ test("plugin calls give cancel and timeout exactly one terminal event", async (t
       "org.example.delayed",
       { query: "timeout", cursor: null, pageSize: 20 },
       new AbortController().signal,
-      String(Date.now() - 1),
+      String(Date.now() + 10),
     ),
     (error) => error?.code === "timeout",
+  );
+  await waitFor(
+    () => events.filter((event) => event.code === "plugin_invocation_failed").length === 2,
   );
   assert.equal(
     events.filter((event) => event.code === "plugin_invocation_started").length,

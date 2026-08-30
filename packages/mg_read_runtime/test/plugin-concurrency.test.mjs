@@ -29,7 +29,7 @@ async function temporaryDirectory(t, prefix) {
   return root;
 }
 
-async function createProbeProject(root, pluginId, recorderKey) {
+async function createProbeProject(root, pluginId, recorderKey, options = {}) {
   await mkdir(join(root, "dist"), { recursive: true });
   const packageName = `@mgread-plugin/${pluginId.split(".").at(-1)}`;
   const packageJson = {
@@ -67,7 +67,7 @@ const record = (operation, phase, label) => {
 };
 const run = async (operation, label) => {
   record(operation, "start", label);
-  if (label === "hang") await new Promise(() => {});
+  if (label.startsWith("hang")) await new Promise(() => {});
   if (label === "throw") throw new Error("probe failure");
   if (label.startsWith("http:")) {
     const response = await context.http.fetch(label.slice(5));
@@ -102,7 +102,9 @@ const summary = (id) => ({
 });
 
 let context;
-export function activate(nextContext) { context = nextContext; }
+${options.hangOnActivate
+    ? "export async function activate() { await new Promise(() => {}); }"
+    : "export function activate(nextContext) { context = nextContext; }"}
 export async function discover(request) {
   await run("discover", request.target ?? "discover");
   return { kind: "document", document: { components: [] } };
@@ -135,6 +137,10 @@ export async function getContent(request) {
     media: null,
   };
 }
+export async function resource(request) {
+  await run("resource", request.label);
+  return { body: "probe", headers: {}, status: 200 };
+}
 `;
   await Promise.all([
     writeFile(join(root, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`),
@@ -144,8 +150,8 @@ export async function getContent(request) {
   return root;
 }
 
-async function installProbe(dataRoot, projectRoot, pluginId, recorderKey) {
-  await createProbeProject(projectRoot, pluginId, recorderKey);
+async function installProbe(dataRoot, projectRoot, pluginId, recorderKey, options = {}) {
+  await createProbeProject(projectRoot, pluginId, recorderKey, options);
   await new PluginInstaller(dataRoot).installProject(projectRoot);
 }
 
@@ -213,7 +219,7 @@ async function runProbeChild(mode, dataRoot, pluginId, options = {}) {
   return { ...result, elapsedMs: performance.now() - startedAt, stderr, stdout, timedOut };
 }
 
-test("same-plugin source capabilities are serialized behind one pluginId gate", async (t) => {
+test("same-plugin source capabilities overlap under shared invocation leases", async (t) => {
   const root = await temporaryDirectory(t, "mgread-concurrency-same-");
   const dataRoot = join(root, "runtime-data");
   const pluginId = "org.example.concurrent.same";
@@ -231,15 +237,9 @@ test("same-plugin source capabilities are serialized behind one pluginId gate", 
     discover(manager, pluginId, "after-delay"),
   ]);
   const elapsedMs = performance.now() - startedAt;
-  assert.deepEqual(
-    events.map(({ label, operation, phase }) => `${operation}:${label}:${phase}`),
-    [
-      "search:delay:start",
-      "search:delay:end",
-      "discover:after-delay:start",
-      "discover:after-delay:end",
-    ],
-  );
+  const searchEnd = events.find((event) => event.operation === "search" && event.phase === "end");
+  const discoverStart = events.find((event) => event.operation === "discover" && event.phase === "start");
+  assert.ok(discoverStart.at < searchEnd.at);
   t.diagnostic(`same-plugin elapsedMs=${elapsedMs.toFixed(1)} order=${events.map((event) => `${event.operation}:${event.phase}`).join(",")}`);
 });
 
@@ -322,7 +322,7 @@ test("different plugins issue overlapping ctx.http.fetch requests on loopback", 
   t.diagnostic(`loopback-http overlapped=${overlapped} elapsedMs=${elapsedMs.toFixed(1)} requests=${requestCount}`);
 });
 
-test("same-plugin gate releases after success, rejection, observed timeout and observed cancellation", async (t) => {
+test("success, rejection, timeout and cancellation leave same-plugin capacity usable", async (t) => {
   const root = await temporaryDirectory(t, "mgread-concurrency-release-");
   const dataRoot = join(root, "runtime-data");
   const pluginId = "org.example.concurrent.release";
@@ -357,13 +357,14 @@ test("same-plugin gate releases after success, rejection, observed timeout and o
     const followUp = await settleWithin(second, 500);
     assert.equal(followUp.state, "fulfilled", `follow-up after ${current.label} did not complete`);
     if (current.label === "timeout" || current.label === "cancel") {
-      assert.ok(firstElapsedMs >= pluginDelayMs - 20);
+      assert.ok(firstElapsedMs < pluginDelayMs - 20);
     }
     t.diagnostic(`${current.label} firstElapsedMs=${firstElapsedMs.toFixed(1)} followUp=${followUp.state}`);
   }
+  await new Promise((resolve) => setTimeout(resolve, pluginDelayMs + 20));
 });
 
-test("a never-settling plugin call leaves later same-plugin work queued past cancel and deadline", async (t) => {
+test("a never-settling call times out without blocking later same-plugin capabilities", async (t) => {
   const root = await temporaryDirectory(t, "mgread-concurrency-hang-");
   const dataRoot = join(root, "runtime-data");
   const pluginA = "org.example.concurrent.hang";
@@ -374,33 +375,145 @@ test("a never-settling plugin call leaves later same-plugin work queued past can
   t.after(() => { delete globalThis[recorderKey]; });
   await installProbe(dataRoot, join(root, "project-hang"), pluginA, recorderKey);
   await installProbe(dataRoot, join(root, "project-escape"), pluginB, recorderKey);
-  const manager = new PluginManager(dataRoot);
+  const manager = new PluginManager(dataRoot, { cacheClearTimeoutMs: 80 });
   await manager.initialize();
 
   const hanging = search(manager, pluginA, "hang", { deadline: Date.now() + 25 });
   await waitFor(() => events.some((event) => event.pluginId === pluginA && event.label === "hang"));
-  const queuedController = new AbortController();
-  const queuedCount = 64;
-  const queued = Array.from({ length: queuedCount }, (_, index) =>
-    discover(manager, pluginA, `queued-${index}`, {
-      deadline: Date.now() + 25,
-      signal: queuedController.signal,
-    }));
+  const followUpCount = 64;
+  const followUps = Array.from({ length: followUpCount }, (_, index) =>
+    discover(manager, pluginA, `follow-up-${index}`));
   const cacheClear = manager.clearPluginCache(pluginA);
-  setTimeout(() => queuedController.abort(), 10);
 
   const unrelated = await settleWithin(search(manager, pluginB, "fast"), 300);
   assert.equal(unrelated.state, "fulfilled");
-  const [hangingState, queuedStates, cacheState] = await Promise.all([
-    settleWithin(hanging, 100),
-    Promise.all(queued.map((operation) => settleWithin(operation, 100))),
-    settleWithin(cacheClear, 100),
+  const [hangingState, followUpStates, cacheState] = await Promise.all([
+    settleWithin(hanging, 150),
+    Promise.all(followUps.map((operation) => settleWithin(operation, 500))),
+    settleWithin(cacheClear, 250),
   ]);
-  assert.equal(hangingState.state, "pending");
-  assert.equal(queuedStates.filter((state) => state.state === "pending").length, queuedCount);
-  assert.equal(cacheState.state, "pending");
-  assert.equal(events.some((event) => event.pluginId === pluginA && event.label.startsWith("queued-")), false);
-  t.diagnostic(`hang=${hangingState.state} queuedAfterAbortAndDeadline=${queuedStates.length}xpending cacheClear=${cacheState.state} otherPlugin=${unrelated.state}`);
+  assert.equal(hangingState.state, "rejected");
+  assert.equal(hangingState.reason?.code, "timeout");
+  assert.equal(followUpStates.filter((state) => state.state === "fulfilled").length, followUpCount);
+  assert.equal(cacheState.state, "fulfilled");
+  assert.equal(cacheState.value.items[0].status, "failed");
+  assert.equal(events.filter((event) => event.pluginId === pluginA && event.label.startsWith("follow-up-") && event.phase === "end").length, followUpCount);
+  t.diagnostic(`hang=${hangingState.reason?.code} followUps=${followUpStates.length}xfulfilled cacheClear=${cacheState.value.items[0].status} otherPlugin=${unrelated.state}`);
+});
+
+test("resource plugin work observes cancellation without blocking later capabilities", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-concurrency-resource-");
+  const dataRoot = join(root, "runtime-data");
+  const pluginId = "org.example.concurrent.resource";
+  const recorderKey = `__mgread_probe_${process.pid}_resource`;
+  const events = [];
+  globalThis[recorderKey] = events;
+  t.after(() => { delete globalThis[recorderKey]; });
+  await installProbe(dataRoot, join(root, "project"), pluginId, recorderKey);
+  const manager = new PluginManager(dataRoot);
+  await manager.initialize();
+  const url = manager.createResourceUrl(pluginId, { label: "hang-resource" });
+  const token = new URL(url).pathname.split("/").at(-1);
+  const controller = new AbortController();
+
+  const startedAt = performance.now();
+  const resource = manager.consumeResource(token, controller.signal);
+  setTimeout(() => controller.abort(), 10);
+  await assert.rejects(resource, (error) => error?.code === "cancelled");
+  const elapsedMs = performance.now() - startedAt;
+  const followUp = await settleWithin(search(manager, pluginId, "fast"), 300);
+  assert.equal(followUp.state, "fulfilled");
+  assert.ok(elapsedMs < 100);
+  t.diagnostic(`resourceCancelMs=${elapsedMs.toFixed(1)} followUp=${followUp.state}`);
+});
+
+test("cache cleanup is exclusive and later invocations resume after it", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-concurrency-cache-exclusive-");
+  const dataRoot = join(root, "runtime-data");
+  const pluginId = "org.example.concurrent.cacheexclusive";
+  const recorderKey = `__mgread_probe_${process.pid}_cache_exclusive`;
+  const events = [];
+  globalThis[recorderKey] = events;
+  t.after(() => { delete globalThis[recorderKey]; });
+  await installProbe(dataRoot, join(root, "project"), pluginId, recorderKey);
+  const manager = new PluginManager(dataRoot, { cacheClearTimeoutMs: 500 });
+  await manager.initialize();
+
+  const active = search(manager, pluginId, "delay");
+  await waitFor(() => events.some((event) => event.label === "delay" && event.phase === "start"));
+  const clear = manager.clearPluginCache(pluginId);
+  const after = discover(manager, pluginId, "after-clear");
+  const [clearResult] = await Promise.all([clear, active, after]);
+  assert.equal(clearResult.items[0].status, "cleared");
+  const activeEnd = events.find((event) => event.label === "delay" && event.phase === "end");
+  const afterStart = events.find((event) => event.label === "after-clear" && event.phase === "start");
+  assert.ok(activeEnd.at <= afterStart.at);
+  t.diagnostic(`cacheClear=${clearResult.items[0].status} invocationResumedAfterActive=${activeEnd.at <= afterStart.at}`);
+});
+
+test("per-plugin capacity rejects overflow and removes cancelled waiters", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-concurrency-capacity-");
+  const dataRoot = join(root, "runtime-data");
+  const pluginId = "org.example.concurrent.capacity";
+  const recorderKey = `__mgread_probe_${process.pid}_capacity`;
+  const events = [];
+  globalThis[recorderKey] = events;
+  t.after(() => { delete globalThis[recorderKey]; });
+  await installProbe(dataRoot, join(root, "project"), pluginId, recorderKey);
+  const manager = new PluginManager(dataRoot, {
+    maxActiveInvocationsPerPlugin: 2,
+    maxQueuedOperationsPerPlugin: 3,
+  });
+  await manager.initialize();
+
+  const active = [
+    search(manager, pluginId, "hang-a", { deadline: Date.now() + 50 }),
+    search(manager, pluginId, "hang-b", { deadline: Date.now() + 50 }),
+  ];
+  await waitFor(() => events.filter((event) => event.label.startsWith("hang-") && event.phase === "start").length === 2);
+  const queuedController = new AbortController();
+  const queued = Array.from({ length: 3 }, (_, index) =>
+    discover(manager, pluginId, `queued-${index}`, {
+      deadline: Date.now() + 500,
+      signal: queuedController.signal,
+    }));
+  await assert.rejects(
+    discover(manager, pluginId, "overflow", { deadline: Date.now() + 500 }),
+    (error) => error?.code === "overloaded",
+  );
+  queuedController.abort();
+  const cancelled = await Promise.allSettled(queued);
+  assert.equal(cancelled.filter((result) => result.status === "rejected" && result.reason?.code === "cancelled").length, 3);
+  await Promise.all(active.map((operation) =>
+    assert.rejects(operation, (error) => error?.code === "timeout")));
+  await assert.rejects(
+    discover(manager, pluginId, "replacement", { deadline: Date.now() + 35 }),
+    (error) => error?.code === "timeout",
+  );
+  t.diagnostic("capacity active=2 queued=3 overflow=overloaded cancelledWaitersRemoved=true");
+});
+
+test("an async activate hook that never settles is quarantined within the activation deadline", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-concurrency-activation-");
+  const dataRoot = join(root, "runtime-data");
+  const pluginId = "org.example.concurrent.activation";
+  const recorderKey = `__mgread_probe_${process.pid}_activation`;
+  await installProbe(
+    dataRoot,
+    join(root, "project"),
+    pluginId,
+    recorderKey,
+    { hangOnActivate: true },
+  );
+  const manager = new PluginManager(dataRoot, { pluginActivationTimeoutMs: 40 });
+
+  const startedAt = performance.now();
+  await manager.initialize();
+  const elapsedMs = performance.now() - startedAt;
+  const snapshot = (await manager.listInstalled()).find((item) => item.id === pluginId);
+  assert.equal(snapshot?.status, "quarantined");
+  assert.ok(elapsedMs >= 30 && elapsedMs < 500);
+  t.diagnostic(`activation status=${snapshot?.status} elapsedMs=${elapsedMs.toFixed(1)}`);
 });
 
 test("CPU-bound plugin code blocks timers and unrelated plugins in the shared Node VM", async (t) => {
