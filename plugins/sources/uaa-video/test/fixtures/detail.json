@@ -1,0 +1,19 @@
+{
+  "result": "success",
+  "code": 200,
+  "msg": "ok",
+  "model": {
+    "id": 10000001,
+    "title": "Fixture video",
+    "titleAlias": "Fixture alias",
+    "authors": "Fixture author",
+    "brief": "Fixture description",
+    "categories": "Category A,Category B",
+    "tags": "Tag A,Tag B",
+    "coverUrl": "https://cdn.example.test/cover.jpg",
+    "durationFormat": "01:23",
+    "onlineTime": "2026-08-30T10:00:00.000Z",
+    "updateTime": "2026-08-30T11:00:00.000Z",
+    "url": "https://media.example.test/fixture.m3u8"
+  }
+}
