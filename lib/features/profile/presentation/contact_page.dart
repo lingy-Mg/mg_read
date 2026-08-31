@@ -13,10 +13,11 @@ import 'package:mg_read/features/profile/presentation/widgets/profile_detail_chr
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
 class ContactPage extends StatelessWidget {
-  const ContactPage({required this.onBackRequested, required this.onFeedbackRequested, super.key});
+  const ContactPage({required this.onBackRequested, required this.onFeedbackRequested, required this.appVersion, super.key});
 
   final VoidCallback onBackRequested;
   final VoidCallback onFeedbackRequested;
+  final String appVersion;
 
   @override
   Widget build(BuildContext context) {
@@ -74,7 +75,7 @@ class ContactPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 18),
                     Text(
-                      '统一阅读 · 版本 1.2.0',
+                      '统一阅读 · 版本 $appVersion',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
                     ),

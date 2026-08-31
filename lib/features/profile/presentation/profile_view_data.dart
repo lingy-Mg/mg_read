@@ -44,6 +44,33 @@ final class ProfileViewData {
     );
   }
 
+  /// Projects the installed app version into the single profile about row.
+  ProfileViewData withAppVersion(String appVersion) {
+    final version = appVersion.trim().isEmpty ? '--' : appVersion.trim();
+    return ProfileViewData(
+      displayName: displayName,
+      motto: motto,
+      stats: stats,
+      syncLabel: syncLabel,
+      lastSyncLabel: lastSyncLabel,
+      settings: settings,
+      about: <ProfileSettingsItemViewData>[
+        for (final item in about)
+          if (item.id == 'about')
+            ProfileSettingsItemViewData(
+              id: item.id,
+              title: item.title,
+              description: '版本 $version',
+              icon: item.icon,
+              trailingLabel: item.trailingLabel,
+              isAccentTrailingLabel: item.isAccentTrailingLabel,
+            )
+          else
+            item,
+      ],
+    );
+  }
+
   /// Reuses the established summary-card design with local, non-account data.
   ProfileViewData withReadingStats(ProfileReadingStats readingStats) {
     return ProfileViewData(
@@ -146,7 +173,7 @@ abstract final class ProfileFixtures {
     ],
     about: <ProfileSettingsItemViewData>[
       ProfileSettingsItemViewData(id: 'diagnostics', title: '调试日志', description: '查看应用与数据源运行日志', icon: ProfileSettingsIcon.diagnostics),
-      ProfileSettingsItemViewData(id: 'about', title: '关于我们', description: '版本 1.2.0', icon: ProfileSettingsIcon.about),
+      ProfileSettingsItemViewData(id: 'about', title: '关于我们', description: '版本 --', icon: ProfileSettingsIcon.about),
       ProfileSettingsItemViewData(id: 'feedback', title: '意见反馈', description: '告诉我们您的想法', icon: ProfileSettingsIcon.feedback),
     ],
   );

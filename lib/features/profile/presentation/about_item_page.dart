@@ -19,18 +19,25 @@ import 'package:mg_read/features/profile/presentation/widgets/profile_detail_chr
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
 class AboutItemPage extends StatelessWidget {
-  const AboutItemPage({required this.itemId, required this.onBackRequested, required this.onFeedbackRequested, super.key});
+  const AboutItemPage({
+    required this.itemId,
+    required this.onBackRequested,
+    required this.onFeedbackRequested,
+    required this.appVersion,
+    super.key,
+  });
 
   final String itemId;
   final VoidCallback onBackRequested;
   final VoidCallback onFeedbackRequested;
+  final String appVersion;
 
   @override
   Widget build(BuildContext context) => switch (itemId) {
     'agreement' => AboutDocumentPage(kind: AboutDocumentKind.agreement, onBackRequested: onBackRequested),
     'privacy' => AboutDocumentPage(kind: AboutDocumentKind.privacy, onBackRequested: onBackRequested),
     'licenses' => OpenSourceLicensesPage(onBackRequested: onBackRequested),
-    'contact' => ContactPage(onBackRequested: onBackRequested, onFeedbackRequested: onFeedbackRequested),
+    'contact' => ContactPage(onBackRequested: onBackRequested, onFeedbackRequested: onFeedbackRequested, appVersion: appVersion),
     _ => _UnknownAboutItemPage(onBackRequested: onBackRequested),
   };
 }

@@ -18,10 +18,17 @@ import 'package:mg_read/features/profile/presentation/widgets/profile_detail_chr
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
 class AboutPage extends StatelessWidget {
-  const AboutPage({required this.onBackRequested, required this.onDestinationRequested, this.onItemRequested, super.key});
+  const AboutPage({
+    required this.onBackRequested,
+    required this.onDestinationRequested,
+    required this.appVersion,
+    this.onItemRequested,
+    super.key,
+  });
 
   final VoidCallback onBackRequested;
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
+  final String appVersion;
   final ValueChanged<String>? onItemRequested;
 
   @override
@@ -55,7 +62,7 @@ class AboutPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 7),
                     Text(
-                      '版本 1.2.0',
+                      '版本 $appVersion',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyLarge?.copyWith(
                         color: tokens.mutedText,

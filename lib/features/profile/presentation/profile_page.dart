@@ -43,6 +43,7 @@ class ProfilePage extends StatefulWidget {
     this.onDiagnosticsRequested,
     this.onEditRequested,
     this.onNotificationsRequested,
+    required this.appVersion,
     this.profileIdentity = ProfileIdentity.defaults,
     this.readingStats,
     super.key,
@@ -63,6 +64,7 @@ class ProfilePage extends StatefulWidget {
   final VoidCallback? onDiagnosticsRequested;
   final VoidCallback? onEditRequested;
   final VoidCallback? onNotificationsRequested;
+  final String appVersion;
   final ProfileIdentity profileIdentity;
 
   /// Local Content Library totals when this page is created by the app route.
@@ -84,7 +86,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    var data = ProfileFixtures.preview.withIdentity(widget.profileIdentity);
+    var data = ProfileFixtures.preview.withIdentity(widget.profileIdentity).withAppVersion(widget.appVersion);
     if (widget.readingStats case final stats?) {
       data = data.withReadingStats(stats);
     }
@@ -142,11 +144,11 @@ class _ProfilePageState extends State<ProfilePage> {
                           const SizedBox(height: AppSpacing.section - 2),
                           _ProfileSectionTitle(title: '设置与管理'),
                           const SizedBox(height: AppSpacing.comfortable / 2),
-                          ProfileSettingsList(items: ProfileFixtures.preview.settings, onItemPressed: _handleSettingsItemPressed),
+                          ProfileSettingsList(items: data.settings, onItemPressed: _handleSettingsItemPressed),
                           const SizedBox(height: AppSpacing.section - 4),
                           _ProfileSectionTitle(title: '关于与其他'),
                           const SizedBox(height: AppSpacing.comfortable / 2),
-                          ProfileSettingsList(items: ProfileFixtures.preview.about, onItemPressed: _handleAboutItemPressed),
+                          ProfileSettingsList(items: data.about, onItemPressed: _handleAboutItemPressed),
                         ],
                       ),
                     ),

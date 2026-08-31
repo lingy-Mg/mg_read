@@ -41,6 +41,7 @@ import 'package:mg_read/features/plugins/presentation/plugin_runtime_health_page
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_detail_page.dart';
 import 'package:mg_read/features/profile/presentation/about_page.dart';
 import 'package:mg_read/features/profile/presentation/about_item_page.dart';
+import 'package:mg_read/features/profile/application/app_version.dart';
 import 'package:mg_read/features/profile/presentation/feedback_page.dart';
 import 'package:mg_read/features/profile/presentation/edit_profile_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
@@ -501,9 +502,11 @@ class ProfileRoute extends GoRouteData with $ProfileRoute {
         builder: (BuildContext context, WidgetRef ref, Widget? child) {
           final stats = ref.watch(profileReadingStatsProvider).asData?.value;
           final identity = ref.watch(profileIdentityProvider).asData?.value ?? ProfileIdentity.defaults;
+          final appVersion = ref.watch(appVersionProvider).asData?.value ?? unavailableAppVersion;
           return ProfilePage(
             readingStats: stats,
             profileIdentity: identity,
+            appVersion: appVersion,
             onEditRequested: () {
               const EditProfileRoute().push(context);
             },
@@ -573,14 +576,17 @@ class AboutRoute extends GoRouteData with $AboutRoute {
 
   @override
   Widget build(BuildContext context, GoRouterState state) {
-    return AboutPage(
-      onBackRequested: () => _returnToProfile(context),
-      onDestinationRequested: (AppNavigationDestination destination) {
-        _goToDestination(context, destination);
-      },
-      onItemRequested: (String itemId) {
-        AboutItemRoute(itemId: itemId).push(context);
-      },
+    return Consumer(
+      builder: (BuildContext context, WidgetRef ref, Widget? child) => AboutPage(
+        appVersion: ref.watch(appVersionProvider).asData?.value ?? unavailableAppVersion,
+        onBackRequested: () => _returnToProfile(context),
+        onDestinationRequested: (AppNavigationDestination destination) {
+          _goToDestination(context, destination);
+        },
+        onItemRequested: (String itemId) {
+          AboutItemRoute(itemId: itemId).push(context);
+        },
+      ),
     );
   }
 }
@@ -593,18 +599,21 @@ class AboutItemRoute extends GoRouteData with $AboutItemRoute {
 
   @override
   Widget build(BuildContext context, GoRouterState state) {
-    return AboutItemPage(
-      itemId: itemId,
-      onBackRequested: () {
-        if (context.canPop()) {
-          context.pop();
-          return;
-        }
-        const AboutRoute().go(context);
-      },
-      onFeedbackRequested: () {
-        const FeedbackRoute().push(context);
-      },
+    return Consumer(
+      builder: (BuildContext context, WidgetRef ref, Widget? child) => AboutItemPage(
+        itemId: itemId,
+        appVersion: ref.watch(appVersionProvider).asData?.value ?? unavailableAppVersion,
+        onBackRequested: () {
+          if (context.canPop()) {
+            context.pop();
+            return;
+          }
+          const AboutRoute().go(context);
+        },
+        onFeedbackRequested: () {
+          const FeedbackRoute().push(context);
+        },
+      ),
     );
   }
 }

@@ -79,7 +79,7 @@ void main() {
 }
 
 Widget _aboutPage() {
-  return AboutPage(onBackRequested: () {}, onDestinationRequested: (_) {});
+  return AboutPage(appVersion: '1.2.0', onBackRequested: () {}, onDestinationRequested: (_) {});
 }
 
 Widget _feedbackPage() {

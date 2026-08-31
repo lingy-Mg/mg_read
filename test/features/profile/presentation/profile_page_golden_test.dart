@@ -7,38 +7,25 @@ import 'package:mg_read/features/profile/presentation/profile_page.dart';
 void main() {
   setUpAll(() async {
     final FontLoader miSans = FontLoader('packages/novel_reader_ui/MiSans')
-      ..addFont(
-        rootBundle.load('packages/novel_reader_ui/assets/fonts/MiSansVF.ttf'),
-      );
-    final FontLoader materialIcons = FontLoader('MaterialIcons')
-      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+      ..addFont(rootBundle.load('packages/novel_reader_ui/assets/fonts/MiSansVF.ttf'));
+    final FontLoader materialIcons = FontLoader('MaterialIcons')..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await Future.wait(<Future<void>>[miSans.load(), materialIcons.load()]);
   });
 
-  testWidgets('matches the compact light profile visual baseline', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('matches the compact light profile visual baseline', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_host(themeMode: ThemeMode.light));
     await tester.pumpAndSettle();
 
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/profile_compact_light.png'),
-    );
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/profile_compact_light.png'));
   });
 
-  testWidgets('keeps the phone-first profile surface centered when wide', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('keeps the phone-first profile surface centered when wide', (WidgetTester tester) async {
     await _setViewport(tester, const Size(1280, 900));
     await tester.pumpWidget(_host(themeMode: ThemeMode.light));
     await tester.pumpAndSettle();
 
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/profile_wide_light.png'),
-    );
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/profile_wide_light.png'));
   });
 }
 
@@ -51,14 +38,11 @@ Widget _host({required ThemeMode themeMode}) {
     builder: (BuildContext context, Widget? child) {
       final MediaQueryData mediaQuery = MediaQuery.of(context);
       return MediaQuery(
-        data: mediaQuery.copyWith(
-          padding: const EdgeInsets.only(top: 24),
-          viewPadding: const EdgeInsets.only(top: 24),
-        ),
+        data: mediaQuery.copyWith(padding: const EdgeInsets.only(top: 24), viewPadding: const EdgeInsets.only(top: 24)),
         child: child ?? const SizedBox.shrink(),
       );
     },
-    home: ProfilePage(onToggleTheme: () {}),
+    home: ProfilePage(appVersion: '1.2.0', onToggleTheme: () {}),
   );
 }
 

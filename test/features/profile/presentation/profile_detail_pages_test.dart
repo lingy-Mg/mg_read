@@ -247,7 +247,7 @@ void main() {
 
 Widget _aboutHost() {
   return _host(
-    child: AboutPage(onBackRequested: () {}, onDestinationRequested: (_) {}),
+    child: AboutPage(appVersion: '1.2.0', onBackRequested: () {}, onDestinationRequested: (_) {}),
   );
 }
 

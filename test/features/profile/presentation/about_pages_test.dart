@@ -23,7 +23,9 @@ void main() {
   testWidgets('about page shows four completed items without update', (WidgetTester tester) async {
     await _setViewport(tester);
     final requestedItems = <String>[];
-    await tester.pumpWidget(_host(AboutPage(onBackRequested: () {}, onDestinationRequested: (_) {}, onItemRequested: requestedItems.add)));
+    await tester.pumpWidget(
+      _host(AboutPage(appVersion: '9.8.7', onBackRequested: () {}, onDestinationRequested: (_) {}, onItemRequested: requestedItems.add)),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('检查更新'), findsNothing);
@@ -32,6 +34,7 @@ void main() {
     expect(find.byKey(const Key('about-action-privacy')), findsOneWidget);
     expect(find.byKey(const Key('about-action-licenses')), findsOneWidget);
     expect(find.byKey(const Key('about-action-contact')), findsOneWidget);
+    expect(find.text('版本 9.8.7'), findsOneWidget);
     expect(tester.getSize(find.byKey(const Key('about-settings-card'))).height, 256);
 
     await tester.tap(find.byKey(const Key('about-action-agreement')));
@@ -63,11 +66,14 @@ void main() {
   testWidgets('contact page opens the in-app feedback channel', (WidgetTester tester) async {
     await _setViewport(tester);
     var feedbackRequested = false;
-    await tester.pumpWidget(_host(ContactPage(onBackRequested: _noop, onFeedbackRequested: () => feedbackRequested = true)));
+    await tester.pumpWidget(
+      _host(ContactPage(appVersion: '9.8.7', onBackRequested: _noop, onFeedbackRequested: () => feedbackRequested = true)),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('应用内意见反馈'), findsOneWidget);
     expect(find.text('前往意见反馈'), findsOneWidget);
+    expect(find.text('统一阅读 · 版本 9.8.7'), findsOneWidget);
     await tester.tap(find.byKey(const Key('contact-open-feedback')));
     expect(feedbackRequested, isTrue);
   });

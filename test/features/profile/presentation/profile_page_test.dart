@@ -102,7 +102,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
-        home: ProfilePage(onNotificationsRequested: () => notificationsRequested = true),
+        home: ProfilePage(appVersion: '9.8.7', onNotificationsRequested: () => notificationsRequested = true),
       ),
     );
     await tester.pumpAndSettle();
@@ -127,12 +127,24 @@ void main() {
     expect(find.text('已开启'), findsNothing);
   });
 
+  testWidgets('shows the supplied installed version in the about row', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 900));
+    await tester.pumpWidget(_host());
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byKey(const Key('profile-page-content')), const Offset(0, -800));
+    await tester.pumpAndSettle();
+
+    expect(find.text('版本 9.8.7'), findsOneWidget);
+  });
+
   testWidgets('shows local identity and delegates profile editing', (WidgetTester tester) async {
     var editRequested = false;
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
         home: ProfilePage(
+          appVersion: '9.8.7',
           profileIdentity: const ProfileIdentity(displayName: '纸间旅人', motto: '在每一页里遇见新的世界。'),
           onEditRequested: () => editRequested = true,
         ),
@@ -180,7 +192,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
-        home: ProfilePage(onPluginCacheRequested: () => cacheRequested = true),
+        home: ProfilePage(appVersion: '9.8.7', onPluginCacheRequested: () => cacheRequested = true),
       ),
     );
     await tester.pumpAndSettle();
@@ -196,7 +208,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
-        home: ProfilePage(onImportExportRequested: () => requested = true),
+        home: ProfilePage(appVersion: '9.8.7', onImportExportRequested: () => requested = true),
       ),
     );
     await tester.pumpAndSettle();
@@ -240,6 +252,7 @@ Widget _host({
       );
     },
     home: ProfilePage(
+      appVersion: '9.8.7',
       onDestinationRequested: onDestinationRequested,
       onToggleTheme: onToggleTheme,
       onDiagnosticsRequested: onDiagnosticsRequested,
