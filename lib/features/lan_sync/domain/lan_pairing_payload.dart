@@ -1,11 +1,11 @@
 /// 首次设备配对二维码载荷。
 ///
-/// 载荷只在发送端前台展示十分钟；其中的一次性 256-bit 密钥用于建立认证加密会话。
+/// 载荷只在展示端前台有效十分钟；其中的 256-bit 预共享密钥在配对提交后作为逐设备长期密钥保存。
 library;
 
 import 'dart:convert';
 
-import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
+import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 
 final class LanPairingOffer {
@@ -16,7 +16,7 @@ final class LanPairingOffer {
     required this.port,
     required Iterable<int> secret,
     required this.sessionId,
-  }) : addresses = List<String>.unmodifiable(addresses),
+  }) : addresses = normalizeLanSyncAddresses(addresses),
        secret = List<int>.unmodifiable(secret) {
     if (!isValidPairedDeviceId(deviceId) ||
         label.trim().isEmpty ||
@@ -26,10 +26,7 @@ final class LanPairingOffer {
         this.secret.length != 32 ||
         sessionId.length < 16 ||
         sessionId.length > 128 ||
-        !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(sessionId) ||
-        this.addresses.isEmpty ||
-        this.addresses.length > lanSyncMaxQrCandidateAddresses ||
-        this.addresses.any((address) => !isLanSyncPrivateIpv4(address))) {
+        !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(sessionId)) {
       throw ArgumentError('Invalid LAN pairing offer.');
     }
   }
@@ -72,6 +69,7 @@ final class LanPairingQrPayload {
     }
     try {
       final addresses = (uri.queryParameters['addresses'] ?? '').split(',');
+      if (addresses.toSet().length != addresses.length) return null;
       final secret = base64Url.decode(base64Url.normalize(uri.queryParameters['secret'] ?? ''));
       final port = int.parse(uri.queryParameters['port'] ?? '');
       return LanPairingOffer(

@@ -10,10 +10,12 @@ import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
+import 'package:mg_read/features/lan_sync/presentation/lan_sync_qr_scanner_page.dart';
 
 void main() {
   testWidgets('Android entry offers scanning and connection card renders QR', (WidgetTester tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final container = ProviderContainer(overrides: [lanSyncGatewayProvider.overrideWithValue(const _EmptyGateway())]);
     addTearDown(container.dispose);
 
@@ -30,6 +32,17 @@ void main() {
 
     expect(find.byKey(const Key('lan-sync-overview')), findsOneWidget);
     expect(find.byKey(const Key('lan-sync-receive-qr')), findsOneWidget);
+    final pairingScanButton = find.byKey(const Key('device-sync-scan-pairing'));
+    expect(pairingScanButton, findsOneWidget);
+    await tester.ensureVisible(pairingScanButton);
+    await tester.tap(pairingScanButton);
+    await tester.pumpAndSettle();
+
+    final pairingScanner = tester.widget<LanSyncQrScannerPage>(find.byType(LanSyncQrScannerPage));
+    expect(pairingScanner.purpose, LanSyncQrScannerPurpose.pairing);
+    await tester.tap(find.byKey(const Key('lan-sync-scanner-close')));
+    await tester.pumpAndSettle();
+    debugDefaultTargetPlatformOverride = null;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -47,7 +60,6 @@ void main() {
     expect(find.byKey(const Key('lan-sync-sender-address')), findsOneWidget);
     expect(find.byKey(const Key('lan-sync-sender-address-1')), findsOneWidget);
     expect(find.textContaining('并发测试并自动选择'), findsOneWidget);
-    debugDefaultTargetPlatformOverride = null;
   });
 }
 

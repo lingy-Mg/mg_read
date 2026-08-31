@@ -6,7 +6,7 @@
 ///
 /// 注意：
 /// - 页面不显示主导航栏；它始终是“我的”下的子级页面。
-/// - 业务状态和网络操作仅由 LanSyncController 管理。
+/// - 临时传输由 LanSyncController 管理；已配对设备、自动发现和手动拉取由 DeviceSyncController 管理。
 ///
 library;
 

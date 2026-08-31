@@ -17,8 +17,8 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
-import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 
 typedef LanSyncPluginStreamOpener = Future<Stream<List<int>>> Function(LanSyncPluginDescriptor plugin);
 
@@ -375,7 +375,7 @@ final class LanSyncReceiverConnection {
     for (final peer in peers) {
       if (endpoints.add('${peer.address}:${peer.port}')) candidates.add(peer);
     }
-    if (candidates.isEmpty || candidates.length > lanSyncMaxQrCandidateAddresses) {
+    if (candidates.isEmpty || candidates.length > lanSyncMaxCandidateAddresses) {
       throw const LanSyncTransportException('lan_sync_connect_failed');
     }
 
@@ -705,7 +705,7 @@ List<String> selectLanSyncCandidateAddresses(Iterable<LanSyncNetworkAddress> can
       final rank = _addressRank(left).compareTo(_addressRank(right));
       return rank != 0 ? rank : left.compareTo(right);
     });
-  return List.unmodifiable(sorted.take(lanSyncMaxQrCandidateAddresses));
+  return List.unmodifiable(sorted.take(lanSyncMaxCandidateAddresses));
 }
 
 bool _isUsableLanInterface(String name) {

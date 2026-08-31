@@ -1,12 +1,12 @@
 /// 首次设备配对的前台认证传输。
 ///
 /// 职责：
-/// - 通过二维码中的一次性密钥建立 AES-GCM 会话。
+/// - 通过配对二维码中的预共享密钥建立首次 AES-GCM 会话。
 /// - 在双方显示相同确认码后，由展示二维码的一端执行唯一一次授权。
 ///
 /// 注意：
-/// - 本层不持久化配对关系；调用方必须先保存 metadata 与安全密钥，再批准请求。
-/// - 失败、拒绝和过期时必须关闭 socket，不能留下可复用的一次性会话。
+/// - 本层不持久化配对关系；调用方必须先将 metadata 和逐设备共享密钥分别保存，再提交批准。
+/// - 失败、拒绝和过期时必须关闭 socket，不能留下未提交的配对关系。
 library;
 
 import 'dart:async';
@@ -19,9 +19,9 @@ import 'package:cryptography/cryptography.dart';
 
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/data/paired_secure_connection.dart';
+import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_pairing_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
-import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 
 final class LanPairingRequest {
