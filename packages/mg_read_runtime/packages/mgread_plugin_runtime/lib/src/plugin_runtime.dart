@@ -80,17 +80,17 @@ final class PluginRuntime {
     );
   }
 
-  /// Selects an output directory and packages one Windows Debug development source.
+  /// Selects an output directory and packages one Windows desktop development source.
   ///
   /// The project path, artifact bytes and destination path stay inside this
   /// Runtime package; the application receives only safe artifact metadata.
   Future<PluginDevelopmentPackage?> packageDevelopmentPlugin(
     String pluginId,
   ) async {
-    if (!kDebugMode || !Platform.isWindows) {
+    if (!Platform.isWindows) {
       throw const PluginRuntimeException(
         'unsupported',
-        'Development source packaging is available in Windows Debug only.',
+        'Development source packaging is available on Windows desktop only.',
       );
     }
     final directoryPath = await getDirectoryPath(confirmButtonText: '选择打包目录');
@@ -100,7 +100,7 @@ final class PluginRuntime {
 
   final _RuntimeSupervisor _supervisor;
 
-  /// Emits Windows Debug development-source build and activation changes.
+  /// Emits Windows desktop development-source build and activation changes.
   ///
   /// Android returns an empty stream and never starts a directory watcher or
   /// development build chain.
@@ -248,16 +248,16 @@ final class PluginRuntime {
     return _supervisor.importPluginArtifacts(artifacts);
   }
 
-  /// Selects a Windows Debug development-source directory.
+  /// Selects a Windows desktop development-source directory.
   ///
   /// Android deliberately has no development-directory capability; Android
   /// sources must be imported as validated `.mgplugin.js` or `.mgplugin`
   /// artifacts.
   Future<bool> selectDevelopmentDirectory() async {
-    if (!kDebugMode || !Platform.isWindows) {
+    if (!Platform.isWindows) {
       throw const PluginRuntimeException(
         'unsupported',
-        'Development source directories are available on Windows only.',
+        'Development source directories are available on Windows desktop only.',
       );
     }
     final path = await getDirectoryPath(confirmButtonText: '选择开发目录');

@@ -1,7 +1,7 @@
 /**
  * Runtime Core 的插件 artifact 传输控制处理器。
  *
- * 职责：处理局域网 artifact 列表、规划、导出、校验和 Windows Debug 开发数据源插件发布包。
+ * 职责：处理局域网 artifact 列表、规划、导出、校验和 Windows 桌面开发数据源插件发布包。
  * 注意：只返回受限元数据和一次性 token；路径、代码与 artifact 字节仍由 Runtime 私有资源层持有。
  */
 import type { PluginManager } from "./plugin-manager.js";

@@ -13,6 +13,7 @@ const sourceNodeDirectory = resolve(
 );
 const sourceNodeExecutable = resolve(sourceNodeDirectory, "node.exe");
 const sourceNodeLicense = resolve(sourceNodeDirectory, "LICENSE");
+const sourceNpmPackage = resolve(sourceNodeDirectory, "node_modules", "npm");
 const sourceDist = resolve(repositoryRoot, "dist");
 const sourceEntrypoint = resolve(sourceDist, "cli.js");
 const assetsRoot = resolve(
@@ -27,8 +28,9 @@ const stagedNodeDirectory = resolve(assetsRoot, "node");
 const stagedNodeExecutable = resolve(stagedNodeDirectory, "MgReadNode.exe");
 const stagedBuildNodeExecutable = resolve(stagedNodeDirectory, "node.exe");
 const stagedNodeLicense = resolve(stagedNodeDirectory, "LICENSE");
+const stagedNpmPackage = resolve(stagedNodeDirectory, "node_modules", "npm");
 const stagedDist = resolve(assetsRoot, "dist");
-const stagedNodeModules = resolve(assetsRoot, "node_modules");
+const stagedNodeModules = resolve(stagedNodeDirectory, "node_modules");
 const stagedDefaultPluginsDirectory = resolve(assetsRoot, "default-plugins");
 
 /**
@@ -70,16 +72,18 @@ assertInsideRepository(stagedNodeDirectory);
 assertInsideRepository(stagedNodeExecutable);
 assertInsideRepository(stagedBuildNodeExecutable);
 assertInsideRepository(stagedNodeLicense);
+assertInsideRepository(stagedNpmPackage);
 assertInsideRepository(stagedDist);
 assertInsideRepository(stagedNodeModules);
 assertInsideRepository(stagedDefaultPluginsDirectory);
 await requireReadable(sourceNodeDirectory, "the exact bundled Node distribution");
 await requireReadable(sourceNodeExecutable, "the exact bundled Node executable");
 await requireReadable(sourceNodeLicense, "the bundled Node license");
+await requireReadable(sourceNpmPackage, "the bundled npm CLI");
 await requireReadable(sourceDist, "the compiled Runtime entrypoint");
 await requireReadable(sourceEntrypoint, "the compiled Runtime main script");
 
-// These three paths are deterministic output of the pinned toolchain and are
+// These deterministic paths are output of the pinned toolchain and are
 // ignored by Git. The asset-root marker is intentionally preserved so an empty
 // source checkout still passes Flutter asset discovery before staging.
 await rm(stagedNodeDirectory, { force: true, recursive: true });
@@ -93,6 +97,7 @@ await copyFile(sourceNodeExecutable, stagedNodeExecutable);
 // the Job-managed executable so Debug builds never resolve an ambient Node.
 await copyFile(sourceNodeExecutable, stagedBuildNodeExecutable);
 await copyFile(sourceNodeLicense, stagedNodeLicense);
+await cp(sourceNpmPackage, stagedNpmPackage, { recursive: true });
 await cp(sourceDist, stagedDist, { recursive: true });
 
-process.stdout.write("Staged the pinned Windows Runtime asset bundle; plugin projects remain external.\n");
+process.stdout.write("Staged the pinned Windows Runtime asset bundle with its npm CLI; plugin projects remain external.\n");

@@ -1,5 +1,5 @@
 /**
- * Windows Debug development-project monitor.
+ * Windows desktop development-project monitor.
  *
  * Responsibilities:
  * - coalesce source-project filesystem changes by project;

@@ -39,9 +39,9 @@
 - 产物不得包含源码或 `node_modules`；descriptor、图标、大小和 SHA-256 必须可复核。
 - 构建库返回内存 bytes/fileName/format，只有 CLI 写入 artifact 目录。
 
-## Windows Debug 开发生命周期
+## Windows 桌面开发生命周期
 
-- Node Runtime 监听开发根下的项目变更；每个项目静默 1.5 秒后，通过仓库固定 Node/npm 执行该项目
+- Windows Debug/Release Node Runtime 都会监听用户选择的开发根下的项目变更；每个项目静默 1.5 秒后，通过随发布包携带的固定 Node/npm 执行该项目
   声明的 `npm run build`，不直接加载 TypeScript、不启动 `tsc -w`、不自动安装依赖。
 - 开发构建成功后，Runtime 从唯一私有 generation 路径加载新的 `dist` 并完成候选激活；只有激活成功才
   替换当前 generation。构建或激活失败保留旧版本。

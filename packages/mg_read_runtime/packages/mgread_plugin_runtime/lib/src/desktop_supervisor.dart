@@ -7,7 +7,7 @@ const _expectedNodeVersion = '24.16.0';
 const _protocolVersion = '1.2';
 
 /// Upper bound for child startup and readiness probes.
-// Release may install defaults before ready; Debug validates workspace projects.
+// Release and Debug validate the selected workspace before reporting ready.
 const _startupTimeout = Duration(seconds: 20);
 
 /// Upper bound for a single already-connected control request.
@@ -329,12 +329,6 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
         'The desktop Runtime has been closed.',
       );
     }
-    if (!kDebugMode) {
-      throw const PluginRuntimeException(
-        'unsupported',
-        'Development source directories are available in Windows Debug only.',
-      );
-    }
     final directory = Directory(path);
     if (!await directory.exists()) {
       throw const PluginRuntimeException(
@@ -499,7 +493,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       _process = process;
       _processStartCount += 1;
 
-      // Debug builds may spawn the pinned npm build child. Assign the Core
+      // Windows desktop builds may spawn the pinned npm build child. Assign the Core
       // first so every descendant belongs to the same kill-on-close Job.
       jobObject.assignProcess(process.pid);
 

@@ -5,7 +5,7 @@
 /// - 复用 Runtime artifact 与 Content Library 同步契约完成预览和事务导入。
 ///
 /// 注意：
-/// - Windows Debug development 数据源只能经 Runtime 构建为 artifact 后导出；本文件不读取项目目录或源码。
+/// - Windows 桌面 development 数据源只能经 Runtime 构建为 artifact 后导出；本文件不读取项目目录或源码。
 /// - 容器只串联 manifest 和原始 artifact 字节，不转换 single-file/archive，也不记录文件路径。
 library;
 
@@ -127,7 +127,7 @@ final class ImportExportService implements ImportExportCoordinator {
   @override
   Future<ImportExportExportPlan> prepareExport() async {
     // Runtime listExportableArtifacts builds a temporary artifact for every
-    // Windows Debug development source. Only the resulting bytes reach here.
+    // Windows desktop development source. Only the resulting bytes reach here.
     return ImportExportExportPlan(await _gateway.createManifest());
   }
 

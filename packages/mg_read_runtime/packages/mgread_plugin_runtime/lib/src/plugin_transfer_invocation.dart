@@ -82,7 +82,7 @@ final class MaterializedPluginArtifact {
   final Stream<List<int>> bytes;
 }
 
-/// Safe result of exporting one Windows Debug development source to a user-selected directory.
+/// Safe result of exporting one Windows desktop development source to a user-selected directory.
 @immutable
 final class PluginDevelopmentPackage {
   const PluginDevelopmentPackage({
@@ -141,7 +141,7 @@ final class PluginTransferListInvocation
   @override
   String get _wireMethod => 'plugins.transfer.list.v2';
 
-  // Listing exportable artifacts packages every Windows Debug development
+  // Listing exportable artifacts packages every Windows desktop development
   // source before returning. Keep it on the same bounded transfer window as
   // the other artifact operations instead of the five-second control window.
   @override

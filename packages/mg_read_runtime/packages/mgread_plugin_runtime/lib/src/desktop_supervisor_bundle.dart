@@ -19,10 +19,10 @@ final class _DesktopRuntimeBundle {
   /// Packaged first-run source archives, never visible to the main app.
   final Directory? bundledPluginDirectory;
 
-  /// Debug-only workspace projects loaded directly without installation.
+  /// User-selected workspace projects loaded directly without installation.
   final Directory? developmentPluginDirectory;
 
-  /// Repository-pinned npm CLI used only for Windows Debug source builds.
+  /// npm CLI packaged beside the exact Node executable for source builds.
   final File? developmentNpmCli;
 
   /// Opens a Runtime-owned directory through the Flutter Windows shell layer.
@@ -72,21 +72,24 @@ final class _DesktopRuntimeBundle {
     final dataRoot = Directory(
       _joinPath(<String>[localAppData, 'MgRead', 'runtime']),
     );
-    final developmentPluginDirectory = kDebugMode
-        ? _readConfiguredDevelopmentPluginDirectory(dataRoot) ??
-              _findDevelopmentPluginDirectory(<Directory>[
+    final developmentPluginDirectory =
+        _readConfiguredDevelopmentPluginDirectory(dataRoot) ??
+        (kDebugMode
+            ? _findDevelopmentPluginDirectory(<Directory>[
                 Directory.current,
                 appDirectory,
               ])
-        : null;
-    final developmentNpmCli = kDebugMode
-        ? _findDevelopmentNpmCli(<Directory>[
-            if (developmentPluginDirectory != null)
-              developmentPluginDirectory.parent.parent,
-            Directory.current,
-            appDirectory,
-          ])
-        : null;
+            : null);
+    final developmentNpmCli = File(
+      _joinPath(<String>[
+        bundleRoot.path,
+        'node',
+        'node_modules',
+        'npm',
+        'bin',
+        'npm-cli.js',
+      ]),
+    );
     return _DesktopRuntimeBundle(
       dataRoot: dataRoot,
       bundledPluginDirectory: null,
@@ -158,32 +161,6 @@ final class _DesktopRuntimeBundle {
       workingDirectory: runtimeRepositoryRoot,
     );
   }
-}
-
-File? _findDevelopmentNpmCli(Iterable<Directory> roots) {
-  for (final root in roots) {
-    var candidateRoot = root.absolute;
-    for (var depth = 0; depth < 6; depth += 1) {
-      final candidate = File(
-        _joinPath(<String>[
-          candidateRoot.path,
-          'packages',
-          'mg_read_runtime',
-          'tools',
-          'node-v24.16.0-win-x64',
-          'node_modules',
-          'npm',
-          'bin',
-          'npm-cli.js',
-        ]),
-      );
-      if (candidate.existsSync()) return candidate;
-      final parent = candidateRoot.parent;
-      if (parent.path == candidateRoot.path) break;
-      candidateRoot = parent;
-    }
-  }
-  return null;
 }
 
 /// Starts Explorer from the Flutter owner, outside the Node Job Object.

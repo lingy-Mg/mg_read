@@ -67,7 +67,7 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
 
   @override
   Widget build(BuildContext context) {
-    final bool canSelectDevelopmentDirectory = kDebugMode && Platform.isWindows;
+    final bool canSelectDevelopmentDirectory = Platform.isWindows;
     final bool canOpenPrivateDirectory = Platform.isWindows;
     return Scaffold(
       body: SafeArea(

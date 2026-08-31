@@ -1,6 +1,6 @@
 part of mgread_plugin_runtime;
 
-/// Stable kinds emitted after a Windows Debug development build settles.
+/// Stable kinds emitted after a Windows desktop development build settles.
 enum DevelopmentPluginChangeKind {
   added,
   updated,
