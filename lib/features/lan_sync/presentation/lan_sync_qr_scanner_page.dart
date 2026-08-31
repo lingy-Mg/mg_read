@@ -1,7 +1,7 @@
 /// 局域网同步二维码扫描页。
 ///
 /// 职责：
-/// - 管理相机扫描器生命周期并校验同步二维码。
+/// - 管理相机扫描器生命周期，按当前用途校验同步或配对二维码。
 /// - 仅向上层路由返回已验证的二维码载荷。
 ///
 /// 注意：
@@ -16,10 +16,38 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/lan_sync/domain/lan_pairing_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 
+enum LanSyncQrScannerPurpose {
+  sync,
+  pairing;
+
+  bool accepts(String payload) => switch (this) {
+    LanSyncQrScannerPurpose.sync => LanSyncQrPayload.decode(payload) != null,
+    LanSyncQrScannerPurpose.pairing => LanPairingQrPayload.decode(payload) != null,
+  };
+
+  String get title => switch (this) {
+    LanSyncQrScannerPurpose.sync => '扫描同步二维码',
+    LanSyncQrScannerPurpose.pairing => '扫码配对设备',
+  };
+
+  String get scanHint => switch (this) {
+    LanSyncQrScannerPurpose.sync => '将发送端二维码放入取景框',
+    LanSyncQrScannerPurpose.pairing => '将另一台设备的配对二维码放入取景框',
+  };
+
+  String get invalidMessage => switch (this) {
+    LanSyncQrScannerPurpose.sync => '这不是 MgRead 局域网同步二维码',
+    LanSyncQrScannerPurpose.pairing => '这不是 MgRead 设备配对二维码',
+  };
+}
+
 class LanSyncQrScannerPage extends StatefulWidget {
-  const LanSyncQrScannerPage({super.key});
+  const LanSyncQrScannerPage({super.key, this.purpose = LanSyncQrScannerPurpose.sync});
+
+  final LanSyncQrScannerPurpose purpose;
 
   @override
   State<LanSyncQrScannerPage> createState() => _LanSyncQrScannerPageState();
@@ -36,11 +64,12 @@ class _LanSyncQrScannerPageState extends State<LanSyncQrScannerPage> with Widget
   bool _isStarting = false;
   bool _shouldRun = true;
   bool _cameraUnavailable = false;
-  String _message = '将发送端二维码放入取景框';
+  late String _message;
 
   @override
   void initState() {
     super.initState();
+    _message = widget.purpose.scanHint;
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_startScanner());
@@ -98,8 +127,8 @@ class _LanSyncQrScannerPageState extends State<LanSyncQrScannerPage> with Widget
     for (final barcode in capture.barcodes) {
       final payload = barcode.rawValue;
       if (payload == null) continue;
-      if (LanSyncQrPayload.decode(payload) == null) {
-        if (mounted) setState(() => _message = '这不是 MgRead 局域网同步二维码');
+      if (!widget.purpose.accepts(payload)) {
+        if (mounted) setState(() => _message = widget.purpose.invalidMessage);
         continue;
       }
       _handled = true;
@@ -128,7 +157,7 @@ class _LanSyncQrScannerPageState extends State<LanSyncQrScannerPage> with Widget
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('扫描同步二维码'),
+        title: Text(widget.purpose.title),
         leading: IconButton(
           key: const Key('lan-sync-scanner-close'),
           onPressed: () => Navigator.of(context).pop(),
@@ -137,7 +166,7 @@ class _LanSyncQrScannerPageState extends State<LanSyncQrScannerPage> with Widget
         ),
       ),
       body: Semantics(
-        label: '局域网同步二维码扫描器',
+        label: widget.purpose == LanSyncQrScannerPurpose.pairing ? '设备配对二维码扫描器' : '局域网同步二维码扫描器',
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[

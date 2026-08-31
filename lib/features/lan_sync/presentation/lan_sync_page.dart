@@ -273,9 +273,12 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
   }
 
   Future<void> _scanAndPair() async {
-    final payload = await Navigator.of(
-      context,
-    ).push<String>(MaterialPageRoute<String>(fullscreenDialog: true, builder: (_) => const LanSyncQrScannerPage()));
+    final payload = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(
+        fullscreenDialog: true,
+        builder: (_) => const LanSyncQrScannerPage(purpose: LanSyncQrScannerPurpose.pairing),
+      ),
+    );
     if (!mounted || payload == null) return;
     await ref.read(deviceSyncControllerProvider.notifier).joinPairing(payload);
   }
