@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_controller.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
+import 'package:mg_read/features/lan_sync/application/lan_sync_network_environment.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
 import '../../../core/diagnostics/diagnostics_testkit.dart';
@@ -73,6 +74,7 @@ void main() {
       overrides: [
         diagnosticsManagerProvider.overrideWithValue(diagnostics),
         lanSyncGatewayProvider.overrideWithValue(const _EmptyGateway()),
+        lanSyncNetworkEnvironmentProvider.overrideWithValue(const _AvailableNetwork()),
       ],
     );
     addTearDown(container.dispose);
@@ -86,7 +88,12 @@ void main() {
   });
 
   test('gateway failure retains its stable stage and Runtime code', () async {
-    final container = ProviderContainer(overrides: [lanSyncGatewayProvider.overrideWithValue(const _FailingGateway())]);
+    final container = ProviderContainer(
+      overrides: [
+        lanSyncGatewayProvider.overrideWithValue(const _FailingGateway()),
+        lanSyncNetworkEnvironmentProvider.overrideWithValue(const _AvailableNetwork()),
+      ],
+    );
     addTearDown(container.dispose);
     final subscription = container.listen(lanSyncControllerProvider, (_, _) {}, fireImmediately: true);
     addTearDown(subscription.close);
@@ -101,6 +108,47 @@ void main() {
   test('capacity failure code has explicit LAN user feedback', () {
     expect(lanSyncFailureMessage('lan_sync_import_bookshelf_capacity_exceeded'), '书架已满，请先清理书籍');
   });
+
+  test('temporary transfer does not start without a local network', () async {
+    final gateway = _CountingGateway();
+    final container = ProviderContainer(
+      overrides: [
+        lanSyncGatewayProvider.overrideWithValue(gateway),
+        lanSyncNetworkEnvironmentProvider.overrideWithValue(const _UnavailableNetwork()),
+      ],
+    );
+    addTearDown(container.dispose);
+    final subscription = container.listen(lanSyncControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(subscription.close);
+
+    await container.read(lanSyncControllerProvider.notifier).startSending();
+
+    final state = container.read(lanSyncControllerProvider);
+    expect(state.phase, LanSyncPhase.failed);
+    expect(state.errorCode, 'lan_sync_local_network_unavailable');
+    expect(gateway.manifestCreateCount, 0);
+
+    container.read(lanSyncControllerProvider.notifier).reset();
+    await container.read(lanSyncControllerProvider.notifier).startReceiving();
+
+    final receivingState = container.read(lanSyncControllerProvider);
+    expect(receivingState.phase, LanSyncPhase.failed);
+    expect(receivingState.errorCode, 'lan_sync_local_network_unavailable');
+  });
+}
+
+final class _AvailableNetwork implements LanSyncNetworkEnvironment {
+  const _AvailableNetwork();
+
+  @override
+  Future<bool> isLocalNetworkAvailable() async => true;
+}
+
+final class _UnavailableNetwork implements LanSyncNetworkEnvironment {
+  const _UnavailableNetwork();
+
+  @override
+  Future<bool> isLocalNetworkAvailable() async => false;
 }
 
 class _EmptyGateway implements LanSyncGateway {
@@ -142,4 +190,14 @@ final class _FailingGateway extends _EmptyGateway {
 
   @override
   Future<LanSyncManifest> createManifest() async => throw const LanSyncGatewayException('runtime_invalid_response');
+}
+
+final class _CountingGateway extends _EmptyGateway {
+  int manifestCreateCount = 0;
+
+  @override
+  Future<LanSyncManifest> createManifest() async {
+    manifestCreateCount++;
+    return super.createManifest();
+  }
 }

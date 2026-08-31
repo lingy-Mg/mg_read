@@ -3,7 +3,8 @@
 /// 职责：
 /// - 管理首次配对、持久设备策略、前台发现和手动同步/拉取/推送。
 /// - 串行化所有入站/出站同步，避免 Runtime 批量导入状态互相覆盖。
-/// - 两端在线时由稳定设备 ID 决定唯一自动发起方，并在开发书源变化后立即推动一次同步。
+/// - Windows/Android 由 Windows 自动发起；同平台用稳定设备 ID 选主，避免双向重复同步。
+/// - 开发书源变化由桌面立即推动，Android 合并延迟后再推送，手动操作始终即时执行。
 ///
 /// 注意：
 /// - Provider 非 autoDispose；离开设置页只取消未完成的首次配对，不停止前台同步宿主。
@@ -19,6 +20,7 @@ import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
+import 'package:mg_read/features/lan_sync/application/lan_sync_network_environment.dart';
 import 'package:mg_read/features/lan_sync/application/paired_device_repository.dart';
 import 'package:mg_read/features/lan_sync/application/paired_sync_failure.dart';
 import 'package:mg_read/features/lan_sync/data/lan_pairing_transport.dart';
@@ -29,7 +31,9 @@ import 'package:mg_read/features/library/application/library_page_controller.dar
 import 'package:mg_read/features/library/application/library_page_state.dart';
 
 part 'device_sync_messages.dart';
+part 'device_sync_network.dart';
 part 'device_sync_operations.dart';
+part 'device_sync_pairing.dart';
 part 'device_sync_state.dart';
 
 final deviceSyncControllerProvider = NotifierProvider<DeviceSyncController, DeviceSyncState>(DeviceSyncController.new);
@@ -54,13 +58,28 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
   Timer? _endpointExpiryTimer;
   Timer? _reconciliationTimer;
   @override
+  Timer? _networkProbeTimer;
+  @override
+  Timer? _mobileDevelopmentSyncTimer;
+  @override
+  Future<bool>? _networkRefreshFuture;
+  @override
   String? _activeDeviceId;
+  @override
   LanPairingServer? _pairingServer;
+  @override
   StreamSubscription<LanPairingRequest>? _pairingSubscription;
+  @override
   LanPairingRequest? _pairingRequest;
+  @override
   LanPairingClientConnection? _pairingClient;
+  @override
   int _pairingGeneration = 0;
+  @override
   bool _disposed = false;
+  @override
+  bool _networkAvailable = false;
+  @override
   bool _foregroundDesired = false;
 
   @override
@@ -88,12 +107,25 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
       final saved = await devices.list();
       _identity = identity;
       if (!_foregroundDesired || _disposed) return;
-      if (saved.isNotEmpty) await _ensureHost();
+      if (saved.isNotEmpty) {
+        _networkAvailable = await _readNetworkAvailability();
+        if (_networkAvailable) await _ensureHost();
+      }
       if (_disposed || !_foregroundDesired) {
         await _closeHost();
         return;
       }
-      state = state.copyWith(devices: saved, started: true, lastErrorCode: null);
+      state = state.copyWith(
+        devices: saved,
+        started: true,
+        lastErrorCode: null,
+        lastMessage: saved.isNotEmpty && !_networkAvailable
+            ? Platform.isAndroid
+                  ? '等待 Wi-Fi 连接后自动同步'
+                  : '等待可用局域网连接后自动同步'
+            : null,
+      );
+      if (saved.isNotEmpty) _startNetworkMonitor();
     } on Object catch (error, stackTrace) {
       _startFuture = null;
       if (!_disposed) {
@@ -124,11 +156,13 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
   Future<void> stop() async {
     _foregroundDesired = false;
     _startFuture = null;
+    _stopNetworkMonitor();
     await _closeHost();
     _endpoints.clear();
     if (!_disposed) state = state.copyWith(onlineDeviceIds: const <String>{}, started: false);
   }
 
+  @override
   Future<void> _closeHost() async {
     final starting = _hostStartFuture;
     if (starting != null) {
@@ -168,17 +202,22 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
     await host?.close();
   }
 
+  @override
   Future<void> reloadDevices() async {
     final devices = await ref.read(pairedDeviceRepositoryProvider).list();
+    state = state.copyWith(devices: devices);
     if (devices.isEmpty) {
+      _stopNetworkMonitor();
       await _closeHost();
       _endpoints.clear();
-    } else if (_host == null) {
-      await _ensureHost();
+    } else {
+      _startNetworkMonitor();
+      await _refreshNetworkAvailability();
     }
-    state = state.copyWith(devices: devices, onlineDeviceIds: _onlineIds());
+    state = state.copyWith(onlineDeviceIds: _onlineIds());
   }
 
+  @override
   Future<void> _ensureHost() {
     final existing = _hostStartFuture;
     if (existing != null) return existing;
@@ -198,7 +237,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
   }
 
   Future<void> _startHost() async {
-    if (_host != null || _disposed || !_foregroundDesired) return;
+    if (_host != null || _disposed || !_foregroundDesired || !_networkAvailable) return;
     final identity = _identity ?? await ref.read(deviceIdentityStoreProvider).loadOrCreateIdentity();
     _identity = identity;
     final host = await PairedSyncHost.start(
@@ -208,6 +247,9 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
       onIncoming: _handleIncoming,
       onWakeRequest: _handleWakeRequest,
       onWakeFailure: _handleWakeFailure,
+      announcementInterval: _announcementInterval,
+      advertisedPeerLifetime: _advertisedPeerLifetime,
+      canAnnounce: _canAnnounce,
     );
     if (_disposed || !_foregroundDesired) {
       await host.close();
@@ -215,159 +257,14 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
     }
     _host = host;
     _endpointSubscription = host.endpoints.listen(_handleEndpoint);
-    _endpointExpiryTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+    _endpointExpiryTimer = Timer.periodic(_endpointCheckInterval, (_) {
       if (!_disposed) state = state.copyWith(onlineDeviceIds: _onlineIds());
     });
-    _reconciliationTimer = Timer.periodic(const Duration(minutes: 2), (_) {
+    _reconciliationTimer = Timer.periodic(_reconciliationInterval, (_) {
       if (!_disposed && _foregroundDesired) {
         unawaited(syncAvailablePeers());
       }
     });
-  }
-
-  Future<void> beginPairing() async {
-    final generation = ++_pairingGeneration;
-    await _closePairingResources();
-    state = state.copyWith(
-      pairingPhase: DevicePairingPhase.creatingOffer,
-      pairingOffer: null,
-      pairingCode: null,
-      pairingPeer: null,
-      lastErrorCode: null,
-    );
-    try {
-      final identity = _identity ?? await ref.read(deviceIdentityStoreProvider).loadOrCreateIdentity();
-      _identity = identity;
-      if (generation != _pairingGeneration) return;
-      final server = await LanPairingServer.start(identity);
-      if (generation != _pairingGeneration) {
-        await server.close();
-        return;
-      }
-      _pairingServer = server;
-      _pairingSubscription = server.requests.listen(_handlePairingRequest);
-      unawaited(
-        server.done.then((_) {
-          if (generation == _pairingGeneration && identical(_pairingServer, server)) {
-            _pairingServer = null;
-            _pairingFailed('device_pairing_offer_expired');
-          }
-        }),
-      );
-      state = state.copyWith(pairingPhase: DevicePairingPhase.showingOffer, pairingOffer: server.offer);
-    } on Object {
-      if (generation == _pairingGeneration) _pairingFailed('device_pairing_offer_failed');
-    }
-  }
-
-  void _handlePairingRequest(LanPairingRequest request) {
-    final previous = _pairingRequest;
-    if (previous != null) {
-      unawaited(request.reject());
-      return;
-    }
-    _pairingRequest = request;
-    state = state.copyWith(pairingPhase: DevicePairingPhase.confirming, pairingCode: request.pairingCode, pairingPeer: request.peer);
-    unawaited(
-      request.done.then((_) {
-        if (identical(_pairingRequest, request)) {
-          _pairingRequest = null;
-          state = state.copyWith(
-            pairingPhase: _pairingServer == null ? DevicePairingPhase.failed : DevicePairingPhase.showingOffer,
-            pairingCode: null,
-            pairingPeer: null,
-            lastErrorCode: _pairingServer == null ? 'device_pairing_offer_expired' : 'device_pairing_request_expired',
-          );
-        }
-      }),
-    );
-  }
-
-  Future<void> approvePairing() async {
-    final request = _pairingRequest;
-    if (request == null || !request.isActive || state.pairingPhase != DevicePairingPhase.confirming) {
-      return;
-    }
-    var saved = false;
-    try {
-      await _savePairing(request.peer, request.sharedSecret);
-      saved = true;
-      _pairingRequest = null;
-      await request.approve();
-      await _closePairingResources();
-      await reloadDevices();
-      state = state.copyWith(
-        pairingPhase: DevicePairingPhase.completed,
-        pairingOffer: null,
-        pairingCode: null,
-        pairingPeer: request.peer,
-        lastMessage: '已配对 ${request.peer.label}，以后无需发送端确认',
-      );
-    } on Object {
-      if (saved) await _deletePairing(request.peer.deviceId);
-      await request.reject();
-      _pairingFailed('device_pairing_save_failed');
-    }
-  }
-
-  Future<void> rejectPairing() async {
-    final request = _pairingRequest;
-    _pairingRequest = null;
-    await request?.reject();
-    state = state.copyWith(pairingPhase: DevicePairingPhase.showingOffer, pairingCode: null, pairingPeer: null);
-  }
-
-  Future<void> joinPairing(String payload) async {
-    final offer = LanPairingQrPayload.decode(payload);
-    if (offer == null) {
-      _pairingFailed('device_pairing_qr_invalid');
-      return;
-    }
-    final generation = ++_pairingGeneration;
-    await _closePairingResources();
-    state = state.copyWith(
-      pairingPhase: DevicePairingPhase.joining,
-      pairingOffer: null,
-      pairingCode: null,
-      pairingPeer: null,
-      lastErrorCode: null,
-    );
-    try {
-      final identity = _identity ?? await ref.read(deviceIdentityStoreProvider).loadOrCreateIdentity();
-      _identity = identity;
-      final client = await LanPairingClientConnection.connect(offer, identity);
-      if (generation != _pairingGeneration) {
-        await client.close();
-        return;
-      }
-      _pairingClient = client;
-      state = state.copyWith(pairingPhase: DevicePairingPhase.waitingApproval, pairingCode: client.pairingCode, pairingPeer: client.peer);
-      final peer = await client.waitForApproval();
-      if (generation != _pairingGeneration) return;
-      await _savePairing(peer, client.sharedSecret);
-      try {
-        await client.confirmCommitted();
-      } on Object {
-        await _deletePairing(peer.deviceId);
-        rethrow;
-      }
-      _pairingClient = null;
-      await reloadDevices();
-      state = state.copyWith(
-        pairingPhase: DevicePairingPhase.completed,
-        pairingCode: null,
-        pairingPeer: peer,
-        lastMessage: '已配对 ${peer.label}，可立即拉取或等待自动同步',
-      );
-    } on Object {
-      if (generation == _pairingGeneration) _pairingFailed('device_pairing_failed');
-    }
-  }
-
-  Future<void> cancelPairing() async {
-    _pairingGeneration++;
-    await _closePairingResources();
-    state = state.copyWith(pairingPhase: DevicePairingPhase.idle, pairingOffer: null, pairingCode: null, pairingPeer: null);
   }
 
   Future<void> updateDevice(PairedDevice device) async {
@@ -429,6 +326,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
       );
       return;
     }
+    if (!await _ensureNetworkForOperation(device, operation: operation, automatic: false)) return;
     final endpoint = _endpoints[deviceId];
     if (endpoint == null || endpoint.expiresAtUtc.isBefore(DateTime.now().toUtc())) {
       final failure = PairedSyncFailure.fromException(
@@ -447,11 +345,21 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
 
   Future<void> syncAvailablePeers({bool pushChanges = false}) async {
     await start();
+    if (pushChanges && Platform.isAndroid) {
+      _scheduleMobileDevelopmentSync();
+      return;
+    }
+    await _syncAvailablePeersNow(pushChanges: pushChanges);
+  }
+
+  @override
+  Future<void> _syncAvailablePeersNow({required bool pushChanges}) async {
+    if (!await _refreshNetworkAvailability()) return;
     final now = DateTime.now().toUtc();
     for (final device in state.devices) {
       final endpoint = _endpoints[device.deviceId];
       if (!device.autoSync || endpoint == null || endpoint.expiresAtUtc.isBefore(now)) continue;
-      if (!pushChanges && (_identity?.deviceId.compareTo(device.deviceId) ?? 1) >= 0) continue;
+      if (!pushChanges && !_shouldAutomaticallyInitiate(device)) continue;
       await _runOperation(device, endpoint, operation: PairedSyncOperation.bidirectional, automatic: true);
     }
   }
@@ -474,10 +382,11 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
     _endpoints[endpoint.deviceId] = endpoint;
     state = state.copyWith(onlineDeviceIds: _onlineIds());
     if (!device.autoSync ||
+        !_networkAvailable ||
         wasOnline ||
         _activeDeviceId != null ||
         state.busyDeviceId != null ||
-        (_identity?.deviceId.compareTo(device.deviceId) ?? 1) >= 0) {
+        !_shouldAutomaticallyInitiate(device)) {
       return;
     }
     unawaited(_runOperation(device, endpoint, operation: PairedSyncOperation.bidirectional, automatic: true));
@@ -516,6 +425,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
     }
   }
 
+  @override
   Future<void> _savePairing(PairedDevice peer, List<int> secret) async {
     await _serializeRepositoryMutation(() async {
       final store = ref.read(deviceIdentityStoreProvider);
@@ -529,6 +439,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
     });
   }
 
+  @override
   Future<void> _deletePairing(String deviceId) async {
     await _serializeRepositoryMutation(() async {
       await ref.read(pairedDeviceRepositoryProvider).remove(deviceId);
@@ -563,7 +474,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
           !device.autoSync ||
           endpoint == null ||
           endpoint.expiresAtUtc.isBefore(DateTime.now().toUtc()) ||
-          (_identity?.deviceId.compareTo(deviceId) ?? 1) >= 0) {
+          !_shouldAutomaticallyInitiate(device)) {
         return;
       }
       unawaited(_runOperation(device, endpoint, operation: PairedSyncOperation.bidirectional, automatic: true));
@@ -670,6 +581,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
     return Set<String>.unmodifiable(_endpoints.keys.where((id) => _device(id) != null));
   }
 
+  @override
   void _pairingFailed(String code) {
     unawaited(_closePairingResources());
     state = state.copyWith(
@@ -681,6 +593,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
     );
   }
 
+  @override
   Future<void> _closePairingResources() async {
     final subscription = _pairingSubscription;
     _pairingSubscription = null;

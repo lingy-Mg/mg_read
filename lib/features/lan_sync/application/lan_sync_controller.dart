@@ -11,12 +11,14 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
+import 'package:mg_read/features/lan_sync/application/lan_sync_network_environment.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
@@ -92,6 +94,7 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     if (!_isCurrent(generation)) return;
     state = const LanSyncViewState(role: LanSyncRole.sender, phase: LanSyncPhase.preparing, message: '正在准备插件与书架清单');
     _startSpan(LanSyncRole.sender);
+    if (!await _ensureLocalNetwork(generation)) return;
     _recordStage('manifest_prepare_started');
     try {
       final gateway = ref.read(lanSyncGatewayProvider);
@@ -131,6 +134,7 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     if (!_isCurrent(generation)) return;
     state = const LanSyncViewState(role: LanSyncRole.receiver, phase: LanSyncPhase.discovering, message: '正在查找同一局域网内的发送设备');
     _startSpan(LanSyncRole.receiver);
+    if (!await _ensureLocalNetwork(generation)) return;
     _recordStage('discovery_started');
     try {
       final discovery = await LanSyncDiscoveryService.start();
@@ -507,6 +511,20 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     state = LanSyncViewState(role: role, phase: LanSyncPhase.failed, message: lanSyncFailureMessage(code), errorCode: code);
   }
 
+  Future<bool> _ensureLocalNetwork(int generation) async {
+    var available = false;
+    try {
+      available = await ref.read(lanSyncNetworkEnvironmentProvider).isLocalNetworkAvailable();
+    } on Object {
+      available = false;
+    }
+    if (!_isCurrent(generation)) return false;
+    if (available) return true;
+    _recordStage('network_unavailable');
+    _fail(Platform.isAndroid ? 'lan_sync_wifi_required' : 'lan_sync_local_network_unavailable');
+    return false;
+  }
+
   void _startSpan(LanSyncRole role) {
     _sessionStopwatch
       ..reset()
@@ -642,6 +660,8 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
 
 /// Converts privacy-safe LAN failure codes into user-facing copy.
 String lanSyncFailureMessage(String code) => switch (code) {
+  'lan_sync_wifi_required' => '手机未连接 Wi-Fi，已停止局域网同步和广播',
+  'lan_sync_local_network_unavailable' => '未检测到可用局域网，请检查 Wi-Fi 或网线连接',
   'lan_sync_manual_address_invalid' => '连接地址格式不正确',
   'lan_sync_address_not_private' => '只能连接同一私有局域网内的设备',
   'lan_sync_discovery_failed' => '无法查找局域网设备，请尝试手动输入地址',

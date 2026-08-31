@@ -37,10 +37,12 @@ import 'package:mg_read/features/library/application/library_book_visibility_cha
 import 'package:mg_read/features/library/application/library_book_detail_launcher.dart';
 import 'package:mg_read/features/library/application/library_book_refresher.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
+import 'package:mg_read/features/lan_sync/application/lan_sync_network_environment.dart';
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
 import 'package:mg_read/features/lan_sync/application/paired_device_repository.dart';
 import 'package:mg_read/features/lan_sync/data/deferred_lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/data/mg_read_lan_sync_gateway.dart';
+import 'package:mg_read/features/lan_sync/data/platform_lan_sync_network_environment.dart';
 import 'package:mg_read/features/lan_sync/data/persistent_paired_device_repository.dart';
 import 'package:mg_read/features/lan_sync/data/secure_device_identity_store.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
@@ -241,6 +243,7 @@ Future<void> bootstrapMgReadApp({
         diagnosticsManagerProvider.overrideWithValue(diagnostics),
         fatalErrorReporterProvider.overrideWithValue(fatalErrorReporter),
         deviceIdentityStoreProvider.overrideWithValue(SecureDeviceIdentityStore()),
+        lanSyncNetworkEnvironmentProvider.overrideWithValue(PlatformLanSyncNetworkEnvironment()),
         pairedDeviceRepositoryProvider.overrideWithValue(DeferredPairedDeviceRepository(getPersistence)),
         diagnosticsQueryProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),
         diagnosticsCaptureProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),

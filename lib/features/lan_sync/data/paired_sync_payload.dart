@@ -69,7 +69,7 @@ Future<void> _sendManifest(PairedSecureConnection connection, LanSyncManifest ma
     connection.sendControl(<String, Object?>{'type': 'manifest', 'value': manifest.toJson()}, maxBytes: lanSyncMaxManifestBytes);
 
 Future<LanSyncManifest> _readManifest(PairedSecureConnection connection) async {
-  final frame = await connection.readControl(maxBytes: lanSyncMaxManifestBytes).timeout(lanSyncTransferIdleTimeout);
+  final frame = await _readPairedSessionControl(connection, timeout: lanSyncTransferIdleTimeout, maxBytes: lanSyncMaxManifestBytes);
   final value = frame['value'];
   if (frame['type'] != 'manifest' || value is! Map) throw const LanSyncTransportException('lan_sync_manifest_invalid');
   try {
@@ -86,7 +86,7 @@ Future<void> _sendSelection(PairedSecureConnection connection, _Selection select
 });
 
 Future<_Selection> _readSelection(PairedSecureConnection connection, LanSyncManifest manifest) async {
-  final frame = await connection.readControl().timeout(lanSyncTransferIdleTimeout);
+  final frame = await _readPairedSessionControl(connection, timeout: lanSyncTransferIdleTimeout);
   final rawPlugins = frame['pluginIds'];
   final rawShelf = frame['shelfItemIds'];
   if (frame['type'] != 'selection' || rawPlugins is! List || rawShelf is! List) {
@@ -185,7 +185,7 @@ Future<_AppliedSummary> _receivePayload(
     for (final plugin in manifest.plugins)
       if (selection.pluginIds.contains(plugin.id)) plugin.id: plugin,
   };
-  final payloadFrame = await connection.readControl(maxBytes: lanSyncMaxManifestBytes).timeout(lanSyncTransferIdleTimeout);
+  final payloadFrame = await _readPairedSessionControl(connection, timeout: lanSyncTransferIdleTimeout, maxBytes: lanSyncMaxManifestBytes);
   final rawPlugins = payloadFrame['plugins'];
   if (payloadFrame['type'] != 'payloadManifest' ||
       rawPlugins is! List ||
@@ -216,6 +216,7 @@ Future<_AppliedSummary> _receivePayload(
     await gateway.preparePluginImports(selectedById.values.toList(growable: false));
     while (true) {
       final frame = await connection.readFrame().timeout(lanSyncTransferIdleTimeout);
+      _throwIfPairedSessionFailureFrame(frame);
       if (frame is! LanSyncControlFrame) throw const LanSyncTransportException('lan_sync_frame_unexpected');
       final value = frame.value;
       if (value['type'] == 'transferComplete') {
@@ -252,6 +253,7 @@ Future<_AppliedSummary> _receivePayload(
       try {
         while (pluginBytes < plugin.bytes) {
           final chunk = await connection.readFrame().timeout(lanSyncTransferIdleTimeout);
+          _throwIfPairedSessionFailureFrame(chunk);
           if (chunk is! LanSyncBinaryFrame) {
             throw const LanSyncTransportException('lan_sync_plugin_frame_invalid');
           }
@@ -267,7 +269,7 @@ Future<_AppliedSummary> _receivePayload(
           await controller.close();
         }
       }
-      final end = await connection.readControl().timeout(lanSyncTransferIdleTimeout);
+      final end = await _readPairedSessionControl(connection, timeout: lanSyncTransferIdleTimeout);
       if (end['type'] != 'pluginEnd' || end['pluginId'] != plugin.id || end['bytes'] != pluginBytes) {
         throw const LanSyncTransportException('lan_sync_plugin_size_mismatch');
       }

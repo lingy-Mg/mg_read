@@ -67,7 +67,7 @@ class PairedDevicesSection extends StatelessWidget {
               ],
             ),
             Text(
-              state.started ? '两端打开 MgRead 后会自动同步；任意一端也可选择双向同步、拉取或推送。' : '正在准备自动发现服务…',
+              state.started ? '两端打开后自动同步；手机仅在 Wi-Fi 下低频发现，电脑优先发起。也可手动双向同步、拉取或推送。' : '正在准备自动发现服务…',
               style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
             ),
             if (supportsScanner && !state.pairingBusy) ...<Widget>[

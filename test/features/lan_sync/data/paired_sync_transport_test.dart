@@ -170,6 +170,94 @@ void main() {
     expect(serverGateway.appliedIds, <String>['phone-book']);
   });
 
+  test('peer manifest failure is returned before the encrypted session closes', () async {
+    final addresses = await eligibleLanSyncAddresses();
+    if (addresses.isEmpty) return;
+    final secret = List<int>.generate(32, (index) => index + 27);
+    const phoneIdentity = LocalDeviceIdentity(deviceId: 'phone_manifest_1234567', label: '手机');
+    const desktopIdentity = LocalDeviceIdentity(deviceId: 'desktop_manifest_12345', label: '开发电脑');
+    final phoneFailure = Completer<Object>();
+    final host = await PairedSyncHost.start(
+      identity: phoneIdentity,
+      devices: _MemoryPairedDeviceRepository(_device(desktopIdentity, PairedDevicePlatform.windows)),
+      identityStore: _MemoryIdentityStore(phoneIdentity, <String, List<int>>{desktopIdentity.deviceId: secret}),
+      onIncoming: (session) async {
+        try {
+          await session.run(gateway: const _FailingManifestGateway());
+        } on Object catch (error) {
+          if (!phoneFailure.isCompleted) phoneFailure.complete(error);
+        }
+      },
+    );
+    addTearDown(host.close);
+    final session = await PairedSyncClientSession.connectAny(
+      endpoints: <PairedSyncEndpoint>[
+        PairedSyncEndpoint(
+          address: addresses.first,
+          deviceId: phoneIdentity.deviceId,
+          expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+          label: phoneIdentity.label,
+          port: host.port,
+        ),
+      ],
+      identity: desktopIdentity,
+      peer: _device(phoneIdentity, PairedDevicePlatform.android),
+      sharedSecret: secret,
+    );
+
+    await expectLater(
+      session.run(gateway: _ShelfGateway('desktop-book')),
+      throwsA(
+        isA<PairedSyncPeerFailureException>()
+            .having((error) => error.code, 'code', 'lan_sync_local_manifest_runtime_unavailable')
+            .having((error) => error.stage, 'stage', 'local_manifest')
+            .having((error) => error.errorText, 'errorText', contains('runtime_unavailable')),
+      ),
+    );
+    expect(await phoneFailure.future, isA<LanSyncGatewayException>());
+  });
+
+  test('announcement policy suppresses mobile UDP until Wi-Fi is available', () async {
+    final addresses = await eligibleLanSyncAddresses();
+    if (addresses.isEmpty) return;
+    final secret = List<int>.generate(32, (index) => index + 29);
+    const desktopIdentity = LocalDeviceIdentity(deviceId: 'desktop_announce_1234', label: '开发电脑');
+    const phoneIdentity = LocalDeviceIdentity(deviceId: 'phone_announce_123456', label: '手机');
+    final desktopHost = await PairedSyncHost.start(
+      identity: desktopIdentity,
+      devices: _MemoryPairedDeviceRepository(_device(phoneIdentity, PairedDevicePlatform.android)),
+      identityStore: _MemoryIdentityStore(desktopIdentity, <String, List<int>>{phoneIdentity.deviceId: secret}),
+      onIncoming: (session) => session.close(),
+      discoveryPort: 0,
+    );
+    addTearDown(desktopHost.close);
+    var wifiAvailable = false;
+    final phoneHost = await PairedSyncHost.start(
+      identity: phoneIdentity,
+      devices: _MemoryPairedDeviceRepository(_device(desktopIdentity, PairedDevicePlatform.windows)),
+      identityStore: _MemoryIdentityStore(phoneIdentity, <String, List<int>>{desktopIdentity.deviceId: secret}),
+      onIncoming: (session) => session.close(),
+      discoveryPort: desktopHost.discoveryPort,
+      announcementInterval: const Duration(milliseconds: 30),
+      advertisedPeerLifetime: const Duration(seconds: 20),
+      canAnnounce: () async => wifiAvailable,
+    );
+    addTearDown(phoneHost.close);
+    final received = <PairedSyncEndpoint>[];
+    final subscription = desktopHost.endpoints.listen(received.add);
+    addTearDown(subscription.cancel);
+
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    expect(received.where((endpoint) => endpoint.deviceId == phoneIdentity.deviceId), isEmpty);
+
+    wifiAvailable = true;
+    final endpoint = await desktopHost.endpoints
+        .firstWhere((candidate) => candidate.deviceId == phoneIdentity.deviceId)
+        .timeout(const Duration(seconds: 3));
+
+    expect(endpoint.expiresAtUtc.difference(DateTime.now().toUtc()), greaterThan(const Duration(seconds: 15)));
+  });
+
   test('authenticated wake request asks a Windows peer to reverse-connect once', () async {
     final addresses = await eligibleLanSyncAddresses();
     if (addresses.isEmpty) return;
@@ -379,6 +467,39 @@ final class _MemoryPairedDeviceRepository implements PairedDeviceRepository {
   Future<void> upsert(PairedDevice device) async {
     _devices[device.deviceId] = device;
   }
+}
+
+final class _FailingManifestGateway implements LanSyncGateway {
+  const _FailingManifestGateway();
+
+  @override
+  Future<LanSyncManifest> createManifest() => throw const LanSyncGatewayException('runtime_unavailable');
+
+  @override
+  Future<LanSyncApplyResult> applyImport({
+    required LanSyncManifest manifest,
+    required Map<String, LanSyncConflictChoice> conflictChoices,
+    required Set<String> availablePluginIds,
+    required LanSyncPluginImportResult pluginResult,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<void> cancelPluginImports() async {}
+
+  @override
+  Future<LanSyncPluginImportResult> finishPluginImports() async => throw UnimplementedError();
+
+  @override
+  Future<void> importPluginArchive(LanSyncPluginDescriptor plugin, Stream<List<int>> bytes) async => throw UnimplementedError();
+
+  @override
+  Future<Stream<List<int>>> openPluginArchive(LanSyncPluginDescriptor plugin) async => throw UnimplementedError();
+
+  @override
+  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins) async => throw UnimplementedError();
+
+  @override
+  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest) async => throw UnimplementedError();
 }
 
 final class _MemoryIdentityStore implements DeviceIdentityStore {

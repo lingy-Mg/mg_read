@@ -31,6 +31,15 @@ final class PairedSyncFailure {
       stage = error.stage;
       code ??= 'device_sync_partial';
     }
+    if (cause is PairedSyncPeerFailureException) {
+      return PairedSyncFailure(
+        code: cause.code,
+        stage: cause.stage,
+        errorText: cause.errorText,
+        stackTrace: causeStackTrace.toString(),
+        remote: true,
+      );
+    }
     stage = _failureStage(stage, cause);
     return PairedSyncFailure(
       code: code ?? _failureCode(stage, cause),
@@ -191,10 +200,12 @@ final class PairedSyncDiagnosticSession {
 String pairedSyncFailureMessage(PairedDevice device, PairedSyncFailure failure, {required bool automatic}) {
   final retry = automatic ? '，稍后会自动重试' : '';
   if (failure.remote) {
-    return '${device.label} 回连后在“${pairedSyncStageLabel(failure.stage)}”阶段失败$retry';
+    return '${device.label} 在“${pairedSyncStageLabel(failure.stage)}”阶段失败$retry';
   }
   return switch (failure.code) {
     'lan_sync_peer_offline' => '${device.label} 当前未被局域网发现，请确认两端都已打开',
+    'lan_sync_wifi_required' => '手机未连接 Wi-Fi，已停止局域网同步和广播',
+    'lan_sync_local_network_unavailable' => '电脑未检测到可用局域网，请检查 Wi-Fi 或网线连接',
     'lan_sync_reverse_connect_timeout' => '${device.label} 已收到请求但未能回连；请确认电脑端已更新并保持运行$retry',
     'paired_secret_missing' => '与 ${device.label} 的配对密钥已丢失，请重新配对',
     'lan_sync_connect_failed' when device.platform == PairedDevicePlatform.windows =>
@@ -210,6 +221,7 @@ String pairedSyncFailureMessage(PairedDevice device, PairedSyncFailure failure, 
 String pairedSyncStageLabel(String stage) => switch (stage) {
   'identity' => '读取配对身份',
   'host_start' => '启动局域网同步服务',
+  'network' => '检查局域网环境',
   'policy' => '检查同步方向',
   'discovery' => '发现在线设备',
   'wake_send' => '发送反向连接请求',
@@ -246,15 +258,15 @@ String _failureStage(String stage, Object error) {
     'lan_sync_selection_invalid' => 'selection_exchange',
     'lan_sync_plugin_size_mismatch' ||
     'lan_sync_plugin_frame_invalid' ||
-    'lan_sync_transfer_incomplete' ||
-    'lan_sync_disconnected' => stage == 'send_payload' ? 'send_payload' : 'receive_payload',
+    'lan_sync_transfer_incomplete' => stage == 'send_payload' ? 'send_payload' : 'receive_payload',
     _ => stage,
   };
 }
 
 String _technicalErrorText(Object error) {
   if (error is LanSyncGatewayException) return 'LanSyncGatewayException(${error.code})';
-  return '${error.runtimeType}: $error';
+  final text = error.toString();
+  return text.startsWith('${error.runtimeType}:') ? text : '${error.runtimeType}: $text';
 }
 
 String _singleLine(String value, {required int maximumLength}) {

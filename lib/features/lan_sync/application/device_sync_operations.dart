@@ -4,13 +4,10 @@
 /// [DeviceSyncController] 持有。所有失败都先完成业务终态，再投影到 UI 与诊断。
 part of 'device_sync_controller.dart';
 
-abstract base class _DeviceSyncOperationsBase extends Notifier<DeviceSyncState> {
-  Map<String, PairedSyncEndpoint> get _endpoints;
+abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
   Map<String, int> get _retryFailures;
   Map<String, Timer> get _retryTimers;
   Map<String, _PendingWakeRequest> get _pendingWakeRequests;
-  LocalDeviceIdentity? get _identity;
-  PairedSyncHost? get _host;
   String? get _activeDeviceId;
   set _activeDeviceId(String? value);
 
@@ -20,13 +17,6 @@ abstract base class _DeviceSyncOperationsBase extends Notifier<DeviceSyncState> 
   bool _completeWakeRequest(String? requestId, PairedSyncRunSummary summary);
   bool _failWakeRequest(String? requestId, Object error, StackTrace stackTrace);
   _PendingWakeRequest? _pendingWakeForDevice(String deviceId);
-  PairedSyncDiagnosticSession _startPairedDiagnostics(
-    PairedDevice device, {
-    required PairedSyncOperation operation,
-    required bool automatic,
-    required String role,
-  });
-  void _showFailure(PairedDevice device, PairedSyncFailure failure, {required bool automatic});
   Future<PairedSyncFailure?> _refreshAfterSync();
   Set<String> _onlineIds();
 
@@ -36,6 +26,7 @@ abstract base class _DeviceSyncOperationsBase extends Notifier<DeviceSyncState> 
     required PairedSyncOperation operation,
     bool automatic = false,
   }) async {
+    if (!await _ensureNetworkForOperation(device, operation: operation, automatic: automatic)) return;
     if (Platform.isAndroid && device.platform == PairedDevicePlatform.windows) {
       await _requestReverseOperation(device, endpoint, operation: operation, automatic: automatic);
       return;

@@ -1,5 +1,8 @@
 package com.mgread.mg_read
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -7,7 +10,7 @@ import io.flutter.plugin.common.MethodChannel
 
 /**
  * Hosts the app-level Android channels that do not belong to a reusable Flutter package.
- * Device manufacturer/model are public build properties and require no runtime permission.
+ * Device manufacturer/model and current network capabilities require no runtime permission.
  */
 class MainActivity : AudioServiceActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -18,6 +21,15 @@ class MainActivity : AudioServiceActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "getDeviceLabel" -> result.success(deviceLabel())
+                else -> result.notImplemented()
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            NETWORK_ENVIRONMENT_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isWifiConnected" -> result.success(isWifiConnected())
                 else -> result.notImplemented()
             }
         }
@@ -33,7 +45,15 @@ class MainActivity : AudioServiceActivity() {
         return "$manufacturer $model"
     }
 
+    private fun isWifiConnected(): Boolean {
+        val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        return connectivity.allNetworks.any { network ->
+            connectivity.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        }
+    }
+
     private companion object {
         const val DEVICE_IDENTITY_CHANNEL = "mgread/device_identity"
+        const val NETWORK_ENVIRONMENT_CHANNEL = "mgread/network_environment"
     }
 }
