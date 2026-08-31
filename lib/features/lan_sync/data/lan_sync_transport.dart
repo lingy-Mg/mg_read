@@ -20,6 +20,8 @@ import 'dart:typed_data';
 import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
+part 'lan_sync_manifest_codec.dart';
+
 typedef LanSyncPluginStreamOpener = Future<Stream<List<int>>> Function(LanSyncPluginDescriptor plugin);
 
 sealed class LanSyncSenderEvent {
@@ -48,16 +50,19 @@ final class LanSyncSenderDone extends LanSyncSenderEvent {
 }
 
 final class LanSyncSenderFailed extends LanSyncSenderEvent {
-  const LanSyncSenderFailed(this.code);
+  const LanSyncSenderFailed(this.code, {this.error, this.stackTrace});
   final String code;
+  final Object? error;
+  final StackTrace? stackTrace;
 }
 
 final class LanSyncTransportException implements Exception {
-  const LanSyncTransportException(this.code);
+  const LanSyncTransportException(this.code, {this.reason});
   final String code;
+  final String? reason;
 
   @override
-  String toString() => 'LanSyncTransportException($code)';
+  String toString() => reason == null ? 'LanSyncTransportException($code)' : 'LanSyncTransportException($code, reason: $reason)';
 }
 
 final class LanSyncDiscoveryService {
@@ -290,21 +295,21 @@ final class LanSyncSenderService {
       await connection.sendControl(<String, Object?>{'type': 'transferComplete', 'pluginCount': selected.length, 'bytes': completedBytes});
       _events.add(const LanSyncSenderDone());
       await close();
-    } on TimeoutException {
+    } on TimeoutException catch (error, stackTrace) {
       await connection.close();
       _activeSocket = null;
       if (!_closed) {
-        _events.add(const LanSyncSenderFailed('lan_sync_timeout'));
+        _events.add(LanSyncSenderFailed('lan_sync_timeout', error: error, stackTrace: stackTrace));
       }
-    } on LanSyncTransportException catch (error) {
+    } on LanSyncTransportException catch (error, stackTrace) {
       await connection.close();
       _activeSocket = null;
-      if (!_closed) _events.add(LanSyncSenderFailed(error.code));
-    } on Object {
+      if (!_closed) _events.add(LanSyncSenderFailed(error.code, error: error, stackTrace: stackTrace));
+    } on Object catch (error, stackTrace) {
       await connection.close();
       _activeSocket = null;
       if (!_closed) {
-        _events.add(const LanSyncSenderFailed('lan_sync_transport_failed'));
+        _events.add(LanSyncSenderFailed('lan_sync_transport_failed', error: error, stackTrace: stackTrace));
       }
     }
   }
@@ -415,21 +420,7 @@ final class LanSyncReceiverConnection {
       throw const LanSyncTransportException('lan_sync_pairing_rejected');
     }
     final frame = await _connection.readControl(maxBytes: lanSyncMaxManifestBytes);
-    if (frame['type'] != 'manifest') {
-      throw const LanSyncTransportException('lan_sync_manifest_invalid');
-    }
-    final raw = frame['value'];
-    if (raw is! Map) {
-      throw const LanSyncTransportException('lan_sync_manifest_invalid');
-    }
-    final manifest = LanSyncManifest.fromJson(
-      raw.map<String, Object?>((key, value) {
-        if (key is! String) {
-          throw const LanSyncTransportException('lan_sync_manifest_invalid');
-        }
-        return MapEntry(key, value);
-      }),
-    );
+    final manifest = _decodeLanSyncManifestFrame(frame);
     _manifest = manifest;
     return manifest;
   }

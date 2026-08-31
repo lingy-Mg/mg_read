@@ -217,6 +217,58 @@ void main() {
     expect(await phoneFailure.future, isA<LanSyncGatewayException>());
   });
 
+  test('peer manifest rejection returns the safe invalid field reason', () async {
+    final addresses = await eligibleLanSyncAddresses();
+    if (addresses.isEmpty) return;
+    final secret = List<int>.generate(32, (index) => index + 28);
+    const phoneIdentity = LocalDeviceIdentity(deviceId: 'phone_invalid_manifest_1', label: '手机');
+    const desktopIdentity = LocalDeviceIdentity(deviceId: 'desktop_invalid_manifest', label: '开发电脑');
+    final phoneFailure = Completer<Object>();
+    final host = await PairedSyncHost.start(
+      identity: phoneIdentity,
+      devices: _MemoryPairedDeviceRepository(_device(desktopIdentity, PairedDevicePlatform.windows)),
+      identityStore: _MemoryIdentityStore(phoneIdentity, <String, List<int>>{desktopIdentity.deviceId: secret}),
+      onIncoming: (session) async {
+        try {
+          await session.run(gateway: _ShelfGateway('phone-book'));
+        } on Object catch (error) {
+          if (!phoneFailure.isCompleted) phoneFailure.complete(error);
+        }
+      },
+    );
+    addTearDown(host.close);
+    final session = await PairedSyncClientSession.connectAny(
+      endpoints: <PairedSyncEndpoint>[
+        PairedSyncEndpoint(
+          address: addresses.first,
+          deviceId: phoneIdentity.deviceId,
+          expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+          label: phoneIdentity.label,
+          port: host.port,
+        ),
+      ],
+      identity: desktopIdentity,
+      peer: _device(phoneIdentity, PairedDevicePlatform.android),
+      sharedSecret: secret,
+    );
+
+    await expectLater(
+      session.run(gateway: _InvalidShelfGateway()),
+      throwsA(
+        isA<PairedSyncPeerFailureException>()
+            .having((error) => error.code, 'code', 'lan_sync_manifest_invalid')
+            .having((error) => error.stage, 'stage', 'manifest_exchange')
+            .having((error) => error.errorText, 'errorText', contains('invalid_content_kind')),
+      ),
+    );
+    expect(
+      await phoneFailure.future,
+      isA<LanSyncTransportException>()
+          .having((error) => error.code, 'code', 'lan_sync_manifest_invalid')
+          .having((error) => error.reason, 'reason', 'invalid_content_kind'),
+    );
+  });
+
   test('announcement policy suppresses mobile UDP until Wi-Fi is available', () async {
     final addresses = await eligibleLanSyncAddresses();
     if (addresses.isEmpty) return;
@@ -525,7 +577,7 @@ final class _MemoryIdentityStore implements DeviceIdentityStore {
   }
 }
 
-final class _ShelfGateway implements LanSyncGateway {
+class _ShelfGateway implements LanSyncGateway {
   _ShelfGateway(this.localId);
 
   final String localId;
@@ -588,6 +640,25 @@ final class _ShelfGateway implements LanSyncGateway {
 
   @override
   Future<Stream<List<int>>> openPluginArchive(LanSyncPluginDescriptor plugin) async => const Stream<List<int>>.empty();
+}
+
+final class _InvalidShelfGateway extends _ShelfGateway {
+  _InvalidShelfGateway() : super('invalid-audio');
+
+  @override
+  Future<LanSyncManifest> createManifest() async => const LanSyncManifest(
+    plugins: <LanSyncPluginDescriptor>[],
+    shelfItems: <LanSyncShelfItem>[
+      LanSyncShelfItem(
+        pluginId: 'org.example.source',
+        pluginVersion: '1.0.0',
+        remoteContentId: 'invalid-audio',
+        contentKind: 'audio',
+        title: '不可传输的音频条目',
+      ),
+    ],
+    skippedShelfItems: 0,
+  );
 }
 
 final class _PluginGateway implements LanSyncGateway, LanSyncPairedGateway {

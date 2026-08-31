@@ -58,15 +58,23 @@ final class PairedSyncRunSummary {
     required this.sentBooks,
     required this.sentPlugins,
     required this.developmentConflicts,
+    this.skippedShelfItems = 0,
   });
 
-  const PairedSyncRunSummary.empty() : receivedBooks = 0, receivedPlugins = 0, sentBooks = 0, sentPlugins = 0, developmentConflicts = 0;
+  const PairedSyncRunSummary.empty()
+    : receivedBooks = 0,
+      receivedPlugins = 0,
+      sentBooks = 0,
+      sentPlugins = 0,
+      developmentConflicts = 0,
+      skippedShelfItems = 0;
 
   final int receivedBooks;
   final int receivedPlugins;
   final int sentBooks;
   final int sentPlugins;
   final int developmentConflicts;
+  final int skippedShelfItems;
 }
 
 /// The connection failed after at least one side confirmed durable changes.
@@ -469,6 +477,7 @@ final class PairedSyncClientSession {
         sentBooks: remoteApplied.books,
         sentPlugins: remoteApplied.plugins,
         developmentConflicts: receivePlan.developmentConflicts + remoteApplied.developmentConflicts,
+        skippedShelfItems: localManifest.skippedShelfItems + remoteManifest.skippedShelfItems,
       );
     } on Object catch (error, stackTrace) {
       await _sendPairedSessionFailure(_connection, error, stage: stage);
@@ -562,6 +571,7 @@ final class PairedSyncServerSession {
         sentBooks: remoteApplied.books,
         sentPlugins: remoteApplied.plugins,
         developmentConflicts: receivePlan.developmentConflicts + remoteApplied.developmentConflicts,
+        skippedShelfItems: localManifest.skippedShelfItems + remoteManifest.skippedShelfItems,
       );
     } on Object catch (error, stackTrace) {
       await _sendPairedSessionFailure(_connection, error, stage: stage);

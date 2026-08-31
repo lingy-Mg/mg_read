@@ -150,6 +150,7 @@ final class PairedSyncDiagnosticSession {
           ..._terminalAttributes(resultState: 'success'),
           'pluginCount': DiagnosticValue.int64(summary.receivedPlugins + summary.sentPlugins),
           'itemCount': DiagnosticValue.int64(summary.receivedBooks + summary.sentBooks),
+          'skippedItemCount': DiagnosticValue.int64(summary.skippedShelfItems),
         }),
       );
     } on Object {
@@ -264,7 +265,6 @@ String _failureStage(String stage, Object error) {
 }
 
 String _technicalErrorText(Object error) {
-  if (error is LanSyncGatewayException) return 'LanSyncGatewayException(${error.code})';
   final text = error.toString();
   return text.startsWith('${error.runtimeType}:') ? text : '${error.runtimeType}: $text';
 }

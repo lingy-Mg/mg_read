@@ -71,11 +71,16 @@ Future<void> _sendManifest(PairedSecureConnection connection, LanSyncManifest ma
 Future<LanSyncManifest> _readManifest(PairedSecureConnection connection) async {
   final frame = await _readPairedSessionControl(connection, timeout: lanSyncTransferIdleTimeout, maxBytes: lanSyncMaxManifestBytes);
   final value = frame['value'];
-  if (frame['type'] != 'manifest' || value is! Map) throw const LanSyncTransportException('lan_sync_manifest_invalid');
+  if (frame['type'] != 'manifest') {
+    throw const LanSyncTransportException('lan_sync_manifest_invalid', reason: 'invalid_frame_type');
+  }
+  if (value is! Map) {
+    throw const LanSyncTransportException('lan_sync_manifest_invalid', reason: 'invalid_manifest_value');
+  }
   try {
     return LanSyncManifest.fromJson(_stringMap(value));
-  } on FormatException {
-    throw const LanSyncTransportException('lan_sync_manifest_invalid');
+  } on FormatException catch (error, stackTrace) {
+    Error.throwWithStackTrace(LanSyncTransportException('lan_sync_manifest_invalid', reason: _safeManifestReason(error)), stackTrace);
   }
 }
 
@@ -355,3 +360,8 @@ Map<String, Object?> _stringMap(Map<dynamic, dynamic> value) => value.map<String
   if (key is! String) throw const LanSyncTransportException('lan_sync_control_invalid');
   return MapEntry(key, value);
 });
+
+String _safeManifestReason(FormatException error) {
+  final reason = error.message.toString();
+  return RegExp(r'^[a-z0-9_]{3,96}$').hasMatch(reason) ? reason : 'invalid_manifest';
+}

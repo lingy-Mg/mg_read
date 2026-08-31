@@ -108,7 +108,7 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
       _sender = sender;
       _senderSubscription = sender.events.listen(
         _onSenderEvent,
-        onError: (Object error, StackTrace _) => _onAsyncFailure('sender_event', error),
+        onError: (Object error, StackTrace stackTrace) => _onAsyncFailure('sender_event', error, stackTrace),
       );
       final connectionOffer = sender.addresses.isEmpty
           ? null
@@ -122,8 +122,10 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
         totalBytes: manifest.plugins.where((item) => item.transferable).fold<int>(0, (sum, item) => sum + item.bytes),
       );
       _recordStage('sender_ready');
-    } on Object catch (error) {
-      if (_isCurrent(generation)) _fail(_failureCodeFor('prepare', error));
+    } on Object catch (error, stackTrace) {
+      if (_isCurrent(generation)) {
+        _fail(_failureCodeFor('prepare', error), errorLocation: 'prepare', error: error, stackTrace: stackTrace);
+      }
     }
   }
 
@@ -145,10 +147,12 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
       _discovery = discovery;
       _discoverySubscription = discovery.peers.listen(
         _onPeer,
-        onError: (Object error, StackTrace _) => _onAsyncFailure('discovery', error),
+        onError: (Object error, StackTrace stackTrace) => _onAsyncFailure('discovery', error, stackTrace),
       );
-    } on Object catch (error) {
-      if (_isCurrent(generation)) _fail(_failureCodeFor('discovery', error));
+    } on Object catch (error, stackTrace) {
+      if (_isCurrent(generation)) {
+        _fail(_failureCodeFor('discovery', error), errorLocation: 'discovery', error: error, stackTrace: stackTrace);
+      }
     }
   }
 
@@ -189,8 +193,10 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     try {
       await _discoverySubscription?.cancel();
       await _discovery?.close();
-    } on Object catch (error) {
-      if (_isCurrent(generation)) _fail(_failureCodeFor('discovery_close', error));
+    } on Object catch (error, stackTrace) {
+      if (_isCurrent(generation)) {
+        _fail(_failureCodeFor('discovery_close', error), errorLocation: 'discovery_close', error: error, stackTrace: stackTrace);
+      }
       return;
     }
     _discoverySubscription = null;
@@ -218,8 +224,10 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
         peers: <LanSyncPeer>[receiver.peer],
       );
       _recordStage('pairing_ready');
-    } on Object catch (error) {
-      if (_isCurrent(generation)) _fail(_failureCodeFor('connect', error));
+    } on Object catch (error, stackTrace) {
+      if (_isCurrent(generation)) {
+        _fail(_failureCodeFor('connect', error), errorLocation: 'connect', error: error, stackTrace: stackTrace);
+      }
     }
   }
 
@@ -261,8 +269,10 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
         ),
       );
       _recordStage('manifest_preview_completed');
-    } on Object catch (error) {
-      if (_isCurrent(generation)) _fail(_failureCodeFor('preview', error));
+    } on Object catch (error, stackTrace) {
+      if (_isCurrent(generation)) {
+        _fail(_failureCodeFor('preview', error), errorLocation: 'preview', error: error, stackTrace: stackTrace);
+      }
     }
   }
 
@@ -433,8 +443,10 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
       _recordStage('library_apply_completed');
       _completeSpan('success', errorCode: pluginResult.failureCode);
       await _disposeResources();
-    } on Object catch (error) {
-      if (_isCurrent(generation)) _fail(_failureCodeFor('import', error));
+    } on Object catch (error, stackTrace) {
+      if (_isCurrent(generation)) {
+        _fail(_failureCodeFor('import', error), errorLocation: 'import', error: error, stackTrace: stackTrace);
+      }
     }
   }
 
@@ -481,8 +493,8 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
         );
         _recordStage('plugin_transport_completed');
         _completeSpan('success');
-      case LanSyncSenderFailed(:final code):
-        _fail(code);
+      case LanSyncSenderFailed(:final code, :final error, :final stackTrace):
+        _fail(code, errorLocation: 'sender_transport', error: error, stackTrace: stackTrace);
     }
   }
 
@@ -501,10 +513,16 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     state = const LanSyncViewState();
   }
 
-  void _fail(String code, {bool keepRole = false}) {
+  void _fail(String code, {bool keepRole = false, String? errorLocation, Object? error, StackTrace? stackTrace}) {
     _generation++;
     _recordStage('failed');
-    _completeSpan('error', errorCode: code);
+    _completeSpan(
+      'error',
+      errorCode: code,
+      errorLocation: errorLocation,
+      errorText: error == null ? null : _technicalErrorText(error),
+      stackTrace: stackTrace,
+    );
     final role = keepRole ? state.role : null;
     unawaited(_cancelPluginImportsSafely());
     unawaited(_disposeResources());
@@ -544,7 +562,7 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     }
   }
 
-  void _completeSpan(String resultState, {String? errorCode}) {
+  void _completeSpan(String resultState, {String? errorCode, String? errorLocation, String? errorText, StackTrace? stackTrace}) {
     final span = _span;
     if (span == null) return;
     _span = null;
@@ -554,9 +572,13 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
       if (state.manifest case final manifest?) ...<String, DiagnosticValue>{
         'pluginCount': DiagnosticValue.int64(manifest.plugins.length),
         'itemCount': DiagnosticValue.int64(manifest.shelfItems.length),
+        'skippedItemCount': DiagnosticValue.int64(manifest.skippedShelfItems),
       },
       'bytes': DiagnosticValue.int64(state.transferredBytes),
       if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
+      if (errorLocation != null) 'errorLocation': DiagnosticValue.string(errorLocation),
+      if (errorText != null) 'errorText': DiagnosticValue.string(errorText),
+      if (stackTrace != null) 'stackTrace': DiagnosticValue.string(stackTrace.toString()),
     });
     try {
       if (errorCode?.contains('timeout') ?? false) {
@@ -597,11 +619,11 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     }
   }
 
-  void _onAsyncFailure(String stage, Object error) {
+  void _onAsyncFailure(String stage, Object error, StackTrace stackTrace) {
     if (state.phase == LanSyncPhase.cancelled || state.phase == LanSyncPhase.failed) {
       return;
     }
-    _fail(_failureCodeFor(stage, error));
+    _fail(_failureCodeFor(stage, error), errorLocation: stage, error: error, stackTrace: stackTrace);
   }
 
   Future<void> _cancelPluginImportsSafely() async {
@@ -666,6 +688,8 @@ String lanSyncFailureMessage(String code) => switch (code) {
   'lan_sync_address_not_private' => '只能连接同一私有局域网内的设备',
   'lan_sync_discovery_failed' => '无法查找局域网设备，请尝试手动输入地址',
   'lan_sync_connect_failed' => '连接失败，请确认两台设备在同一网络',
+  'lan_sync_manifest_invalid' => '同步清单内容无效或版本不兼容，请查看 Debug 控制台中的具体原因',
+  'lan_sync_prepare_manifest_invalid' => '本机同步清单包含不兼容数据，请查看 Debug 控制台中的具体原因',
   'lan_sync_preview_failed' => '同步清单无法读取或版本不兼容',
   'lan_sync_import_failed' => '导入未完成，本机原有书架不会被删除',
   'lan_sync_import_$bookshelfCapacityExceededCode' => '书架已满，请先清理书籍',
@@ -678,6 +702,12 @@ String _failureCodeFor(String stage, Object error) {
   if (error is LanSyncGatewayException) return 'lan_sync_${stage}_${error.code}';
   if (error is TimeoutException) return 'lan_sync_timeout';
   return 'lan_sync_${stage}_failed';
+}
+
+String _technicalErrorText(Object error) {
+  final text = error.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+  final value = text.startsWith('${error.runtimeType}:') ? text : '${error.runtimeType}: $text';
+  return value.length <= 1024 ? value : '${value.substring(0, 1023)}…';
 }
 
 int _selectedPluginBytes(LanSyncManifest manifest, Set<String> selectedPluginIds) =>

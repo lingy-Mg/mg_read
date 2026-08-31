@@ -77,7 +77,7 @@ String _pairedSessionFailureCode(String stage, Object error) {
 }
 
 String _boundedPairedFailureText(Object error) {
-  final raw = error is LanSyncGatewayException ? 'LanSyncGatewayException(${error.code})' : error.toString();
+  final raw = error.toString();
   final normalized = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
   if (normalized.isEmpty) return error.runtimeType.toString();
   return normalized.length <= 512 ? normalized : normalized.substring(0, 512);

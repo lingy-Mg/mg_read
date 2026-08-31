@@ -532,6 +532,7 @@ abstract final class AppDiagnosticEvents {
       'peerPlatform': _string,
       'pluginCount': _int64,
       'itemCount': _int64,
+      'skippedItemCount': _int64,
       'bytes': _int64,
       'resultState': _string,
       'errorCode': _string,

@@ -105,8 +105,37 @@ void main() {
     expect(state.errorCode, 'lan_sync_prepare_runtime_invalid_response');
   });
 
+  test('temporary transfer failure logs the safe reason and complete application stack', () async {
+    final kit = DiagnosticsTestkit();
+    addTearDown(kit.dispose);
+    final container = ProviderContainer(
+      overrides: [
+        diagnosticsManagerProvider.overrideWithValue(kit.manager),
+        lanSyncGatewayProvider.overrideWithValue(const _DetailedFailingGateway()),
+        lanSyncNetworkEnvironmentProvider.overrideWithValue(const _AvailableNetwork()),
+      ],
+    );
+    addTearDown(container.dispose);
+    final subscription = container.listen(lanSyncControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(subscription.close);
+
+    await container.read(lanSyncControllerProvider.notifier).startSending();
+
+    final terminal = kit.sink.events.singleWhere((event) => event.eventName == 'lan.sync.session.error');
+    expect((terminal.attributes.values['errorCode']! as DiagnosticStringValue).value, 'lan_sync_prepare_manifest_invalid');
+    expect((terminal.attributes.values['errorLocation']! as DiagnosticStringValue).value, 'prepare');
+    expect((terminal.attributes.values['errorText']! as DiagnosticStringValue).value, contains('invalid_content_kind'));
+    expect((terminal.attributes.values['stackTrace']! as DiagnosticStringValue).value, contains('detailed-manifest-stack'));
+    final console = const DiagnosticConsoleFormatter().format(terminal);
+    expect(console, contains('invalid_content_kind'));
+    expect(console, contains('detailed-manifest-stack'));
+    expect(console, isNot(contains('secret-book-title')));
+  });
+
   test('capacity failure code has explicit LAN user feedback', () {
     expect(lanSyncFailureMessage('lan_sync_import_bookshelf_capacity_exceeded'), '书架已满，请先清理书籍');
+    expect(lanSyncFailureMessage('lan_sync_manifest_invalid'), contains('Debug 控制台'));
+    expect(lanSyncFailureMessage('lan_sync_prepare_manifest_invalid'), contains('Debug 控制台'));
   });
 
   test('temporary transfer does not start without a local network', () async {
@@ -190,6 +219,16 @@ final class _FailingGateway extends _EmptyGateway {
 
   @override
   Future<LanSyncManifest> createManifest() async => throw const LanSyncGatewayException('runtime_invalid_response');
+}
+
+final class _DetailedFailingGateway extends _EmptyGateway {
+  const _DetailedFailingGateway();
+
+  @override
+  Future<LanSyncManifest> createManifest() => Future<LanSyncManifest>.error(
+    const LanSyncGatewayException('manifest_invalid', reason: 'invalid_content_kind'),
+    StackTrace.fromString('detailed-manifest-stack'),
+  );
 }
 
 final class _CountingGateway extends _EmptyGateway {

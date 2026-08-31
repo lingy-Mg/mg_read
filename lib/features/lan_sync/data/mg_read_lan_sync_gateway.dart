@@ -49,12 +49,9 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     final snapshot = includeShelf
         ? await _library.createSyncSnapshot()
         : const LibrarySyncSnapshot(items: <LibrarySyncItem>[], skippedSourceLessItems: 0);
+    final shelf = _projectShelfItems(snapshot);
     if (!includePlugins) {
-      return LanSyncManifest(
-        plugins: const <LanSyncPluginDescriptor>[],
-        shelfItems: List<LanSyncShelfItem>.unmodifiable(snapshot.items.map(_toLanShelfItem)),
-        skippedShelfItems: snapshot.skippedSourceLessItems,
-      );
+      return _validatedManifest(plugins: const <LanSyncPluginDescriptor>[], shelfItems: shelf.items, skippedShelfItems: shelf.skipped);
     }
     final installed = await _runtime.invoke(const InstalledPluginsInvocation());
     final artifacts = deferPluginArtifacts ? const <PluginTransferArtifact>[] : await _runtime.invoke(const PluginTransferListInvocation());
@@ -63,7 +60,7 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     final artifactsById = <String, PluginTransferArtifact>{for (final artifact in artifacts) artifact.pluginId: artifact};
     final offersById = <String, PluginTransferOffer>{for (final offer in offers) offer.pluginId: offer};
     final requestedVersions = <String, String>{
-      for (final item in snapshot.items) item.pluginId: item.producerPluginVersion,
+      for (final item in shelf.items) item.pluginId: item.pluginVersion,
       for (final plugin in installed)
         if (plugin.activeVersion != null)
           plugin.id: plugin.status == 'development'
@@ -95,10 +92,10 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
         ),
       );
     }
-    return LanSyncManifest(
+    return _validatedManifest(
       plugins: List<LanSyncPluginDescriptor>.unmodifiable(plugins),
-      shelfItems: List<LanSyncShelfItem>.unmodifiable(snapshot.items.map(_toLanShelfItem)),
-      skippedShelfItems: snapshot.skippedSourceLessItems,
+      shelfItems: shelf.items,
+      skippedShelfItems: shelf.skipped,
     );
   }
 
@@ -450,6 +447,70 @@ int _compareSemver(String left, String right) {
     if (textComparison != 0) return textComparison;
   }
   return leftIdentifiers.length.compareTo(rightIdentifiers.length);
+}
+
+final class _LanSyncShelfProjection {
+  const _LanSyncShelfProjection({required this.items, required this.skipped});
+
+  final List<LanSyncShelfItem> items;
+  final int skipped;
+}
+
+_LanSyncShelfProjection _projectShelfItems(LibrarySyncSnapshot snapshot) {
+  final items = <LanSyncShelfItem>[];
+  var skipped = snapshot.skippedSourceLessItems;
+  for (final item in snapshot.items) {
+    final projected = _toLanShelfItem(item);
+    if (_isValidShelfItem(projected)) {
+      items.add(projected);
+      continue;
+    }
+    final withoutProgress = projected.progress == null ? null : _withoutProgress(projected);
+    if (withoutProgress != null && _isValidShelfItem(withoutProgress)) {
+      items.add(withoutProgress);
+      continue;
+    }
+    skipped++;
+  }
+  return _LanSyncShelfProjection(items: List<LanSyncShelfItem>.unmodifiable(items), skipped: skipped);
+}
+
+bool _isValidShelfItem(LanSyncShelfItem item) {
+  try {
+    LanSyncShelfItem.fromJson(item.toJson());
+    return true;
+  } on FormatException {
+    return false;
+  }
+}
+
+LanSyncShelfItem _withoutProgress(LanSyncShelfItem item) => LanSyncShelfItem(
+  pluginId: item.pluginId,
+  pluginVersion: item.pluginVersion,
+  remoteContentId: item.remoteContentId,
+  contentKind: item.contentKind,
+  title: item.title,
+  author: item.author,
+  coverUrl: item.coverUrl,
+  sourceName: item.sourceName,
+);
+
+LanSyncManifest _validatedManifest({
+  required List<LanSyncPluginDescriptor> plugins,
+  required List<LanSyncShelfItem> shelfItems,
+  required int skippedShelfItems,
+}) {
+  final manifest = LanSyncManifest(plugins: plugins, shelfItems: shelfItems, skippedShelfItems: skippedShelfItems);
+  try {
+    return LanSyncManifest.fromJson(manifest.toJson());
+  } on FormatException catch (error, stackTrace) {
+    Error.throwWithStackTrace(LanSyncGatewayException('manifest_invalid', reason: _safeManifestReason(error)), stackTrace);
+  }
+}
+
+String _safeManifestReason(FormatException error) {
+  final reason = error.message.toString();
+  return RegExp(r'^[a-z0-9_]{3,96}$').hasMatch(reason) ? reason : 'invalid_manifest';
 }
 
 LanSyncShelfItem _toLanShelfItem(LibrarySyncItem item) => LanSyncShelfItem(

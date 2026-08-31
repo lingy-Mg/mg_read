@@ -43,9 +43,13 @@ final class LanSyncMaterializedPlugin {
 
 /// A stable, privacy-safe failure surfaced by the LAN-sync data boundary.
 final class LanSyncGatewayException implements Exception {
-  const LanSyncGatewayException(this.code);
+  const LanSyncGatewayException(this.code, {this.reason});
 
   final String code;
+  final String? reason;
+
+  @override
+  String toString() => reason == null ? 'LanSyncGatewayException($code)' : 'LanSyncGatewayException($code, reason: $reason)';
 }
 
 final class LanSyncPluginImportResult {

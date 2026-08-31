@@ -45,6 +45,45 @@ void main() {
     await doneEvent;
   });
 
+  test('temporary receiver reports the safe field reason for an invalid manifest', () async {
+    final sender = await LanSyncSenderService.start(
+      manifest: const LanSyncManifest(
+        plugins: <LanSyncPluginDescriptor>[],
+        shelfItems: <LanSyncShelfItem>[
+          LanSyncShelfItem(
+            pluginId: 'source.example',
+            pluginVersion: '1.0.0',
+            remoteContentId: 'audio-1',
+            contentKind: 'audio',
+            title: '不可传输的音频条目',
+          ),
+        ],
+        skippedShelfItems: 0,
+      ),
+      openPlugin: (_) async => const Stream<List<int>>.empty(),
+    );
+    addTearDown(sender.close);
+    final receiver = await LanSyncReceiverConnection.connect(
+      LanSyncPeer(
+        sessionId: sender.sessionId,
+        label: 'invalid sender',
+        address: sender.addresses.first,
+        port: sender.port,
+        expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+      ),
+    );
+    addTearDown(receiver.close);
+
+    await expectLater(
+      receiver.confirmAndReadManifest(),
+      throwsA(
+        isA<LanSyncTransportException>()
+            .having((error) => error.code, 'code', 'lan_sync_manifest_invalid')
+            .having((error) => error.reason, 'reason', 'invalid_content_kind'),
+      ),
+    );
+  });
+
   test('v2 sender explicitly rejects a v1 handshake', () async {
     final sender = await LanSyncSenderService.start(
       manifest: const LanSyncManifest(plugins: <LanSyncPluginDescriptor>[], shelfItems: <LanSyncShelfItem>[], skippedShelfItems: 0),
