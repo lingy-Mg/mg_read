@@ -40,12 +40,16 @@ final class LanPairingRequest {
   final LocalDeviceIdentity _localIdentity;
   final Completer<void> _completion = Completer<void>();
   bool _completed = false;
+  bool _responding = false;
 
   Future<void> get done => _completion.future;
+  bool get isActive => !_completed && !_responding;
 
   Future<void> approve() async {
-    if (_completed) return;
-    _completed = true;
+    if (!isActive) {
+      throw const LanSyncTransportException('lan_sync_pairing_expired');
+    }
+    _responding = true;
     try {
       await _connection.sendControl(<String, Object?>{
         'type': 'paired',
@@ -53,14 +57,21 @@ final class LanPairingRequest {
         'label': _localIdentity.label,
         'platform': _localPlatform.name,
       });
+      final committed = await _connection.readControl().timeout(lanSyncHandshakeTimeout);
+      if (committed['type'] != 'pairCommitted' || committed['deviceId'] != peer.deviceId) {
+        throw const LanSyncTransportException('lan_sync_handshake_invalid');
+      }
+      await _connection.sendControl(<String, Object?>{'type': 'pairComplete'});
     } finally {
+      _completed = true;
       await _connection.close();
       if (!_completion.isCompleted) _completion.complete();
     }
   }
 
   Future<void> reject() async {
-    if (_completed) return;
+    if (_completed || _responding) return;
+    _responding = true;
     _completed = true;
     try {
       await _connection.sendControl(<String, Object?>{'type': 'pairRejected'});
@@ -72,19 +83,34 @@ final class LanPairingRequest {
 }
 
 final class LanPairingServer {
-  LanPairingServer._({required this.offer, required this._server, required this._identity});
+  LanPairingServer._({
+    required this.offer,
+    required this._server,
+    required this._identity,
+    required this._requestLifetime,
+    required this._sessionLifetime,
+  });
 
   final LanPairingOffer offer;
   final ServerSocket _server;
   final LocalDeviceIdentity _identity;
+  final Duration _requestLifetime;
+  final Duration _sessionLifetime;
   final StreamController<LanPairingRequest> _requests = StreamController<LanPairingRequest>.broadcast();
   final Set<Socket> _sockets = <Socket>{};
+  final Set<LanPairingRequest> _pendingRequests = <LanPairingRequest>{};
+  final Completer<void> _completion = Completer<void>();
   Timer? _expiry;
   bool _closed = false;
 
   Stream<LanPairingRequest> get requests => _requests.stream;
+  Future<void> get done => _completion.future;
 
-  static Future<LanPairingServer> start(LocalDeviceIdentity identity) async {
+  static Future<LanPairingServer> start(
+    LocalDeviceIdentity identity, {
+    Duration requestLifetime = const Duration(minutes: 2),
+    Duration sessionLifetime = lanSyncSessionLifetime,
+  }) async {
     final server = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     final addresses = await eligibleLanSyncAddresses();
     if (addresses.isEmpty) {
@@ -102,6 +128,8 @@ final class LanPairingServer {
       ),
       server: server,
       identity: identity,
+      requestLifetime: requestLifetime,
+      sessionLifetime: sessionLifetime,
     );
     pairing._start();
     return pairing;
@@ -109,7 +137,7 @@ final class LanPairingServer {
 
   void _start() {
     _server.listen(_accept, onError: (_) => unawaited(close()), cancelOnError: false);
-    _expiry = Timer(lanSyncSessionLifetime, () => unawaited(close()));
+    _expiry = Timer(_sessionLifetime, () => unawaited(close()));
   }
 
   Future<void> _accept(Socket socket) async {
@@ -168,11 +196,14 @@ final class LanPairingServer {
         connection: secure,
         localIdentity: _identity,
       );
+      _pendingRequests.add(request);
       _requests.add(request);
       try {
-        await request.done.timeout(const Duration(minutes: 2));
+        await request.done.timeout(_requestLifetime);
       } on TimeoutException {
         await request.reject();
+      } finally {
+        _pendingRequests.remove(request);
       }
     } on Object {
       await (secure?.close() ?? raw.close());
@@ -185,25 +216,46 @@ final class LanPairingServer {
     if (_closed) return;
     _closed = true;
     _expiry?.cancel();
+    for (final request in _pendingRequests.toList(growable: false)) {
+      try {
+        await request.reject();
+      } on Object {
+        // Continue closing the remaining sockets and request stream.
+      }
+    }
+    _pendingRequests.clear();
     for (final socket in _sockets.toList(growable: false)) {
       socket.destroy();
     }
     _sockets.clear();
     await _server.close();
     await _requests.close();
+    if (!_completion.isCompleted) _completion.complete();
   }
 }
 
 final class LanPairingClientConnection {
-  LanPairingClientConnection._({required this.pairingCode, required this.peer, required this.sharedSecret, required this._connection});
+  LanPairingClientConnection._({
+    required this.pairingCode,
+    required this.peer,
+    required this.sharedSecret,
+    required this._connection,
+    required this._localDeviceId,
+  });
 
   final String pairingCode;
   final PairedDevice peer;
   final List<int> sharedSecret;
   final PairedSecureConnection _connection;
+  final String _localDeviceId;
 
   static Future<LanPairingClientConnection> connect(LanPairingOffer offer, LocalDeviceIdentity identity) async {
     final result = Completer<LanPairingClientConnection>();
+    final timeout = Timer(const Duration(seconds: 8), () {
+      if (!result.isCompleted) {
+        result.completeError(const LanSyncTransportException('lan_sync_connect_failed'));
+      }
+    });
     var remaining = offer.addresses.length;
     for (final address in offer.addresses) {
       unawaited(() async {
@@ -220,10 +272,11 @@ final class LanPairingClientConnection {
         }
       }());
     }
-    return result.future.timeout(
-      const Duration(seconds: 8),
-      onTimeout: () => throw const LanSyncTransportException('lan_sync_connect_failed'),
-    );
+    try {
+      return await result.future;
+    } finally {
+      timeout.cancel();
+    }
   }
 
   static Future<LanPairingClientConnection> _connectAddress(LanPairingOffer offer, LocalDeviceIdentity identity, String address) async {
@@ -271,6 +324,7 @@ final class LanPairingClientConnection {
         ),
         sharedSecret: offer.secret,
         connection: secure,
+        localDeviceId: identity.deviceId,
       );
     } on Object {
       await (secure?.close() ?? raw?.close() ?? Future<void>.value());
@@ -293,8 +347,16 @@ final class LanPairingClientConnection {
         label.length > 128) {
       throw const LanSyncTransportException('lan_sync_handshake_invalid');
     }
-    await _connection.close();
     return peer.copyWith(label: label, platform: platform);
+  }
+
+  Future<void> confirmCommitted() async {
+    await _connection.sendControl(<String, Object?>{'type': 'pairCommitted', 'deviceId': _localDeviceId});
+    final complete = await _connection.readControl().timeout(lanSyncHandshakeTimeout);
+    if (complete['type'] != 'pairComplete') {
+      throw const LanSyncTransportException('lan_sync_handshake_invalid');
+    }
+    await _connection.close();
   }
 
   Future<void> close() => _connection.close();

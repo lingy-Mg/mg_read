@@ -298,6 +298,11 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   ) => _pluginArtifactIo.exportArtifact(artifact);
 
   @override
+  Future<MaterializedPluginArtifact> materializePluginArtifact(
+    PluginTransferOffer offer,
+  ) => _pluginArtifactIo.materializeArtifact(offer);
+
+  @override
   Future<PluginDevelopmentPackage> packageDevelopmentPlugin(
     String pluginId,
     String directoryPath,

@@ -18,6 +18,10 @@ abstract interface class _RuntimeSupervisor {
     PluginTransferArtifact artifact,
   );
 
+  Future<MaterializedPluginArtifact> materializePluginArtifact(
+    PluginTransferOffer offer,
+  );
+
   Future<PluginDevelopmentPackage> packageDevelopmentPlugin(
     String pluginId,
     String directoryPath,
@@ -220,6 +224,15 @@ final class PluginRuntime {
   Future<Stream<List<int>>> exportPluginArtifact(
     PluginTransferArtifact artifact,
   ) => _supervisor.exportPluginArtifact(artifact);
+
+  /// Materializes one selected transfer offer and streams its bytes.
+  ///
+  /// Development sources are packaged here, after the receiver has selected
+  /// this exact source. Listing and planning offers never build every active
+  /// development project.
+  Future<MaterializedPluginArtifact> materializePluginArtifact(
+    PluginTransferOffer offer,
+  ) => _supervisor.materializePluginArtifact(offer);
 
   /// Accepts a bounded batch and performs one Runtime cold activation.
   Future<List<PluginTransferImportResult>> importPluginArtifacts(

@@ -32,6 +32,16 @@ export interface PluginTransferArtifact extends JsonObject {
   readonly version: string;
 }
 
+/** Path-free version metadata. Development projects are not packaged here. */
+export interface PluginTransferOffer extends JsonObject {
+  readonly developmentFingerprint: string | null;
+  readonly developmentRevision: number | null;
+  readonly format: PluginArtifactFormat;
+  readonly id: string;
+  readonly provenance: "development" | "developmentReplica" | "installed";
+  readonly version: string;
+}
+
 export interface PluginTransferPlanItem extends JsonObject {
   readonly action: "developmentConflict" | "missing" | "upgrade" | "same" | "receiverNewer" | "unavailable";
   readonly id: string;
@@ -88,6 +98,39 @@ export class PluginArtifactTransferManager {
     this.#stagingRoot = resolve(this.#dataRoot, "temporary", "plugin-transfer", randomUUID());
   }
 
+  async listOffers(
+    installed: readonly { readonly id: string; readonly activeVersion: string | null; readonly pendingVersion: string | null }[],
+    development: readonly DevelopmentTransferProject[] = [],
+  ): Promise<readonly PluginTransferOffer[]> {
+    const output: PluginTransferOffer[] = [];
+    const developmentIds = new Set(development.map((item) => item.id));
+    for (const plugin of installed) {
+      if (developmentIds.has(plugin.id)) continue;
+      const version = plugin.activeVersion ?? plugin.pendingVersion;
+      if (version === null) continue;
+      const retained = await findRetainedArtifact(this.#dataRoot, plugin.id, version);
+      if (retained === undefined || retained.bytes > MAX_PLUGIN_ARTIFACT_BYTES) continue;
+      output.push(Object.freeze({
+        ...developmentMetadataForVersion(version),
+        format: retained.format,
+        id: plugin.id,
+        version,
+      }));
+    }
+    for (const project of development) {
+      output.push(Object.freeze({
+        developmentFingerprint: project.fingerprint,
+        developmentRevision: project.syncRevision,
+        format: project.packageMode === "single-file" ? "singleFile" : "archive",
+        id: project.id,
+        provenance: "development",
+        version: developmentVersion(project.version, project.syncRevision, project.fingerprint),
+      }));
+    }
+    output.sort((left, right) => left.id.localeCompare(right.id));
+    return Object.freeze(output);
+  }
+
   async listExportable(
     installed: readonly { readonly id: string; readonly activeVersion: string | null; readonly pendingVersion: string | null }[],
     development: readonly DevelopmentTransferProject[] = [],
@@ -131,6 +174,23 @@ export class PluginArtifactTransferManager {
     development: readonly { readonly fingerprint: string; readonly id: string; readonly syncRevision: number }[] = [],
   ): readonly PluginTransferPlanItem[] {
     validateArtifactBatch(incoming);
+    return this.#planVersions(incoming, installed, development);
+  }
+
+  planOffers(
+    incoming: readonly PluginTransferOffer[],
+    installed: readonly { readonly id: string; readonly activeVersion: string | null; readonly pendingVersion: string | null }[],
+    development: readonly { readonly fingerprint: string; readonly id: string; readonly syncRevision: number }[] = [],
+  ): readonly PluginTransferPlanItem[] {
+    validateOfferBatch(incoming);
+    return this.#planVersions(incoming, installed, development);
+  }
+
+  #planVersions(
+    incoming: readonly PluginTransferOffer[],
+    installed: readonly { readonly id: string; readonly activeVersion: string | null; readonly pendingVersion: string | null }[],
+    development: readonly { readonly fingerprint: string; readonly id: string; readonly syncRevision: number }[],
+  ): readonly PluginTransferPlanItem[] {
     const receiver = new Map(installed.map((item) => [item.id, item.activeVersion ?? item.pendingVersion]));
     const receiverDevelopment = new Map(development.map((item) => [item.id, item]));
     return Object.freeze(incoming.map((artifact) => {
@@ -160,9 +220,19 @@ export class PluginArtifactTransferManager {
     }));
   }
 
-  async createResource(id: string, version: string): Promise<{ readonly artifact: PluginTransferArtifact; readonly token: string }> {
+  async createResource(
+    id: string,
+    version: string,
+    development?: DevelopmentTransferProject,
+  ): Promise<{ readonly artifact: PluginTransferArtifact; readonly token: string }> {
     if (!isPluginId(id) || parseSemver(version) === null) throw new PluginArtifactTransferError("invalid_request");
     let entry = this.#development.get(key(id, version));
+    if (entry === undefined && development !== undefined && development.id === id &&
+        developmentVersion(development.version, development.syncRevision, development.fingerprint) === version) {
+      await mkdir(this.#stagingRoot, { recursive: true });
+      entry = await this.#buildDevelopment(development, version, "development");
+      if (entry !== undefined) this.#development.set(key(id, version), entry);
+    }
     if (entry === undefined) {
       const retained = await findRetainedArtifact(this.#dataRoot, id, version);
       if (retained === undefined) throw new PluginArtifactTransferError("plugin_transfer_artifact_missing");
@@ -271,11 +341,30 @@ export function validateArtifactBatch(artifacts: readonly PluginTransferArtifact
   }
 }
 
+export function validateOfferBatch(offers: readonly PluginTransferOffer[]): void {
+  if (offers.length > MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH) {
+    throw new PluginArtifactTransferError("plugin_transfer_batch_too_large");
+  }
+  for (const offer of offers) {
+    if (!isPluginTransferOffer(offer)) throw new PluginArtifactTransferError("invalid_request");
+  }
+}
+
 export function isPluginTransferArtifact(value: unknown): value is PluginTransferArtifact {
   if (!isRecord(value) || Object.keys(value).length !== 8) return false;
   return isPluginId(value.id) && typeof value.version === "string" && parseSemver(value.version) !== null &&
     typeof value.bytes === "number" && Number.isSafeInteger(value.bytes) && value.bytes > 0 && value.bytes <= MAX_PLUGIN_ARTIFACT_BYTES &&
     typeof value.sha256 === "string" && /^[a-f0-9]{64}$/.test(value.sha256) && (value.format === "archive" || value.format === "singleFile") &&
+    (value.provenance === "installed" || value.provenance === "development" || value.provenance === "developmentReplica") &&
+    ((value.provenance === "installed" && value.developmentFingerprint === null && value.developmentRevision === null) ||
+      (value.provenance !== "installed" && typeof value.developmentFingerprint === "string" && /^[a-f0-9]{64}$/.test(value.developmentFingerprint) &&
+        typeof value.developmentRevision === "number" && Number.isSafeInteger(value.developmentRevision) && value.developmentRevision > 0));
+}
+
+export function isPluginTransferOffer(value: unknown): value is PluginTransferOffer {
+  if (!isRecord(value) || Object.keys(value).length !== 6) return false;
+  return isPluginId(value.id) && typeof value.version === "string" && parseSemver(value.version) !== null &&
+    (value.format === "archive" || value.format === "singleFile") &&
     (value.provenance === "installed" || value.provenance === "development" || value.provenance === "developmentReplica") &&
     ((value.provenance === "installed" && value.developmentFingerprint === null && value.developmentRevision === null) ||
       (value.provenance !== "installed" && typeof value.developmentFingerprint === "string" && /^[a-f0-9]{64}$/.test(value.developmentFingerprint) &&

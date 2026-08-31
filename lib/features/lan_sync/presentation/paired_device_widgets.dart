@@ -167,6 +167,8 @@ class _PairedDeviceTile extends StatelessWidget {
                         : '离线 · 打开另一台设备后可同步',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText),
                   ),
+                  if (device.lastSyncAtUtc != null)
+                    Text(_lastSyncText(device), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
                 ],
               ),
             ),
@@ -268,7 +270,7 @@ class _PairingPanel extends StatelessWidget {
             ] else if (state.pairingPhase == DevicePairingPhase.failed) ...<Widget>[
               Icon(Icons.error_outline_rounded, color: Theme.of(context).colorScheme.error),
               const SizedBox(height: AppSpacing.compact),
-              const Text('配对未完成，请确认两台设备在同一局域网后重试。'),
+              Text(state.lastErrorCode == 'device_pairing_offer_expired' ? '配对码已过期，请重新生成。' : '配对未完成，请确认两台设备在同一局域网后重试。'),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
@@ -310,21 +312,21 @@ class DeviceSettingsSheet extends ConsumerWidget {
               title: const Text('自动同步'),
               subtitle: const Text('两端都打开后自动检查变化'),
               value: device.autoSync,
-              onChanged: (value) => controller.updateDevice(device.copyWith(autoSync: value)),
+              onChanged: (value) => controller.updateDeviceSettings(device.deviceId, autoSync: value),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('数据源插件'),
               subtitle: const Text('包含正式插件和开发书源副本'),
               value: device.syncPlugins,
-              onChanged: (value) => controller.updateDevice(device.copyWith(syncPlugins: value)),
+              onChanged: (value) => controller.updateDeviceSettings(device.deviceId, syncPlugins: value),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('书架与阅读进度'),
               subtitle: const Text('智能合并更新，不同步删除'),
               value: device.syncBookshelf,
-              onChanged: (value) => controller.updateDevice(device.copyWith(syncBookshelf: value)),
+              onChanged: (value) => controller.updateDeviceSettings(device.deviceId, syncBookshelf: value),
             ),
             const SizedBox(height: AppSpacing.compact),
             Text('同步方向', style: Theme.of(context).textTheme.labelLarge),
@@ -336,7 +338,7 @@ class DeviceSettingsSheet extends ConsumerWidget {
                 ButtonSegment(value: PairedSyncMode.sendOnly, label: Text('仅发送')),
               ],
               selected: <PairedSyncMode>{device.mode},
-              onSelectionChanged: (value) => controller.updateDevice(device.copyWith(mode: value.single)),
+              onSelectionChanged: (value) => controller.updateDeviceSettings(device.deviceId, mode: value.single),
             ),
             const SizedBox(height: AppSpacing.regular),
             TextButton.icon(
@@ -367,4 +369,17 @@ class DeviceSettingsSheet extends ConsumerWidget {
     await controller.removeDevice(device.deviceId);
     if (context.mounted) Navigator.pop(context);
   }
+}
+
+String _lastSyncText(PairedDevice device) {
+  final local = device.lastSyncAtUtc!.toLocal();
+  final minute = local.minute.toString().padLeft(2, '0');
+  final result = switch (device.lastSyncResult) {
+    PairedSyncResultState.success => '成功',
+    PairedSyncResultState.partial => '部分完成',
+    PairedSyncResultState.failed => '失败',
+    PairedSyncResultState.cancelled => '已取消',
+    null => '未知',
+  };
+  return '上次同步 ${local.month}/${local.day} ${local.hour}:$minute · $result';
 }

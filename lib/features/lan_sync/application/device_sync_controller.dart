@@ -92,12 +92,16 @@ const Object _unchanged = Object();
 
 final class DeviceSyncController extends Notifier<DeviceSyncState> {
   final Map<String, PairedSyncEndpoint> _endpoints = <String, PairedSyncEndpoint>{};
-  final Map<String, DateTime> _lastAttemptAt = <String, DateTime>{};
+  final Map<String, int> _retryFailures = <String, int>{};
+  final Map<String, Timer> _retryTimers = <String, Timer>{};
+  Future<void> _repositoryMutation = Future<void>.value();
   Future<void>? _startFuture;
+  Future<void>? _hostStartFuture;
   LocalDeviceIdentity? _identity;
   PairedSyncHost? _host;
   StreamSubscription<PairedSyncEndpoint>? _endpointSubscription;
   Timer? _endpointExpiryTimer;
+  Timer? _reconciliationTimer;
   String? _activeDeviceId;
   LanPairingServer? _pairingServer;
   StreamSubscription<LanPairingRequest>? _pairingSubscription;
@@ -155,8 +159,23 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
   }
 
   Future<void> _closeHost() async {
+    final starting = _hostStartFuture;
+    if (starting != null) {
+      try {
+        await starting;
+      } on Object {
+        // The start caller reports the stable failure state.
+      }
+    }
     _endpointExpiryTimer?.cancel();
     _endpointExpiryTimer = null;
+    _reconciliationTimer?.cancel();
+    _reconciliationTimer = null;
+    for (final timer in _retryTimers.values) {
+      timer.cancel();
+    }
+    _retryTimers.clear();
+    _retryFailures.clear();
     final subscription = _endpointSubscription;
     _endpointSubscription = null;
     await subscription?.cancel();
@@ -176,7 +195,25 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
     state = state.copyWith(devices: devices, onlineDeviceIds: _onlineIds());
   }
 
-  Future<void> _ensureHost() async {
+  Future<void> _ensureHost() {
+    final existing = _hostStartFuture;
+    if (existing != null) return existing;
+    final next = _startHost();
+    _hostStartFuture = next;
+    unawaited(
+      next.then<void>(
+        (_) {
+          if (identical(_hostStartFuture, next)) _hostStartFuture = null;
+        },
+        onError: (Object _, StackTrace _) {
+          if (identical(_hostStartFuture, next)) _hostStartFuture = null;
+        },
+      ),
+    );
+    return next;
+  }
+
+  Future<void> _startHost() async {
     if (_host != null || _disposed || !_foregroundDesired) return;
     final identity = _identity ?? await ref.read(deviceIdentityStoreProvider).loadOrCreateIdentity();
     _identity = identity;
@@ -194,6 +231,11 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
     _endpointSubscription = host.endpoints.listen(_handleEndpoint);
     _endpointExpiryTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (!_disposed) state = state.copyWith(onlineDeviceIds: _onlineIds());
+    });
+    _reconciliationTimer = Timer.periodic(const Duration(minutes: 2), (_) {
+      if (!_disposed && _foregroundDesired) {
+        unawaited(syncAvailablePeers());
+      }
     });
   }
 
@@ -218,6 +260,14 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
       }
       _pairingServer = server;
       _pairingSubscription = server.requests.listen(_handlePairingRequest);
+      unawaited(
+        server.done.then((_) {
+          if (generation == _pairingGeneration && identical(_pairingServer, server)) {
+            _pairingServer = null;
+            _pairingFailed('device_pairing_offer_expired');
+          }
+        }),
+      );
       state = state.copyWith(pairingPhase: DevicePairingPhase.showingOffer, pairingOffer: server.offer);
     } on Object {
       if (generation == _pairingGeneration) _pairingFailed('device_pairing_offer_failed');
@@ -232,15 +282,32 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
     }
     _pairingRequest = request;
     state = state.copyWith(pairingPhase: DevicePairingPhase.confirming, pairingCode: request.pairingCode, pairingPeer: request.peer);
+    unawaited(
+      request.done.then((_) {
+        if (identical(_pairingRequest, request)) {
+          _pairingRequest = null;
+          state = state.copyWith(
+            pairingPhase: _pairingServer == null ? DevicePairingPhase.failed : DevicePairingPhase.showingOffer,
+            pairingCode: null,
+            pairingPeer: null,
+            lastErrorCode: _pairingServer == null ? 'device_pairing_offer_expired' : 'device_pairing_request_expired',
+          );
+        }
+      }),
+    );
   }
 
   Future<void> approvePairing() async {
     final request = _pairingRequest;
-    if (request == null || state.pairingPhase != DevicePairingPhase.confirming) return;
+    if (request == null || !request.isActive || state.pairingPhase != DevicePairingPhase.confirming) {
+      return;
+    }
+    var saved = false;
     try {
       await _savePairing(request.peer, request.sharedSecret);
-      await request.approve();
+      saved = true;
       _pairingRequest = null;
+      await request.approve();
       await _closePairingResources();
       await reloadDevices();
       state = state.copyWith(
@@ -251,6 +318,7 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
         lastMessage: '已配对 ${request.peer.label}，以后无需发送端确认',
       );
     } on Object {
+      if (saved) await _deletePairing(request.peer.deviceId);
       await request.reject();
       _pairingFailed('device_pairing_save_failed');
     }
@@ -290,8 +358,14 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
       state = state.copyWith(pairingPhase: DevicePairingPhase.waitingApproval, pairingCode: client.pairingCode, pairingPeer: client.peer);
       final peer = await client.waitForApproval();
       if (generation != _pairingGeneration) return;
-      _pairingClient = null;
       await _savePairing(peer, client.sharedSecret);
+      try {
+        await client.confirmCommitted();
+      } on Object {
+        await _deletePairing(peer.deviceId);
+        rethrow;
+      }
+      _pairingClient = null;
       await reloadDevices();
       state = state.copyWith(
         pairingPhase: DevicePairingPhase.completed,
@@ -311,13 +385,36 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
   }
 
   Future<void> updateDevice(PairedDevice device) async {
-    await ref.read(pairedDeviceRepositoryProvider).upsert(device);
+    await updateDeviceSettings(
+      device.deviceId,
+      autoSync: device.autoSync,
+      mode: device.mode,
+      syncBookshelf: device.syncBookshelf,
+      syncPlugins: device.syncPlugins,
+    );
+  }
+
+  Future<void> updateDeviceSettings(String deviceId, {bool? autoSync, PairedSyncMode? mode, bool? syncBookshelf, bool? syncPlugins}) async {
+    await _serializeRepositoryMutation(() async {
+      final repository = ref.read(pairedDeviceRepositoryProvider);
+      final latest = await repository.read(deviceId);
+      if (latest == null) return;
+      await repository.upsert(latest.copyWith(autoSync: autoSync, mode: mode, syncBookshelf: syncBookshelf, syncPlugins: syncPlugins));
+    });
+    if (autoSync == false) {
+      _retryTimers.remove(deviceId)?.cancel();
+      _retryFailures.remove(deviceId);
+    }
     await reloadDevices();
   }
 
   Future<void> removeDevice(String deviceId) async {
-    await ref.read(pairedDeviceRepositoryProvider).remove(deviceId);
-    await ref.read(deviceIdentityStoreProvider).deletePeerSecret(deviceId);
+    await _serializeRepositoryMutation(() async {
+      await ref.read(pairedDeviceRepositoryProvider).remove(deviceId);
+      await ref.read(deviceIdentityStoreProvider).deletePeerSecret(deviceId);
+    });
+    _retryTimers.remove(deviceId)?.cancel();
+    _retryFailures.remove(deviceId);
     _endpoints.remove(deviceId);
     await reloadDevices();
   }
@@ -341,30 +438,26 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
       final endpoint = _endpoints[device.deviceId];
       if (!device.autoSync || endpoint == null || endpoint.expiresAtUtc.isBefore(now)) continue;
       if (!pushChanges && (_identity?.deviceId.compareTo(device.deviceId) ?? 1) >= 0) continue;
-      await _runOutbound(device, endpoint, pullOnly: false);
+      await _runOutbound(device, endpoint, pullOnly: false, automatic: true);
     }
   }
 
   void _handleEndpoint(PairedSyncEndpoint endpoint) {
     final device = _device(endpoint.deviceId);
     if (device == null) return;
+    final previous = _endpoints[endpoint.deviceId];
+    final wasOnline = previous != null && previous.expiresAtUtc.isAfter(DateTime.now().toUtc());
     _endpoints[endpoint.deviceId] = endpoint;
     state = state.copyWith(onlineDeviceIds: _onlineIds());
-    final now = DateTime.now().toUtc();
-    final lastAttempt = _lastAttemptAt[endpoint.deviceId];
-    if (!device.autoSync ||
-        _activeDeviceId != null ||
-        (_identity?.deviceId.compareTo(device.deviceId) ?? 1) >= 0 ||
-        (lastAttempt != null && now.difference(lastAttempt) < const Duration(seconds: 20))) {
+    if (!device.autoSync || wasOnline || _activeDeviceId != null || (_identity?.deviceId.compareTo(device.deviceId) ?? 1) >= 0) {
       return;
     }
-    unawaited(_runOutbound(device, endpoint, pullOnly: false));
+    unawaited(_runOutbound(device, endpoint, pullOnly: false, automatic: true));
   }
 
-  Future<void> _runOutbound(PairedDevice device, PairedSyncEndpoint endpoint, {required bool pullOnly}) async {
+  Future<void> _runOutbound(PairedDevice device, PairedSyncEndpoint endpoint, {required bool pullOnly, bool automatic = false}) async {
     if (_activeDeviceId != null) return;
     _activeDeviceId = device.deviceId;
-    _lastAttemptAt[device.deviceId] = DateTime.now().toUtc();
     state = state.copyWith(busyDeviceId: device.deviceId, lastErrorCode: null, lastMessage: '正在与 ${device.label} 同步');
     try {
       final secret = await ref.read(deviceIdentityStoreProvider).readPeerSecret(device.deviceId);
@@ -377,12 +470,22 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
         sharedSecret: secret,
       );
       final summary = await session.run(gateway: ref.read(lanSyncGatewayProvider), pullOnly: pullOnly);
+      _retryTimers.remove(device.deviceId)?.cancel();
+      _retryFailures.remove(device.deviceId);
       await _recordResultSafely(device, PairedSyncResultState.success);
       _refreshAfterSync();
       state = state.copyWith(lastMessage: _summaryMessage(device.label, summary), lastErrorCode: null);
+    } on PairedSyncPartialException {
+      await _recordResultSafely(device, PairedSyncResultState.partial);
+      state = state.copyWith(lastErrorCode: 'device_sync_partial', lastMessage: '与 ${device.label} 已同步部分内容，将自动补齐剩余内容');
+      if (automatic) _scheduleRetry(device.deviceId);
     } on Object {
       await _recordResultSafely(device, PairedSyncResultState.failed);
-      state = state.copyWith(lastErrorCode: 'device_sync_failed', lastMessage: '与 ${device.label} 同步失败，稍后会自动重试');
+      state = state.copyWith(
+        lastErrorCode: 'device_sync_failed',
+        lastMessage: automatic ? '与 ${device.label} 同步失败，稍后会自动重试' : '与 ${device.label} 同步失败，请稍后重试',
+      );
+      if (automatic) _scheduleRetry(device.deviceId);
     } finally {
       _activeDeviceId = null;
       state = state.copyWith(busyDeviceId: null);
@@ -402,6 +505,10 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
       await _recordResultSafely(device, PairedSyncResultState.success);
       _refreshAfterSync();
       state = state.copyWith(lastMessage: _summaryMessage(device.label, summary), lastErrorCode: null);
+    } on PairedSyncPartialException {
+      await session.close();
+      await _recordResultSafely(device, PairedSyncResultState.partial);
+      state = state.copyWith(lastErrorCode: 'device_sync_partial', lastMessage: '与 ${device.label} 已同步部分内容，下次在线时会继续补齐');
     } on Object {
       await session.close();
       await _recordResultSafely(device, PairedSyncResultState.failed);
@@ -413,8 +520,12 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
   }
 
   Future<void> _recordResult(PairedDevice device, PairedSyncResultState result) async {
-    final updated = device.copyWith(lastSeenAtUtc: DateTime.now().toUtc(), lastSyncAtUtc: DateTime.now().toUtc(), lastSyncResult: result);
-    await ref.read(pairedDeviceRepositoryProvider).upsert(updated);
+    await _serializeRepositoryMutation(() async {
+      final repository = ref.read(pairedDeviceRepositoryProvider);
+      final latest = await repository.read(device.deviceId) ?? device;
+      final now = DateTime.now().toUtc();
+      await repository.upsert(latest.copyWith(lastSeenAtUtc: now, lastSyncAtUtc: now, lastSyncResult: result));
+    });
     await reloadDevices();
   }
 
@@ -427,14 +538,56 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
   }
 
   Future<void> _savePairing(PairedDevice peer, List<int> secret) async {
-    final store = ref.read(deviceIdentityStoreProvider);
-    await store.writePeerSecret(peer.deviceId, secret);
-    try {
-      await ref.read(pairedDeviceRepositoryProvider).upsert(peer);
-    } on Object {
-      await store.deletePeerSecret(peer.deviceId);
-      rethrow;
-    }
+    await _serializeRepositoryMutation(() async {
+      final store = ref.read(deviceIdentityStoreProvider);
+      await store.writePeerSecret(peer.deviceId, secret);
+      try {
+        await ref.read(pairedDeviceRepositoryProvider).upsert(peer);
+      } on Object {
+        await store.deletePeerSecret(peer.deviceId);
+        rethrow;
+      }
+    });
+  }
+
+  Future<void> _deletePairing(String deviceId) async {
+    await _serializeRepositoryMutation(() async {
+      await ref.read(pairedDeviceRepositoryProvider).remove(deviceId);
+      await ref.read(deviceIdentityStoreProvider).deletePeerSecret(deviceId);
+    });
+  }
+
+  Future<T> _serializeRepositoryMutation<T>(Future<T> Function() action) {
+    final result = Completer<T>();
+    _repositoryMutation = _repositoryMutation.then<void>((_) async {
+      try {
+        result.complete(await action());
+      } on Object catch (error, stackTrace) {
+        result.completeError(error, stackTrace);
+      }
+    });
+    return result.future;
+  }
+
+  void _scheduleRetry(String deviceId) {
+    if (_retryTimers.containsKey(deviceId) || !_foregroundDesired) return;
+    final failures = (_retryFailures[deviceId] ?? 0) + 1;
+    _retryFailures[deviceId] = failures;
+    final exponent = failures > 4 ? 3 : failures - 1;
+    final seconds = 30 * (1 << exponent);
+    _retryTimers[deviceId] = Timer(Duration(seconds: seconds), () {
+      _retryTimers.remove(deviceId);
+      final device = _device(deviceId);
+      final endpoint = _endpoints[deviceId];
+      if (device == null ||
+          !device.autoSync ||
+          endpoint == null ||
+          endpoint.expiresAtUtc.isBefore(DateTime.now().toUtc()) ||
+          (_identity?.deviceId.compareTo(deviceId) ?? 1) >= 0) {
+        return;
+      }
+      unawaited(_runOutbound(device, endpoint, pullOnly: false, automatic: true));
+    });
   }
 
   void _refreshAfterSync() {
@@ -454,7 +607,15 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
 
   Set<String> _onlineIds() {
     final now = DateTime.now().toUtc();
-    _endpoints.removeWhere((_, endpoint) => endpoint.expiresAtUtc.isBefore(now));
+    final expired = <String>[
+      for (final entry in _endpoints.entries)
+        if (entry.value.expiresAtUtc.isBefore(now)) entry.key,
+    ];
+    for (final deviceId in expired) {
+      _endpoints.remove(deviceId);
+      _retryTimers.remove(deviceId)?.cancel();
+      _retryFailures.remove(deviceId);
+    }
     return Set<String>.unmodifiable(_endpoints.keys.where((id) => _device(id) != null));
   }
 
@@ -496,5 +657,5 @@ String _summaryMessage(String label, PairedSyncRunSummary summary) {
     return '$label 同步完成；${summary.developmentConflicts} 个开发书源存在双端修改，已保留两端现状';
   }
   if (changes == 0) return '$label 已是最新状态';
-  return '$label 同步完成：接收 ${summary.receivedPlugins} 个插件、${summary.receivedBooks} 本书架更新';
+  return '$label 同步完成：接收 ${summary.receivedPlugins} 个插件、${summary.receivedBooks} 本书架更新；发送 ${summary.sentPlugins} 个插件、${summary.sentBooks} 本书架更新';
 }

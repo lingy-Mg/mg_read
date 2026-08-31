@@ -27,6 +27,20 @@ abstract interface class LanSyncGateway {
   });
 }
 
+/// Optional paired-sync capabilities for scoped manifests and lazy artifacts.
+abstract interface class LanSyncPairedGateway {
+  Future<LanSyncManifest> createPairedManifest({bool includePlugins = true, bool includeShelf = true, bool deferPluginArtifacts = false});
+
+  Future<LanSyncMaterializedPlugin> materializePluginArchive(LanSyncPluginDescriptor plugin);
+}
+
+final class LanSyncMaterializedPlugin {
+  const LanSyncMaterializedPlugin({required this.descriptor, required this.bytes});
+
+  final LanSyncPluginDescriptor descriptor;
+  final Stream<List<int>> bytes;
+}
+
 /// A stable, privacy-safe failure surfaced by the LAN-sync data boundary.
 final class LanSyncGatewayException implements Exception {
   const LanSyncGatewayException(this.code);

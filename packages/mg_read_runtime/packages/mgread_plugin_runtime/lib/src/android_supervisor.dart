@@ -271,25 +271,77 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
   Future<Stream<List<int>>> exportPluginArtifact(
     PluginTransferArtifact artifact,
   ) async {
+    final materialized = await materializePluginArtifact(
+      PluginTransferOffer(
+        developmentFingerprint: artifact.developmentFingerprint,
+        developmentRevision: artifact.developmentRevision,
+        format: artifact.format,
+        pluginId: artifact.pluginId,
+        provenance: artifact.provenance,
+        version: artifact.version,
+      ),
+    );
+    if (materialized.artifact.bytes != artifact.bytes ||
+        materialized.artifact.sha256 != artifact.sha256) {
+      throw const PluginRuntimeException(
+        'plugin_transfer_checksum_mismatch',
+        'Android Runtime returned an invalid transfer artifact.',
+      );
+    }
+    return materialized.bytes;
+  }
+
+  @override
+  Future<MaterializedPluginArtifact> materializePluginArtifact(
+    PluginTransferOffer offer,
+  ) async {
     try {
       final metadata = await _androidRuntimeChannel
           .invokeMethod<Object?>('beginPluginTransferExport', <String, Object?>{
-            'format': artifact.format.name,
-            'pluginId': artifact.pluginId,
-            'version': artifact.version,
+            'format': offer.format.name,
+            'pluginId': offer.pluginId,
+            'version': offer.version,
           });
       final item = _jsonObject(metadata, 'Android plugin transfer export');
-      if (item['id'] is! String ||
-          item['bytes'] != artifact.bytes ||
-          item['format'] != artifact.format.name ||
-          item['sha256'] != artifact.sha256) {
+      final id = item['id'];
+      final bytes = item['bytes'];
+      final sha256 = item['sha256'];
+      if (id is! String ||
+          bytes is! int ||
+          bytes <= 0 ||
+          bytes > maxPluginTransferBytes ||
+          item['format'] != offer.format.name ||
+          sha256 is! String ||
+          !RegExp(r'^[a-f0-9]{64}$').hasMatch(sha256)) {
+        if (id is String) {
+          try {
+            await _androidRuntimeChannel.invokeMethod<void>(
+              'cancelPluginTransferExport',
+              <String, Object?>{'id': id},
+            );
+          } on Object {
+            // Preserve the stable metadata failure.
+          }
+        }
         throw const PluginRuntimeException(
           'plugin_transfer_checksum_mismatch',
           'Android Runtime returned an invalid transfer artifact.',
         );
       }
-      final id = item['id'] as String;
-      return _readAndroidExport(id, artifact.bytes);
+      final artifact = PluginTransferArtifact(
+        bytes: bytes,
+        developmentFingerprint: offer.developmentFingerprint,
+        developmentRevision: offer.developmentRevision,
+        format: offer.format,
+        pluginId: offer.pluginId,
+        provenance: offer.provenance,
+        sha256: sha256,
+        version: offer.version,
+      );
+      return MaterializedPluginArtifact(
+        artifact: artifact,
+        bytes: _readAndroidExport(id, bytes),
+      );
     } on PlatformException catch (error) {
       throw PluginRuntimeException(
         error.code,

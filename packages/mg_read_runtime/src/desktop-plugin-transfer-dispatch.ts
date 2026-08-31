@@ -8,6 +8,7 @@ import type { PluginManager } from "./plugin-manager.js";
 import {
   PluginArtifactTransferError as PluginTransferError,
   type PluginTransferArtifact,
+  type PluginTransferOffer,
   MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH as MAX_PLUGIN_TRANSFER_BATCH,
 } from "./plugin-artifact-transfer.js";
 import type {
@@ -48,6 +49,20 @@ export async function dispatchPluginTransferList(
   } catch (error) { return failure(request, error, requestError); }
 }
 
+export async function dispatchPluginTransferOffers(
+  request: RuntimeRequest,
+  manager: PluginManager | undefined,
+  requestError: RequestError,
+): Promise<PluginTransferDispatchResult> {
+  if (Object.keys(request.params).length !== 0) {
+    return { error: requestError(request, "invalid_request", "The plugin transfer offer request is invalid.") };
+  }
+  try {
+    if (manager === undefined) throw new PluginTransferError("plugin_not_found");
+    return { result: await manager.listPluginTransferOffers() };
+  } catch (error) { return failure(request, error, requestError); }
+}
+
 export async function dispatchPluginTransferPlan(
   request: RuntimeRequest,
   manager: PluginManager | undefined,
@@ -60,6 +75,21 @@ export async function dispatchPluginTransferPlan(
   try {
     if (manager === undefined) throw new PluginTransferError("plugin_not_found");
     return { result: await manager.planPluginTransfer(raw as PluginTransferArtifact[]) };
+  } catch (error) { return failure(request, error, requestError); }
+}
+
+export async function dispatchPluginTransferOfferPlan(
+  request: RuntimeRequest,
+  manager: PluginManager | undefined,
+  requestError: RequestError,
+): Promise<PluginTransferDispatchResult> {
+  const raw = request.params.offers;
+  if (!Array.isArray(raw) || raw.length > MAX_PLUGIN_TRANSFER_BATCH || Object.keys(request.params).length !== 1) {
+    return { error: requestError(request, "invalid_request", "The plugin transfer offer plan request is invalid.") };
+  }
+  try {
+    if (manager === undefined) throw new PluginTransferError("plugin_not_found");
+    return { result: await manager.planPluginTransferOffers(raw as PluginTransferOffer[]) };
   } catch (error) { return failure(request, error, requestError); }
 }
 
@@ -110,4 +140,20 @@ export async function dispatchPluginTransferVerify(
     await manager.verifyPluginTransferInbox(raw as PluginTransferArtifact[]);
     return { result: { verified: true } };
   } catch (error) { return failure(request, error, requestError); }
+}
+
+export function dispatchPluginTransferRequest(
+  request: RuntimeRequest,
+  manager: PluginManager | undefined,
+  requestError: RequestError,
+): Promise<PluginTransferDispatchResult> {
+  switch (request.method) {
+    case "plugins.transfer.list.v2": return dispatchPluginTransferList(request, manager, requestError);
+    case "plugins.transfer.plan.v2": return dispatchPluginTransferPlan(request, manager, requestError);
+    case "plugins.transfer.offers.v1": return dispatchPluginTransferOffers(request, manager, requestError);
+    case "plugins.transfer.offers.plan.v1": return dispatchPluginTransferOfferPlan(request, manager, requestError);
+    case "plugins.transfer.export.v2": return dispatchPluginTransferExport(request, manager, requestError);
+    case "plugins.transfer.verify.v2": return dispatchPluginTransferVerify(request, manager, requestError);
+    default: return Promise.resolve({ error: requestError(request, "method_not_found", "The requested Runtime method is not available.") });
+  }
 }

@@ -477,10 +477,13 @@ test("development transfer trusts the package tool artifact without Runtime reva
   const dataRoot = join(root, "runtime-data");
   const developmentRoot = join(root, "sources");
   const projectRoot = join(developmentRoot, "live-source");
+  const buildMarker = join(root, "development-build-ran");
   await createDevelopmentPlugin(projectRoot, "可信构建结果");
   await writeFile(
     join(projectRoot, "tools", "mgread.mjs"),
-    `export function buildPluginArtifact({ versionOverride }) {
+    `import { writeFile } from "node:fs/promises";
+export async function buildPluginArtifact({ versionOverride }) {
+  await writeFile(${JSON.stringify(buildMarker)}, "built");
   return {
     bytes: Uint8Array.from([0x74, 0x72, 0x75, 0x73, 0x74, 0x65, 0x64]),
     fileName: "trusted.mgplugin",
@@ -495,10 +498,20 @@ test("development transfer trusts the package tool artifact without Runtime reva
   t.after(() => manager.close());
   await manager.initialize();
 
-  const exportable = await manager.listExportableArtifacts();
-  assert.deepEqual(exportable.map(({ id, format, bytes }) => ({ id, format, bytes })), [
+  const offers = await manager.listPluginTransferOffers();
+  assert.deepEqual(offers.map(({ id, format }) => ({ id, format })), [
+    { id: "org.example.live-source", format: "archive" },
+  ]);
+  await assert.rejects(readFile(buildMarker), (error) => error?.code === "ENOENT");
+
+  const materialized = await manager.createPluginTransferResource(
+    offers[0].id,
+    offers[0].version,
+  );
+  assert.deepEqual([materialized.artifact].map(({ id, format, bytes }) => ({ id, format, bytes })), [
     { id: "org.example.live-source", format: "archive", bytes: 7 },
   ]);
+  assert.equal(await readFile(buildMarker, "utf8"), "built");
 });
 
 test("a development project shadows an installed archive with the same ID without double activation", async (t) => {

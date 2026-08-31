@@ -62,6 +62,54 @@ void main() {
     expect(clientGateway.appliedIds, <String>['desktop-book']);
     expect(serverGateway.appliedIds, <String>['phone-book']);
   });
+
+  test('paired sync materializes only the development source selected by the receiver', () async {
+    final addresses = await eligibleLanSyncAddresses();
+    if (addresses.isEmpty) return;
+    final secret = List<int>.generate(32, (index) => index + 11);
+    const serverIdentity = LocalDeviceIdentity(deviceId: 'desktop_lazy_12345678', label: '开发电脑');
+    const clientIdentity = LocalDeviceIdentity(deviceId: 'phone_lazy_1234567890', label: '手机');
+    final serverPeer = _device(clientIdentity, PairedDevicePlatform.android);
+    final clientPeer = _device(serverIdentity, PairedDevicePlatform.windows);
+    final serverGateway = _PluginGateway(offeredIds: const <String>['org.example.selected', 'org.example.same'], requestedId: null);
+    final clientGateway = _PluginGateway(offeredIds: const <String>[], requestedId: 'org.example.selected');
+    final serverResult = Completer<PairedSyncRunSummary>();
+    final host = await PairedSyncHost.start(
+      identity: serverIdentity,
+      devices: _MemoryPairedDeviceRepository(serverPeer),
+      identityStore: _MemoryIdentityStore(serverIdentity, <String, List<int>>{clientIdentity.deviceId: secret}),
+      onIncoming: (session) async {
+        try {
+          serverResult.complete(await session.run(gateway: serverGateway));
+        } on Object catch (error, stackTrace) {
+          serverResult.completeError(error, stackTrace);
+        }
+      },
+    );
+    addTearDown(host.close);
+    final session = await PairedSyncClientSession.connectAny(
+      endpoints: <PairedSyncEndpoint>[
+        PairedSyncEndpoint(
+          address: addresses.first,
+          deviceId: serverIdentity.deviceId,
+          expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+          label: serverIdentity.label,
+          port: host.port,
+        ),
+      ],
+      identity: clientIdentity,
+      peer: clientPeer,
+      sharedSecret: secret,
+    );
+
+    final clientSummary = await session.run(gateway: clientGateway, pullOnly: true);
+    final hostSummary = await serverResult.future;
+
+    expect(serverGateway.materializedIds, <String>['org.example.selected']);
+    expect(clientGateway.importedIds, <String>['org.example.selected']);
+    expect(clientSummary.receivedPlugins, 1);
+    expect(hostSummary.sentPlugins, 1);
+  });
 }
 
 PairedDevice _device(LocalDeviceIdentity identity, PairedDevicePlatform platform) => PairedDevice(
@@ -184,3 +232,115 @@ final class _ShelfGateway implements LanSyncGateway {
   @override
   Future<Stream<List<int>>> openPluginArchive(LanSyncPluginDescriptor plugin) async => const Stream<List<int>>.empty();
 }
+
+final class _PluginGateway implements LanSyncGateway, LanSyncPairedGateway {
+  _PluginGateway({required this.offeredIds, required this.requestedId});
+
+  final List<String> offeredIds;
+  final String? requestedId;
+  final List<String> materializedIds = <String>[];
+  final List<String> importedIds = <String>[];
+
+  @override
+  Future<LanSyncManifest> createManifest() => createPairedManifest();
+
+  @override
+  Future<LanSyncManifest> createPairedManifest({
+    bool includePlugins = true,
+    bool includeShelf = true,
+    bool deferPluginArtifacts = false,
+  }) async {
+    if (includePlugins) expect(deferPluginArtifacts, isTrue);
+    return LanSyncManifest(
+      plugins: includePlugins ? <LanSyncPluginDescriptor>[for (final id in offeredIds) _offer(id)] : const <LanSyncPluginDescriptor>[],
+      shelfItems: const <LanSyncShelfItem>[],
+      skippedShelfItems: 0,
+    );
+  }
+
+  @override
+  Future<LanSyncMaterializedPlugin> materializePluginArchive(LanSyncPluginDescriptor plugin) async {
+    materializedIds.add(plugin.id);
+    final descriptor = LanSyncPluginDescriptor(
+      id: plugin.id,
+      version: plugin.version,
+      bytes: 3,
+      artifactFormat: plugin.artifactFormat,
+      developmentFingerprint: plugin.developmentFingerprint,
+      developmentRevision: plugin.developmentRevision,
+      sha256: ''.padLeft(64, 'a'),
+      transferable: true,
+      provenance: plugin.provenance,
+    );
+    return LanSyncMaterializedPlugin(descriptor: descriptor, bytes: Stream<List<int>>.value(const <int>[1, 2, 3]));
+  }
+
+  @override
+  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest) async {
+    return LanSyncImportPreview(
+      newItemCount: 0,
+      conflicts: const <LanSyncBookConflict>[],
+      blockedItemCount: 0,
+      pluginPlans: <String, LanSyncPluginPlanState>{
+        for (final plugin in manifest.plugins)
+          plugin.id: plugin.id == requestedId ? LanSyncPluginPlanState.missing : LanSyncPluginPlanState.sameVersion,
+      },
+    );
+  }
+
+  @override
+  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins) async {
+    expect(plugins.every((plugin) => !plugin.deferred && plugin.bytes == 3), isTrue);
+  }
+
+  @override
+  Future<void> importPluginArchive(LanSyncPluginDescriptor plugin, Stream<List<int>> bytes) async {
+    final received = <int>[];
+    await for (final chunk in bytes) {
+      received.addAll(chunk);
+    }
+    expect(received, const <int>[1, 2, 3]);
+    importedIds.add(plugin.id);
+  }
+
+  @override
+  Future<LanSyncPluginImportResult> finishPluginImports() async {
+    return LanSyncPluginImportResult(availablePluginIds: importedIds.toSet(), installed: importedIds.length, skipped: 0, failed: 0);
+  }
+
+  @override
+  Future<LanSyncApplyResult> applyImport({
+    required LanSyncManifest manifest,
+    required Map<String, LanSyncConflictChoice> conflictChoices,
+    required Set<String> availablePluginIds,
+    required LanSyncPluginImportResult pluginResult,
+  }) async => LanSyncApplyResult(
+    added: 0,
+    updated: 0,
+    keptLocal: 0,
+    blocked: 0,
+    pluginInstalled: pluginResult.installed,
+    pluginSkipped: pluginResult.skipped,
+    pluginFailed: pluginResult.failed,
+  );
+
+  @override
+  Future<void> cancelPluginImports() async {}
+
+  @override
+  Future<Stream<List<int>>> openPluginArchive(LanSyncPluginDescriptor plugin) =>
+      throw StateError('paired_sync_must_materialize_selected_offer');
+}
+
+LanSyncPluginDescriptor _offer(String id) => LanSyncPluginDescriptor(
+  id: id,
+  version: '1.0.0-dev.7.aaaaaaaaaaaa',
+  bytes: 0,
+  artifactFormat: LanSyncPluginArtifactFormat.archive,
+  developmentFingerprint: ''.padLeft(64, 'b'),
+  developmentRevision: 7,
+  sha256: ''.padLeft(64, '0'),
+  transferable: true,
+  deferred: true,
+  provenance: LanSyncPluginProvenance.development,
+);

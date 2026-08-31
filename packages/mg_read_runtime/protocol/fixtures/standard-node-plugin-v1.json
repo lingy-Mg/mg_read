@@ -32,6 +32,8 @@
       "plugins.uninstall.v1",
       "plugins.transfer.list.v2",
       "plugins.transfer.plan.v2",
+      "plugins.transfer.offers.v1",
+      "plugins.transfer.offers.plan.v1",
       "plugins.transfer.export.v2",
       "plugins.transfer.verify.v2",
       "source.discover.v1",

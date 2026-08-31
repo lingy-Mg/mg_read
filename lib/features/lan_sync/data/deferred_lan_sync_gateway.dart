@@ -18,7 +18,7 @@ import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
 typedef LanSyncGatewayFactory = Future<LanSyncGateway> Function();
 
-final class DeferredLanSyncGateway implements LanSyncGateway {
+final class DeferredLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway {
   DeferredLanSyncGateway(this._factory);
 
   final LanSyncGatewayFactory _factory;
@@ -44,7 +44,38 @@ final class DeferredLanSyncGateway implements LanSyncGateway {
   Future<LanSyncManifest> createManifest() async => (await _delegate()).createManifest();
 
   @override
+  Future<LanSyncManifest> createPairedManifest({
+    bool includePlugins = true,
+    bool includeShelf = true,
+    bool deferPluginArtifacts = false,
+  }) async {
+    final delegate = await _delegate();
+    if (delegate is LanSyncPairedGateway) {
+      return (delegate as LanSyncPairedGateway).createPairedManifest(
+        includePlugins: includePlugins,
+        includeShelf: includeShelf,
+        deferPluginArtifacts: deferPluginArtifacts,
+      );
+    }
+    final manifest = await delegate.createManifest();
+    return LanSyncManifest(
+      plugins: includePlugins ? manifest.plugins : const <LanSyncPluginDescriptor>[],
+      shelfItems: includeShelf ? manifest.shelfItems : const <LanSyncShelfItem>[],
+      skippedShelfItems: includeShelf ? manifest.skippedShelfItems : 0,
+    );
+  }
+
+  @override
   Future<Stream<List<int>>> openPluginArchive(LanSyncPluginDescriptor plugin) async => (await _delegate()).openPluginArchive(plugin);
+
+  @override
+  Future<LanSyncMaterializedPlugin> materializePluginArchive(LanSyncPluginDescriptor plugin) async {
+    final delegate = await _delegate();
+    if (delegate is LanSyncPairedGateway) {
+      return (delegate as LanSyncPairedGateway).materializePluginArchive(plugin);
+    }
+    return LanSyncMaterializedPlugin(descriptor: plugin, bytes: await delegate.openPluginArchive(plugin));
+  }
 
   @override
   Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest) async => (await _delegate()).previewImport(manifest);

@@ -20,7 +20,7 @@ import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
 /// Bridges the app-owned library and the path-free Runtime transfer facade.
-final class MgReadLanSyncGateway implements LanSyncGateway {
+final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway {
   MgReadLanSyncGateway(this._library, this._runtime);
 
   final ContentLibrary _library;
@@ -38,22 +38,37 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
   String? _batchFailureCode;
 
   @override
-  Future<LanSyncManifest> createManifest() async {
-    final results = await Future.wait<Object>(<Future<Object>>[
-      _library.createSyncSnapshot(),
-      _runtime.invoke(const InstalledPluginsInvocation()),
-      _runtime.invoke(const PluginTransferListInvocation()),
-    ]);
-    final snapshot = results[0] as LibrarySyncSnapshot;
-    final installed = results[1] as List<InstalledPlugin>;
-    final artifacts = results[2] as List<PluginTransferArtifact>;
+  Future<LanSyncManifest> createManifest() => createPairedManifest();
+
+  @override
+  Future<LanSyncManifest> createPairedManifest({
+    bool includePlugins = true,
+    bool includeShelf = true,
+    bool deferPluginArtifacts = false,
+  }) async {
+    final snapshot = includeShelf
+        ? await _library.createSyncSnapshot()
+        : const LibrarySyncSnapshot(items: <LibrarySyncItem>[], skippedSourceLessItems: 0);
+    if (!includePlugins) {
+      return LanSyncManifest(
+        plugins: const <LanSyncPluginDescriptor>[],
+        shelfItems: List<LanSyncShelfItem>.unmodifiable(snapshot.items.map(_toLanShelfItem)),
+        skippedShelfItems: snapshot.skippedSourceLessItems,
+      );
+    }
+    final installed = await _runtime.invoke(const InstalledPluginsInvocation());
+    final artifacts = deferPluginArtifacts ? const <PluginTransferArtifact>[] : await _runtime.invoke(const PluginTransferListInvocation());
+    final offers = deferPluginArtifacts ? await _runtime.invoke(const PluginTransferOfferListInvocation()) : const <PluginTransferOffer>[];
     final installedById = <String, InstalledPlugin>{for (final plugin in installed) plugin.id: plugin};
     final artifactsById = <String, PluginTransferArtifact>{for (final artifact in artifacts) artifact.pluginId: artifact};
+    final offersById = <String, PluginTransferOffer>{for (final offer in offers) offer.pluginId: offer};
     final requestedVersions = <String, String>{
       for (final item in snapshot.items) item.pluginId: item.producerPluginVersion,
       for (final plugin in installed)
         if (plugin.activeVersion != null)
-          plugin.id: plugin.status == 'development' ? artifactsById[plugin.id]?.version ?? plugin.activeVersion! : plugin.activeVersion!,
+          plugin.id: plugin.status == 'development'
+              ? artifactsById[plugin.id]?.version ?? offersById[plugin.id]?.version ?? plugin.activeVersion!
+              : plugin.activeVersion!,
     };
     if (requestedVersions.length > lanSyncMaxPluginCount) {
       throw StateError('lan_sync_plugin_count_exceeded');
@@ -61,20 +76,22 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
     final plugins = <LanSyncPluginDescriptor>[];
     for (final entry in requestedVersions.entries) {
       final artifact = _findArtifact(artifacts, entry.key, entry.value);
+      final offer = _findOffer(offers, entry.key, entry.value);
       final installedPlugin = installedById[entry.key];
       plugins.add(
         LanSyncPluginDescriptor(
           id: entry.key,
           version: entry.value,
           bytes: artifact?.bytes ?? 0,
-          artifactFormat: _toLanArtifactFormat(artifact?.format ?? PluginArtifactFormat.archive),
-          developmentFingerprint: artifact?.developmentFingerprint,
-          developmentRevision: artifact?.developmentRevision,
+          artifactFormat: _toLanArtifactFormat(artifact?.format ?? offer?.format ?? PluginArtifactFormat.archive),
+          developmentFingerprint: artifact?.developmentFingerprint ?? offer?.developmentFingerprint,
+          developmentRevision: artifact?.developmentRevision ?? offer?.developmentRevision,
           sha256: artifact?.sha256 ?? ''.padLeft(64, '0'),
-          transferable: artifact != null,
+          transferable: artifact != null || offer != null,
+          deferred: offer != null,
           displayName: installedPlugin?.displayName,
-          provenance: artifact == null ? LanSyncPluginProvenance.installed : _toLanProvenance(artifact.provenance),
-          reason: artifact == null ? 'artifact_unavailable' : null,
+          provenance: _toLanProvenance(artifact?.provenance ?? offer?.provenance ?? PluginArtifactProvenance.installed),
+          reason: artifact == null && offer == null ? 'artifact_unavailable' : null,
         ),
       );
     }
@@ -87,10 +104,36 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
 
   @override
   Future<Stream<List<int>>> openPluginArchive(LanSyncPluginDescriptor plugin) {
-    if (!plugin.transferable) {
+    if (!plugin.transferable || plugin.deferred) {
       throw StateError('lan_sync_plugin_archive_unavailable');
     }
     return _runtime.exportPluginArtifact(_toRuntimeArtifact(plugin));
+  }
+
+  @override
+  Future<LanSyncMaterializedPlugin> materializePluginArchive(LanSyncPluginDescriptor plugin) async {
+    if (!plugin.transferable) {
+      throw StateError('lan_sync_plugin_archive_unavailable');
+    }
+    if (!plugin.deferred) {
+      return LanSyncMaterializedPlugin(descriptor: plugin, bytes: await openPluginArchive(plugin));
+    }
+    final materialized = await _runtime.materializePluginArtifact(_toRuntimeOffer(plugin));
+    return LanSyncMaterializedPlugin(
+      descriptor: LanSyncPluginDescriptor(
+        id: plugin.id,
+        version: plugin.version,
+        bytes: materialized.artifact.bytes,
+        artifactFormat: _toLanArtifactFormat(materialized.artifact.format),
+        developmentFingerprint: materialized.artifact.developmentFingerprint,
+        developmentRevision: materialized.artifact.developmentRevision,
+        sha256: materialized.artifact.sha256,
+        transferable: true,
+        displayName: plugin.displayName,
+        provenance: _toLanProvenance(materialized.artifact.provenance),
+      ),
+      bytes: materialized.bytes,
+    );
   }
 
   @override
@@ -101,10 +144,21 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
     final installed = await _runtime.invoke(const InstalledPluginsInvocation());
     final installedIds = installed.map((plugin) => plugin.id).toSet();
     final installedById = <String, InstalledPlugin>{for (final plugin in installed) plugin.id: plugin};
-    final transferable = manifest.plugins.where((plugin) => plugin.transferable).map(_toRuntimeArtifact).toList(growable: false);
-    final plans = transferable.isEmpty
+    final transferable = manifest.plugins
+        .where((plugin) => plugin.transferable && !plugin.deferred)
+        .map(_toRuntimeArtifact)
+        .toList(growable: false);
+    final deferred = manifest.plugins
+        .where((plugin) => plugin.transferable && plugin.deferred)
+        .map(_toRuntimeOffer)
+        .toList(growable: false);
+    final artifactPlans = transferable.isEmpty
         ? const <PluginTransferPlanItem>[]
         : await _runtime.invoke(PluginTransferPlanInvocation(artifacts: transferable));
+    final offerPlans = deferred.isEmpty
+        ? const <PluginTransferPlanItem>[]
+        : await _runtime.invoke(PluginTransferOfferPlanInvocation(offers: deferred));
+    final plans = <PluginTransferPlanItem>[...artifactPlans, ...offerPlans];
     final planById = <String, PluginTransferPlanItem>{for (final plan in plans) plan.pluginId: plan};
     final featurePlans = <String, LanSyncPluginPlanState>{};
     final availableAfterTransfer = <String>{...installedIds};
@@ -152,7 +206,7 @@ final class MgReadLanSyncGateway implements LanSyncGateway {
     _batchFailureCode = null;
     if (plugins.isEmpty) return;
     for (final plugin in plugins) {
-      if (!plugin.transferable || _importControllers.containsKey(plugin.id)) {
+      if (!plugin.transferable || plugin.deferred || _importControllers.containsKey(plugin.id)) {
         throw StateError('lan_sync_plugin_selection_invalid');
       }
       _importControllers[plugin.id] = StreamController<List<int>>();
@@ -296,6 +350,13 @@ PluginTransferArtifact? _findArtifact(List<PluginTransferArtifact> artifacts, St
   return null;
 }
 
+PluginTransferOffer? _findOffer(List<PluginTransferOffer> offers, String pluginId, String version) {
+  for (final offer in offers) {
+    if (offer.pluginId == pluginId && offer.version == version) return offer;
+  }
+  return null;
+}
+
 PluginTransferArtifact _toRuntimeArtifact(LanSyncPluginDescriptor plugin) => PluginTransferArtifact(
   bytes: plugin.bytes,
   developmentFingerprint: plugin.developmentFingerprint,
@@ -307,6 +368,18 @@ PluginTransferArtifact _toRuntimeArtifact(LanSyncPluginDescriptor plugin) => Plu
   pluginId: plugin.id,
   provenance: _toRuntimeProvenance(plugin.provenance),
   sha256: plugin.sha256,
+  version: plugin.version,
+);
+
+PluginTransferOffer _toRuntimeOffer(LanSyncPluginDescriptor plugin) => PluginTransferOffer(
+  developmentFingerprint: plugin.developmentFingerprint,
+  developmentRevision: plugin.developmentRevision,
+  format: switch (plugin.artifactFormat) {
+    LanSyncPluginArtifactFormat.singleFile => PluginArtifactFormat.singleFile,
+    LanSyncPluginArtifactFormat.archive => PluginArtifactFormat.archive,
+  },
+  pluginId: plugin.id,
+  provenance: _toRuntimeProvenance(plugin.provenance),
   version: plugin.version,
 );
 

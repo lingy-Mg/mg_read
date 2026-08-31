@@ -163,6 +163,7 @@ final class LanSyncPluginDescriptor {
     required this.artifactFormat,
     required this.sha256,
     required this.transferable,
+    this.deferred = false,
     this.developmentFingerprint,
     this.developmentRevision,
     this.displayName,
@@ -178,6 +179,7 @@ final class LanSyncPluginDescriptor {
   final int? developmentRevision;
   final String sha256;
   final bool transferable;
+  final bool deferred;
   final String? displayName;
   final LanSyncPluginProvenance provenance;
   final String? reason;
@@ -192,6 +194,7 @@ final class LanSyncPluginDescriptor {
     'provenance': provenance.name,
     'sha256': sha256,
     'transferable': transferable,
+    'deferred': deferred,
     if (displayName != null) 'displayName': displayName,
     if (reason != null) 'reason': reason,
   };
@@ -210,6 +213,7 @@ final class LanSyncPluginDescriptor {
       developmentRevision: _nullableInt(json, 'developmentRevision', min: 1, max: 9007199254740991),
       sha256: _requiredString(json, 'sha256', maxLength: 128),
       transferable: _requiredBool(json, 'transferable'),
+      deferred: _optionalBool(json, 'deferred') ?? false,
       displayName: _optionalString(json, 'displayName', maxLength: 512),
       provenance: switch (_requiredString(json, 'provenance', maxLength: 32)) {
         'installed' => LanSyncPluginProvenance.installed,
@@ -220,7 +224,9 @@ final class LanSyncPluginDescriptor {
       reason: _optionalString(json, 'reason', maxLength: 128),
     );
     if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(descriptor.sha256) ||
-        (descriptor.transferable && descriptor.bytes == 0) ||
+        (descriptor.transferable && descriptor.bytes == 0 && !descriptor.deferred) ||
+        (descriptor.deferred && (!descriptor.transferable || descriptor.bytes != 0)) ||
+        (descriptor.deferred && descriptor.sha256 != ''.padLeft(64, '0')) ||
         (!descriptor.transferable && descriptor.bytes != 0) ||
         (descriptor.provenance == LanSyncPluginProvenance.installed &&
             (descriptor.developmentFingerprint != null || descriptor.developmentRevision != null)) ||
@@ -473,6 +479,13 @@ int? _nullableInt(Map<String, Object?> json, String key, {int? min, int? max}) {
 }
 
 bool _requiredBool(Map<String, Object?> json, String key) {
+  final value = json[key];
+  if (value is! bool) throw FormatException('invalid_$key');
+  return value;
+}
+
+bool? _optionalBool(Map<String, Object?> json, String key) {
+  if (!json.containsKey(key)) return null;
   final value = json[key];
   if (value is! bool) throw FormatException('invalid_$key');
   return value;

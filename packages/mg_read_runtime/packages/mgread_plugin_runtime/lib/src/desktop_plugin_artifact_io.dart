@@ -9,35 +9,61 @@ final class _DesktopPluginArtifactIo {
   Future<Stream<List<int>>> exportArtifact(
     PluginTransferArtifact artifact,
   ) async {
+    final materialized = await materializeArtifact(_offerFrom(artifact));
+    final returned = materialized.artifact;
+    if (returned.bytes != artifact.bytes ||
+        returned.sha256 != artifact.sha256) {
+      throw const PluginRuntimeException(
+        'plugin_transfer_checksum_mismatch',
+        'The Runtime transfer artifact identity did not match the request.',
+      );
+    }
+    return materialized.bytes;
+  }
+
+  Future<MaterializedPluginArtifact> materializeArtifact(
+    PluginTransferOffer offer,
+  ) async {
     _assertOpen();
     final connection = await _supervisor._ensureStarted();
     final raw = await connection.request(
       method: 'plugins.transfer.export.v2',
-      params: <String, Object?>{
-        'id': artifact.pluginId,
-        'version': artifact.version,
-      },
+      params: <String, Object?>{'id': offer.pluginId, 'version': offer.version},
       timeout: const Duration(minutes: 2),
     );
     final result = _jsonObject(raw, 'Plugin transfer export result');
     final token = result['token'];
     final returned = _decodePluginTransferArtifact(result);
     if (token is! String ||
-        returned.pluginId != artifact.pluginId ||
-        returned.version != artifact.version ||
-        returned.bytes != artifact.bytes ||
-        returned.sha256 != artifact.sha256 ||
-        returned.format != artifact.format) {
+        returned.pluginId != offer.pluginId ||
+        returned.version != offer.version ||
+        returned.format != offer.format ||
+        returned.provenance != offer.provenance ||
+        returned.developmentFingerprint != offer.developmentFingerprint ||
+        returned.developmentRevision != offer.developmentRevision) {
       throw const PluginRuntimeException(
         'plugin_transfer_checksum_mismatch',
         'The Runtime transfer artifact identity did not match the request.',
       );
     }
-    return connection.readTransferResource(
-      expectedBytes: returned.bytes,
-      token: token,
+    return MaterializedPluginArtifact(
+      artifact: returned,
+      bytes: await connection.readTransferResource(
+        expectedBytes: returned.bytes,
+        token: token,
+      ),
     );
   }
+
+  PluginTransferOffer _offerFrom(PluginTransferArtifact artifact) =>
+      PluginTransferOffer(
+        developmentFingerprint: artifact.developmentFingerprint,
+        developmentRevision: artifact.developmentRevision,
+        format: artifact.format,
+        pluginId: artifact.pluginId,
+        provenance: artifact.provenance,
+        version: artifact.version,
+      );
 
   Future<PluginDevelopmentPackage> packageDevelopmentPlugin(
     String pluginId,

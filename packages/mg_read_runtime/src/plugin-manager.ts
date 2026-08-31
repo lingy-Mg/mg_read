@@ -63,16 +63,8 @@ import {
 import { PluginInstaller } from "./plugin-installer.js";
 import { PluginIconResources } from "./plugin-icon-resources.js";
 import { measureInstallationTree, retainedArtifactPath } from "./plugin-installation-usage.js";
-import {
-  createDevelopmentPackageArtifactResource,
-  listExportablePluginArtifacts,
-} from "./plugin-manager-artifact-transfer.js";
-import {
-  PluginArtifactTransferManager,
-  type PluginTransferArtifact,
-  type PluginTransferPlanItem,
-  type PluginTransferResource,
-} from "./plugin-artifact-transfer.js";
+import { createDevelopmentPackageArtifactResource, listExportablePluginArtifacts, listPluginTransferOffers, toDevelopmentTransferProject } from "./plugin-manager-artifact-transfer.js";
+import { PluginArtifactTransferManager, type PluginTransferArtifact, type PluginTransferOffer, type PluginTransferPlanItem, type PluginTransferResource } from "./plugin-artifact-transfer.js";
 import {
   type PluginChapterContent,
   type PluginChaptersRequest,
@@ -263,6 +255,16 @@ export class PluginManager {
     return listExportablePluginArtifacts(this.#pluginTransfer, this.#installedSnapshots, this.#developmentLoaded.values());
   }
 
+  /** Lists transferable versions without packaging development projects. */
+  async listPluginTransferOffers(): Promise<readonly PluginTransferOffer[]> {
+    await this.initialize();
+    return listPluginTransferOffers(
+      this.#pluginTransfer,
+      this.#installedSnapshots,
+      this.#developmentLoaded.values(),
+    );
+  }
+
   async close(): Promise<void> {
     await this.#developmentMonitor?.close();
     await this.#developmentMutationTail.catch(() => {});
@@ -288,8 +290,29 @@ export class PluginManager {
     );
   }
 
+  async planPluginTransferOffers(incoming: readonly PluginTransferOffer[]): Promise<readonly PluginTransferPlanItem[]> {
+    await this.initialize();
+    return this.#pluginTransfer.planOffers(
+      incoming,
+      this.#combinedSnapshots(),
+      [...this.#developmentLoaded.values()].map((plugin) => ({
+        fingerprint: plugin.fingerprint,
+        id: plugin.loaded.descriptor.id,
+        syncRevision: plugin.syncRevision,
+      })),
+    );
+  }
+
   /** Creates a one-shot Runtime-private resource for bounded artifact streaming. */
-  async createPluginTransferResource(id: string, version: string): Promise<{ readonly token: string; readonly artifact: PluginTransferArtifact }> { await this.initialize(); return this.#pluginTransfer.createResource(id, version); }
+  async createPluginTransferResource(id: string, version: string): Promise<{ readonly token: string; readonly artifact: PluginTransferArtifact }> {
+    await this.initialize();
+    const development = this.#developmentLoaded.get(id);
+    return this.#pluginTransfer.createResource(
+      id,
+      version,
+      development === undefined ? undefined : toDevelopmentTransferProject(development),
+    );
+  }
 
   /** Packages one loaded Windows Debug development source without exposing its path. */
   async createDevelopmentPackageResource(pluginId: string): Promise<{ readonly artifact: PluginTransferArtifact; readonly fileName: string; readonly token: string }> {

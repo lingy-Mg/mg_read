@@ -77,10 +77,7 @@ import { installPluginArtifactInbox, seedBundledPluginArtifacts } from "./plugin
 import { dispatchPluginEnabled, dispatchPluginUninstall } from "./plugin-uninstall-dispatch.js";
 import {
   dispatchPluginDevelopmentPackage,
-  dispatchPluginTransferExport,
-  dispatchPluginTransferList,
-  dispatchPluginTransferPlan,
-  dispatchPluginTransferVerify,
+  dispatchPluginTransferRequest,
 } from "./desktop-plugin-transfer-dispatch.js";
 import { emitRuntimeDiagnostic, observeRuntimeDiagnostics } from "./runtime-diagnostics.js";
 import {
@@ -116,6 +113,8 @@ const RUNTIME_CONTROL_METHOD = Object.freeze({
   pluginsUninstall: "plugins.uninstall.v1",
   pluginsTransferList: "plugins.transfer.list.v2",
   pluginsTransferPlan: "plugins.transfer.plan.v2",
+  pluginsTransferOffers: "plugins.transfer.offers.v1",
+  pluginsTransferOfferPlan: "plugins.transfer.offers.plan.v1",
   pluginsTransferExport: "plugins.transfer.export.v2",
   pluginsTransferVerify: "plugins.transfer.verify.v2",
   sourceDiscover: "source.discover.v1",
@@ -143,6 +142,8 @@ const RUNTIME_CONTROL_CAPABILITIES = Object.freeze([
   RUNTIME_CONTROL_METHOD.pluginsUninstall,
   RUNTIME_CONTROL_METHOD.pluginsTransferList,
   RUNTIME_CONTROL_METHOD.pluginsTransferPlan,
+  RUNTIME_CONTROL_METHOD.pluginsTransferOffers,
+  RUNTIME_CONTROL_METHOD.pluginsTransferOfferPlan,
   RUNTIME_CONTROL_METHOD.pluginsTransferExport,
   RUNTIME_CONTROL_METHOD.pluginsTransferVerify,
   RUNTIME_CONTROL_METHOD.sourceDiscover,
@@ -930,13 +931,12 @@ export class DesktopRuntime {
       case RUNTIME_CONTROL_METHOD.pluginsUninstall:
         return dispatchPluginUninstall(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.pluginsTransferList:
-        return dispatchPluginTransferList(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.pluginsTransferPlan:
-        return dispatchPluginTransferPlan(request, this.#pluginManager, this.#requestError.bind(this));
+      case RUNTIME_CONTROL_METHOD.pluginsTransferOffers:
+      case RUNTIME_CONTROL_METHOD.pluginsTransferOfferPlan:
       case RUNTIME_CONTROL_METHOD.pluginsTransferExport:
-        return dispatchPluginTransferExport(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.pluginsTransferVerify:
-        return dispatchPluginTransferVerify(request, this.#pluginManager, this.#requestError.bind(this));
+        return dispatchPluginTransferRequest(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.sourceDiscover:
         return this.#dispatchPluginContent(
           request,

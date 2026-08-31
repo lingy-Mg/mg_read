@@ -56,8 +56,11 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
     try {
       final runtimeReady = await _warmPluginRuntime();
       startup.recordStage('runtimeReady', resultState: runtimeReady ? 'ready' : 'failure');
-      await ref.read(deviceSyncControllerProvider.notifier).start();
-      startup.recordStage('deviceSyncReady', resultState: ref.read(deviceSyncControllerProvider).started ? 'ready' : 'failure');
+      final lifecycle = WidgetsBinding.instance.lifecycleState;
+      if (mounted && (lifecycle == null || lifecycle == AppLifecycleState.resumed)) {
+        await ref.read(deviceSyncControllerProvider.notifier).start();
+        startup.recordStage('deviceSyncReady', resultState: ref.read(deviceSyncControllerProvider).started ? 'ready' : 'failure');
+      }
     } finally {
       // Retention is maintenance, not startup; it must follow Runtime warmup.
       final maintenanceResult = await startup.runDeferredDiagnosticsMaintenance();
@@ -112,7 +115,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
       await ref.read(availablePluginSourcesProvider.future);
       await ref.read(deviceSyncControllerProvider.notifier).syncAvailablePeers(pushChanges: true);
     } on Object {
-      // 自动同步会在下一轮设备广播时重试；开发热更新本身保持成功。
+      // 自动同步会按退避与低频校准重试；开发热更新本身保持成功。
     }
   }
 

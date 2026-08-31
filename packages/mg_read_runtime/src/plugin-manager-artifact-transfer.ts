@@ -6,7 +6,9 @@
  */
 import {
   PluginArtifactTransferManager,
+  type DevelopmentTransferProject,
   type PluginTransferArtifact,
+  type PluginTransferOffer,
 } from "./plugin-artifact-transfer.js";
 import {
   type DevelopmentPlugin,
@@ -20,15 +22,32 @@ export function listExportablePluginArtifacts(
 ): Promise<readonly PluginTransferArtifact[]> {
   return transfer.listExportable(
     installed,
-    [...development].map((plugin) => ({
-      fingerprint: plugin.fingerprint,
-      id: plugin.loaded.descriptor.id,
-      packageMode: plugin.loaded.descriptor.packageMode,
-      projectRoot: plugin.projectRoot,
-      syncRevision: plugin.syncRevision,
-      version: plugin.loaded.descriptor.version,
-    })),
+    [...development].map(toDevelopmentTransferProject),
   );
+}
+
+export function listPluginTransferOffers(
+  transfer: PluginArtifactTransferManager,
+  installed: readonly InstalledPluginSnapshot[],
+  development: Iterable<DevelopmentPlugin>,
+): Promise<readonly PluginTransferOffer[]> {
+  return transfer.listOffers(
+    installed,
+    [...development].map(toDevelopmentTransferProject),
+  );
+}
+
+export function toDevelopmentTransferProject(
+  plugin: DevelopmentPlugin,
+): DevelopmentTransferProject {
+  return {
+    fingerprint: plugin.fingerprint,
+    id: plugin.loaded.descriptor.id,
+    packageMode: plugin.loaded.descriptor.packageMode,
+    projectRoot: plugin.projectRoot,
+    syncRevision: plugin.syncRevision,
+    version: plugin.loaded.descriptor.version,
+  };
 }
 
 export async function createDevelopmentPackageArtifactResource(
@@ -39,14 +58,9 @@ export async function createDevelopmentPackageArtifactResource(
   readonly fileName: string;
   readonly token: string;
 }> {
-  const resource = await transfer.createDevelopmentPackageResource({
-    fingerprint: development.fingerprint,
-    id: development.loaded.descriptor.id,
-    packageMode: development.loaded.descriptor.packageMode,
-    projectRoot: development.projectRoot,
-    syncRevision: development.syncRevision,
-    version: development.loaded.descriptor.version,
-  });
+  const resource = await transfer.createDevelopmentPackageResource(
+    toDevelopmentTransferProject(development),
+  );
   const suffix = resource.artifact.format === "singleFile" ? ".mgplugin.js" : ".mgplugin";
   return Object.freeze({
     ...resource,
