@@ -115,6 +115,10 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     required int generation,
   }) async {
     if (!_isRequestedGeneration(generation)) return;
+    final uri = episode.uri;
+    if (uri == null) {
+      throw StateError('The selected video episode has no playback resource.');
+    }
 
     final session = _MediaKitEpisodeSession(proxyUri);
     _bind(session, generation, episode);
@@ -139,7 +143,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
       await session.applyProxy();
       _debugPlaybackRequest('open', episode);
       await session.player.open(
-        Media(episode.uri, httpHeaders: episode.httpHeaders),
+        Media(uri, httpHeaders: episode.httpHeaders),
         play: false,
       );
       if (!_isCurrent(session, generation)) return;
@@ -247,23 +251,30 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     if (!kDebugMode) return;
     debugPrint(
       'MgRead video backend [$event] '
-      'uri=${episode.uri} '
-      'headers=${episode.httpHeaders}',
+      '${_debugResourceSummary(episode)}',
     );
   }
 
-  void _debugPlaybackFailure(
-    String event,
-    VideoEpisode episode,
-    Object error,
-  ) {
+  void _debugPlaybackFailure(String event, VideoEpisode episode, Object error) {
     if (!kDebugMode) return;
     debugPrint(
       'MgRead video backend [$event] '
-      'uri=${episode.uri} '
-      'headers=${episode.httpHeaders} '
-      'error=$error',
+      '${_debugResourceSummary(episode)} '
+      'errorType=${error.runtimeType}',
     );
+  }
+
+  String _debugResourceSummary(VideoEpisode episode) {
+    final uri = Uri.tryParse(episode.uri ?? '');
+    final host = uri?.host.toLowerCase();
+    final resource = uri == null
+        ? 'invalid'
+        : host == 'localhost' || host == '127.0.0.1' || host == '::1'
+        ? 'runtime-loopback'
+        : uri.scheme == 'file'
+        ? 'local-file'
+        : 'remote-${uri.scheme.isEmpty ? 'unknown' : uri.scheme}';
+    return 'resource=$resource headerCount=${episode.httpHeaders.length}';
   }
 
   void _updateFrom(

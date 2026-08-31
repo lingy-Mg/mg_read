@@ -9,31 +9,40 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/media/application/source_video_data_source.dart';
 
 void main() {
+  test('loads catalog metadata without resolving every signed resource', () async {
+    final gateway = _VideoGateway(failEpisodeResource: false);
+    final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId);
+
+    final content = await source.load('video-1');
+
+    expect(gateway.contentCalls, isEmpty);
+    expect(content.groups.single.episodes.single.uri, isNull);
+  });
+
+  test('resolves only the explicitly selected episode', () async {
+    final gateway = _VideoGateway(failEpisodeResource: false);
+    final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId);
+    await source.load('video-1');
+
+    final episode = await source.loadEpisode('video-1', groupId: 'default', episodeId: 'episode-1');
+
+    expect(gateway.contentCalls, <String>['episode-1']);
+    expect(episode.uri, 'http://127.0.0.1/source-resource/episode-1');
+    expect(episode.httpHeaders['Referer'], 'https://source.example/');
+  });
+
   test('redacts a selected video resource failure with a stable location', () async {
-    final source = SourceVideoDataSource(
-      gateway: _VideoGateway(failEpisodeResource: true),
-      pluginId: _pluginId,
-    );
+    final gateway = _VideoGateway(failEpisodeResource: true);
+    final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId);
+    await source.load('video-1');
 
     await expectLater(
-      source.load('video-1'),
+      source.loadEpisode('video-1', groupId: 'default', episodeId: 'episode-1'),
       throwsA(
         isA<VideoPlayerLoadException>()
-            .having(
-              (failure) => failure.code,
-              'code',
-              'video_episode_resource_load_failed',
-            )
-            .having(
-              (failure) => failure.location,
-              'location',
-              '请求选集播放资源',
-            )
-            .having(
-              (failure) => failure.message,
-              'message',
-              '所选集的播放资源暂时无法获取，请稍后重试。',
-            ),
+            .having((failure) => failure.code, 'code', 'video_episode_resource_load_failed')
+            .having((failure) => failure.location, 'location', '请求选集播放资源')
+            .having((failure) => failure.message, 'message', '所选集的播放资源暂时无法获取，请稍后重试。'),
       ),
     );
   });
@@ -42,15 +51,13 @@ void main() {
 const _pluginId = 'org.example.video';
 
 final class _VideoGateway implements SourceContentGateway {
-  const _VideoGateway({required this.failEpisodeResource});
+  _VideoGateway({required this.failEpisodeResource});
 
   final bool failEpisodeResource;
+  final List<String> contentCalls = <String>[];
 
   @override
-  Future<PluginContentDetail> getDetail({
-    required String pluginId,
-    required String id,
-  }) async => PluginContentDetail(
+  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async => PluginContentDetail(
     pluginId: pluginId,
     sourceName: '示例视频源',
     summary: PluginContentSummary(
@@ -78,10 +85,7 @@ final class _VideoGateway implements SourceContentGateway {
   );
 
   @override
-  Future<PluginChaptersResult> getChapters({
-    required String pluginId,
-    required String id,
-  }) async => PluginChaptersResult(
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async => PluginChaptersResult(
     pluginId: pluginId,
     sourceName: '示例视频源',
     items: <PluginChapterSummary>[
@@ -100,18 +104,31 @@ final class _VideoGateway implements SourceContentGateway {
   );
 
   @override
-  Future<PluginChapterContent> getContent({
-    required String pluginId,
-    required String id,
-    required String chapterId,
-  }) async {
+  Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async {
+    contentCalls.add(chapterId);
     if (failEpisodeResource) throw StateError('https://private.example/signed-url');
-    throw UnimplementedError();
+    return PluginChapterContent(
+      pluginId: pluginId,
+      sourceName: '示例视频源',
+      contentKind: PluginContentKind.video,
+      chapterId: chapterId,
+      title: null,
+      updatedAt: null,
+      text: null,
+      pages: const <PluginMangaPage>[],
+      media: PluginMediaResource(
+        url: Uri.parse('http://127.0.0.1/source-resource/$chapterId'),
+        resourceType: PluginMediaResourceType.hls,
+        resourcePolicy: PluginMediaResourcePolicy.sessionOnly,
+        expiresAt: null,
+        mimeType: 'application/vnd.apple.mpegurl',
+        headers: const <String, String>{'Referer': 'https://source.example/'},
+      ),
+    );
   }
 
   @override
-  Future<List<PluginSourceDescriptor>> listSources() =>
-      throw UnimplementedError();
+  Future<List<PluginSourceDescriptor>> listSources() => throw UnimplementedError();
 
   @override
   Future<PluginDiscoverResult> discover({
@@ -123,17 +140,10 @@ final class _VideoGateway implements SourceContentGateway {
   }) => throw UnimplementedError();
 
   @override
-  Future<PluginSearchResult> search({
-    required String pluginId,
-    required String query,
-    String? cursor,
-    int pageSize = 20,
-  }) => throw UnimplementedError();
+  Future<PluginSearchResult> search({required String pluginId, required String query, String? cursor, int pageSize = 20}) =>
+      throw UnimplementedError();
 
   @override
-  Future<PluginSearchSuggestionsResult> searchSuggestions({
-    required String pluginId,
-    String? cursor,
-    int pageSize = 20,
-  }) => throw UnimplementedError();
+  Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) =>
+      throw UnimplementedError();
 }

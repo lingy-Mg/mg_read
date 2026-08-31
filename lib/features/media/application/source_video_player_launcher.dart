@@ -45,6 +45,7 @@ Future<void> openTransientSourceVideoPlayer(
         container: container,
         navigator: navigator,
         detail: detail,
+        initialCatalog: firstCatalogPage,
         initialGroupId: group?.id ?? 'default',
         initialEpisodeId: chapter.id,
         libraryItemId: libraryItemId,
@@ -58,6 +59,7 @@ final class _SourceVideoPlayerDestination extends StatefulWidget {
     required this.container,
     required this.navigator,
     required this.detail,
+    required this.initialCatalog,
     required this.initialGroupId,
     required this.initialEpisodeId,
     required this.libraryItemId,
@@ -66,6 +68,7 @@ final class _SourceVideoPlayerDestination extends StatefulWidget {
   final ProviderContainer container;
   final NavigatorState navigator;
   final PluginContentDetail detail;
+  final PluginChaptersResult initialCatalog;
   final String initialGroupId;
   final String initialEpisodeId;
   final String? libraryItemId;
@@ -100,7 +103,24 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
       final itemId = widget.libraryItemId == null ? null : LibraryItemId(widget.libraryItemId!);
       final proxyUri = widget.container.read(configuredFlutterNetworkProxyManagerProvider).playerProxyUriFor(NetworkProxyTraffic.video);
       if (!mounted || generation != _generation) return;
-      setState(() => _setup = _VideoPlayerSetup(library: library, itemId: itemId, proxyUri: proxyUri));
+      setState(
+        () => _setup = _VideoPlayerSetup(
+          dataSource: SourceVideoDataSource(
+            gateway: widget.container.read(sourceContentGatewayProvider),
+            pluginId: widget.detail.pluginId,
+            initialDetail: widget.detail,
+            initialCatalog: widget.initialCatalog,
+          ),
+          stateStore: TransientSourceVideoPlaybackStateStore(
+            contentId: widget.detail.summary.id,
+            initialGroupId: widget.initialGroupId,
+            initialEpisodeId: widget.initialEpisodeId,
+            library: library,
+            libraryItemId: itemId,
+          ),
+          proxyUri: proxyUri,
+        ),
+      );
     } on Object catch (error) {
       if (!mounted || generation != _generation) return;
       setState(() => _setupFailure = error);
@@ -143,14 +163,8 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
       child: VideoPlayerView(
         key: const Key('source-video-player'),
         contentId: widget.detail.summary.id,
-        dataSource: SourceVideoDataSource(gateway: widget.container.read(sourceContentGatewayProvider), pluginId: widget.detail.pluginId),
-        stateStore: TransientSourceVideoPlaybackStateStore(
-          contentId: widget.detail.summary.id,
-          initialGroupId: widget.initialGroupId,
-          initialEpisodeId: widget.initialEpisodeId,
-          library: setup.library,
-          libraryItemId: setup.itemId,
-        ),
+        dataSource: setup.dataSource,
+        stateStore: setup.stateStore,
         observer: _VideoEntryObserver(
           delegate: _DismissVideoPlayerObserver(widget.navigator, _fullscreenController),
           onPresented: _presentPlayer,
@@ -169,10 +183,10 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
 }
 
 final class _VideoPlayerSetup {
-  const _VideoPlayerSetup({required this.library, required this.itemId, required this.proxyUri});
+  const _VideoPlayerSetup({required this.dataSource, required this.stateStore, required this.proxyUri});
 
-  final ContentLibrary? library;
-  final LibraryItemId? itemId;
+  final SourceVideoDataSource dataSource;
+  final TransientSourceVideoPlaybackStateStore stateStore;
   final Uri? proxyUri;
 }
 

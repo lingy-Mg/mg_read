@@ -19,9 +19,11 @@ export async function openSourceProxyResource(
   if (typeof entry.request.kind !== "string" || typeof rawUrl !== "string" || !isHttpUrl(rawUrl)) return undefined;
   const forwarded = sourceHeaders(entry.request);
   if (forwarded === undefined) return undefined;
-  for (const name of ["range", "if-range"]) {
-    const value = requestHeaders[name];
-    if (value !== undefined && value.length <= 512) forwarded[name] = value;
+  if (entry.request.resourceRole !== "hlsKey") {
+    for (const name of ["range", "if-range"]) {
+      const value = requestHeaders[name];
+      if (value !== undefined && value.length <= 512) forwarded[name] = value;
+    }
   }
   const response = await entry.fetch(rawUrl, { headers: forwarded, method: "GET", redirect: "follow", signal });
   return Object.freeze({ proxy: entry.proxy, request: entry.request, response });

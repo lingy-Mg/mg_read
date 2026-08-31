@@ -17,15 +17,20 @@ import 'package:flutter/foundation.dart';
 @immutable
 final class VideoEpisode {
   /// Creates an immutable episode.
+  ///
+  /// [uri] is omitted for catalog-only entries returned by a
+  /// `VideoEpisodeDataSource`. A playable episode must supply it before the
+  /// backend is opened.
   VideoEpisode({
     required this.id,
     required this.title,
-    required this.uri,
+    this.uri,
     Map<String, String> httpHeaders = const <String, String>{},
     this.durationHint,
   }) : assert(id != ''),
        assert(title != ''),
-       assert(uri != ''),
+       assert(uri == null || uri != ''),
+       assert(uri != null || httpHeaders.isEmpty),
        httpHeaders = UnmodifiableMapView<String, String>(
          Map<String, String>.of(httpHeaders),
        );
@@ -36,14 +41,19 @@ final class VideoEpisode {
   /// User-visible episode title.
   final String title;
 
-  /// Media URI understood by the selected playback backend.
-  final String uri;
+  /// Transient media URI understood by the selected playback backend.
+  ///
+  /// This is null while the episode is only catalog metadata.
+  final String? uri;
 
   /// Request headers used only while opening this episode.
   final Map<String, String> httpHeaders;
 
   /// Optional duration shown before the backend reports authoritative metadata.
   final Duration? durationHint;
+
+  /// Whether this instance can be passed to a playback backend.
+  bool get hasPlaybackResource => uri != null;
 }
 
 /// A host-defined grouping such as a season, source line or edition.
@@ -161,10 +171,7 @@ enum VideoPlayerFailureKind {
 @immutable
 final class VideoPlayerFailure {
   /// Creates a stable failure safe for presentation.
-  const VideoPlayerFailure(this.kind, this.message, {
-    this.code,
-    this.location,
-  });
+  const VideoPlayerFailure(this.kind, this.message, {this.code, this.location});
 
   /// Failure domain.
   final VideoPlayerFailureKind kind;

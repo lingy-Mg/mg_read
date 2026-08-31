@@ -22,6 +22,20 @@ abstract interface class VideoDataSource {
   Future<VideoContent> load(String contentId);
 }
 
+/// A source whose catalog is safe to keep while playback resources are not.
+///
+/// Implementations return metadata-only episodes from [VideoDataSource.load]
+/// and resolve one transient URL only when that episode is selected. This is
+/// the preferred boundary for signed or session-owned source media.
+abstract interface class VideoEpisodeDataSource implements VideoDataSource {
+  /// Resolves one selected episode without preloading neighbouring resources.
+  Future<VideoEpisode> loadEpisode(
+    String contentId, {
+    required String groupId,
+    required String episodeId,
+  });
+}
+
 /// Loads and durably saves semantic playback progress.
 abstract interface class VideoPlaybackStateStore {
   /// Loads the last saved episode and position for [contentId].

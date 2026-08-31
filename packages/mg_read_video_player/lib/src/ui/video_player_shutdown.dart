@@ -8,8 +8,17 @@
 /// - Errors cannot be surfaced into the disposed widget tree and are isolated.
 library;
 
+import 'package:flutter/widgets.dart';
+
 import '../api/contracts.dart';
 import '../api/models.dart';
+
+/// Whether a platform lifecycle transition requires an immediate pause.
+bool pausesVideoForLifecycle(AppLifecycleState state) =>
+    state == AppLifecycleState.inactive ||
+    state == AppLifecycleState.paused ||
+    state == AppLifecycleState.hidden ||
+    state == AppLifecycleState.detached;
 
 /// Completes persistence and backend cleanup after the view has detached.
 Future<void> shutdownVideoSession({

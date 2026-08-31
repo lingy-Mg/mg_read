@@ -39,14 +39,21 @@ export async function serveSourceResource(
       request === undefined ? {} : requestHeaders(request),
       cancellation.signal,
     );
-    if (resource === undefined) { response.writeHead(404); response.end(); finish(404); return; }
+    if (resource === undefined) {
+      response.writeHead(404);
+      response.end();
+      finish(404);
+      return;
+    }
     await serveUpstreamResource(resource, response, finish);
   } catch {
     if (response.headersSent) {
       response.destroy();
       finish(502);
     } else {
-      response.writeHead(404); response.end(); finish(404);
+      response.writeHead(502);
+      response.end();
+      finish(502);
     }
   } finally {
     request?.off("aborted", abort);
@@ -114,9 +121,10 @@ async function readManifest(response: Response): Promise<string> {
 }
 
 function rewriteHls(text: string, base: string, request: JsonObject, createProxy: (request: JsonObject) => string): string {
-  const proxy = (raw: string, kind: "hls" | "video") => createProxy({
+  const proxy = (raw: string, kind: "hls" | "video", resourceRole: "hlsKey" | "hlsMedia" | "hlsPlaylist") => createProxy({
     ...request,
     kind,
+    resourceRole,
     url: new URL(raw, base).toString(),
   });
   let nextPlainUriIsPlaylist = false;
@@ -125,14 +133,22 @@ function rewriteHls(text: string, base: string, request: JsonObject, createProxy
     if (line.startsWith("#") === false) {
       const kind = nextPlainUriIsPlaylist || isHlsPlaylistUri(line) ? "hls" : "video";
       nextPlainUriIsPlaylist = false;
-      return proxy(line, kind);
+      return proxy(line, kind, kind === "hls" ? "hlsPlaylist" : "hlsMedia");
     }
     const separator = line.indexOf(":");
     const tag = separator === -1 ? line : line.slice(0, separator);
     if (tag === "#EXT-X-STREAM-INF") nextPlainUriIsPlaylist = true;
     const kind = hlsPlaylistUriTags.has(tag) ? "hls" : "video";
     return line.replace(/URI="([^"]+)"/gu, (_whole, uri: string) => (
-      `URI="${proxy(uri, kind === "hls" || isHlsPlaylistUri(uri) ? "hls" : "video")}"`
+      `URI="${proxy(
+        uri,
+        kind === "hls" || isHlsPlaylistUri(uri) ? "hls" : "video",
+        kind === "hls" || isHlsPlaylistUri(uri)
+          ? "hlsPlaylist"
+          : hlsKeyUriTags.has(tag)
+          ? "hlsKey"
+          : "hlsMedia",
+      )}"`
     ));
   }).join("\n");
 }
@@ -142,6 +158,8 @@ const hlsPlaylistUriTags = new Set([
   "#EXT-X-MEDIA",
   "#EXT-X-RENDITION-REPORT",
 ]);
+
+const hlsKeyUriTags = new Set(["#EXT-X-KEY", "#EXT-X-SESSION-KEY"]);
 
 function isHlsPlaylistUri(raw: string): boolean {
   try { return new URL(raw, "https://mgread.invalid/").pathname.toLowerCase().endsWith(".m3u8"); }

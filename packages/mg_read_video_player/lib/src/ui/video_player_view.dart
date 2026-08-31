@@ -1,27 +1,26 @@
 /// Embeddable video session and package-owned presentation.
 ///
 /// Responsibilities:
-/// - Resolve content, restore progress and coordinate an injectable backend.
-/// - Own video-specific controls, lifecycle pause, persistence and host intents.
+/// - Resolve content/progress and own backend, controls, lifecycle, persistence and host intents.
 ///
 /// Notes:
-/// - The view never changes orientation, fullscreen, PiP or system-awake state.
-/// - Every async load/open uses generations so stale results cannot replace state.
+/// - It owns no platform state; async loads use generations so stale results cannot replace state.
 library;
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../api/contracts.dart';
 import '../api/controller.dart';
 import '../api/models.dart';
 import '../backend/media_kit_video_playback_backend.dart';
 import 'video_backend_command_queue.dart';
+import 'video_episode_resolution.dart';
 import 'video_episode_selection.dart';
 import 'video_episode_sheet.dart';
 import 'video_player_shutdown.dart';
+import 'video_player_keyboard.dart';
 import 'video_player_stage.dart';
 
 /// A complete video player backed by host content and persistence ports.
@@ -286,14 +285,31 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       _controlsVisible = true;
     });
 
+    final resolution = await resolveVideoEpisode(
+      dataSource: widget.dataSource,
+      contentId: widget.contentId,
+      group: group,
+      episode: episode,
+    );
+    if (!_isCurrentEpisode(generation)) return;
+    final failure = resolution.failure;
+    if (failure != null) {
+      _setFailure(failure);
+      return;
+    }
+    final playableEpisode = resolution.episode!;
+
     final backend = _backend;
     final Future<void> operation = _backendCommands.enqueue(() async {
       if (!_isCurrentEpisode(generation) || !identical(backend, _backend)) {
         return;
       }
       await backend.open(
-        episode,
-        initialPosition: _clampPosition(initialPosition, episode.durationHint),
+        playableEpisode,
+        initialPosition: _clampPosition(
+          initialPosition,
+          playableEpisode.durationHint,
+        ),
         play: play,
       );
     });
@@ -563,21 +579,17 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     final episode = _episode;
     final contentId = _activeContentId;
     if (group == null || episode == null || contentId == null) return null;
-    final duration = _backendState.duration;
     return VideoPlaybackProgress(
       contentId: contentId,
       groupId: group.id,
       episodeId: episode.id,
-      position: _clampPosition(_backendState.position, duration),
-      duration: duration,
+      position: _clampPosition(_backendState.position, _backendState.duration),
+      duration: _backendState.duration,
     );
   }
 
   void _handleLifecycle(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.detached) {
+    if (pausesVideoForLifecycle(state)) {
       unawaited(_pauseForBackground());
     }
   }
@@ -620,23 +632,8 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     _focusNode.requestFocus();
   }
 
-  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
-    if (event.logicalKey == LogicalKeyboardKey.space) {
-      unawaited(playOrPause());
-    } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      unawaited(skip(const Duration(seconds: -10)));
-    } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      unawaited(skip(const Duration(seconds: 10)));
-    } else if (event.logicalKey == LogicalKeyboardKey.escape) {
-      unawaited(requestExit());
-    } else {
-      return KeyEventResult.ignored;
-    }
-    return KeyEventResult.handled;
-  }
+  KeyEventResult _handleKey(FocusNode _, KeyEvent event) =>
+      handleVideoPlayerKeyEvent(event, this);
 
   Future<void> _retry() async {
     _reportedBackendError = null;

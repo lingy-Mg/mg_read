@@ -103,6 +103,8 @@ plugins/sources/                    真实数据源及其他能力参考实现
   同时使用系统媒体通知；打开视频前必须先暂停并移除现有后台音频。不得为此申请系统悬浮窗权限。
 - 文本锚点为 `chapterId + paragraphId + characterOffset`，漫画为
   `chapterId + imageId + imageFraction`；视频分组使用中性的 `groupId + episodeId`。
+- 视频目录只保留安全的分组与选集元数据；签名或会话型播放资源由 `VideoEpisodeDataSource` 仅为当前选中集
+  按需解析。宿主展示状态重建必须复用同一 DataSource 与进度 Store，不得触发整场播放器 reload。
 - Observer 只请求宿主动作；未注册 capability 隐藏。异步域必须有世代/取消，资源成对释放。
 
 ## UI、状态与组件

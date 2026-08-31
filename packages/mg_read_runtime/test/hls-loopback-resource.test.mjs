@@ -96,6 +96,13 @@ test("HLS loopback keeps playlists recursive and streams binary children", async
 
   const mediaResponse = await fetch(masterUrls.at(-1));
   const binaryUrls = loopbackUrls(await mediaResponse.text(), origin);
+  const keyResponse = await fetch(binaryUrls[0], { headers: { Range: "bytes=0-" } });
+  assert.equal(keyResponse.status, 200);
+  assert.equal((await keyResponse.arrayBuffer()).byteLength, 4);
+  const keyCall = calls.findLast((call) => call.url.endsWith("key.bin"));
+  assert.notEqual(keyCall, undefined);
+  assert.equal(keyCall.headers.range, undefined);
+
   const segmentResponse = await fetch(binaryUrls.at(-1), { headers: { Range: "bytes=0-0" } });
   assert.equal(segmentResponse.status, 206);
   assert.equal(segmentResponse.headers.get("content-type"), "video/mp2t");

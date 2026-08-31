@@ -52,3 +52,35 @@ test("source resources deliver the first chunk before the upstream body complete
   assert.equal((await reader.read()).done, true);
   assert.deepEqual(await finished.promise, { status: 200, bytes: 6 });
 });
+
+test("source resource upstream failures return bad gateway", async (t) => {
+  const finished = Promise.withResolvers();
+  const pluginManager = {
+    async openSourceResource() {
+      throw new Error("upstream unavailable");
+    },
+  };
+  const server = createServer((request, response) => {
+    void serveSourceResource(
+      pluginManager,
+      "token",
+      response,
+      (status) => finished.resolve(status),
+      request,
+    );
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const address = server.address();
+  assert.notEqual(address, null);
+  assert.equal(typeof address, "object");
+
+  const response = await fetch(
+    `http://127.0.0.1:${address.port}/v1/source-resource/token`,
+  );
+  assert.equal(response.status, 502);
+  assert.equal(await finished.promise, 502);
+});

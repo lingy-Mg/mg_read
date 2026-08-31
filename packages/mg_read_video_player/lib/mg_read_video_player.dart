@@ -11,6 +11,7 @@ library;
 export 'src/api/contracts.dart'
     show
         VideoDataSource,
+        VideoEpisodeDataSource,
         VideoPlaybackBackend,
         VideoPlaybackBackendFactory,
         VideoPlaybackStateStore,
