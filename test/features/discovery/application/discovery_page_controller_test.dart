@@ -14,6 +14,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
+import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/discovery_page_controller.dart';
 import 'package:mg_read/features/discovery/application/discovery_page_state.dart';
 import 'package:mg_read/features/discovery/application/discovery_source_selection_store.dart';
@@ -179,7 +180,13 @@ void main() {
   test('keeps the child page for failure retry and emits a safe terminal span', () async {
     final diagnostics = DiagnosticsTestkit();
     addTearDown(diagnostics.dispose);
-    final gateway = _TreeGateway()..failFirstBrokenCategory = true;
+    final gateway = _TreeGateway()
+      ..failFirstBrokenCategory = true
+      ..brokenCategoryError = AppError.fromCode(
+        AppErrorCode.invalidFormat,
+        detail: 'Response validation failed at the inline payload budget: 64000 bytes exceeds the 57344-byte limit.',
+        location: 'source.discover.v1 / runtime.response.validation',
+      );
     final container = _container(gateway, diagnostics: diagnostics);
     addTearDown(container.dispose);
     final listener = container.listen<DiscoveryPageState>(discoveryPageControllerProvider, (_, _) {}, fireImmediately: true);
@@ -218,6 +225,15 @@ void main() {
       expect(event.attributes.values.keys, isNot(contains('target')));
       expect(event.attributes.values.keys, isNot(contains('sourceName')));
     }
+    final failure = navigationEvents.firstWhere((event) => event.eventName == 'discovery.navigation.error');
+    expect(failure.attributes.values['resultState'], DiagnosticStringValue('failure'));
+    expect(failure.attributes.values['navigationDepth'], DiagnosticInt64Value('1'));
+    expect(failure.attributes.values['errorLocation'], DiagnosticStringValue('source.discover.v1 / runtime.response.validation'));
+    expect(
+      failure.attributes.values['errorText'],
+      DiagnosticStringValue('Response validation failed at the inline payload budget: 64000 bytes exceeds the 57344-byte limit.'),
+    );
+    expect(failure.attributes.values['stackTrace'], isA<DiagnosticStringValue>());
   });
 
   test('current development source update returns discovery to its root', () async {
@@ -345,6 +361,7 @@ final class _TreeGateway implements SourceContentGateway {
   final List<String> documentPluginIds = <String>[];
   Completer<void>? categoryGate;
   bool failFirstBrokenCategory = false;
+  AppError? brokenCategoryError;
   bool includePrimary = true;
 
   @override
@@ -381,6 +398,7 @@ final class _TreeGateway implements SourceContentGateway {
     documentRequestCount++;
     if (target == 'category:broken' && failFirstBrokenCategory) {
       failFirstBrokenCategory = false;
+      if (brokenCategoryError case final error?) throw error;
       throw StateError('controlled discovery failure');
     }
     documentPluginIds.add(pluginId);

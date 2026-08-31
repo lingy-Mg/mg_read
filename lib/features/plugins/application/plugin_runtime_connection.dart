@@ -292,8 +292,9 @@ PluginRuntimePlugin _toPluginRuntimePlugin(InstalledPlugin plugin) {
   );
 }
 
-/// Collapses Runtime-internal startup detail into the app's stable UI taxonomy.
-AppError normalizePluginRuntimeError(PluginRuntimeException error) {
+/// Collapses Runtime failures into the app's stable UI taxonomy while retaining
+/// only reviewed invalid-response context and an application-owned location.
+AppError normalizePluginRuntimeError(PluginRuntimeException error, {String? location}) {
   final code = switch (error.code) {
     'runtime_data_root_unavailable' ||
     'runtime_bundled_plugin_assets_missing' ||
@@ -318,7 +319,18 @@ AppError normalizePluginRuntimeError(PluginRuntimeException error) {
     final value when value.startsWith('windows_job_object_') => AppErrorCode.runtimeStartFailed,
     _ => AppErrorCode.fromWireValue(error.code),
   };
-  return AppError.fromCode(code);
+  return AppError.fromCode(
+    code,
+    detail: code == AppErrorCode.invalidFormat ? _boundedRuntimeValidationDetail(error.message) : null,
+    location: location,
+  );
+}
+
+String? _boundedRuntimeValidationDetail(String value) {
+  final normalized = value.replaceAll('\u0000', '').trim();
+  if (normalized.isEmpty) return null;
+  const maximumCharacters = 2048;
+  return normalized.length <= maximumCharacters ? normalized : '${normalized.substring(0, maximumCharacters)}\u2026';
 }
 
 /// Process-scoped public Facade shared by every main-application capability.

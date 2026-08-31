@@ -413,7 +413,11 @@ abstract final class AppDiagnosticEvents {
       'itemCount': _int64,
       'resultState': _string,
       'errorCode': _string,
+      'errorLocation': _string,
+      'errorText': _string,
+      'stackTrace': _string,
     },
+    maxAttributeBytes: 64 * 1024,
   );
 
   static final DiagnosticEventDefinition libraryOperation = DiagnosticEventDefinition.span(
@@ -504,7 +508,11 @@ abstract final class AppDiagnosticEvents {
       'resultCount': _int64,
       'resultState': _string,
       'errorCode': _string,
+      'errorLocation': _string,
+      'errorText': _string,
+      'stackTrace': _string,
     },
+    maxAttributeBytes: 64 * 1024,
   );
 
   static final DiagnosticEventDefinition lanSyncSession = DiagnosticEventDefinition.span(

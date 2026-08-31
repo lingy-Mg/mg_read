@@ -393,10 +393,17 @@ export interface ParsedPluginRequest<T extends JsonObject> {
   readonly request: T;
 }
 
-/** Stable validation failure mapped to plugin_invalid_response/invalid_request. */
+/**
+ * Stable validation failure mapped to plugin_invalid_response/invalid_request.
+ *
+ * [message] is reviewed, value-free validation context. It may name schema
+ * fields, limits and validation stages, but must never embed plugin payloads,
+ * URLs, headers or arbitrary exception text because it is safe to project to
+ * Flutter diagnostics and error UI.
+ */
 export class PluginContentValidationError extends Error {
-  constructor() {
-    super("The Plugin API content object is invalid.");
+  constructor(message = "Response validation failed at the Plugin API schema boundary.") {
+    super(message);
     this.name = "PluginContentValidationError";
   }
 }

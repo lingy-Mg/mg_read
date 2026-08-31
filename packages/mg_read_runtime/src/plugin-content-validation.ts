@@ -390,17 +390,22 @@ export function readArray(
   maximumItems: number,
 ): readonly unknown[] {
   const value = readOwn(raw, key);
-  if (!Array.isArray(value) || value.length > maximumItems) fail();
+  if (!Array.isArray(value)) fail(`Response field "${key}" must be an array.`);
+  if (value.length > maximumItems) {
+    fail(`Response field "${key}" contains ${value.length} items; the limit is ${maximumItems}.`);
+  }
   return value;
 }
 
 export function readRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) fail();
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    fail("Response validation expected an object at the current schema location.");
+  }
   return value as Record<string, unknown>;
 }
 
 export function readOwn(raw: Record<string, unknown>, key: string): unknown {
-  if (!Object.hasOwn(raw, key)) fail();
+  if (!Object.hasOwn(raw, key)) fail(`Response field "${key}" is required at the current schema location.`);
   return raw[key];
 }
 
@@ -409,16 +414,20 @@ export function readRequiredString(
   key: string,
   maximumCharacters: number,
 ): string {
-  return readStandaloneString(readOwn(raw, key), maximumCharacters);
+  return readStandaloneString(readOwn(raw, key), maximumCharacters, key);
 }
 
-function readStandaloneString(value: unknown, maximumCharacters: number): string {
+function readStandaloneString(value: unknown, maximumCharacters: number, fieldName?: string): string {
   if (
     typeof value !== "string" ||
     value.length > maximumCharacters ||
     value.trim().length === 0
   ) {
-    fail();
+    fail(
+      fieldName === undefined
+        ? `Response list value must be a non-empty string no longer than ${maximumCharacters} characters.`
+        : `Response field "${fieldName}" must be a non-empty string no longer than ${maximumCharacters} characters.`,
+    );
   }
   return value;
 }
@@ -429,7 +438,7 @@ export function readNullableString(
   maximumCharacters: number,
 ): string | null {
   const value = readOwn(raw, key);
-  return value === null ? null : readStandaloneString(value, maximumCharacters);
+  return value === null ? null : readStandaloneString(value, maximumCharacters, key);
 }
 
 function readNullableText(raw: Record<string, unknown>, key: string): string | null {
@@ -459,7 +468,9 @@ export function readNullableCount(
 ): number | null {
   const value = readOwn(raw, key);
   if (value === null) return null;
-  if (!Number.isSafeInteger(value) || (value as number) < 0) fail();
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    fail(`Response field "${key}" must be null or a non-negative safe integer.`);
+  }
   return value as number;
 }
 
@@ -468,7 +479,7 @@ export function readNullablePositiveInteger(
   key: string,
 ): number | null {
   const value = readNullableCount(raw, key);
-  if (value !== null && value < 1) fail();
+  if (value !== null && value < 1) fail(`Response field "${key}" must be null or a positive integer.`);
   return value;
 }
 
@@ -487,7 +498,9 @@ export function readEnum<T extends string>(
   allowed: ReadonlySet<T>,
 ): T {
   const value = readOwn(raw, key);
-  if (typeof value !== "string" || !allowed.has(value as T)) fail();
+  if (typeof value !== "string" || !allowed.has(value as T)) {
+    fail(`Response field "${key}" is not one of the allowed values.`);
+  }
   return value as T;
 }
 
@@ -498,7 +511,9 @@ export function readOptionalNullableEnum<T extends string>(
 ): T | null {
   const value = raw[key];
   if (value === undefined || value === null) return null;
-  if (typeof value !== "string" || !allowed.has(value as T)) fail();
+  if (typeof value !== "string" || !allowed.has(value as T)) {
+    fail(`Optional response field "${key}" is not null or one of the allowed values.`);
+  }
   return value as T;
 }
 
@@ -575,16 +590,21 @@ function assertOnlyKeys(
 }
 
 export function assertUnique(values: readonly string[]): void {
-  if (new Set(values).size !== values.length) fail();
+  if (new Set(values).size !== values.length) {
+    fail("Response validation found duplicate identifiers in a collection that requires unique values.");
+  }
 }
 
 export function assertInlineBudget(
   value: JsonObject,
   maximumBytes = MAX_INLINE_RESULT_BYTES,
 ): void {
-  if (Buffer.byteLength(JSON.stringify(value), "utf8") > maximumBytes) fail();
+  const actualBytes = Buffer.byteLength(JSON.stringify(value), "utf8");
+  if (actualBytes > maximumBytes) {
+    fail(`Response validation failed at the inline payload budget: ${actualBytes} bytes exceeds the ${maximumBytes}-byte limit.`);
+  }
 }
 
-export function fail(): never {
-  throw new PluginContentValidationError();
+export function fail(message?: string): never {
+  throw new PluginContentValidationError(message);
 }

@@ -201,13 +201,21 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
       _reportSlow(capability, stopwatch, DiagnosticOutcome.success, span);
       return result;
     } on Object catch (error, stackTrace) {
-      final appError = error is PluginRuntimeException ? normalizePluginRuntimeError(error) : AppError.fromUnknown(error);
+      final location =
+          '$capability / ${error is PluginRuntimeException && _isInvalidRuntimeResponse(error) ? 'runtime.response.validation' : 'runtime.invocation'}';
+      final normalized = error is PluginRuntimeException
+          ? normalizePluginRuntimeError(error, location: location)
+          : AppError.fromUnknown(error);
+      final appError = normalized.withContext(location: location);
       span.fail(
         attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
           'capability': DiagnosticValue.string(capability),
           'attempt': DiagnosticValue.int64(1),
           'resultState': DiagnosticValue.string('failure'),
           'errorCode': DiagnosticValue.string(appError.code.wireValue),
+          'errorLocation': DiagnosticValue.string(location),
+          if (appError.detail != null) 'errorText': DiagnosticValue.string(appError.detail!),
+          'stackTrace': DiagnosticValue.string(stackTrace.toString()),
         }),
       );
       _reportSlow(capability, stopwatch, DiagnosticOutcome.error, span);
@@ -228,6 +236,8 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
     );
   }
 }
+
+bool _isInvalidRuntimeResponse(PluginRuntimeException error) => error.code == 'invalid_response' || error.code == 'plugin_invalid_response';
 
 int _discoveryDocumentItemCount(PluginDiscoveryDocument document) =>
     document.components.fold<int>(0, (count, component) => count + _componentItemCount(component));

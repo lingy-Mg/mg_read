@@ -109,7 +109,7 @@ class DiscoveryDestinationPage extends ConsumerWidget {
         key: const Key('discovery-failure'),
         icon: Icons.error_outline_rounded,
         title: _sourceErrorTitle(state.error!),
-        message: '稳定错误码：${state.error!.code.wireValue}',
+        message: '${_sourceErrorDetail(state.error!)}\n稳定错误码：${state.error!.code.wireValue}',
         actionLabel: '重试',
         onAction: () => unawaited(controller.retry()),
       ),
@@ -249,6 +249,7 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
       isContentLoading: isActiveLayer && state.status == DiscoveryPageStatus.loadingContent,
       contentIsEmpty: isActiveLayer && state.status == DiscoveryPageStatus.empty,
       contentFailureMessage: isActiveLayer && state.status == DiscoveryPageStatus.failure ? _sourceErrorTitle(state.error!) : null,
+      contentFailureDetail: isActiveLayer && state.status == DiscoveryPageStatus.failure ? _sourceErrorDetail(state.error!) : null,
       contentFailureCode: isActiveLayer && state.status == DiscoveryPageStatus.failure ? state.error!.code.wireValue : null,
     );
   }
@@ -418,4 +419,19 @@ String _sourceErrorTitle(AppError error) => switch (error.category) {
   AppErrorCategory.incompatible => '插件或 Runtime 版本不兼容',
   AppErrorCategory.retryableTemporary => '暂时无法加载发现内容',
   _ => '无法安全加载发现内容',
+};
+
+String _sourceErrorDetail(AppError error) => <String>[
+  '原因：${_sourceErrorReason(error)}',
+  if (error.detail case final detail?) '详细信息：$detail',
+  if (error.location case final location?) '位置：$location',
+].join('\n');
+
+String _sourceErrorReason(AppError error) => switch (error.code) {
+  AppErrorCode.invalidFormat => '数据源返回内容未通过 Runtime 格式或大小校验。',
+  AppErrorCode.pluginExecutionFailed => '数据源执行发现请求时发生错误。',
+  AppErrorCode.timeout => '数据源请求在限时内未完成。',
+  AppErrorCode.runtimeUnavailable || AppErrorCode.runtimeStartFailed || AppErrorCode.runtimeNotReady => 'Runtime 尚未就绪或已中断。',
+  AppErrorCode.pluginNotFound || AppErrorCode.pluginDisabled || AppErrorCode.pluginDamaged => '当前数据源不可用。',
+  _ => '请求未能安全完成。',
 };

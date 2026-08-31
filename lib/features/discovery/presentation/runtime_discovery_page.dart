@@ -54,6 +54,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     this.isContentLoading = false,
     this.contentIsEmpty = false,
     this.contentFailureMessage,
+    this.contentFailureDetail,
     this.contentFailureCode,
     super.key,
   });
@@ -77,6 +78,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
   final bool isContentLoading;
   final bool contentIsEmpty;
   final String? contentFailureMessage;
+  final String? contentFailureDetail;
   final String? contentFailureCode;
 
   @override
@@ -150,6 +152,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                       isLoading: isContentLoading,
                                       isEmpty: contentIsEmpty,
                                       failureMessage: contentFailureMessage,
+                                      failureDetail: contentFailureDetail,
                                       failureCode: contentFailureCode,
                                       onRetry: onRefreshRequested,
                                     ),

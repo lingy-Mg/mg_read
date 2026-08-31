@@ -77,13 +77,17 @@ void main() {
     expect(error.toString(), isNot(contains(secretCanary)));
   });
 
-  test('plugin response failures use the stable invalid-format UI code', () {
+  test('plugin response failures retain reviewed validation detail and location', () {
+    const detail = 'The plugin returned an invalid response. Response validation failed at the inline payload budget.';
     final error = normalizePluginRuntimeError(
-      const PluginRuntimeException('plugin_invalid_response', 'Plugin payload details must not escape.'),
+      const PluginRuntimeException('plugin_invalid_response', detail),
+      location: 'source.discover.v1 / runtime.response.validation',
     );
 
     expect(error.code, AppErrorCode.invalidFormat);
-    expect(error.toString(), isNot(contains('payload details')));
+    expect(error.detail, detail);
+    expect(error.location, 'source.discover.v1 / runtime.response.validation');
+    expect(error.toString(), isNot(contains(detail)));
   });
 
   test('existing development package output uses the stable conflict UI code', () {

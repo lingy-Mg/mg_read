@@ -104,7 +104,7 @@ export function validateDiscoverResult(
         pluginId,
         sourceName,
       })
-    : fail();
+    : fail('Discovery response field "kind" must be "document" or "append".');
   if (result.kind === "append") {
     assertUnique(result.items.map((item) => item.content.id));
   }
@@ -132,7 +132,7 @@ function validateDiscoveryDocument(value: unknown): PluginDiscoveryDocument {
   );
   const tabs = components.filter((component) => component.type === "tabs");
   if (tabs.length > 1 || (tabs.length === 1 && components[0]?.type !== "tabs")) {
-    fail();
+    fail('Discovery document may contain at most one tabs component, and it must be the first root component.');
   }
   return Object.freeze({ components });
 }
@@ -143,15 +143,18 @@ function validateDiscoveryComponent(
   depth: number,
   isFirstRootComponent: boolean,
 ): PluginDiscoveryComponent {
-  if (depth > MAX_DISCOVERY_DEPTH || ++state.count > MAX_DISCOVERY_COMPONENTS) fail();
+  if (depth > MAX_DISCOVERY_DEPTH) fail(`Discovery component depth ${depth} exceeds the limit of ${MAX_DISCOVERY_DEPTH}.`);
+  if (++state.count > MAX_DISCOVERY_COMPONENTS) {
+    fail(`Discovery document contains more than ${MAX_DISCOVERY_COMPONENTS} components.`);
+  }
   const raw = readRecord(value);
   const id = readRequiredString(raw, "id", MAX_ID_CHARACTERS);
-  if (state.ids.has(id)) fail();
+  if (state.ids.has(id)) fail('Discovery component validation found a duplicate component id.');
   state.ids.add(id);
   const type = readRequiredString(raw, "type", MAX_LABEL_CHARACTERS);
   switch (type) {
     case "tabs": {
-      if (!isFirstRootComponent || depth !== 1) fail();
+      if (!isFirstRootComponent || depth !== 1) fail('Discovery tabs must be the first root component.');
       const tabs = Object.freeze(
         readArray(raw, "tabs", MAX_DISCOVERY_TABS).map(validateDiscoveryTab),
       );
@@ -160,7 +163,7 @@ function validateDiscoveryComponent(
       if (
         (tabs.length === 0 && selectedTabId !== null) ||
         (selectedTabId !== null && !tabs.some((tab) => tab.id === selectedTabId))
-      ) fail();
+      ) fail('Discovery field "selectedTabId" must identify one of the declared tabs.');
       return Object.freeze({ id, selectedTabId, tabs, type });
     }
     case "section":
@@ -221,7 +224,7 @@ function validateDiscoveryComponent(
     case "divider":
       return Object.freeze({ id, type });
     default:
-      return fail();
+      return fail('Discovery component field "type" is not one of the supported component kinds.');
   }
 }
 

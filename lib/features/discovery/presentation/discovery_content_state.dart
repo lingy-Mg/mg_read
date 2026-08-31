@@ -21,6 +21,7 @@ class DiscoveryContentState extends StatelessWidget {
     required this.isEmpty,
     required this.onRetry,
     this.failureMessage,
+    this.failureDetail,
     this.failureCode,
     super.key,
   });
@@ -28,6 +29,7 @@ class DiscoveryContentState extends StatelessWidget {
   final bool isLoading;
   final bool isEmpty;
   final String? failureMessage;
+  final String? failureDetail;
   final String? failureCode;
   final VoidCallback onRetry;
 
@@ -42,7 +44,15 @@ class DiscoveryContentState extends StatelessWidget {
       children: <Widget>[
         Icon(isEmpty ? Icons.inbox_outlined : Icons.error_outline_rounded, size: 40, color: AppThemeTokens.of(context).mutedText),
         const SizedBox(height: AppSpacing.regular),
-        Text(failureMessage ?? '当前来源没有发现内容。'),
+        Text(failureMessage ?? '当前来源没有发现内容。', textAlign: TextAlign.center),
+        if (failureDetail != null) ...<Widget>[
+          const SizedBox(height: AppSpacing.compact),
+          Text(
+            failureDetail!,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppThemeTokens.of(context).mutedText),
+          ),
+        ],
         if (failureCode != null) ...<Widget>[
           const SizedBox(height: AppSpacing.unit),
           Text('稳定错误码：$failureCode', style: Theme.of(context).textTheme.bodySmall),

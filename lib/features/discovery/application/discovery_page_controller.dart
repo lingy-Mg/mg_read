@@ -289,7 +289,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       final result = await _gateway.discover(pluginId: pluginId, target: target);
       if (!_isCurrent(requestGeneration) || result is! PluginDiscoveryDocumentResult) {
         _clearPendingCategory(requestGeneration);
-        _endLoad(span, DiagnosticOutcome.cancelled);
+        _endLoad(span, DiagnosticOutcome.cancelled, navigationDepth: navigationDepth);
         return;
       }
       _clearPendingCategory(requestGeneration);
@@ -308,10 +308,10 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
           ..add(entry);
       }
       _publish(result, sources: availableSources, selectedSourceId: pluginId);
-      _endLoad(span, DiagnosticOutcome.success, itemCount: _documentItemCount(result.document));
-    } on Object catch (error) {
+      _endLoad(span, DiagnosticOutcome.success, itemCount: _documentItemCount(result.document), navigationDepth: navigationDepth);
+    } on Object catch (error, stackTrace) {
       if (!_isCurrent(requestGeneration)) {
-        _endLoad(span, DiagnosticOutcome.cancelled);
+        _endLoad(span, DiagnosticOutcome.cancelled, navigationDepth: navigationDepth);
         return;
       }
       _clearPendingCategory(requestGeneration);
@@ -319,7 +319,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       final current = _stack.lastOrNull;
       if (!push && current != null && state.selectedSourceId == pluginId) {
         _publish(current.document);
-        _endLoad(span, _outcomeFor(appError), error: appError);
+        _endLoad(span, _outcomeFor(appError), error: appError, stackTrace: stackTrace, navigationDepth: navigationDepth);
         return;
       }
       state = DiscoveryPageState.failure(
@@ -332,7 +332,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
         previousResult: push ? parent?.document : null,
         retainedParents: _stack.map((entry) => entry.document),
       );
-      _endLoad(span, _outcomeFor(appError), error: appError);
+      _endLoad(span, _outcomeFor(appError), error: appError, stackTrace: stackTrace, navigationDepth: navigationDepth);
     }
   }
 
@@ -366,10 +366,17 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   void _endActiveLoad(DiagnosticOutcome outcome) {
     final span = _activeLoadSpan;
     _activeLoadSpan = null;
-    if (span != null && !span.isEnded) _endLoad(span, outcome);
+    if (span != null && !span.isEnded) _endLoad(span, outcome, navigationDepth: state.navigationDepth);
   }
 
-  void _endLoad(DiagnosticSpanHandle span, DiagnosticOutcome outcome, {int? itemCount, AppError? error}) {
+  void _endLoad(
+    DiagnosticSpanHandle span,
+    DiagnosticOutcome outcome, {
+    int? itemCount,
+    AppError? error,
+    StackTrace? stackTrace,
+    int? navigationDepth,
+  }) {
     if (identical(_activeLoadSpan, span)) _activeLoadSpan = null;
     if (span.isEnded) return;
     span.end(
@@ -377,14 +384,26 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
         'operation': DiagnosticValue.string('document'),
         'requestGeneration': DiagnosticValue.int64(_latestGeneration),
-        'navigationDepth': DiagnosticValue.int64(_stack.length - 1),
-        'resultState': DiagnosticValue.string(outcome == DiagnosticOutcome.success ? 'content' : 'cancelled'),
+        'navigationDepth': DiagnosticValue.int64(navigationDepth ?? state.navigationDepth),
+        'resultState': DiagnosticValue.string(_diagnosticResultState(outcome)),
         if (itemCount != null) 'itemCount': DiagnosticValue.int64(itemCount),
         if (error != null) 'errorCode': DiagnosticValue.string(error.code.wireValue),
+        if (error?.location != null) 'errorLocation': DiagnosticValue.string(error!.location!),
+        if (error?.detail != null) 'errorText': DiagnosticValue.string(error!.detail!),
+        if (stackTrace != null) 'stackTrace': DiagnosticValue.string(stackTrace.toString()),
       }),
     );
   }
 }
+
+String _diagnosticResultState(DiagnosticOutcome outcome) => switch (outcome) {
+  DiagnosticOutcome.success => 'content',
+  DiagnosticOutcome.error => 'failure',
+  DiagnosticOutcome.cancelled => 'cancelled',
+  DiagnosticOutcome.timeout => 'timeout',
+  DiagnosticOutcome.overloaded => 'overloaded',
+  DiagnosticOutcome.incomplete => 'incomplete',
+};
 
 DiagnosticOutcome _outcomeFor(AppError error) => switch (error.code) {
   AppErrorCode.cancelled => DiagnosticOutcome.cancelled,

@@ -1268,7 +1268,7 @@ export class DesktopRuntime {
           error: this.#requestError(
             request,
             error.code,
-            pluginManagerErrorMessage(error.code),
+            pluginManagerErrorMessage(error.code, error instanceof PluginManagerError ? error.safeDetail : undefined),
           ),
         };
       }

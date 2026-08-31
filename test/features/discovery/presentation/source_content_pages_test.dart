@@ -124,6 +124,44 @@ void main() {
     expect(refreshPressed, isTrue);
   });
 
+  testWidgets('shows detailed discovery failure reason, location, and stable code', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: RuntimeDiscoveryPage(
+          result: null,
+          sourceName: '示例数据源',
+          contentFailureMessage: '无法安全加载发现内容',
+          contentFailureDetail:
+              '原因：数据源返回内容未通过 Runtime 格式或大小校验。\n'
+              '详细信息：Response validation failed at the inline payload budget.\n'
+              '位置：source.discover.v1 / runtime.response.validation',
+          contentFailureCode: 'invalid_format',
+          onDestinationRequested: (_) {},
+          onSourcePressed: () {},
+          onTabSelected: (_) {},
+          onCategorySelected: (_) {},
+          onContentPressed: (_) {},
+          onRefreshRequested: () {},
+          onLoadMore: (_) {},
+          canNavigateBack: false,
+          onBackRequested: () {},
+          loadingCollectionId: null,
+        ),
+      ),
+    );
+
+    expect(
+      find.text(
+        '原因：数据源返回内容未通过 Runtime 格式或大小校验。\n'
+        '详细信息：Response validation failed at the inline payload budget.\n'
+        '位置：source.discover.v1 / runtime.response.validation',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('稳定错误码：invalid_format'), findsOneWidget);
+  });
+
   testWidgets('removes page movement when reduce motion is enabled', (tester) async {
     await tester.pumpWidget(
       MediaQuery(

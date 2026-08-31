@@ -67,16 +67,25 @@ enum AppErrorCategory {
 
 /// A normalized, immutable error safe to pass across application boundaries.
 ///
-/// It intentionally contains stable metadata only. Raw exceptions, bodies,
-/// URLs, database data, credentials, and stack traces are never retained.
+/// Stable metadata remains the authority for control flow. [detail] and
+/// [location] are optional, bounded, producer-reviewed technical context for
+/// diagnostics and local error UI; raw exceptions, bodies, URLs, credentials,
+/// database data and stack traces are never retained here.
 final class AppError implements Exception {
   /// Creates a normalized error.
-  AppError({required this.code, required this.retryable, this.retryAfter, this.traceId})
+  AppError({required this.code, required this.retryable, this.retryAfter, this.traceId, this.detail, this.location})
     : assert(retryAfter == null || !retryAfter.isNegative);
 
   /// Creates an error using the protocol default retry rule for [code].
-  factory AppError.fromCode(AppErrorCode code, {bool? retryable, Duration? retryAfter, String? traceId}) {
-    return AppError(code: code, retryable: retryable ?? code.defaultRetryable, retryAfter: retryAfter, traceId: traceId);
+  factory AppError.fromCode(AppErrorCode code, {bool? retryable, Duration? retryAfter, String? traceId, String? detail, String? location}) {
+    return AppError(
+      code: code,
+      retryable: retryable ?? code.defaultRetryable,
+      retryAfter: retryAfter,
+      traceId: traceId,
+      detail: detail,
+      location: location,
+    );
   }
 
   /// Creates an error from a protocol code while safely dropping unknown codes.
@@ -104,6 +113,22 @@ final class AppError implements Exception {
   /// Optional technical correlation ID; it never carries user content.
   final String? traceId;
 
+  /// Optional reviewed technical reason. It never controls retry behavior.
+  final String? detail;
+
+  /// Optional application-owned operation/stage where the failure surfaced.
+  final String? location;
+
+  /// Adds reviewed diagnostic context without changing stable error semantics.
+  AppError withContext({String? detail, String? location}) => AppError(
+    code: code,
+    retryable: retryable,
+    retryAfter: retryAfter,
+    traceId: traceId,
+    detail: detail ?? this.detail,
+    location: location ?? this.location,
+  );
+
   /// Maps protocol-level errors to product-level, actionable semantics.
   AppErrorCategory get category {
     return switch (code) {
@@ -130,11 +155,13 @@ final class AppError implements Exception {
         other.code == code &&
         other.retryable == retryable &&
         other.retryAfter == retryAfter &&
-        other.traceId == traceId;
+        other.traceId == traceId &&
+        other.detail == detail &&
+        other.location == location;
   }
 
   @override
-  int get hashCode => Object.hash(code, retryable, retryAfter, traceId);
+  int get hashCode => Object.hash(code, retryable, retryAfter, traceId, detail, location);
 
   @override
   String toString() => 'AppError(${code.wireValue})';

@@ -81,3 +81,26 @@ test('append response keeps only a declared collection payload', () => {
   assert.equal(append.kind, 'append');
   assert.equal(append.collectionId, 'books');
 });
+
+test('oversized discovery response reports the exact validation stage and byte limit', () => {
+  const largeContent = {
+    ...content,
+    description: '详'.repeat(16_000),
+  };
+  assert.throws(
+    () => validateDiscoverResult('org.example.tree', '树数据源', {
+      kind: 'document',
+      document: { components: [{
+        type: 'contentCollection', id: 'large', layout: 'list', continuation: null,
+        items: [1, 2].map(index => ({
+          content: { ...largeContent, id: `book:${index}` },
+          rank: null,
+          metric: null,
+          recommendation: null,
+        })),
+      }] },
+    }),
+    error => error instanceof PluginContentValidationError &&
+      /Response validation failed at the inline payload budget: \d+ bytes exceeds the 57344-byte limit\./.test(error.message),
+  );
+});
