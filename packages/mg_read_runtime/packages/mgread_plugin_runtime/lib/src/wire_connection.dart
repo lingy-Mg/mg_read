@@ -388,6 +388,7 @@ final class _WireConnection {
               code is String ? code : 'internal',
               text is String ? text : 'The Runtime returned an invalid error.',
             ),
+            StackTrace.current,
           );
           return;
         default:
@@ -520,7 +521,7 @@ final class _WireConnection {
     _inFlightControlBytes = 0;
     for (final request in pending) {
       if (!request.completer.isCompleted) {
-        request.completer.completeError(error);
+        request.completer.completeError(error, StackTrace.current);
       }
     }
   }

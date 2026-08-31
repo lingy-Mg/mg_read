@@ -35,6 +35,8 @@ class MgReadApp extends ConsumerStatefulWidget {
 }
 
 class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserver {
+  Timer? _developmentSyncDebounce;
+
   @override
   void initState() {
     super.initState();
@@ -99,7 +101,11 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
       ref.invalidate(pluginRuntimeConnectionProvider);
       ref.invalidate(pluginRuntimeStatusProvider);
       ref.invalidate(availablePluginSourcesProvider);
-      unawaited(_syncDevelopmentChanges());
+      _developmentSyncDebounce?.cancel();
+      _developmentSyncDebounce = Timer(const Duration(seconds: 2), () {
+        _developmentSyncDebounce = null;
+        if (mounted) unawaited(_syncDevelopmentChanges());
+      });
     }
     for (final change in batch.changes.where((change) => change.isFailure)) {
       ref
@@ -135,6 +141,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
 
   @override
   void dispose() {
+    _developmentSyncDebounce?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

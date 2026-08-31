@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { buildPluginArtifact } from '../tools/mgread.mjs';
+
 test('fixture exposes the Android browser-session entry point', async () => {
   const module = await import('../dist/index.mjs');
   let request;
@@ -24,4 +26,11 @@ test('fixture exposes the rendered HTML transport', async () => {
   assert.equal(result.items[0].title, 'html:200:not-required');
   assert.equal(request.transport, 'html');
   assert.equal(request.presentation, 'hidden');
+});
+
+test('fixture exposes the canonical Runtime transfer builder', async () => {
+  const artifact = await buildPluginArtifact({ versionOverride: '0.1.1-devsync.1.fixture' });
+  assert.equal(artifact.format, 'singleFile');
+  assert.match(artifact.fileName, /\.mgplugin\.js$/u);
+  assert.ok(artifact.bytes.length > 0);
 });

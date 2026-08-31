@@ -34,7 +34,10 @@ function failure(
   requestError: RequestError,
 ): PluginTransferDispatchResult {
   const code = error instanceof PluginTransferError ? error.code : "internal";
-  return { error: requestError(request, code as RuntimeErrorCode, "The Runtime plugin artifact transfer could not be completed.") };
+  const message = error instanceof PluginTransferError
+    ? error.message
+    : "The Runtime plugin artifact transfer could not be completed.";
+  return { error: requestError(request, code as RuntimeErrorCode, message) };
 }
 
 export async function dispatchPluginTransferList(

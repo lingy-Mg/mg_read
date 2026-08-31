@@ -96,7 +96,9 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
         diagnostics.fail(failure, partial: failure.code == 'device_sync_partial');
         await _recordResultSafely(device, PairedSyncResultState.failed);
         _showFailure(device, failure, automatic: automatic);
-        if (automatic) _scheduleRetry(device.deviceId);
+        if (automatic && failure.allowsAutomaticRetry) {
+          _scheduleRetry(device.deviceId);
+        }
       }
     } finally {
       _pendingWakeRequests.remove(requestId);
@@ -234,7 +236,9 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
       diagnostics.fail(terminalFailure, partial: partial);
       await _recordResultSafely(authenticatedDevice, partial ? PairedSyncResultState.partial : PairedSyncResultState.failed);
       _showFailure(authenticatedDevice, terminalFailure, automatic: automatic);
-      if (automatic) _scheduleRetry(device.deviceId);
+      if (automatic && terminalFailure.allowsAutomaticRetry) {
+        _scheduleRetry(device.deviceId);
+      }
     } finally {
       _activeDeviceId = null;
       state = state.copyWith(busyDeviceId: null);

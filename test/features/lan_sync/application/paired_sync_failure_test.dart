@@ -99,4 +99,26 @@ void main() {
     expect(failure.stage, 'local_manifest');
     expect(failure.uiDetails, contains('runtime_unavailable'));
   });
+
+  test('deterministic development packaging failure does not promise or schedule an automatic retry', () {
+    final device = PairedDevice(
+      autoSync: true,
+      createdAtUtc: DateTime.utc(2026, 9, 1),
+      deviceId: 'peer-device',
+      label: '测试设备',
+      mode: PairedSyncMode.bidirectional,
+      platform: PairedDevicePlatform.android,
+      syncBookshelf: true,
+      syncPlugins: true,
+    );
+    final failure = PairedSyncFailure.remote(
+      code: 'lan_sync_send_payload_runtime_plugin_transfer_build_failed',
+      stage: 'send_payload',
+      errorText: 'pluginId=org.example.source reason=build_module_missing',
+      receiptStackTrace: StackTrace.current,
+    );
+
+    expect(failure.allowsAutomaticRetry, isFalse);
+    expect(pairedSyncFailureMessage(device, failure, automatic: true), isNot(contains('自动重试')));
+  });
 }

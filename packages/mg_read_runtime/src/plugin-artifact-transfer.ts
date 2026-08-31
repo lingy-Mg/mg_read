@@ -64,9 +64,14 @@ export class PluginArtifactTransferError extends Error {
     | "plugin_transfer_artifact_missing"
     | "plugin_transfer_artifact_too_large"
     | "plugin_transfer_batch_too_large"
+    | "plugin_transfer_build_failed"
     | "plugin_transfer_checksum_mismatch"
-    | "plugin_transfer_size_mismatch") {
-    super("The Runtime plugin artifact transfer could not be completed.");
+    | "plugin_transfer_size_mismatch",
+    readonly safeDetail?: string,
+  ) {
+    super(safeDetail === undefined
+      ? "The Runtime plugin artifact transfer could not be completed."
+      : `The Runtime plugin artifact transfer could not be completed. ${safeDetail}`);
     this.name = "PluginArtifactTransferError";
   }
 }
@@ -118,6 +123,7 @@ export class PluginArtifactTransferManager {
       }));
     }
     for (const project of development) {
+      if (!await hasDevelopmentBuildEntry(project)) continue;
       output.push(Object.freeze({
         developmentFingerprint: project.fingerprint,
         developmentRevision: project.syncRevision,
@@ -159,10 +165,13 @@ export class PluginArtifactTransferManager {
         project.syncRevision,
         project.fingerprint,
       );
-      const entry = await this.#buildDevelopment(project, version, "development");
-      if (entry === undefined) continue;
-      this.#development.set(key(project.id, version), entry);
-      output.push(entry.artifact);
+      try {
+        const entry = await this.#buildDevelopment(project, version, "development");
+        this.#development.set(key(project.id, version), entry);
+        output.push(entry.artifact);
+      } catch (error) {
+        if (!(error instanceof PluginArtifactTransferError)) throw error;
+      }
     }
     output.sort((left, right) => left.id.localeCompare(right.id));
     return Object.freeze(output);
@@ -231,7 +240,7 @@ export class PluginArtifactTransferManager {
         developmentVersion(development.version, development.syncRevision, development.fingerprint) === version) {
       await mkdir(this.#stagingRoot, { recursive: true });
       entry = await this.#buildDevelopment(development, version, "development");
-      if (entry !== undefined) this.#development.set(key(id, version), entry);
+      this.#development.set(key(id, version), entry);
     }
     if (entry === undefined) {
       const retained = await findRetainedArtifact(this.#dataRoot, id, version);
@@ -261,9 +270,6 @@ export class PluginArtifactTransferManager {
   ): Promise<{ readonly artifact: PluginTransferArtifact; readonly token: string }> {
     await mkdir(this.#stagingRoot, { recursive: true });
     const entry = await this.#buildDevelopment(project, project.version, "installed");
-    if (entry === undefined) {
-      throw new PluginArtifactTransferError("plugin_transfer_artifact_missing");
-    }
     const token = randomUUID().replaceAll("-", "");
     this.#resources.set(token, { ...entry, expiresAt: Date.now() + 60_000 });
     return Object.freeze({ artifact: entry.artifact, token });
@@ -305,16 +311,31 @@ export class PluginArtifactTransferManager {
     project: DevelopmentTransferProject,
     version: string,
     provenance: "development" | "installed",
-  ): Promise<TransferEntry | undefined> {
+  ): Promise<TransferEntry> {
     const format: PluginArtifactFormat = project.packageMode === "single-file" ? "singleFile" : "archive";
     const extension = format === "singleFile" ? ".mgplugin.js" : ".mgplugin";
     const path = resolve(this.#stagingRoot, `${project.id}-${randomUUID()}${extension}`);
     try {
       const tool = await import(pathToFileURL(resolve(project.projectRoot, "tools", "mgread.mjs")).href) as Record<string, unknown>;
-      if (typeof tool.buildPluginArtifact !== "function") return undefined;
+      if (typeof tool.buildPluginArtifact !== "function") {
+        throw developmentBuildError(project, version, "build_export_missing");
+      }
       const built = await (tool.buildPluginArtifact as (input: { versionOverride: string }) => unknown)({ versionOverride: version });
-      if (!isBuildResult(built) || built.format !== format || !built.fileName.endsWith(extension) || built.bytes.byteLength > MAX_PLUGIN_ARTIFACT_BYTES) return undefined;
-      if (project.fingerprint !== await developmentProjectFingerprint(project.projectRoot)) return undefined;
+      if (!isBuildResult(built)) {
+        throw developmentBuildError(project, version, "build_result_invalid");
+      }
+      if (built.format !== format || !built.fileName.endsWith(extension)) {
+        throw developmentBuildError(project, version, "build_format_mismatch");
+      }
+      if (built.bytes.byteLength > MAX_PLUGIN_ARTIFACT_BYTES) {
+        throw new PluginArtifactTransferError(
+          "plugin_transfer_artifact_too_large",
+          developmentBuildDetail(project, version, "artifact_too_large"),
+        );
+      }
+      if (project.fingerprint !== await developmentProjectFingerprint(project.projectRoot)) {
+        throw developmentBuildError(project, version, "source_changed_during_build");
+      }
       await writeFile(path, built.bytes, { flag: "wx", mode: 0o444 });
       const artifact = Object.freeze({
         bytes: built.bytes.byteLength,
@@ -327,7 +348,49 @@ export class PluginArtifactTransferManager {
         version,
       });
       return Object.freeze({ artifact, expiresAt: Number.MAX_SAFE_INTEGER, path });
-    } catch { await rm(path, { force: true }); return undefined; }
+    } catch (error) {
+      await rm(path, { force: true });
+      if (error instanceof PluginArtifactTransferError) throw error;
+      throw developmentBuildError(project, version, buildFailureReason(error));
+    }
+  }
+}
+
+function developmentBuildError(
+  project: DevelopmentTransferProject,
+  version: string,
+  reason: string,
+): PluginArtifactTransferError {
+  return new PluginArtifactTransferError(
+    "plugin_transfer_build_failed",
+    developmentBuildDetail(project, version, reason),
+  );
+}
+
+function developmentBuildDetail(
+  project: DevelopmentTransferProject,
+  version: string,
+  reason: string,
+): string {
+  return `pluginId=${project.id} version=${version} reason=${reason}`;
+}
+
+function buildFailureReason(error: unknown): string {
+  if (isRecord(error) &&
+      (error.code === "ERR_MODULE_NOT_FOUND" || error.code === "ENOENT")) {
+    return "build_module_missing";
+  }
+  return "build_exception";
+}
+
+async function hasDevelopmentBuildEntry(
+  project: DevelopmentTransferProject,
+): Promise<boolean> {
+  try {
+    return (await stat(resolve(project.projectRoot, "tools", "mgread.mjs"))).isFile();
+  } catch (error) {
+    if (isMissing(error)) return false;
+    throw error;
   }
 }
 

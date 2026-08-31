@@ -514,6 +514,30 @@ export async function buildPluginArtifact({ versionOverride }) {
   assert.equal(await readFile(buildMarker, "utf8"), "built");
 });
 
+test("development transfer omits a missing builder offer and reports a safe build reason", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-development-transfer-failure-");
+  const dataRoot = join(root, "runtime-data");
+  const developmentRoot = join(root, "sources");
+  const projectRoot = join(developmentRoot, "missing-builder");
+  await createDevelopmentPlugin(projectRoot, "缺少构建入口");
+  await rm(join(projectRoot, "tools", "mgread.mjs"));
+
+  const manager = new PluginManager(dataRoot, { developmentPluginRoot: developmentRoot });
+  t.after(() => manager.close());
+  await manager.initialize();
+
+  const offers = await manager.listPluginTransferOffers();
+  assert.deepEqual(offers, []);
+  await assert.rejects(
+    manager.createDevelopmentPackageResource("org.example.live-source"),
+    (error) =>
+      error?.code === "plugin_transfer_build_failed" &&
+      error.message.includes("pluginId=org.example.live-source") &&
+      error.message.includes("version=0.1.0") &&
+      error.message.includes("reason=build_module_missing"),
+  );
+});
+
 test("a development project shadows an installed archive with the same ID without double activation", async (t) => {
   const root = await temporaryDirectory(t, "mgread-development-shadow-");
   const dataRoot = join(root, "runtime-data");

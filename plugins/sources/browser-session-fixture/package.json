@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "main": "dist/index.mjs",
+  "bin": { "mgread": "tools/mgread.mjs" },
   "packageManager": "npm@11.13.0",
   "engines": { "node": ">=24 <25", "npm": "11.13.0" },
   "scripts": {
     "build": "node --check dist/index.mjs",
     "typecheck": "node --check dist/index.mjs",
     "test": "node --test test/*.test.mjs",
-    "pack:plugin": "node tools/pack.mjs",
+    "pack:plugin": "node tools/mgread.mjs pack",
     "verify": "npm run typecheck && npm test && npm run pack:plugin"
   },
   "mgread": {

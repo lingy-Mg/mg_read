@@ -115,7 +115,15 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     if (!plugin.deferred) {
       return LanSyncMaterializedPlugin(descriptor: plugin, bytes: await openPluginArchive(plugin));
     }
-    final materialized = await _runtime.materializePluginArtifact(_toRuntimeOffer(plugin));
+    final MaterializedPluginArtifact materialized;
+    try {
+      materialized = await _runtime.materializePluginArtifact(_toRuntimeOffer(plugin));
+    } on PluginRuntimeException catch (error, stackTrace) {
+      Error.throwWithStackTrace(
+        LanSyncGatewayException(_runtimeFailureCode(error), reason: 'runtimeCode=${error.code} ${error.message}'),
+        stackTrace,
+      );
+    }
     return LanSyncMaterializedPlugin(
       descriptor: LanSyncPluginDescriptor(
         id: plugin.id,

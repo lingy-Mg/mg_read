@@ -39,6 +39,7 @@ export type RuntimeErrorCode =
   | "plugin_transfer_artifact_missing"
   | "plugin_transfer_artifact_too_large"
   | "plugin_transfer_batch_too_large"
+  | "plugin_transfer_build_failed"
   | "plugin_transfer_checksum_mismatch"
   | "plugin_transfer_size_mismatch"
   | "timeout"

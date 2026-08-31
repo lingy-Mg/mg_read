@@ -62,6 +62,8 @@ final class PairedSyncFailure {
   final String stackTrace;
   final bool remote;
 
+  bool get allowsAutomaticRetry => !code.contains('plugin_transfer_build_failed');
+
   String get uiDetails {
     final technical = _singleLine(errorText, maximumLength: 360);
     return '阶段：${pairedSyncStageLabel(stage)}\n错误码：$code\n技术原因：$technical';
@@ -199,7 +201,7 @@ final class PairedSyncDiagnosticSession {
 }
 
 String pairedSyncFailureMessage(PairedDevice device, PairedSyncFailure failure, {required bool automatic}) {
-  final retry = automatic ? '，稍后会自动重试' : '';
+  final retry = automatic && failure.allowsAutomaticRetry ? '，稍后会自动重试' : '';
   if (failure.remote) {
     return '${device.label} 在“${pairedSyncStageLabel(failure.stage)}”阶段失败$retry';
   }
