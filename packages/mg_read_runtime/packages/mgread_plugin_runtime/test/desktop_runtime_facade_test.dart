@@ -842,7 +842,7 @@ function summary(query) {
   return {
     id,
     title: `标准 Node：\${query}`,
-    contentKind: 'novel',
+    contentKind: 'novel', coverOrientation: 'landscape',
     author: context.plugin.id,
     url: null,
     coverUrl: null,

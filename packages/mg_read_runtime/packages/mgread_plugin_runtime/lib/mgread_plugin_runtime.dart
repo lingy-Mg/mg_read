@@ -32,6 +32,7 @@ part 'src/desktop_supervisor_bundle.dart';
 part 'src/desktop_supervisor_support.dart';
 part 'src/development_plugin_change.dart';
 part 'src/android_supervisor.dart';
+part 'src/plugin_content_summary.dart';
 part 'src/plugin_content_invocation.dart';
 part 'src/plugin_content_decoder.dart';
 part 'src/runtime_initialization.dart';

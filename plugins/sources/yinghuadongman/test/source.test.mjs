@@ -40,11 +40,13 @@ test('fixture flow covers discovery, search, detail, neutral groups and both pla
   const root = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 5 });
   assert.equal(root.document.components[0].title, '今日更新');
   assert.equal(root.document.components[0].children[0].items[0].content.contentKind, 'video');
+  assert.equal(root.document.components[0].children[0].items[0].content.coverOrientation, 'portrait');
   assert.equal(root.document.components[1].children[0].categories.length, 4);
   const discovery = await plugin.discover({ target: 'category:hot', cursor: null, collectionId: null, pageSize: 5 });
   assert.equal(discovery.document.components[0].children[0].items.length, 2);
   const results = await plugin.search({ query: 'fixture', cursor: null, pageSize: 5 });
   assert.equal(results.items[0].id, 'video:101');
+  assert.equal(results.items[0].coverOrientation, 'portrait');
   assert.equal(results.items[0].coverUrl, 'https://www.yinhuadm.xyz/upload/fixture-one.jpg');
   assert.deepEqual(results.items[0].latestChapter, {
     id: null, title: '更新至第02集', updatedAt: null, url: null,
@@ -52,6 +54,7 @@ test('fixture flow covers discovery, search, detail, neutral groups and both pla
 
   const info = await plugin.getDetail({ id: results.items[0].id });
   assert.equal(info.title, 'Fixture Animation One');
+  assert.equal(info.coverOrientation, 'portrait');
   assert.deepEqual(info.tags, ['Fixture Region']);
   assert.deepEqual(info.latestChapter, {
     id: null, title: '更新至第02集', updatedAt: null, url: null,

@@ -26,6 +26,7 @@ test('live public flow reaches discovery, search, detail, catalog and playback r
   const items = discovery.document.components[0].children[0].items;
   assert.ok(items.length > 0);
   assert.ok(items.every((item) => item.content.coverUrl !== null));
+  assert.ok(items.every((item) => item.content.coverOrientation === 'portrait'));
   const first = items[0].content;
   const search = await plugin.search({ query: first.title, cursor: null, pageSize: 3 });
   assert.ok(search.items.length > 0);

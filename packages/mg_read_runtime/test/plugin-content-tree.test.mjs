@@ -35,6 +35,28 @@ test('recursive discovery document accepts bounded semantic components', () => {
   assert.equal(result.document.components[1].children[0].children[0].layout, 'coverGrid');
   assert.equal(result.document.components[1].children[0].children[1].layout, 'chips');
   assert.equal(result.document.components[1].children[0].children[1].categories[0].icon, 'video');
+  assert.equal(result.document.components[1].children[0].children[0].items[0].content.coverOrientation, 'portrait');
+});
+
+test('cover orientation is explicit when declared and rejects unknown component families', () => {
+  const landscape = validateDiscoverResult('org.example.tree', '树数据源', {
+    kind: 'document',
+    document: { components: [{
+      type: 'contentCollection', id: 'landscape', layout: 'coverGrid', continuation: null,
+      items: [{ content: { ...content, coverOrientation: 'landscape' }, rank: null, metric: null, recommendation: null }],
+    }] },
+  });
+  assert.equal(landscape.document.components[0].items[0].content.coverOrientation, 'landscape');
+  assert.throws(
+    () => validateDiscoverResult('org.example.tree', '树数据源', {
+      kind: 'document',
+      document: { components: [{
+        type: 'contentCollection', id: 'invalid', layout: 'coverGrid', continuation: null,
+        items: [{ content: { ...content, coverOrientation: 'square' }, rank: null, metric: null, recommendation: null }],
+      }] },
+    }),
+    PluginContentValidationError,
+  );
 });
 
 test('discovery document rejects unknown, duplicate, and misplaced components', () => {

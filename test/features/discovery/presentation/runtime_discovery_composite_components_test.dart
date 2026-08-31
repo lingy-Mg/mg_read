@@ -12,9 +12,9 @@ import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart
 import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_content_list_item.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_landscape_content_list_item.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_landscape_cover_collection.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_portrait_content_list_item.dart';
-import 'package:mg_read/features/discovery/presentation/widgets/discovery_video_collection.dart';
-import 'package:mg_read/features/discovery/presentation/widgets/discovery_video_list_item.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 void main() {
@@ -188,7 +188,7 @@ void main() {
     expect(columnCount(), 4);
   });
 
-  testWidgets('routes video cover grids to the dedicated landscape component', (tester) async {
+  testWidgets('renders the dedicated generic landscape cover grid without playback decoration', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -198,7 +198,11 @@ void main() {
         home: Scaffold(
           body: Padding(
             padding: const EdgeInsets.all(16),
-            child: DiscoveryVideoGrid(items: <PluginDiscoveryContentItem>[_videoItem()], onPressed: (_) {}, isInBookshelf: (_) => false),
+            child: DiscoveryLandscapeCoverGrid(
+              items: <PluginDiscoveryContentItem>[_videoItem()],
+              onPressed: (_) {},
+              isInBookshelf: (_) => false,
+            ),
           ),
         ),
       ),
@@ -207,15 +211,17 @@ void main() {
 
     final cover = find.byType(DiscoveryBookCover);
     final size = tester.getSize(cover);
-    final grid = tester.widget<GridView>(find.byKey(const Key('runtime-discovery-video-grid')));
+    final grid = tester.widget<GridView>(find.byKey(const Key('runtime-discovery-landscape-cover-grid')));
     expect((grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount).crossAxisCount, 2);
     expect(size.height, closeTo(size.width * 9 / 16, 0.01));
     expect(tester.widget<DiscoveryBookCover>(cover).presentation, DiscoveryCoverPresentation.landscape);
+    expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
+    expect(find.text('视频'), findsNothing);
     expect(find.byType(DiscoveryCoverGrid), findsNothing);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/runtime_discovery_video_grid_phone_light.png'));
   });
 
-  testWidgets('routes video list rows away from the novel component', (tester) async {
+  testWidgets('routes landscape covers to the generic landscape list component', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 360));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -236,14 +242,79 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byType(DiscoveryVideoListItem), findsOneWidget);
+    expect(find.byType(DiscoveryLandscapeContentListItem), findsOneWidget);
     expect(find.byType(DiscoveryNovelListItem), findsNothing);
+    expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
+    expect(find.text('视频'), findsNothing);
     final cover = tester.widget<DiscoveryBookCover>(find.byType(DiscoveryBookCover));
     expect(cover.presentation, DiscoveryCoverPresentation.landscape);
     expect(
       tester.getSize(find.byType(DiscoveryBookCover)).height,
       closeTo(tester.getSize(find.byType(DiscoveryBookCover)).width * 9 / 16, 0.01),
     );
+  });
+
+  testWidgets('routes portrait video posters to the portrait grid and portrait list component', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final portraitVideo = _videoItem(orientation: PluginCoverOrientation.portrait);
+    final result = PluginDiscoveryDocumentResult(
+      pluginId: 'portrait-video.source',
+      sourceName: '竖向海报源',
+      document: PluginDiscoveryDocument(
+        components: <PluginDiscoveryComponent>[
+          PluginDiscoveryContentCollectionComponent(
+            id: 'portrait-video-grid',
+            layout: PluginDiscoveryContentLayout.coverGrid,
+            items: <PluginDiscoveryContentItem>[portraitVideo],
+            continuation: null,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: RuntimeDiscoveryPage(
+            result: result,
+            onDestinationRequested: (_) {},
+            onSourcePressed: () {},
+            onTabSelected: (_) {},
+            onCategorySelected: (_) {},
+            onContentPressed: (_) {},
+            onRefreshRequested: () {},
+            onLoadMore: (_) {},
+            canNavigateBack: false,
+            onBackRequested: () {},
+            loadingCollectionId: null,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(DiscoveryCoverGrid), findsOneWidget);
+    expect(find.byType(DiscoveryLandscapeCoverGrid), findsNothing);
+    final cover = tester.widget<DiscoveryBookCover>(find.byType(DiscoveryBookCover));
+    expect(cover.presentation, DiscoveryCoverPresentation.portrait);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: DiscoveryContentListItem(
+            item: portraitVideo,
+            variant: DiscoveryCoverVariant.dawn,
+            onPressed: () {},
+            keyPrefix: 'portrait-video-list-test',
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byType(DiscoveryPortraitVideoListItem), findsOneWidget);
+    expect(find.byType(DiscoveryLandscapeContentListItem), findsNothing);
   });
 
   testWidgets('falls back to media-specific list rows for a mixed collection', (tester) async {
@@ -272,9 +343,9 @@ void main() {
     await tester.pump();
 
     expect(find.byType(DiscoveryNovelListItem), findsOneWidget);
-    expect(find.byType(DiscoveryVideoListItem), findsOneWidget);
+    expect(find.byType(DiscoveryLandscapeContentListItem), findsOneWidget);
     expect(find.byType(DiscoveryCoverGrid), findsNothing);
-    expect(find.byType(DiscoveryVideoGrid), findsNothing);
+    expect(find.byType(DiscoveryLandscapeCoverGrid), findsNothing);
   });
 
   testWidgets('fills each category chip row with adaptive equal-width columns', (tester) async {
@@ -612,31 +683,33 @@ PluginDiscoveryContentItem _item(String id, String title, int rank) => PluginDis
   recommendation: null,
 );
 
-PluginDiscoveryContentItem _videoItem() => PluginDiscoveryContentItem(
-  content: PluginContentSummary(
-    id: 'video:101',
-    title: '麻豆横版电影',
-    contentKind: PluginContentKind.video,
-    author: null,
-    url: null,
-    coverUrl: Uri.parse('https://hsck.la/upload/fixture-cover.jpg'),
-    description: null,
-    language: 'zh-CN',
-    status: PluginContentStatus.ongoing,
-    access: PluginAccessKind.unknown,
-    wordCount: null,
-    chapterCount: null,
-    publishedAt: null,
-    updatedAt: null,
-    latestChapter: null,
-    categories: const <String>[],
-    tags: const <String>[],
-    attributes: const <PluginContentAttribute>[],
-  ),
-  rank: null,
-  metric: null,
-  recommendation: null,
-);
+PluginDiscoveryContentItem _videoItem({PluginCoverOrientation orientation = PluginCoverOrientation.landscape}) =>
+    PluginDiscoveryContentItem(
+      content: PluginContentSummary(
+        id: 'video:101',
+        title: '麻豆横版电影',
+        contentKind: PluginContentKind.video,
+        coverOrientation: orientation,
+        author: null,
+        url: null,
+        coverUrl: Uri.parse('https://hsck.la/upload/fixture-cover.jpg'),
+        description: null,
+        language: 'zh-CN',
+        status: PluginContentStatus.ongoing,
+        access: PluginAccessKind.unknown,
+        wordCount: null,
+        chapterCount: null,
+        publishedAt: null,
+        updatedAt: null,
+        latestChapter: null,
+        categories: const <String>[],
+        tags: const <String>[],
+        attributes: const <PluginContentAttribute>[],
+      ),
+      rank: null,
+      metric: null,
+      recommendation: null,
+    );
 
 final PluginDiscoveryDocumentResult _mixedMediaResult = PluginDiscoveryDocumentResult(
   pluginId: 'mixed.source',

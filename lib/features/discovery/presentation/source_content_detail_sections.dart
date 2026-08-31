@@ -24,6 +24,164 @@ class _DetailHeader extends StatelessWidget {
   );
 }
 
+/// Routes to one of two independent detail-header compositions. The source's
+/// cover direction selects the composition; media kind does not participate.
+class _DetailSummaryHeader extends StatelessWidget {
+  const _DetailSummaryHeader({required this.content, required this.labels, required this.onCoverTap});
+
+  final PluginContentSummary content;
+  final List<String> labels;
+  final VoidCallback? onCoverTap;
+
+  @override
+  Widget build(BuildContext context) => switch (content.coverOrientation) {
+    PluginCoverOrientation.portrait => _PortraitDetailSummaryHeader(content: content, labels: labels, onCoverTap: onCoverTap),
+    PluginCoverOrientation.landscape => _LandscapeDetailSummaryHeader(content: content, labels: labels, onCoverTap: onCoverTap),
+  };
+}
+
+/// Portrait covers keep a compact cover-and-metadata row.
+class _PortraitDetailSummaryHeader extends StatelessWidget {
+  const _PortraitDetailSummaryHeader({required this.content, required this.labels, required this.onCoverTap});
+
+  final PluginContentSummary content;
+  final List<String> labels;
+  final VoidCallback? onCoverTap;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    key: const Key('source-detail-portrait-header'),
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      _DetailCoverLink(content: content, width: 112, height: 174, presentation: DiscoveryCoverPresentation.portrait, onTap: onCoverTap),
+      const SizedBox(width: AppSpacing.regular),
+      Expanded(
+        child: _DetailHeaderMetadata(content: content, labels: labels),
+      ),
+    ],
+  );
+}
+
+/// Landscape covers use a full-width visual followed by metadata. They are not
+/// treated as video thumbnails and receive no play affordance or media badge.
+class _LandscapeDetailSummaryHeader extends StatelessWidget {
+  const _LandscapeDetailSummaryHeader({required this.content, required this.labels, required this.onCoverTap});
+
+  final PluginContentSummary content;
+  final List<String> labels;
+  final VoidCallback? onCoverTap;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    key: const Key('source-detail-landscape-header'),
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          return _DetailCoverLink(
+            content: content,
+            width: width,
+            height: width * AppSpacing.discoveryLandscapeCoverAspectRatio,
+            presentation: DiscoveryCoverPresentation.landscape,
+            onTap: onCoverTap,
+          );
+        },
+      ),
+      const SizedBox(height: AppSpacing.regular),
+      _DetailHeaderMetadata(content: content, labels: labels),
+    ],
+  );
+}
+
+class _DetailCoverLink extends StatelessWidget {
+  const _DetailCoverLink({
+    required this.content,
+    required this.width,
+    required this.height,
+    required this.presentation,
+    required this.onTap,
+  });
+
+  final PluginContentSummary content;
+  final double width;
+  final double height;
+  final DiscoveryCoverPresentation presentation;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    key: const Key('source-detail-open-cover-url'),
+    onTap: onTap,
+    borderRadius: presentation == DiscoveryCoverPresentation.landscape ? BorderRadius.circular(10) : AppRadii.discoveryCover,
+    child: DiscoveryBookCover(
+      key: const Key('source-detail-cover'),
+      title: content.title,
+      coverBytes: content.coverBytes,
+      remoteContentId: content.id,
+      coverUrl: content.coverUrl,
+      variant: _coverVariant(content.id),
+      width: width,
+      height: height,
+      presentation: presentation,
+    ),
+  );
+}
+
+class _DetailHeaderMetadata extends StatelessWidget {
+  const _DetailHeaderMetadata({required this.content, required this.labels});
+
+  final PluginContentSummary content;
+  final List<String> labels;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = AppThemeTokens.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        SizedBox(
+          width: double.infinity,
+          child: _AdaptiveSingleLineText(
+            text: content.title,
+            style:
+                theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700, height: 1.15) ??
+                const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, height: 1.15),
+            minFontSize: 18,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.left,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: <Widget>[
+            Text('作者:', style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText)),
+            const SizedBox(width: AppSpacing.unit),
+            Expanded(
+              child: Text(
+                content.author ?? '作者未知',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText),
+              ),
+            ),
+          ],
+        ),
+        if (labels.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 14),
+          Wrap(spacing: 6, runSpacing: 4, children: labels.map((value) => _DetailTag(label: value)).toList(growable: false)),
+        ],
+        const SizedBox(height: 14),
+        Divider(color: tokens.divider, height: 1),
+        _DetailStats(content: content),
+        Divider(color: tokens.divider, height: 1),
+      ],
+    );
+  }
+}
+
 class _DetailStats extends StatelessWidget {
   const _DetailStats({required this.content});
   final PluginContentSummary content;

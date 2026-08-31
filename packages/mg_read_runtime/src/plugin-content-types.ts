@@ -31,6 +31,8 @@ export const MAX_MEDIA_HEADERS = 16;
 
 /** Content kinds shared by package metadata, Plugin API, wire and Flutter. */
 export type PluginContentKind = "audio" | "manga" | "novel" | "video";
+/** Cover composition family is independent from media kind. */
+export type PluginCoverOrientation = "landscape" | "portrait";
 export type PluginMangaPageResourcePolicy = "sessionOnly" | "refreshable" | "durable";
 /** Media is always addressed through a Runtime proxy. A refreshable URL must
  * be re-resolved with getContent; no source may cache or replay credentials. */
@@ -132,6 +134,7 @@ export interface PluginContentSummary extends JsonObject {
   readonly categories: readonly string[];
   readonly chapterCount: number | null;
   readonly contentKind: PluginContentKind;
+  readonly coverOrientation: PluginCoverOrientation;
   readonly coverUrl: string | null;
   readonly description: string | null;
   readonly id: string;

@@ -69,7 +69,7 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
-  testWidgets('uses the landscape cover presentation for video posters', (WidgetTester tester) async {
+  testWidgets('uses the generic landscape cover presentation when requested', (WidgetTester tester) async {
     await tester.pumpWidget(
       _host(
         const DiscoveryBookCover(

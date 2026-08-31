@@ -85,8 +85,10 @@ plugins/sources/                    真实数据源及其他能力参考实现
 - 固定键必须存在；未知可空标量显式为 `null`，`0` 不等于未知，集合始终是数组。Runtime 不修补无效响应。
 - 数据源只可通过 `ctx.errors.raise` 抛出白名单稳定错误码；Runtime 必须折叠其他异常，不得把任意消息、URL、
   响应正文或原始错误穿透到 Flutter。外部媒体解析失败使用 `source_media_resolution_failed`。
-- 数据源只返回允许的语义组件、布局和图标名，并按小说、漫画、音频、视频选择对应媒体语义；Flutter 宿主
-  拥有各媒体的统一主题、尺寸、断点、可访问性、导航和交互实现。
+- 数据源只返回允许的语义组件、布局和图标名。`contentKind` 表达小说、漫画、音频、视频等媒介能力；
+  `coverOrientation=portrait|landscape` 独立表达真实封面的横竖方向，二者不得互相推断。Flutter 宿主按封面方向
+  选择两套通用组件，并拥有主题、尺寸、断点、可访问性、导航和交互实现；横向组件不等同于视频播放器入口，
+  不附加播放图标或视频标识。旧 Plugin API v1 输出缺少该键时只在 Runtime 边界执行兼容归一化，新来源必须声明。
 - 热门词必须来自来源；默认进入搜索页不触发搜索，只有用户提交或点击建议才执行。
 - 目录完整、有序且 ID 唯一。小说正文使用 `text`；漫画 `pages`、封面及音视频只登记由数据源校验过的
   `kind + url + headers` Runtime proxy 请求。loopback URL 以明文可逆 Base64URL JSON 自包含该请求，不依赖

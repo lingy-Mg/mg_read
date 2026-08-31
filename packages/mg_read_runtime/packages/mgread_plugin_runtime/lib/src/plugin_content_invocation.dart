@@ -2,16 +2,6 @@ part of mgread_plugin_runtime;
 
 const Duration _contentTimeout = Duration(minutes: 2);
 
-enum PluginContentKind {
-  audio('audio'),
-  novel('novel'),
-  manga('manga'),
-  video('video');
-
-  const PluginContentKind(this.code);
-  final String code;
-}
-
 enum PluginMangaPageResourcePolicy {
   sessionOnly('sessionOnly'),
   refreshable('refreshable'),
@@ -161,58 +151,6 @@ final class PluginLatestChapter {
   final String title;
   final Uri? url;
   final DateTime? updatedAt;
-}
-
-/// Rich, closed content projection shared by search, discovery and detail.
-@immutable
-final class PluginContentSummary {
-  PluginContentSummary({
-    required this.id,
-    required this.title,
-    required this.contentKind,
-    required this.author,
-    required this.url,
-    required this.coverUrl,
-    this.coverBytes,
-    required this.description,
-    required this.language,
-    required this.status,
-    required this.access,
-    required this.wordCount,
-    required this.chapterCount,
-    required this.publishedAt,
-    required this.updatedAt,
-    required this.latestChapter,
-    required List<String> categories,
-    required List<String> tags,
-    required List<PluginContentAttribute> attributes,
-  }) : categories = List<String>.unmodifiable(categories),
-       tags = List<String>.unmodifiable(tags),
-       attributes = List<PluginContentAttribute>.unmodifiable(attributes);
-
-  final String id;
-  final String title;
-  final PluginContentKind contentKind;
-  final String? author;
-  final Uri? url;
-  final Uri? coverUrl;
-
-  /// Host-local decoded cover bytes. This is never read from or written to
-  /// the Runtime wire payload; the Flutter host may fill it from its cover
-  /// persistence adapter after the typed result is decoded.
-  final List<int>? coverBytes;
-  final String? description;
-  final String? language;
-  final PluginContentStatus status;
-  final PluginAccessKind access;
-  final int? wordCount;
-  final int? chapterCount;
-  final DateTime? publishedAt;
-  final DateTime? updatedAt;
-  final PluginLatestChapter? latestChapter;
-  final List<String> categories;
-  final List<String> tags;
-  final List<PluginContentAttribute> attributes;
 }
 
 @immutable
@@ -994,6 +932,10 @@ PluginContentSummary _decodeContentSummary(Object? value, String context) {
       _contentString(item, 'contentKind', context),
       context,
     ),
+    coverOrientation: _coverOrientation(
+      _contentString(item, 'coverOrientation', context),
+      context,
+    ),
     author: _contentNullableString(item, 'author', context),
     url: _contentNullableUri(item, 'url', context),
     coverUrl: _contentNullableUri(item, 'coverUrl', context),
@@ -1013,6 +955,13 @@ PluginContentSummary _decodeContentSummary(Object? value, String context) {
         .toList(growable: false),
   );
 }
+
+PluginCoverOrientation _coverOrientation(String value, String context) =>
+    switch (value) {
+      'landscape' => PluginCoverOrientation.landscape,
+      'portrait' => PluginCoverOrientation.portrait,
+      _ => _contentInvalid('$context contains an unknown cover orientation.'),
+    };
 
 PluginLatestChapter? _decodeLatestChapter(
   Map<String, Object?> item,

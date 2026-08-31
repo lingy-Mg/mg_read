@@ -34,6 +34,7 @@ Map<String, Object?> _encodeSummary(PluginContentSummary summary) => <String, Ob
   'id': summary.id,
   'title': summary.title,
   'contentKind': summary.contentKind.code,
+  'coverOrientation': summary.coverOrientation.code,
   if (summary.author != null) 'author': summary.author,
   if (summary.url != null) 'url': summary.url.toString(),
   if (summary.coverUrl != null) 'coverUrl': summary.coverUrl.toString(),
@@ -73,6 +74,7 @@ PluginContentSummary? _decodeSummary(Map<String, Object?>? data) {
     id: id,
     title: title,
     contentKind: contentKind,
+    coverOrientation: _coverOrientation(data['coverOrientation'], contentKind),
     author: _nonBlankString(data['author']),
     url: _uri(data['url']),
     coverUrl: _uri(data['coverUrl']),
@@ -145,6 +147,12 @@ PluginContentKind? _contentKind(Object? value) => switch (value) {
   'manga' => PluginContentKind.manga,
   'video' => PluginContentKind.video,
   _ => null,
+};
+
+PluginCoverOrientation _coverOrientation(Object? value, PluginContentKind contentKind) => switch (value) {
+  'landscape' => PluginCoverOrientation.landscape,
+  'portrait' => PluginCoverOrientation.portrait,
+  _ => contentKind == PluginContentKind.video ? PluginCoverOrientation.landscape : PluginCoverOrientation.portrait,
 };
 
 PluginContentStatus _status(Object? value) => switch (value) {

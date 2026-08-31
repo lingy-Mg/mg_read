@@ -27,7 +27,7 @@ import 'package:mg_read/features/discovery/presentation/discovery_semantic_icons
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_content_list_item.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_drag_scroll_behavior.dart';
-import 'package:mg_read/features/discovery/presentation/widgets/discovery_video_collection.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_landscape_cover_collection.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
@@ -464,9 +464,9 @@ class _ContentCollection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final heroItems = component.items.map(_heroData).toList(growable: false);
-    final hasMixedContentKinds = component.items.map((item) => item.content.contentKind).toSet().length > 1;
-    final isVideoCollection =
-        component.items.isNotEmpty && component.items.every((item) => item.content.contentKind == PluginContentKind.video);
+    final coverOrientations = component.items.map((item) => item.content.coverOrientation).toSet();
+    final hasMixedCoverOrientations = coverOrientations.length > 1;
+    final isLandscapeCollection = coverOrientations.length == 1 && coverOrientations.single == PluginCoverOrientation.landscape;
     final cards = component.items
         .map(
           (item) => DiscoveryContentListItem(
@@ -479,12 +479,12 @@ class _ContentCollection extends StatelessWidget {
           ),
         )
         .toList(growable: false);
-    final body = hasMixedContentKinds
+    final body = hasMixedCoverOrientations
         ? Column(children: cards)
         : switch (component.layout) {
             PluginDiscoveryContentLayout.featured =>
-              isVideoCollection
-                  ? DiscoveryVideoGrid(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)
+              isLandscapeCollection
+                  ? DiscoveryLandscapeCoverGrid(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)
                   : Column(
                       children: <Widget>[
                         if (component.items.isNotEmpty)
@@ -496,8 +496,8 @@ class _ContentCollection extends StatelessWidget {
                       ],
                     ),
             PluginDiscoveryContentLayout.carousel =>
-              isVideoCollection
-                  ? DiscoveryVideoShelf(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)
+              isLandscapeCollection
+                  ? DiscoveryLandscapeCoverShelf(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)
                   : DiscoveryCarouselBooks(
                       books: heroItems,
                       onBookPressed: (book) {
@@ -506,29 +506,19 @@ class _ContentCollection extends StatelessWidget {
                       },
                     ),
             PluginDiscoveryContentLayout.coverGrid =>
-              isVideoCollection
-                  ? DiscoveryVideoGrid(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)
+              isLandscapeCollection
+                  ? DiscoveryLandscapeCoverGrid(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)
                   : DiscoveryCoverGrid(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf),
             PluginDiscoveryContentLayout.shelf =>
-              isVideoCollection
-                  ? DiscoveryVideoShelf(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)
+              isLandscapeCollection
+                  ? DiscoveryLandscapeCoverShelf(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)
                   : DiscoveryBookShelf(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf),
-            PluginDiscoveryContentLayout.compact || PluginDiscoveryContentLayout.ranking =>
-              isVideoCollection
-                  ? DiscoveryVideoCompactList(
-                      items: component.items,
-                      onPressed: onContentPressed,
-                      isInBookshelf: isInBookshelf,
-                      showRanks:
-                          component.layout == PluginDiscoveryContentLayout.ranking || component.items.any((item) => item.rank != null),
-                    )
-                  : DiscoveryCompactBookList(
-                      items: component.items,
-                      onPressed: onContentPressed,
-                      isInBookshelf: isInBookshelf,
-                      showRanks:
-                          component.layout == PluginDiscoveryContentLayout.ranking || component.items.any((item) => item.rank != null),
-                    ),
+            PluginDiscoveryContentLayout.compact || PluginDiscoveryContentLayout.ranking => DiscoveryCompactBookList(
+              items: component.items,
+              onPressed: onContentPressed,
+              isInBookshelf: isInBookshelf,
+              showRanks: component.layout == PluginDiscoveryContentLayout.ranking || component.items.any((item) => item.rank != null),
+            ),
             PluginDiscoveryContentLayout.list => Column(children: cards),
           };
     return Column(

@@ -1,20 +1,21 @@
-/// 按媒介类型分发的发现内容列表项。
+/// 按封面方向与媒介元数据分发的发现内容列表项。
 ///
 /// 职责：
-/// - 为发现页和搜索页选择小说、漫画、音频或视频专用列表组件。
+/// - 先按 `coverOrientation` 选择独立的竖向或横向组件。
+/// - 竖向组件再按媒介类型解释章节、话数或集数等元数据。
 /// - 保持调用方只依赖统一的内容项、点击和书架状态接口。
 ///
 /// 注意：
-/// - 视频始终进入独立横版组件；不得回退到小说纵向封面行。
-/// - 媒介组件共享主题 token，但各自拥有字段解释和版式。
+/// - 封面方向与媒介类型相互独立；不得再用 `contentKind` 猜测横竖组件。
+/// - 横向组件是通用内容组件，不添加视频标识或播放图标。
 library;
 
 import 'package:flutter/material.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_landscape_content_list_item.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_portrait_content_list_item.dart';
-import 'package:mg_read/features/discovery/presentation/widgets/discovery_video_list_item.dart';
 
 /// Shared entry point used by discovery and source search results.
 class DiscoveryContentListItem extends StatelessWidget {
@@ -36,38 +37,50 @@ class DiscoveryContentListItem extends StatelessWidget {
   final bool isInBookshelf;
 
   @override
-  Widget build(BuildContext context) => switch (item.content.contentKind) {
-    PluginContentKind.novel => DiscoveryNovelListItem(
-      item: item,
-      variant: variant,
-      onPressed: onPressed,
-      keyPrefix: keyPrefix,
-      isInBookshelf: isInBookshelf,
-      showRank: showRank,
-    ),
-    PluginContentKind.manga => DiscoveryMangaListItem(
-      item: item,
-      variant: variant,
-      onPressed: onPressed,
-      keyPrefix: keyPrefix,
-      isInBookshelf: isInBookshelf,
-      showRank: showRank,
-    ),
-    PluginContentKind.audio => DiscoveryAudioListItem(
-      item: item,
-      variant: variant,
-      onPressed: onPressed,
-      keyPrefix: keyPrefix,
-      isInBookshelf: isInBookshelf,
-      showRank: showRank,
-    ),
-    PluginContentKind.video => DiscoveryVideoListItem(
-      item: item,
-      variant: variant,
-      onPressed: onPressed,
-      keyPrefix: keyPrefix,
-      isInBookshelf: isInBookshelf,
-      showRank: showRank,
-    ),
-  };
+  Widget build(BuildContext context) {
+    if (item.content.coverOrientation == PluginCoverOrientation.landscape) {
+      return DiscoveryLandscapeContentListItem(
+        item: item,
+        variant: variant,
+        onPressed: onPressed,
+        keyPrefix: keyPrefix,
+        isInBookshelf: isInBookshelf,
+        showRank: showRank,
+      );
+    }
+    return switch (item.content.contentKind) {
+      PluginContentKind.novel => DiscoveryNovelListItem(
+        item: item,
+        variant: variant,
+        onPressed: onPressed,
+        keyPrefix: keyPrefix,
+        isInBookshelf: isInBookshelf,
+        showRank: showRank,
+      ),
+      PluginContentKind.manga => DiscoveryMangaListItem(
+        item: item,
+        variant: variant,
+        onPressed: onPressed,
+        keyPrefix: keyPrefix,
+        isInBookshelf: isInBookshelf,
+        showRank: showRank,
+      ),
+      PluginContentKind.audio => DiscoveryAudioListItem(
+        item: item,
+        variant: variant,
+        onPressed: onPressed,
+        keyPrefix: keyPrefix,
+        isInBookshelf: isInBookshelf,
+        showRank: showRank,
+      ),
+      PluginContentKind.video => DiscoveryPortraitVideoListItem(
+        item: item,
+        variant: variant,
+        onPressed: onPressed,
+        keyPrefix: keyPrefix,
+        isInBookshelf: isInBookshelf,
+        showRank: showRank,
+      ),
+    };
+  }
 }

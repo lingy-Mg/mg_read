@@ -1,12 +1,13 @@
-/// 横版视频发现列表项。
+/// 通用横向封面发现列表项。
 ///
 /// 职责：
-/// - 使用独立的 16:9 缩略图、播放提示和视频元数据展示发现与搜索结果。
-/// - 保持宿主统一的颜色、间距、书架状态和无障碍语义。
+/// - 使用横向缩略图展示任意媒介的发现与搜索结果。
+/// - 保持统一颜色、间距、书架状态和无障碍语义。
 ///
 /// 注意：
-/// - 不复用小说的纵向封面行，避免视频页面受书籍字段和比例约束。
-/// - 缺失的来源字段直接隐藏，不伪造时长、演员或播放量。
+/// - 本组件只由 `coverOrientation=landscape` 选择，不按内容媒介类型选择。
+/// - 横向封面不表示视频，不显示播放按钮或“视频”标识。
+/// - 缺失的来源字段直接隐藏，不伪造时长、作者或热度。
 library;
 
 import 'dart:math' as math;
@@ -20,8 +21,8 @@ import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_c
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_bookshelf_badge.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_list_tag.dart';
 
-class DiscoveryVideoListItem extends StatelessWidget {
-  const DiscoveryVideoListItem({
+class DiscoveryLandscapeContentListItem extends StatelessWidget {
+  const DiscoveryLandscapeContentListItem({
     required this.item,
     required this.variant,
     required this.onPressed,
@@ -45,6 +46,7 @@ class DiscoveryVideoListItem extends StatelessWidget {
     final tokens = AppThemeTokens.of(context);
     final description = item.recommendation ?? content.description;
     final tags = <String>[...content.categories, ...content.tags].take(2).toList(growable: false);
+    final metadata = _landscapeListMetadata(content);
     return LayoutBuilder(
       builder: (context, constraints) {
         final thumbnailWidth = math.min(208.0, math.max(132.0, constraints.maxWidth * 0.34));
@@ -52,7 +54,7 @@ class DiscoveryVideoListItem extends StatelessWidget {
         final rowBackground = isInBookshelf ? tokens.featureSurface.withValues(alpha: 0.48) : tokens.surface;
         return Semantics(
           button: true,
-          label: '播放 ${content.title}${isInBookshelf ? '，已在书架' : ''}',
+          label: '查看 ${content.title}${isInBookshelf ? '，已在书架' : ''}',
           child: Material(
             color: rowBackground,
             child: InkWell(
@@ -88,17 +90,9 @@ class DiscoveryVideoListItem extends StatelessWidget {
                               width: thumbnailWidth,
                               height: thumbnailHeight,
                             ),
-                            Center(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.58), shape: BoxShape.circle),
-                                child: const Padding(
-                                  padding: EdgeInsets.all(8),
-                                  child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
-                                ),
-                              ),
-                            ),
                             if (isInBookshelf) const Positioned(top: 6, right: 6, child: DiscoveryBookshelfBadge()),
-                            if (item.metric != null) Positioned(left: 7, bottom: 6, child: _VideoOverlayLabel(label: item.metric!.value)),
+                            if (item.metric != null)
+                              Positioned(left: 7, bottom: 6, child: _LandscapeOverlayLabel(label: item.metric!.value)),
                           ],
                         ),
                       ),
@@ -132,18 +126,15 @@ class DiscoveryVideoListItem extends StatelessWidget {
                                   style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
                                 ),
                               ],
-                              const Spacer(),
-                              Row(
-                                children: <Widget>[
-                                  Icon(Icons.movie_rounded, size: 16, color: tokens.accent),
-                                  const SizedBox(width: AppSpacing.unit),
-                                  Text('视频', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
-                                  if (content.chapterCount != null) ...<Widget>[
-                                    const SizedBox(width: AppSpacing.compact),
-                                    Text('${content.chapterCount}集', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
-                                  ],
-                                ],
-                              ),
+                              if (metadata != null) ...<Widget>[
+                                const Spacer(),
+                                Text(
+                                  metadata,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -160,8 +151,16 @@ class DiscoveryVideoListItem extends StatelessWidget {
   }
 }
 
-class _VideoOverlayLabel extends StatelessWidget {
-  const _VideoOverlayLabel({required this.label});
+String? _landscapeListMetadata(PluginContentSummary content) {
+  final values = <String>[
+    if (content.author case final author? when author.trim().isNotEmpty) author,
+    if (content.latestChapter case final latest?) latest.title,
+  ];
+  return values.isEmpty ? null : values.join(' · ');
+}
+
+class _LandscapeOverlayLabel extends StatelessWidget {
+  const _LandscapeOverlayLabel({required this.label});
 
   final String label;
 

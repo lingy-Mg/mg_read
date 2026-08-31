@@ -21,6 +21,7 @@ export interface MgReadPluginContext {
 }
 
 export type ContentKind = 'novel' | 'manga';
+export type CoverOrientation = 'portrait' | 'landscape';
 export type ContentStatus = 'ongoing' | 'completed' | 'hiatus' | 'unknown';
 export type AccessKind = 'free' | 'paid' | 'mixed' | 'unknown';
 export type DiscoveryContentLayout = 'featured' | 'carousel' | 'coverGrid' | 'shelf' | 'compact' | 'ranking' | 'list';
@@ -45,6 +46,8 @@ export interface ContentSummary {
   readonly id: string;
   readonly title: string;
   readonly contentKind: ContentKind;
+  /** New sources must declare this; optional only for Plugin API v1 compatibility. */
+  readonly coverOrientation?: CoverOrientation;
   readonly author: string | null;
   readonly url: string | null;
   readonly coverUrl: string | null;

@@ -1,11 +1,12 @@
-/// 小说、漫画与音频的纵向封面列表项。
+/// 通用竖向封面列表项。
 ///
 /// 职责：
-/// - 复用统一的纵向封面列表骨架，并按媒介类型解释作者、章节和状态元数据。
+/// - 复用统一的纵向封面列表骨架，并按媒介类型解释来源已有的元数据。
 /// - 保持发现页与搜索页的间距、标签、书架状态和点击语义一致。
 ///
 /// 注意：
-/// - 视频不使用本组件；横版视频列表由 `DiscoveryVideoListItem` 独立维护。
+/// - 本组件由 `coverOrientation=portrait` 选择；视频也可以使用竖向封面。
+/// - 横向封面由独立的通用横向列表组件维护。
 /// - 组件只消费 Runtime 已校验的数据，不执行封面以外的 IO。
 library;
 
@@ -109,7 +110,37 @@ class DiscoveryAudioListItem extends StatelessWidget {
   );
 }
 
-enum _PortraitContentKind { novel, manga, audio }
+class DiscoveryPortraitVideoListItem extends StatelessWidget {
+  const DiscoveryPortraitVideoListItem({
+    required this.item,
+    required this.variant,
+    required this.onPressed,
+    required this.keyPrefix,
+    this.isInBookshelf = false,
+    this.showRank = false,
+    super.key,
+  });
+
+  final PluginDiscoveryContentItem item;
+  final DiscoveryCoverVariant variant;
+  final VoidCallback onPressed;
+  final String keyPrefix;
+  final bool showRank;
+  final bool isInBookshelf;
+
+  @override
+  Widget build(BuildContext context) => _PortraitContentListItem(
+    item: item,
+    variant: variant,
+    onPressed: onPressed,
+    keyPrefix: keyPrefix,
+    isInBookshelf: isInBookshelf,
+    showRank: showRank,
+    kind: _PortraitContentKind.video,
+  );
+}
+
+enum _PortraitContentKind { novel, manga, audio, video }
 
 class _PortraitContentListItem extends StatelessWidget {
   const _PortraitContentListItem({
@@ -277,6 +308,7 @@ String _contentMetadata(PluginContentSummary content, _PortraitContentKind kind)
           _PortraitContentKind.novel => '章',
           _PortraitContentKind.manga => '话',
           _PortraitContentKind.audio => '集',
+          _PortraitContentKind.video => '集',
         }}';
   return <String>[?countLabel, _statusLabel(content.status), ?updateLabel].join(' · ');
 }
@@ -285,6 +317,7 @@ IconData _kindIcon(_PortraitContentKind kind) => switch (kind) {
   _PortraitContentKind.novel => Icons.menu_book_rounded,
   _PortraitContentKind.manga => Icons.auto_stories_rounded,
   _PortraitContentKind.audio => Icons.headphones_rounded,
+  _PortraitContentKind.video => Icons.image_rounded,
 };
 
 String? _relativeUpdateLabel(DateTime? updatedAt) {

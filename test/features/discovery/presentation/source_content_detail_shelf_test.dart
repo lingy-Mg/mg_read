@@ -197,6 +197,38 @@ void main() {
     expect(find.byKey(const Key('source-chapter-content-sheet')), findsNothing);
   });
 
+  testWidgets('detail selects independent portrait and landscape header compositions', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        key: const ValueKey<String>('portrait-detail-app'),
+        theme: AppTheme.light(),
+        home: const _OrientationDetailHost(orientation: PluginCoverOrientation.portrait),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('source-detail-portrait-header')), findsOneWidget);
+    expect(find.byKey(const Key('source-detail-landscape-header')), findsNothing);
+    expect(tester.getSize(find.byKey(const Key('source-detail-cover'))), const Size(112, 174));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        key: const ValueKey<String>('landscape-detail-app'),
+        theme: AppTheme.light(),
+        home: const _OrientationDetailHost(orientation: PluginCoverOrientation.landscape),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('source-detail-landscape-header')), findsOneWidget);
+    expect(find.byKey(const Key('source-detail-portrait-header')), findsNothing);
+    final landscapeSize = tester.getSize(find.byKey(const Key('source-detail-cover')));
+    expect(landscapeSize.height, closeTo(landscapeSize.width * 9 / 16, 0.01));
+    expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
+    expect(find.text('视频'), findsNothing);
+  });
+
   testWidgets('deferred shelf detail is visible before the local seed completes', (tester) async {
     final seed = Completer<SourceContentDetailSeed>();
     BookCoverMemoryCache.write(
@@ -248,6 +280,77 @@ class _DetailHost extends StatefulWidget {
 
   @override
   State<_DetailHost> createState() => _DetailHostState();
+}
+
+class _OrientationDetailHost extends StatefulWidget {
+  const _OrientationDetailHost({required this.orientation});
+
+  final PluginCoverOrientation orientation;
+
+  @override
+  State<_OrientationDetailHost> createState() => _OrientationDetailHostState();
+}
+
+class _OrientationDetailHostState extends State<_OrientationDetailHost> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final detail = _orientationDetail(widget.orientation);
+      unawaited(
+        showSourceContentDetailSheet(
+          context,
+          gateway: _OrientationGateway(detail),
+          pluginId: detail.pluginId,
+          id: detail.summary.id,
+          initialContent: detail.summary,
+          initialCatalog: _orientationCatalog,
+          initialSourceName: detail.sourceName,
+          onExternalUrlRequested: (_) async => true,
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const Scaffold();
+}
+
+final class _OrientationGateway implements SourceContentGateway {
+  const _OrientationGateway(this.detail);
+
+  final PluginContentDetail detail;
+
+  @override
+  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async => detail;
+
+  @override
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async => _orientationCatalog;
+
+  @override
+  Future<List<PluginSourceDescriptor>> listSources() => throw UnimplementedError();
+
+  @override
+  Future<PluginSearchResult> search({required String pluginId, required String query, String? cursor, int pageSize = 20}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<PluginDiscoverResult> discover({
+    required String pluginId,
+    String? target,
+    String? cursor,
+    String? collectionId,
+    int pageSize = 20,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) =>
+      throw UnimplementedError();
 }
 
 class _DetailHostState extends State<_DetailHost> {
@@ -572,4 +675,38 @@ final PluginContentDetail _cachedPreviewDetail = PluginContentDetail(
   summary: _cachedPreview,
   aliases: const <String>[],
   catalogUrl: Uri.parse('https://source.example/catalog/cached-book'),
+);
+
+final _orientationCatalog = PluginChaptersResult(
+  pluginId: 'org.example.orientation',
+  sourceName: '封面方向测试源',
+  items: const <PluginChapterSummary>[],
+);
+
+PluginContentDetail _orientationDetail(PluginCoverOrientation orientation) => PluginContentDetail(
+  pluginId: 'org.example.orientation',
+  sourceName: '封面方向测试源',
+  summary: PluginContentSummary(
+    id: 'orientation:${orientation.code}',
+    title: '通用封面内容',
+    contentKind: PluginContentKind.video,
+    coverOrientation: orientation,
+    author: null,
+    url: null,
+    coverUrl: null,
+    description: null,
+    language: 'zh-CN',
+    status: PluginContentStatus.unknown,
+    access: PluginAccessKind.unknown,
+    wordCount: null,
+    chapterCount: null,
+    publishedAt: null,
+    updatedAt: null,
+    latestChapter: null,
+    categories: const <String>[],
+    tags: const <String>[],
+    attributes: const <PluginContentAttribute>[],
+  ),
+  aliases: const <String>[],
+  catalogUrl: null,
 );

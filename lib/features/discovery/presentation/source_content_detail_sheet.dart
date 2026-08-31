@@ -692,72 +692,10 @@ class _SourceDetailBody extends StatelessWidget {
         AppSpacing.page,
       ),
       children: <Widget>[
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            InkWell(
-              key: const Key('source-detail-open-cover-url'),
-              onTap: content.coverUrl == null ? null : () => unawaited(_openUrl(context, content.coverUrl)),
-              borderRadius: AppRadii.discoveryCover,
-              child: DiscoveryBookCover(
-                key: const Key('source-detail-cover'),
-                title: content.title,
-                coverBytes: content.coverBytes,
-                remoteContentId: content.id,
-                coverUrl: content.coverUrl,
-                variant: _coverVariant(content.id),
-                width: 112,
-                presentation: content.contentKind == PluginContentKind.video
-                    ? DiscoveryCoverPresentation.landscape
-                    : DiscoveryCoverPresentation.portrait,
-                height: content.contentKind == PluginContentKind.video ? 74 : 174,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  SizedBox(
-                    width: double.infinity,
-                    child: _AdaptiveSingleLineText(
-                      text: content.title,
-                      style:
-                          theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700, height: 1.15) ??
-                          const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, height: 1.15),
-                      minFontSize: 18,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.left,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: <Widget>[
-                      Text('作者:', style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText)),
-                      const SizedBox(width: AppSpacing.unit),
-                      Expanded(
-                        child: Text(
-                          content.author ?? '作者未知',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (labels.isNotEmpty) ...<Widget>[
-                    const SizedBox(height: 14),
-                    Wrap(spacing: 6, runSpacing: 4, children: labels.map((value) => _DetailTag(label: value)).toList(growable: false)),
-                  ],
-                  const SizedBox(height: 14),
-                  Divider(color: tokens.divider, height: 1),
-                  _DetailStats(content: content),
-                  Divider(color: tokens.divider, height: 1),
-                ],
-              ),
-            ),
-          ],
+        _DetailSummaryHeader(
+          content: content,
+          labels: labels,
+          onCoverTap: content.coverUrl == null ? null : () => unawaited(_openUrl(context, content.coverUrl)),
         ),
         const SizedBox(height: AppSpacing.section),
         if (shelfState != SourceDetailShelfState.canAdd &&

@@ -31,6 +31,7 @@ import {
   type PluginContentAttribute,
   type PluginContentDetail,
   type PluginContentKind,
+  type PluginCoverOrientation,
   type PluginContentStatus,
   type PluginLatestChapter,
   type PluginMangaPage,
@@ -41,6 +42,7 @@ import {
 } from "./plugin-content-types.js";
 
 const contentKinds = new Set<PluginContentKind>(["audio", "manga", "novel", "video"]);
+const coverOrientations = new Set<PluginCoverOrientation>(["landscape", "portrait"]);
 const contentStatuses = new Set<PluginContentStatus>([
   "ongoing",
   "completed",
@@ -192,6 +194,7 @@ export function pluginContentResultCount(value: JsonObject): number {
 
 export function validateContentSummary(value: unknown) {
   const raw = readRecord(value);
+  const contentKind = readEnum(raw, "contentKind", contentKinds);
   return Object.freeze({
     access: readEnum(raw, "access", accessKinds),
     attributes: readAttributes(raw, "attributes"),
@@ -203,7 +206,10 @@ export function validateContentSummary(value: unknown) {
       MAX_LABEL_CHARACTERS,
     ),
     chapterCount: readNullableCount(raw, "chapterCount"),
-    contentKind: readEnum(raw, "contentKind", contentKinds),
+    contentKind,
+    coverOrientation:
+      readOptionalNullableEnum(raw, "coverOrientation", coverOrientations) ??
+      legacyCoverOrientation(contentKind),
     coverUrl: readNullableUrl(raw, "coverUrl"),
     description: readNullableString(
       raw,
@@ -221,6 +227,13 @@ export function validateContentSummary(value: unknown) {
     url: readNullableUrl(raw, "url"),
     wordCount: readNullableCount(raw, "wordCount"),
   });
+}
+
+/** Plugin API v1 originally omitted cover orientation. Keep old installed
+ * plugins readable at the Runtime boundary; new sources must declare it and
+ * the Flutter host never infers presentation from media kind. */
+function legacyCoverOrientation(contentKind: PluginContentKind): PluginCoverOrientation {
+  return contentKind === "video" ? "landscape" : "portrait";
 }
 
 function validateChapterSummary(value: unknown): PluginChapterSummary {

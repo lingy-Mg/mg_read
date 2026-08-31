@@ -246,6 +246,7 @@ function summary(
     id: `video:${id}`,
     title: decode(title) || `视频 ${id}`,
     contentKind: 'video',
+    coverOrientation: 'portrait',
     author: null,
     url: detailUrl(id),
     coverUrl: absolute(cover),

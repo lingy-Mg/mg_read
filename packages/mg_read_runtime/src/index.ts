@@ -111,6 +111,7 @@ export type {
   PluginContentAttribute,
   PluginContentDetail,
   PluginContentKind,
+  PluginCoverOrientation,
   PluginContentOperation,
   PluginContentReferenceRequest,
   PluginContentRequest,

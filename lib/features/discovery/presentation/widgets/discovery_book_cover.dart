@@ -18,10 +18,9 @@ import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart
 import 'package:mg_read/shared/presentation/widgets/default_book_cover_artwork.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
-/// The source-declared display shape for its cover art.
+/// Host rendering shape selected from the source's cover-orientation contract.
 ///
-/// Video posters are normally landscape, while text, comic and audio covers
-/// retain the portrait presentation. This only controls presentation; source
+/// This is independent from media kind. It only controls presentation; source
 /// URLs and decoded bytes keep their existing typed boundary.
 enum DiscoveryCoverPresentation { portrait, landscape }
 

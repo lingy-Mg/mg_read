@@ -16,19 +16,21 @@
 
 ## 按媒体选择内容组件
 
-同一个 `contentCollection` 应保持单一 `contentKind`。来源只选择语义布局，不传尺寸或样式；宿主按内容类型
-切换统一实现。尤其不要把视频塞进小说的竖版封面组件。
+同一个 `contentCollection` 应保持单一 `contentKind`。来源只选择语义布局，并按官网真实图片声明
+`coverOrientation=portrait|landscape`，不传尺寸或样式。媒介类型与封面方向相互独立：视频可以是竖向海报，
+小说、漫画、音频也可以使用横向封面；不得用 `contentKind` 猜测横竖组件。
 
 | 媒体 | 首页优先选择 | 二级普通列表 | 排行/高密度 | 封面语义 |
 | --- | --- | --- | --- | --- |
 | 小说 | 推荐可用 `carousel`；更新用 `shelf`；新书/完结可用 `coverGrid` | `list` | 带真实名次的 `compact` | 竖版，作者、章节、字数 |
 | 漫画/写真 | 作品墙优先 `coverGrid`；更新也可用 `shelf` | `list` | 带真实名次的 `compact` | 竖版，作者/画师、话数 |
-| 音频 | 热门节目或更新优先 `shelf`；专辑墙可用 `coverGrid` | `list` | `compact` | 竖版，主播、集数、播放语义 |
-| 视频 | 作品墙用 `coverGrid`；横向推荐用 `shelf`/`carousel` | `list` | `compact` | 固定横版 16:9、播放语义 |
+| 音频 | 热门节目或更新优先 `shelf`；专辑墙可用 `coverGrid` | `list` | `compact` | 竖版，主播、集数 |
+| 视频 | 作品墙用 `coverGrid`；推荐可用 `shelf`/`carousel` | `list` | `compact` | 按来源真实图片声明竖向或横向，不附加封面播放语义 |
 
-当前宿主会把视频的 `coverGrid`、`shelf`/`carousel`、`compact` 和 `list` 分别路由到横版视频组件；小说、
-漫画、音频的 `list` 则路由到各自的竖版条目组件。插件仍必须正确返回 `contentKind`，不能依靠标题、来源 ID
-或布局名让宿主猜媒体类型。`featured` 只在确有少量强推荐且数据足够时使用，不应成为所有简单首页的默认项。
+当前宿主按 `coverOrientation` 把 `coverGrid`、`shelf`/`carousel`、`list` 和详情头路由到独立的竖向或横向
+通用组件；`compact` 不依赖封面方向。横向组件不显示播放图标或“视频”标识，播放能力只由 `contentKind` 和
+详情动作决定。插件仍必须正确返回 `contentKind`，不能依靠标题、来源 ID、布局名或封面方向让宿主猜媒体类型。
+`featured` 只在确有少量强推荐且数据足够时使用，不应成为所有简单首页的默认项。
 
 ## 一次成型检查
 
@@ -38,13 +40,14 @@
    可以只保留入口，不能合成假条目。
 2. 首页内容复用已经验证的请求与解析器，并按 `min(pageSize, 10)` 有界截断；二级页继续保留原 target、cursor、
    collectionId 和分页语义。
-3. `ContentSummary.contentKind` 与来源媒体一致；分类、section 图标使用真实语义，无法可靠判断时回退
-   `category`/`other`，不要随机映射。
-4. `list` 不代表“小说列表”，只表示纵向结果流；宿主按 `contentKind` 选择小说、漫画、音频或视频专用条目。
-5. 不重复实现宿主已有的圆角、间距、断点、16:9/竖版比例、播放层或 Material 图标；需要新视觉语义时先判断
-   是否能由现有布局和 `contentKind` 表达。
-6. fixture 至少断言根页内容区、入口区、布局、媒体类型和一次真实请求；视频再用宿主 widget/golden 断言横版
-   组件，避免只验证 JSON 形状却回退到小说外观。
+3. `ContentSummary.contentKind` 与来源媒体一致，`coverOrientation` 与真实封面方向一致；分类、section 图标
+   使用真实语义，无法可靠判断时回退 `category`/`other`，不要随机映射。
+4. `list` 不代表“小说列表”，只表示纵向结果流；宿主先按 `coverOrientation` 选择横向或竖向条目，竖向条目
+   再按 `contentKind` 解释章节、话数或集数等来源元数据。
+5. 不重复实现宿主已有的圆角、间距、断点、横竖比例或 Material 图标；封面组件不承载播放层。需要新视觉语义
+   时先判断是否能由现有布局、`contentKind` 与 `coverOrientation` 表达。
+6. fixture 至少断言根页内容区、入口区、布局、媒体类型、封面方向和一次真实请求；宿主 widget/golden 分别断言
+   横向与竖向组件，避免只验证 JSON 形状却路由到错误方向。
 
 ## 爱丽丝当前编排
 

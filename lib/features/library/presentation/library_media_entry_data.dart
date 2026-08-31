@@ -129,6 +129,7 @@ PluginContentDetail _withEntryCover(PluginContentDetail detail, LibraryBookListI
       id: summary.id,
       title: summary.title,
       contentKind: summary.contentKind,
+      coverOrientation: summary.coverOrientation,
       author: summary.author,
       url: summary.url,
       coverUrl: summary.coverUrl,
