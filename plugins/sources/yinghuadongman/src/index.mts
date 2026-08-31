@@ -6,10 +6,12 @@
  * in Runtime's resource proxy.
  */
 import { createDecipheriv, createHash } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 
 type Json = Record<string, unknown>;
 type Context = {
   readonly http: { fetch(input: string | URL, init?: RequestInit): Promise<Response> };
+  readonly errors?: { raise(code: 'source_media_resolution_failed'): never };
   readonly resource: { proxy(request: Record<string, unknown>): string };
   readonly log: { info(event: string): void; warn(event: string): void };
 };
@@ -17,6 +19,10 @@ type Context = {
 const base = 'https://www.yinhuadm.xyz';
 const playerBase = 'https://player.mcue.cc';
 const playerSalt = 'lemon';
+const defaultRequestAttempts = 3;
+const mcueRequestAttempts = 2;
+const mcueRequestTimeoutMs = 6_000;
+const retryDelayMs = 150;
 const pageHeaders = Object.freeze({
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,application/json,text/plain,*/*;q=0.8',
   'Accept-Language': 'zh-CN,zh;q=0.9',
@@ -104,9 +110,6 @@ export async function getChapters(request: { id: string }) {
 export async function getContent(request: { id: string; chapterId: string }) {
   const id = contentId(request.id);
   const chapter = parseChapterId(request.chapterId, id);
-  const catalog = await getChapters({ id: request.id });
-  const selected = catalog.items.find((item) => item.id === request.chapterId);
-  if (selected === undefined) throw new Error('Chapter ID is invalid.');
   const page = playUrl(id, chapter.line, chapter.episode);
   const player = parsePlayerData(await fetchText(page));
   const resolved = await resolvePlayerUrl(player, page);
@@ -116,7 +119,7 @@ export async function getContent(request: { id: string; chapterId: string }) {
   return frozen({
     chapterId: request.chapterId,
     contentKind: 'video',
-    title: selected.title,
+    title: null,
     updatedAt: null,
     text: null,
     pages: [],
@@ -152,19 +155,44 @@ async function rootDocument(pageSize: number) {
   return frozen({ kind: 'document' as const, document: { components } });
 }
 
-async function fetchText(url: string): Promise<string> {
+async function fetchText(
+  url: string,
+  options: { readonly attempts?: number; readonly timeoutMs?: number } = {},
+): Promise<string> {
+  const attempts = options.attempts ?? defaultRequestAttempts;
+  const timeoutSignal = options.timeoutMs === undefined
+    ? undefined
+    : AbortSignal.timeout(options.timeoutMs);
   let lastStatus = 0;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (timeoutSignal?.aborted === true) break;
+    let retry = false;
     try {
-      const response = await requireContext().http.fetch(url, { headers: pageHeaders });
+      const response = await requireContext().http.fetch(url, {
+        headers: pageHeaders,
+        ...(timeoutSignal === undefined ? {} : { signal: timeoutSignal }),
+      });
+      if (response.ok) {
+        lastStatus = 0;
+        return await response.text();
+      }
       lastStatus = response.status;
-      if (response.ok) return await response.text();
+      await response.body?.cancel().catch(() => undefined);
+      retry = retryableStatus(response.status);
     } catch {
-      requireContext().log.warn('source_request_retry');
+      retry = timeoutSignal === undefined || !timeoutSignal.aborted;
     }
+    if (!retry || attempt + 1 >= attempts) break;
+    requireContext().log.warn('source_request_retry');
+    await delay(retryDelayMs * (attempt + 1));
   }
+  if (timeoutSignal?.aborted === true) throw new Error('Source request timed out.');
   if (lastStatus > 0) throw new Error(`Source request failed with status ${lastStatus}.`);
   throw new Error('Source request failed.');
+}
+
+function retryableStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
 }
 
 function parseListing(html: string) {
@@ -291,8 +319,24 @@ async function resolvePlayerUrl(player: Json, playPage: string) {
   if (safeMediaUrl(decoded)) return { url: decoded, referer: playPage };
   if (decoded === '') throw new Error('Playback address is unavailable.');
   const playerPage = `${playerBase}/yinhua/?url=${encodeURIComponent(decoded)}`;
-  const decrypted = decryptMcuePlayerHtml(await fetchText(playerPage));
+  let decrypted: string;
+  try {
+    decrypted = decryptMcuePlayerHtml(await fetchText(playerPage, {
+      attempts: mcueRequestAttempts,
+      timeoutMs: mcueRequestTimeoutMs,
+    }));
+  } catch {
+    return raiseMcueResolutionFailure();
+  }
+  if (!safeMediaUrl(decrypted)) return raiseMcueResolutionFailure();
   return { url: decrypted, referer: playerPage };
+}
+
+function raiseMcueResolutionFailure(): never {
+  const active = requireContext();
+  active.log.warn('mcue_resolution_failed');
+  active.errors?.raise('source_media_resolution_failed');
+  throw new Error('External media resolver failed.');
 }
 
 function decryptMcuePlayerHtml(html: string): string {
@@ -355,7 +399,12 @@ function contentId(id: string): string {
 function parseChapterId(id: string, content: string) {
   const match = new RegExp(`^video:${content}:(\\d+):(\\d+)$`, 'u').exec(id);
   if (match?.[1] === undefined || match[2] === undefined) throw new Error('Chapter ID is invalid.');
-  return { line: match[1], episode: match[2] };
+  const line = Number(match[1]);
+  const episode = Number(match[2]);
+  if (!Number.isSafeInteger(line) || line < 1 || !Number.isSafeInteger(episode) || episode < 1) {
+    throw new Error('Chapter ID is invalid.');
+  }
+  return { line: String(line), episode: String(episode) };
 }
 
 function discoveryPage(cursor: string | null, target: string): number {

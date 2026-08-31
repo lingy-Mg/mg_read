@@ -10,6 +10,7 @@ enum AppErrorCode {
   pluginDisabled('plugin_disabled', false),
   pluginDamaged('plugin_damaged', false),
   pluginExecutionFailed('plugin_execution_failed', false),
+  sourceMediaResolutionFailed('source_media_resolution_failed', true),
   methodNotFound('method_not_found', false),
   unsupported('unsupported', false),
   invalidRequest('invalid_request', false),
@@ -70,41 +71,17 @@ enum AppErrorCategory {
 /// URLs, database data, credentials, and stack traces are never retained.
 final class AppError implements Exception {
   /// Creates a normalized error.
-  AppError({
-    required this.code,
-    required this.retryable,
-    this.retryAfter,
-    this.traceId,
-  }) : assert(retryAfter == null || !retryAfter.isNegative);
+  AppError({required this.code, required this.retryable, this.retryAfter, this.traceId})
+    : assert(retryAfter == null || !retryAfter.isNegative);
 
   /// Creates an error using the protocol default retry rule for [code].
-  factory AppError.fromCode(
-    AppErrorCode code, {
-    bool? retryable,
-    Duration? retryAfter,
-    String? traceId,
-  }) {
-    return AppError(
-      code: code,
-      retryable: retryable ?? code.defaultRetryable,
-      retryAfter: retryAfter,
-      traceId: traceId,
-    );
+  factory AppError.fromCode(AppErrorCode code, {bool? retryable, Duration? retryAfter, String? traceId}) {
+    return AppError(code: code, retryable: retryable ?? code.defaultRetryable, retryAfter: retryAfter, traceId: traceId);
   }
 
   /// Creates an error from a protocol code while safely dropping unknown codes.
-  factory AppError.fromWireCode(
-    String wireCode, {
-    bool? retryable,
-    Duration? retryAfter,
-    String? traceId,
-  }) {
-    return AppError.fromCode(
-      AppErrorCode.fromWireValue(wireCode),
-      retryable: retryable,
-      retryAfter: retryAfter,
-      traceId: traceId,
-    );
+  factory AppError.fromWireCode(String wireCode, {bool? retryable, Duration? retryAfter, String? traceId}) {
+    return AppError.fromCode(AppErrorCode.fromWireValue(wireCode), retryable: retryable, retryAfter: retryAfter, traceId: traceId);
   }
 
   /// Normalizes an implementation exception without exposing its content.
@@ -134,16 +111,13 @@ final class AppError implements Exception {
       AppErrorCode.runtimeStartFailed ||
       AppErrorCode.runtimeNotReady ||
       AppErrorCode.transportDisconnected => AppErrorCategory.runtimeUnavailable,
-      AppErrorCode.pluginNotFound ||
-      AppErrorCode.pluginDisabled ||
-      AppErrorCode.pluginDamaged => AppErrorCategory.pluginUnavailable,
+      AppErrorCode.pluginNotFound || AppErrorCode.pluginDisabled || AppErrorCode.pluginDamaged => AppErrorCategory.pluginUnavailable,
       AppErrorCode.pluginExecutionFailed => AppErrorCategory.unknownSafe,
+      AppErrorCode.sourceMediaResolutionFailed => AppErrorCategory.retryableTemporary,
       AppErrorCode.interactionRequired => AppErrorCategory.interactionRequired,
-      AppErrorCode.notFound ||
-      AppErrorCode.rangeNotSatisfiable => AppErrorCategory.contentUnavailable,
+      AppErrorCode.notFound || AppErrorCode.rangeNotSatisfiable => AppErrorCategory.contentUnavailable,
       AppErrorCode.diskFull => AppErrorCategory.storagePressure,
-      AppErrorCode.versionIncompatible ||
-      AppErrorCode.unsupported => AppErrorCategory.incompatible,
+      AppErrorCode.versionIncompatible || AppErrorCode.unsupported => AppErrorCategory.incompatible,
       AppErrorCode.cancelled => AppErrorCategory.cancelled,
       _ when retryable => AppErrorCategory.retryableTemporary,
       _ => AppErrorCategory.unknownSafe,

@@ -105,6 +105,18 @@ test("desktop protocol never writes an orphan error envelope", () => {
   );
 });
 
+test("source media resolution failures cross the protocol as retryable stable errors", () => {
+  const envelope = makeError(bootId, {
+    code: "source_media_resolution_failed",
+    message: "The source could not resolve an external media address.",
+    requestId: "c:media",
+    traceId: "trace:media",
+  });
+
+  assert.equal(envelope?.error.code, "source_media_resolution_failed");
+  assert.equal(envelope?.error.retryable, true);
+});
+
 test("development change events expose revision and plugin identity without paths", () => {
   const event = makeDevelopmentPluginEvent(bootId, 7, [
     { kind: "updated", pluginId: "org.example.source" },

@@ -35,6 +35,7 @@ export type RuntimeErrorCode =
   | "plugin_invalid_response"
   | "plugin_load_failed"
   | "plugin_not_found"
+  | "source_media_resolution_failed"
   | "plugin_transfer_artifact_missing"
   | "plugin_transfer_artifact_too_large"
   | "plugin_transfer_batch_too_large"
@@ -415,7 +416,9 @@ export function makeError(
     error: {
       code: error.code,
       message: error.message,
-      retryable: error.code === "overloaded",
+      retryable:
+        error.code === "overloaded" ||
+        error.code === "source_media_resolution_failed",
     },
     id: error.requestId,
     traceId: error.traceId,

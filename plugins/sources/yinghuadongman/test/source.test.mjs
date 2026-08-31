@@ -17,6 +17,7 @@ test('fixture flow covers discovery, search, detail, neutral groups and both pla
   const resources = [];
   await plugin.activate({
     log: { info() {}, warn() {} },
+    errors: { raise(code) { throw Object.assign(new Error(code), { code, name: 'PluginManagerError' }); } },
     resource: {
       proxy(value) {
         resources.push(value);
@@ -59,6 +60,7 @@ test('fixture flow covers discovery, search, detail, neutral groups and both pla
   assert.deepEqual(catalog.groups.map((group) => group.title), ['线路 5', '线路 3']);
   assert.deepEqual(catalog.groups.map((group) => group.episodes.length), [2, 2]);
   assert.equal(catalog.items.length, 4);
+  const detailRequestsBeforePlayback = requests.filter((url) => url.pathname === '/v/101.html').length;
 
   const direct = await plugin.getContent({ id: info.id, chapterId: 'video:101:3:1' });
   assert.equal(direct.media.resourceType, 'video');
@@ -69,6 +71,77 @@ test('fixture flow covers discovery, search, detail, neutral groups and both pla
   assert.equal(resources[1].url, upstream);
   assert.equal(new URL(resources[1].headers.Referer).origin, 'https://player.mcue.cc');
   assert.ok(requests.some((url) => url.hostname === 'player.mcue.cc'));
+  assert.equal(
+    requests.filter((url) => url.pathname === '/v/101.html').length,
+    detailRequestsBeforePlayback,
+  );
+});
+
+test('MCUE retries one recoverable response inside one bounded timeout', async () => {
+  const [tokenPlayer, mcueTemplate] = await Promise.all([
+    'player-token.html', 'mcue-player.html',
+  ].map((name) => readFile(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')));
+  const upstream = 'https://media.invalid/fixture-retried.m3u8';
+  const digest = createHash('md5').update('balemon').digest('hex');
+  const cipher = createCipheriv('aes-128-cbc', Buffer.from(digest.slice(16)), Buffer.from(digest.slice(0, 16)));
+  const encrypted = cipher.update(upstream, 'utf8', 'base64') + cipher.final('base64');
+  const mcuePlayer = mcueTemplate.replace('__CIPHER__', encrypted);
+  const warnings = [];
+  const signals = [];
+  let mcueCalls = 0;
+  await plugin.activate({
+    log: { info() {}, warn(event) { warnings.push(event); } },
+    errors: { raise(code) { throw Object.assign(new Error(code), { code, name: 'PluginManagerError' }); } },
+    resource: { proxy(value) { return value.url; } },
+    http: {
+      async fetch(input, init = {}) {
+        const url = new URL(input);
+        if (url.hostname !== 'player.mcue.cc') return new Response(tokenPlayer);
+        mcueCalls += 1;
+        signals.push(init.signal);
+        return mcueCalls === 1
+          ? new Response('', { status: 503 })
+          : new Response(mcuePlayer);
+      },
+    },
+  });
+
+  const content = await plugin.getContent({ id: 'video:101', chapterId: 'video:101:5:1' });
+
+  assert.equal(content.media.url, upstream);
+  assert.equal(mcueCalls, 2);
+  assert.ok(signals[0] instanceof AbortSignal);
+  assert.equal(signals[0], signals[1]);
+  assert.deepEqual(warnings, ['source_request_retry']);
+});
+
+test('MCUE does not retry deterministic client failures and bounds server retries', async () => {
+  const tokenPlayer = await readFile(new URL('./fixtures/player-token.html', import.meta.url), 'utf8');
+  for (const [status, expectedCalls] of [[403, 1], [404, 1], [503, 2]]) {
+    const warnings = [];
+    let mcueCalls = 0;
+    await plugin.activate({
+      log: { info() {}, warn(event) { warnings.push(event); } },
+      errors: { raise(code) { throw Object.assign(new Error(code), { code, name: 'PluginManagerError' }); } },
+      resource: { proxy() { throw new Error('unreachable'); } },
+      http: {
+        async fetch(input) {
+          const url = new URL(input);
+          if (url.hostname !== 'player.mcue.cc') return new Response(tokenPlayer);
+          mcueCalls += 1;
+          return new Response('', { status });
+        },
+      },
+    });
+
+    await assert.rejects(
+      plugin.getContent({ id: 'video:101', chapterId: 'video:101:5:1' }),
+      (error) => error?.code === 'source_media_resolution_failed',
+    );
+    assert.equal(mcueCalls, expectedCalls);
+    assert.equal(warnings.at(-1), 'mcue_resolution_failed');
+    assert.equal(warnings.filter((event) => event === 'source_request_retry').length, expectedCalls - 1);
+  }
 });
 
 test('rejects cursors and chapter identities outside the source-owned contract', async () => {
@@ -79,5 +152,9 @@ test('rejects cursors and chapter identities outside the source-owned contract',
   await assert.rejects(
     plugin.getDetail({ id: 'book:101' }),
     /Content ID is invalid/u,
+  );
+  await assert.rejects(
+    plugin.getContent({ id: 'video:101', chapterId: 'video:101:0:1' }),
+    /Chapter ID is invalid/u,
   );
 });

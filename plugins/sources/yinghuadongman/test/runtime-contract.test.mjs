@@ -12,6 +12,7 @@ test('fixture outputs pass the current Runtime source validators', async () => {
   ].map((name) => readFile(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')));
   await plugin.activate({
     log: { info() {}, warn() {} },
+    errors: { raise(code) { throw Object.assign(new Error(code), { code, name: 'PluginManagerError' }); } },
     resource: {
       proxy() { return 'http://127.0.0.1:9000/v1/source-resource/abcdefghijklmnop'; },
     },

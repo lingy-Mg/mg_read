@@ -4,9 +4,16 @@ import * as plugin from '../dist/index.mjs';
 
 test('live public flow reaches discovery, search, detail, catalog and playback resolution', { timeout: 120_000 }, async () => {
   const resources = [];
-  const liveFetch = (input, init = {}) => fetch(input, { ...init, signal: AbortSignal.timeout(20_000) });
+  const liveFetch = (input, init = {}) => {
+    const liveTimeout = AbortSignal.timeout(20_000);
+    const signal = init.signal === undefined
+      ? liveTimeout
+      : AbortSignal.any([init.signal, liveTimeout]);
+    return fetch(input, { ...init, signal });
+  };
   await plugin.activate({
     log: { info() {}, warn() {} },
+    errors: { raise(code) { throw Object.assign(new Error(code), { code, name: 'PluginManagerError' }); } },
     resource: {
       proxy(value) {
         resources.push(value);

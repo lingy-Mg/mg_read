@@ -143,10 +143,14 @@ export async function createDelayedPlugin(root) {
     ),
     writeFile(
       join(root, "dist", "index.mjs"),
-      `export function activate() {}
+      `let context;
+export function activate(nextContext) { context = nextContext; }
 export function discover() { return { kind: "document", document: { components: [] } }; }
 export async function search() { await new Promise((resolve) => setTimeout(resolve, 40)); return { items: [], nextCursor: null, totalCount: 0 }; }
-export function getDetail() { throw new Error("unused"); }
+export function getDetail(request) {
+  if (request.id === "media-resolution") context.errors.raise("source_media_resolution_failed");
+  throw new Error("unused");
+}
 export function getChapters() { throw new Error("unused"); }
 export function getContent() { throw new Error("unused"); }
 `,

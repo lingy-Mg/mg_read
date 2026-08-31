@@ -18,6 +18,7 @@ import type {
   PluginInvocationScope,
   PluginManagerEvent,
   PluginManagerEventSink,
+  PluginPublicErrorCode,
   PluginRuntimeHttpClient,
 } from "./plugin-manager-contract.js";
 import { PluginManagerError } from "./plugin-manager-contract.js";
@@ -78,6 +79,14 @@ export async function createPluginContext(options: {
     }),
     cacheDir,
     dataDir,
+    errors: Object.freeze({
+      raise: (code: PluginPublicErrorCode): never => {
+        if (code !== "source_media_resolution_failed") {
+          throw new PluginManagerError("invalid_request");
+        }
+        throw new PluginManagerError(code);
+      },
+    }),
     http: Object.freeze({ fetch: (input: string | URL, init: RequestInit = {}) => {
       const scope = invocationScope();
       const signals: AbortSignal[] = [];

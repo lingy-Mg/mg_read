@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_video_player/mg_read_video_player.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
+import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/media/application/source_video_data_source.dart';
 
@@ -46,14 +47,31 @@ void main() {
       ),
     );
   });
+
+  test('surfaces an external media resolver failure without raw details', () async {
+    final gateway = _VideoGateway(failEpisodeResource: false, episodeFailureCode: AppErrorCode.sourceMediaResolutionFailed);
+    final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId);
+    await source.load('video-1');
+
+    await expectLater(
+      source.loadEpisode('video-1', groupId: 'default', episodeId: 'episode-1'),
+      throwsA(
+        isA<VideoPlayerLoadException>()
+            .having((failure) => failure.code, 'code', 'video_external_resolver_failed')
+            .having((failure) => failure.location, 'location', '解析外部播放地址')
+            .having((failure) => failure.message, 'message', '外部播放地址解析失败，请稍后重试或更换线路。'),
+      ),
+    );
+  });
 }
 
 const _pluginId = 'org.example.video';
 
 final class _VideoGateway implements SourceContentGateway {
-  _VideoGateway({required this.failEpisodeResource});
+  _VideoGateway({required this.failEpisodeResource, this.episodeFailureCode});
 
   final bool failEpisodeResource;
+  final AppErrorCode? episodeFailureCode;
   final List<String> contentCalls = <String>[];
 
   @override
@@ -106,6 +124,8 @@ final class _VideoGateway implements SourceContentGateway {
   @override
   Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async {
     contentCalls.add(chapterId);
+    final failureCode = episodeFailureCode;
+    if (failureCode != null) throw AppError.fromCode(failureCode);
     if (failEpisodeResource) throw StateError('https://private.example/signed-url');
     return PluginChapterContent(
       pluginId: pluginId,

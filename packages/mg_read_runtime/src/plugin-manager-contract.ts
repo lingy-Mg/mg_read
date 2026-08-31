@@ -51,6 +51,9 @@ export interface PluginManagerEvent {
 
 export type PluginManagerEventSink = (event: PluginManagerEvent) => void;
 
+/** Stable failures that plugin code may intentionally surface to its host. */
+export type PluginPublicErrorCode = "source_media_resolution_failed";
+
 /** Stable plugin capability failure consumed by the Runtime dispatch owner. */
 export class PluginManagerError extends Error {
   constructor(
@@ -64,6 +67,7 @@ export class PluginManagerError extends Error {
       | "plugin_invalid_response"
       | "plugin_load_failed"
       | "plugin_not_found"
+      | "source_media_resolution_failed"
       | "timeout"
       | "unsupported",
   ) {
@@ -82,6 +86,7 @@ const pluginManagerErrorCodes = new Set<PluginManagerError["code"]>([
   "plugin_invalid_response",
   "plugin_load_failed",
   "plugin_not_found",
+  "source_media_resolution_failed",
   "timeout",
   "unsupported",
 ]);
@@ -160,6 +165,9 @@ export interface MgReadPluginContext {
   };
   readonly cacheDir: string;
   readonly dataDir: string;
+  readonly errors: {
+    raise(code: PluginPublicErrorCode): never;
+  };
   readonly http: {
     fetch(input: string | URL, init?: RequestInit): Promise<Response>;
   };

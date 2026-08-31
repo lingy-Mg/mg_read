@@ -764,6 +764,16 @@ test("plugin execution failures stay distinct from invalid plugin responses", as
     events.filter((event) => event.code === "plugin_invocation_failed").length,
     1,
   );
+
+  await assert.rejects(
+    manager.getDetail(
+      "org.example.delayed",
+      { id: "media-resolution" },
+      new AbortController().signal,
+      String(Date.now() + 5_000),
+    ),
+    (error) => error?.code === "source_media_resolution_failed",
+  );
 });
 
 test("an unavailable optional dependency is skipped without changing install success", async (t) => {

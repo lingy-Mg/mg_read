@@ -12,6 +12,7 @@ library;
 import 'package:mg_read_video_player/mg_read_video_player.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
+import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 
 /// Converts one video source item into the video player's host port.
@@ -146,6 +147,19 @@ final class SourceVideoDataSource implements VideoEpisodeDataSource {
       return await gateway.getContent(pluginId: pluginId, id: contentId, chapterId: episodeId);
     } on VideoPlayerLoadException {
       rethrow;
+    } on AppError catch (error) {
+      if (error.code == AppErrorCode.sourceMediaResolutionFailed) {
+        throw const VideoPlayerLoadException(
+          code: 'video_external_resolver_failed',
+          location: '解析外部播放地址',
+          message: '外部播放地址解析失败，请稍后重试或更换线路。',
+        );
+      }
+      throw const VideoPlayerLoadException(
+        code: 'video_episode_resource_load_failed',
+        location: '请求选集播放资源',
+        message: '所选集的播放资源暂时无法获取，请稍后重试。',
+      );
     } on Object {
       throw const VideoPlayerLoadException(
         code: 'video_episode_resource_load_failed',
