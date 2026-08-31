@@ -6,7 +6,7 @@
 ///
 /// 注意：
 /// - 页面不显示主导航栏；它始终是“我的”下的子级页面。
-/// - 临时传输由 LanSyncController 管理；已配对设备、自动发现和手动拉取由 DeviceSyncController 管理。
+/// - 临时传输由 LanSyncController 管理；已配对设备、自动发现和手动同步/拉取/推送由 DeviceSyncController 管理。
 ///
 library;
 
@@ -99,7 +99,8 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
                         onApprovePairing: () => ref.read(deviceSyncControllerProvider.notifier).approvePairing(),
                         onRejectPairing: () => ref.read(deviceSyncControllerProvider.notifier).rejectPairing(),
                         onCancelPairing: () => ref.read(deviceSyncControllerProvider.notifier).cancelPairing(),
-                        onSyncNow: (deviceId) => ref.read(deviceSyncControllerProvider.notifier).syncNow(deviceId),
+                        onSync: (deviceId, operation) =>
+                            ref.read(deviceSyncControllerProvider.notifier).syncNow(deviceId, operation: operation),
                         onManage: _manageDevice,
                       ),
                       const SizedBox(height: AppSpacing.regular),

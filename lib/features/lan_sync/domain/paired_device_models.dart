@@ -15,6 +15,22 @@ enum PairedDevicePlatform { android, windows, unknown }
 
 enum PairedSyncMode { bidirectional, receiveOnly, sendOnly }
 
+/// 由本机发起的单次同步操作；持久设备策略仍会限制实际可发送和可接收的内容。
+enum PairedSyncOperation {
+  bidirectional,
+  pull,
+  push;
+
+  bool get receives => this != PairedSyncOperation.push;
+  bool get sends => this != PairedSyncOperation.pull;
+
+  PairedSyncOperation get reversed => switch (this) {
+    PairedSyncOperation.bidirectional => PairedSyncOperation.bidirectional,
+    PairedSyncOperation.pull => PairedSyncOperation.push,
+    PairedSyncOperation.push => PairedSyncOperation.pull,
+  };
+}
+
 enum PairedSyncResultState { success, partial, failed, cancelled }
 
 @immutable

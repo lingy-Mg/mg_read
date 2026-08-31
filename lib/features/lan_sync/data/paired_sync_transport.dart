@@ -3,7 +3,7 @@
 /// 职责：
 /// - 广播稳定设备 ID 和本次前台端口，IP 始终取自收到的数据包。
 /// - 使用逐设备共享密钥建立认证加密会话，并按双方策略同步插件和书架。
-/// - 支持自动双向同步与接收端主动“只拉取一次”。
+/// - 支持任意端主动双向同步、拉取或推送；Android 请求 Windows 时使用签名唤醒和反向连接。
 ///
 /// 注意：
 /// - 广播不包含密钥、书名、插件名或持久地址。
@@ -15,6 +15,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
+
+import 'package:cryptography/cryptography.dart';
 
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
@@ -47,6 +49,14 @@ final class PairedSyncEndpoint {
   final int port;
 }
 
+final class PairedSyncWakeRequest {
+  const PairedSyncWakeRequest({required this.endpoint, required this.operation, required this.requestId});
+
+  final PairedSyncEndpoint endpoint;
+  final PairedSyncOperation operation;
+  final String requestId;
+}
+
 final class PairedSyncRunSummary {
   const PairedSyncRunSummary({
     required this.receivedBooks,
@@ -75,21 +85,26 @@ final class PairedSyncPartialException implements Exception {
 final class PairedSyncHost {
   PairedSyncHost._({
     required this.identity,
+    required this.discoveryPort,
     required this._server,
     required this._socket,
     required this._devices,
     required this._identityStore,
     required this._onIncoming,
+    required this._onWakeRequest,
   });
 
   final LocalDeviceIdentity identity;
+  final int discoveryPort;
   final ServerSocket _server;
   final RawDatagramSocket _socket;
   final PairedDeviceRepository _devices;
   final DeviceIdentityStore _identityStore;
   final Future<void> Function(PairedSyncServerSession session) _onIncoming;
+  final Future<void> Function(PairedSyncWakeRequest request)? _onWakeRequest;
   final StreamController<PairedSyncEndpoint> _endpoints = StreamController<PairedSyncEndpoint>.broadcast();
   final Set<Socket> _connections = <Socket>{};
+  final Map<String, DateTime> _acceptedWakeRequests = <String, DateTime>{};
   Timer? _announcer;
   bool _closed = false;
 
@@ -101,19 +116,23 @@ final class PairedSyncHost {
     required PairedDeviceRepository devices,
     required DeviceIdentityStore identityStore,
     required Future<void> Function(PairedSyncServerSession session) onIncoming,
+    Future<void> Function(PairedSyncWakeRequest request)? onWakeRequest,
+    int discoveryPort = pairedSyncDiscoveryPort,
   }) async {
     final server = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     RawDatagramSocket? socket;
     try {
-      socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, pairedSyncDiscoveryPort, reuseAddress: true);
+      socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, discoveryPort, reuseAddress: true);
       socket.broadcastEnabled = true;
       final host = PairedSyncHost._(
         identity: identity,
+        discoveryPort: socket.port,
         server: server,
         socket: socket,
         devices: devices,
         identityStore: identityStore,
         onIncoming: onIncoming,
+        onWakeRequest: onWakeRequest,
       );
       host._start();
       return host;
@@ -143,7 +162,7 @@ final class PairedSyncHost {
       }),
     );
     try {
-      _socket.send(bytes, InternetAddress('255.255.255.255'), pairedSyncDiscoveryPort);
+      _socket.send(bytes, InternetAddress('255.255.255.255'), discoveryPort);
     } on Object {
       // 下一次周期广播会重试；已知 endpoint 仍可继续当前会话。
     }
@@ -157,7 +176,12 @@ final class PairedSyncHost {
       try {
         if (!isLanSyncPrivateIpv4(packet.address.address)) continue;
         final raw = jsonDecode(utf8.decode(packet.data));
-        if (raw is! Map || raw['kind'] != 'mgread-paired-sync' || raw['protocolVersion'] != pairedSyncProtocolVersion) {
+        if (raw is! Map) continue;
+        if (raw['kind'] == 'mgread-paired-sync-wake') {
+          unawaited(_handleWakeRequest(raw, packet.address));
+          continue;
+        }
+        if (raw['kind'] != 'mgread-paired-sync' || raw['protocolVersion'] != pairedSyncProtocolVersion) {
           continue;
         }
         final deviceId = raw['deviceId'];
@@ -186,6 +210,66 @@ final class PairedSyncHost {
       } on Object {
         // 未认证广播不可信，格式错误直接忽略。
       }
+    }
+  }
+
+  Future<void> _handleWakeRequest(Map<dynamic, dynamic> raw, InternetAddress sourceAddress) async {
+    final callback = _onWakeRequest;
+    if (callback == null || _closed || !isLanSyncPrivateIpv4(sourceAddress.address)) return;
+    try {
+      final deviceId = raw['deviceId'];
+      final targetDeviceId = raw['targetDeviceId'];
+      final label = _validDeviceLabel(raw['label']);
+      final port = raw['port'];
+      final requestId = raw['requestId'];
+      final operation = _wakeOperation(raw['operation']);
+      final encodedMac = raw['mac'];
+      if (raw['protocolVersion'] != pairedSyncProtocolVersion ||
+          deviceId is! String ||
+          !isValidPairedDeviceId(deviceId) ||
+          targetDeviceId != identity.deviceId ||
+          label == null ||
+          port is! int ||
+          port < 1 ||
+          port > 65535 ||
+          requestId is! String ||
+          !_validNonce(requestId) ||
+          operation == null ||
+          encodedMac is! String) {
+        return;
+      }
+      final peer = await _devices.read(deviceId);
+      final secret = await _identityStore.readPeerSecret(deviceId);
+      if (peer == null || secret == null) return;
+      final expected = await _wakeMac(
+        secret,
+        requestId: requestId,
+        deviceId: deviceId,
+        targetDeviceId: identity.deviceId,
+        operation: operation,
+        port: port,
+      );
+      if (!_constantTimeEquals(expected, _decodeMac(encodedMac))) return;
+      final now = DateTime.now().toUtc();
+      _acceptedWakeRequests.removeWhere((_, expiresAt) => !expiresAt.isAfter(now));
+      if (_acceptedWakeRequests.containsKey(requestId)) return;
+      if (_acceptedWakeRequests.length >= 64) _acceptedWakeRequests.remove(_acceptedWakeRequests.keys.first);
+      _acceptedWakeRequests[requestId] = now.add(const Duration(minutes: 1));
+      await callback(
+        PairedSyncWakeRequest(
+          endpoint: PairedSyncEndpoint(
+            address: sourceAddress.address,
+            deviceId: deviceId,
+            expiresAtUtc: now.add(pairedSyncPeerLifetime),
+            label: label,
+            port: port,
+          ),
+          operation: operation,
+          requestId: requestId,
+        ),
+      );
+    } on Object {
+      // 未认证、重放或格式错误的唤醒包直接忽略。
     }
   }
 
@@ -252,11 +336,64 @@ final class PairedSyncHost {
   }
 }
 
+String createPairedSyncWakeRequestId() => _randomToken(18);
+
+Future<void> sendPairedSyncWakeRequest({
+  required LocalDeviceIdentity identity,
+  required PairedSyncEndpoint endpoint,
+  required List<int> sharedSecret,
+  required PairedSyncOperation operation,
+  required int localPort,
+  required String requestId,
+  int discoveryPort = pairedSyncDiscoveryPort,
+}) async {
+  if (sharedSecret.length != 32 ||
+      !_validNonce(requestId) ||
+      !isLanSyncPrivateIpv4(endpoint.address) ||
+      localPort < 1 ||
+      localPort > 65535 ||
+      discoveryPort < 1 ||
+      discoveryPort > 65535) {
+    throw const LanSyncTransportException('lan_sync_wake_invalid');
+  }
+  final mac = await _wakeMac(
+    sharedSecret,
+    requestId: requestId,
+    deviceId: identity.deviceId,
+    targetDeviceId: endpoint.deviceId,
+    operation: operation,
+    port: localPort,
+  );
+  final bytes = utf8.encode(
+    jsonEncode(<String, Object?>{
+      'kind': 'mgread-paired-sync-wake',
+      'protocolVersion': pairedSyncProtocolVersion,
+      'deviceId': identity.deviceId,
+      'targetDeviceId': endpoint.deviceId,
+      'label': identity.label,
+      'port': localPort,
+      'requestId': requestId,
+      'operation': operation.name,
+      'mac': base64Url.encode(mac).replaceAll('=', ''),
+    }),
+  );
+  final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+  try {
+    for (var attempt = 0; attempt < 3; attempt++) {
+      socket.send(bytes, InternetAddress(endpoint.address), discoveryPort);
+      if (attempt < 2) await Future<void>.delayed(const Duration(milliseconds: 60));
+    }
+  } finally {
+    socket.close();
+  }
+}
+
 final class PairedSyncClientSession {
-  PairedSyncClientSession._({required this.peer, required this._connection});
+  PairedSyncClientSession._({required this.peer, required this._connection, required this._localLabel});
 
   final PairedDevice peer;
   final PairedSecureConnection _connection;
+  final String _localLabel;
 
   static Future<PairedSyncClientSession> connectAny({
     required Iterable<PairedSyncEndpoint> endpoints,
@@ -331,21 +468,38 @@ final class PairedSyncClientSession {
         serverNonce: serverNonce! as String,
       );
       final ready = await secure.readControl().timeout(lanSyncHandshakeTimeout);
-      if (ready['type'] != 'pairedReady' || ready['deviceId'] != peer.deviceId) {
+      final peerLabel = _validDeviceLabel(ready['label']);
+      if (ready['type'] != 'pairedReady' || ready['deviceId'] != peer.deviceId || peerLabel == null) {
         throw const LanSyncTransportException('lan_sync_handshake_invalid');
       }
-      return PairedSyncClientSession._(peer: peer, connection: secure);
+      return PairedSyncClientSession._(
+        peer: peer.copyWith(label: peerLabel),
+        connection: secure,
+        localLabel: identity.label,
+      );
     } on Object {
       await (secure?.close() ?? raw?.close() ?? Future<void>.value());
       rethrow;
     }
   }
 
-  Future<PairedSyncRunSummary> run({required LanSyncGateway gateway, required bool pullOnly}) async {
+  Future<PairedSyncRunSummary> run({
+    required LanSyncGateway gateway,
+    PairedSyncOperation operation = PairedSyncOperation.bidirectional,
+    String? requestId,
+  }) async {
     var committed = false;
     try {
-      final localPolicy = _WirePolicy.fromDevice(peer, pullOnly: pullOnly);
-      await _connection.sendControl(<String, Object?>{'type': 'syncRequest', ...localPolicy.toJson()});
+      if (requestId != null && !_validNonce(requestId)) {
+        throw const LanSyncTransportException('lan_sync_wake_invalid');
+      }
+      final localPolicy = _WirePolicy.fromDevice(peer, operation: operation);
+      await _connection.sendControl(<String, Object?>{
+        'type': 'syncRequest',
+        'deviceLabel': _localLabel,
+        'requestId': ?requestId,
+        ...localPolicy.toJson(),
+      });
       final ready = await _connection.readControl().timeout(lanSyncHandshakeTimeout);
       if (ready['type'] == 'syncBusy') throw const LanSyncTransportException('lan_sync_peer_busy');
       if (ready['type'] != 'syncReady') throw const LanSyncTransportException('lan_sync_handshake_invalid');
@@ -397,10 +551,14 @@ final class PairedSyncClientSession {
 }
 
 final class PairedSyncServerSession {
-  PairedSyncServerSession._({required this.peer, required this._connection});
+  PairedSyncServerSession._({required this._peer, required this._connection});
 
-  final PairedDevice peer;
+  PairedDevice _peer;
   final PairedSecureConnection _connection;
+  String? _requestId;
+
+  PairedDevice get peer => _peer;
+  String? get requestId => _requestId;
 
   Future<void> rejectBusy() async {
     try {
@@ -415,8 +573,15 @@ final class PairedSyncServerSession {
     try {
       final request = await _connection.readControl().timeout(lanSyncHandshakeTimeout);
       if (request['type'] != 'syncRequest') throw const LanSyncTransportException('lan_sync_handshake_invalid');
+      final requestId = request['requestId'];
+      if (requestId != null && (requestId is! String || !_validNonce(requestId))) {
+        throw const LanSyncTransportException('lan_sync_wake_invalid');
+      }
+      _requestId = requestId as String?;
+      final peerLabel = _validDeviceLabel(request['deviceLabel']);
+      if (peerLabel != null) _peer = _peer.copyWith(label: peerLabel);
       final remotePolicy = _WirePolicy.fromJson(request);
-      final localPolicy = _WirePolicy.fromDevice(peer);
+      final localPolicy = _WirePolicy.fromDevice(peer, operation: PairedSyncOperation.bidirectional);
       await _connection.sendControl(<String, Object?>{'type': 'syncReady', ...localPolicy.toJson()});
 
       final remoteManifest = await _readManifest(_connection);
@@ -472,9 +637,9 @@ final class _WirePolicy {
   final bool syncBookshelf;
   final bool syncPlugins;
 
-  factory _WirePolicy.fromDevice(PairedDevice device, {bool pullOnly = false}) => _WirePolicy(
-    canReceive: device.canReceive,
-    canSend: device.canSend && !pullOnly,
+  factory _WirePolicy.fromDevice(PairedDevice device, {required PairedSyncOperation operation}) => _WirePolicy(
+    canReceive: device.canReceive && operation.receives,
+    canSend: device.canSend && operation.sends,
     syncBookshelf: device.syncBookshelf,
     syncPlugins: device.syncPlugins,
   );
@@ -496,6 +661,49 @@ final class _WirePolicy {
     'syncBookshelf': syncBookshelf,
     'syncPlugins': syncPlugins,
   };
+}
+
+String? _validDeviceLabel(Object? value) {
+  if (value is! String) return null;
+  final normalized = value.trim();
+  return normalized.isEmpty || normalized.length > 128 ? null : normalized;
+}
+
+PairedSyncOperation? _wakeOperation(Object? value) {
+  for (final operation in PairedSyncOperation.values) {
+    if (operation.name == value) return operation;
+  }
+  return null;
+}
+
+Future<List<int>> _wakeMac(
+  List<int> secret, {
+  required String requestId,
+  required String deviceId,
+  required String targetDeviceId,
+  required PairedSyncOperation operation,
+  required int port,
+}) async {
+  final transcript = '$pairedSyncProtocolVersion|$requestId|$deviceId|$targetDeviceId|${operation.name}|$port';
+  final mac = await Hmac.sha256().calculateMac(utf8.encode(transcript), secretKey: SecretKey(secret));
+  return mac.bytes;
+}
+
+List<int> _decodeMac(String encoded) {
+  try {
+    return base64Url.decode(base64Url.normalize(encoded));
+  } on FormatException {
+    return const <int>[];
+  }
+}
+
+bool _constantTimeEquals(List<int> left, List<int> right) {
+  if (left.length != right.length) return false;
+  var difference = 0;
+  for (var index = 0; index < left.length; index++) {
+    difference |= left[index] ^ right[index];
+  }
+  return difference == 0;
 }
 
 bool _eligiblePeer(InternetAddress address) => address.type == InternetAddressType.IPv4 && isLanSyncPrivateIpv4(address.address);

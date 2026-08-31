@@ -35,13 +35,12 @@ final class SecureDeviceIdentityStore implements DeviceIdentityStore {
       await _storage.write(key: _deviceIdKey, value: deviceId);
     }
     var label = await _storage.read(key: _deviceLabelKey);
-    if (label == null || label.trim().isEmpty || label.length > 128) {
+    if (!_isUsableDeviceLabel(label)) {
       final host = Platform.localHostname.trim();
-      label = host.isEmpty ? (Platform.isWindows ? 'Windows 设备' : 'Android 设备') : host;
-      if (label.length > 128) label = label.substring(0, 128);
+      label = _isUsableDeviceLabel(host) ? host : (Platform.isWindows ? 'Windows 设备' : 'Android 设备');
       await _storage.write(key: _deviceLabelKey, value: label);
     }
-    return LocalDeviceIdentity(deviceId: deviceId, label: label);
+    return LocalDeviceIdentity(deviceId: deviceId, label: label!);
   }
 
   @override
@@ -63,6 +62,13 @@ final class SecureDeviceIdentityStore implements DeviceIdentityStore {
     }
     await _storage.write(key: '$_peerPrefix$peerDeviceId', value: base64Url.encode(secret).replaceAll('=', ''));
   }
+}
+
+bool _isUsableDeviceLabel(String? value) {
+  if (value == null) return false;
+  final normalized = value.trim();
+  if (normalized.isEmpty || normalized.length > 128) return false;
+  return !<String>{'localhost', 'localhost.localdomain', '127.0.0.1', '::1'}.contains(normalized.toLowerCase());
 }
 
 List<int> _randomBytes(int length) {

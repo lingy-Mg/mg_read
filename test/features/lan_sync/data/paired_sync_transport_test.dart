@@ -17,13 +17,14 @@ void main() {
     final secret = List<int>.generate(32, (index) => index + 1);
     const serverIdentity = LocalDeviceIdentity(deviceId: 'desktop_device_123456', label: '开发电脑');
     const clientIdentity = LocalDeviceIdentity(deviceId: 'phone_device_12345678', label: '手机');
-    final serverPeer = _device(clientIdentity, PairedDevicePlatform.android);
-    final clientPeer = _device(serverIdentity, PairedDevicePlatform.windows);
+    final serverPeer = _device(clientIdentity, PairedDevicePlatform.android, label: '旧手机名');
+    final clientPeer = _device(serverIdentity, PairedDevicePlatform.windows, label: '旧电脑名');
     final serverRepository = _MemoryPairedDeviceRepository(serverPeer);
     final serverSecrets = _MemoryIdentityStore(serverIdentity, <String, List<int>>{clientIdentity.deviceId: secret});
     final serverGateway = _ShelfGateway('desktop-book');
     final clientGateway = _ShelfGateway('phone-book');
     final serverResult = Completer<PairedSyncRunSummary>();
+    String? authenticatedClientLabel;
     final host = await PairedSyncHost.start(
       identity: serverIdentity,
       devices: serverRepository,
@@ -31,6 +32,7 @@ void main() {
       onIncoming: (session) async {
         try {
           serverResult.complete(await session.run(gateway: serverGateway));
+          authenticatedClientLabel = session.peer.label;
         } on Object catch (error, stackTrace) {
           serverResult.completeError(error, stackTrace);
         }
@@ -52,7 +54,8 @@ void main() {
       sharedSecret: secret,
     );
 
-    final clientSummary = await session.run(gateway: clientGateway, pullOnly: false);
+    expect(session.peer.label, serverIdentity.label);
+    final clientSummary = await session.run(gateway: clientGateway);
     final hostSummary = await serverResult.future;
 
     expect(clientSummary.receivedBooks, 1);
@@ -61,6 +64,7 @@ void main() {
     expect(hostSummary.sentBooks, 1);
     expect(clientGateway.appliedIds, <String>['desktop-book']);
     expect(serverGateway.appliedIds, <String>['phone-book']);
+    expect(authenticatedClientLabel, clientIdentity.label);
   });
 
   test('paired sync materializes only the development source selected by the receiver', () async {
@@ -71,8 +75,11 @@ void main() {
     const clientIdentity = LocalDeviceIdentity(deviceId: 'phone_lazy_1234567890', label: '手机');
     final serverPeer = _device(clientIdentity, PairedDevicePlatform.android);
     final clientPeer = _device(serverIdentity, PairedDevicePlatform.windows);
-    final serverGateway = _PluginGateway(offeredIds: const <String>['org.example.selected', 'org.example.same'], requestedId: null);
-    final clientGateway = _PluginGateway(offeredIds: const <String>[], requestedId: 'org.example.selected');
+    final serverGateway = _PluginGateway(
+      offeredIds: const <String>['org.example.selected', 'org.example.same'],
+      requestedId: 'org.example.client-only',
+    );
+    final clientGateway = _PluginGateway(offeredIds: const <String>['org.example.client-only'], requestedId: 'org.example.selected');
     final serverResult = Completer<PairedSyncRunSummary>();
     final host = await PairedSyncHost.start(
       identity: serverIdentity,
@@ -102,21 +109,203 @@ void main() {
       sharedSecret: secret,
     );
 
-    final clientSummary = await session.run(gateway: clientGateway, pullOnly: true);
+    final clientSummary = await session.run(gateway: clientGateway, operation: PairedSyncOperation.pull);
     final hostSummary = await serverResult.future;
 
     expect(serverGateway.materializedIds, <String>['org.example.selected']);
     expect(clientGateway.importedIds, <String>['org.example.selected']);
+    expect(clientGateway.materializedIds, isEmpty);
+    expect(serverGateway.importedIds, isEmpty);
     expect(clientSummary.receivedPlugins, 1);
+    expect(clientSummary.sentPlugins, 0);
     expect(hostSummary.sentPlugins, 1);
+    expect(hostSummary.receivedPlugins, 0);
+  });
+
+  test('paired initiator can push without receiving remote shelf changes', () async {
+    final addresses = await eligibleLanSyncAddresses();
+    if (addresses.isEmpty) return;
+    final secret = List<int>.generate(32, (index) => index + 21);
+    const serverIdentity = LocalDeviceIdentity(deviceId: 'desktop_push_12345678', label: '开发电脑');
+    const clientIdentity = LocalDeviceIdentity(deviceId: 'phone_push_1234567890', label: '手机');
+    final serverGateway = _ShelfGateway('desktop-book');
+    final clientGateway = _ShelfGateway('phone-book');
+    final serverResult = Completer<PairedSyncRunSummary>();
+    final host = await PairedSyncHost.start(
+      identity: serverIdentity,
+      devices: _MemoryPairedDeviceRepository(_device(clientIdentity, PairedDevicePlatform.android)),
+      identityStore: _MemoryIdentityStore(serverIdentity, <String, List<int>>{clientIdentity.deviceId: secret}),
+      onIncoming: (session) async {
+        try {
+          serverResult.complete(await session.run(gateway: serverGateway));
+        } on Object catch (error, stackTrace) {
+          serverResult.completeError(error, stackTrace);
+        }
+      },
+    );
+    addTearDown(host.close);
+    final session = await PairedSyncClientSession.connectAny(
+      endpoints: <PairedSyncEndpoint>[
+        PairedSyncEndpoint(
+          address: addresses.first,
+          deviceId: serverIdentity.deviceId,
+          expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+          label: serverIdentity.label,
+          port: host.port,
+        ),
+      ],
+      identity: clientIdentity,
+      peer: _device(serverIdentity, PairedDevicePlatform.windows),
+      sharedSecret: secret,
+    );
+
+    final clientSummary = await session.run(gateway: clientGateway, operation: PairedSyncOperation.push);
+    final hostSummary = await serverResult.future;
+
+    expect(clientSummary.receivedBooks, 0);
+    expect(clientSummary.sentBooks, 1);
+    expect(hostSummary.receivedBooks, 1);
+    expect(hostSummary.sentBooks, 0);
+    expect(clientGateway.appliedIds, isEmpty);
+    expect(serverGateway.appliedIds, <String>['phone-book']);
+  });
+
+  test('authenticated wake request asks a Windows peer to reverse-connect once', () async {
+    final addresses = await eligibleLanSyncAddresses();
+    if (addresses.isEmpty) return;
+    final secret = List<int>.generate(32, (index) => index + 31);
+    const serverIdentity = LocalDeviceIdentity(deviceId: 'desktop_wake_12345678', label: '开发电脑');
+    const clientIdentity = LocalDeviceIdentity(deviceId: 'phone_wake_1234567890', label: '手机');
+    final wake = Completer<PairedSyncWakeRequest>();
+    var callbackCount = 0;
+    final host = await PairedSyncHost.start(
+      identity: serverIdentity,
+      devices: _MemoryPairedDeviceRepository(_device(clientIdentity, PairedDevicePlatform.android)),
+      identityStore: _MemoryIdentityStore(serverIdentity, <String, List<int>>{clientIdentity.deviceId: secret}),
+      onIncoming: (session) => session.close(),
+      onWakeRequest: (request) async {
+        callbackCount++;
+        if (!wake.isCompleted) wake.complete(request);
+      },
+      discoveryPort: 0,
+    );
+    addTearDown(host.close);
+    final requestId = createPairedSyncWakeRequestId();
+
+    for (final address in addresses) {
+      await sendPairedSyncWakeRequest(
+        identity: clientIdentity,
+        endpoint: PairedSyncEndpoint(
+          address: address,
+          deviceId: serverIdentity.deviceId,
+          expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+          label: serverIdentity.label,
+          port: host.port,
+        ),
+        sharedSecret: secret,
+        operation: PairedSyncOperation.pull,
+        localPort: 54321,
+        requestId: requestId,
+        discoveryPort: host.discoveryPort,
+      );
+    }
+    final request = await wake.future.timeout(const Duration(seconds: 3));
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+
+    expect(request.requestId, requestId);
+    expect(request.operation, PairedSyncOperation.pull);
+    expect(request.operation.reversed, PairedSyncOperation.push);
+    expect(request.endpoint.deviceId, clientIdentity.deviceId);
+    expect(request.endpoint.port, 54321);
+    expect(callbackCount, 1);
+  });
+
+  test('phone pull wake completes through a Windows outbound reverse connection', () async {
+    final addresses = await eligibleLanSyncAddresses();
+    if (addresses.isEmpty) return;
+    final secret = List<int>.generate(32, (index) => index + 41);
+    const desktopIdentity = LocalDeviceIdentity(deviceId: 'desktop_reverse_123456', label: '开发电脑');
+    const phoneIdentity = LocalDeviceIdentity(deviceId: 'phone_reverse_12345678', label: '手机');
+    final desktopGateway = _ShelfGateway('desktop-book');
+    final phoneGateway = _ShelfGateway('phone-book');
+    final phoneResult = Completer<PairedSyncRunSummary>();
+    final desktopResult = Completer<PairedSyncRunSummary>();
+    String? incomingRequestId;
+    final phoneHost = await PairedSyncHost.start(
+      identity: phoneIdentity,
+      devices: _MemoryPairedDeviceRepository(_device(desktopIdentity, PairedDevicePlatform.windows)),
+      identityStore: _MemoryIdentityStore(phoneIdentity, <String, List<int>>{desktopIdentity.deviceId: secret}),
+      onIncoming: (session) async {
+        try {
+          phoneResult.complete(await session.run(gateway: phoneGateway));
+          incomingRequestId = session.requestId;
+        } on Object catch (error, stackTrace) {
+          phoneResult.completeError(error, stackTrace);
+        }
+      },
+      discoveryPort: 0,
+    );
+    addTearDown(phoneHost.close);
+    final desktopHost = await PairedSyncHost.start(
+      identity: desktopIdentity,
+      devices: _MemoryPairedDeviceRepository(_device(phoneIdentity, PairedDevicePlatform.android)),
+      identityStore: _MemoryIdentityStore(desktopIdentity, <String, List<int>>{phoneIdentity.deviceId: secret}),
+      onIncoming: (session) => session.close(),
+      onWakeRequest: (request) async {
+        try {
+          final session = await PairedSyncClientSession.connectAny(
+            endpoints: <PairedSyncEndpoint>[request.endpoint],
+            identity: desktopIdentity,
+            peer: _device(phoneIdentity, PairedDevicePlatform.android),
+            sharedSecret: secret,
+          );
+          desktopResult.complete(
+            await session.run(gateway: desktopGateway, operation: request.operation.reversed, requestId: request.requestId),
+          );
+        } on Object catch (error, stackTrace) {
+          desktopResult.completeError(error, stackTrace);
+        }
+      },
+      discoveryPort: 0,
+    );
+    addTearDown(desktopHost.close);
+    final requestId = createPairedSyncWakeRequestId();
+
+    for (final address in addresses) {
+      await sendPairedSyncWakeRequest(
+        identity: phoneIdentity,
+        endpoint: PairedSyncEndpoint(
+          address: address,
+          deviceId: desktopIdentity.deviceId,
+          expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+          label: desktopIdentity.label,
+          port: desktopHost.port,
+        ),
+        sharedSecret: secret,
+        operation: PairedSyncOperation.pull,
+        localPort: phoneHost.port,
+        requestId: requestId,
+        discoveryPort: desktopHost.discoveryPort,
+      );
+    }
+    final phoneSummary = await phoneResult.future.timeout(const Duration(seconds: 5));
+    final desktopSummary = await desktopResult.future.timeout(const Duration(seconds: 5));
+
+    expect(incomingRequestId, requestId);
+    expect(phoneSummary.receivedBooks, 1);
+    expect(phoneSummary.sentBooks, 0);
+    expect(desktopSummary.receivedBooks, 0);
+    expect(desktopSummary.sentBooks, 1);
+    expect(phoneGateway.appliedIds, <String>['desktop-book']);
+    expect(desktopGateway.appliedIds, isEmpty);
   });
 }
 
-PairedDevice _device(LocalDeviceIdentity identity, PairedDevicePlatform platform) => PairedDevice(
+PairedDevice _device(LocalDeviceIdentity identity, PairedDevicePlatform platform, {String? label}) => PairedDevice(
   autoSync: true,
   createdAtUtc: DateTime.utc(2026, 8, 31),
   deviceId: identity.deviceId,
-  label: identity.label,
+  label: label ?? identity.label,
   mode: PairedSyncMode.bidirectional,
   platform: platform,
   syncBookshelf: true,

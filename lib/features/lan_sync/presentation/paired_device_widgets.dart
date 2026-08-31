@@ -21,7 +21,7 @@ class PairedDevicesSection extends StatelessWidget {
     required this.onApprovePairing,
     required this.onRejectPairing,
     required this.onCancelPairing,
-    required this.onSyncNow,
+    required this.onSync,
     required this.onManage,
     this.onScanPairing,
     super.key,
@@ -34,7 +34,7 @@ class PairedDevicesSection extends StatelessWidget {
   final VoidCallback onApprovePairing;
   final VoidCallback onRejectPairing;
   final VoidCallback onCancelPairing;
-  final ValueChanged<String> onSyncNow;
+  final void Function(String deviceId, PairedSyncOperation operation) onSync;
   final ValueChanged<PairedDevice> onManage;
 
   @override
@@ -67,7 +67,7 @@ class PairedDevicesSection extends StatelessWidget {
               ],
             ),
             Text(
-              state.started ? '两端打开 MgRead 后会自动同步；也可以在接收端立即拉取。' : '正在准备自动发现服务…',
+              state.started ? '两端打开 MgRead 后会自动同步；任意一端也可选择双向同步、拉取或推送。' : '正在准备自动发现服务…',
               style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
             ),
             if (supportsScanner && !state.pairingBusy) ...<Widget>[
@@ -102,7 +102,7 @@ class PairedDevicesSection extends StatelessWidget {
                 online: state.onlineDeviceIds.contains(device.deviceId),
                 busy: state.busyDeviceId == device.deviceId,
                 canStartSync: state.busyDeviceId == null,
-                onSyncNow: () => onSyncNow(device.deviceId),
+                onSync: (operation) => onSync(device.deviceId, operation),
                 onManage: () => onManage(device),
               ),
             ],
@@ -127,7 +127,7 @@ class _PairedDeviceTile extends StatelessWidget {
     required this.online,
     required this.busy,
     required this.canStartSync,
-    required this.onSyncNow,
+    required this.onSync,
     required this.onManage,
   });
 
@@ -135,50 +135,79 @@ class _PairedDeviceTile extends StatelessWidget {
   final bool online;
   final bool busy;
   final bool canStartSync;
-  final VoidCallback onSyncNow;
+  final ValueChanged<PairedSyncOperation> onSync;
   final VoidCallback onManage;
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
-    return Row(
+    final actionsEnabled = online && canStartSync;
+    const compactButtonStyle = ButtonStyle(visualDensity: VisualDensity.compact);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Badge(
-          backgroundColor: online ? Colors.green : tokens.mutedText,
-          smallSize: 9,
-          child: Icon(device.platform == PairedDevicePlatform.windows ? Icons.computer_rounded : Icons.phone_android_rounded),
-        ),
-        const SizedBox(width: AppSpacing.regular),
-        Expanded(
-          child: InkWell(
-            key: Key('device-sync-manage-${device.deviceId}'),
-            onTap: onManage,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.compact),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(device.label, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  Text(
-                    busy
-                        ? '正在同步'
-                        : online
-                        ? '在线 · ${device.autoSync ? '自动同步已开启' : '仅手动'}'
-                        : '离线 · 打开另一台设备后可同步',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+        Row(
+          children: <Widget>[
+            Badge(
+              backgroundColor: online ? Colors.green : tokens.mutedText,
+              smallSize: 9,
+              child: Icon(device.platform == PairedDevicePlatform.windows ? Icons.computer_rounded : Icons.phone_android_rounded),
+            ),
+            const SizedBox(width: AppSpacing.regular),
+            Expanded(
+              child: InkWell(
+                key: Key('device-sync-manage-${device.deviceId}'),
+                onTap: onManage,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.compact),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(device.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(
+                        busy
+                            ? '正在同步'
+                            : online
+                            ? '在线 · ${device.autoSync ? '自动同步已开启' : '仅手动'}'
+                            : '离线 · 打开另一台设备后可同步',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+                      ),
+                      if (device.lastSyncAtUtc != null)
+                        Text(_lastSyncText(device), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                    ],
                   ),
-                  if (device.lastSyncAtUtc != null)
-                    Text(_lastSyncText(device), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
-                ],
+                ),
               ),
             ),
-          ),
+          ],
         ),
-        const SizedBox(width: AppSpacing.compact),
-        FilledButton.tonal(
-          key: Key('device-sync-pull-${device.deviceId}'),
-          onPressed: online && canStartSync ? onSyncNow : null,
-          child: busy ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('立即同步'),
+        const SizedBox(height: AppSpacing.compact),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Wrap(
+            spacing: AppSpacing.compact,
+            runSpacing: AppSpacing.unit,
+            children: <Widget>[
+              FilledButton.tonal(
+                key: Key('device-sync-bidirectional-${device.deviceId}'),
+                style: compactButtonStyle,
+                onPressed: actionsEnabled && device.canReceive && device.canSend ? () => onSync(PairedSyncOperation.bidirectional) : null,
+                child: const Text('同步'),
+              ),
+              OutlinedButton(
+                key: Key('device-sync-pull-${device.deviceId}'),
+                style: compactButtonStyle,
+                onPressed: actionsEnabled && device.canReceive ? () => onSync(PairedSyncOperation.pull) : null,
+                child: const Text('拉取'),
+              ),
+              OutlinedButton(
+                key: Key('device-sync-push-${device.deviceId}'),
+                style: compactButtonStyle,
+                onPressed: actionsEnabled && device.canSend ? () => onSync(PairedSyncOperation.push) : null,
+                child: const Text('推送'),
+              ),
+            ],
+          ),
         ),
       ],
     );
