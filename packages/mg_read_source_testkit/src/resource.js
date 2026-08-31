@@ -4,6 +4,7 @@
  * 职责：最多检查少量候选，记录状态/MIME，并只读取首个健康响应块后立即取消。
  */
 import { SourceTestFailure, causeSummary } from './diagnostics.js';
+import { createRuntimeLikeFetch } from './http.js';
 
 export async function probeReachableResource({
   requests,
@@ -18,6 +19,7 @@ export async function probeReachableResource({
   if (!(expectedContentType instanceof RegExp)) {
     throw new SourceTestFailure('source_resource_content_type_invalid', 'resource', {});
   }
+  const runtimeFetch = createRuntimeLikeFetch(sourceFetch);
   const candidates = (Array.isArray(requests) ? requests : [])
     .filter((request) => request?.kind === expectedKind && typeof request.url === 'string')
     .slice(0, maximumAttempts);
@@ -29,7 +31,7 @@ export async function probeReachableResource({
   for (let index = 0; index < candidates.length; index += 1) {
     const request = candidates[index];
     try {
-      const response = await sourceFetch(request.url, {
+      const response = await runtimeFetch(request.url, {
         headers: request.headers,
         redirect: 'follow',
       });

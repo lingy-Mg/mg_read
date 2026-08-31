@@ -1,6 +1,6 @@
 ---
 name: mgread-source-development
-description: Develop or debug MgRead real data-source plugins, the public Source API across Runtime and Flutter, source-owned discovery composition, or ctx.webview providers. Do not use for bookshelf/home/recent-reading state, long-press details, ordinary discovery UI, reader UI, or player-host work unless the public Source contract also changes.
+description: Develop, debug, or test MgRead real data-source plugins, the public Source API across Runtime and Flutter, source-owned discovery composition, or ctx.webview providers. Do not use for bookshelf/home/recent-reading state, long-press details, ordinary discovery UI, reader UI, or player-host work unless the public Source contract also changes.
 ---
 
 # MgRead 数据源开发
@@ -13,6 +13,9 @@ description: Develop or debug MgRead real data-source plugins, the public Source
 - Node 项目结构、生命周期、缓存、资源代理或 artifact：读
   [source-plugin-contract.md](references/source-plugin-contract.md)，再从当前同类真实数据源读取最近
   `AGENTS.md`、`package.json`、公开类型、入口和直接测试；仓库不维护空白官方模板。
+- 开发期轻量验证、单源/全源回归或正式 Windows App CLI 验收：读
+  [source-testing-workflow.md](references/source-testing-workflow.md)。Node 阶段不得改用 `.ps1`/`pwsh` 包装；
+  App CLI 阶段不得用 Flutter 测试代替正式可执行文件。
 - 当前网页结构、选择器、JS DOM、跳转或分页取证：加载 `browser:control-in-app-browser` 并读
   [real-page-browser-probing.md](references/real-page-browser-probing.md)
 - 公开发现组件类型、Runtime/Facade 解码或宿主渲染：
@@ -45,3 +48,7 @@ description: Develop or debug MgRead real data-source plugins, the public Source
 公开 Source 边界变化按受影响范围同步 Runtime 类型/校验、Facade/解码、宿主、受影响参考来源、直接测试和
 唯一相关核心章节。交付时分开报告静态检查、自动化、fixture/live、artifact/冷安装、Windows、Android、
 真实运行和未执行项；任何一层都不能替代另一层。
+
+数据源开发循环使用纯 Node 单源检查；开发完成后必须再用 Windows 正式 App CLI 对目标来源执行完整链路。
+测试库、Runtime 公共边界或跨来源共用逻辑变化时，两阶段都追加全源模式。不得因 Node 通过而省略 App CLI，
+也不得用 App 的一次线上通过替代来源自身的离线测试和契约检查。

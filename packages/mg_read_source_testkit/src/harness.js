@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { SourceTestFailure, failureFromCause } from './diagnostics.js';
+import { createRuntimeLikeFetch } from './http.js';
 
 const maximumLogEvents = 64;
 
@@ -33,6 +34,7 @@ export async function createSourceTestHarness({
   const root = await mkdtemp(join(tmpdir(), prefix));
   const resourceRequests = [];
   const logEvents = [];
+  const runtimeFetch = createRuntimeLikeFetch(sourceFetch);
   let cleaned = false;
   const recordLog = (level, event) => {
     if (logEvents.length >= maximumLogEvents) return;
@@ -41,7 +43,7 @@ export async function createSourceTestHarness({
   const context = Object.freeze({
     dataDir: join(root, 'data'),
     cacheDir: join(root, 'cache'),
-    http: Object.freeze({ fetch: sourceFetch }),
+    http: Object.freeze({ fetch: runtimeFetch }),
     resource: Object.freeze({
       proxy(request) {
         const captured = freezeResourceRequest(request);

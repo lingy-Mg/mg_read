@@ -1,7 +1,7 @@
 # MgRead Source Testkit
 
-面向真实数据源插件的纯 Node.js 开发测试库。统一 Plugin API v1 契约、临时宿主、阅读链路、inline JSON
-大小和资源抽样，不依赖 PowerShell、Flutter 或 Runtime 私有实现。
+面向真实数据源插件的纯 Node.js 开发测试库。统一 Plugin API v1 契约、带 Runtime 默认桌面 UA 的临时宿主、
+阅读链路、inline JSON 大小和资源抽样，不依赖 PowerShell、Flutter 或 Runtime 私有实现。
 
 ```js
 import {

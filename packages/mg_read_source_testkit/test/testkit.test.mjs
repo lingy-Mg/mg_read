@@ -72,10 +72,15 @@ test('asserts standard exports and package metadata with stable failures', () =>
 
 test('creates an isolated host and records bounded resource metadata', async (t) => {
   let activatedContext;
+  const fetchHeaders = [];
   const harness = await createSourceTestHarness({
     plugin: fakePlugin({ async activate(context) { activatedContext = context; } }),
     pluginId: 'org.mgread.fixture',
     version: '1.0.0',
+    async fetch(_input, init) {
+      fetchHeaders.push(new Headers(init?.headers));
+      return new Response('ok');
+    },
   });
   t.after(harness.cleanup);
   await access(harness.root);
@@ -85,7 +90,13 @@ test('creates an isolated host and records bounded resource metadata', async (t)
     headers: { Accept: 'image/*' },
   });
   activatedContext.log.info('source_fixture_stage');
+  await activatedContext.http.fetch('https://fixture.invalid/default');
+  await activatedContext.http.fetch('https://fixture.invalid/custom', {
+    headers: { 'User-Agent': 'source-specific' },
+  });
   assert.match(projected, /^http:\/\/127\.0\.0\.1:1234\//u);
+  assert.match(fetchHeaders[0].get('user-agent'), /^Mozilla\/5\.0/u);
+  assert.equal(fetchHeaders[1].get('user-agent'), 'source-specific');
   assert.deepEqual(harness.summary(), { resources: 1, logs: 1 });
   await harness.cleanup();
   await assert.rejects(access(harness.root));
@@ -98,8 +109,8 @@ test('resource probe skips a stale descriptor and reads only the first healthy c
       { kind: 'image', url: 'https://fixture.invalid/stale.webp', headers: {} },
       { kind: 'image', url: 'https://fixture.invalid/healthy.webp', headers: {} },
     ],
-    async fetch(url) {
-      calls.push(url);
+    async fetch(url, init) {
+      calls.push({ url, userAgent: new Headers(init?.headers).get('user-agent') });
       return url.endsWith('stale.webp')
         ? new Response('missing', {
             status: 404,
@@ -114,6 +125,7 @@ test('resource probe skips a stale descriptor and reads only the first healthy c
   assert.equal(result.bytesRead, 3);
   assert.deepEqual(result.attempts.map((attempt) => attempt.status), [404, 200]);
   assert.equal(calls.length, 2);
+  assert.ok(calls.every((call) => call.userAgent?.startsWith('Mozilla/5.0')));
 });
 
 test('resource failures expose statuses without echoing request URLs', async () => {
@@ -167,6 +179,29 @@ test('runs the standard reading chain and reports only bounded counts', async ()
       && error.code === 'source_chapters_empty'
       && error.stage === 'chapters',
   );
+});
+
+test('counts a Runtime-style media body even when its pages collection is empty', async () => {
+  const result = await runReadingSourceFlow({
+    plugin: fakePlugin({
+      async getDetail({ id }) {
+        return { id, title: 'fixture', contentKind: 'video' };
+      },
+      async getContent({ chapterId }) {
+        return {
+          chapterId,
+          contentKind: 'video',
+          text: null,
+          pages: [],
+          media: { type: 'video', url: 'http://127.0.0.1:1234/v1/source-resource/fixture' },
+        };
+      },
+    }),
+    contentId: 'video:1',
+  });
+
+  assert.equal(result.summary.contentKind, 'video');
+  assert.equal(result.summary.contentUnits, 1);
 });
 
 test('collects bounded discovery targets and parses one pure Node selection', () => {

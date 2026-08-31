@@ -135,9 +135,16 @@ export async function runReadingSourceFlow({
 }
 
 function contentUnitCount(content) {
-  if (typeof content?.text === 'string') return content.text.trim().length;
-  if (Array.isArray(content?.pages)) return content.pages.length;
-  return content?.media === null || content?.media === undefined ? 0 : 1;
+  if (content?.contentKind === 'novel') {
+    return typeof content.text === 'string' ? content.text.trim().length : 0;
+  }
+  if (content?.contentKind === 'manga') {
+    return Array.isArray(content.pages) ? content.pages.length : 0;
+  }
+  if (content?.contentKind === 'audio' || content?.contentKind === 'video') {
+    return content.media === null || content.media === undefined ? 0 : 1;
+  }
+  return 0;
 }
 
 async function runStage(stage, action) {
