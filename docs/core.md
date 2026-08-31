@@ -49,13 +49,13 @@ plugins/sources/                    真实数据源及其他能力参考实现
   API、安装、私有数据根、瞬时诊断和 Flutter Facade。
 - Runtime 数据只包含不可变安装版本、插件私有 data/cache、Cookie、临时资源和运行状态，不包含主应用
   业务权威。installed 版本只在冷启动激活；development 变化先回收旧 VM，再启动唯一新 Runtime。
-- Runtime 来源 HTTP 客户端可接收应用传入的瞬时上游 HTTP、HTTPS 或 SOCKS5 代理，覆盖
-  `ctx.http.fetch` 与 Runtime 代取的来源资源；必须直连上游，不得增加 Flutter 回环转发服务器，也不得修改
-  Node.js 环境、全局 `fetch`、WebView 或依赖下载，关闭后新请求恢复直连。两类来源请求在未显式提供
-  `User-Agent` 时统一使用 Runtime 固定的 reduced Windows 桌面 Chrome UA；数据源显式值优先。
-- Windows Node 环境代理是另一个默认关闭的独立启动开关：开启时 Runtime 以 `--use-env-proxy` 重启，只传入
-  `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`，缺失项可由 Windows 手动代理补齐。它影响 Node 环境感知的请求，
-  不取代来源 HTTP 的显式 dispatcher；Android 忽略该 Windows 专用选项。
+- Runtime 来源 HTTP 客户端默认继承系统代理，也可接收应用传入的瞬时上游 HTTP、HTTPS 或 SOCKS5 代理，
+  覆盖 `ctx.http.fetch` 与 Runtime 代取的来源资源；不得增加 Flutter 回环转发服务器。关闭自定义覆盖后，新请求
+  恢复系统代理，系统未配置代理时才直连。两类来源请求在未显式提供 `User-Agent` 时统一使用 Runtime 固定的
+  reduced Windows 桌面 Chrome UA；数据源显式值优先。
+- Windows Node Runtime 生产启动默认携带 `--use-env-proxy`，只传入 `HTTP_PROXY`、`HTTPS_PROXY`、
+  `NO_PROXY`，缺失项由 Windows 手动代理补齐并始终排除 loopback。来源 HTTP 的显式 dispatcher 优先于系统
+  代理；Android 由平台代理读取能力把当前网络代理应用到来源 HTTP。
 - 视频和音频代理只控制 MediaKit 播放器到 Runtime 回环资源 URL 的本地一跳，并且只接受 HTTP 代理。
   Windows 可显式启用“强制代理本地 Runtime”：宿主临时从进程 `no_proxy` 删除 loopback 规则，同时更新 Win32
   环境和 Windows CRT，关闭后恢复原值；该开关不改变 Runtime 到外部媒体源的请求路由。

@@ -3,6 +3,7 @@ package com.mgread.mgread_plugin_runtime
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.os.Handler
 import android.os.Looper
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -22,6 +23,7 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var channel: MethodChannel? = null
+    private var applicationContext: Context? = null
     private var progressChannel: EventChannel? = null
     private var progressSink: EventChannel.EventSink? = null
     private var runtime: AndroidRuntimeHost? = null
@@ -61,6 +63,7 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         val context = binding.applicationContext
+        applicationContext = context
         val assetRoot = binding.flutterAssets.getAssetFilePathByName(
             "packages/mgread_plugin_runtime/assets/runtime/android",
         )
@@ -87,6 +90,10 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        if (call.method == "readSystemProxyEnvironment") {
+            result.success(readSystemProxyEnvironment())
+            return
+        }
         val host = runtime
         if (host == null) {
             result.error("runtime_unavailable", "Android Runtime is not attached.", null)
@@ -230,6 +237,7 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
         progressSink = null
         runtime?.dispose()
         runtime = null
+        applicationContext = null
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
@@ -304,5 +312,27 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
 
     override fun onCancel(arguments: Any?) {
         progressSink = null
+    }
+
+    private fun readSystemProxyEnvironment(): Map<String, String> {
+        val context = applicationContext ?: return emptyMap()
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return emptyMap()
+        val proxy = manager.defaultProxy ?: return emptyMap()
+        val host = proxy.host?.trim().orEmpty()
+        val port = proxy.port
+        if (host.isEmpty() || port !in 1..65535) return emptyMap()
+        val endpointHost = if (host.contains(':') && !host.startsWith('[')) "[$host]" else host
+        val endpoint = "http://$endpointHost:$port"
+        val noProxy = (proxy.exclusionList + listOf("localhost", "127.0.0.1", "::1"))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .joinToString(",")
+        return mapOf(
+            "HTTP_PROXY" to endpoint,
+            "HTTPS_PROXY" to endpoint,
+            "NO_PROXY" to noProxy,
+        )
     }
 }

@@ -33,6 +33,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byKey(const Key('network-proxy-system-card')), findsOneWidget);
+    expect(find.text('自动使用系统代理'), findsOneWidget);
+    expect(find.byKey(const Key('network-proxy-use-environment')), findsNothing);
+
     final scrollable = find.descendant(of: find.byKey(const Key('network-proxy-content')), matching: find.byType(Scrollable)).first;
     final videoRow = find.byKey(const Key('network-proxy-video'));
     await tester.scrollUntilVisible(videoRow, 220, scrollable: scrollable);

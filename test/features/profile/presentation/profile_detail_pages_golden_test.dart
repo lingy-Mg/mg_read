@@ -64,7 +64,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('HTTP://127.0.0.1:9000'), findsOneWidget);
-    expect(find.text('未启用'), findsOneWidget);
+    expect(find.text('使用系统'), findsOneWidget);
 
     await tester.enterText(find.byKey(const Key('network-proxy-host')), 'proxy.local');
     await tester.enterText(find.byKey(const Key('network-proxy-port')), '8080');
@@ -74,7 +74,7 @@ void main() {
     final Finder coverSwitch = find.descendant(of: find.byKey(const Key('network-proxy-cover')), matching: find.byType(Switch));
     await tester.tap(coverSwitch);
     await tester.pump();
-    expect(find.text('已启用 1 项'), findsOneWidget);
+    expect(find.text('自定义 1 项'), findsOneWidget);
   });
 }
 

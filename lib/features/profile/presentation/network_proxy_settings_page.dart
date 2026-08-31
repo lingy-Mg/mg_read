@@ -32,7 +32,6 @@ final class _NetworkProxySettingsPageState extends ConsumerState<NetworkProxySet
   late final TextEditingController _portController;
   late NetworkProxyProtocol _protocol;
   late Map<NetworkProxyTraffic, bool> _enabled;
-  bool _useEnvironmentProxy = false;
   bool _forcePlayerLocalProxy = false;
   bool _initialized = false;
   bool _saving = false;
@@ -79,13 +78,10 @@ final class _NetworkProxySettingsPageState extends ConsumerState<NetworkProxySet
                       protocol: _protocol,
                       host: _hostController.text,
                       port: _portController.text,
-                      enabledCount:
-                          _enabled.values.where((bool value) => value).length +
-                          (_useEnvironmentProxy ? 1 : 0) +
-                          (_forcePlayerLocalProxy ? 1 : 0),
+                      enabledCount: _enabled.values.where((bool value) => value).length + (_forcePlayerLocalProxy ? 1 : 0),
                     ),
                     const SizedBox(height: AppSpacing.section),
-                    const _ProxySectionHeading(title: '连接设置', description: '填写代理服务器的连接信息'),
+                    const _ProxySectionHeading(title: '自定义代理', description: '仅供下方已开启的流量覆盖系统代理'),
                     const SizedBox(height: AppSpacing.regular),
                     _ProxyEndpointCard(
                       protocol: _protocol,
@@ -96,15 +92,11 @@ final class _NetworkProxySettingsPageState extends ConsumerState<NetworkProxySet
                       onEndpointChanged: () => setState(() {}),
                     ),
                     const SizedBox(height: AppSpacing.section),
-                    const _ProxySectionHeading(title: 'Node 环境代理', description: '独立控制 Windows Node Runtime 的全局环境代理'),
+                    const _ProxySectionHeading(title: '系统代理', description: '未启用自定义代理的流量自动跟随系统设置'),
                     const SizedBox(height: AppSpacing.regular),
-                    _EnvironmentProxyCard(
-                      value: _useEnvironmentProxy,
-                      enabled: !_saving && Platform.isWindows,
-                      onChanged: (bool value) => setState(() => _useEnvironmentProxy = value),
-                    ),
+                    const _SystemProxyCard(),
                     const SizedBox(height: AppSpacing.section),
-                    const _ProxySectionHeading(title: '代理范围', description: '只让选中的网络流量经过代理'),
+                    const _ProxySectionHeading(title: '自定义代理范围', description: '开启后使用上方地址，关闭时继续使用系统代理'),
                     const SizedBox(height: AppSpacing.regular),
                     _ProxyTrafficCard(
                       enabled: _enabled,
@@ -131,7 +123,7 @@ final class _NetworkProxySettingsPageState extends ConsumerState<NetworkProxySet
                     ],
                     const SizedBox(height: AppSpacing.comfortable),
                     const _ProxyNotice(
-                      message: 'MgRead 不保存代理账号或密码。视频和音频开关控制播放器到 Runtime 本地地址的链路；强制本地代理会从应用进程的 NO_PROXY 中临时移除 loopback，关闭后恢复。',
+                      message: 'MgRead 默认跟随系统代理，且不保存代理账号或密码。视频和音频开关控制播放器到 Runtime 本地地址的链路；强制本地代理会从应用进程的 NO_PROXY 中临时移除 loopback，关闭后恢复。',
                     ),
                   ],
                 ),
@@ -148,7 +140,6 @@ final class _NetworkProxySettingsPageState extends ConsumerState<NetworkProxySet
     _initialized = true;
     _protocol = value.protocol;
     _enabled = Map<NetworkProxyTraffic, bool>.of(value.enabled);
-    _useEnvironmentProxy = value.useEnvironmentProxy;
     _forcePlayerLocalProxy = value.forcePlayerLocalProxy;
     _hostController.text = value.host;
     _portController.text = value.port.toString();
@@ -175,7 +166,6 @@ final class _NetworkProxySettingsPageState extends ConsumerState<NetworkProxySet
         protocol: _protocol,
         host: host,
         port: port,
-        useEnvironmentProxy: _useEnvironmentProxy,
         forcePlayerLocalProxy: _forcePlayerLocalProxy,
         enabled: _enabled,
       );
@@ -185,8 +175,8 @@ final class _NetworkProxySettingsPageState extends ConsumerState<NetworkProxySet
       try {
         ref.read(playerLocalProxyPolicyControllerProvider).update(value);
         final runtime = ref.read(pluginRuntimeFacadeProvider);
-        await runtime.configureNodeEnvironmentProxy(value.useEnvironmentProxy);
-        await runtime.configurePluginHttpProxy(proxyManager.proxyUriFor(NetworkProxyTraffic.sourceHttp));
+        await runtime.configureNodeEnvironmentProxy(true);
+        await runtime.configurePluginHttpProxy(await proxyManager.runtimeSourceProxyUri());
       } on Object {
         applyWarning = '设置已保存；当前 Node Runtime 代理切换失败，Runtime 下次启动时会重新应用。';
       }
@@ -260,7 +250,7 @@ class _ProxySummaryCard extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.regular, vertical: AppSpacing.compact),
                 child: Text(
-                  enabledCount == 0 ? '未启用' : '已启用 $enabledCount 项',
+                  enabledCount == 0 ? '使用系统' : '自定义 $enabledCount 项',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: enabledCount == 0 ? tokens.mutedText : tokens.accent,
                     fontWeight: FontWeight.w600,
@@ -411,19 +401,15 @@ class _ProxyTrafficCard extends StatelessWidget {
   }
 }
 
-class _EnvironmentProxyCard extends StatelessWidget {
-  const _EnvironmentProxyCard({required this.value, required this.enabled, required this.onChanged});
-
-  final bool value;
-  final bool enabled;
-  final ValueChanged<bool> onChanged;
+class _SystemProxyCard extends StatelessWidget {
+  const _SystemProxyCard();
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return DecoratedBox(
-      key: const Key('network-proxy-environment-card'),
+      key: const Key('network-proxy-system-card'),
       decoration: _cardDecoration(tokens),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(AppSpacing.comfortable, AppSpacing.regular, AppSpacing.compact, AppSpacing.regular),
@@ -435,21 +421,17 @@ class _EnvironmentProxyCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text('使用 Node 环境代理', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
+                  Text('自动使用系统代理', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 2),
                   Text(
-                    Platform.isWindows
-                        ? '读取 HTTP_PROXY、HTTPS_PROXY、NO_PROXY 和 Windows 手动代理；影响范围不限于数据源 HTTP'
-                        : '仅 Windows Node Runtime 支持此启动选项',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: enabled ? tokens.mutedText : tokens.mutedText.withValues(alpha: 0.68),
-                    ),
+                    Platform.isWindows ? '读取 HTTP_PROXY、HTTPS_PROXY、NO_PROXY 和 Windows 手动代理；自定义范围可单独覆盖' : '读取当前平台网络代理；自定义范围可单独覆盖',
+                    style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: AppSpacing.compact),
-            Switch(key: const Key('network-proxy-use-environment'), value: value, onChanged: enabled ? onChanged : null),
+            Icon(Icons.check_circle_rounded, color: tokens.accent),
           ],
         ),
       ),
@@ -683,9 +665,9 @@ String _label(NetworkProxyTraffic value) => switch (value) {
 };
 
 String _description(NetworkProxyTraffic value) => switch (value) {
-  NetworkProxyTraffic.sourceHttp => '数据源 ctx.http.fetch 与 Runtime 代取的来源资源，Node.js 直接连接代理',
-  NetworkProxyTraffic.cover => '搜索、发现、详情、书架和播放器中由 Flutter 下载的网络封面',
-  NetworkProxyTraffic.manga => 'Flutter 下载的漫画图片与相关资源',
+  NetworkProxyTraffic.sourceHttp => '覆盖数据源 ctx.http.fetch 与 Runtime 代取来源资源所用的系统代理',
+  NetworkProxyTraffic.cover => '覆盖搜索、发现、详情、书架和播放器网络封面所用的系统代理',
+  NetworkProxyTraffic.manga => '覆盖 Flutter 下载漫画图片与相关资源所用的系统代理',
   NetworkProxyTraffic.video => 'MediaKit 播放器访问 Runtime 本地视频清单与分片，仅支持 HTTP 代理',
   NetworkProxyTraffic.audio => 'MediaKit 播放器访问 Runtime 本地音频资源，仅支持 HTTP 代理',
 };

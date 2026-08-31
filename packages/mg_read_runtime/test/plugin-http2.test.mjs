@@ -49,7 +49,7 @@ ppAHuqpn3YdjiScyKNjRrxJaEFC11K2WcuPBYYBcYCIYpujAlBC+lMDdF5RUv/vbVWk+jQa21+TK
 test("plugin HTTP negotiates h2 directly and through proxies with HTTP/1.1 fallback", async (t) => {
   const previousTlsSetting = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-  const client = new ConfigurablePluginHttpClient();
+  const client = new ConfigurablePluginHttpClient({ noProxy: "*" });
   const protocols = [];
   const h2Server = http2.createSecureServer({ allowHTTP1: true, cert: certificate, key: privateKey }, (request, response) => {
     protocols.push(request.httpVersion);

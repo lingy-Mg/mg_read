@@ -304,8 +304,8 @@ final RegExp _diagnosticCodePattern = RegExp(r'^[a-z0-9_]{1,64}$');
 /// Returns the minimal Windows environment required to start the staged Node
 /// binary. Parent environment inheritance stays disabled so PATH, Node options
 /// and application secrets cannot change Runtime behavior. Proxy variables and
-/// the Windows manual proxy are exposed only for the explicit opt-in startup
-/// mode; they remain absent by default.
+/// the Windows manual proxy are exposed when the production Runtime inherits
+/// the system route. Tests can still opt out to remain hermetic.
 Map<String, String> _allowlistedEnvironment({
   required bool useEnvironmentProxy,
 }) {
@@ -333,6 +333,7 @@ Map<String, String> _allowlistedEnvironment({
     for (final entry in _WindowsSystemProxy.environment().entries) {
       environment.putIfAbsent(entry.key, () => entry.value);
     }
+    _ensureLoopbackNoProxy(environment);
   }
   return environment;
 }

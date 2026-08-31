@@ -595,11 +595,10 @@ Future<Uint8List> fetchComicImage(Uri uri, {HttpClient? client}) async {
   }
 }
 
-Future<HttpClient> _createDirectComicHttpClient() async =>
-    HttpClient()..findProxy = (uri) => _isLoopback(uri) ? 'DIRECT' : HttpClient.findProxyFromEnvironment(uri);
+Future<HttpClient> _createSystemComicHttpClient() => FlutterNetworkProxyManager().createHttpClient(NetworkProxyTraffic.manga);
 
 ComicImageHttpClientOwner createComicImageHttpClientOwner(ComicHttpClientFactory? factory) =>
-    ComicImageHttpClientOwner(factory ?? _createDirectComicHttpClient);
+    ComicImageHttpClientOwner(factory ?? _createSystemComicHttpClient);
 
 bool _isAuthorizationFailure(Object error) =>
     error is ComicImageHttpStatusException && (error.statusCode == HttpStatus.unauthorized || error.statusCode == HttpStatus.forbidden);

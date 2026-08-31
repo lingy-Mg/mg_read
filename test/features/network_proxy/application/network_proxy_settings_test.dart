@@ -5,11 +5,10 @@ import 'package:mg_read/features/network_proxy/application/network_proxy_setting
 import '../../../core/settings/settings_testkit.dart';
 
 void main() {
-  test('defaults to the configured endpoint with every direct route disabled', () {
+  test('defaults to the configured endpoint with every custom route disabled', () {
     final value = NetworkProxySettings.defaults;
 
     expect(value.uri, 'http://127.0.0.1:9000');
-    expect(value.useEnvironmentProxy, isFalse);
     expect(value.forcePlayerLocalProxy, isFalse);
     expect(NetworkProxyTraffic.values, <NetworkProxyTraffic>[
       NetworkProxyTraffic.sourceHttp,
@@ -21,12 +20,11 @@ void main() {
     expect(NetworkProxyTraffic.values.every((traffic) => !value.isEnabled(traffic)), isTrue);
   });
 
-  test('round trips the direct endpoint and remaining independent switches', () {
+  test('round trips the custom endpoint and remaining independent switches', () {
     final source = NetworkProxySettings(
       protocol: NetworkProxyProtocol.socks5,
       host: '10.0.0.2',
       port: 1080,
-      useEnvironmentProxy: true,
       forcePlayerLocalProxy: true,
       enabled: <NetworkProxyTraffic, bool>{
         NetworkProxyTraffic.sourceHttp: true,
@@ -40,7 +38,6 @@ void main() {
     final restored = NetworkProxySettings.fromSettingValue(source.toSettingValue());
 
     expect(restored.uri, 'socks5://10.0.0.2:1080');
-    expect(restored.useEnvironmentProxy, isTrue);
     expect(restored.forcePlayerLocalProxy, isTrue);
     expect(restored.shouldForcePlayerLocalProxy, isFalse);
     expect(restored.enabled, source.enabled);
@@ -71,7 +68,6 @@ void main() {
       protocol: NetworkProxyProtocol.https,
       host: 'proxy.example',
       port: 8443,
-      useEnvironmentProxy: true,
       forcePlayerLocalProxy: true,
       enabled: <NetworkProxyTraffic, bool>{
         NetworkProxyTraffic.sourceHttp: true,
@@ -88,7 +84,6 @@ void main() {
 
     final restored = NetworkProxySettings.fromSettingValue(manager.get(AppSettingKeys.networkProxyPreferences));
     expect(restored.enabled, value.enabled);
-    expect(restored.useEnvironmentProxy, isTrue);
     expect(restored.forcePlayerLocalProxy, isTrue);
     expect(restored.shouldForcePlayerLocalProxy, isFalse);
   });
@@ -102,7 +97,7 @@ void main() {
     });
 
     expect(decoded['enabled'], <String, Object?>{'sourceHttp': true, 'cover': false, 'manga': true, 'video': true, 'audio': true});
-    expect(decoded['useEnvironmentProxy'], isFalse);
+    expect(decoded.containsKey('useEnvironmentProxy'), isFalse);
     expect(decoded['forcePlayerLocalProxy'], isFalse);
     expect(() => AppSettingKeys.networkProxyPreferences.validateValue(decoded), returnsNormally);
   });
@@ -127,9 +122,23 @@ void main() {
         'video': enabled['video'] as bool? ?? false,
         'audio': enabled['audio'] as bool? ?? false,
       });
-      expect(decoded['useEnvironmentProxy'], isFalse);
+      expect(decoded.containsKey('useEnvironmentProxy'), isFalse);
       expect(decoded['forcePlayerLocalProxy'], isFalse);
       expect(() => AppSettingKeys.networkProxyPreferences.validateValue(decoded), returnsNormally);
     }
+  });
+
+  test('decoder removes the obsolete Node environment switch', () {
+    final decoded = AppSettingKeys.networkProxyPreferences.decodeValue(<String, Object?>{
+      'protocol': 'http',
+      'host': '127.0.0.1',
+      'port': 9000,
+      'useEnvironmentProxy': false,
+      'forcePlayerLocalProxy': false,
+      'enabled': <String, Object?>{'sourceHttp': false, 'cover': false, 'manga': false, 'video': false, 'audio': false},
+    });
+
+    expect(decoded.containsKey('useEnvironmentProxy'), isFalse);
+    expect(() => AppSettingKeys.networkProxyPreferences.validateValue(decoded), returnsNormally);
   });
 }

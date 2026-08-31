@@ -83,7 +83,6 @@ final class AppSettingKeys {
       'protocol': 'http',
       'host': '127.0.0.1',
       'port': 9000,
-      'useEnvironmentProxy': false,
       'forcePlayerLocalProxy': false,
       'enabled': <String, Object?>{'sourceHttp': false, 'cover': false, 'manga': false, 'video': false, 'audio': false},
     },
@@ -230,11 +229,10 @@ bool _boolDecode(Object? value) {
 void _validateBool(bool value) {}
 
 void _validateNetworkProxyPreferences(Map<String, Object?> value) {
-  if (value.length != 6 ||
+  if (value.length != 5 ||
       value['protocol'] is! String ||
       value['host'] is! String ||
       value['port'] is! int ||
-      value['useEnvironmentProxy'] is! bool ||
       value['forcePlayerLocalProxy'] is! bool ||
       value['enabled'] is! Map) {
     throw ArgumentError.value(value);
@@ -258,11 +256,8 @@ void _validateNetworkProxyPreferences(Map<String, Object?> value) {
 
 Map<String, Object?> _networkProxyPreferencesDecode(Object? value) {
   final decoded = _readerPreferencesDecode(value);
-  final normalized = <String, Object?>{
-    ...decoded,
-    if (!decoded.containsKey('useEnvironmentProxy')) 'useEnvironmentProxy': false,
-    if (!decoded.containsKey('forcePlayerLocalProxy')) 'forcePlayerLocalProxy': false,
-  };
+  final normalized = <String, Object?>{...decoded, if (!decoded.containsKey('forcePlayerLocalProxy')) 'forcePlayerLocalProxy': false}
+    ..remove('useEnvironmentProxy');
   final enabled = normalized['enabled'];
   if (enabled is! Map) return normalized;
   const currentKeys = <String>{'sourceHttp', 'cover', 'manga', 'video', 'audio'};

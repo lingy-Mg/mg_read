@@ -34,7 +34,7 @@ final class ContentLibrarySourceCoverPersistence implements BookCoverBytesLoader
   }) : assert(fetcher == null || clientFactory == null),
        _externalFetcher = fetcher,
        _httpClientOwner = fetcher == null
-           ? SourceCoverHttpClientOwner(clientFactory ?? _createDirectHttpClient, configurationKey: clientConfigurationKey)
+           ? SourceCoverHttpClientOwner(clientFactory ?? _createSystemHttpClient, configurationKey: clientConfigurationKey)
            : null,
        _clock = clock ?? DateTime.now;
 
@@ -155,7 +155,7 @@ typedef SourceCoverFetcher = Future<List<int>?> Function(Uri uri);
 typedef SourceCoverHttpClientFactory = Future<HttpClient> Function();
 typedef SourceCoverHttpClientConfigurationKey = Object? Function();
 
-Future<HttpClient> _createDirectHttpClient() async => HttpClient()..findProxy = (_) => 'DIRECT';
+Future<HttpClient> _createSystemHttpClient() async => HttpClient();
 
 /// Owns one lazy HTTP client for the application cover-loader lifetime.
 final class SourceCoverHttpClientOwner {

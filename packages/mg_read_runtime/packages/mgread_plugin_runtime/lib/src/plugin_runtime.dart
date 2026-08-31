@@ -69,7 +69,10 @@ final class PluginRuntime {
       );
     }
     return _bundledInstance ??= PluginRuntime._(
-      _DesktopRuntimeSupervisor(_DesktopRuntimeBundle.fromApplicationPackage()),
+      _DesktopRuntimeSupervisor(
+        _DesktopRuntimeBundle.fromApplicationPackage(),
+        useEnvironmentProxy: true,
+      ),
     );
   }
 
@@ -102,7 +105,9 @@ final class PluginRuntime {
 
   /// Controls Node's ambient environment-proxy support on Windows.
   ///
-  /// Enabling this restarts an already-running desktop Runtime with
+  /// Production starts with this enabled so an absent explicit source proxy
+  /// follows the process or Windows manual proxy. Changing it restarts an
+  /// already-running desktop Runtime with or without
   /// `--use-env-proxy` and exposes only HTTP_PROXY, HTTPS_PROXY and NO_PROXY
   /// (falling back to the Windows manual proxy). Android intentionally ignores
   /// this Windows-only startup preference. The explicit source HTTP dispatcher

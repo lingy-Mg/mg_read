@@ -8,6 +8,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
+import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_detail_page.dart';
@@ -25,6 +26,7 @@ void main() {
       overrides: [
         diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
         pluginRuntimeGatewayProvider.overrideWithValue(gateway),
+        configuredFlutterNetworkProxyManagerProvider.overrideWithValue(_testProxyManager()),
       ],
     );
     addTearDown(container.dispose);
@@ -49,6 +51,7 @@ void main() {
       overrides: [
         diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
         pluginRuntimeGatewayProvider.overrideWithValue(_FailingPluginRuntimeGateway()),
+        configuredFlutterNetworkProxyManagerProvider.overrideWithValue(_testProxyManager()),
       ],
     );
     addTearDown(container.dispose);
@@ -109,6 +112,7 @@ void main() {
       overrides: [
         diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
         pluginRuntimeGatewayProvider.overrideWithValue(gateway),
+        configuredFlutterNetworkProxyManagerProvider.overrideWithValue(_testProxyManager()),
       ],
     );
     addTearDown(container.dispose);
@@ -133,6 +137,7 @@ void main() {
       overrides: [
         diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
         pluginRuntimeGatewayProvider.overrideWithValue(gateway),
+        configuredFlutterNetworkProxyManagerProvider.overrideWithValue(_testProxyManager()),
       ],
     );
     addTearDown(container.dispose);
@@ -154,6 +159,7 @@ void main() {
       overrides: [
         diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
         pluginRuntimeGatewayProvider.overrideWithValue(gateway),
+        configuredFlutterNetworkProxyManagerProvider.overrideWithValue(_testProxyManager()),
       ],
     );
     addTearDown(container.dispose);
@@ -176,6 +182,7 @@ void main() {
         overrides: [
           diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
           pluginRuntimeGatewayProvider.overrideWithValue(_FakePluginRuntimeGateway(_connected)),
+          configuredFlutterNetworkProxyManagerProvider.overrideWithValue(_testProxyManager()),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -202,6 +209,7 @@ void main() {
         overrides: [
           diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
           pluginRuntimeGatewayProvider.overrideWithValue(gateway),
+          configuredFlutterNetworkProxyManagerProvider.overrideWithValue(_testProxyManager()),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -224,7 +232,10 @@ void main() {
     addTearDown(settings.close);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [pluginRuntimeGatewayProvider.overrideWithValue(_FakePluginRuntimeGateway(_connected))],
+        overrides: [
+          pluginRuntimeGatewayProvider.overrideWithValue(_FakePluginRuntimeGateway(_connected)),
+          configuredFlutterNetworkProxyManagerProvider.overrideWithValue(_testProxyManager()),
+        ],
         child: testMgReadApp(settings),
       ),
     );
@@ -271,6 +282,9 @@ void main() {
     expect(gateway.calls, 1);
   });
 }
+
+FlutterNetworkProxyManager _testProxyManager() =>
+    FlutterNetworkProxyManager(systemProxyEnvironmentLoader: () async => const <String, String>{});
 
 Future<void> _setViewport(WidgetTester tester, Size size) async {
   tester.view.physicalSize = size;

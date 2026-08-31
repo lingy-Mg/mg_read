@@ -7,6 +7,52 @@ import 'package:mg_read/features/network_proxy/application/flutter_network_proxy
 import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
 
 void main() {
+  test('uses the system proxy when a traffic class has no custom override', () async {
+    final proxy = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final seen = <Uri>[];
+    proxy.listen((request) async {
+      seen.add(request.uri);
+      request.response.write('system');
+      await request.response.close();
+    });
+    addTearDown(() => proxy.close(force: true));
+    final endpoint = 'http://${proxy.address.address}:${proxy.port}';
+    final manager = FlutterNetworkProxyManager(
+      systemProxyEnvironmentLoader: () async => <String, String>{'HTTP_PROXY': endpoint, 'HTTPS_PROXY': endpoint, 'NO_PROXY': ''},
+    );
+
+    final client = await manager.createHttpClient(NetworkProxyTraffic.cover);
+    addTearDown(() => client.close(force: true));
+    final response = await (await client.getUrl(Uri.parse('http://example.invalid/cover'))).close();
+
+    expect(await utf8.decodeStream(response), 'system');
+    expect(seen.single.host, 'example.invalid');
+    expect(await manager.systemProxyUriFor(Uri.parse('https://example.invalid')), Uri.parse(endpoint));
+  });
+
+  test('installs the system proxy for otherwise-unowned Flutter clients', () async {
+    final previous = HttpOverrides.current;
+    addTearDown(() => HttpOverrides.global = previous);
+    final proxy = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    var requests = 0;
+    proxy.listen((request) async {
+      requests += 1;
+      request.response.write('global');
+      await request.response.close();
+    });
+    addTearDown(() => proxy.close(force: true));
+    await installSystemProxyHttpOverrides(
+      loader: () async => <String, String>{'HTTP_PROXY': 'http://${proxy.address.address}:${proxy.port}', 'NO_PROXY': ''},
+    );
+
+    final client = HttpClient();
+    addTearDown(() => client.close(force: true));
+    final response = await (await client.getUrl(Uri.parse('http://example.invalid/global'))).close();
+
+    expect(await utf8.decodeStream(response), 'global');
+    expect(requests, 1);
+  });
+
   test('returns and uses the configured upstream directly without a loopback adapter', () async {
     final proxy = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final seen = <Uri>[];

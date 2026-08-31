@@ -2,8 +2,8 @@
  * Runtime-owned HTTP client used only by the public `ctx.http.fetch` API.
  *
  * Responsibilities:
- * - keep direct requests on Node's built-in fetch implementation while
- *   allowing HTTP/2 negotiation with transparent HTTP/1.1 fallback;
+ * - follow Node's system/environment proxy by default while allowing HTTP/2
+ *   negotiation with transparent HTTP/1.1 fallback;
  * - route plugin HTTP and Runtime source-resource requests directly through
  *   one explicitly configured upstream proxy with the same negotiation;
  * - supply the Runtime-owned reduced desktop Chrome user-agent unless a
@@ -15,10 +15,9 @@
  * - existing requests retain the dispatcher sampled when they started.
  */
 import {
-  Agent,
+  EnvHttpProxyAgent,
   ProxyAgent,
   Socks5ProxyAgent,
-  setGlobalDispatcher,
   type Dispatcher,
 } from "undici";
 
@@ -38,15 +37,25 @@ const socks5Http2Options: Socks5Http2Options = Object.freeze({
   requestTls: Object.freeze({ ALPNProtocols: ["h2", "http/1.1"] as const }),
 });
 
-// Node's built-in fetch and the bundled Undici package share the process-global
-// dispatcher slot. Installing this once keeps the public ctx.http API unchanged
-// while allowing HTTPS origins to negotiate h2 and fall back to HTTP/1.1.
-setGlobalDispatcher(new Agent({ allowH2: true }));
+export interface PluginHttpEnvironmentProxyOptions {
+  readonly httpProxy?: string;
+  readonly httpsProxy?: string;
+  readonly noProxy?: string;
+}
 
 export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
+  readonly #systemProxyAgent: Dispatcher;
   #proxyAgent: Dispatcher | undefined;
   #proxyUrl: string | undefined;
   readonly #retiring = new Set<Promise<void>>();
+
+  constructor(environmentProxy: PluginHttpEnvironmentProxyOptions = {}) {
+    this.#systemProxyAgent = new EnvHttpProxyAgent({
+      allowH2: true,
+      requestTls: http2TlsOptions,
+      ...environmentProxy,
+    });
+  }
 
   configure(proxyUrl: string | undefined): void {
     if (this.#proxyUrl === proxyUrl) return;
@@ -71,8 +80,7 @@ export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
     _trace?: PluginRuntimeTraceContext,
   ): Promise<Response> {
     const requestInit = withDefaultUserAgent(init);
-    const dispatcher = this.#proxyAgent;
-    if (dispatcher === undefined) return fetch(input, requestInit);
+    const dispatcher = this.#proxyAgent ?? this.#systemProxyAgent;
     const proxiedInit = { ...requestInit, dispatcher } as RequestInit & { readonly dispatcher: Dispatcher };
     return fetch(input, proxiedInit);
   }
@@ -82,6 +90,7 @@ export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
     this.#proxyAgent = undefined;
     this.#proxyUrl = undefined;
     if (current !== undefined) this.#retire(current);
+    this.#retire(this.#systemProxyAgent);
     await Promise.allSettled([...this.#retiring]);
   }
 

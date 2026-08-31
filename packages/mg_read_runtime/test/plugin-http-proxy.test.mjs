@@ -9,7 +9,7 @@ import test from "node:test";
 import { DesktopRuntime, PluginInstaller } from "../dist/index.js";
 import { ConfigurablePluginHttpClient, defaultPluginUserAgent } from "../dist/plugin-http-client.js";
 
-test("plugin HTTP client switches future requests between direct and explicit proxy routing", async (t) => {
+test("plugin HTTP client switches future requests between system and explicit proxy routing", async (t) => {
   let originRequests = 0;
   const userAgents = [];
   const origin = http.createServer((request, response) => {
@@ -38,7 +38,7 @@ test("plugin HTTP client switches future requests between direct and explicit pr
   const socks = createSocks5Proxy(() => socksTunnels += 1);
   await listen(socks);
 
-  const client = new ConfigurablePluginHttpClient();
+  const client = new ConfigurablePluginHttpClient({ noProxy: "*" });
   t.after(async () => {
     await client.close();
     await close(socks);
@@ -72,6 +72,47 @@ test("plugin HTTP client switches future requests between direct and explicit pr
   assert.equal(socksTunnels, 1);
   assert.equal(defaultPluginUserAgent, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36");
   assert.deepEqual(userAgents, [defaultPluginUserAgent, defaultPluginUserAgent, defaultPluginUserAgent, "source-specific"]);
+});
+
+test("plugin HTTP client follows the environment proxy when no explicit override exists", async (t) => {
+  const origin = http.createServer((_request, response) => response.end("system"));
+  await listen(origin);
+  let proxyTunnels = 0;
+  const proxy = http.createServer();
+  proxy.on("connect", (request, downstream, head) => {
+    proxyTunnels += 1;
+    const target = new URL(`http://${request.url}`);
+    const upstream = net.connect(Number(target.port), target.hostname, () => {
+      downstream.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+      if (head.length > 0) upstream.write(head);
+      downstream.pipe(upstream);
+      upstream.pipe(downstream);
+    });
+    upstream.on("error", () => downstream.destroy());
+  });
+  await listen(proxy);
+  const originAddress = origin.address();
+  const proxyAddress = proxy.address();
+  assert.notEqual(originAddress, null);
+  assert.notEqual(typeof originAddress, "string");
+  assert.notEqual(proxyAddress, null);
+  assert.notEqual(typeof proxyAddress, "string");
+  const endpoint = `http://127.0.0.1:${proxyAddress.port}/`;
+  const client = new ConfigurablePluginHttpClient({
+    httpProxy: endpoint,
+    httpsProxy: endpoint,
+    noProxy: "",
+  });
+  t.after(async () => {
+    await client.close();
+    await close(proxy);
+    await close(origin);
+  });
+
+  const response = await client.fetch(`http://127.0.0.1:${originAddress.port}/content`, {});
+
+  assert.equal(await response.text(), "system");
+  assert.equal(proxyTunnels, 1);
 });
 
 test("Runtime configuration routes the installed plugin ctx.http.fetch boundary only", async (t) => {

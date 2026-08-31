@@ -22,7 +22,6 @@ final class NetworkProxySettings {
     required this.protocol,
     required this.host,
     required this.port,
-    this.useEnvironmentProxy = false,
     this.forcePlayerLocalProxy = false,
     required Map<NetworkProxyTraffic, bool> enabled,
   }) : enabled = Map<NetworkProxyTraffic, bool>.unmodifiable(enabled);
@@ -31,7 +30,6 @@ final class NetworkProxySettings {
     protocol: NetworkProxyProtocol.http,
     host: '127.0.0.1',
     port: 9000,
-    useEnvironmentProxy: false,
     forcePlayerLocalProxy: false,
     enabled: <NetworkProxyTraffic, bool>{
       NetworkProxyTraffic.sourceHttp: false,
@@ -45,7 +43,6 @@ final class NetworkProxySettings {
   final NetworkProxyProtocol protocol;
   final String host;
   final int port;
-  final bool useEnvironmentProxy;
   final bool forcePlayerLocalProxy;
   final Map<NetworkProxyTraffic, bool> enabled;
 
@@ -62,7 +59,6 @@ final class NetworkProxySettings {
     'protocol': protocol.name,
     'host': host,
     'port': port,
-    'useEnvironmentProxy': useEnvironmentProxy,
     'forcePlayerLocalProxy': forcePlayerLocalProxy,
     'enabled': <String, Object?>{for (final traffic in NetworkProxyTraffic.values) traffic.name: isEnabled(traffic)},
   };
@@ -75,7 +71,6 @@ final class NetworkProxySettings {
         protocol: protocol,
         host: value['host']! as String,
         port: value['port']! as int,
-        useEnvironmentProxy: value['useEnvironmentProxy'] as bool? ?? false,
         forcePlayerLocalProxy: value['forcePlayerLocalProxy'] as bool? ?? false,
         enabled: <NetworkProxyTraffic, bool>{
           for (final traffic in NetworkProxyTraffic.values) traffic: rawEnabled[traffic.name] as bool? ?? false,

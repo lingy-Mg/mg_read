@@ -47,8 +47,9 @@ typedef _DesktopDirectoryLauncher = Future<void> Function(Directory directory);
 /// The values are never supplied by the host application. Production resolves
 /// a staged package bundle; test construction is intentionally isolated below.
 final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
-  _DesktopRuntimeSupervisor(this._bundle)
-    : _developmentPluginDirectory = _bundle.developmentPluginDirectory;
+  _DesktopRuntimeSupervisor(this._bundle, {bool useEnvironmentProxy = false})
+    : _developmentPluginDirectory = _bundle.developmentPluginDirectory,
+      _useEnvironmentProxy = useEnvironmentProxy;
 
   /// Immutable package-owned inputs used for the only allowed child launch.
   final _DesktopRuntimeBundle _bundle;
@@ -72,7 +73,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   /// Negotiated connection after ready, HTTP probe, and hello all succeed.
   _WireConnection? _connection;
   Uri? _pluginHttpProxy;
-  bool _useEnvironmentProxy = false;
+  bool _useEnvironmentProxy;
 
   /// Prevents new work after cleanup starts and makes disposal idempotent.
   bool _disposed = false;

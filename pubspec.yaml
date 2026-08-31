@@ -1,7 +1,7 @@
 name: mg_read
 description: "Main Flutter application for MgRead."
 publish_to: 'none'
-version: 0.9.106+224
+version: 0.9.107+225
 
 environment:
   sdk: ^3.12.2
