@@ -143,25 +143,22 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
       await session.applyProxy();
       _debugPlaybackRequest('open', episode);
       await session.player.open(
-        Media(uri, httpHeaders: episode.httpHeaders),
-        play: false,
+        Media(
+          uri,
+          httpHeaders: episode.httpHeaders,
+          start: initialPosition > Duration.zero ? initialPosition : null,
+        ),
+        // Let MediaKit leave its paused state as part of loading the media.
+        // A separate play command can be lost while a newly attached native
+        // video surface is still initializing.
+        play: play,
       );
       if (!_isCurrent(session, generation)) return;
-
-      if (initialPosition > Duration.zero) {
-        await session.player.seek(initialPosition);
-        if (!_isCurrent(session, generation)) return;
-      }
 
       await session.player.setRate(_rate);
       if (!_isCurrent(session, generation)) return;
       await session.player.setVolume(_volume);
       if (!_isCurrent(session, generation)) return;
-
-      if (play) {
-        await session.player.play();
-        if (!_isCurrent(session, generation)) return;
-      }
       _emit(_value.copyWith(buffering: false, clearError: true));
     } on Object catch (error, stackTrace) {
       if (!_isCurrent(session, generation)) return;
