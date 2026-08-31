@@ -50,11 +50,8 @@ import {
   settlePluginOperation,
   waitForPluginOperation,
 } from "./plugin-operation-wait.js";
-import { openSourceProxyResource } from "./source-resource-proxy.js";
-import {
-  decodeSourceResourceToken,
-  encodeSourceResourceToken,
-} from "./source-resource-token.js";
+import { SourceResourceCoordinator } from "./source-resource-coordinator.js";
+import { encodeSourceResourceToken } from "./source-resource-token.js";
 import {
   type PluginPackageDescriptor,
   readPluginProject,
@@ -148,6 +145,7 @@ export class PluginManager {
   readonly #events: PluginManagerEventSink;
   readonly #debugLogEnabled: () => boolean;
   readonly #http: PluginRuntimeHttpClient;
+  readonly #sourceResources: SourceResourceCoordinator;
   readonly #browserSession: PluginBrowserSessionProvider | undefined;
   readonly #pluginIcons: PluginIconResources;
   #resourceOrigin = "http://127.0.0.1";
@@ -193,6 +191,7 @@ export class PluginManager {
     this.#events = options.events ?? (() => {});
     this.#debugLogEnabled = options.debugLogEnabled ?? (() => false);
     this.#http = options.http ?? { fetch: (input, init) => fetch(input, init) };
+    this.#sourceResources = new SourceResourceCoordinator(this.#http, this.#events, this.#debugLogEnabled);
     this.#browserSession = options.browserSession;
     this.#cacheClearTimeoutMs = positiveMilliseconds(
       options.cacheClearTimeoutMs,
@@ -232,13 +231,12 @@ export class PluginManager {
   createResourceUrl(pluginId: string, request: JsonObject): string {
     if (!isPluginId(pluginId) || Buffer.byteLength(JSON.stringify(request), "utf8") > 16 * 1024) throw new PluginManagerError("invalid_request");
     const token = encodeSourceResourceToken(pluginId, request);
-    if (this.#debugLogEnabled()) this.#events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.resource_proxy", logLevel: "debug", logMessage: `资源代理已创建：参数=${JSON.stringify(request)}`, outcome: "success", pluginId });
+    this.#sourceResources.created(pluginId, request, (next) => this.createResourceUrl(pluginId, next));
     return `${this.#resourceOrigin}/v1/source-resource/${token}`;
   }
 
   openSourceResource(token: string, requestHeaders: Readonly<Record<string, string>>, signal: AbortSignal) {
-    const entry = decodeSourceResourceToken(token);
-    return openSourceProxyResource(entry === undefined ? undefined : { fetch: this.#http.fetch.bind(this.#http), proxy: (next) => this.createResourceUrl(entry.pluginId, next), request: entry.request }, requestHeaders, signal);
+    return this.#sourceResources.open(token, requestHeaders, signal, (pluginId, request) => this.createResourceUrl(pluginId, request));
   }
 
 

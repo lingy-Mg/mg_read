@@ -31,6 +31,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
   /// Prepares MediaKit without choosing a host native-library bundle.
   MediaKitVideoPlaybackBackend({this.proxyUri}) {
     MediaKit.ensureInitialized();
+    _preparedSession = _MediaKitEpisodeSession(proxyUri);
   }
 
   /// Optional credential-free HTTP proxy sampled for this backend session.
@@ -42,6 +43,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
       );
   Future<void> _openQueue = Future<void>.value();
   Future<void>? _disposeFuture;
+  _MediaKitEpisodeSession? _preparedSession;
   _MediaKitEpisodeSession? _session;
   int _openGeneration = 0;
   int _surfaceGeneration = 0;
@@ -56,7 +58,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
 
   @override
   Widget buildSurface({required BoxFit fit, Key? key}) {
-    final session = _session;
+    final session = _session ?? _preparedSession;
     return KeyedSubtree(
       key: key,
       child: session == null
@@ -120,7 +122,9 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
       throw StateError('The selected video episode has no playback resource.');
     }
 
-    final session = _MediaKitEpisodeSession(proxyUri);
+    final prepared = _preparedSession;
+    final session = prepared ?? _MediaKitEpisodeSession(proxyUri);
+    _preparedSession = null;
     _bind(session, generation, episode);
     if (!_isRequestedGeneration(generation)) {
       await session.dispose();
@@ -129,7 +133,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
 
     final previous = _session;
     _session = session;
-    _surfaceGeneration++;
+    if (prepared == null) _surfaceGeneration++;
     _emit(_value.copyWith(firstFrameReady: false));
     unawaited(_markFirstFrame(session, generation, episode));
 
@@ -340,10 +344,15 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
 
   Future<void> _dispose() async {
     final session = _session;
+    final prepared = _preparedSession;
+    _preparedSession = null;
     _session = null;
     _surfaceGeneration++;
     try {
       if (session != null) await session.dispose();
+      if (prepared != null && !identical(prepared, session)) {
+        await prepared.dispose();
+      }
     } finally {
       final lateSession = _session;
       _session = null;

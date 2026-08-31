@@ -14,6 +14,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_startup.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/media/application/source_audio_playback_coordinator.dart';
 import 'package:mg_read/features/media/application/source_video_data_source.dart';
@@ -37,8 +38,14 @@ Future<void> openTransientSourceVideoPlayer(
     orElse: () => null,
   );
   final container = ProviderScope.containerOf(context, listen: false);
-  await container.read(sourceAudioPlaybackCoordinatorProvider.notifier).stop();
-  if (!navigator.mounted) return;
+  final diagnostics = container.read(diagnosticsManagerProvider);
+  final startupSession = VideoStartupSession(diagnostics.idGenerator.nextId('video_startup'));
+  _recordStartupEvent(diagnostics, startupSession.mark(VideoStartupPhase.click, state: VideoStartupState.started));
+  final audioStop = container.read(sourceAudioPlaybackCoordinatorProvider.notifier).stop();
+  if (!navigator.mounted) {
+    await audioStop;
+    return;
+  }
   return navigator.push<void>(
     MaterialPageRoute<void>(
       builder: (_) => _SourceVideoPlayerDestination(
@@ -49,6 +56,9 @@ Future<void> openTransientSourceVideoPlayer(
         initialGroupId: group?.id ?? 'default',
         initialEpisodeId: chapter.id,
         libraryItemId: libraryItemId,
+        playbackGate: audioStop,
+        startupSession: startupSession,
+        diagnostics: diagnostics,
       ),
     ),
   );
@@ -63,6 +73,9 @@ final class _SourceVideoPlayerDestination extends StatefulWidget {
     required this.initialGroupId,
     required this.initialEpisodeId,
     required this.libraryItemId,
+    required this.playbackGate,
+    required this.startupSession,
+    required this.diagnostics,
   });
 
   final ProviderContainer container;
@@ -72,6 +85,9 @@ final class _SourceVideoPlayerDestination extends StatefulWidget {
   final String initialGroupId;
   final String initialEpisodeId;
   final String? libraryItemId;
+  final Future<void> playbackGate;
+  final VideoStartupSession startupSession;
+  final DiagnosticsManager diagnostics;
 
   @override
   State<_SourceVideoPlayerDestination> createState() => _SourceVideoPlayerDestinationState();
@@ -88,6 +104,10 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
   void initState() {
     super.initState();
     _fullscreenController = SourceVideoFullscreenController();
+    _recordStartupEvent(
+      widget.diagnostics,
+      widget.startupSession.mark(VideoStartupPhase.routePresented, state: VideoStartupState.completed),
+    );
     unawaited(_prepare());
   }
 
@@ -99,7 +119,7 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
       _firstFramePresented = false;
     });
     try {
-      final library = widget.libraryItemId == null ? null : await widget.container.read(appStartupControllerProvider).contentLibrary;
+      final libraryFuture = widget.libraryItemId == null ? null : widget.container.read(appStartupControllerProvider).contentLibrary;
       final itemId = widget.libraryItemId == null ? null : LibraryItemId(widget.libraryItemId!);
       final proxyUri = widget.container.read(configuredFlutterNetworkProxyManagerProvider).playerProxyUriFor(NetworkProxyTraffic.video);
       if (!mounted || generation != _generation) return;
@@ -110,12 +130,13 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
             pluginId: widget.detail.pluginId,
             initialDetail: widget.detail,
             initialCatalog: widget.initialCatalog,
+            playbackGate: widget.playbackGate,
           ),
           stateStore: TransientSourceVideoPlaybackStateStore(
             contentId: widget.detail.summary.id,
             initialGroupId: widget.initialGroupId,
             initialEpisodeId: widget.initialEpisodeId,
-            library: library,
+            libraryFuture: libraryFuture,
             libraryItemId: itemId,
           ),
           proxyUri: proxyUri,
@@ -168,7 +189,9 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
         observer: _VideoEntryObserver(
           delegate: _DismissVideoPlayerObserver(widget.navigator, _fullscreenController),
           onPresented: _presentPlayer,
+          diagnostics: widget.diagnostics,
         ),
+        startupSession: widget.startupSession,
         backendFactory: () => createMediaKitVideoPlaybackBackend(proxyUri: setup.proxyUri),
       ),
     );
@@ -191,10 +214,17 @@ final class _VideoPlayerSetup {
 }
 
 final class _VideoEntryObserver extends VideoPlayerObserver {
-  const _VideoEntryObserver({required this.delegate, required this.onPresented});
+  const _VideoEntryObserver({required this.delegate, required this.onPresented, required this.diagnostics});
 
   final VideoPlayerObserver delegate;
   final VoidCallback onPresented;
+  final DiagnosticsManager diagnostics;
+
+  @override
+  FutureOr<void> onStartupEvent(VideoStartupEvent event) {
+    _recordStartupEvent(diagnostics, event);
+    return delegate.onStartupEvent(event);
+  }
 
   @override
   FutureOr<void> onFirstFrame(VideoPlayerSnapshot snapshot) {
@@ -213,6 +243,25 @@ final class _VideoEntryObserver extends VideoPlayerObserver {
 
   @override
   FutureOr<void> onExitRequested(VideoPlaybackProgress? progress) => delegate.onExitRequested(progress);
+}
+
+void _recordStartupEvent(DiagnosticsManager diagnostics, VideoStartupEvent event) {
+  if (diagnostics.isClosed) return;
+  try {
+    diagnostics.emit(
+      AppDiagnosticEvents.videoPlaybackStartup,
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'sessionId': DiagnosticValue.string(event.sessionId),
+        'phase': DiagnosticValue.string(event.phase.name),
+        'elapsedMicros': DiagnosticValue.int64(event.elapsed.inMicroseconds),
+        'resultState': DiagnosticValue.string(event.state.name),
+        if (event.resourceRole != null) 'resourceRole': DiagnosticValue.string(event.resourceRole!.name),
+        if (event.byteCount != null) 'bytes': DiagnosticValue.int64(event.byteCount!),
+      }),
+    );
+  } on Object {
+    // Startup diagnostics must never delay or fail playback.
+  }
 }
 
 final class _DismissVideoPlayerObserver extends VideoPlayerObserver {

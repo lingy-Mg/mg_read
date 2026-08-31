@@ -1,6 +1,6 @@
 name: mg_read_video_player
 description: An embeddable MgRead video player with injectable playback backends.
-version: 0.1.0
+version: 0.1.1
 publish_to: none
 
 environment:

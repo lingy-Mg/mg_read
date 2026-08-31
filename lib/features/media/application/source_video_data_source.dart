@@ -22,6 +22,7 @@ final class SourceVideoDataSource implements VideoEpisodeDataSource {
     required this.pluginId,
     this.initialDetail,
     this.initialCatalog,
+    this.playbackGate,
     this.maximumEpisodes = 200,
   }) : assert(maximumEpisodes > 0 && maximumEpisodes <= 500);
 
@@ -29,6 +30,7 @@ final class SourceVideoDataSource implements VideoEpisodeDataSource {
   final String pluginId;
   final PluginContentDetail? initialDetail;
   final PluginChaptersResult? initialCatalog;
+  final Future<void>? playbackGate;
   final int maximumEpisodes;
   String? _cachedContentId;
   PluginContentDetail? _cachedDetail;
@@ -36,11 +38,12 @@ final class SourceVideoDataSource implements VideoEpisodeDataSource {
 
   @override
   Future<VideoContent> load(String contentId) async {
-    final detail = await _loadDetail(contentId);
+    final values = await Future.wait<Object>(<Future<Object>>[_loadDetail(contentId), _loadCatalog(contentId)]);
+    final detail = values[0] as PluginContentDetail;
     if (detail.summary.contentKind != PluginContentKind.video) {
       throw const VideoPlayerLoadException(code: 'video_content_kind_invalid', location: '校验视频内容类型', message: '数据源返回的内容不是视频。');
     }
-    final catalog = await _loadCatalog(contentId);
+    final catalog = values[1] as PluginChaptersResult;
     final groups = _playableGroups(catalog);
     final episodeCount = groups.fold<int>(0, (total, group) => total + group.episodes.length);
     if (episodeCount == 0 || episodeCount > maximumEpisodes) {
@@ -81,7 +84,12 @@ final class SourceVideoDataSource implements VideoEpisodeDataSource {
     if (selected == null) {
       throw const VideoPlayerLoadException(code: 'video_episode_unavailable', location: '校验所选视频', message: '所选视频已下架、锁定或不在当前目录中。');
     }
-    final content = await _loadEpisode(contentId, selected.id);
+    final contentFuture = _loadEpisode(contentId, selected.id);
+    final gate = playbackGate;
+    if (gate != null) {
+      await Future.wait<Object?>(<Future<Object?>>[contentFuture, gate]);
+    }
+    final content = await contentFuture;
     final media = content.media;
     if (content.chapterId != selected.id || content.contentKind != PluginContentKind.video || media == null) {
       throw const VideoPlayerLoadException(code: 'video_episode_resource_missing', location: '解析所选集的播放资源', message: '数据源没有返回可播放的视频资源。');

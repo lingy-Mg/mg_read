@@ -65,11 +65,20 @@ test('fixture flow covers discovery, search, detail, neutral groups and both pla
   assert.equal(catalog.items.length, 4);
   const detailRequestsBeforePlayback = requests.filter((url) => url.pathname === '/v/101.html').length;
 
+  const directRequestsBeforePlayback = requests.length;
   const direct = await plugin.getContent({ id: info.id, chapterId: 'video:101:3:1' });
+  assert.deepEqual(
+    requests.slice(directRequestsBeforePlayback).map((url) => url.pathname),
+    ['/p/101-3-1.html'],
+  );
   assert.equal(direct.media.resourceType, 'video');
   assert.equal(direct.media.resourcePolicy, 'sessionOnly');
   assert.equal(resources[0].url, 'https://media.invalid/fixture-direct.mp4');
+  const mcueRequestsBeforePlayback = requests.length;
   const decrypted = await plugin.getContent({ id: info.id, chapterId: 'video:101:5:1' });
+  assert.equal(requests.length - mcueRequestsBeforePlayback, 2);
+  assert.equal(requests[mcueRequestsBeforePlayback].pathname, '/p/101-5-1.html');
+  assert.equal(requests[mcueRequestsBeforePlayback + 1].hostname, 'player.mcue.cc');
   assert.equal(decrypted.media.resourceType, 'hls');
   assert.equal(resources[1].url, upstream);
   assert.equal(new URL(resources[1].headers.Referer).origin, 'https://player.mcue.cc');

@@ -45,7 +45,12 @@ export async function serveSourceResource(
       finish(404);
       return;
     }
-    await serveUpstreamResource(resource, response, finish);
+    const startedAt = performance.now();
+    const complete: LoopbackHttpFinish = (status, bytes = 0) => {
+      resource.onServed?.(status, bytes, performance.now() - startedAt);
+      finish(status, bytes);
+    };
+    await serveUpstreamResource(resource, response, complete);
   } catch {
     if (response.headersSent) {
       response.destroy();
@@ -83,7 +88,7 @@ export async function servePluginTransferResource(
 }
 
 async function serveUpstreamResource(
-  media: { readonly request: JsonObject; readonly response: Response; readonly proxy: (request: JsonObject) => string },
+  media: { readonly request: JsonObject; readonly response: Response; readonly responseUrl: string; readonly proxy: (request: JsonObject) => string },
   response: ServerResponse,
   finish: LoopbackHttpFinish,
 ): Promise<void> {
@@ -91,7 +96,7 @@ async function serveUpstreamResource(
   const kind = media.request.kind;
   if (kind === "hls") {
     const text = await readManifest(media.response);
-    const body = Buffer.from(rewriteHls(text, media.response.url, media.request, media.proxy), "utf8");
+    const body = Buffer.from(rewriteHls(text, media.responseUrl, media.request, media.proxy), "utf8");
     response.writeHead(media.response.status, { "Cache-Control": "no-store", "Content-Length": body.byteLength, "Content-Type": "application/vnd.apple.mpegurl; charset=utf-8" });
     response.end(body); finish(media.response.status, body.byteLength); return;
   }

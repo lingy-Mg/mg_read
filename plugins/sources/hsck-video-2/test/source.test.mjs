@@ -52,7 +52,10 @@ test('mirror fixture covers categories, search, detail, single episode and HLS p
   assert.deepEqual(catalog.groups[0].episodes, catalog.items);
   assert.equal(catalog.items[0].updatedAt, '2026-08-30T00:00:00+08:00');
 
+  const requestsBeforePlayback = requests.length;
   const content = await plugin.getContent({ id: detailResult.id, chapterId: catalog.items[0].id });
+  assert.equal(requests.length - requestsBeforePlayback, 1);
+  assert.ok(requests.at(-1).includes('/view/?id=fixture1'));
   assert.equal(content.media.resourceType, 'hls');
   assert.equal(content.media.resourcePolicy, 'sessionOnly');
   assert.equal(content.media.url.startsWith('http://127.0.0.1:'), true);

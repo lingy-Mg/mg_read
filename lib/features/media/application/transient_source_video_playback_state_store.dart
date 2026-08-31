@@ -15,13 +15,17 @@ final class TransientSourceVideoPlaybackStateStore implements VideoPlaybackState
     required this.initialGroupId,
     required this.initialEpisodeId,
     this.library,
+    Future<ContentLibrary?>? libraryFuture,
     this.libraryItemId,
-  }) : assert((library == null) == (libraryItemId == null));
+  }) : assert(library == null || libraryFuture == null),
+       assert((library == null && libraryFuture == null) == (libraryItemId == null)),
+       libraryFuture = libraryFuture ?? Future<ContentLibrary?>.value(library);
 
   final String contentId;
   final String initialGroupId;
   final String initialEpisodeId;
   final ContentLibrary? library;
+  final Future<ContentLibrary?> libraryFuture;
   final LibraryItemId? libraryItemId;
   VideoPlaybackProgress? _progress;
 
@@ -30,7 +34,7 @@ final class TransientSourceVideoPlaybackStateStore implements VideoPlaybackState
     if (requestedContentId != contentId) return null;
     final existing = _progress;
     if (existing != null) return existing;
-    final library = this.library;
+    final library = await libraryFuture;
     final itemId = libraryItemId;
     if (library != null && itemId != null) {
       final durable = await library.loadVideoProgress(itemId);
@@ -57,7 +61,7 @@ final class TransientSourceVideoPlaybackStateStore implements VideoPlaybackState
   Future<void> save(VideoPlaybackProgress progress) async {
     if (progress.contentId != contentId) return;
     _progress = progress;
-    final library = this.library;
+    final library = await libraryFuture;
     final itemId = libraryItemId;
     if (library == null || itemId == null) return;
     await library.saveVideoProgress(

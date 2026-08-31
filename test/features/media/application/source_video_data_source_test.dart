@@ -1,6 +1,8 @@
 /// Safe diagnostic tests for the source-to-video-player adapter.
 library;
 
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_video_player/mg_read_video_player.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -10,6 +12,40 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/media/application/source_video_data_source.dart';
 
 void main() {
+  test('loads missing detail and catalog concurrently', () async {
+    final detailGate = Completer<void>();
+    final catalogGate = Completer<void>();
+    final gateway = _VideoGateway(failEpisodeResource: false, detailGate: detailGate, catalogGate: catalogGate);
+    final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId);
+
+    final loading = source.load('video-1');
+    await Future<void>.delayed(Duration.zero);
+    expect(gateway.detailCalls, 1);
+    expect(gateway.catalogCalls, 1);
+    detailGate.complete();
+    catalogGate.complete();
+    await loading;
+  });
+
+  test('resolves selected resource while autoplay waits for its gate', () async {
+    final playbackGate = Completer<void>();
+    final gateway = _VideoGateway(failEpisodeResource: false);
+    final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId, playbackGate: playbackGate.future);
+    await source.load('video-1');
+
+    var completed = false;
+    final loading = source.loadEpisode('video-1', groupId: 'default', episodeId: 'episode-1').then((episode) {
+      completed = true;
+      return episode;
+    });
+    await Future<void>.delayed(Duration.zero);
+    expect(gateway.contentCalls, <String>['episode-1']);
+    expect(completed, isFalse);
+    playbackGate.complete();
+    await loading;
+    expect(completed, isTrue);
+  });
+
   test('loads catalog metadata without resolving every signed resource', () async {
     final gateway = _VideoGateway(failEpisodeResource: false);
     final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId);
@@ -81,43 +117,53 @@ void main() {
 const _pluginId = 'org.example.video';
 
 final class _VideoGateway implements SourceContentGateway {
-  _VideoGateway({required this.failEpisodeResource, this.episodeFailureCode, this.grouped = false});
+  _VideoGateway({required this.failEpisodeResource, this.episodeFailureCode, this.grouped = false, this.detailGate, this.catalogGate});
 
   final bool failEpisodeResource;
   final AppErrorCode? episodeFailureCode;
   final bool grouped;
+  final Completer<void>? detailGate;
+  final Completer<void>? catalogGate;
   final List<String> contentCalls = <String>[];
+  int detailCalls = 0;
+  int catalogCalls = 0;
 
   @override
-  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async => PluginContentDetail(
-    pluginId: pluginId,
-    sourceName: '示例视频源',
-    summary: PluginContentSummary(
-      id: id,
-      title: '测试视频',
-      contentKind: PluginContentKind.video,
-      author: null,
-      url: null,
-      coverUrl: null,
-      description: null,
-      language: null,
-      status: PluginContentStatus.unknown,
-      access: PluginAccessKind.free,
-      wordCount: null,
-      chapterCount: 1,
-      publishedAt: null,
-      updatedAt: null,
-      latestChapter: null,
-      categories: const <String>[],
-      tags: const <String>[],
-      attributes: const <PluginContentAttribute>[],
-    ),
-    aliases: const <String>[],
-    catalogUrl: null,
-  );
+  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async {
+    detailCalls++;
+    await detailGate?.future;
+    return PluginContentDetail(
+      pluginId: pluginId,
+      sourceName: '示例视频源',
+      summary: PluginContentSummary(
+        id: id,
+        title: '测试视频',
+        contentKind: PluginContentKind.video,
+        author: null,
+        url: null,
+        coverUrl: null,
+        description: null,
+        language: null,
+        status: PluginContentStatus.unknown,
+        access: PluginAccessKind.free,
+        wordCount: null,
+        chapterCount: 1,
+        publishedAt: null,
+        updatedAt: null,
+        latestChapter: null,
+        categories: const <String>[],
+        tags: const <String>[],
+        attributes: const <PluginContentAttribute>[],
+      ),
+      aliases: const <String>[],
+      catalogUrl: null,
+    );
+  }
 
   @override
   Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async {
+    catalogCalls++;
+    await catalogGate?.future;
     final first = _episode(id: 'episode-1', title: '第 1 集', order: 0, group: grouped ? 'Laoz' : null);
     final second = _episode(id: 'episode-2', title: '第 2 集', order: 0, group: 'Diff');
     return PluginChaptersResult(

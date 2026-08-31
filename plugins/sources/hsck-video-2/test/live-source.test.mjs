@@ -2,9 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as plugin from '../dist/index.mjs';
 
-test('live mirror discovery, search, detail, catalog and playback projection are reachable', { timeout: 60_000 }, async () => {
+test('live mirror discovery, search, detail, catalog and playback projection are reachable', { timeout: 60_000 }, async (t) => {
   const resources = [];
-  const liveFetch = (input, init = {}) => fetch(input, { ...init, signal: AbortSignal.timeout(15_000) });
+  let requestCount = 0;
+  const liveFetch = (input, init = {}) => {
+    requestCount += 1;
+    return fetch(input, { ...init, signal: AbortSignal.timeout(15_000) });
+  };
   await plugin.activate({
     log: { info() {}, warn() {} },
     resource: {
@@ -36,7 +40,11 @@ test('live mirror discovery, search, detail, catalog and playback projection are
   assert.equal(chapters.items.length, 1);
   assert.equal(chapters.items[0].updatedAt, detail.updatedAt);
 
+  const requestsBeforePlayback = requestCount;
+  const playbackStartedAt = performance.now();
   const content = await plugin.getContent({ id: detail.id, chapterId: chapters.items[0].id });
+  t.diagnostic(`playback_resolution durationMs=${Math.round(performance.now() - playbackStartedAt)} requestCount=${requestCount - requestsBeforePlayback}`);
+  assert.equal(requestCount - requestsBeforePlayback, 1);
   assert.equal(content.contentKind, 'video');
   assert.equal(content.media.resourceType, 'hls');
   assert.equal(resources.length, 1);

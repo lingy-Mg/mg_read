@@ -13,6 +13,140 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
+/// Monotonic stages on the path from a user playback intent to first frame.
+enum VideoStartupPhase {
+  /// The host accepted the user playback intent.
+  click,
+
+  /// The host player route has been mounted.
+  routePresented,
+
+  /// The player started loading content and progress.
+  sessionLoadStarted,
+
+  /// Content metadata and the episode catalog are ready.
+  contentReady,
+
+  /// Restored progress is ready or safely unavailable.
+  progressReady,
+
+  /// The selected episode playback resource is being resolved.
+  episodeResolutionStarted,
+
+  /// The selected episode playback resource is ready.
+  episodeReady,
+
+  /// The playback backend started its atomic open.
+  backendOpenStarted,
+
+  /// The playback backend atomic open completed.
+  backendOpenCompleted,
+
+  /// The first real video frame reached the surface.
+  firstFrame,
+}
+
+/// Safe state attached to one startup stage.
+enum VideoStartupState {
+  /// Work for the stage has begun.
+  started,
+
+  /// The stage's resource is ready for its consumer.
+  ready,
+
+  /// The stage completed successfully.
+  completed,
+
+  /// The stage failed and may fall back or surface a safe failure.
+  failed,
+
+  /// A newer generation cancelled the stage.
+  cancelled,
+}
+
+/// Safe resource role attached to one startup stage.
+enum VideoStartupResourceRole {
+  /// Content metadata and episode catalog.
+  content,
+
+  /// Durable playback progress.
+  progress,
+
+  /// One selected episode's transient playback resource.
+  episode,
+
+  /// The native playback engine.
+  backend,
+
+  /// The visible Flutter video surface.
+  surface,
+}
+
+/// One URL-free, header-free startup timing event.
+@immutable
+final class VideoStartupEvent {
+  /// Creates one bounded startup marker.
+  const VideoStartupEvent({
+    required this.sessionId,
+    required this.phase,
+    required this.elapsed,
+    required this.state,
+    this.resourceRole,
+    this.byteCount,
+  });
+
+  /// Opaque identifier shared by all markers for one startup.
+  final String sessionId;
+
+  /// Monotonic startup stage.
+  final VideoStartupPhase phase;
+
+  /// Monotonic time since this startup session was created.
+  final Duration elapsed;
+
+  /// Safe stage outcome without raw exception text.
+  final VideoStartupState state;
+
+  /// Optional bounded resource classification.
+  final VideoStartupResourceRole? resourceRole;
+
+  /// Optional bounded body size, when known.
+  final int? byteCount;
+}
+
+/// Process-local monotonic clock shared by the host and player for one launch.
+final class VideoStartupSession {
+  /// Starts a session with a host-provided opaque identifier.
+  VideoStartupSession(this.id) : assert(id.isNotEmpty) {
+    _stopwatch.start();
+  }
+
+  /// Starts a process-local session when the host does not provide one.
+  factory VideoStartupSession.create() =>
+      VideoStartupSession('video_startup_${++_nextId}');
+
+  static int _nextId = 0;
+  final Stopwatch _stopwatch = Stopwatch();
+
+  /// Opaque identifier carried by emitted events.
+  final String id;
+
+  /// Creates a marker using the session's monotonic clock.
+  VideoStartupEvent mark(
+    VideoStartupPhase phase, {
+    required VideoStartupState state,
+    VideoStartupResourceRole? resourceRole,
+    int? byteCount,
+  }) => VideoStartupEvent(
+    sessionId: id,
+    phase: phase,
+    elapsed: _stopwatch.elapsed,
+    state: state,
+    resourceRole: resourceRole,
+    byteCount: byteCount,
+  );
+}
+
 /// One playable episode resolved by the host.
 @immutable
 final class VideoEpisode {

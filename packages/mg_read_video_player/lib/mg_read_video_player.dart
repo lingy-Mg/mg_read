@@ -31,5 +31,10 @@ export 'src/api/models.dart'
         VideoPlayerFailureKind,
         VideoPlayerLoadException,
         VideoPlayerSnapshot,
-        VideoPlayerStatus;
+        VideoPlayerStatus,
+        VideoStartupEvent,
+        VideoStartupPhase,
+        VideoStartupResourceRole,
+        VideoStartupSession,
+        VideoStartupState;
 export 'src/ui/video_player_view.dart' show VideoPlayerView;

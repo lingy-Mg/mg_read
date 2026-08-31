@@ -8,12 +8,20 @@ export type SourceProxyEntry = {
   readonly request: JsonObject;
 };
 
+export type SourceProxyResource = {
+  readonly onServed?: (status: number, bytes: number, durationMs: number) => void;
+  readonly proxy: SourceProxyEntry["proxy"];
+  readonly request: JsonObject;
+  readonly response: Response;
+  readonly responseUrl: string;
+};
+
 /** Opens a Manager-owned source resource without duplicating its token registry. */
 export async function openSourceProxyResource(
   entry: SourceProxyEntry | undefined,
   requestHeaders: Readonly<Record<string, string>>,
   signal: AbortSignal,
-): Promise<{ readonly request: JsonObject; readonly response: Response; readonly proxy: SourceProxyEntry["proxy"] } | undefined> {
+): Promise<SourceProxyResource | undefined> {
   if (entry === undefined || signal.aborted) return undefined;
   const rawUrl = entry.request.url;
   if (typeof entry.request.kind !== "string" || typeof rawUrl !== "string" || !isHttpUrl(rawUrl)) return undefined;
@@ -26,7 +34,7 @@ export async function openSourceProxyResource(
     }
   }
   const response = await entry.fetch(rawUrl, { headers: forwarded, method: "GET", redirect: "follow", signal });
-  return Object.freeze({ proxy: entry.proxy, request: entry.request, response });
+  return Object.freeze({ proxy: entry.proxy, request: entry.request, response, responseUrl: response.url });
 }
 
 function sourceHeaders(request: JsonObject): Record<string, string> | undefined {

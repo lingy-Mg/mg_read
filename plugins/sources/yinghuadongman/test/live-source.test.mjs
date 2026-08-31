@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as plugin from '../dist/index.mjs';
 
-test('live public flow reaches discovery, search, detail, catalog and playback resolution', { timeout: 120_000 }, async () => {
+test('live public flow reaches discovery, search, detail, catalog and playback resolution', { timeout: 120_000 }, async (t) => {
   const resources = [];
+  let requestCount = 0;
   const liveFetch = (input, init = {}) => {
+    requestCount += 1;
     const liveTimeout = AbortSignal.timeout(20_000);
     const signal = init.signal === undefined
       ? liveTimeout
@@ -35,7 +37,12 @@ test('live public flow reaches discovery, search, detail, catalog and playback r
   assert.ok(catalog.groups.length > 0);
   assert.ok(catalog.groups.every((group) => group.title.trim() !== '' && !/^线路 \d+$/u.test(group.title)));
   assert.equal(catalog.items.length, catalog.groups.reduce((count, group) => count + group.episodes.length, 0));
+  const requestsBeforePlayback = requestCount;
+  const playbackStartedAt = performance.now();
   const content = await plugin.getContent({ id: detail.id, chapterId: catalog.items[0].id });
+  const playbackRequestCount = requestCount - requestsBeforePlayback;
+  t.diagnostic(`playback_resolution durationMs=${Math.round(performance.now() - playbackStartedAt)} requestCount=${playbackRequestCount}`);
+  assert.ok(playbackRequestCount === 1 || playbackRequestCount === 2);
   assert.equal(content.contentKind, 'video');
   assert.ok(['hls', 'video'].includes(content.media.resourceType));
   assert.equal(content.media.resourcePolicy, 'sessionOnly');

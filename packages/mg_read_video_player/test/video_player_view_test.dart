@@ -16,6 +16,67 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_video_player/mg_read_video_player.dart';
 
 void main() {
+  testWidgets(
+    'loads content and progress together and reports one first frame',
+    (WidgetTester tester) async {
+      final backend = _FakeVideoBackend();
+      final source = _ControlledDataSource();
+      final store = _ControlledStore();
+      final observer = _RecordingObserver();
+      final startupSession = VideoStartupSession('video_startup_test');
+
+      await tester.pumpWidget(
+        _playerApp(
+          contentId: 'show',
+          backend: backend,
+          source: source,
+          store: store,
+          observer: observer,
+          startupSession: startupSession,
+        ),
+      );
+      await tester.pump();
+
+      expect(source.loadCount, 1);
+      expect(store.loadCount, 1);
+      store.complete(null);
+      await tester.pump();
+      expect(
+        observer.startupEvents.map((event) => event.phase),
+        contains(VideoStartupPhase.progressReady),
+      );
+      expect(backend.openCalls, isEmpty);
+
+      source.complete('show');
+      await tester.pumpAndSettle();
+      expect(observer.firstFrames, 1);
+      expect(
+        observer.startupEvents.where(
+          (event) => event.phase == VideoStartupPhase.firstFrame,
+        ),
+        hasLength(1),
+      );
+      expect(
+        observer.startupEvents.map((event) => event.sessionId).toSet(),
+        <String>{'video_startup_test'},
+      );
+
+      await tester.pumpWidget(
+        _playerApp(
+          contentId: 'show',
+          backend: backend,
+          source: source,
+          store: store,
+          observer: observer,
+          startupSession: startupSession,
+        ),
+      );
+      await tester.pump();
+      expect(source.loadCount, 1);
+      expect(observer.firstFrames, 1);
+    },
+  );
+
   testWidgets('restores the saved episode and position before autoplay', (
     WidgetTester tester,
   ) async {
@@ -538,11 +599,12 @@ Widget _playerApp({
   required String contentId,
   required _FakeVideoBackend backend,
   VideoDataSource? source,
-  _RecordingStore? store,
+  VideoPlaybackStateStore? store,
   _RecordingObserver? observer,
   VideoPlayerController? controller,
   Key? playerKey,
   Duration progressSaveThrottle = const Duration(hours: 1),
+  VideoStartupSession? startupSession,
 }) => MaterialApp(
   home: _player(
     contentId: contentId,
@@ -553,6 +615,7 @@ Widget _playerApp({
     controller: controller,
     playerKey: playerKey,
     progressSaveThrottle: progressSaveThrottle,
+    startupSession: startupSession,
   ),
 );
 
@@ -560,17 +623,19 @@ Widget _player({
   required String contentId,
   required _FakeVideoBackend backend,
   VideoDataSource? source,
-  _RecordingStore? store,
+  VideoPlaybackStateStore? store,
   _RecordingObserver? observer,
   VideoPlayerController? controller,
   Key? playerKey,
   Duration progressSaveThrottle = const Duration(hours: 1),
+  VideoStartupSession? startupSession,
 }) => VideoPlayerView(
   key: playerKey,
   contentId: contentId,
   dataSource: source ?? const _ImmediateDataSource(),
   stateStore: store ?? _RecordingStore(),
   observer: observer ?? _RecordingObserver(),
+  startupSession: startupSession,
   controller: controller,
   backendFactory: () => backend,
   progressSaveThrottle: progressSaveThrottle,
@@ -609,10 +674,13 @@ final class _FailingDataSource implements VideoDataSource {
 final class _ControlledDataSource implements VideoDataSource {
   final Map<String, Completer<VideoContent>> _requests =
       <String, Completer<VideoContent>>{};
+  int loadCount = 0;
 
   @override
-  Future<VideoContent> load(String contentId) =>
-      (_requests[contentId] ??= Completer<VideoContent>()).future;
+  Future<VideoContent> load(String contentId) {
+    loadCount++;
+    return (_requests[contentId] ??= Completer<VideoContent>()).future;
+  }
 
   void complete(String contentId) =>
       _requests[contentId]!.complete(_content(contentId));
@@ -733,6 +801,10 @@ final class _RecordingObserver extends VideoPlayerObserver {
   int exitCount = 0;
   final List<bool> fullscreenRequests = <bool>[];
   final List<VideoPlayerFailure> failures = <VideoPlayerFailure>[];
+  final List<VideoStartupEvent> startupEvents = <VideoStartupEvent>[];
+
+  @override
+  void onStartupEvent(VideoStartupEvent event) => startupEvents.add(event);
 
   @override
   void onFirstFrame(VideoPlayerSnapshot snapshot) => firstFrames++;
@@ -749,6 +821,23 @@ final class _RecordingObserver extends VideoPlayerObserver {
     exitCount++;
     onExit?.call();
   }
+}
+
+final class _ControlledStore implements VideoPlaybackStateStore {
+  final Completer<VideoPlaybackProgress?> _request =
+      Completer<VideoPlaybackProgress?>();
+  int loadCount = 0;
+
+  @override
+  Future<VideoPlaybackProgress?> load(String contentId) {
+    loadCount++;
+    return _request.future;
+  }
+
+  void complete(VideoPlaybackProgress? progress) => _request.complete(progress);
+
+  @override
+  Future<void> save(VideoPlaybackProgress progress) async {}
 }
 
 final class _OpenCall {

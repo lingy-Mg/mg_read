@@ -31,6 +31,7 @@ final class VideoPlayerView extends StatefulWidget {
     required this.dataSource,
     required this.stateStore,
     this.observer,
+    this.startupSession,
     this.controller,
     this.backendFactory = createMediaKitVideoPlaybackBackend,
     this.autoPlay = true,
@@ -53,6 +54,9 @@ final class VideoPlayerView extends StatefulWidget {
   /// When omitted, an exit request calls the nearest [Navigator.maybePop].
   /// When supplied, route exit is entirely host-owned.
   final VideoPlayerObserver? observer;
+
+  /// Optional host-created clock that includes pre-route startup stages.
+  final VideoStartupSession? startupSession;
 
   /// Optional externally owned imperative controller.
   final VideoPlayerController? controller;
@@ -82,6 +86,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   late VideoPlayerController _controller;
   late bool _ownsController;
   late AppLifecycleListener _lifecycleListener;
+  late VideoStartupSession _startupSession;
   final FocusNode _focusNode = FocusNode(debugLabel: 'mg-read-video-player');
 
   VideoContent? _content;
@@ -114,6 +119,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     _ownsController = widget.controller == null;
     _controller = widget.controller ?? VideoPlayerController();
     _controller.attach(this, this);
+    _startupSession = widget.startupSession ?? VideoStartupSession.create();
     _createBackend();
     _lifecycleListener = AppLifecycleListener(onStateChange: _handleLifecycle);
     unawaited(_loadSession());
@@ -150,6 +156,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     await _pauseBackend(reportFailure: false);
     await _flushProgress(force: true);
     if (_disposed || generation != _reloadGeneration) return;
+    _startupSession = VideoStartupSession.create();
     await _loadSession();
   }
 
@@ -174,10 +181,27 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       _exitRequested = false;
     });
 
+    _notifyStartup(
+      VideoStartupPhase.sessionLoadStarted,
+      state: VideoStartupState.started,
+    );
+
+    final progressFuture = _loadProgress(stateStore, contentId, generation);
+
     VideoContent content;
     try {
       content = await dataSource.load(contentId);
+      _notifyStartup(
+        VideoStartupPhase.contentReady,
+        state: VideoStartupState.ready,
+        resourceRole: VideoStartupResourceRole.content,
+      );
     } on VideoPlayerLoadException catch (error) {
+      _notifyStartup(
+        VideoStartupPhase.contentReady,
+        state: VideoStartupState.failed,
+        resourceRole: VideoStartupResourceRole.content,
+      );
       if (!_isCurrentLoad(generation)) return;
       _setFailure(
         VideoPlayerFailure(
@@ -189,6 +213,11 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       );
       return;
     } on Object {
+      _notifyStartup(
+        VideoStartupPhase.contentReady,
+        state: VideoStartupState.failed,
+        resourceRole: VideoStartupResourceRole.content,
+      );
       if (!_isCurrentLoad(generation)) return;
       _setFailure(
         const VideoPlayerFailure(
@@ -213,20 +242,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       return;
     }
 
-    VideoPlaybackProgress? progress;
-    try {
-      progress = await stateStore.load(contentId);
-    } on Object {
-      if (!_isCurrentLoad(generation)) return;
-      _notifyFailure(
-        const VideoPlayerFailure(
-          VideoPlayerFailureKind.persistence,
-          '播放进度恢复失败，将从头开始',
-          code: 'progress_load_failed',
-          location: '恢复播放进度',
-        ),
-      );
-    }
+    final progress = await progressFuture;
     if (!_isCurrentLoad(generation)) return;
     _activeContentId = contentId;
     _activeStateStore = stateStore;
@@ -285,6 +301,12 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       _controlsVisible = true;
     });
 
+    _notifyStartup(
+      VideoStartupPhase.episodeResolutionStarted,
+      state: VideoStartupState.started,
+      resourceRole: VideoStartupResourceRole.episode,
+    );
+
     final resolution = await resolveVideoEpisode(
       dataSource: widget.dataSource,
       contentId: widget.contentId,
@@ -298,12 +320,22 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       return;
     }
     final playableEpisode = resolution.episode!;
+    _notifyStartup(
+      VideoStartupPhase.episodeReady,
+      state: VideoStartupState.ready,
+      resourceRole: VideoStartupResourceRole.episode,
+    );
 
     final backend = _backend;
     final Future<void> operation = _backendCommands.enqueue(() async {
       if (!_isCurrentEpisode(generation) || !identical(backend, _backend)) {
         return;
       }
+      _notifyStartup(
+        VideoStartupPhase.backendOpenStarted,
+        state: VideoStartupState.started,
+        resourceRole: VideoStartupResourceRole.backend,
+      );
       await backend.open(
         playableEpisode,
         initialPosition: _clampPosition(
@@ -312,6 +344,13 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
         ),
         play: play,
       );
+      if (_isCurrentEpisode(generation) && identical(backend, _backend)) {
+        _notifyStartup(
+          VideoStartupPhase.backendOpenCompleted,
+          state: VideoStartupState.completed,
+          resourceRole: VideoStartupResourceRole.backend,
+        );
+      }
     });
     try {
       await operation;
@@ -371,6 +410,11 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
         selectionId != null &&
         _reportedFirstFrameSelection != selectionId) {
       _reportedFirstFrameSelection = selectionId;
+      _notifyStartup(
+        VideoStartupPhase.firstFrame,
+        state: VideoStartupState.completed,
+        resourceRole: VideoStartupResourceRole.surface,
+      );
       _status = VideoPlayerStatus.ready;
       _rebuildAndPublish();
       final observer = widget.observer;
@@ -380,6 +424,56 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       return;
     }
     _rebuildAndPublish();
+  }
+
+  Future<VideoPlaybackProgress?> _loadProgress(
+    VideoPlaybackStateStore stateStore,
+    String contentId,
+    int generation,
+  ) async {
+    try {
+      final progress = await stateStore.load(contentId);
+      if (_isCurrentLoad(generation)) {
+        _notifyStartup(
+          VideoStartupPhase.progressReady,
+          state: VideoStartupState.ready,
+          resourceRole: VideoStartupResourceRole.progress,
+        );
+      }
+      return progress;
+    } on Object {
+      if (_isCurrentLoad(generation)) {
+        _notifyStartup(
+          VideoStartupPhase.progressReady,
+          state: VideoStartupState.failed,
+          resourceRole: VideoStartupResourceRole.progress,
+        );
+        _notifyFailure(
+          const VideoPlayerFailure(
+            VideoPlayerFailureKind.persistence,
+            '播放进度恢复失败，将从头开始',
+            code: 'progress_load_failed',
+            location: '恢复播放进度',
+          ),
+        );
+      }
+      return null;
+    }
+  }
+
+  void _notifyStartup(
+    VideoStartupPhase phase, {
+    required VideoStartupState state,
+    VideoStartupResourceRole? resourceRole,
+  }) {
+    final observer = widget.observer;
+    if (observer == null) return;
+    final event = _startupSession.mark(
+      phase,
+      state: state,
+      resourceRole: resourceRole,
+    );
+    _notify(() => observer.onStartupEvent(event));
   }
 
   @override
@@ -429,6 +523,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     if (content == null) return;
     final selection = videoSelectionById(content.groups, groupId, episodeId);
     if (selection == null) return;
+    _startupSession = VideoStartupSession.create();
     await _openEpisode(
       selection.group,
       selection.episode,

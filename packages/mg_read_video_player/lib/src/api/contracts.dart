@@ -50,6 +50,9 @@ class VideoPlayerObserver {
   /// Creates a no-op observer.
   const VideoPlayerObserver();
 
+  /// Called for bounded monotonic stages on the path to first frame.
+  FutureOr<void> onStartupEvent(VideoStartupEvent event) {}
+
   /// Called after the first real video frame becomes visible.
   FutureOr<void> onFirstFrame(VideoPlayerSnapshot snapshot) {}
 

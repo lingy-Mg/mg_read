@@ -311,6 +311,21 @@ abstract final class AppDiagnosticEvents {
     fields: <String, DiagnosticFieldDefinition>{'fromRoute': _nullableString, 'toRoute': _requiredInstantString, 'navigationType': _string},
   );
 
+  static final DiagnosticEventDefinition videoPlaybackStartup = DiagnosticEventDefinition.instant(
+    name: 'video.playback.startup',
+    component: 'feature.media.video',
+    summary: 'URL-free monotonic stages from playback intent to first frame.',
+    severity: DiagnosticSeverity.debug,
+    fields: <String, DiagnosticFieldDefinition>{
+      'sessionId': _requiredInstantString,
+      'phase': _requiredInstantString,
+      'elapsedMicros': _requiredInstantInt64,
+      'resultState': _requiredInstantString,
+      'resourceRole': _string,
+      'bytes': _int64,
+    },
+  );
+
   static final DiagnosticEventDefinition unhandledError = DiagnosticEventDefinition.instant(
     name: 'app.error.unhandled',
     component: 'app.error',
@@ -671,6 +686,7 @@ abstract final class AppDiagnosticEvents {
     startupStage,
     lifecycleChanged,
     routeChanged,
+    videoPlaybackStartup,
     unhandledError,
     settingsInitialize,
     settingsMutation,
