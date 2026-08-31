@@ -22,6 +22,7 @@ import '../api/contracts.dart';
 import '../api/models.dart';
 import 'video_player_chrome.dart';
 import 'video_player_status_layer.dart';
+import 'video_player_visuals.dart';
 
 final class VideoPlayerStage extends StatelessWidget {
   const VideoPlayerStage({

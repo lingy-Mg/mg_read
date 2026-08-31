@@ -17,6 +17,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../api/models.dart';
+import 'video_player_visuals.dart';
 
 /// First-frame, empty and failure carrier shown above the video surface.
 final class VideoSessionStatusLayer extends StatelessWidget {
@@ -38,22 +39,28 @@ final class VideoSessionStatusLayer extends StatelessWidget {
     final String? failureLocation = snapshot.failure?.location;
     final String? failureCode = snapshot.failure?.code;
     return ColoredBox(
-      color: const Color(0xFF090A0C),
+      color: videoPlayerBackground,
       child: SafeArea(
         child: Stack(
           children: <Widget>[
             Positioned(
               left: 8,
               top: 8,
-              child: IconButton(
-                key: const Key('video-player-status-back'),
-                tooltip: '返回',
-                onPressed: () => unawaited(onExit()),
-                icon: const Icon(Icons.arrow_back_rounded),
+              child: VideoPlayerGlassPanel(
+                borderRadius: BorderRadius.circular(16),
+                child: IconButton(
+                  key: const Key('video-player-status-back'),
+                  tooltip: '返回',
+                  style: IconButton.styleFrom(
+                    foregroundColor: videoPlayerForeground,
+                  ),
+                  onPressed: () => unawaited(onExit()),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                ),
               ),
             ),
             Center(
-              child: Padding(
+              child: VideoPlayerGlassPanel(
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -65,13 +72,13 @@ final class VideoSessionStatusLayer extends StatelessWidget {
                           ? Icons.video_library_outlined
                           : Icons.movie_creation_outlined,
                       size: 52,
-                      color: const Color(0xFFBEC1C7),
+                      color: videoPlayerSecondary,
                     ),
                     const SizedBox(height: 16),
                     if (!failure && !empty)
                       const CircularProgressIndicator(
                         key: Key('video-player-loading'),
-                        color: Color(0xFFFFA43A),
+                        color: videoPlayerAccent,
                       ),
                     if (!failure && !empty) const SizedBox(height: 14),
                     Text(
@@ -82,6 +89,7 @@ final class VideoSessionStatusLayer extends StatelessWidget {
                           : '正在准备视频',
                       key: const Key('video-player-status-message'),
                       textAlign: TextAlign.center,
+                      style: const TextStyle(color: videoPlayerForeground),
                     ),
                     if (failure && failureLocation != null) ...<Widget>[
                       const SizedBox(height: 8),
@@ -89,7 +97,10 @@ final class VideoSessionStatusLayer extends StatelessWidget {
                         '发生位置：$failureLocation',
                         key: const Key('video-player-status-location'),
                         textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 12, color: Color(0xFFBEC1C7)),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: videoPlayerSecondary,
+                        ),
                       ),
                     ],
                     if (failure && failureCode != null) ...<Widget>[
@@ -98,13 +109,20 @@ final class VideoSessionStatusLayer extends StatelessWidget {
                         '诊断编号：$failureCode',
                         key: const Key('video-player-status-code'),
                         textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 12, color: Color(0xFFBEC1C7)),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: videoPlayerSecondary,
+                        ),
                       ),
                     ],
                     if (failure) ...<Widget>[
                       const SizedBox(height: 16),
                       FilledButton.icon(
                         key: const Key('video-player-retry'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: videoPlayerAccent,
+                          foregroundColor: const Color(0xFF111214),
+                        ),
                         onPressed: () => unawaited(onRetry()),
                         icon: const Icon(Icons.refresh_rounded),
                         label: const Text('重试'),
@@ -119,22 +137,6 @@ final class VideoSessionStatusLayer extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Creates the isolated dark visual environment for video chrome.
-ThemeData videoPlayerTheme() {
-  final base = ThemeData(
-    brightness: Brightness.dark,
-    useMaterial3: true,
-    colorSchemeSeed: const Color(0xFFFFA43A),
-  );
-  return base.copyWith(
-    scaffoldBackgroundColor: const Color(0xFF050607),
-    sliderTheme: base.sliderTheme.copyWith(
-      activeTrackColor: const Color(0xFFFFA43A),
-      thumbColor: const Color(0xFFFFA43A),
-    ),
-  );
 }
 
 /// Maps public video fit semantics to Flutter surface layout.

@@ -144,6 +144,29 @@ void main() {
   });
 
   testWidgets(
+    'episode sheet keeps its glass contrast outside the player theme',
+    (WidgetTester tester) async {
+      final backend = _FakeVideoBackend();
+      await tester.pumpWidget(_playerApp(contentId: 'show', backend: backend));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('video-player-episodes')));
+      await tester.pumpAndSettle();
+
+      final selected = tester.widget<ListTile>(
+        find.byKey(const Key('video-player-episode-season-1-episode-1')),
+      );
+      final episodeTitle = tester.widget<Text>(find.text('第 1 集'));
+      expect(selected.selectedTileColor, const Color(0x38FFA43A));
+      expect(episodeTitle.style?.color, const Color(0xFFF7F7F8));
+      expect(
+        tester.widget<BottomSheet>(find.byType(BottomSheet)).backgroundColor,
+        Colors.transparent,
+      );
+    },
+  );
+
+  testWidgets(
     'background pause and Escape flush progress before one host exit',
     (WidgetTester tester) async {
       final backend = _FakeVideoBackend();
@@ -504,7 +527,10 @@ void main() {
 
     expect(find.text('所选集的播放资源暂时无法获取，请稍后重试。'), findsOneWidget);
     expect(find.text('发生位置：请求选集播放资源'), findsOneWidget);
-    expect(find.text('诊断编号：video_episode_resource_load_failed'), findsOneWidget);
+    expect(
+      find.text('诊断编号：video_episode_resource_load_failed'),
+      findsOneWidget,
+    );
   });
 }
 

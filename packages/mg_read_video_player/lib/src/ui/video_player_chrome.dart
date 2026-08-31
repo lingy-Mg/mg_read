@@ -16,11 +16,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../api/models.dart';
-
-const Color _panel = Color(0xE617191C);
-const Color _foreground = Color(0xFFF7F7F8);
-const Color _secondary = Color(0xFFBEC1C7);
-const Color _accent = Color(0xFFFFA43A);
+import 'video_player_visuals.dart';
 
 /// Package-private overlay for one video session.
 final class VideoPlayerChrome extends StatefulWidget {
@@ -84,11 +80,14 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
               minimum: const EdgeInsets.all(8),
               child: Column(
                 children: <Widget>[
-                  _TopBar(
-                    title: snapshot.title,
-                    fullscreen: snapshot.fullscreenRequested,
-                    onExit: widget.onExit,
-                    onFullscreen: widget.onFullscreen,
+                  VideoPlayerGlassPanel(
+                    borderRadius: BorderRadius.circular(18),
+                    child: _TopBar(
+                      title: snapshot.title,
+                      fullscreen: snapshot.fullscreenRequested,
+                      onExit: widget.onExit,
+                      onFullscreen: widget.onFullscreen,
+                    ),
                   ),
                   Expanded(
                     child: Center(
@@ -138,10 +137,10 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
             Expanded(
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: _accent,
+                  activeTrackColor: videoPlayerAccent,
                   inactiveTrackColor: Colors.white24,
-                  thumbColor: _accent,
-                  overlayColor: _accent.withValues(alpha: .16),
+                  thumbColor: videoPlayerAccent,
+                  overlayColor: videoPlayerAccent.withValues(alpha: .16),
                   trackHeight: 3,
                 ),
                 child: Slider(
@@ -177,6 +176,9 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                     key: const Key('video-player-episodes'),
                     tooltip: '选择 ${_episodeLabel(snapshot)}',
                     onPressed: widget.onEpisodes,
+                    style: IconButton.styleFrom(
+                      foregroundColor: videoPlayerForeground,
+                    ),
                     icon: const Icon(Icons.video_library_rounded),
                   ),
                   PopupMenuButton<double>(
@@ -185,12 +187,18 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                     initialValue: snapshot.rate,
                     onSelected: widget.onRate,
                     itemBuilder: _rateItems,
-                    icon: const Icon(Icons.speed_rounded),
+                    icon: const Icon(
+                      Icons.speed_rounded,
+                      color: videoPlayerForeground,
+                    ),
                   ),
                   IconButton(
                     key: const Key('video-player-fit'),
                     tooltip: '画面比例：${_fitLabel(snapshot.fitMode)}',
                     onPressed: widget.onFit,
+                    style: IconButton.styleFrom(
+                      foregroundColor: videoPlayerForeground,
+                    ),
                     icon: const Icon(Icons.aspect_ratio_rounded),
                   ),
                 ],
@@ -206,6 +214,9 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                   TextButton.icon(
                     key: const Key('video-player-episodes'),
                     onPressed: widget.onEpisodes,
+                    style: TextButton.styleFrom(
+                      foregroundColor: videoPlayerForeground,
+                    ),
                     icon: const Icon(Icons.video_library_rounded, size: 19),
                     label: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 180),
@@ -230,29 +241,29 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                   TextButton.icon(
                     key: const Key('video-player-fit'),
                     onPressed: widget.onFit,
+                    style: TextButton.styleFrom(
+                      foregroundColor: videoPlayerForeground,
+                    ),
                     icon: const Icon(Icons.aspect_ratio_rounded, size: 19),
                     label: Text(_fitLabel(snapshot.fitMode)),
                   ),
                 ],
               );
-        return Material(
-          color: _panel,
-          borderRadius: BorderRadius.circular(14),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-            child: compact
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[slider, actions],
-                  )
-                : Row(
-                    children: <Widget>[
-                      Expanded(child: slider),
-                      const SizedBox(width: 8),
-                      actions,
-                    ],
-                  ),
-          ),
+        return VideoPlayerGlassPanel(
+          borderRadius: BorderRadius.circular(18),
+          padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+          child: compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[slider, actions],
+                )
+              : Row(
+                  children: <Widget>[
+                    Expanded(child: slider),
+                    const SizedBox(width: 8),
+                    actions,
+                  ],
+                ),
         );
       },
     );
@@ -269,9 +280,9 @@ final class _ChromeGradient extends StatelessWidget {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: <Color>[
-          Color(0xC9000000),
+          Color(0x92000000),
           Color(0x00000000),
-          Color(0xB8000000),
+          Color(0x92000000),
         ],
         stops: <double>[0, .5, 1],
       ),
@@ -299,6 +310,7 @@ final class _TopBar extends StatelessWidget {
         key: const Key('video-player-back'),
         tooltip: '返回',
         onPressed: onExit,
+        style: IconButton.styleFrom(foregroundColor: videoPlayerForeground),
         icon: const Icon(Icons.arrow_back_rounded),
       ),
       const SizedBox(width: 4),
@@ -309,7 +321,7 @@ final class _TopBar extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: _foreground,
+            color: videoPlayerForeground,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -318,6 +330,7 @@ final class _TopBar extends StatelessWidget {
         key: const Key('video-player-fullscreen'),
         tooltip: fullscreen ? '退出全屏' : '进入全屏',
         onPressed: () => onFullscreen(!fullscreen),
+        style: IconButton.styleFrom(foregroundColor: videoPlayerForeground),
         icon: Icon(
           fullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
         ),
@@ -338,8 +351,7 @@ final class _TransportControls extends StatelessWidget {
   final ValueChanged<Duration> onSkip;
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: Colors.black45,
+  Widget build(BuildContext context) => VideoPlayerGlassPanel(
     borderRadius: BorderRadius.circular(999),
     child: Row(
       mainAxisSize: MainAxisSize.min,
@@ -348,6 +360,7 @@ final class _TransportControls extends StatelessWidget {
           key: const Key('video-player-rewind'),
           tooltip: '后退 10 秒',
           onPressed: () => onSkip(const Duration(seconds: -10)),
+          style: IconButton.styleFrom(foregroundColor: videoPlayerForeground),
           icon: const Icon(Icons.replay_10_rounded),
         ),
         IconButton.filled(
@@ -356,7 +369,7 @@ final class _TransportControls extends StatelessWidget {
           onPressed: onPlayOrPause,
           iconSize: 32,
           style: IconButton.styleFrom(
-            backgroundColor: _foreground,
+            backgroundColor: videoPlayerAccent,
             foregroundColor: const Color(0xFF111214),
           ),
           icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
@@ -365,6 +378,7 @@ final class _TransportControls extends StatelessWidget {
           key: const Key('video-player-forward'),
           tooltip: '前进 10 秒',
           onPressed: () => onSkip(const Duration(seconds: 10)),
+          style: IconButton.styleFrom(foregroundColor: videoPlayerForeground),
           icon: const Icon(Icons.forward_10_rounded),
         ),
       ],
@@ -384,16 +398,16 @@ final class _CompactAction extends StatelessWidget {
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Icon(icon, size: 19),
+        Icon(icon, size: 19, color: videoPlayerForeground),
         const SizedBox(width: 6),
-        Text(label),
+        Text(label, style: const TextStyle(color: videoPlayerForeground)),
       ],
     ),
   );
 }
 
 const TextStyle _timeStyle = TextStyle(
-  color: _secondary,
+  color: videoPlayerSecondary,
   fontSize: 11,
   fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
 );

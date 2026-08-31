@@ -15,6 +15,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../api/models.dart';
+import 'video_player_visuals.dart';
 
 typedef VideoEpisodeChoice = ({String groupId, String episodeId});
 
@@ -25,14 +26,19 @@ Future<VideoEpisodeChoice?> showVideoEpisodeSheet({
   required String? activeEpisodeId,
 }) => showModalBottomSheet<VideoEpisodeChoice>(
   context: context,
-  backgroundColor: const Color(0xFF17191C),
+  backgroundColor: Colors.transparent,
+  barrierColor: const Color(0xA6000000),
+  elevation: 0,
   useSafeArea: true,
-  showDragHandle: true,
+  showDragHandle: false,
   isScrollControlled: true,
-  builder: (_) => _VideoEpisodeSheet(
-    groups: groups,
-    activeGroupId: activeGroupId,
-    activeEpisodeId: activeEpisodeId,
+  builder: (_) => Theme(
+    data: videoPlayerTheme(),
+    child: _VideoEpisodeSheet(
+      groups: groups,
+      activeGroupId: activeGroupId,
+      activeEpisodeId: activeEpisodeId,
+    ),
   ),
 );
 
@@ -71,74 +77,183 @@ final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
   @override
   Widget build(BuildContext context) {
     final group = _group;
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * .82,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-            child: Text('选集', style: Theme.of(context).textTheme.titleLarge),
-          ),
-          if (widget.groups.isNotEmpty)
-            SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              scrollDirection: Axis.horizontal,
+    return VideoPlayerGlassPanel(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * .82,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Align(
+                child: SizedBox(
+                  width: 36,
+                  height: 4,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Color(0x8CFFFFFF),
+                      borderRadius: BorderRadius.all(Radius.circular(99)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
               child: Row(
                 children: <Widget>[
-                  for (final item in widget.groups)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilterChip(
-                        key: Key('video-player-group-${item.id}'),
-                        selected: item.id == _groupId,
-                        label: Text(item.title),
-                        onSelected: (_) => setState(() => _groupId = item.id),
-                      ),
+                  const Icon(
+                    Icons.queue_play_next_rounded,
+                    color: videoPlayerAccent,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '选集',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: videoPlayerForeground,
+                      fontWeight: FontWeight.w700,
                     ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${group?.episodes.length ?? 0} 集',
+                    style: const TextStyle(
+                      color: videoPlayerSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
                 ],
               ),
             ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: group == null || group.episodes.isEmpty
-                ? const Center(child: Text('该分组暂无可播放选集'))
-                : ListView.separated(
-                    itemCount: group.episodes.length,
-                    separatorBuilder: (_, _) =>
-                        const Divider(height: 1, color: Colors.white10),
-                    itemBuilder: (BuildContext context, int index) {
-                      final episode = group.episodes[index];
-                      final selected =
-                          group.id == widget.activeGroupId &&
-                          episode.id == widget.activeEpisodeId;
-                      return ListTile(
-                        key: Key(
-                          'video-player-episode-${group.id}-${episode.id}',
-                        ),
-                        selected: selected,
-                        selectedColor: const Color(0xFFFFA43A),
-                        leading: Icon(
-                          selected
-                              ? Icons.play_circle_fill_rounded
-                              : Icons.play_circle_outline_rounded,
-                        ),
-                        title: Text(
-                          episode.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        onTap: () => Navigator.of(
-                          context,
-                        ).pop((groupId: group.id, episodeId: episode.id)),
-                      );
-                    },
-                  ),
-          ),
-        ],
+            if (widget.groups.isNotEmpty)
+              SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: <Widget>[
+                    for (final item in widget.groups)
+                      _GroupChip(
+                        group: item,
+                        selected: item.id == _groupId,
+                        onSelected: () => setState(() => _groupId = item.id),
+                      ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: group == null || group.episodes.isEmpty
+                  ? const Center(
+                      child: Text(
+                        '该分组暂无可播放选集',
+                        style: TextStyle(color: videoPlayerSecondary),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(12, 2, 12, 16),
+                      itemCount: group.episodes.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 4),
+                      itemBuilder: (BuildContext context, int index) {
+                        final episode = group.episodes[index];
+                        final selected =
+                            group.id == widget.activeGroupId &&
+                            episode.id == widget.activeEpisodeId;
+                        return Material(
+                          color: Colors.transparent,
+                          child: ListTile(
+                            key: Key(
+                              'video-player-episode-${group.id}-${episode.id}',
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              side: BorderSide(
+                                color: selected
+                                    ? const Color(0x70FFA43A)
+                                    : const Color(0x1FFFFFFF),
+                              ),
+                            ),
+                            tileColor: const Color(0x14000000),
+                            selectedTileColor: videoPlayerSelectedSurface,
+                            selected: selected,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 3,
+                            ),
+                            leading: Icon(
+                              selected
+                                  ? Icons.play_circle_fill_rounded
+                                  : Icons.play_circle_outline_rounded,
+                              color: selected
+                                  ? videoPlayerAccent
+                                  : videoPlayerSecondary,
+                            ),
+                            title: Text(
+                              episode.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: videoPlayerForeground,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            trailing: selected
+                                ? const Icon(
+                                    Icons.graphic_eq_rounded,
+                                    color: videoPlayerAccent,
+                                  )
+                                : null,
+                            onTap: () => Navigator.of(
+                              context,
+                            ).pop((groupId: group.id, episodeId: episode.id)),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+final class _GroupChip extends StatelessWidget {
+  const _GroupChip({
+    required this.group,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final VideoEpisodeGroup group;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(right: 8),
+    child: FilterChip(
+      key: Key('video-player-group-${group.id}'),
+      selected: selected,
+      showCheckmark: false,
+      backgroundColor: const Color(0x1FFFFFFF),
+      selectedColor: videoPlayerAccent,
+      side: BorderSide(
+        color: selected ? videoPlayerAccent : const Color(0x36FFFFFF),
+      ),
+      label: Text(
+        group.title,
+        style: TextStyle(
+          color: selected ? const Color(0xFF111214) : videoPlayerForeground,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      avatar: selected
+          ? const Icon(Icons.check_rounded, size: 17, color: Color(0xFF111214))
+          : null,
+      onSelected: (_) => onSelected(),
+    ),
+  );
 }
