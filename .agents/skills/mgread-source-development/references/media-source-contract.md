@@ -17,7 +17,8 @@
 | 宿主选择 | 队列与当前章节 | `groupId + episodeId` |
 
 音频和视频分别实现、分别验证，不抽成通用媒体源。视频 group 可表示季、线路或版本，Runtime/UI 不写死语义；
-存在 groups 时，全部 episode 必须与扁平 items 一一对应。
+存在 groups 时，全部 episode 必须与扁平 items 一一对应。详情与播放器都按 `groups[]` 展示并切换分组；宿主
+中间投影不得只复制 `items` 而丢失 `groups`，仅在来源确实没有分组时才用扁平 items 兼容。
 
 ## 播放资源
 

@@ -60,7 +60,7 @@ test('fixture flow covers discovery, search, detail, neutral groups and both pla
     id: null, title: '更新至第02集', updatedAt: null, url: null,
   });
   const catalog = await plugin.getChapters({ id: info.id });
-  assert.deepEqual(catalog.groups.map((group) => group.title), ['线路 5', '线路 3']);
+  assert.deepEqual(catalog.groups.map((group) => group.title), ['Laoz', 'Diff']);
   assert.deepEqual(catalog.groups.map((group) => group.episodes.length), [2, 2]);
   assert.equal(catalog.items.length, 4);
   const detailRequestsBeforePlayback = requests.filter((url) => url.pathname === '/v/101.html').length;

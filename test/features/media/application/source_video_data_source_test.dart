@@ -32,6 +32,19 @@ void main() {
     expect(episode.httpHeaders['Referer'], 'https://source.example/');
   });
 
+  test('preserves source groups for the player and resolves inside the selected group', () async {
+    final gateway = _VideoGateway(failEpisodeResource: false, grouped: true);
+    final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId);
+
+    final content = await source.load('video-1');
+
+    expect(content.groups.map((group) => group.title), <String>['Laoz', 'Diff']);
+    expect(content.groups.map((group) => group.episodes.single.id), <String>['episode-1', 'episode-2']);
+    final episode = await source.loadEpisode('video-1', groupId: 'diff', episodeId: 'episode-2');
+    expect(episode.id, 'episode-2');
+    expect(gateway.contentCalls, <String>['episode-2']);
+  });
+
   test('redacts a selected video resource failure with a stable location', () async {
     final gateway = _VideoGateway(failEpisodeResource: true);
     final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId);
@@ -68,10 +81,11 @@ void main() {
 const _pluginId = 'org.example.video';
 
 final class _VideoGateway implements SourceContentGateway {
-  _VideoGateway({required this.failEpisodeResource, this.episodeFailureCode});
+  _VideoGateway({required this.failEpisodeResource, this.episodeFailureCode, this.grouped = false});
 
   final bool failEpisodeResource;
   final AppErrorCode? episodeFailureCode;
+  final bool grouped;
   final List<String> contentCalls = <String>[];
 
   @override
@@ -103,23 +117,21 @@ final class _VideoGateway implements SourceContentGateway {
   );
 
   @override
-  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async => PluginChaptersResult(
-    pluginId: pluginId,
-    sourceName: '示例视频源',
-    items: <PluginChapterSummary>[
-      PluginChapterSummary(
-        id: 'episode-1',
-        title: '第 1 集',
-        order: 0,
-        url: null,
-        volumeTitle: null,
-        wordCount: null,
-        updatedAt: null,
-        isLocked: false,
-        attributes: const <PluginContentAttribute>[],
-      ),
-    ],
-  );
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async {
+    final first = _episode(id: 'episode-1', title: '第 1 集', order: 0, group: grouped ? 'Laoz' : null);
+    final second = _episode(id: 'episode-2', title: '第 2 集', order: 0, group: 'Diff');
+    return PluginChaptersResult(
+      pluginId: pluginId,
+      sourceName: '示例视频源',
+      items: <PluginChapterSummary>[first, if (grouped) second],
+      groups: grouped
+          ? <PluginMediaGroup>[
+              PluginMediaGroup(id: 'laoz', title: 'Laoz', order: 0, episodes: <PluginChapterSummary>[first]),
+              PluginMediaGroup(id: 'diff', title: 'Diff', order: 1, episodes: <PluginChapterSummary>[second]),
+            ]
+          : const <PluginMediaGroup>[],
+    );
+  }
 
   @override
   Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async {
@@ -167,3 +179,16 @@ final class _VideoGateway implements SourceContentGateway {
   Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) =>
       throw UnimplementedError();
 }
+
+PluginChapterSummary _episode({required String id, required String title, required int order, required String? group}) =>
+    PluginChapterSummary(
+      id: id,
+      title: title,
+      order: order,
+      url: null,
+      volumeTitle: group,
+      wordCount: null,
+      updatedAt: null,
+      isLocked: false,
+      attributes: const <PluginContentAttribute>[],
+    );

@@ -28,11 +28,12 @@ test('live public flow reaches discovery, search, detail, catalog and playback r
   assert.ok(items.every((item) => item.content.coverUrl !== null));
   assert.ok(items.every((item) => item.content.coverOrientation === 'portrait'));
   const first = items[0].content;
-  const search = await plugin.search({ query: first.title, cursor: null, pageSize: 3 });
+  const search = await plugin.search({ query: '海贼王', cursor: null, pageSize: 3 });
   assert.ok(search.items.length > 0);
   const detail = await plugin.getDetail({ id: first.id });
   const catalog = await plugin.getChapters({ id: detail.id });
   assert.ok(catalog.groups.length > 0);
+  assert.ok(catalog.groups.every((group) => group.title.trim() !== '' && !/^线路 \d+$/u.test(group.title)));
   assert.equal(catalog.items.length, catalog.groups.reduce((count, group) => count + group.episodes.length, 0));
   const content = await plugin.getContent({ id: detail.id, chapterId: catalog.items[0].id });
   assert.equal(content.contentKind, 'video');

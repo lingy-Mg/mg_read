@@ -266,6 +266,7 @@ function summary(
 }
 
 function parseGroups(html: string, id: string) {
+  const groupTitles = groupTitlesByLine(html, id, parseGroupTitles(html));
   const byLine = new Map<number, { episode: number; title: string }[]>();
   const seen = new Set<string>();
   for (const match of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/giu)) {
@@ -284,7 +285,7 @@ function parseGroups(html: string, id: string) {
   }
   const groups = [...byLine.entries()].map(([line, entries], groupOrder) => {
     entries.sort((left, right) => left.episode - right.episode);
-    const groupTitle = `线路 ${line}`;
+    const groupTitle = groupTitles.get(line) ?? `线路 ${line}`;
     const episodes = entries.map((entry, order) => frozen({
       id: `video:${id}:${line}:${entry.episode}`,
       title: entry.title,
@@ -300,6 +301,33 @@ function parseGroups(html: string, id: string) {
   });
   if (groups.length === 0) throw new Error('No playable episodes found.');
   return groups;
+}
+
+function parseGroupTitles(html: string): string[] {
+  const titles: string[] = [];
+  for (const match of html.matchAll(/<div\b([^>]*class=["'][^"']*module-tab-item[^"']*["'][^>]*)>([\s\S]*?)<\/div>/giu)) {
+    const value = attribute(match[1] ?? '', 'data-dropdown-value') ||
+      firstText(match[2] ?? '', /<span\b[^>]*>([\s\S]*?)<\/span>/iu) ||
+      strip(match[2] ?? '').replace(/\d+$/u, '').trim();
+    if (value !== '' && value.length <= 80) titles.push(value);
+  }
+  return titles;
+}
+
+function groupTitlesByLine(html: string, id: string, titles: string[]): Map<number, string> {
+  const starts = [...html.matchAll(/<div\b([^>]*)>/giu)]
+    .filter((match) => attribute(match[1] ?? '', 'class').split(/\s+/u).includes('module-play-list'))
+    .map((match) => match.index);
+  const byLine = new Map<number, string>();
+  for (let index = 0; index < starts.length; index += 1) {
+    const title = titles[index];
+    if (title === undefined) continue;
+    const start = starts[index] ?? 0;
+    const end = starts[index + 1] ?? html.length;
+    const line = Number(new RegExp(`/p/${id}-(\\d+)-\\d+\\.html`, 'iu').exec(html.slice(start, end))?.[1]);
+    if (Number.isSafeInteger(line)) byLine.set(line, title);
+  }
+  return byLine;
 }
 
 function parsePlayerData(html: string): Json {

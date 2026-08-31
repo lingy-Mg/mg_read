@@ -32,6 +32,7 @@ import 'package:mg_read/features/library/presentation/widgets/bookshelf_removal_
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 part 'source_content_detail_sections.dart';
+part 'source_content_detail_catalog.dart';
 part 'source_content_detail_loading.dart';
 part 'source_content_detail_deferred.dart';
 
@@ -600,6 +601,7 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
         pluginId: widget.bundle.chapters.pluginId,
         sourceName: widget.bundle.chapters.sourceName,
         items: _chapters,
+        groups: widget.bundle.chapters.groups,
       ),
     ),
     gateway: widget.gateway,
@@ -846,40 +848,28 @@ class _SourceDetailBody extends StatelessWidget {
             ),
           ),
         ],
-        const SizedBox(height: AppSpacing.section),
-        Divider(color: tokens.divider, height: 1),
-        const SizedBox(height: AppSpacing.comfortable),
-        Text('目录', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-        if (isRefreshing && bundle.chapters.items.isEmpty) ...<Widget>[
-          const SizedBox(height: AppSpacing.compact),
-          const _DetailShimmerBlock(height: 12, widthFactor: .22),
-          const SizedBox(height: AppSpacing.comfortable),
-          const _DetailLoadingChapterRows(),
-        ] else
-          Text(chapterTotal == null ? '暂无章节' : '共 $chapterTotal 章', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
-        for (final chapter in bundle.chapters.items.take(visibleChapterCount))
-          _ChapterRow(
-            chapter: chapter,
-            onRead: () => unawaited(
-              _openTextChapter(
-                context,
-                gateway: gateway,
-                detail: detail,
-                firstCatalogPage: bundle.chapters,
-                chapter: chapter,
-                onTextChapterRequested: onTextChapterRequested,
-                onComicChapterRequested: onComicChapterRequested,
-                onAudioChapterRequested: onAudioChapterRequested,
-                onVideoEpisodeRequested: onVideoEpisodeRequested,
-              ),
+        _DetailCatalogSection(
+          catalog: bundle.chapters,
+          contentKind: content.contentKind,
+          isRefreshing: isRefreshing,
+          chapterTotal: chapterTotal,
+          visibleChapterCount: visibleChapterCount,
+          onLoadMore: onLoadMore,
+          onChapterSelected: (chapter) => unawaited(
+            _openTextChapter(
+              context,
+              gateway: gateway,
+              detail: detail,
+              firstCatalogPage: bundle.chapters,
+              chapter: chapter,
+              onTextChapterRequested: onTextChapterRequested,
+              onComicChapterRequested: onComicChapterRequested,
+              onAudioChapterRequested: onAudioChapterRequested,
+              onVideoEpisodeRequested: onVideoEpisodeRequested,
             ),
-            onOpenUrl: _openUrl,
           ),
-        if (onLoadMore != null)
-          Padding(
-            padding: const EdgeInsets.only(top: AppSpacing.regular),
-            child: OutlinedButton(key: const Key('source-detail-load-more-chapters'), onPressed: onLoadMore, child: const Text('加载更多章节')),
-          ),
+          onOpenUrl: _openUrl,
+        ),
       ],
     );
   }
