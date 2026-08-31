@@ -106,12 +106,13 @@ void main() {
     const stackTrace = '#0 refresh (library_book_refresh_operation.dart:42)\n#1 callback (library_page.dart:166)';
     final event = _event(
       severity: DiagnosticSeverity.error,
-      eventName: 'library.operation.error',
-      component: 'core.content-library',
+      eventName: 'runtime.facade.call.error',
+      component: 'feature.plugins',
       phase: DiagnosticPhase.terminal,
       outcome: DiagnosticOutcome.error,
       attributes: <String, DiagnosticValue>{
-        'operation': DiagnosticValue.string('bookshelfRefresh'),
+        'capability': DiagnosticValue.string('source.discover.v1'),
+        'pluginId': DiagnosticValue.string('org.mgread.example'),
         'errorCode': DiagnosticValue.string('refresh_failed'),
         'errorText': DiagnosticValue.string(errorText),
         'stackTrace': DiagnosticValue.string(stackTrace),
@@ -120,6 +121,7 @@ void main() {
 
     expect(formatter.format(event), contains(errorText));
     expect(formatter.format(event), contains(stackTrace));
+    expect(formatter.format(event), contains('pluginId=org.mgread.example'));
   });
 }
 

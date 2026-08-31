@@ -51,6 +51,7 @@ final class DiagnosticConsoleFormatter {
       'stage',
       'operation',
       'capability',
+      'pluginId',
       'toRoute',
       'resultState',
       'errorCode',

@@ -228,12 +228,59 @@ void main() {
     final failure = navigationEvents.firstWhere((event) => event.eventName == 'discovery.navigation.error');
     expect(failure.attributes.values['resultState'], DiagnosticStringValue('failure'));
     expect(failure.attributes.values['navigationDepth'], DiagnosticInt64Value('1'));
+    expect(failure.attributes.values['capability'], DiagnosticStringValue('source.discover.v1'));
+    expect(failure.attributes.values['pluginId'], DiagnosticStringValue(_TreeGateway._pluginId));
     expect(failure.attributes.values['errorLocation'], DiagnosticStringValue('source.discover.v1 / runtime.response.validation'));
     expect(
       failure.attributes.values['errorText'],
       DiagnosticStringValue('Response validation failed at the inline payload budget: 64000 bytes exceeds the 57344-byte limit.'),
     );
     expect(failure.attributes.values['stackTrace'], isA<DiagnosticStringValue>());
+  });
+
+  test('a stale diagnostic schema cannot replace the original source error', () async {
+    const stringField = DiagnosticFieldDefinition(type: DiagnosticFieldType.string);
+    const intField = DiagnosticFieldDefinition(type: DiagnosticFieldType.int64);
+    final staleDefinition = DiagnosticEventDefinition.span(
+      name: 'discovery.navigation',
+      component: 'feature.discovery',
+      summary: 'Stale hot-reload discovery schema.',
+      schemaVersion: AppDiagnosticEvents.discoveryNavigation.schemaVersion,
+      fields: <String, DiagnosticFieldDefinition>{
+        'operation': stringField,
+        'requestGeneration': intField,
+        'navigationDepth': intField,
+        'itemCount': intField,
+        'resultState': stringField,
+        'errorCode': stringField,
+        'errorLocation': stringField,
+        'errorText': stringField,
+        'stackTrace': intField,
+      },
+      maxAttributeBytes: 64 * 1024,
+    );
+    final diagnostics = DiagnosticsTestkit(registry: DiagnosticEventRegistry(<DiagnosticEventDefinition>[staleDefinition]));
+    addTearDown(diagnostics.dispose);
+    final gateway = _TreeGateway()
+      ..failFirstBrokenCategory = true
+      ..brokenCategoryError = AppError.fromCode(
+        AppErrorCode.invalidFormat,
+        detail: 'Original Runtime validation detail.',
+        location: 'pluginId=${_TreeGateway._pluginId} / capability=source.discover.v1 / runtime.response.validation',
+      );
+    final container = _container(gateway, diagnostics: diagnostics);
+    addTearDown(container.dispose);
+    final listener = container.listen<DiscoveryPageState>(discoveryPageControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(listener.close);
+    await _waitUntil(() => _isLoaded(container));
+
+    await expectLater(container.read(discoveryPageControllerProvider.notifier).openCategory('category:broken'), completes);
+
+    final state = container.read(discoveryPageControllerProvider);
+    expect(state.status, DiscoveryPageStatus.failure);
+    expect(state.error?.code, AppErrorCode.invalidFormat);
+    expect(state.error?.detail, 'Original Runtime validation detail.');
+    expect(state.error?.location, contains('pluginId=${_TreeGateway._pluginId}'));
   });
 
   test('current development source update returns discovery to its root', () async {

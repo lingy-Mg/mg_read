@@ -6,7 +6,7 @@
 ///
 /// 注意：
 /// - 返回或新请求必须先让旧请求失效，不能让旧结果重开子页。
-/// - target 是数据源不透明标识，不记录其内容到诊断。
+/// - target 是数据源不透明标识，不记录其内容；诊断仅记录插件 ID 与公开 capability。
 ///
 library;
 
@@ -39,7 +39,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   int _latestGeneration = 0;
   int? _pendingCategoryGeneration;
   bool _disposed = false;
-  DiagnosticSpanHandle? _activeLoadSpan;
+  _ActiveDiscoveryLoad? _activeLoad;
 
   @override
   DiscoveryPageState build() {
@@ -259,8 +259,9 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
         : push
         ? _stack.length
         : _stack.length - 1;
+    final definition = _diagnostics.registry.requireDefinition(AppDiagnosticEvents.discoveryNavigation);
     final span = _diagnostics.startSpan(
-      AppDiagnosticEvents.discoveryNavigation,
+      definition,
       attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
         'operation': DiagnosticValue.string(
           push
@@ -269,12 +270,21 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
               ? 'replace'
               : 'load',
         ),
+        if (definition.fields.containsKey('capability')) 'capability': DiagnosticValue.string('source.discover.v1'),
+        if (definition.fields.containsKey('pluginId')) 'pluginId': DiagnosticValue.string(pluginId),
         'requestGeneration': DiagnosticValue.int64(requestGeneration),
         'navigationDepth': DiagnosticValue.int64(navigationDepth),
         'resultState': DiagnosticValue.string('loading'),
       }),
     );
-    _activeLoadSpan = span;
+    final load = _ActiveDiscoveryLoad(
+      span: span,
+      pluginId: pluginId,
+      capability: 'source.discover.v1',
+      requestGeneration: requestGeneration,
+      navigationDepth: navigationDepth,
+    );
+    _activeLoad = load;
     _pendingCategoryGeneration = push ? requestGeneration : null;
     state = DiscoveryPageState.loadingContent(
       sources: availableSources,
@@ -289,7 +299,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       final result = await _gateway.discover(pluginId: pluginId, target: target);
       if (!_isCurrent(requestGeneration) || result is! PluginDiscoveryDocumentResult) {
         _clearPendingCategory(requestGeneration);
-        _endLoad(span, DiagnosticOutcome.cancelled, navigationDepth: navigationDepth);
+        _endLoad(load, DiagnosticOutcome.cancelled);
         return;
       }
       _clearPendingCategory(requestGeneration);
@@ -308,10 +318,10 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
           ..add(entry);
       }
       _publish(result, sources: availableSources, selectedSourceId: pluginId);
-      _endLoad(span, DiagnosticOutcome.success, itemCount: _documentItemCount(result.document), navigationDepth: navigationDepth);
+      _endLoad(load, DiagnosticOutcome.success, itemCount: _documentItemCount(result.document));
     } on Object catch (error, stackTrace) {
       if (!_isCurrent(requestGeneration)) {
-        _endLoad(span, DiagnosticOutcome.cancelled, navigationDepth: navigationDepth);
+        _endLoad(load, DiagnosticOutcome.cancelled);
         return;
       }
       _clearPendingCategory(requestGeneration);
@@ -319,7 +329,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       final current = _stack.lastOrNull;
       if (!push && current != null && state.selectedSourceId == pluginId) {
         _publish(current.document);
-        _endLoad(span, _outcomeFor(appError), error: appError, stackTrace: stackTrace, navigationDepth: navigationDepth);
+        _endLoad(load, _outcomeFor(appError), error: appError, stackTrace: stackTrace);
         return;
       }
       state = DiscoveryPageState.failure(
@@ -332,7 +342,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
         previousResult: push ? parent?.document : null,
         retainedParents: _stack.map((entry) => entry.document),
       );
-      _endLoad(span, _outcomeFor(appError), error: appError, stackTrace: stackTrace, navigationDepth: navigationDepth);
+      _endLoad(load, _outcomeFor(appError), error: appError, stackTrace: stackTrace);
     }
   }
 
@@ -364,35 +374,34 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   }
 
   void _endActiveLoad(DiagnosticOutcome outcome) {
-    final span = _activeLoadSpan;
-    _activeLoadSpan = null;
-    if (span != null && !span.isEnded) _endLoad(span, outcome, navigationDepth: state.navigationDepth);
+    final load = _activeLoad;
+    _activeLoad = null;
+    if (load != null && !load.span.isEnded) _endLoad(load, outcome);
   }
 
-  void _endLoad(
-    DiagnosticSpanHandle span,
-    DiagnosticOutcome outcome, {
-    int? itemCount,
-    AppError? error,
-    StackTrace? stackTrace,
-    int? navigationDepth,
-  }) {
-    if (identical(_activeLoadSpan, span)) _activeLoadSpan = null;
-    if (span.isEnded) return;
-    span.end(
-      outcome,
-      attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-        'operation': DiagnosticValue.string('document'),
-        'requestGeneration': DiagnosticValue.int64(_latestGeneration),
-        'navigationDepth': DiagnosticValue.int64(navigationDepth ?? state.navigationDepth),
-        'resultState': DiagnosticValue.string(_diagnosticResultState(outcome)),
-        if (itemCount != null) 'itemCount': DiagnosticValue.int64(itemCount),
-        if (error != null) 'errorCode': DiagnosticValue.string(error.code.wireValue),
-        if (error?.location != null) 'errorLocation': DiagnosticValue.string(error!.location!),
-        if (error?.detail != null) 'errorText': DiagnosticValue.string(error!.detail!),
-        if (stackTrace != null) 'stackTrace': DiagnosticValue.string(stackTrace.toString()),
-      }),
-    );
+  void _endLoad(_ActiveDiscoveryLoad load, DiagnosticOutcome outcome, {int? itemCount, AppError? error, StackTrace? stackTrace}) {
+    if (identical(_activeLoad, load)) _activeLoad = null;
+    if (load.span.isEnded) return;
+    final fields = load.span.definition.fields;
+    final attributes = DiagnosticObjectValue(<String, DiagnosticValue>{
+      'operation': DiagnosticValue.string('document'),
+      if (fields.containsKey('capability')) 'capability': DiagnosticValue.string(load.capability),
+      if (fields.containsKey('pluginId')) 'pluginId': DiagnosticValue.string(load.pluginId),
+      'requestGeneration': DiagnosticValue.int64(load.requestGeneration),
+      'navigationDepth': DiagnosticValue.int64(load.navigationDepth),
+      'resultState': DiagnosticValue.string(_diagnosticResultState(outcome)),
+      if (itemCount != null) 'itemCount': DiagnosticValue.int64(itemCount),
+      if (error != null) 'errorCode': DiagnosticValue.string(error.code.wireValue),
+      if (error?.location != null && fields.containsKey('errorLocation')) 'errorLocation': DiagnosticValue.string(error!.location!),
+      if (error?.detail != null && fields.containsKey('errorText')) 'errorText': DiagnosticValue.string(error!.detail!),
+      if (stackTrace != null && fields.containsKey('stackTrace')) 'stackTrace': DiagnosticValue.string(stackTrace.toString()),
+    });
+    try {
+      load.span.end(outcome, attributes: attributes);
+    } on Object {
+      // Diagnostics are best effort. A stale hot-reload schema must not escape
+      // this controller and replace the source error already stored in state.
+    }
   }
 }
 
@@ -411,6 +420,22 @@ DiagnosticOutcome _outcomeFor(AppError error) => switch (error.code) {
   AppErrorCode.overloaded => DiagnosticOutcome.overloaded,
   _ => DiagnosticOutcome.error,
 };
+
+final class _ActiveDiscoveryLoad {
+  const _ActiveDiscoveryLoad({
+    required this.span,
+    required this.pluginId,
+    required this.capability,
+    required this.requestGeneration,
+    required this.navigationDepth,
+  });
+
+  final DiagnosticSpanHandle span;
+  final String pluginId;
+  final String capability;
+  final int requestGeneration;
+  final int navigationDepth;
+}
 
 final class _DiscoveryNavigationEntry {
   const _DiscoveryNavigationEntry({required this.target, required this.document});

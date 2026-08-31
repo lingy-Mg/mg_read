@@ -1,13 +1,8 @@
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 
 final class RecordingDiagnosticEventSink implements DiagnosticEventSink {
-  RecordingDiagnosticEventSink({
-    this.minimumSeverity = DiagnosticSeverity.trace,
-    this.maximumEvents,
-    Set<String>? enabledComponents,
-  }) : enabledComponents = enabledComponents == null
-           ? null
-           : Set<String>.unmodifiable(enabledComponents);
+  RecordingDiagnosticEventSink({this.minimumSeverity = DiagnosticSeverity.trace, this.maximumEvents, Set<String>? enabledComponents})
+    : enabledComponents = enabledComponents == null ? null : Set<String>.unmodifiable(enabledComponents);
 
   final DiagnosticSeverity minimumSeverity;
   final int? maximumEvents;
@@ -17,14 +12,8 @@ final class RecordingDiagnosticEventSink implements DiagnosticEventSink {
   bool closed = false;
 
   @override
-  bool isEnabled({
-    required String component,
-    required DiagnosticSeverity severity,
-    required DiagnosticPayloadKind payloadKind,
-  }) =>
-      !closed &&
-      severity.index >= minimumSeverity.index &&
-      (enabledComponents == null || enabledComponents!.contains(component));
+  bool isEnabled({required String component, required DiagnosticSeverity severity, required DiagnosticPayloadKind payloadKind}) =>
+      !closed && severity.index >= minimumSeverity.index && (enabledComponents == null || enabledComponents!.contains(component));
 
   @override
   bool add(DiagnosticEvent event) {
@@ -48,8 +37,7 @@ final class RecordingDiagnosticEventSink implements DiagnosticEventSink {
 }
 
 final class SequentialDiagnosticIdGenerator implements DiagnosticIdGenerator {
-  SequentialDiagnosticIdGenerator({int initialValue = 0})
-    : _next = initialValue;
+  SequentialDiagnosticIdGenerator({int initialValue = 0}) : _next = initialValue;
 
   int _next;
 
@@ -61,8 +49,7 @@ final class SequentialDiagnosticIdGenerator implements DiagnosticIdGenerator {
 }
 
 final class FixedDiagnosticClock implements DiagnosticClock {
-  FixedDiagnosticClock({int initialMicros = 1700000000000000})
-    : _micros = initialMicros;
+  FixedDiagnosticClock({int initialMicros = 1700000000000000}) : _micros = initialMicros;
 
   int _micros;
 
@@ -88,16 +75,11 @@ final class MutableDiagnosticClock implements DiagnosticClock {
 }
 
 final class DiagnosticsTestkit {
-  DiagnosticsTestkit({
-    DiagnosticSeverity minimumSeverity = DiagnosticSeverity.trace,
-    int? maximumEvents,
-  }) : sink = RecordingDiagnosticEventSink(
-         minimumSeverity: minimumSeverity,
-         maximumEvents: maximumEvents,
-       ) {
+  DiagnosticsTestkit({DiagnosticSeverity minimumSeverity = DiagnosticSeverity.trace, int? maximumEvents, DiagnosticEventRegistry? registry})
+    : sink = RecordingDiagnosticEventSink(minimumSeverity: minimumSeverity, maximumEvents: maximumEvents) {
     manager = DiagnosticsManager(
       sink: sink,
-      registry: AppDiagnosticEvents.registry,
+      registry: registry ?? AppDiagnosticEvents.registry,
       source: DiagnosticSource.app,
       idGenerator: SequentialDiagnosticIdGenerator(),
       clock: FixedDiagnosticClock(),

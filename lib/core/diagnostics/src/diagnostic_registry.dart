@@ -406,8 +406,11 @@ abstract final class AppDiagnosticEvents {
     name: 'discovery.navigation',
     component: 'feature.discovery',
     summary: 'Discovery internal page navigation and document load.',
+    schemaVersion: 2,
     fields: <String, DiagnosticFieldDefinition>{
       'operation': _string,
+      'capability': _string,
+      'pluginId': _string,
       'requestGeneration': _int64,
       'navigationDepth': _int64,
       'itemCount': _int64,
@@ -501,8 +504,10 @@ abstract final class AppDiagnosticEvents {
     name: 'runtime.facade.call',
     component: 'feature.plugins',
     summary: 'Versioned Runtime Facade capability call.',
+    schemaVersion: 2,
     fields: <String, DiagnosticFieldDefinition>{
       'capability': _string,
+      'pluginId': _string,
       'attempt': _int64,
       'pluginCount': _int64,
       'resultCount': _int64,

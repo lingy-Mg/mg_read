@@ -107,6 +107,7 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
   Future<PluginSearchResult> search({required String pluginId, required String query, String? cursor, int pageSize = 20}) {
     return _invoke(
       capability: 'source.search.v1',
+      pluginId: pluginId,
       action: () => _runtime.invoke(SourceSearchInvocation(pluginId: pluginId, query: query, cursor: cursor, pageSize: pageSize)),
       resultCount: (result) => result.items.length,
     );
@@ -116,6 +117,7 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
   Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) {
     return _invoke(
       capability: 'source.searchSuggestions.v1',
+      pluginId: pluginId,
       action: () => _runtime.invoke(SourceSearchSuggestionsInvocation(pluginId: pluginId, cursor: cursor, pageSize: pageSize)),
       resultCount: (result) => result.items.length,
     );
@@ -131,6 +133,7 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
   }) {
     return _invoke(
       capability: 'source.discover.v1',
+      pluginId: pluginId,
       action: () => _runtime.invoke(
         SourceDiscoverInvocation(pluginId: pluginId, target: target, cursor: cursor, collectionId: collectionId, pageSize: pageSize),
       ),
@@ -145,6 +148,7 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
   Future<PluginContentDetail> getDetail({required String pluginId, required String id}) {
     return _invoke(
       capability: 'source.getDetail.v1',
+      pluginId: pluginId,
       action: () => _runtime.invoke(SourceDetailInvocation(pluginId: pluginId, id: id)),
       resultCount: (_) => 1,
     );
@@ -154,6 +158,7 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
   Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) {
     return _invoke(
       capability: 'source.getChapters.v1',
+      pluginId: pluginId,
       action: () => _runtime.invoke(SourceChaptersInvocation(pluginId: pluginId, id: id)),
       resultCount: (result) => result.items.length,
     );
@@ -163,6 +168,7 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
   Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) {
     return _invoke(
       capability: 'source.getContent.v1',
+      pluginId: pluginId,
       action: () => _runtime.invoke(SourceContentInvocation(pluginId: pluginId, id: id, chapterId: chapterId)),
       resultCount: (result) => switch (result.contentKind) {
         PluginContentKind.novel => 1,
@@ -176,12 +182,15 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
     required String capability,
     required Future<T> Function() action,
     required int Function(T result) resultCount,
+    String? pluginId,
     String countField = 'resultCount',
   }) async {
+    final definition = _diagnostics.registry.requireDefinition(AppDiagnosticEvents.runtimeFacadeCall);
     final span = _diagnostics.startSpan(
-      AppDiagnosticEvents.runtimeFacadeCall,
+      definition,
       attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
         'capability': DiagnosticValue.string(capability),
+        if (pluginId != null && definition.fields.containsKey('pluginId')) 'pluginId': DiagnosticValue.string(pluginId),
         'attempt': DiagnosticValue.int64(1),
         'resultState': DiagnosticValue.string('loading'),
       }),
@@ -190,9 +199,12 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
     try {
       final result = await action();
       final count = resultCount(result);
-      span.complete(
-        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+      _endSpanSafely(
+        span,
+        DiagnosticOutcome.success,
+        DiagnosticObjectValue(<String, DiagnosticValue>{
           'capability': DiagnosticValue.string(capability),
+          if (pluginId != null && span.definition.fields.containsKey('pluginId')) 'pluginId': DiagnosticValue.string(pluginId),
           'attempt': DiagnosticValue.int64(1),
           countField: DiagnosticValue.int64(count),
           'resultState': DiagnosticValue.string(count == 0 ? 'empty' : 'content'),
@@ -201,25 +213,40 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
       _reportSlow(capability, stopwatch, DiagnosticOutcome.success, span);
       return result;
     } on Object catch (error, stackTrace) {
+      final operationLocation = pluginId == null ? 'capability=$capability' : 'pluginId=$pluginId / capability=$capability';
       final location =
-          '$capability / ${error is PluginRuntimeException && _isInvalidRuntimeResponse(error) ? 'runtime.response.validation' : 'runtime.invocation'}';
+          '$operationLocation / ${error is PluginRuntimeException && _isInvalidRuntimeResponse(error) ? 'runtime.response.validation' : 'runtime.invocation'}';
       final normalized = error is PluginRuntimeException
           ? normalizePluginRuntimeError(error, location: location)
           : AppError.fromUnknown(error);
       final appError = normalized.withContext(location: location);
-      span.fail(
-        attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
+      _endSpanSafely(
+        span,
+        DiagnosticOutcome.error,
+        DiagnosticObjectValue(<String, DiagnosticValue>{
           'capability': DiagnosticValue.string(capability),
+          if (pluginId != null && span.definition.fields.containsKey('pluginId')) 'pluginId': DiagnosticValue.string(pluginId),
           'attempt': DiagnosticValue.int64(1),
           'resultState': DiagnosticValue.string('failure'),
           'errorCode': DiagnosticValue.string(appError.code.wireValue),
-          'errorLocation': DiagnosticValue.string(location),
-          if (appError.detail != null) 'errorText': DiagnosticValue.string(appError.detail!),
-          'stackTrace': DiagnosticValue.string(stackTrace.toString()),
+          if (span.definition.fields.containsKey('errorLocation')) 'errorLocation': DiagnosticValue.string(location),
+          if (appError.detail != null && span.definition.fields.containsKey('errorText'))
+            'errorText': DiagnosticValue.string(appError.detail!),
+          if (span.definition.fields.containsKey('stackTrace')) 'stackTrace': DiagnosticValue.string(stackTrace.toString()),
         }),
       );
       _reportSlow(capability, stopwatch, DiagnosticOutcome.error, span);
       Error.throwWithStackTrace(appError, stackTrace);
+    }
+  }
+
+  void _endSpanSafely(DiagnosticSpanHandle span, DiagnosticOutcome outcome, DiagnosticObjectValue attributes) {
+    if (span.isEnded) return;
+    try {
+      span.end(outcome, attributes: attributes);
+    } on Object {
+      // A stale hot-reload schema or diagnostics defect must never replace the
+      // Runtime result or the original source failure.
     }
   }
 
