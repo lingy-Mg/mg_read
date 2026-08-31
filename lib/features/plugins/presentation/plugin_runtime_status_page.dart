@@ -31,6 +31,7 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
     required this.onDestinationRequested,
     this.onSourcePressed = _ignoreSourcePressed,
     this.onRuntimeStatusRequested,
+    this.onVerifyAllRequested,
     super.key,
   });
 
@@ -38,6 +39,7 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
   final ValueChanged<String> onSourcePressed;
   final VoidCallback? onRuntimeStatusRequested;
+  final VoidCallback? onVerifyAllRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -54,6 +56,13 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
                 title: '管理数据源',
                 onBack: onBackRequested,
                 actions: <Widget>[
+                  if (onVerifyAllRequested != null)
+                    AppSecondaryPageIconButton(
+                      key: const Key('data-source-verify-all'),
+                      label: '检测全部',
+                      icon: Icons.fact_check_outlined,
+                      onPressed: onVerifyAllRequested!,
+                    ),
                   if (onRuntimeStatusRequested != null)
                     AppSecondaryPageIconButton(
                       key: const Key('data-source-runtime-status'),

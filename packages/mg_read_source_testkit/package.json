@@ -1,0 +1,23 @@
+{
+  "name": "@mgread/source-testkit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bounded, AI-friendly contract and live-flow helpers for MgRead source plugins.",
+  "type": "module",
+  "bin": {
+    "mgread-source-test": "./bin/mgread-source-test.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "test:sources": "node --use-env-proxy ./bin/mgread-source-test.mjs"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  }
+}

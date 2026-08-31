@@ -96,6 +96,10 @@ plugins/sources/                    真实数据源及其他能力参考实现
   `resource` 字节能力或缓冲媒体正文；大资源不进入插件返回值或控制面。
 - fixture 只保留选择器、分页、null/0/空集合和错误分支需要的最小脱敏结构；不得保存线上正文、图片、
   Cookie、UA、token、完整录制或用户搜索词。
+- 开发期由纯 Node.js `mg_read_source_testkit` 直接检查插件公开契约和 live 链路；正式 Windows App 内置自检
+  经生产 `SourceContentGateway -> Runtime Facade -> Runtime -> 已启用插件` 验证发现、搜索、详情、完整目录、
+  首/中/末内容和资源代理。App 页面与正式可执行文件 CLI 复用同一引擎，报告只含插件 ID、阶段、稳定错误码、
+  计数和 HTTP 状态；两层证据不得互相替代。
 - 受保护来源只使用宿主持有的 WebView 和真实人工交互；禁止 token 抽取/回放、CDP、DOM 点击注入和绕过。
 
 ## 阅读器

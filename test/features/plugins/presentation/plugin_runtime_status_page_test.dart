@@ -79,6 +79,28 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('exposes the packaged App entry for checking every enabled source', (WidgetTester tester) async {
+    var requested = false;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => dataSourceManagementFixture)],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: PluginRuntimeStatusPage(
+            onBackRequested: () {},
+            onDestinationRequested: (_) {},
+            onVerifyAllRequested: () => requested = true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('data-source-verify-all')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('data-source-verify-all')));
+    expect(requested, isTrue);
+  });
+
   testWidgets('searches and filters installed data sources locally', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 690));
     await tester.pumpWidget(

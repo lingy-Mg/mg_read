@@ -39,6 +39,7 @@ import 'package:mg_read/features/notifications/presentation/notifications_page.d
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_health_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_detail_page.dart';
+import 'package:mg_read/features/plugins/presentation/source_verification_page.dart';
 import 'package:mg_read/features/profile/presentation/about_page.dart';
 import 'package:mg_read/features/profile/presentation/about_item_page.dart';
 import 'package:mg_read/features/profile/application/app_version.dart';
@@ -482,6 +483,7 @@ final class _DismissComicReaderObserver extends ComicReaderObserver {
     TypedGoRoute<NotificationsRoute>(path: 'notifications'),
     TypedGoRoute<PluginCenterRoute>(path: 'plugins'),
     TypedGoRoute<PluginRuntimeHealthRoute>(path: 'plugins/status'),
+    TypedGoRoute<PluginSourceVerificationRoute>(path: 'plugins/verify'),
     TypedGoRoute<PluginSourceDetailRoute>(path: 'plugins/:pluginId'),
     TypedGoRoute<PluginCacheRoute>(path: 'plugin-cache'),
     TypedGoRoute<ImportExportRoute>(path: 'import-export'),
@@ -650,6 +652,30 @@ class PluginCenterRoute extends GoRouteData with $PluginCenterRoute {
       onRuntimeStatusRequested: () {
         const PluginRuntimeHealthRoute().push(context);
       },
+      onVerifyAllRequested: () {
+        const PluginSourceVerificationRoute().push(context);
+      },
+    );
+  }
+}
+
+/// Production App self-check for one enabled source or every enabled source.
+class PluginSourceVerificationRoute extends GoRouteData with $PluginSourceVerificationRoute {
+  const PluginSourceVerificationRoute({this.pluginId});
+
+  final String? pluginId;
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) {
+    return SourceVerificationPage(
+      pluginId: pluginId,
+      onBackRequested: () {
+        if (context.canPop()) {
+          context.pop();
+          return;
+        }
+        const PluginCenterRoute().go(context);
+      },
     );
   }
 }
@@ -682,6 +708,9 @@ class PluginSourceDetailRoute extends GoRouteData with $PluginSourceDetailRoute 
   Widget build(BuildContext context, GoRouterState state) {
     return PluginRuntimeSourceDetailPage(
       pluginId: pluginId,
+      onVerificationRequested: (String pluginId) {
+        PluginSourceVerificationRoute(pluginId: pluginId).push(context);
+      },
       onBackRequested: () {
         if (context.canPop()) {
           context.pop();

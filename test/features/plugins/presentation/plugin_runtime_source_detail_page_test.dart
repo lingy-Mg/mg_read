@@ -43,9 +43,9 @@ void main() {
     expect(find.text('工作区开发数据源插件'), findsOneWidget);
     expect(find.text('开发中（即时生效）'), findsOneWidget);
     if (Platform.isWindows) {
+      await tester.scrollUntilVisible(find.byKey(const Key('data-source-detail-open-directory')), 200, scrollable: find.byType(Scrollable));
       expect(find.byKey(const Key('data-source-detail-package-development')), findsOneWidget);
       expect(find.text('打开开发项目文件夹'), findsOneWidget);
-      await tester.ensureVisible(find.byKey(const Key('data-source-detail-open-directory')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('data-source-detail-open-directory')));
       await tester.pumpAndSettle();
@@ -62,7 +62,8 @@ void main() {
 
   testWidgets('labels installed source code as a non-live Runtime copy', (WidgetTester tester) async {
     final gateway = _DirectoryGateway(_installedConnection);
-    await tester.pumpWidget(_host(gateway, 'org.example.installed'));
+    String? verifiedPluginId;
+    await tester.pumpWidget(_host(gateway, 'org.example.installed', onVerificationRequested: (pluginId) => verifiedPluginId = pluginId));
     await tester.pumpAndSettle();
 
     expect(find.text('已安装数据源插件'), findsOneWidget);
@@ -76,6 +77,10 @@ void main() {
     expect(find.textContaining('原始安装包'), findsOneWidget);
     expect(find.textContaining('数据文件'), findsOneWidget);
     expect(find.textContaining('npm 包'), findsOneWidget);
+    await tester.scrollUntilVisible(find.byKey(const Key('data-source-detail-verify')), 200, scrollable: find.byType(Scrollable));
+    expect(find.byKey(const Key('data-source-detail-verify')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('data-source-detail-verify')));
+    expect(verifiedPluginId, 'org.example.installed');
     await tester.drag(find.byKey(const Key('data-source-detail-content')), const Offset(0, -400));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('data-source-detail-remove')));
@@ -124,11 +129,14 @@ void main() {
   });
 }
 
-Widget _host(_DirectoryGateway gateway, String pluginId) => ProviderScope(
-  overrides: [pluginRuntimeGatewayProvider.overrideWithValue(gateway)],
+Widget _host(_DirectoryGateway gateway, String pluginId, {ValueChanged<String>? onVerificationRequested}) => ProviderScope(
+  overrides: [
+    pluginRuntimeGatewayProvider.overrideWithValue(gateway),
+    pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => gateway.connection),
+  ],
   child: MaterialApp(
     theme: AppTheme.light(),
-    home: PluginRuntimeSourceDetailPage(pluginId: pluginId, onBackRequested: () {}),
+    home: PluginRuntimeSourceDetailPage(pluginId: pluginId, onBackRequested: () {}, onVerificationRequested: onVerificationRequested),
   ),
 );
 

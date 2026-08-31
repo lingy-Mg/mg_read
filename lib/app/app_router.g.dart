@@ -141,6 +141,7 @@ RouteBase get $profileRoute => GoRouteData.$route(
     GoRouteData.$route(path: 'notifications', hasOverriddenOnExit: false, factory: $NotificationsRoute._fromState),
     GoRouteData.$route(path: 'plugins', hasOverriddenOnExit: false, factory: $PluginCenterRoute._fromState),
     GoRouteData.$route(path: 'plugins/status', hasOverriddenOnExit: false, factory: $PluginRuntimeHealthRoute._fromState),
+    GoRouteData.$route(path: 'plugins/verify', hasOverriddenOnExit: false, factory: $PluginSourceVerificationRoute._fromState),
     GoRouteData.$route(path: 'plugins/:pluginId', hasOverriddenOnExit: false, factory: $PluginSourceDetailRoute._fromState),
     GoRouteData.$route(path: 'plugin-cache', hasOverriddenOnExit: false, factory: $PluginCacheRoute._fromState),
     GoRouteData.$route(path: 'import-export', hasOverriddenOnExit: false, factory: $ImportExportRoute._fromState),
@@ -289,6 +290,29 @@ mixin $PluginRuntimeHealthRoute on GoRouteData {
 
   @override
   String get location => GoRouteData.$location('/profile/plugins/status');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) => context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $PluginSourceVerificationRoute on GoRouteData {
+  static PluginSourceVerificationRoute _fromState(GoRouterState state) =>
+      PluginSourceVerificationRoute(pluginId: state.uri.queryParameters['plugin-id']);
+
+  PluginSourceVerificationRoute get _self => this as PluginSourceVerificationRoute;
+
+  @override
+  String get location =>
+      GoRouteData.$location('/profile/plugins/verify', queryParams: {if (_self.pluginId != null) 'plugin-id': _self.pluginId});
 
   @override
   void go(BuildContext context) => context.go(location);

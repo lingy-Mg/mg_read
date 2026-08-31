@@ -1,35 +1,31 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 
+import {
+  assertInlineJsonSize,
+  createSourceTestHarness,
+  probeReachableResource,
+  runReadingSourceFlow,
+} from '@mgread/source-testkit';
 import * as plugin from '../dist/index.mjs';
 
 // Explicit, opt-in online acceptance. It never writes pages or source content
 // to disk, and asserts only stable structural facts about the public Plugin API.
 test('live source completes category, search, detail, catalog, and content flow', { timeout: 60000 }, async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'mgread-aisishuwu-live-'));
-  const resourceRequests = [];
-  t.after(() => rm(root, { force: true, recursive: true }));
-  await plugin.activate({
-    dataDir: join(root, 'data'),
-    cacheDir: join(root, 'cache'),
-    http: { fetch },
-    resource: {
-      proxy(request) {
-        resourceRequests.push(request);
-        return `http://127.0.0.1:1234/v1/source-resource/live-${resourceRequests.length}`;
-      },
-    },
-    log: { debug() {}, info() {}, warn() {}, error() {} },
-    app: { runtimeVersion: 'live-test', nodeVersion: process.versions.node, pluginApi: 1 },
-    plugin: { id: 'org.mgread.aisishuwu', version: '0.2.12' },
+  const harness = await createSourceTestHarness({
+    plugin,
+    pluginId: 'org.mgread.aisishuwu',
+    version: '0.2.12',
+    fetch,
+    prefix: 'mgread-aisishuwu-live-',
+    runtimeVersion: 'live-test',
   });
+  t.after(harness.cleanup);
+  const { resourceRequests } = harness;
 
   const categories = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });
   assert.equal(categories.kind, 'document');
-  assert.ok(Buffer.byteLength(JSON.stringify(categories), 'utf8') <= 52 * 1024);
+  assertInlineJsonSize(categories, { maximumBytes: 52 * 1024, stage: 'discover.home' });
   const featured = categories.document.components.find((component) => component.id === 'source-featured-section');
   assert.equal(featured?.type, 'section');
   assert.equal(featured?.children[0].layout, 'carousel');
@@ -44,15 +40,16 @@ test('live source completes category, search, detail, catalog, and content flow'
   const navigation = categories.document.components.find((component) => component.id === 'source-navigation-group');
   assert.equal(navigation?.type, 'group');
   assert.ok(resourceRequests.length > 0);
-  const coverResource = await fetch(resourceRequests[0].url, { headers: resourceRequests[0].headers });
-  assert.ok(coverResource.status >= 200 && coverResource.status < 300);
-  assert.match(coverResource.headers.get('content-type') ?? '', /^image\//u);
-  await coverResource.body?.cancel();
-  assert.ok(coverResource.body.byteLength > 0);
   const categorySection = navigation.children.find((component) => component.id === 'source-categories-section');
   assert.equal(categorySection?.type, 'section');
   assert.equal(categorySection.children[0].layout, 'chips');
   const target = categorySection.children[0].categories[0].target;
+  const reachableCover = await probeReachableResource({
+    requests: resourceRequests,
+    fetch,
+    maximumAttempts: 4,
+  });
+  assert.match(reachableCover.contentType, /^image\//u);
 
   const discovery = await plugin.discover({ target, cursor: null, collectionId: null, pageSize: 5 });
   assert.equal(discovery.kind, 'document');
@@ -76,14 +73,13 @@ test('live source completes category, search, detail, catalog, and content flow'
     assert.ok((collection.items[0].content.description ?? '').trim().length > 0);
   }
 
-  const search = await plugin.search({ query: '修仙', cursor: null, pageSize: 5 });
-  assert.ok(search.items.length > 0);
-
-  const suggestions = await plugin.searchSuggestions({ cursor: null, pageSize: 5 });
-  assert.ok(suggestions.items.length > 0);
-  assert.ok(suggestions.items.every((item) => item.query.trim().length > 0));
-
-  const detail = await plugin.getDetail({ id: book.id });
+  const flow = await runReadingSourceFlow({
+    plugin,
+    contentId: book.id,
+    searchRequest: { query: '修仙', cursor: null, pageSize: 5 },
+    suggestionsRequest: { cursor: null, pageSize: 5 },
+  });
+  const { detail, chapters, content } = flow;
   assert.equal(detail.id, book.id);
   assert.ok(detail.title.length > 0);
   assert.notEqual(detail.wordCount, null);
@@ -108,9 +104,6 @@ test('live source completes category, search, detail, catalog, and content flow'
     Array.from({ length: 733 }, (_, index) => index),
   );
 
-  const chapters = await plugin.getChapters({ id: book.id });
-  assert.ok(chapters.items.length > 0);
-  const content = await plugin.getContent({ id: book.id, chapterId: chapters.items[0].id });
   assert.equal(content.chapterId, chapters.items[0].id);
   assert.equal(content.contentKind, 'novel');
   assert.ok((content.text ?? '').length > 0);

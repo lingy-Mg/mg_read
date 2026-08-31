@@ -24,6 +24,25 @@ flutter run
 
 各 package 的接入方式见其 README；数据源的名称、版本和能力以各自 `package.json.mgread` 为准。
 
+## Windows 数据源自检
+
+安装后的 Windows App 可在“我的 → 管理数据源”检测全部已启用来源，也可进入单个数据源详情执行检测。内置
+引擎会经正式 Runtime 验证发现、搜索、详情、完整目录、首/中/末内容和资源代理，不依赖 Flutter 测试框架。
+
+自动化工具也可直接启动正式可执行文件并读取 JSON 报告：
+
+```powershell
+.\mg_read.exe --source-check=org.mgread.aisishuwu --source-check-report=source-check.json
+.\mg_read.exe --source-check-all --source-check-report=source-check-all.json
+```
+
+进程退出码为：`0` 全部通过、`1` 已完成但包含失败、`2` 内部错误或报告写入失败、`3` 需要人工交互、
+`4` 参数错误或平台不支持。失败报告只包含插件标识、版本、阶段、稳定错误码、耗时和计数，不写入查询词、
+标题、URL 或正文。
+
+开发期插件直测使用纯 Node.js CLI，具体命令见
+[`packages/mg_read_source_testkit/README.md`](packages/mg_read_source_testkit/README.md)。
+
 ## 开发入口
 
 仓库内 AI 与贡献者规范只有 [`AGENTS.md`](AGENTS.md) 一个入口；跨模块规范按需从

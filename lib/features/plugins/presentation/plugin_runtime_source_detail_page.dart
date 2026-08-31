@@ -22,10 +22,11 @@ import 'package:mg_read/shared/presentation/source_branding.dart';
 /// - 打包和目录选择均经 application port 与 Runtime Facade 完成。
 ///
 class PluginRuntimeSourceDetailPage extends ConsumerWidget {
-  const PluginRuntimeSourceDetailPage({required this.pluginId, required this.onBackRequested, super.key});
+  const PluginRuntimeSourceDetailPage({required this.pluginId, required this.onBackRequested, this.onVerificationRequested, super.key});
 
   final String pluginId;
   final VoidCallback onBackRequested;
+  final ValueChanged<String>? onVerificationRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -51,7 +52,7 @@ class PluginRuntimeSourceDetailPage extends ConsumerWidget {
                     if (source == null) {
                       return _DetailFailure(onRetry: () => ref.invalidate(pluginRuntimeConnectionProvider), message: '该数据源已不存在或暂时不可用。');
                     }
-                    return _DetailContent(source: source);
+                    return _DetailContent(source: source, onVerificationRequested: onVerificationRequested);
                   },
                 ),
               ),
@@ -64,9 +65,10 @@ class PluginRuntimeSourceDetailPage extends ConsumerWidget {
 }
 
 class _DetailContent extends ConsumerWidget {
-  const _DetailContent({required this.source});
+  const _DetailContent({required this.source, required this.onVerificationRequested});
 
   final PluginRuntimePlugin source;
+  final ValueChanged<String>? onVerificationRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -157,6 +159,12 @@ class _DetailContent extends ConsumerWidget {
         const SizedBox(height: AppSpacing.comfortable),
         if (!isDevelopment) _InstallationSizeCard(archiveUsage: archiveUsage!, dataUsage: dataUsage!, npmUsage: npmUsage!),
         if (!isDevelopment) const SizedBox(height: AppSpacing.comfortable),
+        _VerifySourceButton(
+          onPressed: source.enabled && source.activeVersion != null && onVerificationRequested != null
+              ? () => onVerificationRequested!(source.id)
+              : null,
+        ),
+        const SizedBox(height: AppSpacing.regular),
         if (isDevelopment && isWindows) ...<Widget>[
           _PackageDevelopmentButton(
             isPackaging: packaging,
@@ -237,6 +245,20 @@ class _DetailContent extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源删除安排失败，请稍后重试。')));
     }
   }
+}
+
+class _VerifySourceButton extends StatelessWidget {
+  const _VerifySourceButton({required this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => FilledButton.icon(
+    key: const Key('data-source-detail-verify'),
+    onPressed: onPressed,
+    icon: const Icon(Icons.fact_check_outlined),
+    label: const Text('检测搜索、发现与阅读链路'),
+  );
 }
 
 class _RemoveSourceButton extends StatelessWidget {

@@ -5,21 +5,19 @@
  * 注意：不访问来源站点，线上行为由独立 live smoke 覆盖。
  */
 
-import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+import {
+  assertStandardSourceContract,
+  loadSourcePackage,
+} from '@mgread/source-testkit';
 import * as plugin from '../dist/index.mjs';
 
 test('exports the standard Plugin API v1 entry points and hot-search extension', async () => {
-  assert.deepEqual(
-    Object.keys(plugin).sort(),
-    ['activate', 'discover', 'getChapters', 'getContent', 'getDetail', 'search', 'searchSuggestions'],
-  );
-  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-  assert.equal(packageJson.mgread.id, 'org.mgread.aisishuwu');
-  assert.equal(packageJson.mgread.pluginApi, 1);
-  assert.equal(packageJson.mgread.packageMode, 'single-file');
-  assert.equal(packageJson.mgread.icon, 'assets/icon.png');
-  assert.equal(packageJson.main, 'dist/index.mjs');
+  assertStandardSourceContract({
+    plugin,
+    packageJson: await loadSourcePackage(new URL('../package.json', import.meta.url)),
+    pluginId: 'org.mgread.aisishuwu',
+    optionalExports: ['searchSuggestions'],
+  });
 });
