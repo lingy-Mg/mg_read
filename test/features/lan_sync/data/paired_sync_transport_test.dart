@@ -220,6 +220,53 @@ void main() {
     expect(callbackCount, 1);
   });
 
+  test('authenticated reverse failure reports the remote stage and stable code', () async {
+    final addresses = await eligibleLanSyncAddresses();
+    if (addresses.isEmpty) return;
+    final secret = List<int>.generate(32, (index) => index + 37);
+    const phoneIdentity = LocalDeviceIdentity(deviceId: 'phone_failure_12345678', label: '手机');
+    const desktopIdentity = LocalDeviceIdentity(deviceId: 'desktop_failure_123456', label: '开发电脑');
+    final received = Completer<PairedSyncWakeFailure>();
+    final host = await PairedSyncHost.start(
+      identity: phoneIdentity,
+      devices: _MemoryPairedDeviceRepository(_device(desktopIdentity, PairedDevicePlatform.windows)),
+      identityStore: _MemoryIdentityStore(phoneIdentity, <String, List<int>>{desktopIdentity.deviceId: secret}),
+      onIncoming: (session) => session.close(),
+      onWakeFailure: (failure) async {
+        if (!received.isCompleted) received.complete(failure);
+      },
+      discoveryPort: 0,
+    );
+    addTearDown(host.close);
+    final requestId = createPairedSyncWakeRequestId();
+
+    for (final address in addresses) {
+      await sendPairedSyncWakeFailure(
+        identity: desktopIdentity,
+        endpoint: PairedSyncEndpoint(
+          address: address,
+          deviceId: phoneIdentity.deviceId,
+          expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+          label: phoneIdentity.label,
+          port: 54321,
+        ),
+        sharedSecret: secret,
+        requestId: requestId,
+        code: 'lan_sync_connect_failed',
+        stage: 'connect',
+        errorText: 'SocketException: Connection refused',
+        discoveryPort: host.discoveryPort,
+      );
+    }
+    final failure = await received.future.timeout(const Duration(seconds: 3));
+
+    expect(failure.deviceId, desktopIdentity.deviceId);
+    expect(failure.requestId, requestId);
+    expect(failure.code, 'lan_sync_connect_failed');
+    expect(failure.stage, 'connect');
+    expect(failure.errorText, 'SocketException: Connection refused');
+  });
+
   test('phone pull wake completes through a Windows outbound reverse connection', () async {
     final addresses = await eligibleLanSyncAddresses();
     if (addresses.isEmpty) return;

@@ -28,6 +28,7 @@ import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 
 part 'paired_sync_payload.dart';
+part 'paired_sync_wake.dart';
 
 const int pairedSyncProtocolVersion = 2;
 const int pairedSyncDiscoveryPort = 47232;
@@ -47,14 +48,6 @@ final class PairedSyncEndpoint {
   final DateTime expiresAtUtc;
   final String label;
   final int port;
-}
-
-final class PairedSyncWakeRequest {
-  const PairedSyncWakeRequest({required this.endpoint, required this.operation, required this.requestId});
-
-  final PairedSyncEndpoint endpoint;
-  final PairedSyncOperation operation;
-  final String requestId;
 }
 
 final class PairedSyncRunSummary {
@@ -77,10 +70,14 @@ final class PairedSyncRunSummary {
 
 /// The connection failed after at least one side confirmed durable changes.
 final class PairedSyncPartialException implements Exception {
-  const PairedSyncPartialException(this.cause);
+  const PairedSyncPartialException(this.cause, {required this.stage, required this.causeStackTrace});
 
   final Object cause;
+  final String stage;
+  final StackTrace causeStackTrace;
 }
+
+typedef PairedSyncStageObserver = void Function(String stage);
 
 final class PairedSyncHost {
   PairedSyncHost._({
@@ -92,6 +89,7 @@ final class PairedSyncHost {
     required this._identityStore,
     required this._onIncoming,
     required this._onWakeRequest,
+    required this._onWakeFailure,
   });
 
   final LocalDeviceIdentity identity;
@@ -102,6 +100,7 @@ final class PairedSyncHost {
   final DeviceIdentityStore _identityStore;
   final Future<void> Function(PairedSyncServerSession session) _onIncoming;
   final Future<void> Function(PairedSyncWakeRequest request)? _onWakeRequest;
+  final Future<void> Function(PairedSyncWakeFailure failure)? _onWakeFailure;
   final StreamController<PairedSyncEndpoint> _endpoints = StreamController<PairedSyncEndpoint>.broadcast();
   final Set<Socket> _connections = <Socket>{};
   final Map<String, DateTime> _acceptedWakeRequests = <String, DateTime>{};
@@ -117,6 +116,7 @@ final class PairedSyncHost {
     required DeviceIdentityStore identityStore,
     required Future<void> Function(PairedSyncServerSession session) onIncoming,
     Future<void> Function(PairedSyncWakeRequest request)? onWakeRequest,
+    Future<void> Function(PairedSyncWakeFailure failure)? onWakeFailure,
     int discoveryPort = pairedSyncDiscoveryPort,
   }) async {
     final server = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
@@ -133,6 +133,7 @@ final class PairedSyncHost {
         identityStore: identityStore,
         onIncoming: onIncoming,
         onWakeRequest: onWakeRequest,
+        onWakeFailure: onWakeFailure,
       );
       host._start();
       return host;
@@ -181,6 +182,10 @@ final class PairedSyncHost {
           unawaited(_handleWakeRequest(raw, packet.address));
           continue;
         }
+        if (raw['kind'] == 'mgread-paired-sync-wake-failure') {
+          unawaited(_handleWakeFailure(raw, packet.address));
+          continue;
+        }
         if (raw['kind'] != 'mgread-paired-sync' || raw['protocolVersion'] != pairedSyncProtocolVersion) {
           continue;
         }
@@ -210,66 +215,6 @@ final class PairedSyncHost {
       } on Object {
         // 未认证广播不可信，格式错误直接忽略。
       }
-    }
-  }
-
-  Future<void> _handleWakeRequest(Map<dynamic, dynamic> raw, InternetAddress sourceAddress) async {
-    final callback = _onWakeRequest;
-    if (callback == null || _closed || !isLanSyncPrivateIpv4(sourceAddress.address)) return;
-    try {
-      final deviceId = raw['deviceId'];
-      final targetDeviceId = raw['targetDeviceId'];
-      final label = _validDeviceLabel(raw['label']);
-      final port = raw['port'];
-      final requestId = raw['requestId'];
-      final operation = _wakeOperation(raw['operation']);
-      final encodedMac = raw['mac'];
-      if (raw['protocolVersion'] != pairedSyncProtocolVersion ||
-          deviceId is! String ||
-          !isValidPairedDeviceId(deviceId) ||
-          targetDeviceId != identity.deviceId ||
-          label == null ||
-          port is! int ||
-          port < 1 ||
-          port > 65535 ||
-          requestId is! String ||
-          !_validNonce(requestId) ||
-          operation == null ||
-          encodedMac is! String) {
-        return;
-      }
-      final peer = await _devices.read(deviceId);
-      final secret = await _identityStore.readPeerSecret(deviceId);
-      if (peer == null || secret == null) return;
-      final expected = await _wakeMac(
-        secret,
-        requestId: requestId,
-        deviceId: deviceId,
-        targetDeviceId: identity.deviceId,
-        operation: operation,
-        port: port,
-      );
-      if (!_constantTimeEquals(expected, _decodeMac(encodedMac))) return;
-      final now = DateTime.now().toUtc();
-      _acceptedWakeRequests.removeWhere((_, expiresAt) => !expiresAt.isAfter(now));
-      if (_acceptedWakeRequests.containsKey(requestId)) return;
-      if (_acceptedWakeRequests.length >= 64) _acceptedWakeRequests.remove(_acceptedWakeRequests.keys.first);
-      _acceptedWakeRequests[requestId] = now.add(const Duration(minutes: 1));
-      await callback(
-        PairedSyncWakeRequest(
-          endpoint: PairedSyncEndpoint(
-            address: sourceAddress.address,
-            deviceId: deviceId,
-            expiresAtUtc: now.add(pairedSyncPeerLifetime),
-            label: label,
-            port: port,
-          ),
-          operation: operation,
-          requestId: requestId,
-        ),
-      );
-    } on Object {
-      // 未认证、重放或格式错误的唤醒包直接忽略。
     }
   }
 
@@ -333,58 +278,6 @@ final class PairedSyncHost {
     _connections.clear();
     await _server.close();
     await _endpoints.close();
-  }
-}
-
-String createPairedSyncWakeRequestId() => _randomToken(18);
-
-Future<void> sendPairedSyncWakeRequest({
-  required LocalDeviceIdentity identity,
-  required PairedSyncEndpoint endpoint,
-  required List<int> sharedSecret,
-  required PairedSyncOperation operation,
-  required int localPort,
-  required String requestId,
-  int discoveryPort = pairedSyncDiscoveryPort,
-}) async {
-  if (sharedSecret.length != 32 ||
-      !_validNonce(requestId) ||
-      !isLanSyncPrivateIpv4(endpoint.address) ||
-      localPort < 1 ||
-      localPort > 65535 ||
-      discoveryPort < 1 ||
-      discoveryPort > 65535) {
-    throw const LanSyncTransportException('lan_sync_wake_invalid');
-  }
-  final mac = await _wakeMac(
-    sharedSecret,
-    requestId: requestId,
-    deviceId: identity.deviceId,
-    targetDeviceId: endpoint.deviceId,
-    operation: operation,
-    port: localPort,
-  );
-  final bytes = utf8.encode(
-    jsonEncode(<String, Object?>{
-      'kind': 'mgread-paired-sync-wake',
-      'protocolVersion': pairedSyncProtocolVersion,
-      'deviceId': identity.deviceId,
-      'targetDeviceId': endpoint.deviceId,
-      'label': identity.label,
-      'port': localPort,
-      'requestId': requestId,
-      'operation': operation.name,
-      'mac': base64Url.encode(mac).replaceAll('=', ''),
-    }),
-  );
-  final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-  try {
-    for (var attempt = 0; attempt < 3; attempt++) {
-      socket.send(bytes, InternetAddress(endpoint.address), discoveryPort);
-      if (attempt < 2) await Future<void>.delayed(const Duration(milliseconds: 60));
-    }
-  } finally {
-    socket.close();
   }
 }
 
@@ -487,9 +380,17 @@ final class PairedSyncClientSession {
     required LanSyncGateway gateway,
     PairedSyncOperation operation = PairedSyncOperation.bidirectional,
     String? requestId,
+    PairedSyncStageObserver? onStage,
   }) async {
     var committed = false;
+    var stage = 'request';
+    void enter(String value) {
+      stage = value;
+      onStage?.call(value);
+    }
+
     try {
+      enter('request');
       if (requestId != null && !_validNonce(requestId)) {
         throw const LanSyncTransportException('lan_sync_wake_invalid');
       }
@@ -505,28 +406,35 @@ final class PairedSyncClientSession {
       if (ready['type'] != 'syncReady') throw const LanSyncTransportException('lan_sync_handshake_invalid');
       final remotePolicy = _WirePolicy.fromJson(ready);
 
+      enter('local_manifest');
       final localManifest = await _createPairedManifest(
         gateway,
         includePlugins: localPolicy.canSend && localPolicy.syncPlugins && remotePolicy.canReceive && remotePolicy.syncPlugins,
         includeShelf: localPolicy.canSend && localPolicy.syncBookshelf && remotePolicy.canReceive && remotePolicy.syncBookshelf,
         deferPluginArtifacts: true,
       );
+      enter('manifest_exchange');
       await _sendManifest(_connection, localManifest);
       final remoteManifest = await _readManifest(_connection);
+      enter('import_plan');
       final receivePlan = await _planImport(gateway, remoteManifest);
+      enter('selection_exchange');
       await _sendSelection(_connection, receivePlan.selection);
       final sendSelection = await _readSelection(_connection, localManifest);
 
+      enter('receive_payload');
       final received = await _receivePayload(_connection, gateway, remoteManifest, receivePlan);
       committed = received.books > 0 || received.plugins > 0;
       await _connection.sendControl(<String, Object?>{'type': 'receiveApplied', ...received.toJson()});
       final reverseReady = await _connection.readControl().timeout(lanSyncTransferIdleTimeout);
       if (reverseReady['type'] != 'reverseReady') throw const LanSyncTransportException('lan_sync_frame_unexpected');
+      enter('send_payload');
       await _sendPayload(_connection, gateway, localManifest, sendSelection);
       final remoteApplied = _AppliedSummary.fromJson(
         await _connection.readControl().timeout(lanSyncTransferIdleTimeout),
         expectedType: 'receiveApplied',
       );
+      enter('complete');
       await _connection.sendControl(<String, Object?>{'type': 'sessionComplete'});
       final complete = await _connection.readControl().timeout(lanSyncHandshakeTimeout);
       if (complete['type'] != 'sessionComplete') throw const LanSyncTransportException('lan_sync_frame_unexpected');
@@ -540,7 +448,7 @@ final class PairedSyncClientSession {
     } on PairedSyncPartialException {
       rethrow;
     } on Object catch (error, stackTrace) {
-      if (committed) throw PairedSyncPartialException(error);
+      if (committed) throw PairedSyncPartialException(error, stage: stage, causeStackTrace: stackTrace);
       Error.throwWithStackTrace(error, stackTrace);
     } finally {
       await close();
@@ -568,9 +476,16 @@ final class PairedSyncServerSession {
     }
   }
 
-  Future<PairedSyncRunSummary> run({required LanSyncGateway gateway}) async {
+  Future<PairedSyncRunSummary> run({required LanSyncGateway gateway, PairedSyncStageObserver? onStage}) async {
     var committed = false;
+    var stage = 'request';
+    void enter(String value) {
+      stage = value;
+      onStage?.call(value);
+    }
+
     try {
+      enter('request');
       final request = await _connection.readControl().timeout(lanSyncHandshakeTimeout);
       if (request['type'] != 'syncRequest') throw const LanSyncTransportException('lan_sync_handshake_invalid');
       final requestId = request['requestId'];
@@ -584,7 +499,9 @@ final class PairedSyncServerSession {
       final localPolicy = _WirePolicy.fromDevice(peer, operation: PairedSyncOperation.bidirectional);
       await _connection.sendControl(<String, Object?>{'type': 'syncReady', ...localPolicy.toJson()});
 
+      enter('manifest_exchange');
       final remoteManifest = await _readManifest(_connection);
+      enter('local_manifest');
       final localManifest = await _createPairedManifest(
         gateway,
         includePlugins: localPolicy.canSend && localPolicy.syncPlugins && remotePolicy.canReceive && remotePolicy.syncPlugins,
@@ -592,10 +509,13 @@ final class PairedSyncServerSession {
         deferPluginArtifacts: true,
       );
       await _sendManifest(_connection, localManifest);
+      enter('selection_exchange');
       final sendSelection = await _readSelection(_connection, localManifest);
+      enter('import_plan');
       final receivePlan = await _planImport(gateway, remoteManifest);
       await _sendSelection(_connection, receivePlan.selection);
 
+      enter('send_payload');
       await _sendPayload(_connection, gateway, localManifest, sendSelection);
       final remoteApplied = _AppliedSummary.fromJson(
         await _connection.readControl().timeout(lanSyncTransferIdleTimeout),
@@ -603,9 +523,11 @@ final class PairedSyncServerSession {
       );
       committed = remoteApplied.books > 0 || remoteApplied.plugins > 0;
       await _connection.sendControl(<String, Object?>{'type': 'reverseReady'});
+      enter('receive_payload');
       final received = await _receivePayload(_connection, gateway, remoteManifest, receivePlan);
       committed = committed || received.books > 0 || received.plugins > 0;
       await _connection.sendControl(<String, Object?>{'type': 'receiveApplied', ...received.toJson()});
+      enter('complete');
       final complete = await _connection.readControl().timeout(lanSyncHandshakeTimeout);
       if (complete['type'] != 'sessionComplete') throw const LanSyncTransportException('lan_sync_frame_unexpected');
       await _connection.sendControl(<String, Object?>{'type': 'sessionComplete'});
@@ -619,7 +541,7 @@ final class PairedSyncServerSession {
     } on PairedSyncPartialException {
       rethrow;
     } on Object catch (error, stackTrace) {
-      if (committed) throw PairedSyncPartialException(error);
+      if (committed) throw PairedSyncPartialException(error, stage: stage, causeStackTrace: stackTrace);
       Error.throwWithStackTrace(error, stackTrace);
     } finally {
       await close();
@@ -667,43 +589,6 @@ String? _validDeviceLabel(Object? value) {
   if (value is! String) return null;
   final normalized = value.trim();
   return normalized.isEmpty || normalized.length > 128 ? null : normalized;
-}
-
-PairedSyncOperation? _wakeOperation(Object? value) {
-  for (final operation in PairedSyncOperation.values) {
-    if (operation.name == value) return operation;
-  }
-  return null;
-}
-
-Future<List<int>> _wakeMac(
-  List<int> secret, {
-  required String requestId,
-  required String deviceId,
-  required String targetDeviceId,
-  required PairedSyncOperation operation,
-  required int port,
-}) async {
-  final transcript = '$pairedSyncProtocolVersion|$requestId|$deviceId|$targetDeviceId|${operation.name}|$port';
-  final mac = await Hmac.sha256().calculateMac(utf8.encode(transcript), secretKey: SecretKey(secret));
-  return mac.bytes;
-}
-
-List<int> _decodeMac(String encoded) {
-  try {
-    return base64Url.decode(base64Url.normalize(encoded));
-  } on FormatException {
-    return const <int>[];
-  }
-}
-
-bool _constantTimeEquals(List<int> left, List<int> right) {
-  if (left.length != right.length) return false;
-  var difference = 0;
-  for (var index = 0; index < left.length; index++) {
-    difference |= left[index] ^ right[index];
-  }
-  return difference == 0;
 }
 
 bool _eligiblePeer(InternetAddress address) => address.type == InternetAddressType.IPv4 && isLanSyncPrivateIpv4(address.address);

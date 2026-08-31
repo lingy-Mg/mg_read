@@ -108,12 +108,59 @@ class PairedDevicesSection extends StatelessWidget {
             ],
             if (state.lastMessage case final message?) ...<Widget>[
               const SizedBox(height: AppSpacing.compact),
-              Text(
-                message,
-                key: const Key('device-sync-last-message'),
-                style: theme.textTheme.bodySmall?.copyWith(color: state.lastErrorCode == null ? tokens.mutedText : theme.colorScheme.error),
-              ),
+              if (state.lastErrorCode case final errorCode?)
+                _SyncFailureNotice(message: message, errorCode: errorCode, details: state.lastErrorDetails)
+              else
+                Text(
+                  message,
+                  key: const Key('device-sync-last-message'),
+                  style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+                ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SyncFailureNotice extends StatelessWidget {
+  const _SyncFailureNotice({required this.message, required this.errorCode, required this.details});
+
+  final String message;
+  final String errorCode;
+  final String? details;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.errorContainer.withValues(alpha: 0.45),
+        borderRadius: AppRadii.detailControl,
+        border: Border.all(color: colors.error.withValues(alpha: 0.35)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.compact),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              message,
+              key: const Key('device-sync-last-message'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.error, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: AppSpacing.unit),
+            SelectableText(
+              details ?? '错误码：$errorCode',
+              key: const Key('device-sync-error-details'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.onErrorContainer),
+            ),
+            const SizedBox(height: AppSpacing.unit),
+            Text(
+              'Debug 构建的完整异常与堆栈已输出到调试控制台。',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colors.onErrorContainer.withValues(alpha: 0.75)),
+            ),
           ],
         ),
       ),

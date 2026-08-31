@@ -527,12 +527,19 @@ abstract final class AppDiagnosticEvents {
     fields: <String, DiagnosticFieldDefinition>{
       'role': _string,
       'stage': _string,
+      'operation': _string,
+      'automatic': _boolean,
+      'peerPlatform': _string,
       'pluginCount': _int64,
       'itemCount': _int64,
       'bytes': _int64,
       'resultState': _string,
       'errorCode': _string,
+      'errorLocation': _string,
+      'errorText': _string,
+      'stackTrace': _string,
     },
+    maxAttributeBytes: 64 * 1024,
   );
 
   static final DiagnosticEventDefinition lanSyncStage = DiagnosticEventDefinition.instant(

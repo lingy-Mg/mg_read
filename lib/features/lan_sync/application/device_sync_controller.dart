@@ -15,35 +15,45 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/application/paired_device_repository.dart';
+import 'package:mg_read/features/lan_sync/application/paired_sync_failure.dart';
 import 'package:mg_read/features/lan_sync/data/lan_pairing_transport.dart';
-import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/data/paired_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_pairing_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
+import 'package:mg_read/features/library/application/library_page_state.dart';
 
 part 'device_sync_messages.dart';
+part 'device_sync_operations.dart';
 part 'device_sync_state.dart';
 
 final deviceSyncControllerProvider = NotifierProvider<DeviceSyncController, DeviceSyncState>(DeviceSyncController.new);
 
-final class DeviceSyncController extends Notifier<DeviceSyncState> {
+final class DeviceSyncController extends _DeviceSyncOperationsBase {
+  @override
   final Map<String, PairedSyncEndpoint> _endpoints = <String, PairedSyncEndpoint>{};
+  @override
   final Map<String, int> _retryFailures = <String, int>{};
+  @override
   final Map<String, Timer> _retryTimers = <String, Timer>{};
-  final Map<String, Completer<void>> _pendingWakeRequests = <String, Completer<void>>{};
+  @override
+  final Map<String, _PendingWakeRequest> _pendingWakeRequests = <String, _PendingWakeRequest>{};
   Future<void> _repositoryMutation = Future<void>.value();
   Future<void>? _startFuture;
   Future<void>? _hostStartFuture;
+  @override
   LocalDeviceIdentity? _identity;
+  @override
   PairedSyncHost? _host;
   StreamSubscription<PairedSyncEndpoint>? _endpointSubscription;
   Timer? _endpointExpiryTimer;
   Timer? _reconciliationTimer;
+  @override
   String? _activeDeviceId;
   LanPairingServer? _pairingServer;
   StreamSubscription<LanPairingRequest>? _pairingSubscription;
@@ -84,10 +94,29 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
         return;
       }
       state = state.copyWith(devices: saved, started: true, lastErrorCode: null);
-    } on Object {
+    } on Object catch (error, stackTrace) {
       _startFuture = null;
       if (!_disposed) {
-        state = state.copyWith(started: false, lastErrorCode: 'device_sync_start_failed', lastMessage: '自动同步服务暂时无法启动');
+        final failure = PairedSyncFailure.fromException(
+          stage: 'host_start',
+          error: error,
+          stackTrace: stackTrace,
+          code: 'device_sync_start_failed',
+        );
+        final diagnostics = PairedSyncDiagnosticSession.start(
+          ref.read(diagnosticsManagerProvider),
+          role: 'paired_host',
+          operation: PairedSyncOperation.bidirectional,
+          automatic: true,
+          peerPlatform: Platform.isAndroid ? PairedDevicePlatform.windows : PairedDevicePlatform.android,
+        )..stage('host_start');
+        diagnostics.fail(failure);
+        state = state.copyWith(
+          started: false,
+          lastErrorCode: failure.code,
+          lastErrorDetails: failure.uiDetails,
+          lastMessage: '自动同步服务无法启动，请查看下方原因',
+        );
       }
     }
   }
@@ -121,7 +150,15 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
     final pendingWakeRequests = _pendingWakeRequests.values.toList(growable: false);
     _pendingWakeRequests.clear();
     for (final request in pendingWakeRequests) {
-      if (!request.isCompleted) request.completeError(StateError('device_sync_stopped'));
+      final error = StateError('device_sync_stopped');
+      final failure = PairedSyncFailure.fromException(
+        stage: request.diagnostics.stageName,
+        error: error,
+        stackTrace: StackTrace.current,
+        code: 'device_sync_stopped',
+      );
+      request.diagnostics.fail(failure);
+      if (!request.completion.isCompleted) request.completion.completeError(error, StackTrace.current);
     }
     final subscription = _endpointSubscription;
     _endpointSubscription = null;
@@ -170,6 +207,7 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
       identityStore: ref.read(deviceIdentityStoreProvider),
       onIncoming: _handleIncoming,
       onWakeRequest: _handleWakeRequest,
+      onWakeFailure: _handleWakeFailure,
     );
     if (_disposed || !_foregroundDesired) {
       await host.close();
@@ -372,8 +410,17 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
     final device = _device(deviceId);
     if (device == null) return;
     if (!_operationAllowed(device, operation)) {
+      final failure = PairedSyncFailure.fromException(
+        stage: 'policy',
+        error: StateError('device_sync_operation_not_allowed'),
+        stackTrace: StackTrace.current,
+        code: 'device_sync_operation_not_allowed',
+      );
+      final diagnostics = _startPairedDiagnostics(device, operation: operation, automatic: false, role: 'paired_initiator');
+      diagnostics.fail(failure);
       state = state.copyWith(
-        lastErrorCode: 'device_sync_operation_not_allowed',
+        lastErrorCode: failure.code,
+        lastErrorDetails: failure.uiDetails,
         lastMessage: switch (operation) {
           PairedSyncOperation.pull => '设备策略已禁止拉取，请先将方向改为“双向”或“仅接收”',
           PairedSyncOperation.push => '设备策略已禁止推送，请先将方向改为“双向”或“仅发送”',
@@ -384,7 +431,15 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
     }
     final endpoint = _endpoints[deviceId];
     if (endpoint == null || endpoint.expiresAtUtc.isBefore(DateTime.now().toUtc())) {
-      state = state.copyWith(lastErrorCode: 'lan_sync_peer_offline', lastMessage: '${device.label} 当前不在线');
+      final failure = PairedSyncFailure.fromException(
+        stage: 'discovery',
+        error: StateError('lan_sync_peer_offline'),
+        stackTrace: StackTrace.current,
+        code: 'lan_sync_peer_offline',
+      );
+      final diagnostics = _startPairedDiagnostics(device, operation: operation, automatic: false, role: 'paired_initiator');
+      diagnostics.fail(failure);
+      _showFailure(device, failure, automatic: false);
       return;
     }
     await _runOperation(device, endpoint, operation: operation);
@@ -402,8 +457,18 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
   }
 
   void _handleEndpoint(PairedSyncEndpoint endpoint) {
-    final device = _device(endpoint.deviceId);
+    var device = _device(endpoint.deviceId);
     if (device == null) return;
+    if (endpoint.label != device.label) {
+      device = device.copyWith(label: endpoint.label);
+      state = state.copyWith(
+        devices: <PairedDevice>[
+          for (final saved in state.devices)
+            if (saved.deviceId == device.deviceId) device else saved,
+        ],
+      );
+      unawaited(_persistDiscoveredLabel(device));
+    }
     final previous = _endpoints[endpoint.deviceId];
     final wasOnline = previous != null && previous.expiresAtUtc.isAfter(DateTime.now().toUtc());
     _endpoints[endpoint.deviceId] = endpoint;
@@ -418,163 +483,17 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
     unawaited(_runOperation(device, endpoint, operation: PairedSyncOperation.bidirectional, automatic: true));
   }
 
-  Future<void> _runOperation(
-    PairedDevice device,
-    PairedSyncEndpoint endpoint, {
-    required PairedSyncOperation operation,
-    bool automatic = false,
-  }) {
-    if (Platform.isAndroid && device.platform == PairedDevicePlatform.windows) {
-      return _requestReverseOperation(device, endpoint, operation: operation, automatic: automatic);
-    }
-    return _runOutbound(device, endpoint, operation: operation, automatic: automatic);
-  }
-
-  Future<void> _requestReverseOperation(
-    PairedDevice device,
-    PairedSyncEndpoint endpoint, {
-    required PairedSyncOperation operation,
-    required bool automatic,
-  }) async {
-    if (_activeDeviceId != null || state.busyDeviceId != null) return;
-    final host = _host;
-    final identity = _identity;
-    if (host == null || identity == null) {
-      state = state.copyWith(lastErrorCode: 'device_sync_start_failed', lastMessage: '同步服务尚未就绪');
-      return;
-    }
-    final secret = await ref.read(deviceIdentityStoreProvider).readPeerSecret(device.deviceId);
-    if (secret == null) {
-      state = state.copyWith(lastErrorCode: 'paired_secret_missing', lastMessage: '与 ${device.label} 的配对密钥已丢失，请重新配对');
-      return;
-    }
-    final requestId = createPairedSyncWakeRequestId();
-    final completion = Completer<void>();
-    _pendingWakeRequests[requestId] = completion;
-    state = state.copyWith(busyDeviceId: device.deviceId, lastErrorCode: null, lastMessage: '正在请求 ${device.label} 建立反向连接');
+  Future<void> _persistDiscoveredLabel(PairedDevice device) async {
     try {
-      await sendPairedSyncWakeRequest(
-        identity: identity,
-        endpoint: endpoint,
-        sharedSecret: secret,
-        operation: operation,
-        localPort: host.port,
-        requestId: requestId,
-      );
-      await completion.future.timeout(const Duration(seconds: 12));
+      await _serializeRepositoryMutation(() async {
+        final repository = ref.read(pairedDeviceRepositoryProvider);
+        final latest = await repository.read(device.deviceId);
+        if (latest != null && latest.label != device.label) {
+          await repository.upsert(latest.copyWith(label: device.label));
+        }
+      });
     } on Object {
-      if (_pendingWakeRequests.containsKey(requestId)) {
-        await _recordResultSafely(device, PairedSyncResultState.failed);
-        state = state.copyWith(
-          lastErrorCode: 'lan_sync_reverse_connect_timeout',
-          lastMessage: automatic ? '${device.label} 未响应同步请求，稍后会自动重试' : '${device.label} 未响应同步请求；请确认电脑端 MgRead 仍在前台',
-        );
-        if (automatic) _scheduleRetry(device.deviceId);
-      }
-    } finally {
-      _pendingWakeRequests.remove(requestId);
-      if (_activeDeviceId == null && state.busyDeviceId == device.deviceId) {
-        state = state.copyWith(busyDeviceId: null);
-      }
-    }
-  }
-
-  Future<void> _handleWakeRequest(PairedSyncWakeRequest request) async {
-    final device = _device(request.endpoint.deviceId);
-    if (device == null || _activeDeviceId != null || state.busyDeviceId != null) return;
-    _endpoints[device.deviceId] = request.endpoint;
-    state = state.copyWith(onlineDeviceIds: _onlineIds());
-    await _runOutbound(device, request.endpoint, operation: request.operation.reversed, requestId: request.requestId);
-  }
-
-  Future<void> _runOutbound(
-    PairedDevice device,
-    PairedSyncEndpoint endpoint, {
-    required PairedSyncOperation operation,
-    bool automatic = false,
-    String? requestId,
-  }) async {
-    if (_activeDeviceId != null) return;
-    _activeDeviceId = device.deviceId;
-    var authenticatedDevice = device;
-    state = state.copyWith(
-      busyDeviceId: device.deviceId,
-      lastErrorCode: null,
-      lastMessage: switch (operation) {
-        PairedSyncOperation.bidirectional => '正在与 ${device.label} 双向同步',
-        PairedSyncOperation.pull => '正在从 ${device.label} 拉取',
-        PairedSyncOperation.push => '正在向 ${device.label} 推送',
-      },
-    );
-    try {
-      final secret = await ref.read(deviceIdentityStoreProvider).readPeerSecret(device.deviceId);
-      final identity = _identity ?? await ref.read(deviceIdentityStoreProvider).loadOrCreateIdentity();
-      if (secret == null) throw StateError('paired_secret_missing');
-      final session = await PairedSyncClientSession.connectAny(
-        endpoints: <PairedSyncEndpoint>[endpoint],
-        identity: identity,
-        peer: device,
-        sharedSecret: secret,
-      );
-      authenticatedDevice = session.peer;
-      final summary = await session.run(gateway: ref.read(lanSyncGatewayProvider), operation: operation, requestId: requestId);
-      _retryTimers.remove(device.deviceId)?.cancel();
-      _retryFailures.remove(device.deviceId);
-      await _recordResultSafely(authenticatedDevice, PairedSyncResultState.success);
-      _refreshAfterSync();
-      state = state.copyWith(lastMessage: _summaryMessage(authenticatedDevice.label, summary), lastErrorCode: null);
-    } on PairedSyncPartialException {
-      await _recordResultSafely(authenticatedDevice, PairedSyncResultState.partial);
-      state = state.copyWith(lastErrorCode: 'device_sync_partial', lastMessage: '与 ${authenticatedDevice.label} 已同步部分内容，将自动补齐剩余内容');
-      if (automatic) _scheduleRetry(device.deviceId);
-    } on LanSyncTransportException catch (error) {
-      await _recordResultSafely(authenticatedDevice, PairedSyncResultState.failed);
-      state = state.copyWith(
-        lastErrorCode: error.code,
-        lastMessage: _transportFailureMessage(authenticatedDevice, error.code, automatic: automatic),
-      );
-      if (automatic) _scheduleRetry(device.deviceId);
-    } on Object {
-      await _recordResultSafely(authenticatedDevice, PairedSyncResultState.failed);
-      state = state.copyWith(
-        lastErrorCode: 'device_sync_failed',
-        lastMessage: automatic ? '与 ${authenticatedDevice.label} 同步失败，稍后会自动重试' : '与 ${authenticatedDevice.label} 同步失败，请稍后重试',
-      );
-      if (automatic) _scheduleRetry(device.deviceId);
-    } finally {
-      _activeDeviceId = null;
-      state = state.copyWith(busyDeviceId: null);
-    }
-  }
-
-  Future<void> _handleIncoming(PairedSyncServerSession session) async {
-    var device = _device(session.peer.deviceId) ?? session.peer;
-    final busyDeviceId = state.busyDeviceId;
-    final expectedReverseConnection = busyDeviceId == device.deviceId && _pendingWakeRequests.isNotEmpty;
-    if (_activeDeviceId != null || (busyDeviceId != null && !expectedReverseConnection)) {
-      await session.rejectBusy();
-      return;
-    }
-    _activeDeviceId = device.deviceId;
-    state = state.copyWith(busyDeviceId: device.deviceId, lastErrorCode: null, lastMessage: '正在与 ${device.label} 同步');
-    try {
-      final summary = await session.run(gateway: ref.read(lanSyncGatewayProvider));
-      device = session.peer;
-      await _recordResultSafely(device, PairedSyncResultState.success);
-      _refreshAfterSync();
-      state = state.copyWith(lastMessage: _summaryMessage(device.label, summary), lastErrorCode: null);
-    } on PairedSyncPartialException {
-      await session.close();
-      await _recordResultSafely(device, PairedSyncResultState.partial);
-      state = state.copyWith(lastErrorCode: 'device_sync_partial', lastMessage: '与 ${device.label} 已同步部分内容，下次在线时会继续补齐');
-    } on Object {
-      await session.close();
-      await _recordResultSafely(device, PairedSyncResultState.failed);
-      state = state.copyWith(lastErrorCode: 'device_sync_failed', lastMessage: '与 ${device.label} 同步失败，稍后会自动重试');
-    } finally {
-      _completeWakeRequest(session.requestId);
-      _activeDeviceId = null;
-      state = state.copyWith(busyDeviceId: null);
+      // 在线标签已经更新；持久化失败不能影响发现和同步连接。
     }
   }
 
@@ -588,6 +507,7 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
     await reloadDevices();
   }
 
+  @override
   Future<void> _recordResultSafely(PairedDevice device, PairedSyncResultState result) async {
     try {
       await _recordResult(device, result);
@@ -628,6 +548,7 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
     return result.future;
   }
 
+  @override
   void _scheduleRetry(String deviceId) {
     if (_retryTimers.containsKey(deviceId) || !_foregroundDesired) return;
     final failures = (_retryFailures[deviceId] ?? 0) + 1;
@@ -649,30 +570,84 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
     });
   }
 
-  void _completeWakeRequest(String? requestId) {
-    if (requestId == null) return;
-    final completion = _pendingWakeRequests[requestId];
-    if (completion != null && !completion.isCompleted) completion.complete();
+  @override
+  bool _completeWakeRequest(String? requestId, PairedSyncRunSummary summary) {
+    if (requestId == null) return false;
+    final pending = _pendingWakeRequests[requestId];
+    if (pending == null || pending.completion.isCompleted) return false;
+    pending.completion.complete(summary);
+    return true;
   }
 
-  void _refreshAfterSync() {
-    ref.invalidate(availablePluginSourcesProvider);
-    unawaited(_refreshLibraryProjections());
+  @override
+  bool _failWakeRequest(String? requestId, Object error, StackTrace stackTrace) {
+    if (requestId == null) return false;
+    final pending = _pendingWakeRequests[requestId];
+    if (pending == null || pending.completion.isCompleted) return false;
+    pending.completion.completeError(error, stackTrace);
+    return true;
   }
 
-  Future<void> _refreshLibraryProjections() async {
-    for (final refresh in <Future<void> Function()>[
-      () => ref.read(libraryPageControllerProvider.notifier).refresh(),
-      () => ref.read(privateLibraryPageControllerProvider.notifier).refresh(),
-    ]) {
-      try {
-        await refresh();
-      } on Object {
-        // 同步事务已完成；页面刷新失败时由 Controller 保留原有可见内容。
+  @override
+  _PendingWakeRequest? _pendingWakeForDevice(String deviceId) {
+    for (final pending in _pendingWakeRequests.values) {
+      if (pending.deviceId == deviceId) return pending;
+    }
+    return null;
+  }
+
+  @override
+  PairedSyncDiagnosticSession _startPairedDiagnostics(
+    PairedDevice device, {
+    required PairedSyncOperation operation,
+    required bool automatic,
+    required String role,
+  }) => PairedSyncDiagnosticSession.start(
+    ref.read(diagnosticsManagerProvider),
+    role: role,
+    operation: operation,
+    automatic: automatic,
+    peerPlatform: device.platform,
+  );
+
+  @override
+  void _showFailure(PairedDevice device, PairedSyncFailure failure, {required bool automatic}) {
+    if (_disposed) return;
+    state = state.copyWith(
+      lastErrorCode: failure.code,
+      lastErrorDetails: failure.uiDetails,
+      lastMessage: pairedSyncFailureMessage(device, failure, automatic: automatic),
+    );
+  }
+
+  @override
+  Future<PairedSyncFailure?> _refreshAfterSync() async {
+    try {
+      ref.invalidate(availablePluginSourcesProvider);
+      await ref.read(libraryPageControllerProvider.notifier).refresh();
+      await ref.read(privateLibraryPageControllerProvider.notifier).refresh();
+      final projections = <LibraryPageState>[ref.read(libraryPageControllerProvider), ref.read(privateLibraryPageControllerProvider)];
+      for (final projection in projections) {
+        if (!projection.hasFailure) continue;
+        return PairedSyncFailure.fromException(
+          stage: 'library_refresh',
+          error: StateError('library_refresh_${projection.error?.code.wireValue ?? 'unknown'}'),
+          stackTrace: StackTrace.current,
+          code: 'device_sync_library_refresh_failed',
+        );
       }
+      return null;
+    } on Object catch (error, stackTrace) {
+      return PairedSyncFailure.fromException(
+        stage: 'library_refresh',
+        error: error,
+        stackTrace: stackTrace,
+        code: 'device_sync_library_refresh_failed',
+      );
     }
   }
 
+  @override
   PairedDevice? _device(String deviceId) {
     for (final device in state.devices) {
       if (device.deviceId == deviceId) return device;
@@ -680,6 +655,7 @@ final class DeviceSyncController extends Notifier<DeviceSyncState> {
     return null;
   }
 
+  @override
   Set<String> _onlineIds() {
     final now = DateTime.now().toUtc();
     final expired = <String>[

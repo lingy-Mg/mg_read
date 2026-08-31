@@ -7,19 +7,23 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 
 final class SecureDeviceIdentityStore implements DeviceIdentityStore {
-  SecureDeviceIdentityStore({FlutterSecureStorage? storage}) : _storage = storage ?? const FlutterSecureStorage();
+  SecureDeviceIdentityStore({FlutterSecureStorage? storage, Future<String?> Function()? deviceLabelResolver})
+    : _storage = storage ?? const FlutterSecureStorage(),
+      _deviceLabelResolver = deviceLabelResolver ?? _readPlatformDeviceLabel;
 
   static const _deviceIdKey = 'mgread.device-sync.device-id.v1';
   static const _deviceLabelKey = 'mgread.device-sync.device-label.v1';
   static const _peerPrefix = 'mgread.device-sync.peer-secret.v1.';
 
   final FlutterSecureStorage _storage;
+  final Future<String?> Function() _deviceLabelResolver;
   Future<LocalDeviceIdentity>? _identity;
 
   @override
@@ -35,12 +39,23 @@ final class SecureDeviceIdentityStore implements DeviceIdentityStore {
       await _storage.write(key: _deviceIdKey, value: deviceId);
     }
     var label = await _storage.read(key: _deviceLabelKey);
-    if (!_isUsableDeviceLabel(label)) {
-      final host = Platform.localHostname.trim();
-      label = _isUsableDeviceLabel(host) ? host : (Platform.isWindows ? 'Windows 设备' : 'Android 设备');
+    final resolvedLabel = await _resolveDeviceLabel();
+    if (resolvedLabel != null && resolvedLabel != label) {
+      label = resolvedLabel;
+      await _storage.write(key: _deviceLabelKey, value: label);
+    } else if (!_isUsableDeviceLabel(label)) {
+      label = _normalizeDeviceLabel(Platform.localHostname) ?? (Platform.isWindows ? 'Windows 设备' : 'Android 设备');
       await _storage.write(key: _deviceLabelKey, value: label);
     }
     return LocalDeviceIdentity(deviceId: deviceId, label: label!);
+  }
+
+  Future<String?> _resolveDeviceLabel() async {
+    try {
+      return _normalizeDeviceLabel(await _deviceLabelResolver());
+    } on Object {
+      return null;
+    }
   }
 
   @override
@@ -64,11 +79,26 @@ final class SecureDeviceIdentityStore implements DeviceIdentityStore {
   }
 }
 
+const MethodChannel _deviceIdentityChannel = MethodChannel('mgread/device_identity');
+
+Future<String?> _readPlatformDeviceLabel() async {
+  if (!Platform.isAndroid) return null;
+  return _deviceIdentityChannel.invokeMethod<String>('getDeviceLabel');
+}
+
 bool _isUsableDeviceLabel(String? value) {
-  if (value == null) return false;
-  final normalized = value.trim();
-  if (normalized.isEmpty || normalized.length > 128) return false;
-  return !<String>{'localhost', 'localhost.localdomain', '127.0.0.1', '::1'}.contains(normalized.toLowerCase());
+  return _normalizeDeviceLabel(value) != null;
+}
+
+String? _normalizeDeviceLabel(String? value) {
+  if (value == null) return null;
+  var normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (normalized.isEmpty) return null;
+  if (<String>{'localhost', 'localhost.localdomain', '127.0.0.1', '::1', 'android 设备', 'windows 设备'}.contains(normalized.toLowerCase())) {
+    return null;
+  }
+  if (normalized.length > 128) normalized = normalized.substring(0, 128);
+  return normalized;
 }
 
 List<int> _randomBytes(int length) {

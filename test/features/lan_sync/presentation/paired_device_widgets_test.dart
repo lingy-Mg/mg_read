@@ -66,6 +66,40 @@ void main() {
     expect(tester.widget<OutlinedButton>(find.byKey(const Key('device-sync-push-$deviceId'))).onPressed, isNull);
     expect(tester.widget<FilledButton>(find.byKey(const Key('device-sync-bidirectional-$deviceId'))).onPressed, isNull);
   });
+
+  testWidgets('sync failure exposes its stable code, stage, and technical reason', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: PairedDevicesSection(
+              state: DeviceSyncState(
+                started: true,
+                devices: <PairedDevice>[_device(deviceId)],
+                onlineDeviceIds: const <String>{deviceId},
+                lastMessage: '与开发电脑同步失败：建立局域网连接',
+                lastErrorCode: 'lan_sync_connect_failed',
+                lastErrorDetails: '阶段：建立局域网连接\n错误码：lan_sync_connect_failed\n技术原因：SocketException: Connection refused',
+              ),
+              supportsScanner: false,
+              onBeginPairing: () {},
+              onApprovePairing: () {},
+              onRejectPairing: () {},
+              onCancelPairing: () {},
+              onSync: (_, _) {},
+              onManage: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('device-sync-error-details')), findsOneWidget);
+    expect(find.textContaining('lan_sync_connect_failed'), findsOneWidget);
+    expect(find.textContaining('Connection refused'), findsOneWidget);
+    expect(find.textContaining('完整异常与堆栈'), findsOneWidget);
+  });
 }
 
 PairedDevice _device(String deviceId, {PairedSyncMode mode = PairedSyncMode.bidirectional}) => PairedDevice(
