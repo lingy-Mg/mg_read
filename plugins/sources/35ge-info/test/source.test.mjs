@@ -44,6 +44,8 @@ test('fixtures cover categories search detail catalog content bounded list reque
     plugin.getChapters({ id: search.items[0].id }),
   ]);
   assert.equal(detail.author, 'Fixture Author'); assert.equal(detail.latestChapter.id !== null, true);
+  assert.equal(detail.updatedAt, '2026-08-01T02:00:00.000Z');
+  assert.equal(detail.latestChapter.updatedAt, '2026-08-01T02:00:00.000Z');
   assert.deepEqual(chapters.items.map((chapter) => chapter.title), ['Fixture One', 'Fixture Two']);
   assert.equal(calls.filter(({ url }) => /\/xs\/123\/456\/$/u.test(url.pathname)).length, 1);
   const content = await plugin.getContent({ id: detail.id, chapterId: chapters.items[0].id });

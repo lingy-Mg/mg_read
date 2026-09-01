@@ -43,6 +43,8 @@ test('fixtures cover categories search detail paged catalog content and image pr
   const search = await plugin.search({ query: 'fixture', cursor: null, pageSize: 20 });
   assert.equal(search.items[0].author, 'Fixture Author');
   const detailResult = await plugin.getDetail({ id: search.items[0].id });
+  assert.equal(detailResult.updatedAt, '2026-08-01T02:00:00.000Z');
+  assert.equal(detailResult.latestChapter.updatedAt, '2026-08-01T02:00:00.000Z');
   assert.equal(detailResult.status, 'completed');
   assert.equal(detailResult.catalogUrl, 'http://www.shukuge.com/book/123/index.html');
   const chapters = await plugin.getChapters({ id: detailResult.id });

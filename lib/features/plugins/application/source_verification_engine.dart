@@ -222,10 +222,18 @@ final class SourceVerificationEngine {
         final response = await request.close().timeout(stageTimeout);
         statuses.add(response.statusCode);
         final contentType = response.headers.contentType?.mimeType ?? '';
-        final bytesRead = await response.take(1).fold<int>(0, (total, bytes) => total + bytes.length).timeout(stageTimeout);
+        var bytesRead = 0;
+        final signature = <int>[];
+        await response
+            .take(1)
+            .forEach((bytes) {
+              bytesRead += bytes.length;
+              signature.addAll(bytes.take(16));
+            })
+            .timeout(stageTimeout);
         if (response.statusCode >= 200 &&
             response.statusCode < 300 &&
-            (!expectedImage || contentType.startsWith('image/')) &&
+            (!expectedImage || contentType.startsWith('image/') || _hasImageSignature(signature)) &&
             bytesRead > 0) {
           return _ResourceProbeResult(attempts: statuses.length, status: response.statusCode, bytesRead: bytesRead);
         }
@@ -237,6 +245,22 @@ final class SourceVerificationEngine {
     }
     throw _VerificationFailure('resource_unreachable', summary: <String, Object?>{'attempts': statuses.length, 'statuses': statuses});
   }
+}
+
+bool _hasImageSignature(List<int> bytes) {
+  bool startsWith(List<int> signature, [int offset = 0]) {
+    if (bytes.length < offset + signature.length) return false;
+    for (var index = 0; index < signature.length; index++) {
+      if (bytes[offset + index] != signature[index]) return false;
+    }
+    return true;
+  }
+
+  return startsWith(const <int>[0xFF, 0xD8, 0xFF]) ||
+      startsWith(const <int>[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) ||
+      startsWith(const <int>[0x47, 0x49, 0x46, 0x38]) ||
+      startsWith(const <int>[0x42, 0x4D]) ||
+      (startsWith(const <int>[0x52, 0x49, 0x46, 0x46]) && startsWith(const <int>[0x57, 0x45, 0x42, 0x50], 8));
 }
 
 final class _SourceRunContext {

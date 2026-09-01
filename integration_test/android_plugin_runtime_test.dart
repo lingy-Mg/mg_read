@@ -64,13 +64,18 @@ void main() {
     final plugins = await runtime.invoke(const InstalledPluginsInvocation());
     final aisishuwu = plugins.singleWhere((plugin) => plugin.id == 'org.mgread.aisishuwu');
     expect(aisishuwu.status, 'active');
-    expect(aisishuwu.activeVersion, '0.2.11');
+    expect(aisishuwu.activeVersion, '0.2.12');
     final demo = plugins.singleWhere((plugin) => plugin.id == 'org.mgread.discovery-demo');
     expect(demo.status, 'active');
     expect(demo.activeVersion, '0.1.2');
 
     final fixtureDetail = await runtime.invoke(const SourceDetailInvocation(pluginId: 'org.mgread.aisishuwu', id: 'novel:52801'));
     expect(fixtureDetail.summary.chapterCount, 733);
+
+    final search = await runtime.invoke(const SourceSearchInvocation(pluginId: 'org.mgread.aisishuwu', query: '修仙', pageSize: 5));
+    expect(search.items, isNotEmpty);
+    expect(search.items.every((item) => item.id.startsWith('novel:')), isTrue);
+
     final fixtureChapters = await runtime.invoke(const SourceChaptersInvocation(pluginId: 'org.mgread.aisishuwu', id: 'novel:52801'));
     expect(fixtureChapters.items, hasLength(733));
     expect(fixtureChapters.items.map((chapter) => chapter.id).toSet(), hasLength(733));

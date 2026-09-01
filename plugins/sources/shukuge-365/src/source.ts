@@ -101,7 +101,7 @@ export class ShukugeSource {
     const author = clean(more.eq(2).find('a').first().text());
     const statusText = stripLabel(clean(more.eq(3).text()), '状态');
     const latest = more.eq(6).find('a').first();
-    const updatedAt = stripLabel(clean(more.eq(7).text()), '最新时间');
+    const updatedAt = parseTimestamp(stripLabel(clean(more.eq(7).text()), '最新时间'));
     const coverRaw = image.attr('src');
     const catalogRaw = $('.bookdtext a.btn-primary[href*="/index.html"]').first().attr('href');
     if (catalogRaw === undefined) throw new Error('Detail catalog link is missing.');
@@ -291,6 +291,13 @@ function parseStatus(value: string | null): ContentSummary['status'] {
   if (/(?:连载|在更)/u.test(value)) return 'ongoing';
   if (/(?:暂停|停更)/u.test(value)) return 'hiatus';
   return 'unknown';
+}
+function parseTimestamp(value: string | null): string | null {
+  if (value === null) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/u.exec(value);
+  if (match === null) return null;
+  const iso = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6] ?? '00'}+08:00`;
+  return Number.isNaN(Date.parse(iso)) ? null : new Date(iso).toISOString();
 }
 function clean(value: string | undefined): string | null { const result = value?.replace(/\s+/gu, ' ').trim() ?? ''; return result === '' ? null : result; }
 function stripLabel(value: string | null, label: string): string | null { return value === null ? null : clean(value.replace(new RegExp(`^${label}[：:]?\\s*`, 'u'), '')); }

@@ -75,6 +75,22 @@ test('empty direct search is capped at four category requests with concurrency t
   assert.equal(peak, 2);
 });
 
+test('fallback search includes the new-book list used by root discovery', async () => {
+  const calls = [];
+  const source = new TianyueSource(fixtureContext(async (input) => {
+    const url = new URL(input); calls.push(url);
+    if (url.pathname === '/search.html') return new Response('<p>找不到您要搜索的内容</p>');
+    if (url.pathname === '/postdate/') {
+      return new Response('<ul class="list"><li><p class="bookname"><a href="/read/398958/">Fresh Needle</a></p><p class="data"><a class="layui-btn">Author</a></p></li></ul>');
+    }
+    return new Response('<ul class="list"></ul>');
+  }));
+  const result = await source.search('Fresh Needle');
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, 'book:398958');
+  assert.ok(calls.some((url) => url.pathname === '/postdate/'));
+});
+
 test('fallback search stops launching work and aborts its sibling after reaching 20 matches', async () => {
   const cards = Array.from({ length: 20 }, (_, index) => `<li><p class="bookname"><a href="/read/${100 + index}/">Needle ${index}</a></p><p class="data"><a class="layui-btn">Author</a></p></li>`).join('');
   let categoryCalls = 0; let aborted = 0;

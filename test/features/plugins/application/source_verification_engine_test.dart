@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
@@ -37,13 +39,35 @@ void main() {
     expect(report.sources.single.failure?.code, 'chapters_truncated');
     expect(report.sources.single.failure?.summary, <String, Object?>{'expected': 6, 'actual': 5});
   });
+
+  test('accepts a WebP cover whose server reports application/octet-stream', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((request) async {
+      request.response.headers.contentType = ContentType.binary;
+      request.response.add(const <int>[0x52, 0x49, 0x46, 0x46, 0x04, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]);
+      await request.response.close();
+    });
+    try {
+      final coverUrl = Uri.parse('http://${server.address.address}:${server.port}/cover.webp');
+      final report = await SourceVerificationEngine(
+        _VerificationGateway(chapterCount: 5, coverUrl: coverUrl),
+      ).run(pluginId: _VerificationGateway.pluginId);
+
+      expect(report.isSuccessful, isTrue);
+      final coverStage = report.sources.single.stages.where((stage) => stage.stage == 'resource.cover').single;
+      expect(coverStage.status, SourceVerificationStageStatus.passed);
+    } finally {
+      await server.close(force: true);
+    }
+  });
 }
 
 final class _VerificationGateway implements SourceContentGateway {
-  _VerificationGateway({required this.chapterCount});
+  _VerificationGateway({required this.chapterCount, this.coverUrl});
 
   static const pluginId = 'org.mgread.fixture';
   final int chapterCount;
+  final Uri? coverUrl;
   final List<String> contentChapterIds = <String>[];
 
   PluginContentSummary get summary => PluginContentSummary(
@@ -52,7 +76,7 @@ final class _VerificationGateway implements SourceContentGateway {
     contentKind: PluginContentKind.novel,
     author: null,
     url: null,
-    coverUrl: null,
+    coverUrl: coverUrl,
     description: null,
     language: 'zh',
     status: PluginContentStatus.ongoing,

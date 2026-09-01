@@ -62,6 +62,8 @@ test('fixture flow covers discovery, search, detail, neutral groups and both pla
   const catalog = await plugin.getChapters({ id: info.id });
   assert.deepEqual(catalog.groups.map((group) => group.title), ['Laoz', 'Diff']);
   assert.deepEqual(catalog.groups.map((group) => group.episodes.length), [2, 2]);
+  assert.deepEqual(catalog.groups.map((group) => group.episodes.map((episode) => episode.order)), [[0, 1], [0, 1]]);
+  assert.deepEqual(catalog.items.map((episode) => episode.order), [0, 1, 2, 3]);
   assert.equal(catalog.items.length, 4);
   const detailRequestsBeforePlayback = requests.filter((url) => url.pathname === '/v/101.html').length;
 

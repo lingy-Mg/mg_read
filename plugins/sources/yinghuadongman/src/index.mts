@@ -104,7 +104,8 @@ export async function getDetail(request: { id: string }) {
 export async function getChapters(request: { id: string }) {
   const id = contentId(request.id);
   const groups = parseGroups(await fetchText(detailUrl(id)), id);
-  return frozen({ items: groups.flatMap((group) => group.episodes), groups });
+  const items = groups.flatMap((group) => group.episodes).map((episode, order) => frozen({ ...episode, order }));
+  return frozen({ items, groups });
 }
 
 export async function getContent(request: { id: string; chapterId: string }) {

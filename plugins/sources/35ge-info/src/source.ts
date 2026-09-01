@@ -129,7 +129,7 @@ export class ThirtyFiveSource {
       const latestTitle = meta($, 'og:novel:latest_chapter_name');
       const latestRaw = meta($, 'og:novel:latest_chapter_url');
       const latestUrl = latestRaw === null ? null : new URL(latestRaw, bookUrl);
-      const updatedAt = meta($, 'og:novel:update_time');
+      const updatedAt = parseTimestamp(meta($, 'og:novel:update_time'));
       const coverRaw = meta($, 'og:image');
       const detail = Object.freeze({
         ...summary({
@@ -216,6 +216,13 @@ function inferredCoverUrl(url: URL): URL | null {
 }
 function sameBookChapter(chapter: URL, book: URL): boolean { const key = bookIdentity(book); return key !== '' && chapter.origin === origin && new RegExp(`^/xs?${key.replaceAll('/', '\\/')}\\d+\\.html$`, 'u').test(chapter.pathname); }
 function normalizeIntro(value: string | null): string | null { return value === null ? null : clean(value.replace(/\\[nr]/gu, '').replace(/[\r\n\u2028\u2029]+/gu, ' ')); }
+function parseTimestamp(value: string | null): string | null {
+  if (value === null) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/u.exec(value);
+  if (match === null) return null;
+  const iso = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6] ?? '00'}+08:00`;
+  return Number.isNaN(Date.parse(iso)) ? null : new Date(iso).toISOString();
+}
 function clean(value: string | undefined): string | null { const result = value?.replace(/\s+/gu, ' ').trim() ?? ''; return result === '' ? null : result; }
 function stripBrackets(value: string | null): string | null { return value === null ? null : clean(value.replace(/^\[|\]$/gu, '')); }
 function parseStatus(value: string | null): ContentSummary['status'] { if (value === null) return 'unknown'; if (/(?:全本|完本|完结)/u.test(value)) return 'completed'; if (/连载/u.test(value)) return 'ongoing'; if (/(?:停更|暂停)/u.test(value)) return 'hiatus'; return 'unknown'; }

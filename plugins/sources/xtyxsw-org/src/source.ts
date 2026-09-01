@@ -1,6 +1,6 @@
 /**
  * Tianyue parser using public PC HTTP only; no browser, Cookie, or user-agent fallback.
- * If direct search is empty, only the first four catalog categories are inspected, with two requests at most in flight and early cancellation at 20 matches.
+ * If direct search is empty, the new-book list and first three catalog categories are inspected, with two requests at most in flight and early cancellation at 20 matches.
  * Only bounded GET display projections are cached; POST search, HTML, chapter text, credentials, and user input are never cached or logged.
  */
 import * as cheerio from 'cheerio/slim';
@@ -61,7 +61,7 @@ export class TianyueSource{
     for(let page=0;page<120;page+=1){if(visited.has(url.toString()))throw new Error('Chapter pagination loop detected.');visited.add(url.toString());const $=cheerio.load(await this.#fetch(url));title??=clean($('h2').first().text());for(const element of $('#content p').toArray()){const value=clean($(element).text());if(value!==null&&!isNoise(value))paragraphs.push(value);}const next=$('#thumb a,.pager a').toArray().find(element=>{const label=(clean($(element).text())??'').replace(/\s+/gu,'');return label.includes('下一页')&&!label.includes('下一章');});if(next===undefined)return Object.freeze({chapterId,contentKind:'novel' as const,title,updatedAt:null,text:paragraphs.join('\n\n'),pages:Object.freeze([])});const href=$(next).attr('href');if(href===undefined)throw new Error('Chapter continuation is invalid.');const candidate=new URL(href,url);if(!isChapterContinuation(candidate,bookId,chapterNumberValue)||candidate.toString()===url.toString())throw new Error('Chapter continuation is invalid.');url=candidate;}
     throw new Error('Chapter page count exceeds the source limit.');
   }
-  async #fallbackSearch(query:string):Promise<readonly ContentSummary[]>{const needle=query.trim().toLocaleLowerCase('zh-CN');const matches:ContentSummary[]=[];const seen=new Set<string>();const candidates=categories.slice(0,searchFallbackPolicy.categoryBudget);const controller=new AbortController();let next=0;let stopped=false;
+  async #fallbackSearch(query:string):Promise<readonly ContentSummary[]>{const needle=query.trim().toLocaleLowerCase('zh-CN');const matches:ContentSummary[]=[];const seen=new Set<string>();const newest=categories.find(([id])=>id==='new');const candidates=[...(newest===undefined?[]:[newest]),...categories.filter(([id])=>id!=='new')].slice(0,searchFallbackPolicy.categoryBudget);const controller=new AbortController();let next=0;let stopped=false;
     const worker=async()=>{for(;;){if(stopped)return;const index=next;next+=1;const category=candidates[index];if(category===undefined)return;let result:ListResult;try{result=await this.#loadDiscovery(category,1,controller.signal);}catch(error){if(stopped&&isAbortError(error))return;throw error;}if(stopped)return;for(const item of result.items){const hay=`${item.title} ${item.author??''}`.toLocaleLowerCase('zh-CN');if(hay.includes(needle)&&!seen.has(item.id)){seen.add(item.id);matches.push(item);if(matches.length>=searchFallbackPolicy.maxResults){stopped=true;controller.abort();return;}}}}};
     try{await Promise.all(Array.from({length:searchFallbackPolicy.concurrency},worker));}catch(error){stopped=true;controller.abort();throw error;}return Object.freeze(matches);
   }
