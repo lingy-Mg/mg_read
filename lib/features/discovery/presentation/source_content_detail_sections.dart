@@ -218,12 +218,19 @@ class _DetailStats extends StatelessWidget {
 }
 
 class _ShelfActionBar extends StatefulWidget {
-  const _ShelfActionBar({required this.title, required this.shelfState, required this.onAction, required this.onStartReading});
+  const _ShelfActionBar({
+    required this.title,
+    required this.shelfState,
+    required this.onAction,
+    required this.onStartReading,
+    this.isCoverBlurred = false,
+  });
 
   final String? title;
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested onAction;
   final SourceStartReadingRequested onStartReading;
+  final bool isCoverBlurred;
 
   @override
   State<_ShelfActionBar> createState() => _ShelfActionBarState();
@@ -231,6 +238,21 @@ class _ShelfActionBar extends StatefulWidget {
 
 class _ShelfActionBarState extends State<_ShelfActionBar> {
   SourceShelfAction? _runningAction;
+  late bool _isCoverBlurred;
+
+  @override
+  void initState() {
+    super.initState();
+    _isCoverBlurred = widget.isCoverBlurred;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ShelfActionBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_runningAction == null && oldWidget.isCoverBlurred != widget.isCoverBlurred) {
+      _isCoverBlurred = widget.isCoverBlurred;
+    }
+  }
 
   bool get _isRunning => _runningAction != null;
   bool get _isRefreshing => _runningAction == SourceShelfAction.refresh;
@@ -249,7 +271,8 @@ class _ShelfActionBarState extends State<_ShelfActionBar> {
     );
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        final actionWidth = (constraints.maxWidth - AppSpacing.compact) / 2;
+        const int columnCount = 3;
+        final actionWidth = (constraints.maxWidth - AppSpacing.compact * (columnCount - 1)) / columnCount;
         return Wrap(
           spacing: AppSpacing.compact,
           runSpacing: AppSpacing.compact,
@@ -273,6 +296,16 @@ class _ShelfActionBarState extends State<_ShelfActionBar> {
                 onPressed: _isRunning ? null : () => _run(isPrivate ? SourceShelfAction.cancelPrivate : SourceShelfAction.setPrivate),
                 icon: Icon(isPrivate ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                 label: Text(isPrivate ? '取消隐私' : '隐私'),
+                style: style(tokens.mutedText, tokens.divider),
+              ),
+            ),
+            SizedBox(
+              width: actionWidth,
+              child: OutlinedButton.icon(
+                key: const Key('source-detail-cover-blur-action'),
+                onPressed: _isRunning ? null : () => _run(SourceShelfAction.toggleCoverBlur),
+                icon: Icon(_isCoverBlurred ? Icons.blur_off_rounded : Icons.blur_on_rounded),
+                label: Text(_isCoverBlurred ? '取消模糊' : '模糊封面'),
                 style: style(tokens.mutedText, tokens.divider),
               ),
             ),
@@ -319,7 +352,11 @@ class _ShelfActionBarState extends State<_ShelfActionBar> {
     try {
       await widget.onAction(action);
       if (!mounted) return;
-      if (action != SourceShelfAction.refresh) Navigator.of(context).pop();
+      if (action == SourceShelfAction.toggleCoverBlur) {
+        setState(() => _isCoverBlurred = !_isCoverBlurred);
+      } else if (action != SourceShelfAction.refresh) {
+        Navigator.of(context).pop();
+      }
     } on Object {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('操作未能完成，请稍后重试。')));

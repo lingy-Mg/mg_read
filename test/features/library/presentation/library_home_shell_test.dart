@@ -385,8 +385,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('library-book-overflow-menu-fixture-lord-of-mysteries')));
+    await tester.tap(find.text('书架'));
     await tester.pumpAndSettle();
+    await _openHomeBookMenu(tester);
     await tester.tap(find.text('刷新'));
     await tester.pumpAndSettle();
 
@@ -394,25 +395,86 @@ void main() {
     expect(find.text('《诡秘之主》已刷新'), findsOneWidget);
   });
 
-  testWidgets('shows a cover refresh animation until the bookshelf refresh completes', (WidgetTester tester) async {
-    final Completer<void> refreshCompleter = Completer<void>();
+  testWidgets('offers cover blur from the bookshelf more menu', (WidgetTester tester) async {
+    LibraryBookListItemViewData? toggledBook;
     await tester.pumpWidget(
-      _host(callbacks: LibraryHomeCallbacks(onRefreshBook: (LibraryBookListItemViewData book) => refreshCompleter.future)),
+      _host(
+        callbacks: LibraryHomeCallbacks(
+          onToggleBookCoverBlur: (LibraryBookListItemViewData book) async {
+            toggledBook = book;
+          },
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('library-book-overflow-menu-fixture-lord-of-mysteries')));
+    await tester.tap(find.text('书架'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('刷新'));
-    await tester.pump();
+    final LibraryBookSliverList shelfList = tester.widget<LibraryBookSliverList>(find.byType(LibraryBookSliverList));
+    expect(shelfList.presentation, same(LibraryBookListPresentation.shelf));
+    expect(shelfList.actions.map((action) => action.id), contains('toggle-cover-blur'));
+    await _openHomeBookMenu(tester);
+    expect(find.text('模糊封面'), findsOneWidget);
+    await tester.tap(find.text('模糊封面'));
+    await tester.pumpAndSettle();
 
-    expect(find.bySemanticsLabel('诡秘之主 的封面刷新中'), findsOneWidget);
+    expect(toggledBook?.id, 'fixture-lord-of-mysteries');
+    expect(find.text('已模糊《诡秘之主》的封面'), findsOneWidget);
+  });
+
+  testWidgets('renders a blurred cover when the shelf item is marked blurred', (WidgetTester tester) async {
+    final data = LibraryHomeViewData(
+      isPresentationFixture: true,
+      continueReading: null,
+      books: <LibraryBookListItemViewData>[
+        LibraryBookListItemViewData(
+          id: 'blurred-cover-book',
+          title: '隐私封面',
+          coverVariant: LibraryCoverVariant.dusk,
+          coverAssetPath: 'assets/fixtures/home_covers/lord_of_mysteries_small.png',
+          status: LibraryBookStatus.local,
+          isCoverBlurred: true,
+        ),
+      ],
+    );
+    await tester.pumpWidget(_host(data: data));
+    await tester.pumpAndSettle();
+
+    final Finder cover = find.byType(LibraryBookCover);
+    expect(find.descendant(of: cover, matching: find.byType(ImageFiltered)), findsOneWidget);
+  });
+
+  testWidgets('shows a cover refresh animation until the bookshelf refresh completes', (WidgetTester tester) async {
+    final Completer<void> refreshCompleter = Completer<void>();
+    var refreshRequested = false;
+    await tester.pumpWidget(
+      _host(
+        callbacks: LibraryHomeCallbacks(
+          onRefreshBook: (LibraryBookListItemViewData book) {
+            refreshRequested = true;
+            return refreshCompleter.future;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('书架'));
+    await tester.pumpAndSettle();
+    await _openHomeBookMenu(tester);
+    await tester.tap(find.text('刷新'));
+    await tester.pump(AppMotion.destinationTransition);
+
+    expect(refreshRequested, isTrue);
+    expect(find.byWidgetPredicate((Widget widget) => widget is LibraryBookListItem && widget.isRefreshing), findsOneWidget);
+    final Finder refreshLabel = find.byWidgetPredicate((Widget widget) => widget is Semantics && widget.properties.label == '诡秘之主 的封面刷新中');
+    expect(refreshLabel, findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsWidgets);
 
     refreshCompleter.complete();
     await tester.pumpAndSettle();
 
-    expect(find.bySemanticsLabel('诡秘之主 的封面刷新中'), findsNothing);
+    expect(refreshLabel, findsNothing);
   });
 
   testWidgets('offers privacy actions from book swipe actions and home overflow menu', (WidgetTester tester) async {
@@ -977,6 +1039,22 @@ Future<void> _setViewport(WidgetTester tester, Size size) async {
     tester.view.resetDevicePixelRatio();
   });
   await tester.pump();
+}
+
+Future<void> _openHomeBookMenu(WidgetTester tester) async {
+  final Finder book = find.byWidgetPredicate(
+    (Widget widget) => widget is LibraryBookListItem && widget.data.id == 'fixture-lord-of-mysteries',
+  );
+  final Finder content = find.byKey(const Key('library-home-content'));
+  for (int attempt = 0; attempt < 8 && book.evaluate().isEmpty; attempt++) {
+    await tester.drag(content, const Offset(0, -240));
+    await tester.pumpAndSettle();
+  }
+  expect(book, findsOneWidget);
+  await tester.ensureVisible(book);
+  await tester.pumpAndSettle();
+  await tester.tap(find.descendant(of: book, matching: find.byTooltip('书籍更多操作')));
+  await tester.pumpAndSettle();
 }
 
 LibraryHomeViewData _asyncCoverLibraryHomeData() {

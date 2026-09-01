@@ -68,6 +68,7 @@ class LibraryHomeTopVisual extends StatelessWidget {
                                     coverBytes: data.coverBytes,
                                     coverRequest: data.coverRequest,
                                     assetPath: data.coverAssetPath,
+                                    isBlurred: data.isCoverBlurred,
                                     alignment: Alignment.topCenter,
                                     width: constraints.maxWidth,
                                     height: constraints.maxHeight,

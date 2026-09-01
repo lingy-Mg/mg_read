@@ -42,4 +42,24 @@ void main() {
     expect(manager.get(AppSettingKeys.homeLayoutMode), 'list');
     expect(manager.status.documents[AppSettingKeys.appearanceDocument.kind]?.lastErrorCode, 'invalid_setting_value');
   });
+
+  test('blurred cover book IDs survive manager reopen', () async {
+    final store = FakeSettingsStore();
+    final firstManager = AppSettingsManager(
+      store: store,
+      registry: AppSettingKeys.registry,
+      policy: const SettingsPersistencePolicy(debounce: Duration.zero),
+    );
+    await firstManager.initialize();
+    addTearDown(firstManager.close);
+
+    await firstManager.set(AppSettingKeys.blurredCoverBookIds, <String>['book-b', 'book-a']);
+    await firstManager.flush();
+
+    final secondManager = AppSettingsManager(store: store, registry: AppSettingKeys.registry);
+    await secondManager.initialize();
+    addTearDown(secondManager.close);
+
+    expect(secondManager.get(AppSettingKeys.blurredCoverBookIds), <String>['book-b', 'book-a']);
+  });
 }

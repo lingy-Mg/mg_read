@@ -239,7 +239,7 @@ class _LibraryBookListRow extends StatelessWidget {
       isRefreshing: isRefreshing,
     );
     final Widget interactiveRow = presentation.showSwipeActions && actions.isNotEmpty && onBookAction != null
-        ? LibraryBookSwipeActions(actions: actions, onAction: (action) => onBookAction!(book, action), child: row)
+        ? LibraryBookSwipeActions(book: book, actions: actions, onAction: (action) => onBookAction!(book, action), child: row)
         : row;
     return LibraryBookRemovalTransition(
       isRemoving: isRemoving,
@@ -316,6 +316,7 @@ class LibraryBookListItem extends StatelessWidget {
                   coverBytes: data.coverBytes,
                   coverRequest: data.coverRequest,
                   assetPath: data.coverAssetPath,
+                  isBlurred: data.isCoverBlurred,
                   width: AppSpacing.listCoverWidth,
                   height: AppSpacing.listCoverHeight,
                   isRefreshing: isRefreshing,
@@ -509,7 +510,8 @@ class _BookListTrailing extends StatelessWidget {
                         tooltip: '书籍更多操作',
                         menuKey: Key('library-book-overflow-menu-${data.id}'),
                         actions: <LibraryAnchoredMenuAction>[
-                          for (final action in actions) LibraryAnchoredMenuAction(label: action.label, onSelected: () => onAction!(action)),
+                          for (final action in actions)
+                            LibraryAnchoredMenuAction(label: action.labelFor(data), onSelected: () => onAction!(action)),
                         ],
                         triggerBuilder: (BuildContext context, VoidCallback onPressed) => IconButton(
                           tooltip: '书籍更多操作',

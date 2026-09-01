@@ -35,6 +35,9 @@ import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
 const _deleteBookAction = LibraryBookListAction(id: 'delete', label: '删除');
 const _setBookPrivateAction = LibraryBookListAction(id: 'set-private', label: '隐私');
 const _refreshBookAction = LibraryBookListAction(id: 'refresh', label: '刷新');
+const _toggleBookCoverBlurAction = LibraryBookListAction(id: 'toggle-cover-blur', label: '模糊封面', labelBuilder: _coverBlurActionLabel);
+
+String _coverBlurActionLabel(LibraryBookListItemViewData book) => book.isCoverBlurred ? '取消模糊封面' : '模糊封面';
 
 /// The responsive, presentation-only app shell for the library landing page.
 class LibraryHomeShell extends StatefulWidget {
@@ -85,6 +88,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   double _contentOpacity = 1;
   final Set<String> _removingBookIds = <String>{};
   final Set<String> _refreshingBookIds = <String>{};
+  final Set<String> _coverBlurTogglingBookIds = <String>{};
   late LibraryHomeLayoutMode _layoutMode;
   bool _layoutModeChangePending = false;
   bool _privacyRevealActive = false;
@@ -335,6 +339,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   List<LibraryBookListAction> get _bookActions => <LibraryBookListAction>[
     if (widget.callbacks.onRefreshBook != null) _refreshBookAction,
     if (widget.callbacks.onSetBookPrivate != null) _setBookPrivateAction,
+    if (widget.callbacks.onToggleBookCoverBlur != null) _toggleBookCoverBlurAction,
     if (widget.callbacks.onDeleteBook != null) _deleteBookAction,
   ];
 
@@ -472,8 +477,37 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
           return;
         }
         break;
+      case 'toggle-cover-blur':
+        final toggleCoverBlur = widget.callbacks.onToggleBookCoverBlur;
+        if (toggleCoverBlur != null) {
+          unawaited(_toggleBookCoverBlur(book, toggleCoverBlur));
+          return;
+        }
+        break;
     }
     _showUnavailableMessage();
+  }
+
+  Future<void> _toggleBookCoverBlur(
+    LibraryBookListItemViewData book,
+    Future<void> Function(LibraryBookListItemViewData) toggleCoverBlur,
+  ) async {
+    if (!_coverBlurTogglingBookIds.add(book.id)) return;
+    try {
+      await toggleCoverBlur(book);
+      if (!mounted) return;
+      final bool isBlurred = !book.isCoverBlurred;
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(behavior: SnackBarBehavior.floating, content: Text(isBlurred ? '已模糊《${book.title}》的封面' : '已取消《${book.title}》的封面模糊')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _actionFeedback = '封面隐私设置未能完成，请稍后重试。');
+    } finally {
+      _coverBlurTogglingBookIds.remove(book.id);
+    }
   }
 
   Future<void> _refreshBook(LibraryBookListItemViewData book, Future<void> Function(LibraryBookListItemViewData) refreshBook) async {

@@ -11,11 +11,16 @@ library;
 
 import 'package:flutter/foundation.dart';
 
+import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
+
 /// One explicit book-list action supplied by the owning library surface.
 @immutable
 final class LibraryBookListAction {
-  const LibraryBookListAction({required this.id, required this.label}) : assert(id != ''), assert(label != '');
+  const LibraryBookListAction({required this.id, required this.label, this.labelBuilder}) : assert(id != ''), assert(label != '');
 
   final String id;
   final String label;
+  final String Function(LibraryBookListItemViewData book)? labelBuilder;
+
+  String labelFor(LibraryBookListItemViewData book) => labelBuilder?.call(book) ?? label;
 }

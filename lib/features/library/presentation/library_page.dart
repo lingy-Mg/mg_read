@@ -107,9 +107,11 @@ class LibraryPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(appSettingsStatusProvider);
     final AppThemeModeScope themeModeScope = AppThemeModeScope.of(context);
     final AppSettingsManager settings = ref.read(appSettingsProvider);
     final LibraryHomeLayoutMode initialLayoutMode = LibraryHomeLayoutMode.fromSetting(settings.snapshot.get(AppSettingKeys.homeLayoutMode));
+    final Set<String> blurredCoverBookIds = settings.snapshot.get(AppSettingKeys.blurredCoverBookIds).toSet();
     final LibraryPageState state = ref.watch(libraryPageControllerProvider);
     final LibraryPageController controller = ref.read(libraryPageControllerProvider.notifier);
     final LibraryBookVisibilityChanger? visibilityChanger = ref.read(libraryBookVisibilityChangerProvider);
@@ -131,7 +133,7 @@ class LibraryPage extends ConsumerWidget {
 
     final LibraryHomeViewData data = state.overview!.isEmpty
         ? previewData ?? LibraryHomeViewData.empty()
-        : LibraryHomeViewData.fromLocalOverview(state.overview!);
+        : LibraryHomeViewData.fromLocalOverview(state.overview!, blurredBookIds: blurredCoverBookIds);
     final ValueChanged<AppNavigationDestination>? destinationRequested = onDestinationRequested;
     final ValueChanged<String>? readerRequested = onReaderRequested;
     final ValueChanged<String>? bookDetailRequested = onBookDetailRequested;
@@ -187,6 +189,15 @@ class LibraryPage extends ConsumerWidget {
       await controller.refresh();
     }
 
+    Future<void> toggleBookCoverBlur(LibraryBookListItemViewData book) async {
+      final Set<String> nextIds = settings.get(AppSettingKeys.blurredCoverBookIds).toSet();
+      if (!nextIds.add(book.id)) {
+        nextIds.remove(book.id);
+      }
+      final List<String> sortedIds = nextIds.toList()..sort();
+      await settings.set(AppSettingKeys.blurredCoverBookIds, sortedIds);
+    }
+
     Future<void> openBookDetail(LibraryBookListItemViewData book) async {
       final externalCallback = bookDetailRequested;
       if (externalCallback != null) {
@@ -219,6 +230,7 @@ class LibraryPage extends ConsumerWidget {
         previewPluginVersion: summary?.coverPluginVersion ?? book.coverRequest?.pluginVersion ?? 'unknown',
         gateway: sourceGateway,
         shelfState: SourceDetailShelfState.alreadyAdded,
+        isCoverBlurred: book.isCoverBlurred,
         onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) async {
           prepareAndOpen(book.id);
         },
@@ -244,6 +256,8 @@ class LibraryPage extends ConsumerWidget {
               await resolvedCallbacks.onSetBookPrivate?.call(book);
             case SourceShelfAction.cancelPrivate:
               break;
+            case SourceShelfAction.toggleCoverBlur:
+              await resolvedCallbacks.onToggleBookCoverBlur?.call(book);
             case SourceShelfAction.delete:
               await resolvedCallbacks.onDeleteBook?.call(book);
           }
@@ -399,6 +413,7 @@ class LibraryPage extends ConsumerWidget {
                 rethrow;
               }
             },
+      onToggleBookCoverBlur: callbacks.onToggleBookCoverBlur ?? toggleBookCoverBlur,
       onPrivacyLibraryRequested: onPrivacyLibraryRequested == null
           ? callbacks.onPrivacyLibraryRequested
           : () {

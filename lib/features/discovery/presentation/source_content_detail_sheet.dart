@@ -74,7 +74,7 @@ typedef SourceShelfSaveRequested = Future<void> Function(PluginContentDetail det
 typedef SourceShelfRemoveRequested = Future<void> Function();
 
 /// Actions available for a book that is already owned by the local shelf.
-enum SourceShelfAction { refresh, setPrivate, cancelPrivate, delete }
+enum SourceShelfAction { refresh, setPrivate, cancelPrivate, toggleCoverBlur, delete }
 
 typedef SourceShelfActionRequested = Future<void> Function(SourceShelfAction action);
 typedef SourceStartReadingRequested = Future<void> Function();
@@ -105,6 +105,7 @@ Future<void> showSourceContentDetailSheet(
   SourceShelfActionRequested? onShelfAction,
   SourceStartReadingRequested? onStartReading,
   SourceRecommendationRequested? onRecommendationRequested,
+  bool isCoverBlurred = false,
   bool useModalBottomSheet = false,
 }) {
   final Widget detail = _SourceDetailScreen(
@@ -128,6 +129,7 @@ Future<void> showSourceContentDetailSheet(
     onShelfAction: onShelfAction,
     onStartReading: onStartReading,
     onRecommendationRequested: onRecommendationRequested,
+    isCoverBlurred: isCoverBlurred,
     isModalSheet: useModalBottomSheet,
   );
   if (useModalBottomSheet) {
@@ -271,6 +273,7 @@ class _SourceDetailScreen extends StatefulWidget {
     required this.onShelfAction,
     required this.onStartReading,
     this.onRecommendationRequested,
+    this.isCoverBlurred = false,
     required this.isModalSheet,
   });
   final SourceContentGateway gateway;
@@ -294,6 +297,7 @@ class _SourceDetailScreen extends StatefulWidget {
   final SourceShelfActionRequested? onShelfAction;
   final SourceStartReadingRequested? onStartReading;
   final SourceRecommendationRequested? onRecommendationRequested;
+  final bool isCoverBlurred;
   final bool isModalSheet;
 
   @override
@@ -385,6 +389,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                             shelfState: widget.shelfState,
                             onShelfAction: widget.onShelfAction,
                             onStartReading: widget.onStartReading,
+                            isCoverBlurred: widget.isCoverBlurred,
                             onRecommendationRequested: widget.onRecommendationRequested,
                             onExternalUrlRequested: widget.onExternalUrlRequested,
                           ),
@@ -395,6 +400,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                         shelfState: widget.shelfState,
                         onShelfAction: widget.onShelfAction,
                         onStartReading: widget.onStartReading,
+                        isCoverBlurred: widget.isCoverBlurred,
                       );
                     }
                     if (snapshot.hasError) {
@@ -437,6 +443,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                                 shelfState: widget.shelfState,
                                 onShelfAction: widget.onShelfAction,
                                 onStartReading: widget.onStartReading,
+                                isCoverBlurred: widget.isCoverBlurred,
                                 onRecommendationRequested: widget.onRecommendationRequested,
                                 onExternalUrlRequested: widget.onExternalUrlRequested,
                               ),
@@ -465,6 +472,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                         shelfState: widget.shelfState,
                         onShelfAction: widget.onShelfAction,
                         onStartReading: widget.onStartReading,
+                        isCoverBlurred: widget.isCoverBlurred,
                         onRecommendationRequested: widget.onRecommendationRequested,
                         onExternalUrlRequested: widget.onExternalUrlRequested,
                       ),
@@ -497,6 +505,7 @@ class _SourceDetailView extends StatefulWidget {
     required this.onStartReading,
     required this.onRecommendationRequested,
     required this.onExternalUrlRequested,
+    this.isCoverBlurred = false,
     super.key,
   });
   final _SourceDetailBundle bundle;
@@ -513,6 +522,7 @@ class _SourceDetailView extends StatefulWidget {
   final SourceShelfActionRequested? onShelfAction;
   final SourceStartReadingRequested? onStartReading;
   final SourceRecommendationRequested? onRecommendationRequested;
+  final bool isCoverBlurred;
   final SourceExternalUrlLauncher onExternalUrlRequested;
 
   @override
@@ -616,6 +626,7 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
     shelfState: _shelfState,
     onShelfAction: widget.onShelfAction,
     onStartReading: widget.onStartReading,
+    isCoverBlurred: widget.isCoverBlurred,
     onRecommendationRequested: widget.onRecommendationRequested,
     isSavingToShelf: _isSavingToShelf,
     isRemovingFromShelf: _isRemovingFromShelf,
@@ -648,6 +659,7 @@ class _SourceDetailBody extends StatelessWidget {
     required this.onSaveToShelf,
     required this.onRemoveFromShelfRequested,
     required this.onExternalUrlRequested,
+    this.isCoverBlurred = false,
     required this.visibleChapterCount,
     required this.onLoadMore,
   });
@@ -666,6 +678,7 @@ class _SourceDetailBody extends StatelessWidget {
   final SourceShelfActionRequested? onShelfAction;
   final SourceStartReadingRequested? onStartReading;
   final SourceRecommendationRequested? onRecommendationRequested;
+  final bool isCoverBlurred;
   final bool isSavingToShelf;
   final bool isRemovingFromShelf;
   final ValueChanged<PluginContentDetail> onSaveToShelf;
@@ -704,7 +717,13 @@ class _SourceDetailBody extends StatelessWidget {
             onShelfAction != null &&
             onStartReading != null &&
             (content.contentKind == PluginContentKind.novel || content.contentKind == PluginContentKind.manga))
-          _ShelfActionBar(title: content.title, shelfState: shelfState, onAction: onShelfAction!, onStartReading: onStartReading!)
+          _ShelfActionBar(
+            title: content.title,
+            shelfState: shelfState,
+            isCoverBlurred: isCoverBlurred,
+            onAction: onShelfAction!,
+            onStartReading: onStartReading!,
+          )
         else
           Row(
             children: <Widget>[

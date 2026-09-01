@@ -10,6 +10,8 @@
 ///
 library;
 
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -30,6 +32,7 @@ class LibraryBookCover extends ConsumerWidget {
     this.coverBytes,
     this.coverRequest,
     this.isRefreshing = false,
+    this.isBlurred = false,
     this.alignment = Alignment.center,
     super.key,
   });
@@ -44,6 +47,7 @@ class LibraryBookCover extends ConsumerWidget {
 
   /// Shows a transient overlay while the source refreshes this cover.
   final bool isRefreshing;
+  final bool isBlurred;
   final AlignmentGeometry alignment;
 
   @override
@@ -64,7 +68,11 @@ class LibraryBookCover extends ConsumerWidget {
 
     return Semantics(
       image: true,
-      label: isRefreshing || isLoading ? '$title 的封面刷新中' : '$title 的封面',
+      label: isRefreshing || isLoading
+          ? '$title 的封面刷新中'
+          : isBlurred
+          ? '$title 的模糊封面'
+          : '$title 的封面',
       child: ExcludeSemantics(
         child: SizedBox(
           width: width,
@@ -73,9 +81,8 @@ class LibraryBookCover extends ConsumerWidget {
             fit: StackFit.expand,
             children: <Widget>[
               bytes != null && bytes.isNotEmpty
-                  ? ClipRRect(
-                      borderRadius: AppRadii.bookCover,
-                      child: Image.memory(
+                  ? _imageFrame(
+                      Image.memory(
                         normalizeBookCoverBytes(bytes),
                         width: width,
                         height: height,
@@ -87,9 +94,8 @@ class LibraryBookCover extends ConsumerWidget {
                     )
                   : assetPath == null
                   ? _placeholder(tokens, start, end, isLoading: isLoading)
-                  : ClipRRect(
-                      borderRadius: AppRadii.bookCover,
-                      child: Image.asset(
+                  : _imageFrame(
+                      Image.asset(
                         assetPath!,
                         width: width,
                         height: height,
@@ -102,6 +108,23 @@ class LibraryBookCover extends ConsumerWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _imageFrame(Widget image) {
+    if (!isBlurred) {
+      return ClipRRect(borderRadius: AppRadii.bookCover, child: image);
+    }
+
+    // Let the filtered pixels bleed past the final clip. Without this small
+    // overscan, the blur samples the transparent area outside the image and
+    // leaves a hard rectangular edge around the privacy cover.
+    return ClipRRect(
+      borderRadius: AppRadii.bookCover,
+      child: ImageFiltered(
+        imageFilter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Transform.scale(scale: 1.18, child: image),
       ),
     );
   }

@@ -42,6 +42,7 @@ Future<void> showDeferredSourceContentDetailSheet(
   SourceAudioChapterRequested? onAudioChapterRequested,
   SourceVideoEpisodeRequested? onVideoEpisodeRequested,
   SourceExternalUrlLauncher? onExternalUrlRequested,
+  bool isCoverBlurred = false,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -60,6 +61,7 @@ Future<void> showDeferredSourceContentDetailSheet(
           shelfState: shelfState,
           onShelfAction: onShelfAction,
           onStartReading: onStartReading,
+          isCoverBlurred: isCoverBlurred,
           onTextChapterRequested: onTextChapterRequested,
           onComicChapterRequested: onComicChapterRequested,
           onAudioChapterRequested: onAudioChapterRequested,
@@ -85,6 +87,7 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
     required this.onAudioChapterRequested,
     required this.onVideoEpisodeRequested,
     required this.onExternalUrlRequested,
+    this.isCoverBlurred = false,
   });
 
   final Future<SourceContentDetailSeed> seed;
@@ -94,6 +97,7 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested onShelfAction;
   final SourceStartReadingRequested onStartReading;
+  final bool isCoverBlurred;
   final SourceTextChapterRequested? onTextChapterRequested;
   final SourceComicChapterRequested? onComicChapterRequested;
   final SourceAudioChapterRequested? onAudioChapterRequested;
@@ -135,6 +139,7 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
           onExternalUrlRequested: onExternalUrlRequested,
           onShelfAction: onShelfAction,
           onStartReading: onStartReading,
+          isCoverBlurred: isCoverBlurred,
           isModalSheet: true,
         );
       }
@@ -180,6 +185,7 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
                     shelfState: shelfState,
                     onShelfAction: onShelfAction,
                     onStartReading: onStartReading,
+                    isCoverBlurred: isCoverBlurred,
                     onRecommendationRequested: null,
                     onExternalUrlRequested: onExternalUrlRequested,
                   ),

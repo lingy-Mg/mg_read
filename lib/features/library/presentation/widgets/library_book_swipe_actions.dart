@@ -15,12 +15,14 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list_action.dart';
 
 /// Wraps one book row with a revealable trailing action panel.
 class LibraryBookSwipeActions extends StatefulWidget {
-  const LibraryBookSwipeActions({required this.child, required this.actions, required this.onAction, super.key});
+  const LibraryBookSwipeActions({required this.book, required this.child, required this.actions, required this.onAction, super.key});
 
+  final LibraryBookListItemViewData book;
   final Widget child;
   final List<LibraryBookListAction> actions;
   final ValueChanged<LibraryBookListAction> onAction;
@@ -98,7 +100,7 @@ class _LibraryBookSwipeActionsState extends State<LibraryBookSwipeActions> with 
                                   },
                                   child: Center(
                                     child: Text(
-                                      action.label,
+                                      action.labelFor(widget.book),
                                       style: theme.textTheme.bodyMedium?.copyWith(color: _actionForeground(theme, tokens, action)),
                                     ),
                                   ),

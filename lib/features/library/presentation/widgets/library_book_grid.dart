@@ -150,6 +150,7 @@ class LibraryBookGridItem extends StatelessWidget {
                               coverBytes: data.coverBytes,
                               coverRequest: data.coverRequest,
                               assetPath: data.coverAssetPath,
+                              isBlurred: data.isCoverBlurred,
                               width: constraints.maxWidth,
                               height: constraints.maxHeight,
                               isRefreshing: isRefreshing,
@@ -174,7 +175,7 @@ class LibraryBookGridItem extends StatelessWidget {
                         Positioned(
                           right: AppSpacing.unit,
                           top: AppSpacing.unit,
-                          child: _GridBookMenu(bookId: data.id, actions: actions, onAction: onAction, onMore: onMore),
+                          child: _GridBookMenu(book: data, actions: actions, onAction: onAction, onMore: onMore),
                         ),
                       if (isPreparing)
                         Positioned.fill(
@@ -219,9 +220,9 @@ class LibraryBookGridItem extends StatelessWidget {
 }
 
 class _GridBookMenu extends StatefulWidget {
-  const _GridBookMenu({required this.bookId, required this.actions, required this.onAction, required this.onMore});
+  const _GridBookMenu({required this.book, required this.actions, required this.onAction, required this.onMore});
 
-  final String bookId;
+  final LibraryBookListItemViewData book;
   final List<LibraryBookListAction> actions;
   final ValueChanged<LibraryBookListAction>? onAction;
   final VoidCallback? onMore;
@@ -240,7 +241,7 @@ class _GridBookMenuState extends State<_GridBookMenu> {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final bool isEmphasized = _isHovered || _isFocused || _isMenuOpen;
     final Widget trigger = AnimatedContainer(
-      key: Key('library-grid-book-menu-surface-${widget.bookId}'),
+      key: Key('library-grid-book-menu-surface-${widget.book.id}'),
       duration: AppMotion.effectiveDuration(context, AppMotion.micro),
       curve: AppMotion.navigationCurve,
       decoration: BoxDecoration(
@@ -264,7 +265,7 @@ class _GridBookMenuState extends State<_GridBookMenu> {
     final Widget button;
     if (widget.actions.isNotEmpty && widget.onAction != null) {
       button = PopupMenuButton<LibraryBookListAction>(
-        key: Key('library-grid-book-overflow-menu-${widget.bookId}'),
+        key: Key('library-grid-book-overflow-menu-${widget.book.id}'),
         tooltip: '书籍更多操作',
         position: PopupMenuPosition.under,
         shape: RoundedRectangleBorder(borderRadius: AppRadii.surface),
@@ -278,9 +279,9 @@ class _GridBookMenuState extends State<_GridBookMenu> {
         itemBuilder: (BuildContext context) => <PopupMenuEntry<LibraryBookListAction>>[
           for (final LibraryBookListAction action in widget.actions)
             PopupMenuItem<LibraryBookListAction>(
-              key: Key('library-grid-book-action-${widget.bookId}-${action.id}'),
+              key: Key('library-grid-book-action-${widget.book.id}-${action.id}'),
               value: action,
-              child: Text(action.label),
+              child: Text(action.labelFor(widget.book)),
             ),
         ],
         child: trigger,

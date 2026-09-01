@@ -19,6 +19,15 @@ final class AppSettingKeys {
     codec: SettingCodec<String>(_stringEncode, _stringDecode),
     validator: _validateHomeLayoutMode,
   );
+
+  /// Stable local book IDs whose covers are hidden with a blur on the shelf.
+  static const blurredCoverBookIds = SettingKey<List<String>>(
+    id: 'appearance.blurredCoverBookIds',
+    documentKind: 'settings.appearance',
+    defaultValue: <String>[],
+    codec: SettingCodec<List<String>>(_blurredCoverBookIdsEncode, _blurredCoverBookIdsDecode, freeze: freezeSettingList<String>),
+    validator: _validateBlurredCoverBookIds,
+  );
   static const searchHistoryDocument = SettingsDocumentDefinition(id: 'app-settings:settings.search', kind: 'settings.search');
 
   static const searchHistory = SettingKey<List<String>>(
@@ -142,6 +151,7 @@ final class AppSettingKeys {
   static const all = <SettingKey<dynamic>>[
     themeMode,
     homeLayoutMode,
+    blurredCoverBookIds,
     searchHistory,
     discoverySourceId,
     profileIdentity,
@@ -200,6 +210,21 @@ List<String> _searchHistoryDecode(Object? value) {
     throw const FormatException('Expected a string list setting.');
   }
   return <String>[for (final item in value) item as String];
+}
+
+Object? _blurredCoverBookIdsEncode(List<String> value) => List<String>.of(value);
+
+List<String> _blurredCoverBookIdsDecode(Object? value) {
+  if (value is! List || value.any((item) => item is! String)) {
+    throw const FormatException('Expected a string list setting.');
+  }
+  return <String>[for (final item in value) item as String];
+}
+
+void _validateBlurredCoverBookIds(List<String> value) {
+  if (value.length > 100 || value.toSet().length != value.length || value.any((item) => item.trim().isEmpty || item.length > 512)) {
+    throw ArgumentError.value(value);
+  }
 }
 
 void _validateSearchHistory(List<String> value) {

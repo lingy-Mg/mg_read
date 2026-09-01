@@ -11,12 +11,19 @@
 part of 'source_content_detail_sheet.dart';
 
 class _SourceDetailLoadingView extends StatelessWidget {
-  const _SourceDetailLoadingView({required this.initialContent, required this.shelfState, this.onShelfAction, this.onStartReading});
+  const _SourceDetailLoadingView({
+    required this.initialContent,
+    required this.shelfState,
+    this.onShelfAction,
+    this.onStartReading,
+    this.isCoverBlurred = false,
+  });
 
   final PluginContentSummary? initialContent;
   final SourceDetailShelfState shelfState;
   final SourceShelfActionRequested? onShelfAction;
   final SourceStartReadingRequested? onStartReading;
+  final bool isCoverBlurred;
 
   @override
   Widget build(BuildContext context) {
@@ -82,7 +89,13 @@ class _SourceDetailLoadingView extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.section),
         if (shelfState != SourceDetailShelfState.canAdd && onShelfAction != null && onStartReading != null)
-          _ShelfActionBar(title: content?.title, shelfState: shelfState, onAction: onShelfAction!, onStartReading: onStartReading!)
+          _ShelfActionBar(
+            title: content?.title,
+            shelfState: shelfState,
+            isCoverBlurred: isCoverBlurred,
+            onAction: onShelfAction!,
+            onStartReading: onStartReading!,
+          )
         else
           Row(
             children: <Widget>[

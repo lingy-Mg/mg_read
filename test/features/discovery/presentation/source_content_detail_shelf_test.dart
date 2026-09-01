@@ -113,7 +113,7 @@ void main() {
     expect(find.text('移出书架失败，请稍后重试。'), findsOneWidget);
   });
 
-  testWidgets('shelf-owned detail uses one custom three-action bar', (tester) async {
+  testWidgets('shelf-owned detail uses one custom action bar', (tester) async {
     var startReadingCount = 0;
     await tester.pumpWidget(
       MaterialApp(
@@ -125,6 +125,7 @@ void main() {
 
     expect(find.byKey(const Key('source-detail-privacy-action')), findsOneWidget);
     expect(find.byKey(const Key('source-detail-refresh-action')), findsOneWidget);
+    expect(find.byKey(const Key('source-detail-cover-blur-action')), findsOneWidget);
     expect(find.byKey(const Key('source-detail-delete-action')), findsOneWidget);
     expect(find.byKey(const Key('source-detail-start-reading')), findsOneWidget);
     expect(find.byKey(const Key('source-detail-add-shelf')), findsNothing);
@@ -132,6 +133,24 @@ void main() {
     await tester.tap(find.byKey(const Key('source-detail-start-reading')));
     await tester.pumpAndSettle();
     expect(startReadingCount, 1);
+  });
+
+  testWidgets('shelf-owned detail toggles cover blur without dismissing the action bar', (tester) async {
+    final List<SourceShelfAction> actions = <SourceShelfAction>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: _ActionShelfDetailHost(onStartReading: () async {}, onShelfAction: (SourceShelfAction action) async => actions.add(action)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('source-detail-cover-blur-action')));
+    await tester.pumpAndSettle();
+
+    expect(actions, <SourceShelfAction>[SourceShelfAction.toggleCoverBlur]);
+    expect(find.byKey(const Key('source-detail-cover-blur-action')), findsOneWidget);
+    expect(find.text('取消模糊'), findsOneWidget);
   });
 
   testWidgets('shelf detail shows and clears the refresh animation', (tester) async {

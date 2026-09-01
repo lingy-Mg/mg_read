@@ -31,7 +31,8 @@ final class LibraryHomeViewData {
 
   /// Maps the currently narrow local overview contract without inventing
   /// reading progress, chapter metadata, source availability, or timestamps.
-  factory LibraryHomeViewData.fromLocalOverview(LibraryOverview overview) {
+  factory LibraryHomeViewData.fromLocalOverview(LibraryOverview overview, {Iterable<String> blurredBookIds = const <String>[]}) {
+    final blurredIds = blurredBookIds.toSet();
     final current = overview.continueReading;
     final currentIndex = current == null ? -1 : overview.items.indexOf(current);
     return LibraryHomeViewData(
@@ -50,6 +51,7 @@ final class LibraryHomeViewData {
               coverUrl: current.coverUrl,
               coverBytes: current.coverBytes,
               coverRequest: _coverRequest(current),
+              isCoverBlurred: blurredIds.contains(current.id),
             ),
       books: overview.items.asMap().entries.map(
         (entry) => LibraryBookListItemViewData(
@@ -61,6 +63,7 @@ final class LibraryHomeViewData {
           coverRequest: _coverRequest(entry.value),
           coverVariant: LibraryCoverVariant.values[entry.key % LibraryCoverVariant.values.length],
           status: LibraryBookStatus.local,
+          isCoverBlurred: blurredIds.contains(entry.value.id),
         ),
       ),
     );
@@ -162,6 +165,7 @@ final class LibraryContinueReadingViewData {
     this.coverBytes,
     this.coverRequest,
     this.coverAssetPath,
+    this.isCoverBlurred = false,
   }) : assert(bookId != ''),
        assert(title != ''),
        assert(chapter != ''),
@@ -180,6 +184,9 @@ final class LibraryContinueReadingViewData {
   final List<int>? coverBytes;
   final BookCoverRequest? coverRequest;
   final String? coverAssetPath;
+
+  /// Whether the current reading cover should be visually hidden for privacy.
+  final bool isCoverBlurred;
 }
 
 /// The currently active non-persistent update-list filter.
@@ -214,6 +221,7 @@ final class LibraryHomeCallbacks {
     this.onRefreshBook,
     this.onDeleteBook,
     this.onSetBookPrivate,
+    this.onToggleBookCoverBlur,
     this.onPrivacyLibraryRequested,
     this.onManageSources,
     this.onDiscover,
@@ -231,6 +239,7 @@ final class LibraryHomeCallbacks {
   final Future<void> Function(LibraryBookListItemViewData)? onRefreshBook;
   final Future<void> Function(LibraryBookListItemViewData)? onDeleteBook;
   final Future<void> Function(LibraryBookListItemViewData)? onSetBookPrivate;
+  final Future<void> Function(LibraryBookListItemViewData)? onToggleBookCoverBlur;
   final VoidCallback? onPrivacyLibraryRequested;
   final VoidCallback? onManageSources;
   final VoidCallback? onDiscover;
@@ -251,6 +260,7 @@ final class LibraryHomeCallbacks {
     Future<void> Function(LibraryBookListItemViewData)? onRefreshBook,
     Future<void> Function(LibraryBookListItemViewData)? onDeleteBook,
     Future<void> Function(LibraryBookListItemViewData)? onSetBookPrivate,
+    Future<void> Function(LibraryBookListItemViewData)? onToggleBookCoverBlur,
     VoidCallback? onPrivacyLibraryRequested,
     VoidCallback? onManageSources,
     VoidCallback? onDiscover,
@@ -268,6 +278,7 @@ final class LibraryHomeCallbacks {
       onRefreshBook: onRefreshBook ?? this.onRefreshBook,
       onDeleteBook: onDeleteBook ?? this.onDeleteBook,
       onSetBookPrivate: onSetBookPrivate ?? this.onSetBookPrivate,
+      onToggleBookCoverBlur: onToggleBookCoverBlur ?? this.onToggleBookCoverBlur,
       onPrivacyLibraryRequested: onPrivacyLibraryRequested ?? this.onPrivacyLibraryRequested,
       onManageSources: onManageSources ?? this.onManageSources,
       onDiscover: onDiscover ?? this.onDiscover,
