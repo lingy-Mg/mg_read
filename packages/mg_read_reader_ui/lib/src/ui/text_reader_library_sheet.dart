@@ -13,7 +13,9 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
     final int routeSession = _sessionGeneration;
     final String routeBookId = widget.bookId;
     final TextReaderStateStore routeStore = widget.stateStore;
-    _centeredCatalogChapterId = null;
+    // Keep the last catalog location when the sheet is reopened or when the
+    // user switches between its tabs. A new reader session resets this in
+    // _restart, while a chapter change still recenters on the new chapter.
     _catalogCenterRetryCount = 0;
     bool sheetRefreshStarted = false;
     showModalBottomSheet<void>(
@@ -102,25 +104,28 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                                     ],
                                   ),
                                   Expanded(
-                                    child: TabBarView(
-                                      children: <Widget>[
-                                        _buildBookDetailTab(
-                                          routeSession,
-                                          routeBookId,
-                                        ),
-                                        _buildCatalogList(
-                                          sheetContext,
-                                          routeSession,
-                                          routeBookId,
-                                          routeStore,
-                                        ),
-                                        _buildBookmarkList(
-                                          sheetContext,
-                                          routeSession,
-                                          routeBookId,
-                                          routeStore,
-                                        ),
-                                      ],
+                                    child: PageStorage(
+                                      bucket: _catalogPageStorageBucket,
+                                      child: TabBarView(
+                                        children: <Widget>[
+                                          _buildBookDetailTab(
+                                            routeSession,
+                                            routeBookId,
+                                          ),
+                                          _buildCatalogList(
+                                            sheetContext,
+                                            routeSession,
+                                            routeBookId,
+                                            routeStore,
+                                          ),
+                                          _buildBookmarkList(
+                                            sheetContext,
+                                            routeSession,
+                                            routeBookId,
+                                            routeStore,
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -492,7 +497,7 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
               context,
             ).copyWith(scrollbars: false),
             child: ListView.builder(
-              key: ValueKey<String>('reader-catalog-count-${_catalog.length}'),
+              key: PageStorageKey<String>('reader-catalog-scroll-$routeBookId'),
               controller: _catalogScrollController,
               padding: const EdgeInsets.fromLTRB(12, 8, 34, 20),
               itemExtent: _catalogChapterItemExtent,

@@ -140,8 +140,9 @@ class _TextReaderViewState extends State<TextReaderView>
   final FocusNode _focusNode = FocusNode(debugLabel: 'TextReader');
   final ScrollController _verticalController = ScrollController();
   final ScrollController _catalogScrollController = ScrollController(
-    keepScrollOffset: false,
+    keepScrollOffset: true,
   );
+  final PageStorageBucket _catalogPageStorageBucket = PageStorageBucket();
   final ValueNotifier<int> _catalogRevision = ValueNotifier<int>(0);
   final LinkedHashMap<String, TextChapterContent> _chapterCache =
       LinkedHashMap<String, TextChapterContent>();

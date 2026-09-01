@@ -109,6 +109,7 @@ void main() {
     try {
       await _pumpReader(tester);
 
+      double? previousCatalogOffset;
       for (int cycle = 0; cycle < 3; cycle += 1) {
         await _showControls(tester);
         await tester.tap(find.text('目录'));
@@ -122,11 +123,27 @@ void main() {
         _expectOnlySliderOverlayPortal();
 
         final Finder catalog = find.byKey(
-          const ValueKey<String>('reader-catalog-count-12'),
+          const PageStorageKey<String>('reader-catalog-scroll-semantics-book'),
         );
+        if (previousCatalogOffset != null) {
+          final ScrollableState reopenedCatalogScroll = tester
+              .state<ScrollableState>(
+                find.descendant(of: catalog, matching: find.byType(Scrollable)),
+              );
+          expect(
+            reopenedCatalogScroll.position.pixels,
+            closeTo(previousCatalogOffset, 0.01),
+          );
+        }
         await tester.drag(catalog, const Offset(0, -220));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: 'catalog cycle $cycle');
+        final ScrollableState catalogScroll = tester.state<ScrollableState>(
+          find.descendant(of: catalog, matching: find.byType(Scrollable)),
+        );
+        final double catalogOffset = catalogScroll.position.pixels;
+        expect(catalogOffset, greaterThan(0));
+        previousCatalogOffset = catalogOffset;
 
         await tester.tap(find.widgetWithText(Tab, '书签'));
         await tester.pumpAndSettle();
@@ -137,6 +154,23 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('删除书签'), findsOneWidget);
         _expectOnlySliderOverlayPortal();
+
+        await tester.tap(find.widgetWithText(Tab, '目录'));
+        await tester.pumpAndSettle();
+        final Finder restoredCatalog = find.byKey(
+          const PageStorageKey<String>('reader-catalog-scroll-semantics-book'),
+        );
+        final ScrollableState restoredCatalogScroll = tester
+            .state<ScrollableState>(
+              find.descendant(
+                of: restoredCatalog,
+                matching: find.byType(Scrollable),
+              ),
+            );
+        expect(
+          restoredCatalogScroll.position.pixels,
+          closeTo(catalogOffset, 0.01),
+        );
 
         await tester.tap(find.widgetWithText(Tab, '书籍详情'));
         await tester.pumpAndSettle();
