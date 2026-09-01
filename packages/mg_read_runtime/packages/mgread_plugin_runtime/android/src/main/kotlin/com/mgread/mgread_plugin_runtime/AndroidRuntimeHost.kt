@@ -9,7 +9,6 @@ package com.mgread.mgread_plugin_runtime
 import android.content.Context
 import android.app.Activity
 import android.net.Uri
-import android.content.pm.ApplicationInfo
 import android.provider.OpenableColumns
 import android.util.Log
 import com.caoccao.javet.enums.V8AwaitMode
@@ -542,7 +541,10 @@ internal class AndroidRuntimeHost(
                   dataRoot: ${JSONObject.quote(dataRoot.path)},
                   pluginImportInboxRoot: ${JSONObject.quote(pluginImportInbox.path)},
                   embedded: true,
-                  debugHttpAllowed: ${isDebuggableBuild()},
+                  // The inspector is available in release builds too, but
+                  // DesktopRuntime keeps its listener disabled by default
+                  // until the user explicitly enables the Runtime setting.
+                  debugHttpAllowed: true,
                   onProgress: (progress) => {
                     try {
                       globalThis.__mgreadReportProgress(JSON.stringify(progress));
@@ -604,10 +606,6 @@ internal class AndroidRuntimeHost(
             }
         }
     }
-
-    /** Uses the host application flag so this library does not depend on generated BuildConfig. */
-    private fun isDebuggableBuild(): Boolean =
-        context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
 
     private fun installProgressCallback(runtime: NodeRuntime) {
         val callbackContext = JavetCallbackContext(

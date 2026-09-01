@@ -160,29 +160,17 @@ final class PluginRuntime {
     return _supervisor.invoke(invocation);
   }
 
-  /// Enables or disables the unauthenticated Debug inspector in Debug builds.
+  /// Enables or disables the unauthenticated Runtime inspector.
   ///
-  /// The preference is Runtime-owned and restored by later Debug Runtime
+  /// The preference is Runtime-owned and restored by later Runtime
   /// starts; callers only receive copyable page URLs, never internal control
   /// endpoints or resource tokens.
   Future<RuntimeDebugHttpStatus> setDebugHttpEnabled(bool enabled) {
-    if (!kDebugMode) {
-      throw const PluginRuntimeException(
-        'unsupported',
-        'Runtime Debug HTTP is available in Debug builds only.',
-      );
-    }
     return invoke(RuntimeDebugHttpInvocation(enabled: enabled));
   }
 
   /// Reads the Runtime-owned Debug inspector preference and live listener state.
   Future<RuntimeDebugHttpStatus> debugHttpStatus() {
-    if (!kDebugMode) {
-      throw const PluginRuntimeException(
-        'unsupported',
-        'Runtime Debug HTTP is available in Debug builds only.',
-      );
-    }
     return invoke(const RuntimeDebugHttpStatusInvocation());
   }
 

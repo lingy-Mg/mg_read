@@ -472,7 +472,10 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
           if (_useEnvironmentProxy) '--use-env-proxy',
           _bundle.entrypoint.path,
           '--data-root=${_bundle.dataRoot.path}',
-          if (kDebugMode) '--debug-http-enabled=1',
+          // Keep the opt-in Runtime inspector available in release builds.
+          // The listener remains disabled until the Runtime-owned preference
+          // is explicitly enabled from the application.
+          '--debug-http-enabled=1',
           if (_bundle.bundledPluginDirectory != null)
             '--bundled-plugin-root=${_bundle.bundledPluginDirectory!.path}',
           if (_developmentPluginDirectory != null)

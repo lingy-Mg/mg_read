@@ -14,7 +14,6 @@ library;
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -110,10 +109,8 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
                         onPressed: () => unawaited(_openRuntimePrivateDirectory()),
                       ),
                     ],
-                    if (kDebugMode) ...<Widget>[
-                      const SizedBox(height: AppSpacing.regular),
-                      _RuntimeDebugHttpSection(endpointLauncher: widget.debugEndpointLauncher ?? _launchRuntimeDebugEndpoint),
-                    ],
+                    const SizedBox(height: AppSpacing.regular),
+                    _RuntimeDebugHttpSection(endpointLauncher: widget.debugEndpointLauncher ?? _launchRuntimeDebugEndpoint),
                   ],
                 ),
               ),
@@ -255,7 +252,7 @@ class _RuntimeDebugHttpSection extends ConsumerWidget {
     return _HelpSection(
       icon: Icons.bug_report_outlined,
       title: 'Runtime 调试页面',
-      body: '仅 Debug：开关会保存到 Runtime 私有运行状态，并优先使用端口 52173；端口不可用时自动临时选择可用端口。同一网络设备可无认证访问，请只在可信网络开启。',
+      body: '开发版、Android 和 Windows 发布版均可用。开关会保存到 Runtime 私有运行状态，并优先使用端口 52173；端口不可用时自动临时选择可用端口。同一网络设备可无认证访问，请只在可信网络开启，排查完成后关闭。',
       action: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
