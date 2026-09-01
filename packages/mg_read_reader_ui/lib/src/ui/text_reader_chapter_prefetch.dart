@@ -139,6 +139,13 @@ extension _TextReaderChapterPrefetch on _TextReaderViewState {
         }
         _validateChapter(content, expectedChapterId: chapter.id);
         _cacheChapter(content);
+        // The host may persist the body while the reader's chapter-state
+        // snapshot still says "not downloaded". Refresh only this chapter so
+        // the catalog reflects the completed prefetch without re-querying the
+        // whole book.
+        unawaited(
+          _refreshLoadedChapterStates(chapterId: chapter.id, force: true),
+        );
       } catch (_) {
         // Preloading is best effort. Stop this window after the first failure
         // so an unavailable chapter cannot trigger a burst of later requests.

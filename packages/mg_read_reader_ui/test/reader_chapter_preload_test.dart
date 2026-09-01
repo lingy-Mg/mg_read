@@ -34,6 +34,54 @@ void main() {
     expect(source.loaded, isNot(contains('chapter-4')));
   });
 
+  testWidgets('refreshes the catalog state after a chapter is preloaded', (
+    WidgetTester tester,
+  ) async {
+    final _TrackingDataSource source = _TrackingDataSource(chapterCount: 2);
+    final _TrackingChapterStateCapability capability =
+        _TrackingChapterStateCapability(source);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TextReaderView(
+          bookId: 'preload-state-book',
+          dataSource: source,
+          stateStore: const _VerticalStateStore(),
+          extensions: ReaderExtensions(chapterStateCapability: capability),
+        ),
+      ),
+    );
+
+    for (
+      var attempt = 0;
+      attempt < 80 && !source.loaded.contains('chapter-1');
+      attempt++
+    ) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+    }
+
+    expect(source.loaded, contains('chapter-1'));
+    expect(capability.queriedChapterIds, contains('chapter-1'));
+
+    final Finder readerSurface = find.byKey(
+      const ValueKey<String>('reader-content-surface'),
+    );
+    await tester.tapAt(tester.getCenter(readerSurface));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('目录'));
+    await tester.pumpAndSettle();
+
+    final Finder nextChapter = find.byKey(
+      const ValueKey<String>('reader-catalog-chapter-chapter-1'),
+    );
+    expect(
+      find.descendant(of: nextChapter, matching: find.text('已下载')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('zero disables speculative chapter loading', (
     WidgetTester tester,
   ) async {
@@ -137,6 +185,34 @@ final class _TrackingDataSource implements TextReaderDataSource {
       ],
     );
   }
+}
+
+final class _TrackingChapterStateCapability
+    implements ReaderChapterStateCapability {
+  _TrackingChapterStateCapability(this.source);
+
+  final _TrackingDataSource source;
+  final Set<String> queriedChapterIds = <String>{};
+
+  @override
+  Future<Map<String, ReaderChapterState>> loadChapterStates(
+    String bookId,
+    List<String> chapterIds,
+  ) async {
+    queriedChapterIds.addAll(chapterIds);
+    return <String, ReaderChapterState>{
+      for (final String chapterId in chapterIds)
+        chapterId: ReaderChapterState(
+          chapterId: chapterId,
+          availability: source.loaded.contains(chapterId)
+              ? ReaderChapterAvailability.downloaded
+              : ReaderChapterAvailability.notDownloaded,
+        ),
+    };
+  }
+
+  @override
+  Future<void> markRead(String bookId, String chapterId) async {}
 }
 
 class _VerticalStateStore implements TextReaderStateStore {

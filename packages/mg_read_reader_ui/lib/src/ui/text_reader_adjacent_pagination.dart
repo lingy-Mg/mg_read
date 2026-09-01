@@ -553,6 +553,9 @@ extension _TextReaderAdjacentPagination on _TextReaderViewState {
       }
       _validateChapter(content, expectedChapterId: next.id);
       _cacheChapter(content);
+      // Adjacent pagination also loads a real chapter body. Keep its host
+      // availability state in sync with the catalog while the user is reading.
+      unawaited(_refreshLoadedChapterStates(chapterId: next.id, force: true));
       if (widget.chapterPreloadCount > 1) {
         unawaited(
           _prefetchFollowingChapters(
