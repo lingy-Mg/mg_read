@@ -29,11 +29,22 @@ void main() {
 
     await tester.tap(find.text('目录'));
     await tester.pumpAndSettle();
-    expect(find.text('已下载'), findsOneWidget);
-    expect(find.text('已读'), findsOneWidget);
+    expect(find.text('已下载'), findsWidgets);
+    expect(find.text('已读'), findsWidgets);
     expect(find.text('未下载'), findsOneWidget);
     expect(find.text('未读'), findsOneWidget);
     expect(find.text('1200 字'), findsOneWidget);
+    final ListTile readTile = tester.widget<ListTile>(
+      find.byKey(const ValueKey<String>('reader-catalog-chapter-chapter-3')),
+    );
+    final ListTile unreadTile = tester.widget<ListTile>(
+      find.byKey(const ValueKey<String>('reader-catalog-chapter-chapter-2')),
+    );
+    final Finder readTileFinder = find.byKey(
+      const ValueKey<String>('reader-catalog-chapter-chapter-3'),
+    );
+    expect(readTile.tileColor, isNot(equals(unreadTile.tileColor)));
+    expect(tester.getSize(readTileFinder).height, 54);
     await tester.tap(find.text('书籍详情'));
     await tester.pumpAndSettle();
 
@@ -66,6 +77,15 @@ final class _DetailDataSource implements TextReaderDataSource {
     wordCount: 900,
   );
 
+  static const ReaderChapterInfo _readLaterChapter = ReaderChapterInfo(
+    id: 'chapter-3',
+    title: '第三章',
+    index: 2,
+    availability: ReaderChapterAvailability.downloaded,
+    wordCount: 700,
+    hasBeenRead: true,
+  );
+
   @override
   Future<ReaderBookInfo> loadBookInfo(String bookId) async => ReaderBookInfo(
     id: 'detail-book',
@@ -87,8 +107,12 @@ final class _DetailDataSource implements TextReaderDataSource {
     String? cursor,
     int pageSize = 100,
   }) async => ChapterCatalogPage(
-    items: const <ReaderChapterInfo>[_downloadedChapter, _unreadChapter],
-    total: 2,
+    items: const <ReaderChapterInfo>[
+      _downloadedChapter,
+      _unreadChapter,
+      _readLaterChapter,
+    ],
+    total: 3,
     hasMore: false,
   );
 
@@ -96,7 +120,8 @@ final class _DetailDataSource implements TextReaderDataSource {
   Future<ReaderChapterInfo> loadChapterAtIndex(String bookId, int index) async {
     if (index == 0) return _downloadedChapter;
     if (index == 1) return _unreadChapter;
-    throw RangeError.index(index, const <int>[0, 1]);
+    if (index == 2) return _readLaterChapter;
+    throw RangeError.index(index, const <int>[0, 1, 2]);
   }
 
   @override

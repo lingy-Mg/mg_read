@@ -2,7 +2,7 @@ part of 'text_reader_view.dart';
 
 // ignore_for_file: invalid_use_of_protected_member
 
-const double _catalogChapterItemExtent = 64;
+const double _catalogChapterItemExtent = 54;
 const double _catalogListTopPadding = 8;
 const double _catalogScrollbarThickness = 18;
 const double _catalogScrollbarMinThumbLength = 52;
@@ -546,6 +546,16 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                     : refreshedState.hasBeenRead;
                 final bool stateLoading =
                     _chapterAccessCoordinator?.snapshot.loading == true;
+                final Color chapterBackground = isCurrentChapter
+                    ? _palette.accent.withValues(alpha: .14)
+                    : hasBeenRead
+                    ? _palette.secondaryText.withValues(alpha: .08)
+                    : _palette.accent.withValues(alpha: .11);
+                final Color chapterTextColor = isCurrentChapter
+                    ? _palette.accent
+                    : hasBeenRead
+                    ? _palette.secondaryText
+                    : _palette.text;
                 return Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 560),
@@ -554,17 +564,13 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                         'reader-catalog-chapter-${chapter.id}',
                       ),
                       dense: true,
-                      visualDensity: const VisualDensity(vertical: -1),
-                      minVerticalPadding: 4,
+                      visualDensity: const VisualDensity(vertical: -2),
+                      minVerticalPadding: 0,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 10,
-                        vertical: 4,
+                        vertical: 2,
                       ),
-                      tileColor: isCurrentChapter
-                          ? _palette.accent.withValues(alpha: .14)
-                          : index.isEven
-                          ? _palette.accent.withValues(alpha: .035)
-                          : null,
+                      tileColor: chapterBackground,
                       selected: isCurrentChapter,
                       selectedColor: _palette.accent,
                       selectedTileColor: _palette.accent.withValues(alpha: .15),
@@ -577,11 +583,9 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                           '${chapter.index + 1}',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: isCurrentChapter
-                                ? _palette.accent
-                                : _palette.secondaryText,
+                            color: chapterTextColor,
                             fontSize: isCurrentChapter ? 12.5 : 12,
-                            fontWeight: isCurrentChapter
+                            fontWeight: isCurrentChapter || !hasBeenRead
                                 ? FontWeight.w700
                                 : FontWeight.w500,
                           ),
@@ -595,8 +599,10 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                           fontSize: isCurrentChapter ? 14.5 : 14,
                           fontWeight: isCurrentChapter
                               ? FontWeight.w700
-                              : FontWeight.w500,
-                          color: isCurrentChapter ? _palette.accent : null,
+                              : hasBeenRead
+                              ? FontWeight.w400
+                              : FontWeight.w600,
+                          color: chapterTextColor,
                         ),
                       ),
                       trailing: isCurrentChapter

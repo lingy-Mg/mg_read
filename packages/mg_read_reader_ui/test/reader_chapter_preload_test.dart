@@ -37,7 +37,7 @@ void main() {
   testWidgets('refreshes the catalog state after a chapter is preloaded', (
     WidgetTester tester,
   ) async {
-    final _TrackingDataSource source = _TrackingDataSource(chapterCount: 2);
+    final _TrackingDataSource source = _TrackingDataSource(chapterCount: 3);
     final _TrackingChapterStateCapability capability =
         _TrackingChapterStateCapability(source);
     await tester.pumpWidget(
@@ -80,6 +80,14 @@ void main() {
       find.descendant(of: nextChapter, matching: find.text('已下载')),
       findsOneWidget,
     );
+
+    final Finder followingChapter = find.byKey(
+      const ValueKey<String>('reader-catalog-chapter-chapter-2'),
+    );
+    final ListTile nextTile = tester.widget<ListTile>(nextChapter);
+    final ListTile followingTile = tester.widget<ListTile>(followingChapter);
+    expect(nextTile.tileColor, equals(followingTile.tileColor));
+    expect(tester.getSize(nextChapter).height, 54);
   });
 
   testWidgets('zero disables speculative chapter loading', (

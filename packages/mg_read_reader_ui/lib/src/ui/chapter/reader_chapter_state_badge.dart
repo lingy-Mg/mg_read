@@ -107,8 +107,42 @@ class ReaderChapterStateBadge extends StatelessWidget {
           : ReaderChapterStateStrings.unread,
     ];
     if (semantics.isEmpty) return const SizedBox.shrink();
+    final Color readingStateColor = hasBeenRead
+        ? palette.secondaryText
+        : palette.accent;
+    final Widget readingState = DecoratedBox(
+      decoration: BoxDecoration(
+        color: readingStateColor.withValues(alpha: hasBeenRead ? .11 : .17),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              hasBeenRead ? Icons.done_rounded : Icons.fiber_new_rounded,
+              size: 12,
+              color: readingStateColor,
+            ),
+            const SizedBox(width: 3),
+            Text(
+              hasBeenRead
+                  ? ReaderChapterStateStrings.read
+                  : ReaderChapterStateStrings.unread,
+              style: TextStyle(
+                color: readingStateColor,
+                fontSize: 10.5,
+                fontWeight: hasBeenRead ? FontWeight.w500 : FontWeight.w700,
+                height: 1.05,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
     final Widget content = Wrap(
-      spacing: 7,
+      spacing: 6,
       runSpacing: 2,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: <Widget>[
@@ -133,12 +167,7 @@ class ReaderChapterStateBadge extends StatelessWidget {
             ReaderChapterStateStrings.wordCount(wordCount!),
             style: TextStyle(color: palette.secondaryText, fontSize: 11.5),
           ),
-        Text(
-          hasBeenRead
-              ? ReaderChapterStateStrings.read
-              : ReaderChapterStateStrings.unread,
-          style: TextStyle(color: palette.secondaryText, fontSize: 11.5),
-        ),
+        readingState,
       ],
     );
     if (availability != ReaderChapterAvailability.failed || onRetry == null) {

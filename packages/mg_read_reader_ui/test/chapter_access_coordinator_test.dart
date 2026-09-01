@@ -110,6 +110,39 @@ void main() {
     coordinator.dispose();
   });
 
+  test(
+    'forced refresh waits for an overlapping lookup before rechecking',
+    () async {
+      final Completer<void> release = Completer<void>();
+      final _RecordingChapterStateCapability capability =
+          _RecordingChapterStateCapability(release: release.future);
+      final ReaderChapterAccessCoordinator coordinator =
+          ReaderChapterAccessCoordinator(
+            bookId: 'book-1',
+            capability: capability,
+          );
+
+      final Future<void> first = coordinator.refresh(const <String>[
+        'chapter-1',
+      ]);
+      final Future<void> forced = coordinator.refresh(const <String>[
+        'chapter-1',
+      ], force: true);
+
+      expect(capability.chapterRequests, <List<String>>[
+        <String>['chapter-1'],
+      ]);
+      release.complete();
+      await Future.wait<void>(<Future<void>>[first, forced]);
+
+      expect(capability.chapterRequests, <List<String>>[
+        <String>['chapter-1'],
+        <String>['chapter-1'],
+      ]);
+      coordinator.dispose();
+    },
+  );
+
   test('rebinding starts a fresh book-scoped session cache', () async {
     final _RecordingChapterStateCapability capability =
         _RecordingChapterStateCapability();

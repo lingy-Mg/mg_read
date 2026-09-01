@@ -41,6 +41,8 @@ class ReaderChapterAccessCoordinator extends ChangeNotifier {
       <String, ReaderChapterState>{};
   final Set<String> _cachedIds = <String>{};
   final Set<String> _loadingIds = <String>{};
+  final Map<String, Completer<void>> _loadingCompletions =
+      <String, Completer<void>>{};
   final LinkedHashSet<String> _optimisticReadIds = LinkedHashSet<String>();
   final Map<String, Object> _markReadTokens = <String, Object>{};
   int _bindingGeneration = 0;
@@ -66,6 +68,7 @@ class ReaderChapterAccessCoordinator extends ChangeNotifier {
     _markReadTokens.clear();
     _baseStates.clear();
     _cachedIds.clear();
+    _completeLoadingWaiters();
     _loadingIds.clear();
     _optimisticReadIds.clear();
     _publish(const ReaderChapterAccessSnapshot.initial());
@@ -96,6 +99,19 @@ class ReaderChapterAccessCoordinator extends ChangeNotifier {
       );
       return;
     }
+    if (force) {
+      final List<Future<void>> inFlight = normalizedIds
+          .where(_loadingIds.contains)
+          .map((String id) => _loadingCompletions[id]?.future)
+          .whereType<Future<void>>()
+          .toList(growable: false);
+      if (inFlight.isNotEmpty) {
+        await Future.wait<void>(inFlight);
+        if (!_isCurrent(bindingGeneration, bookId, capability)) return;
+        await refresh(normalizedIds, force: true);
+        return;
+      }
+    }
     final List<String> ids = normalizedIds
         .where(
           (String id) =>
@@ -106,6 +122,11 @@ class ReaderChapterAccessCoordinator extends ChangeNotifier {
       return;
     }
     _loadingIds.addAll(ids);
+    final Map<String, Completer<void>> loadingCompletions =
+        <String, Completer<void>>{
+          for (final String id in ids) id: Completer<void>(),
+        };
+    _loadingCompletions.addAll(loadingCompletions);
     _publish(
       ReaderChapterAccessSnapshot(
         states: _effectiveStates(),
@@ -159,6 +180,12 @@ class ReaderChapterAccessCoordinator extends ChangeNotifier {
             failure: failure,
           ),
         );
+      }
+      for (final String id in ids) {
+        final Completer<void>? completion = _loadingCompletions.remove(id);
+        if (completion != null && !completion.isCompleted) {
+          completion.complete();
+        }
       }
     }
   }
@@ -269,10 +296,18 @@ class ReaderChapterAccessCoordinator extends ChangeNotifier {
     _markReadTokens.clear();
     _baseStates.clear();
     _cachedIds.clear();
+    _completeLoadingWaiters();
     _loadingIds.clear();
     _optimisticReadIds.clear();
     _snapshot = const ReaderChapterAccessSnapshot.initial();
     super.dispose();
+  }
+
+  void _completeLoadingWaiters() {
+    for (final Completer<void> completion in _loadingCompletions.values) {
+      if (!completion.isCompleted) completion.complete();
+    }
+    _loadingCompletions.clear();
   }
 }
 
