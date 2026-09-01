@@ -546,11 +546,9 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                     : refreshedState.hasBeenRead;
                 final bool stateLoading =
                     _chapterAccessCoordinator?.snapshot.loading == true;
-                final Color chapterBackground = isCurrentChapter
+                final Color? chapterBackground = isCurrentChapter
                     ? _palette.accent.withValues(alpha: .14)
-                    : hasBeenRead
-                    ? _palette.secondaryText.withValues(alpha: .08)
-                    : _palette.accent.withValues(alpha: .11);
+                    : null;
                 final Color chapterTextColor = isCurrentChapter
                     ? _palette.accent
                     : hasBeenRead
@@ -571,6 +569,7 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                         vertical: 2,
                       ),
                       tileColor: chapterBackground,
+                      hoverColor: _palette.accent.withValues(alpha: .08),
                       selected: isCurrentChapter,
                       selectedColor: _palette.accent,
                       selectedTileColor: _palette.accent.withValues(alpha: .15),

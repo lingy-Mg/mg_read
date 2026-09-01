@@ -43,7 +43,10 @@ void main() {
     final Finder readTileFinder = find.byKey(
       const ValueKey<String>('reader-catalog-chapter-chapter-3'),
     );
-    expect(readTile.tileColor, isNot(equals(unreadTile.tileColor)));
+    expect(readTile.tileColor, isNull);
+    expect(unreadTile.tileColor, isNull);
+    expect(readTile.hoverColor, isNotNull);
+    expect(unreadTile.hoverColor, isNotNull);
     expect(tester.getSize(readTileFinder).height, 54);
     await tester.tap(find.text('书籍详情'));
     await tester.pumpAndSettle();
