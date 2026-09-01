@@ -43,7 +43,7 @@ void main() {
     final pageRequest = await client.getUrl(Uri.parse(enabled.endpoints.first));
     final pageResponse = await pageRequest.close();
     expect(pageResponse.statusCode, HttpStatus.ok);
-    expect(await utf8.decodeStream(pageResponse), contains('MgRead Runtime Debug'));
+    expect(await utf8.decodeStream(pageResponse), contains('MgRead 调试信息面板'));
 
     final disabled = await runtime.setDebugHttpEnabled(false);
     expect(disabled.enabled, isFalse);
