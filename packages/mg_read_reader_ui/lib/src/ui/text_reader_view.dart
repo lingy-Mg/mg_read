@@ -57,7 +57,9 @@ part 'text_reader_adjacent_pagination.dart';
 part 'text_reader_chapter_prefetch.dart';
 part 'text_reader_comments.dart';
 part 'text_reader_persistence.dart';
+part 'text_reader_root_widgets.dart';
 part 'text_reader_content_widgets.dart';
+part 'text_reader_page_effect_widgets.dart';
 part 'text_reader_vertical_content_widgets.dart';
 part 'text_reader_chrome_widgets.dart';
 part 'text_reader_cache_dialog.dart';
@@ -591,104 +593,7 @@ class _TextReaderViewState extends State<TextReaderView>
   }
 
   @override
-  Widget build(BuildContext context) {
-    final ReaderPalette palette = _palette;
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: palette.systemBrightness == Brightness.dark
-          ? SystemUiOverlayStyle.light
-          : SystemUiOverlayStyle.dark,
-      child: Theme(
-        data: _readerMaterialTheme(palette),
-        child: PopScope<void>(
-          canPop: true,
-          onPopInvokedWithResult: (bool didPop, void result) {
-            if (didPop) unawaited(_requestExit());
-          },
-          child: Material(
-            color: palette.background,
-            child: CallbackShortcuts(
-              bindings: <ShortcutActivator, VoidCallback>{
-                const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
-                    unawaited(_nextPage()),
-                const SingleActivator(LogicalKeyboardKey.pageDown): () =>
-                    unawaited(_nextPage()),
-                const SingleActivator(LogicalKeyboardKey.space): () =>
-                    unawaited(_nextPage()),
-                const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
-                    unawaited(_previousPage()),
-                const SingleActivator(LogicalKeyboardKey.pageUp): () =>
-                    unawaited(_previousPage()),
-                const SingleActivator(
-                  LogicalKeyboardKey.space,
-                  shift: true,
-                ): () =>
-                    unawaited(_previousPage()),
-                const SingleActivator(LogicalKeyboardKey.escape): () =>
-                    unawaited(_requestExit()),
-              },
-              child: Focus(
-                focusNode: _focusNode,
-                autofocus: true,
-                child: LayoutBuilder(
-                  builder: (BuildContext context, BoxConstraints constraints) {
-                    _ensurePagination(constraints.biggest);
-                    return ScrollConfiguration(
-                      behavior: const _ReaderScrollBehavior(),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: <Widget>[
-                          Stack(
-                            fit: StackFit.expand,
-                            children: <Widget>[
-                              if (_movingPageOwnsBackground)
-                                ColoredBox(color: palette.background)
-                              else
-                                RepaintBoundary(
-                                  key: const ValueKey<String>(
-                                    'reader-fixed-background',
-                                  ),
-                                  child: ReaderBackgroundSurface(
-                                    preset: _preferences.background,
-                                    palette: palette,
-                                  ),
-                                ),
-                              _buildContent(),
-                              IgnorePointer(
-                                child: ColoredBox(
-                                  color: Colors.black.withValues(
-                                    alpha: (1 - _preferences.brightness) * 0.65,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (_horizontalChapterHandoff != null)
-                            _buildHorizontalChapterHandoff(
-                              _horizontalChapterHandoff!,
-                            ),
-                          if (_controlsVisible && !_readerSettingsVisible)
-                            _buildControlsInteractionLock(),
-                          if (_content != null) _buildChrome(),
-                          if (_readerSettingsVisible)
-                            _buildSettingsInteractionLock(),
-                          if (_awaitingPreviousChapterTail)
-                            _PreviousChapterTailMask(palette: palette),
-                          if (_chapterLoadingOverlayVisible)
-                            _ChapterLoadingMask(palette: palette),
-                          if (_noticeMessage != null)
-                            _ReaderNotice(message: _noticeMessage!),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => _buildReaderRoot(context);
 
   void _showSettingsSheet() {
     if (_readerSettingsVisible) return;

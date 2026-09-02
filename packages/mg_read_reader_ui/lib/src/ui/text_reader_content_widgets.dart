@@ -491,56 +491,6 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
     );
   }
 
-  Widget _buildPageEffect(int rawIndex, Widget child) {
-    // PageView.builder already inserts a repaint boundary around each child.
-    // Slide/none therefore reuse the fixed reader background without another
-    // page layer. Cover/curl need an opaque moving sheet, and the inner
-    // boundary keeps that static background + text subtree out of animation
-    // repaints while the surrounding transform/shading changes each frame.
-    if (!_movingPageOwnsBackground) return child;
-    final Widget pageSurface = RepaintBoundary(
-      key: ValueKey<String>('reader-animated-page-boundary-$rawIndex'),
-      child: ReaderBackgroundSurface(
-        key: ValueKey<String>('reader-page-background-$rawIndex'),
-        preset: _preferences.background,
-        palette: _palette,
-        child: child,
-      ),
-    );
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        return AnimatedBuilder(
-          animation: _pageController,
-          child: pageSurface,
-          builder: (BuildContext context, Widget? child) {
-            final double page = _pageController.hasClients
-                ? (_pageController.page ??
-                      _pageController.initialPage.toDouble())
-                : _pageController.initialPage.toDouble();
-            final double distance = (rawIndex - page)
-                .abs()
-                .clamp(0, 1)
-                .toDouble();
-            final bool entering = _pageTurnForward
-                ? rawIndex > page
-                : rawIndex < page;
-            return Transform.translate(
-              offset: Offset((page - rawIndex) * constraints.maxWidth, 0),
-              child: ReaderPageEffect(
-                animation: _preferences.pageAnimation,
-                progress: entering ? 1 - distance : distance,
-                entering: entering,
-                forward: _pageTurnForward,
-                reduceMotion: MediaQuery.disableAnimationsOf(context),
-                child: child!,
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
   Widget _buildPage(
     ReaderPage page,
     int index, {
