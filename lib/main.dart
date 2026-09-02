@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'package:mg_read/app/bootstrap.dart';
@@ -9,6 +10,7 @@ import 'package:mg_read/features/network_proxy/application/flutter_network_proxy
 import 'package:mg_read/features/plugins/application/source_verification.dart';
 
 Future<void> main(List<String> arguments) async {
+  // debugRepaintRainbowEnabled = true;
   WidgetsFlutterBinding.ensureInitialized();
   SourceVerificationCommand? verificationCommand;
   try {

@@ -1,6 +1,6 @@
 import { categories, type Context, BzSource } from './source.js';
 
-interface Active extends Context { readonly dataDir: string; readonly app: object; readonly plugin: object; }
+type Active = Context;
 interface Page { readonly cursor: string | null; readonly pageSize: number; }
 let context: Active | undefined;
 let source: BzSource | undefined;

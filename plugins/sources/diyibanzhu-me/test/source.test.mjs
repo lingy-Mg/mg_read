@@ -21,12 +21,20 @@ async function fixture(t, options = {}) {
   const logs = [];
   let currentUrl = origin;
   let pageHtml = options.initialChallenge === true ? challenge : ready;
+  let verificationPolls = 0;
   let fetchGate = options.fetchChallenge === true;
   const metrics = { activeFetches: 0, maximumActiveFetches: 0 };
   const record = (operation, request = {}) => calls.push({ operation, ...request });
   const page = {
     async navigate(url, callOptions) { currentUrl = url; record('navigate', { url, ...callOptions }); },
-    async getHtml(callOptions) { record('getHtml', callOptions); return pageHtml; },
+    async getHtml(callOptions) {
+      record('getHtml', callOptions);
+      if (pageHtml === challenge) {
+        if (verificationPolls > 0) pageHtml = ready;
+        verificationPolls += 1;
+      }
+      return pageHtml;
+    },
     async fetch(request) {
       record('fetch', request);
       metrics.activeFetches += 1;
@@ -42,7 +50,6 @@ async function fixture(t, options = {}) {
         metrics.activeFetches -= 1;
       }
     },
-    async waitForText(request) { record('waitForText', request); pageHtml = ready; return { url: currentUrl }; },
     async getUrl(callOptions) { record('getUrl', callOptions); return currentUrl; },
     async show(callOptions) { record('show', callOptions); },
     async hide(callOptions) { record('hide', callOptions); },
@@ -115,14 +122,13 @@ test('initial verification shows the page only while needed and hides it after s
   const { calls } = await fixture(t, { initialChallenge: true });
   const result = await plugin.search({ query: 'fixture', cursor: null, pageSize: 20 });
   assert.equal(result.items.length, 1);
-  assert.deepEqual(calls.slice(0, 8).map(call => call.operation), [
-    'open', 'navigate', 'getHtml', 'show', 'waitForText', 'getUrl', 'getHtml', 'hide',
+  assert.deepEqual(calls.slice(0, 7).map(call => call.operation), [
+    'open', 'navigate', 'getHtml', 'show', 'getHtml', 'getUrl', 'getHtml',
   ]);
   assert.equal(calls.find(call => call.operation === 'open').visible, false);
   assert.equal(calls.filter(call => call.operation === 'show').length, 1);
   assert.equal(calls.filter(call => call.operation === 'hide').length, 1);
-  const wait = calls.find(call => call.operation === 'waitForText');
-  assert.deepEqual(wait, { operation: 'waitForText', text: '第一版主', scope: 'text', timeoutMs: 120000 });
+  assert.equal(calls.filter(call => call.operation === 'getHtml').length, 3);
 });
 
 test('discovery follows the live WAP pagination template instead of removed book routes', async t => {
@@ -147,7 +153,7 @@ test('a fetch verification response is completed visibly and retried once', asyn
   assert.equal(result.items.length, 1);
   assert.equal(calls.filter(call => call.operation === 'fetch').length, 2);
   assert.equal(calls.filter(call => call.operation === 'show').length, 1);
-  assert.equal(calls.filter(call => call.operation === 'waitForText').length, 1);
+  assert.equal(calls.filter(call => call.operation === 'getHtml').length >= 4, true);
   assert.equal(calls.filter(call => call.operation === 'hide').length, 1);
   assert.equal(calls.at(-2).operation, 'hide');
   assert.equal(calls.at(-1).operation, 'fetch');

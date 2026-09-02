@@ -406,6 +406,9 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
             child: PageView.builder(
               key: ObjectKey(_pageController),
               controller: _pageController,
+              // Keep the immediately adjacent sheets laid out so the first
+              // drag toward a new page does not also build its text tree.
+              allowImplicitScrolling: true,
               physics: _readerInteractionBlocked || _usesDirectPageTurns
                   ? const NeverScrollableScrollPhysics()
                   : const PageScrollPhysics(),

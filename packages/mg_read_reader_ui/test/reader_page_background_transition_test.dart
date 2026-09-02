@@ -74,6 +74,26 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
   });
+
+  testWidgets('horizontal pages keep adjacent sheets prelaid out', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TextReaderView(
+          bookId: 'adjacent-page-layout-book',
+          dataSource: const _PageBackgroundDataSource(),
+          stateStore: const _PageBackgroundStateStore(
+            ReaderPageAnimation.slide,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final PageView pageView = tester.widget<PageView>(find.byType(PageView));
+    expect(pageView.allowImplicitScrolling, isTrue);
+  });
 }
 
 final class _PageBackgroundStateStore implements TextReaderStateStore {

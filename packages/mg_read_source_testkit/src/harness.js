@@ -6,6 +6,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Buffer } from 'node:buffer';
 
 import { SourceTestFailure, failureFromCause } from './diagnostics.js';
 import { createRuntimeLikeFetch } from './http.js';
@@ -35,6 +36,7 @@ export async function createSourceTestHarness({
   const resourceRequests = [];
   const logEvents = [];
   const runtimeFetch = createRuntimeLikeFetch(sourceFetch);
+  const webview = createTestWebView(runtimeFetch);
   let cleaned = false;
   const recordLog = (level, event) => {
     if (logEvents.length >= maximumLogEvents) return;
@@ -44,6 +46,7 @@ export async function createSourceTestHarness({
     dataDir: join(root, 'data'),
     cacheDir: join(root, 'cache'),
     http: Object.freeze({ fetch: runtimeFetch }),
+    webview,
     resource: Object.freeze({
       proxy(request) {
         const captured = freezeResourceRequest(request);
@@ -105,5 +108,60 @@ function freezeResourceRequest(request) {
     ...(input.headers === undefined
       ? {}
       : { headers: Object.freeze(Object.fromEntries(new Headers(input.headers))) }),
+  });
+}
+
+function createTestWebView(runtimeFetch) {
+  let currentHtml = '';
+  let currentUrl = 'about:blank';
+  const page = Object.freeze({
+    async navigate(url) {
+      const response = await runtimeFetch(url);
+      currentUrl = response.url;
+      currentHtml = await response.text();
+    },
+    async getHtml() {
+      return currentHtml;
+    },
+    async fetch(request) {
+      const response = await runtimeFetch(request.url, {
+        method: request.method,
+        headers: request.headers,
+        body: request.body ?? undefined,
+      });
+      const body = request.responseType === 'base64'
+        ? Buffer.from(await response.arrayBuffer()).toString('base64')
+        : request.responseType === 'json'
+          ? await response.json()
+          : await response.text();
+      return Object.freeze({
+        status: response.status,
+        url: response.url,
+        headers: Object.freeze(Object.fromEntries(response.headers)),
+        body,
+      });
+    },
+    async executeJavaScript() {
+      throw new SourceTestFailure('source_webview_script_unsupported', 'webview.evaluate', {});
+    },
+    async click() {
+      throw new SourceTestFailure('source_webview_interaction_required', 'webview.click', {});
+    },
+    async waitForText() {
+      throw new SourceTestFailure('source_webview_wait_unsupported', 'webview.waitText', {});
+    },
+    async getUrl() {
+      return currentUrl;
+    },
+    async show() {
+      throw new SourceTestFailure('source_webview_interaction_required', 'webview.show', {});
+    },
+    async hide() {},
+    async close() {},
+  });
+  return Object.freeze({
+    async open() {
+      return page;
+    },
   });
 }

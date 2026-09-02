@@ -72,10 +72,10 @@ export class PluginManagerError extends Error {
       | "source_media_resolution_failed"
       | "timeout"
       | "unsupported",
-    /** Runtime-authored, value-free context safe to append to reviewed wire text. */
-    readonly safeDetail?: string,
+    /** Optional detail to append to the wire error text. */
+    readonly detail?: string,
   ) {
-    super("The Runtime plugin capability could not be completed.");
+    super(detail === undefined ? "The Runtime plugin capability could not be completed." : detail);
     this.name = "PluginManagerError";
   }
 }

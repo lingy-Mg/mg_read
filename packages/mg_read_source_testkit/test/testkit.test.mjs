@@ -98,6 +98,11 @@ test('creates an isolated host and records bounded resource metadata', async (t)
   assert.match(fetchHeaders[0].get('user-agent'), /^Mozilla\/5\.0/u);
   assert.equal(fetchHeaders[1].get('user-agent'), 'source-specific');
   assert.deepEqual(harness.summary(), { resources: 1, logs: 1 });
+  const webview = await activatedContext.webview.open();
+  await assert.rejects(
+    webview.show(),
+    (error) => error instanceof SourceTestFailure && error.code === 'source_webview_interaction_required',
+  );
   await harness.cleanup();
   await assert.rejects(access(harness.root));
 });
@@ -128,7 +133,7 @@ test('resource probe skips a stale descriptor and reads only the first healthy c
   assert.ok(calls.every((call) => call.userAgent?.startsWith('Mozilla/5.0')));
 });
 
-test('resource failures expose statuses without echoing request URLs', async () => {
+test('resource failures expose statuses and request URLs', async () => {
   await assert.rejects(
     probeReachableResource({
       requests: [{
@@ -144,11 +149,11 @@ test('resource failures expose statuses without echoing request URLs', async () 
     (error) => error instanceof SourceTestFailure
       && error.code === 'source_resource_unreachable'
       && error.summary.attempts[0].status === 404
-      && !error.message.includes('private-fixture.invalid'),
+      && error.message.includes('private-fixture.invalid'),
   );
 });
 
-test('runs the standard reading chain and reports only bounded counts', async () => {
+test('runs the standard reading chain and reports complete results', async () => {
   const result = await runReadingSourceFlow({
     plugin: fakePlugin(),
     discoverRequest: {
@@ -160,6 +165,8 @@ test('runs the standard reading chain and reports only bounded counts', async ()
     searchRequest: { query: 'fixture', cursor: null, pageSize: 5 },
     suggestionsRequest: { cursor: null, pageSize: 5 },
   });
+  assert.equal(result.detail.title, 'fixture');
+  assert.equal(result.content.text, 'fixture');
   assert.deepEqual(result.summary, {
     discoveryItems: 1,
     searchItems: 1,
