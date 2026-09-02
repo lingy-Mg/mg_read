@@ -16,7 +16,31 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'source_verification_models.dart';
 
 typedef SourceVerificationProgressCallback = void Function(SourceVerificationProgress progress);
+typedef SourceVerificationDebugCallback = void Function(SourceVerificationDebugRecord record);
 typedef SourceVerificationHttpClientFactory = HttpClient Function();
+
+/// Full-fidelity trace for the explicitly requested App CLI test mode.
+///
+/// The normal report remains the stable machine-readable result. This trace is
+/// intentionally separate so the CLI can inspect decoded source values and
+/// original local exceptions without expanding the normal app diagnostics.
+final class SourceVerificationDebugRecord {
+  const SourceVerificationDebugRecord({
+    required this.event,
+    required this.pluginId,
+    required this.stage,
+    this.data,
+    this.error,
+    this.stackTrace,
+  });
+
+  final String event;
+  final String pluginId;
+  final String stage;
+  final Map<String, Object?>? data;
+  final Object? error;
+  final StackTrace? stackTrace;
+}
 
 final sourceVerificationEngineProvider = Provider<SourceVerificationEngine>((Ref ref) {
   return SourceVerificationEngine(ref.watch(sourceContentGatewayProvider));
@@ -32,6 +56,7 @@ final class SourceVerificationEngine {
   Future<SourceVerificationReport> run({
     String? pluginId,
     SourceVerificationProgressCallback? onProgress,
+    SourceVerificationDebugCallback? onDebug,
     SourceVerificationCancellationToken? cancellationToken,
   }) async {
     final startedAt = DateTime.now();
@@ -51,7 +76,7 @@ final class SourceVerificationEngine {
     final results = <SourceVerificationSourceResult>[];
     for (final source in selected) {
       if (cancellationToken?.isCancelled ?? false) break;
-      final result = await _runSource(source, onProgress: onProgress, cancellationToken: cancellationToken);
+      final result = await _runSource(source, onProgress: onProgress, onDebug: onDebug, cancellationToken: cancellationToken);
       results.add(result);
       if (result.status == SourceVerificationResultStatus.cancelled) break;
     }
@@ -67,6 +92,7 @@ final class SourceVerificationEngine {
   Future<SourceVerificationSourceResult> _runSource(
     PluginSourceDescriptor source, {
     SourceVerificationProgressCallback? onProgress,
+    SourceVerificationDebugCallback? onDebug,
     SourceVerificationCancellationToken? cancellationToken,
   }) async {
     final stopwatch = Stopwatch()..start();
@@ -83,6 +109,7 @@ final class SourceVerificationEngine {
       stages: stages,
       stageTimeout: stageTimeout,
       onProgress: onProgress,
+      onDebug: onDebug,
       cancellationToken: cancellationToken,
     );
     var status = SourceVerificationResultStatus.passed;
@@ -91,6 +118,7 @@ final class SourceVerificationEngine {
         'discover',
         () => _loadDiscovery(source.id),
         summary: (value) => <String, Object?>{'items': value.items.length, 'followedTargets': value.followedTargets},
+        debugData: (value) => _debugDiscover(value.result),
       );
       final discoveryCandidate = discovery.items.first.content;
       final search = await context.stage<PluginSearchResult>(
@@ -100,6 +128,7 @@ final class SourceVerificationEngine {
           if (value.items.isEmpty) throw const _VerificationFailure('search_empty');
         },
         summary: (value) => <String, Object?>{'items': value.items.length},
+        debugData: _debugSearch,
       );
       final selected = search.items.first;
       final detail = await context.stage<PluginContentDetail>(
@@ -111,12 +140,14 @@ final class SourceVerificationEngine {
           }
         },
         summary: (value) => <String, Object?>{'contentKind': value.summary.contentKind.code},
+        debugData: _debugDetail,
       );
       final chapters = await context.stage<PluginChaptersResult>(
         'chapters',
         () => _gateway.getChapters(pluginId: source.id, id: selected.id),
         validate: (value) => _validateChapters(detail, value),
         summary: (value) => <String, Object?>{'items': value.items.length, 'groups': value.groups.length},
+        debugData: _debugChapters,
       );
       final samples = _sampleChapters(chapters.items);
       if (samples.isEmpty) throw const _VerificationFailure('content_interaction_required', interactionRequired: true);
@@ -134,6 +165,7 @@ final class SourceVerificationEngine {
           () => _gateway.getContent(pluginId: source.id, id: selected.id, chapterId: chapter.id),
           validate: (value) => _validateContent(detail, chapter, value),
           summary: (value) => <String, Object?>{'units': _contentUnits(value), 'contentKind': detail.summary.contentKind.code},
+          debugData: _debugContent,
         );
         contents.add(content);
       }
@@ -191,18 +223,20 @@ final class SourceVerificationEngine {
 
   Future<_DiscoverySelection> _loadDiscovery(String pluginId) async {
     final root = await _gateway.discover(pluginId: pluginId, pageSize: 20);
+    var result = root;
     var items = _collectDiscoveryItems(root);
     var followedTargets = 0;
     if (items.isEmpty && root is PluginDiscoveryDocumentResult) {
       for (final target in _collectDiscoveryTargets(root.document.components).take(6)) {
         final child = await _gateway.discover(pluginId: pluginId, target: target, pageSize: 20);
+        result = child;
         followedTargets += 1;
         items = _collectDiscoveryItems(child);
         if (items.isNotEmpty) break;
       }
     }
     if (items.isEmpty) throw const _VerificationFailure('discovery_empty');
-    return _DiscoverySelection(items: items, followedTargets: followedTargets);
+    return _DiscoverySelection(result: result, items: items, followedTargets: followedTargets);
   }
 
   Future<_ResourceProbeResult> _probeAny(List<Uri> candidates, {required bool expectedImage}) async {
@@ -269,6 +303,7 @@ final class _SourceRunContext {
     required this.stages,
     required this.stageTimeout,
     required this.onProgress,
+    required this.onDebug,
     required this.cancellationToken,
   });
 
@@ -276,6 +311,7 @@ final class _SourceRunContext {
   final List<SourceVerificationStageResult> stages;
   final Duration stageTimeout;
   final SourceVerificationProgressCallback? onProgress;
+  final SourceVerificationDebugCallback? onDebug;
   final SourceVerificationCancellationToken? cancellationToken;
 
   Future<T> stage<T>(
@@ -283,12 +319,17 @@ final class _SourceRunContext {
     Future<T> Function() action, {
     void Function(T value)? validate,
     Map<String, Object?> Function(T value)? summary,
+    Map<String, Object?> Function(T value)? debugData,
   }) async {
     checkCancellation();
+    onDebug?.call(SourceVerificationDebugRecord(event: 'stage_started', pluginId: source.id, stage: stage));
     onProgress?.call(SourceVerificationProgress(pluginId: source.id, displayName: source.displayName, stage: stage, running: true));
     final stopwatch = Stopwatch()..start();
     try {
       final value = await action().timeout(stageTimeout);
+      onDebug?.call(
+        SourceVerificationDebugRecord(event: 'stage_response', pluginId: source.id, stage: stage, data: debugData?.call(value)),
+      );
       checkCancellation();
       validate?.call(value);
       stopwatch.stop();
@@ -302,7 +343,7 @@ final class _SourceRunContext {
       );
       onProgress?.call(SourceVerificationProgress(pluginId: source.id, displayName: source.displayName, stage: stage, running: false));
       return value;
-    } on Object catch (error) {
+    } on Object catch (error, stackTrace) {
       stopwatch.stop();
       final code = _stableErrorCode(error);
       final cancelled = error is _VerificationCancelled;
@@ -318,6 +359,25 @@ final class _SourceRunContext {
         ),
       );
       onProgress?.call(SourceVerificationProgress(pluginId: source.id, displayName: source.displayName, stage: stage, running: false));
+      onDebug?.call(
+        SourceVerificationDebugRecord(
+          event: 'stage_error',
+          pluginId: source.id,
+          stage: stage,
+          data: <String, Object?>{
+            'runtimeType': error.runtimeType.toString(),
+            'stableCode': code,
+            if (error case _VerificationFailure(:final summary) when summary.isNotEmpty) 'summary': summary,
+            if (error case AppError(code: final appCode, detail: final detail, location: final location)) ...<String, Object?>{
+              'appErrorCode': appCode.wireValue,
+              'detail': detail,
+              'location': location,
+            },
+          },
+          error: error,
+          stackTrace: stackTrace,
+        ),
+      );
       throw _StageAbort(cancelled: cancelled, interactionRequired: interactionRequired);
     }
   }
@@ -430,10 +490,200 @@ String _stableErrorCode(Object error) => switch (error) {
   _ => 'internal',
 };
 
+Map<String, Object?> _debugDiscover(PluginDiscoverResult result) => switch (result) {
+  PluginDiscoveryDocumentResult(:final document) => <String, Object?>{
+    'kind': 'document',
+    'pluginId': result.pluginId,
+    'sourceName': result.sourceName,
+    'document': <String, Object?>{'components': document.components.map(_debugDiscoveryComponent).toList(growable: false)},
+  },
+  PluginDiscoveryAppendResult(:final collectionId, :final items, :final continuation) => <String, Object?>{
+    'kind': 'append',
+    'pluginId': result.pluginId,
+    'sourceName': result.sourceName,
+    'collectionId': collectionId,
+    'items': items.map(_debugDiscoveryContentItem).toList(growable: false),
+    'continuation': continuation == null ? null : <String, Object?>{'target': continuation.target, 'cursor': continuation.cursor},
+  },
+};
+
+Map<String, Object?> _debugDiscoveryComponent(PluginDiscoveryComponent component) => switch (component) {
+  PluginDiscoveryTabsComponent(:final tabs, :final selectedTabId) => <String, Object?>{
+    'type': 'tabs',
+    'id': component.id,
+    'tabs': tabs
+        .map((tab) => <String, Object?>{'id': tab.id, 'label': tab.label, 'target': tab.target, 'icon': tab.icon?.code})
+        .toList(growable: false),
+    'selectedTabId': selectedTabId,
+  },
+  PluginDiscoverySectionComponent(:final title, :final subtitle, :final children, :final icon) => <String, Object?>{
+    'type': 'section',
+    'id': component.id,
+    'title': title,
+    'subtitle': subtitle,
+    'icon': icon?.code,
+    'children': children.map(_debugDiscoveryComponent).toList(growable: false),
+  },
+  PluginDiscoveryGroupComponent(:final layout, :final children) => <String, Object?>{
+    'type': 'group',
+    'id': component.id,
+    'layout': layout.code,
+    'children': children.map(_debugDiscoveryComponent).toList(growable: false),
+  },
+  PluginDiscoveryContentCollectionComponent(:final layout, :final items, :final continuation) => <String, Object?>{
+    'type': 'contentCollection',
+    'id': component.id,
+    'layout': layout.code,
+    'items': items.map(_debugDiscoveryContentItem).toList(growable: false),
+    'continuation': continuation == null ? null : <String, Object?>{'target': continuation.target, 'cursor': continuation.cursor},
+  },
+  PluginDiscoveryCategoryCollectionComponent(:final layout, :final categories) => <String, Object?>{
+    'type': 'categoryCollection',
+    'id': component.id,
+    'layout': layout.code,
+    'categories': categories
+        .map(
+          (category) => <String, Object?>{
+            'id': category.id,
+            'title': category.title,
+            'target': category.target,
+            'count': category.count,
+            'url': category.url?.toString(),
+            'icon': category.icon?.code,
+          },
+        )
+        .toList(growable: false),
+  },
+  PluginDiscoveryTextComponent(:final text) => <String, Object?>{'type': 'text', 'id': component.id, 'text': text},
+  PluginDiscoveryDividerComponent() => <String, Object?>{'type': 'divider', 'id': component.id},
+};
+
+Map<String, Object?> _debugDiscoveryContentItem(PluginDiscoveryContentItem item) => <String, Object?>{
+  'content': _debugSummary(item.content),
+  'rank': item.rank,
+  'metric': item.metric == null ? null : <String, Object?>{'label': item.metric!.label, 'value': item.metric!.value},
+  'recommendation': item.recommendation,
+};
+
+Map<String, Object?> _debugSearch(PluginSearchResult result) => <String, Object?>{
+  'pluginId': result.pluginId,
+  'sourceName': result.sourceName,
+  'items': result.items.map(_debugSummary).toList(growable: false),
+  'nextCursor': result.nextCursor,
+  'totalCount': result.totalCount,
+};
+
+Map<String, Object?> _debugDetail(PluginContentDetail result) => <String, Object?>{
+  'pluginId': result.pluginId,
+  'sourceName': result.sourceName,
+  'summary': _debugSummary(result.summary),
+  'aliases': result.aliases,
+  'catalogUrl': result.catalogUrl?.toString(),
+};
+
+Map<String, Object?> _debugChapters(PluginChaptersResult result) => <String, Object?>{
+  'pluginId': result.pluginId,
+  'sourceName': result.sourceName,
+  'items': result.items.map(_debugChapter).toList(growable: false),
+  'groups': result.groups
+      .map(
+        (group) => <String, Object?>{
+          'id': group.id,
+          'title': group.title,
+          'order': group.order,
+          'episodes': group.episodes.map(_debugChapter).toList(growable: false),
+        },
+      )
+      .toList(growable: false),
+};
+
+Map<String, Object?> _debugContent(PluginChapterContent result) => <String, Object?>{
+  'pluginId': result.pluginId,
+  'sourceName': result.sourceName,
+  'contentKind': result.contentKind.code,
+  'chapterId': result.chapterId,
+  'title': result.title,
+  'updatedAt': result.updatedAt?.toIso8601String(),
+  'text': result.text,
+  'pages': result.pages
+      .map(
+        (page) => <String, Object?>{
+          'id': page.id,
+          'index': page.index,
+          'url': page.url.toString(),
+          'mimeType': page.mimeType,
+          'width': page.width,
+          'height': page.height,
+          'resourcePolicy': page.resourcePolicy.code,
+          'expiresAt': page.expiresAt?.toIso8601String(),
+        },
+      )
+      .toList(growable: false),
+  'media': result.media == null
+      ? null
+      : <String, Object?>{
+          'url': result.media!.url.toString(),
+          'resourceType': result.media!.resourceType.code,
+          'resourcePolicy': result.media!.resourcePolicy.code,
+          'expiresAt': result.media!.expiresAt?.toIso8601String(),
+          'mimeType': result.media!.mimeType,
+          'headers': result.media!.headers,
+        },
+};
+
+Map<String, Object?> _debugSummary(PluginContentSummary result) => <String, Object?>{
+  'id': result.id,
+  'title': result.title,
+  'contentKind': result.contentKind.code,
+  'coverOrientation': result.coverOrientation.code,
+  'author': result.author,
+  'url': result.url?.toString(),
+  'coverUrl': result.coverUrl?.toString(),
+  'coverBytesLength': result.coverBytes?.length,
+  'description': result.description,
+  'language': result.language,
+  'status': result.status.code,
+  'access': result.access.code,
+  'wordCount': result.wordCount,
+  'chapterCount': result.chapterCount,
+  'publishedAt': result.publishedAt?.toIso8601String(),
+  'updatedAt': result.updatedAt?.toIso8601String(),
+  'latestChapter': result.latestChapter == null
+      ? null
+      : <String, Object?>{
+          'id': result.latestChapter!.id,
+          'title': result.latestChapter!.title,
+          'url': result.latestChapter!.url?.toString(),
+          'updatedAt': result.latestChapter!.updatedAt?.toIso8601String(),
+        },
+  'categories': result.categories,
+  'tags': result.tags,
+  'attributes': result.attributes.map(_debugAttribute).toList(growable: false),
+};
+
+Map<String, Object?> _debugChapter(PluginChapterSummary chapter) => <String, Object?>{
+  'id': chapter.id,
+  'title': chapter.title,
+  'order': chapter.order,
+  'url': chapter.url?.toString(),
+  'volumeTitle': chapter.volumeTitle,
+  'wordCount': chapter.wordCount,
+  'updatedAt': chapter.updatedAt?.toIso8601String(),
+  'isLocked': chapter.isLocked,
+  'attributes': chapter.attributes.map(_debugAttribute).toList(growable: false),
+};
+
+Map<String, Object?> _debugAttribute(PluginContentAttribute attribute) => <String, Object?>{
+  'key': attribute.key,
+  'label': attribute.label,
+  'value': attribute.value,
+};
+
 HttpClient _defaultHttpClient() => HttpClient();
 
 final class _DiscoverySelection {
-  const _DiscoverySelection({required this.items, required this.followedTargets});
+  const _DiscoverySelection({required this.result, required this.items, required this.followedTargets});
+  final PluginDiscoverResult result;
   final List<PluginDiscoveryContentItem> items;
   final int followedTargets;
 }

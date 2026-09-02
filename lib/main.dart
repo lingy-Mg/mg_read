@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
@@ -21,5 +22,12 @@ Future<void> main(List<String> arguments) async {
     await bootstrapMgReadApp();
     return;
   }
-  await bootstrapMgReadApp(child: SourceVerificationCommandApp(command: verificationCommand));
+  final exitCode = Completer<int>();
+  await bootstrapMgReadApp(
+    child: SourceVerificationCommandApp(command: verificationCommand, terminateProcess: exitCode.complete),
+  );
+  // A Windows Release build is a GUI-subsystem executable. Keep the Dart
+  // entrypoint alive until the command widget has finished the full
+  // production verification and written its report.
+  exit(await exitCode.future);
 }

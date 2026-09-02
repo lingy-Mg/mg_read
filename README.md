@@ -40,6 +40,9 @@ flutter run
 `4` 参数错误或平台不支持。失败报告只包含插件标识、版本、阶段、稳定错误码、耗时和计数，不写入查询词、
 标题、URL 或正文。
 
+CLI 标准输出同时提供 JSONL 调试流：会实时输出启动和阶段状态，并在阶段完成后输出完整解码结果、URL、
+标题、正文、资源请求头及异常堆栈。该输出仅用于显式 CLI 测试，不写入上述稳定报告或常规 App 诊断。
+
 开发期插件直测使用纯 Node.js CLI，具体命令见
 [`packages/mg_read_source_testkit/README.md`](packages/mg_read_source_testkit/README.md)。
 

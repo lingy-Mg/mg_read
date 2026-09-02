@@ -28,4 +28,17 @@ void main() {
       throwsA(isA<SourceVerificationRunException>()),
     );
   });
+
+  test('keeps the selected source id and report path in the command contract', () {
+    final command = parseSourceVerificationCommand(const <String>[
+      '--source-check',
+      'org.mgread.diyibanzhu-me',
+      '--source-check-report',
+      'reports/diyibanzhu.json',
+    ], currentDirectory: 'C:\\workspace');
+
+    expect(command!.pluginId, 'org.mgread.diyibanzhu-me');
+    expect(command.all, isFalse);
+    expect(command.reportPath, endsWith('reports/diyibanzhu.json'));
+  });
 }

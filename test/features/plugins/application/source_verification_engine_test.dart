@@ -60,6 +60,18 @@ void main() {
       await server.close(force: true);
     }
   });
+
+  test('emits full decoded source values through the explicit debug trace', () async {
+    final traces = <SourceVerificationDebugRecord>[];
+    await SourceVerificationEngine(_VerificationGateway(chapterCount: 5)).run(pluginId: _VerificationGateway.pluginId, onDebug: traces.add);
+
+    final search = traces.singleWhere((trace) => trace.event == 'stage_response' && trace.stage == 'search');
+    final searchItems = search.data!['items']! as List<Object?>;
+    expect((searchItems.single as Map<String, Object?>)['title'], 'Fixture');
+
+    final content = traces.singleWhere((trace) => trace.event == 'stage_response' && trace.stage == 'content.first');
+    expect(content.data!['text'], 'fixture body');
+  });
 }
 
 final class _VerificationGateway implements SourceContentGateway {
