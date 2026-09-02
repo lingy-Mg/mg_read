@@ -8,17 +8,21 @@
 #include <iostream>
 
 void CreateAndAttachConsole() {
-  if (::AllocConsole()) {
-    FILE *unused;
-    if (freopen_s(&unused, "CONOUT$", "w", stdout)) {
-      _dup2(_fileno(stdout), 1);
-    }
-    if (freopen_s(&unused, "CONOUT$", "w", stderr)) {
-      _dup2(_fileno(stdout), 2);
-    }
-    std::ios::sync_with_stdio();
-    FlutterDesktopResyncOutputStreams();
+  // GetConsoleWindow() is not reliable for pseudoconsole/ConPTY hosts such
+  // as modern PowerShell. GetConsoleCP() reports attachment in both cases.
+  if (::GetConsoleCP() == 0 && !::AllocConsole()) {
+    return;
   }
+
+  FILE *unused;
+  if (freopen_s(&unused, "CONOUT$", "w", stdout) == 0) {
+    _dup2(_fileno(stdout), 1);
+  }
+  if (freopen_s(&unused, "CONOUT$", "w", stderr) == 0) {
+    _dup2(_fileno(stderr), 2);
+  }
+  std::ios::sync_with_stdio();
+  FlutterDesktopResyncOutputStreams();
 }
 
 std::vector<std::string> GetCommandLineArguments() {

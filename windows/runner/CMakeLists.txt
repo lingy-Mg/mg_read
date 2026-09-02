@@ -6,7 +6,10 @@ project(runner LANGUAGES CXX)
 # work.
 #
 # Any new source files that you add to the application should be added here.
-add_executable(${BINARY_NAME} WIN32
+# Use the console subsystem so a direct `mg_read.exe --source-check=...`
+# invocation remains attached to the caller and blocks until Dart exits.
+# The runner releases the console again for ordinary GUI launches.
+add_executable(${BINARY_NAME}
   "flutter_window.cpp"
   "main.cpp"
   "utils.cpp"

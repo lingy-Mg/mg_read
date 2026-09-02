@@ -4,8 +4,8 @@
 #include <string>
 #include <vector>
 
-// Creates a console for the process, and redirects stdout and stderr to
-// it for both the runner and the Flutter library.
+// Attaches to an existing console or creates one, then redirects stdout and
+// stderr to it for both the runner and the Flutter library.
 void CreateAndAttachConsole();
 
 // Takes a null-terminated wchar_t* encoded in UTF-16 and returns a std::string
