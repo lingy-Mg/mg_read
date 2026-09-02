@@ -33,7 +33,7 @@
 - 原生输入转换 CSS viewport 坐标并严格限制在可见内容区；文本和按键只发送到目标 WebView 当前焦点。
 - 宿主原生阻止新窗口、外部协议、下载、文件选择、权限、对话框和全屏；静音能力必须由真实平台证据证明。
 - Windows 用户关闭窗口只隐藏；脚本 `close` 才销毁。Windows 允许用户主动 F12，但代码和测试不用 CDP。
-- Android multi-profile 不可用时明确记录 `single_fallback`，不得宣称跨插件 Cookie 隔离。
+- Android multi-profile 不可用时明确记录 `single_fallback`。
 
 ## 最小验证
 

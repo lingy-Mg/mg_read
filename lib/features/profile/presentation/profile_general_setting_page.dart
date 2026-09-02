@@ -173,7 +173,7 @@ class ProfileGeneralSettingPage extends ConsumerWidget {
         ],
       ),
       const SizedBox(height: AppSpacing.comfortable),
-      const _InlineNotice(icon: Icons.lock_outline_rounded, message: '普通设置不保存账号或密码；凭据不会写入导入导出文件或局域网同步内容。'),
+      const _InlineNotice(icon: Icons.lock_outline_rounded, message: '普通设置按应用功能保存；导入导出和局域网同步按对应功能处理。'),
     ];
   }
 

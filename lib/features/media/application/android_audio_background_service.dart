@@ -7,7 +7,7 @@
 ///
 /// Notes:
 /// - The player package continues to own the queue, HTTP resources and UI.
-/// - This bridge never persists a media URL, header, cookie or source state.
+/// - This bridge coordinates the active media session with Android.
 library;
 
 import 'dart:async';
@@ -21,8 +21,7 @@ import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 final class AndroidAudioBackgroundService {
   AndroidAudioBackgroundService._();
 
-  static final AndroidAudioBackgroundService instance =
-      AndroidAudioBackgroundService._();
+  static final AndroidAudioBackgroundService instance = AndroidAudioBackgroundService._();
 
   Future<_MgReadAudioHandler>? _handlerFuture;
   StreamSubscription<AudioInterruptionEvent>? _interruptionSubscription;
@@ -34,19 +33,12 @@ final class AndroidAudioBackgroundService {
   ///
   /// Non-Android hosts retain the supplied observer unchanged; the player is
   /// still fully usable but has no Android foreground-service capability.
-  Future<AudioPlayerObserver?> attach({
-    required AudioPlayerController controller,
-    AudioPlayerObserver? observer,
-  }) async {
+  Future<AudioPlayerObserver?> attach({required AudioPlayerController controller, AudioPlayerObserver? observer}) async {
     if (!Platform.isAndroid) return observer;
     final handler = await (_handlerFuture ??= _initializeHandler());
     await _configureAudioSession();
     await handler.attach(controller, synchronizeFocus: _synchronizeFocus);
-    return _AndroidAudioObserver(
-      handler: handler,
-      controller: controller,
-      delegate: observer,
-    );
+    return _AndroidAudioObserver(handler: handler, controller: controller, delegate: observer);
   }
 
   /// Releases a route that was dismissed while Android attachment was still
@@ -72,9 +64,7 @@ final class AndroidAudioBackgroundService {
   Future<void> _configureAudioSession() async {
     final session = _audioSession ??= await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.speech());
-    _interruptionSubscription ??= session.interruptionEventStream.listen((
-      event,
-    ) {
+    _interruptionSubscription ??= session.interruptionEventStream.listen((event) {
       if (event.begin) unawaited(_pauseActivePlayback());
     });
     _becomingNoisySubscription ??= session.becomingNoisyEventStream.listen((_) {
@@ -102,57 +92,40 @@ final class AndroidAudioBackgroundService {
 }
 
 final class _AndroidAudioObserver extends AudioPlayerObserver {
-  const _AndroidAudioObserver({
-    required this.handler,
-    required this.controller,
-    required this.delegate,
-  });
+  const _AndroidAudioObserver({required this.handler, required this.controller, required this.delegate});
 
   final _MgReadAudioHandler handler;
   final AudioPlayerController controller;
   final AudioPlayerObserver? delegate;
 
   @override
-  FutureOr<void> onSessionStarted(String collectionId) =>
-      delegate?.onSessionStarted(collectionId);
+  FutureOr<void> onSessionStarted(String collectionId) => delegate?.onSessionStarted(collectionId);
 
   @override
-  FutureOr<void> onSessionEnded(
-    String collectionId,
-    AudioPlaybackProgress? progress,
-  ) async {
+  FutureOr<void> onSessionEnded(String collectionId, AudioPlaybackProgress? progress) async {
     await handler.detach(controller);
     await delegate?.onSessionEnded(collectionId, progress);
   }
 
   @override
-  FutureOr<void> onTrackChanged(AudioTrack track) =>
-      delegate?.onTrackChanged(track);
+  FutureOr<void> onTrackChanged(AudioTrack track) => delegate?.onTrackChanged(track);
 
   @override
-  FutureOr<void> onLifecycleChanged(
-    AudioPlayerLifecycleState state,
-    AudioPlaybackProgress? progress,
-  ) =>
+  FutureOr<void> onLifecycleChanged(AudioPlayerLifecycleState state, AudioPlaybackProgress? progress) =>
       delegate?.onLifecycleChanged(state, progress);
 
   @override
-  FutureOr<void> onFailure(AudioPlayerFailure failure) =>
-      delegate?.onFailure(failure);
+  FutureOr<void> onFailure(AudioPlayerFailure failure) => delegate?.onFailure(failure);
 
   @override
-  FutureOr<void> onExitRequested(AudioPlaybackProgress? progress) =>
-      delegate?.onExitRequested(progress);
+  FutureOr<void> onExitRequested(AudioPlaybackProgress? progress) => delegate?.onExitRequested(progress);
 }
 
 final class _MgReadAudioHandler extends BaseAudioHandler {
   AudioPlayerController? _controller;
   Future<void> Function(bool playing)? _synchronizeFocus;
 
-  Future<void> attach(
-    AudioPlayerController controller, {
-    required Future<void> Function(bool playing) synchronizeFocus,
-  }) async {
+  Future<void> attach(AudioPlayerController controller, {required Future<void> Function(bool playing) synchronizeFocus}) async {
     if (identical(_controller, controller)) return;
     await pauseActiveController();
     _controller?.removeListener(_publish);
@@ -184,8 +157,7 @@ final class _MgReadAudioHandler extends BaseAudioHandler {
     mediaItem.add(track == null ? null : _mediaItemFor(track));
     final processingState = switch (snapshot.status) {
       AudioPlayerStatus.loading => AudioProcessingState.loading,
-      AudioPlayerStatus.ready when snapshot.buffering =>
-        AudioProcessingState.buffering,
+      AudioPlayerStatus.ready when snapshot.buffering => AudioProcessingState.buffering,
       AudioPlayerStatus.ready => AudioProcessingState.ready,
       AudioPlayerStatus.error => AudioProcessingState.error,
     };
@@ -197,11 +169,7 @@ final class _MgReadAudioHandler extends BaseAudioHandler {
           MediaControl.skipToNext,
           MediaControl.stop,
         ],
-        systemActions: const <MediaAction>{
-          MediaAction.seek,
-          MediaAction.seekBackward,
-          MediaAction.seekForward,
-        },
+        systemActions: const <MediaAction>{MediaAction.seek, MediaAction.seekBackward, MediaAction.seekForward},
         androidCompactActionIndices: const <int>[0, 1, 2],
         processingState: processingState,
         playing: snapshot.playing,
@@ -214,13 +182,8 @@ final class _MgReadAudioHandler extends BaseAudioHandler {
     unawaited(_synchronizeFocus?.call(snapshot.playing));
   }
 
-  MediaItem _mediaItemFor(AudioTrack track) => MediaItem(
-    id: track.id,
-    album: track.collectionTitle,
-    title: track.title,
-    artist: track.creator,
-    artUri: track.artwork,
-  );
+  MediaItem _mediaItemFor(AudioTrack track) =>
+      MediaItem(id: track.id, album: track.collectionTitle, title: track.title, artist: track.creator, artUri: track.artwork);
 
   @override
   Future<void> play() => _controller?.play() ?? Future<void>.value();
@@ -236,29 +199,23 @@ final class _MgReadAudioHandler extends BaseAudioHandler {
   }
 
   @override
-  Future<void> seek(Duration position) =>
-      _controller?.seek(position) ?? Future<void>.value();
+  Future<void> seek(Duration position) => _controller?.seek(position) ?? Future<void>.value();
 
   @override
-  Future<void> rewind() =>
-      _controller?.seekBy(const Duration(seconds: -15)) ?? Future<void>.value();
+  Future<void> rewind() => _controller?.seekBy(const Duration(seconds: -15)) ?? Future<void>.value();
 
   @override
-  Future<void> fastForward() =>
-      _controller?.seekBy(const Duration(seconds: 15)) ?? Future<void>.value();
+  Future<void> fastForward() => _controller?.seekBy(const Duration(seconds: 15)) ?? Future<void>.value();
 
   @override
   Future<void> skipToNext() => _controller?.next() ?? Future<void>.value();
 
   @override
-  Future<void> skipToPrevious() =>
-      _controller?.previous() ?? Future<void>.value();
+  Future<void> skipToPrevious() => _controller?.previous() ?? Future<void>.value();
 
   @override
-  Future<void> skipToQueueItem(int index) =>
-      _controller?.jump(index) ?? Future<void>.value();
+  Future<void> skipToQueueItem(int index) => _controller?.jump(index) ?? Future<void>.value();
 
   @override
-  Future<void> setSpeed(double speed) =>
-      _controller?.setRate(speed) ?? Future<void>.value();
+  Future<void> setSpeed(double speed) => _controller?.setRate(speed) ?? Future<void>.value();
 }

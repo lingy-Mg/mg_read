@@ -316,18 +316,15 @@ final class VideoPlayerFailure {
   /// Optional stable host or backend error code.
   final String? code;
 
-  /// Safe, user-facing operation where this failure happened.
-  ///
-  /// This deliberately excludes media URLs, request headers, cookies, signed
-  /// parameters and raw backend exception text.
+  /// User-facing operation where this failure happened.
   final String? location;
 }
 
-/// A safe host-to-player error for a content-resolution operation.
+/// A host-to-player error for a content-resolution operation.
 ///
 /// Hosts should use this for a concise explanation in the player UI.
 final class VideoPlayerLoadException implements Exception {
-  /// Creates a safe content-resolution failure.
+  /// Creates a content-resolution failure.
   const VideoPlayerLoadException({
     required this.code,
     required this.location,

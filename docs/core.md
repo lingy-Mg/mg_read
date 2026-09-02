@@ -61,7 +61,7 @@ plugins/sources/                    真实数据源及其他能力参考实现
 - 视频和音频代理只控制 MediaKit 播放器到 Runtime 回环资源 URL 的本地一跳，并且只接受 HTTP 代理。
   Windows 可显式启用“强制代理本地 Runtime”：宿主临时从进程 `no_proxy` 删除 loopback 规则，同时更新 Win32
   环境和 Windows CRT，关闭后恢复原值；该开关不改变 Runtime 到外部媒体源的请求路由。
-- 内部 PID、端口、URL、ready、bootId 和 wire envelope 不暴露给主应用；控制帧有界，大资源走 HTTP 数据面。
+- Runtime 控制信息由 Runtime 内部管理；控制帧有界，大资源走 HTTP 数据面。
 - `ctx.webview` 每个数据源只有一个宿主页；Cookie、UA、Profile、窗口和输入由宿主持有。普通操作串行，
   显隐/关闭走控制旁路；超时与取消必须清理结果但保留可复用页面。
 - WebView 不提供 Cookie API 或 DOM 合成交互；`ctx.webview` 另提供 Windows WebView2 专用的原始
@@ -77,8 +77,7 @@ plugins/sources/                    真实数据源及其他能力参考实现
   `.mgplugin` 并保留 lock 恢复语义。两者不互相回退，也不携带源码或 `node_modules`。
 - artifact 必须确定性、有界，并携带可复核的 descriptor、大小和 SHA-256；传输和安装两端都复核。
 - 安装写入不可变版本并原子切换；失败保留当前版本。不得在安装期运行任意脚本或求解未锁定依赖。
-- 插件缓存只保存可重复 GET 的展示投影；stale 可离线读取，刷新异步单飞。不得缓存正文、媒体、登录数据、
-  写响应或主应用业务数据，缓存失败按 miss 处理。
+- 插件缓存使用来源声明的展示投影策略；stale 可离线读取，刷新异步单飞，缓存失败按 miss 处理。
 
 ## 插件内容 API
 
@@ -129,8 +128,7 @@ plugins/sources/                    真实数据源及其他能力参考实现
 ## 诊断
 
 - App 诊断默认关闭；显式启用才创建 writer。历史文件冷存储，只在用户选择后有界读取。
-- 诊断字段和显式捕获字节按契约保存；常规日志只记录有界阶段、计数、字节、耗时和稳定错误码。错误终态可额外保存
-  `errorText`/`errorLocation` 与应用捕获堆栈。
+- 诊断字段和显式捕获字节按契约保存；错误终态可额外保存技术上下文。
 - 一个用户操作或长任务只有一个 owner span 和一个终态；高频事件只做有界聚合。
 - 日志、viewer、observer、磁盘或缓冲失败不得改变业务结果；生产代码不得自建日志通道。
 

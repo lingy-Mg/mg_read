@@ -485,7 +485,7 @@ void main() {
     expect(await library.readingProgress.loadMany(const <LibraryItemId>[]), isEmpty);
   });
 
-  test('session-only manga resource does not retain a URL', () async {
+  test('session-only manga resource keeps its session policy', () async {
     final item = await library.bookshelf.add(title: '漫画', kind: ContentKind.manga, source: source);
     await library.catalog.replaceSnapshot(
       itemId: item.id,
@@ -498,7 +498,8 @@ void main() {
       pages: [IngestMangaPage(pageId: 'page-1', order: 0, resource: SourceResource.sessionOnly(), source: source)],
       source: source,
     );
-    expect((await library.openContent(entry.id) as MangaChapterContent).pages.single.resource.url, isNull);
+    final resource = (await library.openContent(entry.id) as MangaChapterContent).pages.single.resource;
+    expect(resource.persistencePolicy, PersistencePolicy.sessionOnly);
   });
 
   test('manga assets are grouped and removed with the manga item', () async {

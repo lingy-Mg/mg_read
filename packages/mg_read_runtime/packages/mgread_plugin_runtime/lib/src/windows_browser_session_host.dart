@@ -899,7 +899,7 @@ final class WindowsBrowserSessionHost {
         'secure': cookie.secure,
       });
     } on Object {
-      // An invalid Set-Cookie must not expose credentials or invalidate a valid response.
+      // An invalid Set-Cookie does not invalidate an otherwise valid response.
     }
   }
 

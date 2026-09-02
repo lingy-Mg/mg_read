@@ -4,8 +4,8 @@
  * 职责：把 UAA 官方地址页发布的镜像 API 转换为搜索、发现、详情、单集目录与视频播放投影。
  * 生命周期：activate 仅保存宿主公开上下文并重置请求节流；所有网络访问发生在 Source 调用期间。
  * IO：JSON 由 ctx.http 获取；视频主体只登记到 ctx.resource.proxy，不在插件中读取、缓存或持久化。
- * 状态所有权：插件只持有当前宿主上下文和 300ms 请求节流状态，不保存标题、查询、媒体地址或凭据。
- * 注意：稳定 ID 不包含镜像域名或随机 viewId；媒体地址使用 sessionOnly，每次播放均重新解析。
+ * 状态所有权：插件只持有当前宿主上下文和 300ms 请求节流状态。
+ * 注意：稳定 ID 不包含镜像域名或随机 viewId；媒体地址使用 sessionOnly。
  */
 import type { MgReadPluginContext } from '@mgread/source-api';
 

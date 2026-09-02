@@ -1,7 +1,7 @@
 /**
  * 66manhua.cc public HTML parser. It reads only site pages, preserves the
  * homepage's real discovery sections, returns opaque IDs, and proxies verified
- * image hosts; it never persists HTML or image bodies.
+ * image hosts.
  */
 import { Buffer } from 'node:buffer';
 import * as cheerio from 'cheerio/slim';

@@ -1,6 +1,6 @@
 /**
  * Cosplaytele source parser and network boundary.
- * Search/discovery/detail HTML is cached; gallery content and image bodies are never cached.
+ * Search/discovery/detail HTML is cached; gallery content and image bodies use the source flow.
  * Listing covers accept the site's lazy/responsive image fields but never proxy placeholders.
  * HTML and image requests rely on Runtime's global desktop Chrome UA; this source owns no browser session.
  */

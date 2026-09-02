@@ -10,7 +10,7 @@
    Runtime -> 已启用插件` 检查实际宿主行为。
 
 Node 层不依赖 Flutter、PowerShell 脚本或 Runtime 私有实现；App 层不是 `flutter test` 或
-`integration_test`。两者均只输出有界计数和稳定错误码，不保存查询词、标题、URL、正文、Cookie 或凭据。
+`integration_test`。
 
 ## 阶段一：纯 Node.js 轻量测试
 
@@ -81,7 +81,7 @@ App 引擎顺序验证 Runtime 状态、发现、搜索、详情、完整且唯�
 
 - Node 和 App 同阶段失败：优先检查来源解析、网络状态或该阶段的公共返回值；用单源模式复现一次。
 - Node 通过而 App 为 `invalid_format`：直接检查 Runtime 的公开校验限制，不能把 Node 通过当作宿主通过。
-- Node 通过而 App 在 `resource.*` 失败：检查 `ctx.resource.proxy` 描述和 Runtime 数据面，不回显上游 URL。
+- Node 通过而 App 在 `resource.*` 失败：检查 `ctx.resource.proxy` 描述和 Runtime 数据面。
 - Node 因 WebView/人工交互能力受限：记录 Node 能力边界，必须以 App CLI 的 `interactionRequired` 或实际结果
   完成验收，禁止绕过登录或挑战。
 - 仅一次 live 失败而随后自动选择了不同内容：保留第一次报告，单源复跑一次确认波动；不得无限重试到通过。

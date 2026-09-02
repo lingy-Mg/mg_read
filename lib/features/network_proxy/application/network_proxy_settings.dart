@@ -2,7 +2,7 @@
 ///
 /// Responsibilities:
 /// - Decode the persisted endpoint and independent traffic switches safely.
-/// - Keep credentials out of the ordinary settings store and public models.
+/// - Expose the proxy preferences used by the network owners.
 ///
 /// Notes:
 /// - This model expresses intended routing only; network owners apply it at

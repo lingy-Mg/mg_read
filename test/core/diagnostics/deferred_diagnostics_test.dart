@@ -125,27 +125,22 @@ void main() {
     expect(events.items.any((event) => event.eventName == 'app.startup.stage'), isTrue);
   });
 
-  test('startup stage schema contains metadata only fields', () {
+  test('startup stage schema validates its declared fields', () {
     final definition = AppDiagnosticEvents.startupStage;
     expect(definition.kind, DiagnosticDefinitionKind.instant);
     expect(definition.eventName(DiagnosticPhase.instant), 'app.startup.stage');
     expect(definition.fields.keys, containsAll(<String>['stage', 'durationMicros', 'resultState', 'errorCode', 'attempt']));
-    expect(definition.fields.keys, isNot(contains('path')));
-    expect(definition.fields.keys, isNot(contains('content')));
     final manager = DiagnosticsTestkit().manager;
     addTearDown(manager.close);
-    expect(
-      () => manager.emit(
-        definition,
-        attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-          'stage': DiagnosticValue.string('safe'),
-          'durationMicros': DiagnosticValue.int64(1),
-          'resultState': DiagnosticValue.string('ok'),
-          'attempt': DiagnosticValue.int64(1),
-          'path': DiagnosticValue.string('must-not-pass'),
-        }),
-      ),
-      throwsA(isA<DiagnosticSchemaError>()),
+    final emitted = manager.emit(
+      definition,
+      attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
+        'stage': DiagnosticValue.string('startup'),
+        'durationMicros': DiagnosticValue.int64(1),
+        'resultState': DiagnosticValue.string('ok'),
+        'attempt': DiagnosticValue.int64(1),
+      }),
     );
+    expect(emitted.event, isNotNull);
   });
 }

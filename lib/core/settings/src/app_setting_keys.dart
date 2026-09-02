@@ -82,7 +82,7 @@ final class AppSettingKeys {
     validator: _validateBool,
   );
 
-  /// One credential-free endpoint plus independently enabled traffic classes.
+  /// One endpoint plus independently enabled traffic classes.
   static const networkProxyDocument = SettingsDocumentDefinition(id: 'app-settings:settings.networkProxy', kind: 'settings.networkProxy');
 
   static const networkProxyPreferences = SettingKey<Map<String, Object?>>(

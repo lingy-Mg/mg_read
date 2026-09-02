@@ -1,6 +1,6 @@
 /// Profile page that owns editing the shared explicit proxy endpoint.
 ///
-/// The page persists no credentials and does not make test network requests.
+/// The page does not make test network requests.
 /// Its cards only present routing intent; applying and persisting the endpoint
 /// remains delegated to the app-owned proxy boundaries below.
 library;
@@ -123,7 +123,7 @@ final class _NetworkProxySettingsPageState extends ConsumerState<NetworkProxySet
                     ],
                     const SizedBox(height: AppSpacing.comfortable),
                     const _ProxyNotice(
-                      message: 'MgRead 默认跟随系统代理，且不保存代理账号或密码。视频和音频开关控制播放器到 Runtime 本地地址的链路；强制本地代理会从应用进程的 NO_PROXY 中临时移除 loopback，关闭后恢复。',
+                      message: 'MgRead 默认跟随系统代理。视频和音频开关控制播放器到 Runtime 本地地址的链路；强制本地代理会从应用进程的 NO_PROXY 中临时移除 loopback，关闭后恢复。',
                     ),
                   ],
                 ),

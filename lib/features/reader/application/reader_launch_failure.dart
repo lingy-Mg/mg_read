@@ -1,6 +1,6 @@
 import 'package:mg_read/core/errors/app_error.dart';
 
-/// Stable, safe-to-display reasons for a persisted reader launch failure.
+/// Stable reasons for a persisted reader launch failure.
 ///
 /// The reason and normalized [error] are small diagnostic metadata.
 enum ReaderLaunchFailureReason {
@@ -19,7 +19,7 @@ enum ReaderLaunchFailureReason {
   final String userMessage;
 }
 
-/// A reader-launch failure containing only stable, non-sensitive diagnostics.
+/// A reader-launch failure containing stable diagnostics.
 final class ReaderLaunchFailure implements Exception {
   const ReaderLaunchFailure({required this.reason, required this.error});
 
@@ -27,15 +27,11 @@ final class ReaderLaunchFailure implements Exception {
   final AppError error;
 
   /// A copyable code for user support and diagnostics correlation.
-  String get diagnosticCode =>
-      'reader_launch_${reason.wireValue}_${error.code.wireValue}';
+  String get diagnosticCode => 'reader_launch_${reason.wireValue}_${error.code.wireValue}';
 
   factory ReaderLaunchFailure.fromError(Object error) {
     if (error case final ReaderLaunchFailure failure) return failure;
-    return ReaderLaunchFailure(
-      reason: ReaderLaunchFailureReason.unexpected,
-      error: AppError.fromUnknown(error),
-    );
+    return ReaderLaunchFailure(reason: ReaderLaunchFailureReason.unexpected, error: AppError.fromUnknown(error));
   }
 
   @override

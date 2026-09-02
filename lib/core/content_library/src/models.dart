@@ -38,7 +38,7 @@ enum LibraryNotificationKind {
   };
 }
 
-/// One bounded, credential-free local notification projection.
+/// One bounded local notification projection.
 final class LibraryNotification {
   const LibraryNotification({required this.id, required this.kind, required this.title, required this.occurredAt});
 
@@ -172,8 +172,6 @@ final class LibraryItem {
   final List<String> labels;
 
   /// Stable source identity needed to resolve a shelf item for reading.
-  ///
-  /// This intentionally excludes URLs, cookies, and untyped plugin payloads.
   final LibraryItemSource? source;
 }
 
@@ -267,8 +265,7 @@ final class LibraryAudioPlaybackProgress {
 
 /// Durable video selection and position owned by the Content Library.
 ///
-/// Group and episode identities remain source-defined and media URLs or
-/// request headers are never persisted here.
+/// Group and episode identities remain source-defined playback metadata.
 final class LibraryVideoPlaybackProgress {
   LibraryVideoPlaybackProgress({
     required this.itemId,
@@ -316,8 +313,7 @@ final class LibraryBookmark {
 /// Narrow, host-owned request for adding a typed source item to the shelf.
 ///
 /// It keeps stable source identity and a small typed display projection. The
-/// optional dynamic detail is host-normalized JSON, never a Runtime transport
-/// object, Cookie/header payload, or platform resource.
+/// optional dynamic detail is host-normalized JSON.
 final class BookshelfAddRequest {
   const BookshelfAddRequest({
     required this.title,
@@ -599,8 +595,8 @@ final class CatalogEntry {
 
 /// A typed remote-novel chapter projection to initialize an app-owned catalog.
 ///
-/// It carries only stable chapter identity and display metadata; Runtime payloads
-/// and source URLs remain outside the Content Library boundary.
+/// It carries stable chapter identity, display metadata and the source chapter
+/// reference needed by the Content Library boundary.
 final class SourceNovelCatalogChapter {
   const SourceNovelCatalogChapter({required this.remoteIdentity, required this.title, required this.index, this.wordCount, this.chapterUrl})
     : assert(remoteIdentity != ''),

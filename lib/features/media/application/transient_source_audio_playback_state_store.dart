@@ -1,8 +1,7 @@
 /// Audio progress for a discovery or persisted-shelf source playback session.
 ///
 /// The independent player owns the session. This adapter persists only a
-/// stable source chapter identity and position for shelf items; signed media
-/// URLs and request headers are never retained.
+/// stable source chapter identity and position for shelf items.
 library;
 
 import 'package:mg_read_audio_player/mg_read_audio_player.dart';
@@ -10,12 +9,8 @@ import 'package:mg_read/core/content_library/content_library.dart';
 
 /// Keeps one source-audio selection and optionally commits it to the shelf.
 final class TransientSourceAudioPlaybackStateStore implements AudioPlaybackStateStore {
-  TransientSourceAudioPlaybackStateStore({
-    required this.collectionId,
-    required this.initialTrackId,
-    this.library,
-    this.libraryItemId,
-  }) : assert((library == null) == (libraryItemId == null));
+  TransientSourceAudioPlaybackStateStore({required this.collectionId, required this.initialTrackId, this.library, this.libraryItemId})
+    : assert((library == null) == (libraryItemId == null));
 
   final String collectionId;
   final String initialTrackId;
@@ -41,13 +36,12 @@ final class TransientSourceAudioPlaybackStateStore implements AudioPlaybackState
         );
       }
     }
-    return _progress ??=
-        AudioPlaybackProgress(
-          collectionId: collectionId,
-          trackId: initialTrackId,
-          position: Duration.zero,
-          updatedAt: DateTime.now().toUtc(),
-        );
+    return _progress ??= AudioPlaybackProgress(
+      collectionId: collectionId,
+      trackId: initialTrackId,
+      position: Duration.zero,
+      updatedAt: DateTime.now().toUtc(),
+    );
   }
 
   @override

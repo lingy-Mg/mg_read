@@ -1,7 +1,7 @@
 # MgRead Plugin Cache
 
-`@mgread/plugin-cache` 是仓库内数据源使用的有界展示投影缓存。它只保存可重复 GET 的发现、搜索、详情和目录
-投影，不保存正文、媒体、登录数据、写响应或主应用业务数据。
+`@mgread/plugin-cache` 是仓库内数据源使用的有界展示投影缓存。它保存可重复 GET 的发现、搜索、详情和目录
+投影。
 
 ```js
 import { createPluginCache } from '@mgread/plugin-cache';

@@ -84,12 +84,12 @@ export async function invokeLoadedPluginContent<TResult extends JsonObject>(opti
   } catch (error) {
     events({ code: "plugin_invocation_failed", durationMs: performance.now() - startedAt, operation, outcome: "error", pluginId });
     if (debugLogEnabled()) events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.invocation", logLevel: "error", logMessage: `能力调用出错：操作=${operation}，耗时毫秒=${Math.round(performance.now() - startedAt)}，错误=${error instanceof PluginContentValidationError ? error.message : error instanceof PluginManagerError ? error.code : error instanceof Error ? error.name : "unknown"}`, outcome: "error", pluginId });
-    if (error instanceof PluginManagerError) throw new PluginManagerError(error.code, error.safeDetail);
-    if (isPluginManagerError(error)) throw new PluginManagerError(error.code);
+    if (error instanceof PluginManagerError) throw new PluginManagerError(error.code, error.detail);
+    if (isPluginManagerError(error)) throw new PluginManagerError(error.code, error instanceof Error ? error.message : undefined);
     throwIfPluginOperationUnavailable(signal, deadlineUnixMs);
     if (error instanceof PluginContentValidationError) {
       throw new PluginManagerError("plugin_invalid_response", error.message);
     }
-    throw new PluginManagerError("plugin_execution_failed");
+    throw new PluginManagerError("plugin_execution_failed", error instanceof Error ? error.message : String(error));
   }
 }

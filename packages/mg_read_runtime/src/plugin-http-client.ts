@@ -11,7 +11,7 @@
  * - switch future requests without mutating process environment or global fetch.
  *
  * Notes:
- * - the app supplies the credential-free upstream HTTP, HTTPS or SOCKS5 URL;
+ * - the app supplies the upstream HTTP, HTTPS or SOCKS5 URL;
  * - existing requests retain the dispatcher sampled when they started.
  */
 import {

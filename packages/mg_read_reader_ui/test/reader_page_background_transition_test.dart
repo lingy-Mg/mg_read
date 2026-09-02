@@ -7,7 +7,7 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 void main() {
   for (final ReaderPageAnimation animation in ReaderPageAnimation.values) {
-    testWidgets('keeps the background inside ${animation.name} page sheets', (
+    testWidgets('assigns one background owner for ${animation.name}', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
@@ -21,14 +21,25 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      final bool movingPageOwnsBackground =
+          animation == ReaderPageAnimation.cover ||
+          animation == ReaderPageAnimation.pageCurl;
+      expect(
+        find.byKey(const ValueKey<String>('reader-fixed-background')),
+        movingPageOwnsBackground ? findsNothing : findsOneWidget,
+      );
       expect(
         find.byKey(const ValueKey<String>('reader-page-background-1')),
-        findsOneWidget,
+        movingPageOwnsBackground ? findsOneWidget : findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('reader-animated-page-boundary-1')),
+        movingPageOwnsBackground ? findsOneWidget : findsNothing,
       );
     });
   }
 
-  testWidgets('slide drag moves the current page background before release', (
+  testWidgets('slide drag keeps the shared background fixed', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
@@ -42,10 +53,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final Finder currentBackground = find.byKey(
-      const ValueKey<String>('reader-page-background-1'),
+    final Finder fixedBackground = find.byKey(
+      const ValueKey<String>('reader-fixed-background'),
     );
-    final double initialX = tester.getTopLeft(currentBackground).dx;
+    final Offset initialPosition = tester.getTopLeft(fixedBackground);
     final TestGesture gesture = await tester.startGesture(
       tester.getCenter(
         find.byKey(const ValueKey<String>('reader-content-surface')),
@@ -58,7 +69,7 @@ void main() {
     await gesture.moveBy(const Offset(-96, 0));
     await tester.pump();
 
-    expect(tester.getTopLeft(currentBackground).dx, lessThan(initialX));
+    expect(tester.getTopLeft(fixedBackground), initialPosition);
 
     await gesture.up();
     await tester.pumpAndSettle();

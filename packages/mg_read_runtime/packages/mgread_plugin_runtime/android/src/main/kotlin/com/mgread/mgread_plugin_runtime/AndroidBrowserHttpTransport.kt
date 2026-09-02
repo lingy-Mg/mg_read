@@ -1,8 +1,7 @@
 /**
  * Host-owned direct HTTP transport for a verified Android WebView profile.
  *
- * Cookie and user-agent values enter only request headers in this file. They
- * are never logged, persisted by Runtime code, or returned across Javet.
+ * Browser request values are assembled into the request headers in this file.
  */
 package com.mgread.mgread_plugin_runtime
 

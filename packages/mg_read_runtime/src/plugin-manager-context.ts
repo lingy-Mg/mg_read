@@ -1,6 +1,6 @@
 /**
  * Builds the bounded Plugin API context owned by one Runtime Core.
- * Paths stay plugin-private; browser credentials remain inside the host provider.
+ * Paths stay plugin-private; browser session state remains inside the host provider.
  */
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";

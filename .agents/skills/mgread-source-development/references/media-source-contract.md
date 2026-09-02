@@ -22,17 +22,16 @@
 
 ## 播放资源
 
-- `getContent` 返回 `text: null`、空 pages 和一个 Runtime proxy media；上游签名 URL、Cookie 和授权头不
-  暴露到 Flutter、日志、fixture 或持久化。
+- `getContent` 返回 `text: null`、空 pages 和一个 Runtime proxy media。
 - `audio`、`video` 和 `hls` 是不同资源类型。大文件与 Range 由 Runtime 流式转发；HLS manifest、
   variant、key 和 segment URI 均保持在代理数据面。
 - 插件 JS 不整体读取媒体、arrayBuffer、Base64 化或缓存媒体主体。
 - 只有来源能确认过期边界时才使用 `refreshable + expiresAt`；否则使用 `sessionOnly`。宿主在失效后重新
-  调用 `getContent`，不得从 URL 猜有效期或长期持久化签名资源。
+  调用 `getContent`，资源有效期由来源和宿主共同决定。
 
 ## 最小验证
 
-- Fixture 覆盖 discover/search/detail/catalog/playback，受限来源只保留虚构结构，不保存标题、封面或媒体 URL。
+- Fixture 覆盖 discover/search/detail/catalog/playback，由来源测试定义所需结构。
 - 音频覆盖章节顺序、proxy kind、Range/header 和刷新重取；视频覆盖多 group、多 episode、player-data 分支、
   HLS 与非 HLS 代理。
 - 运行来源离线测试和 `verify`；请求链变化再运行明确存在的 live smoke。播放器宿主变化另跑相邻 package

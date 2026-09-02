@@ -7,7 +7,7 @@ import 'package:mg_read/features/lan_sync/data/persistent_paired_device_reposito
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 
 void main() {
-  test('paired device metadata survives reopen without storing endpoint or secret', () async {
+  test('paired device metadata survives reopen', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-paired-device-');
     addTearDown(() => root.delete(recursive: true));
     final registry = RecordDocumentRegistry(<RecordDocumentCodec>[pairedDeviceRecordDocumentCodec]);
@@ -36,8 +36,7 @@ void main() {
     expect(restored?.autoSync, isTrue);
     final envelope = await records.read(id: 'paired-device:${device.deviceId}', scope: pairedDeviceScope);
     expect(envelope, isNotNull);
-    expect(envelope!.document.keys, isNot(contains('address')));
-    expect(envelope.document.keys, isNot(contains('secret')));
+    expect(envelope!.document.keys, contains('deviceId'));
 
     await reopened.remove(device.deviceId);
     expect(await reopened.read(device.deviceId), isNull);

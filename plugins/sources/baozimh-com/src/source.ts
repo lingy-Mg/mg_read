@@ -2,7 +2,7 @@
  * Baozimh manga parser and HTTP/resource boundary.
  * Requests start from the current public entry; redirects and parsed resources retain their complete URLs without an origin or protocol gate.
  * Detail and catalog share one bounded book-page projection; image bytes are fetched and streamed only by Runtime.
- * HTML, manga pages, credentials, signed media URLs, and user input are never cached or logged.
+ * HTML, manga pages, credentials, signed media URLs, and user input are handled by this source.
  */
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';

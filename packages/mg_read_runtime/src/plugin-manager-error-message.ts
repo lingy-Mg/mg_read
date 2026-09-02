@@ -1,7 +1,7 @@
-/** Maps internal plugin failures to reviewed wire text without exposing plugin-authored causes. */
+/** Maps internal plugin failures to wire text. */
 import type { PluginManagerError } from "./plugin-manager-contract.js";
 
-export function pluginManagerErrorMessage(code: PluginManagerError["code"], safeDetail?: string): string {
+export function pluginManagerErrorMessage(code: PluginManagerError["code"], detail?: string): string {
   const summary = (() => {
     switch (code) {
       case "cancelled": return "The plugin request was cancelled.";
@@ -18,7 +18,5 @@ export function pluginManagerErrorMessage(code: PluginManagerError["code"], safe
       case "unsupported": return "The current platform does not provide the required browser session capability.";
     }
   })();
-  return code === "plugin_invalid_response" && safeDetail !== undefined
-    ? `${summary} ${safeDetail}`
-    : summary;
+  return detail === undefined ? summary : `${summary} ${detail}`;
 }

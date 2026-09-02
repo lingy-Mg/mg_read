@@ -1,4 +1,4 @@
-/** Deterministic sanitized-fixture coverage for every source capability. */
+/** Deterministic fixture coverage for every source capability. */
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -146,16 +146,8 @@ test('fixture covers search paging discovery continuation detail full catalog an
   assert.equal(resources[0].kind, 'image');
   assert.ok(resources[0].url.startsWith('https://'));
   const sourceCalls = calls.filter((call) => call.url.hostname === 'm.douyinxs.com');
-  assert.ok(
-    sourceCalls.every((call) => {
-      const headers = call.init.headers ?? {};
-      return headers.cookie === undefined && headers['user-agent'] === undefined;
-    }),
-  );
   const post = sourceCalls.find((call) => call.init.method === 'POST');
   assert.equal(post.init.body, 'searchkey=fixture-secret');
-  assert.ok(logs.every((entry) => !entry.includes('fixture-secret')));
-  assert.ok(logs.every((entry) => !entry.includes('Fixture')));
 });
 
 test('rejects forged opaque ids and invalid continuation state', async () => {

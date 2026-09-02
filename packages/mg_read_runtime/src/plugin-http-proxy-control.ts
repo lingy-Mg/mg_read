@@ -18,8 +18,6 @@ export function readPluginHttpProxyConfiguration(
       !new Set(["http:", "https:", "socks5:"]).has(proxy.protocol) ||
       proxy.hostname === "" ||
       proxy.port === "" ||
-      proxy.username !== "" ||
-      proxy.password !== "" ||
       proxy.pathname !== "/" ||
       proxy.search !== "" ||
       proxy.hash !== ""
@@ -34,7 +32,7 @@ function invalid(request: RuntimeRequest): { readonly error: RuntimeProtocolErro
   return {
     error: {
       code: "invalid_request",
-      message: "The plugin HTTP proxy setting requires one credential-free HTTP, HTTPS or SOCKS5 proxy URL or null.",
+      message: "The plugin HTTP proxy setting requires one HTTP, HTTPS or SOCKS5 proxy URL or null.",
       requestId: request.id,
       traceId: request.traceId,
     },

@@ -5,8 +5,8 @@
 /// - Allow deterministic fake playback backends in tests.
 ///
 /// Notes:
-/// - Implementations must not expose database paths, cookies beyond explicit
-///   per-track headers, or native player handles through these contracts.
+/// - Implementations expose typed playback data rather than storage or native
+///   player handles through these contracts.
 library;
 
 import 'dart:async';

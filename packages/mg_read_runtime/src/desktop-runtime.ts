@@ -9,8 +9,8 @@
  *
  * Boundaries:
  * - paths in control responses are consumed only by the package Supervisor;
- * - the optional LAN inspector never exposes control RPC or raw resource URLs;
- * - the public Flutter Facade exposes typed results and never exposes paths.
+ * - the optional LAN inspector owns its typed inspection surface;
+ * - the public Flutter Facade exposes typed results.
  */
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -1306,7 +1306,7 @@ export class DesktopRuntime {
           error: this.#requestError(
             request,
             error.code,
-            pluginManagerErrorMessage(error.code, error instanceof PluginManagerError ? error.safeDetail : undefined),
+            pluginManagerErrorMessage(error.code, error instanceof PluginManagerError ? error.detail : undefined),
           ),
         };
       }

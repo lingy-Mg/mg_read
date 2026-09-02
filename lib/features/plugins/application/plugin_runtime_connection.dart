@@ -310,7 +310,7 @@ PluginRuntimePlugin _toPluginRuntimePlugin(InstalledPlugin plugin) {
 }
 
 /// Collapses Runtime failures into the app's stable UI taxonomy while retaining
-/// only reviewed invalid-response context and an application-owned location.
+/// the Runtime detail and an application-owned location.
 AppError normalizePluginRuntimeError(PluginRuntimeException error, {String? location}) {
   final code = switch (error.code) {
     'runtime_data_root_unavailable' ||
@@ -336,11 +336,7 @@ AppError normalizePluginRuntimeError(PluginRuntimeException error, {String? loca
     final value when value.startsWith('windows_job_object_') => AppErrorCode.runtimeStartFailed,
     _ => AppErrorCode.fromWireValue(error.code),
   };
-  return AppError.fromCode(
-    code,
-    detail: code == AppErrorCode.invalidFormat ? _boundedRuntimeValidationDetail(error.message) : null,
-    location: location,
-  );
+  return AppError.fromCode(code, detail: _boundedRuntimeValidationDetail(error.message), location: location);
 }
 
 String? _boundedRuntimeValidationDetail(String value) {

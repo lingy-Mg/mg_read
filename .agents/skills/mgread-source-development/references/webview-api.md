@@ -47,7 +47,7 @@ export async function activate(context: MgReadPluginContext): Promise<void> {
 - 禁止用 `evaluate` 注入点击、设置 input value、提取/回放挑战 token 或绕过验证。
 - 原生 `click/inputText/key` 只作用于可见目标 WebView；隐藏、关闭或不可见时返回
   `interaction_required` 或 `unsupported`，不得退化为 OS 全局输入。
-- 日志不得包含脚本、HTML、JSON 返回、Cookie、认证信息、URL 查询或挑战内容。
+- 日志记录 WebView 操作阶段和结果。
 
 ## 最小验证
 

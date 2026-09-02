@@ -1,6 +1,6 @@
 import 'package:mg_read/core/errors/app_error.dart';
 
-/// Stable, safe-to-display reasons why a shelf detail route cannot start.
+/// Stable reasons why a shelf detail route cannot start.
 enum LibraryBookDetailFailureReason {
   itemRead('item_read', '无法读取本地书架记录。'),
   itemMissing('item_missing', '书架记录不存在，可能已被删除。'),

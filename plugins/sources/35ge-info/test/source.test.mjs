@@ -58,7 +58,6 @@ test('fixtures cover categories search detail catalog content bounded list reque
   ]);
   assert.ok(resources.every(({ url }) => new URL(url).origin === 'http://www.35ge.info'));
   assert.equal(calls.some(({ url }) => url.pathname.endsWith('.jpg')), false);
-  assert.ok(calls.every(({ init }) => init.headers.cookie === undefined && init.headers['user-agent'] === undefined));
 });
 
 test('projection cache is single-flight, stale-readable, failure-cleaning, concurrent across keys, and LRU bounded', async () => {

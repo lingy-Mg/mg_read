@@ -1,4 +1,4 @@
-/** Deterministic sanitized-fixture coverage for HTML, manga pages and Referer proxying. */
+/** Deterministic fixture coverage for HTML, manga pages and Referer proxying. */
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

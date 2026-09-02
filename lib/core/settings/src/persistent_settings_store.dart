@@ -140,7 +140,6 @@ Iterable<RecordDocumentCodec> settingsRecordDocumentCodecs(SettingsRegistry regi
         maxNodes: settingsDocumentMaxNodes,
         maxArrayLength: settingsDocumentMaxArrayLength,
         maxStringLength: settingsDocumentMaxStringLength,
-        forbiddenKeyTokens: forbiddenSettingsJsonKeyTokens,
       ),
     );
   }

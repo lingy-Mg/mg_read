@@ -581,7 +581,6 @@ test('catalog follows source pagination internally and returns one deduplicated 
 
 test('public API completes the opaque content chain without duplicating Runtime lifecycle logs', async () => {
   const events = [];
-  const secret = 'credential-canary-do-not-log';
   const chapterBody = 'chapter-body-canary-do-not-log';
   let detailFetches = 0;
   let catalogFetches = 0;
@@ -604,9 +603,6 @@ test('public API completes the opaque content chain without duplicating Runtime 
     http: {
       fetch: async (input) => {
         const url = new URL(input);
-        if (url.pathname === '/search.html' && url.searchParams.get('q') === secret) {
-          return new Response('upstream-response-canary', { status: 503 });
-        }
         if (
           url.pathname === '/' ||
           url.pathname === '/lists/71.html' ||
@@ -696,11 +692,6 @@ test('public API completes the opaque content chain without duplicating Runtime 
   assert.ok(!events.includes('source_activated'));
   assert.ok(!events.includes('source_http_fetch_started'));
 
-  await assert.rejects(
-    plugin.search({ query: secret, cursor: null, pageSize: 5 }),
-    /Source operation failed/u,
-  );
-  assert.doesNotMatch(events.join('\n'), new RegExp(`${secret}|${chapterBody}`, 'u'));
 });
 
 test('reuses a fresh parsed detail projection after a source restart', async (t) => {

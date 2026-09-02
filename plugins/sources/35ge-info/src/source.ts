@@ -1,7 +1,7 @@
 /**
  * 35中文网 parser and HTTP/resource boundary.
  * List/search pages derive the site's stable cover path from the book identity, avoiding per-book detail requests.
- * Only bounded list/book projections are cached in memory. HTML, chapter text, credentials, and user input are never cached or logged.
+ * List/book projections are cached in memory according to the source policy.
  */
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';

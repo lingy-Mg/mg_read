@@ -67,11 +67,11 @@ export class PluginArtifactTransferError extends Error {
     | "plugin_transfer_build_failed"
     | "plugin_transfer_checksum_mismatch"
     | "plugin_transfer_size_mismatch",
-    readonly safeDetail?: string,
+    readonly detail?: string,
   ) {
-    super(safeDetail === undefined
+    super(detail === undefined
       ? "The Runtime plugin artifact transfer could not be completed."
-      : `The Runtime plugin artifact transfer could not be completed. ${safeDetail}`);
+      : `The Runtime plugin artifact transfer could not be completed. ${detail}`);
     this.name = "PluginArtifactTransferError";
   }
 }

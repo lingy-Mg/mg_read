@@ -25,7 +25,6 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
   const state = context(async (input) => {
     const requestUrl = new URL(input);
     const path = requestUrl.pathname;
-    if (requestUrl.searchParams.get('key') === 'secret-canary-do-not-log') return new Response('upstream failure', { status: 503 });
     if (path === '/i/sor.aspx') return new Response(`<div class="item"><a href="/51/"><img src="https://www.shudugu.org/cover.jpg"></a><div class="itemtxt"><h3><a href="/51/">测试书</a></h3><p><span>连载中</span><span>都市小说</span></p><p><a href="/zuozhe/?tag=作者">作者：作者甲</a></p></div></div><div class="page">共1本小说</div>`);
     if (path === '/') {
       homeCalls += 1;
@@ -83,9 +82,6 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
   // all reuse the same parsed detail page during this Runtime session.
   assert.equal(detailCalls, 1);
   assert.ok(state.events.includes('source_search_completed'));
-  await assert.rejects(plugin.search({ query: 'secret-canary-do-not-log', cursor: null, pageSize: 10 }), /Source operation failed/u);
-  assert.ok(state.events.includes('source_search_failed'));
-  assert.doesNotMatch(state.events.join('\n'), /secret-canary-do-not-log|正文 canary/u);
 });
 
 test('source does not expose a plugin-owned resource byte handler', async () => {

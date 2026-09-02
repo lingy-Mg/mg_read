@@ -61,7 +61,6 @@ final class JsonDocumentLimits {
     this.maxNodes = 8192,
     this.maxArrayLength = 2048,
     this.maxStringLength = 32768,
-    this.forbiddenKeyTokens = const <String>{},
   });
 
   final int maxEncodedBytes;
@@ -70,7 +69,6 @@ final class JsonDocumentLimits {
   final int maxNodes;
   final int maxArrayLength;
   final int maxStringLength;
-  final Set<String> forbiddenKeyTokens;
 }
 
 final class PreparedJsonDocument {
@@ -495,9 +493,6 @@ void _validateJsonShape(JsonObject document, JsonDocumentLimits limits, {require
         reject('JSON key count exceeds ${limits.maxKeys}.');
       }
       for (final entry in value.entries) {
-        if (_containsForbiddenToken(entry.key as String, limits.forbiddenKeyTokens)) {
-          reject('JSON contains a forbidden key category.');
-        }
         visit(entry.value, depth + 1);
       }
     } else if (value is List) {
@@ -511,13 +506,4 @@ void _validateJsonShape(JsonObject document, JsonDocumentLimits limits, {require
   }
 
   visit(document, 0);
-}
-
-bool _containsForbiddenToken(String key, Set<String> forbidden) {
-  if (forbidden.isEmpty) {
-    return false;
-  }
-  final separated = key.replaceAllMapped(RegExp(r'([a-z0-9])([A-Z])'), (match) => '${match[1]}.${match[2]}');
-  final tokens = separated.toLowerCase().split(RegExp('[^a-z0-9]+')).where((token) => token.isNotEmpty);
-  return tokens.any(forbidden.contains);
 }

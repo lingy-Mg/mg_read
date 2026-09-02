@@ -2,7 +2,7 @@
  * Public HTML parser and manga image proxy for P5 Hanman.
  *
  * The entry domain may redirect, but stable identities are numeric path tokens. Runtime owns
- * HTTP and resource transport; this module never caches image bodies or emits raw image URLs.
+ * HTTP and resource transport.
  */
 import { createHash } from 'node:crypto';
 import * as cheerio from 'cheerio/slim';

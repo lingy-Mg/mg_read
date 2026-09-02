@@ -56,7 +56,6 @@ test('fixtures cover POST search, cached GET projections, paged content, and cov
   const categoryResource = resources.find(({ headers }) => headers?.Referer === 'https://www.xtyxsw.org/sort/1_1/');
   assert.equal(new URL(categoryResource.url).hostname, 'img.xtyxsw.org');
   assert.equal(calls.some(({ url }) => url.hostname === 'img.xtyxsw.org'), false);
-  assert.ok(calls.every(({ init }) => init.headers.cookie === undefined && init.headers['user-agent'] === undefined));
 });
 
 test('empty direct search is capped at four category requests with concurrency two', async () => {

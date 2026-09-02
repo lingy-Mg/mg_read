@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:collection';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,67 +27,53 @@ import '../core/diagnostics/diagnostics_testkit.dart';
 import 'mg_read_app_test_support.dart';
 
 void main() {
-  testWidgets(
-    'shows loading then retains successful content on refresh failure',
-    (WidgetTester tester) async {
-      final settings = await createTestAppSettings();
-      addTearDown(settings.close);
-      final _ControlledLibraryOverviewLoader loader =
-          _ControlledLibraryOverviewLoader();
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            appSettingsProvider.overrideWithValue(settings),
-            libraryOverviewLoaderProvider.overrideWithValue(loader),
-            pluginRuntimeGatewayProvider.overrideWithValue(
-              const TestReadyPluginRuntimeGateway(),
-            ),
-          ],
-          child: const MgReadApp(),
-        ),
-      );
+  testWidgets('shows loading then retains successful content on refresh failure', (WidgetTester tester) async {
+    final settings = await createTestAppSettings();
+    addTearDown(settings.close);
+    final _ControlledLibraryOverviewLoader loader = _ControlledLibraryOverviewLoader();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appSettingsProvider.overrideWithValue(settings),
+          libraryOverviewLoaderProvider.overrideWithValue(loader),
+          pluginRuntimeGatewayProvider.overrideWithValue(const TestReadyPluginRuntimeGateway()),
+        ],
+        child: const MgReadApp(),
+      ),
+    );
 
-      await tester.pump();
-      expect(find.bySemanticsLabel('正在加载书架'), findsOneWidget);
+    await tester.pump();
+    expect(find.bySemanticsLabel('正在加载书架'), findsOneWidget);
 
-      loader.completeNext(_overview('本地测试书籍'));
-      await tester.pump();
-      expect(find.text('本地测试书籍'), findsAtLeastNWidgets(1));
+    loader.completeNext(_overview('本地测试书籍'));
+    await tester.pump();
+    expect(find.text('本地测试书籍'), findsAtLeastNWidgets(1));
 
-      final BuildContext context = tester.element(find.byType(LibraryPage));
-      final ProviderContainer container = ProviderScope.containerOf(context);
-      final Future<void> refresh = container
-          .read(libraryPageControllerProvider.notifier)
-          .refresh();
-      await tester.pump();
-      expect(find.bySemanticsLabel('正在刷新书架'), findsOneWidget);
+    final BuildContext context = tester.element(find.byType(LibraryPage));
+    final ProviderContainer container = ProviderScope.containerOf(context);
+    final Future<void> refresh = container.read(libraryPageControllerProvider.notifier).refresh();
+    await tester.pump();
+    expect(find.bySemanticsLabel('正在刷新书架'), findsOneWidget);
 
-      loader.completeNextError(AppError.fromCode(AppErrorCode.rateLimited));
-      await refresh;
-      await tester.pump();
+    loader.completeNextError(AppError.fromCode(AppErrorCode.rateLimited));
+    await refresh;
+    await tester.pump();
 
-      expect(find.text('本地测试书籍'), findsAtLeastNWidgets(1));
-      expect(find.text('已保留上次成功加载的数据。'), findsOneWidget);
-      expect(find.text('暂时无法完成请求'), findsOneWidget);
-      expect(find.text('重试'), findsOneWidget);
-    },
-  );
+    expect(find.text('本地测试书籍'), findsAtLeastNWidgets(1));
+    expect(find.text('已保留上次成功加载的数据。'), findsOneWidget);
+    expect(find.text('暂时无法完成请求'), findsOneWidget);
+    expect(find.text('重试'), findsOneWidget);
+  });
 
-  testWidgets('uses the generated typed reader route with a stable ID only', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('uses the generated typed reader route with a stable ID only', (WidgetTester tester) async {
     final settings = await createTestAppSettings();
     addTearDown(settings.close);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           appSettingsProvider.overrideWithValue(settings),
-          pluginRuntimeGatewayProvider.overrideWithValue(
-            const TestReadyPluginRuntimeGateway(),
-          ),
-          libraryReaderLauncherProvider.overrideWithValue(
-            const _FailingReaderLauncher(),
-          ),
+          pluginRuntimeGatewayProvider.overrideWithValue(const TestReadyPluginRuntimeGateway()),
+          libraryReaderLauncherProvider.overrideWithValue(const _FailingReaderLauncher()),
         ],
         child: const MgReadApp(),
       ),
@@ -103,24 +88,16 @@ void main() {
     expect(find.byKey(const Key('reader-entry-retry')), findsOneWidget);
   });
 
-  testWidgets('opens a persisted shelf item directly in the reader', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('opens a persisted shelf item directly in the reader', (WidgetTester tester) async {
     final settings = await createTestAppSettings();
     addTearDown(settings.close);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           appSettingsProvider.overrideWithValue(settings),
-          libraryOverviewLoaderProvider.overrideWithValue(
-            const _SingleBookOverviewLoader(),
-          ),
-          libraryReaderLauncherProvider.overrideWithValue(
-            const _FailingReaderLauncher(),
-          ),
-          pluginRuntimeGatewayProvider.overrideWithValue(
-            const TestReadyPluginRuntimeGateway(),
-          ),
+          libraryOverviewLoaderProvider.overrideWithValue(const _SingleBookOverviewLoader()),
+          libraryReaderLauncherProvider.overrideWithValue(const _FailingReaderLauncher()),
+          pluginRuntimeGatewayProvider.overrideWithValue(const TestReadyPluginRuntimeGateway()),
         ],
         child: const MgReadApp(),
       ),
@@ -133,64 +110,44 @@ void main() {
     expect(find.byType(LibraryPage), findsOneWidget);
     expect(find.text('无法从数据源获取这本书的详情。'), findsOneWidget);
     expect(find.text('重试'), findsOneWidget);
-      expect(find.text('正文暂时无法打开'), findsNothing);
+    expect(find.text('正文暂时无法打开'), findsNothing);
   });
 
-  testWidgets('route and reader diagnostics never persist route parameters', (
-    WidgetTester tester,
-  ) async {
-    const secretBookId = 'book-Bearer-ROUTE-SECRET-CANARY';
+  testWidgets('route and reader diagnostics record route lifecycle', (WidgetTester tester) async {
+    const bookId = 'book-Bearer-ROUTE-SECRET-CANARY';
     final settings = await createTestAppSettings();
     addTearDown(settings.close);
     final diagnostics = DiagnosticsTestkit();
     addTearDown(diagnostics.dispose);
-    await tester.pumpWidget(
-      testMgReadApp(settings, diagnostics: diagnostics.manager),
-    );
+    await tester.pumpWidget(testMgReadApp(settings, diagnostics: diagnostics.manager));
     await tester.pumpAndSettle();
 
     final context = tester.element(find.byType(LibraryPage));
-    const ReaderRoute(bookId: secretBookId).go(context);
+    const ReaderRoute(bookId: bookId).go(context);
     await tester.pumpAndSettle();
 
     expect(
-      diagnostics.sink.events
-          .where((event) => event.eventName == 'app.route.changed')
-          .map((event) => event.attributes.values['toRoute']),
+      diagnostics.sink.events.where((event) => event.eventName == 'app.route.changed').map((event) => event.attributes.values['toRoute']),
       contains(DiagnosticStringValue('reader')),
     );
     expect(
       diagnostics.sink.events.where(
-        (event) =>
-            event.eventName == 'reader.launch.stage.start' &&
-            event.attributes.values['stage'] ==
-                DiagnosticStringValue('mapping'),
+        (event) => event.eventName == 'reader.launch.stage.start' && event.attributes.values['stage'] == DiagnosticStringValue('mapping'),
       ),
       isNotEmpty,
     );
-    final encoded = jsonEncode(
-      diagnostics.sink.events
-          .map(const DiagnosticEventCodec().encode)
-          .toList(growable: false),
-    );
-    expect(encoded, isNot(contains(secretBookId)));
   });
 
-  testWidgets('ignores a pending library load after its route is disposed', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('ignores a pending library load after its route is disposed', (WidgetTester tester) async {
     final settings = await createTestAppSettings();
     addTearDown(settings.close);
-    final _ControlledLibraryOverviewLoader loader =
-        _ControlledLibraryOverviewLoader();
+    final _ControlledLibraryOverviewLoader loader = _ControlledLibraryOverviewLoader();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           appSettingsProvider.overrideWithValue(settings),
           libraryOverviewLoaderProvider.overrideWithValue(loader),
-          pluginRuntimeGatewayProvider.overrideWithValue(
-            const TestReadyPluginRuntimeGateway(),
-          ),
+          pluginRuntimeGatewayProvider.overrideWithValue(const TestReadyPluginRuntimeGateway()),
         ],
         child: const MgReadApp(),
       ),
@@ -208,21 +165,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('temporarily keeps the app in light-only mode', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('temporarily keeps the app in light-only mode', (WidgetTester tester) async {
     final settings = await createTestAppSettings(themeMode: 'light');
     addTearDown(settings.close);
-    final _ControlledLibraryOverviewLoader loader =
-        _ControlledLibraryOverviewLoader();
+    final _ControlledLibraryOverviewLoader loader = _ControlledLibraryOverviewLoader();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           appSettingsProvider.overrideWithValue(settings),
           libraryOverviewLoaderProvider.overrideWithValue(loader),
-          pluginRuntimeGatewayProvider.overrideWithValue(
-            const TestReadyPluginRuntimeGateway(),
-          ),
+          pluginRuntimeGatewayProvider.overrideWithValue(const TestReadyPluginRuntimeGateway()),
         ],
         child: const MgReadApp(),
       ),
@@ -236,9 +188,7 @@ void main() {
     expect(settings.get(AppSettingKeys.themeMode), 'light');
   });
 
-  testWidgets('opens the profile route from the shared mobile navigation', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('opens the profile route from the shared mobile navigation', (WidgetTester tester) async {
     final settings = await createTestAppSettings(themeMode: 'light');
     addTearDown(settings.close);
     await tester.pumpWidget(testMgReadApp(settings));
@@ -257,9 +207,7 @@ void main() {
     expect(find.byType(LibraryPage), findsOneWidget);
   });
 
-  testWidgets('keeps light mode when the operating system prefers dark mode', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('keeps light mode when the operating system prefers dark mode', (WidgetTester tester) async {
     tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
     addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
     final settings = await createTestAppSettings();
@@ -292,13 +240,8 @@ final class _FailingReaderLauncher implements LibraryReaderLauncher {
   const _FailingReaderLauncher();
 
   @override
-  Future<ReaderLaunchRequest> launch(
-    String libraryItemId,
-  ) => Future<ReaderLaunchRequest>.error(
-    ReaderLaunchFailure(
-      reason: ReaderLaunchFailureReason.sourceDetail,
-      error: AppError.fromCode(AppErrorCode.timeout),
-    ),
+  Future<ReaderLaunchRequest> launch(String libraryItemId) => Future<ReaderLaunchRequest>.error(
+    ReaderLaunchFailure(reason: ReaderLaunchFailureReason.sourceDetail, error: AppError.fromCode(AppErrorCode.timeout)),
   );
 }
 
@@ -306,20 +249,12 @@ final class _SingleBookOverviewLoader implements LibraryOverviewLoader {
   const _SingleBookOverviewLoader();
 
   @override
-  Future<LibraryOverview> load({Object? visibility}) async =>
-      _overview('书架详情测试');
+  Future<LibraryOverview> load({Object? visibility}) async => _overview('书架详情测试');
 }
 
-void _expectBrightnessForCurrentPage(
-  WidgetTester tester,
-  Brightness brightness,
-) {
+void _expectBrightnessForCurrentPage(WidgetTester tester, Brightness brightness) {
   final Finder page = find.byWidgetPredicate(
-    (Widget widget) =>
-        widget is LibraryPage ||
-        widget is SearchPage ||
-        widget is DiscoveryDestinationPage ||
-        widget is ProfilePage,
+    (Widget widget) => widget is LibraryPage || widget is SearchPage || widget is DiscoveryDestinationPage || widget is ProfilePage,
   );
   expect(page, findsOneWidget);
   expect(Theme.of(tester.element(page)).brightness, brightness);
@@ -327,15 +262,12 @@ void _expectBrightnessForCurrentPage(
 
 LibraryOverview _overview(String title) {
   return LibraryOverview(
-    items: <LibraryItemSummary>[
-      LibraryItemSummary(id: 'book-$title', title: title),
-    ],
+    items: <LibraryItemSummary>[LibraryItemSummary(id: 'book-$title', title: title)],
   );
 }
 
 final class _ControlledLibraryOverviewLoader implements LibraryOverviewLoader {
-  final Queue<Completer<LibraryOverview>> _pending =
-      Queue<Completer<LibraryOverview>>();
+  final Queue<Completer<LibraryOverview>> _pending = Queue<Completer<LibraryOverview>>();
 
   @override
   Future<LibraryOverview> load({Object? visibility}) {

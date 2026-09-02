@@ -247,7 +247,7 @@ RuntimeInitializationProgress? _parseStructuredProgress(String line) {
 final class _StructuredDiagnostic {
   const _StructuredDiagnostic(this.diagnostic, {required this.isFatal});
 
-  /// Safe projection exposed to the supervisor diagnostic buffer.
+  /// Projection exposed to the supervisor diagnostic buffer.
   final RuntimeDiagnostic diagnostic;
 
   /// Whether this record must fail startup if readiness has not occurred.
@@ -255,7 +255,7 @@ final class _StructuredDiagnostic {
 }
 
 ///
-/// Parses only the child diagnostic subset that is safe to project to Flutter.
+/// Parses the child diagnostic records that can be projected to Flutter.
 ///
 /// Invalid JSON, an unknown record type, unapproved code syntax, or oversized
 /// text all become `null`. Callers replace them with a fixed diagnostic instead

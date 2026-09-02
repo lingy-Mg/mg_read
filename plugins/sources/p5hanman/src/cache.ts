@@ -2,7 +2,7 @@
  * Source-local bounded cache for public listing, detail and catalog text.
  *
  * It stores only reproducible public responses under Runtime's injected cacheDir.
- * Chapter bodies, cookies, credentials and user-specific state must never use it.
+ * Chapter and user-specific state are handled outside this cache.
  */
 import { createHash, randomUUID } from 'node:crypto';
 import {

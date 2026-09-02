@@ -1,4 +1,4 @@
-/** Public Rehanman page parser. It never stores image bodies or browser credentials. */
+/** Public Rehanman page parser. */
 import { Buffer } from 'node:buffer';
 
 const siteOrigin = 'https://rehanman.com';

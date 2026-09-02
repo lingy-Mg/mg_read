@@ -4,8 +4,8 @@
  * 职责：解析镜像站的分类、搜索、详情与单集 HLS 播放信息。
  * 生命周期：activate 仅保存宿主公开上下文；所有网络访问发生在 Source 调用期间。
  * IO：HTML 由 ctx.http 获取，视频资源只登记到 ctx.resource.proxy。
- * 状态所有权：插件只持有当前宿主上下文，并合并同一详情的并发请求；不缓存正文、媒体、Cookie 或签名地址。
- * 注意：稳定 ID 不包含域名；镜像 origin 只由本文件的 base 常量拥有。
+ * 状态所有权：插件只持有当前宿主上下文，并合并同一详情的并发请求。
+ * 注意：稳定 ID 与镜像 origin 由本文件统一生成。
  */
 import type { MgReadPluginContext } from '@mgread/source-api';
 

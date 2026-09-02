@@ -2,10 +2,8 @@ import 'dart:collection';
 
 import 'setting_key.dart';
 
-typedef SettingsDocumentValidator =
-    void Function(Map<String, Object?> document);
-typedef SettingsDocumentUpgrader =
-    Map<String, Object?> Function(Map<String, Object?> document);
+typedef SettingsDocumentValidator = void Function(Map<String, Object?> document);
+typedef SettingsDocumentUpgrader = Map<String, Object?> Function(Map<String, Object?> document);
 
 const int settingsDocumentMaxEncodedBytes = 64 * 1024;
 const int settingsDocumentMaxDepth = 8;
@@ -14,18 +12,6 @@ const int settingsDocumentMaxNodes = 1024;
 const int settingsDocumentMaxArrayLength = 256;
 const int settingsDocumentMaxStringLength = 8192;
 const int settingsMaxDocumentGroups = 128;
-const Set<String> forbiddenSettingsJsonKeyTokens = {
-  'authorization',
-  'cookie',
-  'credential',
-  'credentials',
-  'passwd',
-  'password',
-  'secret',
-  'secrets',
-  'token',
-  'tokens',
-};
 
 final class SettingsDocumentDefinition {
   const SettingsDocumentDefinition({
@@ -44,25 +30,18 @@ final class SettingsDocumentDefinition {
 }
 
 final class SettingsRegistry {
-  SettingsRegistry({
-    required Iterable<SettingKey<dynamic>> keys,
-    required Iterable<SettingsDocumentDefinition> documents,
-  }) : keys = UnmodifiableMapView(_indexKeys(keys)),
-       documents = UnmodifiableMapView(_indexDocuments(documents)) {
+  SettingsRegistry({required Iterable<SettingKey<dynamic>> keys, required Iterable<SettingsDocumentDefinition> documents})
+    : keys = UnmodifiableMapView(_indexKeys(keys)),
+      documents = UnmodifiableMapView(_indexDocuments(documents)) {
     if (this.documents.length > settingsMaxDocumentGroups) {
-      throw ArgumentError(
-        'Settings cannot register more than $settingsMaxDocumentGroups document groups.',
-      );
+      throw ArgumentError('Settings cannot register more than $settingsMaxDocumentGroups document groups.');
     }
     final defaults = <String, Object?>{};
     for (final key in this.keys.values) {
       if (!this.documents.containsKey(key.documentKind)) {
-        throw ArgumentError(
-          'Setting ${key.id} references an unregistered document.',
-        );
+        throw ArgumentError('Setting ${key.id} references an unregistered document.');
       }
       _validateIdentifier(key.id, label: 'setting ID');
-      _rejectSensitiveIdentifier(key.id);
       key.validateValue(key.defaultValue);
       final encoded = key.encodeValue(key.defaultValue);
       _validateBoundedJsonValue(encoded);
@@ -75,24 +54,19 @@ final class SettingsRegistry {
       if (document.id.isEmpty || document.id.length > 160) {
         throw ArgumentError.value(document.id, 'document.id');
       }
-      _rejectSensitiveIdentifier(document.id);
       if (document.currentVersion < 1) {
         throw ArgumentError.value(document.currentVersion, 'currentVersion');
       }
       if (document.validators.isNotEmpty) {
         for (var version = 1; version <= document.currentVersion; version++) {
           if (!document.validators.containsKey(version)) {
-            throw ArgumentError(
-              'Document ${document.kind} has no validator for version $version.',
-            );
+            throw ArgumentError('Document ${document.kind} has no validator for version $version.');
           }
         }
       }
       for (var version = 1; version < document.currentVersion; version++) {
         if (!document.upgraders.containsKey(version)) {
-          throw ArgumentError(
-            'Document ${document.kind} has no upgrader from version $version.',
-          );
+          throw ArgumentError('Document ${document.kind} has no upgrader from version $version.');
         }
       }
     }
@@ -104,10 +78,7 @@ final class SettingsRegistry {
     final kinds = copied.map((key) => key.documentKind).toSet();
     return SettingsRegistry(
       keys: copied,
-      documents: [
-        for (final kind in kinds)
-          SettingsDocumentDefinition(id: 'app-settings:$kind', kind: kind),
-      ],
+      documents: [for (final kind in kinds) SettingsDocumentDefinition(id: 'app-settings:$kind', kind: kind)],
     );
   }
 
@@ -126,22 +97,15 @@ final class SettingsRegistry {
   SettingsDocumentDefinition requireDocument(String kind) {
     final document = documents[kind];
     if (document == null) {
-      throw ArgumentError.value(
-        kind,
-        'kind',
-        'Unregistered settings document.',
-      );
+      throw ArgumentError.value(kind, 'kind', 'Unregistered settings document.');
     }
     return document;
   }
 
-  Iterable<SettingKey<dynamic>> keysForDocument(String kind) =>
-      keys.values.where((key) => key.documentKind == kind);
+  Iterable<SettingKey<dynamic>> keysForDocument(String kind) => keys.values.where((key) => key.documentKind == kind);
 }
 
-Map<String, SettingKey<dynamic>> _indexKeys(
-  Iterable<SettingKey<dynamic>> keys,
-) {
+Map<String, SettingKey<dynamic>> _indexKeys(Iterable<SettingKey<dynamic>> keys) {
   final result = <String, SettingKey<dynamic>>{};
   for (final key in keys) {
     if (result.containsKey(key.id)) {
@@ -152,9 +116,7 @@ Map<String, SettingKey<dynamic>> _indexKeys(
   return result;
 }
 
-Map<String, SettingsDocumentDefinition> _indexDocuments(
-  Iterable<SettingsDocumentDefinition> documents,
-) {
+Map<String, SettingsDocumentDefinition> _indexDocuments(Iterable<SettingsDocumentDefinition> documents) {
   final result = <String, SettingsDocumentDefinition>{};
   final ids = <String>{};
   for (final document in documents) {
@@ -170,32 +132,8 @@ Map<String, SettingsDocumentDefinition> _indexDocuments(
 }
 
 void _validateIdentifier(String value, {required String label}) {
-  if (value.isEmpty ||
-      value.length > 128 ||
-      !RegExp(r'^[A-Za-z][A-Za-z0-9._-]*$').hasMatch(value)) {
+  if (value.isEmpty || value.length > 128 || !RegExp(r'^[A-Za-z][A-Za-z0-9._-]*$').hasMatch(value)) {
     throw ArgumentError.value(value, label);
-  }
-}
-
-void _rejectSensitiveIdentifier(String value) {
-  final separated = value.replaceAllMapped(
-    RegExp(r'([a-z0-9])([A-Z])'),
-    (match) => '${match[1]}.${match[2]}',
-  );
-  final normalized = separated.toLowerCase();
-  final tokens = normalized
-      .split(RegExp('[^a-z0-9]+'))
-      .where((token) => token.isNotEmpty)
-      .toSet();
-  if (tokens.any(forbiddenSettingsJsonKeyTokens.contains) ||
-      normalized.contains('request.body') ||
-      normalized.contains('response.body') ||
-      normalized.contains('chapter.text') ||
-      normalized.contains('raw.html') ||
-      normalized.contains('plain.text') ||
-      normalized.contains('binary.blob') ||
-      normalized.contains('absolute.path')) {
-    throw ArgumentError('Settings cannot register sensitive or body fields.');
   }
 }
 
@@ -243,7 +181,6 @@ void _validateBoundedJsonValue(Object? root) {
         }
         final key = entry.key as String;
         estimatedEncodedBytes += key.length * 4 + 4;
-        _rejectSensitiveIdentifier(key);
         visit(entry.value, depth + 1);
       }
       return;

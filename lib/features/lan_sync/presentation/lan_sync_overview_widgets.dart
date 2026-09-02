@@ -59,10 +59,7 @@ class LanSyncOverviewCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.regular),
-            Text(
-              '已配对设备使用认证加密连接；IP 变化后会重新发现。只同步数据源插件、书架与阅读进度，不发送 Cookie、凭据、正文或封面文件。',
-              style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
-            ),
+            Text('已配对设备使用认证加密连接；IP 变化后会重新发现。同步内容由当前同步范围决定。', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
           ],
         ),
       ),

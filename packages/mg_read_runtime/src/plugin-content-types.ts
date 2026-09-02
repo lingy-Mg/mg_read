@@ -34,8 +34,8 @@ export type PluginContentKind = "audio" | "manga" | "novel" | "video";
 /** Cover composition family is independent from media kind. */
 export type PluginCoverOrientation = "landscape" | "portrait";
 export type PluginMangaPageResourcePolicy = "sessionOnly" | "refreshable" | "durable";
-/** Media is always addressed through a Runtime proxy. A refreshable URL must
- * be re-resolved with getContent; no source may cache or replay credentials. */
+/** Media is addressed through a Runtime proxy. Refreshable resources are
+ * re-resolved with getContent. */
 export type PluginMediaResourcePolicy = "sessionOnly" | "refreshable";
 export type PluginMediaResourceType = "audio" | "hls" | "video";
 

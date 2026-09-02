@@ -36,7 +36,7 @@ export async function probeReachableResource({
         redirect: 'follow',
       });
       const contentType = (response.headers.get('content-type') ?? '').slice(0, 80);
-      const attempt = { index: index + 1, status: response.status, contentType };
+      const attempt = { index: index + 1, url: request.url, status: response.status, contentType };
       expectedContentType.lastIndex = 0;
       if (response.ok && expectedContentType.test(contentType)) {
         const bytesRead = await readFirstBodyChunk(response);
@@ -54,7 +54,7 @@ export async function probeReachableResource({
       }
       attempts.push(Object.freeze(attempt));
     } catch (error) {
-      attempts.push(Object.freeze({ index: index + 1, ...causeSummary(error) }));
+      attempts.push(Object.freeze({ index: index + 1, url: request.url, ...causeSummary(error) }));
     }
   }
   throw new SourceTestFailure('source_resource_unreachable', 'resource', {

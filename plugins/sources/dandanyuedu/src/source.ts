@@ -2,7 +2,7 @@
  * Minimal QQ Reading JSON API and pin.qq.com category implementation.
  *
  * Runtime owns HTTP and cover proxy transport. The required anonymous Q-GUID is generated per
- * activation, never persisted or logged, and is not an account, Cookie or signature.
+ * activation and is not an account, Cookie or signature.
  */
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';

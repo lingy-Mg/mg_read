@@ -3,10 +3,10 @@
  *
  * Responsibilities:
  * - retain only the Debug inspector enable preference in the Runtime data root;
- * - atomically replace the tiny setting document without retaining diagnostics.
+ * - atomically replace the tiny setting document.
  *
  * Boundaries:
- * - never stores endpoints, requests, source data, credentials, or logs;
+ * - owns the debug HTTP settings boundary;
  * - unreadable/corrupt settings safely fall back to the disabled default.
  */
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";

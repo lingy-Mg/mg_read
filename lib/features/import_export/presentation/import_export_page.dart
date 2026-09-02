@@ -378,10 +378,7 @@ class _ScopeNotice extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.regular),
-            Text(
-              '不包含正文、缓存、Cookie、凭据或设置。Windows 实时开发数据源会先打包，只导出 artifact，不导出源码。',
-              style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
-            ),
+            Text('Windows 实时开发数据源会先打包，只导出 artifact，不导出源码。', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
           ],
         ),
       ),

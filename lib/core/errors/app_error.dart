@@ -91,12 +91,12 @@ final class AppError implements Exception {
     return AppError.fromCode(AppErrorCode.fromWireValue(wireCode), retryable: retryable, retryAfter: retryAfter, traceId: traceId);
   }
 
-  /// Normalizes an implementation exception.
+  /// Normalizes an implementation exception and keeps its message as detail.
   factory AppError.fromUnknown(Object error) {
     if (error case final AppError appError) {
       return appError;
     }
-    return AppError.fromCode(AppErrorCode.internal);
+    return AppError.fromCode(AppErrorCode.internal, detail: error.toString());
   }
 
   /// Stable machine-readable error code.
@@ -108,10 +108,10 @@ final class AppError implements Exception {
   /// Optional bounded delay requested by the producing layer.
   final Duration? retryAfter;
 
-  /// Optional technical correlation ID; it never carries user content.
+  /// Optional technical correlation ID.
   final String? traceId;
 
-  /// Optional reviewed technical reason. It never controls retry behavior.
+  /// Optional technical reason. It never controls retry behavior.
   final String? detail;
 
   /// Optional application-owned operation/stage where the failure surfaced.
@@ -162,5 +162,10 @@ final class AppError implements Exception {
   int get hashCode => Object.hash(code, retryable, retryAfter, traceId, detail, location);
 
   @override
-  String toString() => 'AppError(${code.wireValue})';
+  String toString() {
+    final parts = <String>[code.wireValue];
+    if (detail != null && detail!.isNotEmpty) parts.add('detail=$detail');
+    if (location != null && location!.isNotEmpty) parts.add('location=$location');
+    return 'AppError(${parts.join(', ')})';
+  }
 }

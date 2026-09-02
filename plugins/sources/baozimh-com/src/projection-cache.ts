@@ -1,4 +1,4 @@
-/** In-memory cache for bounded, non-sensitive display projections only. */
+/** In-memory cache for display projections. */
 export interface ProjectionCachePolicy {
   readonly capacity: number;
   readonly freshTtlMs: number;

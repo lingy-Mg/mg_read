@@ -1,7 +1,7 @@
 /**
  * 小说/漫画数据源的标准公共阅读链路。
  *
- * 职责：按阶段运行发现、搜索、建议、详情、目录和正文，并仅返回计数型诊断摘要。
+ * 职责：按阶段运行发现、搜索、建议、详情、目录和正文，并返回完整结果及计数摘要。
  */
 import { SourceTestFailure, failureFromCause } from './diagnostics.js';
 

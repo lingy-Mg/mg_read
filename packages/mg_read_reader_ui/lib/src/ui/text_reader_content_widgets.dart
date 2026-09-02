@@ -492,19 +492,21 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
   }
 
   Widget _buildPageEffect(int rawIndex, Widget child) {
-    // A horizontal page is one visual sheet: its background and text must
-    // travel through the same native or reader-owned transition. Keeping the
-    // treatment only on the reader root makes the texture look pinned while
-    // the text moves, and leaves page-curl/cover edges visually transparent.
-    final Widget pageSurface = ReaderBackgroundSurface(
-      key: ValueKey<String>('reader-page-background-$rawIndex'),
-      preset: _preferences.background,
-      palette: _palette,
-      child: child,
+    // PageView.builder already inserts a repaint boundary around each child.
+    // Slide/none therefore reuse the fixed reader background without another
+    // page layer. Cover/curl need an opaque moving sheet, and the inner
+    // boundary keeps that static background + text subtree out of animation
+    // repaints while the surrounding transform/shading changes each frame.
+    if (!_movingPageOwnsBackground) return child;
+    final Widget pageSurface = RepaintBoundary(
+      key: ValueKey<String>('reader-animated-page-boundary-$rawIndex'),
+      child: ReaderBackgroundSurface(
+        key: ValueKey<String>('reader-page-background-$rawIndex'),
+        preset: _preferences.background,
+        palette: _palette,
+        child: child,
+      ),
     );
-    if (_preferences.pageAnimation == ReaderPageAnimation.slide) {
-      return pageSurface;
-    }
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         return AnimatedBuilder(

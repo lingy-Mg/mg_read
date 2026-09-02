@@ -59,7 +59,7 @@ class AudioPlayerView extends StatefulWidget {
   /// Optional fake or custom backend. The view owns and disposes it.
   final AudioPlaybackBackend? backend;
 
-  /// Optional credential-free HTTP proxy used by the default MediaKit backend.
+  /// Optional HTTP proxy used by the default MediaKit backend.
   final Uri? proxyUri;
 
   /// Optional host renderer for network, file or cached artwork.

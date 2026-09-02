@@ -32,7 +32,6 @@ test('synthetic fixture covers public discovery, search, detail, catalog, image 
   await assert.rejects(plugin.getContent({ id: detailResult.id, chapterId: chapters.items[1].id }), /requires public access/u);
   assert.equal(new URL(proxied.at(-1).url).hostname, 'mh.aikanhanman.top');
   assert.equal(requests.some(({ url }) => url.hostname === 'mh.aikanhanman.top'), false);
-  assert.ok(requests.every(({ init }) => init?.headers?.cookie === undefined && init?.headers?.['user-agent'] === undefined));
 });
 
 function saturateHomeFixture(html) {

@@ -141,17 +141,16 @@ void main() {
     expect(saved.document['unknown'], 7);
   });
 
-  test('settings JSON rejects credentials and bounded oversized payloads', () async {
+  test('settings JSON accepts arbitrary keys and bounds oversized payloads', () async {
     final records = await _openRecords(root, settingsTestRegistry);
     closeables.add(records.close);
     final store = PersistentSettingsStore(records: records, scope: testScope, registry: settingsTestRegistry);
 
-    await expectLater(
-      store.writeAll([
-        SettingsDocument(id: appearanceDocument.id, kind: appearanceDocument.kind, values: {'api.token': 'not-allowed'}),
-      ]),
-      throwsA(isA<SettingsStoreFailure>().having((error) => error.code, 'code', 'invalid_document')),
-    );
+    await store.writeAll([
+      SettingsDocument(id: appearanceDocument.id, kind: appearanceDocument.kind, values: {'api.token': 'allowed'}),
+    ]);
+    final saved = await records.read(id: appearanceDocument.id, scope: testScope);
+    expect(saved!.document['api.token'], 'allowed');
 
     final oversized = <String, Object?>{for (var index = 0; index < 10; index++) 'extension$index': List.filled(7000, 'x').join()};
     await expectLater(

@@ -2,7 +2,7 @@
 ///
 /// 职责：
 /// - 验证请求世代、乐观投影与删除回滚。
-/// - 验证删除诊断终态不暴露用户书籍内容。
+/// - 验证删除诊断终态和页面状态的一致性。
 ///
 /// 注意：
 /// - 使用受控内存 loader，不触及真实 SQLite 或文件系统。
@@ -11,7 +11,6 @@ library;
 
 import 'dart:async';
 import 'dart:collection';
-import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -178,8 +177,8 @@ void main() {
     expect(container.read(libraryPageControllerProvider).overview!.items.map((item) => item.title), contains('durable'));
   });
 
-  test('load failure records a stable code without exception content', () async {
-    const secretCanary = 'Bearer LIBRARY-SECRET-CANARY';
+  test('load failure records a stable code', () async {
+    const failure = 'Bearer LIBRARY-SECRET-CANARY';
     final diagnostics = DiagnosticsTestkit();
     addTearDown(diagnostics.dispose);
     final loader = _ControlledLibraryOverviewLoader();
@@ -194,17 +193,16 @@ void main() {
     addTearDown(subscription.close);
 
     await _flush();
-    loader.failNext(StateError(secretCanary));
+    loader.failNext(StateError(failure));
     await _flush();
 
     expect(container.read(libraryPageControllerProvider).hasFailure, isTrue);
     final terminal = diagnostics.sink.events.singleWhere((event) => event.eventName == 'library.load.error');
     expect(terminal.outcome, DiagnosticOutcome.error);
-    expect(jsonEncode(const DiagnosticEventCodec().encode(terminal)), isNot(contains(secretCanary)));
   });
 
   test('failed deletion rolls back and records an owner span', () async {
-    const secretCanary = '删除书名-SECRET-CANARY';
+    const failure = '删除书名-SECRET-CANARY';
     final diagnostics = DiagnosticsTestkit();
     addTearDown(diagnostics.dispose);
     final loader = _ControlledLibraryOverviewLoader();
@@ -222,7 +220,7 @@ void main() {
     await _flush();
 
     final operation = LibraryBookRemovalOperation(
-      remover: _FailingBookRemover(StateError(secretCanary)),
+      remover: _FailingBookRemover(StateError(failure)),
       controller: container.read(libraryPageControllerProvider.notifier),
       diagnostics: diagnostics.manager,
     );
@@ -231,17 +229,13 @@ void main() {
     expect(container.read(libraryPageControllerProvider).overview!.items.single.title, 'durable');
     final error = diagnostics.sink.events.singleWhere((event) => event.eventName == 'library.operation.error');
     expect(error.outcome, DiagnosticOutcome.error);
-    expect(jsonEncode(const DiagnosticEventCodec().encode(error)), isNot(contains(secretCanary)));
   });
 
   test('failed refresh records complete exception context for the developer console', () async {
     const failure = 'StateError: original refresh failure';
     final diagnostics = DiagnosticsTestkit();
     addTearDown(diagnostics.dispose);
-    final operation = LibraryBookRefreshOperation(
-      refresher: _FailingBookRefresher(StateError(failure)),
-      diagnostics: diagnostics.manager,
-    );
+    final operation = LibraryBookRefreshOperation(refresher: _FailingBookRefresher(StateError(failure)), diagnostics: diagnostics.manager);
 
     await expectLater(operation.refresh('book-durable'), throwsStateError);
 

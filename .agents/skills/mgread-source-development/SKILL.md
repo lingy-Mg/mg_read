@@ -44,8 +44,7 @@ description: Develop, debug, or test MgRead real data-source plugins, the public
   token 抽取/回放、DOM 合成点击和绕过。`page.cdp` 只能通过共享声明调用；当前 Windows WebView2 支持、
   Android 返回 `unsupported`，不得用它绕过挑战。需要人工操作时返回 `interaction_required`。
 - `single-file` 与 `archive` 是独立发布模式，不互相回退，也不能把 `.mgplugin` 当成 `.mgplugin.js`。
-- 音频与视频分别建模；媒体主体、HLS 分片和 Range 只经 Runtime 数据面流转，不在插件 JS 中整体读取、
-  Base64 化、缓存或持久化签名 URL。
+- 音频与视频分别建模；媒体主体、HLS 分片和 Range 只经 Runtime 数据面流转，插件 JS 返回资源描述。
 
 ## 完成与报告
 

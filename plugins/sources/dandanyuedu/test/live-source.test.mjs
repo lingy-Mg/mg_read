@@ -1,4 +1,4 @@
-/** Bounded public-API smoke; JSON, category HTML and chapter text are never persisted as fixtures. */
+/** Bounded public-API smoke for JSON, category HTML and chapter text. */
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import * as plugin from '../dist/index.mjs';
 
-test('live public QQ chain completes without login signature Cookie or fixed GUID', { timeout: 120_000 }, async (t) => {
+test('live public QQ chain completes', { timeout: 120_000 }, async (t) => {
   const cacheDir = await mkdtemp(join(tmpdir(), 'dandan-live-'));
   t.after(() => rm(cacheDir, { recursive: true, force: true }));
   const proxied = [];

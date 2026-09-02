@@ -1,4 +1,4 @@
-/** Bounded live smoke; responses stay in memory and are never persisted as fixtures. */
+/** Bounded live smoke for the public source chain. */
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

@@ -34,7 +34,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     _preparedSession = _MediaKitEpisodeSession(proxyUri);
   }
 
-  /// Optional credential-free HTTP proxy sampled for this backend session.
+  /// Optional HTTP proxy sampled for this backend session.
   final Uri? proxyUri;
 
   final ValueNotifier<VideoPlaybackBackendState> _state =

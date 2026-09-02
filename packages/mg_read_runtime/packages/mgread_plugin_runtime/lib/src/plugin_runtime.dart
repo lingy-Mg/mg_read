@@ -82,8 +82,8 @@ final class PluginRuntime {
 
   /// Selects an output directory and packages one Windows desktop development source.
   ///
-  /// The project path, artifact bytes and destination path stay inside this
-  /// Runtime package; the application receives only safe artifact metadata.
+  /// The project path, artifact bytes and destination path are handled by this
+  /// Runtime package; the application receives the resulting package metadata.
   Future<PluginDevelopmentPackage?> packageDevelopmentPlugin(
     String pluginId,
   ) async {
@@ -136,7 +136,7 @@ final class PluginRuntime {
       throw ArgumentError.value(
         proxyUri,
         'proxyUri',
-        'A credential-free HTTP, HTTPS or SOCKS5 proxy endpoint is required.',
+        'An HTTP, HTTPS or SOCKS5 proxy endpoint is required.',
       );
     }
     return _supervisor.configurePluginHttpProxy(proxyUri);

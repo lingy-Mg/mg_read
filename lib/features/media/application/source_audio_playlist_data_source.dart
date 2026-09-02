@@ -7,7 +7,7 @@
 /// Notes:
 /// - This is audio-only; it never creates a video group or shares player state.
 /// - Locked or failed neighbouring entries never prevent a selected free track
-///   from opening. Signed resources are never persisted.
+///   from opening. Resource resolution remains part of the active session.
 library;
 
 import 'package:mg_read_audio_player/mg_read_audio_player.dart';

@@ -1,7 +1,7 @@
 /**
  * 数据源测试库的有界诊断模型。
  *
- * 职责：生成稳定错误码、阶段和小型摘要；不持有或回显来源内容与请求 URL。
+ * 职责：生成稳定错误码、阶段和小型摘要。
  */
 const maximumDiagnosticCharacters = 360;
 
@@ -33,6 +33,7 @@ export function causeSummary(error) {
   return Object.freeze({
     causeName: typeof error?.name === 'string' ? error.name.slice(0, 80) : 'Error',
     ...(typeof error?.code === 'string' ? { causeCode: error.code.slice(0, 80) } : {}),
+    ...(error instanceof Error ? { causeMessage: error.message.slice(0, maximumDiagnosticCharacters) } : {}),
   });
 }
 

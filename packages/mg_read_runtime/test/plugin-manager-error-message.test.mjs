@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { pluginManagerErrorMessage } from "../dist/plugin-manager-error-message.js";
 
-test("invalid plugin response appends only Runtime-authored safe validation detail", () => {
+test("plugin error messages append available detail", () => {
   const detail = "Response validation failed at the inline payload budget: 64000 bytes exceeds the 57344-byte limit.";
   assert.equal(
     pluginManagerErrorMessage("plugin_invalid_response", detail),
@@ -11,6 +11,6 @@ test("invalid plugin response appends only Runtime-authored safe validation deta
   );
   assert.equal(
     pluginManagerErrorMessage("plugin_execution_failed", detail),
-    "The plugin could not complete the requested operation.",
+    `The plugin could not complete the requested operation. ${detail}`,
   );
 });

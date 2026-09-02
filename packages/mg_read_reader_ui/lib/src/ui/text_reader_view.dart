@@ -4,7 +4,8 @@
 /// - 组合正文排版、章节分页、阅读工具栏与设置入口。
 /// - 将章节缓存参数交给宿主能力，并保持网络、持久化和全局任务状态在宿主侧。
 /// - 按宿主给定的有界数量顺序预加载后续小说章节，只为相邻一章执行空闲排版。
-/// - 横向翻页时将背景与正文组合成同一页片参与动画。
+/// - 横向滑动/无动画翻页复用固定背景；覆盖与仿真翻页才让背景随页片参与动画。
+/// - 依赖 PageView 的自动页面重绘边界，并只为固定背景和自定义动画页片增加必要隔离。
 /// - 将已预排的下一章第一页作为连续页片，动画停止后再提交跨章状态。
 /// - 跨章提交重建不保留 PageStorage 页码的控制器，并在目标页挂载前保留交接页。
 /// - 跨章回退时屏蔽 PageView 重建产生的过期页回调，保持上一章真实尾页。
@@ -291,6 +292,10 @@ class _TextReaderViewState extends State<TextReaderView>
 
   ReaderObserver get _observer => widget.observer ?? const ReaderObserver();
   ReaderPalette get _palette => ReaderPalette.fromPreset(_preferences.theme);
+  bool get _movingPageOwnsBackground =>
+      _preferences.navigationMode == ReaderNavigationMode.horizontalPages &&
+      (_preferences.pageAnimation == ReaderPageAnimation.cover ||
+          _preferences.pageAnimation == ReaderPageAnimation.pageCurl);
   ReaderChapterInfo? get _currentChapter => _currentChapterInfo;
   bool get _isBookPreview =>
       !_loading && _failure == null && _progress?.isBookPreview == true;
@@ -632,23 +637,30 @@ class _TextReaderViewState extends State<TextReaderView>
                       child: Stack(
                         fit: StackFit.expand,
                         children: <Widget>[
-                          ReaderBackgroundSurface(
-                            preset: _preferences.background,
-                            palette: palette,
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: <Widget>[
-                                _buildContent(),
-                                IgnorePointer(
-                                  child: ColoredBox(
-                                    color: Colors.black.withValues(
-                                      alpha:
-                                          (1 - _preferences.brightness) * 0.65,
-                                    ),
+                          Stack(
+                            fit: StackFit.expand,
+                            children: <Widget>[
+                              if (_movingPageOwnsBackground)
+                                ColoredBox(color: palette.background)
+                              else
+                                RepaintBoundary(
+                                  key: const ValueKey<String>(
+                                    'reader-fixed-background',
+                                  ),
+                                  child: ReaderBackgroundSurface(
+                                    preset: _preferences.background,
+                                    palette: palette,
                                   ),
                                 ),
-                              ],
-                            ),
+                              _buildContent(),
+                              IgnorePointer(
+                                child: ColoredBox(
+                                  color: Colors.black.withValues(
+                                    alpha: (1 - _preferences.brightness) * 0.65,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                           if (_horizontalChapterHandoff != null)
                             _buildHorizontalChapterHandoff(

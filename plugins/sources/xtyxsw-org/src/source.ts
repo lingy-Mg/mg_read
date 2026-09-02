@@ -1,7 +1,7 @@
 /**
  * Tianyue parser using public PC HTTP only; no browser, Cookie, or user-agent fallback.
  * If direct search is empty, the new-book list and first three catalog categories are inspected, with two requests at most in flight and early cancellation at 20 matches.
- * Only bounded GET display projections are cached; POST search, HTML, chapter text, credentials, and user input are never cached or logged.
+ * GET display projections are cached according to the source policy; POST search and page parsing remain source-owned.
  */
 import * as cheerio from 'cheerio/slim';
 import type {ContentDetail,ContentSummary,MgReadPluginContext} from './contracts.js';

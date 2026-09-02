@@ -3,7 +3,7 @@
 /// Runtime supplies catalogs and regenerable manifests; Content Library owns
 /// the synchronized snapshot, URL-safe manifest, progress, and bookmarks.
 /// Encoded image bytes stay in the reader's bounded memory cache; this adapter
-/// does not read or write a persistent image cache. Session-only URLs and
+/// does not read or write a persistent image cache. Session resource state and
 /// request single-flights stay in this file. Live manifests use a three-entry
 /// LRU so visiting chapters cannot grow session memory without bound. Unless
 /// a caller-owned fetcher is injected, this adapter lazily owns one bounded

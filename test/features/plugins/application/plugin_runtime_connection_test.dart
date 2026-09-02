@@ -69,12 +69,12 @@ void main() {
     );
   });
 
-  test('Runtime startup detail is normalized without retaining its message', () {
-    const secretCanary = 'Bearer RUNTIME-SECRET-CANARY';
-    final error = normalizePluginRuntimeError(const PluginRuntimeException('runtime_node_executable_missing', secretCanary));
+  test('Runtime startup detail is retained with its stable code', () {
+    const detail = 'Bearer RUNTIME-SECRET-CANARY';
+    final error = normalizePluginRuntimeError(const PluginRuntimeException('runtime_node_executable_missing', detail));
 
     expect(error.code, AppErrorCode.runtimeStartFailed);
-    expect(error.toString(), isNot(contains(secretCanary)));
+    expect(error.detail, detail);
   });
 
   test('plugin response failures retain reviewed validation detail and location', () {
@@ -87,14 +87,14 @@ void main() {
     expect(error.code, AppErrorCode.invalidFormat);
     expect(error.detail, detail);
     expect(error.location, 'source.discover.v1 / runtime.response.validation');
-    expect(error.toString(), isNot(contains(detail)));
+    expect(error.toString(), contains(detail));
   });
 
   test('existing development package output uses the stable conflict UI code', () {
     final error = normalizePluginRuntimeError(const PluginRuntimeException('file_already_exists', 'The selected path must not escape.'));
 
     expect(error.code, AppErrorCode.conflict);
-    expect(error.toString(), isNot(contains('selected path')));
+    expect(error.toString(), contains('selected path'));
   });
 
   test('plugin execution failures remain non-fatal and safely classified', () {
@@ -105,7 +105,7 @@ void main() {
     expect(error.code, AppErrorCode.pluginExecutionFailed);
     expect(error.retryable, isFalse);
     expect(error.category, AppErrorCategory.unknownSafe);
-    expect(error.toString(), isNot(contains('exception details')));
+    expect(error.toString(), contains('exception details'));
   });
 
   test('source enable action persists then refreshes the Runtime projection', () async {

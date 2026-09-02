@@ -17,13 +17,13 @@ void main() {
       expect(mediaResolver.category, AppErrorCategory.retryableTemporary);
     });
 
-    test('normalizes unknown protocol values and exception messages', () {
+    test('normalizes unknown protocol values and retains exception messages', () {
       final AppError unknownWire = AppError.fromWireCode('upstream_secret');
-      final AppError unknownException = AppError.fromUnknown(StateError('do not expose this upstream message'));
+      final AppError unknownException = AppError.fromUnknown(StateError('upstream failure message'));
 
       expect(unknownWire.code, AppErrorCode.internal);
       expect(unknownException.code, AppErrorCode.internal);
-      expect(unknownException.toString(), isNot(contains('do not expose this upstream message')));
+      expect(unknownException.detail, 'Bad state: upstream failure message');
     });
   });
 }
