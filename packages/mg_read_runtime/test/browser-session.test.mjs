@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   requestPluginBrowserInteraction,
   requestPluginBrowserSession,
+  requestPluginWebViewDebug,
 } from "../dist/plugin-browser-session.js";
 
 function request(overrides = {}) {
@@ -152,4 +153,35 @@ test("v1 exposes bounded WebView interactions without accepting scripts or globa
   assert.equal(calls[0].operation, "interaction");
   assert.equal(calls[0].selector, "#control");
   assert.equal("script" in calls[0], false);
+});
+
+test("source WebView debug control pins and shows only the requested plugin", async () => {
+  const calls = [];
+  const provider = {
+    async request(value) {
+      calls.push(value);
+      return { version: 1, accepted: true, action: value.action };
+    },
+  };
+  await requestPluginWebViewDebug(
+    provider,
+    "org.mgread.fixture",
+    "Fixture Source",
+    "enter",
+    new AbortController().signal,
+    String(Date.now() + 10_000),
+  );
+  assert.deepEqual({
+    action: calls[0].action,
+    operation: calls[0].operation,
+    pluginId: calls[0].pluginId,
+    pluginName: calls[0].pluginName,
+    version: calls[0].version,
+  }, {
+    action: "enter",
+    operation: "debug",
+    pluginId: "org.mgread.fixture",
+    pluginName: "Fixture Source",
+    version: 1,
+  });
 });

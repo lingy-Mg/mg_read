@@ -84,7 +84,7 @@ export type PluginBrowserHostRequest = (PluginBrowserSessionRequest & {
   readonly operation: "interaction";
   readonly pluginId: string;
   readonly signal: AbortSignal;
-}) | PluginWebViewHostRequest;
+}) | PluginWebViewHostRequest | PluginWebViewDebugRequest;
 
 export type PluginWebViewOperation =
   | "page.open"
@@ -110,6 +110,18 @@ export interface PluginWebViewHostRequest {
   readonly timeoutMs: number;
   readonly version: 1;
   readonly [key: string]: unknown;
+}
+
+export type PluginWebViewDebugAction = "enter" | "show";
+
+export interface PluginWebViewDebugRequest {
+  readonly action: PluginWebViewDebugAction;
+  readonly operation: "debug";
+  readonly pluginId: string;
+  readonly pluginName: string;
+  readonly signal: AbortSignal;
+  readonly timeoutMs: number;
+  readonly version: 1;
 }
 
 export type PluginBrowserHostResponse =
@@ -236,6 +248,43 @@ export async function requestPluginBrowserInteraction(
     if (signal.aborted) {
       throw new PluginManagerError(invocationSignal.aborted ? "cancelled" : "timeout");
     }
+    throw new PluginManagerError("plugin_execution_failed");
+  }
+}
+
+export async function requestPluginWebViewDebug(
+  provider: PluginBrowserSessionProvider | undefined,
+  pluginId: string,
+  pluginName: string,
+  action: PluginWebViewDebugAction,
+  invocationSignal: AbortSignal,
+  deadlineUnixMs: string,
+): Promise<void> {
+  if (provider === undefined) throw new PluginManagerError("unsupported");
+  if (!/^[a-z0-9]+(?:[._-][a-z0-9]+)+$/u.test(pluginId) ||
+      pluginName.length === 0 || pluginName.length > 128 ||
+      (action !== "enter" && action !== "show")) invalid();
+  const remainingMs = Number(deadlineUnixMs) - Date.now();
+  if (invocationSignal.aborted) throw new PluginManagerError("cancelled");
+  if (!Number.isFinite(remainingMs) || remainingMs <= 0) throw new PluginManagerError("timeout");
+  const timeoutMs = Math.max(1, Math.min(maximumBrowserTimeoutMs, remainingMs));
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = AbortSignal.any([invocationSignal, timeoutSignal]);
+  try {
+    const response = await provider.request(Object.freeze({
+      action,
+      operation: "debug",
+      pluginId,
+      pluginName,
+      signal,
+      timeoutMs,
+      version: 1,
+    } satisfies PluginWebViewDebugRequest));
+    if (!isRecord(response) || response.version !== 1 || response.accepted !== true || response.action !== action) invalidResponse();
+  } catch (error) {
+    if (error instanceof PluginManagerError) throw error;
+    if (isPluginBrowserSessionError(error)) throw new PluginManagerError(error.code);
+    if (signal.aborted) throw new PluginManagerError(invocationSignal.aborted ? "cancelled" : "timeout");
     throw new PluginManagerError("plugin_execution_failed");
   }
 }

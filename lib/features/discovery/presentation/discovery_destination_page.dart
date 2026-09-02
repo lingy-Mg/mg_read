@@ -28,6 +28,7 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
 import 'package:mg_read/features/discovery/presentation/source_picker_sheet.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
@@ -234,7 +235,7 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
       sourceName: selectedSource.displayName,
       onDestinationRequested: onDestinationRequested,
       onSearchRequested: onSearchRequested == null ? null : () => onSearchRequested!(state.selectedSourceId),
-      onSourcePressed: () => unawaited(_selectDiscoverySource(context, state, controller, onSourceManagementRequested)),
+      onSourcePressed: () => unawaited(_selectDiscoverySource(context, ref, state, controller, onSourceManagementRequested)),
       onTabSelected: (target) => unawaited(controller.selectTab(target)),
       onCategorySelected: (target) => _pushCategoryRoute(context, ref, controller, target),
       isInBookshelf: (content) => bookshelfMembership.contains(pluginId: state.selectedSourceId!, title: content.title),
@@ -319,6 +320,7 @@ class _DiscoveryPredictiveBackChildPage extends ConsumerWidget {
 
 Future<void> _selectDiscoverySource(
   BuildContext context,
+  WidgetRef ref,
   DiscoveryPageState state,
   DiscoveryPageController controller,
   VoidCallback? onSourceManagementRequested,
@@ -329,6 +331,23 @@ Future<void> _selectDiscoverySource(
       await controller.selectSource(sourceId);
     case DiscoverySourceManagementRequested():
       onSourceManagementRequested?.call();
+    case DiscoverySourceWebViewActionRequested(:final sourceId, :final action):
+      final source = state.sources.where((candidate) => candidate.id == sourceId).firstOrNull;
+      if (source == null) return;
+      try {
+        await ref
+            .read(pluginRuntimeGatewayProvider)
+            .controlSourceWebView(
+              pluginId: source.id,
+              pluginName: source.displayName,
+              action: switch (action) {
+                DiscoverySourceWebViewAction.enterDebug => PluginWebViewDebugAction.enter,
+                DiscoverySourceWebViewAction.show => PluginWebViewDebugAction.show,
+              },
+            );
+      } on AppError {
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('WebView 调试窗口打开失败，请稍后重试。')));
+      }
     case null:
       return;
   }

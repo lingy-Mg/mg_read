@@ -269,4 +269,11 @@ final class _DirectoryGateway implements PluginRuntimeGateway {
   Future<void> scheduleUninstall({required String pluginId}) async {
     scheduledUninstallPluginIds.add(pluginId);
   }
+
+  @override
+  Future<void> controlSourceWebView({
+    required String pluginId,
+    required String pluginName,
+    required PluginWebViewDebugAction action,
+  }) async {}
 }

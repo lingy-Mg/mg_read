@@ -5,8 +5,8 @@
  * supports multi-profile, that WebView receives an isolated profile; older
  * WebViews use the app's single default WebView profile and emit an explicit
  * fallback warning. Hidden sessions never attach a View; visible verification
- * uses one global foreground dialog with user-controlled Hide and Close actions.
- * Hide preserves the session; Close destroys it so the next request recreates it.
+ * uses one global foreground dialog. Debug sessions stay pinned: hide and
+ * window-close gestures only hide the dialog and preserve the WebView.
  * Supporting JavaScript is host-authored; ctx.webview's explicit script body is
  * JSON encoded into a revocable async wrapper and returns only JSON values.
  * Timeout and cancellation delete both the job token and any completed result.
@@ -87,6 +87,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
     private val completed = ConcurrentHashMap<String, String>()
     private val jobs = ConcurrentHashMap<String, Job>()
     private val sessions = mutableMapOf<String, Session>()
+    private val debugPinnedPlugins = mutableSetOf<String>()
     private val disposed = AtomicBoolean(false)
     private var activity: Activity? = null
     private var foregroundDialog: Dialog? = null
@@ -199,7 +200,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
                 if (showForeground(existing, job)) completePageSuccess(job, JSONObject())
                 else completeError(job, "interaction_required")
             } else {
-                if (foregroundPluginId == existing.pluginId) hideForeground()
+                if (existing.pluginId !in debugPinnedPlugins && foregroundPluginId == existing.pluginId) hideForeground()
                 completePageSuccess(job, JSONObject())
             }
             return
@@ -227,6 +228,10 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
                     "plugin_id=${job.request.pluginId} expected=$profileMode actual=${session.profileMode}",
             )
             completeError(job, "unsupported")
+            return
+        }
+        if (job.request.operation == "debug") {
+            beginDebug(job, session)
             return
         }
         if (job.request.operation.startsWith("page.")) {
@@ -352,7 +357,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
     private fun beginPage(job: Job, session: Session) {
         val request = job.request
         if (request.operation == "page.open") {
-            val visible = request.pageParams?.optBoolean("visible", false) == true
+            val visible = request.pageParams?.optBoolean("visible", false) == true || request.pluginId in debugPinnedPlugins
             if (visible && !showForeground(session, job)) {
                 completeError(job, "interaction_required")
             } else {
@@ -403,6 +408,15 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             "page.getUrl" -> completePageSuccess(job, JSONObject().put("url", session.webView.url.orEmpty()))
             else -> completeError(job, "unsupported")
         }
+    }
+
+    private fun beginDebug(job: Job, session: Session) {
+        val action = job.request.pageParams?.optString("action").orEmpty()
+        if (action != "enter" && action != "show") { completeError(job, "plugin_execution_failed"); return }
+        debugPinnedPlugins += job.request.pluginId
+        updateStatus(session, if (action == "enter") "WebView 调试" else "已显示")
+        if (!showForeground(session, job)) { completeError(job, "interaction_required"); return }
+        completePageSuccess(job, JSONObject().put("accepted", true).put("action", action).put("version", 1))
     }
 
     private fun pollPageReady(job: Job, session: Session) {
@@ -763,7 +777,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             if (session.activeJobId == job.id) session.activeJobId = null
             if (!job.request.operation.startsWith("page.")) session.webView.stopLoading()
         }
-        if (!job.request.operation.startsWith("page.") && foregroundPluginId == job.request.pluginId) hideForeground()
+        if (job.request.operation != "debug" && !job.request.operation.startsWith("page.") && foregroundPluginId == job.request.pluginId) hideForeground()
     }
 
     private fun expirePageAsyncResult(job: Job, session: Session) {
@@ -779,7 +793,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             if (session.activeJobId == job.id) session.activeJobId = null
             session.lastUsedAt = System.currentTimeMillis()
         }
-        if (!job.request.operation.startsWith("page.") && foregroundPluginId == job.request.pluginId) hideForeground()
+        if (job.request.operation != "debug" && !job.request.operation.startsWith("page.") && foregroundPluginId == job.request.pluginId) hideForeground()
     }
 
     private fun isCurrent(job: Job, session: Session? = null): Boolean =
@@ -807,14 +821,10 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             setTextColor(Color.BLACK)
         }
         bar.addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        bar.addView(Button(currentActivity).apply {
-            text = "隐藏"
-            setOnClickListener { hideForeground() }
-        })
-        bar.addView(Button(currentActivity).apply {
-            text = "关闭"
-            setOnClickListener { closeForeground(session) }
-        })
+        if (session.pluginId !in debugPinnedPlugins) {
+            bar.addView(Button(currentActivity).apply { text = "隐藏"; setOnClickListener { hideForeground() } })
+            bar.addView(Button(currentActivity).apply { text = "关闭"; setOnClickListener { closeForeground(session) } })
+        }
         root.addView(bar, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         val address = TextView(currentActivity).apply {
             text = session.webView.url.orEmpty()
@@ -864,6 +874,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
     }
 
     private fun closeForeground(session: Session) {
+        if (session.pluginId in debugPinnedPlugins) { hideForeground(); return }
         val activeJob = session.activeJobId?.let { jobs[it] }
         closePage(session)
         activeJob?.let { completeError(it, "interaction_required") }

@@ -237,6 +237,7 @@ final class WindowsBrowserSessionHost {
       <String, _WindowsBrowserSession>{};
   final Map<String, Future<_WindowsBrowserSession>> _creating =
       <String, Future<_WindowsBrowserSession>>{};
+  final Set<String> _debugPinnedPlugins = <String>{};
   Completer<void>? _sessionCreationGate;
   bool _disposed = false;
 
@@ -246,6 +247,9 @@ final class WindowsBrowserSessionHost {
     required Map<String, Object?> raw,
   }) async {
     if (_disposed) throw const WindowsBrowserSessionException('unsupported');
+    if (raw['operation'] == 'debug') {
+      return _requestDebug(deadlineUnixMs: deadlineUnixMs, raw: raw);
+    }
     if (raw['operation'] is String &&
         (raw['operation']! as String).startsWith('page.')) {
       return _requestPage(
@@ -361,6 +365,49 @@ final class WindowsBrowserSessionHost {
       job.client?.close(force: true);
       if (session?.activeJobId == jobId) session!.activeJobId = null;
     }
+  }
+
+  Future<Map<String, Object?>> _requestDebug({
+    required int deadlineUnixMs,
+    required Map<String, Object?> raw,
+  }) async {
+    final pluginId = raw['pluginId'];
+    final pluginName = raw['pluginName'];
+    final action = raw['action'];
+    final timeoutMs = raw['timeoutMs'];
+    if (pluginId is! String ||
+        !RegExp(r'^[a-z0-9]+(?:[._-][a-z0-9]+)+$').hasMatch(pluginId) ||
+        pluginName is! String ||
+        pluginName.isEmpty ||
+        pluginName.length > 128 ||
+        (action != 'enter' && action != 'show') ||
+        timeoutMs is! int ||
+        timeoutMs < 1 ||
+        timeoutMs > _maximumTimeoutMs) {
+      throw const WindowsBrowserSessionException('plugin_execution_failed');
+    }
+    if (deadlineUnixMs <= _clock().millisecondsSinceEpoch) {
+      throw const WindowsBrowserSessionException('timeout');
+    }
+    _debugPinnedPlugins.add(pluginId);
+    var session = await _sessionFor(pluginId, pluginName);
+    try {
+      await _platform.updateStatus(
+        session.sessionId,
+        '$pluginName正在进行探测 - ${action == 'enter' ? 'WebView 调试' : '已显示'}',
+      );
+      await _platform.show(session.sessionId);
+    } on PlatformException catch (error) {
+      if (error.code != 'unsupported') rethrow;
+      if (identical(_sessions[pluginId], session)) _sessions.remove(pluginId);
+      session = await _sessionFor(pluginId, pluginName);
+      await _platform.show(session.sessionId);
+    }
+    session.visible = true;
+    _log(
+      'browser_session_debug_window_shown plugin_id=$pluginId action=$action',
+    );
+    return <String, Object?>{'accepted': true, 'action': action, 'version': 1};
   }
 
   Future<void> cancel(String jobId) async {

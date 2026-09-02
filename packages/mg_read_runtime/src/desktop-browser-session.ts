@@ -13,6 +13,7 @@ import {
   type PluginBrowserSessionInteractionRequest,
   type PluginBrowserSessionRequest,
   type PluginBrowserSessionProvider,
+  type PluginWebViewDebugRequest,
 } from "./plugin-browser-session.js";
 import type { JsonObject } from "./protocol.js";
 import { protocolVersion } from "./runtime-version.js";
@@ -73,8 +74,10 @@ export class DesktopBrowserSessionBroker implements PluginBrowserSessionProvider
     const id = `s:browser-${randomUUID()}`;
     const traceId = `trace:${id}`;
     const runtimeOperation = (request as { readonly operation?: string }).operation;
-    const params = runtimeOperation === "interaction"
-      ? interactionParameters(request)
+    const params = runtimeOperation === "debug"
+      ? debugParameters(request)
+      : runtimeOperation === "interaction"
+        ? interactionParameters(request)
       : runtimeOperation?.startsWith("page.") === true
         ? pageParameters(request)
         : legacyParameters(request);
@@ -209,5 +212,17 @@ function interactionParameters(request: PluginBrowserHostRequest): Readonly<Reco
     presentation: value.presentation,
     timeoutMs: value.timeoutMs,
     ...(value.text === undefined ? {} : { text: value.text }),
+  };
+}
+
+function debugParameters(request: PluginBrowserHostRequest): Readonly<Record<string, unknown>> {
+  const value = request as PluginWebViewDebugRequest;
+  return {
+    action: value.action,
+    operation: "debug",
+    pluginId: value.pluginId,
+    pluginName: value.pluginName,
+    timeoutMs: value.timeoutMs,
+    version: value.version,
   };
 }

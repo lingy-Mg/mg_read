@@ -90,6 +90,39 @@ void main() {
     expect(result, isA<DiscoverySourceManagementRequested>());
   });
 
+  testWidgets('long press exposes source WebView debug actions', (tester) async {
+    DiscoverySourcePickerResult? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                result = await showDiscoverySourcePicker(context, sources: sources, selectedSourceId: 'org.mgread.aisishuwu');
+              },
+              child: const Text('打开'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开'));
+    await tester.pumpAndSettle();
+    await tester.longPress(find.byKey(const ValueKey<String>('discovery-source-picker-org.mgread.aisishuwu')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('进入 WebView 调试'), findsOneWidget);
+    expect(find.text('显示 WebView'), findsOneWidget);
+    await tester.tap(find.text('进入 WebView 调试'));
+    await tester.pumpAndSettle();
+
+    expect(result, isA<DiscoverySourceWebViewActionRequested>());
+    expect((result! as DiscoverySourceWebViewActionRequested).sourceId, 'org.mgread.aisishuwu');
+    expect((result! as DiscoverySourceWebViewActionRequested).action, DiscoverySourceWebViewAction.enterDebug);
+  });
+
   testWidgets('picker keeps the selected source in the recent-use filter', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

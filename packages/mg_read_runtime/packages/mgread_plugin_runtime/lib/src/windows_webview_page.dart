@@ -29,6 +29,10 @@ extension on WindowsBrowserSessionHost {
         await _platform.show(session.sessionId);
         session.visible = true;
       } else {
+        if (_debugPinnedPlugins.contains(request.pluginId)) {
+          session.visible = true;
+          return <String, Object?>{};
+        }
         await _platform.hide(session.sessionId);
         session.visible = false;
       }
@@ -36,7 +40,7 @@ extension on WindowsBrowserSessionHost {
     }
     var session = await _sessionFor(request.pluginId, request.pluginName);
     if (request.operation == 'page.open') {
-      if (request.visible) {
+      if (request.visible || _debugPinnedPlugins.contains(request.pluginId)) {
         await _platform.updateStatus(
           session.sessionId,
           '${request.pluginName}正在进行探测 - 已打开',

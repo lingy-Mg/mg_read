@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_remover.dart';
@@ -28,6 +29,7 @@ import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
 import 'package:mg_read/features/discovery/presentation/source_picker_sheet.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/search_page_sections.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
@@ -427,7 +429,7 @@ class _SearchPageHeader extends ConsumerWidget {
             key: const Key('search-source-selector-widget'),
             selectorKey: const Key('search-source-selector'),
             sourceName: selectedSource?.displayName ?? '选择数据源',
-            onPressed: state.selectedSourceId == null ? () {} : () => _showPicker(context, state, controller),
+            onPressed: state.selectedSourceId == null ? () {} : () => _showPicker(context, ref, state, controller),
             label: '选择搜索数据源',
           ),
         ),
@@ -435,13 +437,30 @@ class _SearchPageHeader extends ConsumerWidget {
     );
   }
 
-  Future<void> _showPicker(BuildContext context, SearchPageState state, SearchPageController controller) async {
+  Future<void> _showPicker(BuildContext context, WidgetRef ref, SearchPageState state, SearchPageController controller) async {
     final selected = await showDiscoverySourcePicker(context, sources: state.sources, selectedSourceId: state.selectedSourceId!);
     switch (selected) {
       case DiscoverySourceSelected(:final sourceId):
         await controller.selectSource(sourceId);
       case DiscoverySourceManagementRequested():
         onSourceManagementRequested?.call();
+      case DiscoverySourceWebViewActionRequested(:final sourceId, :final action):
+        final source = state.sources.where((candidate) => candidate.id == sourceId).firstOrNull;
+        if (source == null) return;
+        try {
+          await ref
+              .read(pluginRuntimeGatewayProvider)
+              .controlSourceWebView(
+                pluginId: source.id,
+                pluginName: source.displayName,
+                action: switch (action) {
+                  DiscoverySourceWebViewAction.enterDebug => PluginWebViewDebugAction.enter,
+                  DiscoverySourceWebViewAction.show => PluginWebViewDebugAction.show,
+                },
+              );
+        } on AppError {
+          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('WebView 调试窗口打开失败，请稍后重试。')));
+        }
       case null:
         return;
     }

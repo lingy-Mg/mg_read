@@ -400,6 +400,47 @@ void main() {
     platform.completeHeldPageScript();
     expect(platform.pageResult, isNull);
   });
+
+  test(
+    'debug mode pins one source WebView visible and hides without destroying it',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'mgread-windows-debug-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final platform = _FakeBrowserPlatform();
+      final host = WindowsBrowserSessionHost(root, platform: platform);
+      addTearDown(host.dispose);
+      final deadline = DateTime.now()
+          .add(const Duration(seconds: 5))
+          .millisecondsSinceEpoch;
+
+      final result = await host.request(
+        jobId: 'p:debug',
+        deadlineUnixMs: deadline,
+        raw: _page('debug', <String, Object?>{'action': 'enter'}),
+      );
+      await host.request(
+        jobId: 'p:open-hidden',
+        deadlineUnixMs: deadline,
+        raw: _page('page.open', <String, Object?>{'visible': false}),
+      );
+      await host.request(
+        jobId: 'p:hide',
+        deadlineUnixMs: deadline,
+        raw: _page('page.hide'),
+      );
+
+      expect(result, <String, Object?>{
+        'accepted': true,
+        'action': 'enter',
+        'version': 1,
+      });
+      expect(platform.createCalls, 1);
+      expect(platform.showCalls, 2);
+      expect(platform.hideCalls, 0);
+    },
+  );
 }
 
 Map<String, Object?> _page(

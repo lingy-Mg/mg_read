@@ -30,6 +30,7 @@
       "plugins.development.package.v1",
       "plugins.setEnabled.v1",
       "plugins.uninstall.v1",
+      "plugins.webview.debug.v1",
       "plugins.transfer.list.v2",
       "plugins.transfer.plan.v2",
       "plugins.transfer.offers.v1",

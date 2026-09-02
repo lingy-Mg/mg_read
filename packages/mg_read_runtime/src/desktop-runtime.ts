@@ -49,6 +49,7 @@ import {
 import { RuntimeDebugHttpServer, RuntimeDebugLogBuffer, type RuntimeDebugHttpStatus } from "./debug-http.js";
 import { createRuntimeDebugHttpServer } from "./debug-http-bridge.js";
 import { DesktopBrowserSessionBroker } from "./desktop-browser-session.js";
+import { requestPluginWebViewDebug, type PluginWebViewDebugRequest } from "./plugin-browser-session.js";
 import { readDebugHttpEnabled } from "./debug-http-control.js";
 import { RuntimeDebugHttpSettings } from "./debug-http-settings.js";
 import { ConfigurablePluginHttpClient } from "./plugin-http-client.js";
@@ -111,6 +112,7 @@ const RUNTIME_CONTROL_METHOD = Object.freeze({
   pluginsDevelopmentPackage: "plugins.development.package.v1",
   pluginsSetEnabled: "plugins.setEnabled.v1",
   pluginsUninstall: "plugins.uninstall.v1",
+  pluginWebViewDebug: "plugins.webview.debug.v1",
   pluginsTransferList: "plugins.transfer.list.v2",
   pluginsTransferPlan: "plugins.transfer.plan.v2",
   pluginsTransferOffers: "plugins.transfer.offers.v1",
@@ -140,6 +142,7 @@ const RUNTIME_CONTROL_CAPABILITIES = Object.freeze([
   RUNTIME_CONTROL_METHOD.pluginsDevelopmentPackage,
   RUNTIME_CONTROL_METHOD.pluginsSetEnabled,
   RUNTIME_CONTROL_METHOD.pluginsUninstall,
+  RUNTIME_CONTROL_METHOD.pluginWebViewDebug,
   RUNTIME_CONTROL_METHOD.pluginsTransferList,
   RUNTIME_CONTROL_METHOD.pluginsTransferPlan,
   RUNTIME_CONTROL_METHOD.pluginsTransferOffers,
@@ -930,6 +933,8 @@ export class DesktopRuntime {
         return dispatchPluginEnabled(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.pluginsUninstall:
         return dispatchPluginUninstall(request, this.#pluginManager, this.#requestError.bind(this));
+      case RUNTIME_CONTROL_METHOD.pluginWebViewDebug:
+        return this.#dispatchPluginWebViewDebug(request, cancellation);
       case RUNTIME_CONTROL_METHOD.pluginsTransferList:
       case RUNTIME_CONTROL_METHOD.pluginsTransferPlan:
       case RUNTIME_CONTROL_METHOD.pluginsTransferOffers:
@@ -1002,6 +1007,39 @@ export class DesktopRuntime {
             "The Runtime method is not implemented.",
           ),
         };
+    }
+  }
+
+  async #dispatchPluginWebViewDebug(
+    request: RuntimeRequest,
+    cancellation: AbortSignal,
+  ): Promise<RuntimeDispatchResult> {
+    const params = request.params as Partial<PluginWebViewDebugRequest>;
+    if (
+      Object.keys(request.params).length !== 3 ||
+      typeof params.pluginId !== "string" ||
+      typeof params.pluginName !== "string" ||
+      (params.action !== "enter" && params.action !== "show")
+    ) {
+      return {
+        error: this.#requestError(request, "invalid_request", "The source WebView debug request is invalid."),
+      };
+    }
+    try {
+      await requestPluginWebViewDebug(
+        this.#browserSession,
+        params.pluginId,
+        params.pluginName,
+        params.action,
+        cancellation,
+        request.deadlineUnixMs,
+      );
+      return { result: { accepted: true, action: params.action, version: 1 } };
+    } catch (error) {
+      if (isPluginManagerError(error)) {
+        return { error: this.#requestError(request, error.code, pluginManagerErrorMessage(error.code)) };
+      }
+      return { error: this.#requestError(request, "internal", "The source WebView debug request failed.") };
     }
   }
 

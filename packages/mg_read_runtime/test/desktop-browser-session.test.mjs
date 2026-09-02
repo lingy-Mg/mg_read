@@ -130,3 +130,36 @@ test("desktop broker forwards only a scoped WebView interaction", async () => {
   });
   assert.equal((await pending).x, 12);
 });
+
+test("desktop broker forwards the source WebView debug control", async () => {
+  const broker = new DesktopBrowserSessionBroker("boot:fixture");
+  const host = session();
+  broker.attach(host);
+  const pending = broker.request({
+    operation: "debug",
+    action: "show",
+    version: 1,
+    pluginId: "org.mgread.fixture",
+    pluginName: "Fixture Source",
+    timeoutMs: 5_000,
+    signal: new AbortController().signal,
+  });
+  const envelope = host.sent[0];
+  assert.deepEqual(envelope.params, {
+    operation: "debug",
+    action: "show",
+    version: 1,
+    pluginId: "org.mgread.fixture",
+    pluginName: "Fixture Source",
+    timeoutMs: 5_000,
+  });
+  broker.handleIncoming(host, {
+    v: "1.2",
+    type: "host_response",
+    bootId: "boot:fixture",
+    id: envelope.id,
+    traceId: envelope.traceId,
+    result: { version: 1, accepted: true, action: "show" },
+  });
+  assert.equal((await pending).action, "show");
+});

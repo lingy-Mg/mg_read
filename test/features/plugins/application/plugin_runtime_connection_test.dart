@@ -363,6 +363,13 @@ final class _FakePluginRuntimeGateway implements PluginRuntimeGateway {
 
   @override
   Future<void> scheduleUninstall({required String pluginId}) async {}
+
+  @override
+  Future<void> controlSourceWebView({
+    required String pluginId,
+    required String pluginName,
+    required PluginWebViewDebugAction action,
+  }) async {}
 }
 
 final class _FailingPluginRuntimeGateway implements PluginRuntimeGateway {
@@ -421,6 +428,11 @@ final class _FailingPluginRuntimeGateway implements PluginRuntimeGateway {
 
   @override
   Future<void> scheduleUninstall({required String pluginId}) {
+    throw AppError.fromCode(AppErrorCode.runtimeUnavailable);
+  }
+
+  @override
+  Future<void> controlSourceWebView({required String pluginId, required String pluginName, required PluginWebViewDebugAction action}) {
     throw AppError.fromCode(AppErrorCode.runtimeUnavailable);
   }
 }
@@ -513,4 +525,11 @@ final class _MutablePluginRuntimeGateway implements PluginRuntimeGateway {
   Future<void> scheduleUninstall({required String pluginId}) async {
     scheduledUninstallPluginIds.add(pluginId);
   }
+
+  @override
+  Future<void> controlSourceWebView({
+    required String pluginId,
+    required String pluginName,
+    required PluginWebViewDebugAction action,
+  }) async {}
 }

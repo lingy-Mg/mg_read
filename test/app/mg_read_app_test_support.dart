@@ -94,6 +94,13 @@ final class TestReadyPluginRuntimeGateway implements PluginRuntimeGateway {
 
   @override
   Future<void> scheduleUninstall({required String pluginId}) async {}
+
+  @override
+  Future<void> controlSourceWebView({
+    required String pluginId,
+    required String pluginName,
+    required PluginWebViewDebugAction action,
+  }) async {}
 }
 
 final class _EmptySourceContentGateway implements SourceContentGateway {

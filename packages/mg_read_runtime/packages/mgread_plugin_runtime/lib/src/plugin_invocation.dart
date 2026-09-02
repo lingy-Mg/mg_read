@@ -205,6 +205,44 @@ final class RuntimeDebugHttpStatusInvocation
       _decodeRuntimeDebugHttpStatus(value);
 }
 
+enum PluginWebViewDebugAction { enter, show }
+
+/// Makes one source WebView visible for manual inspection, while pinning the
+/// source session against programmatic hide requests until Runtime shutdown.
+@immutable
+final class PluginWebViewDebugInvocation extends PluginInvocation<void> {
+  const PluginWebViewDebugInvocation({
+    required this.pluginId,
+    required this.pluginName,
+    required this.action,
+  });
+
+  final String pluginId;
+  final String pluginName;
+  final PluginWebViewDebugAction action;
+
+  @override
+  String get _wireMethod => 'plugins.webview.debug.v1';
+
+  @override
+  Map<String, Object?> get _wireParams => <String, Object?>{
+    'pluginId': pluginId,
+    'pluginName': pluginName,
+    'action': action.name,
+  };
+
+  @override
+  void _decodeResult(Object? value) {
+    final result = _jsonObject(value, 'Plugin WebView debug result');
+    if (result['accepted'] != true || result['action'] != action.name) {
+      throw const PluginRuntimeException(
+        'invalid_response',
+        'The Runtime returned an invalid WebView debug result.',
+      );
+    }
+  }
+}
+
 RuntimeDebugHttpStatus _decodeRuntimeDebugHttpStatus(Object? value) {
   final result = _jsonObject(value, 'Runtime Debug HTTP result');
   final configuredEnabled = result['configuredEnabled'];

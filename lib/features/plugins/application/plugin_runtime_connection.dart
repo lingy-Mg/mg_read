@@ -51,6 +51,8 @@ abstract interface class PluginRuntimeGateway {
   Future<PluginRuntimeDebugHttp> setDebugHttpEnabled(bool enabled);
 
   Future<PluginRuntimeDebugHttp> inspectDebugHttp();
+
+  Future<void> controlSourceWebView({required String pluginId, required String pluginName, required PluginWebViewDebugAction action});
 }
 
 /// Optional event capability for the Windows desktop development lifecycle.
@@ -227,6 +229,21 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway, PluginRu
         startedAt: status.startedAt,
         usingTemporaryPort: status.usingTemporaryPort,
       );
+    } on PluginRuntimeException catch (error) {
+      throw normalizePluginRuntimeError(error);
+    } on Object catch (error) {
+      throw AppError.fromUnknown(error);
+    }
+  }
+
+  @override
+  Future<void> controlSourceWebView({
+    required String pluginId,
+    required String pluginName,
+    required PluginWebViewDebugAction action,
+  }) async {
+    try {
+      await _runtime.invoke(PluginWebViewDebugInvocation(pluginId: pluginId, pluginName: pluginName, action: action));
     } on PluginRuntimeException catch (error) {
       throw normalizePluginRuntimeError(error);
     } on Object catch (error) {

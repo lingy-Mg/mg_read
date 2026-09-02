@@ -21,6 +21,15 @@ final class DiscoverySourceManagementRequested extends DiscoverySourcePickerResu
   const DiscoverySourceManagementRequested();
 }
 
+enum DiscoverySourceWebViewAction { enterDebug, show }
+
+final class DiscoverySourceWebViewActionRequested extends DiscoverySourcePickerResult {
+  const DiscoverySourceWebViewActionRequested({required this.sourceId, required this.action});
+
+  final String sourceId;
+  final DiscoverySourceWebViewAction action;
+}
+
 /// Shows the discovery source picker without exposing Runtime installation data.
 Future<DiscoverySourcePickerResult?> showDiscoverySourcePicker(
   BuildContext context, {
@@ -179,6 +188,8 @@ class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet
                               source: source,
                               selected: source.id == widget.selectedSourceId,
                               onPressed: () => Navigator.of(context).pop(DiscoverySourceSelected(source.id)),
+                              onWebViewAction: (action) =>
+                                  Navigator.of(context).pop(DiscoverySourceWebViewActionRequested(sourceId: source.id, action: action)),
                             );
                           },
                         ),
@@ -233,11 +244,12 @@ class _SourceFilterButton extends StatelessWidget {
 }
 
 class _SourcePickerRow extends StatelessWidget {
-  const _SourcePickerRow({required this.source, required this.selected, required this.onPressed});
+  const _SourcePickerRow({required this.source, required this.selected, required this.onPressed, required this.onWebViewAction});
 
   final PluginSourceDescriptor source;
   final bool selected;
   final VoidCallback onPressed;
+  final ValueChanged<DiscoverySourceWebViewAction> onWebViewAction;
 
   @override
   Widget build(BuildContext context) {
@@ -247,53 +259,81 @@ class _SourcePickerRow extends StatelessWidget {
       button: true,
       selected: selected,
       label: '选择来源：${source.displayName}',
-      child: Material(
-        color: theme.colorScheme.surface,
-        borderRadius: const BorderRadius.all(Radius.circular(8)),
-        child: InkWell(
-          key: ValueKey<String>('discovery-source-picker-${source.id}'),
-          onTap: onPressed,
+      child: GestureDetector(
+        onLongPressStart: (details) => _showSourcePickerActions(context, details.globalPosition, onWebViewAction),
+        onSecondaryTapUp: (details) => _showSourcePickerActions(context, details.globalPosition, onWebViewAction),
+        child: Material(
+          color: theme.colorScheme.surface,
           borderRadius: const BorderRadius.all(Radius.circular(8)),
-          child: Container(
-            height: 68,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              borderRadius: const BorderRadius.all(Radius.circular(8)),
-              border: Border.all(color: selected ? tokens.accent.withValues(alpha: 0.35) : tokens.divider),
-            ),
-            child: Row(
-              children: <Widget>[
-                SourceIcon(sourceId: source.id, displayName: source.displayName, iconUrl: source.iconUrl, size: 44, borderRadius: 9),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        source.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium?.copyWith(height: 1.1, fontWeight: FontWeight.w500),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        SourceBranding.description(sourceId: source.id, displayName: source.displayName, value: source.description),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText, height: 1.1),
-                      ),
-                    ],
+          child: InkWell(
+            key: ValueKey<String>('discovery-source-picker-${source.id}'),
+            onTap: onPressed,
+            borderRadius: const BorderRadius.all(Radius.circular(8)),
+            child: Container(
+              height: 68,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
+                border: Border.all(color: selected ? tokens.accent.withValues(alpha: 0.35) : tokens.divider),
+              ),
+              child: Row(
+                children: <Widget>[
+                  SourceIcon(sourceId: source.id, displayName: source.displayName, iconUrl: source.iconUrl, size: 44, borderRadius: 9),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          source.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(height: 1.1, fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          SourceBranding.description(sourceId: source.id, displayName: source.displayName, value: source.description),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText, height: 1.1),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                _SourceSelectionIndicator(selected: selected),
-              ],
+                  _SourceSelectionIndicator(selected: selected),
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
+}
+
+Future<void> _showSourcePickerActions(
+  BuildContext context,
+  Offset globalPosition,
+  ValueChanged<DiscoverySourceWebViewAction> onAction,
+) async {
+  final overlay = Overlay.of(context).context.findRenderObject();
+  if (overlay is! RenderBox) return;
+  final action = await showMenu<DiscoverySourceWebViewAction>(
+    context: context,
+    position: RelativeRect.fromRect(Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 1, 1), Offset.zero & overlay.size),
+    items: const <PopupMenuEntry<DiscoverySourceWebViewAction>>[
+      PopupMenuItem<DiscoverySourceWebViewAction>(
+        value: DiscoverySourceWebViewAction.enterDebug,
+        child: ListTile(leading: Icon(Icons.open_in_browser_rounded), title: Text('进入 WebView 调试')),
+      ),
+      PopupMenuItem<DiscoverySourceWebViewAction>(
+        value: DiscoverySourceWebViewAction.show,
+        child: ListTile(leading: Icon(Icons.visibility_rounded), title: Text('显示 WebView')),
+      ),
+    ],
+  );
+  if (action != null) onAction(action);
 }
 
 class _SourceSelectionIndicator extends StatelessWidget {
