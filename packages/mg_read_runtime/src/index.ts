@@ -83,7 +83,6 @@ export type {
   PluginBrowserSessionProvider,
   PluginBrowserSessionRequest,
   PluginBrowserSessionResponse,
-  PluginBrowserVerificationState,
   PluginWebViewHostRequest,
   PluginWebViewOperation,
 } from "./plugin-browser-session.js";

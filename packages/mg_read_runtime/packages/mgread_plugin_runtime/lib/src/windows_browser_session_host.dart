@@ -1,13 +1,11 @@
 /// Windows owner for browser.session.v1 and the single-page ctx.webview boundary.
 ///
 /// One plugin owns at most one WebView2 and isolated user-data folder. Fixed
-/// host scripts implement browser fetch; direct HTTP temporarily reads the
-/// profile Cookie/UA and writes Set-Cookie updates back without exposing them.
+/// host scripts implement browser fetch; direct HTTP temporarily uses the
+/// current browser session.
 /// The new page API carries explicitly requested script bodies, raw CDP
 /// commands, and JSON results; all supporting scripts and native inputs remain
 /// host-owned.
-/// Closing the native verification window invalidates that session; the next
-/// visible source request recreates it.
 library;
 
 import 'dart:async';
@@ -24,9 +22,7 @@ const _maximumResponseBytes = 2 * 1024 * 1024;
 const _maximumTimeoutMs = 120000;
 const _maximumPendingRequests = 16;
 const _maximumResidentWebViews = 8;
-const _verificationCache = Duration(minutes: 10);
 const _pollDelay = Duration(milliseconds: 100);
-const _interactionGrace = Duration(milliseconds: 1500);
 
 /// Stable private-host failure consumed by the reverse Runtime bridge.
 final class WindowsBrowserSessionException implements Exception {
@@ -278,7 +274,7 @@ final class WindowsBrowserSessionHost {
         try {
           await _platform.show(session.sessionId);
           _log(
-            'browser_session_verification_window_shown '
+            'browser_session_window_shown '
             'plugin_id=${request.pluginId}',
           );
         } on PlatformException catch (error) {
@@ -294,28 +290,22 @@ final class WindowsBrowserSessionHost {
           session.lastUsedAt = _clock();
           await _platform.show(session.sessionId);
           _log(
-            'browser_session_verification_window_shown '
+            'browser_session_window_shown '
             'plugin_id=${request.pluginId} recreated=true',
           );
         }
       }
-      final cachedAt = session.verifiedAt[request.origin];
-      final cached =
-          cachedAt != null &&
-          _clock().difference(cachedAt) <= _verificationCache;
-      final sameOrigin =
-          cached && await _currentOrigin(session) == request.origin;
-      final state = sameOrigin ? 'verified' : await _verify(job, session);
+      await _loadPage(job, session);
       if (request.operation == 'interaction') {
         return await _interact(job, session);
       }
       if (request.transport == 'webview') {
-        return await _webViewFetch(job, session, state);
+        return await _webViewFetch(job, session);
       }
       if (request.transport == 'html') {
-        return await _pageHtml(job, session, state);
+        return await _pageHtml(job, session);
       }
-      return await _httpFetch(job, session, state);
+      return await _httpFetch(job, session);
     } on WindowsBrowserSessionException catch (error) {
       _log(
         'browser_session_terminal plugin_id=${request.pluginId} '
@@ -510,64 +500,37 @@ final class WindowsBrowserSessionHost {
     return session;
   }
 
-  Future<String> _verify(
+  Future<void> _loadPage(
     _WindowsBrowserJob job,
     _WindowsBrowserSession session,
   ) async {
-    _log(
-      'browser_session_verification_start plugin_id=${job.request.pluginId}',
-    );
+    _log('browser_session_load_start plugin_id=${job.request.pluginId}');
     await _platform.load(session.sessionId, job.request.url);
     while (true) {
       _check(job);
-      final raw = await _platform.executeScript(
-        session.sessionId,
-        _pageProbeScript,
+      final ready =
+          jsonDecode(
+            await _platform.executeScript(
+              session.sessionId,
+              'document.readyState',
+            ),
+          ) !=
+          'loading';
+      final href = jsonDecode(
+        await _platform.executeScript(session.sessionId, 'location.href'),
       );
-      final probe = _decodeScriptObject(raw);
-      final ready = probe?['ready'] == true;
-      final href = probe?['href'];
-      final challenge = probe?['challenge'] == true;
       final sameOrigin = href is String && _origin(href) == job.request.origin;
-      if (ready && sameOrigin && !challenge) {
-        session.verifiedAt[job.request.origin] = _clock();
-        _log(
-          'browser_session_manual_verification_success '
-          'plugin_id=${job.request.pluginId} had_challenge=${job.hadChallenge}',
-        );
-        return job.hadChallenge ? 'verified' : 'not-required';
-      }
-      if (challenge) {
-        job.hadChallenge = true;
-        _log('browser_session_cf_detected plugin_id=${job.request.pluginId}');
-        final elapsed = Duration(
-          milliseconds:
-              job.request.timeoutMs -
-              (job.deadlineUnixMs - _clock().millisecondsSinceEpoch),
-        );
-        if (elapsed >= _interactionGrace &&
-            (job.request.interaction == 'silent' ||
-                job.request.presentation == 'hidden')) {
-          throw const WindowsBrowserSessionException('interaction_required');
-        }
+      if (ready && sameOrigin) {
+        _log('browser_session_load_complete plugin_id=${job.request.pluginId}');
+        return;
       }
       await Future<void>.delayed(_pollDelay);
     }
   }
 
-  Future<String?> _currentOrigin(_WindowsBrowserSession session) async {
-    final raw = await _platform.executeScript(
-      session.sessionId,
-      'location.origin',
-    );
-    final value = jsonDecode(raw);
-    return value is String ? value : null;
-  }
-
   Future<Map<String, Object?>> _webViewFetch(
     _WindowsBrowserJob job,
     _WindowsBrowserSession session,
-    String verificationState,
   ) async {
     _log('browser_session_fetch_start plugin_id=${job.request.pluginId}');
     await _platform.executeScript(session.sessionId, _fetchScript(job));
@@ -589,37 +552,11 @@ final class WindowsBrowserSessionHost {
           throw WindowsBrowserSessionException(code);
         }
         final response = _stringMap(result['response']);
-        if (_isChallengeResponse(response)) {
-          job.hadChallenge = true;
-          session.verifiedAt.remove(job.request.origin);
-          _log(
-            'browser_session_cf_detected plugin_id=${job.request.pluginId} phase=fetch',
-          );
-          if (job.retries > 0 ||
-              job.request.interaction == 'silent' ||
-              job.request.presentation == 'hidden') {
-            _log(
-              'browser_session_interaction_required '
-              'plugin_id=${job.request.pluginId} phase=fetch',
-            );
-            throw const WindowsBrowserSessionException('interaction_required');
-          }
-          job.retries += 1;
-          _log(
-            'browser_session_retry plugin_id=${job.request.pluginId} phase=fetch',
-          );
-          final refreshed = await _verify(job, session);
-          return _webViewFetch(job, session, refreshed);
-        }
         _log(
           'browser_session_fetch_complete plugin_id=${job.request.pluginId} '
           'status=${response['status']}',
         );
-        return <String, Object?>{
-          ...response,
-          'version': 1,
-          'verificationState': verificationState,
-        };
+        return <String, Object?>{...response, 'version': 1};
       }
       await Future<void>.delayed(_pollDelay);
     }
@@ -674,9 +611,7 @@ final class WindowsBrowserSessionHost {
   Future<Map<String, Object?>> _httpFetch(
     _WindowsBrowserJob job,
     _WindowsBrowserSession session,
-    String verificationState, {
-    bool retried = false,
-  }) async {
+  ) async {
     final request = job.request;
     final cookieValues = await _platform.getCookies(
       session.sessionId,
@@ -726,14 +661,7 @@ final class WindowsBrowserSessionHost {
           redirect < 5) {
         final location = response.headers.value(HttpHeaders.locationHeader);
         if (location == null) {
-          return _finishHttpResponse(
-            job,
-            session,
-            response,
-            url,
-            verificationState,
-            retried,
-          );
+          return _finishHttpResponse(job, response, url);
         }
         final next = url.resolve(location);
         if (_origin(next.toString()) != request.origin) {
@@ -749,14 +677,7 @@ final class WindowsBrowserSessionHost {
         await response.drain<void>();
         continue;
       }
-      return _finishHttpResponse(
-        job,
-        session,
-        response,
-        url,
-        verificationState,
-        retried,
-      );
+      return _finishHttpResponse(job, response, url);
     }
     throw const WindowsBrowserSessionException('plugin_execution_failed');
   }
@@ -764,7 +685,6 @@ final class WindowsBrowserSessionHost {
   Future<Map<String, Object?>> _pageHtml(
     _WindowsBrowserJob job,
     _WindowsBrowserSession session,
-    String verificationState,
   ) async {
     _log(
       'browser_session_fetch_start plugin_id=${job.request.pluginId} phase=html',
@@ -779,65 +699,18 @@ final class WindowsBrowserSessionHost {
       );
     }
     final response = _stringMap(value['response']);
-    if (_isChallengeResponse(response)) {
-      job.hadChallenge = true;
-      session.verifiedAt.remove(job.request.origin);
-      _log(
-        'browser_session_cf_detected plugin_id=${job.request.pluginId} phase=html',
-      );
-      if (job.retries > 0 ||
-          job.request.interaction == 'silent' ||
-          job.request.presentation == 'hidden') {
-        _log(
-          'browser_session_interaction_required '
-          'plugin_id=${job.request.pluginId} phase=html',
-        );
-        throw const WindowsBrowserSessionException('interaction_required');
-      }
-      job.retries += 1;
-      _log(
-        'browser_session_retry plugin_id=${job.request.pluginId} phase=html',
-      );
-      final refreshed = await _verify(job, session);
-      return _pageHtml(job, session, refreshed);
-    }
     _log(
       'browser_session_fetch_complete plugin_id=${job.request.pluginId} phase=html',
     );
-    return <String, Object?>{
-      ...response,
-      'version': 1,
-      'verificationState': verificationState,
-    };
+    return <String, Object?>{...response, 'version': 1};
   }
 
   Future<Map<String, Object?>> _finishHttpResponse(
     _WindowsBrowserJob job,
-    _WindowsBrowserSession session,
     HttpClientResponse response,
     Uri finalUrl,
-    String verificationState,
-    bool retried,
   ) async {
-    final result = await _httpResponse(
-      job,
-      response,
-      finalUrl,
-      verificationState,
-    );
-    if (result['verificationState'] == 'failed' && !retried) {
-      job.client?.close(force: true);
-      job.client = null;
-      session.verifiedAt.remove(job.request.origin);
-      final refreshed = await _verify(job, session);
-      return _httpFetch(job, session, refreshed, retried: true);
-    }
-    if (result['verificationState'] == 'failed') {
-      _log(
-        'browser_session_interaction_required plugin_id=${job.request.pluginId} phase=http',
-      );
-      throw const WindowsBrowserSessionException('interaction_required');
-    }
+    final result = await _httpResponse(job, response, finalUrl);
     return result;
   }
 
@@ -845,7 +718,6 @@ final class WindowsBrowserSessionHost {
     _WindowsBrowserJob job,
     HttpClientResponse response,
     Uri finalUrl,
-    String verificationState,
   ) async {
     final bytes = <int>[];
     await for (final chunk in response) {
@@ -876,9 +748,6 @@ final class WindowsBrowserSessionHost {
       'finalUrl': finalUrl.toString(),
       'headers': headers,
       'body': body,
-      'verificationState': _looksLikeChallenge(body)
-          ? 'failed'
-          : verificationState,
     };
   }
 
@@ -1105,7 +974,6 @@ final class _WindowsBrowserSession {
   final String pluginId;
   final String pluginName;
   final String sessionId;
-  final Map<String, DateTime> verifiedAt = <String, DateTime>{};
   String? activeJobId;
   DateTime lastUsedAt;
   bool visible = false;
@@ -1118,7 +986,5 @@ final class _WindowsBrowserJob {
   final int deadlineUnixMs;
   final _WindowsBrowserRequest request;
   bool cancelled = false;
-  bool hadChallenge = false;
-  int retries = 0;
   HttpClient? client;
 }

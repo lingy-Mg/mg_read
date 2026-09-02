@@ -28,15 +28,10 @@ void main() {
                 return null;
               case 'executeScript':
                 final script = arguments['script']! as String;
-                if (script.contains('document.readyState')) {
-                  return jsonEncode(
-                    jsonEncode(<String, Object?>{
-                      'href': loadedUrl,
-                      'ready': true,
-                      'challenge': false,
-                    }),
-                  );
+                if (script == 'document.readyState') {
+                  return jsonEncode('complete');
                 }
+                if (script == 'location.href') return jsonEncode(loadedUrl);
                 if (script.contains('__mgreadFetchResults?.')) {
                   return jsonEncode(
                     jsonEncode(<String, Object?>{
@@ -88,7 +83,7 @@ void main() {
         ),
       );
 
-      expect(result.items.single.title, 'browser-200-not-required');
+      expect(result.items.single.title, 'browser-200');
       expect(createCalls, 1);
     },
   );

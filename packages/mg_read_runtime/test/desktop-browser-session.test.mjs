@@ -60,7 +60,6 @@ test("desktop broker correlates one bounded host response without credentials", 
       finalUrl: "https://example.com/protected",
       headers: { "content-type": "text/html" },
       body: "ok",
-      verificationState: "verified",
     },
   }), true);
   assert.equal((await pending).body, "ok");

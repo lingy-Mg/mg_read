@@ -1,5 +1,5 @@
 /**
- * Host-owned direct HTTP transport for a verified Android WebView profile.
+ * Host-owned direct HTTP transport for an Android WebView profile.
  *
  * Browser request values are assembled into the request headers in this file.
  */

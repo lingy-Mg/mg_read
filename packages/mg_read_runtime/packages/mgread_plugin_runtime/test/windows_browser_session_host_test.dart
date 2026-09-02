@@ -34,10 +34,10 @@ void main() {
       );
 
       expect(hidden['body'], 'fixture-browser-body');
-      expect(visible['verificationState'], 'verified');
+      expect(visible['body'], 'fixture-browser-body');
       expect(platform.createCalls, 1);
       expect(platform.showCalls, 1);
-      expect(platform.loadedUrls, hasLength(1));
+      expect(platform.loadedUrls, hasLength(2));
     },
   );
 
@@ -117,13 +117,13 @@ void main() {
   );
 
   test(
-    'WebView fetch reopens verification once after a renewed challenge',
+    'WebView fetch returns an error response for the source to inspect',
     () async {
       final root = await Directory.systemTemp.createTemp(
         'mgread-windows-fetch-cf-',
       );
       addTearDown(() => root.delete(recursive: true));
-      final platform = _FakeBrowserPlatform(fetchChallengeOnce: true);
+      final platform = _FakeBrowserPlatform(fetchErrorOnce: true);
       final host = WindowsBrowserSessionHost(root, platform: platform);
       addTearDown(host.dispose);
 
@@ -135,15 +135,15 @@ void main() {
         raw: _request(presentation: 'visible', transport: 'webview'),
       );
 
-      expect(result['body'], 'fixture-browser-body');
-      expect(result['verificationState'], 'verified');
+      expect(result['body'], '403 Forbidden');
+      expect(result['status'], 403);
       expect(platform.createCalls, 1);
       expect(platform.showCalls, 1);
-      expect(platform.loadedUrls, hasLength(2));
+      expect(platform.loadedUrls, hasLength(1));
     },
   );
 
-  test('HTML mode returns the current verified page document', () async {
+  test('HTML mode returns the current page document', () async {
     final root = await Directory.systemTemp.createTemp('mgread-windows-html-');
     addTearDown(() => root.delete(recursive: true));
     final platform = _FakeBrowserPlatform();
@@ -160,37 +160,7 @@ void main() {
 
     expect(result['body'], '<html><body>fixture</body></html>');
     expect(result['status'], 200);
-    expect(result['verificationState'], 'not-required');
   });
-
-  test(
-    'hidden challenge maps to interaction_required without showing a window',
-    () async {
-      final root = await Directory.systemTemp.createTemp('mgread-windows-cf-');
-      addTearDown(() => root.delete(recursive: true));
-      final platform = _FakeBrowserPlatform(challenge: true);
-      final host = WindowsBrowserSessionHost(root, platform: platform);
-      addTearDown(host.dispose);
-
-      await expectLater(
-        host.request(
-          jobId: 's:challenge',
-          deadlineUnixMs: DateTime.now()
-              .add(const Duration(seconds: 5))
-              .millisecondsSinceEpoch,
-          raw: _request(presentation: 'hidden', transport: 'webview'),
-        ),
-        throwsA(
-          isA<WindowsBrowserSessionException>().having(
-            (error) => error.code,
-            'code',
-            'interaction_required',
-          ),
-        ),
-      );
-      expect(platform.showCalls, 0);
-    },
-  );
 
   test('WebView interactions stay scoped to the source session', () async {
     final root = await Directory.systemTemp.createTemp(
@@ -228,7 +198,7 @@ void main() {
     expect(input, containsPair('action', 'native-input'));
     expect(click, containsPair('action', 'control-click'));
     expect(platform.createCalls, 1);
-    expect(platform.loadedUrls, hasLength(1));
+    expect(platform.loadedUrls, hasLength(3));
     expect(platform.dispatchMouseInputCalls, 2);
     expect(platform.insertedTexts, <String>['fixture-input']);
   });
@@ -489,17 +459,15 @@ Map<String, Object?> _interactionRequest(String action, {String? text}) =>
 
 final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
   _FakeBrowserPlatform({
-    this.challenge = false,
     this.createDelay = Duration.zero,
     this.failNextShow = false,
-    this.fetchChallengeOnce = false,
+    this.fetchErrorOnce = false,
     this.holdPageResult = false,
   });
 
-  final bool challenge;
   final Duration createDelay;
   bool failNextShow;
-  bool fetchChallengeOnce;
+  bool fetchErrorOnce;
   final bool holdPageResult;
   int createCalls = 0;
   int disposeCalls = 0;
@@ -610,15 +578,6 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
     }
     if (script == 'location.origin') return jsonEncode('https://example.com');
     if (script == 'navigator.userAgent') return jsonEncode('fixture-agent');
-    if (script.contains('document.readyState')) {
-      return jsonEncode(
-        jsonEncode(<String, Object?>{
-          'href': 'https://example.com/protected',
-          'ready': true,
-          'challenge': challenge,
-        }),
-      );
-    }
     if (script.contains("action:'coordinates'")) {
       return jsonEncode(
         jsonEncode(<String, Object?>{
@@ -658,8 +617,8 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
       );
     }
     if (script.contains('__mgreadFetchResults?.')) {
-      if (fetchChallengeOnce) {
-        fetchChallengeOnce = false;
+      if (fetchErrorOnce) {
+        fetchErrorOnce = false;
         return jsonEncode(
           jsonEncode(<String, Object?>{
             'ok': true,

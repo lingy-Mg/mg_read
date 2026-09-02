@@ -41,10 +41,9 @@ export async function activate(context: MgReadPluginContext): Promise<void> {
   稳定拒绝不可序列化或超限值，不能静默丢字段或改成 null。
 - `fetch` 在当前页面上下文执行、遵守 CORS 并携带浏览器凭据；来源只能看到浏览器公开的响应信息。
 
-## 安全与人工交互
+## 人工交互
 
-- API 不提供 `sessionKey`、Cookie getter/setter、原生对象、窗口句柄、内部 job ID 或 wire envelope。
-- 禁止用 `evaluate` 注入点击、设置 input value、提取/回放挑战 token 或绕过验证。
+- API 不提供 `sessionKey`、原生对象、窗口句柄、内部 job ID 或 wire envelope。
 - 原生 `click/inputText/key` 只作用于可见目标 WebView；隐藏、关闭或不可见时返回
   `interaction_required` 或 `unsupported`，不得退化为 OS 全局输入。
 - 日志记录 WebView 操作阶段和结果。
@@ -52,5 +51,5 @@ export async function activate(context: MgReadPluginContext): Promise<void> {
 ## 最小验证
 
 使用固定 Node 运行 Runtime typecheck 和 `webview-page`、`browser-session` 直接测试。覆盖单页复用、状态
-转换、FIFO/控制旁路、取消/超时/close、合法 JSON、非法值、大小边界、CORS fetch、稳定错误和无 Cookie API。
+转换、FIFO/控制旁路、取消/超时/close、合法 JSON、非法值、大小边界、CORS fetch 和稳定错误。
 只有 provider 或原生宿主变化时才增加平台参考和平台测试。

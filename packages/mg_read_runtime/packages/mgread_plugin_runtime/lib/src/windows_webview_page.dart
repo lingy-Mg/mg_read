@@ -1,6 +1,6 @@
 part of 'windows_browser_session_host.dart';
 
-/// Single-page ctx.webview state machine kept separate from legacy v1 HTTP/cookie flow.
+/// Single-page ctx.webview state machine kept separate from legacy v1 HTTP flow.
 /// Async page jobs use revocable realm tokens so late promises cannot leak results.
 extension on WindowsBrowserSessionHost {
   Future<Map<String, Object?>> _requestPage({
@@ -503,18 +503,6 @@ String _origin(String value) {
   ).origin;
 }
 
-bool _looksLikeChallenge(Object? value) =>
-    value is String &&
-    RegExp(
-      r'cf-challenge|cf-turnstile|just a moment|checking your browser|challenge-platform',
-      caseSensitive: false,
-    ).hasMatch(value);
-
-bool _isChallengeResponse(Map<String, Object?> response) {
-  final status = response['status'];
-  return status == 403 || _looksLikeChallenge(response['body']);
-}
-
 double? _finiteNumber(Object? value) {
   if (value is! num || !value.isFinite) return null;
   return value.toDouble();
@@ -540,9 +528,6 @@ String _interactionTargetScript(_WindowsBrowserRequest request) {
   final selector = jsonEncode(request.selector);
   return """(() => { try { const e=document.querySelector($selector); if(!e) return JSON.stringify({accepted:false,action:'${request.action}'}); const r=e.getBoundingClientRect(); if(!Number.isFinite(r.x)||!Number.isFinite(r.y)||r.width<=0||r.height<=0) return JSON.stringify({accepted:false,action:'${request.action}'}); return JSON.stringify({accepted:true,action:'${request.action}',x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height,devicePixelRatio:window.devicePixelRatio||1}); } catch (_) { return JSON.stringify({accepted:false,action:'${request.action}'}); } })()""";
 }
-
-const _pageProbeScript =
-    """(() => {try{const text=(document.title+' '+(document.documentElement?.innerText||'')).slice(0,200000);return JSON.stringify({href:location.href,ready:document.readyState!=='loading',challenge:/(cf-challenge|cf-turnstile|just a moment|checking your browser|challenge-platform)/i.test(text)});}catch(_){return null;}})()""";
 
 String _pageFetchBody(_WindowsPageRequest request) {
   final readBody = switch (request.responseType) {

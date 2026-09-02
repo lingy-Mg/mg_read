@@ -1,9 +1,8 @@
 /**
- * Runtime-owned browser session capability for protected source requests.
+ * Runtime-owned browser session capability for source requests.
  *
  * Responsibilities:
  * - validate the versioned plugin request before it reaches a platform host;
- * - keep Cookie and user-agent ownership inside the host browser provider;
  * - preserve invocation cancellation/deadline and map host failures to stable errors.
  *
  * Notes:
@@ -18,13 +17,6 @@ import { PluginManagerError } from "./plugin-manager-contract.js";
 export const maximumBrowserRequestBytes = 64 * 1024;
 export const maximumBrowserResponseBytes = 2 * 1024 * 1024;
 export const maximumBrowserTimeoutMs = 120_000;
-
-export type PluginBrowserVerificationState =
-  | "not-required"
-  | "required"
-  | "pending"
-  | "verified"
-  | "failed";
 
 export interface PluginBrowserSessionRequest {
   readonly body: string | null;
@@ -62,7 +54,6 @@ export interface PluginBrowserSessionResponse {
   readonly finalUrl: string;
   readonly headers: Readonly<Record<string, string>>;
   readonly status: number;
-  readonly verificationState: PluginBrowserVerificationState;
   readonly version: 1;
 }
 
@@ -330,14 +321,12 @@ function validateResponse(
   let finalUrl: URL;
   try { finalUrl = secureUrl(value.finalUrl); } catch { invalidResponse(); }
   if (finalUrl.origin !== requestUrl.origin) invalidResponse();
-  if (!verificationStates.has(value.verificationState as PluginBrowserVerificationState)) invalidResponse();
   const headers = validateResponseHeaders(value.headers);
   return Object.freeze({
     body: value.body,
     finalUrl: finalUrl.toString(),
     headers,
     status: value.status as number,
-    verificationState: value.verificationState as PluginBrowserVerificationState,
     version: 1,
   });
 }
@@ -388,9 +377,6 @@ function validateInteractionResponse(
 
 const requestHeaderNames = new Set(["accept", "accept-language", "content-type", "origin", "referer"]);
 const responseHeaderNames = new Set(["cache-control", "content-type", "etag", "expires", "last-modified"]);
-const verificationStates = new Set<PluginBrowserVerificationState>([
-  "not-required", "required", "pending", "verified", "failed",
-]);
 
 function validateHeaders(value: unknown, url: URL): Readonly<Record<string, string>> {
   if (!isRecord(value) || Object.keys(value).length > 16) invalid();

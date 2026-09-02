@@ -32,7 +32,8 @@
 - JSON 明确编码一次并在进入控制面前检查 UTF-8 大小；超限稳定失败或走专用数据面，不能靠 WS 断线限流。
 - 原生输入转换 CSS viewport 坐标并严格限制在可见内容区；文本和按键只发送到目标 WebView 当前焦点。
 - 宿主原生阻止新窗口、外部协议、下载、文件选择、权限、对话框和全屏；静音能力必须由真实平台证据证明。
-- Windows 用户关闭窗口只隐藏；脚本 `close` 才销毁。Windows 允许用户主动 F12，但代码和测试不用 CDP。
+- Windows 用户关闭窗口只隐藏；脚本 `close` 才销毁。Windows 支持用户主动 F12，来源也可通过公开的
+  `page.cdp` 使用 CDP 能力。
 - Android multi-profile 不可用时明确记录 `single_fallback`。
 
 ## 最小验证

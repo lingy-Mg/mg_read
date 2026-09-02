@@ -12,12 +12,6 @@ class AndroidBrowserSessionContractTest {
     }
 
     @Test
-    fun detectsChallengeWithoutTreatingOrdinaryHtmlAsVerifiedEvidence() {
-        assertTrue(looksLikeCloudflareChallenge("<title>Just a moment...</title>"))
-        assertEquals(false, looksLikeCloudflareChallenge("<title>Book detail</title>"))
-    }
-
-    @Test
     fun acceptsRenderedHtmlTransport() {
         val request = AndroidBrowserSessionRequest(
             action = "",

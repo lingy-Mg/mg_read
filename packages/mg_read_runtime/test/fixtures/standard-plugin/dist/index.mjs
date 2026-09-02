@@ -117,7 +117,7 @@ export async function search(request) {
       maxResponseBytes: 4_096,
     });
     return {
-      items: [contentSummary(`browser-${response.status}-${response.verificationState}`)],
+      items: [contentSummary(`browser-${response.status}`)],
       nextCursor: null,
       totalCount: 1,
     };

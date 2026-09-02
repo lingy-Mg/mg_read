@@ -4,8 +4,8 @@
  * One plugin ID owns at most one resident WebView. When the installed WebView
  * supports multi-profile, that WebView receives an isolated profile; older
  * WebViews use the app's single default WebView profile and emit an explicit
- * fallback warning. Hidden sessions never attach a View; visible verification
- * uses one global foreground dialog. Debug sessions stay pinned: hide and
+ * fallback warning. Hidden sessions never attach a View; visible requests use
+ * one global foreground dialog. Debug sessions stay pinned: hide and
  * window-close gestures only hide the dialog and preserve the WebView.
  * Supporting JavaScript is host-authored; ctx.webview's explicit script body is
  * JSON encoded into a revocable async wrapper and returns only JSON values.
@@ -59,10 +59,8 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
     private data class Job(
         val cancelled: AtomicBoolean,
         val deadlineUnixMs: Long,
-        var hadChallenge: Boolean,
         val id: String,
         val request: AndroidBrowserSessionRequest,
-        var retries: Int = 0,
         @Volatile var connection: HttpURLConnection? = null,
     )
 
@@ -72,7 +70,6 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         val pluginId: String,
         var pluginName: String,
         val profileMode: ProfileMode,
-        val verifiedAt: MutableMap<String, Long>,
         val webView: WebView,
         var activeJobId: String? = null,
         var lastUsedAt: Long = System.currentTimeMillis(),
@@ -118,7 +115,6 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         val job = Job(
             cancelled = AtomicBoolean(false),
             deadlineUnixMs = System.currentTimeMillis() + request.timeoutMs,
-            hadChallenge = false,
             id = id,
             request = request,
         )
@@ -135,7 +131,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
     /**
      * Polls from the Javet thread without relying on the embedded Node timer
      * queue. The WebView callbacks still run on the Android main thread, so a
-     * short wait here does not block page loading or the visible verification
+     * short wait here does not block page loading or the visible browser
      * surface. The wait is bounded to keep the private bridge responsive.
      */
     fun poll(id: String, waitMillis: Long = 0L): String {
@@ -244,19 +240,11 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         }
         session.activeJobId = job.id
         session.lastUsedAt = System.currentTimeMillis()
-        val verified = session.verifiedAt[job.request.origin]
-            ?.let { System.currentTimeMillis() - it <= VERIFICATION_CACHE_MILLIS } == true
-        val sameOrigin = runCatching { originOf(session.webView.url.orEmpty()) }
-            .getOrNull() == job.request.origin
-        if (verified && (job.request.transport == "http" || sameOrigin)) {
-            perform(job, session, verificationState = "verified")
-        } else {
-            if (job.request.presentation == "visible" && !showForeground(session, job)) {
-                completeError(job, "interaction_required")
-                return
-            }
-            loadForVerification(job, session)
+        if (job.request.presentation == "visible" && !showForeground(session, job)) {
+            completeError(job, "interaction_required")
+            return
         }
+        loadPage(job, session)
     }
 
     private fun sessionFor(job: Job, profileMode: ProfileMode): Session? {
@@ -293,7 +281,6 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             pluginId = job.request.pluginId,
             pluginName = job.request.pluginName,
             profileMode = profileMode,
-            verifiedAt = mutableMapOf(),
             webView = webView,
         )
         webView.webViewClient = clientFor(session)
@@ -513,11 +500,11 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
 
     private fun updateStatus(session: Session, action: String) { session.statusView?.text = "${session.pluginName}正在进行探测 - $action"; session.urlView?.text = session.webView.url.orEmpty() }
 
-    private fun loadForVerification(job: Job, session: Session) {
+    private fun loadPage(job: Job, session: Session) {
         if (!isCurrent(job, session)) return
-        Log.i(TAG, "browser_session_load_for_verification")
+        Log.i(TAG, "browser_session_load_start")
         navigate(session.webView, job.request.url, job.request.headers)
-        mainHandler.postDelayed({ probePage(job, session) }, PAGE_POLL_MILLIS)
+        mainHandler.postDelayed({ waitForPage(job, session) }, PAGE_POLL_MILLIS)
     }
 
     private fun navigate(webView: WebView, url: String, headers: Map<String, String>) {
@@ -546,56 +533,39 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         }
     }
 
-    private fun probePage(job: Job, session: Session) {
+    private fun waitForPage(job: Job, session: Session) {
         if (!isCurrent(job, session)) return
         if (System.currentTimeMillis() >= job.deadlineUnixMs) {
             completeError(job, "timeout")
             return
         }
-        session.webView.evaluateJavascript(PAGE_PROBE_SCRIPT) { raw ->
+        session.webView.evaluateJavascript(
+            "JSON.stringify({href:location.href,ready:document.readyState!=='loading'})",
+        ) { raw ->
             if (!isCurrent(job, session)) return@evaluateJavascript
             val value = decodeEvaluation(raw)?.let { runCatching { JSONObject(it) }.getOrNull() }
             val ready = value?.optBoolean("ready", false) == true
             val href = value?.optString("href").orEmpty()
-            val challenge = value?.optBoolean("challenge", false) == true
             val sameOrigin = runCatching { originOf(href) == job.request.origin }.getOrDefault(false)
-            Log.i(TAG, "browser_session_probe ready=$ready challenge=$challenge same_origin=$sameOrigin")
-            if (ready && sameOrigin && !challenge) {
-                session.verifiedAt[job.request.origin] = System.currentTimeMillis()
-                Log.i(
-                    TAG,
-                    "browser_session_manual_verification_success " +
-                        "plugin_id=${job.request.pluginId} had_challenge=${job.hadChallenge}",
-                )
-                perform(job, session, if (job.hadChallenge) "verified" else "not-required")
+            Log.i(TAG, "browser_session_page_ready ready=$ready same_origin=$sameOrigin")
+            if (ready && sameOrigin) {
+                perform(job, session)
                 return@evaluateJavascript
             }
-            if (challenge) {
-                job.hadChallenge = true
-                val elapsed = job.request.timeoutMs - (job.deadlineUnixMs - System.currentTimeMillis())
-                if (elapsed >= INTERACTION_GRACE_MILLIS) {
-                    if (job.request.interaction == "silent" ||
-                        job.request.presentation == "hidden"
-                    ) {
-                        completeError(job, "interaction_required")
-                        return@evaluateJavascript
-                    }
-                }
-            }
-            mainHandler.postDelayed({ probePage(job, session) }, PAGE_POLL_MILLIS)
+            mainHandler.postDelayed({ waitForPage(job, session) }, PAGE_POLL_MILLIS)
         }
     }
 
-    private fun perform(job: Job, session: Session, verificationState: String) {
+    private fun perform(job: Job, session: Session) {
         Log.i(TAG, "browser_session_perform transport=${job.request.transport}")
         if (job.request.operation == "interaction") {
             performInteraction(job, session)
         } else if (job.request.transport == "webview") {
-            performWebViewFetch(job, session, verificationState)
+            performWebViewFetch(job, session)
         } else if (job.request.transport == "html") {
-            performPageHtml(job, session, verificationState)
+            performPageHtml(job, session)
         } else {
-            performHttp(job, session, verificationState)
+            performHttp(job, session)
         }
     }
 
@@ -638,18 +608,18 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         }
     }
 
-    private fun performWebViewFetch(job: Job, session: Session, verificationState: String) {
+    private fun performWebViewFetch(job: Job, session: Session) {
         Log.i(TAG, "browser_session_fetch_start plugin_id=${job.request.pluginId}")
         val script = webViewFetchScript(job)
         session.webView.evaluateJavascript(script) {
             mainHandler.postDelayed(
-                { pollWebViewFetch(job, session, verificationState) },
+                { pollWebViewFetch(job, session) },
                 FETCH_POLL_MILLIS,
             )
         }
     }
 
-    private fun performPageHtml(job: Job, session: Session, verificationState: String) {
+    private fun performPageHtml(job: Job, session: Session) {
         session.webView.evaluateJavascript(pageHtmlScript(job)) { raw ->
             if (!isCurrent(job, session)) return@evaluateJavascript
             val encoded = decodeEvaluation(raw)
@@ -659,15 +629,11 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
                 return@evaluateJavascript
             }
             val response = result.getJSONObject("response")
-            if (isChallengeResponse(response)) {
-                retryAfterChallenge(job, session)
-            } else {
-                completeSuccess(job, response, verificationState)
-            }
+            completeSuccess(job, response)
         }
     }
 
-    private fun pollWebViewFetch(job: Job, session: Session, verificationState: String) {
+    private fun pollWebViewFetch(job: Job, session: Session) {
         if (!isCurrent(job, session)) return
         if (System.currentTimeMillis() >= job.deadlineUnixMs) {
             completeError(job, "timeout")
@@ -680,7 +646,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
             val encoded = decodeEvaluation(raw)
             if (encoded == null) {
                 mainHandler.postDelayed(
-                    { pollWebViewFetch(job, session, verificationState) },
+                    { pollWebViewFetch(job, session) },
                     FETCH_POLL_MILLIS,
                 )
                 return@evaluateJavascript
@@ -691,15 +657,11 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
                 return@evaluateJavascript
             }
             val response = result.getJSONObject("response")
-            if (isChallengeResponse(response)) {
-                retryAfterChallenge(job, session)
-            } else {
-                completeSuccess(job, response, verificationState)
-            }
+            completeSuccess(job, response)
         }
     }
 
-    private fun performHttp(job: Job, session: Session, verificationState: String) {
+    private fun performHttp(job: Job, session: Session) {
         val remaining = job.deadlineUnixMs - System.currentTimeMillis()
         if (remaining <= 0L) {
             completeError(job, "timeout")
@@ -719,11 +681,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
                 mainHandler.post {
                     response.setCookies.forEach { session.cookieManager.setCookie(response.finalUrl, it) }
                     session.cookieManager.flush()
-                    if (response.status == 403 || looksLikeCloudflareChallenge(response.body)) {
-                        retryAfterChallenge(job, session)
-                    } else {
-                        completeSuccess(job, responseObject(response), verificationState)
-                    }
+                    completeSuccess(job, responseObject(response))
                 }
             } catch (_: AndroidBrowserResponseTooLarge) {
                 mainHandler.post { completeError(job, "overloaded") }
@@ -739,33 +697,12 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         }
     }
 
-    private fun completeSuccess(job: Job, response: JSONObject, verificationState: String) {
+    private fun completeSuccess(job: Job, response: JSONObject) {
         if (!isCurrent(job)) return
         response.put("version", 1)
-        response.put("verificationState", verificationState)
         Log.i(TAG, "browser_session_fetch_complete plugin_id=${job.request.pluginId}")
         completed[job.id] = JSONObject().put("state", "done").put("response", response).toString()
         finish(job)
-    }
-
-    private fun retryAfterChallenge(job: Job, session: Session) {
-        if (!isCurrent(job, session)) return
-        job.hadChallenge = true
-        session.verifiedAt.remove(job.request.origin)
-        Log.w(TAG, "browser_session_cf_detected phase=fetch plugin_id=${job.request.pluginId}")
-        if (job.retries > 0 || job.request.interaction == "silent" || job.request.presentation == "hidden") {
-            Log.i(TAG, "browser_session_interaction_required phase=fetch plugin_id=${job.request.pluginId}")
-            completeError(job, "interaction_required")
-            return
-        }
-        job.retries += 1
-        Log.i(TAG, "browser_session_retry phase=fetch plugin_id=${job.request.pluginId}")
-        loadForVerification(job, session)
-    }
-
-    private fun isChallengeResponse(response: JSONObject): Boolean {
-        return response.optInt("status", 200) == 403 ||
-            looksLikeCloudflareChallenge(response.optString("body"))
     }
 
     private fun completeError(job: Job, code: String) {
@@ -862,7 +799,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         foregroundPluginId = job.request.pluginId
         session.statusView = status
         session.urlView = address
-        Log.i(TAG, "browser_session_verification_window_shown plugin_id=${job.request.pluginId}")
+        Log.i(TAG, "browser_session_window_shown plugin_id=${job.request.pluginId}")
         return true
     }
 
@@ -1033,22 +970,14 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
 
     private companion object {
         const val FETCH_POLL_MILLIS = 50L
-        const val INTERACTION_GRACE_MILLIS = 1_500L
         const val MAX_PENDING_REQUESTS = 16
         const val MAX_RESIDENT_WEBVIEWS = 8
         const val PAGE_POLL_MILLIS = 400L
         const val PAGE_OPERATION_POLL_MILLIS = 50L
         const val POLL_SLEEP_MILLIS = 10L
         const val MAX_POLL_WAIT_MILLIS = 120_000L
-        const val VERIFICATION_CACHE_MILLIS = 10 * 60 * 1000L
         const val TAG = "MgReadAndroidBrowser"
         const val PENDING_RESULT = "{\"state\":\"pending\"}"
         val PAGE_ASYNC_OPERATIONS = setOf("page.evaluate", "page.html", "page.fetch")
-        val PAGE_PROBE_SCRIPT = """
-            (() => { try { const text=(document.title+' '+(document.documentElement?.innerText||'')).slice(0,200000);
-            return JSON.stringify({href:location.href,ready:document.readyState!=='loading',
-            challenge:/(cf-challenge|cf-turnstile|just a moment|checking your browser|challenge-platform)/i.test(text)});
-            } catch (_) { return null; } })()
-        """.trimIndent()
     }
 }

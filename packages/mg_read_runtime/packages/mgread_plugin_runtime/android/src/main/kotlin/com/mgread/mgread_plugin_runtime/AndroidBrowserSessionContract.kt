@@ -226,9 +226,6 @@ internal fun originOf(value: String): String {
     return "https://${uri.host.lowercase()}$port"
 }
 
-internal fun looksLikeCloudflareChallenge(value: String): Boolean =
-    CLOUDFLARE_MARKERS.containsMatchIn(value)
-
 private fun JSONObject.requiredString(name: String, maximumLength: Int): String {
     val value = getString(name)
     require(value.isNotBlank() && value.length <= maximumLength)
@@ -249,10 +246,6 @@ private val PAGE_KEYS = setOf(
     "PageUp", "PageDown", "Home", "End", "Backspace", "Delete",
 )
 private val PAGE_MODIFIERS = setOf("alt", "control", "shift")
-private val CLOUDFLARE_MARKERS = Regex(
-    "cf-challenge|cf-turnstile|just a moment|checking your browser|challenge-platform",
-    RegexOption.IGNORE_CASE,
-)
 private const val MAX_REQUEST_BYTES = 1024 * 1024
 private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 private const val MAX_TIMEOUT_MILLIS = 120_000L

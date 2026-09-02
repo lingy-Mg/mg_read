@@ -26,4 +26,4 @@ export async function activate(context: MgReadPluginContext): Promise<void> {
 \`\`\`
 
 WebView 全部公开方法和参数以 \`PluginWebViewPage\` 为准。 \`page.cdp\` 是原始命令通道：Windows
-WebView2 支持，Android 当前返回 \`unsupported\`；它不能用于提取或回放挑战 token，也不能绕过人工验证。
+WebView2 支持，Android 当前返回 \`unsupported\`。

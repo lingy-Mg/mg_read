@@ -83,7 +83,7 @@ App 引擎顺序验证 Runtime 状态、发现、搜索、详情、完整且唯�
 - Node 通过而 App 为 `invalid_format`：直接检查 Runtime 的公开校验限制，不能把 Node 通过当作宿主通过。
 - Node 通过而 App 在 `resource.*` 失败：检查 `ctx.resource.proxy` 描述和 Runtime 数据面。
 - Node 因 WebView/人工交互能力受限：记录 Node 能力边界，必须以 App CLI 的 `interactionRequired` 或实际结果
-  完成验收，禁止绕过登录或挑战。
+  完成验收，并按数据源自己的页面处理结果判断。
 - 仅一次 live 失败而随后自动选择了不同内容：保留第一次报告，单源复跑一次确认波动；不得无限重试到通过。
 
 验证测试框架本身时，应同时满足：测试库离线测试通过；一个已知健康来源在 Node/App 两层通过；全源模式在

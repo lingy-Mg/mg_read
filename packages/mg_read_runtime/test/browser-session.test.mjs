@@ -37,7 +37,6 @@ test("v1 forwards all host transports and both presentation modes", async () => 
         headers: { "content-type": "text/html" },
         body: "ok",
         userAgent: "must-not-cross-the-runtime-boundary",
-        verificationState: "verified",
       };
     },
   };

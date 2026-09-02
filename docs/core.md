@@ -62,11 +62,10 @@ plugins/sources/                    真实数据源及其他能力参考实现
   Windows 可显式启用“强制代理本地 Runtime”：宿主临时从进程 `no_proxy` 删除 loopback 规则，同时更新 Win32
   环境和 Windows CRT，关闭后恢复原值；该开关不改变 Runtime 到外部媒体源的请求路由。
 - Runtime 控制信息由 Runtime 内部管理；控制帧有界，大资源走 HTTP 数据面。
-- `ctx.webview` 每个数据源只有一个宿主页；Cookie、UA、Profile、窗口和输入由宿主持有。普通操作串行，
+- `ctx.webview` 每个数据源只有一个宿主页；普通操作串行，
   显隐/关闭走控制旁路；超时与取消必须清理结果但保留可复用页面。
-- WebView 不提供 Cookie API 或 DOM 合成交互；`ctx.webview` 另提供 Windows WebView2 专用的原始
-  `page.cdp(method, params)` 通道，不做 CDP 方法白名单或参数字段过滤，Android 返回 `unsupported`。
-  该通道不改变挑战验证规则；需要可信人工交互时仍返回 `interaction_required` 并由用户在可见宿主页完成。
+- `ctx.webview` 提供 Windows WebView2 专用的原始 `page.cdp(method, params)` 通道，Android 返回
+  `unsupported`。
 
 ## 标准插件项目、artifact 与安装
 
@@ -100,7 +99,7 @@ plugins/sources/                    真实数据源及其他能力参考实现
 - 开发期由纯 Node.js `mg_read_source_testkit` 直接检查插件公开契约和 live 链路；正式 Windows App 内置自检
   经生产 `SourceContentGateway -> Runtime Facade -> Runtime -> 已启用插件` 验证发现、搜索、详情、完整目录、
   首/中/末内容和资源代理。App 页面与正式可执行文件 CLI 复用同一引擎；两层证据不得互相替代。
-- 受保护来源只使用宿主持有的 WebView 和真实人工交互；禁止 token 抽取/回放、通过 CDP 或 DOM 注入绕过挑战。
+- 受保护来源的页面状态和响应内容由数据源根据实际业务自行判断和处理。
 
 ## 阅读器
 

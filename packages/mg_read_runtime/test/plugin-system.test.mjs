@@ -695,7 +695,6 @@ test("browser.session.v1 is bounded, host-owned, and preserves stable failures",
           finalUrl: request.url,
           headers: { "content-type": "text/html" },
           body: "fixture-browser-body",
-          verificationState: "verified",
         };
       },
     },
@@ -707,7 +706,7 @@ test("browser.session.v1 is bounded, host-owned, and preserves stable failures",
     new AbortController().signal,
     String(Date.now() + 5_000),
   );
-  assert.equal(result.items[0].title, "标准插件：browser-200-verified");
+  assert.equal(result.items[0].title, "标准插件：browser-200");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].pluginId, "org.mgread.runtime.fixture");
   assert.equal(calls[0].headers.cookie, undefined);
