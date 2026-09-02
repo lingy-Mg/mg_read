@@ -146,9 +146,8 @@ final class PluginRuntime {
   ///
   /// Runtime process creation, stdout ready parsing, HTTP readiness and
   /// WebSocket hello happen internally before this operation is dispatched.
-  /// The returned [Future] completes with [PluginRuntimeException] only with a
-  /// stable Runtime error code and safe diagnostics; it never exposes a PID,
-  /// port, raw stderr, path, or WebSocket frame.
+  /// The returned [Future] completes with [PluginRuntimeException] containing
+  /// a stable Runtime error code and diagnostics.
   Future<T> invoke<T>(PluginInvocation<T> invocation) {
     if (invocation is OpenRuntimePrivateDirectoryInvocation &&
         !Platform.isWindows) {
@@ -289,7 +288,7 @@ final class PluginRuntime {
     );
   }
 
-  /// Emits bounded, redacted Runtime lifecycle diagnostics.
+  /// Emits bounded Runtime lifecycle diagnostics.
   ///
   /// This is intentionally not a raw stderr or transport stream. Consumers can
   /// show the stable code/message or retain it for their own UI diagnostics,

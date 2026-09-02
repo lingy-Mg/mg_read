@@ -2,7 +2,7 @@
 ///
 /// Responsibilities:
 /// - Preserve metadata-only catalogs while resolving one playback resource.
-/// - Normalize host failures without exposing signed URLs or raw exceptions.
+/// - Normalize host failures for the player UI.
 ///
 /// Notes:
 /// - The caller still owns generation checks before applying this result.

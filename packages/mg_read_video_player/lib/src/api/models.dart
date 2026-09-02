@@ -104,7 +104,7 @@ final class VideoStartupEvent {
   /// Monotonic time since this startup session was created.
   final Duration elapsed;
 
-  /// Safe stage outcome without raw exception text.
+  /// Stage outcome used by the host UI.
   final VideoStartupState state;
 
   /// Optional bounded resource classification.
@@ -325,8 +325,7 @@ final class VideoPlayerFailure {
 
 /// A safe host-to-player error for a content-resolution operation.
 ///
-/// Hosts should use this only for a concise, redacted explanation. The player
-/// keeps raw transport and backend failures out of the visible UI.
+/// Hosts should use this for a concise explanation in the player UI.
 final class VideoPlayerLoadException implements Exception {
   /// Creates a safe content-resolution failure.
   const VideoPlayerLoadException({

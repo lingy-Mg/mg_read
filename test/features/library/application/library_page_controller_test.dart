@@ -203,7 +203,7 @@ void main() {
     expect(jsonEncode(const DiagnosticEventCodec().encode(terminal)), isNot(contains(secretCanary)));
   });
 
-  test('failed deletion rolls back and records a redacted owner span', () async {
+  test('failed deletion rolls back and records an owner span', () async {
     const secretCanary = '删除书名-SECRET-CANARY';
     final diagnostics = DiagnosticsTestkit();
     addTearDown(diagnostics.dispose);

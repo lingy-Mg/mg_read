@@ -38,10 +38,10 @@ enum AppErrorCode {
   /// Stable serialized value defined by the public protocol.
   final String wireValue;
 
-  /// Safe default when a method-specific retry decision is unavailable.
+  /// Default when a method-specific retry decision is unavailable.
   final bool defaultRetryable;
 
-  /// Converts a received wire value without preserving unknown raw input.
+  /// Converts a received wire value to a known protocol value.
   static AppErrorCode fromWireValue(String wireValue) {
     for (final AppErrorCode value in AppErrorCode.values) {
       if (value.wireValue == wireValue) {
@@ -65,12 +65,10 @@ enum AppErrorCategory {
   unknownSafe,
 }
 
-/// A normalized, immutable error safe to pass across application boundaries.
+/// A normalized, immutable error shared across application boundaries.
 ///
 /// Stable metadata remains the authority for control flow. [detail] and
-/// [location] are optional, bounded, producer-reviewed technical context for
-/// diagnostics and local error UI; raw exceptions, bodies, URLs, credentials,
-/// database data and stack traces are never retained here.
+/// [location] are optional technical context for diagnostics and local error UI.
 final class AppError implements Exception {
   /// Creates a normalized error.
   AppError({required this.code, required this.retryable, this.retryAfter, this.traceId, this.detail, this.location})
@@ -88,12 +86,12 @@ final class AppError implements Exception {
     );
   }
 
-  /// Creates an error from a protocol code while safely dropping unknown codes.
+  /// Creates an error from a protocol code while dropping unknown codes.
   factory AppError.fromWireCode(String wireCode, {bool? retryable, Duration? retryAfter, String? traceId}) {
     return AppError.fromCode(AppErrorCode.fromWireValue(wireCode), retryable: retryable, retryAfter: retryAfter, traceId: traceId);
   }
 
-  /// Normalizes an implementation exception without exposing its content.
+  /// Normalizes an implementation exception.
   factory AppError.fromUnknown(Object error) {
     if (error case final AppError appError) {
       return appError;

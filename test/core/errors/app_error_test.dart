@@ -17,7 +17,7 @@ void main() {
       expect(mediaResolver.category, AppErrorCategory.retryableTemporary);
     });
 
-    test('drops unknown protocol values and raw exception messages', () {
+    test('normalizes unknown protocol values and exception messages', () {
       final AppError unknownWire = AppError.fromWireCode('upstream_secret');
       final AppError unknownException = AppError.fromUnknown(StateError('do not expose this upstream message'));
 

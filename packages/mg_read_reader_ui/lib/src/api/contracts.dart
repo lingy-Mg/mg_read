@@ -177,8 +177,7 @@ class ReaderObserver {
 
   /// Reports bounded adjacent layout and chapter-transition performance.
   ///
-  /// Events contain only stable phase/outcome, counts and duration. They do
-  /// not expose book, chapter, URL, paragraph text, or raw exceptions.
+  /// Receives chapter performance events from the host.
   FutureOr<void> onChapterPerformance(ReaderChapterPerformanceEvent event) {}
 
   /// Requests that the host close or otherwise leave the reader.
@@ -204,7 +203,7 @@ enum ReaderChapterPerformanceOutcome {
   /// The operation completed successfully.
   success,
 
-  /// The operation failed without exposing raw exception data.
+  /// The operation failed.
   error,
 
   /// The operation was invalidated before completion.

@@ -1,7 +1,6 @@
 /// Windows 正式 App 内置的数据源自检页面。
 ///
-/// 职责：启动单源/全部来源的生产链路检查，展示逐阶段结果并导出脱敏 JSON 报告。
-/// 注意：页面不接触 Runtime 私有端口，也不显示搜索词、内容标题、正文或来源 URL。
+/// 职责：启动单源/全部来源的生产链路检查，展示逐阶段结果并导出 JSON 报告。
 library;
 
 import 'dart:io';
@@ -181,7 +180,7 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
           ),
         const SizedBox(height: AppSpacing.regular),
         Text(
-          '检测使用当前 App 的正式 Runtime、网络设置和已启用插件；不会写入书架，也不会保存搜索词、标题或正文。',
+          '检测使用当前 App 的正式 Runtime、网络设置和已启用插件；不会写入书架。',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppThemeTokens.of(context).mutedText),
         ),

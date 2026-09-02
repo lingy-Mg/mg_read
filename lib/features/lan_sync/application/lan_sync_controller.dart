@@ -680,7 +680,7 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
   bool _isCurrent(int generation) => generation == _generation;
 }
 
-/// Converts privacy-safe LAN failure codes into user-facing copy.
+/// Converts LAN failure codes into user-facing copy.
 String lanSyncFailureMessage(String code) => switch (code) {
   'lan_sync_wifi_required' => '手机未连接 Wi-Fi，已停止局域网同步和广播',
   'lan_sync_local_network_unavailable' => '未检测到可用局域网，请检查 Wi-Fi 或网线连接',

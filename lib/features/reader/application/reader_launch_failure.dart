@@ -2,9 +2,7 @@ import 'package:mg_read/core/errors/app_error.dart';
 
 /// Stable, safe-to-display reasons for a persisted reader launch failure.
 ///
-/// The reason and normalized [error] are deliberately small diagnostic
-/// metadata. They never retain source URLs, book data, raw exceptions, or
-/// stack traces.
+/// The reason and normalized [error] are small diagnostic metadata.
 enum ReaderLaunchFailureReason {
   shelfItemMissing('shelf_item_missing', '书架记录不存在，或已被删除。'),
   unsupportedContentKind('unsupported_content_kind', '当前阅读器只能打开小说内容。'),

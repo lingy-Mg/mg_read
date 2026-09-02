@@ -11,7 +11,7 @@ library;
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/library/application/library_book_refresher.dart';
 
-/// Records one complete shelf refresh attempt without exposing book metadata.
+/// Records one complete shelf refresh attempt.
 final class LibraryBookRefreshOperation {
   LibraryBookRefreshOperation({required this.refresher, required this.diagnostics});
 

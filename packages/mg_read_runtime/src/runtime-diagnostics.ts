@@ -5,13 +5,11 @@
  * - 向 Supervisor stderr 输出受控的启动与生命周期摘要；
  * - 在进程内将同一摘要广播给已启用的 Debug 实时日志缓冲区。
  *
- * 注意：
- * - 不持久化事件、异常原文、插件正文或绝对路径；
- * - 观察者失败不得改变 Runtime 业务结果。
+ * 注意：观察者失败不得改变 Runtime 业务结果。
  *
  */
 
-/** Severities permitted in the structured, Flutter-safe diagnostic stream. */
+/** Severities used in the structured diagnostic stream. */
 export type RuntimeDiagnosticLevel = "error" | "info" | "warning";
 
 /** Fixed lifecycle diagnostic identifiers emitted by the desktop executable. */
@@ -59,7 +57,7 @@ export interface RuntimeDiagnosticRecord {
   readonly durationMicros?: number;
   /** Non-fatal severity; fatal records are always projected as errors. */
   readonly level?: RuntimeDiagnosticLevel;
-  /** Reviewed, bounded text that never contains raw exception or plugin data. */
+  /** Bounded diagnostic text. */
   readonly message: string;
   /** Stable lifecycle outcome; start is not mislabeled as success. */
   readonly outcome?: "error" | "started" | "success";

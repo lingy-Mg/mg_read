@@ -12,8 +12,7 @@ import {
 } from '@mgread/source-testkit';
 ```
 
-测试库不会保存线上响应，也不会输出 URL、查询词、标题、正文或原始异常。来源专属页面结构和固定业务事实仍由
-各插件自己的 fixture/live test 负责。
+来源专属页面结构和固定业务事实仍由各插件自己的 fixture/live test 负责。
 
 Windows 开发环境直接使用仓库固定 Node。单源与全源命令分别为：
 

@@ -127,9 +127,8 @@ final class AudioPlayerFailure {
 
 /// A host-supplied failure that is safe to show in the audio player.
 ///
-/// The host must use a stable code, a user-understandable location and a
-/// redacted explanation. Raw URLs, headers, cookies, signatures and upstream
-/// response bodies are deliberately not represented here.
+/// The host must use a stable code, a user-understandable location and an
+/// explanation suitable for the player UI.
 final class AudioPlayerLoadException implements Exception {
   const AudioPlayerLoadException({
     required this.code,

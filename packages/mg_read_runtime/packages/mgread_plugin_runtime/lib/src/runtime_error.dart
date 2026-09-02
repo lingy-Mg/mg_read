@@ -1,10 +1,8 @@
 part of mgread_plugin_runtime;
 
-/// Severity of a safe Runtime diagnostic projected to Flutter.
+/// Severity of a Runtime diagnostic projected to Flutter.
 ///
-/// Diagnostics deliberately contain stable codes and bounded, redacted text.
-/// They never expose a Runtime port, filesystem path, environment variable,
-/// raw stderr line, stack trace, or protocol frame.
+/// Diagnostics contain stable codes and bounded text.
 enum RuntimeDiagnosticLevel {
   /// Informational lifecycle detail that does not prevent Runtime operation.
   info,
@@ -20,7 +18,7 @@ enum RuntimeDiagnosticLevel {
   fatal,
 }
 
-/// A safe, Runtime-owned diagnostic record.
+/// A Runtime-owned diagnostic record.
 ///
 /// The Facade exposes this type so Flutter can present actionable startup and
 /// lifecycle failures without taking ownership of the underlying launcher or
@@ -39,18 +37,18 @@ final class RuntimeDiagnostic {
   /// Severity assigned by the Runtime-owned supervisor.
   final RuntimeDiagnosticLevel level;
 
-  /// Safe bounded text suitable for direct user-visible diagnostics.
+  /// Bounded text suitable for direct user-visible diagnostics.
   final String message;
 
   /// Whether this record represents a terminal Runtime lifecycle failure.
   bool get isFatal => level == RuntimeDiagnosticLevel.fatal;
 }
 
-/// A stable, safe Runtime failure exposed by the Flutter-facing Facade.
+/// A stable Runtime failure exposed by the Flutter-facing Facade.
 ///
 /// [diagnostics] is an immutable point-in-time snapshot collected before this
-/// exception was surfaced. It is intentionally not a raw process error or a
-/// transport exception, which keeps Flutter callers decoupled from internals.
+/// exception was surfaced. Flutter callers remain decoupled from Runtime
+/// internals.
 @immutable
 final class PluginRuntimeException implements Exception {
   const PluginRuntimeException(
@@ -65,7 +63,7 @@ final class PluginRuntimeException implements Exception {
   /// Bounded immutable diagnostic context available at the time of failure.
   final List<RuntimeDiagnostic> diagnostics;
 
-  /// Safe summary suitable for logs and user-facing error state.
+  /// Summary suitable for logs and user-facing error state.
   final String message;
 
   @override

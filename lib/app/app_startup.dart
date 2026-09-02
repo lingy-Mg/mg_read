@@ -228,7 +228,7 @@ final class AppStartupController extends ValueNotifier<AppStartupState> {
 
   /// Opens persistent diagnostics on demand. Normal startup calls this only
   /// after the first usable library frame and Runtime warmup; a startup failure
-  /// may call it earlier to make the safe diagnostics route available.
+  /// may call it earlier to make the diagnostics route available.
   Future<AppDiagnosticsService?> ensureDiagnosticsReady() {
     final resourceService = _resources?.diagnosticsService;
     if (resourceService != null) {

@@ -43,7 +43,7 @@ final class _RuntimeChildMonitor {
     unawaited(_process.exitCode.then(_onProcessExit));
   }
 
-  /// Safe diagnostic sink owned by the supervisor, never the Flutter host.
+  /// Diagnostic sink owned by the supervisor.
   final _RuntimeDiagnosticSink _onDiagnostic;
 
   /// Safe progress sink owned by the supervisor, never the Flutter host.
@@ -52,7 +52,7 @@ final class _RuntimeChildMonitor {
   /// Informs the supervisor whether exit occurred before or after readiness.
   final _RuntimeProcessExitSink _onExit;
 
-  /// Records privacy-safe fallback evidence while no Core TXT store exists.
+  /// Records fallback evidence while no Core TXT store exists.
   final _RuntimePreBootFatalSink _onPreBootFatal;
 
   /// Owned direct child whose stdout, stderr, and exit state are monitored.
@@ -149,7 +149,7 @@ final class _RuntimeChildMonitor {
     );
   }
 
-  /// Accepts only structured diagnostics from stderr and redacts all other text.
+  /// Accepts structured diagnostics from stderr.
   void _onStderrLine(String line) {
     if (_disposed) {
       return;
@@ -211,7 +211,7 @@ final class _RuntimeChildMonitor {
     }
   }
 
-  /// Forwards a value that was already validated/redacted by this monitor.
+  /// Forwards a value validated by this monitor.
   void _record(RuntimeDiagnostic diagnostic) => _onDiagnostic(diagnostic);
 }
 

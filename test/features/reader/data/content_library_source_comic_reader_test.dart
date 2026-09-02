@@ -14,7 +14,7 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/reader/data/content_library_source_comic_reader.dart';
 
 void main() {
-  test('syncs the full catalog and round-trips a URL-redacted session manifest', () async {
+  test('syncs the full catalog and round-trips a session manifest', () async {
     final fixture = await _LibraryFixture.open();
     addTearDown(fixture.close);
     final gateway = _Gateway(
@@ -75,7 +75,7 @@ void main() {
 
     final rebuilt = ContentLibraryComicReaderDataSource(library: fixture.library, gateway: gateway, item: fixture.manga, fetcher: fetch);
     expect(await rebuilt.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1'), <int>[1, 2, 3]);
-    expect(gateway.contentCalls, 2, reason: 'a new adapter must refresh the redacted session-only URL');
+    expect(gateway.contentCalls, 2, reason: 'a new adapter must refresh the session-only URL');
     await rebuilt.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-2');
     expect(gateway.contentCalls, 2);
     expect(fetched.map((uri) => uri.queryParameters['generation']), <String?>['1', '2', '2']);

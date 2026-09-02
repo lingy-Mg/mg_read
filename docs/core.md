@@ -39,7 +39,7 @@ plugins/sources/                    真实数据源及其他能力参考实现
 - 目录刷新使用 pending snapshot 后一次切换 active，并以稳定 ID/keyset cursor 维护；不得把 offset、页码、
   数组位置或全量内存载入作为持久权威。
 - Runtime 结果只有经公开 Facade 和强类型 adapter 校验后才能入库；没有公开协议时保持 `unsupported`。
-- 宿主详情快照必须有界且 JSON 兼容，不得包含内容字节、Cookie、请求头或 raw transport。
+- 宿主详情快照必须有界且 JSON 兼容。
 
 ## Runtime 与平台宿主
 
@@ -84,8 +84,8 @@ plugins/sources/                    真实数据源及其他能力参考实现
 - 调用链为 `discover/search -> contentId -> getDetail/getChapters -> chapterId -> getContent`。ID、cursor 和
   target 是插件内稳定不透明值，URL、标题、数组位置和页码不得作主键。
 - 固定键必须存在；未知可空标量显式为 `null`，`0` 不等于未知，集合始终是数组。Runtime 不修补无效响应。
-- 数据源只可通过 `ctx.errors.raise` 抛出白名单稳定错误码；Runtime 必须折叠其他异常，不得把任意消息、URL、
-  响应正文或原始错误穿透到 Flutter。外部媒体解析失败使用 `source_media_resolution_failed`。
+- 数据源只可通过 `ctx.errors.raise` 抛出白名单稳定错误码；Runtime 负责统一处理其他异常。外部媒体解析失败
+  使用 `source_media_resolution_failed`。
 - 数据源只返回允许的语义组件、布局和图标名。`contentKind` 表达小说、漫画、音频、视频等媒介能力；
   `coverOrientation=portrait|landscape` 独立表达真实封面的横竖方向，二者不得互相推断。Flutter 宿主按封面方向
   选择两套通用组件，并拥有主题、尺寸、断点、可访问性、导航和交互实现；横向组件不等同于视频播放器入口，
@@ -95,12 +95,10 @@ plugins/sources/                    真实数据源及其他能力参考实现
   `kind + url + headers` Runtime proxy 请求。loopback URL 以明文可逆 Base64URL JSON 自包含该请求，不依赖
   进程内 token 映射；此编码不提供加密或认证。Runtime 持有上游 HTTP 请求、取消和正文流，数据源不得导出
   `resource` 字节能力或缓冲媒体正文；大资源不进入插件返回值或控制面。
-- fixture 只保留选择器、分页、null/0/空集合和错误分支需要的最小脱敏结构；不得保存线上正文、图片、
-  Cookie、UA、token、完整录制或用户搜索词。
+- fixture 只保留选择器、分页、null/0/空集合和错误分支需要的最小结构。
 - 开发期由纯 Node.js `mg_read_source_testkit` 直接检查插件公开契约和 live 链路；正式 Windows App 内置自检
   经生产 `SourceContentGateway -> Runtime Facade -> Runtime -> 已启用插件` 验证发现、搜索、详情、完整目录、
-  首/中/末内容和资源代理。App 页面与正式可执行文件 CLI 复用同一引擎，报告只含插件 ID、阶段、稳定错误码、
-  计数和 HTTP 状态；两层证据不得互相替代。
+  首/中/末内容和资源代理。App 页面与正式可执行文件 CLI 复用同一引擎；两层证据不得互相替代。
 - 受保护来源只使用宿主持有的 WebView 和真实人工交互；禁止 token 抽取/回放、通过 CDP 或 DOM 注入绕过挑战。
 
 ## 阅读器
@@ -130,7 +128,7 @@ plugins/sources/                    真实数据源及其他能力参考实现
 
 - App 诊断默认关闭；显式启用才创建 writer。历史文件冷存储，只在用户选择后有界读取。
 - 诊断字段和显式捕获字节按契约保存；常规日志只记录有界阶段、计数、字节、耗时和稳定错误码。错误终态可额外保存
-  生产者审查且不含原始值的 `errorText`/`errorLocation` 与应用捕获堆栈；仍不记录正文、凭据、URL 查询或插件原始异常。
+  `errorText`/`errorLocation` 与应用捕获堆栈。
 - 一个用户操作或长任务只有一个 owner span 和一个终态；高频事件只做有界聚合。
 - 日志、viewer、observer、磁盘或缓冲失败不得改变业务结果；生产代码不得自建日志通道。
 

@@ -7,10 +7,8 @@
  * - retain bounded, in-memory cover probes and an unbounded listener-scoped log stream.
  *
  * Boundaries:
- * - never exposes Runtime RPC, health, cookies, headers, HTML, or raw plugin objects;
- * - Debug projections intentionally preserve URL, query, and log values verbatim;
- * - do not add masking, redaction, persistence, or automatic log pruning here;
- * - delegates all source calls and resource reads to the owning Runtime Core.
+ * - delegates all source calls and resource reads to the owning Runtime Core;
+ * - retains inspector state only for the listener lifetime.
  */
 import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -378,7 +376,7 @@ function projectValue(value: JsonValue, retainProbe: (coverUrl: string) => JsonO
   return Object.freeze(projected);
 }
 
-/** Projects one explicit Debug content response without exposing plugin-private objects. */
+/** Projects one explicit Debug content response. */
 function projectContent(value: JsonValue, retainProbe: (coverUrl: string) => JsonObject): JsonValue {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return projectValue(value, retainProbe);
   const source = value as JsonObject;

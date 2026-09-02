@@ -1,4 +1,4 @@
-/// Safe diagnostic tests for the source-to-video-player adapter.
+/// Diagnostic tests for the source-to-video-player adapter.
 library;
 
 import 'dart:async';
@@ -81,7 +81,7 @@ void main() {
     expect(gateway.contentCalls, <String>['episode-2']);
   });
 
-  test('redacts a selected video resource failure with a stable location', () async {
+  test('reports a selected video resource failure with a stable location', () async {
     final gateway = _VideoGateway(failEpisodeResource: true);
     final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId);
     await source.load('video-1');

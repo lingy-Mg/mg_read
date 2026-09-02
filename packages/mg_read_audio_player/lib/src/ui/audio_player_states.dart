@@ -2,10 +2,8 @@
 ///
 /// Responsibilities:
 /// - Keep non-ready states visually consistent with the immersive player.
-/// - Provide clear recovery and exit actions with safe diagnostics.
+/// - Provide clear recovery and exit actions with diagnostic details.
 ///
-/// Notes:
-/// - Diagnostic content is already redacted by the public host contract.
 library;
 
 import 'package:flutter/material.dart';

@@ -13,7 +13,7 @@ const _startupTimeout = Duration(seconds: 20);
 /// Upper bound for a single already-connected control request.
 const _controlTimeout = Duration(seconds: 5);
 
-/// Bounded count of safe diagnostics retained for Flutter error presentation.
+/// Bounded count of diagnostics retained for Flutter error presentation.
 const _maxDiagnosticEntries = 32;
 
 /// Maximum accepted message length from a structured child diagnostic record.
@@ -22,7 +22,7 @@ const _maxStructuredDiagnosticMessageLength = 256;
 /// Hard cap for the pre-boot, Runtime-owned fallback evidence channel.
 const _maxPreBootFallbackBytes = 16 * 1024;
 
-/// Receives a safe diagnostic after the monitor validates the child record.
+/// Receives a diagnostic after the monitor validates the child record.
 typedef _RuntimeDiagnosticSink = void Function(RuntimeDiagnostic diagnostic);
 
 /// Receives a bounded, already-safe Runtime progress event.
@@ -54,7 +54,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   /// Immutable package-owned inputs used for the only allowed child launch.
   final _DesktopRuntimeBundle _bundle;
 
-  /// Broadcasts already-redacted diagnostics; it is closed during dispose.
+  /// Broadcasts diagnostics; it is closed during dispose.
   final StreamController<RuntimeDiagnostic> _diagnosticController =
       StreamController<RuntimeDiagnostic>.broadcast();
 
@@ -791,7 +791,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
     _process = null;
   }
 
-  /// Releases the Job handle and records a safe diagnostic if that fails.
+  /// Releases the Job handle and records a diagnostic if that fails.
   bool _closeJobObject() {
     final jobObject = _jobObject;
     _jobObject = null;
@@ -841,7 +841,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
     );
   }
 
-  /// Retains and broadcasts one already-safe diagnostic without unbounded growth.
+  /// Retains and broadcasts one diagnostic without unbounded growth.
   void _recordDiagnostic(RuntimeDiagnostic diagnostic) {
     if (_diagnostics.length == _maxDiagnosticEntries) {
       _diagnostics.removeAt(0);

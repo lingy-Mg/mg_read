@@ -7,4 +7,4 @@
 - 漫画页只接受 `.comicpage img.lazy[data-original]` 的受控图片域，不使用 `src` 中的占位图。
 - 所有封面和章节图必须通过 `ctx.resource.proxy`；resource 请求携带生成时的 Referer，并按
   `cover|page` 用途分别校验来源域和 Referer 路径。
-- Fixture 只保留虚构名称、数字路径和短图片字节，不保存线上 HTML、标题、正文图片或查询结果。
+- Fixture 只保留虚构名称、数字路径和短图片字节。

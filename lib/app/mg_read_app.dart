@@ -270,8 +270,7 @@ final class _AppStartupGateState extends ConsumerState<_AppStartupGate> {
         ],
       );
     }
-    // Startup failure deliberately has a fixed, safe message. Raw exception
-    // text and paths never cross this boundary.
+    // Startup failure uses one fixed message at this boundary.
     if (!_failureSignalScheduled) {
       _failureSignalScheduled = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {

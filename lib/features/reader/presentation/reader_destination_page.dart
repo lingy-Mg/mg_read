@@ -440,8 +440,7 @@ final class _ComicReaderExitObserver extends ComicReaderObserver {
   Future<void> onExitRequested(ComicReaderProgress? progress) => _onExitRequested(progress);
 }
 
-/// Owns the app-side reader chapter performance span without retaining any
-/// book, chapter, URL, paragraph, or raw exception data.
+/// Owns the app-side reader chapter performance span.
 final class _ReaderChapterPerformanceObserver extends ReaderObserver {
   _ReaderChapterPerformanceObserver(this._diagnostics);
 

@@ -1,7 +1,6 @@
 /// 正式 App 内置数据源自检的稳定结果模型。
 ///
 /// 职责：保存阶段状态、计数型摘要和可导出的紧凑报告。
-/// 注意：不得保存 URL、搜索词、内容标题、正文、Cookie、凭据或原始异常。
 library;
 
 import 'package:flutter/foundation.dart';

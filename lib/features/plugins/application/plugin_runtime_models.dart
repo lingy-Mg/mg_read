@@ -1,7 +1,7 @@
 /// 数据源 Runtime 应用层模型。
 ///
 /// 职责：
-/// - 定义主应用消费的脱敏 Runtime 状态与数据源投影。
+/// - 定义主应用消费的 Runtime 状态与数据源投影。
 /// - 保持 presentation 与 Runtime Facade 的稳定类型边界。
 ///
 /// 注意：

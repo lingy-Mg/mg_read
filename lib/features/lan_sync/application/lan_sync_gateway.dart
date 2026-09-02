@@ -41,7 +41,7 @@ final class LanSyncMaterializedPlugin {
   final Stream<List<int>> bytes;
 }
 
-/// A stable, privacy-safe failure surfaced by the LAN-sync data boundary.
+/// A stable failure surfaced by the LAN-sync data boundary.
 final class LanSyncGatewayException implements Exception {
   const LanSyncGatewayException(this.code, {this.reason});
 

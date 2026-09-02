@@ -31,9 +31,7 @@ let stopping = false;
 let fatalReported = false;
 
 /**
- * Emits only reviewed, structured text. Raw exceptions must remain private to
- * the Node process so paths, environment values, stack traces, and protocol
- * data never cross into the Flutter-facing diagnostic stream.
+ * Emits structured diagnostic text for the Flutter-facing stream.
  */
 function emitDiagnostic(record: RuntimeDiagnosticRecord): void {
   emitRuntimeDiagnostic(record);
@@ -154,7 +152,7 @@ async function failRuntime(
   await stopRuntime();
 }
 
-/** Maps known startup failures to the safe diagnostics consumed by Flutter. */
+/** Maps known startup failures to diagnostics consumed by Flutter. */
 function startupFailureCode(error: unknown): RuntimeFatalDiagnosticCode {
   if (error instanceof Error && error.message.startsWith("Runtime requires Node")) {
     return "runtime_node_version_incompatible";

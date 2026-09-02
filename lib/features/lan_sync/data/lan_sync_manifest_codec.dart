@@ -1,6 +1,6 @@
-/// 扫码临时传输的 Manifest 解码与安全错误投影。
+/// 扫码临时传输的 Manifest 解码与错误投影。
 ///
-/// 只保留字段级稳定原因，不记录清单原始值；网络会话生命周期仍由主传输文件负责。
+/// 网络会话生命周期仍由主传输文件负责。
 part of 'lan_sync_transport.dart';
 
 LanSyncManifest _decodeLanSyncManifestFrame(Map<String, Object?> frame) {

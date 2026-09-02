@@ -57,7 +57,7 @@ test('projects discovery, search, detail, catalog, content, and cover resources'
   assert.equal(categoryResult.kind, 'document');
   const categoryCollection = categoryResult.document.components[0].children[0];
   assert.equal(categoryCollection.layout, 'coverGrid');
-  assert.equal(categoryCollection.items[0].content.description, '脱敏的测试简介。');
+    assert.equal(categoryCollection.items[0].content.description, '测试简介。');
   assert.deepEqual(categoryCollection.continuation, { target: 'category:1', cursor: '2' });
 
   const searchResult = await plugin.search({ query: '测试', cursor: null, pageSize: 10 });

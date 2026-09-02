@@ -14,7 +14,7 @@ import 'package:mg_read/shared/presentation/source_branding.dart';
 /// 单个数据源的 Runtime 详情页面。
 ///
 /// 职责：
-/// - 展示脱敏的 Runtime 数据源投影及安装大小。
+/// - 展示 Runtime 数据源投影及安装大小。
 /// - 为 Windows 桌面开发数据源插件提供目录打开与用户选目录打包操作。
 ///
 /// 注意：

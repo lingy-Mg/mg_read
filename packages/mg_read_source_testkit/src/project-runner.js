@@ -2,7 +2,6 @@
  * 数据源项目的纯 Node.js 单源/全源驱动。
  *
  * 职责：发现标准来源项目、使用当前 Node 工具链构建、加载 dist 并执行有界 live 链路，最后写紧凑报告。
- * 注意：报告不得包含 URL、搜索词、标题、正文、绝对路径或原始异常。
  */
 import { spawn } from 'node:child_process';
 import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';

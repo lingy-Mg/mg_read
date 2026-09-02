@@ -7,7 +7,7 @@
  *
  * 注意：
  * - 输入数量和单 artifact 大小有界，处理后一次性清理 inbox 文件。
- * - 不记录或返回路径、代码、图标字节和原始异常。
+ * - 处理结果由 Runtime 统一返回。
  *
  */
 import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";

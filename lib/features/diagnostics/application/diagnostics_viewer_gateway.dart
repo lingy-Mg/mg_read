@@ -447,7 +447,7 @@ String _stableErrorCode(Object error) {
   return 'internal_error';
 }
 
-/// Stable, user-safe diagnostic viewer failure.
+/// Stable diagnostic viewer failure.
 final class DiagnosticsViewerException implements Exception {
   const DiagnosticsViewerException(this.code);
 

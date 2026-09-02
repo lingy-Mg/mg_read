@@ -358,8 +358,7 @@ extension _TextReaderPersistence on _TextReaderViewState {
 
   Future<void> _notify(FutureOr<void> Function() callback) {
     return Future<void>.sync(callback).catchError((Object _, StackTrace _) {
-      // Host observer failures are isolated and must not expose raw exception
-      // text or change the reading result.
+      // Host observer failures are isolated and must not change the reading result.
     });
   }
 
