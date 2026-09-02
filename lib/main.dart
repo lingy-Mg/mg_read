@@ -28,6 +28,6 @@ Future<void> main(List<String> arguments) async {
   );
   // A Windows Release build is a GUI-subsystem executable. Keep the Dart
   // entrypoint alive until the command widget has finished the full
-  // production verification and written its report.
+  // production verification and flushed its console output.
   exit(await exitCode.future);
 }

@@ -7,21 +7,16 @@ void main() {
   test('ignores ordinary app arguments and parses one source command', () {
     expect(parseSourceVerificationCommand(const <String>[]), isNull);
 
-    final command = parseSourceVerificationCommand(const <String>[
-      '--source-check=org.mgread.fixture',
-      '--source-check-report=fixture-report.json',
-    ], currentDirectory: 'C:\\workspace');
+    final command = parseSourceVerificationCommand(const <String>['--source-check=org.mgread.fixture']);
 
     expect(command, isNotNull);
     expect(command!.pluginId, 'org.mgread.fixture');
     expect(command.all, isFalse);
-    expect(command.reportPath, endsWith('fixture-report.json'));
   });
 
   test('parses all-sources mode and rejects ambiguous selection', () {
-    final command = parseSourceVerificationCommand(const <String>['--source-check-all'], currentDirectory: 'C:\\workspace');
+    final command = parseSourceVerificationCommand(const <String>['--source-check-all']);
     expect(command!.all, isTrue);
-    expect(command.reportPath, endsWith('mgread-source-verification.json'));
 
     expect(
       () => parseSourceVerificationCommand(const <String>['--source-check-all', '--source-check', 'org.mgread.fixture']),
@@ -29,16 +24,10 @@ void main() {
     );
   });
 
-  test('keeps the selected source id and report path in the command contract', () {
-    final command = parseSourceVerificationCommand(const <String>[
-      '--source-check',
-      'org.mgread.diyibanzhu-me',
-      '--source-check-report',
-      'reports/diyibanzhu.json',
-    ], currentDirectory: 'C:\\workspace');
+  test('keeps the selected source id without a report path', () {
+    final command = parseSourceVerificationCommand(const <String>['--source-check', 'org.mgread.diyibanzhu-me']);
 
     expect(command!.pluginId, 'org.mgread.diyibanzhu-me');
     expect(command.all, isFalse);
-    expect(command.reportPath, endsWith('reports/diyibanzhu.json'));
   });
 }

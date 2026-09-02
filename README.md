@@ -29,19 +29,15 @@ flutter run
 安装后的 Windows App 可在“我的 → 管理数据源”检测全部已启用来源，也可进入单个数据源详情执行检测。内置
 引擎会经正式 Runtime 验证发现、搜索、详情、完整目录、首/中/末内容和资源代理，不依赖 Flutter 测试框架。
 
-自动化工具也可直接启动正式可执行文件并读取 JSON 报告：
+自动化工具也可直接启动正式可执行文件，测试过程和完整结果会直接输出到当前控制台：
 
-```powershell
-.\mg_read.exe --source-check=org.mgread.aisishuwu --source-check-report=source-check.json
-.\mg_read.exe --source-check-all --source-check-report=source-check-all.json
+```text
+.\mg_read.exe --source-check=org.mgread.aisishuwu
+.\mg_read.exe --source-check-all
 ```
 
-进程退出码为：`0` 全部通过、`1` 已完成但包含失败、`2` 内部错误或报告写入失败、`3` 需要人工交互、
-`4` 参数错误或平台不支持。失败报告只包含插件标识、版本、阶段、稳定错误码、耗时和计数，不写入查询词、
-标题、URL 或正文。
-
-CLI 标准输出同时提供 JSONL 调试流：会实时输出启动和阶段状态，并在阶段完成后输出完整解码结果、URL、
-标题、正文、资源请求头及异常堆栈。该输出仅用于显式 CLI 测试，不写入上述稳定报告或常规 App 诊断。
+CLI 会阻塞到完整链路测试结束后才退出；stdout 输出普通文本测试过程、完整解码结果和日志，stderr 输出错误。
+进程退出码为：`0` 全部通过、`1` 已完成但包含失败、`2` 内部错误、`3` 需要人工交互、`4` 参数错误或平台不支持。
 
 开发期插件直测使用纯 Node.js CLI，具体命令见
 [`packages/mg_read_source_testkit/README.md`](packages/mg_read_source_testkit/README.md)。
