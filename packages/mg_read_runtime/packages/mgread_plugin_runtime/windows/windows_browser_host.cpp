@@ -350,6 +350,8 @@ void WindowsBrowserHost::Handle(
     }
   } else if (call.method_name() == "executeScript") {
     ExecuteScript(session, *arguments, result);
+  } else if (call.method_name() == "callDevToolsProtocolMethod") {
+    CallDevToolsProtocolMethod(session, *arguments, result);
   } else if (call.method_name() == "dispatchMouseInput") {
     DispatchMouseInput(session, *arguments, result);
   } else if (call.method_name() == "insertText") {
@@ -689,6 +691,32 @@ void WindowsBrowserHost::ExecuteScript(
   const HRESULT started = session->webview->ExecuteScript(
       wide.c_str(),
       Microsoft::WRL::Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+          [result](HRESULT error, LPCWSTR value) -> HRESULT {
+            if (FAILED(error) || value == nullptr) {
+              SafeError(result, "plugin_execution_failed");
+            } else {
+              result->Success(flutter::EncodableValue(WideToUtf8(value)));
+            }
+            return S_OK;
+          })
+          .Get());
+  if (FAILED(started)) SafeError(result, "plugin_execution_failed");
+}
+
+void WindowsBrowserHost::CallDevToolsProtocolMethod(
+    const SessionPtr& session, const flutter::EncodableMap& arguments,
+    std::shared_ptr<MethodResult> result) {
+  const auto* method = FindString(arguments, "method");
+  const auto* params_json = FindString(arguments, "paramsJson");
+  const auto method_wide = method == nullptr ? std::wstring() : Utf8ToWide(*method);
+  const auto params_wide = params_json == nullptr ? std::wstring() : Utf8ToWide(*params_json);
+  if (method_wide.empty() || params_wide.empty() || session->webview == nullptr) {
+    SafeError(result, "plugin_execution_failed");
+    return;
+  }
+  const HRESULT started = session->webview->CallDevToolsProtocolMethod(
+      method_wide.c_str(), params_wide.c_str(),
+      Microsoft::WRL::Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
           [result](HRESULT error, LPCWSTR value) -> HRESULT {
             if (FAILED(error) || value == nullptr) {
               SafeError(result, "plugin_execution_failed");

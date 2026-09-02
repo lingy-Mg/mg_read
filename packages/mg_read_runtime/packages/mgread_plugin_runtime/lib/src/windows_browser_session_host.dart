@@ -3,8 +3,9 @@
 /// One plugin owns at most one WebView2 and isolated user-data folder. Fixed
 /// host scripts implement browser fetch; direct HTTP temporarily reads the
 /// profile Cookie/UA and writes Set-Cookie updates back without exposing them.
-/// The new page API carries explicitly requested script bodies and JSON results;
-/// all supporting scripts and native inputs remain host-owned.
+/// The new page API carries explicitly requested script bodies, raw CDP
+/// commands, and JSON results; all supporting scripts and native inputs remain
+/// host-owned.
 /// Closing the native verification window invalidates that session; the next
 /// visible source request recreates it.
 library;
@@ -34,7 +35,8 @@ final class WindowsBrowserSessionException implements Exception {
   final String code;
 }
 
-/// Narrow native WebView2 surface. Scripts are authored only by this library.
+/// Narrow native WebView2 surface. CDP commands are passed through only after
+/// Runtime JSON validation.
 abstract interface class WindowsBrowserPlatform {
   Future<String> create({
     required String pluginId,
@@ -47,6 +49,11 @@ abstract interface class WindowsBrowserPlatform {
     required double x,
     required double y,
     required double devicePixelRatio,
+  });
+  Future<String> callDevToolsProtocolMethod(
+    String sessionId, {
+    required String method,
+    required String paramsJson,
   });
   Future<String> executeScript(String sessionId, String script);
   Future<void> insertText(String sessionId, String text);
@@ -125,6 +132,25 @@ final class MethodChannelWindowsBrowserPlatform
     'key': key,
     'modifiers': modifiers,
   });
+
+  @override
+  Future<String> callDevToolsProtocolMethod(
+    String sessionId, {
+    required String method,
+    required String paramsJson,
+  }) async {
+    final value = await _channel.invokeMethod<String>(
+      'callDevToolsProtocolMethod',
+      <String, Object?>{
+        'sessionId': sessionId,
+        'method': method,
+        'paramsJson': paramsJson,
+      },
+    );
+    if (value == null)
+      throw const WindowsBrowserSessionException('plugin_execution_failed');
+    return value;
+  }
 
   @override
   Future<String> executeScript(String sessionId, String script) async {

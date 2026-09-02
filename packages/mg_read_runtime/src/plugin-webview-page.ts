@@ -36,6 +36,12 @@ export interface PluginWebViewPage {
     code: string,
     options?: WebViewCallOptions,
   ): Promise<T>;
+  /** Sends one raw CDP command. The Runtime does not whitelist the method or params. */
+  cdp<T extends PluginJsonValue = PluginJsonValue>(
+    method: string,
+    params?: PluginJsonObject,
+    options?: WebViewCallOptions,
+  ): Promise<T>;
   getHtml(options?: WebViewCallOptions): Promise<string>;
   fetch(request: PluginWebViewFetchRequest): Promise<PluginWebViewFetchResponse>;
   click(request: { readonly x: number; readonly y: number; readonly timeoutMs?: number }): Promise<void>;
@@ -76,6 +82,8 @@ export interface PluginWebViewFetchResponse {
   readonly url: string;
 }
 
+export type PluginJsonObject = { readonly [key: string]: PluginJsonValue };
+
 interface WebViewCallOptions { readonly timeoutMs?: number }
 
 export function createPluginWebViewApi(options: {
@@ -94,6 +102,17 @@ export function createPluginWebViewApi(options: {
     navigate: (url, callOptions) => invoke("page.navigate", { url: absoluteHttpUrl(url) }, callOptions).then(ignoreResult),
     async executeJavaScript<T extends PluginJsonValue = PluginJsonValue>(code: string, callOptions?: WebViewCallOptions): Promise<T> {
       const response = await invoke("page.evaluate", { code: nonEmptyString(code, 512 * 1024) }, callOptions);
+      return readJsonValue(response, "value") as T;
+    },
+    async cdp<T extends PluginJsonValue = PluginJsonValue>(
+      method: string,
+      params?: PluginJsonObject,
+      callOptions?: WebViewCallOptions,
+    ): Promise<T> {
+      const response = await invoke("page.cdp", {
+        method: validateCdpMethod(method),
+        params: validateCdpParams(params),
+      }, callOptions);
       return readJsonValue(response, "value") as T;
     },
     getHtml: callOptions => invoke("page.html", {}, callOptions).then(response => readString(response, "html")),
@@ -200,6 +219,16 @@ function validateFetchRequest(value: unknown): Readonly<Record<string, unknown>>
 function validateCoordinates(value: unknown): Readonly<Record<string, unknown>> {
   if (!isRecord(value) || !finiteCoordinate(value.x) || !finiteCoordinate(value.y)) invalid();
   return Object.freeze({ x: value.x, y: value.y });
+}
+
+function validateCdpMethod(value: unknown): string {
+  return nonEmptyString(value, 256);
+}
+
+function validateCdpParams(value: unknown): PluginJsonObject {
+  if (value === undefined) return Object.freeze({});
+  if (!isRecord(value) || !isJsonValue(value) || new TextEncoder().encode(JSON.stringify(value)).byteLength > 512 * 1024) invalid();
+  return Object.freeze(value as PluginJsonObject);
 }
 
 function validateKeyRequest(value: unknown): Readonly<Record<string, unknown>> {

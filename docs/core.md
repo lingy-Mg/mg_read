@@ -62,8 +62,9 @@ plugins/sources/                    真实数据源及其他能力参考实现
 - 内部 PID、端口、URL、ready、bootId 和 wire envelope 不暴露给主应用；控制帧有界，大资源走 HTTP 数据面。
 - `ctx.webview` 每个数据源只有一个宿主页；Cookie、UA、Profile、窗口和输入由宿主持有。普通操作串行，
   显隐/关闭走控制旁路；超时与取消必须清理结果但保留可复用页面。
-- WebView 不提供 Cookie API、CDP 或 DOM 合成交互；需要可信交互时返回 `interaction_required` 并由用户在
-  可见宿主页完成。Windows 只允许用户主动打开 DevTools。
+- WebView 不提供 Cookie API 或 DOM 合成交互；`ctx.webview` 另提供 Windows WebView2 专用的原始
+  `page.cdp(method, params)` 通道，不做 CDP 方法白名单或参数字段过滤，Android 返回 `unsupported`。
+  该通道不改变挑战验证规则；需要可信人工交互时仍返回 `interaction_required` 并由用户在可见宿主页完成。
 
 ## 标准插件项目、artifact 与安装
 
@@ -100,7 +101,7 @@ plugins/sources/                    真实数据源及其他能力参考实现
   经生产 `SourceContentGateway -> Runtime Facade -> Runtime -> 已启用插件` 验证发现、搜索、详情、完整目录、
   首/中/末内容和资源代理。App 页面与正式可执行文件 CLI 复用同一引擎，报告只含插件 ID、阶段、稳定错误码、
   计数和 HTTP 状态；两层证据不得互相替代。
-- 受保护来源只使用宿主持有的 WebView 和真实人工交互；禁止 token 抽取/回放、CDP、DOM 点击注入和绕过。
+- 受保护来源只使用宿主持有的 WebView 和真实人工交互；禁止 token 抽取/回放、通过 CDP 或 DOM 注入绕过挑战。
 
 ## 阅读器
 

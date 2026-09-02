@@ -95,6 +95,7 @@ export type PluginWebViewOperation =
   | "page.evaluate"
   | "page.html"
   | "page.fetch"
+  | "page.cdp"
   | "page.click"
   | "page.input"
   | "page.key"

@@ -298,6 +298,14 @@ void main() {
           'code': 'await Promise.resolve(); return {ok:true};',
         }),
       );
+      final cdp = await host.request(
+        jobId: 'p:cdp',
+        deadlineUnixMs: deadline,
+        raw: _page('page.cdp', <String, Object?>{
+          'method': 'Input.dispatchKeyEvent',
+          'params': <String, Object?>{'type': 'keyDown', 'key': 'Enter'},
+        }),
+      );
       final html = await host.request(
         jobId: 'p:html',
         deadlineUnixMs: deadline,
@@ -338,11 +346,15 @@ void main() {
       );
 
       expect(value['value'], <String, Object?>{'ok': true});
+      expect(cdp['value'], <String, Object?>{'protocol': 'accepted'});
       expect(html['html'], '<html><body>live</body></html>');
       expect(platform.createCalls, 1);
       expect(platform.dispatchMouseInputCalls, 1);
       expect(platform.insertedTexts, <String>['native']);
       expect(platform.dispatchedKeys, <String>['Enter']);
+      expect(platform.cdpCalls, <String>[
+        'Input.dispatchKeyEvent:{"type":"keyDown","key":"Enter"}',
+      ]);
       expect(platform.hideCalls, 1);
       expect(platform.disposeCalls, 1);
     },
@@ -452,6 +464,7 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
   int disposeCalls = 0;
   int showCalls = 0;
   int dispatchMouseInputCalls = 0;
+  final List<String> cdpCalls = <String>[];
   int hideCalls = 0;
   final List<String> insertedTexts = <String>[];
   final List<String> dispatchedKeys = <String>[];
@@ -489,6 +502,16 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
     required double devicePixelRatio,
   }) async {
     dispatchMouseInputCalls += 1;
+  }
+
+  @override
+  Future<String> callDevToolsProtocolMethod(
+    String sessionId, {
+    required String method,
+    required String paramsJson,
+  }) async {
+    cdpCalls.add('$method:$paramsJson');
+    return jsonEncode(<String, Object?>{'protocol': 'accepted'});
   }
 
   @override

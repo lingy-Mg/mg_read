@@ -39,6 +39,9 @@ class WindowsBrowserHost {
   void ExecuteScript(const SessionPtr& session,
                      const flutter::EncodableMap& arguments,
                      std::shared_ptr<MethodResult> result);
+  void CallDevToolsProtocolMethod(
+      const SessionPtr& session, const flutter::EncodableMap& arguments,
+      std::shared_ptr<MethodResult> result);
   void DispatchMouseInput(const SessionPtr& session,
                           const flutter::EncodableMap& arguments,
                           std::shared_ptr<MethodResult> result);

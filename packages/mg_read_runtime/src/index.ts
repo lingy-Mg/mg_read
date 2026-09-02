@@ -90,6 +90,7 @@ export type {
 export { maximumWebViewTimeoutMs } from "./plugin-webview-page.js";
 export type {
   PluginJsonValue,
+  PluginJsonObject,
   PluginWebViewApi,
   PluginWebViewFetchRequest,
   PluginWebViewFetchResponse,

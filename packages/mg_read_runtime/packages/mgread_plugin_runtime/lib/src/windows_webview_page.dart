@@ -81,6 +81,19 @@ extension on WindowsBrowserSessionHost {
             "const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;"
             "const value=await new AsyncFunction(${jsonEncode(request.code)}).call(window);return {value};",
           );
+        case 'page.cdp':
+          final raw = await _platform.callDevToolsProtocolMethod(
+            session.sessionId,
+            method: request.cdpMethod!,
+            paramsJson: jsonEncode(request.cdpParams),
+          );
+          try {
+            return <String, Object?>{'value': jsonDecode(raw)};
+          } on FormatException {
+            throw const WindowsBrowserSessionException(
+              'plugin_execution_failed',
+            );
+          }
         case 'page.html':
           final result = _decodeScriptObject(
             await _platform.executeScript(
@@ -229,6 +242,8 @@ const _pageAsyncOperations = <String>{
 final class _WindowsPageRequest {
   const _WindowsPageRequest({
     required this.body,
+    required this.cdpMethod,
+    required this.cdpParams,
     required this.code,
     required this.headers,
     required this.key,
@@ -248,6 +263,8 @@ final class _WindowsPageRequest {
   });
 
   final String? body;
+  final String? cdpMethod;
+  final Map<String, Object?> cdpParams;
   final String? code;
   final Map<String, String> headers;
   final String? key;
@@ -277,6 +294,7 @@ final class _WindowsPageRequest {
       'page.close',
       'page.navigate',
       'page.evaluate',
+      'page.cdp',
       'page.html',
       'page.fetch',
       'page.click',
@@ -295,6 +313,8 @@ final class _WindowsPageRequest {
       _invalid();
     String? url;
     String? code;
+    String? cdpMethod;
+    var cdpParams = <String, Object?>{};
     String? text;
     String? key;
     var visible = false;
@@ -314,6 +334,14 @@ final class _WindowsPageRequest {
     }
     if (operation == 'page.evaluate')
       code = _required(value, 'code', 512 * 1024);
+    if (operation == 'page.cdp') {
+      cdpMethod = _required(value, 'method', 256);
+      final rawParams = value['params'];
+      if (rawParams is! Map<Object?, Object?> ||
+          utf8.encode(jsonEncode(rawParams)).length > 512 * 1024)
+        _invalid();
+      cdpParams = _jsonObject(rawParams);
+    }
     if (operation == 'page.fetch') {
       method = _required(value, 'method', 32);
       responseType = _required(value, 'responseType', 16);
@@ -376,6 +404,8 @@ final class _WindowsPageRequest {
     }
     return _WindowsPageRequest(
       body: body,
+      cdpMethod: cdpMethod,
+      cdpParams: cdpParams,
       code: code,
       headers: headers,
       key: key,
@@ -394,6 +424,27 @@ final class _WindowsPageRequest {
       y: y,
     );
   }
+}
+
+Map<String, Object?> _jsonObject(Map<Object?, Object?> value) {
+  final result = <String, Object?>{};
+  for (final entry in value.entries) {
+    if (entry.key is! String || !_isJsonValue(entry.value)) _invalid();
+    result[entry.key! as String] = entry.value;
+  }
+  return result;
+}
+
+bool _isJsonValue(Object? value) {
+  if (value == null || value is bool || value is String) return true;
+  if (value is num) return value.isFinite;
+  if (value is List<Object?>) return value.every(_isJsonValue);
+  if (value is Map<Object?, Object?>) {
+    return value.entries.every(
+      (entry) => entry.key is String && _isJsonValue(entry.value),
+    );
+  }
+  return false;
 }
 
 Map<String, Object?>? _decodeScriptObject(String raw) {
@@ -511,6 +562,7 @@ String _pageOperationLabel(String operation) => switch (operation) {
   'page.click' => '正在点击页面',
   'page.input' => '正在输入文本',
   'page.key' => '正在发送按键',
+  'page.cdp' => '正在调用 CDP',
   'page.waitText' => '正在等待页面内容',
   'page.getUrl' => '正在读取地址',
   _ => '正在探测',

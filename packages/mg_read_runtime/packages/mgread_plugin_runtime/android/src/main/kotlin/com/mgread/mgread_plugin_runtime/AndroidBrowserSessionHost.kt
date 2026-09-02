@@ -386,6 +386,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
                 "return {html:document.documentElement?.outerHTML??''};",
             )
             "page.fetch" -> startPageAsyncScript(job, session, androidPageFetchBody(request.pageParams!!))
+            "page.cdp" -> completeError(job, "unsupported")
             "page.click" -> performPageClick(job, session)
             "page.input" -> {
                 if (!isPageVisible(session)) completeError(job, "interaction_required")

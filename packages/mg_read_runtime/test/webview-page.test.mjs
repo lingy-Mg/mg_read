@@ -77,6 +77,7 @@ test("page forwards all operations and arbitrary JSON values", async () => {
       case "page.evaluate": return { value: values[index++] };
       case "page.html": return { html: "<html><body>live</body></html>" };
       case "page.fetch": return { status: 200, url: request.url, headers: { "content-type": "application/json" }, body: { ok: true } };
+      case "page.cdp": return { value: { echoedMethod: request.method, echoedParams: request.params } };
       case "page.waitText": return { url: "https://example.com/done" };
       case "page.getUrl": return { url: "https://example.com/current" };
       default: return {};
@@ -87,6 +88,14 @@ test("page forwards all operations and arbitrary JSON values", async () => {
     assert.deepEqual(await page.executeJavaScript("await Promise.resolve(); return 1;"), expected);
   }
   await page.navigate("https://example.com/start");
+  assert.deepEqual(await page.cdp("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "Enter",
+    nested: { preserved: true },
+  }), {
+    echoedMethod: "Input.dispatchKeyEvent",
+    echoedParams: { type: "keyDown", key: "Enter", nested: { preserved: true } },
+  });
   assert.match(await page.getHtml(), /live/);
   assert.deepEqual(await page.fetch({ url: "https://api.example.com/data", responseType: "json" }), {
     status: 200,
@@ -103,7 +112,7 @@ test("page forwards all operations and arbitrary JSON values", async () => {
   await page.show();
   await page.close();
   assert.deepEqual(calls.slice(7).map(call => call.operation), [
-    "page.navigate", "page.html", "page.fetch", "page.click", "page.input",
+    "page.navigate", "page.cdp", "page.html", "page.fetch", "page.click", "page.input",
     "page.key", "page.waitText", "page.getUrl", "page.hide", "page.show",
     "page.close",
   ]);
@@ -127,6 +136,7 @@ test("Android return-value error envelopes reject every page operation with the 
     ["open", () => api.open({ visible: true })],
     ["navigate", () => page.navigate("https://example.com/")],
     ["executeJavaScript", () => page.executeJavaScript("return true;")],
+    ["cdp", () => page.cdp("Page.enable")],
     ["getHtml", () => page.getHtml()],
     ["fetch", () => page.fetch({ url: "https://example.com/data" })],
     ["click", () => page.click({ x: 1, y: 1 })],

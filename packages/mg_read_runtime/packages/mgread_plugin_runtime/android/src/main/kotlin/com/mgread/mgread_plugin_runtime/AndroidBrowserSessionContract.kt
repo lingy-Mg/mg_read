@@ -28,6 +28,7 @@ internal data class AndroidBrowserSessionRequest(
     val transport: String,
     val url: String,
     val pageParams: JSONObject? = null,
+    val debugAction: String? = null,
 ) {
     val origin: String = if (url.isEmpty()) "" else originOf(url)
 
@@ -47,6 +48,33 @@ internal data class AndroidBrowserSessionRequest(
             val pluginId = value.requiredString("pluginId", 160)
             require(PLUGIN_ID.matches(pluginId))
             val operation = value.optString("operation", "request")
+            if (operation == "debug") {
+                val pluginName = value.requiredString("pluginName", 128)
+                val action = value.requiredString("action", 8)
+                require(action == "enter" || action == "show")
+                val timeoutMs = value.optLong("timeoutMs", -1L)
+                require(timeoutMs in 1_000L..MAX_TIMEOUT_MILLIS)
+                return AndroidBrowserSessionRequest(
+                    action = "",
+                    body = null,
+                    headers = emptyMap(),
+                    interaction = "silent",
+                    maxResponseBytes = 1,
+                    method = "GET",
+                    operation = operation,
+                    pluginId = pluginId,
+                    pluginName = pluginName,
+                    presentation = "visible",
+                    selector = "",
+                    sessionKey = "",
+                    text = null,
+                    timeoutMs = timeoutMs,
+                    transport = "webview",
+                    url = "",
+                    debugAction = action,
+                    pageParams = value,
+                )
+            }
             if (operation.startsWith("page.")) {
                 return parsePage(value, pluginId, operation)
             }
@@ -136,6 +164,11 @@ internal data class AndroidBrowserSessionRequest(
             when (operation) {
                 "page.open" -> require(value.opt("visible") is Boolean)
                 "page.evaluate" -> value.requiredString("code", 512 * 1024)
+                "page.cdp" -> {
+                    value.requiredString("method", 256)
+                    require(value.opt("params") is JSONObject)
+                    require(value.getJSONObject("params").toString().toByteArray(Charsets.UTF_8).size <= 512 * 1024)
+                }
                 "page.fetch" -> {
                     val method = value.requiredString("method", 32)
                     require(METHOD.matches(method))
@@ -232,7 +265,7 @@ private val METHOD = Regex("^[A-Z]+$")
 private val PAGE_OPERATIONS = setOf(
     "page.open", "page.show", "page.hide", "page.close", "page.navigate",
     "page.evaluate", "page.html", "page.fetch", "page.click", "page.input",
-    "page.key", "page.waitText", "page.getUrl",
+    "page.key", "page.cdp", "page.waitText", "page.getUrl",
 )
 private val PAGE_KEYS = setOf(
     "Enter", "Tab", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
