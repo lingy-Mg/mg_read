@@ -134,6 +134,7 @@ class _ComicReaderViewState extends State<ComicReaderView>
   bool _catalogLoading = false;
   bool _loading = true;
   bool _controlsVisible = false;
+  bool _settingsVisible = false;
   bool _foreground = true;
   bool _disposed = false;
   bool _restoring = false;
@@ -160,6 +161,7 @@ class _ComicReaderViewState extends State<ComicReaderView>
   final HashMap<ComicReaderStateStore, String> _lastPreferenceWriteKeys =
       HashMap<ComicReaderStateStore, String>.identity();
   Future<void>? _exitRequest;
+  Future<void> _awakeWrite = Future<void>.value();
   List<_ComicListEntry> _entryCache = const <_ComicListEntry>[];
   List<double> _entryStarts = const <double>[];
   Map<String, int> _imageEntryIndexes = const <String, int>{};

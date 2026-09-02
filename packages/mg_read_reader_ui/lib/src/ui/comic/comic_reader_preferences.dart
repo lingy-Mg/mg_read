@@ -108,13 +108,21 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
     );
   }
 
-  Future<void> _syncAwake() => _reconcileAwake();
+  Future<void> _syncAwake() {
+    _awakeWrite = _awakeWrite.then(
+      (_) => _reconcileAwake(),
+      onError: (_) => _reconcileAwake(),
+    );
+    return _awakeWrite;
+  }
 
   Future<void> _reconcileAwake() async {
     final bool keep =
         _preferences.keepScreenOn && _platformCapabilities.keepScreenOn;
     final bool immersive =
-        _preferences.immersiveMode && _platformCapabilities.immersiveMode;
+        !_settingsVisible &&
+        _preferences.immersiveMode &&
+        _platformCapabilities.immersiveMode;
     final bool wanted =
         !_disposed &&
         _foreground &&
@@ -167,6 +175,18 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
     }();
     _exitRequest = request.whenComplete(() => _exitRequest = null);
     return _exitRequest!;
+  }
+
+  Future<void> _setSettingsVisible(bool value) async {
+    if (_disposed || _settingsVisible == value) return;
+    _settingsVisible = value;
+    if (!_preferences.immersiveMode ||
+        !_platformCapabilities.immersiveMode ||
+        !_foreground ||
+        _currentChapter == null) {
+      return;
+    }
+    await _syncAwake();
   }
 
   void _setControlsVisible(bool value) {

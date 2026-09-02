@@ -238,21 +238,26 @@ extension _TextReaderPersistence on _TextReaderViewState {
   }
 
   Future<void> _reconcileAwake() async {
+    // Opening settings is a temporary system-UI override. Keep the persisted
+    // preference unchanged so dismissing the sheet can restore the reader's
+    // previous immersive intent exactly once.
+    final bool immersive =
+        !_readerSettingsVisible &&
+        _preferences.immersiveMode &&
+        _platformCapabilities.immersiveMode;
     final bool shouldAcquire =
         !_disposed &&
         _foreground &&
         _content != null &&
         ((_preferences.keepScreenOn && _platformCapabilities.keepScreenOn) ||
-            (_preferences.immersiveMode &&
-                _platformCapabilities.immersiveMode));
+            immersive);
     if (shouldAcquire) {
       try {
         await ScreenAwakeCoordinator.instance.acquire(
           _awakeHolder,
           keepScreenOn:
               _preferences.keepScreenOn && _platformCapabilities.keepScreenOn,
-          immersiveMode:
-              _preferences.immersiveMode && _platformCapabilities.immersiveMode,
+          immersiveMode: immersive,
         );
         final bool stillDesired =
             !_disposed &&
@@ -260,7 +265,8 @@ extension _TextReaderPersistence on _TextReaderViewState {
             _content != null &&
             ((_preferences.keepScreenOn &&
                     _platformCapabilities.keepScreenOn) ||
-                (_preferences.immersiveMode &&
+                (!_readerSettingsVisible &&
+                    _preferences.immersiveMode &&
                     _platformCapabilities.immersiveMode));
         if (!stillDesired) {
           await ScreenAwakeCoordinator.instance.release(_awakeHolder);
@@ -300,9 +306,16 @@ extension _TextReaderPersistence on _TextReaderViewState {
     _publishSnapshot();
   }
 
-  void _setReaderSettingsVisible(bool value) {
+  Future<void> _setReaderSettingsVisible(bool value) async {
     if (_readerSettingsVisible == value || !mounted) return;
     setState(() => _readerSettingsVisible = value);
+    if (!_preferences.immersiveMode ||
+        !_platformCapabilities.immersiveMode ||
+        !_foreground ||
+        _content == null) {
+      return;
+    }
+    await _syncAwake();
   }
 
   bool get _readerInteractionBlocked =>

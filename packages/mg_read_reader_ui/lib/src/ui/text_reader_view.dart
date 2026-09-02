@@ -595,10 +595,13 @@ class _TextReaderViewState extends State<TextReaderView>
   @override
   Widget build(BuildContext context) => _buildReaderRoot(context);
 
-  void _showSettingsSheet() {
+  Future<void> _showSettingsSheet() async {
     if (_readerSettingsVisible) return;
     _stopAutoReading();
-    _setReaderSettingsVisible(true);
+    // Restore the system bars before the modal is laid out. The preference is
+    // deliberately left untouched; closing the modal reconciles it again.
+    await _setReaderSettingsVisible(true);
+    if (!mounted || !_readerSettingsVisible) return;
     final int routeSession = _sessionGeneration;
     final String routeBookId = widget.bookId;
     final TextReaderStateStore routeStore = widget.stateStore;
@@ -661,7 +664,7 @@ class _TextReaderViewState extends State<TextReaderView>
           _showLibrarySheet(initialIndex: 2);
         },
         onDismissed: () {
-          _setReaderSettingsVisible(false);
+          unawaited(_setReaderSettingsVisible(false));
           if (routeIsCurrent()) _commitPreferencePreview();
         },
       ),

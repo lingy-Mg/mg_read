@@ -794,7 +794,8 @@ extension _ComicReaderChrome on _ComicReaderViewState {
     );
   }
 
-  void _showSettings() {
+  Future<void> _showSettings() async {
+    if (_settingsVisible) return;
     final int session = _sessionGeneration;
     final String bookId = widget.bookId;
     final ComicReaderDataSource source = widget.dataSource;
@@ -802,6 +803,13 @@ extension _ComicReaderChrome on _ComicReaderViewState {
     bool isCurrent() => _isSession(session, bookId, source, store);
     final int sheetGeneration = _beginSheet();
     _setControlsVisible(false);
+    // The sheet needs the normal system-bar geometry. This is a session-only
+    // override; the persisted immersive preference is restored on dismissal.
+    await _setSettingsVisible(true);
+    if (!mounted || _disposed || !isCurrent()) {
+      await _setSettingsVisible(false);
+      return;
+    }
     final Future<void> sheet = showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -927,6 +935,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
     unawaited(
       sheet.whenComplete(() {
         _finishSheet(sheetGeneration);
+        if (_settingsVisible) unawaited(_setSettingsVisible(false));
         if (isCurrent()) {
           _preferencesDirty = false;
           unawaited(_savePreferences(_preferences, store: store));

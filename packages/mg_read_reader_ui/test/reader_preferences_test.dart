@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
+import 'package:novel_reader_ui/src/platform/reader_platform.dart';
+import 'package:novel_reader_ui/src/platform/screen_awake_coordinator.dart';
 
 void main() {
   test(
@@ -113,6 +115,60 @@ void main() {
     expect(store.preferences.theme, ReaderThemePreset.eyeCare);
     expect(store.preferences.lastNonNightTheme, ReaderThemePreset.eyeCare);
   });
+
+  testWidgets(
+    'temporarily exits immersive mode for settings and restores the preference',
+    (WidgetTester tester) async {
+      final ReaderPlatform previousPlatform = ReaderPlatform.instance;
+      final _RecordingReaderPlatform platform = _RecordingReaderPlatform();
+      ReaderPlatform.instance = platform;
+      try {
+        // The coordinator is process-global; establish a known platform state
+        // so this regression remains independent of earlier widget tests.
+        final Object testHolder = Object();
+        await ScreenAwakeCoordinator.instance.acquire(
+          testHolder,
+          keepScreenOn: false,
+          immersiveMode: true,
+        );
+        await ScreenAwakeCoordinator.instance.release(testHolder);
+        platform.requests.clear();
+        final _MemoryStore store = _MemoryStore(
+          const TextReaderPreferences(keepScreenOn: false, immersiveMode: true),
+        );
+        final TextReaderController controller = TextReaderController();
+        await tester.pumpWidget(_reader(store, controller));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 500)),
+        );
+        await tester.pumpAndSettle();
+        await controller.showControls();
+        await tester.pump();
+
+        final int immersiveRequest = platform.requests.lastIndexOf('0/1');
+        expect(
+          immersiveRequest,
+          greaterThanOrEqualTo(0),
+          reason: platform.requests.toString(),
+        );
+
+        await tester.tap(find.byKey(const Key('reader-toolbar-settings')));
+        await tester.pumpAndSettle();
+        final int settingsExit = platform.requests.lastIndexOf('0/0');
+        expect(settingsExit, greaterThan(immersiveRequest));
+        expect(store.preferences.immersiveMode, isTrue);
+
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(platform.requests.lastIndexOf('0/1'), greaterThan(settingsExit));
+        expect(store.preferences.immersiveMode, isTrue);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+        ReaderPlatform.instance = previousPlatform;
+      }
+    },
+  );
 }
 
 Widget _reader(_MemoryStore store, TextReaderController controller) =>
@@ -153,6 +209,22 @@ final class _MemoryStore implements TextReaderStateStore {
 
   @override
   Future<void> saveProgress(String bookId, ReaderProgress progress) async {}
+}
+
+final class _RecordingReaderPlatform extends ReaderPlatform {
+  final List<String> requests = <String>[];
+
+  @override
+  Future<ReaderPlatformCapabilities> capabilities() async =>
+      const ReaderPlatformCapabilities(keepScreenOn: true, immersiveMode: true);
+
+  @override
+  Future<void> setReaderSystemUi({
+    required bool keepScreenOn,
+    required bool immersiveMode,
+  }) async {
+    requests.add('${keepScreenOn ? 1 : 0}/${immersiveMode ? 1 : 0}');
+  }
 }
 
 final class _ThemeDataSource implements TextReaderDataSource {
