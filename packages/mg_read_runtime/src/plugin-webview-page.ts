@@ -7,6 +7,16 @@
  * Cookies, WebView handles and platform objects stay inside the host.
  */
 import { PluginManagerError } from "./plugin-manager-contract.js";
+import type {
+  PluginJsonObject,
+  PluginJsonValue,
+  PluginWebViewApi,
+  PluginWebViewCallOptions,
+  PluginWebViewFetchRequest,
+  PluginWebViewFetchResponse,
+  PluginWebViewKey,
+  PluginWebViewPage,
+} from "@mgread/source-api";
 import {
   browserSessionErrorCode,
   PluginBrowserSessionError,
@@ -14,77 +24,20 @@ import {
   type PluginWebViewHostRequest,
 } from "./plugin-browser-session.js";
 
+export type {
+  PluginJsonObject,
+  PluginJsonValue,
+  PluginWebViewApi,
+  PluginWebViewCallOptions,
+  PluginWebViewFetchRequest,
+  PluginWebViewFetchResponse,
+  PluginWebViewKey,
+  PluginWebViewPage,
+} from "@mgread/source-api";
+
 export const maximumWebViewTimeoutMs = 120_000;
 
-export type PluginJsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | readonly PluginJsonValue[]
-  | { readonly [key: string]: PluginJsonValue };
-
-export type PluginWebViewKey =
-  | "Enter" | "Tab" | "Escape"
-  | "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight"
-  | "PageUp" | "PageDown" | "Home" | "End"
-  | "Backspace" | "Delete";
-
-export interface PluginWebViewPage {
-  navigate(url: string, options?: WebViewCallOptions): Promise<void>;
-  executeJavaScript<T extends PluginJsonValue = PluginJsonValue>(
-    code: string,
-    options?: WebViewCallOptions,
-  ): Promise<T>;
-  /** Sends one raw CDP command. The Runtime does not whitelist the method or params. */
-  cdp<T extends PluginJsonValue = PluginJsonValue>(
-    method: string,
-    params?: PluginJsonObject,
-    options?: WebViewCallOptions,
-  ): Promise<T>;
-  getHtml(options?: WebViewCallOptions): Promise<string>;
-  fetch(request: PluginWebViewFetchRequest): Promise<PluginWebViewFetchResponse>;
-  click(request: { readonly x: number; readonly y: number; readonly timeoutMs?: number }): Promise<void>;
-  inputText(text: string, options?: WebViewCallOptions): Promise<void>;
-  key(request: {
-    readonly key: PluginWebViewKey;
-    readonly modifiers?: readonly ("alt" | "control" | "shift")[];
-    readonly timeoutMs?: number;
-  }): Promise<void>;
-  waitForText(request: {
-    readonly text: string;
-    readonly scope?: "text" | "html";
-    readonly timeoutMs: number;
-  }): Promise<{ readonly url: string }>;
-  getUrl(options?: WebViewCallOptions): Promise<string>;
-  show(options?: WebViewCallOptions): Promise<void>;
-  hide(options?: WebViewCallOptions): Promise<void>;
-  close(options?: WebViewCallOptions): Promise<void>;
-}
-
-export interface PluginWebViewApi {
-  open(options?: { readonly visible?: boolean; readonly timeoutMs?: number }): Promise<PluginWebViewPage>;
-}
-
-export interface PluginWebViewFetchRequest {
-  readonly url: string;
-  readonly method?: string;
-  readonly headers?: Readonly<Record<string, string>>;
-  readonly body?: string | null;
-  readonly responseType?: "text" | "json" | "base64";
-  readonly timeoutMs?: number;
-}
-
-export interface PluginWebViewFetchResponse {
-  readonly body: PluginJsonValue;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly status: number;
-  readonly url: string;
-}
-
-export type PluginJsonObject = { readonly [key: string]: PluginJsonValue };
-
-interface WebViewCallOptions { readonly timeoutMs?: number }
+type WebViewCallOptions = PluginWebViewCallOptions;
 
 export function createPluginWebViewApi(options: {
   readonly log?: (level: "debug" | "error" | "info" | "warn", message: string) => void;

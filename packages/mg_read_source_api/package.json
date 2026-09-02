@@ -1,0 +1,15 @@
+{
+  "name": "@mgread/source-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The single public TypeScript declaration surface for MgRead source plugins.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts"
+    }
+  },
+  "engines": {
+    "node": ">=24 <25"
+  }
+}

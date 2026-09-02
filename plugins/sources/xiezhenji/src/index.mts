@@ -1,6 +1,6 @@
 /** Plugin API adapter for repository UUID `xiezhenji`. */
 import { categories, type Context, XiezhenjiSource } from './source.js';
-interface RequestContext extends Context { readonly dataDir: string; readonly app: object; readonly plugin: object; }
+type RequestContext = Context;
 interface PageRequest { readonly cursor: string | null; readonly pageSize: number; }
 let context: RequestContext | undefined; let source: XiezhenjiSource | undefined;
 export async function activate(next: RequestContext) { context = next; next.log.info('source_activated'); }

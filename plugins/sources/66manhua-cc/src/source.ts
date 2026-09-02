@@ -5,13 +5,9 @@
  */
 import { Buffer } from 'node:buffer';
 import * as cheerio from 'cheerio/slim';
+import type { MgReadPluginContext } from '@mgread/source-api';
 
-export interface Context {
-  readonly cacheDir: string;
-  readonly http: { fetch(input: string | URL, init?: RequestInit): Promise<Response> };
-  readonly resource: { proxy(request: Record<string, unknown>): string };
-  readonly log: { debug(value: string): void; info(value: string): void; warn(value: string): void; error(value: string): void };
-}
+export type Context = MgReadPluginContext;
 
 export interface Summary {
   readonly id: string; readonly title: string; readonly contentKind: 'manga'; readonly author: string | null;

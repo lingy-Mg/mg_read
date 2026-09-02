@@ -1,7 +1,7 @@
 /** Plugin API adapter for Rehanman public webtoon pages. */
 import { RehanmanSource, type Context } from './source.js';
 
-interface RequestContext extends Context { readonly dataDir: string; readonly app: object; readonly plugin: object; }
+type RequestContext = Context;
 interface PageRequest { readonly cursor: string | null; readonly pageSize: number; }
 let source: RehanmanSource | undefined;
 

@@ -16,6 +16,7 @@
     "verify": "npm run typecheck && npm test && npm run pack:plugin"
   },
   "devDependencies": {
+    "@mgread/source-api": "file:../../../packages/mg_read_source_api",
     "@types/node": "24.13.3",
     "esbuild": "0.28.2",
     "typescript": "5.9.3"

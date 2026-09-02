@@ -16,7 +16,7 @@
     "pack:plugin": "npm run build && node tools/mgread.mjs pack",
     "verify": "npm run typecheck && npm test && npm run pack:plugin"
   },
-  "devDependencies": { "@types/node": "24.13.3", "esbuild": "0.28.2", "typescript": "5.9.3" },
+  "devDependencies": { "@mgread/source-api": "file:../../../packages/mg_read_source_api", "@types/node": "24.13.3", "esbuild": "0.28.2", "typescript": "5.9.3" },
   "mgread": {
     "schemaVersion": 1,
     "id": "org.mgread.hsck-video",

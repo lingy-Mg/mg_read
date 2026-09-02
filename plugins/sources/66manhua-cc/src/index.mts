@@ -1,7 +1,7 @@
 /** Plugin API adapter and source-owned discovery composition for 66manhua.cc. */
 import { ManhuaSource, type Context, type RankedSummary, type Summary } from './source.js';
 
-interface RequestContext extends Context { readonly dataDir: string; readonly app: object; readonly plugin: object; }
+type RequestContext = Context;
 interface PageRequest { readonly cursor: string | null; readonly pageSize: number; }
 let context: RequestContext | undefined; let source: ManhuaSource | undefined;
 

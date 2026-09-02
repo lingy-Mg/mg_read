@@ -47,6 +47,8 @@ plugins/sources/                    真实数据源及其他能力参考实现
   native addon 和自定义 loader。
 - Runtime 独立拥有 Node Core、Android Javet、desktop Node launcher、Supervisor、内部控制/数据面、Plugin
   API、安装、私有数据根、瞬时诊断和 Flutter Facade。
+- `packages/mg_read_source_api` 是数据源宿主上下文和 WebView 类型的唯一公开声明包；Runtime 实现与所有
+  数据源必须引用或同步它，来源不得复制 Context/WebView 子集。
 - Runtime 数据只包含不可变安装版本、插件私有 data/cache、Cookie、临时资源和运行状态，不包含主应用
   业务权威。installed 版本只在冷启动激活；development 变化先回收旧 VM，再启动唯一新 Runtime。
 - Runtime 来源 HTTP 客户端默认继承系统代理，也可接收应用传入的瞬时上游 HTTP、HTTPS 或 SOCKS5 代理，

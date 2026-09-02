@@ -6,11 +6,9 @@ const imageOrigin = 'https://img.rehanman.com';
 const graphQlUrl = 'https://api.rehanman.com/manga-graphql';
 const entriesQuery = 'query entries($inputs: InputEntries) { entries(inputs: $inputs) { docs { title title_normalized description thumbnail authors { name } genres { name } created_date modified_date status entries_setting { premium isHide } } totalPages totalDocs page } }';
 
-export interface Context {
-  readonly http: { fetch(input: string | URL, init?: RequestInit): Promise<Response> };
-  readonly resource: { proxy(request: Record<string, unknown>): string };
-  readonly log: { debug(value: string): void; info(value: string): void; warn(value: string): void; error(value: string): void };
-}
+import type { MgReadPluginContext } from '@mgread/source-api';
+
+export type Context = MgReadPluginContext;
 
 type Json = null | boolean | number | string | readonly Json[] | { readonly [key: string]: Json };
 interface Entry { readonly title: string; readonly title_normalized: string; readonly description: string | null; readonly thumbnail: string | null; readonly authors: readonly string[]; readonly genres: readonly string[]; readonly created_date: string | null; readonly modified_date: string | null; readonly status: string | null; readonly entries_data: { readonly volume_name: string | null; readonly chapters: readonly Chapter[] } | null; readonly entries_setting: readonly { readonly premium: boolean; readonly isHide: boolean }[]; }

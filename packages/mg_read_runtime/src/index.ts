@@ -92,6 +92,7 @@ export type {
   PluginJsonValue,
   PluginJsonObject,
   PluginWebViewApi,
+  PluginWebViewCallOptions,
   PluginWebViewFetchRequest,
   PluginWebViewFetchResponse,
   PluginWebViewKey,

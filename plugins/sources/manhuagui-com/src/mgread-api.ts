@@ -1,12 +1,5 @@
-/** File-local MgRead Plugin API v1 projection used by this manga source. */
-export interface MgReadPluginContext {
-  readonly dataDir: string; readonly cacheDir: string;
-  readonly http: { fetch(input: string | URL, init?: RequestInit): Promise<Response> };
-  readonly resource: { proxy(request: Record<string, unknown>): string };
-  readonly log: { debug(event: string): void; info(event: string): void; warn(event: string): void; error(event: string): void };
-  readonly app: { readonly runtimeVersion: string; readonly nodeVersion: string; readonly pluginApi: number };
-  readonly plugin: { readonly id: string; readonly version: string };
-}
+/** Content types remain source-local; the host context comes from the shared public API. */
+export type { MgReadPluginContext } from '@mgread/source-api';
 export type Status = 'ongoing' | 'completed' | 'hiatus' | 'unknown';
 export interface Summary {
   readonly id: string; readonly title: string; readonly contentKind: 'manga'; readonly author: string | null;

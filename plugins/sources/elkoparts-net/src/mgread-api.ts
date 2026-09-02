@@ -1,22 +1,8 @@
 /**
- * File-local projection of MgRead Plugin API v1 used by this source.
+ * Content types are source-local; the host context comes from the shared public API.
  * Keep nullable scalar keys and collection fields explicit; the Runtime validates the emitted wire shape.
  */
-
-export interface MgReadPluginContext {
-  readonly dataDir: string;
-  readonly cacheDir: string;
-  readonly http: { fetch(input: string | URL, init?: RequestInit): Promise<Response> };
-  readonly resource: { proxy(request: Record<string, unknown>): string };
-  readonly log: {
-    debug(event: string): void;
-    info(event: string): void;
-    warn(event: string): void;
-    error(event: string): void;
-  };
-  readonly app: { readonly runtimeVersion: string; readonly nodeVersion: string; readonly pluginApi: number };
-  readonly plugin: { readonly id: string; readonly version: string };
-}
+export type { MgReadPluginContext } from '@mgread/source-api';
 
 export type ContentStatus = 'ongoing' | 'completed' | 'hiatus' | 'unknown';
 

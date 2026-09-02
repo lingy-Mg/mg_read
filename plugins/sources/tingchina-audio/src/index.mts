@@ -1,12 +1,9 @@
 /** Ting China audio source: JSON API projection and Runtime-owned media proxy. */
 import { createHash } from 'node:crypto';
+import type { MgReadPluginContext } from '@mgread/source-api';
 
 type Json = Record<string, unknown>;
-type Context = {
-  readonly http: { fetch(input: string | URL, init?: RequestInit): Promise<Response> };
-  readonly resource: { proxy(request: Record<string, unknown>): string };
-  readonly log: { info(event: string): void; warn(event: string): void };
-};
+type Context = MgReadPluginContext;
 
 const base = 'https://app.365ting.com';
 const api = `${base}/listen/Apitzg2025/`;

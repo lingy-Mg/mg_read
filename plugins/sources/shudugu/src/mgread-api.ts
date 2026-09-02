@@ -1,18 +1,10 @@
 /**
  * 速读谷编译期使用的 MgRead Plugin API 类型。
  *
- * 职责：声明 capability 请求、结果和宿主上下文的静态形状。
+ * 职责：声明 capability 请求和结果；宿主上下文统一来自共享公开 API。
  * 注意：本文件不做运行时校验，也不拥有 wire 协议；返回值仍由 Runtime 在边界统一校验。
  */
-export interface MgReadPluginContext {
-  readonly dataDir: string;
-  readonly cacheDir: string;
-  readonly http: { fetch(input: string | URL, init?: RequestInit): Promise<Response> };
-  readonly resource: { proxy(request: Record<string, unknown>): string };
-  readonly log: { debug(event: string): void; info(event: string): void; warn(event: string): void; error(event: string): void };
-  readonly app: { readonly runtimeVersion: string; readonly nodeVersion: string; readonly pluginApi: number };
-  readonly plugin: { readonly id: string; readonly version: string };
-}
+export type { MgReadPluginContext } from '@mgread/source-api';
 export type ContentKind = 'novel' | 'manga';
 export type ContentStatus = 'ongoing' | 'completed' | 'hiatus' | 'unknown';
 export type AccessKind = 'free' | 'paid' | 'mixed' | 'unknown';

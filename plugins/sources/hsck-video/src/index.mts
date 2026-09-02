@@ -1,10 +1,8 @@
 /** HSCK video source: MacCMS lists, neutral episode groups, and player-data decoding. */
+import type { MgReadPluginContext } from '@mgread/source-api';
+
 type Json = Record<string, unknown>;
-type Context = {
-  readonly http: { fetch(input: string | URL, init?: RequestInit): Promise<Response> };
-  readonly resource: { proxy(request: Record<string, unknown>): string };
-  readonly log: { info(event: string): void; warn(event: string): void };
-};
+type Context = MgReadPluginContext;
 
 const base = 'https://hsck.la';
 const headers = { Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,application/json,text/plain,*/*;q=0.8', 'Accept-Language': 'zh-CN,zh;q=0.9', Referer: `${base}/`, 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36' };

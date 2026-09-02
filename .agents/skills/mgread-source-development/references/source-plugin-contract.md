@@ -2,13 +2,15 @@
 
 ## 事实入口
 
-- 默认参考来源公开类型：`plugins/sources/aisishuwu/src/mgread-api.ts`
+- 数据源唯一宿主上下文声明：`packages/mg_read_source_api/index.d.ts`
+- 数据源引用示例：`packages/mg_read_source_api/README.md`
 - Runtime 上下文与内容校验：`packages/mg_read_runtime/src/plugin-manager-contract.ts`、
   `plugin-content-types.ts`、`plugin-content-validation.ts`
 - 项目与 artifact：`plugin-package.ts`、`plugin-single-file.ts`、`plugin-archive.ts`
 - 真实数据源增量：`plugins/sources/AGENTS.md`、目标入口文件头和直接测试
 
-不要从本参考推断当前字段或版本；以这些公开类型、package metadata 和测试为准。
+不要从本参考推断当前字段或版本；以共享公开类型、package metadata 和测试为准。来源内容结果类型可以
+按媒介在来源内声明，但宿主上下文不得复制。
 
 ## 项目与生命周期
 

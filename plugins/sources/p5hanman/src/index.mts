@@ -6,11 +6,7 @@
  */
 import { categories, type Context, P5HanmanSource } from './source.js';
 
-interface ActiveContext extends Context {
-  readonly dataDir: string;
-  readonly app: object;
-  readonly plugin: object;
-}
+type ActiveContext = Context;
 
 interface PageRequest {
   readonly cursor: string | null;

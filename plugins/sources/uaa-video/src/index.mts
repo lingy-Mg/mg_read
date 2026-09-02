@@ -7,12 +7,10 @@
  * 状态所有权：插件只持有当前宿主上下文和 300ms 请求节流状态，不保存标题、查询、媒体地址或凭据。
  * 注意：稳定 ID 不包含镜像域名或随机 viewId；媒体地址使用 sessionOnly，每次播放均重新解析。
  */
+import type { MgReadPluginContext } from '@mgread/source-api';
+
 type Json = Record<string, unknown>;
-type Context = {
-  readonly http: { fetch(input: string | URL, init?: RequestInit): Promise<Response> };
-  readonly resource: { proxy(request: Record<string, unknown>): string };
-  readonly log: { info(event: string): void; warn(event: string): void };
-};
+type Context = MgReadPluginContext;
 type Channel = {
   readonly id: string;
   readonly title: string;

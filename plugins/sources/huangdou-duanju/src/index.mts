@@ -10,13 +10,10 @@
  */
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from 'node:crypto';
 import { gunzipSync, gzipSync } from 'node:zlib';
+import type { MgReadPluginContext } from '@mgread/source-api';
 
 type Json = Record<string, unknown>;
-type Context = {
-  readonly http: { fetch(input: string | URL, init?: RequestInit): Promise<Response> };
-  readonly resource: { proxy(request: Record<string, unknown>): string };
-  readonly log: { debug(event: string): void; error(event: string): void; info(event: string): void; warn(event: string): void };
-};
+type Context = MgReadPluginContext;
 type DiscoverTarget =
   | { readonly kind: 'hot' }
   | { readonly kind: 'rank' }

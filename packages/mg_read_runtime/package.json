@@ -25,5 +25,8 @@
     "esbuild": "0.28.2",
     "typescript": "5.9.3",
     "undici": "7.29.0"
+  },
+  "dependencies": {
+    "@mgread/source-api": "file:../mg_read_source_api"
   }
 }

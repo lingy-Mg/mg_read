@@ -7,14 +7,10 @@
  */
 import { createDecipheriv, createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
+import type { MgReadPluginContext } from '@mgread/source-api';
 
 type Json = Record<string, unknown>;
-type Context = {
-  readonly http: { fetch(input: string | URL, init?: RequestInit): Promise<Response> };
-  readonly errors?: { raise(code: 'source_media_resolution_failed'): never };
-  readonly resource: { proxy(request: Record<string, unknown>): string };
-  readonly log: { info(event: string): void; warn(event: string): void };
-};
+type Context = MgReadPluginContext;
 
 const base = 'https://www.yinhuadm.xyz';
 const playerBase = 'https://player.mcue.cc';

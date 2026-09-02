@@ -7,11 +7,9 @@
  * 状态所有权：插件只持有当前宿主上下文，并合并同一详情的并发请求；不缓存正文、媒体、Cookie 或签名地址。
  * 注意：稳定 ID 不包含域名；镜像 origin 只由本文件的 base 常量拥有。
  */
-type Context = {
-  readonly http: { fetch(input: string | URL, init?: RequestInit): Promise<Response> };
-  readonly resource: { proxy(request: Record<string, unknown>): string };
-  readonly log: { info(event: string): void; warn(event: string): void };
-};
+import type { MgReadPluginContext } from '@mgread/source-api';
+
+type Context = MgReadPluginContext;
 
 type Category = { readonly code: string; readonly title: string };
 type ContentSummary = ReturnType<typeof summary>;

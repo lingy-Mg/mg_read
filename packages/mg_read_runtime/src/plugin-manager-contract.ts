@@ -9,10 +9,12 @@
  *
  */
 import type { JsonObject } from "./protocol.js";
+import type { MgReadPluginContext } from "@mgread/source-api";
 import type { PluginPackageDescriptor } from "./plugin-package.js";
 import type { PluginContentOperation } from "./plugin-content.js";
-import type { PluginWebViewApi } from "./plugin-webview-page.js";
 import type { RuntimeDebugLogCategory } from "./debug-http.js";
+
+export type { MgReadPluginContext } from "@mgread/source-api";
 
 /** Runtime-owned categories for Debug-only plugin log projections. */
 export type PluginManagerLogCategory = Exclude<RuntimeDebugLogCategory, "runtime.diagnostic">;
@@ -157,42 +159,6 @@ export interface PluginCacheClearItem extends JsonObject {
 /** Bounded batch result for one or all plugin cache clear requests. */
 export interface PluginCacheClearResult extends JsonObject {
   readonly items: readonly PluginCacheClearItem[];
-}
-
-export interface MgReadPluginContext {
-  readonly app: {
-    readonly nodeVersion: string;
-    readonly pluginApi: number;
-    readonly runtimeVersion: string;
-  };
-  readonly cacheDir: string;
-  readonly dataDir: string;
-  readonly errors: {
-    raise(code: PluginPublicErrorCode): never;
-  };
-  readonly http: {
-    fetch(input: string | URL, init?: RequestInit): Promise<Response>;
-  };
-  readonly browser: {
-    readonly sessionV1: {
-      request(request: unknown): Promise<unknown>;
-      requestCoordinates(request: unknown): Promise<unknown>;
-      nativeInput(request: unknown): Promise<unknown>;
-      controlClick(request: unknown): Promise<unknown>;
-    };
-  };
-  readonly webview: PluginWebViewApi;
-  readonly resource: { proxy(request: JsonObject): string };
-  readonly log: {
-    debug(event: string): void;
-    error(event: string): void;
-    info(event: string): void;
-    warn(event: string): void;
-  };
-  readonly plugin: {
-    readonly id: string;
-    readonly version: string;
-  };
 }
 
 export type PluginContentFunction = (

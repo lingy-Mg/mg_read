@@ -38,8 +38,8 @@
 - 横向集合与列表：`widgets/discovery_landscape_cover_collection.dart`、
   `widgets/discovery_landscape_content_list_item.dart`
 - 横竖详情头：`source_content_detail_sheet.dart`、`source_content_detail_sections.dart`
-- 默认参考来源公开类型：`plugins/sources/aisishuwu/src/mgread-api.ts`
-- 真实来源编译期类型：各来源 `src/mgread-api.ts`
+- 数据源宿主上下文唯一声明：`packages/mg_read_source_api/index.d.ts`
+- 来源内容结果类型：各来源自己的内容类型文件；不得复制宿主 Context/WebView 声明
 - 稳定规范：`docs/core.md` 的“插件内容 API”章节
 
 `coverOrientation=portrait|landscape` 只选择两套独立的通用封面组件。横向组件不表示视频，不添加播放图标或

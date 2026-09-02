@@ -3,12 +3,33 @@
 ## 事实入口
 
 - Runtime API 与校验：`packages/mg_read_runtime/src/plugin-webview-page.ts`
+- 数据源唯一编译期声明：`packages/mg_read_source_api/index.d.ts`
 - Provider 公共类型：`packages/mg_read_runtime/src/plugin-browser-session.ts`
-- 默认参考来源投影：`plugins/sources/aisishuwu/src/mgread-api.ts`
+- 引用示例：`packages/mg_read_source_api/README.md`
 - 直接测试：`packages/mg_read_runtime/test/webview-page.test.mjs`、
   `browser-session.test.mjs`
 
-字段、参数、返回类型、错误码和上限以这些公开类型与测试为准；本参考只保留使用语义。
+字段、参数、返回类型、错误码和上限以共享声明、Runtime 实现与测试为准；本参考只保留使用语义。
+
+## 数据源引用方式
+
+数据源在 `package.json` 的 `devDependencies` 中引用本地 `@mgread/source-api`，在 `.ts`/`.mts` 中只做
+类型导入：
+
+```ts
+import type {
+  MgReadPluginContext,
+  PluginWebViewPage,
+} from '@mgread/source-api';
+
+export async function activate(context: MgReadPluginContext): Promise<void> {
+  const page: PluginWebViewPage = await context.webview.open();
+  await page.navigate('https://example.com');
+}
+```
+
+不要从 `packages/mg_read_runtime/src` 深层导入，也不要保留来源自己的 Context/WebView 子集；否则新增
+能力（例如 `cdp`、`click`、`inputText`、`key`、`close`）不会在来源编译期可见。
 
 ## 页面与生命周期
 
