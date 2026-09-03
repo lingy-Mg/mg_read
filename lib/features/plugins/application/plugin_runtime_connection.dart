@@ -55,7 +55,7 @@ abstract interface class PluginRuntimeGateway {
   Future<void> controlSourceWebView({required String pluginId, required String pluginName, required PluginWebViewDebugAction action});
 }
 
-/// Optional event capability for the Windows desktop development lifecycle.
+/// Optional event capability for the desktop development lifecycle.
 abstract interface class PluginRuntimeDevelopmentGateway {
   Stream<DevelopmentPluginChangeBatch> get developmentChanges;
 }
@@ -349,7 +349,7 @@ String? _boundedRuntimeValidationDetail(String value) {
 /// Process-scoped public Facade shared by every main-application capability.
 final pluginRuntimeFacadeProvider = Provider<PluginRuntime>((Ref ref) => PluginRuntime());
 
-/// Path-free Windows desktop development-source events from the shared Facade.
+/// Path-free desktop development-source events from the shared Facade.
 /// Android exposes the same typed contract as an empty stream.
 final pluginRuntimeDevelopmentChangesProvider = StreamProvider<DevelopmentPluginChangeBatch>((Ref ref) {
   final gateway = ref.watch(pluginRuntimeGatewayProvider);
@@ -491,7 +491,7 @@ final pluginRuntimeDevelopmentPackageProvider = NotifierProvider<PluginRuntimeDe
   PluginRuntimeDevelopmentPackageController.new,
 );
 
-/// Serializes the Windows-only Runtime private-directory shell action.
+/// Serializes the desktop-only Runtime private-directory shell action.
 final pluginRuntimePrivateDirectoryProvider = NotifierProvider<PluginRuntimePrivateDirectoryController, bool>(
   PluginRuntimePrivateDirectoryController.new,
 );
@@ -602,7 +602,7 @@ List<String> _appendImportLog(List<String> current, String message) {
   return List<String>.unmodifiable(next.sublist(next.length - 12));
 }
 
-/// Selects and activates a Windows desktop development-source directory.
+/// Selects and activates a desktop development-source directory.
 final pluginRuntimeDevelopmentDirectoryProvider = NotifierProvider<PluginRuntimeDevelopmentDirectoryController, bool>(
   PluginRuntimeDevelopmentDirectoryController.new,
 );

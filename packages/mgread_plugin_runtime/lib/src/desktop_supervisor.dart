@@ -498,8 +498,9 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       _process = process;
       _processStartCount += 1;
 
-      // Windows desktop builds may spawn the pinned npm build child. Assign the Core
-      // first so every descendant belongs to the same kill-on-close Job.
+      // Windows development builds may spawn the pinned npm child. Assign the
+      // Core first so every Windows descendant belongs to the same Job. macOS
+      // binds the same child tree through the parent watchdog.
       jobObject?.assignProcess(process.pid);
 
       final monitor = _RuntimeChildMonitor(

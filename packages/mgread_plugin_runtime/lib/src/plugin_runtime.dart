@@ -236,16 +236,16 @@ final class PluginRuntime {
     return _supervisor.importPluginArtifacts(artifacts);
   }
 
-  /// Selects a Windows desktop development-source directory.
+  /// Selects a desktop development-source directory.
   ///
   /// Android deliberately has no development-directory capability; Android
   /// sources must be imported as validated `.mgplugin.js` or `.mgplugin`
   /// artifacts.
   Future<bool> selectDevelopmentDirectory() async {
-    if (!Platform.isWindows) {
+    if (!Platform.isWindows && !Platform.isMacOS) {
       throw const PluginRuntimeException(
         'unsupported',
-        'Development source directories are available on Windows desktop only.',
+        'Development source directories are available on desktop only.',
       );
     }
     final path = await getDirectoryPath(confirmButtonText: '选择开发目录');

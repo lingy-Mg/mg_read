@@ -96,31 +96,24 @@ final class _DesktopRuntimeBundle {
               'runtime',
             ]),
     );
-    // macOS ships the user-facing installed-plugin Runtime without the
-    // workspace build toolchain. Development-directory builds remain a
-    // Windows-only capability while import, discovery, search, detail,
-    // catalog, content, transfer and cache operations are fully available.
-    final developmentPluginDirectory = Platform.isWindows
-        ? _readConfiguredDevelopmentPluginDirectory(dataRoot) ??
-              (kDebugMode
-                  ? _findDevelopmentPluginDirectory(<Directory>[
-                      Directory.current,
-                      executableDirectory,
-                    ])
-                  : null)
-        : null;
-    final developmentNpmCli = Platform.isWindows
-        ? File(
-            _joinPath(<String>[
-              bundleRoot.path,
-              'node',
-              'node_modules',
-              'npm',
-              'bin',
-              'npm-cli.js',
-            ]),
-          )
-        : null;
+    final developmentPluginDirectory =
+        _readConfiguredDevelopmentPluginDirectory(dataRoot) ??
+        (kDebugMode
+            ? _findDevelopmentPluginDirectory(<Directory>[
+                Directory.current,
+                executableDirectory,
+              ])
+            : null);
+    final developmentNpmCli = File(
+      _joinPath(<String>[
+        bundleRoot.path,
+        'node',
+        'node_modules',
+        'npm',
+        'bin',
+        'npm-cli.js',
+      ]),
+    );
     return _DesktopRuntimeBundle(
       dataRoot: dataRoot,
       bundledPluginDirectory: null,

@@ -66,7 +66,7 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
 
   @override
   Widget build(BuildContext context) {
-    final bool canSelectDevelopmentDirectory = Platform.isWindows;
+    final bool canSelectDevelopmentDirectory = Platform.isWindows || Platform.isMacOS;
     final bool canOpenPrivateDirectory = Platform.isWindows || Platform.isMacOS;
     return Scaffold(
       body: SafeArea(
@@ -181,7 +181,7 @@ class _DevelopmentDirectorySection extends StatelessWidget {
   Widget build(BuildContext context) => _HelpSection(
     icon: Icons.code_rounded,
     title: '开发数据源插件',
-    body: '请选择数据源插件集合目录，例如 …\\plugins\\sources。Runtime 只读取它的第一层子目录；不要选择单个数据源插件目录。',
+    body: '请选择数据源插件集合目录，例如 …${Platform.pathSeparator}plugins${Platform.pathSeparator}sources。Runtime 只读取它的第一层子目录；不要选择单个数据源插件目录。',
     action: OutlinedButton.icon(
       key: const Key('data-source-add-development-directory'),
       onPressed: isSelecting ? null : onPressed,

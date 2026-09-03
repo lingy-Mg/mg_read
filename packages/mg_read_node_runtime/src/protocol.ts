@@ -181,7 +181,7 @@ export type DevelopmentPluginChangeKind =
   | "removed"
   | "updated";
 
-/** One path-free Windows desktop development-source change. */
+/** One path-free desktop development-source change. */
 export interface RuntimeDevelopmentPluginChange extends JsonObject {
   readonly kind: DevelopmentPluginChangeKind;
   readonly pluginId?: string;

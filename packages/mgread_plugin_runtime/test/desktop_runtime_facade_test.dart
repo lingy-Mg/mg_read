@@ -517,7 +517,6 @@ void main() {
         isFalse,
       );
     },
-    skip: Platform.isMacOS,
   );
 
   test('closed test Runtime rejects another Facade capability call', () async {

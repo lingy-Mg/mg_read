@@ -8,7 +8,9 @@ import test from "node:test";
 import { PluginManager } from "../dist/index.js";
 
 const npmCli = fileURLToPath(new URL(
-  "../tools/node-v24.16.0-win-x64/node_modules/npm/bin/npm-cli.js",
+  process.platform === "darwin"
+    ? "../tools/node-v24.16.0-darwin-arm64/lib/node_modules/npm/bin/npm-cli.js"
+    : "../tools/node-v24.16.0-win-x64/node_modules/npm/bin/npm-cli.js",
   import.meta.url,
 ));
 
@@ -95,7 +97,7 @@ async function search(manager, pluginId) {
 
 test(
   "development builds hot swap generations and retain the old version on failure",
-  { skip: process.platform !== "win32" },
+  { skip: process.platform !== "win32" && process.platform !== "darwin" },
   async (t) => {
   const root = await temporaryDirectory(t, "mgread-development-hot-reload-");
   const dataRoot = join(root, "runtime-data");
