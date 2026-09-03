@@ -25,7 +25,7 @@ final class _DesktopRuntimeBundle {
   /// npm CLI packaged beside the exact Node executable for source builds.
   final File? developmentNpmCli;
 
-  /// Opens a Runtime-owned directory through the Flutter Windows shell layer.
+  /// Opens a Runtime-owned directory through the current desktop shell.
   final _DesktopDirectoryLauncher directoryLauncher;
 
   /// Compiled Node executable entrypoint that emits ready/diagnostic records.
@@ -40,65 +40,102 @@ final class _DesktopRuntimeBundle {
   /// Bundle root used as the child process current working directory.
   final Directory workingDirectory;
 
-  /// Resolves the fixed Windows bundle staged into a Flutter application.
+  /// Resolves the fixed platform bundle staged into a Flutter application.
   factory _DesktopRuntimeBundle.fromApplicationPackage() {
-    if (!Platform.isWindows) {
+    if (!Platform.isWindows && !Platform.isMacOS) {
       throw const PluginRuntimeException(
         'unsupported',
         'This Runtime package currently has no launcher for this platform.',
       );
     }
 
-    final appDirectory = File(Platform.resolvedExecutable).parent;
-    final localAppData = Platform.environment['LOCALAPPDATA'];
-    if (localAppData == null || localAppData.isEmpty) {
+    final executableDirectory = File(Platform.resolvedExecutable).parent;
+    final dataHome = Platform.isWindows
+        ? Platform.environment['LOCALAPPDATA']
+        : Platform.environment['HOME'];
+    if (dataHome == null || dataHome.isEmpty) {
       throw const PluginRuntimeException(
         'runtime_data_root_unavailable',
         'The Runtime could not resolve its application data directory.',
       );
     }
+    final platformAssetRoot = Platform.isWindows
+        ? 'windows-x64'
+        : 'macos-arm64';
+    final flutterAssetRoot = Platform.isWindows
+        ? _joinPath(<String>[
+            executableDirectory.path,
+            'data',
+            'flutter_assets',
+          ])
+        : _joinPath(<String>[
+            executableDirectory.parent.path,
+            'Frameworks',
+            'App.framework',
+            'Resources',
+            'flutter_assets',
+          ]);
     final bundleRoot = Directory(
       _joinPath(<String>[
-        appDirectory.path,
-        'data',
-        'flutter_assets',
+        flutterAssetRoot,
         'packages',
         'mgread_plugin_runtime',
         'assets',
         'runtime',
-        'windows-x64',
+        platformAssetRoot,
       ]),
     );
     final dataRoot = Directory(
-      _joinPath(<String>[localAppData, 'MgRead', 'runtime']),
+      Platform.isWindows
+          ? _joinPath(<String>[dataHome, 'MgRead', 'runtime'])
+          : _joinPath(<String>[
+              dataHome,
+              'Library',
+              'Application Support',
+              'MgRead',
+              'runtime',
+            ]),
     );
-    final developmentPluginDirectory =
-        _readConfiguredDevelopmentPluginDirectory(dataRoot) ??
-        (kDebugMode
-            ? _findDevelopmentPluginDirectory(<Directory>[
-                Directory.current,
-                appDirectory,
-              ])
-            : null);
-    final developmentNpmCli = File(
-      _joinPath(<String>[
-        bundleRoot.path,
-        'node',
-        'node_modules',
-        'npm',
-        'bin',
-        'npm-cli.js',
-      ]),
-    );
+    // macOS ships the user-facing installed-plugin Runtime without the
+    // workspace build toolchain. Development-directory builds remain a
+    // Windows-only capability while import, discovery, search, detail,
+    // catalog, content, transfer and cache operations are fully available.
+    final developmentPluginDirectory = Platform.isWindows
+        ? _readConfiguredDevelopmentPluginDirectory(dataRoot) ??
+              (kDebugMode
+                  ? _findDevelopmentPluginDirectory(<Directory>[
+                      Directory.current,
+                      executableDirectory,
+                    ])
+                  : null)
+        : null;
+    final developmentNpmCli = Platform.isWindows
+        ? File(
+            _joinPath(<String>[
+              bundleRoot.path,
+              'node',
+              'node_modules',
+              'npm',
+              'bin',
+              'npm-cli.js',
+            ]),
+          )
+        : null;
     return _DesktopRuntimeBundle(
       dataRoot: dataRoot,
       bundledPluginDirectory: null,
       developmentPluginDirectory: developmentPluginDirectory,
       developmentNpmCli: developmentNpmCli,
-      directoryLauncher: _openWithWindowsExplorer,
+      directoryLauncher: Platform.isWindows
+          ? _openWithWindowsExplorer
+          : _openWithMacOSFinder,
       entrypoint: File(_joinPath(<String>[bundleRoot.path, 'dist', 'cli.js'])),
       nodeExecutable: File(
-        _joinPath(<String>[bundleRoot.path, 'node', 'MgReadNode.exe']),
+        _joinPath(<String>[
+          bundleRoot.path,
+          'node',
+          Platform.isWindows ? 'MgReadNode.exe' : 'MgReadNode',
+        ]),
       ),
       testExitAfterReady: null,
       workingDirectory: bundleRoot,
@@ -118,6 +155,9 @@ final class _DesktopRuntimeBundle {
     _DesktopDirectoryLauncher? directoryLauncher,
     Duration? testExitAfterReady,
   }) {
+    final platformToolchain = Platform.isMacOS
+        ? 'node-v24.16.0-darwin-arm64'
+        : 'node-v24.16.0-win-x64';
     return _DesktopRuntimeBundle(
       dataRoot:
           runtimeDataRoot ??
@@ -134,7 +174,8 @@ final class _DesktopRuntimeBundle {
         _joinPath(<String>[
           runtimeRepositoryRoot.path,
           'tools',
-          'node-v24.16.0-win-x64',
+          platformToolchain,
+          if (Platform.isMacOS) 'lib',
           'node_modules',
           'npm',
           'bin',
@@ -153,8 +194,9 @@ final class _DesktopRuntimeBundle {
             _joinPath(<String>[
               runtimeRepositoryRoot.path,
               'tools',
-              'node-v24.16.0-win-x64',
-              'node.exe',
+              platformToolchain,
+              if (Platform.isMacOS) 'bin',
+              Platform.isMacOS ? 'node' : 'node.exe',
             ]),
           ),
       testExitAfterReady: testExitAfterReady,
@@ -174,10 +216,21 @@ Future<void> _openWithWindowsExplorer(Directory directory) async {
   );
 }
 
-/// Prevents package tests from opening a user-visible Explorer window by default.
+/// Starts Finder from the Flutter owner, outside the Node child process.
+Future<void> _openWithMacOSFinder(Directory directory) async {
+  await directory.create(recursive: true);
+  await Process.start(
+    '/usr/bin/open',
+    <String>[directory.path],
+    mode: ProcessStartMode.detached,
+    runInShell: false,
+  );
+}
+
+/// Prevents package tests from opening a user-visible file manager by default.
 Future<void> _discardDirectoryOpen(Directory _) async {}
 
-/// Owns exactly one desktop Node child, its Windows Job, and its loopback link.
+/// Owns exactly one desktop Node child, platform process ownership, and its loopback link.
 ///
 /// This is the sole location where process launch, ready parsing, HTTP health,
 /// WebSocket setup, structured diagnostics, and hard-stop cleanup are joined.

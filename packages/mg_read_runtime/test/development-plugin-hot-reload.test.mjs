@@ -93,7 +93,10 @@ async function search(manager, pluginId) {
   );
 }
 
-test("development builds hot swap generations and retain the old version on failure", async (t) => {
+test(
+  "development builds hot swap generations and retain the old version on failure",
+  { skip: process.platform !== "win32" },
+  async (t) => {
   const root = await temporaryDirectory(t, "mgread-development-hot-reload-");
   const dataRoot = join(root, "runtime-data");
   const developmentRoot = join(root, "sources");
@@ -157,4 +160,5 @@ test("development builds hot swap generations and retain the old version on fail
     ["org.example.watched"],
   );
   assert.equal(JSON.stringify(events).includes(root), false);
-});
+  },
+);

@@ -39,16 +39,22 @@ test("Flutter package declares every nested platform Runtime asset directory", a
   const assetEntries = [...pubspec.matchAll(/^\s+- (assets\/runtime\/[^\r\n]+)$/gm)]
     .map((match) => match[1]);
 
-  assert.deepEqual(assetEntries, [
+  for (const requiredEntry of [
     "assets/runtime/android/runtime-version.txt",
     "assets/runtime/android/dist/",
     "assets/runtime/android/dist/debug-ui/",
     "assets/runtime/windows-x64/node/",
     "assets/runtime/windows-x64/dist/",
     "assets/runtime/windows-x64/dist/debug-ui/",
-  ]);
+    "assets/runtime/macos-arm64/node/",
+    "assets/runtime/macos-arm64/dist/",
+    "assets/runtime/macos-arm64/dist/debug-ui/",
+  ]) {
+    assert.ok(assetEntries.includes(requiredEntry), requiredEntry);
+  }
   assert.ok(!assetEntries.includes("assets/runtime/android/"));
   assert.ok(!assetEntries.includes("assets/runtime/windows-x64/"));
+  assert.ok(!assetEntries.includes("assets/runtime/macos-arm64/"));
 });
 
 test("Android Runtime asset marker includes its staged content fingerprint", async () => {

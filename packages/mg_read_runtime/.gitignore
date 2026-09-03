@@ -1,6 +1,8 @@
 node_modules/
 !tools/node-v24.16.0-win-x64/node_modules/
 !tools/node-v24.16.0-win-x64/node_modules/**
+!tools/node-v24.16.0-darwin-arm64/lib/node_modules/
+!tools/node-v24.16.0-darwin-arm64/lib/node_modules/**
 dist/
 !test/fixtures/standard-plugin/dist/
 !test/fixtures/standard-plugin/dist/index.mjs
@@ -14,3 +16,6 @@ coverage/
 /packages/mgread_plugin_runtime/assets/runtime/windows-x64/node/
 /packages/mgread_plugin_runtime/assets/runtime/windows-x64/dist/
 /packages/mgread_plugin_runtime/assets/runtime/windows-x64/default-plugins/
+/packages/mgread_plugin_runtime/assets/runtime/macos-arm64/node/
+/packages/mgread_plugin_runtime/assets/runtime/macos-arm64/dist/
+/packages/mgread_plugin_runtime/assets/runtime/macos-arm64/default-plugins/

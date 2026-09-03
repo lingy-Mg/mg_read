@@ -71,6 +71,7 @@ test("plugin HTTP negotiates h2 directly and through proxies with HTTP/1.1 fallb
       upstream.pipe(downstream);
     });
     upstream.on("error", () => downstream.destroy());
+    downstream.on("error", () => upstream.destroy());
   });
   let socksProxyTunnels = 0;
   const socksProxy = createSocks5Proxy(() => socksProxyTunnels += 1);
@@ -162,6 +163,7 @@ function createSocks5Proxy(onTunnel) {
         upstream.pipe(downstream);
       });
       upstream.on("error", () => downstream.destroy());
+      downstream.on("error", () => upstream.destroy());
     };
     downstream.on("data", read);
   });

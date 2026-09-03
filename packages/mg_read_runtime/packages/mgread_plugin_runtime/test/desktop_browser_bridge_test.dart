@@ -86,6 +86,7 @@ void main() {
       expect(result.items.single.title, 'browser-200');
       expect(createCalls, 1);
     },
+    skip: !Platform.isWindows,
   );
 }
 

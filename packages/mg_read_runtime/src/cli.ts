@@ -14,6 +14,7 @@ import {
   type DesktopRuntimeOptions,
   type DesktopRuntimeProgress,
 } from "./desktop-runtime.js";
+import { resolve } from "node:path";
 import {
   emitRuntimeDiagnostic,
   type RuntimeDiagnosticRecord,
@@ -29,6 +30,7 @@ type RuntimeFatalDiagnosticCode = Exclude<
 let runtime: DesktopRuntime | undefined;
 let stopping = false;
 let fatalReported = false;
+let parentWatchdog: NodeJS.Timeout | undefined;
 
 /**
  * Emits structured diagnostic text for the Flutter-facing stream.
@@ -84,6 +86,7 @@ function parseLaunchOptions(arguments_: readonly string[]): DesktopRuntimeOption
   }
   return {
     dataRoot,
+    pluginImportInboxRoot: resolve(dataRoot, "import-inbox"),
     ...(bundledPluginRoot === undefined ? {} : { bundledPluginRoot }),
     ...(developmentPluginRoot === undefined ? {} : { developmentPluginRoot }),
     ...(developmentNpmCli === undefined ? {} : { developmentNpmCli }),
@@ -120,12 +123,61 @@ function takeTestExitAfterReadyMillis(arguments_: readonly string[]): {
   return { launchArguments, testExitAfterReadyMillis };
 }
 
+/**
+ * Consumes the macOS adapter's parent identity before parsing Core options.
+ * The watchdog prevents an orphaned Runtime when the GUI process terminates
+ * without a Dart shutdown callback; the value never enters Runtime Core.
+ */
+function takeParentProcessId(arguments_: readonly string[]): {
+  readonly launchArguments: readonly string[];
+  readonly parentProcessId: number | undefined;
+} {
+  let parentProcessId: number | undefined;
+  const launchArguments: string[] = [];
+  for (const argument of arguments_) {
+    if (!argument.startsWith("--parent-pid=")) {
+      launchArguments.push(argument);
+      continue;
+    }
+    if (parentProcessId !== undefined) {
+      throw new Error("The desktop Runtime received invalid launch options.");
+    }
+    const value = Number(argument.slice("--parent-pid=".length));
+    if (!Number.isSafeInteger(value) || value <= 1) {
+      throw new Error("The desktop Runtime received invalid launch options.");
+    }
+    parentProcessId = value;
+  }
+  return { launchArguments, parentProcessId };
+}
+
+/** Stops the Runtime if macOS reparents it after the Flutter owner exits. */
+function startParentWatchdog(parentProcessId: number | undefined): void {
+  if (parentProcessId === undefined) {
+    return;
+  }
+  parentWatchdog = setInterval(() => {
+    if (process.ppid === parentProcessId) {
+      return;
+    }
+    if (parentWatchdog !== undefined) {
+      clearInterval(parentWatchdog);
+      parentWatchdog = undefined;
+    }
+    void stopRuntime();
+  }, 1000);
+}
+
 /** Idempotently stops the one Core owned by this executable process. */
 async function stopRuntime(): Promise<void> {
   if (stopping) {
     return;
   }
   stopping = true;
+  if (parentWatchdog !== undefined) {
+    clearInterval(parentWatchdog);
+    parentWatchdog = undefined;
+  }
   try {
     await runtime?.stop();
   } catch {
@@ -170,14 +222,21 @@ function startupFailureCode(error: unknown): RuntimeFatalDiagnosticCode {
 
 /** Starts the Core and writes its sole stdout readiness record. */
 async function main(): Promise<void> {
-  const { launchArguments, testExitAfterReadyMillis } = takeTestExitAfterReadyMillis(
+  const testOptions = takeTestExitAfterReadyMillis(
     process.argv.slice(2),
+  );
+  const { launchArguments, parentProcessId } = takeParentProcessId(
+    testOptions.launchArguments,
   );
   runtime = new DesktopRuntime(parseLaunchOptions(launchArguments));
   const ready = await runtime.start();
   process.stdout.write(`${JSON.stringify(ready)}\n`);
-  if (testExitAfterReadyMillis !== undefined) {
-    setTimeout(() => process.exit(86), testExitAfterReadyMillis).unref();
+  startParentWatchdog(parentProcessId);
+  if (testOptions.testExitAfterReadyMillis !== undefined) {
+    setTimeout(
+      () => process.exit(86),
+      testOptions.testExitAfterReadyMillis,
+    ).unref();
   }
 }
 

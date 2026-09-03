@@ -422,16 +422,17 @@ async function listTree(root: string, prefix = ""): Promise<string[]> {
 }
 
 async function makeTreeReadOnly(root: string): Promise<void> {
+  const directoryMode = process.platform === "win32" ? 0o555 : 0o755;
   for (const entry of await readdir(root, { withFileTypes: true })) {
     const path = resolve(root, entry.name);
     if (entry.isDirectory()) {
       await makeTreeReadOnly(path);
-      await chmod(path, 0o555).catch(() => {});
+      await chmod(path, directoryMode).catch(() => {});
     } else if (entry.isFile()) {
       await chmod(path, 0o444).catch(() => {});
     }
   }
-  await chmod(root, 0o555).catch(() => {});
+  await chmod(root, directoryMode).catch(() => {});
 }
 
 function isNodeError(error: unknown, code: string): boolean {

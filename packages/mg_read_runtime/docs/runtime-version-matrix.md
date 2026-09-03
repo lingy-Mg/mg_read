@@ -23,7 +23,7 @@ Javet Node patch 与 desktop Node patch 必须完全一致；不得回退用户 
 | --- | --- | --- |
 | Android | Javet Node；minSdk 24；arm64-v8a 生产、x86_64 emulator/CI | 不支持 armeabi-v7a；仍需真实宿主 build 与生命周期证据 |
 | Windows | bundled Node 24.16.0 x64 child process | Windows 测试不证明 Android、macOS 或最终安装包 |
-| macOS | bundled Node 24.16.0；arm64/x64 分包 | 必须分别验证执行、签名、公证和启动 |
+| macOS | bundled Node 24.16.0；当前产物为 arm64 | arm64 验证执行、签名和启动；x64、hardened runtime 与公证待发布验证 |
 
 Android adapter 只能在一个专用后台线程上创建一个 Node-mode `NodeRuntime`。事件循环、停止、低内存通知和
 关闭必须在拥有线程上验证；不得引入 VM Pool、Worker 或未经当前版本公开类型证明的 lifecycle API。
@@ -39,5 +39,6 @@ Javet artifact、其 Node patch、desktop Node、npm、协议兼容记录、锁�
 - Android API 24+：单 NodeRuntime、`process.versions.node`、ESM parity、事件循环和安全关闭。
 - Android 包：真实解析 Javet AAR 的 arm64-v8a/x86_64 内容并排除未支持 ABI。
 - Windows 包：从最终 bundle 启动固定 Node，并验证 ready、取消和 shutdown。
-- macOS：arm64/x64 分别执行，验证 codesign、hardened runtime、notarization 和启动。
+- macOS x64：增加独立固定 Node 产物并验证执行、签名和启动。
+- macOS 发布：验证 hardened runtime 与 notarization；开发签名不可代替这两项。
 - 当前 Windows 自动化不能声明 Android Javet、macOS、最终 app bundle 或未运行的平台能力已完成。

@@ -27,7 +27,10 @@ async function waitFor(predicate, timeoutMs = 3_000) {
   }
 }
 
-test("development monitor debounces per project and limits global build concurrency", async (t) => {
+test(
+  "development monitor debounces per project and limits global build concurrency",
+  { skip: process.platform !== "win32" },
+  async (t) => {
   const root = await temporaryDirectory(t, "mgread-development-monitor-");
   const projects = await Promise.all([
     createProject(root, "source-a"),
@@ -65,9 +68,13 @@ test("development monitor debounces per project and limits global build concurre
 
   assert.equal(maximumActive, 2);
   assert.deepEqual(new Set(built), new Set(projects));
-});
+  },
+);
 
-test("a save during build makes the result stale and queues one serial rebuild", async (t) => {
+test(
+  "a save during build makes the result stale and queues one serial rebuild",
+  { skip: process.platform !== "win32" },
+  async (t) => {
   const root = await temporaryDirectory(t, "mgread-development-stale-");
   const project = await createProject(root, "source-a");
   let releaseFirst;
@@ -105,9 +112,13 @@ test("a save during build makes the result stale and queues one serial rebuild",
 
   assert.equal(runs, 2);
   assert.deepEqual(built, [project]);
-});
+  },
+);
 
-test("development monitor reports project deletion and closes without retained work", async (t) => {
+test(
+  "development monitor reports project deletion and closes without retained work",
+  { skip: process.platform !== "win32" },
+  async (t) => {
   const root = await temporaryDirectory(t, "mgread-development-remove-");
   const project = await createProject(root, "source-a");
   const removed = [];
@@ -128,4 +139,5 @@ test("development monitor reports project deletion and closes without retained w
   await new Promise((resolve) => setTimeout(resolve, 60));
 
   assert.deepEqual(removed, [project]);
-});
+  },
+);

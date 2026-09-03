@@ -433,7 +433,7 @@ test("desktop Runtime resolves the installed source directory for its Flutter Su
     }),
   );
 
-  if (process.platform !== "win32") {
+  if (process.platform !== "win32" && process.platform !== "darwin") {
     assert.equal(response.type, "error");
     assert.equal(response.error.code, "unsupported");
     return;

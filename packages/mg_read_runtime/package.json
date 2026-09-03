@@ -13,6 +13,7 @@
     "check:toolchain": "node probes/assert-toolchain.mjs",
     "build": "npm run check:toolchain && node tools/clean-dist.mjs && tsc -p tsconfig.json && node tools/bundle-plugin-http-client.mjs && node tools/copy-debug-ui-assets.mjs && node tools/stage-flutter-android-runtime.mjs",
     "stage:flutter-windows": "npm run build && node tools/stage-flutter-windows-runtime.mjs",
+    "stage:flutter-macos": "npm run build && node tools/stage-flutter-macos-runtime.mjs",
     "typecheck": "npm run check:toolchain && tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
     "test:flutter-desktop": "npm run build && cd packages/mgread_plugin_runtime && flutter pub get && flutter test",

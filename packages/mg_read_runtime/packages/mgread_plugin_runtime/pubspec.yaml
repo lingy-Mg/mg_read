@@ -487,3 +487,6 @@ flutter:
     - assets/runtime/windows-x64/node/node_modules/npm/tap-snapshots/workspaces/arborist/
     - assets/runtime/windows-x64/dist/
     - assets/runtime/windows-x64/dist/debug-ui/
+    - assets/runtime/macos-arm64/node/
+    - assets/runtime/macos-arm64/dist/
+    - assets/runtime/macos-arm64/dist/debug-ui/

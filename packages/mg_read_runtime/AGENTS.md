@@ -23,11 +23,13 @@
 
 ## 固定工具链与验证
 
-Windows 将 `tools/node-v24.16.0-win-x64` 放到 `PATH` 最前，使用 Node 24.16.0/npm 11.13.0，不回退全局
-Node/npm。按受影响边界运行 package scripts 和直接测试；不要机械执行无关平台矩阵。
+Windows 将 `tools/node-v24.16.0-win-x64` 放到 `PATH` 最前，macOS arm64 将
+`tools/node-v24.16.0-darwin-arm64/bin` 放到 `PATH` 最前；两者都使用 Node 24.16.0/npm 11.13.0，
+不回退全局 Node/npm。按受影响边界运行 package scripts 和直接测试；不要机械执行无关平台矩阵。
 
-- Node Core：`npm.cmd run typecheck`、直接 Node 测试、`npm.cmd run check:no-native-addons`。
-- desktop Facade/transport：增加相邻 Flutter 测试和 `npm.cmd run test:flutter-desktop`。
+- Node Core：固定 npm 运行 `typecheck`、直接 Node 测试、`check:no-native-addons`。
+- desktop Facade/transport：增加相邻 Flutter 测试和固定 npm 运行的 `test:flutter-desktop`。
+- macOS bundle：先运行 `stage:flutter-macos`，再验证 app 内 `MgReadNode`、Runtime 启动、插件主调用链和子进程退出。
 - Android WebView/Javet：增加相邻 Kotlin 单测和目标 Gradle 编译；真实流程仍需用户授权的 Integration Test。
 - Windows WebView2：增加 reverse-broker、Dart fake-platform/HTTP 和 Facade reverse-wire fixture；原生修改再
   构建 Windows Debug。不得结束用户正在运行的 `mg_read.exe`。

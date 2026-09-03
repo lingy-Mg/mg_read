@@ -301,7 +301,7 @@ _StructuredDiagnostic? _parseStructuredDiagnostic(String line) {
 final RegExp _diagnosticCodePattern = RegExp(r'^[a-z0-9_]{1,64}$');
 
 ///
-/// Returns the minimal Windows environment required to start the staged Node
+/// Returns the minimal desktop environment required to start the staged Node
 /// binary. Parent environment inheritance stays disabled so PATH, Node options
 /// and application secrets cannot change Runtime behavior. Proxy variables and
 /// the Windows manual proxy are exposed when the production Runtime inherits
@@ -315,6 +315,9 @@ Map<String, String> _allowlistedEnvironment({
     'TEMP',
     'TMP',
     'WINDIR',
+    'HOME',
+    'LANG',
+    'TMPDIR',
   ];
   final inherited = Platform.environment;
   final environment = <String, String>{

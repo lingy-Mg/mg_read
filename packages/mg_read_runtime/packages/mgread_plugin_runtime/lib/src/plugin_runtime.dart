@@ -59,14 +59,14 @@ final class PluginRuntime {
 
   /// Creates or returns the process-scoped production Facade.
   ///
-  /// The Runtime package resolves its own desktop bundle layout. Android uses
+  /// The Runtime package resolves its own Windows or macOS bundle layout. Android uses
   /// the package-owned Javet bridge; neither platform leaks its launcher or
   /// file-system details to the host application.
   factory PluginRuntime() {
     if (Platform.isAndroid) {
       return _androidInstance ??= PluginRuntime._(_AndroidRuntimeSupervisor());
     }
-    if (!Platform.isWindows) {
+    if (!Platform.isWindows && !Platform.isMacOS) {
       throw const PluginRuntimeException(
         'unsupported',
         'This Runtime package currently has no launcher for this platform.',
@@ -100,7 +100,7 @@ final class PluginRuntime {
 
   final _RuntimeSupervisor _supervisor;
 
-  /// Emits Windows desktop development-source build and activation changes.
+  /// Emits desktop development-source build and activation changes.
   ///
   /// Android returns an empty stream and never starts a directory watcher or
   /// development build chain.
@@ -150,10 +150,11 @@ final class PluginRuntime {
   /// a stable Runtime error code and diagnostics.
   Future<T> invoke<T>(PluginInvocation<T> invocation) {
     if (invocation is OpenRuntimePrivateDirectoryInvocation &&
-        !Platform.isWindows) {
+        !Platform.isWindows &&
+        !Platform.isMacOS) {
       throw const PluginRuntimeException(
         'unsupported',
-        'Opening the Runtime private directory is available on Windows only.',
+        'Opening the Runtime private directory is available on desktop only.',
       );
     }
     return _supervisor.invoke(invocation);
@@ -321,8 +322,8 @@ final class PluginRuntime {
 
   /// Closes the test-owned Runtime process and its internal connection.
   ///
-  /// Production callers do not manage the Runtime's lifecycle: Windows Job
-  /// Object ownership binds the child tree to the Flutter process instead.
+  /// Production callers do not manage the Runtime's lifecycle: the desktop
+  /// supervisor owns its child and Android owns the embedded engine.
   @visibleForTesting
   Future<void> debugDispose() async {
     // The Android bridge owns the native Runtime lifecycle. Local imports use

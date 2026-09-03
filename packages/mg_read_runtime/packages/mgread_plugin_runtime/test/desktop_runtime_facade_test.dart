@@ -189,7 +189,7 @@ void main() {
         ),
       );
 
-      if (Platform.isWindows) {
+      if (Platform.isWindows || Platform.isMacOS) {
         expect(kind, PluginCodeDirectoryKind.installed);
         expect(openedDirectories, hasLength(1));
         expect(
@@ -204,7 +204,7 @@ void main() {
           ),
         );
       } else {
-        fail('Desktop source-directory opening is only supported on Windows.');
+        fail('Source-directory opening is only supported on desktop.');
       }
     },
   );
@@ -457,7 +457,7 @@ void main() {
   );
 
   test(
-    'Windows development source changes build and hot reload without restarting Runtime',
+    'desktop development source changes build and hot reload without restarting Runtime',
     () async {
       final repositoryRoot = Directory.current.parent.parent;
       final root = await Directory.systemTemp.createTemp(
@@ -517,6 +517,7 @@ void main() {
         isFalse,
       );
     },
+    skip: Platform.isMacOS,
   );
 
   test('closed test Runtime rejects another Facade capability call', () async {

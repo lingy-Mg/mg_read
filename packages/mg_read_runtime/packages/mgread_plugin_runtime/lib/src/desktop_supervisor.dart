@@ -79,6 +79,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   bool _disposed = false;
 
   /// Runtime-owned Windows lifetime handle for the child process tree.
+  /// macOS owns the direct process and also enables the Node parent watchdog.
   WindowsJobObject? _jobObject;
 
   /// Parses the child's lifecycle streams and observes child exit.
@@ -112,7 +113,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
     if (_disposed) {
       throw const PluginRuntimeException(
         'runtime_unavailable',
-        'The Windows Runtime has been closed.',
+        'The desktop Runtime has been closed.',
       );
     }
     if (_useEnvironmentProxy == enabled) return;
@@ -132,7 +133,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
               )
               .timeout(_startupTimeout);
         } on Object {
-          // The owned Job Object remains the bounded cleanup authority.
+          // Platform process ownership remains the bounded cleanup authority.
         }
         await connection.close();
         _connection = null;
@@ -144,7 +145,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
         const RuntimeDiagnostic(
           code: 'runtime_node_environment_proxy_rebound',
           level: RuntimeDiagnosticLevel.info,
-          message: 'The Windows Node environment proxy preference was rebound.',
+          message: 'The desktop Node environment proxy preference was rebound.',
         ),
       );
     } finally {
@@ -450,7 +451,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   /// Performs the fixed startup sequence:
   ///
   /// 1. verify package-owned Node and entrypoint files;
-  /// 2. create a kill-on-close Windows Job and launch Node into it;
+  /// 2. establish platform process ownership and launch Node;
   /// 3. parse the structured ready record and probe loopback HTTP; and
   /// 4. connect the internal WebSocket and validate `runtime.hello`.
   ///
@@ -463,7 +464,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       // The Job handle remains owned by this supervisor for the entire Flutter
       // process lifetime. If Flutter exits without executing dispose(), Windows
       // closes this handle and terminates the assigned Runtime process tree.
-      final jobObject = WindowsJobObject.create();
+      final jobObject = Platform.isWindows ? WindowsJobObject.create() : null;
       _jobObject = jobObject;
       final process = await Process.start(
         _bundle.nodeExecutable.path,
@@ -472,6 +473,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
           if (_useEnvironmentProxy) '--use-env-proxy',
           _bundle.entrypoint.path,
           '--data-root=${_bundle.dataRoot.path}',
+          if (Platform.isMacOS) '--parent-pid=$pid',
           // Keep the opt-in Runtime inspector available in release builds.
           // The listener remains disabled until the Runtime-owned preference
           // is explicitly enabled from the application.
@@ -498,7 +500,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
 
       // Windows desktop builds may spawn the pinned npm build child. Assign the Core
       // first so every descendant belongs to the same kill-on-close Job.
-      jobObject.assignProcess(process.pid);
+      jobObject?.assignProcess(process.pid);
 
       final monitor = _RuntimeChildMonitor(
         process,
@@ -615,7 +617,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
         !await developmentPluginDirectory.exists()) {
       throw _failure(
         'runtime_development_plugin_root_missing',
-        'The Windows development source directory is unavailable.',
+        'The desktop development source directory is unavailable.',
       );
     }
     final developmentNpmCli = _bundle.developmentNpmCli;
@@ -623,7 +625,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
         (developmentNpmCli == null || !await developmentNpmCli.exists())) {
       throw _failure(
         'runtime_development_build_tool_missing',
-        'The pinned Windows development build tool is unavailable.',
+        'The pinned desktop development build tool is unavailable.',
       );
     }
   }
@@ -770,6 +772,12 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       return;
     }
 
+    // The Runtime control response is sent before Core shutdown completes.
+    // On macOS, SIGTERM enters the same idempotent Node cleanup path and also
+    // clears the parent watchdog so graceful disposal does not wait on it.
+    if (!force && Platform.isMacOS) {
+      process.kill(ProcessSignal.sigterm);
+    }
     if (!force && await _waitForProcessExit(process)) {
       _process = null;
       _closeJobObject();
@@ -781,7 +789,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
     // Closing the Job is the primary hard-stop mechanism. Retain a direct
     // owned-child fallback if Windows rejected a close or an unexpected host
     // policy prevented Job cleanup.
-    if (!closedJob) {
+    if (!closedJob || !Platform.isWindows) {
       process.kill();
     }
     if (!await _waitForProcessExit(process)) {

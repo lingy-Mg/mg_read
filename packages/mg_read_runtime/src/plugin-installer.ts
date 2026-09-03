@@ -473,16 +473,20 @@ async function rejectLocalNativeFiles(root: string): Promise<void> {
 }
 
 async function makeVersionTreeReadOnly(root: string): Promise<void> {
+  // POSIX removal requires write permission on each parent directory. Keep
+  // installed files immutable while allowing the Runtime owner to replace or
+  // uninstall directory entries; Windows does not use POSIX mode enforcement.
+  const directoryMode = process.platform === "win32" ? 0o555 : 0o755;
   for (const entry of await readdir(root, { withFileTypes: true })) {
     const path = resolve(root, entry.name);
     if (entry.isDirectory()) {
       await makeVersionTreeReadOnly(path);
-      await chmod(path, 0o555).catch(() => {});
+      await chmod(path, directoryMode).catch(() => {});
     } else if (entry.isFile()) {
       await chmod(path, 0o444).catch(() => {});
     }
   }
-  await chmod(root, 0o555).catch(() => {});
+  await chmod(root, directoryMode).catch(() => {});
 }
 
 async function atomicWrite(path: string, value: string): Promise<void> {

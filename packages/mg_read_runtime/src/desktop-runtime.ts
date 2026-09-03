@@ -1059,12 +1059,12 @@ export class DesktopRuntime {
         ),
       };
     }
-    if (process.platform !== "win32") {
+    if (process.platform !== "win32" && process.platform !== "darwin") {
       return {
         error: this.#requestError(
           request,
           "unsupported",
-          "Opening source directories is available on Windows only.",
+          "Opening source directories is available on desktop only.",
         ),
       };
     }
