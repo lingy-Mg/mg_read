@@ -1,0 +1,29 @@
+{
+  "name": "@mgread-plugin/guazi-sports",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MgRead native source for Guazi sports live events.",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "bin": { "mgread": "tools/mgread.mjs" },
+  "packageManager": "npm@11.13.0",
+  "engines": { "node": ">=24 <25", "npm": "11.13.0" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/contract.test.mjs test/source.test.mjs",
+    "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
+    "pack:plugin": "npm run build && node tools/mgread.mjs pack",
+    "verify": "npm run typecheck && npm test && npm run pack:plugin"
+  },
+  "devDependencies": { "@mgread/source-api": "file:../../../packages/mg_read_source_api", "@types/node": "24.13.3", "esbuild": "0.28.2", "typescript": "5.9.3" },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.guazi-sports",
+    "displayName": "瓜子体育",
+    "description": "瓜子体育原生数据源，直接实现加密赛程、详情和直播线路接口。",
+    "pluginApi": 1,
+    "packageMode": "single-file",
+    "contentKinds": ["video"]
+  }
+}

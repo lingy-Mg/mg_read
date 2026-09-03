@@ -1,0 +1,29 @@
+{
+  "name": "@mgread-plugin/feiqiu-sports",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MgRead native source for Feiqiu sports live events.",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "bin": { "mgread": "tools/mgread.mjs" },
+  "packageManager": "npm@11.13.0",
+  "engines": { "node": ">=24 <25", "npm": "11.13.0" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/contract.test.mjs test/source.test.mjs",
+    "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
+    "pack:plugin": "npm run build && node tools/mgread.mjs pack",
+    "verify": "npm run typecheck && npm test && npm run pack:plugin"
+  },
+  "devDependencies": { "@mgread/source-api": "file:../../../packages/mg_read_source_api", "@types/node": "24.13.3", "esbuild": "0.28.2", "typescript": "5.9.3" },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.feiqiu-sports",
+    "displayName": "飞球体育",
+    "description": "飞球体育原生数据源，直接实现设备令牌、加密赛程和播放接口。",
+    "pluginApi": 1,
+    "packageMode": "single-file",
+    "contentKinds": ["video"]
+  }
+}
