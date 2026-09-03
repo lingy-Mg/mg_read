@@ -802,7 +802,6 @@ extension _ComicReaderChrome on _ComicReaderViewState {
     final ComicReaderStateStore store = widget.stateStore;
     bool isCurrent() => _isSession(session, bookId, source, store);
     final int sheetGeneration = _beginSheet();
-    _setControlsVisible(false);
     // The sheet needs the normal system-bar geometry. This is a session-only
     // override; the persisted immersive preference is restored on dismissal.
     await _setSettingsVisible(true);
@@ -810,6 +809,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
       await _setSettingsVisible(false);
       return;
     }
+    _setControlsVisible(false);
     final Future<void> sheet = showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,

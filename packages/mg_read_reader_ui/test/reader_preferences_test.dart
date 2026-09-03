@@ -117,7 +117,7 @@ void main() {
   });
 
   testWidgets(
-    'temporarily exits immersive mode for settings and restores the preference',
+    'center tap exits immersive mode before settings and restores the preference',
     (WidgetTester tester) async {
       final ReaderPlatform previousPlatform = ReaderPlatform.instance;
       final _RecordingReaderPlatform platform = _RecordingReaderPlatform();
@@ -142,8 +142,10 @@ void main() {
           () => Future<void>.delayed(const Duration(milliseconds: 500)),
         );
         await tester.pumpAndSettle();
-        await controller.showControls();
-        await tester.pump();
+        await tester.tap(
+          find.byKey(const ValueKey<String>('reader-content-surface')),
+        );
+        await tester.pumpAndSettle();
 
         final int immersiveRequest = platform.requests.lastIndexOf('0/1');
         expect(
@@ -156,9 +158,15 @@ void main() {
         await tester.pumpAndSettle();
         final int settingsExit = platform.requests.lastIndexOf('0/0');
         expect(settingsExit, greaterThan(immersiveRequest));
+        expect(
+          platform.requests.where((String request) => request == '0/0').length,
+          1,
+        );
         expect(store.preferences.immersiveMode, isTrue);
 
         await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        await controller.hideControls();
         await tester.pumpAndSettle();
         expect(platform.requests.lastIndexOf('0/1'), greaterThan(settingsExit));
         expect(store.preferences.immersiveMode, isTrue);

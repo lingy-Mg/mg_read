@@ -121,6 +121,7 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
         _preferences.keepScreenOn && _platformCapabilities.keepScreenOn;
     final bool immersive =
         !_settingsVisible &&
+        !_controlsVisible &&
         _preferences.immersiveMode &&
         _platformCapabilities.immersiveMode;
     final bool wanted =
@@ -193,6 +194,7 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
     if (_disposed || _controlsVisible == value) return;
     setState(() => _controlsVisible = value);
     _publishSnapshot();
+    unawaited(_syncAwake());
   }
 
   void _publishSnapshot() {

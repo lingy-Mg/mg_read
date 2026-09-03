@@ -238,11 +238,12 @@ extension _TextReaderPersistence on _TextReaderViewState {
   }
 
   Future<void> _reconcileAwake() async {
-    // Opening settings is a temporary system-UI override. Keep the persisted
-    // preference unchanged so dismissing the sheet can restore the reader's
-    // previous immersive intent exactly once.
+    // Controls and settings are temporary system-UI overrides. Keep the
+    // persisted preference unchanged so closing either surface restores the
+    // reader's immersive intent exactly once.
     final bool immersive =
         !_readerSettingsVisible &&
+        !_controlsVisible &&
         _preferences.immersiveMode &&
         _platformCapabilities.immersiveMode;
     final bool shouldAcquire =
@@ -266,6 +267,7 @@ extension _TextReaderPersistence on _TextReaderViewState {
             ((_preferences.keepScreenOn &&
                     _platformCapabilities.keepScreenOn) ||
                 (!_readerSettingsVisible &&
+                    !_controlsVisible &&
                     _preferences.immersiveMode &&
                     _platformCapabilities.immersiveMode));
         if (!stillDesired) {
@@ -304,6 +306,7 @@ extension _TextReaderPersistence on _TextReaderViewState {
     if (_controlsVisible == value || !mounted) return;
     setState(() => _controlsVisible = value);
     _publishSnapshot();
+    unawaited(_syncAwake());
   }
 
   Future<void> _setReaderSettingsVisible(bool value) async {
