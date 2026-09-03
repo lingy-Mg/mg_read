@@ -11,6 +11,7 @@ import 'package:mg_read/features/discovery/application/bookshelf_membership.dart
 import 'package:mg_read/features/discovery/application/search_history_store.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 
 void main() {
   testWidgets('does not search until the user selects a history keyword', (tester) async {
@@ -61,6 +62,37 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(gateway.pluginIds, isEmpty);
+    expect(find.text('第二个数据源'), findsOneWidget);
+  });
+
+  testWidgets('catalog change replaces a removed selected source immediately', (tester) async {
+    final gateway = _SearchGateway(
+      sources: <PluginSourceDescriptor>[_source('source.first', '第一个数据源'), _source('source.second', '第二个数据源')],
+    );
+    late ProviderContainer container;
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container = ProviderContainer(
+          overrides: [
+            sourceContentGatewayProvider.overrideWithValue(gateway),
+            searchHistoryStoreProvider.overrideWithValue(_MemorySearchHistoryStore(const <String>[])),
+          ],
+        ),
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: SearchPage(onDestinationRequested: (_) {}),
+        ),
+      ),
+    );
+    addTearDown(container.dispose);
+    await tester.pumpAndSettle();
+    expect(find.text('第一个数据源'), findsOneWidget);
+
+    gateway.sources.removeWhere((source) => source.id == 'source.first');
+    container.read(pluginRuntimeCatalogChangeProvider.notifier).publish(pluginIds: const <String>{'source.first'});
+    await tester.pumpAndSettle();
+
+    expect(find.text('第一个数据源'), findsNothing);
     expect(find.text('第二个数据源'), findsOneWidget);
   });
 

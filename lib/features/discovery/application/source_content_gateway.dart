@@ -290,8 +290,9 @@ final sourceContentGatewayProvider = Provider<SourceContentGateway>((Ref ref) {
 /// Discovery and search share this projection so entering either page never
 /// causes a second Runtime readiness/list request. The provider is deliberately
 /// not auto-disposed: the source list is part of the app's warmed Runtime
-/// session and is refreshed when the Runtime projection is invalidated.
+/// session and uses the shared catalog revision as its cache generation.
 final availablePluginSourcesProvider = FutureProvider<List<PluginSourceDescriptor>>((Ref ref) {
+  ref.watch(pluginRuntimeCatalogChangeProvider);
   final gateway = ref.watch(sourceContentGatewayProvider);
   return gateway.listSources();
 });

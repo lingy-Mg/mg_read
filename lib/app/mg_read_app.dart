@@ -96,11 +96,10 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
   }
 
   void _handleDevelopmentChanges(DevelopmentPluginChangeBatch batch) {
-    final successful = batch.changes.any((change) => !change.isFailure);
-    if (successful) {
-      ref.invalidate(pluginRuntimeConnectionProvider);
-      ref.invalidate(pluginRuntimeStatusProvider);
-      ref.invalidate(availablePluginSourcesProvider);
+    final successful = batch.changes.where((change) => !change.isFailure).toList(growable: false);
+    if (successful.isNotEmpty) {
+      final pluginIds = successful.map((change) => change.pluginId).whereType<String>().toSet();
+      ref.read(pluginRuntimeCatalogChangeProvider.notifier).publish(pluginIds: pluginIds.length == successful.length ? pluginIds : null);
       _developmentSyncDebounce?.cancel();
       _developmentSyncDebounce = Timer(const Duration(seconds: 2), () {
         _developmentSyncDebounce = null;

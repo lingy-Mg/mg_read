@@ -269,7 +269,10 @@ Future<void> bootstrapMgReadApp({
         if (contentLibrary != null || contentLibraryFactory != null)
           lanSyncGatewayProvider.overrideWith((ref) {
             final runtime = ref.watch(pluginRuntimeFacadeProvider);
-            return DeferredLanSyncGateway(() async => MgReadLanSyncGateway(await getLibrary(), runtime));
+            return DeferredLanSyncGateway(
+              () async => MgReadLanSyncGateway(await getLibrary(), runtime),
+              onPluginCatalogChanged: () => ref.read(pluginRuntimeCatalogChangeProvider.notifier).publish(),
+            );
           }),
         if (contentLibrary != null || contentLibraryFactory != null)
           bookshelfMembershipLoaderProvider.overrideWithValue(DeferredBookshelfMembershipLoader(getLibrary)),

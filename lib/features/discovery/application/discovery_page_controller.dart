@@ -46,8 +46,8 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     _gateway = ref.watch(sourceContentGatewayProvider);
     _sourceSelectionStore = ref.watch(discoverySourceSelectionStoreProvider);
     _diagnostics = ref.watch(diagnosticsManagerProvider);
-    ref.listen(pluginRuntimeDevelopmentChangesProvider, (_, next) {
-      next.whenData((batch) => unawaited(_applyDevelopmentChanges(batch)));
+    ref.listen(pluginRuntimeCatalogChangeProvider, (_, next) {
+      unawaited(_applyCatalogChange(next));
     });
     ref.onDispose(() {
       _disposed = true;
@@ -58,17 +58,18 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     return DiscoveryPageState.loadingSources();
   }
 
-  Future<void> _applyDevelopmentChanges(DevelopmentPluginChangeBatch batch) async {
-    final changes = batch.changes.where((change) => !change.isFailure).toList();
-    if (changes.isEmpty) return;
+  Future<void> _applyCatalogChange(PluginRuntimeCatalogChange change) async {
     final selected = state.selectedSourceId;
-    final affectsSelected = selected != null && changes.any((change) => change.pluginId == selected);
+    final affectsSelected = selected != null && change.affects(selected);
     final generation = affectsSelected ? ++_latestGeneration : null;
     if (affectsSelected) {
       _endActiveLoad(DiagnosticOutcome.cancelled);
     }
-    ref.invalidate(availablePluginSourcesProvider);
     try {
+      // Let providers that watch the same revision dispose their stale future
+      // before reading the refreshed catalog. Riverpod does not define sibling
+      // listener ordering for one state change.
+      await Future<void>.value();
       final sources = await ref.read(availablePluginSourcesProvider.future);
       if (_disposed || (generation != null && !_isCurrent(generation))) return;
       if (sources.isEmpty) {

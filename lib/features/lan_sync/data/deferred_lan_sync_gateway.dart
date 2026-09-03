@@ -4,6 +4,7 @@
 /// - Wait for the startup-owned content library before creating the real gateway.
 /// - Preserve one gateway instance for the full multi-step synchronization session.
 /// - Allow a failed startup resolution to be retried by the next user action.
+/// - Publish successful plugin-batch mutations once for all synchronization consumers.
 ///
 /// Notes:
 /// - Constructing this adapter performs no library, Runtime, or network IO.
@@ -19,9 +20,12 @@ import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 typedef LanSyncGatewayFactory = Future<LanSyncGateway> Function();
 
 final class DeferredLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway {
-  DeferredLanSyncGateway(this._factory);
+  // The public callback parameter cannot use the private field's name across libraries.
+  // ignore: prefer_initializing_formals
+  DeferredLanSyncGateway(this._factory, {void Function()? onPluginCatalogChanged}) : _onPluginCatalogChanged = onPluginCatalogChanged;
 
   final LanSyncGatewayFactory _factory;
+  final void Function()? _onPluginCatalogChanged;
   Future<LanSyncGateway>? _delegateFuture;
 
   Future<LanSyncGateway> _delegate() {
@@ -88,7 +92,11 @@ final class DeferredLanSyncGateway implements LanSyncGateway, LanSyncPairedGatew
       (await _delegate()).importPluginArchive(plugin, bytes);
 
   @override
-  Future<LanSyncPluginImportResult> finishPluginImports() async => (await _delegate()).finishPluginImports();
+  Future<LanSyncPluginImportResult> finishPluginImports() async {
+    final result = await (await _delegate()).finishPluginImports();
+    if (result.installed > 0) _onPluginCatalogChanged?.call();
+    return result;
+  }
 
   @override
   Future<void> cancelPluginImports() async => (await _delegate()).cancelPluginImports();

@@ -70,6 +70,7 @@ final class PluginCacheManagementController extends AsyncNotifier<PluginCacheMan
 
   @override
   Future<PluginCacheManagementState> build() async {
+    ref.watch(pluginRuntimeCatalogChangeProvider);
     ref.onDispose(() => _generation++);
     final result = await _loadInitial();
     final generation = ++_generation;

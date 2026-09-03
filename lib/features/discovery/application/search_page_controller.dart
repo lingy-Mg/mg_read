@@ -1,8 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
-
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/search_page_state.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
@@ -20,8 +18,8 @@ class SearchPageController extends Notifier<SearchPageState> {
   @override
   SearchPageState build() {
     _gateway = ref.watch(sourceContentGatewayProvider);
-    ref.listen(pluginRuntimeDevelopmentChangesProvider, (_, next) {
-      next.whenData((batch) => unawaited(_applyDevelopmentChanges(batch)));
+    ref.listen(pluginRuntimeCatalogChangeProvider, (_, next) {
+      unawaited(_applyCatalogChange(next));
     });
     ref.onDispose(() => _disposed = true);
     final generation = ++_latestGeneration;
@@ -29,14 +27,15 @@ class SearchPageController extends Notifier<SearchPageState> {
     return SearchPageState.loadingSources();
   }
 
-  Future<void> _applyDevelopmentChanges(DevelopmentPluginChangeBatch batch) async {
-    final changes = batch.changes.where((change) => !change.isFailure).toList();
-    if (changes.isEmpty) return;
+  Future<void> _applyCatalogChange(PluginRuntimeCatalogChange change) async {
     final selected = state.selectedSourceId;
-    final affectsSelected = selected != null && changes.any((change) => change.pluginId == selected);
+    final affectsSelected = selected != null && change.affects(selected);
     if (affectsSelected) ++_latestGeneration;
-    ref.invalidate(availablePluginSourcesProvider);
     try {
+      // Let providers that watch the same revision dispose their stale future
+      // before reading the refreshed catalog. Riverpod does not define sibling
+      // listener ordering for one state change.
+      await Future<void>.value();
       final sources = await ref.read(availablePluginSourcesProvider.future);
       if (_disposed) return;
       if (sources.isEmpty) {

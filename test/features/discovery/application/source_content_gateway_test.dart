@@ -23,6 +23,21 @@ void main() {
     expect(first.single.displayName, '缓存数据源');
   });
 
+  test('catalog change invalidates the shared available-source projection', () async {
+    final gateway = _CountingSourceGateway();
+    final container = ProviderContainer(overrides: [sourceContentGatewayProvider.overrideWithValue(gateway)]);
+    addTearDown(container.dispose);
+
+    final first = await container.read(availablePluginSourcesProvider.future);
+    gateway.displayName = '已同步数据源';
+    container.read(pluginRuntimeCatalogChangeProvider.notifier).publish(pluginIds: const <String>{'source.cached'});
+    final refreshed = await container.read(availablePluginSourcesProvider.future);
+
+    expect(gateway.listCalls, 2);
+    expect(first.single.displayName, '缓存数据源');
+    expect(refreshed.single.displayName, '已同步数据源');
+  });
+
   test('source list waits for the shared Runtime readiness result', () async {
     final diagnostics = DiagnosticsTestkit();
     addTearDown(diagnostics.dispose);
@@ -82,12 +97,17 @@ void main() {
 
 final class _CountingSourceGateway implements SourceContentGateway {
   int listCalls = 0;
+  String displayName = '缓存数据源';
 
   @override
   Future<List<PluginSourceDescriptor>> listSources() async {
     listCalls += 1;
     return <PluginSourceDescriptor>[
-      PluginSourceDescriptor(id: 'source.cached', displayName: '缓存数据源', contentKinds: const <PluginContentKind>[PluginContentKind.novel]),
+      PluginSourceDescriptor(
+        id: 'source.cached',
+        displayName: displayName,
+        contentKinds: const <PluginContentKind>[PluginContentKind.novel],
+      ),
     ];
   }
 

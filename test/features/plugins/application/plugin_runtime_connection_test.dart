@@ -127,10 +127,32 @@ void main() {
     final result = await container.read(pluginRuntimeConnectionProvider.future);
     expect(gateway.setEnabledCalls, 1);
     expect(result.plugins.single.enabled, isFalse);
+    expect(container.read(pluginRuntimeCatalogChangeProvider).pluginIds, <String>{'org.example.mutable'});
     expect(
       diagnostics.sink.events.where((event) => event.eventName.startsWith('runtime.facade.call.')).map((event) => event.eventName),
       containsAllInOrder(<String>['runtime.facade.call.start', 'runtime.facade.call.complete']),
     );
+  });
+
+  test('local import publishes the shared catalog refresh generation', () async {
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    final gateway = _MutablePluginRuntimeGateway();
+    final container = ProviderContainer(
+      overrides: [
+        diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+        pluginRuntimeGatewayProvider.overrideWithValue(gateway),
+        configuredFlutterNetworkProxyManagerProvider.overrideWithValue(_testProxyManager()),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    expect(container.read(pluginRuntimeCatalogChangeProvider).revision, 0);
+    expect(await container.read(pluginRuntimeSourceImportProvider.notifier).importLocalPlugin(), isTrue);
+
+    final change = container.read(pluginRuntimeCatalogChangeProvider);
+    expect(change.revision, 1);
+    expect(change.pluginIds, isNull);
   });
 
   test('source removal is scheduled through the Runtime application port', () async {
@@ -149,6 +171,8 @@ void main() {
     await container.read(pluginRuntimeSourceActionProvider.notifier).scheduleUninstall(pluginId: 'org.example.mutable');
 
     expect(gateway.scheduledUninstallPluginIds, <String>['org.example.mutable']);
+    expect(gateway.inspectCalls, 1);
+    expect(container.read(pluginRuntimeCatalogChangeProvider).revision, 0);
     expect(
       diagnostics.sink.events.where((event) => event.eventName.startsWith('runtime.facade.call.')).map((event) => event.eventName),
       contains('runtime.facade.call.complete'),
@@ -457,6 +481,7 @@ final class _MutablePluginRuntimeGateway implements PluginRuntimeGateway {
   );
 
   int setEnabledCalls = 0;
+  int inspectCalls = 0;
   int importLocalPluginCalls = 0;
   final List<String> packagedPluginIds = <String>[];
   final List<String> scheduledUninstallPluginIds = <String>[];
@@ -496,7 +521,10 @@ final class _MutablePluginRuntimeGateway implements PluginRuntimeGateway {
   Future<PluginRuntimeDebugHttp> inspectDebugHttp() async => const PluginRuntimeDebugHttp.disabled();
 
   @override
-  Future<PluginRuntimeConnection> inspect() async => _connection;
+  Future<PluginRuntimeConnection> inspect() async {
+    inspectCalls += 1;
+    return _connection;
+  }
 
   @override
   Future<void> setEnabled({required String pluginId, required bool enabled}) async {
