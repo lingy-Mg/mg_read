@@ -255,6 +255,9 @@ function createNpmBuildRunner(npmCliPath: string): DevelopmentBuildRunner {
           ...process.env,
           PATH: `${nodeDirectory}${delimiter}${currentPath}`,
           Path: `${nodeDirectory}${delimiter}${currentPath}`,
+          ...(process.platform === "win32"
+            ? {}
+            : { npm_config_script_shell: "/bin/sh" }),
           npm_execpath: normalizedNpmCli,
           npm_node_execpath: process.execPath,
         },
