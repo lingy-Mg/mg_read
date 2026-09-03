@@ -11,7 +11,14 @@ library;
 
 import 'package:flutter/foundation.dart';
 
-enum PairedDevicePlatform { android, windows, unknown }
+enum PairedDevicePlatform {
+  android,
+  windows,
+  macos,
+  unknown;
+
+  bool get isDesktop => this == PairedDevicePlatform.windows || this == PairedDevicePlatform.macos;
+}
 
 enum PairedSyncMode { bidirectional, receiveOnly, sendOnly }
 

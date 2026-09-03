@@ -41,4 +41,27 @@ void main() {
     await reopened.remove(device.deviceId);
     expect(await reopened.read(device.deviceId), isNull);
   });
+
+  test('macOS peer platform survives persistence', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-macos-paired-device-');
+    addTearDown(() => root.delete(recursive: true));
+    final registry = RecordDocumentRegistry(<RecordDocumentCodec>[pairedDeviceRecordDocumentCodec]);
+    final records = await PersistenceRecordStore.open(dataRoot: root, registry: registry);
+    addTearDown(records.close);
+    final repository = PersistentPairedDeviceRepository(records);
+    final device = PairedDevice(
+      autoSync: true,
+      createdAtUtc: DateTime.utc(2026, 9, 4),
+      deviceId: 'macos_device_12345678',
+      label: 'MacBook Pro',
+      mode: PairedSyncMode.bidirectional,
+      platform: PairedDevicePlatform.macos,
+      syncBookshelf: true,
+      syncPlugins: true,
+    );
+
+    await repository.upsert(device);
+
+    expect((await repository.read(device.deviceId))?.platform, PairedDevicePlatform.macos);
+  });
 }

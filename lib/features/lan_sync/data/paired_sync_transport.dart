@@ -3,7 +3,7 @@
 /// 职责：
 /// - 广播稳定设备 ID 和本次前台端口，IP 始终取自收到的数据包。
 /// - 使用逐设备共享密钥建立认证加密会话，并按双方策略同步插件和书架。
-/// - 支持任意端主动双向同步、拉取或推送；Android 请求 Windows 时使用签名唤醒和反向连接。
+/// - 支持任意端主动双向同步、拉取或推送；Android 请求 Windows/macOS 时使用签名唤醒和反向连接。
 ///
 /// 注意：
 /// - 广播不包含密钥、书名、插件名或持久地址。
@@ -141,7 +141,13 @@ final class PairedSyncHost {
     final server = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     RawDatagramSocket? socket;
     try {
-      socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, discoveryPort, reuseAddress: true);
+      socket = await RawDatagramSocket.bind(
+        InternetAddress.anyIPv4,
+        discoveryPort,
+        reuseAddress: true,
+        // macOS 需要 SO_REUSEPORT 才允许同机实例共同监听发现端口。
+        reusePort: Platform.isMacOS,
+      );
       socket.broadcastEnabled = true;
       final host = PairedSyncHost._(
         identity: identity,

@@ -27,7 +27,7 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
     bool automatic = false,
   }) async {
     if (!await _ensureNetworkForOperation(device, operation: operation, automatic: automatic)) return;
-    if (Platform.isAndroid && device.platform == PairedDevicePlatform.windows) {
+    if (Platform.isAndroid && device.platform.isDesktop) {
       await _requestReverseOperation(device, endpoint, operation: operation, automatic: automatic);
       return;
     }

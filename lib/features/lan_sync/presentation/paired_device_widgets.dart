@@ -201,7 +201,11 @@ class _PairedDeviceTile extends StatelessWidget {
             Badge(
               backgroundColor: online ? Colors.green : tokens.mutedText,
               smallSize: 9,
-              child: Icon(device.platform == PairedDevicePlatform.windows ? Icons.computer_rounded : Icons.phone_android_rounded),
+              child: Icon(switch (device.platform) {
+                PairedDevicePlatform.android => Icons.phone_android_rounded,
+                PairedDevicePlatform.windows || PairedDevicePlatform.macos => Icons.computer_rounded,
+                PairedDevicePlatform.unknown => Icons.devices_other_rounded,
+              }),
             ),
             const SizedBox(width: AppSpacing.regular),
             Expanded(

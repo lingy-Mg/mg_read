@@ -3,7 +3,7 @@
 /// 职责：
 /// - 管理首次配对、持久设备策略、前台发现和手动同步/拉取/推送。
 /// - 串行化所有入站/出站同步，避免 Runtime 批量导入状态互相覆盖。
-/// - Windows/Android 由 Windows 自动发起；同平台用稳定设备 ID 选主，避免双向重复同步。
+/// - 桌面端/Android 由桌面端自动发起；同平台用稳定设备 ID 选主，避免双向重复同步。
 /// - 开发书源变化由桌面立即推动，Android 合并延迟后再推送，手动操作始终即时执行。
 ///
 /// 注意：
@@ -140,7 +140,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
           role: 'paired_host',
           operation: PairedSyncOperation.bidirectional,
           automatic: true,
-          peerPlatform: Platform.isAndroid ? PairedDevicePlatform.windows : PairedDevicePlatform.android,
+          peerPlatform: PairedDevicePlatform.unknown,
         )..stage('host_start');
         diagnostics.fail(failure);
         state = state.copyWith(

@@ -1,7 +1,7 @@
 /// 已配对同步的网络可用性与平台频率策略。
 ///
-/// Android 仅在 Wi-Fi 下广播和传输，并对开发书源变化做低频合并；Windows 可使用
-/// 私有以太网或 Wi-Fi，并作为 Windows/Android 组合的默认自动发起方。
+/// Android 仅在 Wi-Fi 下广播和传输，并对开发书源变化做低频合并；Windows/macOS 可使用
+/// 私有以太网或 Wi-Fi，并作为桌面端/Android 组合的默认自动发起方。
 part of 'device_sync_controller.dart';
 
 abstract base class _DeviceSyncNetworkBase extends Notifier<DeviceSyncState> {
@@ -108,7 +108,7 @@ abstract base class _DeviceSyncNetworkBase extends Notifier<DeviceSyncState> {
           role: 'paired_host',
           operation: PairedSyncOperation.bidirectional,
           automatic: true,
-          peerPlatform: Platform.isAndroid ? PairedDevicePlatform.windows : PairedDevicePlatform.android,
+          peerPlatform: PairedDevicePlatform.unknown,
         )..stage('host_start');
         diagnostics.fail(failure);
         state = state.copyWith(lastErrorCode: failure.code, lastErrorDetails: failure.uiDetails, lastMessage: '局域网已恢复，但同步服务启动失败');
@@ -138,8 +138,8 @@ abstract base class _DeviceSyncNetworkBase extends Notifier<DeviceSyncState> {
   }
 
   bool _shouldAutomaticallyInitiate(PairedDevice device) {
-    if (Platform.isWindows && device.platform == PairedDevicePlatform.android) return true;
-    if (Platform.isAndroid && device.platform == PairedDevicePlatform.windows) return false;
+    if ((Platform.isWindows || Platform.isMacOS) && device.platform == PairedDevicePlatform.android) return true;
+    if (Platform.isAndroid && device.platform.isDesktop) return false;
     return (_identity?.deviceId.compareTo(device.deviceId) ?? 1) < 0;
   }
 

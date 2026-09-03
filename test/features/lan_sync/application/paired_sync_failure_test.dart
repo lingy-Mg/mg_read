@@ -121,4 +121,29 @@ void main() {
     expect(failure.allowsAutomaticRetry, isFalse);
     expect(pairedSyncFailureMessage(device, failure, automatic: true), isNot(contains('自动重试')));
   });
+
+  test('macOS connection failure points to local-network and firewall permissions', () {
+    final device = PairedDevice(
+      autoSync: true,
+      createdAtUtc: DateTime.utc(2026, 9, 4),
+      deviceId: 'macos-device-123456',
+      label: 'MacBook Pro',
+      mode: PairedSyncMode.bidirectional,
+      platform: PairedDevicePlatform.macos,
+      syncBookshelf: true,
+      syncPlugins: true,
+    );
+    final failure = PairedSyncFailure.fromException(
+      stage: 'connect',
+      error: const SocketException('Connection refused'),
+      stackTrace: StackTrace.current,
+      code: 'lan_sync_connect_failed',
+    );
+
+    final message = pairedSyncFailureMessage(device, failure, automatic: false);
+
+    expect(message, contains('macOS'));
+    expect(message, contains('本地网络'));
+    expect(message, contains('防火墙'));
+  });
 }

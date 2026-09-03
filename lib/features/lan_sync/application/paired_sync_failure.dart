@@ -213,6 +213,8 @@ String pairedSyncFailureMessage(PairedDevice device, PairedSyncFailure failure, 
     'paired_secret_missing' => '与 ${device.label} 的配对密钥已丢失，请重新配对',
     'lan_sync_connect_failed' when device.platform == PairedDevicePlatform.windows =>
       '无法连接 ${device.label}；请确认 Windows 防火墙允许 MgRead 使用专用网络$retry',
+    'lan_sync_connect_failed' when device.platform == PairedDevicePlatform.macos =>
+      '无法连接 ${device.label}；请确认 macOS 已允许 MgRead 访问本地网络且防火墙未阻止连接$retry',
     'lan_sync_connect_failed' => '无法连接 ${device.label}，请确认两台设备仍在同一局域网$retry',
     'lan_sync_peer_busy' => '${device.label} 正在执行另一次同步，请稍后重试',
     'lan_sync_peer_not_paired' || 'lan_sync_handshake_invalid' => '与 ${device.label} 的配对信息已不一致，请解除后重新配对',
