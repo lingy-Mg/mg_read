@@ -11,6 +11,8 @@ import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 import 'package:mg_read/shared/presentation/source_branding.dart';
 
+import 'plugin_content_kind_labels.dart';
+
 /// 单个数据源的 Runtime 详情页面。
 ///
 /// 职责：
@@ -149,7 +151,7 @@ class _DetailContent extends ConsumerWidget {
                 const SizedBox(height: AppSpacing.compact),
                 _DetailField(label: '名称', value: source.displayName),
                 _DetailField(label: '来源方式', value: isDevelopment ? '工作区开发数据源插件' : 'Runtime 已安装数据源插件'),
-                _DetailField(label: '类型', value: _contentKinds(source)),
+                _DetailField(label: '类型', value: pluginContentKindsLabel(source.contentKinds)),
                 _DetailField(label: '版本', value: source.activeVersion ?? '等待激活'),
                 _DetailField(label: '状态', value: _statusLabel(source)),
                 _DetailField(label: '标识', value: source.id, isLast: true),
@@ -469,9 +471,6 @@ class _DetailFailure extends StatelessWidget {
     ),
   );
 }
-
-String _contentKinds(PluginRuntimePlugin source) =>
-    <String>[if (source.contentKinds.contains('novel')) '小说', if (source.contentKinds.contains('manga')) '漫画'].join(' · ');
 
 String _statusLabel(PluginRuntimePlugin source) => switch (source.status) {
   'development' => '开发中（即时生效）',

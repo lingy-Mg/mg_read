@@ -112,6 +112,15 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('shows audio and video kinds on the source detail page', (WidgetTester tester) async {
+    final gateway = _DirectoryGateway(_mediaConnection);
+    await tester.pumpWidget(_host(gateway, 'org.example.media'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('音频 · 视频'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('keeps long metadata values readable on a phone-width viewport', (WidgetTester tester) async {
     final gateway = _DirectoryGateway(_longMetadataConnection);
     tester.view.physicalSize = const Size(390, 900);
@@ -213,6 +222,25 @@ const _iconConnection = PluginRuntimeConnection(
       iconUrl: 'http://127.0.0.1:1/v1/plugin-icon/detail-test-token',
       id: 'org.example.with-icon',
       name: '@example/with-icon',
+      pendingVersion: null,
+      status: 'active',
+    ),
+  ],
+);
+
+const _mediaConnection = PluginRuntimeConnection(
+  isHealthy: true,
+  nodeVersion: '24.16.0',
+  runtimeVersion: 'test',
+  plugins: <PluginRuntimePlugin>[
+    PluginRuntimePlugin(
+      activeVersion: '1.0.0',
+      contentKinds: <String>['audio', 'video'],
+      description: '音视频数据源。',
+      displayName: '音视频源',
+      enabled: true,
+      id: 'org.example.media',
+      name: '@example/media',
       pendingVersion: null,
       status: 'active',
     ),
