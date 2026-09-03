@@ -1,4 +1,4 @@
-/// Windows 正式可执行文件的数据源自检命令入口。
+/// desktop 正式可执行文件的数据源自检命令入口。
 ///
 /// 职责：解析生产参数、在真实 ProviderScope 中调用内置自检引擎、把完整结果写到控制台并返回稳定退出码。
 /// 注意：这不是 Flutter 测试入口；CLI 与可见页面复用同一个生产 SourceVerificationEngine。

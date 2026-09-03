@@ -1,4 +1,4 @@
-/// Windows 正式 App 内置的数据源自检页面。
+/// desktop 正式 App 内置的数据源自检页面。
 ///
 /// 职责：启动单源/全部来源的生产链路检查，展示逐阶段结果并导出 JSON 报告。
 library;
@@ -35,7 +35,7 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && Platform.isWindows) _start();
+      if (mounted && _supportsDesktopVerification) _start();
     });
   }
 
@@ -134,12 +134,12 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
   }
 
   Widget _buildBody(BuildContext context) {
-    if (!Platform.isWindows) {
+    if (!_supportsDesktopVerification) {
       return const _VerificationMessage(
-        key: Key('source-verification-windows-only'),
+        key: Key('source-verification-desktop-only'),
         icon: Icons.desktop_windows_outlined,
-        title: '当前仅支持 Windows 检测',
-        message: '数据源插件本身保持双端兼容，本次只实现 Windows 正式宿主验证。',
+        title: '当前仅支持桌面端检测',
+        message: '请在 Windows 或 macOS 正式宿主中运行数据源全链路检测。',
       );
     }
     final report = _report;
@@ -188,6 +188,8 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
     );
   }
 }
+
+bool get _supportsDesktopVerification => Platform.isWindows || Platform.isMacOS;
 
 class _VerificationOverview extends StatelessWidget {
   const _VerificationOverview({required this.running, required this.progress, required this.report, required this.errorCode});

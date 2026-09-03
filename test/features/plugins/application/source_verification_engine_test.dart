@@ -12,6 +12,7 @@ void main() {
     final report = await SourceVerificationEngine(gateway).run(pluginId: _VerificationGateway.pluginId);
 
     expect(report.isSuccessful, isTrue);
+    expect(report.toJson()['platform'], Platform.isMacOS ? 'macos' : 'windows');
     expect(gateway.contentChapterIds, <String>['chapter:0', 'chapter:2', 'chapter:4']);
     final source = report.sources.single;
     expect(source.status, SourceVerificationResultStatus.passed);

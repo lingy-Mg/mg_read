@@ -42,21 +42,23 @@ void main() {
     expect(find.text('开发数据源插件（即时生效）'), findsOneWidget);
     expect(find.text('工作区开发数据源插件'), findsOneWidget);
     expect(find.text('开发中（即时生效）'), findsOneWidget);
-    if (Platform.isWindows) {
+    if (Platform.isWindows || Platform.isMacOS) {
       await tester.scrollUntilVisible(find.byKey(const Key('data-source-detail-open-directory')), 200, scrollable: find.byType(Scrollable));
-      expect(find.byKey(const Key('data-source-detail-package-development')), findsOneWidget);
+      expect(find.byKey(const Key('data-source-detail-package-development')), Platform.isWindows ? findsOneWidget : findsNothing);
       expect(find.text('打开开发项目文件夹'), findsOneWidget);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('data-source-detail-open-directory')));
       await tester.pumpAndSettle();
       expect(gateway.openedPluginIds, <String>['org.example.live-source']);
       expect(find.textContaining('下一次数据源调用时生效'), findsOneWidget);
-      await tester.ensureVisible(find.byKey(const Key('data-source-detail-package-development')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('data-source-detail-package-development')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(gateway.packagedPluginIds, <String>['org.example.live-source']);
+      if (Platform.isWindows) {
+        await tester.ensureVisible(find.byKey(const Key('data-source-detail-package-development')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('data-source-detail-package-development')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(gateway.packagedPluginIds, <String>['org.example.live-source']);
+      }
     }
   });
 
@@ -90,7 +92,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(gateway.scheduledUninstallPluginIds, <String>['org.example.installed']);
     expect(find.textContaining('已安排删除'), findsOneWidget);
-    if (Platform.isWindows) {
+    if (Platform.isWindows || Platform.isMacOS) {
       await tester.drag(find.byKey(const Key('data-source-detail-content')), const Offset(0, -400));
       await tester.pumpAndSettle();
       expect(find.text('打开已安装源码文件夹'), findsOneWidget);

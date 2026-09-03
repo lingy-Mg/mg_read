@@ -448,9 +448,7 @@ void main() {
           pageSize: 50,
         ),
       );
-      // Source calls allow the browser.session.v1 interaction window to use
-      // its full bounded host deadline; the Runtime timeout is covered by
-      // the Node integration tests rather than this 5.5-second fixture.
+      // The browser fixture uses its full host deadline; Node tests cover the Runtime timeout.
       expect(largerDiscovery, isA<PluginDiscoveryDocumentResult>());
     },
     timeout: const Timeout(Duration(seconds: 60)),

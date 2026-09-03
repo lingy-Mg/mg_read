@@ -3,6 +3,8 @@
 /// 职责：保存阶段状态、计数型摘要和可导出的紧凑报告。
 library;
 
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
 enum SourceVerificationResultStatus {
@@ -103,7 +105,7 @@ final class SourceVerificationReport {
 
   Map<String, Object?> toJson() => <String, Object?>{
     'schemaVersion': 1,
-    'platform': 'windows',
+    'platform': Platform.isMacOS ? 'macos' : 'windows',
     'mode': mode,
     'status': isSuccessful ? 'passed' : 'failed',
     'startedAt': startedAt.toUtc().toIso8601String(),

@@ -62,6 +62,7 @@ plugins/sources/                    真实数据源及其他能力参考实现
   Windows 可显式启用“强制代理本地 Runtime”：宿主临时从进程 `no_proxy` 删除 loopback 规则，同时更新 Win32
   环境和 Windows CRT，关闭后恢复原值；该开关不改变 Runtime 到外部媒体源的请求路由。
 - Runtime 控制信息由 Runtime 内部管理；控制帧有界，大资源走 HTTP 数据面。
+- macOS arm64 从 App bundle 启动固定 Node，用父进程看门狗绑定子进程生命周期；已安装数据源的导入、启停、发现、搜索、详情、目录、内容、传输和缓存属于 desktop 共同能力；工作区开发目录构建仍只属于 Windows。
 - `ctx.webview` 每个数据源只有一个宿主页；普通操作串行，
   显隐/关闭走控制旁路；超时与取消必须清理结果但保留可复用页面。
 - `ctx.webview` 提供 Windows WebView2 专用的原始 `page.cdp(method, params)` 通道，Android 返回

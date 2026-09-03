@@ -1,4 +1,4 @@
-/// Windows/Android 安全存储上的设备身份与配对密钥。
+/// desktop/Android 安全存储上的设备身份与配对密钥。
 ///
 /// 普通 metadata 只保存设备策略；随机设备 ID 与逐设备 256-bit 密钥由平台安全存储持有。
 library;
@@ -15,7 +15,7 @@ import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 
 final class SecureDeviceIdentityStore implements DeviceIdentityStore {
   SecureDeviceIdentityStore({FlutterSecureStorage? storage, Future<String?> Function()? deviceLabelResolver})
-    : _storage = storage ?? const FlutterSecureStorage(),
+    : _storage = storage ?? const FlutterSecureStorage(mOptions: MacOsOptions(usesDataProtectionKeychain: false)),
       _deviceLabelResolver = deviceLabelResolver ?? _readPlatformDeviceLabel;
 
   static const _deviceIdKey = 'mgread.device-sync.device-id.v1';
@@ -44,7 +44,13 @@ final class SecureDeviceIdentityStore implements DeviceIdentityStore {
       label = resolvedLabel;
       await _storage.write(key: _deviceLabelKey, value: label);
     } else if (!_isUsableDeviceLabel(label)) {
-      label = _normalizeDeviceLabel(Platform.localHostname) ?? (Platform.isWindows ? 'Windows 设备' : 'Android 设备');
+      label =
+          _normalizeDeviceLabel(Platform.localHostname) ??
+          (Platform.isWindows
+              ? 'Windows 设备'
+              : Platform.isMacOS
+              ? 'Mac 设备'
+              : 'Android 设备');
       await _storage.write(key: _deviceLabelKey, value: label);
     }
     return LocalDeviceIdentity(deviceId: deviceId, label: label!);
@@ -94,7 +100,15 @@ String? _normalizeDeviceLabel(String? value) {
   if (value == null) return null;
   var normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
   if (normalized.isEmpty) return null;
-  if (<String>{'localhost', 'localhost.localdomain', '127.0.0.1', '::1', 'android 设备', 'windows 设备'}.contains(normalized.toLowerCase())) {
+  if (<String>{
+    'localhost',
+    'localhost.localdomain',
+    '127.0.0.1',
+    '::1',
+    'android 设备',
+    'windows 设备',
+    'mac 设备',
+  }.contains(normalized.toLowerCase())) {
     return null;
   }
   if (normalized.length > 128) normalized = normalized.substring(0, 128);

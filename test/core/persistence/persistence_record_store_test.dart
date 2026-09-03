@@ -4,7 +4,6 @@ import 'dart:isolate';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
 
 import '../diagnostics/diagnostics_testkit.dart';
