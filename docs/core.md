@@ -17,7 +17,8 @@ lib/                               Flutter 主应用
 packages/mg_read_reader_ui/        小说/漫画阅读器
 packages/mg_read_audio_player/     音频播放器
 packages/mg_read_video_player/     视频播放器
-packages/mg_read_runtime/           Runtime、平台宿主和 Flutter Facade
+packages/mg_read_node_runtime/      Node.js Runtime Core
+packages/mgread_plugin_runtime/     Flutter Runtime Facade 与平台宿主
 plugins/sources/aisishuwu/          默认 Node 数据源参考实现与 artifact 构建器
 plugins/sources/                    真实数据源及其他能力参考实现
 ```

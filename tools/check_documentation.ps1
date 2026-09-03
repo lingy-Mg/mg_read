@@ -51,7 +51,7 @@ try {
     git ls-files --cached -- '*.md' 'AGENTS.md' '**/AGENTS.md'
   ) | ForEach-Object { $_.Replace('\', '/') } | Where-Object {
     $_ -and
-    $_ -notlike 'packages/mg_read_runtime/tools/*' -and
+    $_ -notlike 'packages/mg_read_node_runtime/tools/*' -and
     $_ -notlike 'node_modules/*' -and
     $_ -notlike '*/node_modules/*'
   } | Sort-Object -Unique
@@ -83,7 +83,7 @@ try {
     'docs/(architecture|implementation|planning)/'
     'docs/development/(diagnostics-instrumentation|documentation|source-file-governance|workflow)\.md'
     'packages/mg_read_reader_ui/docs/(DEVELOPMENT|PROJECT_GOAL|UI_DESIGN)\.md'
-    'packages/mg_read_runtime/(agent\.md|docs/(desktop-runtime-bridge|standalone-runtime-contract)\.md)'
+    'packages/mg_read_node_runtime/(agent\.md|docs/(desktop-runtime-bridge|standalone-runtime-contract)\.md)'
     'mgread-source-development/references/verification\.md'
     'plugins/sources/[^/\s`]+/README\.md'
   )

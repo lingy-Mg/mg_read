@@ -17,8 +17,8 @@ import {
 Windows 开发环境直接使用仓库固定 Node。单源与全源命令分别为：
 
 ```text
-packages\\mg_read_runtime\\tools\\node-v24.16.0-win-x64\\node.exe --use-env-proxy packages\\mg_read_source_testkit\\bin\\mgread-source-test.mjs --source aisishuwu
-packages\\mg_read_runtime\\tools\\node-v24.16.0-win-x64\\node.exe --use-env-proxy packages\\mg_read_source_testkit\\bin\\mgread-source-test.mjs --all
+packages\\mg_read_node_runtime\\tools\\node-v24.16.0-win-x64\\node.exe --use-env-proxy packages\\mg_read_source_testkit\\bin\\mgread-source-test.mjs --source aisishuwu
+packages\\mg_read_node_runtime\\tools\\node-v24.16.0-win-x64\\node.exe --use-env-proxy packages\\mg_read_source_testkit\\bin\\mgread-source-test.mjs --all
 ```
 
 CLI 默认先执行来源声明的 `build`，再从 `dist` 直接运行发现、搜索、详情、目录以及首/中/末内容抽样。`--all`

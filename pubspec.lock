@@ -728,7 +728,7 @@ packages:
   mgread_plugin_runtime:
     dependency: "direct main"
     description:
-      path: "packages/mg_read_runtime/packages/mgread_plugin_runtime"
+      path: "packages/mgread_plugin_runtime"
       relative: true
     source: path
     version: "0.5.0-standard.0"

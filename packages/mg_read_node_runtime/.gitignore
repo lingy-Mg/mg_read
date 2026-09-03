@@ -1,0 +1,15 @@
+node_modules/
+!tools/node-v24.16.0-win-x64/node_modules/
+!tools/node-v24.16.0-win-x64/node_modules/**
+!tools/node-v24.16.0-darwin-arm64/lib/node_modules/
+!tools/node-v24.16.0-darwin-arm64/lib/node_modules/**
+dist/
+!tools/node-v24.16.0-darwin-arm64/lib/node_modules/**/dist/
+!tools/node-v24.16.0-darwin-arm64/lib/node_modules/**/dist/**
+!test/fixtures/standard-plugin/dist/
+!test/fixtures/standard-plugin/dist/index.mjs
+!test/fixtures/macos-smoke-plugin/dist/
+!test/fixtures/macos-smoke-plugin/dist/index.mjs
+coverage/
+*.log
+.DS_Store

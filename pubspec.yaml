@@ -1,7 +1,7 @@
 name: mg_read
 description: "Main Flutter application for MgRead."
 publish_to: 'none'
-version: 0.9.127+245
+version: 0.9.128+246
 
 environment:
   sdk: ^3.12.2
@@ -24,7 +24,7 @@ dependencies:
   share_plus: 13.3.0
   url_launcher: 6.3.2
   mgread_plugin_runtime:
-    path: packages/mg_read_runtime/packages/mgread_plugin_runtime
+    path: packages/mgread_plugin_runtime
   novel_reader_ui:
     path: packages/mg_read_reader_ui
   mg_read_audio_player:
