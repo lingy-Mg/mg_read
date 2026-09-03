@@ -34,6 +34,11 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
     await _runOutbound(device, endpoint, operation: operation, automatic: automatic);
   }
 
+  void _setSyncProgress(PairedDevice device, PairedSyncOperation operation, String stage) {
+    final detail = _syncProgressDetail(device, stage);
+    state = state.copyWith(busyMessage: detail, lastErrorCode: null, lastMessage: '${_syncOperationLabel(device, operation)} · $detail');
+  }
+
   Future<void> _requestReverseOperation(
     PairedDevice device,
     PairedSyncEndpoint endpoint, {
@@ -69,9 +74,10 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
     final requestId = createPairedSyncWakeRequestId();
     final pending = _PendingWakeRequest(deviceId: device.deviceId, diagnostics: diagnostics);
     _pendingWakeRequests[requestId] = pending;
-    state = state.copyWith(busyDeviceId: device.deviceId, lastErrorCode: null, lastMessage: '正在请求 ${device.label} 建立反向连接');
+    state = state.copyWith(busyDeviceId: device.deviceId);
     try {
       diagnostics.stage('wake_send');
+      _setSyncProgress(device, operation, 'wake_send');
       await sendPairedSyncWakeRequest(
         identity: identity,
         endpoint: endpoint,
@@ -81,7 +87,9 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
         requestId: requestId,
       );
       diagnostics.stage('wake_wait');
+      _setSyncProgress(device, operation, 'wake_wait');
       final summary = await pending.completion.future.timeout(const Duration(seconds: 12));
+      state = state.copyWith(lastMessage: _summaryMessage(device.label, summary), lastErrorCode: null);
       diagnostics.complete(summary);
     } on Object catch (error, stackTrace) {
       if (_pendingWakeRequests.containsKey(requestId)) {
@@ -103,7 +111,7 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
     } finally {
       _pendingWakeRequests.remove(requestId);
       if (_activeDeviceId == null && state.busyDeviceId == device.deviceId) {
-        state = state.copyWith(busyDeviceId: null);
+        state = state.copyWith(busyDeviceId: null, busyMessage: null);
       }
     }
   }
@@ -186,21 +194,15 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
       role: requestId == null ? 'paired_outbound' : 'paired_reverse_responder',
     );
     PairedSyncFailure? terminalFailure;
-    state = state.copyWith(
-      busyDeviceId: device.deviceId,
-      lastErrorCode: null,
-      lastMessage: switch (operation) {
-        PairedSyncOperation.bidirectional => '正在与 ${device.label} 双向同步',
-        PairedSyncOperation.pull => '正在从 ${device.label} 拉取',
-        PairedSyncOperation.push => '正在向 ${device.label} 推送',
-      },
-    );
+    state = state.copyWith(busyDeviceId: device.deviceId);
     try {
       diagnostics.stage('identity');
+      _setSyncProgress(device, operation, 'identity');
       final secret = await ref.read(deviceIdentityStoreProvider).readPeerSecret(device.deviceId);
       final identity = _identity ?? await ref.read(deviceIdentityStoreProvider).loadOrCreateIdentity();
       if (secret == null) throw StateError('paired_secret_missing');
       diagnostics.stage('connect');
+      _setSyncProgress(device, operation, 'connect');
       final session = await PairedSyncClientSession.connectAny(
         endpoints: <PairedSyncEndpoint>[endpoint],
         identity: identity,
@@ -212,11 +214,15 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
         gateway: ref.read(lanSyncGatewayProvider),
         operation: operation,
         requestId: requestId,
-        onStage: diagnostics.stage,
+        onStage: (stage) {
+          diagnostics.stage(stage);
+          _setSyncProgress(device, operation, stage);
+        },
       );
       _retryTimers.remove(device.deviceId)?.cancel();
       _retryFailures.remove(device.deviceId);
       diagnostics.stage('result_persist');
+      _setSyncProgress(device, operation, 'result_persist');
       await _recordResultSafely(authenticatedDevice, PairedSyncResultState.success);
       final refreshFailure = await _refreshAfterSync();
       if (refreshFailure == null) {
@@ -241,7 +247,7 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
       }
     } finally {
       _activeDeviceId = null;
-      state = state.copyWith(busyDeviceId: null);
+      state = state.copyWith(busyDeviceId: null, busyMessage: null);
     }
     return terminalFailure;
   }
@@ -259,11 +265,19 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
         pending?.diagnostics ??
         _startPairedDiagnostics(device, operation: PairedSyncOperation.bidirectional, automatic: false, role: 'paired_inbound');
     _activeDeviceId = device.deviceId;
-    state = state.copyWith(busyDeviceId: device.deviceId, lastErrorCode: null, lastMessage: '正在与 ${device.label} 同步');
+    state = state.copyWith(busyDeviceId: device.deviceId);
     try {
-      final summary = await session.run(gateway: ref.read(lanSyncGatewayProvider), onStage: diagnostics.stage);
+      _setSyncProgress(device, PairedSyncOperation.bidirectional, 'request');
+      final summary = await session.run(
+        gateway: ref.read(lanSyncGatewayProvider),
+        onStage: (stage) {
+          diagnostics.stage(stage);
+          _setSyncProgress(device, PairedSyncOperation.bidirectional, stage);
+        },
+      );
       device = session.peer;
       diagnostics.stage('result_persist');
+      _setSyncProgress(device, PairedSyncOperation.bidirectional, 'result_persist');
       await _recordResultSafely(device, PairedSyncResultState.success);
       final refreshFailure = await _refreshAfterSync();
       if (refreshFailure == null) {
@@ -288,7 +302,7 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
       }
     } finally {
       _activeDeviceId = null;
-      state = state.copyWith(busyDeviceId: null);
+      state = state.copyWith(busyDeviceId: null, busyMessage: null);
     }
   }
 }

@@ -67,6 +67,37 @@ void main() {
     expect(tester.widget<FilledButton>(find.byKey(const Key('device-sync-bidirectional-$deviceId'))).onPressed, isNull);
   });
 
+  testWidgets('busy device shows the current sync stage instead of a generic status', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: PairedDevicesSection(
+              state: DeviceSyncState(
+                started: true,
+                devices: <PairedDevice>[_device(deviceId)],
+                onlineDeviceIds: const <String>{deviceId},
+                busyDeviceId: deviceId,
+                busyMessage: '正在接收书架和阅读进度、插件',
+              ),
+              supportsScanner: false,
+              onBeginPairing: () {},
+              onApprovePairing: () {},
+              onRejectPairing: () {},
+              onCancelPairing: () {},
+              onSync: (_, _) {},
+              onManage: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('正在接收书架和阅读进度、插件'), findsOneWidget);
+    expect(find.text('正在同步'), findsNothing);
+  });
+
   testWidgets('sync failure exposes its stable code, stage, and technical reason', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

@@ -8,6 +8,7 @@ final class DeviceSyncState {
     this.devices = const <PairedDevice>[],
     this.onlineDeviceIds = const <String>{},
     this.busyDeviceId,
+    this.busyMessage,
     this.lastMessage,
     this.lastErrorCode,
     this.lastErrorDetails,
@@ -21,6 +22,7 @@ final class DeviceSyncState {
   final List<PairedDevice> devices;
   final Set<String> onlineDeviceIds;
   final String? busyDeviceId;
+  final String? busyMessage;
   final String? lastMessage;
   final String? lastErrorCode;
   final String? lastErrorDetails;
@@ -43,6 +45,7 @@ final class DeviceSyncState {
     List<PairedDevice>? devices,
     Set<String>? onlineDeviceIds,
     Object? busyDeviceId = _unchanged,
+    Object? busyMessage = _unchanged,
     Object? lastMessage = _unchanged,
     Object? lastErrorCode = _unchanged,
     Object? lastErrorDetails = _unchanged,
@@ -57,6 +60,7 @@ final class DeviceSyncState {
       devices: devices ?? this.devices,
       onlineDeviceIds: onlineDeviceIds ?? this.onlineDeviceIds,
       busyDeviceId: identical(busyDeviceId, _unchanged) ? this.busyDeviceId : busyDeviceId as String?,
+      busyMessage: identical(busyMessage, _unchanged) ? this.busyMessage : busyMessage as String?,
       lastMessage: identical(lastMessage, _unchanged) ? this.lastMessage : lastMessage as String?,
       lastErrorCode: errorCodeChanged ? lastErrorCode as String? : this.lastErrorCode,
       lastErrorDetails: identical(lastErrorDetails, _unchanged)

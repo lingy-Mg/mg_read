@@ -101,6 +101,7 @@ class PairedDevicesSection extends StatelessWidget {
                 device: device,
                 online: state.onlineDeviceIds.contains(device.deviceId),
                 busy: state.busyDeviceId == device.deviceId,
+                busyMessage: state.busyDeviceId == device.deviceId ? state.busyMessage : null,
                 canStartSync: state.busyDeviceId == null,
                 onSync: (operation) => onSync(device.deviceId, operation),
                 onManage: () => onManage(device),
@@ -173,6 +174,7 @@ class _PairedDeviceTile extends StatelessWidget {
     required this.device,
     required this.online,
     required this.busy,
+    required this.busyMessage,
     required this.canStartSync,
     required this.onSync,
     required this.onManage,
@@ -181,6 +183,7 @@ class _PairedDeviceTile extends StatelessWidget {
   final PairedDevice device;
   final bool online;
   final bool busy;
+  final String? busyMessage;
   final bool canStartSync;
   final ValueChanged<PairedSyncOperation> onSync;
   final VoidCallback onManage;
@@ -213,7 +216,7 @@ class _PairedDeviceTile extends StatelessWidget {
                       Text(device.label, maxLines: 1, overflow: TextOverflow.ellipsis),
                       Text(
                         busy
-                            ? '正在同步'
+                            ? busyMessage ?? '正在处理同步内容'
                             : online
                             ? '在线 · ${device.autoSync ? '自动同步已开启' : '仅手动'}'
                             : '离线 · 打开另一台设备后可同步',
