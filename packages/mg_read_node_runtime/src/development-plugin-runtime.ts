@@ -4,7 +4,8 @@
  * Candidate activation finishes before callers replace the active map. Retired
  * generations stay on disk only while a request still owns them.
  */
-import { rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
+import { resolve } from "node:path";
 
 import { resolveDevelopmentSyncRevision } from "./development-sync-revision.js";
 import { stageDevelopmentGeneration } from "./development-plugin-generation.js";
@@ -21,7 +22,11 @@ import {
   normalizePluginModule,
   snapshotFrom,
 } from "./plugin-manager-files.js";
-import { type PluginPackageDescriptor, resolveInside } from "./plugin-package.js";
+import {
+  parsePluginPackageDescriptor,
+  type PluginPackageDescriptor,
+  resolveInside,
+} from "./plugin-package.js";
 import { readPluginProject } from "./plugin-package.js";
 
 export interface LoadDevelopmentPluginOptions {
@@ -107,6 +112,28 @@ export function developmentPluginIdentity(
     (candidate) => candidate.projectRoot === projectRoot,
   )?.loaded.descriptor.id;
   return pluginId === undefined ? {} : { pluginId };
+}
+
+/** Reads identity without requiring the build output entry to exist. */
+export async function developmentPluginProjectIdentity(
+  loaded: ReadonlyMap<string, DevelopmentPlugin>,
+  projectRoot: string,
+): Promise<{ readonly pluginId?: string; readonly pluginName?: string }> {
+  const active = [...loaded.values()].find(
+    (candidate) => candidate.projectRoot === projectRoot,
+  )?.loaded.descriptor;
+  if (active !== undefined) {
+    return { pluginId: active.id, pluginName: active.displayName };
+  }
+  try {
+    const packageJson = JSON.parse(
+      await readFile(resolve(projectRoot, "package.json"), "utf8"),
+    ) as Record<string, unknown>;
+    const descriptor = parsePluginPackageDescriptor(packageJson, resolve(projectRoot));
+    return { pluginId: descriptor.id, pluginName: descriptor.displayName };
+  } catch {
+    return {};
+  }
 }
 
 export function developmentSnapshots(
@@ -210,12 +237,16 @@ export async function reloadDevelopmentPlugin(
       pluginId: project.descriptor.id,
     });
   } catch {
+    const identity = project?.descriptor === undefined
+      ? await developmentPluginProjectIdentity(options.loaded, projectRoot)
+      : {
+          pluginId: project.descriptor.id,
+          pluginName: project.descriptor.displayName,
+        };
     options.events({
       code: "development_plugin_activation_failed",
       outcome: "error",
-      ...(project?.descriptor.id === undefined
-        ? developmentPluginIdentity(options.loaded, projectRoot)
-        : { pluginId: project.descriptor.id }),
+      ...identity,
     });
   }
 }

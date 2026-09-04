@@ -46,9 +46,12 @@ export interface PluginManagerEvent {
   readonly logLevel?: "debug" | "error" | "info" | "warn";
   /** Plugin-authored text; the Runtime Debug buffer preserves it verbatim within its size bound. */
   readonly logMessage?: string;
+  /** Bounded stdout/stderr from a failed development-project build. Debug-only transport data. */
+  readonly buildOutput?: string;
   readonly operation?: PluginContentOperation;
   readonly outcome: "error" | "started" | "success";
   readonly pluginId?: string;
+  readonly pluginName?: string;
 }
 
 export type PluginManagerEventSink = (event: PluginManagerEvent) => void;

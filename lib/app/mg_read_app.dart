@@ -111,6 +111,9 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
           .read(dataSourceSystemErrorReporterProvider)
           .reportDevelopmentReloadFailure(
             errorCode: change.kind == DevelopmentPluginChangeKind.buildFailed ? 'plugin_build_failed' : 'plugin_load_failed',
+            pluginId: change.pluginId,
+            pluginName: change.pluginName,
+            buildOutput: change.buildOutput,
           );
     }
   }

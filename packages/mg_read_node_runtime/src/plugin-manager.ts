@@ -31,9 +31,13 @@ import { dirname, resolve } from "node:path";
 import type { JsonObject } from "./protocol.js";
 import { activatePlugin, defaultPluginActivationTimeoutMs } from "./plugin-activation.js";
 import type { PluginBrowserSessionProvider } from "./plugin-browser-session.js";
-import { DevelopmentPluginMonitor } from "./development-plugin-monitor.js";
+import {
+  DevelopmentPluginMonitor,
+  type DevelopmentBuildResult,
+} from "./development-plugin-monitor.js";
 import {
   developmentPluginIdentity,
+  developmentPluginProjectIdentity,
   developmentSnapshots,
   DevelopmentGenerationLifetime,
   loadDevelopmentPlugin,
@@ -118,6 +122,19 @@ import {
 } from "./plugin-manager-files.js";
 
 const DEFAULT_CACHE_CLEAR_TIMEOUT_MS = 5_000;
+const MAX_DEVELOPMENT_BUILD_OUTPUT_BYTES = 64 * 1024;
+
+function formatDevelopmentBuildOutput(result: DevelopmentBuildResult): string {
+  const sections: string[] = [];
+  if (result.stdout.length > 0) sections.push(`[stdout]\n${result.stdout}`);
+  if (result.stderr.length > 0) sections.push(`[stderr]\n${result.stderr}`);
+  sections.push(
+    `[exit] code=${result.exitCode ?? "null"} signal=${result.signal ?? "null"}`,
+  );
+  return Buffer.from(sections.join("\n"), "utf8")
+    .subarray(0, MAX_DEVELOPMENT_BUILD_OUTPUT_BYTES)
+    .toString("utf8");
+}
 
 export {
   PluginManagerError,
@@ -720,11 +737,16 @@ export class PluginManager {
       this.#developmentMonitor = new DevelopmentPluginMonitor({
         developmentRoot,
         npmCliPath: npmCli,
-        onBuildFailed: (projectRoot) => this.#queueDevelopmentMutation(async () => {
+        onBuildFailed: (projectRoot, result) => this.#queueDevelopmentMutation(async () => {
+          const identity = await developmentPluginProjectIdentity(
+            this.#developmentLoaded,
+            projectRoot,
+          );
           this.#events({
+            ...identity,
+            buildOutput: formatDevelopmentBuildOutput(result),
             code: "development_plugin_build_failed",
             outcome: "error",
-            ...developmentPluginIdentity(this.#developmentLoaded, projectRoot),
           });
         }),
         onBuilt: (projectRoot) => this.#queueDevelopmentMutation(

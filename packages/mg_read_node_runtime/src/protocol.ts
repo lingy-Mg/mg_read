@@ -183,6 +183,10 @@ export type DevelopmentPluginChangeKind =
 
 /** One path-free desktop development-source change. */
 export interface RuntimeDevelopmentPluginChange extends JsonObject {
+  /** Display name from the development project's package.json. */
+  readonly pluginName?: string;
+  /** Bounded raw stdout/stderr from a failed development build. */
+  readonly buildOutput?: string;
   readonly kind: DevelopmentPluginChangeKind;
   readonly pluginId?: string;
 }

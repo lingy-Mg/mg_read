@@ -139,9 +139,15 @@ test(
 
   const packagePath = join(firstRoot, "package.json");
   const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
-  packageJson.scripts.build = "node -e \"process.exit(1)\"";
+  packageJson.scripts.build = "node -e \"console.log('build stdout'); console.error('build stderr'); process.exit(7)\"";
   await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
   await waitFor(() => events.some((event) => event.code === "development_plugin_build_failed"));
+  const buildFailure = events.find((event) => event.code === "development_plugin_build_failed");
+  assert.equal(buildFailure.pluginId, "org.example.watched");
+  assert.equal(buildFailure.pluginName, "第一版");
+  assert.match(buildFailure.buildOutput, /build stdout/);
+  assert.match(buildFailure.buildOutput, /build stderr/);
+  assert.match(buildFailure.buildOutput, /code=7/);
   assert.equal((await search(manager, "org.example.watched")).items[0].title, "第三版：测试");
 
   const secondRoot = join(developmentRoot, "second-source");

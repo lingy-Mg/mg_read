@@ -335,6 +335,8 @@ abstract final class AppDiagnosticEvents {
       'boundary': _requiredInstantString,
       'errorCode': _requiredInstantString,
       'errorText': _string,
+      'pluginId': _string,
+      'pluginName': _string,
       'stackTrace': _string,
       'fatal': _boolean,
     },

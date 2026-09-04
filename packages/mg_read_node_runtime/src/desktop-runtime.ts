@@ -37,10 +37,7 @@ import {
   type RuntimeRequest,
 } from "./protocol.js";
 import { expectedNodeVersion, protocolVersion, runtimeVersion } from "./runtime-version.js";
-import {
-  developmentPluginChangeFromManagerEvent,
-  emitPluginManagerDiagnostic,
-} from "./plugin-manager-events.js";
+import { developmentPluginBuildFailureDebugLog, developmentPluginChangeFromManagerEvent, emitPluginManagerDiagnostic } from "./plugin-manager-events.js";
 import {
   maxWebSocketControlFrameBytes,
   maxWebSocketOutboundQueueBytes,
@@ -459,6 +456,9 @@ export class DesktopRuntime {
       for (const session of this.#sessions) {
         if (!session.isClosed) this.#sendJson(session, envelope);
       }
+      // Keep each raw build result in the transient inspector for source-level diagnosis.
+      const buildFailureLog = developmentPluginBuildFailureDebugLog(event);
+      if (buildFailureLog !== undefined && this.#debugHttp?.status().enabled) this.#debugLogs.append(buildFailureLog);
     }
     emitPluginManagerDiagnostic(event);
   }

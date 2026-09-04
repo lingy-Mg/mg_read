@@ -2,10 +2,12 @@
  * Path-free projections of PluginManager lifecycle events.
  *
  * This module owns reviewed diagnostic copy and the public development-change
- * mapping. It never projects project roots, build output or plugin data.
+ * mapping. It never projects project roots or plugin data. A failed
+ * development build may carry bounded raw output for the Debug Console only.
  */
 import type { PluginManagerEvent } from "./plugin-manager.js";
 import type { RuntimeDevelopmentPluginChange } from "./protocol.js";
+import type { RuntimeDebugLogInput } from "./debug-http.js";
 import { emitRuntimeDiagnostic } from "./runtime-diagnostics.js";
 
 /** Emits only stable plugin lifecycle diagnostics; Debug logs stay separate. */
@@ -50,8 +52,28 @@ export function developmentPluginChangeFromManagerEvent(
   if (kind === undefined) return undefined;
   return Object.freeze({
     kind,
+    ...(event.buildOutput === undefined ? {} : { buildOutput: event.buildOutput }),
     ...(event.pluginId === undefined ? {} : { pluginId: event.pluginId }),
+    ...(event.pluginName === undefined ? {} : { pluginName: event.pluginName }),
   });
+}
+
+/** Projects one failed development build to the transient Runtime Debug log. */
+export function developmentPluginBuildFailureDebugLog(
+  event: PluginManagerEvent,
+): RuntimeDebugLogInput | undefined {
+  if (event.code !== "development_plugin_build_failed") return undefined;
+  const identity = event.pluginName === undefined
+    ? event.pluginId ?? "未命名数据源"
+    : `${event.pluginName}${event.pluginId === undefined ? "" : ` (${event.pluginId})`}`;
+  return {
+    category: "runtime.diagnostic",
+    code: event.code,
+    level: "error",
+    message: `开发数据源构建失败：${identity}\n${event.buildOutput ?? "构建器未返回原始输出。"}`,
+    source: "runtime",
+    ...(event.pluginId === undefined ? {} : { pluginId: event.pluginId }),
+  };
 }
 
 function switchDevelopmentEventKind(

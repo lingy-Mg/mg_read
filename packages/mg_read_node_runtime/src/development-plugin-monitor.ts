@@ -18,13 +18,24 @@ import { delimiter, dirname, resolve } from "node:path";
 
 const DEFAULT_SETTLE_DELAY_MS = 1_500;
 const DEFAULT_MAX_CONCURRENT_BUILDS = 2;
+const MAX_BUILD_OUTPUT_BYTES = 64 * 1024;
 
-export type DevelopmentBuildRunner = (projectRoot: string) => Promise<boolean>;
+export interface DevelopmentBuildResult {
+  readonly exitCode: number | null;
+  readonly signal: NodeJS.Signals | null;
+  readonly stderr: string;
+  readonly stdout: string;
+  readonly success: boolean;
+}
+
+export type DevelopmentBuildRunner = (
+  projectRoot: string,
+) => Promise<DevelopmentBuildResult | boolean>;
 
 export interface DevelopmentPluginMonitorOptions {
   readonly developmentRoot: string;
   readonly npmCliPath: string;
-  readonly onBuildFailed: (projectRoot: string) => Promise<void> | void;
+  readonly onBuildFailed: (projectRoot: string, result: DevelopmentBuildResult) => Promise<void> | void;
   readonly onBuilt: (projectRoot: string) => Promise<void> | void;
   readonly onRemoved: (projectRoot: string) => Promise<void> | void;
   readonly buildRunner?: DevelopmentBuildRunner;
@@ -207,19 +218,29 @@ export class DevelopmentPluginMonitor {
     }
 
     state.building = true;
-    let built = false;
+    let result: DevelopmentBuildResult = {
+      exitCode: null,
+      signal: null,
+      stderr: "",
+      stdout: "",
+      success: false,
+    };
     try {
-      built = await this.#buildRunner(projectRoot);
+      const buildResult = await this.#buildRunner(projectRoot);
+      result = typeof buildResult === "boolean"
+        ? { ...result, success: buildResult }
+        : buildResult;
     } catch {
-      built = false;
+      // A failed runner is reported with the same bounded failure shape as a
+      // non-zero npm build. The normal npm runner includes spawn errors below.
     } finally {
       state.building = false;
       state.suppressDistUntil = Date.now() + 500;
     }
     if (this.#closed) return;
     if (state.revision !== revision) return;
-    if (!built) {
-      await this.#onBuildFailed(projectRoot);
+    if (!result.success) {
+      await this.#onBuildFailed(projectRoot, result);
       return;
     }
     await this.#onBuilt(projectRoot);
@@ -243,9 +264,26 @@ function isRelevantDevelopmentPath(path: string): boolean {
 /** Runs the declared build through the repository-pinned npm CLI and Node. */
 function createNpmBuildRunner(npmCliPath: string): DevelopmentBuildRunner {
   const normalizedNpmCli = resolve(npmCliPath);
-  return (projectRoot) => new Promise<boolean>((complete) => {
+  return (projectRoot) => new Promise<DevelopmentBuildResult>((complete) => {
     const nodeDirectory = dirname(process.execPath);
     const currentPath = process.env.PATH ?? process.env.Path ?? "";
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let settled = false;
+    const append = (target: string[], chunk: string, currentBytes: number): number => {
+      const remaining = MAX_BUILD_OUTPUT_BYTES - currentBytes;
+      if (remaining <= 0) return currentBytes;
+      const bounded = Buffer.from(chunk, "utf8").subarray(0, remaining).toString("utf8");
+      target.push(bounded);
+      return currentBytes + Buffer.byteLength(bounded, "utf8");
+    };
+    const finish = (result: DevelopmentBuildResult): void => {
+      if (settled) return;
+      settled = true;
+      complete(result);
+    };
     const child = spawn(
       process.execPath,
       [normalizedNpmCli, "run", "build"],
@@ -262,11 +300,34 @@ function createNpmBuildRunner(npmCliPath: string): DevelopmentBuildRunner {
           npm_node_execpath: process.execPath,
         },
         shell: false,
-        stdio: "ignore",
+        stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       },
     );
-    child.once("error", () => complete(false));
-    child.once("exit", (code, signal) => complete(code === 0 && signal === null));
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      stdoutBytes = append(stdout, chunk, stdoutBytes);
+    });
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string) => {
+      stderrBytes = append(stderr, chunk, stderrBytes);
+    });
+    child.once("error", (error) => {
+      stderrBytes = append(stderr, `${error.message}\n`, stderrBytes);
+      finish({
+        exitCode: null,
+        signal: null,
+        stderr: stderr.join(""),
+        stdout: stdout.join(""),
+        success: false,
+      });
+    });
+    child.once("close", (code, signal) => finish({
+      exitCode: code,
+      signal,
+      stderr: stderr.join(""),
+      stdout: stdout.join(""),
+      success: code === 0 && signal === null,
+    }));
   });
 }
