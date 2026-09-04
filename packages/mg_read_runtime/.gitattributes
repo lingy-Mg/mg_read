@@ -1,4 +1,0 @@
-# The embedded npm/corepack files are part of the pinned Windows Node
-# distribution. Preserve upstream bytes and do not apply source whitespace
-# checks or line-ending conversion to this vendor-only tree.
-tools/node-v24.16.0-win-x64/node_modules/** -text -whitespace

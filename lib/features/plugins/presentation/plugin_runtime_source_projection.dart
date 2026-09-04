@@ -14,10 +14,11 @@ import 'package:mg_read/features/plugins/application/plugin_runtime_connection.d
 import 'package:mg_read/shared/presentation/source_branding.dart';
 
 import 'data_source_management_row.dart';
+import 'plugin_content_kind_labels.dart';
 
 List<DataSourceManagementRowData> pluginManagementSourcesFromConnection(PluginRuntimeConnection connection) {
   return connection.plugins
-      .where((PluginRuntimePlugin plugin) => plugin.contentKinds.contains('novel') || plugin.contentKinds.contains('manga'))
+      .where((PluginRuntimePlugin plugin) => hasSupportedPluginContentKind(plugin.contentKinds))
       .map(
         (PluginRuntimePlugin plugin) => DataSourceManagementRowData(
           id: plugin.id,
@@ -33,13 +34,8 @@ List<DataSourceManagementRowData> pluginManagementSourcesFromConnection(PluginRu
       .toList(growable: false);
 }
 
-String _contentKindLabel(List<String> contentKinds) {
-  final labels = <String>[if (contentKinds.contains('novel')) '小说', if (contentKinds.contains('manga')) '漫画'];
-  return labels.isEmpty ? '数据源' : labels.join(' · ');
-}
-
 String _sourceMetadataLabel(PluginRuntimePlugin plugin) {
-  final kindLabel = _contentKindLabel(plugin.contentKinds);
+  final kindLabel = pluginContentKindsLabel(plugin.contentKinds);
   if (plugin.status == 'development') return '$kindLabel · 开发数据源插件（即时生效）';
   final String? origin = switch (plugin.displayName) {
     '起点中文网' || '番茄小说' || '七猫中文网' || '纵横中文网' => '官方源',

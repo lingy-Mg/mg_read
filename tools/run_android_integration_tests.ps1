@@ -22,7 +22,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $adb = Get-Command adb -ErrorAction Stop
 $androidApplicationId = 'com.mgread.mg_read'
-$runtimeNodeRoot = Join-Path $projectRoot 'packages/mg_read_runtime/tools/node-v24.16.0-win-x64'
+$runtimeNodeRoot = Join-Path $projectRoot 'packages/mg_read_node_runtime/tools/node-v24.16.0-win-x64'
 $runtimeNpm = Join-Path $runtimeNodeRoot 'npm.cmd'
 
 $deviceStateOutput = & $adb.Source -s $DeviceId get-state 2>$null | Out-String

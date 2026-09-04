@@ -9,7 +9,8 @@ MgRead 是以可安装数据源为在线内容入口的本地优先 Flutter 阅�
 | 路径 | 用途 |
 | --- | --- |
 | `lib/` | Flutter 主应用 |
-| `packages/mg_read_runtime/` | 数据源 Runtime 与 Flutter Facade |
+| `packages/mg_read_node_runtime/` | Node.js 数据源 Runtime Core |
+| `packages/mgread_plugin_runtime/` | Flutter Runtime Facade 与平台宿主 |
 | `packages/mg_read_reader_ui/` | 小说与漫画阅读器 |
 | `packages/mg_read_audio_player/` | 音频播放器 |
 | `packages/mg_read_video_player/` | 视频播放器 |

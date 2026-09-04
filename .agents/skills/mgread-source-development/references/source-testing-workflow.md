@@ -17,14 +17,14 @@ Node 层不依赖 Flutter、PowerShell 脚本或 Runtime 私有实现；App 层�
 从仓库根目录直接使用固定 Node，不创建 `.ps1`/`pwsh` 包装：
 
 ```text
-packages\mg_read_runtime\tools\node-v24.16.0-win-x64\node.exe --use-env-proxy packages\mg_read_source_testkit\bin\mgread-source-test.mjs --source aisishuwu --report artifacts\source-tests\node-aisishuwu.json
+packages\mg_read_node_runtime\tools\node-v24.16.0-win-x64\node.exe --use-env-proxy packages\mg_read_source_testkit\bin\mgread-source-test.mjs --source aisishuwu --report artifacts\source-tests\node-aisishuwu.json
 ```
 
 `--source` 接受来源目录名、`package.json` 名称或插件 ID。开发循环默认跑目标单源；测试库、公共 Source
 契约或跨来源共用代码变化时追加全源：
 
 ```text
-packages\mg_read_runtime\tools\node-v24.16.0-win-x64\node.exe --use-env-proxy packages\mg_read_source_testkit\bin\mgread-source-test.mjs --all --report artifacts\source-tests\node-all.json
+packages\mg_read_node_runtime\tools\node-v24.16.0-win-x64\node.exe --use-env-proxy packages\mg_read_source_testkit\bin\mgread-source-test.mjs --all --report artifacts\source-tests\node-all.json
 ```
 
 CLI 默认执行每个来源声明的 `build`，再从 `dist` 检查：
@@ -40,7 +40,7 @@ CLI 默认执行每个来源声明的 `build`，再从 `dist` 检查：
 自动发现和搜索。`--skip-build` 只用于确认 `dist` 与源码一致时的重复诊断。测试库自身变化还要运行：
 
 ```text
-packages\mg_read_runtime\tools\node-v24.16.0-win-x64\node.exe --test packages\mg_read_source_testkit\test\*.test.mjs
+packages\mg_read_node_runtime\tools\node-v24.16.0-win-x64\node.exe --test packages\mg_read_source_testkit\test\*.test.mjs
 ```
 
 Node CLI 退出码：`0` 全部通过、`1` 已完成且存在来源失败、`2` 参数或启动失败。全源模式必须继续到最后一个

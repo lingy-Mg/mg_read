@@ -1,0 +1,19 @@
+{
+  "name": "@mgread-plugin/macos-smoke",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.runtime.macos-smoke",
+    "displayName": "macOS Runtime 验收数据源",
+    "packageMode": "single-file",
+    "pluginApi": 1,
+    "contentKinds": [
+      "novel"
+    ]
+  }
+}

@@ -40,7 +40,7 @@ test('fixture outputs pass the current Runtime source validators', async () => {
 });
 
 async function loadRuntimeValidators() {
-  const runtimeRoot = fileURLToPath(new URL('../../../../packages/mg_read_runtime/', import.meta.url));
+  const runtimeRoot = fileURLToPath(new URL('../../../../packages/mg_read_node_runtime/', import.meta.url));
   const result = await build({
     bundle: true,
     format: 'esm',

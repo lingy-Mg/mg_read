@@ -20,11 +20,14 @@ import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
 
+import 'plugin_runtime_catalog_change.dart';
 import 'plugin_runtime_models.dart';
 
+export 'plugin_runtime_catalog_change.dart';
 export 'plugin_runtime_models.dart';
 
 part 'plugin_runtime_source_actions.dart';
+part 'plugin_runtime_source_sizes.dart';
 
 /// Narrow application port; main-project code never sees Runtime transport.
 abstract interface class PluginRuntimeGateway {
@@ -55,7 +58,7 @@ abstract interface class PluginRuntimeGateway {
   Future<void> controlSourceWebView({required String pluginId, required String pluginName, required PluginWebViewDebugAction action});
 }
 
-/// Optional event capability for the Windows desktop development lifecycle.
+/// Optional event capability for the desktop development lifecycle.
 abstract interface class PluginRuntimeDevelopmentGateway {
   Stream<DevelopmentPluginChangeBatch> get developmentChanges;
 }
@@ -349,7 +352,7 @@ String? _boundedRuntimeValidationDetail(String value) {
 /// Process-scoped public Facade shared by every main-application capability.
 final pluginRuntimeFacadeProvider = Provider<PluginRuntime>((Ref ref) => PluginRuntime());
 
-/// Path-free Windows desktop development-source events from the shared Facade.
+/// Path-free desktop development-source events from the shared Facade.
 /// Android exposes the same typed contract as an empty stream.
 final pluginRuntimeDevelopmentChangesProvider = StreamProvider<DevelopmentPluginChangeBatch>((Ref ref) {
   final gateway = ref.watch(pluginRuntimeGatewayProvider);
@@ -368,6 +371,7 @@ final pluginRuntimeStatusGatewayProvider = Provider<PluginRuntimeStatusGateway>(
 
 /// One refreshable status snapshot for the dedicated Node Runtime page.
 final pluginRuntimeStatusProvider = FutureProvider<PluginRuntimeStatus>((Ref ref) async {
+  ref.watch(pluginRuntimeCatalogChangeProvider);
   final gateway = ref.watch(pluginRuntimeStatusGatewayProvider);
   final diagnostics = ref.watch(diagnosticsManagerProvider);
   final span = diagnostics.startSpan(
@@ -406,6 +410,7 @@ final pluginRuntimeStatusProvider = FutureProvider<PluginRuntimeStatus>((Ref ref
 /// restarting inspection when a feature is opened later, while concurrent
 /// consumers still share the Runtime Facade's one startup operation.
 final pluginRuntimeConnectionProvider = FutureProvider<PluginRuntimeConnection>((Ref ref) async {
+  ref.watch(pluginRuntimeCatalogChangeProvider);
   final gateway = ref.watch(pluginRuntimeGatewayProvider);
   final runtime = ref.watch(pluginRuntimeFacadeProvider);
   final proxyManager = ref.watch(configuredFlutterNetworkProxyManagerProvider);
@@ -466,21 +471,6 @@ final pluginRuntimeConnectionProvider = FutureProvider<PluginRuntimeConnection>(
   }
 });
 
-final pluginRuntimeSourceDataSizeProvider = FutureProvider.autoDispose.family<PluginInstallationSize, String>(
-  (Ref ref, String pluginId) =>
-      ref.read(pluginRuntimeGatewayProvider).inspectInstallationSize(pluginId: pluginId, scope: PluginInstallationSizeScope.data),
-);
-
-final pluginRuntimeSourceArchiveSizeProvider = FutureProvider.autoDispose.family<PluginInstallationSize, String>(
-  (Ref ref, String pluginId) =>
-      ref.read(pluginRuntimeGatewayProvider).inspectInstallationSize(pluginId: pluginId, scope: PluginInstallationSizeScope.archive),
-);
-
-final pluginRuntimeSourceNpmSizeProvider = FutureProvider.autoDispose.family<PluginInstallationSize, String>(
-  (Ref ref, String pluginId) =>
-      ref.read(pluginRuntimeGatewayProvider).inspectInstallationSize(pluginId: pluginId, scope: PluginInstallationSizeScope.npm),
-);
-
 /// Serializes Runtime-owned Windows source-directory actions per plugin.
 final pluginRuntimeSourceDirectoryProvider = NotifierProvider<PluginRuntimeSourceDirectoryController, Set<String>>(
   PluginRuntimeSourceDirectoryController.new,
@@ -491,7 +481,7 @@ final pluginRuntimeDevelopmentPackageProvider = NotifierProvider<PluginRuntimeDe
   PluginRuntimeDevelopmentPackageController.new,
 );
 
-/// Serializes the Windows-only Runtime private-directory shell action.
+/// Serializes the desktop-only Runtime private-directory shell action.
 final pluginRuntimePrivateDirectoryProvider = NotifierProvider<PluginRuntimePrivateDirectoryController, bool>(
   PluginRuntimePrivateDirectoryController.new,
 );
@@ -555,8 +545,7 @@ final class PluginRuntimeSourceImportController extends Notifier<PluginSourceImp
       final imported = await ref.read(pluginRuntimeGatewayProvider).importLocalPlugin();
       if (imported) {
         state = const PluginSourceImportState(isImporting: true, message: '正在刷新数据源列表', logs: <String>['正在刷新数据源列表']);
-        ref.invalidate(pluginRuntimeConnectionProvider);
-        ref.invalidate(pluginRuntimeStatusProvider);
+        ref.read(pluginRuntimeCatalogChangeProvider.notifier).publish();
         await ref.read(pluginRuntimeConnectionProvider.future);
       }
       span.complete(
@@ -602,7 +591,7 @@ List<String> _appendImportLog(List<String> current, String message) {
   return List<String>.unmodifiable(next.sublist(next.length - 12));
 }
 
-/// Selects and activates a Windows desktop development-source directory.
+/// Selects and activates a desktop development-source directory.
 final pluginRuntimeDevelopmentDirectoryProvider = NotifierProvider<PluginRuntimeDevelopmentDirectoryController, bool>(
   PluginRuntimeDevelopmentDirectoryController.new,
 );
@@ -617,8 +606,7 @@ final class PluginRuntimeDevelopmentDirectoryController extends Notifier<bool> {
     try {
       final selected = await ref.read(pluginRuntimeGatewayProvider).selectDevelopmentDirectory();
       if (selected) {
-        ref.invalidate(pluginRuntimeConnectionProvider);
-        ref.invalidate(pluginRuntimeStatusProvider);
+        ref.read(pluginRuntimeCatalogChangeProvider.notifier).publish();
         await ref.read(pluginRuntimeConnectionProvider.future);
       }
       return selected;

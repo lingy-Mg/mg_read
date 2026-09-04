@@ -17,6 +17,7 @@ final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
     pluginId: pluginId,
     capability: 'runtime.plugins.setEnabled.v1',
     operation: () => ref.read(pluginRuntimeGatewayProvider).setEnabled(pluginId: pluginId, enabled: enabled),
+    onSuccess: () => ref.read(pluginRuntimeCatalogChangeProvider.notifier).publish(pluginIds: <String>{pluginId}),
   );
 
   Future<void> scheduleUninstall({required String pluginId}) => _run(
@@ -25,7 +26,12 @@ final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
     operation: () => ref.read(pluginRuntimeGatewayProvider).scheduleUninstall(pluginId: pluginId),
   );
 
-  Future<void> _run({required String pluginId, required String capability, required Future<void> Function() operation}) async {
+  Future<void> _run({
+    required String pluginId,
+    required String capability,
+    required Future<void> Function() operation,
+    void Function()? onSuccess,
+  }) async {
     if (state.contains(pluginId)) throw AppError.fromCode(AppErrorCode.conflict);
     state = Set<String>.unmodifiable(<String>{...state, pluginId});
     final diagnostics = ref.read(diagnosticsManagerProvider);
@@ -38,8 +44,14 @@ final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
     );
     try {
       await operation();
-      ref.invalidate(pluginRuntimeConnectionProvider);
-      ref.invalidate(pluginRuntimeStatusProvider);
+      if (onSuccess != null) {
+        onSuccess();
+      } else {
+        // A scheduled uninstall changes management metadata immediately, but
+        // does not change the live source catalog until the next cold start.
+        ref.invalidate(pluginRuntimeConnectionProvider);
+        ref.invalidate(pluginRuntimeStatusProvider);
+      }
       await ref.read(pluginRuntimeConnectionProvider.future);
       span.complete(
         attributes: DiagnosticObjectValue(<String, DiagnosticValue>{

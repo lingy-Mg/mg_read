@@ -11,11 +11,13 @@ import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 import 'package:mg_read/shared/presentation/source_branding.dart';
 
+import 'plugin_content_kind_labels.dart';
+
 /// 单个数据源的 Runtime 详情页面。
 ///
 /// 职责：
 /// - 展示 Runtime 数据源投影及安装大小。
-/// - 为 Windows 桌面开发数据源插件提供目录打开与用户选目录打包操作。
+/// - 为 desktop 数据源插件提供目录打开，Windows 额外提供开发目录打包。
 ///
 /// 注意：
 /// - 页面不读取项目路径、制品字节或 Runtime 内部协议。
@@ -75,6 +77,7 @@ class _DetailContent extends ConsumerWidget {
     final tokens = AppThemeTokens.of(context);
     final isDevelopment = source.status == 'development';
     final isWindows = Platform.isWindows;
+    final isDesktop = isWindows || Platform.isMacOS;
     final dataUsage = isDevelopment ? null : ref.watch(pluginRuntimeSourceDataSizeProvider(source.id));
     final archiveUsage = isDevelopment ? null : ref.watch(pluginRuntimeSourceArchiveSizeProvider(source.id));
     final npmUsage = isDevelopment ? null : ref.watch(pluginRuntimeSourceNpmSizeProvider(source.id));
@@ -148,7 +151,7 @@ class _DetailContent extends ConsumerWidget {
                 const SizedBox(height: AppSpacing.compact),
                 _DetailField(label: '名称', value: source.displayName),
                 _DetailField(label: '来源方式', value: isDevelopment ? '工作区开发数据源插件' : 'Runtime 已安装数据源插件'),
-                _DetailField(label: '类型', value: _contentKinds(source)),
+                _DetailField(label: '类型', value: pluginContentKindsLabel(source.contentKinds)),
                 _DetailField(label: '版本', value: source.activeVersion ?? '等待激活'),
                 _DetailField(label: '状态', value: _statusLabel(source)),
                 _DetailField(label: '标识', value: source.id, isLast: true),
@@ -172,14 +175,14 @@ class _DetailContent extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.regular),
         ],
-        if (isWindows)
+        if (isDesktop)
           _OpenDirectoryButton(
             isDevelopment: isDevelopment,
             isOpening: opening,
             onPressed: opening ? null : () => _openDirectory(context, ref, source, isDevelopment),
           )
         else
-          Text('仅 Windows 桌面端可打开数据源插件代码文件夹。', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
+          Text('仅桌面端可打开数据源插件代码文件夹。', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
         if (!isDevelopment) ...<Widget>[
           const SizedBox(height: AppSpacing.comfortable),
           _RemoveSourceButton(isRemoving: removing, onPressed: removing ? null : () => _scheduleUninstall(context, ref, source)),
@@ -468,9 +471,6 @@ class _DetailFailure extends StatelessWidget {
     ),
   );
 }
-
-String _contentKinds(PluginRuntimePlugin source) =>
-    <String>[if (source.contentKinds.contains('novel')) '小说', if (source.contentKinds.contains('manga')) '漫画'].join(' · ');
 
 String _statusLabel(PluginRuntimePlugin source) => switch (source.status) {
   'development' => '开发中（即时生效）',

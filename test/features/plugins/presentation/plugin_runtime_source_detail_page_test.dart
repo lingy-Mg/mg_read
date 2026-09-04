@@ -42,21 +42,23 @@ void main() {
     expect(find.text('开发数据源插件（即时生效）'), findsOneWidget);
     expect(find.text('工作区开发数据源插件'), findsOneWidget);
     expect(find.text('开发中（即时生效）'), findsOneWidget);
-    if (Platform.isWindows) {
+    if (Platform.isWindows || Platform.isMacOS) {
       await tester.scrollUntilVisible(find.byKey(const Key('data-source-detail-open-directory')), 200, scrollable: find.byType(Scrollable));
-      expect(find.byKey(const Key('data-source-detail-package-development')), findsOneWidget);
+      expect(find.byKey(const Key('data-source-detail-package-development')), Platform.isWindows ? findsOneWidget : findsNothing);
       expect(find.text('打开开发项目文件夹'), findsOneWidget);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('data-source-detail-open-directory')));
       await tester.pumpAndSettle();
       expect(gateway.openedPluginIds, <String>['org.example.live-source']);
       expect(find.textContaining('下一次数据源调用时生效'), findsOneWidget);
-      await tester.ensureVisible(find.byKey(const Key('data-source-detail-package-development')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('data-source-detail-package-development')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(gateway.packagedPluginIds, <String>['org.example.live-source']);
+      if (Platform.isWindows) {
+        await tester.ensureVisible(find.byKey(const Key('data-source-detail-package-development')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('data-source-detail-package-development')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(gateway.packagedPluginIds, <String>['org.example.live-source']);
+      }
     }
   });
 
@@ -90,7 +92,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(gateway.scheduledUninstallPluginIds, <String>['org.example.installed']);
     expect(find.textContaining('已安排删除'), findsOneWidget);
-    if (Platform.isWindows) {
+    if (Platform.isWindows || Platform.isMacOS) {
       await tester.drag(find.byKey(const Key('data-source-detail-content')), const Offset(0, -400));
       await tester.pumpAndSettle();
       expect(find.text('打开已安装源码文件夹'), findsOneWidget);
@@ -107,6 +109,15 @@ void main() {
       image.image,
       isA<NetworkImage>().having((NetworkImage provider) => provider.url, 'url', 'http://127.0.0.1:1/v1/plugin-icon/detail-test-token'),
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('shows audio and video kinds on the source detail page', (WidgetTester tester) async {
+    final gateway = _DirectoryGateway(_mediaConnection);
+    await tester.pumpWidget(_host(gateway, 'org.example.media'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('音频 · 视频'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -211,6 +222,25 @@ const _iconConnection = PluginRuntimeConnection(
       iconUrl: 'http://127.0.0.1:1/v1/plugin-icon/detail-test-token',
       id: 'org.example.with-icon',
       name: '@example/with-icon',
+      pendingVersion: null,
+      status: 'active',
+    ),
+  ],
+);
+
+const _mediaConnection = PluginRuntimeConnection(
+  isHealthy: true,
+  nodeVersion: '24.16.0',
+  runtimeVersion: 'test',
+  plugins: <PluginRuntimePlugin>[
+    PluginRuntimePlugin(
+      activeVersion: '1.0.0',
+      contentKinds: <String>['audio', 'video'],
+      description: '音视频数据源。',
+      displayName: '音视频源',
+      enabled: true,
+      id: 'org.example.media',
+      name: '@example/media',
       pendingVersion: null,
       status: 'active',
     ),

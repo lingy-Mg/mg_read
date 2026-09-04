@@ -1,0 +1,16 @@
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+coverage/
+*.log
+.DS_Store
+/assets/runtime/android/dist/
+/assets/runtime/android/node_modules/
+/assets/runtime/android/default-plugins/
+/assets/runtime/windows-x64/node/
+/assets/runtime/windows-x64/dist/
+/assets/runtime/windows-x64/default-plugins/
+/assets/runtime/macos-arm64/node/
+/assets/runtime/macos-arm64/dist/
+/assets/runtime/macos-arm64/default-plugins/

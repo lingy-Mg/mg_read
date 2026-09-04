@@ -364,6 +364,8 @@ final class LanPairingClientConnection {
 
 PairedDevicePlatform get _localPlatform => Platform.isWindows
     ? PairedDevicePlatform.windows
+    : Platform.isMacOS
+    ? PairedDevicePlatform.macos
     : Platform.isAndroid
     ? PairedDevicePlatform.android
     : PairedDevicePlatform.unknown;
@@ -371,6 +373,7 @@ PairedDevicePlatform get _localPlatform => Platform.isWindows
 PairedDevicePlatform? _platform(Object? value) => switch (value) {
   'android' => PairedDevicePlatform.android,
   'windows' => PairedDevicePlatform.windows,
+  'macos' => PairedDevicePlatform.macos,
   'unknown' => PairedDevicePlatform.unknown,
   _ => null,
 };

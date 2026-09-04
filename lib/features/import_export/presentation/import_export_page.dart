@@ -19,7 +19,6 @@ import 'package:mg_read/features/import_export/application/import_export_service
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
-import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/profile/application/profile_reading_stats_loader.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
@@ -256,8 +255,6 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
         conflictChoices: _conflictChoices,
       );
       if (!mounted) return;
-      ref.invalidate(pluginRuntimeConnectionProvider);
-      ref.invalidate(pluginRuntimeStatusProvider);
       ref.invalidate(libraryPageControllerProvider);
       ref.invalidate(profileReadingStatsProvider);
       setState(() {

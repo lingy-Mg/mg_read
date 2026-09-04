@@ -162,7 +162,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        "$ErrorActionPreference = 'Stop'; $runtimeRoot = Join-Path '${workspaceFolder}' 'packages/mg_read_runtime'; $nodeBin = Join-Path $runtimeRoot 'tools/node-v24.16.0-win-x64'; $env:PATH = $nodeBin + ';' + $env:PATH; Push-Location $runtimeRoot; try { & (Join-Path $nodeBin 'npm.cmd') run stage:flutter-windows; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } } finally { Pop-Location }"
+        "$ErrorActionPreference = 'Stop'; $runtimeRoot = Join-Path '${workspaceFolder}' 'packages/mg_read_node_runtime'; $nodeBin = Join-Path $runtimeRoot 'tools/node-v24.16.0-win-x64'; $env:PATH = $nodeBin + ';' + $env:PATH; Push-Location $runtimeRoot; try { & (Join-Path $nodeBin 'npm.cmd') run stage:flutter-windows; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } } finally { Pop-Location }"
       ],
       "presentation": {
         "reveal": "always",

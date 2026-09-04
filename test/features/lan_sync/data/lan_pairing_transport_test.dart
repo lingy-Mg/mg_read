@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/features/lan_sync/data/lan_pairing_transport.dart';
@@ -25,6 +27,7 @@ void main() {
     await client.confirmCommitted();
     await serverApproval;
     expect(request.isActive, isFalse);
+    expect(approvedPeer.platform, _currentPlatform);
   });
 
   test('an unapproved request expires and closes both sides', () async {
@@ -48,3 +51,11 @@ void main() {
     await server.done.timeout(const Duration(seconds: 2));
   });
 }
+
+PairedDevicePlatform get _currentPlatform => Platform.isWindows
+    ? PairedDevicePlatform.windows
+    : Platform.isMacOS
+    ? PairedDevicePlatform.macos
+    : Platform.isAndroid
+    ? PairedDevicePlatform.android
+    : PairedDevicePlatform.unknown;

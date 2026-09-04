@@ -8,6 +8,8 @@
 ///
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -34,6 +36,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(
+      find.byKey(const Key('data-source-add-development-directory')),
+      Platform.isWindows || Platform.isMacOS ? findsOneWidget : findsNothing,
+    );
     expect(find.byKey(const Key('runtime-debug-http-toggle')), findsOneWidget);
     expect(
       reportedErrors.where((details) => details.exceptionAsString().contains('ListTile background color or ink splashes may be invisible')),

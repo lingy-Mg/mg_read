@@ -1,0 +1,2 @@
+import assert from 'node:assert/strict'; import test from 'node:test'; import * as plugin from '../dist/index.mjs';
+test('live Qingting category remains reachable',{timeout:60000},async()=>{await plugin.activate({log:{info(){},warn(){}},resource:{proxy(){return'http://127.0.0.1/live-resource';}},http:{fetch:(input,init={})=>fetch(input,{...init,signal:AbortSignal.timeout(15000)})}});const result=await plugin.discover({target:'category:217',cursor:null,collectionId:null,pageSize:3});assert.ok(result.document.components[0].children[0].items.length>0);});

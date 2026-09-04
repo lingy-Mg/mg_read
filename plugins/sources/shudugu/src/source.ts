@@ -4,7 +4,7 @@
  * 职责：解析发现、搜索、详情、目录和正文，并复用插件私有的 HTML/投影缓存。
  * 注意：发现页允许过期详情投影立即返回并后台刷新；用户打开详情和目录仍遵守一小时严格新鲜度。
  */
-import * as cheerio from 'cheerio';
+import * as cheerio from 'cheerio/slim';
 import type { Element } from 'domhandler';
 import type {
   ChapterContent, ChaptersRequest, ChaptersResult, ContentAttribute, ContentDetail,
@@ -35,7 +35,7 @@ const detailProjectionPolicy = Object.freeze({ namespace: 'detail-projection-v1'
 const discoveryDetailProjectionPolicy = Object.freeze({ namespace: 'detail-projection-v1', staleAfterMs: 60 * 60 * 1000, serveStaleWhileRevalidate: true } satisfies PluginCachePolicy);
 const hotSearchPolicy = Object.freeze({ namespace: 'hot-search', staleAfterMs: 24 * 60 * 60 * 1000 } satisfies PluginCachePolicy);
 
-function loadCheerio(): Promise<typeof import('cheerio')> { return Promise.resolve(cheerio); }
+function loadCheerio(): Promise<typeof import('cheerio/slim')> { return Promise.resolve(cheerio); }
 
 export class ShuduguSource {
   readonly #baseUrl: URL;

@@ -194,7 +194,11 @@ final class LanSyncSenderService {
         'kind': 'mgread-lan-sync',
         'protocolVersion': lanSyncProtocolVersion,
         'sessionId': sessionId,
-        'label': Platform.isWindows ? 'Windows 设备' : 'Android 设备',
+        'label': Platform.isWindows
+            ? 'Windows 设备'
+            : Platform.isMacOS
+            ? 'Mac 设备'
+            : 'Android 设备',
         'port': _server.port,
         'expiresAtUtc': DateTime.now().toUtc().add(lanSyncSessionLifetime).toIso8601String(),
       }),

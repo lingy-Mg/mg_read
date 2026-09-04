@@ -1,6 +1,6 @@
 /// 配对设备 metadata 仓储公开边界。
 ///
-/// 密钥由独立安全存储持有；本仓储只管理可展示和可撤销的同步策略。
+/// 密钥由独立本地记录持有；本仓储只管理可展示和可撤销的同步策略。
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';

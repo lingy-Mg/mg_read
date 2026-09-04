@@ -12,6 +12,32 @@ import 'package:mg_read/features/plugins/presentation/plugin_cache_management_pa
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
 void main() {
+  test('catalog change rebuilds the cache-management source list', () async {
+    var connection = _connection(<PluginRuntimePlugin>[_plugin('source.first', '第一个数据源')]);
+    final container = ProviderContainer(
+      overrides: [
+        pluginCacheGatewayProvider.overrideWithValue(_ImmediateCacheGateway()),
+        pluginRuntimeConnectionProvider.overrideWith((ref) async {
+          ref.watch(pluginRuntimeCatalogChangeProvider);
+          return connection;
+        }),
+      ],
+    );
+    addTearDown(container.dispose);
+    final listener = container.listen(pluginCacheManagementProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(listener.close);
+
+    final first = await container.read(pluginCacheManagementProvider.future);
+    expect(first.entries.map((entry) => entry.pluginId), <String>['source.first']);
+
+    connection = _connection(<PluginRuntimePlugin>[_plugin('source.second', '第二个数据源')]);
+    container.read(pluginRuntimeCatalogChangeProvider.notifier).publish(pluginIds: const <String>{'source.first', 'source.second'});
+    await Future<void>.value();
+    final refreshed = await container.read(pluginCacheManagementProvider.future);
+
+    expect(refreshed.entries.map((entry) => entry.pluginId), <String>['source.second']);
+  });
+
   testWidgets('renders path-free data-source cache usage', (tester) async {
     final cacheGateway = _CacheGateway();
     await tester.pumpWidget(
@@ -92,6 +118,34 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     expect(cacheGateway.usageRequests, 4);
   });
+}
+
+PluginRuntimeConnection _connection(List<PluginRuntimePlugin> plugins) =>
+    PluginRuntimeConnection(isHealthy: true, nodeVersion: '24.16.0', runtimeVersion: 'test-runtime', plugins: plugins);
+
+PluginRuntimePlugin _plugin(String id, String displayName) => PluginRuntimePlugin(
+  activeVersion: '1.0.0',
+  contentKinds: const <String>['novel'],
+  displayName: displayName,
+  enabled: true,
+  id: id,
+  name: id,
+  pendingVersion: null,
+  status: 'active',
+);
+
+final class _ImmediateCacheGateway implements PluginCacheGateway {
+  @override
+  Future<PluginCacheClearResult> clearAll() => throw UnimplementedError();
+
+  @override
+  Future<PluginCacheClearResult> clearPlugin(String pluginId) => throw UnimplementedError();
+
+  @override
+  Future<List<PluginCacheUsage>> listUsage() async => const <PluginCacheUsage>[];
+
+  @override
+  Future<PluginCacheUsage> usageForPlugin(String pluginId) async => PluginCacheUsage(pluginId: pluginId, bytes: 0);
 }
 
 final class _CacheGateway implements PluginCacheGateway {

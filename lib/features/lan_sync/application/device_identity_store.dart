@@ -1,4 +1,4 @@
-/// 本机设备身份和逐设备共享密钥的安全存储边界。
+/// 本机设备身份和逐设备共享密钥的本地存储边界。
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';

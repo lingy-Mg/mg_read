@@ -25,13 +25,13 @@
 
 按实际边界检查，不要盲目全读：
 
-- Runtime 类型：`packages/mg_read_runtime/src/plugin-content-types.ts`
-- 递归校验：`packages/mg_read_runtime/src/plugin-content-discovery.ts`
-- 通用读取器：`packages/mg_read_runtime/src/plugin-content-validation.ts`
-- 公开导出：`packages/mg_read_runtime/src/plugin-content.ts`、`src/index.ts`
-- Flutter 摘要类型：`packages/mg_read_runtime/packages/mgread_plugin_runtime/lib/src/plugin_content_summary.dart`
-- Flutter 调用类型：`packages/mg_read_runtime/packages/mgread_plugin_runtime/lib/src/plugin_content_invocation.dart`
-- Flutter 解码：`packages/mg_read_runtime/packages/mgread_plugin_runtime/lib/src/plugin_content_decoder.dart`
+- Runtime 类型：`packages/mg_read_node_runtime/src/plugin-content-types.ts`
+- 递归校验：`packages/mg_read_node_runtime/src/plugin-content-discovery.ts`
+- 通用读取器：`packages/mg_read_node_runtime/src/plugin-content-validation.ts`
+- 公开导出：`packages/mg_read_node_runtime/src/plugin-content.ts`、`src/index.ts`
+- Flutter 摘要类型：`packages/mgread_plugin_runtime/lib/src/plugin_content_summary.dart`
+- Flutter 调用类型：`packages/mgread_plugin_runtime/lib/src/plugin_content_invocation.dart`
+- Flutter 解码：`packages/mgread_plugin_runtime/lib/src/plugin_content_decoder.dart`
 - 主应用路由：`lib/features/discovery/presentation/runtime_discovery_page.dart`
 - 竖向集合与列表：`discovery_composite_components.dart`、
   `widgets/discovery_portrait_content_list_item.dart`

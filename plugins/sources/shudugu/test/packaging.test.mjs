@@ -12,6 +12,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
@@ -22,7 +23,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
 const tool = await import(new URL(`../${packageJson.bin.mgread}`, import.meta.url));
 
-test('single-file artifact is canonical, deterministic, hashed, and self-contained', async () => {
+test('single-file artifact is canonical, deterministic, hashed, and self-contained', async (t) => {
   const first = await tool.buildPluginArtifact();
   const second = await tool.buildPluginArtifact();
   assert.equal(first.format, 'singleFile');
@@ -43,6 +44,16 @@ test('single-file artifact is canonical, deterministic, hashed, and self-contain
   assert.equal(first.bytes.subarray(0, 2).toString(), '//');
   assert.notEqual(first.bytes.subarray(0, 2).toString(), 'PK');
   assert.equal(code.includes(Buffer.from('sourceMappingURL=')), false);
+
+  const runtimeRoot = await mkdtemp(join(tmpdir(), 'mgread-shudugu-runtime-load-'));
+  t.after(() => rm(runtimeRoot, { force: true, recursive: true }));
+  const runtimeEntry = resolve(runtimeRoot, 'index.mjs');
+  await writeFile(runtimeEntry, code);
+  const runtimePlugin = createRequire(import.meta.url)(runtimeEntry);
+  assert.deepEqual(
+    Object.keys(runtimePlugin).sort(),
+    ['activate', 'discover', 'getChapters', 'getContent', 'getDetail', 'search', 'searchSuggestions'],
+  );
 
   if (packageJson.mgread.icon !== undefined) {
     const icon = await readFile(resolve(root, packageJson.mgread.icon));

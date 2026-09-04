@@ -2,11 +2,11 @@
 
 ## 事实入口
 
-- Runtime API 与校验：`packages/mg_read_runtime/src/plugin-webview-page.ts`
+- Runtime API 与校验：`packages/mg_read_node_runtime/src/plugin-webview-page.ts`
 - 数据源唯一编译期声明：`packages/mg_read_source_api/index.d.ts`
-- Provider 公共类型：`packages/mg_read_runtime/src/plugin-browser-session.ts`
+- Provider 公共类型：`packages/mg_read_node_runtime/src/plugin-browser-session.ts`
 - 引用示例：`packages/mg_read_source_api/README.md`
-- 直接测试：`packages/mg_read_runtime/test/webview-page.test.mjs`、
+- 直接测试：`packages/mg_read_node_runtime/test/webview-page.test.mjs`、
   `browser-session.test.mjs`
 
 字段、参数、返回类型、错误码和上限以共享声明、Runtime 实现与测试为准；本参考只保留使用语义。
@@ -28,7 +28,7 @@ export async function activate(context: MgReadPluginContext): Promise<void> {
 }
 ```
 
-不要从 `packages/mg_read_runtime/src` 深层导入，也不要保留来源自己的 Context/WebView 子集；否则新增
+不要从 `packages/mg_read_node_runtime/src` 深层导入，也不要保留来源自己的 Context/WebView 子集；否则新增
 能力（例如 `cdp`、`click`、`inputText`、`key`、`close`）不会在来源编译期可见。
 
 ## 页面与生命周期

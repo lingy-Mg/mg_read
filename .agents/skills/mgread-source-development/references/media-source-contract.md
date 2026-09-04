@@ -3,7 +3,7 @@
 ## 事实入口
 
 - Runtime 内容类型与校验：`plugin-content-types.ts`、`plugin-content-validation.ts`
-- 媒体代理：`packages/mg_read_runtime/src/media-resource-proxy.ts`
+- 媒体代理：`packages/mg_read_node_runtime/src/media-resource-proxy.ts`
 - Flutter 宿主：`packages/mg_read_audio_player/lib/mg_read_audio_player.dart`、
   `packages/mg_read_video_player/lib/mg_read_video_player.dart`
 - 真实来源入口文件头和直接 contract/fixture 测试

@@ -283,15 +283,12 @@ void main() {
     expect(state.error?.location, contains('pluginId=${_TreeGateway._pluginId}'));
   });
 
-  test('current development source update returns discovery to its root', () async {
-    final changes = StreamController<DevelopmentPluginChangeBatch>.broadcast();
-    addTearDown(changes.close);
+  test('current source catalog update returns discovery to its root', () async {
     final gateway = _TreeGateway();
     final container = ProviderContainer(
       overrides: [
         sourceContentGatewayProvider.overrideWithValue(gateway),
         discoverySourceSelectionStoreProvider.overrideWithValue(_MemoryDiscoverySourceSelectionStore(null)),
-        pluginRuntimeDevelopmentChangesProvider.overrideWith((ref) => changes.stream),
       ],
     );
     addTearDown(container.dispose);
@@ -300,29 +297,19 @@ void main() {
     await _waitUntil(() => _isLoaded(container));
     await container.read(discoveryPageControllerProvider.notifier).openCategory('category:fantasy');
 
-    changes.add(
-      DevelopmentPluginChangeBatch(
-        revision: 1,
-        changes: const <DevelopmentPluginChange>[
-          DevelopmentPluginChange(kind: DevelopmentPluginChangeKind.updated, pluginId: _TreeGateway._pluginId),
-        ],
-      ),
-    );
+    container.read(pluginRuntimeCatalogChangeProvider.notifier).publish(pluginIds: const <String>{_TreeGateway._pluginId});
     await _waitUntil(() => container.read(discoveryPageControllerProvider).navigationDepth == 0);
 
     expect(_collection(container.read(discoveryPageControllerProvider).result!).id, 'home-books');
     expect(gateway.documentRequestCount, 3);
   });
 
-  test('unrelated development source update preserves the current document', () async {
-    final changes = StreamController<DevelopmentPluginChangeBatch>.broadcast();
-    addTearDown(changes.close);
+  test('unrelated source catalog update preserves the current document', () async {
     final gateway = _TreeGateway();
     final container = ProviderContainer(
       overrides: [
         sourceContentGatewayProvider.overrideWithValue(gateway),
         discoverySourceSelectionStoreProvider.overrideWithValue(_MemoryDiscoverySourceSelectionStore(null)),
-        pluginRuntimeDevelopmentChangesProvider.overrideWith((ref) => changes.stream),
       ],
     );
     addTearDown(container.dispose);
@@ -332,14 +319,7 @@ void main() {
     await container.read(discoveryPageControllerProvider.notifier).openCategory('category:fantasy');
     final requestCount = gateway.documentRequestCount;
 
-    changes.add(
-      DevelopmentPluginChangeBatch(
-        revision: 2,
-        changes: const <DevelopmentPluginChange>[
-          DevelopmentPluginChange(kind: DevelopmentPluginChangeKind.updated, pluginId: _TreeGateway.alternatePluginId),
-        ],
-      ),
-    );
+    container.read(pluginRuntimeCatalogChangeProvider.notifier).publish(pluginIds: const <String>{_TreeGateway.alternatePluginId});
     await Future<void>.delayed(const Duration(milliseconds: 30));
 
     final state = container.read(discoveryPageControllerProvider);
@@ -348,15 +328,12 @@ void main() {
     expect(gateway.documentRequestCount, requestCount);
   });
 
-  test('removed current development source falls back to an available source', () async {
-    final changes = StreamController<DevelopmentPluginChangeBatch>.broadcast();
-    addTearDown(changes.close);
+  test('removed current source falls back to an available source', () async {
     final gateway = _TreeGateway();
     final container = ProviderContainer(
       overrides: [
         sourceContentGatewayProvider.overrideWithValue(gateway),
         discoverySourceSelectionStoreProvider.overrideWithValue(_MemoryDiscoverySourceSelectionStore(null)),
-        pluginRuntimeDevelopmentChangesProvider.overrideWith((ref) => changes.stream),
       ],
     );
     addTearDown(container.dispose);
@@ -365,14 +342,7 @@ void main() {
     await _waitUntil(() => _isLoaded(container));
     gateway.includePrimary = false;
 
-    changes.add(
-      DevelopmentPluginChangeBatch(
-        revision: 3,
-        changes: const <DevelopmentPluginChange>[
-          DevelopmentPluginChange(kind: DevelopmentPluginChangeKind.removed, pluginId: _TreeGateway._pluginId),
-        ],
-      ),
-    );
+    container.read(pluginRuntimeCatalogChangeProvider.notifier).publish(pluginIds: const <String>{_TreeGateway._pluginId});
     await _waitUntil(() => container.read(discoveryPageControllerProvider).selectedSourceId == _TreeGateway.alternatePluginId);
 
     expect(container.read(discoveryPageControllerProvider).navigationDepth, 0);

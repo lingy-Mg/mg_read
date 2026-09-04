@@ -66,8 +66,8 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
 
   @override
   Widget build(BuildContext context) {
-    final bool canSelectDevelopmentDirectory = Platform.isWindows;
-    final bool canOpenPrivateDirectory = Platform.isWindows;
+    final bool canSelectDevelopmentDirectory = Platform.isWindows || Platform.isMacOS;
+    final bool canOpenPrivateDirectory = Platform.isWindows || Platform.isMacOS;
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -181,7 +181,7 @@ class _DevelopmentDirectorySection extends StatelessWidget {
   Widget build(BuildContext context) => _HelpSection(
     icon: Icons.code_rounded,
     title: '开发数据源插件',
-    body: '请选择数据源插件集合目录，例如 …\\plugins\\sources。Runtime 只读取它的第一层子目录；不要选择单个数据源插件目录。',
+    body: '请选择数据源插件集合目录，例如 …${Platform.pathSeparator}plugins${Platform.pathSeparator}sources。Runtime 只读取它的第一层子目录；不要选择单个数据源插件目录。',
     action: OutlinedButton.icon(
       key: const Key('data-source-add-development-directory'),
       onPressed: isSelecting ? null : onPressed,
@@ -252,7 +252,7 @@ class _RuntimeDebugHttpSection extends ConsumerWidget {
     return _HelpSection(
       icon: Icons.bug_report_outlined,
       title: 'Runtime 调试页面',
-      body: '开发版、Android 和 Windows 发布版均可用。开关会保存到 Runtime 私有运行状态，并优先使用端口 52173；端口不可用时自动临时选择可用端口。同一网络设备可无认证访问，请只在可信网络开启，排查完成后关闭。',
+      body: '开发版、Android、Windows 和 macOS 发布版均可用。开关会保存到 Runtime 私有运行状态，并优先使用端口 52173；端口不可用时自动临时选择可用端口。同一网络设备可无认证访问，请只在可信网络开启，排查完成后关闭。',
       action: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[

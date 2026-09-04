@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'package:mg_read/app/bootstrap.dart';
@@ -18,7 +17,7 @@ Future<void> main(List<String> arguments) async {
   } on SourceVerificationRunException {
     exit(4);
   }
-  if (verificationCommand != null && !Platform.isWindows) exit(4);
+  if (verificationCommand != null && !Platform.isWindows && !Platform.isMacOS) exit(4);
   await installSystemProxyHttpOverrides();
   if (verificationCommand == null) {
     await bootstrapMgReadApp();
@@ -28,8 +27,7 @@ Future<void> main(List<String> arguments) async {
   await bootstrapMgReadApp(
     child: SourceVerificationCommandApp(command: verificationCommand, terminateProcess: exitCode.complete),
   );
-  // A Windows Release build is a GUI-subsystem executable. Keep the Dart
-  // entrypoint alive until the command widget has finished the full
-  // production verification and flushed its console output.
+  // Keep the desktop entrypoint alive until the command widget has finished
+  // the full production verification and flushed its console output.
   exit(await exitCode.future);
 }

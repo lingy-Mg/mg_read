@@ -17,7 +17,8 @@ lib/                               Flutter 主应用
 packages/mg_read_reader_ui/        小说/漫画阅读器
 packages/mg_read_audio_player/     音频播放器
 packages/mg_read_video_player/     视频播放器
-packages/mg_read_runtime/           Runtime、平台宿主和 Flutter Facade
+packages/mg_read_node_runtime/      Node.js Runtime Core
+packages/mgread_plugin_runtime/     Flutter Runtime Facade 与平台宿主
 plugins/sources/aisishuwu/          默认 Node 数据源参考实现与 artifact 构建器
 plugins/sources/                    真实数据源及其他能力参考实现
 ```
@@ -62,6 +63,7 @@ plugins/sources/                    真实数据源及其他能力参考实现
   Windows 可显式启用“强制代理本地 Runtime”：宿主临时从进程 `no_proxy` 删除 loopback 规则，同时更新 Win32
   环境和 Windows CRT，关闭后恢复原值；该开关不改变 Runtime 到外部媒体源的请求路由。
 - Runtime 控制信息由 Runtime 内部管理；控制帧有界，大资源走 HTTP 数据面。
+- macOS arm64 从 App bundle 启动固定 Node/npm，用父进程看门狗绑定子进程生命周期；已安装数据源的导入、启停、发现、搜索、详情、目录、内容、传输、缓存以及工作区开发目录构建属于 desktop 共同能力。
 - `ctx.webview` 每个数据源只有一个宿主页；普通操作串行，
   显隐/关闭走控制旁路；超时与取消必须清理结果但保留可复用页面。
 - `ctx.webview` 提供 Windows WebView2 专用的原始 `page.cdp(method, params)` 通道，Android 返回
@@ -133,22 +135,24 @@ plugins/sources/                    真实数据源及其他能力参考实现
 
 ## 前台局域网同步
 
-- 只支持 Windows/Android 前台、点对点、可信私有局域网；不提供后台或云端同步。首次用十分钟有效的配对二维码和双方
+- 支持 Windows、macOS 与 Android 前台、点对点、可信私有局域网；不提供后台或云端同步。首次用十分钟有效的配对二维码和双方
   六位码授权；双方完成本地保存与提交确认后才显示成功。稳定设备 ID 与策略进入 AppPersistence，二维码承载的
-  预共享密钥在提交后作为逐设备长期密钥，只进入平台安全存储。
+  预共享密钥在提交后作为逐设备长期密钥，进入独立的 AppPersistence 本地记录。Windows、macOS 与 Android
+  均不为同步设备身份或配对密钥接入系统钥匙串、凭据存储、额外静态加密或签名 entitlement；这些值属于普通应用
+  数据，但仍禁止进入日志、诊断、导出和设备间同步。更换到本地记录后不读取旧平台安全存储，历史配对需重新建立。
 - 已配对会话必须认证加密；广播只包含设备 ID、标签和本次端口，IP 取收到的数据包且不得持久化。应用首帧与
   Runtime 就绪后启动前台宿主，两端在线时由稳定设备 ID 选出唯一自动发起方；广播只更新在线状态，上线边沿
-  发起同步。Windows/Android 组合固定由 Windows 自动发起；Windows 每五分钟、Android 每十五分钟做一次
+  发起同步。桌面端/Android 组合固定由桌面端自动发起；桌面端每五分钟、Android 每十五分钟做一次
   持续在线校准且失败指数退避。任意一端可手动发起双向同步、仅拉取或仅推送，
-  单次操作仍受双方持久方向与内容范围策略约束。Android 主动操作 Windows 时先发送逐设备密钥签名的 UDP
-  唤醒，再由 Windows 反向建立认证 TCP 会话；反向会话交换拉取/推送方向，按钮语义始终以发起端为准。
+  单次操作仍受双方持久方向与内容范围策略约束。Android 主动操作 Windows/macOS 时先发送逐设备密钥签名的 UDP
+  唤醒，再由桌面端反向建立认证 TCP 会话；反向会话交换拉取/推送方向，按钮语义始终以发起端为准。
 - Android 设备标签静默读取系统公开的厂商与型号，不申请运行时权限；发现广播中的新标签必须替换并持久化历史
   `localhost`/通用占位标签。连接或传输失败按服务启动、发现、唤醒、连接、认证、清单、计划、接收、发送、
   结果保存和书架刷新分阶段报告；UI 展示阶段、稳定错误码和有界技术原因，原始失败设备的 Debug 控制台保留完整
   异常与堆栈。反向连接失败须用已配对密钥签名回报阶段、错误码与有界技术原因，不能只让发起端等待超时。
 - Android 只有系统确认已连接 Wi-Fi 时才允许同步、唤醒和在线广播；无 Wi-Fi 时保持低频状态探测，不发送 UDP。
-  Windows 可使用 Wi-Fi 或带私有 IPv4 的有线局域网。Windows 在线广播间隔三秒，Android 六秒；Android
-  开发书源变化合并四十五秒后再推送，Windows 开发变化可立即推动。对端会话内部失败必须在关闭加密连接前回报
+  Windows/macOS 可使用 Wi-Fi 或带私有 IPv4 的有线局域网；macOS 还必须获得系统本地网络权限。桌面端在线广播间隔三秒，Android 六秒；Android
+  开发书源变化合并四十五秒后再推送，桌面端开发变化可立即推动。对端会话内部失败必须在关闭加密连接前回报
   原始阶段、稳定错误码和有界原因，`disconnected` 不得覆盖正在执行的真实阶段。
 - 每台设备独立控制自动同步、方向以及插件/书架范围；解除配对同时删除本机 metadata 与共享密钥。未配对的
   临时传输仍要求发送端保持页面并逐次核对确认码。

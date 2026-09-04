@@ -4,7 +4,7 @@
 
 - 数据源唯一宿主上下文声明：`packages/mg_read_source_api/index.d.ts`
 - 数据源引用示例：`packages/mg_read_source_api/README.md`
-- Runtime 上下文与内容校验：`packages/mg_read_runtime/src/plugin-manager-contract.ts`、
+- Runtime 上下文与内容校验：`packages/mg_read_node_runtime/src/plugin-manager-contract.ts`、
   `plugin-content-types.ts`、`plugin-content-validation.ts`
 - 项目与 artifact：`plugin-package.ts`、`plugin-single-file.ts`、`plugin-archive.ts`
 - 真实数据源增量：`plugins/sources/AGENTS.md`、目标入口文件头和直接测试

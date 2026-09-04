@@ -43,8 +43,8 @@ import 'package:mg_read/features/lan_sync/application/paired_device_repository.d
 import 'package:mg_read/features/lan_sync/data/deferred_lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/data/mg_read_lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/data/platform_lan_sync_network_environment.dart';
+import 'package:mg_read/features/lan_sync/data/persistent_device_identity_store.dart';
 import 'package:mg_read/features/lan_sync/data/persistent_paired_device_repository.dart';
-import 'package:mg_read/features/lan_sync/data/secure_device_identity_store.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
 import 'package:mg_read/features/notifications/application/notification_center.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
@@ -242,7 +242,7 @@ Future<void> bootstrapMgReadApp({
         appSettingsProvider.overrideWithValue(resolvedManager),
         diagnosticsManagerProvider.overrideWithValue(diagnostics),
         fatalErrorReporterProvider.overrideWithValue(fatalErrorReporter),
-        deviceIdentityStoreProvider.overrideWithValue(SecureDeviceIdentityStore()),
+        deviceIdentityStoreProvider.overrideWithValue(DeferredPersistentDeviceIdentityStore(getPersistence)),
         lanSyncNetworkEnvironmentProvider.overrideWithValue(PlatformLanSyncNetworkEnvironment()),
         pairedDeviceRepositoryProvider.overrideWithValue(DeferredPairedDeviceRepository(getPersistence)),
         diagnosticsQueryProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),
@@ -269,7 +269,10 @@ Future<void> bootstrapMgReadApp({
         if (contentLibrary != null || contentLibraryFactory != null)
           lanSyncGatewayProvider.overrideWith((ref) {
             final runtime = ref.watch(pluginRuntimeFacadeProvider);
-            return DeferredLanSyncGateway(() async => MgReadLanSyncGateway(await getLibrary(), runtime));
+            return DeferredLanSyncGateway(
+              () async => MgReadLanSyncGateway(await getLibrary(), runtime),
+              onPluginCatalogChanged: () => ref.read(pluginRuntimeCatalogChangeProvider.notifier).publish(),
+            );
           }),
         if (contentLibrary != null || contentLibraryFactory != null)
           bookshelfMembershipLoaderProvider.overrideWithValue(DeferredBookshelfMembershipLoader(getLibrary)),
@@ -519,6 +522,7 @@ Future<AppPersistence> _openDefaultAppPersistence(Directory dataRoot, Diagnostic
   dataRoot: dataRoot,
   registry: RecordDocumentRegistry(<RecordDocumentCodec>[
     ...contentLibraryRecordDocumentCodecs,
+    ...deviceIdentityRecordDocumentCodecs,
     pairedDeviceRecordDocumentCodec,
     ...settingsRecordDocumentCodecs(AppSettingKeys.registry, scopeKind: 'app'),
   ]),
