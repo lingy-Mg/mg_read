@@ -127,7 +127,13 @@ extension _TextReaderSession on _TextReaderViewState {
       if (!_isSessionCurrent(generation)) return;
 
       _book = results[0] as ReaderBookInfo;
-      _mergeCatalog(results[1] as ChapterCatalogPage);
+      // The catalog is enough to render the first directory frame. Download
+      // and read-state enrichment starts after first content presentation so
+      // it cannot contend with opening the book.
+      _mergeCatalog(
+        results[1] as ChapterCatalogPage,
+        refreshChapterStates: false,
+      );
       final ReaderProgress? loadedProgress = results[2] as ReaderProgress?;
       // A new shelf item has no saved anchor yet. Start at chapter zero rather
       // than showing a separate metadata page with a second "开始阅读" action.
@@ -289,6 +295,9 @@ extension _TextReaderSession on _TextReaderViewState {
     if (!_isSessionCurrent(generation)) return;
     _bookmarks = bookmarks;
     if (mounted) setState(() {});
+    // Enrich the already-visible catalog after the first real frame. This
+    // includes read/download state only; it is never part of reader startup.
+    unawaited(_refreshLoadedChapterStates());
     if (_content != null && _currentChapterInfo != null) {
       _scheduleProgressSave(immediate: true);
       unawaited(_prefetchNext(_currentChapterInfo!.index));
@@ -575,6 +584,10 @@ extension _TextReaderSession on _TextReaderViewState {
       _currentChapterInfo = targetInfo;
       _content = chapter;
       _contentEpoch++;
+      // A directory sheet can already be open while the initial chapter is
+      // being committed. Rebuild its catalog view so it observes the current
+      // chapter instead of the ID captured at sheet creation time.
+      _catalogRevision.value++;
       _layoutFingerprint = preparedPages == null ? null : preparedFingerprint;
       _pages = preparedPages ?? const <ReaderPage>[];
       _currentPaginationComplete = preparedPages != null;

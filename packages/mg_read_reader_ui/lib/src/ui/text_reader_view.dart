@@ -115,7 +115,10 @@ class _TextReaderViewState extends State<TextReaderView>
     with WidgetsBindingObserver {
   static const Duration _saveDelay = Duration(milliseconds: 800);
   static const int _commentSummaryBatchSize = 100;
-  static const int _chapterStateBatchSize = 100;
+  // ReaderChapterAccessCoordinator accepts at most 200 IDs per request.
+  // Keeping the UI batch at that boundary halves the number of sequential
+  // state refreshes for a 600-chapter catalog.
+  static const int _chapterStateBatchSize = 200;
   static const int _catalogCompletionPageSize = 500;
   static const int _paragraphKeyCacheLimit = 256;
   static const int _verticalRestoreMeasureBatchSize = 128;

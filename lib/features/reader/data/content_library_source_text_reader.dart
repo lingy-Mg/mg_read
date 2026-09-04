@@ -349,6 +349,11 @@ final class _SessionNovelChapterAccess implements ReaderChapterStateCapability, 
     required CatalogEntry initialEntry,
     required NovelChapterContent initialContent,
   }) {
+    // The launch path has already obtained usable content, either from the
+    // durable object store or after persisting the initial remote response.
+    // Keep this dynamic state correct even when the immutable catalog entry
+    // was cached before that content write completed.
+    _cachedChapterIds.add(initialEntry.remoteIdentity);
     _memoryByRemoteId[initialEntry.remoteIdentity] = initialContent.text;
   }
 
@@ -533,6 +538,8 @@ final class _SessionNovelChapterAccess implements ReaderChapterStateCapability, 
     return ReaderChapterAvailability.notDownloaded;
   }
 
+  ReaderChapterAvailability availabilityFor(CatalogEntry entry) => _availability(entry);
+
   void _requireBook(String bookId) {
     if (bookId != item.id.value) {
       throw ArgumentError.value(bookId, 'bookId', 'Unexpected reader book ID.');
@@ -607,7 +614,7 @@ final class _SessionTextReaderDataSource implements TextReaderDataSource {
     id: entry.remoteIdentity,
     title: entry.title,
     index: entry.index,
-    availability: entry.contentStatus == 'ready' ? ReaderChapterAvailability.downloaded : ReaderChapterAvailability.notDownloaded,
+    availability: chapterAccess.availabilityFor(entry),
     wordCount: entry.wordCount,
   );
 

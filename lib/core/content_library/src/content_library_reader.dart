@@ -379,27 +379,57 @@ final class NovelReaderSession {
   final int catalogCount;
   final String _snapshot;
   final SourceBindingId _bindingId;
+  final Map<String, CatalogEntry> _entryCache = <String, CatalogEntry>{};
 
-  Future<CatalogEntry?> itemAtIndex(int index) {
+  Future<CatalogEntry?> itemAtIndex(int index) async {
     if (index < 0 || index >= catalogCount) return Future.value(null);
-    return _library.catalog._findInSnapshot(itemId: item.id, snapshot: _snapshot, bindingId: _bindingId, orderKey: _catalogOrderKey(index));
+    final entry = await _library.catalog._findInSnapshot(
+      itemId: item.id,
+      snapshot: _snapshot,
+      bindingId: _bindingId,
+      orderKey: _catalogOrderKey(index),
+    );
+    if (entry != null) _entryCache[entry.remoteIdentity] = entry;
+    return entry;
   }
 
-  Future<CatalogEntry?> itemByRemoteIdentity(String remoteIdentity) {
+  Future<CatalogEntry?> itemByRemoteIdentity(String remoteIdentity) async {
     if (remoteIdentity.isEmpty) return Future.value(null);
-    return _library.catalog._findInSnapshot(itemId: item.id, snapshot: _snapshot, bindingId: _bindingId, remoteIdentity: remoteIdentity);
+    final cached = _entryCache[remoteIdentity];
+    if (cached != null) return cached;
+    final entry = await _library.catalog._findInSnapshot(
+      itemId: item.id,
+      snapshot: _snapshot,
+      bindingId: _bindingId,
+      remoteIdentity: remoteIdentity,
+    );
+    if (entry != null) _entryCache[entry.remoteIdentity] = entry;
+    return entry;
   }
 
   /// Resolves a bounded group of chapter identities with one snapshot-scoped
   /// metadata query. Missing identities are omitted from the result.
-  Future<Map<String, CatalogEntry>> itemsByRemoteIdentities(Iterable<String> remoteIdentities) {
+  Future<Map<String, CatalogEntry>> itemsByRemoteIdentities(Iterable<String> remoteIdentities) async {
     final identities = remoteIdentities.toSet();
     if (identities.isEmpty) return Future.value(const <String, CatalogEntry>{});
-    return _library.catalog._findManyInSnapshot(itemId: item.id, snapshot: _snapshot, bindingId: _bindingId, remoteIdentities: identities);
+    final missing = identities.where((identity) => !_entryCache.containsKey(identity)).toList(growable: false);
+    if (missing.isNotEmpty) {
+      _entryCache.addAll(
+        await _library.catalog._findManyInSnapshot(itemId: item.id, snapshot: _snapshot, bindingId: _bindingId, remoteIdentities: missing),
+      );
+    }
+    return <String, CatalogEntry>{
+      for (final identity in identities)
+        if (_entryCache[identity] case final CatalogEntry entry) identity: entry,
+    };
   }
 
-  Future<Page<CatalogEntry>> page({String? after, int limit = 100}) {
-    return _library.catalog._pageInSnapshot(itemId: item.id, snapshot: _snapshot, after: after, limit: limit);
+  Future<Page<CatalogEntry>> page({String? after, int limit = 100}) async {
+    final page = await _library.catalog._pageInSnapshot(itemId: item.id, snapshot: _snapshot, after: after, limit: limit);
+    for (final entry in page.items) {
+      _entryCache[entry.remoteIdentity] = entry;
+    }
+    return page;
   }
 
   /// Resolves saved semantic progress without loading the whole catalog.

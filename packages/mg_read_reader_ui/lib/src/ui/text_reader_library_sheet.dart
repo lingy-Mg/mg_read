@@ -425,11 +425,11 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
     String routeBookId,
     TextReaderStateStore routeStore,
   ) {
-    final String? currentChapterId = _content?.chapterId;
     bool catalogCompletionStarted = false;
     Widget buildList() => ValueListenableBuilder<int>(
       valueListenable: _catalogRevision,
       builder: (BuildContext context, int revision, Widget? child) {
+        final String? currentChapterId = _content?.chapterId;
         if (!catalogCompletionStarted) {
           catalogCompletionStarted = true;
           WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -618,10 +618,11 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                           : null,
                       subtitle: ReaderChapterStateBadge(
                         availability: availability,
+                        // Catalog metadata is already durable and available
+                        // in the first frame. Do not hide it while the
+                        // optional read/download-state enrichment runs.
                         wordCount:
-                            !stateLoading &&
-                                availability ==
-                                    ReaderChapterAvailability.downloaded
+                            availability == ReaderChapterAvailability.downloaded
                             ? wordCount
                             : null,
                         hasBeenRead: hasBeenRead,
