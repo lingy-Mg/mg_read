@@ -447,14 +447,17 @@ class _ReaderEntryArtwork extends StatelessWidget {
     if (coverImage == null) {
       return _entryFallback(tokens);
     }
-    return Image(
-      image: coverImage!,
-      fit: BoxFit.cover,
-      alignment: Alignment.center,
-      width: width,
-      height: height,
-      gaplessPlayback: true,
-      errorBuilder: (_, _, _) => _entryFallback(tokens),
+    return ColoredBox(
+      color: Colors.black,
+      child: Image(
+        image: coverImage!,
+        fit: BoxFit.contain,
+        alignment: Alignment.center,
+        width: width,
+        height: height,
+        gaplessPlayback: true,
+        errorBuilder: (_, _, _) => _entryFallback(tokens),
+      ),
     );
   }
 

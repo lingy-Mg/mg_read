@@ -63,6 +63,7 @@ void main() {
     expect(cover, findsOneWidget);
     expect(tester.getTopLeft(cover), Offset.zero);
     expect(tester.getSize(cover), tester.getSize(find.byType(ReaderEntryTransition)));
+    expect(tester.widget<Image>(cover).fit, BoxFit.contain);
     final ImageProvider<Object> initialProvider = tester.widget<Image>(cover).image;
     await tester.pump(const Duration(milliseconds: 16));
     expect(identical(tester.widget<Image>(cover).image, initialProvider), isTrue);

@@ -138,12 +138,12 @@ final class MediaEntryCoverSurface extends StatelessWidget {
               builder: (BuildContext context, BoxConstraints constraints) {
                 final coverWidth = (constraints.maxWidth * .58).clamp(168.0, 268.0);
                 final coverHeight = coverWidth / .68;
-                final hasVideoCover = kind == MediaEntryKind.video && bytes != null && bytes.isNotEmpty;
+                final hasCoverArtwork = bytes != null && bytes.isNotEmpty;
                 return Stack(
                   fit: StackFit.expand,
                   children: <Widget>[
-                    if (hasVideoCover)
-                      Positioned.fill(child: _VideoCoverArtwork(bytes: bytes))
+                    if (hasCoverArtwork)
+                      Positioned.fill(child: _MediaEntryCoverArtwork(bytes: bytes))
                     else
                       Align(
                         alignment: const Alignment(0, -.08),
@@ -240,11 +240,11 @@ final class MediaEntryCoverSurface extends StatelessWidget {
   }
 }
 
-/// Presents video artwork inside the whole player viewport without changing
+/// Presents media artwork inside the whole player viewport without changing
 /// its intrinsic aspect ratio. A black background naturally creates the
 /// required letterbox bars for landscape and square artwork.
-final class _VideoCoverArtwork extends StatelessWidget {
-  const _VideoCoverArtwork({required this.bytes});
+final class _MediaEntryCoverArtwork extends StatelessWidget {
+  const _MediaEntryCoverArtwork({required this.bytes});
 
   final List<int> bytes;
 
