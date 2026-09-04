@@ -62,6 +62,27 @@ void main() {
     expect(find.byKey(const Key('media-entry-cover-transition')), findsNothing);
   });
 
+  testWidgets('allows returning from the preparation cover transition', (tester) async {
+    var exits = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: MediaEntryCoverTransition(
+          kind: MediaEntryKind.video,
+          title: '测试视频',
+          coverBytes: _onePixelPng,
+          presented: false,
+          onExit: () => exits++,
+          child: const ColoredBox(key: Key('mounted-player'), color: Colors.black),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('media-entry-back')));
+
+    expect(exits, 1);
+  });
+
   testWidgets('shows video artwork in the player viewport without stretching it', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

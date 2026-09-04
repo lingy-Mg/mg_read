@@ -78,17 +78,15 @@ final class _MediaEntryCoverTransitionState extends State<MediaEntryCoverTransit
           child: IgnorePointer(ignoring: _coverMounted, child: widget.child),
         ),
         if (_coverMounted)
-          AbsorbPointer(
-            child: AnimatedOpacity(
-              key: const Key('media-entry-cover-transition'),
-              opacity: widget.presented ? 0 : 1,
-              duration: reduceMotion ? Duration.zero : AppMotion.micro,
-              curve: Curves.easeOutQuart,
-              onEnd: () {
-                if (mounted && widget.presented) setState(() => _coverMounted = false);
-              },
-              child: MediaEntryCoverSurface(kind: widget.kind, title: widget.title, coverBytes: widget.coverBytes, onExit: widget.onExit),
-            ),
+          AnimatedOpacity(
+            key: const Key('media-entry-cover-transition'),
+            opacity: widget.presented ? 0 : 1,
+            duration: reduceMotion ? Duration.zero : AppMotion.micro,
+            curve: Curves.easeOutQuart,
+            onEnd: () {
+              if (mounted && widget.presented) setState(() => _coverMounted = false);
+            },
+            child: MediaEntryCoverSurface(kind: widget.kind, title: widget.title, coverBytes: widget.coverBytes, onExit: widget.onExit),
           ),
       ],
     );
