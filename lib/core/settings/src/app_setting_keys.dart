@@ -48,6 +48,14 @@ final class AppSettingKeys {
     validator: _validateDiscoverySourceId,
   );
 
+  static const discoveryPinnedSourceIds = SettingKey<List<String>>(
+    id: 'discovery.pinnedSourceIds',
+    documentKind: 'settings.discovery',
+    defaultValue: <String>[],
+    codec: SettingCodec<List<String>>(_discoveryPinnedSourceIdsEncode, _discoveryPinnedSourceIdsDecode, freeze: freezeSettingList<String>),
+    validator: _validateDiscoveryPinnedSourceIds,
+  );
+
   static const profileDocument = SettingsDocumentDefinition(id: 'app-settings:settings.profile', kind: 'settings.profile');
 
   /// Local-only display identity for the profile summary card.
@@ -154,6 +162,7 @@ final class AppSettingKeys {
     blurredCoverBookIds,
     searchHistory,
     discoverySourceId,
+    discoveryPinnedSourceIds,
     profileIdentity,
     diagnosticsEnabled,
     diagnosticsRealtimeDetailsEnabled,
@@ -229,6 +238,21 @@ void _validateBlurredCoverBookIds(List<String> value) {
 
 void _validateSearchHistory(List<String> value) {
   if (value.length > 5 || value.any((item) => item.trim().isEmpty || item.length > 512)) {
+    throw ArgumentError.value(value);
+  }
+}
+
+Object? _discoveryPinnedSourceIdsEncode(List<String> value) => List<String>.of(value);
+
+List<String> _discoveryPinnedSourceIdsDecode(Object? value) {
+  if (value is! List || value.any((item) => item is! String)) {
+    throw const FormatException('Expected a string list setting.');
+  }
+  return <String>[for (final item in value) item as String];
+}
+
+void _validateDiscoveryPinnedSourceIds(List<String> value) {
+  if (value.length > 100 || value.toSet().length != value.length || value.any((item) => item.trim().isEmpty || item.length > 512)) {
     throw ArgumentError.value(value);
   }
 }

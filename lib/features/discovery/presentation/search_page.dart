@@ -24,6 +24,7 @@ import 'package:mg_read/features/discovery/application/discovery_bookshelf_remov
 import 'package:mg_read/features/discovery/application/search_page_controller.dart';
 import 'package:mg_read/features/discovery/application/search_page_state.dart';
 import 'package:mg_read/features/discovery/application/search_history_store.dart';
+import 'package:mg_read/features/discovery/application/discovery_source_selection_store.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
@@ -438,7 +439,16 @@ class _SearchPageHeader extends ConsumerWidget {
   }
 
   Future<void> _showPicker(BuildContext context, WidgetRef ref, SearchPageState state, SearchPageController controller) async {
-    final selected = await showDiscoverySourcePicker(context, sources: state.sources, selectedSourceId: state.selectedSourceId!);
+    final pinStore = ref.read(discoverySourceSelectionStoreProvider);
+    final pinnedSourceIds = await pinStore.loadPinned();
+    if (!context.mounted) return;
+    final selected = await showDiscoverySourcePicker(
+      context,
+      sources: state.sources,
+      selectedSourceId: state.selectedSourceId!,
+      pinnedSourceIds: pinnedSourceIds,
+      onPinChanged: (sourceId, pinned) => pinStore.setPinned(sourceId, pinned: pinned),
+    );
     switch (selected) {
       case DiscoverySourceSelected(:final sourceId):
         await controller.selectSource(sourceId);

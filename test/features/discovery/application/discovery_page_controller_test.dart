@@ -464,6 +464,7 @@ final class _MemoryDiscoverySourceSelectionStore implements DiscoverySourceSelec
   _MemoryDiscoverySourceSelectionStore(this.selectedSourceId);
 
   String? selectedSourceId;
+  final List<String> pinnedSourceIds = <String>[];
 
   @override
   Future<String?> load() async => selectedSourceId;
@@ -471,6 +472,15 @@ final class _MemoryDiscoverySourceSelectionStore implements DiscoverySourceSelec
   @override
   Future<void> save(String sourceId) async {
     selectedSourceId = sourceId;
+  }
+
+  @override
+  Future<List<String>> loadPinned() async => List<String>.of(pinnedSourceIds);
+
+  @override
+  Future<void> setPinned(String sourceId, {required bool pinned}) async {
+    pinnedSourceIds.remove(sourceId);
+    if (pinned) pinnedSourceIds.insert(0, sourceId);
   }
 }
 

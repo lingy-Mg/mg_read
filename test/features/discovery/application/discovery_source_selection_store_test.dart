@@ -16,22 +16,35 @@ void main() {
     await firstManager.initialize();
     addTearDown(firstManager.close);
 
-    final firstSelection = AppSettingsDiscoverySourceSelectionStore(
-      firstManager,
-    );
+    final firstSelection = AppSettingsDiscoverySourceSelectionStore(firstManager);
     await firstSelection.save('org.mgread.aisishuwu');
     await firstManager.flush();
 
-    final secondManager = AppSettingsManager(
-      store: store,
-      registry: AppSettingKeys.registry,
-    );
+    final secondManager = AppSettingsManager(store: store, registry: AppSettingKeys.registry);
     await secondManager.initialize();
     addTearDown(secondManager.close);
 
-    expect(
-      await AppSettingsDiscoverySourceSelectionStore(secondManager).load(),
-      'org.mgread.aisishuwu',
+    expect(await AppSettingsDiscoverySourceSelectionStore(secondManager).load(), 'org.mgread.aisishuwu');
+  });
+
+  test('pinned discovery sources survive manager reopen', () async {
+    final store = FakeSettingsStore();
+    final firstManager = AppSettingsManager(
+      store: store,
+      registry: AppSettingKeys.registry,
+      policy: const SettingsPersistencePolicy(debounce: Duration.zero),
     );
+    await firstManager.initialize();
+    addTearDown(firstManager.close);
+
+    final firstSelection = AppSettingsDiscoverySourceSelectionStore(firstManager);
+    await firstSelection.setPinned('org.example.manga', pinned: true);
+    await firstManager.flush();
+
+    final secondManager = AppSettingsManager(store: store, registry: AppSettingKeys.registry);
+    await secondManager.initialize();
+    addTearDown(secondManager.close);
+
+    expect(await AppSettingsDiscoverySourceSelectionStore(secondManager).loadPinned(), <String>['org.example.manga']);
   });
 }

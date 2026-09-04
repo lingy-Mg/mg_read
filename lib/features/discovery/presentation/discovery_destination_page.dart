@@ -24,6 +24,7 @@ import 'package:mg_read/features/discovery/application/discovery_page_state.dart
 import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_remover.dart';
+import 'package:mg_read/features/discovery/application/discovery_source_selection_store.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
@@ -325,7 +326,16 @@ Future<void> _selectDiscoverySource(
   DiscoveryPageController controller,
   VoidCallback? onSourceManagementRequested,
 ) async {
-  final selected = await showDiscoverySourcePicker(context, sources: state.sources, selectedSourceId: state.selectedSourceId!);
+  final pinStore = ref.read(discoverySourceSelectionStoreProvider);
+  final pinnedSourceIds = await pinStore.loadPinned();
+  if (!context.mounted) return;
+  final selected = await showDiscoverySourcePicker(
+    context,
+    sources: state.sources,
+    selectedSourceId: state.selectedSourceId!,
+    pinnedSourceIds: pinnedSourceIds,
+    onPinChanged: (sourceId, pinned) => pinStore.setPinned(sourceId, pinned: pinned),
+  );
   switch (selected) {
     case DiscoverySourceSelected(:final sourceId):
       await controller.selectSource(sourceId);

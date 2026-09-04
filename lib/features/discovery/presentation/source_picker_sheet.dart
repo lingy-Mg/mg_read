@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -35,6 +37,8 @@ Future<DiscoverySourcePickerResult?> showDiscoverySourcePicker(
   BuildContext context, {
   required List<PluginSourceDescriptor> sources,
   required String selectedSourceId,
+  Iterable<String> pinnedSourceIds = const <String>[],
+  Future<void> Function(String sourceId, bool pinned)? onPinChanged,
 }) {
   return showModalBottomSheet<DiscoverySourcePickerResult>(
     context: context,
@@ -44,17 +48,29 @@ Future<DiscoverySourcePickerResult?> showDiscoverySourcePicker(
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.30),
     elevation: 0,
-    builder: (context) => _DiscoverySourcePickerSheet(sources: sources, selectedSourceId: selectedSourceId),
+    builder: (context) => _DiscoverySourcePickerSheet(
+      sources: sources,
+      selectedSourceId: selectedSourceId,
+      pinnedSourceIds: pinnedSourceIds,
+      onPinChanged: onPinChanged,
+    ),
   );
 }
 
 enum _SourceFilter { all, enabled, recent }
 
 class _DiscoverySourcePickerSheet extends StatefulWidget {
-  const _DiscoverySourcePickerSheet({required this.sources, required this.selectedSourceId});
+  _DiscoverySourcePickerSheet({
+    required this.sources,
+    required this.selectedSourceId,
+    required Iterable<String> pinnedSourceIds,
+    this.onPinChanged,
+  }) : pinnedSourceIds = List<String>.unmodifiable(pinnedSourceIds);
 
   final List<PluginSourceDescriptor> sources;
   final String selectedSourceId;
+  final List<String> pinnedSourceIds;
+  final Future<void> Function(String sourceId, bool pinned)? onPinChanged;
 
   @override
   State<_DiscoverySourcePickerSheet> createState() => _DiscoverySourcePickerSheetState();
@@ -63,16 +79,50 @@ class _DiscoverySourcePickerSheet extends StatefulWidget {
 class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet> {
   _SourceFilter _filter = _SourceFilter.all;
   String _query = '';
+  late List<String> _pinnedSourceIds;
 
-  Iterable<PluginSourceDescriptor> get _visibleSources {
+  @override
+  void initState() {
+    super.initState();
+    _pinnedSourceIds = List<String>.of(widget.pinnedSourceIds);
+  }
+
+  List<PluginSourceDescriptor> get _visibleSources {
     final query = _query.trim().toLowerCase();
-    return widget.sources.where((source) {
+    final visible = widget.sources.where((source) {
       if (_filter == _SourceFilter.recent && source.id != widget.selectedSourceId) {
         return false;
       }
       if (query.isEmpty) return true;
       return source.displayName.toLowerCase().contains(query);
+    }).toList();
+    final pinOrder = <String, int>{for (var index = 0; index < _pinnedSourceIds.length; index++) _pinnedSourceIds[index]: index};
+    return visible..sort((left, right) {
+      final leftOrder = pinOrder[left.id];
+      final rightOrder = pinOrder[right.id];
+      if (leftOrder == null && rightOrder == null) return 0;
+      if (leftOrder == null) return 1;
+      if (rightOrder == null) return -1;
+      return leftOrder.compareTo(rightOrder);
     });
+  }
+
+  bool _isPinned(String sourceId) => _pinnedSourceIds.contains(sourceId);
+
+  Future<void> _togglePinned(String sourceId) async {
+    final pinned = !_isPinned(sourceId);
+    final previous = List<String>.of(_pinnedSourceIds);
+    setState(() {
+      _pinnedSourceIds.remove(sourceId);
+      if (pinned) _pinnedSourceIds.insert(0, sourceId);
+    });
+    try {
+      await widget.onPinChanged?.call(sourceId, pinned);
+    } on Object {
+      if (!mounted) return;
+      setState(() => _pinnedSourceIds = previous);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('置顶状态保存失败，请稍后重试。')));
+    }
   }
 
   @override
@@ -187,7 +237,9 @@ class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet
                             return _SourcePickerRow(
                               source: source,
                               selected: source.id == widget.selectedSourceId,
+                              pinned: _isPinned(source.id),
                               onPressed: () => Navigator.of(context).pop(DiscoverySourceSelected(source.id)),
+                              onPinPressed: () => _togglePinned(source.id),
                               onWebViewAction: (action) =>
                                   Navigator.of(context).pop(DiscoverySourceWebViewActionRequested(sourceId: source.id, action: action)),
                             );
@@ -244,11 +296,20 @@ class _SourceFilterButton extends StatelessWidget {
 }
 
 class _SourcePickerRow extends StatelessWidget {
-  const _SourcePickerRow({required this.source, required this.selected, required this.onPressed, required this.onWebViewAction});
+  const _SourcePickerRow({
+    required this.source,
+    required this.selected,
+    required this.pinned,
+    required this.onPressed,
+    required this.onPinPressed,
+    required this.onWebViewAction,
+  });
 
   final PluginSourceDescriptor source;
   final bool selected;
+  final bool pinned;
   final VoidCallback onPressed;
+  final Future<void> Function() onPinPressed;
   final ValueChanged<DiscoverySourceWebViewAction> onWebViewAction;
 
   @override
@@ -258,10 +319,10 @@ class _SourcePickerRow extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: '选择来源：${source.displayName}',
+      label: '${pinned ? '已置顶' : '未置顶'}，选择来源：${source.displayName}',
       child: GestureDetector(
-        onLongPressStart: (details) => _showSourcePickerActions(context, details.globalPosition, onWebViewAction),
-        onSecondaryTapUp: (details) => _showSourcePickerActions(context, details.globalPosition, onWebViewAction),
+        onLongPressStart: (details) => _showSourcePickerActions(context, details.globalPosition, pinned, onPinPressed, onWebViewAction),
+        onSecondaryTapUp: (details) => _showSourcePickerActions(context, details.globalPosition, pinned, onPinPressed, onWebViewAction),
         child: Material(
           color: theme.colorScheme.surface,
           borderRadius: const BorderRadius.all(Radius.circular(8)),
@@ -301,6 +362,24 @@ class _SourcePickerRow extends StatelessWidget {
                       ],
                     ),
                   ),
+                  Semantics(
+                    button: true,
+                    label: pinned ? '取消置顶 ${source.displayName}' : '置顶 ${source.displayName}',
+                    child: IconButton(
+                      key: ValueKey<String>('discovery-source-picker-pin-${source.id}'),
+                      tooltip: pinned ? '取消置顶' : '置顶',
+                      onPressed: () => unawaited(onPinPressed()),
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                      icon: Icon(
+                        pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                        size: 18,
+                        color: pinned ? tokens.accent : tokens.mutedText,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
                   _SourceSelectionIndicator(selected: selected),
                 ],
               ),
@@ -315,26 +394,43 @@ class _SourcePickerRow extends StatelessWidget {
 Future<void> _showSourcePickerActions(
   BuildContext context,
   Offset globalPosition,
+  bool pinned,
+  Future<void> Function() onPinPressed,
   ValueChanged<DiscoverySourceWebViewAction> onAction,
 ) async {
   final overlay = Overlay.of(context).context.findRenderObject();
   if (overlay is! RenderBox) return;
-  final action = await showMenu<DiscoverySourceWebViewAction>(
+  final action = await showMenu<_SourcePickerAction>(
     context: context,
     position: RelativeRect.fromRect(Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 1, 1), Offset.zero & overlay.size),
-    items: const <PopupMenuEntry<DiscoverySourceWebViewAction>>[
-      PopupMenuItem<DiscoverySourceWebViewAction>(
-        value: DiscoverySourceWebViewAction.enterDebug,
+    items: <PopupMenuEntry<_SourcePickerAction>>[
+      PopupMenuItem<_SourcePickerAction>(
+        value: _SourcePickerAction.togglePin,
+        child: ListTile(leading: Icon(pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined), title: Text(pinned ? '取消置顶' : '置顶')),
+      ),
+      const PopupMenuItem<_SourcePickerAction>(
+        value: _SourcePickerAction.enterDebug,
         child: ListTile(leading: Icon(Icons.open_in_browser_rounded), title: Text('进入 WebView 调试')),
       ),
-      PopupMenuItem<DiscoverySourceWebViewAction>(
-        value: DiscoverySourceWebViewAction.show,
+      const PopupMenuItem<_SourcePickerAction>(
+        value: _SourcePickerAction.show,
         child: ListTile(leading: Icon(Icons.visibility_rounded), title: Text('显示 WebView')),
       ),
     ],
   );
-  if (action != null) onAction(action);
+  switch (action) {
+    case _SourcePickerAction.togglePin:
+      await onPinPressed();
+    case _SourcePickerAction.enterDebug:
+      onAction(DiscoverySourceWebViewAction.enterDebug);
+    case _SourcePickerAction.show:
+      onAction(DiscoverySourceWebViewAction.show);
+    case null:
+      return;
+  }
 }
+
+enum _SourcePickerAction { togglePin, enterDebug, show }
 
 class _SourceSelectionIndicator extends StatelessWidget {
   const _SourceSelectionIndicator({required this.selected});

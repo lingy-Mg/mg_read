@@ -144,4 +144,40 @@ void main() {
     expect(find.text('爱丽丝书屋'), findsOneWidget);
     expect(find.text('示例漫画源'), findsNothing);
   });
+
+  testWidgets('picker pins a source, persists the callback and moves it to the top', (tester) async {
+    final pinnedSourceIds = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showDiscoverySourcePicker(
+              context,
+              sources: sources,
+              selectedSourceId: 'org.mgread.aisishuwu',
+              pinnedSourceIds: pinnedSourceIds,
+              onPinChanged: (sourceId, pinned) async {
+                pinnedSourceIds.remove(sourceId);
+                if (pinned) pinnedSourceIds.insert(0, sourceId);
+              },
+            ),
+            child: const Text('打开'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('discovery-source-picker-pin-org.example.manga')));
+    await tester.pumpAndSettle();
+
+    expect(pinnedSourceIds, <String>['org.example.manga']);
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey<String>('discovery-source-picker-org.example.manga'))).dy,
+      lessThan(tester.getTopLeft(find.byKey(const ValueKey<String>('discovery-source-picker-org.mgread.aisishuwu'))).dy),
+    );
+    expect(find.byIcon(Icons.push_pin_rounded), findsOneWidget);
+  });
 }
