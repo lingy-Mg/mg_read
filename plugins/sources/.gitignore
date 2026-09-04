@@ -4,9 +4,6 @@
 # Local dependency trees, including nested package dependencies.
 **/node_modules/
 
-# TypeScript/build output used by Windows Debug development.
-**/dist/
-
 # Generated .mgplugin transport archives.
 **/artifacts/
 

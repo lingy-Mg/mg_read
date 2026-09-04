@@ -1,0 +1,35 @@
+/** Plugin API adapter for repository UUID `diyibanzhu-me`. */
+import { categories, DiyibanzhuSource } from './source.js';
+let context;
+let source;
+export async function activate(next) { context = next; source = undefined; next.log.info('source_activated'); }
+export async function search(request) { return invoke('search', async () => { if (request.cursor !== null)
+    throw new Error('Search cursor is unsupported by this endpoint.'); const items = (await requireSource().search(request.query)).slice(0, request.pageSize); return Object.freeze({ items, nextCursor: null, totalCount: null }); }); }
+export async function discover(request) { return invoke('discover', async () => { if (request.target === null) {
+    if (request.cursor !== null || request.collectionId !== null)
+        throw new Error('Initial discovery request is invalid.');
+    const content = (await requireSource().discover('updates', 1)).slice(0, Math.min(request.pageSize, 10));
+    return homeDocument(content);
+} const match = /^category:([a-z-]+)$/u.exec(request.target); if (match?.[1] === undefined)
+    throw new Error('Target is invalid.'); const page = cursor(request.cursor, `category:${match[1]}`); const items = (await requireSource().discover(match[1], page)).slice(0, request.pageSize).map((content) => Object.freeze({ content, rank: null, metric: null, recommendation: null })); const collectionId = `category-books:${match[1]}`; const continuation = items.length === request.pageSize ? Object.freeze({ target: request.target, cursor: `category:${match[1]}:${page + 1}` }) : null; if (request.collectionId !== null)
+    return Object.freeze({ kind: 'append', collectionId, items: Object.freeze(items), continuation }); return Object.freeze({ kind: 'document', document: { components: Object.freeze([{ type: 'section', id: `${collectionId}-section`, title: categories.find(([id]) => id === match[1])?.[1] ?? '分类', subtitle: null, children: Object.freeze([{ type: 'contentCollection', id: collectionId, layout: 'list', items: Object.freeze(items), continuation }]) }]) } }); }); }
+function homeDocument(content) { const items = Object.freeze(content.map(value => Object.freeze({ content: value, rank: null, metric: null, recommendation: null }))); return Object.freeze({ kind: 'document', document: { components: Object.freeze([...(items.length === 0 ? [] : [{ type: 'section', id: 'latest-section', title: '最新更新', subtitle: '移动站新近更新作品', icon: 'ongoing', children: Object.freeze([{ type: 'contentCollection', id: 'latest-books', layout: 'shelf', items, continuation: null }]) }]), { type: 'section', id: 'categories-section', title: '排行与分类', subtitle: '按榜单或题材继续发现', icon: 'explore', children: Object.freeze([{ type: 'categoryCollection', id: 'categories', layout: 'chips', categories: Object.freeze(categories.map(([id, title]) => Object.freeze({ id, title, target: `category:${id}`, count: null, url: null, icon: id === 'total' ? 'allTimeRanking' : id === 'month' ? 'monthlyRanking' : id === 'new' ? 'newRelease' : id === 'updates' ? 'ongoing' : id === 'fantasy' ? 'fantasy' : id === 'martial' ? 'wuxia' : id === 'city' ? 'urban' : id === 'history' ? 'history' : id === 'scifi' ? 'scienceFiction' : 'category' }))) }]) }]) } }); }
+export async function searchSuggestions() { return Object.freeze({ items: Object.freeze([]), nextCursor: null }); }
+export async function getDetail(request) { return invoke('detail', () => requireSource().detail(request.id)); }
+export async function getChapters(request) { return invoke('chapters', () => requireSource().chapters(request.id)); }
+export async function getContent(request) { return invoke('content', () => requireSource().content(request.id, request.chapterId)); }
+function requireSource() { if (context === undefined)
+    throw new Error('Source is not activated.'); return source ??= new DiyibanzhuSource(context); }
+async function invoke(name, action) { if (context === undefined)
+    throw new Error('Source is not activated.'); context.log.info(`source_${name}_started`); try {
+    const result = await action();
+    context.log.info(`source_${name}_completed`);
+    return result;
+}
+catch (error) {
+    context.log.warn(`source_${name}_failed`);
+    throw error;
+} }
+function cursor(value, scope) { if (value === null)
+    return 1; const page = Number(new RegExp(`^${scope}:(\\d+)$`, 'u').exec(value)?.[1]); if (!Number.isSafeInteger(page) || page < 2)
+    throw new Error('Cursor is invalid.'); return page; }

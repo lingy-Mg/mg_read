@@ -1,0 +1,77 @@
+/**
+ * 漫剧小猫原生数据源。
+ *
+ * 职责：直接请求并解密猫爪七猫漫剧的分类、检索、详情与分集数据。
+ * 生命周期：activate 仅保存 Runtime 上下文，不使用旧脚本宿主或持久状态。
+ * IO：请求走 ctx.http；封面和视频均通过 ctx.resource.proxy 输出。
+ * 稳定标识：作品沿用七猫 vod_id，分集使用作品 ID 与详情列表顺序。
+ */
+import { createDecipheriv } from 'node:crypto';
+const root = 'https://api.999888456.xyz/api/qimao/', headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/116.0.0.0 Safari/537.36', Accept: 'application/json, text/plain, */*' };
+let context;
+export async function activate(next) { context = next; next.log.info('source_activated'); }
+export async function search(request) { const query = request.query.trim(); if (query === '')
+    return frozen({ items: [], nextCursor: null, totalCount: 0 }); const page = cursorPage(request.cursor, 'search'), values = list(await api(`search?wd=${encodeURIComponent(query)}&pg=${page}`)), items = summaries(values).slice(0, clamp(request.pageSize)); return frozen({ items, nextCursor: values.length >= clamp(request.pageSize) ? `search:${page + 1}` : null, totalCount: null }); }
+export async function searchSuggestions(_request) { return frozen({ items: [], nextCursor: null }); }
+export async function discover(request) { if (request.target === null)
+    return frozen({ kind: 'document', document: { components: [{ type: 'section', id: 'qimao-channels', title: '漫剧小猫', subtitle: '七猫漫剧', icon: 'video', children: [{ type: 'categoryCollection', id: 'qimao-channel-list', layout: 'chips', categories: [{ id: 'manju', title: '漫剧', target: 'channel:manju', count: null, url: null, icon: 'video' }] }] }] } }); if (request.target !== 'channel:manju')
+    throw new Error('Discovery target is invalid.'); const page = cursorPage(request.cursor, request.target), size = clamp(request.pageSize), values = list(await api(`category?tid=manju&pg=${page}`)), contents = summaries(values).slice(0, size), collectionId = 'qimao:manju', items = contents.map(content => frozen({ content, rank: null, metric: null, recommendation: null })), continuation = values.length >= size ? frozen({ target: request.target, cursor: `channel:manju:${page + 1}` }) : null; if (request.collectionId !== null)
+    return request.collectionId === collectionId ? frozen({ kind: 'append', collectionId, items, continuation }) : Promise.reject(new Error('Discovery collection is invalid.')); return frozen({ kind: 'document', document: { components: [{ type: 'section', id: 'qimao:section', title: '漫剧', subtitle: null, icon: 'video', children: [{ type: 'contentCollection', id: collectionId, layout: 'coverGrid', items, continuation }] }] } }); }
+export async function getDetail(request) { const id = contentId(request.id), value = await detail(id); return frozen({ ...summary(value, id), aliases: [], catalogUrl: `${root}detail?id=${encodeURIComponent(id)}` }); }
+export async function getChapters(request) { const id = contentId(request.id), value = await detail(id), episodes = split(text(first(value.vod_play_url, value.play_url))), items = episodes.map((episode, index) => frozen({ id: `video:${id}:${index}`, title: episode.title, order: index, url: null, volumeTitle: '视频', wordCount: null, updatedAt: null, isLocked: false, attributes: [] })); return frozen({ items, groups: items.length ? [frozen({ id: `group:${id}:main`, title: '视频', order: 0, episodes: items })] : [] }); }
+export async function getContent(request) { const id = contentId(request.id), index = chapterIndex(request.chapterId, id), episodes = split(text(first((await detail(id)).vod_play_url))), episode = episodes[index]; if (episode === undefined || !safeUrl(episode.url))
+    throw new Error('Video address is unavailable.'); const mediaHeaders = { Referer: 'https://api.999888456.xyz/', 'User-Agent': headers['User-Agent'] }; return frozen({ chapterId: request.chapterId, contentKind: 'video', title: episode.title, updatedAt: null, text: null, pages: [], media: { url: requireContext().resource.proxy({ kind: 'video', url: episode.url, headers: mediaHeaders }), resourceType: 'video', resourcePolicy: 'sessionOnly', expiresAt: null, mimeType: /\.m3u8(?:$|[?#])/iu.test(episode.url) ? 'application/vnd.apple.mpegurl' : 'video/mp4', headers: mediaHeaders } }); }
+async function detail(id) { const values = list(await api(`detail?id=${encodeURIComponent(id)}`)); if (values[0] === undefined)
+    throw new Error('Video detail is unavailable.'); return values[0]; }
+async function api(path) { const response = await requireContext().http.fetch(new URL(path, root).toString(), { headers }); if (!response.ok)
+    throw new Error('Source request failed.'); const raw = (await response.text()).trim(), plain = decrypt(raw); try {
+    return JSON.parse(plain);
+}
+catch {
+    throw new Error('Source response is invalid.');
+} }
+function decrypt(raw) { if (raw.startsWith('{') || raw.startsWith('['))
+    return raw; const parts = raw.split('.'); if (parts.length < 3)
+    throw new Error('Encrypted response is invalid.'); const keyIv = derive(parts[1] ?? ''), decipher = createDecipheriv('aes-128-cbc', keyIv.subarray(0, 16), keyIv.subarray(16, 32)); return Buffer.concat([decipher.update(Buffer.from(parts[2] ?? '', 'base64')), decipher.final()]).toString('utf8'); }
+function derive(token) { const bytes = Buffer.from(token.slice(4), 'hex'), mask = [104, 64, 70, 166, 190, 168, 143, 130, 225, 254, 251, 217, 196, 34, 45, 60, 29, 20, 103, 105], out = Buffer.alloc(bytes.length); for (let i = 0; i < bytes.length; i++) {
+    const r = i % mask.length, r0 = bytes[i] ?? 0, r1 = i === 0 ? 109 : (bytes[i - 1] ?? 0), r2 = ((mask[r] ?? 0) ^ ((90 + r * 13) & 255) ^ 85) & 255, r3 = (r0 + 215 - 11 * i) & 255, r4 = ((r3 << 3) | (r3 >>> 5)) & 255, r5 = (~(r2 ^ r1)) & 255, r6 = (r5 & 54) | ((~r5 & 255) & 201), r7 = ((~r4 & 255) & 54) | (r4 & 201);
+    out[i] = (r6 ^ r7) & 255;
+} if (out.length < 32)
+    throw new Error('Encrypted response key is invalid.'); return out; }
+function list(value) { if (Array.isArray(value))
+    return value.filter(isObject); if (!isObject(value))
+    return []; if (Array.isArray(value.list))
+    return value.list.filter(isObject); const data = isObject(value.data) ? value.data : null; if (data && Array.isArray(data.list))
+    return data.list.filter(isObject); return []; }
+function summaries(values) { const result = new Map(); for (const value of values) {
+    const id = nativeId(first(value.vod_id, value.id));
+    if (id !== null && text(first(value.vod_name, value.title)) !== '')
+        result.set(id, summary(value, id));
+} return [...result.values()]; }
+function summary(value, id) { const title = text(first(value.vod_name, value.title)) || id, remark = nullable(first(value.vod_remarks, value.remark)); return frozen({ id: `video:${id}`, title, contentKind: 'video', coverOrientation: 'portrait', author: null, url: `${root}detail?id=${encodeURIComponent(id)}`, coverUrl: proxyImage(text(first(value.vod_pic, value.cover))), description: nullable(first(value.vod_content, value.description, remark)), language: 'zh-CN', status: 'unknown', access: 'unknown', wordCount: null, chapterCount: countHint(remark), publishedAt: null, updatedAt: null, latestChapter: null, categories: stringList(value.type_name), tags: stringList(value.tags), attributes: [] }); }
+function split(raw) { return raw.split('$$$').flatMap(group => group.split('#')).map((row, index) => { const at = row.indexOf('$'); return { title: at >= 0 ? row.slice(0, at) || `第 ${index + 1} 集` : `第 ${index + 1} 集`, url: at >= 0 ? row.slice(at + 1) : row }; }).filter(value => value.url !== ''); }
+function nativeId(value) { const id = text(value); return /^\d+$/u.test(id) ? id : null; }
+function contentId(id) { const value = /^video:(\d+)$/u.exec(id)?.[1]; if (!value)
+    throw new Error('Content ID is invalid.'); return value; }
+function chapterIndex(id, content) { const value = new RegExp(`^video:${content}:(\\d+)$`, 'u').exec(id)?.[1], index = Number(value); if (value === undefined || !Number.isSafeInteger(index))
+    throw new Error('Chapter ID is invalid.'); return index; }
+function proxyImage(url) { return safeUrl(url) ? requireContext().resource.proxy({ kind: 'image', url, headers: { Referer: 'https://api.999888456.xyz/' } }) : null; }
+function safeUrl(value) { try {
+    return ['http:', 'https:'].includes(new URL(value).protocol);
+}
+catch {
+    return false;
+} }
+function countHint(value) { const match = value?.match(/(\d+)\s*集/u)?.[1], count = Number(match); return Number.isSafeInteger(count) ? count : null; }
+function cursorPage(cursor, target) { if (cursor === null)
+    return 1; const page = Number(cursor.startsWith(`${target}:`) ? cursor.slice(target.length + 1) : ''); if (!Number.isSafeInteger(page) || page < 2)
+    throw new Error('Cursor is invalid.'); return page; }
+function stringList(value) { const raw = text(value); return raw === '' ? [] : raw.split(/[·,，/]/u).map(part => part.trim()).filter(Boolean); }
+function first(...values) { return values.find(v => v !== null && v !== undefined && v !== '') ?? ''; }
+function text(v) { return typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : ''; }
+function nullable(v) { const s = text(v); return s || null; }
+function isObject(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
+function clamp(v) { return Math.max(1, Math.min(50, Math.floor(v))); }
+function frozen(v) { return Object.freeze(v); }
+function requireContext() { if (!context)
+    throw new Error('Source is not activated.'); return context; }

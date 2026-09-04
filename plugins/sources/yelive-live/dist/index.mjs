@@ -1,0 +1,91 @@
+const root = 'https://zh.yelive.tv/', agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/136.0.0.0 Safari/537.36', headers = { 'User-Agent': agent, Accept: 'application/json,text/plain,*/*', 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8', 'Front-Version': '11.7.45', Referer: root }, channels = Object.freeze([{ id: 'girls', title: '女主播', primary: 'girls', filter: '' }, { id: 'couples', title: '情侣', primary: 'couples', filter: '' }, { id: 'men', title: '男主播', primary: 'men', filter: '' }, { id: 'trans', title: '跨性别', primary: 'trans', filter: '' }, { id: 'chinese', title: '中国', primary: 'girls', filter: 'chinese' }, { id: 'japanese', title: '日本', primary: 'girls', filter: 'japanese' }, { id: 'korean', title: '韩国', primary: 'girls', filter: 'korean' }, { id: 'new', title: '新主播', primary: 'girls', filter: 'new' }]);
+let context;
+const cache = new Map();
+export async function activate(next) { context = next; cache.clear(); next.log.info('source_activated'); }
+export async function search(request) { const query = request.query.trim(); if (query === '')
+    return frozen({ items: [], nextCursor: null, totalCount: 0 }); if (request.cursor !== null)
+    throw new Error('Cursor is invalid.'); const result = new Map(); for (const primary of ['girls', 'couples', 'men', 'trans']) {
+    const value = await fetchJson(`api/front/v4/models/search/group/username?query=${encodeURIComponent(query)}&primaryTag=${primary}&limit=99`);
+    for (const model of models(value))
+        if (publicModel(model))
+            result.set(model.id, summary(model));
+} const items = [...result.values()].slice(0, clamp(request.pageSize)); return frozen({ items, nextCursor: null, totalCount: items.length }); }
+export async function searchSuggestions(_request) { return frozen({ items: [], nextCursor: null }); }
+export async function discover(request) { if (request.target === null)
+    return frozen({ kind: 'document', document: { components: [{ type: 'section', id: 'yelive-channels', title: '全网直播', subtitle: 'Yelive 公开房间', icon: 'live', children: [{ type: 'categoryCollection', id: 'yelive-channel-list', layout: 'chips', categories: channels.map(channel => ({ id: channel.id, title: channel.title, target: `channel:${channel.id}`, count: null, url: null, icon: 'live' })) }] }] } }); const channel = channels.find(value => request.target === `channel:${value.id}`); if (!channel)
+    throw new Error('Discovery target is invalid.'); const page = cursorPage(request.cursor, request.target), size = clamp(request.pageSize), offset = (page - 1) * 24, filter = channel.filter ? `&filterGroupTags=${encodeURIComponent(JSON.stringify([[channel.filter]]))}` : '', value = await fetchJson(`api/front/models?limit=24&offset=${offset}&primaryTag=${channel.primary}&sortBy=stripRanking${filter}`), values = models(value).filter(publicModel), contents = values.map(summary).slice(0, size), collectionId = `yelive:${channel.id}`, items = contents.map(content => frozen({ content, rank: null, metric: null, recommendation: null })), continuation = values.length >= size ? frozen({ target: request.target, cursor: `channel:${channel.id}:${page + 1}` }) : null; if (request.collectionId !== null) {
+    if (request.collectionId !== collectionId)
+        throw new Error('Discovery collection is invalid.');
+    return frozen({ kind: 'append', collectionId, items, continuation });
+} return frozen({ kind: 'document', document: { components: [{ type: 'section', id: `${collectionId}:section`, title: channel.title, subtitle: null, icon: 'live', children: [{ type: 'contentCollection', id: collectionId, layout: 'coverGrid', items, continuation }] }] } }); }
+export async function getDetail(request) { const id = contentId(request.id), model = await locate(id), item = summary(model); return frozen({ ...item, aliases: [], catalogUrl: `${root}${encodeURIComponent(model.username)}` }); }
+export async function getChapters(request) { const id = contentId(request.id), model = await locate(id), qualities = qualityList(model), items = qualities.map((quality, index) => frozen({ id: `live:${id}:${quality}`, title: quality === 'auto' ? '自动清晰度' : quality.toUpperCase(), order: index, url: null, volumeTitle: '低延迟直播', wordCount: null, updatedAt: null, isLocked: false, attributes: [] })); return frozen({ items, groups: [frozen({ id: `group:${id}:live`, title: '低延迟直播', order: 0, episodes: items })] }); }
+export async function getContent(request) { const id = contentId(request.id), quality = chapterQuality(request.chapterId, id), model = await locate(id), upstream = hlsUrl(model, quality); if (!safeUrl(upstream))
+    throw new Error('Live stream is unavailable.'); const mediaHeaders = { 'User-Agent': agent, Accept: '*/*', Origin: root.slice(0, -1), Referer: `${root}${encodeURIComponent(model.username)}` }; return frozen({ chapterId: request.chapterId, contentKind: 'video', title: model.username, updatedAt: null, text: null, pages: [], media: { url: requireContext().resource.proxy({ kind: 'video', url: upstream, headers: mediaHeaders }), resourceType: 'video', resourcePolicy: 'sessionOnly', expiresAt: null, mimeType: 'application/vnd.apple.mpegurl', headers: mediaHeaders } }); }
+async function locate(id) { const cached = cache.get(id); if (cached)
+    return cached; for (const primary of ['girls', 'couples', 'men', 'trans']) {
+    const value = await fetchJson(`api/front/models?limit=99&offset=0&primaryTag=${primary}&sortBy=stripRanking`), found = models(value).find(model => model.id === id);
+    if (found)
+        return found;
+} throw new Error('Live room is unavailable.'); }
+async function fetchJson(path) { const response = await requireContext().http.fetch(new URL(path, root).toString(), { headers }); if (!response.ok)
+    throw new Error('Source request failed.'); try {
+    return JSON.parse(await response.text());
+}
+catch {
+    throw new Error('Source response is invalid.');
+} }
+function models(value) { const rows = findRows(value, 0), result = []; for (const row of rows) {
+    const id = text(first(row.id, row.modelId, row.streamName));
+    if (!/^\d+$/u.test(id))
+        continue;
+    const status = text(first(row.status, row.broadcastStatus)), model = { id, username: text(first(row.username, row.userName, row.login, row.name)) || id, cover: absolute(text(first(row.previewUrlThumbSmall, row.previewUrlThumbBig, row.previewUrl, row.avatarUrl, row.avatar))), status: status || (row.isOnline === true ? 'public' : ''), viewers: number(first(row.viewersCount, row.viewers)), hls: absolute(text(first(row.hlsPlaylist, row.hls, row.hlsUrl))), presets: Array.isArray(row.presets) ? row.presets.map(text).filter(Boolean) : [] };
+    cache.set(id, model);
+    result.push(model);
+} return result; }
+function findRows(value, depth) { if (depth > 5)
+    return []; if (Array.isArray(value)) {
+    const objects = value.filter(isObject);
+    if (objects.some(row => row.id !== undefined || row.username !== undefined))
+        return objects;
+    for (const item of value) {
+        const found = findRows(item, depth + 1);
+        if (found.length)
+            return found;
+    }
+    return [];
+} if (!isObject(value))
+    return []; for (const key of ['models', 'items', 'data', 'result', 'list', 'group', 'payload', 'blocks']) {
+    const found = findRows(value[key], depth + 1);
+    if (found.length)
+        return found;
+} return []; }
+function publicModel(model) { return model.status === 'public'; }
+function summary(model) { return frozen({ id: `live:${model.id}`, title: model.username, contentKind: 'video', coverOrientation: 'portrait', author: model.viewers ? `${model.viewers} 人观看` : 'Yelive', url: `${root}${encodeURIComponent(model.username)}`, coverUrl: proxyImage(model.cover), description: `状态：${model.status}`, language: null, status: 'ongoing', access: 'free', wordCount: null, chapterCount: qualityList(model).length, publishedAt: null, updatedAt: null, latestChapter: { id: `live:${model.id}:auto`, title: '正在直播', url: null, updatedAt: null }, categories: [], tags: [], attributes: [] }); }
+function qualityList(model) { const known = model.presets.filter(value => /^(?:1080p|720p|480p|240p)$/u.test(value)); return ['auto', ...new Set(known)].slice(0, 5); }
+function hlsUrl(model, quality) { const candidate = model.hls || `https://edge-hls.doppiocdn.com/hls/${model.id}/master/${model.id}_240p.m3u8`, url = new URL(candidate), host = url.host || 'edge-hls.doppiocdn.com', suffix = quality === 'auto' ? 'auto' : quality; return `https://${host}/hls/${model.id}/master/${model.id}_${suffix}.m3u8?playlistType=lowLatency`; }
+function absolute(value) { if (value.startsWith('//'))
+    return `https:${value}`; if (value.startsWith('/'))
+    return `https://static-proxy.strpst.com${value}`; return value; }
+function contentId(id) { const value = /^live:(\d+)$/u.exec(id)?.[1]; if (!value)
+    throw new Error('Content ID is invalid.'); return value; }
+function chapterQuality(id, content) { const value = new RegExp(`^live:${content}:(auto|1080p|720p|480p|240p)$`, 'u').exec(id)?.[1]; if (!value)
+    throw new Error('Chapter ID is invalid.'); return value; }
+function proxyImage(url) { return safeUrl(url) ? requireContext().resource.proxy({ kind: 'image', url, headers: { Referer: root } }) : null; }
+function safeUrl(value) { try {
+    return ['http:', 'https:'].includes(new URL(value).protocol);
+}
+catch {
+    return false;
+} }
+function cursorPage(cursor, target) { if (cursor === null)
+    return 1; const page = Number(cursor.startsWith(`${target}:`) ? cursor.slice(target.length + 1) : ''); if (!Number.isSafeInteger(page) || page < 2)
+    throw new Error('Cursor is invalid.'); return page; }
+function first(...values) { return values.find(value => value !== null && value !== undefined && value !== '') ?? ''; }
+function isObject(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
+function text(value) { return typeof value === 'string' ? value.trim() : typeof value === 'number' ? String(value) : ''; }
+function number(value) { const result = Number(value); return Number.isFinite(result) ? result : 0; }
+function clamp(value) { return Math.max(1, Math.min(50, Math.floor(value))); }
+function frozen(value) { return Object.freeze(value); }
+function requireContext() { if (!context)
+    throw new Error('Source is not activated.'); return context; }

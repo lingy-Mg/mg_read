@@ -1,0 +1,49 @@
+/** xx.knit.bid parser. Site-compatible direct HTTP is used; display HTML is cached, gallery HTML and image bodies are not. */
+import { Buffer } from 'node:buffer';
+import * as cheerio from 'cheerio/slim';
+import { PluginCache } from '@mgread/plugin-cache';
+const origin = 'https://xx.knit.bid';
+const listingPolicy = Object.freeze({ namespace: 'listing', staleAfterMs: 10 * 60 * 1000, serveStaleWhileRevalidate: true });
+const detailPolicy = Object.freeze({ namespace: 'detail', staleAfterMs: 60 * 60 * 1000, allowStaleOnError: false });
+export const categories = Object.freeze([['home', '首页', '/'], ['sexy', '性感美女', '/type/1/'], ['pure', '清纯美女', '/type/2/'], ['stockings', '丝袜美女', '/type/3/'], ['legs', '美腿美女', '/type/4/'], ['cosplay', 'Cosplay', '/type/6/'], ['ai', 'AI美女', '/type/10/'], ['new', '最新发布', '/sort/new/'], ['hot', '最受欢迎', '/sort/hot/'], ['daily', '今日热门', '/rankings/daily/'], ['weekly', '本周热门', '/rankings/weekly/'], ['monthly', '本月热门', '/rankings/monthly/']]);
+export class XiezhenjiSource {
+    context;
+    #cache;
+    constructor(context) {
+        this.context = context;
+        this.#cache = new PluginCache(context.cacheDir, { logger: context.log });
+    }
+    async search(query, page) { const url = new URL(page === 1 ? '/search/' : `/search/page/${page}/`, origin); url.searchParams.set('s', query); return this.parseList(await this.#cached(url, listingPolicy), url); }
+    async discover(id, page) { const rule = categories.find(([key]) => key === id); if (rule === undefined)
+        throw new Error('Unknown category.'); const base = new URL(rule[2], origin); const url = page === 1 ? base : new URL(`${base.pathname.replace(/\/?$/u, '/')}page/${page}/`, origin); return this.parseList(await this.#cached(url, listingPolicy), url); }
+    parseList(html, base) { const $ = cheerio.load(html); const seen = new Set(); const values = []; $('article.excerpt').each((_, element) => { const root = $(element); const link = root.find('a.imgbox-link[href*="/article/"], a[href*="/article/"]').first(); const href = link.attr('href'); const title = clean(link.attr('title')) ?? clean(root.find('h2 a, h3 a, a[href*="/article/"]').first().text()); if (href === undefined || title === null)
+        return; const url = new URL(href, base); if (!/^\/article\/\d+\/?$/u.test(url.pathname) || seen.has(url.pathname))
+        return; seen.add(url.pathname); const image = root.find('img.imgbox-img').first(); const raw = image.attr('data-original-src') ?? image.attr('data-src') ?? image.attr('src'); values.push(makeSummary(url, title, raw === undefined ? null : this.#proxy(new URL(raw, base), base), clean(root.find('.note, .excerpt-note, .post-excerpt').text()), unique([root.find('a.imgbox-a').text()]))); }); return Object.freeze(values); }
+    async detail(id) { const url = decodeId(id); const html = await this.#cached(url, detailPolicy); const $ = cheerio.load(html); const title = clean($('h1.focusbox-title').first().text()) ?? clean($('meta[property="og:title"]').attr('content')); if (title === null)
+        throw new Error('Detail title is missing.'); const description = clean($('meta[name="description"]').attr('content')); const rawCover = clean($('meta[property="og:image"]').attr('content')); const tags = unique($('.article-tags a').toArray().map((element) => $(element).text())); const count = parseImageCount(html, description); return Object.freeze({ ...makeSummary(url, title.replace(/\s*-\s*爱妹子\s*$/u, ''), rawCover === null ? null : this.#proxy(new URL(rawCover, url), url), description, tags), aliases: Object.freeze([]), catalogUrl: url.toString(), author: tags[0] ?? null, attributes: count === null ? Object.freeze([]) : Object.freeze([{ key: 'images', label: '图片', value: String(count) }]) }); }
+    chapters(id) { const url = decodeId(id); return Object.freeze({ items: Object.freeze([{ id: `gallery:${token(url)}`, title: '全部图片', order: 0, url: url.toString(), volumeTitle: null, wordCount: null, updatedAt: null, isLocked: false, attributes: Object.freeze([]) }]) }); }
+    async content(id, chapterId) { const base = decodeId(id); if (chapterId !== `gallery:${token(base)}`)
+        throw new Error('Chapter ID is invalid.'); const first = await this.#html(base); const total = Math.min(80, parseTotalPages(first)); const urls = Array.from({ length: Math.max(0, total - 1) }, (_, index) => new URL(`${base.pathname.replace(/\/?$/u, '/')}page/${index + 2}/`, origin)); const images = uniqueUrls([...parseImages(first, base), ...(await Promise.all(urls.map(async (url) => parseImages(await this.#html(url), url)))).flat()]); if (images.length === 0)
+        throw new Error('Gallery images are missing.'); return Object.freeze({ chapterId, contentKind: 'manga', title: '全部图片', updatedAt: null, text: null, pages: Object.freeze(images.map((url, index) => Object.freeze({ id: `image:${index + 1}`, index, url: this.#proxy(url, base), mimeType: mime(url), width: null, height: null }))) }); }
+    async #cached(url, policy) { return this.#cache.getOrFetchText(url, policy, () => this.#html(url)); }
+    async #html(url) { const response = await this.context.http.fetch(url, { headers: { accept: 'text/html,application/xhtml+xml', referer: `${origin}/` } }); const body = await response.text(); if (!response.ok || isCf(body))
+        throw new Error('Source request is unavailable.'); return body; }
+    #proxy(url, referer) { if (url.origin !== origin || referer.origin !== origin)
+        throw new Error('Image request is invalid.'); return this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/*', Referer: referer.toString() } }); }
+}
+function makeSummary(url, title, coverUrl, description, tags) { return Object.freeze({ id: encodeId(url), title, contentKind: 'manga', author: null, url: url.toString(), coverUrl, description, language: null, status: 'unknown', access: 'free', wordCount: null, chapterCount: 1, publishedAt: null, updatedAt: null, latestChapter: { id: `gallery:${token(url)}`, title: '全部图片', url: url.toString(), updatedAt: null }, categories: tags, tags, attributes: Object.freeze([]) }); }
+function encodeId(url) { return `article:${token(url)}`; }
+function token(url) { return Buffer.from(url.pathname, 'utf8').toString('base64url'); }
+function decodeId(id) { const match = /^article:([A-Za-z0-9_-]+)$/u.exec(id); if (match?.[1] === undefined)
+    throw new Error('Content ID is invalid.'); const url = new URL(Buffer.from(match[1], 'base64url').toString('utf8'), origin); if (url.origin !== origin || !/^\/article\/\d+\/?$/u.test(url.pathname))
+    throw new Error('Content ID is invalid.'); return url; }
+function clean(value) { const result = value?.replace(/\s+/gu, ' ').trim() ?? ''; return result === '' ? null : result; }
+function unique(values) { return Object.freeze([...new Set(values.map((value) => value.replace(/\s+/gu, ' ').trim()).filter(Boolean))]); }
+function parseTotalPages(html) { const count = Number(/"(?:total_pages|totalPages)"\s*:\s*(\d+)/u.exec(html)?.[1]); return Number.isSafeInteger(count) && count > 0 ? count : 1; }
+function parseImageCount(html, intro) { const count = Number(/"numberOfItems"\s*:\s*(\d+)/u.exec(html)?.[1] ?? /收录\s*(\d+)\s*P/iu.exec(intro ?? '')?.[1]); return Number.isSafeInteger(count) && count >= 0 ? count : null; }
+function parseImages(html, base) { const $ = cheerio.load(html); return uniqueUrls($('#image-gallery .image-container img, article.article-content img').toArray().flatMap((element) => { const raw = $(element).attr('data-src') ?? $(element).attr('data-original-src') ?? $(element).attr('src'); if (raw === undefined)
+    return []; const url = new URL(raw, base); return url.origin === origin && /\/static\/images\//u.test(url.pathname) && /\.(?:jpe?g|png|webp|gif)$/iu.test(url.pathname) ? [url] : []; })); }
+function uniqueUrls(values) { const seen = new Set(); return values.filter((url) => { const key = `${url.origin}${url.pathname}`; if (seen.has(key))
+    return false; seen.add(key); return true; }); }
+function mime(url) { const ext = /\.([^.]+)$/u.exec(url.pathname)?.[1]?.toLowerCase(); return ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : null; }
+function isCf(body) { return /(?:cf-challenge|cf-turnstile|Just a moment|Checking your browser)/iu.test(body); }

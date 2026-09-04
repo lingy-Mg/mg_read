@@ -1,0 +1,78 @@
+/**
+ * 咪咕音乐原生数据源。
+ *
+ * 职责：直接实现咪咕签名搜索、榜单、歌曲详情和 listen-url 播放流程。
+ * 生命周期：activate 注入 Runtime；签名时间戳按请求生成，不保存账号信息。
+ * IO：元数据与播放请求走 ctx.http；封面和音频经 ctx.resource.proxy。
+ * 稳定标识：内容和章节使用咪咕 songId，不使用标题或临时播放 URL。
+ */
+import { createHash } from 'node:crypto';
+const origin = 'https://music.migu.cn', userAgent = 'Mozilla/5.0 (Linux; Android 11; zh-cn) AppleWebKit/534.30 Mobile Safari/534.30', deviceId = '963B7AA0D21511ED807EE5846EC87D20', signSalt = '6cdc72a439cef99a3418d2a78aa28c73', app = 'yyapp2d16148780a1dcc7408e06336b98cfd50', apiHeaders = Object.freeze({ Accept: 'application/json,text/plain,*/*', channel: '0146921', 'User-Agent': userAgent }), channels = Object.freeze([['hot', '热歌榜', '27186466'], ['new', '新歌榜', '27553319'], ['trend', '音乐风向榜', '75959118']]);
+let context;
+export async function activate(next) { context = next; next.log.info('source_activated'); }
+export async function search(request) { const query = request.query.trim(); if (query === '')
+    return frozen({ items: [], nextCursor: null, totalCount: 0 }); const page = cursorPage(request.cursor, 'search'), size = clamp(request.pageSize), timestamp = String(Date.now()), sign = createHash('md5').update(query + signSalt + app + deviceId + timestamp).digest('hex'), url = `https://jadeite.migu.cn/music_search/v3/search/searchAll?isCorrect=0&isCopyright=1&searchSwitch=%7B%22song%22%3A1%2C%22album%22%3A0%2C%22singer%22%3A0%2C%22tagSong%22%3A1%2C%22mvSong%22%3A0%2C%22bestShow%22%3A1%2C%22songlist%22%3A0%2C%22lyricSong%22%3A0%7D&pageSize=${size}&text=${encodeURIComponent(query)}&pageNo=${page}&sort=0&sid=USS`, json = await fetchJson(url, { ...apiHeaders, uiVersion: 'A_music_3.6.1', deviceId, timestamp, sign }), result = object(json.songResultData), items = flatRecords(result.resultList).map(songSummary).filter(notNull).slice(0, size), totalCount = nonNegative(first(result.totalCount, result.total)); return frozen({ items, nextCursor: totalCount !== null ? page * size < totalCount ? `search:${page + 1}` : null : items.length >= size ? `search:${page + 1}` : null, totalCount }); }
+export async function searchSuggestions(_request) { return frozen({ items: [], nextCursor: null }); }
+export async function discover(request) { if (request.target === null) {
+    if (request.cursor !== null || request.collectionId !== null)
+        throw new Error('Initial discovery request is invalid.');
+    return frozen({ kind: 'document', document: { components: [{ type: 'section', id: 'migu-charts', title: '咪咕音乐', subtitle: '官方榜单', icon: 'audio', children: [{ type: 'categoryCollection', id: 'migu-chart-list', layout: 'chips', categories: channels.map(([id, title]) => ({ id, title, target: `chart:${id}`, count: null, url: null, icon: 'ranking' })) }] }] } });
+} const channel = channels.find(([id]) => request.target === `chart:${id}`); if (channel === undefined)
+    throw new Error('Discovery target is invalid.'); const page = cursorPage(request.cursor, `chart:${channel[0]}`), size = clamp(request.pageSize), json = await fetchJson(`https://app.c.nf.migu.cn/pc/bmw/rank/rank-info/v1.0?rankId=${channel[2]}&pageNo=${page}&pageSize=${size}`, apiHeaders), values = records(object(json.data).contents).map(songSummary).filter(notNull), collectionId = `audio:${channel[0]}`, items = values.map(content => frozen({ content, rank: null, metric: null, recommendation: null })), continuation = values.length >= size ? frozen({ target: request.target, cursor: `chart:${channel[0]}:${page + 1}` }) : null; if (request.collectionId !== null) {
+    if (request.collectionId !== collectionId)
+        throw new Error('Discovery collection is invalid.');
+    return frozen({ kind: 'append', collectionId, items, continuation });
+} return frozen({ kind: 'document', document: { components: [{ type: 'section', id: `${collectionId}:section`, title: channel[1], subtitle: null, icon: 'audio', children: [{ type: 'contentCollection', id: collectionId, layout: 'coverGrid', items, continuation }] }] } }); }
+export async function getDetail(request) { const id = contentId(request.id), data = await listenData(id), song = object(first(data.songItem, data.song)), item = songSummary({ ...song, songId: id }); if (item === null)
+    throw new Error('Song detail is unavailable.'); return frozen({ ...item, aliases: [], catalogUrl: `${origin}/v3/music/song/${id}` }); }
+export async function getChapters(request) { const id = contentId(request.id), detail = await getDetail(request), chapter = frozen({ id: `audio:${id}:main`, title: `${detail.title}${detail.author ? ` - ${detail.author}` : ''}`, order: 0, url: null, volumeTitle: '单曲', wordCount: null, updatedAt: null, isLocked: null, attributes: [] }); return frozen({ items: [chapter], groups: [frozen({ id: `group:audio:${id}`, title: '单曲', order: 0, episodes: [chapter] })] }); }
+export async function getContent(request) { const id = contentId(request.id); if (request.chapterId !== `audio:${id}:main`)
+    throw new Error('Chapter ID is invalid.'); const data = await listenData(id), upstream = text(first(data.url, data.playUrl, data.listenUrl, object(data.songItem).url)); if (!safeUrl(upstream))
+    throw new Error('Audio address is unavailable.'); const mediaHeaders = { Referer: `${origin}/`, 'User-Agent': userAgent }; return frozen({ chapterId: request.chapterId, contentKind: 'audio', title: nullable(object(data.songItem).songName), updatedAt: null, text: null, pages: [], media: { url: requireContext().resource.proxy({ kind: 'audio', url: upstream, headers: mediaHeaders }), resourceType: 'audio', resourcePolicy: 'sessionOnly', expiresAt: null, mimeType: /\.m4a(?:$|[?#])/iu.test(upstream) ? 'audio/mp4' : 'audio/mpeg', headers: mediaHeaders } }); }
+async function listenData(id) { const json = await fetchJson(`https://app.c.nf.migu.cn/MIGUM2.0/v2.0/content/listen-url?netType=00&resourceType=2&songId=${encodeURIComponent(id)}&toneFlag=PQ`, apiHeaders), data = object(json.data); if (text(json.code) !== '000000' || Object.keys(data).length === 0)
+    throw new Error('Song is unavailable.'); return data; }
+async function fetchJson(url, requestHeaders) { const response = await requireContext().http.fetch(url, { headers: requestHeaders }); if (!response.ok)
+    throw new Error('Source request failed.'); const value = await response.json(); if (!isObject(value))
+    throw new Error('Source response is invalid.'); return value; }
+function songSummary(song) { const id = songId(first(song.songId, song.id)); if (id === null)
+    return null; const title = text(first(song.songName, song.name, song.txt)) || id, author = singers(song) || text(song.singer), album = text(first(song.album, song.txt3)), duration = durationText(song.duration), cover = miguCover(text(first(song.img3, song.img2, song.img1, song.img, albumImage(song)))); return frozen({ id: `audio:${id}`, title, contentKind: 'audio', coverOrientation: 'square', author: author || null, url: `${origin}/v3/music/song/${id}`, coverUrl: proxyImage(cover), description: [album, duration].filter(Boolean).join(' · ') || null, language: null, status: 'completed', access: number(song.restrictType) > 0 ? 'paid' : 'unknown', wordCount: null, chapterCount: 1, publishedAt: null, updatedAt: null, latestChapter: { id: `audio:${id}:main`, title: duration || '播放', url: null, updatedAt: null }, categories: ['音乐'], tags: records(song.tagList).map(value => text(value.tagName)).filter(Boolean), attributes: [] }); }
+function albumImage(song) { for (const item of records(song.albumImgs)) {
+    const value = text(first(item.img, item.webpImg));
+    if (value !== '')
+        return value;
+} return ''; }
+function singers(song) { return records(song.singerList).map(value => text(first(value.name, value.singerName))).filter(Boolean).join('、'); }
+function songId(value) { const id = text(value); return /^\d+$/u.test(id) ? id : null; }
+function contentId(id) { const value = /^audio:(\d+)$/u.exec(id)?.[1]; if (value === undefined)
+    throw new Error('Content ID is invalid.'); return value; }
+function durationText(value) { const seconds = Math.floor(number(value)); if (seconds <= 0)
+    return ''; return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; }
+function miguCover(value) { if (value === '' || safeUrl(value))
+    return value; return `https://d.musicapp.migu.cn${value.startsWith('/') ? '' : '/'}${value}`; }
+function proxyImage(value) { if (!safeUrl(value))
+    return null; return requireContext().resource.proxy({ kind: 'image', url: value, headers: { Referer: `${origin}/` } }); }
+function safeUrl(value) { try {
+    const url = new URL(value);
+    return (url.protocol === 'https:' || url.protocol === 'http:') && url.username === '' && url.password === '';
+}
+catch {
+    return false;
+} }
+function cursorPage(cursor, target) { if (cursor === null)
+    return 1; const raw = cursor.startsWith(`${target}:`) ? cursor.slice(target.length + 1) : '', page = Number(raw); if (!Number.isSafeInteger(page) || page < 2 || page > 1000)
+    throw new Error('Cursor is invalid.'); return page; }
+function flatRecords(value) { if (!Array.isArray(value))
+    return []; return value.flatMap(item => Array.isArray(item) ? item.filter(isObject) : isObject(item) ? [item] : []); }
+function nonNegative(value) { const n = Number(value); return Number.isSafeInteger(n) && n >= 0 ? n : null; }
+function first(...values) { return values.find(value => value !== null && value !== undefined && value !== '') ?? ''; }
+function records(value) { return Array.isArray(value) ? value.filter(isObject) : []; }
+function object(value) { return isObject(value) ? value : {}; }
+function isObject(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
+function text(value) { return typeof value === 'string' ? value.replace(/<[^>]+>/gu, '').trim() : typeof value === 'number' ? String(value) : ''; }
+function number(value) { const result = Number(value); return Number.isFinite(result) ? result : 0; }
+function nullable(value) { const result = text(value); return result === '' ? null : result; }
+function notNull(value) { return value !== null; }
+function clamp(value) { return Math.max(1, Math.min(50, Math.floor(value))); }
+function frozen(value) { return Object.freeze(value); }
+function requireContext() { if (context === undefined)
+    throw new Error('Source is not activated.'); return context; }
