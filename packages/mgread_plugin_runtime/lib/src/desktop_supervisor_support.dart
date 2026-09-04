@@ -355,6 +355,39 @@ String? _environmentValueIgnoringCase(
 /// Joins package-owned path segments without relying on the host application's CWD.
 String _joinPath(List<String> parts) => parts.join(Platform.pathSeparator);
 
+Directory? _findDevelopmentRuntimeRepository(List<Directory> starts) {
+  final toolchain = Platform.isWindows
+      ? 'node-v24.16.0-win-x64'
+      : 'node-v24.16.0-darwin-arm64';
+  final nodeParts = Platform.isWindows
+      ? <String>['tools', toolchain, 'node.exe']
+      : <String>['tools', toolchain, 'bin', 'node'];
+  for (final start in starts) {
+    var current = start.absolute;
+    for (var depth = 0; depth < 12; depth += 1) {
+      final runtimeRoot = Directory(
+        _joinPath(<String>[current.path, 'packages', 'mg_read_node_runtime']),
+      );
+      final packageJson = File(
+        _joinPath(<String>[runtimeRoot.path, 'package.json']),
+      );
+      final node = File(_joinPath(<String>[runtimeRoot.path, ...nodeParts]));
+      final entrypoint = File(
+        _joinPath(<String>[runtimeRoot.path, 'dist', 'cli.js']),
+      );
+      if (packageJson.existsSync() &&
+          node.existsSync() &&
+          entrypoint.existsSync()) {
+        return runtimeRoot;
+      }
+      final parent = current.parent;
+      if (parent.path == current.path) break;
+      current = parent;
+    }
+  }
+  return null;
+}
+
 Directory? _findDevelopmentPluginDirectory(List<Directory> starts) {
   for (final start in starts) {
     var current = start.absolute;

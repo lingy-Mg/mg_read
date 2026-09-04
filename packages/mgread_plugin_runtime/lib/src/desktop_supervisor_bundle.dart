@@ -22,7 +22,7 @@ final class _DesktopRuntimeBundle {
   /// User-selected workspace projects loaded directly without installation.
   final Directory? developmentPluginDirectory;
 
-  /// npm CLI packaged beside the exact Node executable for source builds.
+  /// Repository-pinned npm CLI used only by desktop development builds.
   final File? developmentNpmCli;
 
   /// Opens a Runtime-owned directory through the current desktop shell.
@@ -96,24 +96,55 @@ final class _DesktopRuntimeBundle {
               'runtime',
             ]),
     );
-    final developmentPluginDirectory =
-        _readConfiguredDevelopmentPluginDirectory(dataRoot) ??
-        (kDebugMode
-            ? _findDevelopmentPluginDirectory(<Directory>[
-                Directory.current,
-                executableDirectory,
-              ])
-            : null);
-    final developmentNpmCli = File(
-      _joinPath(<String>[
-        bundleRoot.path,
-        'node',
-        'node_modules',
-        'npm',
-        'bin',
-        'npm-cli.js',
-      ]),
+    final developmentStarts = <Directory>[
+      Directory.current,
+      executableDirectory,
+    ];
+    final developmentRuntimeRoot = kDebugMode
+        ? _findDevelopmentRuntimeRepository(developmentStarts)
+        : null;
+    final developmentPluginDirectory = kDebugMode
+        ? (_readConfiguredDevelopmentPluginDirectory(dataRoot) ??
+              _findDevelopmentPluginDirectory(developmentStarts))
+        : null;
+    final runtimeRoot = developmentRuntimeRoot ?? bundleRoot;
+    final platformToolchain = Platform.isWindows
+        ? 'node-v24.16.0-win-x64'
+        : 'node-v24.16.0-darwin-arm64';
+    final developmentNpmCli = developmentRuntimeRoot == null
+        ? null
+        : File(
+            _joinPath(<String>[
+              developmentRuntimeRoot.path,
+              'tools',
+              platformToolchain,
+              if (Platform.isMacOS) 'lib',
+              'node_modules',
+              'npm',
+              'bin',
+              'npm-cli.js',
+            ]),
+          );
+    final entrypoint = File(
+      _joinPath(<String>[runtimeRoot.path, 'dist', 'cli.js']),
     );
+    final nodeExecutable = developmentRuntimeRoot == null
+        ? File(
+            _joinPath(<String>[
+              runtimeRoot.path,
+              'node',
+              Platform.isWindows ? 'MgReadNode.exe' : 'MgReadNode',
+            ]),
+          )
+        : File(
+            _joinPath(<String>[
+              developmentRuntimeRoot.path,
+              'tools',
+              platformToolchain,
+              if (Platform.isMacOS) 'bin',
+              Platform.isWindows ? 'node.exe' : 'node',
+            ]),
+          );
     return _DesktopRuntimeBundle(
       dataRoot: dataRoot,
       bundledPluginDirectory: null,
@@ -122,16 +153,10 @@ final class _DesktopRuntimeBundle {
       directoryLauncher: Platform.isWindows
           ? _openWithWindowsExplorer
           : _openWithMacOSFinder,
-      entrypoint: File(_joinPath(<String>[bundleRoot.path, 'dist', 'cli.js'])),
-      nodeExecutable: File(
-        _joinPath(<String>[
-          bundleRoot.path,
-          'node',
-          Platform.isWindows ? 'MgReadNode.exe' : 'MgReadNode',
-        ]),
-      ),
+      entrypoint: entrypoint,
+      nodeExecutable: nodeExecutable,
       testExitAfterReady: null,
-      workingDirectory: bundleRoot,
+      workingDirectory: runtimeRoot,
     );
   }
 

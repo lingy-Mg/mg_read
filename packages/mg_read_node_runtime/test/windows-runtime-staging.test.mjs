@@ -9,7 +9,7 @@ import test from "node:test";
 const executeFile = promisify(execFile);
 const runtimeRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-test("Windows staging uses the MgRead-prefixed pinned Node executable", async () => {
+test("Windows staging uses the pinned Node executable and Runtime entrypoint", async () => {
   await executeFile(process.execPath, ["tools/stage-flutter-windows-runtime.mjs"], {
     cwd: runtimeRoot,
   });
@@ -17,18 +17,23 @@ test("Windows staging uses the MgRead-prefixed pinned Node executable", async ()
     runtimeRoot,
     "../mgread_plugin_runtime/assets/runtime/windows-x64/node/MgReadNode.exe",
   );
-  const stagedNpmCli = resolve(
+  const stagedEntrypoint = resolve(
     runtimeRoot,
-    "../mgread_plugin_runtime/assets/runtime/windows-x64/node/node_modules/npm/bin/npm-cli.js",
+    "../mgread_plugin_runtime/assets/runtime/windows-x64/dist/cli.js",
+  );
+  const stagedNpmPackage = resolve(
+    runtimeRoot,
+    "../mgread_plugin_runtime/assets/runtime/windows-x64/node/node_modules/npm",
   );
   await access(staged);
-  await access(stagedNpmCli);
-  const [source, stagedBytes, sourceNpmPackage, stagedNpmPackage] = await Promise.all([
+  await access(stagedEntrypoint);
+  const [source, stagedBytes, sourceDist, stagedDist] = await Promise.all([
     readFile(resolve(runtimeRoot, "tools/node-v24.16.0-win-x64/node.exe")),
     readFile(staged),
-    readFile(resolve(runtimeRoot, "tools/node-v24.16.0-win-x64/node_modules/npm/package.json")),
-    readFile(resolve(runtimeRoot, "../mgread_plugin_runtime/assets/runtime/windows-x64/node/node_modules/npm/package.json")),
+    readFile(resolve(runtimeRoot, "dist/cli.js")),
+    readFile(stagedEntrypoint),
   ]);
   assert.deepEqual(stagedBytes, source);
-  assert.deepEqual(stagedNpmPackage, sourceNpmPackage);
+  assert.deepEqual(stagedDist, sourceDist);
+  await assert.rejects(access(stagedNpmPackage), { code: "ENOENT" });
 });
