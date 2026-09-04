@@ -569,6 +569,7 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                       dense: true,
                       visualDensity: const VisualDensity(vertical: -2),
                       minVerticalPadding: 0,
+                      titleAlignment: ListTileTitleAlignment.center,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 2,
@@ -609,13 +610,21 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                           color: chapterTextColor,
                         ),
                       ),
-                      trailing: isCurrentChapter
-                          ? Icon(
-                              Icons.play_arrow_rounded,
-                              size: 16,
-                              color: _palette.accent,
-                            )
-                          : null,
+                      // Keep the trailing slot for every row so the title
+                      // column and the current-chapter arrow share one
+                      // horizontal rhythm.
+                      trailing: SizedBox(
+                        width: 28,
+                        child: isCurrentChapter
+                            ? Center(
+                                child: Icon(
+                                  Icons.play_arrow_rounded,
+                                  size: 16,
+                                  color: _palette.accent,
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
                       subtitle: ReaderChapterStateBadge(
                         availability: availability,
                         // Catalog metadata is already durable and available
