@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
+import 'package:mg_read/features/plugins/presentation/data_source_management_row.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_import_error_dialog.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
 
@@ -247,6 +248,44 @@ void main() {
     await tester.tap(find.byKey(const Key('data-source-org.mgread.qidian')));
 
     expect(selected, 'org.mgread.qidian');
+  });
+
+  testWidgets('keeps the switch action separate from the data source detail action', (WidgetTester tester) async {
+    var detailPressed = false;
+    bool? changedValue;
+    const source = DataSourceManagementRowData(
+      id: 'org.example.source',
+      name: '示例数据源',
+      description: '用于验证点击区域',
+      kindLabel: '小说 · 已安装数据源',
+      enabled: true,
+      brand: DataSourceBrand.generic,
+      isDevelopment: false,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: DataSourceManagementRow(
+            source: source,
+            isPending: false,
+            onPressed: () => detailPressed = true,
+            onChanged: (bool value) => changedValue = value,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('data-source-toggle-org.example.source')));
+    await tester.pump();
+
+    expect(changedValue, isFalse);
+    expect(detailPressed, isFalse);
+
+    await tester.tap(find.byKey(const Key('data-source-org.example.source')));
+    expect(detailPressed, isTrue);
   });
 }
 
