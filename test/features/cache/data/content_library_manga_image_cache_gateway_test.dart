@@ -23,10 +23,10 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final cached = await library.bookshelf.addFromSource(_request('有缓存漫画', ContentKind.manga, 'cached'));
-    await library.bookshelf.addFromSource(_request('零缓存漫画', ContentKind.manga, 'empty'));
-    await library.bookshelf.addFromSource(_request('小说不应出现', ContentKind.novel, 'novel'));
-    await library.mangaImageCache.save(
+    final cached = await library.addLibraryItem(_request('有缓存漫画', ContentKind.manga, 'cached'));
+    await library.addLibraryItem(_request('零缓存漫画', ContentKind.manga, 'empty'));
+    await library.addLibraryItem(_request('小说不应出现', ContentKind.novel, 'novel'));
+    await library.saveMangaImage(
       itemId: cached.id,
       chapterId: 'chapter-1',
       pageId: 'page-1',

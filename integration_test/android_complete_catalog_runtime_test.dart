@@ -37,7 +37,7 @@ void main() {
       await library.close();
       await libraryRoot.delete(recursive: true);
     });
-    final shelfItem = await library.bookshelf.addFromSource(
+    final shelfItem = await library.addLibraryItem(
       BookshelfAddRequest(
         title: detail.summary.title,
         author: detail.summary.author,

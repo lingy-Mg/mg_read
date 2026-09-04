@@ -17,24 +17,18 @@ import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// One cacheable source-cover identity, optionally retaining a legacy shelf id.
+/// One cacheable source-cover identity.
 @immutable
 final class BookCoverRequest {
-  const BookCoverRequest({
-    required this.pluginId,
-    required this.pluginVersion,
-    required this.remoteContentId,
-    required this.coverUrl,
-    this.legacyLibraryItemId,
-  }) : assert(pluginId != ''),
-       assert(pluginVersion != ''),
-       assert(remoteContentId != '');
+  const BookCoverRequest({required this.pluginId, required this.pluginVersion, required this.remoteContentId, required this.coverUrl})
+    : assert(pluginId != ''),
+      assert(pluginVersion != ''),
+      assert(remoteContentId != '');
 
   final String pluginId;
   final String pluginVersion;
   final String remoteContentId;
   final Uri coverUrl;
-  final String? legacyLibraryItemId;
 
   @override
   bool operator ==(Object other) =>
@@ -42,11 +36,10 @@ final class BookCoverRequest {
       other.pluginId == pluginId &&
       other.pluginVersion == pluginVersion &&
       other.remoteContentId == remoteContentId &&
-      other.coverUrl == coverUrl &&
-      other.legacyLibraryItemId == legacyLibraryItemId;
+      other.coverUrl == coverUrl;
 
   @override
-  int get hashCode => Object.hash(pluginId, pluginVersion, remoteContentId, coverUrl, legacyLibraryItemId);
+  int get hashCode => Object.hash(pluginId, pluginVersion, remoteContentId, coverUrl);
 }
 
 /// Application-provided resolver for a persistently cacheable source cover.

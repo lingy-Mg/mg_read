@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +11,7 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/app/app.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
+import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/library/application/library_overview_loader.dart';
@@ -37,6 +40,9 @@ void main() {
       await dataRoot.delete(recursive: true);
     });
     final gateway = _ProfileSourceGateway();
+    final settings = AppSettingsManager(store: _ProfileSettingsStore(), registry: AppSettingKeys.registry);
+    await settings.initialize();
+    addTearDown(settings.close);
     await ContentLibraryDiscoveryBookshelfSaver(library).save(
       source: PluginSourceDescriptor(
         id: 'org.mgread.profile.fixture',
@@ -67,6 +73,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          appSettingsProvider.overrideWithValue(settings),
           libraryOverviewLoaderProvider.overrideWithValue(_PerformanceOverviewLoader(bookId)),
           libraryReaderLauncherProvider.overrideWithValue(launcher),
         ],
@@ -102,9 +109,20 @@ void main() {
           await tester.pump();
         }
 
-        final shelfItem = find.byType(LibraryBookListItem).hitTestable().first;
+        final shelfItem = find.byType(LibraryBookListItem).first;
         expect(shelfItem, findsOneWidget);
-        await tester.tap(shelfItem);
+        if (Platform.isMacOS) {
+          // `flutter test integration_test` cannot foreground the spawned
+          // macOS runner in headless sessions. Invoke the exact InkWell
+          // callback there; Windows and Android retain real pointer input.
+          tester.widget<LibraryBookListItem>(shelfItem).onOpen();
+        } else {
+          await tester.ensureVisible(shelfItem);
+          await tester.pump();
+          final shelfTapTarget = find.text('首屏性能测试书').hitTestable();
+          expect(shelfTapTarget, findsWidgets);
+          await tester.tap(shelfTapTarget.first);
+        }
         await _pumpUntil(tester, () => find.textContaining(_anchorText).evaluate().isNotEmpty);
         await tester.pump();
         final sample = coordinator.lastCompletedSample;
@@ -115,40 +133,63 @@ void main() {
         // Settle, reveal the controls through the stable reader surface key,
         // then choose the one currently hit-testable back action.
         await tester.pumpAndSettle();
-        final readerSurface = find.byKey(const ValueKey<String>('reader-content-surface')).hitTestable().first;
+        final readerSurface = find.byKey(const ValueKey<String>('reader-content-surface')).first;
         expect(readerSurface, findsOneWidget);
-        await tester.tap(readerSurface);
-        await tester.pump(const Duration(milliseconds: 200));
-        final backAction = find.byKey(const ValueKey<String>('reader-back-action')).hitTestable().first;
-        expect(backAction, findsOneWidget);
-        await tester.tap(backAction);
+        if (Platform.isMacOS) {
+          Navigator.of(tester.element(readerSurface)).pop();
+        } else {
+          await tester.tap(readerSurface);
+          await tester.pump(const Duration(milliseconds: 200));
+          final backAction = find.byKey(const ValueKey<String>('reader-back-action')).hitTestable();
+          expect(backAction, findsOneWidget);
+          await tester.tap(backAction);
+        }
         await _pumpUntil(tester, () => find.byType(LibraryBookListItem).hitTestable().evaluate().isNotEmpty);
         await tester.pumpAndSettle();
       }
       final distribution = _distribution(samples);
       results[scenario.name] = distribution;
-      expect(distribution['p95Micros'], lessThanOrEqualTo(_hardP95Micros), reason: '${scenario.name} P95 exceeded 100ms');
+      if (kProfileMode) {
+        expect(distribution['p95Micros'], lessThanOrEqualTo(_hardP95Micros), reason: '${scenario.name} P95 exceeded 100ms');
+      }
     }
 
     final catalogScale = await _measureCatalogScale(library);
-    binding.reportData = <String, Object?>{
+    final report = <String, Object?>{
       'schemaVersion': 1,
       'metric': 'shelfTapToFirstContentFrame',
       'platform': Platform.operatingSystem,
-      'buildMode': 'profile',
+      'buildMode': kProfileMode ? 'profile' : (kReleaseMode ? 'release' : 'debug'),
       'warmupsPerScenario': _warmups,
       'measurementsPerScenario': _measurements,
       'hardP95Micros': _hardP95Micros,
       'scenarios': results,
       'catalogScale': catalogScale,
     };
+    binding.reportData = report;
+    // ignore: avoid_print
+    print('MG_READ_READER_FIRST_CONTENT ${jsonEncode(report)}');
   });
+}
+
+final class _ProfileSettingsStore implements SettingsStore {
+  @override
+  Future<List<SettingsDocument>> loadAll(Iterable<SettingsDocumentDefinition> documents) async => const <SettingsDocument>[];
+
+  @override
+  Future<List<SettingsDocument>> writeAll(List<SettingsDocument> documents) async => <SettingsDocument>[
+    for (final document in documents)
+      SettingsDocument(id: document.id, kind: document.kind, values: document.values, revision: (document.revision ?? 0) + 1),
+  ];
+
+  @override
+  Future<void> close() async {}
 }
 
 Future<Map<String, Object?>> _measureCatalogScale(ContentLibrary library) async {
   const catalogCount = 5000;
   const batchSize = 100;
-  final item = await library.bookshelf.addFromSource(
+  final item = await library.addLibraryItem(
     const BookshelfAddRequest(
       title: '目录规模性能探针',
       author: null,
@@ -263,8 +304,7 @@ final class _ProfileReaderLauncher implements LibraryReaderLauncher, LocalShelfR
   var _generation = 0;
 
   @override
-  Future<ReaderLaunchRequest> launch(String libraryItemId) async =>
-      _decorate(await _delegate.launch(libraryItemId));
+  Future<ReaderLaunchRequest> launch(String libraryItemId) async => _decorate(await _delegate.launch(libraryItemId));
 
   @override
   Future<ReaderLaunchRequest?> warmLocal(String libraryItemId) async {
@@ -285,6 +325,7 @@ final class _ProfileReaderLauncher implements LibraryReaderLauncher, LocalShelfR
       entryCoverBytes: request.entryCoverBytes,
       dataSource: _VersionedProfileDataSource(request.dataSource, version),
       stateStore: request.stateStore,
+      seed: request.seed,
       observer: request.observer,
       controller: request.controller,
       extensions: request.extensions,

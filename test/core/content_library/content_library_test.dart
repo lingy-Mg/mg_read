@@ -1,897 +1,344 @@
-/// Content Library 的持久化与边界测试。
-///
-/// 职责：
-/// - 验证书架、目录、正文、封面与阅读进度的应用自有持久化语义。
-/// - 覆盖全局封面缓存的 LRU 上限与路径隔离。
-/// - 覆盖漫画图片缓存的无总量上限写入和主动维护边界。
-/// - 覆盖书架成功操作生成的有界、可清理本地通知。
-///
-/// 注意：
-/// - 每个用例使用独立临时目录，不能依赖真实应用数据或网络。
-/// - 文件对象测试只经公开仓储 API，不暴露生产路径。
-///
+/// Content Library 五表持久化、追加目录和固定会话上界测试。
 library;
 
 import 'dart:io';
-import 'dart:isolate';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
-import 'package:mg_read/core/content_library/src/content_library.dart';
-import 'package:mg_read/core/content_library/src/models.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
-
-import '../diagnostics/diagnostics_testkit.dart';
 
 void main() {
   late Directory root;
   late ContentLibrary library;
-  final source = ContentLibraryIngest(
-    pluginId: 'fixture',
-    producerPluginVersion: '1.0.0',
-    dataVersion: 1,
-    opaqueData: const {'remoteBookId': 'book-1'},
-  );
 
   setUp(() async {
     root = await Directory.systemTemp.createTemp('mg-read-content-library-');
     library = await ContentLibrary.open(dataRoot: root);
   });
+
   tearDown(() async {
     await library.close();
-    await root.delete(recursive: true);
+    if (await root.exists()) await root.delete(recursive: true);
   });
 
-  test('persists a shelf item, catalog, and novel content across reopen', () async {
-    final item = await library.bookshelf.add(title: '测试书', kind: ContentKind.novel, source: source);
-    await library.catalog.replaceSnapshot(
-      itemId: item.id,
-      bindingId: const SourceBindingId('binding-1'),
-      entries: [IngestCatalogEntry(remoteIdentity: 'chapter-1', title: '第一章', orderKey: '000001', kindCode: 'novel', source: source)],
-    );
-    final entry = (await library.listCatalog(item.id, const CatalogQuery())).items.single;
-    await library.content.putNovel(entryId: entry.id, text: '正文', source: source);
-    await library.close();
-    library = await ContentLibrary.open(dataRoot: root);
-    expect((await library.listLibrary(const LibraryQuery())).items.single.title, '测试书');
-    expect((await library.openContent(entry.id) as NovelChapterContent).text, '正文');
-  });
+  Future<LibraryItem> addItem({String remoteId = 'book-1', String title = '测试书', ContentKind kind = ContentKind.novel}) =>
+      library.addLibraryItem(
+        BookshelfAddRequest(
+          title: title,
+          author: '作者',
+          kind: kind,
+          pluginId: 'fixture',
+          pluginVersion: '1.0.0',
+          remoteContentId: remoteId,
+          description: List<String>.filled(300, '文').join(),
+          chapterCount: 20,
+        ),
+      );
 
-  test('maintenance removes stale snapshots and orphan content while preserving active shelf state', () async {
-    final item = await library.bookshelf.add(title: '维护测试书', kind: ContentKind.novel, source: source);
-    await library.catalog.replaceSnapshot(
-      itemId: item.id,
-      bindingId: const SourceBindingId('binding-maintenance'),
-      entries: <IngestCatalogEntry>[
-        IngestCatalogEntry(remoteIdentity: 'old', title: '旧章节', orderKey: '000001', kindCode: 'novel', source: source),
-      ],
-    );
-    final oldEntry = (await library.listCatalog(item.id, const CatalogQuery())).items.single;
-    await library.content.putNovel(entryId: oldEntry.id, text: '待清理正文', source: source);
-    await library.readingProgress.save(
-      LibraryReadingProgress(
-        itemId: item.id,
-        chapterId: 'old',
-        paragraphId: 'p1',
-        characterOffset: 1,
-        chapterIndex: 0,
-        chapterFraction: 0.1,
-        bookFraction: 0.1,
-        updatedAtUtc: DateTime.utc(2026, 8, 29),
-      ),
-    );
-    await library.catalog.replaceSnapshot(
-      itemId: item.id,
-      bindingId: const SourceBindingId('binding-maintenance'),
-      entries: <IngestCatalogEntry>[
-        IngestCatalogEntry(remoteIdentity: 'current', title: '当前章节', orderKey: '000001', kindCode: 'novel', source: source),
-      ],
-    );
+  List<SourceNovelCatalogChapter> chapters(Iterable<String> ids) => <SourceNovelCatalogChapter>[
+    for (final (index, id) in ids.indexed)
+      SourceNovelCatalogChapter(remoteIdentity: id, title: '章节 $id', index: index, wordCount: 100 + index),
+  ];
 
-    final preview = await library.storageMaintenance.inspect();
-    expect(preview.staleCatalogRecords, 1);
-    expect(preview.detachedMetadataRecords, 0);
-    expect(preview.orphanContentObjects, 1);
-    expect(preview.reclaimableContentBytes, greaterThan(0));
-
-    final result = await library.storageMaintenance.clearAll();
-    expect(result.staleCatalogRecords, 1);
-    expect(result.deletedContentObjects, 1);
-    expect(result.isPartial, isFalse);
-    expect((await library.listCatalog(item.id, const CatalogQuery())).items.single.title, '当前章节');
-    expect(await library.readingProgress.load(item.id), isNotNull);
-    expect(await library.openContent(oldEntry.id), isNull);
-    expect((await library.storageMaintenance.inspect()).isEmpty, isTrue);
-  });
-
-  test('keep-content removal is reported and reclaimed only by explicit maintenance', () async {
-    final item = await library.bookshelf.add(title: '移出书架测试', kind: ContentKind.novel, source: source);
-    await library.catalog.replaceSnapshot(
-      itemId: item.id,
-      bindingId: const SourceBindingId('binding-removed'),
-      entries: <IngestCatalogEntry>[
-        IngestCatalogEntry(remoteIdentity: 'chapter', title: '章节', orderKey: '000001', kindCode: 'novel', source: source),
-      ],
-    );
-    final entry = (await library.listCatalog(item.id, const CatalogQuery())).items.single;
-    await library.content.putNovel(entryId: entry.id, text: '移出后保留正文', source: source);
-
-    await library.bookshelf.remove(item.id, LibraryRemovalPolicy.removeFromShelfKeepContent);
-
-    final preview = await library.storageMaintenance.inspect();
-    expect(preview.detachedMetadataRecords, greaterThanOrEqualTo(2));
-    expect(preview.orphanContentObjects, 1);
-    final result = await library.storageMaintenance.clearAll();
-    expect(result.detachedMetadataRecords, preview.detachedMetadataRecords);
-    expect(result.deletedContentObjects, 1);
-    expect((await library.storageMaintenance.inspect()).isEmpty, isTrue);
-  });
-
-  test('records successful shelf additions and removals without duplicating idempotent adds', () async {
-    final item = await library.bookshelf.add(title: '通知测试书', kind: ContentKind.novel, source: source);
-    await library.bookshelf.add(title: '通知测试书', kind: ContentKind.novel, source: source);
-
-    var notifications = await library.notifications.list();
-    expect(notifications, hasLength(1));
-    expect(notifications.single.kind, LibraryNotificationKind.bookshelfAdded);
-    expect(notifications.single.title, '通知测试书');
-
-    await library.bookshelf.remove(item.id, LibraryRemovalPolicy.removeFromShelfKeepContent);
-    notifications = await library.notifications.list();
-    expect(notifications.map((entry) => entry.kind), <LibraryNotificationKind>[
-      LibraryNotificationKind.bookshelfRemoved,
-      LibraryNotificationKind.bookshelfAdded,
+  test('metadata database contains exactly the five persistent tables', () async {
+    expect(await library.persistentTableNamesForTest(), <String>[
+      'bookmarks',
+      'catalog_chapters',
+      'library_items',
+      'metadata_records',
+      'reading_progress',
     ]);
-    expect(notifications.first.title, '通知测试书');
-
-    await library.notifications.clear();
-    expect(await library.notifications.list(), isEmpty);
   });
 
-  test('persists semantic reading progress and typed source identity', () async {
-    final item = await library.bookshelf.add(title: '进度测试书', kind: ContentKind.novel, source: source);
-    await library.readingProgress.save(
+  test('retained item reuses catalog and body while explicit deletion cascades', () async {
+    final item = await addItem();
+    await library.syncNovelCatalog(itemId: item.id, chapters: chapters(<String>['chapter-0']));
+    var session = (await library.openNovelReaderSession(item.id))!;
+    await session.cacheChapter(entry: session.initialChapter, text: '旧正文');
+
+    await library.removeLibraryItem(item.id, LibraryRemovalPolicy.removeFromShelfKeepContent);
+    expect((await library.listLibrary(const LibraryQuery())).items, isEmpty);
+    expect((await library.getLibraryItem(item.id))?.state, 'retained');
+
+    final restored = await addItem(title: '重新加入');
+    expect(restored.id.value, item.id.value);
+    session = (await library.openNovelReaderSession(item.id))!;
+    expect((await session.readContent(session.initialChapter) as NovelChapterContent).text, '旧正文');
+
+    final entryId = session.initialChapter.id;
+    await library.removeLibraryItem(item.id, LibraryRemovalPolicy.removeIncludingUnreferencedContent);
+    expect(await library.getLibraryItem(item.id), isNull);
+    expect(await library.openContent(entryId), isNull);
+  });
+
+  test('source identity is unique and concurrent re-add does not duplicate rows', () async {
+    final results = await Future.wait(<Future<LibraryItem>>[addItem(), addItem(title: '并发更新')]);
+    expect(results.map((item) => item.id.value).toSet(), hasLength(1));
+    expect((await library.listLibrary(const LibraryQuery())).items, hasLength(1));
+  });
+
+  test('source identity cannot be rebound to a different media kind', () async {
+    await addItem(remoteId: 'stable-kind');
+    await expectLater(addItem(remoteId: 'stable-kind', kind: ContentKind.manga), throwsA(isA<PersistenceConflictError>()));
+    final items = (await library.listLibrary(const LibraryQuery())).items;
+    expect(items.single.kind, ContentKind.novel);
+  });
+
+  test('bookshelf enforces the global active capacity', () async {
+    for (var index = 0; index < bookshelfMaxItemCount; index++) {
+      await addItem(remoteId: 'capacity-$index', title: '书 $index');
+    }
+    await expectLater(addItem(remoteId: 'capacity-overflow'), throwsA(isA<BookshelfCapacityExceededException>()));
+  });
+
+  test('catalog sync is append-only, idempotent, ordered, and revision-aware', () async {
+    final item = await addItem();
+    expect(await library.syncNovelCatalog(itemId: item.id, chapters: chapters(<String>['chapter-0'])), 1);
+    expect(await library.catalogStateForTest(item.id), (count: 1, revision: 1));
+
+    expect(
+      await library.syncNovelCatalog(
+        itemId: item.id,
+        chapters: const <SourceNovelCatalogChapter>[
+          SourceNovelCatalogChapter(remoteIdentity: 'chapter-0', title: '不得覆盖', index: 99),
+          SourceNovelCatalogChapter(remoteIdentity: 'chapter-1', title: '第二章', index: 7),
+        ],
+      ),
+      2,
+    );
+    final entries = await library.listAllCatalog(item.id);
+    expect(entries.map((entry) => entry.title), <String>['章节 chapter-0', '第二章']);
+    expect(entries.map((entry) => entry.index), <int>[0, 1]);
+    expect(await library.catalogStateForTest(item.id), (count: 2, revision: 2));
+
+    expect(await library.syncNovelCatalog(itemId: item.id, chapters: const <SourceNovelCatalogChapter>[]), 2);
+    expect(await library.catalogStateForTest(item.id), (count: 2, revision: 2));
+    expect(await library.syncNovelCatalog(itemId: item.id, chapters: chapters(<String>['chapter-0', 'chapter-1'])), 2);
+    expect(await library.catalogStateForTest(item.id), (count: 2, revision: 2));
+  });
+
+  test('catalog rejects duplicate response identities before writing', () async {
+    final item = await addItem();
+    await expectLater(
+      library.syncNovelCatalog(
+        itemId: item.id,
+        chapters: const <SourceNovelCatalogChapter>[
+          SourceNovelCatalogChapter(remoteIdentity: 'same', title: '一', index: 0),
+          SourceNovelCatalogChapter(remoteIdentity: 'same', title: '二', index: 1),
+        ],
+      ),
+      throwsArgumentError,
+    );
+    expect(await library.catalogStateForTest(item.id), (count: 0, revision: 0));
+  });
+
+  test('catalog rejects a media kind that does not match its library item', () async {
+    final manga = await addItem(remoteId: 'kind-mismatch', kind: ContentKind.manga);
+
+    await expectLater(
+      library.syncNovelCatalog(
+        itemId: manga.id,
+        chapters: const <SourceNovelCatalogChapter>[SourceNovelCatalogChapter(remoteIdentity: 'chapter-1', title: '第一章', index: 0)],
+      ),
+      throwsA(isA<StateError>()),
+    );
+    expect(await library.catalogStateForTest(manga.id), (count: 0, revision: 0));
+  });
+
+  test('session upper bound hides background appends until reopen', () async {
+    final item = await addItem();
+    await library.syncNovelCatalog(itemId: item.id, chapters: chapters(<String>['chapter-0', 'chapter-1']));
+    final oldSession = (await library.openNovelReaderSession(item.id))!;
+    await library.syncNovelCatalog(itemId: item.id, chapters: chapters(<String>['chapter-2', 'chapter-3']));
+
+    expect((await oldSession.page(limit: 100)).items, hasLength(2));
+    expect(await oldSession.itemAtIndex(2), isNull);
+    final reopened = (await library.openNovelReaderSession(item.id))!;
+    expect(reopened.catalogCount, 4);
+    expect((await reopened.page(limit: 100)).items, hasLength(4));
+  });
+
+  test('overlapping concurrent appends allocate unique continuous positions', () async {
+    final item = await addItem();
+    await Future.wait(<Future<int>>[
+      library.syncNovelCatalog(itemId: item.id, chapters: chapters(<String>['chapter-0', 'chapter-1'])),
+      library.syncNovelCatalog(itemId: item.id, chapters: chapters(<String>['chapter-1', 'chapter-2'])),
+    ]);
+    final entries = await library.listAllCatalog(item.id);
+    expect(entries.map((entry) => entry.remoteIdentity).toSet(), <String>{'chapter-0', 'chapter-1', 'chapter-2'});
+    expect(entries.map((entry) => entry.index), <int>[0, 1, 2]);
+    expect((await library.catalogStateForTest(item.id))!.count, 3);
+  });
+
+  test('four progress kinds share one UPSERT row and round trip strongly typed values', () async {
+    final items = <ContentKind, LibraryItem>{
+      for (final kind in ContentKind.values) kind: await addItem(remoteId: 'progress-${kind.code}', kind: kind),
+    };
+    final now = DateTime.utc(2026, 9, 5, 1, 2, 3);
+    final novel = LibraryReadingProgress(
+      itemId: items[ContentKind.novel]!.id,
+      chapterId: 'n1',
+      paragraphId: 'p1',
+      characterOffset: 3,
+      chapterIndex: 2,
+      chapterFraction: .4,
+      bookFraction: .2,
+      updatedAtUtc: now,
+      totalReadingSeconds: 9,
+    );
+    final manga = LibraryMangaReadingProgress(
+      itemId: items[ContentKind.manga]!.id,
+      chapterId: 'm1',
+      imageId: 'i1',
+      imageFraction: .5,
+      chapterIndex: 4,
+      bookFraction: .3,
+      updatedAtUtc: now,
+      readingSeconds: 10,
+    );
+    final audio = LibraryAudioPlaybackProgress(
+      itemId: items[ContentKind.audio]!.id,
+      chapterId: 'a1',
+      position: const Duration(milliseconds: 1234),
+      updatedAtUtc: now,
+    );
+    final video = LibraryVideoPlaybackProgress(
+      itemId: items[ContentKind.video]!.id,
+      groupId: 'g1',
+      episodeId: 'e1',
+      position: const Duration(milliseconds: 321),
+      duration: const Duration(milliseconds: 999),
+      updatedAtUtc: now,
+    );
+    for (final progress in <LibraryProgress>[novel, manga, audio, video]) {
+      await library.saveProgress(progress);
+      final restored = await library.loadProgress(progress.itemId);
+      expect(restored.runtimeType, progress.runtimeType);
+      expect(restored!.kind, progress.kind);
+    }
+    await library.saveProgress(
       LibraryReadingProgress(
-        itemId: item.id,
-        chapterId: 'chapter-6',
-        paragraphId: 'chapter-6:paragraph:3',
-        characterOffset: 18,
-        chapterIndex: 5,
-        chapterFraction: 0.5,
-        bookFraction: 0.25,
-        updatedAtUtc: DateTime.utc(2026, 8, 21, 12),
-        totalReadingSeconds: 3723,
+        itemId: novel.itemId,
+        chapterId: 'n2',
+        paragraphId: 'p2',
+        characterOffset: 0,
+        chapterIndex: 3,
+        chapterFraction: .1,
+        bookFraction: .25,
+        updatedAtUtc: now.add(const Duration(seconds: 1)),
       ),
     );
-    await library.close();
-    library = await ContentLibrary.open(dataRoot: root);
-
-    final restored = await library.getLibraryItem(item.id);
-    final progress = await library.readingProgress.load(item.id);
-
-    expect(restored?.source?.pluginId, 'fixture');
-    expect(restored?.source?.remoteContentId, 'book-1');
-    expect(progress?.chapterId, 'chapter-6');
-    expect(progress?.paragraphId, 'chapter-6:paragraph:3');
-    expect(progress?.characterOffset, 18);
-    expect(progress?.bookFraction, 0.25);
-    expect(progress?.totalReadingSeconds, 3723);
+    expect((await library.loadProgress(novel.itemId) as LibraryReadingProgress).chapterId, 'n2');
   });
 
-  test('persists an audio chapter and millisecond position across reopen', () async {
-    final item = await library.bookshelf.add(title: '听书进度', kind: ContentKind.audio, source: source);
-    await library.saveAudioProgress(
-      LibraryAudioPlaybackProgress(
-        itemId: item.id,
-        chapterId: 'episode-3021',
-        position: const Duration(minutes: 12, seconds: 34, milliseconds: 567),
-        updatedAtUtc: DateTime.utc(2026, 8, 30, 8),
+  test('progress storage rejects a media kind mismatch and invalid video time', () async {
+    final novelItem = await addItem();
+    await expectLater(
+      library.saveProgress(
+        LibraryAudioPlaybackProgress(
+          itemId: novelItem.id,
+          chapterId: 'audio-1',
+          position: const Duration(seconds: 1),
+          updatedAtUtc: DateTime.utc(2026, 9, 5),
+        ),
       ),
+      throwsA(isA<PersistenceNotFoundError>()),
     );
-    await library.close();
-    library = await ContentLibrary.open(dataRoot: root);
+    expect(await library.loadProgress(novelItem.id), isNull);
 
-    final restored = await library.loadAudioProgress(item.id);
-
-    expect(restored?.chapterId, 'episode-3021');
-    expect(restored?.position, const Duration(minutes: 12, seconds: 34, milliseconds: 567));
-    expect(restored?.updatedAtUtc, DateTime.utc(2026, 8, 30, 8));
+    final videoItem = await addItem(remoteId: 'video-invalid-time', kind: ContentKind.video);
+    await expectLater(
+      library.saveProgress(
+        LibraryVideoPlaybackProgress(
+          itemId: videoItem.id,
+          groupId: 'group-1',
+          episodeId: 'episode-1',
+          position: const Duration(seconds: 2),
+          duration: const Duration(seconds: 1),
+          updatedAtUtc: DateTime.utc(2026, 9, 5),
+        ),
+      ),
+      throwsA(anything),
+    );
+    expect(await library.loadProgress(videoItem.id), isNull);
   });
 
-  test('persists a video episode and position across reopen', () async {
-    final item = await library.bookshelf.add(title: '视频进度', kind: ContentKind.video, source: source);
-    await library.saveVideoProgress(
-      LibraryVideoPlaybackProgress(
-        itemId: item.id,
-        groupId: 'line-2',
-        episodeId: 'episode-8',
-        position: const Duration(minutes: 17, seconds: 2),
-        duration: const Duration(minutes: 48),
-        updatedAtUtc: DateTime.utc(2026, 8, 30, 9),
-      ),
-    );
-    await library.close();
-    library = await ContentLibrary.open(dataRoot: root);
-
-    final restored = await library.loadVideoProgress(item.id);
-
-    expect(restored?.groupId, 'line-2');
-    expect(restored?.episodeId, 'episode-8');
-    expect(restored?.position, const Duration(minutes: 17, seconds: 2));
-    expect(restored?.duration, const Duration(minutes: 48));
-    expect(restored?.updatedAtUtc, DateTime.utc(2026, 8, 30, 9));
-  });
-
-  test('persists semantic bookmarks by book and keeps repeated saves idempotent', () async {
-    final first = await library.bookshelf.add(title: '书签一', kind: ContentKind.novel, source: source);
-    final second = await library.bookshelf.add(
-      title: '书签二',
-      kind: ContentKind.novel,
-      source: const ContentLibraryIngest(
-        pluginId: 'fixture',
-        producerPluginVersion: '1.0.0',
-        dataVersion: 1,
-        opaqueData: {'remoteBookId': 'book-2'},
-      ),
-    );
-    final bookmark = LibraryBookmark(
-      id: 'bookmark-1',
-      itemId: first.id,
-      chapterId: 'chapter-1',
-      paragraphId: 'paragraph-2',
-      characterOffset: 4,
+  test('novel and manga bookmarks share one table with compatible anchors', () async {
+    final item = await addItem();
+    final mangaItem = await addItem(remoteId: 'manga-book', kind: ContentKind.manga);
+    final now = DateTime.utc(2026, 9, 5);
+    final novel = LibraryBookmark(
+      id: 'bookmark-novel',
+      itemId: item.id,
+      chapterId: 'n1',
+      paragraphId: 'p1',
+      characterOffset: 2,
       chapterTitle: '第一章',
       excerpt: '摘录',
-      createdAtUtc: DateTime.utc(2026, 8, 27),
+      createdAtUtc: now,
     );
-    await library.bookmarks.save(bookmark);
-    await library.bookmarks.save(bookmark);
-    expect((await library.bookmarks.load(first.id)).map((item) => item.id), ['bookmark-1']);
-    expect(await library.bookmarks.load(second.id), isEmpty);
-
-    await library.close();
-    library = await ContentLibrary.open(dataRoot: root);
-    expect((await library.bookmarks.load(first.id)).single.excerpt, '摘录');
-    await library.bookmarks.remove(first.id, 'bookmark-1');
-    expect(await library.bookmarks.load(first.id), isEmpty);
+    final manga = LibraryMangaBookmark(
+      id: 'bookmark-manga',
+      itemId: mangaItem.id,
+      chapterId: 'm1',
+      imageId: 'i1',
+      imageFraction: .25,
+      createdAtUtc: now.add(const Duration(seconds: 1)),
+    );
+    await library.saveBookmark(novel);
+    await library.saveBookmark(manga);
+    expect((await library.loadBookmarks(item.id, ContentKind.novel)).single.id, novel.id);
+    expect((await library.loadBookmarks(mangaItem.id, ContentKind.manga)).single.id, manga.id);
+    await library.deleteBookmark(mangaItem.id, manga.id);
+    expect(await library.loadBookmarks(mangaItem.id, ContentKind.manga), isEmpty);
   });
 
-  test('content metadata inlines bounded writes but keeps catalog-sized batches in a worker', () async {
-    final registry = RecordDocumentRegistry(contentLibraryRecordDocumentCodecs);
-    final progressCodec = registry.require('content_library_reading_progress', 'content_library');
-    final inline = await progressCodec.prepareCurrent(const <String, Object?>{
-      'chapterId': 'chapter-1',
-      'paragraphId': 'paragraph-1',
-      'characterOffset': 0,
-      'chapterIndex': 0,
-      'chapterFraction': 0.0,
-      'bookFraction': 0.0,
-      'updatedAtUtc': '2026-08-27T00:00:00.000Z',
-      'totalReadingSeconds': 0,
-    });
-    expect(inline.executionIsolateId, Isolate.current.hashCode);
+  test('chapter refresh swaps immutable body and stale CAS leaves an orphan', () async {
+    final item = await addItem();
+    await library.syncNovelCatalog(itemId: item.id, chapters: chapters(<String>['chapter-0']));
+    var session = (await library.openNovelReaderSession(item.id))!;
+    await session.cacheChapter(entry: session.initialChapter, text: '版本一');
+    session = (await library.openNovelReaderSession(item.id))!;
+    final captured = session.initialChapter;
+    await session.refreshChapter(entry: captured, text: '版本二');
+    await expectLater(session.refreshChapter(entry: captured, text: '冲突版本'), throwsA(isA<PersistenceConflictError>()));
 
-    final catalog = await registry.prepareCurrentMany(
-      documents: List.generate(
-        9,
-        (index) =>
-            (recordKind: 'content_catalog_entry', scopeKind: 'content_library', document: <String, Object?>{'title': 'chapter-$index'}),
-      ),
-    );
-    expect(catalog.map((document) => document.executionIsolateId).toSet(), hasLength(1));
-    expect(catalog.first.executionIsolateId, isNot(Isolate.current.hashCode));
+    final reopened = (await library.openNovelReaderSession(item.id))!;
+    expect((await reopened.readContent(reopened.initialChapter) as NovelChapterContent).text, '版本二');
+    expect((await library.inspectStorage()).orphanContentObjects, 2);
+    expect((await library.clearStorage()).deletedContentObjects, 2);
   });
 
-  test('persists and removes a bookshelf cover outside metadata', () async {
-    final item = await library.bookshelf.addFromSource(
-      BookshelfAddRequest(
-        title: '封面测试书',
-        author: null,
-        kind: ContentKind.novel,
-        pluginId: 'fixture',
-        pluginVersion: '1.0.0',
-        remoteContentId: 'cover-book',
-        coverUrl: Uri.parse('https://covers.example/cover-book.png'),
-      ),
-    );
-    final bytes = <int>[137, 80, 78, 71, 1, 2, 3];
-
-    await library.bookshelf.saveCover(id: item.id, bytes: bytes, mimeType: 'image/png');
-    expect(await library.bookshelf.readCover(item.id), bytes);
-
-    await library.close();
-    library = await ContentLibrary.open(dataRoot: root);
-    expect(await library.bookshelf.readCover(item.id), bytes);
-
-    await library.bookshelf.remove(item.id, LibraryRemovalPolicy.removeFromShelfKeepContent);
-    expect(await library.bookshelf.readCover(item.id), isNull);
-  });
-
-  test('keeps global covers within the byte cap using least-recently-used eviction', () async {
-    final fileRoot = await Directory.systemTemp.createTemp('mg-read-global-cover-files-');
-    final files = await FileObjectStore.open(fileRoot);
-    addTearDown(() async {
-      await files.close();
-      await fileRoot.delete(recursive: true);
-    });
-    final first = '1'.padLeft(64, '0');
-    final second = '2'.padLeft(64, '0');
-    final third = '3'.padLeft(64, '0');
-
-    await files.commitGlobalCoverBytes(coverKey: first, bytes: const <int>[1, 1, 1, 1], mimeType: 'image/png', maxBytes: 8);
-    await Future<void>.delayed(const Duration(milliseconds: 5));
-    await files.commitGlobalCoverBytes(coverKey: second, bytes: const <int>[2, 2, 2, 2], mimeType: 'image/png', maxBytes: 8);
-    await Future<void>.delayed(const Duration(milliseconds: 5));
-    expect(await files.readGlobalCoverBytes(first), <int>[1, 1, 1, 1]);
-    await Future<void>.delayed(const Duration(milliseconds: 5));
-    await files.commitGlobalCoverBytes(coverKey: third, bytes: const <int>[3, 3, 3, 3], mimeType: 'image/png', maxBytes: 8);
-
-    expect(await files.readGlobalCoverBytes(second), isNull);
-    expect(await files.readGlobalCoverBytes(first), <int>[1, 1, 1, 1]);
-    expect(await files.readGlobalCoverBytes(third), <int>[3, 3, 3, 3]);
-  });
-
-  test('saves a global cover without a separate pruning persistence operation', () async {
-    final diagnostics = DiagnosticsTestkit();
-    addTearDown(diagnostics.dispose);
-    await library.close();
-    library = await ContentLibrary.open(dataRoot: root, diagnostics: diagnostics.manager);
-
-    await library.covers.save(
-      key: CoverKey(
-        pluginId: 'fixture',
-        pluginVersion: '1.0.0',
-        remoteContentId: 'diagnostic-cover',
-        coverUrl: Uri.parse('https://covers.example/diagnostic-cover.png'),
-      ),
-      bytes: const <int>[1, 2, 3, 4],
-      mimeType: 'image/png',
-    );
-
-    expect(diagnostics.sink.events.where((event) => event.eventName.startsWith('persistence.operation.')), hasLength(2));
-  });
-
-  test('reports and clears global and legacy cover cache bytes', () async {
-    final item = await library.bookshelf.addFromSource(
-      BookshelfAddRequest(
-        title: '旧封面缓存',
-        author: null,
-        kind: ContentKind.novel,
-        pluginId: 'fixture',
-        pluginVersion: '1.0.0',
-        remoteContentId: 'legacy-cover',
-      ),
-    );
-    final key = CoverKey(
-      pluginId: 'fixture',
-      pluginVersion: '1.0.0',
-      remoteContentId: 'clearable-cover',
-      coverUrl: Uri.parse('https://covers.example/clearable-cover.png'),
-    );
-    await library.bookshelf.saveCover(id: item.id, bytes: const <int>[8, 9, 10], mimeType: 'image/png');
-    await library.covers.save(key: key, bytes: const <int>[1, 2, 3, 4, 5], mimeType: 'image/png');
-
-    expect(await library.covers.usageBytes(), 8);
-    expect(await library.covers.clear(), 8);
-    expect(await library.covers.usageBytes(), 0);
-    expect(await library.covers.read(key), isNull);
-    expect(await library.bookshelf.readCover(item.id), isNull);
-  });
-
-  test('persists privacy visibility without changing progress or content', () async {
-    final normal = await library.bookshelf.add(
-      title: '普通书籍',
-      kind: ContentKind.novel,
-      source: const ContentLibraryIngest(
-        pluginId: 'fixture',
-        producerPluginVersion: '1.0.0',
-        dataVersion: 1,
-        opaqueData: <String, Object?>{'remoteBookId': 'normal-book'},
-      ),
-    );
-    final private = await library.bookshelf.add(
-      title: '隐私书籍',
-      kind: ContentKind.novel,
-      source: const ContentLibraryIngest(
-        pluginId: 'fixture',
-        producerPluginVersion: '1.0.0',
-        dataVersion: 1,
-        opaqueData: <String, Object?>{'remoteBookId': 'private-book'},
-      ),
-    );
-    final progress = LibraryReadingProgress(
-      itemId: private.id,
-      chapterId: 'chapter-1',
-      paragraphId: 'paragraph-1',
-      characterOffset: 3,
-      chapterIndex: 0,
-      chapterFraction: 0.5,
-      bookFraction: 0.25,
-      updatedAtUtc: DateTime.utc(2026, 8, 24),
-    );
-    await library.readingProgress.save(progress);
-
-    await library.bookshelf.setVisibility(private.id, LibraryVisibility.private);
-    await library.close();
-    library = await ContentLibrary.open(dataRoot: root);
-
-    expect(
-      (await library.listLibrary(const LibraryQuery(visibility: LibraryVisibility.normal))).items.map((item) => item.id.value),
-      <String>[normal.id.value],
-    );
-    expect(
-      (await library.listLibrary(const LibraryQuery(visibility: LibraryVisibility.private))).items.single.visibility,
-      LibraryVisibility.private,
-    );
-    expect((await library.readingProgress.load(private.id))?.bookFraction, progress.bookFraction);
-
-    await library.bookshelf.setVisibility(private.id, LibraryVisibility.normal);
-    expect(
-      (await library.listLibrary(const LibraryQuery(visibility: LibraryVisibility.normal))).items.map((item) => item.id.value).toSet(),
-      <String>{normal.id.value, private.id.value},
-    );
-  });
-
-  test('concurrent source saves are idempotent and atomically bound', () async {
-    final items = await Future.wait<LibraryItem>([
-      library.bookshelf.add(title: '并发加入', kind: ContentKind.novel, source: source),
-      library.bookshelf.add(title: '并发加入', kind: ContentKind.novel, source: source),
-    ]);
-
-    expect(items.map((item) => item.id.value).toSet(), hasLength(1));
-    expect((await library.listLibrary(const LibraryQuery())).items, hasLength(1));
-    expect(items.first.source?.remoteContentId, 'book-1');
-  });
-
-  test('batch reads unique progress records and omits unread shelf items', () async {
-    final first = await library.bookshelf.add(
-      title: '批量进度一',
-      kind: ContentKind.novel,
-      source: const ContentLibraryIngest(
-        pluginId: 'fixture',
-        producerPluginVersion: '1.0.0',
-        dataVersion: 1,
-        opaqueData: <String, Object?>{'remoteBookId': 'batch-one'},
-      ),
-    );
-    final unread = await library.bookshelf.add(
-      title: '批量进度二',
-      kind: ContentKind.novel,
-      source: const ContentLibraryIngest(
-        pluginId: 'fixture',
-        producerPluginVersion: '1.0.0',
-        dataVersion: 1,
-        opaqueData: <String, Object?>{'remoteBookId': 'batch-two'},
-      ),
-    );
-    await library.readingProgress.save(
-      LibraryReadingProgress(
-        itemId: first.id,
-        chapterId: 'chapter-1',
-        paragraphId: 'chapter-1:paragraph:0',
-        characterOffset: 0,
-        chapterIndex: 0,
-        chapterFraction: 0.25,
-        bookFraction: 0.15,
-        updatedAtUtc: DateTime.utc(2026, 8, 22),
-      ),
-    );
-
-    final progress = await library.readingProgress.loadMany([first.id, unread.id, first.id]);
-
-    expect(progress, hasLength(1));
-    expect(progress.single.itemId.value, first.id.value);
-    expect(progress.single.bookFraction, 0.15);
-    expect(await library.readingProgress.loadMany(const <LibraryItemId>[]), isEmpty);
-  });
-
-  test('session-only manga resource keeps its session policy', () async {
-    final item = await library.bookshelf.add(title: '漫画', kind: ContentKind.manga, source: source);
-    await library.catalog.replaceSnapshot(
-      itemId: item.id,
-      bindingId: const SourceBindingId('binding-3'),
-      entries: [IngestCatalogEntry(remoteIdentity: 'c', title: 'c', orderKey: '1', kindCode: 'manga', source: source)],
-    );
-    final entry = (await library.listCatalog(item.id, const CatalogQuery())).items.single;
-    await library.content.putManga(
-      entryId: entry.id,
-      pages: [IngestMangaPage(pageId: 'page-1', order: 0, resource: SourceResource.sessionOnly(), source: source)],
-      source: source,
-    );
-    final resource = (await library.openContent(entry.id) as MangaChapterContent).pages.single.resource;
-    expect(resource.persistencePolicy, PersistencePolicy.sessionOnly);
-  });
-
-  test('manga assets are grouped and removed with the manga item', () async {
-    final item = await library.bookshelf.add(title: '本地漫画', kind: ContentKind.manga, source: source);
-    final retained = await library.bookshelf.add(
-      title: '保留漫画',
-      kind: ContentKind.manga,
-      source: const ContentLibraryIngest(
-        pluginId: 'fixture',
-        producerPluginVersion: '1.0.0',
-        dataVersion: 1,
-        opaqueData: <String, Object?>{'remoteBookId': 'retained-manga'},
-      ),
-    );
-    final files = await FileObjectStore.open(root);
-    addTearDown(files.close);
-    await files.commitBytes(mangaId: item.id.value, assetId: 'asset_identifier_0001', bytes: [1, 2, 3], mimeType: 'image/png');
-    for (final manga in <LibraryItem>[item, retained]) {
-      await library.mangaImageCache.save(
-        itemId: manga.id,
-        chapterId: 'chapter',
-        pageId: 'page',
-        contentVersion: 1,
-        bytes: const <int>[4],
-        mimeType: 'image/png',
-      );
-    }
-    final directory = Directory(
-      '${root.path}${Platform.pathSeparator}files${Platform.pathSeparator}content-assets${Platform.pathSeparator}${item.id.value}',
-    );
-    expect(await directory.exists(), isTrue);
-    await library.bookshelf.remove(item.id, LibraryRemovalPolicy.removeFromShelfKeepContent);
-    expect(await directory.exists(), isFalse);
-    expect(await library.mangaImageCache.read(itemId: item.id, chapterId: 'chapter', pageId: 'page', contentVersion: 1), isNull);
-    expect(await library.mangaImageCache.read(itemId: retained.id, chapterId: 'chapter', pageId: 'page', contentVersion: 1), const <int>[
-      4,
-    ]);
-  });
-
-  test('opens a bounded novel session with targeted chapter queries', () async {
-    final item = await library.bookshelf.add(title: '会话书', kind: ContentKind.novel, source: source);
-    await library.catalog.ensureNovelCatalog(
-      itemId: item.id,
-      chapters: const [
-        SourceNovelCatalogChapter(remoteIdentity: 'one', title: '一', index: 0),
-        SourceNovelCatalogChapter(remoteIdentity: 'two', title: '二', index: 1),
-      ],
-    );
-    final session = await library.openNovelReaderSession(item.id);
-    expect(session, isNotNull);
-    expect(session!.catalogCount, 2);
-    expect((await session.itemAtIndex(1))!.remoteIdentity, 'two');
-    expect((await session.itemByRemoteIdentity('one'))!.index, 0);
-    expect(
-      (await session.itemsByRemoteIdentities(const <String>['two', 'missing', 'one'])).keys,
-      containsAllInOrder(const <String>['one', 'two']),
-    );
-    expect((await session.page(limit: 1)).items, hasLength(1));
-
-    final progress = LibraryReadingProgress(
-      itemId: item.id,
-      chapterId: 'removed',
-      paragraphId: 'p',
-      characterOffset: 0,
-      chapterIndex: 1,
-      chapterFraction: 0,
-      bookFraction: 0.5,
-      updatedAtUtc: DateTime.utc(2026, 8, 24),
-    );
-    await session.saveProgress(progress);
-    await library.catalog.syncNovelCatalog(
-      itemId: item.id,
-      chapters: const [
-        SourceNovelCatalogChapter(remoteIdentity: 'one', title: '一', index: 0),
-        SourceNovelCatalogChapter(remoteIdentity: 'new', title: '新', index: 1),
-      ],
-    );
-    expect(
-      (await session.itemsByRemoteIdentities(const <String>['one', 'two', 'new'])).keys,
-      containsAllInOrder(const <String>['one', 'two']),
-    );
-    final reopened = await library.openNovelReaderSession(item.id);
-    expect(
-      (await reopened!.itemsByRemoteIdentities(const <String>['one', 'two', 'new'])).keys,
-      containsAllInOrder(const <String>['new', 'one']),
-    );
-    expect((await reopened.resolveProgressEntry())!.remoteIdentity, 'new');
-  });
-
-  test('session remains on its snapshot while a refresh replaces the catalog', () async {
-    final item = await library.bookshelf.add(title: '快照书', kind: ContentKind.novel, source: source);
-    await library.catalog.ensureNovelCatalog(
-      itemId: item.id,
-      chapters: const [SourceNovelCatalogChapter(remoteIdentity: 'old', title: '旧', index: 0)],
-    );
-    final session = await library.openNovelReaderSession(item.id);
-    final refresh = library.catalog.syncNovelCatalog(
-      itemId: item.id,
-      chapters: const [SourceNovelCatalogChapter(remoteIdentity: 'fresh', title: '新', index: 0)],
-    );
-    expect((await session!.itemAtIndex(0))!.remoteIdentity, 'old');
-    await refresh;
-    expect((await (await library.openNovelReaderSession(item.id))!.itemAtIndex(0))!.remoteIdentity, 'fresh');
-  });
-
-  test('legacy snapshot count is read once and bad content references are safe', () async {
-    final item = await library.bookshelf.add(title: '旧数据书', kind: ContentKind.novel, source: source);
-    await library.catalog.ensureNovelCatalog(
-      itemId: item.id,
-      chapters: const [SourceNovelCatalogChapter(remoteIdentity: 'legacy', title: '旧', index: 0)],
-    );
-    await library.close();
-    final store = await PersistenceRecordStore.open(dataRoot: root, registry: RecordDocumentRegistry(contentLibraryRecordDocumentCodecs));
-    final record = await store.read(
-      id: item.id.value,
-      scope: const ScopeKey(kind: 'content_library', id: 'default'),
-    );
-    final document = Map<String, Object?>.from(record!.document)..remove('catalogCount');
-    await store.update(previous: record, document: document);
-    await store.close();
-    library = await ContentLibrary.open(dataRoot: root);
-
-    final session = await library.openNovelReaderSession(item.id);
-    expect(session!.catalogCount, 1);
-    expect(await session.itemByRemoteIdentity('missing'), isNull);
-    expect(
-      await session.readContent(
-        CatalogEntry(
-          id: const CatalogEntryId('bad'),
-          itemId: item.id,
-          bindingId: const SourceBindingId('binding'),
-          remoteIdentity: 'bad',
-          title: '坏引用',
-          orderKey: '000000000000',
-          index: 0,
-          kind: ContentKind.novel,
-          contentStatus: 'ready',
-          contentReference: 'missing-object',
-        ),
-      ),
-      isA<UnsupportedContent>(),
-    );
-  });
-
-  test('session cache targets one chapter without listing the catalog', () async {
-    final item = await library.bookshelf.add(title: '定向缓存书', kind: ContentKind.novel, source: source);
-    await library.catalog.ensureNovelCatalog(
-      itemId: item.id,
-      chapters: const [SourceNovelCatalogChapter(remoteIdentity: 'target', title: '目标', index: 0)],
-    );
-    final session = await library.openNovelReaderSession(item.id);
-    final entry = await session!.itemAtIndex(0);
-    await session.cacheChapter(entry: entry!, text: '缓存正文');
-    final refreshedEntry = await session.itemByRemoteIdentity('target');
-    expect(await session.readContent(refreshedEntry!), isA<NovelChapterContent>());
-    expect(((await session.readContent(refreshedEntry)) as NovelChapterContent).text, '缓存正文');
-    expect(refreshedEntry.wordCount, '缓存正文'.length);
-  });
-
-  test('sync previews and transactionally applies shelf metadata and progress', () async {
-    final item = await library.bookshelf.addFromSource(
-      const BookshelfAddRequest(
-        title: '旧标题',
-        author: '作者',
-        kind: ContentKind.novel,
-        pluginId: 'fixture',
-        pluginVersion: '1.0.0',
-        remoteContentId: 'sync-book',
-      ),
-    );
-    await library.readingProgress.save(
+  test('shelf, session, and catalog pages use bounded query counts and target indexes', () async {
+    final item = await addItem();
+    await library.syncNovelCatalog(itemId: item.id, chapters: chapters(List<String>.generate(120, (index) => 'chapter-$index')));
+    await library.saveProgress(
       LibraryReadingProgress(
         itemId: item.id,
-        chapterId: 'old',
+        chapterId: 'chapter-50',
         paragraphId: 'p',
-        characterOffset: 1,
-        chapterIndex: 0,
-        chapterFraction: 0.1,
-        bookFraction: 0.1,
-        updatedAtUtc: DateTime.utc(2026, 8, 24),
+        characterOffset: 0,
+        chapterIndex: 50,
+        chapterFraction: 0,
+        bookFraction: .4,
+        updatedAtUtc: DateTime.utc(2026, 9, 5),
       ),
     );
-    final sender = LibrarySyncItem(
-      pluginId: 'fixture',
-      producerPluginVersion: '2.0.0',
-      remoteContentId: 'sync-book',
-      kind: ContentKind.novel,
-      title: '新标题',
-      author: '新作者',
-      progress: LibrarySyncReadingProgress(
-        chapterId: 'new',
-        paragraphId: 'p2',
-        characterOffset: 2,
-        chapterIndex: 1,
-        chapterFraction: 0.2,
-        bookFraction: 0.2,
-        updatedAtUtc: DateTime.utc(2026, 8, 25),
-      ),
-    );
-    final incoming = LibrarySyncSnapshot(items: [sender]);
-    final preview = await library.sync.preview(incoming, availablePluginIds: const {'fixture'});
-    expect(preview.newItems, isEmpty);
-    expect(preview.conflicts, hasLength(1));
-    final result = await library.sync.apply(
-      incoming,
-      preview: preview,
-      choices: {preview.conflicts.single.identity: LibrarySyncConflictChoice.smartMerge},
-    );
-    expect(result.code, LibrarySyncResultCode.applied);
-    expect(result.updatedItems, 1);
-    expect(result.progressApplied, 1);
-    expect((await library.getLibraryItem(item.id))!.title, '新标题');
-    expect((await library.readingProgress.load(item.id))!.chapterId, 'new');
-  });
 
-  test('sync reports missing plugins as blocked without writing them', () async {
-    final incoming = LibrarySyncSnapshot(
-      items: const [
-        LibrarySyncItem(
-          pluginId: 'not-installed',
-          producerPluginVersion: '1.0.0',
-          remoteContentId: 'missing-plugin-book',
-          kind: ContentKind.novel,
-          title: '书',
-        ),
-      ],
-    );
-    final preview = await library.sync.preview(incoming, availablePluginIds: const {'fixture'});
-    expect(preview.blocked.single.reason, LibrarySyncBlockedReason.missingPlugin);
-    final result = await library.sync.apply(incoming, preview: preview, choices: const {});
-    expect(result.code, LibrarySyncResultCode.applied);
-    expect(result.blockedItems, 1);
-    expect((await library.listLibrary(const LibraryQuery())).items, isEmpty);
-  });
+    library.resetBusinessQueryCountForTest();
+    expect(await library.loadShelfProjection(), hasLength(1));
+    expect(library.businessQueryCountForTest, 1);
 
-  test('persists manga state independently and clears only regenerable images', () async {
-    final manga = await library.bookshelf.add(title: '图像书', kind: ContentKind.manga, source: source);
-    final novel = await library.bookshelf.add(title: '文字书', kind: ContentKind.novel, source: source);
-    final progress = LibraryMangaReadingProgress(
-      itemId: manga.id,
-      chapterId: 'c1',
-      imageId: 'p1',
-      imageFraction: .5,
-      chapterIndex: 0,
-      bookFraction: .2,
-      updatedAtUtc: DateTime.utc(2026, 1, 1),
-      readingSeconds: 3,
-    );
-    await library.saveMangaProgress(progress);
-    await library.addMangaBookmark(
-      LibraryMangaBookmark(
-        id: 'm1',
-        itemId: manga.id,
-        chapterId: 'c',
-        imageId: 'p',
-        imageFraction: 0,
-        createdAtUtc: DateTime.utc(2026, 1, 1),
-      ),
-    );
-    expect((await library.loadMangaProgress(manga.id))!.imageId, 'p1');
-    expect(await library.readingProgress.load(novel.id), isNull);
-    await library.mangaImageCache.save(
-      itemId: manga.id,
-      chapterId: 'c1',
-      pageId: 'p1',
-      contentVersion: 1,
-      bytes: const [1, 2],
-      mimeType: 'image/png',
-    );
-    expect(await library.mangaImageCache.usageBytes(), 2);
-    final usage = await library.mangaImageCache.usage();
-    expect(usage.totalBytes, 2);
-    expect(usage.unattributedBytes, 0);
-    expect(usage.items.single.itemId.value, manga.id.value);
-    expect(usage.items.single.bytes, 2);
-    await library.mangaImageCache.clear();
-    expect(await library.mangaImageCache.read(itemId: manga.id, chapterId: 'c1', pageId: 'p1', contentVersion: 1), isNull);
-  });
+    library.resetBusinessQueryCountForTest();
+    final session = (await library.openNovelReaderSession(item.id))!;
+    expect(session.initialChapter.remoteIdentity, 'chapter-50');
+    expect(library.businessQueryCountForTest, 1);
+    expect((await session.page(limit: 100)).items, hasLength(100));
+    expect(library.businessQueryCountForTest, 2);
 
-  test('manga image cache hashes long identities and isolates versions', () async {
-    final files = await FileObjectStore.open(root);
-    addTearDown(files.close);
-    final long = 'x' * 500;
-    final first = await files.commitMangaImage(
-      itemId: long,
-      chapterId: long,
-      pageId: long,
-      contentVersion: 1,
-      bytes: const [1],
-      mimeType: 'image/png',
-    );
-    expect(first.relativePath, matches(RegExp(r'^manga-image-cache/[a-f0-9]{64}/image\.asset$')));
-    await files.commitMangaImage(
-      itemId: long,
-      chapterId: long,
-      pageId: long,
-      contentVersion: 1,
-      bytes: const [2, 3],
-      mimeType: 'image/png',
-    );
-    expect(await files.readMangaImage(itemId: long, chapterId: long, pageId: long, contentVersion: 1), [2, 3]);
-    await files.commitMangaImage(itemId: long, chapterId: long, pageId: long, contentVersion: 2, bytes: const [4], mimeType: 'image/jpeg');
-    expect(await files.readMangaImage(itemId: long, chapterId: long, pageId: long, contentVersion: 1), [2, 3]);
-    expect(await files.readMangaImage(itemId: long, chapterId: long, pageId: long, contentVersion: 2), [4]);
-    var usage = await files.mangaImageCacheUsage();
-    expect(usage.totalBytes, 3);
-    expect(usage.bytesByItem, <String, int>{long: 3});
-
-    final cacheRoot = Directory(
-      '${root.path}${Platform.pathSeparator}files${Platform.pathSeparator}'
-      'content-assets${Platform.pathSeparator}manga-image-cache',
-    );
-    await for (final entity in cacheRoot.list(recursive: true)) {
-      if (entity is File && entity.uri.pathSegments.last == 'owner.id') {
-        await entity.delete();
-      }
-    }
-    usage = await files.mangaImageCacheUsage();
-    expect(usage.totalBytes, 3);
-    expect(usage.bytesByItem, isEmpty);
-  });
-
-  test('consecutive manga image writes do not scan the whole cache or evict earlier images', () async {
-    final files = await FileObjectStore.open(root);
-    addTearDown(files.close);
-    final cacheRoot = Directory(
-      '${root.path}${Platform.pathSeparator}files${Platform.pathSeparator}'
-      'content-assets${Platform.pathSeparator}manga-image-cache',
-    );
-    final scanProbeRoot = Directory('${cacheRoot.path}${Platform.pathSeparator}${'a' * 64}');
-    await scanProbeRoot.create(recursive: true);
-    final scanProbe = File('${scanProbeRoot.path}${Platform.pathSeparator}.image.part');
-    await scanProbe.writeAsBytes(const <int>[99]);
-
-    for (var page = 0; page < 3; page++) {
-      await files.commitMangaImage(
-        itemId: 'item',
-        chapterId: 'chapter',
-        pageId: 'page-$page',
-        contentVersion: 1,
-        bytes: <int>[page + 1],
-        mimeType: 'image/png',
-      );
-    }
-
-    expect(await scanProbe.exists(), isTrue, reason: 'writes must not invoke the maintenance directory scan');
-    for (var page = 0; page < 3; page++) {
-      expect(await files.readMangaImage(itemId: 'item', chapterId: 'chapter', pageId: 'page-$page', contentVersion: 1), <int>[page + 1]);
-    }
-  });
-
-  test('manga manifest round trips page metadata and bounded session', () async {
-    final item = await library.bookshelf.add(title: '漫画元数据', kind: ContentKind.manga, source: source);
-    await library.syncMangaCatalog(
-      itemId: item.id,
-      chapters: const [MangaChapterDescriptor(remoteIdentity: 'chapter-1', title: '第一话', index: 0, pages: [])],
-    );
-    final entry = (await library.listCatalog(item.id, const CatalogQuery())).items.single;
-    await library.cacheMangaChapter(
-      entryId: entry.id,
-      pages: [
-        MangaPageDescriptor(
-          pageId: 'p1',
-          order: 0,
-          resource: SourceResource.sessionOnly(),
-          mimeType: 'image/png',
-          width: 100,
-          height: 200,
-          byteLength: 300,
-          contentVersion: 7,
-        ),
-      ],
-    );
-    final session = await library.openMangaReaderSession(item.id);
-    final chapter = await session!.itemAtIndex(0);
-    final content = await session.readContent(chapter!);
-    final page = (content! as MangaChapterContent).pages.single;
-    expect(page.resource.url, isNull);
-    expect(page.mimeType, 'image/png');
-    expect(page.width, 100);
-    expect(page.height, 200);
-    expect(page.byteLength, 300);
-    expect(page.contentVersion, 7);
-  });
-
-  test('manga image cache rejects empty bytes, invalid mime and oversized bytes', () async {
-    final files = await FileObjectStore.open(root);
-    addTearDown(files.close);
-    Future<StoredFileObject> write(List<int> bytes, String mime) =>
-        files.commitMangaImage(itemId: 'item', chapterId: 'chapter', pageId: 'page', contentVersion: 1, bytes: bytes, mimeType: mime);
-    await expectLater(write(const [], 'image/png'), throwsArgumentError);
-    await expectLater(write(const [1], 'text/plain'), throwsArgumentError);
-    await expectLater(write(List<int>.filled(8 * 1024 * 1024 + 1, 0), 'image/png'), throwsArgumentError);
+    final plans = await library.hotIndexPlansForTest(item.id);
+    expect(plans['shelf']!.join(' '), contains('library_items_active_order'));
+    expect(plans['position']!.join(' '), contains('catalog_chapters_item_position'));
+    expect(plans['remote']!.join(' '), contains('catalog_chapters_item_remote'));
   });
 }

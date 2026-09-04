@@ -116,12 +116,12 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('cover memory cache preserves typed identity and ignores legacy migration hints', () {
+  test('cover memory cache preserves typed source identity', () {
     BookCoverMemoryCache.clear();
     addTearDown(BookCoverMemoryCache.clear);
     final bytes = Uint8List.fromList(<int>[1, 2, 3]);
     final discovery = _request(1);
-    final shelf = _request(1, legacyLibraryItemId: 'legacy-item');
+    final shelf = _request(1);
 
     BookCoverMemoryCache.write(discovery, bytes);
 
@@ -167,12 +167,11 @@ final class _RecordingBookCoverLoader implements BookCoverBytesLoader {
   }
 }
 
-BookCoverRequest _request(int index, {String? legacyLibraryItemId}) => BookCoverRequest(
+BookCoverRequest _request(int index) => BookCoverRequest(
   pluginId: 'fixture-source',
   pluginVersion: '1.0.0',
   remoteContentId: 'book-$index',
   coverUrl: Uri.parse('https://covers.example/book-$index.png'),
-  legacyLibraryItemId: legacyLibraryItemId,
 );
 
 const String _onePixelPngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';

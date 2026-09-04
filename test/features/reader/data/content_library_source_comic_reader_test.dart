@@ -7,7 +7,6 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
-import 'package:mg_read/core/content_library/src/models.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
@@ -337,7 +336,7 @@ void main() {
     await expectRejected(_Gateway(pages: <PluginMangaPage>[_page(policy: PluginMangaPageResourcePolicy.refreshable)]));
   });
 
-  test('round-trips comic state, preferences and bookmarks without touching novel state', () async {
+  test('round-trips unified comic progress, preferences and bookmarks', () async {
     final fixture = await _LibraryFixture.open(withSettings: true);
     addTearDown(fixture.close);
     final store = ContentLibraryComicReaderStateStore(fixture.library, itemId: fixture.manga.id, settings: fixture.settings);
@@ -359,8 +358,8 @@ void main() {
     expect(await store.loadProgress(fixture.manga.id.value), progress);
     expect(await store.loadPreferences(), preferences.normalized());
     expect((await store.loadBookmarks(fixture.manga.id.value)).single.id, bookmark.id);
-    expect(await fixture.library.readingProgress.load(fixture.manga.id), isNull);
-    expect(await fixture.library.bookmarks.load(fixture.manga.id), isEmpty);
+    expect(await fixture.library.loadProgress(fixture.manga.id), isA<LibraryMangaReadingProgress>());
+    expect(await fixture.library.loadBookmarks(fixture.manga.id, ContentKind.manga), hasLength(1));
     expect(fixture.settings!.get(AppSettingKeys.readerPreferences), isEmpty);
 
     await store.removeBookmark(fixture.manga.id.value, bookmark.id);
@@ -449,7 +448,7 @@ final class _LibraryFixture {
     final root = await Directory.systemTemp.createTemp('comic-reader-test-');
     if (!withSettings) {
       final library = await ContentLibrary.open(dataRoot: root);
-      final manga = await library.bookshelf.add(title: '漫画', kind: ContentKind.manga, source: _ingest);
+      final manga = await library.addLibraryItem(_mangaRequest);
       return _LibraryFixture._(root: root, library: library, manga: manga);
     }
     final registry = RecordDocumentRegistry(<RecordDocumentCodec>[
@@ -467,7 +466,7 @@ final class _LibraryFixture {
       registry: AppSettingKeys.registry,
     );
     await settings.initialize();
-    final manga = await library.bookshelf.add(title: '漫画', kind: ContentKind.manga, source: _ingest);
+    final manga = await library.addLibraryItem(_mangaRequest);
     return _LibraryFixture._(root: root, library: library, manga: manga, persistence: persistence, settings: settings);
   }
 
@@ -479,11 +478,13 @@ final class _LibraryFixture {
   }
 }
 
-const _ingest = ContentLibraryIngest(
+const _mangaRequest = BookshelfAddRequest(
   pluginId: 'fixture',
-  producerPluginVersion: '1',
-  dataVersion: 1,
-  opaqueData: {'remoteBookId': 'comic'},
+  pluginVersion: '1',
+  remoteContentId: 'comic',
+  title: '漫画',
+  author: null,
+  kind: ContentKind.manga,
 );
 
 final class _ChapterFixture {

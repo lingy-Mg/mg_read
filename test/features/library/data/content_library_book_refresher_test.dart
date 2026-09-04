@@ -16,7 +16,7 @@ void main() {
       await root.delete(recursive: true);
     });
     final oldCover = Uri.parse('https://source.example/cover.png');
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       BookshelfAddRequest(
         title: '旧书名',
         author: '旧作者',
@@ -35,8 +35,7 @@ void main() {
       remoteContentId: 'book-original-url',
       coverUrl: oldCover,
     );
-    await library.covers.save(key: oldCoverKey, bytes: const <int>[1, 2, 3]);
-    await library.bookshelf.saveCover(id: item.id, bytes: const <int>[4, 5, 6], mimeType: 'image/png');
+    await library.saveCover(key: oldCoverKey, bytes: const <int>[1, 2, 3]);
 
     final gateway = _RefreshGateway();
     await ContentLibraryBookRefresher(library, gateway).refresh(item.id.value);
@@ -55,8 +54,7 @@ void main() {
     expect(refreshed?.sourceDetail['sourceName'], '刷新数据源');
     expect(refreshed?.sourceDetail['catalogUrl'], 'https://source.example/book-original-url');
     expect((await library.listAllCatalog(item.id)).map((entry) => entry.remoteIdentity), <String>['chapter-1', 'chapter-2']);
-    expect(await library.covers.read(oldCoverKey), isNull);
-    expect(await library.bookshelf.readCover(item.id), isNull);
+    expect(await library.readCover(oldCoverKey), isNull);
   });
 
   test('retains the existing shelf item when a source refresh fails', () async {
@@ -66,7 +64,7 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       BookshelfAddRequest(
         title: '保留书名',
         author: null,
@@ -87,21 +85,21 @@ void main() {
     expect(await library.listAllCatalog(item.id), isEmpty);
   });
 
-  test('refreshes legacy source-bound shelf items that have no persisted source URL', () async {
+  test('refreshes source-bound shelf items that have no source URL', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-book-refresh-');
     final library = await ContentLibrary.open(dataRoot: root);
     addTearDown(() async {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       BookshelfAddRequest(
-        title: '旧版书籍',
+        title: '无来源链接书籍',
         author: null,
         kind: ContentKind.novel,
         pluginId: 'org.example.source',
         pluginVersion: '1.0.0',
-        remoteContentId: 'legacy-book',
+        remoteContentId: 'book-without-source-url',
         sourceUrl: null,
         description: null,
       ),

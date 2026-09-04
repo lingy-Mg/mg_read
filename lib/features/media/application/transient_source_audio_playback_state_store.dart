@@ -26,7 +26,8 @@ final class TransientSourceAudioPlaybackStateStore implements AudioPlaybackState
     final library = this.library;
     final itemId = libraryItemId;
     if (library != null && itemId != null) {
-      final durable = await library.loadAudioProgress(itemId);
+      final stored = await library.loadProgress(itemId);
+      final durable = stored is LibraryAudioPlaybackProgress ? stored : null;
       if (durable != null) {
         return _progress = AudioPlaybackProgress(
           collectionId: collectionId,
@@ -51,7 +52,7 @@ final class TransientSourceAudioPlaybackStateStore implements AudioPlaybackState
     final library = this.library;
     final itemId = libraryItemId;
     if (library == null || itemId == null) return;
-    await library.saveAudioProgress(
+    await library.saveProgress(
       LibraryAudioPlaybackProgress(
         itemId: itemId,
         chapterId: progress.trackId,

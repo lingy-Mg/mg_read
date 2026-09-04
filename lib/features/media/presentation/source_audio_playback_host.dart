@@ -223,7 +223,8 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
       final request = widget.request;
       final library = request.libraryItemId == null ? null : await ref.read(appStartupControllerProvider).contentLibrary;
       final itemId = request.libraryItemId == null ? null : LibraryItemId(request.libraryItemId!);
-      final savedProgress = library == null || itemId == null ? null : await library.loadAudioProgress(itemId);
+      final storedProgress = library == null || itemId == null ? null : await library.loadProgress(itemId);
+      final savedProgress = storedProgress is LibraryAudioPlaybackProgress ? storedProgress : null;
       final configuredProxyUri = await Future<Uri?>.value(
         ref.read(configuredFlutterNetworkProxyManagerProvider).proxyUriFor(NetworkProxyTraffic.audio),
       );
@@ -733,7 +734,6 @@ Widget _sourceAudioArtwork(BuildContext context, AudioTrack track, SourceAudioPl
     pluginVersion: 'unknown',
     remoteContentId: request.detail.summary.id,
     coverUrl: artwork,
-    legacyLibraryItemId: request.libraryItemId,
   );
   return Consumer(
     builder: (context, ref, _) => ref

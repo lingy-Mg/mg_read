@@ -37,7 +37,8 @@ final class TransientSourceVideoPlaybackStateStore implements VideoPlaybackState
     final library = await libraryFuture;
     final itemId = libraryItemId;
     if (library != null && itemId != null) {
-      final durable = await library.loadVideoProgress(itemId);
+      final stored = await library.loadProgress(itemId);
+      final durable = stored is LibraryVideoPlaybackProgress ? stored : null;
       if (durable != null) {
         return _progress = VideoPlaybackProgress(
           contentId: contentId,
@@ -64,7 +65,7 @@ final class TransientSourceVideoPlaybackStateStore implements VideoPlaybackState
     final library = await libraryFuture;
     final itemId = libraryItemId;
     if (library == null || itemId == null) return;
-    await library.saveVideoProgress(
+    await library.saveProgress(
       LibraryVideoPlaybackProgress(
         itemId: itemId,
         groupId: progress.groupId,

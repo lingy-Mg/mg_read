@@ -24,7 +24,7 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final novel = await library.bookshelf.addFromSource(
+    final novel = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '测试小说',
         author: null,
@@ -35,7 +35,7 @@ void main() {
       ),
     );
     final mangaCoverUrl = Uri.parse('https://fixture.example/manga-cover.png');
-    final manga = await library.bookshelf.addFromSource(
+    final manga = await library.addLibraryItem(
       BookshelfAddRequest(
         title: '测试漫画',
         author: null,
@@ -47,7 +47,7 @@ void main() {
       ),
     );
     const mangaCoverBytes = <int>[1, 2, 3, 4];
-    await library.covers.save(
+    await library.saveCover(
       key: CoverKey(pluginId: 'fixture', pluginVersion: '1', remoteContentId: 'manga', coverUrl: mangaCoverUrl),
       bytes: mangaCoverBytes,
       mimeType: 'image/png',

@@ -76,7 +76,7 @@ final class DatabaseCacheManagementController extends AsyncNotifier<DatabaseCach
           hasCompletedCleanup: true,
           feedback: result.isPartial
               ? DatabaseCacheFeedback.partiallyCleared
-              : result.deletedRecords == 0 && result.deletedContentObjects == 0
+              : result.deletedContentObjects == 0
               ? DatabaseCacheFeedback.alreadyEmpty
               : DatabaseCacheFeedback.cleared,
         ),
@@ -158,8 +158,6 @@ final class DatabaseCacheManagementState {
 @immutable
 final class DatabaseCacheUsage {
   const DatabaseCacheUsage({
-    required this.staleCatalogRecords,
-    required this.detachedMetadataRecords,
     required this.orphanContentObjects,
     required this.reclaimableContentBytes,
     required this.estimatedReclaimableBytes,
@@ -167,33 +165,23 @@ final class DatabaseCacheUsage {
   });
 
   const DatabaseCacheUsage.empty()
-    : staleCatalogRecords = 0,
-      detachedMetadataRecords = 0,
-      orphanContentObjects = 0,
+    : orphanContentObjects = 0,
       reclaimableContentBytes = 0,
       estimatedReclaimableBytes = 0,
       compactableDatabaseBytes = 0;
 
-  final int staleCatalogRecords;
-  final int detachedMetadataRecords;
   final int orphanContentObjects;
   final int reclaimableContentBytes;
   final int estimatedReclaimableBytes;
   final int compactableDatabaseBytes;
 
-  bool get isEmpty => staleCatalogRecords == 0 && detachedMetadataRecords == 0 && orphanContentObjects == 0;
+  bool get isEmpty => orphanContentObjects == 0;
 }
 
 @immutable
 final class DatabaseCacheCleanupResult {
-  const DatabaseCacheCleanupResult({
-    this.deletedRecords = 0,
-    this.deletedContentObjects = 0,
-    this.releasedLogicalBytes = 0,
-    this.isPartial = false,
-  });
+  const DatabaseCacheCleanupResult({this.deletedContentObjects = 0, this.releasedLogicalBytes = 0, this.isPartial = false});
 
-  final int deletedRecords;
   final int deletedContentObjects;
   final int releasedLogicalBytes;
   final bool isPartial;

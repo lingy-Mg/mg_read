@@ -13,10 +13,8 @@ final class ContentLibraryDatabaseCacheGateway implements DatabaseCacheGateway {
 
   @override
   Future<DatabaseCacheUsage> inspect() async {
-    final result = await (await _load()).storageMaintenance.inspect();
+    final result = await (await _load()).inspectStorage();
     return DatabaseCacheUsage(
-      staleCatalogRecords: result.staleCatalogRecords,
-      detachedMetadataRecords: result.detachedMetadataRecords,
       orphanContentObjects: result.orphanContentObjects,
       reclaimableContentBytes: result.reclaimableContentBytes,
       estimatedReclaimableBytes: result.estimatedReclaimableBytes,
@@ -26,9 +24,8 @@ final class ContentLibraryDatabaseCacheGateway implements DatabaseCacheGateway {
 
   @override
   Future<DatabaseCacheCleanupResult> clearAll() async {
-    final result = await (await _load()).storageMaintenance.clearAll();
+    final result = await (await _load()).clearStorage();
     return DatabaseCacheCleanupResult(
-      deletedRecords: result.staleCatalogRecords + result.detachedMetadataRecords,
       deletedContentObjects: result.deletedContentObjects,
       releasedLogicalBytes: result.releasedLogicalBytes,
       isPartial: result.isPartial,
@@ -37,7 +34,7 @@ final class ContentLibraryDatabaseCacheGateway implements DatabaseCacheGateway {
 
   @override
   Future<DatabaseCacheCompactionResult> compact() async {
-    final result = await (await _load()).storageMaintenance.compact();
+    final result = await (await _load()).compactStorage();
     return DatabaseCacheCompactionResult(releasedBytes: result.releasedBytes);
   }
 }

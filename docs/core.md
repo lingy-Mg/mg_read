@@ -31,14 +31,17 @@ plugins/sources/                    真实数据源及其他能力参考实现
 
 ## 主应用持久化与 Content Library
 
-- `AppPersistence` 是 metadata 权威；schema、版本和容器生命周期只由 core persistence 管理。
+- `AppPersistence` 是 metadata 权威；`app_metadata.sqlite` 固定包含 `metadata_records`、`library_items`、
+  `catalog_chapters`、`reading_progress`、`bookmarks` 五张持久表，schema 和生命周期只由 core persistence 管理。
 - `ContentLibrary` 拥有书架、目录、正文、受控文件、小说/漫画/音频/视频进度和书签；Runtime 不打开
   主应用数据库，也不取得内容路径。
 - 书架上限由 `bookshelfMaxItemCount` 统一管理；新增在 metadata 事务内校验，更新不占新名额。
 - 受控对象先写入并校验，再通过 metadata revision CAS 切换引用；已提交 metadata 是恢复权威，无引用对象
   由有界 maintenance/GC 清理。
-- 目录刷新使用 pending snapshot 后一次切换 active，并以稳定 ID/keyset cursor 维护；不得把 offset、页码、
-  数组位置或全量内存载入作为持久权威。
+- 每本书只有按远程章节身份去重的追加目录；同步只追加未见身份，不修订或删除旧章。阅读会话固定打开时的
+  `catalog_count` 上界，目录通过内部连续位置和 keyset cursor 分页，不把页码或全量内存载入作为持久权威。
+- 书架首屏只读取列化热字段并联查统一进度；完整详情 JSON 延迟读取。正文与文件存储由可重试共享 Future
+  后台预热，不阻塞 metadata 和设置就绪后的书架首屏。
 - Runtime 结果只有经公开 Facade 和强类型 adapter 校验后才能入库；没有公开协议时保持 `unsupported`。
 - 宿主详情快照必须有界且 JSON 兼容。
 

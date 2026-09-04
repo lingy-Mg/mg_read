@@ -41,9 +41,14 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
                 children: <Widget>[
                   Positioned(
                     left: 56,
-                    right: widget.extensions.chapterCacheCapability == null
-                        ? 96
-                        : 144,
+                    right:
+                        48 +
+                        (widget.extensions.chapterRefreshCapability == null
+                            ? 0
+                            : 48) +
+                        (widget.extensions.chapterCacheCapability == null
+                            ? 0
+                            : 48),
                     top: 0,
                     bottom: 0,
                     child: Align(
@@ -92,17 +97,18 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
                             ),
                           ),
                         ),
-                        ReaderAccessibleTooltip(
-                          label: ReaderStrings.refreshChapter,
-                          onTap: refreshAction,
-                          child: IconButton(
-                            key: const ValueKey<String>(
-                              'reader-toolbar-refresh-chapter',
+                        if (widget.extensions.chapterRefreshCapability != null)
+                          ReaderAccessibleTooltip(
+                            label: ReaderStrings.refreshChapter,
+                            onTap: refreshAction,
+                            child: IconButton(
+                              key: const ValueKey<String>(
+                                'reader-toolbar-refresh-chapter',
+                              ),
+                              onPressed: refreshAction,
+                              icon: const Icon(Icons.refresh_rounded, size: 21),
                             ),
-                            onPressed: refreshAction,
-                            icon: const Icon(Icons.refresh_rounded, size: 21),
                           ),
-                        ),
                         if (widget.extensions.chapterCacheCapability != null)
                           _buildReaderOverflowMenu(),
                       ],
@@ -249,7 +255,10 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
     bool showLoadingOverlay = false,
   }) async {
     final String? chapterId = _content?.chapterId;
-    if (chapterId == null) return;
+    if (chapterId == null ||
+        widget.extensions.chapterRefreshCapability == null) {
+      return;
+    }
     await _openChapter(
       chapterId,
       forceRefresh: true,

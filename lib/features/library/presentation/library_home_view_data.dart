@@ -119,13 +119,7 @@ BookCoverRequest? _coverRequest(LibraryItemSummary item) {
   if (pluginId == null || pluginVersion == null || remoteContentId == null || coverUrl == null) {
     return null;
   }
-  return BookCoverRequest(
-    pluginId: pluginId,
-    pluginVersion: pluginVersion,
-    remoteContentId: remoteContentId,
-    coverUrl: coverUrl,
-    legacyLibraryItemId: item.id,
-  );
+  return BookCoverRequest(pluginId: pluginId, pluginVersion: pluginVersion, remoteContentId: remoteContentId, coverUrl: coverUrl);
 }
 
 String? _librarySubtitle(LibraryItemSummary item) {

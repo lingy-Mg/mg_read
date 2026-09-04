@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
-import 'package:mg_read/core/content_library/src/models.dart';
 import 'package:mg_read/features/library/data/content_library_overview_loader.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 
@@ -14,17 +13,8 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.add(
-      title: '持久化书架测试',
-      kind: ContentKind.novel,
-      source: const ContentLibraryIngest(
-        pluginId: 'test-source',
-        producerPluginVersion: '1.0.0',
-        dataVersion: 1,
-        opaqueData: <String, Object?>{'remoteBookId': 'persisted-book'},
-      ),
-    );
-    await library.readingProgress.save(
+    final item = await library.addLibraryItem(_source('persisted-book', title: '持久化书架测试'));
+    await library.saveProgress(
       LibraryReadingProgress(
         itemId: item.id,
         chapterId: 'chapter-1',
@@ -36,16 +26,7 @@ void main() {
         updatedAtUtc: DateTime.utc(2026, 8, 21),
       ),
     );
-    await library.bookshelf.add(
-      title: '尚未阅读的书架测试',
-      kind: ContentKind.novel,
-      source: const ContentLibraryIngest(
-        pluginId: 'test-source',
-        producerPluginVersion: '1.0.0',
-        dataVersion: 1,
-        opaqueData: <String, Object?>{'remoteBookId': 'unread-book'},
-      ),
-    );
+    await library.addLibraryItem(_source('unread-book', title: '尚未阅读的书架测试'));
 
     final overview = await ContentLibraryOverviewLoader(library).load();
 
@@ -62,7 +43,7 @@ void main() {
   test('returns the shelf before optional cover resolution', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-library-cover-');
     var library = await ContentLibrary.open(dataRoot: root);
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       BookshelfAddRequest(
         title: '首次加载封面',
         author: null,
@@ -83,8 +64,7 @@ void main() {
     expect(summary.coverPluginVersion, '1.0.0');
     expect(summary.coverRemoteContentId, 'cover-book');
     expect(summary.chapterCount, 999);
-    expect(summary.attributes.single.key, 'heat');
-    expect(summary.attributes.single.value, '565.2万');
+    expect(summary.attributes, isEmpty, reason: 'details_json is loaded only by the long-press detail path');
     await library.close();
     await root.delete(recursive: true);
   });
@@ -96,12 +76,12 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final novel = await library.bookshelf.add(title: '小说', kind: ContentKind.novel, source: _source('novel'));
-    final manga = await library.bookshelf.add(title: '漫画', kind: ContentKind.manga, source: _source('manga'));
-    final audio = await library.bookshelf.add(title: '音乐', kind: ContentKind.audio, source: _source('audio'));
-    final video = await library.bookshelf.add(title: '视频', kind: ContentKind.video, source: _source('video'));
-    await library.readingProgress.save(_progress(novel.id, 1));
-    await library.saveMangaProgress(
+    final novel = await library.addLibraryItem(_source('novel', title: '小说'));
+    final manga = await library.addLibraryItem(_source('manga', title: '漫画', kind: ContentKind.manga));
+    final audio = await library.addLibraryItem(_source('audio', title: '音乐', kind: ContentKind.audio));
+    final video = await library.addLibraryItem(_source('video', title: '视频', kind: ContentKind.video));
+    await library.saveProgress(_progress(novel.id, 1));
+    await library.saveProgress(
       LibraryMangaReadingProgress(
         itemId: manga.id,
         chapterId: 'manga-chapter',
@@ -112,7 +92,7 @@ void main() {
         updatedAtUtc: DateTime.utc(2026, 8, 24, 5),
       ),
     );
-    await library.saveAudioProgress(
+    await library.saveProgress(
       LibraryAudioPlaybackProgress(
         itemId: audio.id,
         chapterId: 'track-7',
@@ -120,7 +100,7 @@ void main() {
         updatedAtUtc: DateTime.utc(2026, 8, 24, 3),
       ),
     );
-    await library.saveVideoProgress(
+    await library.saveProgress(
       LibraryVideoPlaybackProgress(
         itemId: video.id,
         groupId: 'group-2',
@@ -149,29 +129,11 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final normal = await library.bookshelf.add(
-      title: '普通继续阅读',
-      kind: ContentKind.novel,
-      source: const ContentLibraryIngest(
-        pluginId: 'fixture',
-        producerPluginVersion: '1.0.0',
-        dataVersion: 1,
-        opaqueData: <String, Object?>{'remoteBookId': 'normal'},
-      ),
-    );
-    final private = await library.bookshelf.add(
-      title: '隐私继续阅读',
-      kind: ContentKind.novel,
-      source: const ContentLibraryIngest(
-        pluginId: 'fixture',
-        producerPluginVersion: '1.0.0',
-        dataVersion: 1,
-        opaqueData: <String, Object?>{'remoteBookId': 'private'},
-      ),
-    );
-    await library.readingProgress.save(_progress(normal.id, 1));
-    await library.readingProgress.save(_progress(private.id, 2));
-    await library.bookshelf.setVisibility(private.id, LibraryVisibility.private);
+    final normal = await library.addLibraryItem(_source('normal', title: '普通继续阅读'));
+    final private = await library.addLibraryItem(_source('private', title: '隐私继续阅读'));
+    await library.saveProgress(_progress(normal.id, 1));
+    await library.saveProgress(_progress(private.id, 2));
+    await library.setLibraryItemVisibility(private.id, LibraryVisibility.private);
 
     final loader = ContentLibraryOverviewLoader(library);
     final normalOverview = await loader.load();
@@ -194,9 +156,11 @@ LibraryReadingProgress _progress(LibraryItemId id, int hour) => LibraryReadingPr
   updatedAtUtc: DateTime.utc(2026, 8, 24, hour),
 );
 
-ContentLibraryIngest _source(String remoteBookId) => ContentLibraryIngest(
-  pluginId: 'fixture',
-  producerPluginVersion: '1.0.0',
-  dataVersion: 1,
-  opaqueData: <String, Object?>{'remoteBookId': remoteBookId},
+BookshelfAddRequest _source(String remoteBookId, {required String title, ContentKind kind = ContentKind.novel}) => BookshelfAddRequest(
+  pluginId: 'test-source',
+  pluginVersion: '1.0.0',
+  remoteContentId: remoteBookId,
+  title: title,
+  author: null,
+  kind: kind,
 );

@@ -10,7 +10,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
-import 'package:mg_read/core/content_library/src/models.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/data/mg_read_lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
@@ -24,14 +23,14 @@ void main() {
       await root.delete(recursive: true);
     });
     for (var index = 0; index < bookshelfMaxItemCount - 1; index++) {
-      await library.bookshelf.add(
-        title: '本地书籍 $index',
-        kind: ContentKind.novel,
-        source: ContentLibraryIngest(
+      await library.addLibraryItem(
+        BookshelfAddRequest(
+          title: '本地书籍 $index',
+          author: null,
+          kind: ContentKind.novel,
           pluginId: 'fixture',
-          producerPluginVersion: '1.0.0',
-          dataVersion: 1,
-          opaqueData: <String, Object?>{'remoteBookId': 'local-$index'},
+          pluginVersion: '1.0.0',
+          remoteContentId: 'local-$index',
         ),
       );
     }

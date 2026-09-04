@@ -11,10 +11,10 @@ final class ContentLibraryProfileReadingStatsLoader implements ProfileReadingSta
 
   @override
   Future<ProfileReadingStats> load() async {
-    final items = (await _library.listLibrary(const LibraryQuery(limit: bookshelfMaxItemCount))).items;
-    final progress = await _library.readingProgress.loadMany(items.map((item) => item.id));
+    final items = await _library.loadShelfProjection(limit: bookshelfMaxItemCount);
+    final progress = items.where((item) => item.progressKind == ContentKind.novel).toList(growable: false);
     return ProfileReadingStats(
-      totalReadingSeconds: progress.fold<int>(0, (total, value) => total + value.totalReadingSeconds),
+      totalReadingSeconds: progress.fold<int>(0, (total, value) => total + (value.totalReadingSeconds ?? 0)),
       readBookCount: progress.length,
       shelfBookCount: items.length,
     );

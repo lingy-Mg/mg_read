@@ -22,7 +22,7 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '视频书架条目',
         author: null,

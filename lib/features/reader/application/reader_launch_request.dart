@@ -54,6 +54,7 @@ final class NovelReaderLaunchRequest extends ReaderLaunchRequest {
     required super.bookId,
     required this.dataSource,
     required this.stateStore,
+    this.seed,
     super.entryCoverBytes,
     this.chapterPreloadCount = 1,
     this.observer,
@@ -67,6 +68,7 @@ final class NovelReaderLaunchRequest extends ReaderLaunchRequest {
 
   final TextReaderDataSource dataSource;
   final TextReaderStateStore stateStore;
+  final ReaderSessionSeed? seed;
 
   /// Number of following novel chapters the reader may load speculatively.
   final int chapterPreloadCount;
@@ -80,6 +82,7 @@ final class NovelReaderLaunchRequest extends ReaderLaunchRequest {
     bookId: bookId,
     dataSource: dataSource,
     stateStore: stateStore,
+    seed: seed,
     entryCoverBytes: entryCoverBytes,
     chapterPreloadCount: chapterPreloadCount,
     observer: observer,
@@ -95,6 +98,7 @@ final class NovelReaderLaunchRequest extends ReaderLaunchRequest {
     bookId: bookId,
     dataSource: dataSource,
     stateStore: stateStore,
+    seed: seed,
     entryCoverBytes: bytes,
     chapterPreloadCount: chapterPreloadCount,
     observer: observer,

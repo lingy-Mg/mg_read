@@ -73,12 +73,14 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
   Future<bool> _warmPluginRuntime() async {
     try {
       final connection = await ref.read(pluginRuntimeConnectionProvider.future);
+      if (!mounted) return false;
       ref
           .read(dataSourceSystemErrorReporterProvider)
           .reportQuarantinedSources(quarantinedCount: connection.startupRecovery.quarantinedCount);
       await ref.read(availablePluginSourcesProvider.future);
       return true;
     } on Object catch (error, stackTrace) {
+      if (!mounted) return false;
       // The provider preserves the stable failure for feature UI to render.
       // Its application-layer span already records the failure safely.
       final observer = ref.read(runtimeFatalErrorObserverProvider);

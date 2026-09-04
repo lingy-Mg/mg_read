@@ -17,7 +17,7 @@ void main() {
     if (await root.exists()) await root.delete(recursive: true);
   });
 
-  test('starts metadata, content, and file stores concurrently', () async {
+  test('returns after metadata while content and file prewarm remain blocked', () async {
     final started = List<Completer<void>>.generate(3, (_) => Completer<void>());
     final release = List<Completer<void>>.generate(3, (_) => Completer<void>());
     var openerCount = 0;
@@ -37,40 +37,64 @@ void main() {
       fileOpener: () => gated(2, () => FileObjectStore.open(root)),
     );
 
-    await Future.wait(started.map((completer) => completer.future));
-    expect(openerCount, 3);
-    for (final completer in release) {
-      completer.complete();
-    }
-
+    await started[0].future;
+    expect(openerCount, 1);
+    release[0].complete();
     final persistence = await opening;
+    await Future.wait(<Future<void>>[started[1].future, started[2].future]);
+    expect(openerCount, 3);
+    expect(await persistence.metadataRecords.read(id: 'missing', scope: localScope), isNull);
+    release[1].complete();
+    release[2].complete();
     await persistence.close();
   });
 
-  test('waits for all started stores and closes successful partial opens', () async {
-    PersistenceRecordStore? metadata;
-    ContentObjectStore? content;
-    final initiatingError = StateError('file opener failed');
-
-    final opening = AppPersistence.openForTesting(
+  test('consumes background open failures and retries on foreground use', () async {
+    var contentAttempts = 0;
+    var fileAttempts = 0;
+    final persistence = await AppPersistence.openForTesting(
       dataRoot: root,
       registry: defaultRegistry,
-      metadataOpener: () async {
-        metadata = await PersistenceRecordStore.open(dataRoot: root, registry: defaultRegistry);
-        return metadata!;
-      },
       contentOpener: () async {
-        content = await ContentObjectStore.open(root);
-        return content!;
+        contentAttempts++;
+        if (contentAttempts == 1) throw StateError('content prewarm failed');
+        return ContentObjectStore.open(root);
       },
-      fileOpener: () => Future<FileObjectStore>.error(initiatingError),
+      fileOpener: () async {
+        fileAttempts++;
+        if (fileAttempts == 1) throw StateError('file prewarm failed');
+        return FileObjectStore.open(root);
+      },
     );
+    await Future<void>.delayed(Duration.zero);
+    expect(await persistence.contentObjects.read('missing'), isNull);
+    expect(await persistence.fileObjects.coverCacheUsageBytes(), 0);
+    expect(contentAttempts, 2);
+    expect(fileAttempts, 2);
+    await persistence.close();
+  });
 
-    await expectLater(opening, throwsA(same(initiatingError)));
-    expect(metadata, isNotNull);
-    expect(content, isNotNull);
-    await expectLater(metadata!.read(id: 'missing', scope: localScope), throwsA(isA<PersistenceClosedError>()));
-    await expectLater(content!.read('missing'), throwsA(isA<StateError>()));
+  test('concurrent first content use shares one opener future', () async {
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    var attempts = 0;
+    final persistence = await AppPersistence.openForTesting(
+      dataRoot: root,
+      registry: defaultRegistry,
+      contentOpener: () async {
+        attempts++;
+        entered.complete();
+        await release.future;
+        return ContentObjectStore.open(root);
+      },
+    );
+    await entered.future;
+    final reads = List<Future<StoredContentObject?>>.generate(8, (_) => persistence.contentObjects.read('missing'));
+    expect(attempts, 1);
+    release.complete();
+    expect(await Future.wait(reads), everyElement(isNull));
+    expect(attempts, 1);
+    await persistence.close();
   });
 
   test('normal open and close retain the public lifecycle boundary', () async {
@@ -80,12 +104,56 @@ void main() {
     expect(persistence.fileObjects.usesBackgroundExecutor, isTrue);
     expect(await persistence.metadataRecords.debugPragmaForTest('journal_mode'), 'wal');
     expect(await persistence.metadataRecords.debugPragmaForTest('synchronous'), 1);
+    expect(await persistence.metadataRecords.debugPragmaForTest('foreign_keys'), 1);
+    expect(await persistence.metadataRecords.debugPragmaForTest('busy_timeout'), 2000);
     expect(await persistence.contentObjects.debugPragmaForTest('journal_mode'), 'wal');
     expect(await persistence.contentObjects.debugPragmaForTest('synchronous'), 1);
 
     await persistence.close();
     await persistence.close();
     await expectLater(persistence.metadataRecords.read(id: 'missing', scope: localScope), throwsA(isA<PersistenceClosedError>()));
+  });
+
+  test('close waits for a started opener and closes its successful store', () async {
+    final openerEntered = Completer<void>();
+    final releaseOpener = Completer<void>();
+    late ContentObjectStore openedStore;
+    final persistence = await AppPersistence.openForTesting(
+      dataRoot: root,
+      registry: defaultRegistry,
+      contentOpener: () async {
+        openerEntered.complete();
+        await releaseOpener.future;
+        return openedStore = await ContentObjectStore.open(root);
+      },
+    );
+    await openerEntered.future;
+
+    var closed = false;
+    final closing = persistence.close().whenComplete(() => closed = true);
+    await Future<void>.delayed(Duration.zero);
+    expect(closed, isFalse);
+
+    releaseOpener.complete();
+    await closing;
+    await expectLater(openedStore.read('missing'), throwsStateError);
+  });
+
+  test('close does not retry a failed prewarm opener', () async {
+    var attempts = 0;
+    final persistence = await AppPersistence.openForTesting(
+      dataRoot: root,
+      registry: defaultRegistry,
+      contentOpener: () {
+        attempts++;
+        return Future<ContentObjectStore>.error(StateError('prewarm failed'));
+      },
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    await persistence.close();
+
+    expect(attempts, 1);
   });
 
   test('content object inventory, bounded delete, and explicit compaction reclaim storage', () async {

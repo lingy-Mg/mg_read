@@ -5,8 +5,8 @@ part of 'content_library.dart';
 /// Writes are only scheduled by [ContentLibrary] after a durable bookshelf
 /// mutation. Reads and clearing are explicit notification-page work, so the
 /// repository adds no startup query or long-lived listener.
-final class LibraryNotificationRepository {
-  LibraryNotificationRepository._(this._library);
+final class _LibraryNotificationOperations {
+  _LibraryNotificationOperations(this._library);
 
   final ContentLibrary _library;
 
@@ -31,7 +31,7 @@ final class LibraryNotificationRepository {
     }
   }
 
-  Future<void> _append({required LibraryNotificationKind kind, required String title}) async {
+  Future<void> append({required LibraryNotificationKind kind, required String title}) async {
     final boundedTitle = title.trim();
     if (boundedTitle.isEmpty) return;
     final occurredAt = DateTime.now().toUtc();

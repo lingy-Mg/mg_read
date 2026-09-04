@@ -90,6 +90,7 @@ void main() {
       dataSource: dataSource,
       controller: controller,
       store: const _ExplicitNavigationStateStore(),
+      chapterRefreshCapability: _DataSourceRefreshCapability(dataSource),
     );
 
     await _showControls(tester);
@@ -220,6 +221,7 @@ Future<void> _mountReader(
   required _ExplicitNavigationDataSource dataSource,
   required TextReaderController controller,
   required TextReaderStateStore store,
+  ReaderChapterRefreshCapability? chapterRefreshCapability,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -229,6 +231,9 @@ Future<void> _mountReader(
           controller: controller,
           dataSource: dataSource,
           stateStore: store,
+          extensions: ReaderExtensions(
+            chapterRefreshCapability: chapterRefreshCapability,
+          ),
         ),
       ),
     ),
@@ -242,6 +247,17 @@ Future<void> _mountReader(
             .evaluate()
             .isNotEmpty,
   );
+}
+
+final class _DataSourceRefreshCapability
+    implements ReaderChapterRefreshCapability {
+  const _DataSourceRefreshCapability(this._dataSource);
+
+  final TextReaderDataSource _dataSource;
+
+  @override
+  Future<TextChapterContent> refreshChapter(String bookId, String chapterId) =>
+      _dataSource.loadChapterContent(bookId, chapterId);
 }
 
 Future<void> _showControls(WidgetTester tester) async {

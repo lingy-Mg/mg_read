@@ -19,8 +19,8 @@ final class ContentLibraryCoverCacheGateway implements CoverCacheGateway {
   final ContentLibraryLoader _loadLibrary;
 
   @override
-  Future<int> usageBytes() async => (await _loadLibrary()).covers.usageBytes();
+  Future<int> usageBytes() async => (await _loadLibrary()).coverCacheUsageBytes();
 
   @override
-  Future<int> clear() async => (await _loadLibrary()).covers.clear();
+  Future<int> clear() async => (await _loadLibrary()).clearCoverCache();
 }

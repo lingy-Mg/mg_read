@@ -20,7 +20,7 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '预取测试书',
         author: '作者',
@@ -63,7 +63,7 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '并发预取测试书',
         author: null,
@@ -103,7 +103,7 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '失败重试测试书',
         author: null,
@@ -138,7 +138,7 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final first = await library.bookshelf.addFromSource(
+    final first = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '并行测试书一',
         author: null,
@@ -148,7 +148,7 @@ void main() {
         remoteContentId: 'book-parallel-1',
       ),
     );
-    final second = await library.bookshelf.addFromSource(
+    final second = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '并行测试书二',
         author: null,
@@ -179,14 +179,14 @@ void main() {
     expect(await library.listAllCatalog(second.id), hasLength(2));
   });
 
-  test('splits a catalog snapshot larger than one metadata write batch', () async {
+  test('appends a catalog larger than one metadata write batch', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-prefetch-large-');
     final library = await ContentLibrary.open(dataRoot: root);
     addTearDown(() async {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '大目录测试书',
         author: null,
