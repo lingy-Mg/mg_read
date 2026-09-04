@@ -1,4 +1,7 @@
 node_modules/
+# The macOS arm64 Node executable is a local toolchain artifact and exceeds
+# GitHub's 100 MB per-file limit. Keep the downloaded binary out of Git.
+tools/node-v24.16.0-darwin-arm64/bin/node
 !tools/node-v24.16.0-win-x64/node_modules/
 !tools/node-v24.16.0-win-x64/node_modules/**
 !tools/node-v24.16.0-darwin-arm64/lib/node_modules/
