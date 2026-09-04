@@ -180,6 +180,12 @@ export interface LoadedPlugin {
   readonly module: LoadedPluginModule;
 }
 
+/** A validated development project that has not entered the shared VM yet. */
+export interface DevelopmentPluginCandidate {
+  readonly descriptor: PluginPackageDescriptor;
+  readonly projectRoot: string;
+}
+
 export interface DevelopmentPlugin {
   readonly fingerprint: string;
   readonly generationRoot: string;

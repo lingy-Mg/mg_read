@@ -51,7 +51,9 @@ plugins/sources/                    真实数据源及其他能力参考实现
 - `packages/mg_read_source_api` 是数据源宿主上下文和 WebView 类型的唯一公开声明包；Runtime 实现与所有
   数据源必须引用或同步它，来源不得复制 Context/WebView 子集。
 - Runtime 数据只包含不可变安装版本、插件私有 data/cache、Cookie、临时资源和运行状态，不包含主应用
-  业务权威。installed 版本只在冷启动激活；development 变化先回收旧 VM，再启动唯一新 Runtime。
+  业务权威。installed pending 版本只在冷启动激活并提交或回滚；已确认的 current 与 development 项目启动时
+  只建立元数据快照，首次能力调用或传输时在唯一 VM 内单飞加载。development 构建变化先激活候选 generation，
+  成功后才替换并回收旧 generation。
 - Runtime 来源 HTTP 客户端默认继承系统代理，也可接收应用传入的瞬时上游 HTTP、HTTPS 或 SOCKS5 代理，
   覆盖 `ctx.http.fetch` 与 Runtime 代取的来源资源；不得增加 Flutter 回环转发服务器。关闭自定义覆盖后，新请求
   恢复系统代理，系统未配置代理时才直连。两类来源请求在未显式提供 `User-Agent` 时统一使用 Runtime 固定的

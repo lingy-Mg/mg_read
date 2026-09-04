@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  chmod,
   cp,
   mkdtemp,
   mkdir,
@@ -563,6 +564,19 @@ test("a legacy default-export pending update fails and keeps current active", as
   );
   assert.equal(
     events.filter((event) => event.code === "plugin_load_completed").length,
+    0,
+  );
+  assert.equal(
+    (await manager.search(
+      "org.mgread.runtime.fixture",
+      { query: "回滚后懒加载", cursor: null, pageSize: 20 },
+      new AbortController().signal,
+      String(Date.now() + 5_000),
+    )).items[0].title,
+    "标准插件：回滚后懒加载",
+  );
+  assert.equal(
+    events.filter((event) => event.code === "plugin_load_completed").length,
     1,
   );
 });
@@ -633,6 +647,52 @@ test("a broken current source is quarantined without blocking other sources", as
   assert.equal(recoveredSource?.status, "active");
   assert.equal(recoveredSource?.activeVersion, "2.0.0");
   assert.equal(await fileExists(marker), false);
+});
+
+test("a persisted current source is quarantined only when lazy activation finds damage", async (t) => {
+  const dataRoot = await temporaryDirectory(t, "mgread-plugin-lazy-quarantine-");
+  await new PluginInstaller(dataRoot).installProject(fixtureRoot);
+  const pluginRoot = join(dataRoot, "plugins", "org.mgread.runtime.fixture");
+  await writeFile(join(pluginRoot, "current"), "1.0.0\n");
+  await rm(join(pluginRoot, "pending"));
+  const entry = join(pluginRoot, "versions", "1.0.0", "dist", "index.mjs");
+  await chmod(entry, 0o644);
+  await writeFile(entry, "export const broken = ;\n");
+
+  const events = [];
+  const manager = new PluginManager(dataRoot, {
+    events: (event) => events.push(event),
+  });
+  t.after(() => manager.close());
+  await manager.initialize();
+  assert.equal((await manager.listInstalled())[0].status, "active");
+  assert.equal(events.filter((event) => event.code === "plugin_load_started").length, 0);
+  assert.deepEqual(await manager.consumeStartupRecovery(), { quarantinedCount: 0 });
+  const packagePath = join(pluginRoot, "versions", "1.0.0", "package.json");
+  await chmod(packagePath, 0o644);
+  await writeFile(
+    packagePath,
+    "{ damaged after startup\n",
+  );
+
+  await assert.rejects(
+    manager.search(
+      "org.mgread.runtime.fixture",
+      { query: "损坏", cursor: null, pageSize: 20 },
+      new AbortController().signal,
+      String(Date.now() + 5_000),
+    ),
+    (error) => error?.code === "plugin_load_failed",
+  );
+  const quarantined = (await manager.listInstalled())[0];
+  assert.equal(quarantined.status, "quarantined");
+  assert.equal(quarantined.enabled, false);
+  assert.equal(
+    (await readFile(join(pluginRoot, "quarantined"), "utf8")).trim(),
+    "1.0.0",
+  );
+  assert.deepEqual(await manager.consumeStartupRecovery(), { quarantinedCount: 0 });
+  assert.equal(events.filter((event) => event.code === "plugin_quarantined").length, 1);
 });
 
 test("plugin calls give cancel and timeout exactly one terminal event", async (t) => {

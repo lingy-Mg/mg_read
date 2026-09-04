@@ -17,7 +17,9 @@
   schema/fixture 和瞬时诊断；同级 `mgread_plugin_runtime` 拥有 Flutter Facade、Supervisor 与平台宿主。
 - 主应用只调用版本化 `PluginRuntime.invoke`；不得获得 executable、PID、端口、ready、bootId、内部 URL、
   wire envelope、Runtime 数据根或平台对象。
-- 每个应用进程只有一个 Node Runtime/VM。installed 只在冷启动激活；development 指纹变化先回收旧 VM。
+- 每个应用进程只有一个 Node Runtime/VM。installed pending 只在冷启动激活并提交或回滚；已确认的 current
+  与 development 项目先建立元数据快照，首次能力调用或传输时单飞加载。development 构建变化仍须先激活
+  候选 generation，成功后才替换并回收旧 generation。
 - Runtime 私有数据不得承载书架、目录、正文、进度、书签或主应用设置权威。
 - Runtime-only 任务不修改主应用 UI、Reader、模板或真实数据源，除非用户把对应公开边界纳入同一任务。
 

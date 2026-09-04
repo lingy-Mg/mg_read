@@ -269,14 +269,56 @@ test("mgplugin archive restores npm packages and manager cold-activates named ex
   );
 });
 
-test("development projects load in place without creating an installed version", async (t) => {
+test("persisted current plugins single-flight their first lazy activation", async (t) => {
+  const dataRoot = await temporaryDirectory(t, "mgread-plugin-lazy-current-");
+  await new PluginInstaller(dataRoot).installProject(fixtureRoot);
+  const priming = new PluginManager(dataRoot);
+  await priming.initialize();
+  await priming.close();
+
+  const events = [];
+  const manager = new PluginManager(dataRoot, {
+    events: (event) => events.push(event),
+  });
+  t.after(() => manager.close());
+  await manager.initialize();
+  assert.equal((await manager.listInstalled())[0].status, "active");
+  assert.equal(events.filter((event) => event.code === "plugin_load_started").length, 0);
+
+  const searches = await Promise.all([
+    manager.search(
+      "org.mgread.runtime.fixture",
+      { query: "懒加载一", cursor: null, pageSize: 20 },
+      new AbortController().signal,
+      String(Date.now() + 5_000),
+    ),
+    manager.search(
+      "org.mgread.runtime.fixture",
+      { query: "懒加载二", cursor: null, pageSize: 20 },
+      new AbortController().signal,
+      String(Date.now() + 5_000),
+    ),
+  ]);
+  assert.deepEqual(
+    searches.map((result) => result.items[0].title),
+    ["标准插件：懒加载一", "标准插件：懒加载二"],
+  );
+  assert.equal(events.filter((event) => event.code === "plugin_load_started").length, 1);
+  assert.equal(events.filter((event) => event.code === "plugin_load_completed").length, 1);
+});
+
+test("development projects stay metadata-only until an operation needs code", async (t) => {
   const root = await temporaryDirectory(t, "mgread-development-plugin-");
   const dataRoot = join(root, "runtime-data");
   const developmentRoot = join(root, "sources");
   const projectRoot = join(developmentRoot, "live-source");
   await createDevelopmentPlugin(projectRoot, "第一版");
 
-  const manager = new PluginManager(dataRoot, { developmentPluginRoot: developmentRoot });
+  const events = [];
+  const manager = new PluginManager(dataRoot, {
+    developmentPluginRoot: developmentRoot,
+    events: (event) => events.push(event),
+  });
   t.after(() => manager.close());
   await manager.initialize();
   const firstList = await manager.listInstalled();
@@ -291,8 +333,11 @@ test("development projects load in place without creating an installed version",
   const directory = await manager.resolveCodeDirectory("org.example.live-source");
   assert.equal(directory.kind, "development");
   assert.equal(directory.directory, projectRoot);
+  assert.equal(events.filter((event) => event.code === "plugin_load_started").length, 0);
+  assert.equal(await fileExists(join(dataRoot, "development-generations")), false);
 
   const exportable = await manager.listExportableArtifacts();
+  assert.equal(events.filter((event) => event.code === "plugin_load_completed").length, 1);
   assert.equal(exportable.length, 1);
   assert.equal(exportable[0].id, "org.example.live-source");
   assert.match(exportable[0].version, /^0\.1\.1-devsync\.\d+\.[a-f0-9]{64}$/);
@@ -422,6 +467,12 @@ export function getContent() { throw new Error("unused"); }
   assert.deepEqual(
     (await manager.listInstalled()).map((plugin) => plugin.id),
     ["org.mgread.external-source"],
+  );
+  await manager.search(
+    "org.mgread.external-source",
+    { query: "load", cursor: null, pageSize: 20 },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
   );
 });
 
@@ -560,6 +611,13 @@ test("a development project shadows an installed archive with the same ID withou
   assert.equal(active.length, 1);
   assert.equal(active[0].id, "org.mgread.runtime.fixture");
   assert.equal(active[0].status, "development");
+  assert.equal(events.filter((event) => event.code === "plugin_load_started").length, 0);
+  await development.search(
+    "org.mgread.runtime.fixture",
+    { query: "开发覆盖", cursor: null, pageSize: 20 },
+    new AbortController().signal,
+    String(Date.now() + 5_000),
+  );
   assert.equal(events.filter((event) => event.code === "plugin_load_started").length, 1);
 
   await development.close();

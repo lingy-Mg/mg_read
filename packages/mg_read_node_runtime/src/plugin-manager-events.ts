@@ -26,7 +26,7 @@ export function emitPluginManagerDiagnostic(event: PluginManagerEvent): void {
     plugin_load_completed: "标准 Node 插件已成功加载。",
     plugin_load_failed: "无法加载标准 Node 插件。",
     plugin_load_started: "标准 Node 插件开始加载。",
-    plugin_quarantined: "启动时发现的异常插件数据源已隔离。",
+    plugin_quarantined: "异常插件数据源已隔离。",
     plugin_uninstall_scheduled: "插件数据源已标记为在下次冷启动时移除。",
     plugin_uninstall_completed: "待卸载的插件已完成卸载。",
   };

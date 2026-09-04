@@ -10,6 +10,7 @@ import { resolve } from "node:path";
 
 import type {
   DevelopmentPlugin,
+  DevelopmentPluginCandidate,
   InstalledPluginSnapshot,
   PluginIconResource,
 } from "./plugin-manager-contract.js";
@@ -25,12 +26,16 @@ export class PluginIconResources {
 
   async project(
     snapshot: InstalledPluginSnapshot,
-    development: ReadonlyMap<string, DevelopmentPlugin>,
+    development: ReadonlyMap<string, DevelopmentPlugin | DevelopmentPluginCandidate>,
     origin: string,
   ): Promise<InstalledPluginSnapshot> {
     const activeDevelopment = development.get(snapshot.id);
     const version = snapshot.activeVersion ?? snapshot.pendingVersion;
-    let descriptor = activeDevelopment?.loaded.descriptor;
+    let descriptor = activeDevelopment === undefined
+      ? undefined
+      : "loaded" in activeDevelopment
+        ? activeDevelopment.loaded.descriptor
+        : activeDevelopment.descriptor;
     let projectRoot = activeDevelopment?.projectRoot;
     if (descriptor === undefined && version !== null) {
       projectRoot = resolve(this.#dataRoot, "plugins", snapshot.id, "versions", version);
