@@ -2,3 +2,5 @@
 # distribution. Preserve upstream bytes and do not apply source whitespace
 # checks or line-ending conversion to this vendor-only tree.
 tools/node-v24.16.0-win-x64/node_modules/** -text -whitespace
+tools/node-v24.16.0-darwin-arm64/bin/node filter=lfs diff=lfs merge=lfs -text
+tools/node-v24.16.0-win-x64/node.exe filter=lfs diff=lfs merge=lfs -text
