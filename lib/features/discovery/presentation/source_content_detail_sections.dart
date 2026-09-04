@@ -674,8 +674,12 @@ Future<void> _openTextChapter(
     if (callback == null) {
       throw StateError('A video-player host has not been registered.');
     }
+    // The detail cover is commonly resolved by DiscoveryBookCover and kept in
+    // the route-to-route memory cache. Carry it across the detail pop so the
+    // player can show the real artwork immediately instead of its fallback.
+    final playbackDetail = _withResolvedEntryCover(detail, context);
     Navigator.of(context).pop();
-    await callback(detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
+    await callback(detail: playbackDetail, firstCatalogPage: firstCatalogPage, chapter: chapter);
     return;
   }
   if (detail.summary.contentKind == PluginContentKind.manga) {
@@ -706,6 +710,40 @@ List<int>? _resolvedEntryCoverBytes(BuildContext context, PluginContentSummary c
   final scope = context.getInheritedWidgetOfExactType<BookCoverSourceScope>();
   if (coverUrl == null || scope == null) return null;
   return BookCoverMemoryCache.peek(scope.requestFor(remoteContentId: content.id, coverUrl: coverUrl));
+}
+
+PluginContentDetail _withResolvedEntryCover(PluginContentDetail detail, BuildContext context) {
+  final summary = detail.summary;
+  final bytes = _resolvedEntryCoverBytes(context, summary);
+  if (bytes == null || bytes.isEmpty || identical(bytes, summary.coverBytes)) return detail;
+  return PluginContentDetail(
+    pluginId: detail.pluginId,
+    sourceName: detail.sourceName,
+    aliases: detail.aliases,
+    catalogUrl: detail.catalogUrl,
+    summary: PluginContentSummary(
+      id: summary.id,
+      title: summary.title,
+      contentKind: summary.contentKind,
+      coverOrientation: summary.coverOrientation,
+      author: summary.author,
+      url: summary.url,
+      coverUrl: summary.coverUrl,
+      coverBytes: bytes,
+      description: summary.description,
+      language: summary.language,
+      status: summary.status,
+      access: summary.access,
+      wordCount: summary.wordCount,
+      chapterCount: summary.chapterCount,
+      publishedAt: summary.publishedAt,
+      updatedAt: summary.updatedAt,
+      latestChapter: summary.latestChapter,
+      categories: summary.categories,
+      tags: summary.tags,
+      attributes: summary.attributes,
+    ),
+  );
 }
 
 Future<void> _showChapterContent(

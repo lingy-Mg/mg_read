@@ -138,43 +138,31 @@ final class MediaEntryCoverSurface extends StatelessWidget {
               builder: (BuildContext context, BoxConstraints constraints) {
                 final coverWidth = (constraints.maxWidth * .58).clamp(168.0, 268.0);
                 final coverHeight = coverWidth / .68;
+                final hasVideoCover = kind == MediaEntryKind.video && bytes != null && bytes.isNotEmpty;
                 return Stack(
                   fit: StackFit.expand,
                   children: <Widget>[
-                    Align(
-                      alignment: const Alignment(0, -.08),
-                      child: TweenAnimationBuilder<double>(
-                        tween: Tween<double>(begin: .94, end: 1),
-                        duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : AppMotion.destinationTransition,
-                        curve: Curves.easeOutCubic,
-                        builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(22),
-                            boxShadow: <BoxShadow>[
-                              BoxShadow(color: Colors.black.withValues(alpha: .28), blurRadius: 30, offset: const Offset(0, 16)),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(22),
-                            child: bytes == null || bytes.isEmpty
-                                ? DefaultBookCoverArtwork(
-                                    title: title,
-                                    width: coverWidth,
-                                    height: coverHeight,
-                                    startColor: tokens.coverIndigoStart,
-                                    endColor: tokens.coverOceanEnd,
-                                    foregroundColor: Colors.white.withValues(alpha: .96),
-                                    borderRadius: BorderRadius.circular(22),
-                                  )
-                                : Image.memory(
-                                    Uint8List.fromList(bytes),
-                                    key: const Key('media-entry-cover-image'),
-                                    width: coverWidth,
-                                    height: coverHeight,
-                                    fit: BoxFit.cover,
-                                    gaplessPlayback: true,
-                                    errorBuilder: (_, _, _) => DefaultBookCoverArtwork(
+                    if (hasVideoCover)
+                      Positioned.fill(child: _VideoCoverArtwork(bytes: bytes))
+                    else
+                      Align(
+                        alignment: const Alignment(0, -.08),
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween<double>(begin: .94, end: 1),
+                          duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : AppMotion.destinationTransition,
+                          curve: Curves.easeOutCubic,
+                          builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(22),
+                              boxShadow: <BoxShadow>[
+                                BoxShadow(color: Colors.black.withValues(alpha: .28), blurRadius: 30, offset: const Offset(0, 16)),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(22),
+                              child: bytes == null || bytes.isEmpty
+                                  ? DefaultBookCoverArtwork(
                                       title: title,
                                       width: coverWidth,
                                       height: coverHeight,
@@ -182,12 +170,28 @@ final class MediaEntryCoverSurface extends StatelessWidget {
                                       endColor: tokens.coverOceanEnd,
                                       foregroundColor: Colors.white.withValues(alpha: .96),
                                       borderRadius: BorderRadius.circular(22),
+                                    )
+                                  : Image.memory(
+                                      Uint8List.fromList(bytes),
+                                      key: const Key('media-entry-cover-image'),
+                                      width: coverWidth,
+                                      height: coverHeight,
+                                      fit: BoxFit.cover,
+                                      gaplessPlayback: true,
+                                      errorBuilder: (_, _, _) => DefaultBookCoverArtwork(
+                                        title: title,
+                                        width: coverWidth,
+                                        height: coverHeight,
+                                        startColor: tokens.coverIndigoStart,
+                                        endColor: tokens.coverOceanEnd,
+                                        foregroundColor: Colors.white.withValues(alpha: .96),
+                                        borderRadius: BorderRadius.circular(22),
+                                      ),
                                     ),
-                                  ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
                     Align(
                       alignment: const Alignment(0, .72),
                       child: Semantics(
@@ -234,4 +238,26 @@ final class MediaEntryCoverSurface extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Presents video artwork inside the whole player viewport without changing
+/// its intrinsic aspect ratio. A black background naturally creates the
+/// required letterbox bars for landscape and square artwork.
+final class _VideoCoverArtwork extends StatelessWidget {
+  const _VideoCoverArtwork({required this.bytes});
+
+  final List<int> bytes;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: Colors.black,
+    child: Image.memory(
+      Uint8List.fromList(bytes),
+      key: const Key('media-entry-cover-image'),
+      fit: BoxFit.contain,
+      alignment: Alignment.center,
+      gaplessPlayback: true,
+      errorBuilder: (_, _, _) => const ColoredBox(color: Colors.black),
+    ),
+  );
 }

@@ -62,6 +62,19 @@ void main() {
     expect(find.byKey(const Key('media-entry-cover-transition')), findsNothing);
   });
 
+  testWidgets('shows video artwork in the player viewport without stretching it', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: MediaEntryCoverSurface(kind: MediaEntryKind.video, title: '横屏视频', coverBytes: _onePixelPng, onExit: () {}),
+      ),
+    );
+
+    final image = tester.widget<Image>(find.byKey(const Key('media-entry-cover-image')));
+    expect(image.fit, BoxFit.contain);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+  });
+
   testWidgets('turns setup failure into a visible retry action', (tester) async {
     var retries = 0;
     await tester.pumpWidget(
