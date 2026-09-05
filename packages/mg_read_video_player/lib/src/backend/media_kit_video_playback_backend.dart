@@ -10,6 +10,7 @@
 /// - Fullscreen, orientation, PiP and system-awake behavior are disabled here.
 /// - MediaKit's first-frame future is controller-lifetime scoped, so players are
 ///   never reused across episode opens.
+/// - Open completion does not clear errors already delivered by native streams.
 library;
 
 import 'dart:async';
@@ -163,7 +164,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
       if (!_isCurrent(session, generation)) return;
       await session.player.setVolume(_volume);
       if (!_isCurrent(session, generation)) return;
-      _emit(_value.copyWith(buffering: false, clearError: true));
+      _emit(_value.copyWith(buffering: false));
     } on Object catch (error, stackTrace) {
       if (!_isCurrent(session, generation)) return;
       _debugPlaybackFailure('open-exception', episode, error);
@@ -226,7 +227,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
         _updateFrom(
           session,
           generation,
-          (state) => state.copyWith(errorMessage: value),
+          (state) => state.copyWith(errorMessage: value, buffering: false),
         );
       }),
     ]);
@@ -261,7 +262,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     debugPrint(
       'MgRead video backend [$event] '
       '${_debugResourceSummary(episode)} '
-      'errorType=${error.runtimeType}',
+      'errorType=${error.runtimeType} error=$error',
     );
   }
 

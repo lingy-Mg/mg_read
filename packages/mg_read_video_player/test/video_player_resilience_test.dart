@@ -15,6 +15,29 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_video_player/mg_read_video_player.dart';
 
 void main() {
+  testWidgets('open completion preserves a stream failure before first frame', (
+    WidgetTester tester,
+  ) async {
+    final openGate = Completer<void>();
+    final backend = _OrderedBackend(
+      openGate: openGate,
+      firstFrameOnOpen: false,
+    );
+    final controller = VideoPlayerController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_app(backend: backend, controller: controller));
+    await tester.pump();
+    backend.emitError('Failed to open media');
+    await tester.pump();
+    expect(controller.snapshot.status, VideoPlayerStatus.failure);
+
+    openGate.complete();
+    await tester.pumpAndSettle();
+    expect(controller.snapshot.status, VideoPlayerStatus.failure);
+    expect(find.byKey(const Key('video-player-retry')), findsOneWidget);
+    expect(find.byKey(const Key('video-player-loading')), findsNothing);
+  });
+
   testWidgets('queues background pause behind a blocked autoplay open', (
     WidgetTester tester,
   ) async {

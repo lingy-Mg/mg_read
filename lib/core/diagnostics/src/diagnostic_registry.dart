@@ -396,6 +396,11 @@ abstract final class AppDiagnosticEvents {
       'bytes': _int64,
       'revision': _int64,
       'errorCode': _string,
+      'errorLocation': _string,
+      'errorType': _string,
+      'errorText': _string,
+      'osErrorCode': _int64,
+      'stackTrace': _string,
       'thresholdMicros': _int64,
     },
   );

@@ -5,6 +5,7 @@
 ///
 /// Notes:
 /// - It owns no platform state; async loads use generations so stale results cannot replace state.
+/// - An open future completing cannot overwrite a stream-reported failure.
 library;
 
 import 'dart:async';
@@ -357,6 +358,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       if (!_isCurrentEpisode(generation) || !identical(backend, _backend)) {
         return;
       }
+      if (_status == VideoPlayerStatus.failure) return;
       _update(() => _status = VideoPlayerStatus.ready);
       _scheduleControlsHide();
     } on Object {

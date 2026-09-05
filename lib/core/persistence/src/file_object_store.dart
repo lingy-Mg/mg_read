@@ -8,6 +8,7 @@
 /// 注意：
 /// - 不向调用方泄漏绝对路径或绕过 [AppPersistence] 生命周期。
 /// - 全局封面索引仅在首次维护时扫描；命中读取不触发扫描。
+/// - 封面读写、淘汰与清理共用串行队列；下载与非阻塞 LRU 时间戳触碰不占队列。
 /// - 漫画图片写入不设总容量上限且不扫描缓存目录；统计、清理和按书删除可按需扫描。
 ///
 part of 'app_persistence.dart';
@@ -24,6 +25,7 @@ final class FileObjectStore {
   final Future<void> Function(File file, DateTime modified) _touchFileMtime;
   final _StoreLifecycleGate _lifecycle = _StoreLifecycleGate();
   Future<Map<String, _GlobalCoverFile>>? _globalCoverFilesFuture;
+  Future<void> _coverOperations = Future<void>.value();
   final Map<String, Future<void>> _pendingGlobalCoverTouches = <String, Future<void>>{};
 
   bool get usesBackgroundExecutor => true;
@@ -282,15 +284,16 @@ final class FileObjectStore {
   Future<void> _touchGlobalCover(String coverKey, File file, int length) async {
     try {
       final modified = DateTime.now();
-      await _touchFileMtime(file, modified);
       final indexedFiles = _globalCoverFilesFuture;
-      if (indexedFiles == null) return;
-      final files = await indexedFiles;
-      if (!await file.exists()) {
-        files.remove(coverKey);
-        return;
+      if (indexedFiles != null) {
+        final files = await indexedFiles;
+        final current = files[coverKey];
+        if (current != null) {
+          files[coverKey] = _GlobalCoverFile(file: file, length: current.length, modified: modified);
+        }
       }
-      files[coverKey] = _GlobalCoverFile(file: file, length: length, modified: modified);
+      // Never resurrect an evicted entry after the asynchronous filesystem touch.
+      await _touchFileMtime(file, modified);
     } catch (_) {
       // LRU metadata is best effort and must never make a valid cover read
       // fail. A later scan or commit repairs the in-memory index if needed.
@@ -515,6 +518,13 @@ final class FileObjectStore {
     _lifecycle.ensureOpen();
   }
 
+  Future<T> _withCoverOperation<T>(Future<T> Function() action) {
+    final result = _coverOperations.then((_) => action());
+    // A failed write must not poison subsequent cache operations.
+    _coverOperations = result.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return result;
+  }
+
   Future<T> _instrument<T>({
     required String operation,
     String? recordKind,
@@ -523,11 +533,28 @@ final class FileObjectStore {
     required Future<T> Function() action,
   }) {
     return _lifecycle.run(() {
+      final coordinatedAction = switch (recordKind) {
+        'globalCover' || 'bookshelfCover' || 'coverCache' => () => _withCoverOperation(action),
+        _ => action,
+      };
       final diagnostics = _diagnostics;
-      if (diagnostics == null || diagnostics.isClosed) return action();
+      if (diagnostics == null || diagnostics.isClosed) return coordinatedAction();
+      StackTrace? failureStack;
       return diagnostics.runSpan<T>(
         AppDiagnosticEvents.persistenceOperation,
-        (span) => _runMeasuredPersistenceAction(diagnostics: diagnostics, span: span, operation: operation, action: action),
+        (span) => _runMeasuredPersistenceAction(
+          diagnostics: diagnostics,
+          span: span,
+          operation: operation,
+          action: () async {
+            try {
+              return await coordinatedAction();
+            } catch (_, stack) {
+              failureStack = stack;
+              rethrow;
+            }
+          },
+        ),
         startAttributes: () => _persistenceOperationAttributes(
           store: 'fileObjects',
           operation: operation,
@@ -542,14 +569,21 @@ final class FileObjectStore {
           count: count,
           bytes: byteCount,
         ),
-        errorAttributes: (error) => _persistenceOperationAttributes(
-          store: 'fileObjects',
-          operation: operation,
-          recordKind: recordKind,
-          count: count,
-          bytes: byteCount,
-          errorCode: _appPersistenceErrorCode(error),
-        ),
+        errorAttributes: (error) => DiagnosticObjectValue({
+          ..._persistenceOperationAttributes(
+            store: 'fileObjects',
+            operation: operation,
+            recordKind: recordKind,
+            count: count,
+            bytes: byteCount,
+            errorCode: _appPersistenceErrorCode(error),
+          ).values,
+          'errorLocation': DiagnosticValue.string('FileObjectStore.$operation'),
+          'errorType': DiagnosticValue.string(error.runtimeType.toString()),
+          'errorText': DiagnosticValue.string(error.toString()),
+          if (error is FileSystemException && error.osError != null) 'osErrorCode': DiagnosticValue.int64(error.osError!.errorCode),
+          if (failureStack != null) 'stackTrace': DiagnosticValue.string(failureStack.toString()),
+        }),
       );
     });
   }

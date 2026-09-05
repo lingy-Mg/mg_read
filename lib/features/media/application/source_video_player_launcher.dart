@@ -3,6 +3,7 @@
 /// This host keeps source groups neutral, creates video playback sessions, and
 /// owns their route-scoped platform fullscreen lifetime. It retains no media
 /// URL, request header, cookie or Runtime state.
+/// Playback failures also dismiss the entry cover so retry remains reachable.
 library;
 
 import 'dart:async';
@@ -234,7 +235,7 @@ final class _VideoEntryObserver extends VideoPlayerObserver {
 
   @override
   FutureOr<void> onFailure(VideoPlayerFailure failure) {
-    if (failure.kind == VideoPlayerFailureKind.data) onPresented();
+    if (failure.kind == VideoPlayerFailureKind.data || failure.kind == VideoPlayerFailureKind.playback) onPresented();
     return delegate.onFailure(failure);
   }
 
