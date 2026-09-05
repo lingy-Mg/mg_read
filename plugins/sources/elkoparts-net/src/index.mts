@@ -70,10 +70,17 @@ async function invoke<T>(operation: Operation, action: (activeSource: ElkopartsS
     const result = await action(activeSource);
     activeContext.log.info(`source_${operation}_completed`);
     return result;
-  } catch {
+  } catch (error) {
     activeContext.log.warn(`source_${operation}_failed`);
+    if (isRuntimeRaisedError(error)) throw error;
     throw new Error('Source operation failed.');
   }
+}
+
+function isRuntimeRaisedError(error: unknown): boolean {
+  if (error === null || typeof error !== 'object') return false;
+  const candidate = error as { readonly code?: unknown; readonly name?: unknown };
+  return candidate.name === 'PluginManagerError' && typeof candidate.code === 'string';
 }
 
 function requireActivated<T>(value: T | undefined): T {

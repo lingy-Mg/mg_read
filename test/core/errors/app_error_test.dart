@@ -8,6 +8,7 @@ void main() {
       final AppError missingPlugin = AppError.fromWireCode('plugin_not_found');
       final AppError outOfSpace = AppError.fromWireCode('disk_full');
       final AppError mediaResolver = AppError.fromWireCode('source_media_resolution_failed');
+      final AppError sourceAccess = AppError.fromWireCode('source_access_blocked');
 
       expect(rateLimited.retryable, isTrue);
       expect(rateLimited.category, AppErrorCategory.retryableTemporary);
@@ -15,6 +16,9 @@ void main() {
       expect(outOfSpace.category, AppErrorCategory.storagePressure);
       expect(mediaResolver.retryable, isTrue);
       expect(mediaResolver.category, AppErrorCategory.retryableTemporary);
+      expect(sourceAccess.code, AppErrorCode.sourceAccessBlocked);
+      expect(sourceAccess.retryable, isTrue);
+      expect(sourceAccess.category, AppErrorCategory.retryableTemporary);
     });
 
     test('normalizes unknown protocol values and retains exception messages', () {

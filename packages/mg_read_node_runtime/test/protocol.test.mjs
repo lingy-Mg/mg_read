@@ -117,6 +117,19 @@ test("source media resolution failures cross the protocol as retryable stable er
   assert.equal(envelope?.error.retryable, true);
 });
 
+test("source access blocks cross the protocol as retryable stable errors", () => {
+  const envelope = makeError(bootId, {
+    code: "source_access_blocked",
+    message: "访问异常，请稍后再试。\n注释：当前 IP 可能异常，请更换 IP 后重试。",
+    requestId: "c:access",
+    traceId: "trace:access",
+  });
+
+  assert.equal(envelope?.error.code, "source_access_blocked");
+  assert.equal(envelope?.error.message, "访问异常，请稍后再试。\n注释：当前 IP 可能异常，请更换 IP 后重试。");
+  assert.equal(envelope?.error.retryable, true);
+});
+
 test("development change events expose revision and plugin identity without paths", () => {
   const event = makeDevelopmentPluginEvent(bootId, 7, [
     { kind: "updated", pluginId: "org.example.source" },

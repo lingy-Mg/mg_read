@@ -502,7 +502,15 @@ export class AliceBookHouseSource {
       if (!response.ok) {
         throw new Error(`Source request failed with HTTP ${response.status}.`);
       }
-      return response.text();
+      const body = await response.text();
+      if (body.includes('访问异常，请稍后再试')) {
+        this.context.errors.raise({
+          code: 'source_access_blocked',
+          message: '访问异常，请稍后再试。',
+          annotation: '当前 IP 可能异常，请更换 IP 后重试。',
+        });
+      }
+      return body;
     };
     return cachePolicy === undefined
       ? Object.freeze({ body: await request(), storedAtMs: Date.now() })

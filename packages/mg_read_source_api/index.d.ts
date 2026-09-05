@@ -84,6 +84,18 @@ export interface PluginBrowserSessionV1 {
   controlClick(request: unknown): Promise<unknown>;
 }
 
+/** Stable failures that a source may intentionally surface to the host. */
+export type PluginPublicErrorCode =
+  | "source_access_blocked"
+  | "source_media_resolution_failed";
+
+/** Safe source-authored text shown with a stable public error code. */
+export interface PluginPublicError {
+  readonly annotation?: string;
+  readonly code: PluginPublicErrorCode;
+  readonly message: string;
+}
+
 export interface MgReadPluginContext {
   readonly app: {
     readonly nodeVersion: string;
@@ -93,7 +105,8 @@ export interface MgReadPluginContext {
   readonly cacheDir: string;
   readonly dataDir: string;
   readonly errors: {
-    raise(code: "source_media_resolution_failed"): never;
+    raise(error: PluginPublicError): never;
+    raise(code: PluginPublicErrorCode): never;
   };
   readonly http: {
     fetch(input: string | URL, init?: RequestInit): Promise<Response>;

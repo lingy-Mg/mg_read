@@ -112,9 +112,16 @@ async function invoke<T>(
   const activeContext = requireContext();
   try {
     return await action(activeContext);
-  } catch {
+  } catch (error) {
+    if (isRuntimeRaisedError(error)) throw error;
     throw new Error('Source operation failed.');
   }
+}
+
+function isRuntimeRaisedError(error: unknown): boolean {
+  if (error === null || typeof error !== 'object') return false;
+  const candidate = error as { readonly code?: unknown; readonly name?: unknown };
+  return candidate.name === 'PluginManagerError' && typeof candidate.code === 'string';
 }
 
 async function loadSource(activeContext: MgReadPluginContext): Promise<AliceBookHouseSource> {

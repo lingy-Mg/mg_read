@@ -18,6 +18,7 @@ import type {
   PluginInvocationScope,
   PluginManagerEvent,
   PluginManagerEventSink,
+  PluginPublicError,
   PluginPublicErrorCode,
   PluginRuntimeHttpClient,
 } from "./plugin-manager-contract.js";
@@ -80,11 +81,12 @@ export async function createPluginContext(options: {
     cacheDir,
     dataDir,
     errors: Object.freeze({
-      raise: (code: PluginPublicErrorCode): never => {
-        if (code !== "source_media_resolution_failed") {
-          throw new PluginManagerError("invalid_request");
-        }
-        throw new PluginManagerError(code);
+      raise: (errorOrCode: PluginPublicError | PluginPublicErrorCode): never => {
+        const error = typeof errorOrCode === "string"
+          ? defaultPublicError(errorOrCode)
+          : normalizePublicError(errorOrCode);
+        if (error === undefined) throw new PluginManagerError("invalid_request");
+        throw new PluginManagerError(error.code, error.detail);
       },
     }),
     http: Object.freeze({ fetch: (input: string | URL, init: RequestInit = {}) => {
@@ -117,4 +119,33 @@ export async function createPluginContext(options: {
     plugin: Object.freeze({ id: descriptor.id, version: descriptor.version }),
   });
 
+}
+
+const maximumPublicErrorTextLength = 512;
+
+function defaultPublicError(code: PluginPublicErrorCode): { readonly code: PluginPublicErrorCode; readonly detail?: string } | undefined {
+  if (code === "source_media_resolution_failed") return { code };
+  if (code === "source_access_blocked") return { code, detail: "访问异常，请稍后再试。" };
+  return undefined;
+}
+
+function normalizePublicError(error: PluginPublicError): { readonly code: PluginPublicErrorCode; readonly detail: string } | undefined {
+  const code = error?.code;
+  if (code !== "source_access_blocked" && code !== "source_media_resolution_failed") return undefined;
+  const message = boundedPublicErrorText(error.message);
+  if (message === undefined) return undefined;
+  const annotation = boundedPublicErrorText(error.annotation);
+  return {
+    code,
+    detail: annotation === undefined ? message : `${message}\n注释：${annotation}`,
+  };
+}
+
+function boundedPublicErrorText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.replace(/\u0000/gu, "").trim();
+  if (normalized.length === 0) return undefined;
+  return normalized.length <= maximumPublicErrorTextLength
+    ? normalized
+    : `${normalized.slice(0, maximumPublicErrorTextLength)}…`;
 }

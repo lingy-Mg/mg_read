@@ -157,7 +157,11 @@ class LibraryPage extends ConsumerWidget {
             final failure = ref.read(shelfReaderLaunchCoordinatorProvider).failure;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(failure?.reason.userMessage ?? '阅读内容准备失败，请稍后重试。'),
+                content: Text(
+                  failure?.error.detail?.trim().isNotEmpty == true
+                      ? failure!.error.detail!
+                      : failure?.reason.userMessage ?? '阅读内容准备失败，请稍后重试。',
+                ),
                 action: SnackBarAction(label: '重试', onPressed: () => prepareAndOpen(bookId)),
               ),
             );

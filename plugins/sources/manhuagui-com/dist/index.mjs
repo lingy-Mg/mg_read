@@ -50,10 +50,14 @@ async function invoke(operation, action) {
         activeContext.log.info(`source_${operation}_completed`);
         return result;
     }
-    catch {
+    catch (error) {
         activeContext.log.warn(`source_${operation}_failed`);
+        if (isRuntimeRaisedError(error))
+            throw error;
         throw new Error('Source operation failed.');
     }
 }
+function isRuntimeRaisedError(error) { if (error === null || typeof error !== 'object')
+    return false; const candidate = error; return candidate.name === 'PluginManagerError' && typeof candidate.code === 'string'; }
 function requireValue(value) { if (value === undefined)
     throw new Error('Source is not activated.'); return value; }

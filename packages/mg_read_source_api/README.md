@@ -27,3 +27,15 @@ export async function activate(context: MgReadPluginContext): Promise<void> {
 
 WebView 全部公开方法和参数以 \`PluginWebViewPage\` 为准。 \`page.cdp\` 是原始命令通道：Windows
 WebView2 支持，Android 当前返回 \`unsupported\`。
+
+来源可以把已识别的访问异常安全地交给 App：
+
+\`\`\`ts
+context.errors.raise({
+  code: 'source_access_blocked',
+  message: '访问异常，请稍后再试。',
+  annotation: '当前 IP 可能异常，请更换 IP 后重试。',
+});
+\`\`\`
+
+\`message\` 和 \`annotation\` 由 Runtime 有界校验后透传；它们只用于说明已发生的来源状态，不用于绕过验证或访问限制。

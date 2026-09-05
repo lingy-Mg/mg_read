@@ -13,10 +13,11 @@ export function pluginManagerErrorMessage(code: PluginManagerError["code"], deta
       case "plugin_invalid_response": return "The plugin returned an invalid response.";
       case "plugin_load_failed": return "The plugin does not provide the requested capability.";
       case "plugin_not_found": return "The requested plugin is not installed or active.";
+      case "source_access_blocked": return detail ?? "访问异常，请稍后再试。";
       case "source_media_resolution_failed": return "The source could not resolve an external media address.";
       case "timeout": return "The plugin request deadline has elapsed.";
       case "unsupported": return "The current platform does not provide the required browser session capability.";
     }
   })();
-  return detail === undefined ? summary : `${summary} ${detail}`;
+  return code === "source_access_blocked" ? summary : detail === undefined ? summary : `${summary} ${detail}`;
 }

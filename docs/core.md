@@ -92,7 +92,8 @@ plugins/sources/                    真实数据源及其他能力参考实现
   target 是插件内稳定不透明值，URL、标题、数组位置和页码不得作主键。
 - 固定键必须存在；未知可空标量显式为 `null`，`0` 不等于未知，集合始终是数组。Runtime 不修补无效响应。
 - 数据源只可通过 `ctx.errors.raise` 抛出白名单稳定错误码；Runtime 负责统一处理其他异常。外部媒体解析失败
-  使用 `source_media_resolution_failed`。
+  使用 `source_media_resolution_failed`；来源明确返回访问异常页时使用 `source_access_blocked`，并可传入有界的
+  `message + annotation`，由 Runtime 原样组合为 App 可见的原文和注释。数据源不得通过此错误接口绕过站点限制。
 - 数据源只返回允许的语义组件、布局和图标名。`contentKind` 表达小说、漫画、音频、视频等媒介能力；
   `coverOrientation=portrait|landscape` 独立表达真实封面的横竖方向，二者不得互相推断。Flutter 宿主按封面方向
   选择两套通用组件，并拥有主题、尺寸、断点、可访问性、导航和交互实现；横向组件不等同于视频播放器入口，

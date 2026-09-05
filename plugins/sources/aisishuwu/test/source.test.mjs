@@ -7,6 +7,47 @@ import test from 'node:test';
 import { AliceBookHouseSource } from '../dist/source.js';
 import * as plugin from '../dist/index.mjs';
 
+test('source access blocks preserve the original message and actionable annotation', async () => {
+  let raised;
+  const source = new AliceBookHouseSource(
+    {
+      dataDir: 'data',
+      cacheDir: 'cache',
+      http: {
+        fetch: async () => new Response('<title>提示信息</title><p>访问异常，请稍后再试</p>'),
+      },
+      errors: {
+        raise: (error) => {
+          raised = error;
+          const thrown = new Error(error.message);
+          thrown.name = 'PluginManagerError';
+          thrown.code = error.code;
+          thrown.detail = `${error.message}\n注释：${error.annotation}`;
+          throw thrown;
+        },
+      },
+      resource: { proxy: () => 'http://127.0.0.1:1234/v1/source-resource/opaque' },
+      log: { debug() {}, info() {}, warn() {}, error() {} },
+      app: { runtimeVersion: 'test', nodeVersion: process.versions.node, pluginApi: 1 },
+      plugin: { id: 'org.mgread.aisishuwu', version: '0.2.12' },
+    },
+    { origin: 'https://www.alicesw.com', categories: [] },
+  );
+
+  const chapterId = `chapter:${Buffer.from('/book/42/first.html', 'utf8').toString('base64url')}`;
+  await assert.rejects(
+    source.getContent({ id: 'novel:42', chapterId }),
+    (error) =>
+      error?.code === 'source_access_blocked' &&
+      error?.detail === '访问异常，请稍后再试。\n注释：当前 IP 可能异常，请更换 IP 后重试。',
+  );
+  assert.deepEqual(raised, {
+    code: 'source_access_blocked',
+    message: '访问异常，请稍后再试。',
+    annotation: '当前 IP 可能异常，请更换 IP 后重试。',
+  });
+});
+
 test('list results expose source covers through the Runtime proxy', async () => {
   let proxyCalls = 0;
   let proxyRequest;

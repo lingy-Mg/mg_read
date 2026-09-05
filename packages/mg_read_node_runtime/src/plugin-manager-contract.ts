@@ -9,7 +9,7 @@
  *
  */
 import type { JsonObject } from "./protocol.js";
-import type { MgReadPluginContext } from "@mgread/source-api";
+import type { MgReadPluginContext, PluginPublicError, PluginPublicErrorCode } from "@mgread/source-api";
 import type { PluginPackageDescriptor } from "./plugin-package.js";
 import type { PluginContentOperation } from "./plugin-content.js";
 import type { RuntimeDebugLogCategory } from "./debug-http.js";
@@ -57,7 +57,7 @@ export interface PluginManagerEvent {
 export type PluginManagerEventSink = (event: PluginManagerEvent) => void;
 
 /** Stable failures that plugin code may intentionally surface to its host. */
-export type PluginPublicErrorCode = "source_media_resolution_failed";
+export type { PluginPublicError, PluginPublicErrorCode } from "@mgread/source-api";
 
 /** Stable plugin capability failure consumed by the Runtime dispatch owner. */
 export class PluginManagerError extends Error {
@@ -72,6 +72,7 @@ export class PluginManagerError extends Error {
       | "plugin_invalid_response"
       | "plugin_load_failed"
       | "plugin_not_found"
+      | "source_access_blocked"
       | "source_media_resolution_failed"
       | "timeout"
       | "unsupported",
@@ -93,6 +94,7 @@ const pluginManagerErrorCodes = new Set<PluginManagerError["code"]>([
   "plugin_invalid_response",
   "plugin_load_failed",
   "plugin_not_found",
+  "source_access_blocked",
   "source_media_resolution_failed",
   "timeout",
   "unsupported",

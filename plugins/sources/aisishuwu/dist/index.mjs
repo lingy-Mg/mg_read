@@ -74,9 +74,17 @@ async function invoke(action) {
     try {
         return await action(activeContext);
     }
-    catch {
+    catch (error) {
+        if (isRuntimeRaisedError(error))
+            throw error;
         throw new Error('Source operation failed.');
     }
+}
+function isRuntimeRaisedError(error) {
+    if (error === null || typeof error !== 'object')
+        return false;
+    const candidate = error;
+    return candidate.name === 'PluginManagerError' && typeof candidate.code === 'string';
 }
 async function loadSource(activeContext) {
     if (source !== undefined)

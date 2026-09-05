@@ -45,6 +45,7 @@ export async function getContent(request: { readonly id: string; readonly chapte
 async function invoke<T>(operation: string, action: (active: ManhuaguiSource) => Promise<T>): Promise<T> {
   const activeContext = requireValue(context); const active = requireValue(source); activeContext.log.info(`source_${operation}_started`);
   try { const result = await action(active); activeContext.log.info(`source_${operation}_completed`); return result; }
-  catch { activeContext.log.warn(`source_${operation}_failed`); throw new Error('Source operation failed.'); }
+  catch (error) { activeContext.log.warn(`source_${operation}_failed`); if (isRuntimeRaisedError(error)) throw error; throw new Error('Source operation failed.'); }
 }
+function isRuntimeRaisedError(error: unknown): boolean { if (error === null || typeof error !== 'object') return false; const candidate = error as { readonly code?: unknown; readonly name?: unknown }; return candidate.name === 'PluginManagerError' && typeof candidate.code === 'string'; }
 function requireValue<T>(value: T | undefined): T { if (value === undefined) throw new Error('Source is not activated.'); return value; }

@@ -833,6 +833,18 @@ test("plugin execution failures stay distinct from invalid plugin responses", as
     ),
     (error) => error?.code === "source_media_resolution_failed",
   );
+
+  await assert.rejects(
+    manager.getDetail(
+      "org.example.delayed",
+      { id: "access-blocked" },
+      new AbortController().signal,
+      String(Date.now() + 5_000),
+    ),
+    (error) =>
+      error?.code === "source_access_blocked" &&
+      error?.detail === "访问异常，请稍后再试。\n注释：当前 IP 可能异常，请更换 IP 后重试。",
+  );
 });
 
 test("an unavailable optional dependency is skipped without changing install success", async (t) => {

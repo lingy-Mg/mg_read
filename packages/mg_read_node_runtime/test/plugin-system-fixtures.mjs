@@ -149,6 +149,11 @@ export function discover() { return { kind: "document", document: { components: 
 export async function search() { await new Promise((resolve) => setTimeout(resolve, 40)); return { items: [], nextCursor: null, totalCount: 0 }; }
 export function getDetail(request) {
   if (request.id === "media-resolution") context.errors.raise("source_media_resolution_failed");
+  if (request.id === "access-blocked") context.errors.raise({
+    code: "source_access_blocked",
+    message: "访问异常，请稍后再试。",
+    annotation: "当前 IP 可能异常，请更换 IP 后重试。",
+  });
   throw new Error("unused");
 }
 export function getChapters() { throw new Error("unused"); }

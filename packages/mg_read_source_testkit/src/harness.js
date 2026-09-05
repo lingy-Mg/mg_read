@@ -63,6 +63,20 @@ export async function createSourceTestHarness({
         return projected;
       },
     }),
+    errors: Object.freeze({
+      raise(errorOrCode) {
+        const error = typeof errorOrCode === 'string'
+          ? { code: errorOrCode, message: defaultPublicErrorMessage(errorOrCode) }
+          : errorOrCode;
+        const message = typeof error?.message === 'string' ? error.message : 'Plugin public error.';
+        const annotation = typeof error?.annotation === 'string' ? error.annotation.trim() : '';
+        const thrown = new Error(message);
+        thrown.name = 'PluginManagerError';
+        thrown.code = typeof error?.code === 'string' ? error.code : 'invalid_request';
+        thrown.detail = annotation.length === 0 ? message : `${message}\n注释：${annotation}`;
+        throw thrown;
+      },
+    }),
     log: Object.freeze({
       debug: (event) => recordLog('debug', event),
       info: (event) => recordLog('info', event),
@@ -99,6 +113,12 @@ export async function createSourceTestHarness({
       return Object.freeze({ resources: resourceRequests.length, logs: logEvents.length });
     },
   });
+}
+
+function defaultPublicErrorMessage(code) {
+  if (code === 'source_access_blocked') return '访问异常，请稍后再试。';
+  if (code === 'source_media_resolution_failed') return 'The source could not resolve an external media address.';
+  return 'Plugin public error.';
 }
 
 function freezeResourceRequest(request) {
