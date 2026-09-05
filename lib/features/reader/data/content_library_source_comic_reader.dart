@@ -1,7 +1,7 @@
 /// Content Library-backed comic reader adapters.
 ///
 /// Runtime supplies catalogs and regenerable manifests; Content Library owns
-/// the synchronized snapshot, URL-safe manifest, progress, and bookmarks.
+/// the fixed catalog view, URL-safe manifest, progress, and bookmarks.
 /// Encoded image bytes stay in the reader's bounded memory cache; this adapter
 /// does not read or write a persistent image cache. Session resource state and
 /// request single-flights stay in this file. Live manifests use a three-entry
@@ -395,7 +395,7 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
     ],
   );
 
-  LibraryItemSource _requireSource() => item.source ?? (throw StateError('Comic source is missing.'));
+  LibraryItemSource _requireSource() => item.source;
   void _checkBook(String bookId) {
     _ensureActive();
     if (bookId != item.id.value) throw ArgumentError.value(bookId, 'bookId');
@@ -444,7 +444,8 @@ final class ContentLibraryComicReaderStateStore implements ComicReaderStateStore
   @override
   Future<ComicReaderProgress?> loadProgress(String bookId) async {
     _check(bookId);
-    final p = await library.loadMangaProgress(itemId);
+    final stored = await library.loadProgress(itemId);
+    final p = stored is LibraryMangaReadingProgress ? stored : null;
     return p == null
         ? null
         : ComicReaderProgress(
@@ -459,7 +460,7 @@ final class ContentLibraryComicReaderStateStore implements ComicReaderStateStore
   @override
   Future<void> saveProgress(String bookId, ComicReaderProgress p) {
     _check(bookId);
-    return library.saveMangaProgress(
+    return library.saveProgress(
       LibraryMangaReadingProgress(
         itemId: itemId,
         chapterId: p.chapterId,
@@ -502,23 +503,24 @@ final class ContentLibraryComicReaderStateStore implements ComicReaderStateStore
   Future<List<ComicReaderBookmark>> loadBookmarks(String bookId) async {
     _check(bookId);
     return [
-      for (final b in await library.listMangaBookmarks(itemId))
-        ComicReaderBookmark(
-          id: b.id,
-          bookId: b.itemId.value,
-          chapterId: b.chapterId,
-          imageId: b.imageId,
-          imageFraction: b.imageFraction,
-          chapterTitle: '',
-          createdAt: b.createdAtUtc,
-        ),
+      for (final b in await library.loadBookmarks(itemId, ContentKind.manga))
+        if (b is LibraryMangaBookmark)
+          ComicReaderBookmark(
+            id: b.id,
+            bookId: b.itemId.value,
+            chapterId: b.chapterId,
+            imageId: b.imageId,
+            imageFraction: b.imageFraction,
+            chapterTitle: '',
+            createdAt: b.createdAtUtc,
+          ),
     ];
   }
 
   @override
   Future<void> addBookmark(ComicReaderBookmark b) {
     _check(b.bookId);
-    return library.addMangaBookmark(
+    return library.saveBookmark(
       LibraryMangaBookmark(
         id: b.id,
         itemId: itemId,
@@ -533,7 +535,7 @@ final class ContentLibraryComicReaderStateStore implements ComicReaderStateStore
   @override
   Future<void> removeBookmark(String bookId, String id) {
     _check(bookId);
-    return library.removeMangaBookmark(itemId, id);
+    return library.deleteBookmark(itemId, id);
   }
 
   void _check(String bookId) {

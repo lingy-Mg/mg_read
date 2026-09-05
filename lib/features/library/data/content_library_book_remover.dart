@@ -10,9 +10,6 @@ final class ContentLibraryBookRemover implements LibraryBookRemover {
 
   @override
   Future<void> removeBook(String bookId) {
-    return _library.bookshelf.remove(
-      LibraryItemId(bookId),
-      LibraryRemovalPolicy.removeFromShelfKeepContent,
-    );
+    return _library.removeLibraryItem(LibraryItemId(bookId), LibraryRemovalPolicy.removeFromShelfKeepContent);
   }
 }

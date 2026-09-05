@@ -17,6 +17,7 @@ import 'persistence_error.dart';
 import 'record.dart';
 
 part 'record_store_codec.dart';
+part 'content_library_store.dart';
 part 'record_store_maintenance.dart';
 part 'record_store_transaction_queue.dart';
 
@@ -32,6 +33,7 @@ final class PersistenceRecordStore {
   final UtcClock _clock;
   final String databasePath;
   final DiagnosticsManager? _diagnostics;
+  late final ContentLibraryMetadataStore contentLibrary = ContentLibraryMetadataStore._(this);
   bool _closed = false;
   bool _closing = false;
   int _activeOperations = 0;
@@ -67,6 +69,7 @@ final class PersistenceRecordStore {
       final database = _PersistenceDatabase(NativeDatabase.createInBackground(File(path)));
       await database.customStatement('PRAGMA journal_mode=WAL');
       await database.customStatement('PRAGMA synchronous=NORMAL');
+      await database.customStatement('PRAGMA foreign_keys=ON');
       await database.customStatement('PRAGMA busy_timeout=2000');
       await database.customStatement('''
       CREATE TABLE IF NOT EXISTS metadata_records (
@@ -101,6 +104,7 @@ final class PersistenceRecordStore {
       await database.customStatement(
         'CREATE INDEX IF NOT EXISTS metadata_records_parent_state_order ON metadata_records(record_kind, scope_kind, scope_id, parent_id, state_key, order_key, record_id)',
       );
+      await _createContentLibrarySchema(database);
       return PersistenceRecordStore._(database, registry, clock, path, diagnostics);
     }
 
@@ -158,7 +162,7 @@ final class PersistenceRecordStore {
   );
 
   /// Counts matching records without decoding their versioned documents.
-  /// Typed repositories use this for legacy snapshot metadata compatibility.
+  /// Low-frequency typed metadata services use this for bounded summaries.
   Future<int> count(RecordQuery query) => _instrument(operation: 'count', recordKind: query.recordKind, action: () => _count(query));
 
   /// Reads records for a bounded set of identity keys with one SQL statement.

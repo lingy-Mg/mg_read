@@ -13,8 +13,8 @@ final class ContentLibraryNotificationCenter implements NotificationCenter {
   final ContentLibrary _library;
 
   @override
-  Future<List<LibraryNotification>> load() => _library.notifications.list();
+  Future<List<LibraryNotification>> load() => _library.loadNotifications();
 
   @override
-  Future<void> clear() => _library.notifications.clear();
+  Future<void> clear() => _library.clearNotifications();
 }

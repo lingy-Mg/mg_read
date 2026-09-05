@@ -20,7 +20,7 @@ import 'package:mg_read/features/discovery/application/content_library_source_pr
 
 /// Application port for saving one typed discovery result to the local shelf.
 abstract interface class DiscoveryBookshelfSaver {
-  /// Saves a full detail from the detail page, or a legacy summary from a
+  /// Saves a full detail from the detail page, or a bounded summary from a
   /// non-detail host. New UI entrypoints should always provide [detail].
   Future<void> save({required PluginSourceDescriptor source, PluginContentSummary? content, PluginContentDetail? detail});
 }
@@ -102,7 +102,7 @@ final class ContentLibraryDiscoveryBookshelfSaver implements DiscoveryBookshelfS
     }
     onMutationStarted?.call(mutation);
     try {
-      final item = await _library.bookshelf.addFromSource(mutation.request);
+      final item = await _library.addLibraryItem(mutation.request);
       onMutationCommitted?.call(mutation, item);
       prefetcher?.start(item);
     } on Object {

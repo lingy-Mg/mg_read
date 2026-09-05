@@ -39,11 +39,9 @@ final class DatabaseCacheSection extends StatelessWidget {
       return Column(
         children: <Widget>[
           _DatabaseCard(
-            description: usage.isEmpty ? '未发现可清理的目录、离线正文或无引用对象。' : '预计可清理 ${_formatBytes(usage.estimatedReclaimableBytes)}；清理后空间会先供数据库复用。',
+            description: usage.isEmpty ? '未发现可清理的无引用正文对象。' : '预计可清理 ${_formatBytes(usage.estimatedReclaimableBytes)}；清理后空间会先供数据库复用。',
             trailing: value.isRefreshing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : null,
             details: <Widget>[
-              _Metric(label: '废弃目录快照', value: '${usage.staleCatalogRecords} 条'),
-              _Metric(label: '已移出书架保留数据', value: '${usage.detachedMetadataRecords} 条'),
               _Metric(label: '无引用正文对象', value: '${usage.orphanContentObjects} 个'),
               _Metric(label: '无引用正文大小', value: _formatBytes(usage.reclaimableContentBytes)),
               _Metric(label: '可压缩数据库空间', value: _formatBytes(usage.compactableDatabaseBytes)),

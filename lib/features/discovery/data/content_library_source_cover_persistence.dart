@@ -61,26 +61,10 @@ final class ContentLibrarySourceCoverPersistence implements BookCoverBytesLoader
       coverUrl: url,
     );
     try {
-      final persisted = await _library.covers.read(key);
+      final persisted = await _library.readCover(key);
       if (persisted != null && persisted.isNotEmpty) return persisted;
     } on Object {
       // A recoverable cache read failure may still fall through to the source.
-    }
-    final legacyLibraryItemId = request.legacyLibraryItemId;
-    if (legacyLibraryItemId != null) {
-      try {
-        final legacy = await _library.bookshelf.readCover(LibraryItemId(legacyLibraryItemId));
-        if (legacy != null && legacy.isNotEmpty) {
-          try {
-            await _library.covers.save(key: key, bytes: legacy);
-          } on Object {
-            // The legacy result remains immediately usable.
-          }
-          return legacy;
-        }
-      } on Object {
-        // A legacy migration failure must not block a fresh network cover.
-      }
     }
     _ensureOpen();
     final identity = key.canonicalValue;
@@ -110,7 +94,7 @@ final class ContentLibrarySourceCoverPersistence implements BookCoverBytesLoader
         return null;
       }
       try {
-        await _library.covers.save(key: key, bytes: fetched);
+        await _library.saveCover(key: key, bytes: fetched);
       } on Object {
         // Keep the freshly fetched bytes usable; retry persistence later.
       }

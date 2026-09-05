@@ -7,7 +7,6 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
-import 'package:mg_read/core/content_library/src/models.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
@@ -46,14 +45,14 @@ void main() {
       await root.delete(recursive: true);
     });
     await settings.initialize();
-    final first = await library.bookshelf.add(
-      title: '第一本',
-      kind: ContentKind.novel,
-      source: const ContentLibraryIngest(
+    final first = await library.addLibraryItem(
+      const BookshelfAddRequest(
+        title: '第一本',
+        author: null,
+        kind: ContentKind.novel,
         pluginId: 'fixture',
-        producerPluginVersion: '1.0.0',
-        dataVersion: 1,
-        opaqueData: {'remoteBookId': 'reader-settings-1'},
+        pluginVersion: '1.0.0',
+        remoteContentId: 'reader-settings-1',
       ),
     );
     final expected = const TextReaderPreferences(
@@ -101,14 +100,14 @@ void main() {
       registry: AppSettingKeys.registry,
     );
     await settings.initialize();
-    final second = await library.bookshelf.add(
-      title: '第二本',
-      kind: ContentKind.novel,
-      source: const ContentLibraryIngest(
+    final second = await library.addLibraryItem(
+      const BookshelfAddRequest(
+        title: '第二本',
+        author: null,
+        kind: ContentKind.novel,
         pluginId: 'fixture',
-        producerPluginVersion: '1.0.0',
-        dataVersion: 1,
-        opaqueData: {'remoteBookId': 'reader-settings-2'},
+        pluginVersion: '1.0.0',
+        remoteContentId: 'reader-settings-2',
       ),
     );
     final restored = await ContentLibraryTextReaderStateStore(library, itemId: second.id, settings: settings).loadPreferences();
@@ -194,6 +193,12 @@ void main() {
       'https://source.example/books/book-1/chapter-1',
     );
     expect(gateway.requestedContentChapterIds, <String>['chapter-1']);
+    // Seeded content is readable before its background write commits.
+    await (() async {
+      while ((await library.listAllCatalog(item.id)).first.contentStatus != 'ready') {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    })().timeout(const Duration(seconds: 5));
     expect((await library.listAllCatalog(item.id)).first.contentStatus, 'ready');
     final warmCatalogCount = gateway.requestedCatalogCount;
     final warmDetailCount = gateway.requestedDetailCount;
@@ -203,7 +208,7 @@ void main() {
     expect(gateway.requestedCatalogCount, warmCatalogCount);
     expect(gateway.requestedDetailCount, warmDetailCount);
     final hydrated = await library.getLibraryItem(item.id);
-    expect(hydrated?.revision, greaterThan(item.revision));
+    expect(hydrated?.revision, item.revision, reason: 'catalog and body writes do not revise item metadata');
     expect(await firstRequest.stateStore.loadProgress(item.id.value), isNull);
     await firstRequest.stateStore.saveProgress(
       item.id.value,
@@ -223,7 +228,7 @@ void main() {
     expect(restored?.bookFraction, 0.7);
     expect((await secondRequest.dataSource.loadChapterContent(item.id.value, 'chapter-1')).paragraphs.single.text, '第一段。');
     expect(gateway.requestedCatalogCount, 1);
-    // Local launch uses the immutable session snapshot and shelf metadata;
+    // Local launch uses the fixed session upper bound and shelf metadata;
     // optional remote detail is not fetched again.
     expect(gateway.requestedDetailCount, 0);
     expect(gateway.requestedContentChapterIds, <String>['chapter-1', 'chapter-2']);
@@ -298,7 +303,7 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '测试书',
         author: '测试作者',
@@ -326,7 +331,7 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '复合章节 ID',
         author: null,
@@ -352,7 +357,7 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '共享预取',
         author: null,
@@ -390,7 +395,7 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '详情延迟不阻塞阅读',
         author: null,
@@ -423,7 +428,7 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '失败重试',
         author: null,
@@ -446,14 +451,14 @@ void main() {
     expect(await library.listAllCatalog(item.id), hasLength(2));
   });
 
-  test('replaces an old partial catalog when remote detail reports more chapters', () async {
+  test('appends unseen chapters when remote detail reports more chapters', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-reader-repair-');
     final library = await ContentLibrary.open(dataRoot: root);
     addTearDown(() async {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '半目录修复',
         author: null,
@@ -472,12 +477,134 @@ void main() {
     final request = await ContentLibrarySourceTextReader(library, gateway).launch(item.id.value);
 
     expect(request.bookId, item.id.value);
-    // Local launch does not repair a partial snapshot by fetching detail or
+    // Local launch does not extend a partial catalog by fetching detail or
     // a complete remote catalog.
     expect(gateway.requestedCatalogCount, 0);
     expect(await library.listAllCatalog(item.id), hasLength(1));
   });
+
+  test('forced refresh bypasses caches and keeps the old body after a network failure', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-reader-refresh-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final item = await _addNovelItem(library, 'refresh-book');
+    await library.syncNovelCatalog(
+      itemId: item.id,
+      chapters: const <SourceNovelCatalogChapter>[SourceNovelCatalogChapter(remoteIdentity: 'chapter-1', title: '第一章', index: 0)],
+    );
+    var session = (await library.openNovelReaderSession(item.id))!;
+    await session.cacheChapter(entry: session.initialChapter, text: '旧正文');
+
+    final gateway = _MutableContentGateway('新正文');
+    final request = await ContentLibrarySourceTextReader(library, gateway).launch(item.id.value);
+    final refresh = request.extensions.chapterRefreshCapability!;
+    final refreshed = await refresh.refreshChapter(item.id.value, 'chapter-1');
+
+    expect(refreshed.paragraphs.single.text, '新正文');
+    expect(gateway.requestedContentChapterIds, <String>['chapter-1']);
+    expect((await request.dataSource.loadChapterContent(item.id.value, 'chapter-1')).paragraphs.single.text, '新正文');
+    expect(gateway.requestedContentChapterIds, <String>['chapter-1'], reason: 'the normal read uses refreshed session memory');
+    session = (await library.openNovelReaderSession(item.id))!;
+    expect((await session.readContent(session.initialChapter) as NovelChapterContent).text, '新正文');
+
+    gateway.failure = StateError('network failed');
+    await expectLater(refresh.refreshChapter(item.id.value, 'chapter-1'), throwsStateError);
+    session = (await library.openNovelReaderSession(item.id))!;
+    expect((await session.readContent(session.initialChapter) as NovelChapterContent).text, '新正文');
+  });
+
+  test('catalog commit overlaps the initial remote body request', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-reader-parallel-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final item = await _addNovelItem(library, 'parallel-book');
+    final gateway = _GatedContentGateway();
+    var completed = false;
+    final launch = ContentLibrarySourceTextReader(library, gateway).launch(item.id.value).whenComplete(() => completed = true);
+
+    await gateway.contentRequested.future;
+    for (var attempt = 0; attempt < 100 && (await library.listAllCatalog(item.id)).isEmpty; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 2));
+    }
+    expect(await library.listAllCatalog(item.id), hasLength(2));
+    expect(completed, isFalse);
+
+    gateway.releaseContent();
+    expect((await launch).seed?.initialContent.paragraphs.single.text, '并行首章');
+  });
+
+  test('live launch returns seeded text without waiting for immutable object persistence', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-reader-nonblocking-write-');
+    final contentOpenStarted = Completer<void>();
+    final releaseContentOpen = Completer<void>();
+    final persistence = await AppPersistence.openForTesting(
+      dataRoot: root,
+      registry: RecordDocumentRegistry(contentLibraryRecordDocumentCodecs),
+      contentOpener: () async {
+        contentOpenStarted.complete();
+        await releaseContentOpen.future;
+        return ContentObjectStore.open(root);
+      },
+    );
+    final library = ContentLibrary.fromPersistence(persistence);
+    addTearDown(() async {
+      if (!releaseContentOpen.isCompleted) releaseContentOpen.complete();
+      await library.close();
+      await persistence.close();
+      await root.delete(recursive: true);
+    });
+    await contentOpenStarted.future;
+    final item = await _addNovelItem(library, 'nonblocking-write-book');
+
+    final request = await ContentLibrarySourceTextReader(
+      library,
+      _MutableContentGateway('首帧正文'),
+    ).launch(item.id.value).timeout(const Duration(seconds: 1));
+
+    expect(request.seed?.initialContent.paragraphs.single.text, '首帧正文');
+    expect(releaseContentOpen.isCompleted, isFalse);
+    releaseContentOpen.complete();
+  });
+
+  test('object write failure leaves the reader memory body unchanged', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-reader-write-failure-');
+    final persistence = await AppPersistence.openForTesting(
+      dataRoot: root,
+      registry: RecordDocumentRegistry(contentLibraryRecordDocumentCodecs),
+      contentOpener: () => Future<ContentObjectStore>.error(StateError('object store unavailable')),
+    );
+    final library = ContentLibrary.fromPersistence(persistence);
+    addTearDown(() async {
+      await library.close();
+      await persistence.close();
+      await root.delete(recursive: true);
+    });
+    final item = await _addNovelItem(library, 'write-failure-book');
+    final gateway = _MutableContentGateway('旧内存正文');
+    final request = await ContentLibrarySourceTextReader(library, gateway).launch(item.id.value);
+    gateway.body = '不得采用的新正文';
+
+    await expectLater(request.extensions.chapterRefreshCapability!.refreshChapter(item.id.value, 'chapter-1'), throwsStateError);
+    expect((await request.dataSource.loadChapterContent(item.id.value, 'chapter-1')).paragraphs.single.text, '旧内存正文');
+  });
 }
+
+Future<LibraryItem> _addNovelItem(ContentLibrary library, String remoteId) => library.addLibraryItem(
+  BookshelfAddRequest(
+    title: remoteId,
+    author: null,
+    kind: ContentKind.novel,
+    pluginId: 'org.example.source',
+    pluginVersion: '1.0.0',
+    remoteContentId: remoteId,
+  ),
+);
 
 final class _CatalogFailureGateway extends _FakeGateway {
   @override
@@ -522,6 +649,54 @@ final class _GatedCatalogGateway extends _FakeGateway {
       pluginId: pluginId,
       sourceName: '示例数据源',
       items: <PluginChapterSummary>[_chapter('chapter-1', '第一章', 0), _chapter('chapter-2', '第二章', 1)],
+    );
+  }
+}
+
+final class _GatedContentGateway extends _FakeGateway {
+  final contentRequested = Completer<void>();
+  final _contentRelease = Completer<void>();
+
+  void releaseContent() => _contentRelease.complete();
+
+  @override
+  Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async {
+    requestedContentChapterIds.add(chapterId);
+    if (!contentRequested.isCompleted) contentRequested.complete();
+    await _contentRelease.future;
+    return PluginChapterContent(
+      pluginId: pluginId,
+      sourceName: '示例数据源',
+      contentKind: PluginContentKind.novel,
+      chapterId: chapterId,
+      title: '第一章',
+      updatedAt: null,
+      text: '并行首章',
+      pages: const <PluginMangaPage>[],
+    );
+  }
+}
+
+final class _MutableContentGateway extends _FakeGateway {
+  _MutableContentGateway(this.body);
+
+  String body;
+  Object? failure;
+
+  @override
+  Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async {
+    requestedContentChapterIds.add(chapterId);
+    final error = failure;
+    if (error != null) throw error;
+    return PluginChapterContent(
+      pluginId: pluginId,
+      sourceName: '示例数据源',
+      contentKind: PluginContentKind.novel,
+      chapterId: chapterId,
+      title: '第一章',
+      updatedAt: null,
+      text: body,
+      pages: const <PluginMangaPage>[],
     );
   }
 }

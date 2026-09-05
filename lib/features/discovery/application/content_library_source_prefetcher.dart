@@ -9,9 +9,9 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 
 /// Warms the app-owned source data immediately after a book is added.
 ///
-/// The complete catalog is committed atomically before the first chapter is
-/// cached. All failures are isolated to this best-effort background task; the
-/// shelf mutation itself has already committed successfully.
+/// Catalog commit and the first chapter request overlap. A validated first
+/// body is exposed to a waiting reader immediately while its immutable object
+/// write continues in the background.
 final class ContentLibrarySourcePrefetcher {
   ContentLibrarySourcePrefetcher(this._library, this._gateway, {this._diagnostics});
 
@@ -20,11 +20,12 @@ final class ContentLibrarySourcePrefetcher {
   final DiagnosticsManager? _diagnostics;
   final Map<String, Future<void>> _active = <String, Future<void>>{};
   final Map<String, Completer<void>> _readable = <String, Completer<void>>{};
+  final Map<String, ContentLibraryPrefetchedNovelChapter> _prepared = <String, ContentLibraryPrefetchedNovelChapter>{};
 
   /// Starts one deduplicated warm-up without blocking the add-to-shelf UI.
   void start(LibraryItem item) {
     final source = item.source;
-    if (source == null || item.kind != ContentKind.novel) return;
+    if (item.kind != ContentKind.novel) return;
     final key = item.id.value;
     if (_active.containsKey(key)) return;
     final readable = Completer<void>();
@@ -51,6 +52,9 @@ final class ContentLibrarySourcePrefetcher {
     start(item);
     return _readable[item.id.value]?.future ?? Future<void>.value();
   }
+
+  /// Takes a memory body prepared for the reader while persistence is pending.
+  ContentLibraryPrefetchedNovelChapter? takePreparedChapter(String libraryItemId) => _prepared.remove(libraryItemId);
 
   bool hasInFlight(String libraryItemId) => _active.containsKey(libraryItemId) || _readable.containsKey(libraryItemId);
 
@@ -84,16 +88,25 @@ final class ContentLibrarySourcePrefetcher {
         id: source.remoteContentId,
         chapterId: catalogResult.items.first.id,
       );
-      catalogCount = await _library.syncNovelCatalog(itemId: item.id, chapters: _toCatalog(catalogResult.items));
-
-      try {
-        final content = await firstContent;
-        if (content.contentKind == PluginContentKind.novel && content.text != null && content.text!.isNotEmpty) {
-          await _library.cacheNovelChapter(itemId: item.id, remoteChapterId: catalogResult.items.first.id, text: content.text!);
-          cachedChapterCount = 1;
-        }
-      } on Object {
-        // The reader can retry a missing first chapter on demand.
+      final results = await Future.wait<Object>(<Future<Object>>[
+        _library.syncNovelCatalog(itemId: item.id, chapters: _toCatalog(catalogResult.items)),
+        firstContent,
+      ]);
+      catalogCount = results[0] as int;
+      final content = results[1] as PluginChapterContent;
+      if (content.contentKind == PluginContentKind.novel && content.text != null && content.text!.isNotEmpty) {
+        final chapterId = catalogResult.items.first.id;
+        final persistence = _library
+            .cacheNovelChapter(itemId: item.id, remoteChapterId: chapterId, text: content.text!)
+            .then<void>((_) {}, onError: (Object _, StackTrace stack) {});
+        final prepared = ContentLibraryPrefetchedNovelChapter(chapterId: chapterId, text: content.text!, persistence: persistence);
+        _prepared[item.id.value] = prepared;
+        unawaited(
+          persistence.whenComplete(() {
+            if (identical(_prepared[item.id.value], prepared)) _prepared.remove(item.id.value);
+          }),
+        );
+        cachedChapterCount = 1;
       }
 
       // Catalog and first body are the reading readiness boundary.  Detail is
@@ -103,7 +116,7 @@ final class ContentLibrarySourcePrefetcher {
 
       final detail = await detailFuture;
       if (detail != null) {
-        await _library.bookshelf.addFromSource(
+        await _library.addLibraryItem(
           BookshelfAddRequest(
             title: detail.summary.title.isEmpty ? item.title : detail.summary.title,
             author: detail.summary.author ?? item.author,
@@ -201,4 +214,13 @@ final class ContentLibrarySourcePrefetcher {
     'resultState': DiagnosticValue.string(resultState),
     if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
   });
+}
+
+/// One validated first chapter shared with a reader before its cache write ends.
+final class ContentLibraryPrefetchedNovelChapter {
+  const ContentLibraryPrefetchedNovelChapter({required this.chapterId, required this.text, required this.persistence});
+
+  final String chapterId;
+  final String text;
+  final Future<void> persistence;
 }

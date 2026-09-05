@@ -77,6 +77,7 @@ class TextReaderView extends StatefulWidget {
     required this.bookId,
     required this.dataSource,
     required this.stateStore,
+    this.seed,
     this.chapterPreloadCount = 1,
     this.observer,
     this.controller,
@@ -91,6 +92,9 @@ class TextReaderView extends StatefulWidget {
 
   /// Host-owned persistence for progress, preferences, and bookmarks.
   final TextReaderStateStore stateStore;
+
+  /// Optional host projection used to avoid duplicate metadata/content reads.
+  final ReaderSessionSeed? seed;
 
   /// Number of following chapters to load speculatively, excluding current.
   ///
@@ -202,6 +206,7 @@ class _TextReaderViewState extends State<TextReaderView>
   String? _catalogCursor;
   int _catalogTotal = 0;
   bool _catalogHasMore = false;
+  bool _seededSparseCatalog = false;
   bool _catalogLoading = false;
   String? _centeredCatalogChapterId;
   int _catalogCenterRetryCount = 0;

@@ -222,6 +222,7 @@ Future<void> _pumpReader(WidgetTester tester) async {
             extensions: ReaderExtensions(
               chapterStateCapability: _FailedChapterStateCapability(),
               chapterCacheCapability: _ChapterCacheCapability(),
+              chapterRefreshCapability: _RefreshCapability(),
             ),
           ),
         ),
@@ -229,6 +230,14 @@ Future<void> _pumpReader(WidgetTester tester) async {
     ),
   );
   await tester.pumpAndSettle();
+}
+
+final class _RefreshCapability implements ReaderChapterRefreshCapability {
+  const _RefreshCapability();
+
+  @override
+  Future<TextChapterContent> refreshChapter(String bookId, String chapterId) =>
+      const _SemanticsDataSource().loadChapterContent(bookId, chapterId);
 }
 
 Future<void> _showControls(WidgetTester tester) async {

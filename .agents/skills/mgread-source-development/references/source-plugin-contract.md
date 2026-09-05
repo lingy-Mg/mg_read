@@ -17,6 +17,8 @@
 - 数据源是 Node.js 24 ESM 项目，`package.json.mgread` 是唯一 MgRead 元数据。
 - 模块导入阶段不得访问尚未注入的上下文；`activate(ctx)` 只保存公开上下文，不创建 Worker、子进程、
   native addon、第二 VM 或自定义 loader。
+- Runtime 冷启动只激活并提交或回滚 installed pending；已确认的 current 与 development 项目先进入元数据
+  快照，首次能力调用或传输时单飞加载。懒加载失败必须保持稳定错误并隔离损坏的 installed current。
 - Runtime 依次调用 `discover/search/getDetail/getChapters/getContent`；可选 capability 只有公开类型声明的集合。
 - ID、cursor、target 和 chapterId 必须稳定、不透明、可回传。URL、标题、索引和页码不能替代稳定身份。
 - 必填值必须存在；未知可空值显式为 `null`，零值不能当未知，集合始终为数组。
@@ -42,6 +44,7 @@
 
 - Windows Debug/Release Node Runtime 都会监听用户选择的开发根下的项目变更；每个项目静默 1.5 秒后，通过随发布包携带的固定 Node/npm 执行该项目
   声明的 `npm run build`，不直接加载 TypeScript、不启动 `tsc -w`、不自动安装依赖。
+- 初始目录扫描只校验开发项目元数据与入口存在性；不复制 generation、不计算发布指纹，也不执行插件模块。
 - 开发构建成功后，Runtime 从唯一私有 generation 路径加载新的 `dist` 并完成候选激活；只有激活成功才
   替换当前 generation。构建或激活失败保留旧版本。
 - 此处的构建不是 artifact 打包，不生成 `.mgplugin`/`.mgplugin.js`，也不进入安装流程。Flutter 只消费

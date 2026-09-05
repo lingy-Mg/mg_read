@@ -1,11 +1,11 @@
 /// Content Library 数据库缓存扫描、清理与压缩。
 ///
-/// 扫描只依据当前书架与 active catalog 引用；清理在共享维护屏障内重新扫描，
-/// 先原子删除无效 metadata，再幂等删除无引用 immutable content objects。
+/// 扫描只依据章节正文引用；清理在共享维护屏障内重新扫描，再幂等删除
+/// 无引用 immutable content objects。追加目录没有可清理的历史版本。
 part of 'content_library.dart';
 
-final class StorageMaintenanceRepository {
-  StorageMaintenanceRepository._(this._library);
+final class _StorageMaintenanceOperations {
+  _StorageMaintenanceOperations(this._library);
 
   final ContentLibrary _library;
 
@@ -15,23 +15,13 @@ final class StorageMaintenanceRepository {
   );
 
   Future<StorageCleanupResult> clearAll() =>
-      _library._trace(operation: 'storageMaintenanceClear', action: () => _library._withStorageMaintenance(_clearLocked));
+      _library._trace(operation: 'storageMaintenanceClear', action: () => _library._withStorageMaintenance(clearLocked));
 
   Future<StorageCompactionResult> compact() =>
       _library._trace(operation: 'storageMaintenanceCompact', action: () => _library._withStorageMaintenance(_compactLocked));
 
-  Future<StorageCleanupResult> _clearLocked() async {
+  Future<StorageCleanupResult> clearLocked() async {
     final inspection = await _inspectLocked();
-    final metadata = inspection.metadataCandidates;
-    if (metadata.isNotEmpty) {
-      await _library._persistence.metadataRecords.transaction(() async {
-        for (var offset = 0; offset < metadata.length; offset += PersistenceRecordStore.maxWriteBatchSize) {
-          final end = min(offset + PersistenceRecordStore.maxWriteBatchSize, metadata.length);
-          await _library._persistence.metadataRecords.deleteBatch(metadata.sublist(offset, end));
-        }
-      });
-    }
-
     var deletedObjects = 0;
     var deletedBytes = 0;
     try {
@@ -44,20 +34,13 @@ final class StorageMaintenanceRepository {
       }
     } on Object {
       return StorageCleanupResult(
-        staleCatalogRecords: inspection.preview.staleCatalogRecords,
-        detachedMetadataRecords: inspection.preview.detachedMetadataRecords,
         deletedContentObjects: deletedObjects,
-        releasedLogicalBytes: inspection.metadataBytes + deletedBytes,
+        releasedLogicalBytes: deletedBytes,
         isPartial: true,
         failureCode: StorageMaintenanceFailureCode.contentDeleteFailed,
       );
     }
-    return StorageCleanupResult(
-      staleCatalogRecords: inspection.preview.staleCatalogRecords,
-      detachedMetadataRecords: inspection.preview.detachedMetadataRecords,
-      deletedContentObjects: deletedObjects,
-      releasedLogicalBytes: inspection.metadataBytes + deletedBytes,
-    );
+    return StorageCleanupResult(deletedContentObjects: deletedObjects, releasedLogicalBytes: deletedBytes);
   }
 
   Future<StorageCompactionResult> _compactLocked() async {
@@ -73,47 +56,7 @@ final class StorageMaintenanceRepository {
   }
 
   Future<_StorageInspection> _inspectLocked() async {
-    final items = await _loadRecords(_itemKind);
-    final itemSnapshots = <String, String?>{
-      for (final item in items) item.id: item.document['activeSnapshotId'] is String ? item.document['activeSnapshotId']! as String : null,
-    };
-    final activeItemIds = itemSnapshots.keys.toSet();
-    final staleCatalog = <RecordEnvelope>[];
-    final detached = <RecordEnvelope>[];
-    final retainedCatalog = <RecordEnvelope>[];
-    final catalog = await _loadRecords(_entryKind);
-    for (final entry in catalog) {
-      final parentId = entry.parentId;
-      if (parentId == null || !activeItemIds.contains(parentId)) {
-        detached.add(entry);
-        continue;
-      }
-      final activeSnapshot = itemSnapshots[parentId];
-      if (activeSnapshot == null || entry.stateKey != 'pending:$activeSnapshot') {
-        staleCatalog.add(entry);
-      } else {
-        retainedCatalog.add(entry);
-      }
-    }
-    for (final kind in <String>[
-      _bindingKind,
-      _readingProgressKind,
-      _bookmarkKind,
-      _mangaProgressKind,
-      _audioProgressKind,
-      _videoProgressKind,
-      _mangaBookmarkKind,
-    ]) {
-      for (final record in await _loadRecords(kind)) {
-        final parentId = record.parentId;
-        if (parentId == null || !activeItemIds.contains(parentId)) detached.add(record);
-      }
-    }
-
-    final liveContentReferences = <String>{
-      for (final entry in retainedCatalog)
-        if (entry.document['contentReference'] case final String reference when reference.isNotEmpty) reference,
-    };
+    final liveContentReferences = await _library._persistence.metadataRecords.contentLibrary.referencedContentObjects();
     final orphanObjects = <StoredContentObjectInfo>[];
     String? afterObjectId;
     do {
@@ -124,72 +67,45 @@ final class StorageMaintenanceRepository {
       afterObjectId = page.nextObjectId;
     } while (afterObjectId != null);
 
-    final metadataCandidates = <RecordEnvelope>[...staleCatalog, ...detached];
-    final metadataBytes = metadataCandidates.fold<int>(0, (sum, record) => sum + utf8.encode(jsonEncode(record.document)).length);
     final orphanBytes = orphanObjects.fold<int>(0, (sum, object) => sum + object.byteLength);
     final metadataStats = await _library._persistence.metadataRecords.storageStats();
     final contentStats = await _library._persistence.contentObjects.storageStats();
     return _StorageInspection(
       preview: StorageCleanupPreview(
-        staleCatalogRecords: staleCatalog.length,
-        detachedMetadataRecords: detached.length,
         orphanContentObjects: orphanObjects.length,
         reclaimableContentBytes: orphanBytes,
-        estimatedReclaimableBytes: metadataBytes + orphanBytes,
+        estimatedReclaimableBytes: orphanBytes,
         compactableDatabaseBytes: metadataStats.reclaimableBytes + contentStats.reclaimableBytes,
       ),
-      metadataCandidates: metadataCandidates,
       orphanObjects: orphanObjects,
-      metadataBytes: metadataBytes,
     );
-  }
-
-  Future<List<RecordEnvelope>> _loadRecords(String recordKind) async {
-    final records = <RecordEnvelope>[];
-    RecordCursor? cursor;
-    do {
-      final page = await _library._persistence.metadataRecords.list(
-        RecordQuery(recordKind: recordKind, scope: _scope, after: cursor, limit: 1000),
-      );
-      records.addAll(page.records);
-      cursor = page.nextCursor;
-    } while (cursor != null);
-    return records;
   }
 }
 
 final class StorageCleanupPreview {
   const StorageCleanupPreview({
-    required this.staleCatalogRecords,
-    required this.detachedMetadataRecords,
     required this.orphanContentObjects,
     required this.reclaimableContentBytes,
     required this.estimatedReclaimableBytes,
     required this.compactableDatabaseBytes,
   });
 
-  final int staleCatalogRecords;
-  final int detachedMetadataRecords;
   final int orphanContentObjects;
   final int reclaimableContentBytes;
   final int estimatedReclaimableBytes;
   final int compactableDatabaseBytes;
 
-  bool get isEmpty => staleCatalogRecords == 0 && detachedMetadataRecords == 0 && orphanContentObjects == 0;
+  bool get isEmpty => orphanContentObjects == 0;
 }
 
 final class StorageCleanupResult {
   const StorageCleanupResult({
-    required this.staleCatalogRecords,
-    required this.detachedMetadataRecords,
     required this.deletedContentObjects,
     required this.releasedLogicalBytes,
     this.isPartial = false,
     this.failureCode,
   });
 
-  final int staleCatalogRecords;
-  final int detachedMetadataRecords;
   final int deletedContentObjects;
   final int releasedLogicalBytes;
   final bool isPartial;
@@ -207,17 +123,10 @@ final class StorageCompactionResult {
 }
 
 final class _StorageInspection {
-  const _StorageInspection({
-    required this.preview,
-    required this.metadataCandidates,
-    required this.orphanObjects,
-    required this.metadataBytes,
-  });
+  const _StorageInspection({required this.preview, required this.orphanObjects});
 
   final StorageCleanupPreview preview;
-  final List<RecordEnvelope> metadataCandidates;
   final List<StoredContentObjectInfo> orphanObjects;
-  final int metadataBytes;
 }
 
 final class _ContentLibraryMaintenanceBarrier {

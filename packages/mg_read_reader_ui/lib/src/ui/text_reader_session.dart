@@ -56,6 +56,7 @@ extension _TextReaderSession on _TextReaderViewState {
     _catalogCursor = null;
     _catalogTotal = 0;
     _catalogHasMore = false;
+    _seededSparseCatalog = false;
     _catalogLoading = false;
     _catalogCompletion = null;
     _content = null;
@@ -105,11 +106,13 @@ extension _TextReaderSession on _TextReaderViewState {
     }
 
     try {
-      final Future<ReaderBookInfo> bookFuture = widget.dataSource.loadBookInfo(
-        widget.bookId,
-      );
-      final Future<ChapterCatalogPage> catalogFuture = widget.dataSource
-          .loadChapterCatalog(widget.bookId);
+      final ReaderSessionSeed? seed = widget.seed;
+      final Future<ReaderBookInfo> bookFuture = seed == null
+          ? widget.dataSource.loadBookInfo(widget.bookId)
+          : Future<ReaderBookInfo>.value(seed.book);
+      final Future<ChapterCatalogPage?> catalogFuture = seed == null
+          ? widget.dataSource.loadChapterCatalog(widget.bookId)
+          : Future<ChapterCatalogPage?>.value();
       final Future<ReaderProgress?> progressFuture = _safeLoadProgress(
         generation,
         observer,
@@ -127,13 +130,15 @@ extension _TextReaderSession on _TextReaderViewState {
       if (!_isSessionCurrent(generation)) return;
 
       _book = results[0] as ReaderBookInfo;
-      // The catalog is enough to render the first directory frame. Download
-      // and read-state enrichment starts after first content presentation so
-      // it cannot contend with opening the book.
-      _mergeCatalog(
-        results[1] as ChapterCatalogPage,
-        refreshChapterStates: false,
-      );
+      if (seed == null) {
+        // Enrich download/read state after first content presentation.
+        _mergeCatalog(
+          results[1] as ChapterCatalogPage,
+          refreshChapterStates: false,
+        );
+      } else {
+        _installSeed(seed);
+      }
       final ReaderProgress? loadedProgress = results[2] as ReaderProgress?;
       // A new shelf item has no saved anchor yet. Start at chapter zero rather
       // than showing a separate metadata page with a second "开始阅读" action.
@@ -288,6 +293,7 @@ extension _TextReaderSession on _TextReaderViewState {
 
   Future<void> _finishDeferredFirstFrameWork(int generation) async {
     if (!_isSessionCurrent(generation)) return;
+    unawaited(_primeSeedCatalog(generation));
     final List<ReaderBookmark> bookmarks = await _safeLoadBookmarks(
       generation,
       _observer,
@@ -303,6 +309,66 @@ extension _TextReaderSession on _TextReaderViewState {
       unawaited(_prefetchNext(_currentChapterInfo!.index));
       unawaited(_refreshCommentSummaries());
       unawaited(_recordChapterOpened(_content!.chapterId));
+    }
+  }
+
+  void _installSeed(ReaderSessionSeed seed) {
+    if (seed.book.id != widget.bookId ||
+        seed.initialChapter.id.isEmpty ||
+        seed.initialChapter.index < 0 ||
+        seed.initialChapter.index >= seed.catalogTotal ||
+        seed.initialContent.chapterId != seed.initialChapter.id) {
+      throw const ReaderFailure(
+        ReaderFailureKind.data,
+        ReaderStrings.invalidChapterLocation,
+      );
+    }
+    _validateChapter(
+      seed.initialContent,
+      expectedChapterId: seed.initialChapter.id,
+    );
+    _catalog
+      ..clear()
+      ..add(seed.initialChapter);
+    _catalogById.clear();
+    _catalogByIndex.clear();
+    _catalogPageIds.clear();
+    _catalogById[seed.initialChapter.id] = seed.initialChapter;
+    _catalogByIndex[seed.initialChapter.index] = seed.initialChapter;
+    _catalogTotal = seed.catalogTotal;
+    _catalogHasMore = seed.catalogTotal > 1;
+    _catalogCursor = null;
+    _seededSparseCatalog = true;
+    _cacheChapter(seed.initialContent);
+  }
+
+  Future<void> _primeSeedCatalog(int generation) async {
+    if (!_seededSparseCatalog || !_isSessionCurrent(generation)) return;
+    final dataSource = widget.dataSource;
+    final bookId = widget.bookId;
+    try {
+      final page = await dataSource.loadChapterCatalog(bookId, pageSize: 100);
+      if (!_isSessionCurrent(generation) ||
+          !identical(dataSource, widget.dataSource) ||
+          bookId != widget.bookId) {
+        return;
+      }
+      final current = _currentChapterInfo;
+      _catalog.clear();
+      _catalogById.clear();
+      _catalogByIndex.clear();
+      _catalogPageIds.clear();
+      _catalogCursor = null;
+      _catalogTotal = 0;
+      _catalogHasMore = false;
+      _mergeCatalog(page, refreshChapterStates: false);
+      if (current != null && !_catalogById.containsKey(current.id)) {
+        _catalogById[current.id] = current;
+        _catalogByIndex[current.index] = current;
+      }
+      _seededSparseCatalog = false;
+    } on Object {
+      // The seed remains sufficient for reading; opening the catalog retries.
     }
   }
 
@@ -444,6 +510,10 @@ extension _TextReaderSession on _TextReaderViewState {
     _catalogRevision.value++;
     if (notify && mounted) setState(() {});
     try {
+      if (_seededSparseCatalog) {
+        await _primeSeedCatalog(generation);
+        if (_seededSparseCatalog) return;
+      }
       while (_catalogHasMore &&
           _isCatalogSessionCurrent(generation, dataSource, bookId)) {
         final String? cursor = _catalogCursor;
@@ -515,13 +585,14 @@ extension _TextReaderSession on _TextReaderViewState {
     if (!initial && mounted) setState(() {});
     try {
       TextChapterContent? chapter;
-      if (!forceRefresh) chapter = _takeCached(chapterId);
-      chapter ??= await _loadChapterContent(
-        dataSource,
-        bookId,
-        chapterId,
-        reuseInFlight: !forceRefresh,
-      );
+      if (forceRefresh) {
+        final capability = widget.extensions.chapterRefreshCapability;
+        if (capability == null) return;
+        chapter = await capability.refreshChapter(bookId, chapterId);
+      } else {
+        chapter = _takeCached(chapterId);
+        chapter ??= await _loadChapterContent(dataSource, bookId, chapterId);
+      }
       if (!_isCurrent(generation) || navigation != _navigationGeneration) {
         return;
       }

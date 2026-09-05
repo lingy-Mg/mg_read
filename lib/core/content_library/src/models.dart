@@ -10,8 +10,6 @@
 /// - 可再生数据源详情只作为本地优先展示摘要，远端仍可在后台刷新。
 library;
 
-import 'dart:collection';
-
 /// The single global capacity shared by shelf writes, statistics and sync.
 const int bookshelfMaxItemCount = 100;
 
@@ -85,11 +83,6 @@ final class LibraryItemId {
   String toString() => value;
 }
 
-final class SourceBindingId {
-  const SourceBindingId(this.value);
-  final String value;
-}
-
 final class CatalogEntryId {
   const CatalogEntryId(this.value);
   final String value;
@@ -134,7 +127,7 @@ final class LibraryItem {
     this.attributes = const <LibraryItemAttribute>[],
     this.sourceDetail = const <String, Object?>{},
     this.labels = const <String>[],
-    this.source,
+    required this.source,
   });
   final LibraryItemId id;
   final String title;
@@ -172,7 +165,7 @@ final class LibraryItem {
   final List<String> labels;
 
   /// Stable source identity needed to resolve a shelf item for reading.
-  final LibraryItemSource? source;
+  final LibraryItemSource source;
 }
 
 /// One structured source attribute retained for cached detail rendering.
@@ -199,6 +192,43 @@ final class LibraryItemSource {
   final String remoteContentId;
 }
 
+/// Bounded shelf-card projection returned by one metadata query.
+final class LibraryShelfProjection {
+  const LibraryShelfProjection({
+    required this.itemId,
+    required this.kind,
+    required this.title,
+    required this.author,
+    required this.coverUrl,
+    required this.sourceName,
+    required this.source,
+    required this.sourceChapterCount,
+    required this.catalogCount,
+    required this.summaryExcerpt,
+    required this.progressKind,
+    required this.chapterPosition,
+    required this.bookFraction,
+    required this.totalReadingSeconds,
+    required this.progressUpdatedAtUtc,
+  });
+
+  final LibraryItemId itemId;
+  final ContentKind kind;
+  final String title;
+  final String? author;
+  final Uri? coverUrl;
+  final String? sourceName;
+  final LibraryItemSource source;
+  final int? sourceChapterCount;
+  final int catalogCount;
+  final String? summaryExcerpt;
+  final ContentKind? progressKind;
+  final int? chapterPosition;
+  final double? bookFraction;
+  final int? totalReadingSeconds;
+  final DateTime? progressUpdatedAtUtc;
+}
+
 /// Stable identity for a regenerable source cover shared by all features.
 ///
 /// The URL is part of the identity so a source changing its cover naturally
@@ -221,7 +251,13 @@ final class CoverKey {
 ///
 /// It uses the reader package's semantic anchors rather than a page number or
 /// pixel offset, so it remains valid after layout and font changes.
-final class LibraryReadingProgress {
+sealed class LibraryProgress {
+  const LibraryProgress();
+  LibraryItemId get itemId;
+  ContentKind get kind;
+}
+
+final class LibraryReadingProgress implements LibraryProgress {
   const LibraryReadingProgress({
     required this.itemId,
     required this.chapterId,
@@ -237,6 +273,7 @@ final class LibraryReadingProgress {
        assert(bookFraction >= 0 && bookFraction <= 1),
        assert(totalReadingSeconds >= 0);
 
+  @override
   final LibraryItemId itemId;
   final String chapterId;
   final String paragraphId;
@@ -248,25 +285,32 @@ final class LibraryReadingProgress {
 
   /// Accumulated foreground reading time measured by the host, in seconds.
   final int totalReadingSeconds;
+
+  @override
+  ContentKind get kind => ContentKind.novel;
 }
 
 /// Durable spoken-audio position, identified by source chapter rather than a
 /// transient player queue index.
-final class LibraryAudioPlaybackProgress {
+final class LibraryAudioPlaybackProgress implements LibraryProgress {
   LibraryAudioPlaybackProgress({required this.itemId, required this.chapterId, required this.position, required this.updatedAtUtc})
     : assert(chapterId != ''),
       assert(!position.isNegative);
 
+  @override
   final LibraryItemId itemId;
   final String chapterId;
   final Duration position;
   final DateTime updatedAtUtc;
+
+  @override
+  ContentKind get kind => ContentKind.audio;
 }
 
 /// Durable video selection and position owned by the Content Library.
 ///
 /// Group and episode identities remain source-defined playback metadata.
-final class LibraryVideoPlaybackProgress {
+final class LibraryVideoPlaybackProgress implements LibraryProgress {
   LibraryVideoPlaybackProgress({
     required this.itemId,
     required this.groupId,
@@ -279,16 +323,28 @@ final class LibraryVideoPlaybackProgress {
        assert(!position.isNegative),
        assert(!duration.isNegative);
 
+  @override
   final LibraryItemId itemId;
   final String groupId;
   final String episodeId;
   final Duration position;
   final Duration duration;
   final DateTime updatedAtUtc;
+
+  @override
+  ContentKind get kind => ContentKind.video;
 }
 
 /// A durable semantic text-reader bookmark owned by the Content Library.
-final class LibraryBookmark {
+sealed class LibraryBookmarkEntry {
+  const LibraryBookmarkEntry();
+  String get id;
+  LibraryItemId get itemId;
+  String get chapterId;
+  ContentKind get bookmarkKind;
+}
+
+final class LibraryBookmark implements LibraryBookmarkEntry {
   const LibraryBookmark({
     required this.id,
     required this.itemId,
@@ -300,14 +356,20 @@ final class LibraryBookmark {
     required this.createdAtUtc,
   }) : assert(characterOffset >= 0);
 
+  @override
   final String id;
+  @override
   final LibraryItemId itemId;
+  @override
   final String chapterId;
   final String paragraphId;
   final int characterOffset;
   final String chapterTitle;
   final String excerpt;
   final DateTime createdAtUtc;
+
+  @override
+  ContentKind get bookmarkKind => ContentKind.novel;
 }
 
 /// Narrow, host-owned request for adding a typed source item to the shelf.
@@ -551,19 +613,10 @@ typedef ContentLibrarySyncConflictChoice = LibrarySyncConflictChoice;
 typedef ContentLibrarySyncResultCode = LibrarySyncResultCode;
 typedef ContentLibrarySyncApplyResult = LibrarySyncApplyResult;
 
-final class SourceBinding {
-  const SourceBinding({required this.id, required this.itemId, required this.pluginId, required this.availability});
-  final SourceBindingId id;
-  final LibraryItemId itemId;
-  final String pluginId;
-  final String availability;
-}
-
 final class CatalogEntry {
   const CatalogEntry({
     required this.id,
     required this.itemId,
-    required this.bindingId,
     required this.remoteIdentity,
     required this.title,
     required this.orderKey,
@@ -572,25 +625,20 @@ final class CatalogEntry {
     required this.contentStatus,
     this.wordCount,
     this.chapterUrl,
-    this.hasExplicitRemoteIdentity = true,
     this.contentReference,
+    this.storageKey = 0,
+    this.contentVersion = 0,
   });
   final CatalogEntryId id;
   final LibraryItemId itemId;
-  final SourceBindingId bindingId;
   final String remoteIdentity, title, orderKey, contentStatus;
   final int index;
   final ContentKind? kind;
   final int? wordCount;
   final Uri? chapterUrl;
   final String? contentReference;
-
-  /// Whether this entry was written with the lossless remote identity field.
-  ///
-  /// Older snapshots encoded the identity in a colon-delimited persistence
-  /// key, which could truncate source IDs that themselves contained a colon.
-  /// Readers use this flag to refresh those legacy snapshots once.
-  final bool hasExplicitRemoteIdentity;
+  final int storageKey;
+  final int contentVersion;
 }
 
 /// A typed remote-novel chapter projection to initialize an app-owned catalog.
@@ -636,7 +684,7 @@ final class LibraryQuery {
   final String? after, state;
   final int limit;
 
-  /// Omitting this retains the legacy all-items query behavior.
+  /// Omitting this selects both normal and private active items.
   final LibraryVisibility? visibility;
 }
 
@@ -716,7 +764,7 @@ final class MangaChapterDescriptor {
   final List<MangaPageDescriptor> pages;
 }
 
-final class LibraryMangaReadingProgress {
+final class LibraryMangaReadingProgress implements LibraryProgress {
   const LibraryMangaReadingProgress({
     required this.itemId,
     required this.chapterId,
@@ -727,14 +775,18 @@ final class LibraryMangaReadingProgress {
     required this.updatedAtUtc,
     this.readingSeconds = 0,
   });
+  @override
   final LibraryItemId itemId;
   final String chapterId, imageId;
   final double imageFraction, bookFraction;
   final int chapterIndex, readingSeconds;
   final DateTime updatedAtUtc;
+
+  @override
+  ContentKind get kind => ContentKind.manga;
 }
 
-final class LibraryMangaBookmark {
+final class LibraryMangaBookmark implements LibraryBookmarkEntry {
   const LibraryMangaBookmark({
     required this.id,
     required this.itemId,
@@ -743,11 +795,18 @@ final class LibraryMangaBookmark {
     required this.imageFraction,
     required this.createdAtUtc,
   });
+  @override
   final String id;
+  @override
   final LibraryItemId itemId;
-  final String chapterId, imageId;
+  @override
+  final String chapterId;
+  final String imageId;
   final double imageFraction;
   final DateTime createdAtUtc;
+
+  @override
+  ContentKind get bookmarkKind => ContentKind.manga;
 }
 
 enum PersistencePolicy { durable, refreshable, sessionOnly }
@@ -761,25 +820,4 @@ final class SourceResource {
   static SourceResource refreshable(Uri url, DateTime expiresAtUtc) =>
       SourceResource._(url: url, persistencePolicy: PersistencePolicy.refreshable, expiresAtUtc: expiresAtUtc);
   static SourceResource sessionOnly() => const SourceResource._(url: null, persistencePolicy: PersistencePolicy.sessionOnly);
-}
-
-/// Runtime-facing validated commit input. It is intentionally not exported by
-/// the barrel; an adapter inside core may use it while feature/UI cannot.
-final class ContentLibraryIngest {
-  const ContentLibraryIngest({
-    required this.pluginId,
-    required this.producerPluginVersion,
-    required this.dataVersion,
-    required this.opaqueData,
-  });
-  final String pluginId, producerPluginVersion;
-  final int dataVersion;
-  final Map<String, Object?> opaqueData;
-}
-
-JsonObjectFrozen freezeInternalJson(Map<String, Object?> source) => JsonObjectFrozen(UnmodifiableMapView(Map.of(source)));
-
-final class JsonObjectFrozen {
-  const JsonObjectFrozen(this.value);
-  final Map<String, Object?> value;
 }

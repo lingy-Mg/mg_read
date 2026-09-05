@@ -12,7 +12,7 @@ final class ContentLibraryMangaImageCacheGateway implements MangaImageCacheGatew
   @override
   Future<MangaImageCacheUsage> loadUsage() async {
     final library = await _load();
-    final storage = await library.mangaImageCache.usage();
+    final storage = await library.inspectMangaImageCache();
     final bytesByItem = <String, int>{for (final item in storage.items) item.itemId.value: item.bytes};
     final entries = <MangaImageCacheEntry>[];
     final seen = <String>{};
@@ -45,5 +45,5 @@ final class ContentLibraryMangaImageCacheGateway implements MangaImageCacheGatew
   }
 
   @override
-  Future<int> clear() async => (await _load()).mangaImageCache.clear();
+  Future<int> clear() async => (await _load()).clearMangaImageCache();
 }

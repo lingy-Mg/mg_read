@@ -4,8 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
-import 'package:mg_read/core/content_library/src/content_library.dart';
-import 'package:mg_read/core/content_library/src/models.dart';
 import 'package:mg_read/features/library/application/library_book_detail_failure.dart';
 import 'package:mg_read/features/library/data/content_library_book_detail_launcher.dart';
 
@@ -17,19 +15,13 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    const source = ContentLibraryIngest(
-      pluginId: 'org.example.source',
-      producerPluginVersion: '1.0.0',
-      dataVersion: 1,
-      opaqueData: <String, Object?>{'remoteBookId': 'book-7'},
-    );
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       BookshelfAddRequest(
         title: '书架详情测试',
         author: '测试作者',
         kind: ContentKind.novel,
-        pluginId: source.pluginId,
-        pluginVersion: source.producerPluginVersion,
+        pluginId: 'org.example.source',
+        pluginVersion: '1.0.0',
         remoteContentId: 'book-7',
         language: 'zh-CN',
         accessCode: 'free',
@@ -56,19 +48,10 @@ void main() {
         },
       ),
     );
-    await library.catalog.replaceSnapshot(
+    await library.syncNovelCatalog(
       itemId: item.id,
-      bindingId: const SourceBindingId('binding-7'),
-      entries: <IngestCatalogEntry>[
-        IngestCatalogEntry(
-          remoteIdentity: 'chapter-1',
-          title: '第一章',
-          orderKey: '000001',
-          kindCode: ContentKind.novel.code,
-          source: source,
-          index: 0,
-          wordCount: 1234,
-        ),
+      chapters: const <SourceNovelCatalogChapter>[
+        SourceNovelCatalogChapter(remoteIdentity: 'chapter-1', title: '第一章', index: 0, wordCount: 1234),
       ],
     );
 
@@ -93,31 +76,19 @@ void main() {
     expect(detail.initialCatalog.items.single.wordCount, 1234);
   });
 
-  test('reports a safe code when an old shelf item lacks source metadata', () async {
+  test('reports a safe code when a shelf item does not exist', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-detail-');
     final library = await ContentLibrary.open(dataRoot: root);
     addTearDown(() async {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.add(
-      title: '旧书架记录',
-      author: null,
-      kind: ContentKind.novel,
-      source: const ContentLibraryIngest(
-        pluginId: 'org.example.source',
-        producerPluginVersion: '1.0.0',
-        dataVersion: 1,
-        opaqueData: <String, Object?>{},
-      ),
-    );
-
     await expectLater(
-      ContentLibraryBookDetailLauncher(library).load(item.id.value),
+      ContentLibraryBookDetailLauncher(library).load('missing'),
       throwsA(
         isA<LibraryBookDetailFailure>()
-            .having((failure) => failure.reason, 'reason', LibraryBookDetailFailureReason.sourceMissing)
-            .having((failure) => failure.diagnosticCode, 'diagnosticCode', 'library_detail_source_missing_invalid_format'),
+            .having((failure) => failure.reason, 'reason', LibraryBookDetailFailureReason.itemMissing)
+            .having((failure) => failure.diagnosticCode, 'diagnosticCode', 'library_detail_item_missing_not_found'),
       ),
     );
   });
@@ -129,7 +100,7 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    final item = await library.bookshelf.addFromSource(
+    final item = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '书架漫画详情',
         author: '漫画作者',

@@ -10,7 +10,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
-import 'package:mg_read/core/content_library/src/models.dart';
 import 'package:mg_read/features/lan_sync/data/mg_read_lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
@@ -23,8 +22,8 @@ void main() {
       await root.delete(recursive: true);
     });
 
-    final retained = await library.bookshelf.add(title: '保留的小说', kind: ContentKind.novel, source: _source('retained-book'));
-    await library.readingProgress.save(
+    final retained = await library.addLibraryItem(_source('retained-book', '保留的小说', ContentKind.novel));
+    await library.saveProgress(
       LibraryReadingProgress(
         itemId: retained.id,
         chapterId: _repeat('c', 2049),
@@ -36,9 +35,9 @@ void main() {
         updatedAtUtc: DateTime.utc(2026, 8, 31),
       ),
     );
-    await library.bookshelf.add(title: '音频条目', kind: ContentKind.audio, source: _source('audio-1'));
-    await library.bookshelf.add(title: '视频条目', kind: ContentKind.video, source: _source('video-1'));
-    await library.bookshelf.add(title: '超长身份', kind: ContentKind.novel, source: _source(_repeat('r', 2049)));
+    await library.addLibraryItem(_source('audio-1', '音频条目', ContentKind.audio));
+    await library.addLibraryItem(_source('video-1', '视频条目', ContentKind.video));
+    await library.addLibraryItem(_source(_repeat('r', 2049), '超长身份', ContentKind.novel));
 
     final manifest = await MgReadLanSyncGateway(library, PluginRuntime()).createPairedManifest(includePlugins: false);
 
@@ -56,7 +55,7 @@ void main() {
       await library.close();
       await root.delete(recursive: true);
     });
-    await library.bookshelf.add(title: '音频条目', kind: ContentKind.audio, source: _source('audio-1'));
+    await library.addLibraryItem(_source('audio-1', '音频条目', ContentKind.audio));
 
     final manifest = await MgReadLanSyncGateway(library, PluginRuntime()).createPairedManifest(includePlugins: false, includeShelf: false);
 
@@ -65,11 +64,13 @@ void main() {
   });
 }
 
-ContentLibraryIngest _source(String remoteBookId) => ContentLibraryIngest(
+BookshelfAddRequest _source(String remoteBookId, String title, ContentKind kind) => BookshelfAddRequest(
   pluginId: 'fixture.source',
-  producerPluginVersion: '1.0.0',
-  dataVersion: 1,
-  opaqueData: <String, Object?>{'remoteBookId': remoteBookId},
+  pluginVersion: '1.0.0',
+  remoteContentId: remoteBookId,
+  title: title,
+  author: null,
+  kind: kind,
 );
 
 String _repeat(String value, int count) => List<String>.filled(count, value).join();

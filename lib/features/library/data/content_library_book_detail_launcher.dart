@@ -29,10 +29,7 @@ final class ContentLibraryBookDetailLauncher implements LibraryBookDetailLaunche
     if (item == null) {
       throw _failure(LibraryBookDetailFailureReason.itemMissing, AppErrorCode.notFound);
     }
-    if (item.source == null) {
-      throw _failure(LibraryBookDetailFailureReason.sourceMissing, AppErrorCode.invalidFormat);
-    }
-    final source = item.source!;
+    final source = item.source;
     final catalog = await _loadCatalogPreview(item.id);
     final fallbackSummary = PluginContentSummary(
       id: source.remoteContentId,

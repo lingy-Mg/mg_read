@@ -1,5 +1,5 @@
 /**
- * Development generation activation, lifetime and snapshot helpers.
+ * Development generation activation and lifetime helpers.
  *
  * Candidate activation finishes before callers replace the active map. Retired
  * generations stay on disk only while a request still owns them.
@@ -12,7 +12,6 @@ import { stageDevelopmentGeneration } from "./development-plugin-generation.js";
 import { activatePlugin } from "./plugin-activation.js";
 import {
   type DevelopmentPlugin,
-  type InstalledPluginSnapshot,
   type MgReadPluginContext,
   PluginManagerError,
   type PluginManagerEventSink,
@@ -20,14 +19,8 @@ import {
 import {
   developmentProjectFingerprint,
   normalizePluginModule,
-  snapshotFrom,
 } from "./plugin-manager-files.js";
-import {
-  parsePluginPackageDescriptor,
-  type PluginPackageDescriptor,
-  resolveInside,
-} from "./plugin-package.js";
-import { readPluginProject } from "./plugin-package.js";
+import { parsePluginPackageDescriptor, type PluginPackageDescriptor, resolveInside } from "./plugin-package.js";
 
 export interface LoadDevelopmentPluginOptions {
   readonly activationTimeoutMs: number;
@@ -104,16 +97,6 @@ export async function loadDevelopmentPlugin(
   }
 }
 
-export function developmentPluginIdentity(
-  loaded: ReadonlyMap<string, DevelopmentPlugin>,
-  projectRoot: string,
-): { readonly pluginId?: string } {
-  const pluginId = [...loaded.values()].find(
-    (candidate) => candidate.projectRoot === projectRoot,
-  )?.loaded.descriptor.id;
-  return pluginId === undefined ? {} : { pluginId };
-}
-
 /** Reads identity without requiring the build output entry to exist. */
 export async function developmentPluginProjectIdentity(
   loaded: ReadonlyMap<string, DevelopmentPlugin>,
@@ -134,23 +117,6 @@ export async function developmentPluginProjectIdentity(
   } catch {
     return {};
   }
-}
-
-export function developmentSnapshots(
-  loaded: ReadonlyMap<string, DevelopmentPlugin>,
-): readonly InstalledPluginSnapshot[] {
-  return Object.freeze(
-    [...loaded.values()]
-      .sort((left, right) => left.loaded.descriptor.id.localeCompare(right.loaded.descriptor.id))
-      .map((development) => snapshotFrom(
-        development.loaded.descriptor,
-        development.loaded.descriptor.id,
-        development.loaded.descriptor.version,
-        null,
-        true,
-        "development",
-      )),
-  );
 }
 
 /** Tracks request ownership so generation cleanup cannot race plugin code. */
@@ -188,86 +154,6 @@ export class DevelopmentGenerationLifetime {
     this.#active.clear();
     this.#retired.clear();
   }
-}
-
-export interface DevelopmentRegistryMutationOptions {
-  readonly events: PluginManagerEventSink;
-  readonly lifetime: DevelopmentGenerationLifetime;
-  readonly load: (
-    projectRoot: string,
-    descriptor: PluginPackageDescriptor,
-  ) => Promise<DevelopmentPlugin>;
-  readonly loaded: Map<string, DevelopmentPlugin>;
-  readonly onSnapshots: (snapshots: readonly InstalledPluginSnapshot[]) => void;
-}
-
-export async function reloadDevelopmentPlugin(
-  projectRoot: string,
-  options: DevelopmentRegistryMutationOptions,
-): Promise<void> {
-  const previous = [...options.loaded.values()].find(
-    (candidate) => candidate.projectRoot === projectRoot,
-  );
-  let project: Awaited<ReturnType<typeof readPluginProject>> | undefined;
-  try {
-    project = await readPluginProject(projectRoot);
-    const conflict = options.loaded.get(project.descriptor.id);
-    if (conflict !== undefined && conflict.projectRoot !== projectRoot) {
-      throw new PluginManagerError("plugin_load_failed");
-    }
-    const candidate = await options.load(projectRoot, project.descriptor);
-    if (previous !== undefined && previous.loaded.descriptor.id !== project.descriptor.id) {
-      options.loaded.delete(previous.loaded.descriptor.id);
-      options.lifetime.retire(previous);
-      options.events({
-        code: "development_plugin_removed",
-        outcome: "success",
-        pluginId: previous.loaded.descriptor.id,
-      });
-    } else if (previous !== undefined) {
-      options.lifetime.retire(previous);
-    }
-    options.loaded.set(project.descriptor.id, candidate);
-    options.onSnapshots(developmentSnapshots(options.loaded));
-    options.events({
-      code: previous === undefined
-        ? "development_plugin_added"
-        : "development_plugin_updated",
-      outcome: "success",
-      pluginId: project.descriptor.id,
-    });
-  } catch {
-    const identity = project?.descriptor === undefined
-      ? await developmentPluginProjectIdentity(options.loaded, projectRoot)
-      : {
-          pluginId: project.descriptor.id,
-          pluginName: project.descriptor.displayName,
-        };
-    options.events({
-      code: "development_plugin_activation_failed",
-      outcome: "error",
-      ...identity,
-    });
-  }
-}
-
-export function removeDevelopmentPlugin(
-  projectRoot: string,
-  options: DevelopmentRegistryMutationOptions,
-): void {
-  const previous = [...options.loaded.values()].find(
-    (candidate) => candidate.projectRoot === projectRoot,
-  );
-  if (previous === undefined) return;
-  const pluginId = previous.loaded.descriptor.id;
-  options.loaded.delete(pluginId);
-  options.lifetime.retire(previous);
-  options.onSnapshots(developmentSnapshots(options.loaded));
-  options.events({
-    code: "development_plugin_removed",
-    outcome: "success",
-    pluginId,
-  });
 }
 
 function removeGeneration(plugin: DevelopmentPlugin): Promise<void> {

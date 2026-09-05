@@ -9,16 +9,12 @@ abstract interface class LibraryReaderLauncher {
 }
 
 /// Composition port. The app bootstrap supplies the persistent implementation.
-final libraryReaderLauncherProvider = Provider<LibraryReaderLauncher>(
-  (Ref ref) => const _UnavailableLibraryReaderLauncher(),
-);
+final libraryReaderLauncherProvider = Provider<LibraryReaderLauncher>((Ref ref) => const _UnavailableLibraryReaderLauncher());
 
 final class _UnavailableLibraryReaderLauncher implements LibraryReaderLauncher {
   const _UnavailableLibraryReaderLauncher();
 
   @override
   Future<ReaderLaunchRequest> launch(String libraryItemId) =>
-      Future<ReaderLaunchRequest>.error(
-        StateError('Persistent bookshelf reading is unavailable.'),
-      );
+      Future<ReaderLaunchRequest>.error(StateError('Persistent bookshelf reading is unavailable.'));
 }

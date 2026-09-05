@@ -51,7 +51,7 @@ final class ContentLibraryTextReaderStateStore implements TextReaderStateStore {
   Future<void> saveProgress(String bookId, ReaderProgress progress) async {
     _requireBook(bookId);
     await _loadDurableProgress();
-    await _library.readingProgress.save(
+    await _library.saveProgress(
       LibraryReadingProgress(
         itemId: itemId,
         chapterId: progress.chapterId,
@@ -111,7 +111,7 @@ final class ContentLibraryTextReaderStateStore implements TextReaderStateStore {
   Future<void> addBookmark(ReaderBookmark bookmark) async {
     _requireBook(bookmark.bookId);
     await (_bookmarksLoaded ??= _loadBookmarks());
-    await _library.bookmarks.save(_toLibraryBookmark(bookmark));
+    await _library.saveBookmark(_toLibraryBookmark(bookmark));
     _bookmarks[bookmark.id] = bookmark;
   }
 
@@ -119,13 +119,15 @@ final class ContentLibraryTextReaderStateStore implements TextReaderStateStore {
   Future<void> removeBookmark(String bookId, String bookmarkId) async {
     _requireBook(bookId);
     await (_bookmarksLoaded ??= _loadBookmarks());
-    await _library.bookmarks.remove(itemId, bookmarkId);
+    await _library.deleteBookmark(itemId, bookmarkId);
     _bookmarks.remove(bookmarkId);
   }
 
   Future<void> _loadBookmarks() async {
-    for (final bookmark in await _library.bookmarks.load(itemId)) {
-      _bookmarks[bookmark.id] = _toReaderBookmark(bookmark);
+    for (final bookmark in await _library.loadBookmarks(itemId, ContentKind.novel)) {
+      if (bookmark case final LibraryBookmark value) {
+        _bookmarks[value.id] = _toReaderBookmark(value);
+      }
     }
   }
 
@@ -136,9 +138,10 @@ final class ContentLibraryTextReaderStateStore implements TextReaderStateStore {
   }
 
   Future<LibraryReadingProgress?> _loadDurableProgress() {
-    return _durableProgress ??= _library.readingProgress.load(itemId).then((progress) {
-      _initialReadingSeconds = progress?.totalReadingSeconds ?? 0;
-      return progress;
+    return _durableProgress ??= _library.loadProgress(itemId).then((progress) {
+      final novelProgress = progress is LibraryReadingProgress ? progress : null;
+      _initialReadingSeconds = novelProgress?.totalReadingSeconds ?? 0;
+      return novelProgress;
     });
   }
 }

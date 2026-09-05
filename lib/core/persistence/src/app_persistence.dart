@@ -33,8 +33,8 @@ final class AppPersistence {
   AppPersistence._(this.dataRoot, this.metadataRecords, this.contentObjects, this.fileObjects, this._diagnostics);
   final Directory dataRoot;
   final PersistenceRecordStore metadataRecords;
-  final ContentObjectStore contentObjects;
-  final FileObjectStore fileObjects;
+  final LazyContentObjectStore contentObjects;
+  final LazyFileObjectStore fileObjects;
   final DiagnosticsManager? _diagnostics;
   Future<void>? _closeFuture;
 
@@ -74,61 +74,27 @@ final class AppPersistence {
     Future<FileObjectStore> Function()? fileOpener,
   }) {
     Future<AppPersistence> openStores() async {
-      PersistenceRecordStore? metadata;
-      ContentObjectStore? content;
-      FileObjectStore? files;
-      Object? firstError;
-      StackTrace? firstStack;
-
-      void captureError(Object error, StackTrace stack) {
-        if (firstError != null) return;
-        firstError = error;
-        firstStack = stack;
-      }
-
-      Future<T> start<T>(Future<T> Function() opener, void Function(T) onSuccess) async {
-        try {
-          final value = await Future<T>.sync(opener);
-          onSuccess(value);
-          return value;
-        } catch (error, stack) {
-          captureError(error, stack);
-          rethrow;
-        }
-      }
-
-      final metadataFuture = start(
+      final metadata = await Future<PersistenceRecordStore>.sync(
         metadataOpener ?? () => PersistenceRecordStore.open(dataRoot: dataRoot, registry: registry, diagnostics: diagnostics),
-        (value) => metadata = value,
       );
-      final contentFuture = start(
-        contentOpener ?? () => ContentObjectStore.open(dataRoot, diagnostics: diagnostics),
-        (value) => content = value,
+      final content = LazyContentObjectStore._(
+        _RetryableSharedOpener<ContentObjectStore>(
+          storeName: 'contentObjects',
+          diagnostics: diagnostics,
+          opener: contentOpener ?? () => ContentObjectStore.open(dataRoot, diagnostics: diagnostics),
+        ),
       );
-      final fileFuture = start(fileOpener ?? () => FileObjectStore.open(dataRoot, diagnostics: diagnostics), (value) => files = value);
-
-      try {
-        await Future.wait<Object>(<Future<Object>>[metadataFuture, contentFuture, fileFuture], eagerError: false);
-      } catch (error, stack) {
-        // Future.wait(eagerError: false) has already awaited every started
-        // branch. Close in the same order as normal AppPersistence.close,
-        // while preserving the first branch error and its original stack.
-        for (final close in <Future<void> Function()>[
-          if (content != null) content!.close,
-          if (files != null) files!.close,
-          if (metadata != null) metadata!.close,
-        ]) {
-          try {
-            await close();
-          } catch (_) {
-            // The initiating open error is the public failure. Remaining
-            // resources must still be attempted even if one close fails.
-          }
-        }
-        Error.throwWithStackTrace(firstError ?? error, firstStack ?? stack);
-      }
-
-      return AppPersistence._(dataRoot, metadata!, content!, files!, diagnostics);
+      final files = LazyFileObjectStore._(
+        _RetryableSharedOpener<FileObjectStore>(
+          storeName: 'fileObjects',
+          diagnostics: diagnostics,
+          opener: fileOpener ?? () => FileObjectStore.open(dataRoot, diagnostics: diagnostics),
+        ),
+      );
+      final persistence = AppPersistence._(dataRoot, metadata, content, files, diagnostics);
+      content.prewarm();
+      files.prewarm();
+      return persistence;
     }
 
     if (diagnostics == null || diagnostics.isClosed) return openStores();
@@ -155,9 +121,17 @@ final class AppPersistence {
 
   Future<void> _beginClose() async {
     Future<void> closeStores() async {
-      await contentObjects.close();
-      await fileObjects.close();
-      await metadataRecords.close();
+      Object? firstError;
+      StackTrace? firstStack;
+      for (final close in <Future<void> Function()>[contentObjects.close, fileObjects.close, metadataRecords.close]) {
+        try {
+          await close();
+        } catch (error, stack) {
+          firstError ??= error;
+          firstStack ??= stack;
+        }
+      }
+      if (firstError != null) Error.throwWithStackTrace(firstError, firstStack!);
     }
 
     final diagnostics = _diagnostics;
@@ -176,6 +150,151 @@ final class AppPersistence {
       }),
     );
   }
+}
+
+final class _RetryableSharedOpener<T> {
+  _RetryableSharedOpener({required this.storeName, required this.diagnostics, required this.opener});
+
+  final String storeName;
+  final DiagnosticsManager? diagnostics;
+  final Future<T> Function() opener;
+  Future<T>? _opening;
+  T? _value;
+  bool _closed = false;
+
+  Future<T> open() {
+    if (_closed) return Future<T>.error(StateError('$storeName is closed.'));
+    final value = _value;
+    if (value != null) return Future<T>.value(value);
+    final pending = _opening;
+    if (pending != null) return pending;
+    final future = _instrumentedOpen();
+    _opening = future;
+    future.then<void>(
+      (opened) {
+        _value = opened;
+      },
+      onError: (Object _, StackTrace stack) {
+        _opening = null;
+      },
+    );
+    return future;
+  }
+
+  Future<T> _instrumentedOpen() {
+    final manager = diagnostics;
+    if (manager == null || manager.isClosed) return Future<T>.sync(opener);
+    return manager.runSpan<T>(
+      AppDiagnosticEvents.persistenceOpen,
+      (_) => Future<T>.sync(opener),
+      startAttributes: () => _storeAttributes(storeName),
+      successAttributes: (_) => _storeAttributes(storeName),
+      errorAttributes: (_) => _storeAttributes(storeName, errorCode: 'open_failed'),
+    );
+  }
+
+  void prewarm() {
+    unawaited(open().then<void>((_) {}, onError: (Object _, StackTrace stack) {}));
+  }
+
+  Future<void> close(Future<void> Function(T value) closer) async {
+    if (_closed) return;
+    _closed = true;
+    final pending = _opening;
+    if (pending != null) {
+      try {
+        await pending;
+      } on Object {
+        return;
+      }
+    }
+    final value = _value;
+    if (value != null) await closer(value);
+  }
+}
+
+/// Retryable single-flight facade for the lazily opened immutable content DB.
+final class LazyContentObjectStore {
+  LazyContentObjectStore._(this._opener);
+  final _RetryableSharedOpener<ContentObjectStore> _opener;
+  bool get usesBackgroundExecutor => true;
+  void prewarm() => _opener.prewarm();
+  Future<StoredContentObject> put({
+    required String objectId,
+    required String contentKind,
+    required String objectType,
+    required int generation,
+    required String payload,
+  }) async => (await _opener.open()).put(
+    objectId: objectId,
+    contentKind: contentKind,
+    objectType: objectType,
+    generation: generation,
+    payload: payload,
+  );
+  Future<StoredContentObject?> read(String objectId) async => (await _opener.open()).read(objectId);
+  Future<ContentObjectPage> listInfo({String? afterObjectId, int limit = 500}) async =>
+      (await _opener.open()).listInfo(afterObjectId: afterObjectId, limit: limit);
+  Future<int> deleteMany(Iterable<String> objectIds) async => (await _opener.open()).deleteMany(objectIds);
+  Future<DatabaseStorageStats> storageStats() async => (await _opener.open()).storageStats();
+  Future<void> compact() async => (await _opener.open()).compact();
+  Future<Object?> debugPragmaForTest(String pragma) async => (await _opener.open()).debugPragmaForTest(pragma);
+  Future<void> close() => _opener.close((value) => value.close());
+}
+
+/// Retryable single-flight facade for the lazily opened controlled file store.
+final class LazyFileObjectStore {
+  LazyFileObjectStore._(this._opener);
+  final _RetryableSharedOpener<FileObjectStore> _opener;
+  bool get usesBackgroundExecutor => true;
+  void prewarm() => _opener.prewarm();
+  Future<StoredFileObject> commitBytes({
+    required String mangaId,
+    required String assetId,
+    required List<int> bytes,
+    required String mimeType,
+  }) async => (await _opener.open()).commitBytes(mangaId: mangaId, assetId: assetId, bytes: bytes, mimeType: mimeType);
+  Future<StoredFileObject> commitCoverBytes({required String itemId, required List<int> bytes, required String mimeType}) async =>
+      (await _opener.open()).commitCoverBytes(itemId: itemId, bytes: bytes, mimeType: mimeType);
+  Future<StoredFileObject> commitGlobalCoverBytes({
+    required String coverKey,
+    required List<int> bytes,
+    required String mimeType,
+    required int maxBytes,
+  }) async => (await _opener.open()).commitGlobalCoverBytes(coverKey: coverKey, bytes: bytes, mimeType: mimeType, maxBytes: maxBytes);
+  Future<List<int>?> readCoverBytes(String itemId) async => (await _opener.open()).readCoverBytes(itemId);
+  Future<List<int>?> readGlobalCoverBytes(String coverKey) async => (await _opener.open()).readGlobalCoverBytes(coverKey);
+  Future<void> deleteGlobalCover(String coverKey) async => (await _opener.open()).deleteGlobalCover(coverKey);
+  Future<void> deleteCover(String itemId) async => (await _opener.open()).deleteCover(itemId);
+  Future<void> pruneGlobalCovers({required int maxBytes}) async => (await _opener.open()).pruneGlobalCovers(maxBytes: maxBytes);
+  Future<int> coverCacheUsageBytes() async => (await _opener.open()).coverCacheUsageBytes();
+  Future<int> clearCoverCache() async => (await _opener.open()).clearCoverCache();
+  Future<StoredFileObject> commitMangaImage({
+    required String itemId,
+    required String chapterId,
+    required String pageId,
+    required int contentVersion,
+    required List<int> bytes,
+    required String mimeType,
+  }) async => (await _opener.open()).commitMangaImage(
+    itemId: itemId,
+    chapterId: chapterId,
+    pageId: pageId,
+    contentVersion: contentVersion,
+    bytes: bytes,
+    mimeType: mimeType,
+  );
+  Future<List<int>?> readMangaImage({
+    required String itemId,
+    required String chapterId,
+    required String pageId,
+    required int contentVersion,
+  }) async => (await _opener.open()).readMangaImage(itemId: itemId, chapterId: chapterId, pageId: pageId, contentVersion: contentVersion);
+  Future<int> mangaImageCacheUsageBytes() async => (await _opener.open()).mangaImageCacheUsageBytes();
+  Future<({int totalBytes, Map<String, int> bytesByItem})> mangaImageCacheUsage() async => (await _opener.open()).mangaImageCacheUsage();
+  Future<int> clearMangaImageCache() async => (await _opener.open()).clearMangaImageCache();
+  Future<void> deleteMangaAssets(String mangaId) async => (await _opener.open()).deleteMangaAssets(mangaId);
+  Future<void> close() => _opener.close((value) => value.close());
 }
 
 /// Immutable UTF-8 text/manifest objects; arbitrary files and SQLite BLOBs are excluded.

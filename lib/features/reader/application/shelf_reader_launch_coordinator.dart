@@ -13,36 +13,22 @@ enum ShelfReaderPreparationStatus { idle, preparing, ready, failed }
 
 /// Small immutable state consumed by the shelf presentation.
 final class ShelfReaderLaunchState {
-  const ShelfReaderLaunchState._({
-    required this.status,
-    this.bookId,
-    this.failure,
-  });
+  const ShelfReaderLaunchState._({required this.status, this.bookId, this.failure});
 
-  const ShelfReaderLaunchState.idle()
-    : this._(status: ShelfReaderPreparationStatus.idle);
+  const ShelfReaderLaunchState.idle() : this._(status: ShelfReaderPreparationStatus.idle);
 
-  const ShelfReaderLaunchState.preparing(String bookId)
-    : this._(status: ShelfReaderPreparationStatus.preparing, bookId: bookId);
+  const ShelfReaderLaunchState.preparing(String bookId) : this._(status: ShelfReaderPreparationStatus.preparing, bookId: bookId);
 
-  const ShelfReaderLaunchState.ready(String bookId)
-    : this._(status: ShelfReaderPreparationStatus.ready, bookId: bookId);
+  const ShelfReaderLaunchState.ready(String bookId) : this._(status: ShelfReaderPreparationStatus.ready, bookId: bookId);
 
-  const ShelfReaderLaunchState.failed(
-    String bookId,
-    ReaderLaunchFailure failure,
-  ) : this._(
-        status: ShelfReaderPreparationStatus.failed,
-        bookId: bookId,
-        failure: failure,
-      );
+  const ShelfReaderLaunchState.failed(String bookId, ReaderLaunchFailure failure)
+    : this._(status: ShelfReaderPreparationStatus.failed, bookId: bookId, failure: failure);
 
   final ShelfReaderPreparationStatus status;
   final String? bookId;
   final ReaderLaunchFailure? failure;
 
-  bool isPreparing(String candidate) =>
-      status == ShelfReaderPreparationStatus.preparing && bookId == candidate;
+  bool isPreparing(String candidate) => status == ShelfReaderPreparationStatus.preparing && bookId == candidate;
 }
 
 /// Bounded, content-free timing sample used by Profile performance probes.
@@ -74,21 +60,18 @@ abstract interface class LocalShelfReaderPrewarmer {
 /// A missing body is prepared before navigation. The ready request is handed
 /// to the route once, while the owner span stays open until the reader reports
 /// a frame containing actual body text or a real comic image.
-final shelfReaderLaunchCoordinatorProvider =
-    NotifierProvider<ShelfReaderLaunchCoordinator, ShelfReaderLaunchState>(
-      ShelfReaderLaunchCoordinator.new,
-    );
+final shelfReaderLaunchCoordinatorProvider = NotifierProvider<ShelfReaderLaunchCoordinator, ShelfReaderLaunchState>(
+  ShelfReaderLaunchCoordinator.new,
+);
 
-final class ShelfReaderLaunchCoordinator
-    extends Notifier<ShelfReaderLaunchState> {
+final class ShelfReaderLaunchCoordinator extends Notifier<ShelfReaderLaunchState> {
   static const int _maximumWarmBooks = 3;
   static const int _maximumWarmBytes = 2 * 1024 * 1024;
 
   late LibraryReaderLauncher _launcher;
   late DiagnosticsManager _diagnostics;
   final Map<String, Future<bool>> _inFlight = <String, Future<bool>>{};
-  final LinkedHashMap<String, ReaderLaunchRequest> _warm =
-      LinkedHashMap<String, ReaderLaunchRequest>();
+  final LinkedHashMap<String, ReaderLaunchRequest> _warm = LinkedHashMap<String, ReaderLaunchRequest>();
   final Map<String, _LaunchAttempt> _attempts = <String, _LaunchAttempt>{};
   int _warmBytes = 0;
   bool _disposed = false;
@@ -150,20 +133,12 @@ final class ShelfReaderLaunchCoordinator
         NovelReaderLaunchRequest() => 'text',
         ComicReaderLaunchRequest() => 'comic',
       };
-      attempt.preparationKind = warmed == null
-          ? request.preparationKind
-          : ReaderLaunchPreparationKind.memory;
+      attempt.preparationKind = warmed == null ? request.preparationKind : ReaderLaunchPreparationKind.memory;
       preparationStopwatch.stop();
       attempt.preparationElapsed = preparationStopwatch.elapsed;
       if (request.networkPreparationElapsed > Duration.zero) {
         final networkStage = _startStage(attempt, 'networkPreparation');
-        networkStage?.complete(
-          attributes: _stageAttributes(
-            'networkPreparation',
-            'success',
-            duration: request.networkPreparationElapsed,
-          ),
-        );
+        networkStage?.complete(attributes: _stageAttributes('networkPreparation', 'success', duration: request.networkPreparationElapsed));
       }
       stage?.complete(attributes: _stageAttributes('preparation', 'success'));
       if (_disposed || _attempts[bookId] != attempt) {
@@ -176,13 +151,7 @@ final class ShelfReaderLaunchCoordinator
     } on Object catch (error) {
       preparationStopwatch.stop();
       if (stage != null && !stage.isEnded) {
-        stage.fail(
-          attributes: _stageAttributes(
-            'preparation',
-            'failure',
-            errorCode: 'reader_preparation_failed',
-          ),
-        );
+        stage.fail(attributes: _stageAttributes('preparation', 'failure', errorCode: 'reader_preparation_failed'));
       }
       final failure = ReaderLaunchFailure.fromError(error);
       attempt.fail(failure.error.code.wireValue);
@@ -205,9 +174,7 @@ final class ShelfReaderLaunchCoordinator
   /// Lets only the first waiter navigate after a deduplicated preparation.
   bool claimNavigation(String bookId) {
     final attempt = _attempts[bookId];
-    if (attempt == null ||
-        attempt.navigationClaimed ||
-        attempt.request == null) {
+    if (attempt == null || attempt.navigationClaimed || attempt.request == null) {
       return false;
     }
     attempt.navigationClaimed = true;
@@ -243,12 +210,8 @@ final class ShelfReaderLaunchCoordinator
       DiagnosticObjectValue(<String, DiagnosticValue>{
         'readerMode': DiagnosticValue.string(attempt.readerMode),
         'sourceKind': DiagnosticValue.string('shelf'),
-        'pathCategory': DiagnosticValue.string(
-          attempt.preparationKind.wireValue,
-        ),
-        'cacheHit': DiagnosticValue.boolean(
-          attempt.preparationKind != ReaderLaunchPreparationKind.network,
-        ),
+        'pathCategory': DiagnosticValue.string(attempt.preparationKind.wireValue),
+        'cacheHit': DiagnosticValue.boolean(attempt.preparationKind != ReaderLaunchPreparationKind.network),
         'windowClass': DiagnosticValue.string(windowClass),
         'resultState': DiagnosticValue.string('firstContentFrame'),
       }),
@@ -289,9 +252,7 @@ final class ShelfReaderLaunchCoordinator
     if (_disposed || launcher is! LocalShelfReaderPrewarmer) return;
     final prewarmer = launcher as LocalShelfReaderPrewarmer;
     for (final bookId in bookIds.take(_maximumWarmBooks)) {
-      if (_disposed ||
-          _warm.containsKey(bookId) ||
-          _attempts.containsKey(bookId)) {
+      if (_disposed || _warm.containsKey(bookId) || _attempts.containsKey(bookId)) {
         continue;
       }
       try {
@@ -358,18 +319,13 @@ final class ShelfReaderLaunchCoordinator
     }
   }
 
-  DiagnosticObjectValue _stageAttributes(
-    String stage,
-    String resultState, {
-    String? errorCode,
-    Duration? duration,
-  }) => DiagnosticObjectValue(<String, DiagnosticValue>{
-    'stage': DiagnosticValue.string(stage),
-    'resultState': DiagnosticValue.string(resultState),
-    if (duration != null)
-      'durationMicros': DiagnosticValue.int64(duration.inMicroseconds),
-    if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
-  });
+  DiagnosticObjectValue _stageAttributes(String stage, String resultState, {String? errorCode, Duration? duration}) =>
+      DiagnosticObjectValue(<String, DiagnosticValue>{
+        'stage': DiagnosticValue.string(stage),
+        'resultState': DiagnosticValue.string(resultState),
+        if (duration != null) 'durationMicros': DiagnosticValue.int64(duration.inMicroseconds),
+        if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
+      });
 }
 
 final class _LaunchAttempt {
@@ -381,8 +337,7 @@ final class _LaunchAttempt {
   ReaderLaunchRequest? request;
   bool consumed = false;
   bool navigationClaimed = false;
-  ReaderLaunchPreparationKind preparationKind =
-      ReaderLaunchPreparationKind.persistent;
+  ReaderLaunchPreparationKind preparationKind = ReaderLaunchPreparationKind.persistent;
   Duration preparationElapsed = Duration.zero;
   String readerMode = 'unknown';
 
@@ -438,11 +393,7 @@ final class _LaunchAttempt {
     for (final child in children) {
       if (child.isEnded) continue;
       try {
-        child.cancel(
-          attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
-            'resultState': DiagnosticValue.string(resultState),
-          }),
-        );
+        child.cancel(attributes: DiagnosticObjectValue(<String, DiagnosticValue>{'resultState': DiagnosticValue.string(resultState)}));
       } on Object {
         // Best-effort terminal cleanup for diagnostic-only child stages.
       }

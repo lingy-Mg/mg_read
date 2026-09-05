@@ -65,7 +65,7 @@ void main() {
     expect(items.single.coverUrl, Uri.parse('https://cdn.example.com/covers/opaque.jpg'));
     expect(items.single.sourceName, '详情数据源');
     expect(items.single.sourceUrl, Uri.parse('https://source.example/catalog/opaque-content-id'));
-    expect(items.single.source?.remoteContentId, content.id);
+    expect(items.single.source.remoteContentId, content.id);
     expect(items.single.description, '完整简介');
     expect(items.single.language, 'zh-CN');
     expect(items.single.accessCode, 'free');
@@ -158,7 +158,7 @@ void main() {
       await root.delete(recursive: true);
     });
 
-    final first = await library.bookshelf.addFromSource(
+    final first = await library.addLibraryItem(
       const BookshelfAddRequest(
         title: '旧书名',
         author: '旧作者',
@@ -168,7 +168,7 @@ void main() {
         remoteContentId: 'repair-id',
       ),
     );
-    final repaired = await library.bookshelf.addFromSource(
+    final repaired = await library.addLibraryItem(
       BookshelfAddRequest(
         title: '新书名',
         author: '新作者',

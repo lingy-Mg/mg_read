@@ -33,15 +33,6 @@ part 'content_library_maintenance.dart';
 part 'content_library_notifications.dart';
 
 const _scope = ScopeKey(kind: 'content_library', id: 'default');
-const _itemKind = 'content_library_item';
-const _bindingKind = 'content_source_binding';
-const _entryKind = 'content_catalog_entry';
-const _readingProgressKind = 'content_library_reading_progress';
-const _bookmarkKind = 'content_library_bookmark';
-const _mangaProgressKind = 'content_library_manga_progress';
-const _audioProgressKind = 'content_library_audio_progress';
-const _videoProgressKind = 'content_library_video_progress';
-const _mangaBookmarkKind = 'content_library_manga_bookmark';
 const _notificationKind = 'content_library_notification';
 const _coverCacheMaxBytes = 100 * 1024 * 1024;
 const _metadataInlinePreparationPolicy = JsonInlinePreparationPolicy(
@@ -53,26 +44,13 @@ const _metadataInlinePreparationPolicy = JsonInlinePreparationPolicy(
 );
 
 Iterable<RecordDocumentCodec> get contentLibraryRecordDocumentCodecs sync* {
-  for (final kind in [
-    _itemKind,
-    _bindingKind,
-    _entryKind,
-    _readingProgressKind,
-    _bookmarkKind,
-    _mangaProgressKind,
-    _audioProgressKind,
-    _videoProgressKind,
-    _mangaBookmarkKind,
-    _notificationKind,
-  ]) {
-    yield RecordDocumentCodec(
-      recordKind: kind,
-      scopeKind: _scope.kind,
-      currentVersion: 1,
-      validators: {1: _validateContentMetadata},
-      inlinePreparationPolicy: _metadataInlinePreparationPolicy,
-    );
-  }
+  yield RecordDocumentCodec(
+    recordKind: _notificationKind,
+    scopeKind: _scope.kind,
+    currentVersion: 1,
+    validators: {1: _validateContentMetadata},
+    inlinePreparationPolicy: _metadataInlinePreparationPolicy,
+  );
 }
 
 RecordDocumentRegistry get _registry => RecordDocumentRegistry(contentLibraryRecordDocumentCodecs);
@@ -87,19 +65,14 @@ final class ContentLibrary {
   Future<void> _notificationWriteTail = Future<void>.value();
   Future<void>? _closeFuture;
   bool _closing = false;
-  late final BookshelfRepository bookshelf = BookshelfRepository._(this);
-  late final CatalogRepository catalog = CatalogRepository._(this);
-  late final ContentRepository content = ContentRepository._(this);
-  late final ReadingProgressRepository readingProgress = ReadingProgressRepository._(this);
-  late final AudioProgressRepository audioProgress = AudioProgressRepository._(this);
-  late final VideoProgressRepository videoProgress = VideoProgressRepository._(this);
-  late final BookmarkRepository bookmarks = BookmarkRepository._(this);
-  late final MangaStateRepository mangaState = MangaStateRepository._(this);
-  late final LibrarySyncRepository sync = LibrarySyncRepository._(this);
-  late final CoverRepository covers = CoverRepository._(this);
-  late final MangaImageCacheRepository mangaImageCache = MangaImageCacheRepository._(this);
-  late final StorageMaintenanceRepository storageMaintenance = StorageMaintenanceRepository._(this);
-  late final LibraryNotificationRepository notifications = LibraryNotificationRepository._(this);
+  late final _BookshelfOperations _bookshelf = _BookshelfOperations(this);
+  late final _CatalogOperations _catalog = _CatalogOperations(this);
+  late final _ContentOperations _content = _ContentOperations(this);
+  late final _LibrarySyncOperations _sync = _LibrarySyncOperations(this);
+  late final _CoverOperations _covers = _CoverOperations(this);
+  late final _MangaImageCacheOperations _mangaImageCache = _MangaImageCacheOperations(this);
+  late final _StorageMaintenanceOperations _storageMaintenance = _StorageMaintenanceOperations(this);
+  late final _LibraryNotificationOperations _notifications = _LibraryNotificationOperations(this);
   static Future<ContentLibrary> open({required Directory dataRoot, DiagnosticsManager? diagnostics}) async => ContentLibrary._(
     await AppPersistence.open(dataRoot: dataRoot, registry: _registry, diagnostics: diagnostics),
     diagnostics,
@@ -122,35 +95,128 @@ final class ContentLibrary {
 
   void _enqueueNotification({required LibraryNotificationKind kind, required String title}) {
     if (_closing) return;
-    _notificationWriteTail = _notificationWriteTail.then((_) => notifications._append(kind: kind, title: title)).catchError((Object _) {
+    _notificationWriteTail = _notificationWriteTail.then((_) => _notifications.append(kind: kind, title: title)).catchError((Object _) {
       // Notifications are non-critical. A failed log write must never
       // change the bookshelf result or poison later queued records.
     });
   }
 
   Future<T> _withStorageMaintenance<T>(Future<T> Function() action) => _maintenanceBarrier.run(action);
-  Future<Page<LibraryItem>> listLibrary(LibraryQuery query) => bookshelf.list(query);
-  Future<LibraryItem?> getLibraryItem(LibraryItemId id) => bookshelf.get(id);
-  Future<Page<CatalogEntry>> listCatalog(LibraryItemId itemId, CatalogQuery query) => catalog.list(itemId, query);
-  Future<List<CatalogEntry>> listAllCatalog(LibraryItemId itemId) => catalog.listAll(itemId);
+  Future<List<LibraryShelfProjection>> loadShelfProjection({
+    LibraryVisibility visibility = LibraryVisibility.normal,
+    int limit = bookshelfMaxItemCount,
+  }) async {
+    final rows = await _persistence.metadataRecords.contentLibrary.listShelf(visibility: visibility.wireValue, limit: limit);
+    return List<LibraryShelfProjection>.unmodifiable(rows.map(_storedShelfProjection));
+  }
+
+  int get businessQueryCountForTest => _persistence.metadataRecords.contentLibrary.businessQueryCountForTest;
+  void resetBusinessQueryCountForTest() => _persistence.metadataRecords.contentLibrary.resetBusinessQueryCountForTest();
+  Future<({int count, int revision})?> catalogStateForTest(LibraryItemId itemId) =>
+      _persistence.metadataRecords.contentLibrary.catalogStateForTest(itemId.value);
+  Future<List<String>> persistentTableNamesForTest() => _persistence.metadataRecords.contentLibrary.persistentTableNamesForTest();
+  Future<Map<String, List<String>>> hotIndexPlansForTest(LibraryItemId itemId) =>
+      _persistence.metadataRecords.contentLibrary.hotIndexPlansForTest(itemId.value);
+
+  Future<LibraryProgress?> loadProgress(LibraryItemId itemId) => _trace(
+    operation: 'progressLoad',
+    itemCount: 1,
+    action: () async {
+      final row = await _persistence.metadataRecords.contentLibrary.readProgress(itemId.value);
+      return row == null ? null : _storedProgress(row, itemId);
+    },
+    resultCount: (result) => result == null ? 0 : 1,
+    resultState: (result) => result == null ? 'empty' : 'content',
+  );
+
+  Future<List<LibraryProgress>> _loadProgressMany(Iterable<LibraryItemId> itemIds) async {
+    final ids = <String>{for (final itemId in itemIds) itemId.value};
+    if (ids.isEmpty) return const <LibraryProgress>[];
+    final rows = await _persistence.metadataRecords.contentLibrary.readProgressMany(ids);
+    return List<LibraryProgress>.unmodifiable(rows.map((row) => _storedProgress(row, LibraryItemId(row.values['item_id']! as String))));
+  }
+
+  Future<void> saveProgress(LibraryProgress progress) => _trace(
+    operation: 'progressSave',
+    contentKind: progress.kind.code,
+    itemCount: 1,
+    action: () => _persistence.metadataRecords.contentLibrary.saveProgress(progress.itemId.value, _progressValues(progress)),
+  );
+
+  Future<List<LibraryBookmarkEntry>> loadBookmarks(LibraryItemId itemId, ContentKind kind) => _trace(
+    operation: 'bookmarksLoad',
+    contentKind: kind.code,
+    itemCount: 1,
+    action: () async {
+      if (kind != ContentKind.novel && kind != ContentKind.manga) return const <LibraryBookmarkEntry>[];
+      final rows = await _persistence.metadataRecords.contentLibrary.listBookmarks(itemId.value, kind.code);
+      return List<LibraryBookmarkEntry>.unmodifiable(
+        rows.map((row) => kind == ContentKind.novel ? _storedBookmark(row, itemId) : _storedMangaBookmark(row, itemId)),
+      );
+    },
+  );
+
+  Future<void> saveBookmark(LibraryBookmarkEntry bookmark) => _trace(
+    operation: 'bookmarkSave',
+    contentKind: bookmark.bookmarkKind.code,
+    itemCount: 1,
+    action: () => _persistence.metadataRecords.contentLibrary.saveBookmark(bookmark.itemId.value, _bookmarkValues(bookmark)),
+  );
+
+  Future<void> deleteBookmark(LibraryItemId itemId, String bookmarkId) =>
+      _persistence.metadataRecords.contentLibrary.deleteBookmark(itemId.value, bookmarkId);
+
+  Future<LibraryItem> addLibraryItem(BookshelfAddRequest request) => _bookshelf.add(request);
+  Future<void> removeLibraryItem(LibraryItemId id, LibraryRemovalPolicy policy) => _bookshelf.remove(id, policy);
+  Future<void> setLibraryItemVisibility(LibraryItemId id, LibraryVisibility visibility) => _bookshelf.setVisibility(id, visibility);
+  Future<Page<LibraryItem>> listLibrary(LibraryQuery query) => _bookshelf.list(query);
+  Future<LibraryItem?> getLibraryItem(LibraryItemId id) => _bookshelf.get(id);
+  Future<Page<CatalogEntry>> listCatalog(LibraryItemId itemId, CatalogQuery query) => _catalog.list(itemId, query);
+  Future<List<CatalogEntry>> listAllCatalog(LibraryItemId itemId) => _catalog.listAll(itemId);
   Future<int> ensureNovelCatalog({required LibraryItemId itemId, required Iterable<SourceNovelCatalogChapter> chapters}) =>
-      catalog.ensureNovelCatalog(itemId: itemId, chapters: chapters);
+      _catalog.ensureNovelCatalog(itemId: itemId, chapters: chapters);
   Future<int> syncNovelCatalog({required LibraryItemId itemId, required Iterable<SourceNovelCatalogChapter> chapters}) =>
-      catalog.syncNovelCatalog(itemId: itemId, chapters: chapters);
+      _catalog.syncNovelCatalog(itemId: itemId, chapters: chapters);
   Future<int> syncMangaCatalog({required LibraryItemId itemId, required Iterable<MangaChapterDescriptor> chapters}) =>
-      catalog.syncMangaCatalog(itemId: itemId, chapters: chapters);
-  Future<ReadableContent?> openContent(CatalogEntryId id) => content.open(id);
+      _catalog.syncMangaCatalog(itemId: itemId, chapters: chapters);
+  Future<ReadableContent?> openContent(CatalogEntryId id) => _content.open(id);
   Future<void> cacheMangaChapter({required CatalogEntryId entryId, required Iterable<MangaPageDescriptor> pages}) =>
-      content.cacheMangaChapter(entryId: entryId, pages: pages);
-  Future<LibraryMangaReadingProgress?> loadMangaProgress(LibraryItemId itemId) => mangaState.loadProgress(itemId);
-  Future<void> saveMangaProgress(LibraryMangaReadingProgress value) => mangaState.saveProgress(value);
-  Future<LibraryAudioPlaybackProgress?> loadAudioProgress(LibraryItemId itemId) => audioProgress.load(itemId);
-  Future<void> saveAudioProgress(LibraryAudioPlaybackProgress value) => audioProgress.save(value);
-  Future<LibraryVideoPlaybackProgress?> loadVideoProgress(LibraryItemId itemId) => videoProgress.load(itemId);
-  Future<void> saveVideoProgress(LibraryVideoPlaybackProgress value) => videoProgress.save(value);
-  Future<List<LibraryMangaBookmark>> listMangaBookmarks(LibraryItemId itemId) => mangaState.listBookmarks(itemId);
-  Future<void> addMangaBookmark(LibraryMangaBookmark value) => mangaState.addBookmark(value);
-  Future<void> removeMangaBookmark(LibraryItemId itemId, String bookmarkId) => mangaState.removeBookmark(itemId, bookmarkId);
+      _content.cacheMangaChapter(entryId: entryId, pages: pages);
+  Future<List<int>?> readCover(CoverKey key) => _covers.read(key);
+  Future<void> saveCover({required CoverKey key, required List<int> bytes, String mimeType = 'image/unknown'}) =>
+      _covers.save(key: key, bytes: bytes, mimeType: mimeType);
+  Future<void> removeCover(CoverKey key) => _covers.remove(key);
+  Future<int> coverCacheUsageBytes() => _covers.usageBytes();
+  Future<int> clearCoverCache() => _covers.clear();
+  Future<List<int>?> readMangaImage({
+    required LibraryItemId itemId,
+    required String chapterId,
+    required String pageId,
+    required int contentVersion,
+  }) => _mangaImageCache.read(itemId: itemId, chapterId: chapterId, pageId: pageId, contentVersion: contentVersion);
+  Future<void> saveMangaImage({
+    required LibraryItemId itemId,
+    required String chapterId,
+    required String pageId,
+    required int contentVersion,
+    required List<int> bytes,
+    required String mimeType,
+  }) => _mangaImageCache.save(
+    itemId: itemId,
+    chapterId: chapterId,
+    pageId: pageId,
+    contentVersion: contentVersion,
+    bytes: bytes,
+    mimeType: mimeType,
+  );
+  Future<int> mangaImageCacheUsageBytes() => _mangaImageCache.usageBytes();
+  Future<MangaImageCacheStorageUsage> inspectMangaImageCache() => _mangaImageCache.usage();
+  Future<int> clearMangaImageCache() => _mangaImageCache.clear();
+  Future<StorageCleanupPreview> inspectStorage() => _storageMaintenance.inspect();
+  Future<StorageCleanupResult> clearStorage() => _storageMaintenance.clearAll();
+  Future<StorageCompactionResult> compactStorage() => _storageMaintenance.compact();
+  Future<List<LibraryNotification>> loadNotifications({int limit = libraryNotificationMaxCount}) => _notifications.list(limit: limit);
+  Future<void> clearNotifications() => _notifications.clear();
   Future<MangaReaderSession?> openMangaReaderSession(LibraryItemId itemId) => _trace(
     operation: 'mangaReaderSessionOpen',
     contentKind: ContentKind.manga.code,
@@ -161,40 +227,36 @@ final class ContentLibrary {
   );
 
   Future<MangaReaderSession?> _openMangaReaderSession(LibraryItemId itemId) async {
-    final record = await _persistence.metadataRecords.read(id: itemId.value, scope: _scope);
-    if (record == null || record.recordKind != _itemKind) return null;
-    final item = _item(record);
-    if (item.kind != ContentKind.manga) return null;
-    final snapshot = record.document['activeSnapshotId'];
-    if (snapshot is! String || snapshot.isEmpty) return null;
-    final first = await _persistence.metadataRecords.list(
-      RecordQuery(recordKind: _entryKind, scope: _scope, parentId: itemId.value, stateKey: 'pending:$snapshot', limit: 1),
+    final projection = await _persistence.metadataRecords.contentLibrary.openReaderProjection(itemId.value, ContentKind.manga.code);
+    final chapter = projection?.chapter;
+    if (projection == null || chapter == null) return null;
+    final count = projection.values['catalog_count']! as int;
+    return MangaReaderSession._(
+      library: this,
+      item: _storedItem(projection.item),
+      initialChapter: _storedEntry(chapter, itemId),
+      catalogCount: count,
     );
-    if (first.records.isEmpty) return null;
-    final binding = first.records.single.document['bindingId'];
-    if (binding is! String || binding.isEmpty) return null;
-    final count = record.document['catalogCount'] is int ? record.document['catalogCount'] as int : first.records.length;
-    return MangaReaderSession._(library: this, item: item, catalogCount: count, snapshot: snapshot, bindingId: SourceBindingId(binding));
   }
 
   Future<void> cacheNovelChapter({required LibraryItemId itemId, required String remoteChapterId, required String text}) =>
-      content.cacheNovelChapter(itemId: itemId, remoteChapterId: remoteChapterId, text: text);
+      _content.cacheNovelChapter(itemId: itemId, remoteChapterId: remoteChapterId, text: text);
 
-  Future<LibrarySyncSnapshot> createSyncSnapshot() => sync.createSnapshot();
+  Future<LibrarySyncSnapshot> createSyncSnapshot() => _sync.createSnapshot();
 
   Future<LibrarySyncPreview> previewSyncSnapshot(LibrarySyncSnapshot snapshot, {required Set<String> availablePluginIds}) =>
-      sync.preview(snapshot, availablePluginIds: availablePluginIds);
+      _sync.preview(snapshot, availablePluginIds: availablePluginIds);
 
   Future<LibrarySyncApplyResult> applySyncSnapshot(
     LibrarySyncSnapshot snapshot, {
     required LibrarySyncPreview preview,
     required Map<LibrarySyncIdentity, LibrarySyncConflictChoice> choices,
-  }) => sync.apply(snapshot, preview: preview, choices: choices);
+  }) => _sync.apply(snapshot, preview: preview, choices: choices);
 
-  /// Opens a novel against one immutable active catalog snapshot.
+  /// Opens a novel against the catalog count captured by one metadata query.
   ///
-  /// The returned session never follows a later catalog refresh; callers can
-  /// therefore keep chapter identity stable while a background refresh runs.
+  /// The returned session never follows later appends, so background sync only
+  /// becomes visible after the reader is reopened.
   Future<NovelReaderSession?> openNovelReaderSession(LibraryItemId itemId) => _trace(
     operation: 'novelReaderSessionOpen',
     contentKind: ContentKind.novel.code,
@@ -205,52 +267,18 @@ final class ContentLibrary {
   );
 
   Future<NovelReaderSession?> _openNovelReaderSession(LibraryItemId itemId) async {
-    final record = await _persistence.metadataRecords.read(id: itemId.value, scope: _scope);
-    if (record == null || record.recordKind != _itemKind) return null;
-    final item = _item(record);
-    if (item.kind != ContentKind.novel) return null;
-    final snapshot = record.document['activeSnapshotId'];
-    if (snapshot is! String || snapshot.isEmpty) return null;
-    final progressFuture = readingProgress._load(itemId);
-    final firstEntry = await _persistence.metadataRecords.list(
-      RecordQuery(recordKind: _entryKind, scope: _scope, parentId: itemId.value, stateKey: 'pending:$snapshot', limit: 1),
-    );
-    if (firstEntry.records.isEmpty) {
-      await progressFuture;
-      return null;
-    }
-    final storedBinding = firstEntry.records.single.document['bindingId'];
-    SourceBindingId bindingId;
-    if (storedBinding is String && storedBinding.isNotEmpty) {
-      bindingId = SourceBindingId(storedBinding);
-    } else {
-      final bindings = await _persistence.metadataRecords.list(
-        RecordQuery(recordKind: _bindingKind, scope: _scope, parentId: itemId.value, limit: 1),
-      );
-      if (bindings.records.isEmpty) return null;
-      bindingId = SourceBindingId(bindings.records.single.id);
-    }
-    final storedCatalogCount = record.document['catalogCount'];
-    var catalogCount = storedCatalogCount is int
-        ? storedCatalogCount
-        : await _persistence.metadataRecords.count(
-            RecordQuery(recordKind: _entryKind, scope: _scope, parentId: itemId.value, stateKey: 'pending:$snapshot', limit: 1),
-          );
-    if (storedCatalogCount is! int) {
-      try {
-        await _persistence.metadataRecords.update(previous: record, document: {...record.document, 'catalogCount': catalogCount});
-      } on PersistenceConflictError {
-        // A concurrent snapshot switch owns the newer item revision.
-      }
-    }
-    final progress = await progressFuture;
+    final projection = await _persistence.metadataRecords.contentLibrary.openReaderProjection(itemId.value, ContentKind.novel.code);
+    final chapter = projection?.chapter;
+    if (projection == null || chapter == null) return null;
+    final item = _storedItem(projection.item);
+    final catalogCount = projection.values['catalog_count']! as int;
+    final progress = projection.progress == null ? null : _storedReadingProgress(projection.progress!, itemId);
     return NovelReaderSession._(
       library: this,
       item: item,
       progress: progress,
+      initialChapter: _storedEntry(chapter, itemId),
       catalogCount: catalogCount,
-      snapshot: snapshot,
-      bindingId: bindingId,
     );
   }
 

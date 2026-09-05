@@ -1,49 +1,27 @@
 part of 'content_library.dart';
 
-final class CatalogRepository {
-  CatalogRepository._(this._library);
+final class _CatalogOperations {
+  _CatalogOperations(this._library);
   final ContentLibrary _library;
-  Future<void> replaceSnapshot({
-    required LibraryItemId itemId,
-    required SourceBindingId bindingId,
-    required Iterable<IngestCatalogEntry> entries,
-  }) {
-    final copied = List<IngestCatalogEntry>.of(entries);
-    return _library._trace(
-      operation: 'catalogReplaceSnapshot',
-      itemCount: copied.length,
-      action: () => _replaceSnapshot(itemId: itemId, bindingId: bindingId, entries: copied),
-    );
-  }
 
   /// Synchronizes a manga catalog using only stable host-owned fields.
   Future<int> syncMangaCatalog({required LibraryItemId itemId, required Iterable<MangaChapterDescriptor> chapters}) {
     final values = chapters.toList(growable: false);
-    return _library._withStorageMaintenance(() async {
-      final item = await _library.getLibraryItem(itemId);
-      final source = item?.source;
-      if (item == null || item.kind != ContentKind.manga || source == null) {
-        throw StateError('The shelf item is not a manga item with source identity.');
-      }
-      final ingest = ContentLibraryIngest(
-        pluginId: source.pluginId,
-        producerPluginVersion: source.pluginVersion,
-        dataVersion: 1,
-        opaqueData: {'remoteBookId': source.remoteContentId},
-      );
-      return _replaceSnapshot(
-        itemId: itemId,
-        bindingId: SourceBindingId(_id()),
-        entries: values.map(
-          (chapter) => IngestCatalogEntry(
-            remoteIdentity: chapter.remoteIdentity,
-            title: chapter.title,
-            orderKey: _catalogOrderKey(chapter.index),
-            index: chapter.index,
-            kindCode: ContentKind.manga.code,
-            source: ingest,
-          ),
+    final writes = <ContentLibraryCatalogWrite>[
+      for (final chapter in values)
+        ContentLibraryCatalogWrite(
+          chapterId: _id(),
+          remoteIdentity: chapter.remoteIdentity,
+          title: chapter.title,
+          sourceIndex: chapter.index,
         ),
+    ];
+    _validateCatalogWrites(writes);
+    return _library._withStorageMaintenance(() async {
+      return _library._persistence.metadataRecords.contentLibrary.appendCatalog(
+        itemId: itemId.value,
+        contentKind: ContentKind.manga.code,
+        chapters: writes,
       );
     });
   }
@@ -56,7 +34,7 @@ final class CatalogRepository {
     resultState: (result) => result.items.isEmpty ? 'empty' : 'content',
   );
 
-  /// Returns the active catalog for one item without leaking persistence cursors.
+  /// Returns the sole append-only catalog without leaking persistence cursors.
   Future<List<CatalogEntry>> listAll(LibraryItemId itemId) => _library._trace(
     operation: 'catalogListAll',
     action: () => _listAll(itemId),
@@ -64,8 +42,7 @@ final class CatalogRepository {
     resultState: (result) => result.isEmpty ? 'empty' : 'content',
   );
 
-  /// Initializes a persisted novel catalog once, preserving downloaded chapter
-  /// content on all later reader launches.
+  /// Appends unseen chapters to the sole durable catalog for this item.
   Future<int> ensureNovelCatalog({required LibraryItemId itemId, required Iterable<SourceNovelCatalogChapter> chapters}) {
     final copied = List<SourceNovelCatalogChapter>.of(chapters);
     return _library._trace(
@@ -78,10 +55,7 @@ final class CatalogRepository {
     );
   }
 
-  /// Replaces the active novel catalog while preserving cached chapter bodies.
-  ///
-  /// Source chapter IDs are stored explicitly, rather than reconstructed from
-  /// the internal binding key, so IDs containing `:` remain lossless.
+  /// Appends unseen chapters without rewriting or deleting existing rows.
   Future<int> syncNovelCatalog({required LibraryItemId itemId, required Iterable<SourceNovelCatalogChapter> chapters}) {
     final copied = List<SourceNovelCatalogChapter>.of(chapters);
     return _library._trace(
@@ -94,184 +68,66 @@ final class CatalogRepository {
     );
   }
 
-  Future<int> _replaceSnapshot({
+  Future<CatalogEntry?> _findBounded({
     required LibraryItemId itemId,
-    required SourceBindingId bindingId,
-    required Iterable<IngestCatalogEntry> entries,
-    Map<String, CatalogEntry> previousByRemoteIdentity = const <String, CatalogEntry>{},
-  }) => _library._withStorageMaintenance(
-    () =>
-        _replaceSnapshotLocked(itemId: itemId, bindingId: bindingId, entries: entries, previousByRemoteIdentity: previousByRemoteIdentity),
-  );
-
-  Future<int> _replaceSnapshotLocked({
-    required LibraryItemId itemId,
-    required SourceBindingId bindingId,
-    required Iterable<IngestCatalogEntry> entries,
-    required Map<String, CatalogEntry> previousByRemoteIdentity,
-  }) async {
-    final snapshot = _id();
-    var ordinal = 0;
-    final batch = <RecordDraft>[];
-    for (final input in entries) {
-      final previous = previousByRemoteIdentity[input.remoteIdentity];
-      batch.add(
-        RecordDraft(
-          id: input.id ?? _id(),
-          recordKind: _entryKind,
-          scope: _scope,
-          parentId: itemId.value,
-          identityKey: '${bindingId.value}:${input.remoteIdentity}',
-          orderKey: input.index == null ? input.orderKey : _catalogOrderKey(input.index!),
-          stateKey: 'pending:$snapshot',
-          document: {
-            'bindingId': bindingId.value,
-            'snapshotId': snapshot,
-            'remoteIdentity': input.remoteIdentity,
-            'title': input.title,
-            'kind': input.kindCode,
-            if (input.index != null) 'index': input.index,
-            if (input.chapterUrl != null) 'chapterUrl': input.chapterUrl.toString(),
-            'plugin': _plugin(input.source),
-            'contentStatus': 'missing',
-            if (input.wordCount != null) 'wordCount': input.wordCount,
-            if (input.wordCount == null && previous?.wordCount != null) 'wordCount': previous!.wordCount,
-            if (previous != null && previous.contentStatus == 'ready') 'contentStatus': 'ready',
-          },
-        ),
-      );
-      if (previous != null && previous.contentReference != null) {
-        final record = batch.last.document;
-        // The object reference is deliberately retained across catalog
-        // snapshots; the app-owned content object remains immutable.
-        record['contentReference'] = previous.contentReference;
-        if (previous.kind != null) {
-          record['contentKind'] = previous.kind!.code;
-        }
-      }
-      ordinal++;
-      // PersistenceRecordStore rejects batches larger than 128 records.
-      // Keep catalog snapshot writes below that contract so a source can
-      // return a whole 166-chapter page without failing reader launch.
-      if (batch.length == PersistenceRecordStore.maxWriteBatchSize) {
-        await _library._persistence.metadataRecords.createBatch(batch);
-        batch.clear();
-      }
-    }
-    if (batch.isNotEmpty) {
-      await _library._persistence.metadataRecords.createBatch(batch);
-    }
-    if (ordinal == 0) {
-      throw ArgumentError('A catalog snapshot cannot be empty.');
-    }
-    // Atomic visibility is a single CAS update of the item projection.
-    final item = await _library._persistence.metadataRecords.read(id: itemId.value, scope: _scope);
-    if (item == null) throw StateError('Missing item.');
-    await _library._persistence.metadataRecords.update(
-      previous: item,
-      document: {...item.document, 'activeSnapshotId': snapshot, 'catalogCount': ordinal},
-    );
-    return ordinal;
-  }
-
-  Future<CatalogEntry?> _findInSnapshot({
-    required LibraryItemId itemId,
-    required String snapshot,
-    required SourceBindingId bindingId,
+    required int upperBound,
     String? remoteIdentity,
-    String? orderKey,
+    int? position,
   }) async {
-    final identityKey = remoteIdentity == null ? null : '${bindingId.value}:$remoteIdentity';
-    final page = await _library._persistence.metadataRecords.list(
-      RecordQuery(
-        recordKind: _entryKind,
-        scope: _scope,
-        parentId: itemId.value,
-        stateKey: 'pending:$snapshot',
-        identityKey: identityKey,
-        orderKey: orderKey,
-        limit: 1,
-      ),
-    );
-    return page.records.isEmpty ? null : _entry(page.records.single);
+    final row = remoteIdentity == null
+        ? await _library._persistence.metadataRecords.contentLibrary.chapterAt(itemId.value, position ?? -1, upperBound)
+        : await _library._persistence.metadataRecords.contentLibrary.chapterByRemote(itemId.value, remoteIdentity, upperBound);
+    return row == null ? null : _storedEntry(row, itemId);
   }
 
-  Future<Map<String, CatalogEntry>> _findManyInSnapshot({
+  Future<Map<String, CatalogEntry>> _findManyBounded({
     required LibraryItemId itemId,
-    required String snapshot,
-    required SourceBindingId bindingId,
+    required int upperBound,
     required Iterable<String> remoteIdentities,
   }) async {
     final identities = remoteIdentities.toSet();
     if (identities.isEmpty) return const <String, CatalogEntry>{};
-    final records = await _library._persistence.metadataRecords.listByIdentityKeys(
-      recordKind: _entryKind,
-      scope: _scope,
-      identityKeys: identities.map((identity) => '${bindingId.value}:$identity'),
-      parentId: itemId.value,
-      stateKey: 'pending:$snapshot',
-    );
+    final records = await _library._persistence.metadataRecords.contentLibrary.chaptersByRemote(itemId.value, identities, upperBound);
     return Map<String, CatalogEntry>.unmodifiable({
-      for (final record in records)
-        if (record.document['remoteIdentity'] case final String identity) identity: _entry(record),
+      for (final record in records) record.values['remote_identity']! as String: _storedEntry(record, itemId),
     });
   }
 
   Future<CatalogEntry?> _activeEntryByRemoteIdentity(LibraryItemId itemId, String remoteIdentity) async {
-    final item = await _library._persistence.metadataRecords.read(id: itemId.value, scope: _scope);
-    final snapshot = item?.document['activeSnapshotId'];
-    if (snapshot is! String || snapshot.isEmpty) return null;
-    final bindings = await _library._persistence.metadataRecords.list(
-      RecordQuery(recordKind: _bindingKind, scope: _scope, parentId: itemId.value, limit: 1),
+    final item = await _library._persistence.metadataRecords.contentLibrary.readItem(itemId.value);
+    if (item == null) return null;
+    final row = await _library._persistence.metadataRecords.contentLibrary.chapterByRemote(
+      itemId.value,
+      remoteIdentity,
+      item.values['catalog_count']! as int,
     );
-    if (bindings.records.isEmpty) return null;
-    var bindingId = SourceBindingId(bindings.records.single.id);
-    final firstEntry = await _library._persistence.metadataRecords.list(
-      RecordQuery(recordKind: _entryKind, scope: _scope, parentId: itemId.value, stateKey: 'pending:$snapshot', limit: 1),
-    );
-    if (firstEntry.records.isNotEmpty) {
-      final storedBinding = firstEntry.records.single.document['bindingId'];
-      if (storedBinding is String && storedBinding.isNotEmpty) {
-        bindingId = SourceBindingId(storedBinding);
-      }
-    }
-    return _findInSnapshot(itemId: itemId, snapshot: snapshot, bindingId: bindingId, remoteIdentity: remoteIdentity);
+    return row == null ? null : _storedEntry(row, itemId);
   }
 
-  Future<Page<CatalogEntry>> _pageInSnapshot({
+  Future<Page<CatalogEntry>> _pageBounded({
     required LibraryItemId itemId,
-    required String snapshot,
+    required int upperBound,
     required String? after,
     required int limit,
   }) async {
-    final page = await _library._persistence.metadataRecords.list(
-      RecordQuery(
-        recordKind: _entryKind,
-        scope: _scope,
-        parentId: itemId.value,
-        stateKey: 'pending:$snapshot',
-        after: _cursor(after),
-        limit: limit,
-      ),
+    final afterPosition = int.tryParse(after ?? '') ?? -1;
+    final pageSize = limit.clamp(1, 500);
+    final rows = await _library._persistence.metadataRecords.contentLibrary.listCatalog(
+      itemId: itemId.value,
+      upperBound: upperBound,
+      afterPosition: afterPosition,
+      limit: pageSize,
     );
-    return Page(items: page.records.map(_entry).toList(growable: false), nextCursor: _cursorText(page.nextCursor));
+    final next = rows.length == pageSize && (rows.last.values['position']! as int) + 1 < upperBound
+        ? (rows.last.values['position']! as int).toString()
+        : null;
+    return Page(items: List<CatalogEntry>.unmodifiable(rows.map((row) => _storedEntry(row, itemId))), nextCursor: next);
   }
 
   Future<Page<CatalogEntry>> _list(LibraryItemId itemId, CatalogQuery query) async {
-    final item = await _library._persistence.metadataRecords.read(id: itemId.value, scope: _scope);
-    final snapshot = item?.document['activeSnapshotId'];
-    if (snapshot is! String) return const Page(items: []);
-    final page = await _library._persistence.metadataRecords.list(
-      RecordQuery(
-        recordKind: _entryKind,
-        scope: _scope,
-        parentId: itemId.value,
-        stateKey: 'pending:$snapshot',
-        after: _cursor(query.after),
-        limit: query.limit,
-      ),
-    );
-    return Page(items: page.records.map(_entry).toList(growable: false), nextCursor: _cursorText(page.nextCursor));
+    final item = await _library._persistence.metadataRecords.contentLibrary.readItem(itemId.value);
+    if (item == null) return const Page(items: <CatalogEntry>[]);
+    return _pageBounded(itemId: itemId, upperBound: item.values['catalog_count']! as int, after: query.after, limit: query.limit);
   }
 
   Future<List<CatalogEntry>> _listAll(LibraryItemId itemId) async {
@@ -286,132 +142,50 @@ final class CatalogRepository {
   }
 
   Future<int> _ensureNovelCatalog(LibraryItemId itemId, List<SourceNovelCatalogChapter> chapters) async {
-    final item = await _library._persistence.metadataRecords.read(id: itemId.value, scope: _scope);
-    final activeSnapshot = item?.document['activeSnapshotId'];
-    final storedCatalogCount = item?.document['catalogCount'];
-    if (activeSnapshot is String && activeSnapshot.isNotEmpty) {
-      if (storedCatalogCount is int && storedCatalogCount > 0) return storedCatalogCount;
-      final existingCount = await _library._persistence.metadataRecords.count(
-        RecordQuery(recordKind: _entryKind, scope: _scope, parentId: itemId.value, stateKey: 'pending:$activeSnapshot', limit: 1),
-      );
-      if (existingCount > 0) return existingCount;
-    }
-    if (chapters.isEmpty) {
-      throw ArgumentError.value(chapters, 'chapters', 'Cannot persist an empty catalog.');
-    }
-    final seen = <String>{};
-    for (final chapter in chapters) {
-      if (!seen.add(chapter.remoteIdentity)) {
-        throw ArgumentError.value(chapter.remoteIdentity, 'chapters');
-      }
-    }
-    final source = item == null ? null : _itemSource(item.document['plugin']);
-    if (source == null) {
-      throw StateError('The shelf item has no source identity.');
-    }
-    final bindings = await _library._persistence.metadataRecords.list(
-      RecordQuery(recordKind: _bindingKind, scope: _scope, parentId: itemId.value, limit: 1),
-    );
-    if (bindings.records.isEmpty) {
-      throw StateError('The shelf item has no source binding.');
-    }
-    final ingest = ContentLibraryIngest(
-      pluginId: source.pluginId,
-      producerPluginVersion: source.pluginVersion,
-      dataVersion: 1,
-      opaqueData: <String, Object?>{'remoteBookId': source.remoteContentId},
-    );
-    return _replaceSnapshot(
-      itemId: itemId,
-      bindingId: SourceBindingId(bindings.records.single.id),
-      entries: chapters.map(
-        (chapter) => IngestCatalogEntry(
-          remoteIdentity: chapter.remoteIdentity,
-          title: chapter.title,
-          orderKey: chapter.index.toString().padLeft(12, '0'),
-          kindCode: ContentKind.novel.code,
-          source: ingest,
-          index: chapter.index,
-          wordCount: chapter.wordCount,
-          chapterUrl: chapter.chapterUrl,
-        ),
-      ),
-    );
+    return _syncNovelCatalog(itemId, chapters);
   }
 
   Future<int> _syncNovelCatalog(LibraryItemId itemId, List<SourceNovelCatalogChapter> chapters) async {
-    if (chapters.isEmpty) {
-      throw ArgumentError.value(chapters, 'chapters', 'Cannot persist an empty catalog.');
-    }
     final seen = <String>{};
     for (final chapter in chapters) {
-      if (!seen.add(chapter.remoteIdentity)) {
+      if (chapter.remoteIdentity.isEmpty || chapter.title.isEmpty || !seen.add(chapter.remoteIdentity)) {
         throw ArgumentError.value(chapter.remoteIdentity, 'chapters');
       }
     }
-    final item = await _library._persistence.metadataRecords.read(id: itemId.value, scope: _scope);
-    final source = item == null ? null : _itemSource(item.document['plugin']);
-    if (source == null) {
-      throw StateError('The shelf item has no source identity.');
-    }
-    final bindings = await _library._persistence.metadataRecords.list(
-      RecordQuery(recordKind: _bindingKind, scope: _scope, parentId: itemId.value, limit: 1),
-    );
-    if (bindings.records.isEmpty) {
-      throw StateError('The shelf item has no source binding.');
-    }
-    final previous = {for (final entry in await _listAll(itemId)) entry.remoteIdentity: entry};
-    final ingest = ContentLibraryIngest(
-      pluginId: source.pluginId,
-      producerPluginVersion: source.pluginVersion,
-      dataVersion: 1,
-      opaqueData: <String, Object?>{'remoteBookId': source.remoteContentId},
-    );
-    return _replaceSnapshot(
-      itemId: itemId,
-      bindingId: SourceBindingId(bindings.records.single.id),
-      previousByRemoteIdentity: previous,
-      entries: chapters.map(
-        (chapter) => IngestCatalogEntry(
+    final writes = <ContentLibraryCatalogWrite>[
+      for (final chapter in chapters)
+        ContentLibraryCatalogWrite(
+          chapterId: _id(),
           remoteIdentity: chapter.remoteIdentity,
           title: chapter.title,
-          orderKey: chapter.index.toString().padLeft(12, '0'),
-          kindCode: ContentKind.novel.code,
-          source: ingest,
-          index: chapter.index,
+          sourceIndex: chapter.index,
+          chapterUrl: chapter.chapterUrl?.toString(),
           wordCount: chapter.wordCount,
-          chapterUrl: chapter.chapterUrl,
         ),
-      ),
+    ];
+    _validateCatalogWrites(writes);
+    return _library._persistence.metadataRecords.contentLibrary.appendCatalog(
+      itemId: itemId.value,
+      contentKind: ContentKind.novel.code,
+      chapters: writes,
     );
   }
 }
 
-final class IngestCatalogEntry {
-  const IngestCatalogEntry({
-    this.id,
-    required this.remoteIdentity,
-    required this.title,
-    required this.orderKey,
-    required this.kindCode,
-    required this.source,
-    this.index,
-    this.wordCount,
-    this.chapterUrl,
-  });
-  final String? id;
-  final String remoteIdentity, title, orderKey, kindCode;
-  final ContentLibraryIngest source;
-  final int? index, wordCount;
-  final Uri? chapterUrl;
+void _validateCatalogWrites(List<ContentLibraryCatalogWrite> writes) {
+  final seen = <String>{};
+  for (final write in writes) {
+    if (write.remoteIdentity.isEmpty || write.title.isEmpty || !seen.add(write.remoteIdentity)) {
+      throw ArgumentError.value(write.remoteIdentity, 'chapters', 'Chapter identities must be non-empty and unique.');
+    }
+  }
 }
 
-final class IngestMangaPage {
-  const IngestMangaPage({
+final class _SerializedMangaPage {
+  const _SerializedMangaPage({
     required this.pageId,
     required this.order,
     required this.resource,
-    required this.source,
     this.downloadedAssetId,
     this.mimeType = 'image/unknown',
     this.width,
@@ -422,7 +196,6 @@ final class IngestMangaPage {
   final String pageId;
   final int order;
   final SourceResource resource;
-  final ContentLibraryIngest source;
   final ContentAssetId? downloadedAssetId;
   final String mimeType;
   final int? width, height, byteLength;
@@ -439,7 +212,6 @@ final class IngestMangaPage {
     if (height != null) 'height': height,
     if (byteLength != null) 'byteLength': byteLength,
     'contentVersion': contentVersion,
-    'plugin': _plugin(source),
   };
 }
 
@@ -460,302 +232,150 @@ DiagnosticObjectValue _libraryAttributes({
   'thresholdMicros': DiagnosticValue.int64(AppDiagnosticThresholds.libraryOperation.inMicroseconds),
 });
 
-Map<String, Object?> _plugin(ContentLibraryIngest v) => {
-  'pluginId': v.pluginId,
-  'producerPluginVersion': v.producerPluginVersion,
-  'dataVersion': v.dataVersion,
-  'data': v.opaqueData,
-};
-LibraryItem _item(RecordEnvelope r) => LibraryItem(
-  id: LibraryItemId(r.id),
-  title: r.document['title'] as String,
-  author: r.document['author'] as String?,
-  kind: ContentKind.fromCode(r.document['kind'] as String) ?? ContentKind.novel,
-  state: r.stateKey ?? 'unknown',
-  revision: r.revision,
-  coverUrl: _uriFromSummary(r.document, 'coverUrl'),
-  sourceName: _stringFromSummary(r.document, 'sourceName'),
-  sourceUrl: _uriFromSummary(r.document, 'sourceUrl'),
-  description: _stringFromSummary(r.document, 'description'),
-  language: _stringFromSummary(r.document, 'language'),
-  accessCode: _stringFromSummary(r.document, 'accessCode'),
-  wordCount: _intFromSummary(r.document, 'wordCount'),
-  chapterCount: _intFromSummary(r.document, 'chapterCount'),
-  publishedAt: _dateTimeFromSummary(r.document, 'publishedAt'),
-  updatedAt: _dateTimeFromSummary(r.document, 'updatedAt'),
-  statusLabel: _stringFromSummary(r.document, 'statusLabel'),
-  latestChapterId: _stringFromSummary(r.document, 'latestChapterId'),
-  latestChapterTitle: _stringFromSummary(r.document, 'latestChapterTitle'),
-  latestChapterUrl: _uriFromSummary(r.document, 'latestChapterUrl'),
-  latestChapterUpdatedAt: _dateTimeFromSummary(r.document, 'latestChapterUpdatedAt'),
-  categories: _stringListFromSummary(r.document, 'categories'),
-  tags: _stringListFromSummary(r.document, 'tags'),
-  attributes: _attributesFromSummary(r.document),
-  sourceDetail: _mapFromSummary(r.document, 'sourceDetail'),
-  labels: _stringListFromSummary(r.document, 'labels'),
-  source: _itemSource(r.document['plugin']),
-  visibility: _visibilityFromDocument(r.document),
-);
-
-LibraryVisibility _visibilityFromDocument(Map<String, Object?> document) =>
-    LibraryVisibility.fromWireValue(document['visibility'] as String?);
-
-Map<String, Object?> _shelfSummary(ContentLibraryIngest source) {
-  final summary = <String, Object?>{};
-  final stringKeys = <String>[
-    'coverUrl',
-    'sourceName',
-    'sourceUrl',
-    'description',
-    'language',
-    'accessCode',
-    'statusLabel',
-    'publishedAt',
-    'updatedAt',
-    'latestChapterId',
-    'latestChapterTitle',
-    'latestChapterUrl',
-    'latestChapterUpdatedAt',
-  ];
-  for (final key in stringKeys) {
-    final value = source.opaqueData[key];
-    if (value is String && value.isNotEmpty) summary[key] = value;
-  }
-  for (final key in ['wordCount', 'chapterCount']) {
-    final value = source.opaqueData[key];
-    if (value is int && value >= 0) summary[key] = value;
-  }
-  for (final key in ['categories', 'tags', 'labels']) {
-    final raw = source.opaqueData[key];
-    if (raw is List<Object?>) {
-      final values = raw.whereType<String>().where((value) => value.isNotEmpty);
-      if (values.isNotEmpty) summary[key] = values.toList(growable: false);
-    }
-  }
-  final attributes = source.opaqueData['attributes'];
-  if (attributes is List<Object?>) {
-    final values = <Map<String, String>>[];
-    for (final raw in attributes) {
-      if (raw is! Map) continue;
-      final key = raw['key'];
-      final label = raw['label'];
-      final value = raw['value'];
-      if (key is String && key.isNotEmpty && label is String && label.isNotEmpty && value is String && value.isNotEmpty) {
-        values.add(<String, String>{'key': key, 'label': label, 'value': value});
-      }
-    }
-    if (values.isNotEmpty) summary['attributes'] = values;
-  }
-  final sourceDetail = source.opaqueData['sourceDetail'];
-  if (sourceDetail is Map<String, Object?> && sourceDetail.isNotEmpty) {
-    summary['sourceDetail'] = sourceDetail;
-  }
-  return summary;
+LibraryItem _storedItem(StoredLibraryItem row) {
+  final values = row.values;
+  final rawDetails = jsonDecode(values['details_json']! as String);
+  final details = rawDetails is Map<String, Object?> ? rawDetails : const <String, Object?>{};
+  return LibraryItem(
+    id: LibraryItemId(values['item_id']! as String),
+    title: values['title']! as String,
+    author: values['author'] as String?,
+    kind: ContentKind.fromCode(values['content_kind']! as String) ?? ContentKind.novel,
+    state: values['shelf_state']! as String,
+    revision: values['item_revision']! as int,
+    visibility: LibraryVisibility.fromWireValue(values['visibility'] as String?),
+    coverUrl: _uriFromValue(values['cover_url']),
+    sourceName: values['source_name'] as String?,
+    sourceUrl: _uriFromValue(details['sourceUrl']),
+    description: details['description'] as String?,
+    language: details['language'] as String?,
+    accessCode: details['accessCode'] as String?,
+    wordCount: details['wordCount'] as int?,
+    chapterCount: values['source_chapter_count'] as int?,
+    publishedAt: _dateTimeValue(details['publishedAt']),
+    updatedAt: _dateTimeValue(details['updatedAt']),
+    statusLabel: details['statusLabel'] as String?,
+    latestChapterId: details['latestChapterId'] as String?,
+    latestChapterTitle: details['latestChapterTitle'] as String?,
+    latestChapterUrl: _uriFromValue(details['latestChapterUrl']),
+    latestChapterUpdatedAt: _dateTimeValue(details['latestChapterUpdatedAt']),
+    categories: _stringList(details['categories']),
+    tags: _stringList(details['tags']),
+    attributes: _storedAttributes(details['attributes']),
+    sourceDetail: _stringObjectMap(details['sourceDetail']),
+    labels: _stringList(details['labels']),
+    source: LibraryItemSource(
+      pluginId: values['source_plugin_id']! as String,
+      pluginVersion: values['source_plugin_version']! as String,
+      remoteContentId: values['remote_item_id']! as String,
+    ),
+  );
 }
 
-Map<String, Object?> _summaryFromDocument(Map<String, Object?> document) {
-  final raw = document['summary'];
-  return raw is Map<String, Object?> ? Map<String, Object?>.from(raw) : <String, Object?>{};
+LibraryShelfProjection _storedShelfProjection(StoredShelfItem row) {
+  final values = row.values;
+  final progressUpdated = values['progress_updated_at_utc'] as int?;
+  return LibraryShelfProjection(
+    itemId: LibraryItemId(values['item_id']! as String),
+    kind: ContentKind.fromCode(values['content_kind']! as String) ?? ContentKind.novel,
+    title: values['title']! as String,
+    author: values['author'] as String?,
+    coverUrl: _uriFromValue(values['cover_url']),
+    sourceName: values['source_name'] as String?,
+    source: LibraryItemSource(
+      pluginId: values['source_plugin_id']! as String,
+      pluginVersion: values['source_plugin_version']! as String,
+      remoteContentId: values['remote_item_id']! as String,
+    ),
+    sourceChapterCount: values['source_chapter_count'] as int?,
+    catalogCount: values['catalog_count']! as int,
+    summaryExcerpt: values['summary_excerpt'] as String?,
+    progressKind: values['progress_kind'] == null ? null : ContentKind.fromCode(values['progress_kind']! as String),
+    chapterPosition: values['chapter_position'] as int?,
+    bookFraction: (values['book_fraction'] as num?)?.toDouble(),
+    totalReadingSeconds: values['total_reading_seconds'] as int?,
+    progressUpdatedAtUtc: progressUpdated == null ? null : DateTime.fromMillisecondsSinceEpoch(progressUpdated, isUtc: true),
+  );
 }
 
-String? _stringFromSummary(Map<String, Object?> document, String key) {
-  final value = _summaryFromDocument(document)[key];
-  return value is String && value.isNotEmpty ? value : null;
+String? _summaryExcerpt(String? value) {
+  if (value == null || value.isEmpty) return null;
+  return value.length <= 240 ? value : value.substring(0, 240);
 }
 
-DateTime? _dateTimeFromSummary(Map<String, Object?> document, String key) {
-  final value = _stringFromSummary(document, key);
-  return value == null ? null : DateTime.tryParse(value);
-}
+DateTime? _dateTimeValue(Object? value) => value is String ? DateTime.tryParse(value) : null;
 
-List<LibraryItemAttribute> _attributesFromSummary(Map<String, Object?> document) {
-  final raw = _summaryFromDocument(document)['attributes'];
-  if (raw is! List<Object?>) return const <LibraryItemAttribute>[];
+List<String> _stringList(Object? value) =>
+    value is List<Object?> ? List<String>.unmodifiable(value.whereType<String>().where((item) => item.isNotEmpty)) : const <String>[];
+
+List<LibraryItemAttribute> _storedAttributes(Object? value) {
+  if (value is! List<Object?>) return const <LibraryItemAttribute>[];
   return <LibraryItemAttribute>[
-    for (final value in raw)
-      if (value is Map &&
-          value['key'] is String &&
-          (value['key']! as String).isNotEmpty &&
-          value['label'] is String &&
-          (value['label']! as String).isNotEmpty &&
-          value['value'] is String &&
-          (value['value']! as String).isNotEmpty)
-        LibraryItemAttribute(key: value['key']! as String, label: value['label']! as String, value: value['value']! as String),
+    for (final raw in value)
+      if (raw is Map && raw['key'] is String && raw['label'] is String && raw['value'] is String)
+        LibraryItemAttribute(key: raw['key']! as String, label: raw['label']! as String, value: raw['value']! as String),
   ];
 }
 
-Uri? _uriFromSummary(Map<String, Object?> document, String key) {
-  final value = _stringFromSummary(document, key);
-  return value == null ? null : Uri.tryParse(value);
-}
+Map<String, Object?> _stringObjectMap(Object? value) => value is Map
+    ? Map<String, Object?>.unmodifiable(<String, Object?>{
+        for (final entry in value.entries)
+          if (entry.key is String) entry.key as String: entry.value,
+      })
+    : const <String, Object?>{};
+
+Map<String, Object?> _shelfSummary(BookshelfAddRequest request) => <String, Object?>{
+  if (request.coverUrl != null) 'coverUrl': request.coverUrl.toString(),
+  if (request.sourceName != null) 'sourceName': request.sourceName,
+  if (request.sourceUrl != null) 'sourceUrl': request.sourceUrl.toString(),
+  if (request.description != null) 'description': request.description,
+  if (request.language != null) 'language': request.language,
+  if (request.accessCode != null) 'accessCode': request.accessCode,
+  if (request.wordCount != null) 'wordCount': request.wordCount,
+  if (request.chapterCount != null) 'chapterCount': request.chapterCount,
+  if (request.publishedAt != null) 'publishedAt': request.publishedAt!.toIso8601String(),
+  if (request.updatedAt != null) 'updatedAt': request.updatedAt!.toIso8601String(),
+  if (request.statusLabel != null) 'statusLabel': request.statusLabel,
+  if (request.latestChapterId != null) 'latestChapterId': request.latestChapterId,
+  if (request.latestChapterTitle != null) 'latestChapterTitle': request.latestChapterTitle,
+  if (request.latestChapterUrl != null) 'latestChapterUrl': request.latestChapterUrl.toString(),
+  if (request.latestChapterUpdatedAt != null) 'latestChapterUpdatedAt': request.latestChapterUpdatedAt!.toIso8601String(),
+  if (request.categories.isNotEmpty) 'categories': request.categories,
+  if (request.tags.isNotEmpty) 'tags': request.tags,
+  if (request.attributes.isNotEmpty)
+    'attributes': <Map<String, String>>[
+      for (final attribute in request.attributes)
+        <String, String>{'key': attribute.key, 'label': attribute.label, 'value': attribute.value},
+    ],
+  if (request.sourceDetail.isNotEmpty) 'sourceDetail': request.sourceDetail,
+  if (request.labels.isNotEmpty) 'labels': request.labels,
+};
 
 Uri? _uriFromValue(Object? value) {
   if (value is! String || value.isEmpty) return null;
   return Uri.tryParse(value);
 }
 
-int? _intFromSummary(Map<String, Object?> document, String key) {
-  final value = _summaryFromDocument(document)[key];
-  return value is int && value >= 0 ? value : null;
-}
-
-List<String> _stringListFromSummary(Map<String, Object?> document, String key) {
-  final value = _summaryFromDocument(document)[key];
-  if (value is! List<Object?>) return const <String>[];
-  return List<String>.unmodifiable(value.whereType<String>().where((item) => item.isNotEmpty));
-}
-
-Map<String, Object?> _mapFromSummary(Map<String, Object?> document, String key) {
-  final value = _summaryFromDocument(document)[key];
-  if (value is! Map) return const <String, Object?>{};
-  return Map<String, Object?>.unmodifiable(<String, Object?>{
-    for (final entry in value.entries)
-      if (entry.key is String) entry.key as String: entry.value,
-  });
-}
-
-LibraryItemSource? _itemSource(Object? rawPlugin) {
-  if (rawPlugin is! Map<String, Object?>) return null;
-  final Object? rawData = rawPlugin['data'];
-  if (rawData is! Map<String, Object?>) return null;
-  final pluginId = rawPlugin['pluginId'];
-  final pluginVersion = rawPlugin['producerPluginVersion'];
-  final remoteContentId = rawData['remoteBookId'];
-  if (pluginId is! String ||
-      pluginVersion is! String ||
-      remoteContentId is! String ||
-      pluginId.isEmpty ||
-      pluginVersion.isEmpty ||
-      remoteContentId.isEmpty) {
-    return null;
-  }
-  return LibraryItemSource(pluginId: pluginId, pluginVersion: pluginVersion, remoteContentId: remoteContentId);
-}
-
-Map<String, Object?> _readingProgressDocument(LibraryReadingProgress progress) => <String, Object?>{
-  'chapterId': progress.chapterId,
-  'paragraphId': progress.paragraphId,
-  'characterOffset': progress.characterOffset,
-  'chapterIndex': progress.chapterIndex,
-  'chapterFraction': progress.chapterFraction,
-  'bookFraction': progress.bookFraction,
-  'updatedAtUtc': progress.updatedAtUtc.toUtc().toIso8601String(),
-  'totalReadingSeconds': progress.totalReadingSeconds,
-};
-
-Map<String, Object?> _audioProgressDocument(LibraryAudioPlaybackProgress progress) => <String, Object?>{
-  'chapterId': progress.chapterId,
-  'positionMilliseconds': progress.position.inMilliseconds,
-  'updatedAtUtc': progress.updatedAtUtc.toUtc().toIso8601String(),
-};
-
-Map<String, Object?> _videoProgressDocument(LibraryVideoPlaybackProgress progress) => <String, Object?>{
-  'groupId': progress.groupId,
-  'episodeId': progress.episodeId,
-  'positionMilliseconds': progress.position.inMilliseconds,
-  'durationMilliseconds': progress.duration.inMilliseconds,
-  'updatedAtUtc': progress.updatedAtUtc.toUtc().toIso8601String(),
-};
-
-LibraryAudioPlaybackProgress _audioProgress(RecordEnvelope record) {
-  final document = record.document;
-  final updatedAt = DateTime.tryParse(document['updatedAtUtc'] as String? ?? '');
-  final positionMilliseconds = document['positionMilliseconds'];
-  final chapterId = document['chapterId'];
-  if (updatedAt == null || chapterId is! String || chapterId.isEmpty || positionMilliseconds is! int || positionMilliseconds < 0) {
-    throw const PersistenceCorruptionError();
-  }
-  return LibraryAudioPlaybackProgress(
-    itemId: LibraryItemId(record.parentId ?? record.identityKey ?? ''),
-    chapterId: chapterId,
-    position: Duration(milliseconds: positionMilliseconds),
-    updatedAtUtc: updatedAt.toUtc(),
+CatalogEntry _storedEntry(StoredCatalogChapter row, LibraryItemId itemId) {
+  final values = row.values;
+  final position = values['position']! as int;
+  return CatalogEntry(
+    id: CatalogEntryId(values['chapter_id']! as String),
+    itemId: itemId,
+    remoteIdentity: values['remote_identity']! as String,
+    title: values['title']! as String,
+    orderKey: _catalogOrderKey(position),
+    index: position,
+    kind: ContentKind.fromCode(values['content_kind']! as String),
+    contentStatus: values['content_status']! as String,
+    wordCount: values['word_count'] as int?,
+    chapterUrl: _uriFromValue(values['chapter_url']),
+    contentReference: values['content_ref'] as String?,
+    storageKey: row.chapterPk,
+    contentVersion: values['content_version']! as int,
   );
 }
 
-LibraryVideoPlaybackProgress _videoProgress(RecordEnvelope record) {
-  final document = record.document;
-  final updatedAt = DateTime.tryParse(document['updatedAtUtc'] as String? ?? '');
-  final groupId = document['groupId'];
-  final episodeId = document['episodeId'];
-  final positionMilliseconds = document['positionMilliseconds'];
-  final durationMilliseconds = document['durationMilliseconds'];
-  if (updatedAt == null ||
-      groupId is! String ||
-      groupId.isEmpty ||
-      episodeId is! String ||
-      episodeId.isEmpty ||
-      positionMilliseconds is! int ||
-      positionMilliseconds < 0 ||
-      durationMilliseconds is! int ||
-      durationMilliseconds < 0) {
-    throw const PersistenceCorruptionError();
-  }
-  return LibraryVideoPlaybackProgress(
-    itemId: LibraryItemId(record.parentId ?? record.identityKey ?? ''),
-    groupId: groupId,
-    episodeId: episodeId,
-    position: Duration(milliseconds: positionMilliseconds),
-    duration: Duration(milliseconds: durationMilliseconds),
-    updatedAtUtc: updatedAt.toUtc(),
-  );
-}
-
-LibraryReadingProgress _readingProgress(RecordEnvelope record) {
-  final document = record.document;
-  final updatedAt = DateTime.tryParse(document['updatedAtUtc'] as String? ?? '');
-  if (updatedAt == null ||
-      document['chapterId'] is! String ||
-      document['paragraphId'] is! String ||
-      document['characterOffset'] is! int ||
-      document['chapterIndex'] is! int ||
-      document['chapterFraction'] is! num ||
-      document['bookFraction'] is! num) {
-    throw const PersistenceCorruptionError();
-  }
-  return LibraryReadingProgress(
-    itemId: LibraryItemId(record.parentId ?? record.identityKey ?? ''),
-    chapterId: document['chapterId']! as String,
-    paragraphId: document['paragraphId']! as String,
-    characterOffset: document['characterOffset']! as int,
-    chapterIndex: document['chapterIndex']! as int,
-    chapterFraction: (document['chapterFraction']! as num).toDouble(),
-    bookFraction: (document['bookFraction']! as num).toDouble(),
-    updatedAtUtc: updatedAt.toUtc(),
-    totalReadingSeconds: document['totalReadingSeconds'] as int? ?? 0,
-  );
-}
-
-String _timestampOrderKey(DateTime value) => value.toUtc().microsecondsSinceEpoch.toString().padLeft(20, '0');
-CatalogEntry _entry(RecordEnvelope r) => CatalogEntry(
-  id: CatalogEntryId(r.id),
-  itemId: LibraryItemId(r.parentId!),
-  bindingId: SourceBindingId(r.document['bindingId'] as String),
-  remoteIdentity: r.document['remoteIdentity'] is String ? r.document['remoteIdentity']! as String : _remoteIdentity(r.identityKey),
-  title: r.document['title'] as String,
-  orderKey: r.orderKey ?? '',
-  index: r.document['index'] as int? ?? 0,
-  kind: ContentKind.fromCode(r.document['kind'] as String),
-  contentStatus: r.document['contentStatus'] as String? ?? 'missing',
-  wordCount: r.document['wordCount'] as int?,
-  chapterUrl: _uriFromValue(r.document['chapterUrl']),
-  hasExplicitRemoteIdentity: r.document['remoteIdentity'] is String,
-  contentReference: r.document['contentReference'] as String?,
-);
-
-String _remoteIdentity(String? identityKey) {
-  if (identityKey == null) return '';
-  final separator = identityKey.indexOf(':');
-  return separator < 0 ? identityKey : identityKey.substring(separator + 1);
-}
-
-RecordCursor? _cursor(String? input) {
-  if (input == null) return null;
-  final parts = input.split('|');
-  return parts.length == 2 ? RecordCursor(orderKey: parts[0], id: parts[1]) : null;
-}
-
-String? _cursorText(RecordCursor? c) => c == null ? null : '${c.orderKey}|${c.id}';
 String _id() {
   final random = Random.secure();
   return List.generate(24, (_) => 'abcdefghijklmnopqrstuvwxyz0123456789'[random.nextInt(36)]).join();

@@ -1,19 +1,19 @@
-/// Content Library 的封面、阅读进度与阅读会话仓储。
+/// Content Library 的封面、统一进度与阅读会话。
 ///
 /// 职责：
 /// - 经主应用持久化层读写可再生封面和语义阅读进度。
-/// - 为阅读器提供绑定到不可变目录快照的强类型会话。
+/// - 为阅读器提供绑定到打开时目录上界的强类型会话。
 /// - 投影漫画正文图片缓存总量和按书架漫画归属的用量。
 ///
 /// 注意：
 /// - 全局封面写入在持久化边界内按 LRU 上限维护，调用方不访问路径或自行清理。
 /// - 漫画正文图片写入不设总容量上限；总量统计和清理只由用户主动管理触发。
-/// - 会话不得越过 active snapshot；异步访问保持在 ContentLibrary 所有权内。
+/// - 会话不得越过打开时的目录上界；异步访问保持在 ContentLibrary 所有权内。
 ///
 part of 'content_library.dart';
 
-final class CoverRepository {
-  CoverRepository._(this._library);
+final class _CoverOperations {
+  _CoverOperations(this._library);
 
   final ContentLibrary _library;
 
@@ -63,8 +63,8 @@ final class CoverRepository {
   );
 }
 
-final class MangaImageCacheRepository {
-  MangaImageCacheRepository._(this._library);
+final class _MangaImageCacheOperations {
+  _MangaImageCacheOperations(this._library);
   final ContentLibrary _library;
   Future<List<int>?> read({
     required LibraryItemId itemId,
@@ -126,269 +126,26 @@ final class MangaImageCacheItemUsage {
   final int bytes;
 }
 
-/// Stores the user-owned semantic position reported by the text reader.
-final class ReadingProgressRepository {
-  ReadingProgressRepository._(this._library);
-
-  final ContentLibrary _library;
-
-  /// Returns the latest saved position, if the item has been opened before.
-  Future<LibraryReadingProgress?> load(LibraryItemId itemId) => _library._trace(
-    operation: 'readingProgressLoad',
-    itemCount: 1,
-    action: () => _load(itemId),
-    resultCount: (result) => result == null ? 0 : 1,
-    resultState: (result) => result == null ? 'empty' : 'content',
-  );
-
-  /// Reads the saved positions for several shelf items in one metadata query.
-  ///
-  /// Missing positions are omitted. A repeated item ID is read once, and any
-  /// duplicate persisted record keeps the same first-record behavior as [load].
-  Future<List<LibraryReadingProgress>> loadMany(Iterable<LibraryItemId> itemIds) {
-    final itemIdsByValue = <String>{for (final itemId in itemIds) itemId.value};
-    return _library._trace(
-      operation: 'readingProgressLoadMany',
-      itemCount: itemIdsByValue.length,
-      action: () => _loadMany(itemIdsByValue),
-      resultCount: (result) => result.length,
-      resultState: (result) => result.isEmpty ? 'empty' : 'content',
-    );
-  }
-
-  /// Persists a layout-independent reading position for [progress.itemId].
-  Future<void> save(LibraryReadingProgress progress) =>
-      _library._trace(operation: 'readingProgressSave', itemCount: 1, action: () => _save(progress));
-
-  Future<LibraryReadingProgress?> _load(LibraryItemId itemId) async {
-    final page = await _library._persistence.metadataRecords.list(
-      RecordQuery(recordKind: _readingProgressKind, scope: _scope, identityKey: itemId.value, limit: 1),
-    );
-    return page.records.isEmpty ? null : _readingProgress(page.records.single);
-  }
-
-  Future<List<LibraryReadingProgress>> _loadMany(Set<String> itemIdsByValue) async {
-    if (itemIdsByValue.isEmpty) return const <LibraryReadingProgress>[];
-    final records = await _library._persistence.metadataRecords.listByIdentityKeys(
-      recordKind: _readingProgressKind,
-      scope: _scope,
-      identityKeys: itemIdsByValue,
-    );
-    final progressByItemId = <String, LibraryReadingProgress>{};
-    for (final record in records) {
-      final itemId = record.identityKey;
-      if (itemId == null || progressByItemId.containsKey(itemId)) continue;
-      progressByItemId[itemId] = _readingProgress(record);
-    }
-    return List<LibraryReadingProgress>.unmodifiable(progressByItemId.values);
-  }
-
-  Future<void> _save(LibraryReadingProgress progress) async {
-    final existing = await _library._persistence.metadataRecords.list(
-      RecordQuery(recordKind: _readingProgressKind, scope: _scope, identityKey: progress.itemId.value, limit: 1),
-    );
-    final document = _readingProgressDocument(progress);
-    if (existing.records.isNotEmpty) {
-      await _library._persistence.metadataRecords.update(previous: existing.records.single, document: document);
-      return;
-    }
-    await _library._persistence.metadataRecords.create(
-      RecordDraft(
-        id: _id(),
-        recordKind: _readingProgressKind,
-        scope: _scope,
-        parentId: progress.itemId.value,
-        identityKey: progress.itemId.value,
-        orderKey: _timestampOrderKey(progress.updatedAtUtc),
-        stateKey: 'active',
-        document: document,
-      ),
-    );
-  }
-}
-
-/// Persists the last spoken-audio chapter and timestamp for a shelf item.
-final class AudioProgressRepository {
-  AudioProgressRepository._(this._library);
-
-  final ContentLibrary _library;
-
-  Future<LibraryAudioPlaybackProgress?> load(LibraryItemId itemId) => _library._trace(
-    operation: 'audioProgressLoad',
-    itemCount: 1,
-    action: () => _load(itemId),
-    resultCount: (result) => result == null ? 0 : 1,
-    resultState: (result) => result == null ? 'empty' : 'content',
-  );
-
-  /// Reads saved audio positions for several shelf items in one metadata query.
-  Future<List<LibraryAudioPlaybackProgress>> loadMany(Iterable<LibraryItemId> itemIds) {
-    final itemIdsByValue = <String>{for (final itemId in itemIds) itemId.value};
-    return _library._trace(
-      operation: 'audioProgressLoadMany',
-      itemCount: itemIdsByValue.length,
-      action: () => _loadMany(itemIdsByValue),
-      resultCount: (result) => result.length,
-      resultState: (result) => result.isEmpty ? 'empty' : 'content',
-    );
-  }
-
-  Future<void> save(LibraryAudioPlaybackProgress progress) =>
-      _library._trace(operation: 'audioProgressSave', itemCount: 1, action: () => _save(progress));
-
-  Future<LibraryAudioPlaybackProgress?> _load(LibraryItemId itemId) async {
-    final page = await _library._persistence.metadataRecords.list(
-      RecordQuery(recordKind: _audioProgressKind, scope: _scope, identityKey: itemId.value, limit: 1),
-    );
-    return page.records.isEmpty ? null : _audioProgress(page.records.single);
-  }
-
-  Future<List<LibraryAudioPlaybackProgress>> _loadMany(Set<String> itemIdsByValue) async {
-    if (itemIdsByValue.isEmpty) return const <LibraryAudioPlaybackProgress>[];
-    final records = await _library._persistence.metadataRecords.listByIdentityKeys(
-      recordKind: _audioProgressKind,
-      scope: _scope,
-      identityKeys: itemIdsByValue,
-    );
-    final progressByItemId = <String, LibraryAudioPlaybackProgress>{};
-    for (final record in records) {
-      final itemId = record.identityKey;
-      if (itemId == null || progressByItemId.containsKey(itemId)) continue;
-      progressByItemId[itemId] = _audioProgress(record);
-    }
-    return List<LibraryAudioPlaybackProgress>.unmodifiable(progressByItemId.values);
-  }
-
-  Future<void> _save(LibraryAudioPlaybackProgress progress) async {
-    final existing = await _library._persistence.metadataRecords.list(
-      RecordQuery(recordKind: _audioProgressKind, scope: _scope, identityKey: progress.itemId.value, limit: 1),
-    );
-    final document = _audioProgressDocument(progress);
-    if (existing.records.isNotEmpty) {
-      await _library._persistence.metadataRecords.update(previous: existing.records.single, document: document);
-      return;
-    }
-    await _library._persistence.metadataRecords.create(
-      RecordDraft(
-        id: _id(),
-        recordKind: _audioProgressKind,
-        scope: _scope,
-        parentId: progress.itemId.value,
-        identityKey: progress.itemId.value,
-        orderKey: _timestampOrderKey(progress.updatedAtUtc),
-        stateKey: 'active',
-        document: document,
-      ),
-    );
-  }
-}
-
-/// Persists the last neutral video group, episode and timestamp for a shelf item.
-final class VideoProgressRepository {
-  VideoProgressRepository._(this._library);
-
-  final ContentLibrary _library;
-
-  Future<LibraryVideoPlaybackProgress?> load(LibraryItemId itemId) => _library._trace(
-    operation: 'videoProgressLoad',
-    itemCount: 1,
-    action: () => _load(itemId),
-    resultCount: (result) => result == null ? 0 : 1,
-    resultState: (result) => result == null ? 'empty' : 'content',
-  );
-
-  Future<List<LibraryVideoPlaybackProgress>> loadMany(Iterable<LibraryItemId> itemIds) {
-    final itemIdsByValue = <String>{for (final itemId in itemIds) itemId.value};
-    return _library._trace(
-      operation: 'videoProgressLoadMany',
-      itemCount: itemIdsByValue.length,
-      action: () => _loadMany(itemIdsByValue),
-      resultCount: (result) => result.length,
-      resultState: (result) => result.isEmpty ? 'empty' : 'content',
-    );
-  }
-
-  Future<void> save(LibraryVideoPlaybackProgress progress) =>
-      _library._trace(operation: 'videoProgressSave', itemCount: 1, action: () => _save(progress));
-
-  Future<LibraryVideoPlaybackProgress?> _load(LibraryItemId itemId) async {
-    final page = await _library._persistence.metadataRecords.list(
-      RecordQuery(recordKind: _videoProgressKind, scope: _scope, identityKey: itemId.value, limit: 1),
-    );
-    return page.records.isEmpty ? null : _videoProgress(page.records.single);
-  }
-
-  Future<List<LibraryVideoPlaybackProgress>> _loadMany(Set<String> itemIdsByValue) async {
-    if (itemIdsByValue.isEmpty) return const <LibraryVideoPlaybackProgress>[];
-    final records = await _library._persistence.metadataRecords.listByIdentityKeys(
-      recordKind: _videoProgressKind,
-      scope: _scope,
-      identityKeys: itemIdsByValue,
-    );
-    final progressByItemId = <String, LibraryVideoPlaybackProgress>{};
-    for (final record in records) {
-      final itemId = record.identityKey;
-      if (itemId == null || progressByItemId.containsKey(itemId)) continue;
-      progressByItemId[itemId] = _videoProgress(record);
-    }
-    return List<LibraryVideoPlaybackProgress>.unmodifiable(progressByItemId.values);
-  }
-
-  Future<void> _save(LibraryVideoPlaybackProgress progress) async {
-    final existing = await _library._persistence.metadataRecords.list(
-      RecordQuery(recordKind: _videoProgressKind, scope: _scope, identityKey: progress.itemId.value, limit: 1),
-    );
-    final document = _videoProgressDocument(progress);
-    if (existing.records.isNotEmpty) {
-      await _library._persistence.metadataRecords.update(previous: existing.records.single, document: document);
-      return;
-    }
-    await _library._persistence.metadataRecords.create(
-      RecordDraft(
-        id: _id(),
-        recordKind: _videoProgressKind,
-        scope: _scope,
-        parentId: progress.itemId.value,
-        identityKey: progress.itemId.value,
-        orderKey: _timestampOrderKey(progress.updatedAtUtc),
-        stateKey: 'active',
-        document: document,
-      ),
-    );
-  }
-}
-
-/// A bounded novel-reading view over an immutable catalog snapshot.
-///
-/// The snapshot and binding identifiers are implementation details. All
-/// chapter access is consequently routed through typed projections rather
-/// than persistence records or dynamic documents.
+/// A novel-reading view pinned to the catalog count captured at open time.
 final class NovelReaderSession {
   NovelReaderSession._({
     required this._library,
     required this.item,
     required this.progress,
+    required this.initialChapter,
     required this.catalogCount,
-    required this._snapshot,
-    required this._bindingId,
   });
 
   final ContentLibrary _library;
   final LibraryItem item;
   final LibraryReadingProgress? progress;
+  final CatalogEntry initialChapter;
   final int catalogCount;
-  final String _snapshot;
-  final SourceBindingId _bindingId;
   final Map<String, CatalogEntry> _entryCache = <String, CatalogEntry>{};
 
   Future<CatalogEntry?> itemAtIndex(int index) async {
     if (index < 0 || index >= catalogCount) return Future.value(null);
-    final entry = await _library.catalog._findInSnapshot(
-      itemId: item.id,
-      snapshot: _snapshot,
-      bindingId: _bindingId,
-      orderKey: _catalogOrderKey(index),
-    );
+    final entry = await _library._catalog._findBounded(itemId: item.id, upperBound: catalogCount, position: index);
     if (entry != null) _entryCache[entry.remoteIdentity] = entry;
     return entry;
   }
@@ -397,26 +154,19 @@ final class NovelReaderSession {
     if (remoteIdentity.isEmpty) return Future.value(null);
     final cached = _entryCache[remoteIdentity];
     if (cached != null) return cached;
-    final entry = await _library.catalog._findInSnapshot(
-      itemId: item.id,
-      snapshot: _snapshot,
-      bindingId: _bindingId,
-      remoteIdentity: remoteIdentity,
-    );
+    final entry = await _library._catalog._findBounded(itemId: item.id, upperBound: catalogCount, remoteIdentity: remoteIdentity);
     if (entry != null) _entryCache[entry.remoteIdentity] = entry;
     return entry;
   }
 
-  /// Resolves a bounded group of chapter identities with one snapshot-scoped
+  /// Resolves a bounded group of chapter identities with one catalog-bounded
   /// metadata query. Missing identities are omitted from the result.
   Future<Map<String, CatalogEntry>> itemsByRemoteIdentities(Iterable<String> remoteIdentities) async {
     final identities = remoteIdentities.toSet();
     if (identities.isEmpty) return Future.value(const <String, CatalogEntry>{});
     final missing = identities.where((identity) => !_entryCache.containsKey(identity)).toList(growable: false);
     if (missing.isNotEmpty) {
-      _entryCache.addAll(
-        await _library.catalog._findManyInSnapshot(itemId: item.id, snapshot: _snapshot, bindingId: _bindingId, remoteIdentities: missing),
-      );
+      _entryCache.addAll(await _library._catalog._findManyBounded(itemId: item.id, upperBound: catalogCount, remoteIdentities: missing));
     }
     return <String, CatalogEntry>{
       for (final identity in identities)
@@ -425,7 +175,7 @@ final class NovelReaderSession {
   }
 
   Future<Page<CatalogEntry>> page({String? after, int limit = 100}) async {
-    final page = await _library.catalog._pageInSnapshot(itemId: item.id, snapshot: _snapshot, after: after, limit: limit);
+    final page = await _library._catalog._pageBounded(itemId: item.id, upperBound: catalogCount, after: after, limit: limit);
     for (final entry in page.items) {
       _entryCache[entry.remoteIdentity] = entry;
     }
@@ -444,50 +194,134 @@ final class NovelReaderSession {
 
   /// Reads content through the entry's already-known immutable object reference.
   Future<ReadableContent?> readContent(CatalogEntry entry) =>
-      _library.content._openReference(contentReference: entry.contentReference, kind: entry.kind);
+      _library._content._openReference(contentReference: entry.contentReference, kind: entry.kind);
 
   /// Commits a novel body to this session's target entry only.
-  Future<void> cacheChapter({required CatalogEntry entry, required String text}) =>
-      _library.content._cacheNovelChapterForEntry(item: item, entry: entry, text: text);
+  Future<void> cacheChapter({required CatalogEntry entry, required String text}) async {
+    await _library._content._cacheNovelChapterForEntry(item: item, entry: entry, text: text);
+    _entryCache.remove(entry.remoteIdentity);
+  }
+
+  /// Replaces one body using the entry version captured before the remote read.
+  Future<void> refreshChapter({required CatalogEntry entry, required String text}) async {
+    await _library._content._refreshNovelChapterForEntry(item: item, entry: entry, text: text);
+    _entryCache.remove(entry.remoteIdentity);
+  }
 
   Future<void> saveProgress(LibraryReadingProgress value) {
     if (value.itemId.value != item.id.value) {
       return Future<void>.error(ArgumentError.value(value.itemId, 'progress.itemId'));
     }
-    return _library.readingProgress.save(value);
+    return _library.saveProgress(value);
   }
 }
 
-/// Bounded reader session pinned to one manga catalog snapshot.
+/// Manga reader session pinned to the catalog count captured at open time.
 final class MangaReaderSession {
-  MangaReaderSession._({
-    required this._library,
-    required this.item,
-    required this.catalogCount,
-    required this._snapshot,
-    required this._bindingId,
-  });
+  MangaReaderSession._({required this._library, required this.item, required this.initialChapter, required this.catalogCount});
 
   final ContentLibrary _library;
   final LibraryItem item;
+  final CatalogEntry initialChapter;
   final int catalogCount;
-  final String _snapshot;
-  final SourceBindingId _bindingId;
 
   Future<CatalogEntry?> itemAtIndex(int index) => index < 0 || index >= catalogCount
       ? Future.value(null)
-      : _library.catalog._findInSnapshot(itemId: item.id, snapshot: _snapshot, bindingId: _bindingId, orderKey: _catalogOrderKey(index));
+      : _library._catalog._findBounded(itemId: item.id, upperBound: catalogCount, position: index);
 
   Future<CatalogEntry?> itemByRemoteIdentity(String remoteIdentity) {
     if (remoteIdentity.isEmpty) return Future.value(null);
-    return _library.catalog._findInSnapshot(itemId: item.id, snapshot: _snapshot, bindingId: _bindingId, remoteIdentity: remoteIdentity);
+    return _library._catalog._findBounded(itemId: item.id, upperBound: catalogCount, remoteIdentity: remoteIdentity);
   }
 
   Future<Page<CatalogEntry>> page({String? after, int limit = 100}) =>
-      _library.catalog._pageInSnapshot(itemId: item.id, snapshot: _snapshot, after: after, limit: limit);
+      _library._catalog._pageBounded(itemId: item.id, upperBound: catalogCount, after: after, limit: limit);
 
   Future<ReadableContent?> readContent(CatalogEntry entry) =>
-      _library.content._openReference(contentReference: entry.contentReference, kind: entry.kind);
+      _library._content._openReference(contentReference: entry.contentReference, kind: entry.kind);
 }
 
 String _catalogOrderKey(int index) => index.toString().padLeft(12, '0');
+
+LibraryReadingProgress _storedReadingProgress(StoredProgress row, LibraryItemId itemId) {
+  final values = row.values;
+  return LibraryReadingProgress(
+    itemId: itemId,
+    chapterId: values['chapter_id']! as String,
+    paragraphId: values['paragraph_id']! as String,
+    characterOffset: values['character_offset']! as int,
+    chapterIndex: values['chapter_position']! as int,
+    chapterFraction: (values['chapter_fraction']! as num).toDouble(),
+    bookFraction: (values['book_fraction']! as num).toDouble(),
+    updatedAtUtc: DateTime.fromMillisecondsSinceEpoch(values['updated_at_utc']! as int, isUtc: true),
+    totalReadingSeconds: values['total_reading_seconds']! as int,
+  );
+}
+
+LibraryAudioPlaybackProgress _storedAudioProgress(StoredProgress row, LibraryItemId itemId) {
+  final values = row.values;
+  return LibraryAudioPlaybackProgress(
+    itemId: itemId,
+    chapterId: values['chapter_id']! as String,
+    position: Duration(milliseconds: values['playback_ms']! as int),
+    updatedAtUtc: DateTime.fromMillisecondsSinceEpoch(values['updated_at_utc']! as int, isUtc: true),
+  );
+}
+
+LibraryVideoPlaybackProgress _storedVideoProgress(StoredProgress row, LibraryItemId itemId) {
+  final values = row.values;
+  return LibraryVideoPlaybackProgress(
+    itemId: itemId,
+    groupId: values['group_id']! as String,
+    episodeId: values['episode_id']! as String,
+    position: Duration(milliseconds: values['playback_ms']! as int),
+    duration: Duration(milliseconds: values['total_duration_ms']! as int),
+    updatedAtUtc: DateTime.fromMillisecondsSinceEpoch(values['updated_at_utc']! as int, isUtc: true),
+  );
+}
+
+LibraryProgress _storedProgress(StoredProgress row, LibraryItemId itemId) => switch (row.values['progress_kind']) {
+  'novel' => _storedReadingProgress(row, itemId),
+  'manga' => _storedMangaProgress(row, itemId),
+  'audio' => _storedAudioProgress(row, itemId),
+  'video' => _storedVideoProgress(row, itemId),
+  _ => throw const PersistenceCorruptionError(),
+};
+
+Map<String, Object?> _progressValues(LibraryProgress progress) => switch (progress) {
+  LibraryReadingProgress value => <String, Object?>{
+    'progress_kind': 'novel',
+    'chapter_id': value.chapterId,
+    'chapter_position': value.chapterIndex,
+    'paragraph_id': value.paragraphId,
+    'character_offset': value.characterOffset,
+    'chapter_fraction': value.chapterFraction,
+    'book_fraction': value.bookFraction,
+    'total_reading_seconds': value.totalReadingSeconds,
+    'updated_at_utc': value.updatedAtUtc.toUtc().millisecondsSinceEpoch,
+  },
+  LibraryMangaReadingProgress value => <String, Object?>{
+    'progress_kind': 'manga',
+    'chapter_id': value.chapterId,
+    'chapter_position': value.chapterIndex,
+    'image_id': value.imageId,
+    'image_fraction': value.imageFraction,
+    'book_fraction': value.bookFraction,
+    'total_reading_seconds': value.readingSeconds,
+    'updated_at_utc': value.updatedAtUtc.toUtc().millisecondsSinceEpoch,
+  },
+  LibraryAudioPlaybackProgress value => <String, Object?>{
+    'progress_kind': 'audio',
+    'chapter_id': value.chapterId,
+    'playback_ms': value.position.inMilliseconds,
+    'updated_at_utc': value.updatedAtUtc.toUtc().millisecondsSinceEpoch,
+  },
+  LibraryVideoPlaybackProgress value => <String, Object?>{
+    'progress_kind': 'video',
+    'group_id': value.groupId,
+    'episode_id': value.episodeId,
+    'playback_ms': value.position.inMilliseconds,
+    'total_duration_ms': value.duration.inMilliseconds,
+    'updated_at_utc': value.updatedAtUtc.toUtc().millisecondsSinceEpoch,
+  },
+};

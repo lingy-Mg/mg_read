@@ -136,7 +136,7 @@ class CacheManagementPage extends ConsumerWidget {
     final confirmed = await _confirm(
       context,
       title: '清理数据库缓存？',
-      content: '将删除废弃目录快照、无引用正文，以及已移出书架但仍保留的离线正文。当前书架、阅读进度和书签不会受到影响；被删除正文需要重新下载。',
+      content: '将删除无引用正文对象。当前书架、目录、阅读进度、书签及移出书架后保留的内容不会受到影响。',
       action: '全部清理',
       confirmKey: const Key('database-cache-confirm'),
     );

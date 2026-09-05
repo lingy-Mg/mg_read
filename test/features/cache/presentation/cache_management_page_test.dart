@@ -69,7 +69,7 @@ void main() {
     expect(find.text('1.5 KB'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('数据库缓存'), 240, scrollable: find.byType(Scrollable));
     expect(find.text('数据库缓存'), findsOneWidget);
-    expect(find.text('废弃目录快照'), findsOneWidget);
+    expect(find.text('无引用正文对象'), findsOneWidget);
     expect(databaseGateway.inspectCalls, 1);
     await tester.scrollUntilVisible(find.text('封面缓存'), 240, scrollable: find.byType(Scrollable));
     expect(find.text('封面缓存'), findsOneWidget);
@@ -114,7 +114,7 @@ void main() {
     await tester.tap(find.byKey(const Key('database-cache-clear')));
     await tester.pumpAndSettle();
     expect(find.text('清理数据库缓存？'), findsOneWidget);
-    expect(find.textContaining('已移出书架但仍保留的离线正文'), findsOneWidget);
+    expect(find.textContaining('移出书架后保留的内容不会受到影响'), findsOneWidget);
     await tester.tap(find.byKey(const Key('database-cache-confirm')));
     await tester.pumpAndSettle();
     expect(databaseGateway.clearCalls, 1);
@@ -156,9 +156,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(find.text('漫画正文图片缓存信息暂不可用。'), 240, scrollable: find.byType(Scrollable));
+    await tester.scrollUntilVisible(find.byKey(const Key('manga-image-cache-retry')), 240, scrollable: find.byType(Scrollable));
     expect(find.text('漫画正文图片缓存信息暂不可用。'), findsOneWidget);
-    await tester.ensureVisible(find.byKey(const Key('manga-image-cache-retry')));
+    await tester.drag(find.byType(Scrollable), const Offset(0, -200));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('manga-image-cache-retry')));
     await tester.pumpAndSettle();
 
@@ -198,8 +199,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(databaseGateway.inspectCalls, 2);
-    expect(find.text('废弃目录快照'), findsOneWidget);
-    expect(find.text('1 条'), findsOneWidget);
+    expect(find.text('无引用正文对象'), findsOneWidget);
+    expect(find.text('1 个'), findsOneWidget);
   });
 
   testWidgets('renders the cache page before the database scan completes', (tester) async {
@@ -232,7 +233,7 @@ void main() {
 
     databaseGateway.complete();
     await tester.pumpAndSettle();
-    expect(find.text('未发现可清理的目录、离线正文或无引用对象。'), findsOneWidget);
+    expect(find.text('未发现可清理的无引用正文对象。'), findsOneWidget);
   });
 }
 
@@ -247,8 +248,6 @@ final class _DatabaseCacheGateway implements DatabaseCacheGateway {
   Future<DatabaseCacheUsage> inspect() async {
     inspectCalls++;
     return DatabaseCacheUsage(
-      staleCatalogRecords: _cleared ? 0 : 2,
-      detachedMetadataRecords: _cleared ? 0 : 3,
       orphanContentObjects: _cleared ? 0 : 1,
       reclaimableContentBytes: _cleared ? 0 : 4096,
       estimatedReclaimableBytes: _cleared ? 0 : 5120,
@@ -260,7 +259,7 @@ final class _DatabaseCacheGateway implements DatabaseCacheGateway {
   Future<DatabaseCacheCleanupResult> clearAll() async {
     clearCalls++;
     _cleared = true;
-    return const DatabaseCacheCleanupResult(deletedRecords: 5, deletedContentObjects: 1, releasedLogicalBytes: 5120);
+    return const DatabaseCacheCleanupResult(deletedContentObjects: 1, releasedLogicalBytes: 5120);
   }
 
   @override
@@ -279,9 +278,7 @@ final class _RetryingDatabaseCacheGateway implements DatabaseCacheGateway {
     inspectCalls++;
     if (inspectCalls == 1) throw StateError('fixture scan failure');
     return const DatabaseCacheUsage(
-      staleCatalogRecords: 1,
-      detachedMetadataRecords: 0,
-      orphanContentObjects: 0,
+      orphanContentObjects: 1,
       reclaimableContentBytes: 0,
       estimatedReclaimableBytes: 128,
       compactableDatabaseBytes: 0,

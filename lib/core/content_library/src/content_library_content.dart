@@ -3,46 +3,24 @@
 /// 正文先写入对象库，再在共享维护屏障内以 metadata CAS 挂接；UI 不接触对象路径。
 part of 'content_library.dart';
 
-final class ContentRepository {
-  ContentRepository._(this._library);
+final class _ContentOperations {
+  _ContentOperations(this._library);
   final ContentLibrary _library;
-  Future<void> putNovel({required CatalogEntryId entryId, required String text, required ContentLibraryIngest source}) => _library._trace(
-    operation: 'contentPutNovel',
-    contentKind: 'novel',
-    itemCount: 1,
-    action: () => _putNovel(entryId: entryId, text: text, source: source),
-  );
-
-  Future<void> putManga({required CatalogEntryId entryId, required List<IngestMangaPage> pages, required ContentLibraryIngest source}) =>
-      _library._trace(
-        operation: 'contentPutManga',
-        contentKind: 'manga',
-        itemCount: pages.length,
-        action: () => _putManga(entryId: entryId, pages: pages, source: source),
-      );
-
   Future<void> cacheMangaChapter({required CatalogEntryId entryId, required Iterable<MangaPageDescriptor> pages}) {
     final copied = pages.toList(growable: false);
     return _library._withStorageMaintenance(() async {
-      final record = await _library._persistence.metadataRecords.read(id: entryId.value, scope: _scope);
-      final source = _library.getLibraryItem(LibraryItemId(record?.parentId ?? ''));
-      final item = await source;
-      if (item?.source == null) throw StateError('The shelf item has no source identity.');
-      final ingest = ContentLibraryIngest(
-        pluginId: item!.source!.pluginId,
-        producerPluginVersion: item.source!.pluginVersion,
-        dataVersion: 1,
-        opaqueData: {'remoteBookId': item.source!.remoteContentId},
-      );
-      return putManga(
+      final chapter = await _library._persistence.metadataRecords.contentLibrary.chapterById(entryId.value);
+      if (chapter?.values['content_kind'] != ContentKind.manga.code) {
+        throw StateError('The catalog entry is not a manga chapter.');
+      }
+      return _putManga(
         entryId: entryId,
         pages: copied
             .map(
-              (page) => IngestMangaPage(
+              (page) => _SerializedMangaPage(
                 pageId: page.pageId,
                 order: page.order,
                 resource: page.resource,
-                source: ingest,
                 downloadedAssetId: null,
                 mimeType: page.mimeType,
                 width: page.width,
@@ -52,7 +30,6 @@ final class ContentRepository {
               ),
             )
             .toList(growable: false),
-        source: ingest,
       );
     });
   }
@@ -73,15 +50,10 @@ final class ContentRepository {
     action: () => _library._withStorageMaintenance(() => _cacheNovelChapter(itemId: itemId, remoteChapterId: remoteChapterId, text: text)),
   );
 
-  Future<void> _putNovel({required CatalogEntryId entryId, required String text, required ContentLibraryIngest source, int? wordCount}) =>
-      _library._withStorageMaintenance(() => _putNovelLocked(entryId: entryId, text: text, source: source, wordCount: wordCount));
+  Future<void> _putNovel({required CatalogEntryId entryId, required String text, int? wordCount}) =>
+      _library._withStorageMaintenance(() => _putNovelLocked(entryId: entryId, text: text, wordCount: wordCount));
 
-  Future<void> _putNovelLocked({
-    required CatalogEntryId entryId,
-    required String text,
-    required ContentLibraryIngest source,
-    int? wordCount,
-  }) async {
+  Future<void> _putNovelLocked({required CatalogEntryId entryId, required String text, int? wordCount}) async {
     final objectId = _id();
     await _library._persistence.contentObjects.put(
       objectId: objectId,
@@ -90,47 +62,51 @@ final class ContentRepository {
       generation: 1,
       payload: text,
     );
-    await _attach(entryId, objectId, 'novel', source, wordCount: wordCount);
+    await _attach(entryId, objectId, wordCount: wordCount);
   }
 
   Future<void> _cacheNovelChapter({required LibraryItemId itemId, required String remoteChapterId, required String text}) async {
     final item = await _library.getLibraryItem(itemId);
-    final source = item?.source;
-    if (source == null) throw StateError('The cached catalog does not contain the chapter.');
-    final catalog = await _library.catalog._activeEntryByRemoteIdentity(itemId, remoteChapterId);
+    if (item == null) throw StateError('The cached catalog does not contain the chapter.');
+    final catalog = await _library._catalog._activeEntryByRemoteIdentity(itemId, remoteChapterId);
     if (catalog == null) throw StateError('The cached catalog does not contain the chapter.');
-    await _cacheNovelChapterForEntry(item: item!, entry: catalog, text: text);
+    await _cacheNovelChapterForEntry(item: item, entry: catalog, text: text);
   }
 
   Future<void> _cacheNovelChapterForEntry({required LibraryItem item, required CatalogEntry entry, required String text}) async {
     if (item.kind != ContentKind.novel || entry.itemId.value != item.id.value || entry.kind != ContentKind.novel) {
       throw ArgumentError.value(entry, 'entry');
     }
-    final source = item.source;
-    if (source == null) throw StateError('The shelf item has no source identity.');
-    await _putNovel(
-      entryId: entry.id,
-      text: text,
-      source: ContentLibraryIngest(
-        pluginId: source.pluginId,
-        producerPluginVersion: source.pluginVersion,
-        dataVersion: 1,
-        opaqueData: <String, Object?>{'remoteBookId': source.remoteContentId},
-      ),
-      wordCount: text.length,
-    );
+    await _putNovel(entryId: entry.id, text: text, wordCount: text.length);
   }
 
-  Future<void> _putManga({required CatalogEntryId entryId, required List<IngestMangaPage> pages, required ContentLibraryIngest source}) =>
-      _library._withStorageMaintenance(() => _putMangaLocked(entryId: entryId, pages: pages, source: source));
-
-  Future<void> _putMangaLocked({
-    required CatalogEntryId entryId,
-    required List<IngestMangaPage> pages,
-    required ContentLibraryIngest source,
-  }) async {
+  Future<void> _refreshNovelChapterForEntry({required LibraryItem item, required CatalogEntry entry, required String text}) async {
+    if (item.kind != ContentKind.novel || entry.itemId.value != item.id.value || entry.kind != ContentKind.novel) {
+      throw ArgumentError.value(entry, 'entry');
+    }
     final objectId = _id();
-    final serialized = jsonEncode({'plugin': _plugin(source), 'pages': pages.map((p) => p.toJson()).toList(growable: false)});
+    await _library._persistence.contentObjects.put(
+      objectId: objectId,
+      contentKind: ContentKind.novel.code,
+      objectType: 'text',
+      generation: entry.contentVersion + 1,
+      payload: text,
+    );
+    final attached = await _library._persistence.metadataRecords.contentLibrary.attachContent(
+      chapterPk: entry.storageKey,
+      expectedVersion: entry.contentVersion,
+      contentRef: objectId,
+      wordCount: text.length,
+    );
+    if (!attached) throw const PersistenceConflictError();
+  }
+
+  Future<void> _putManga({required CatalogEntryId entryId, required List<_SerializedMangaPage> pages}) =>
+      _library._withStorageMaintenance(() => _putMangaLocked(entryId: entryId, pages: pages));
+
+  Future<void> _putMangaLocked({required CatalogEntryId entryId, required List<_SerializedMangaPage> pages}) async {
+    final objectId = _id();
+    final serialized = jsonEncode({'pages': pages.map((p) => p.toJson()).toList(growable: false)});
     await _library._persistence.contentObjects.put(
       objectId: objectId,
       contentKind: 'manga',
@@ -138,30 +114,25 @@ final class ContentRepository {
       generation: 1,
       payload: serialized,
     );
-    await _attach(entryId, objectId, 'manga', source);
+    await _attach(entryId, objectId);
   }
 
-  Future<void> _attach(CatalogEntryId id, String objectId, String kind, ContentLibraryIngest source, {int? wordCount}) async {
-    final record = await _library._persistence.metadataRecords.read(id: id.value, scope: _scope);
-    if (record == null) throw StateError('Missing catalog entry.');
-    final Map<String, Object?> contentMetadata = wordCount == null ? const <String, Object?>{} : <String, Object?>{'wordCount': wordCount};
-    await _library._persistence.metadataRecords.update(
-      previous: record,
-      document: {
-        ...record.document,
-        'contentReference': objectId,
-        'contentKind': kind,
-        'contentStatus': 'ready',
-        'contentPlugin': _plugin(source),
-        ...contentMetadata,
-      },
+  Future<void> _attach(CatalogEntryId id, String objectId, {int? wordCount}) async {
+    final chapter = await _library._persistence.metadataRecords.contentLibrary.chapterById(id.value);
+    if (chapter == null) throw StateError('Missing catalog entry.');
+    final attached = await _library._persistence.metadataRecords.contentLibrary.attachContent(
+      chapterPk: chapter.chapterPk,
+      expectedVersion: chapter.values['content_version']! as int,
+      contentRef: objectId,
+      wordCount: wordCount,
     );
+    if (!attached) throw const PersistenceConflictError();
   }
 
   Future<ReadableContent?> _open(CatalogEntryId id) async {
-    final record = await _library._persistence.metadataRecords.read(id: id.value, scope: _scope);
-    final objectId = record?.document['contentReference'];
-    final kindCode = record?.document['contentKind'];
+    final record = await _library._persistence.metadataRecords.contentLibrary.chapterById(id.value);
+    final objectId = record?.values['content_ref'];
+    final kindCode = record?.values['content_kind'];
     if (objectId is! String || kindCode is! String) return null;
     return _openReference(contentReference: objectId, kind: ContentKind.fromCode(kindCode), kindCode: kindCode);
   }

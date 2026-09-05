@@ -611,9 +611,9 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
             contentKind: item.kind,
             author: item.author,
             coverUrl: item.coverUrl,
-            coverPluginId: item.source?.pluginId,
-            coverPluginVersion: item.source?.pluginVersion,
-            coverRemoteContentId: item.source?.remoteContentId,
+            coverPluginId: item.source.pluginId,
+            coverPluginVersion: item.source.pluginVersion,
+            coverRemoteContentId: item.source.remoteContentId,
             sourceName: item.sourceName,
             sourceUrl: item.sourceUrl,
             description: item.description,
@@ -696,14 +696,13 @@ final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher, Loca
     try {
       final source = item.source;
       final url = item.coverUrl;
-      if (source != null && url != null) {
-        final cached = await library.covers.read(
+      if (url != null) {
+        final cached = await library.readCover(
           CoverKey(pluginId: source.pluginId, pluginVersion: source.pluginVersion, remoteContentId: source.remoteContentId, coverUrl: url),
         );
         if (cached != null && cached.isNotEmpty) return cached;
       }
-      final legacy = await library.bookshelf.readCover(item.id);
-      return legacy == null || legacy.isEmpty ? null : legacy;
+      return null;
     } on Object {
       // A cover-cache failure must not prevent the comic reader from opening.
       return null;

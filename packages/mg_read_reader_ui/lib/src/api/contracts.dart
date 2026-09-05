@@ -39,6 +39,27 @@ abstract interface class TextReaderDataSource {
   );
 }
 
+@immutable
+/// Host-prepared values that let the reader render without repeating hot-path reads.
+class ReaderSessionSeed {
+  const ReaderSessionSeed({
+    required this.book,
+    required this.initialChapter,
+    required this.initialContent,
+    required this.catalogTotal,
+  }) : assert(catalogTotal > 0);
+
+  final ReaderBookInfo book;
+  final ReaderChapterInfo initialChapter;
+  final TextChapterContent initialContent;
+  final int catalogTotal;
+}
+
+/// Optional host capability for bypassing every cache and replacing one body.
+abstract interface class ReaderChapterRefreshCapability {
+  Future<TextChapterContent> refreshChapter(String bookId, String chapterId);
+}
+
 /// Optional host capability for refreshing mutable text chapter state.
 abstract interface class ReaderChapterStateCapability {
   /// Loads current states for the requested stable [chapterIds].
@@ -379,6 +400,7 @@ class ReaderExtensions {
     this.commentFeed,
     this.chapterStateCapability,
     this.chapterCacheCapability,
+    this.chapterRefreshCapability,
     this.fontRepository,
     @Deprecated('Use commentFeed for the reader-owned read-only comment UI.')
     this.comments,
@@ -392,6 +414,9 @@ class ReaderExtensions {
 
   /// Optional host-owned persistent chapter-cache task entry point.
   final ReaderChapterCacheCapability? chapterCacheCapability;
+
+  /// Optional direct-to-source chapter refresh. The action is hidden when absent.
+  final ReaderChapterRefreshCapability? chapterRefreshCapability;
 
   /// Optional host-owned catalog, installer, and cache for external fonts.
   final ReaderFontRepository? fontRepository;

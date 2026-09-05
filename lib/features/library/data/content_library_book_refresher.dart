@@ -2,10 +2,10 @@
 ///
 /// 职责：
 /// - 使用保存的数据源内容身份重新读取详情和完整目录。
-/// - 在 Content Library 中原子切换目录快照并更新书架元数据。
+/// - 在 Content Library 中追加未见章节并更新书架元数据。
 ///
 /// 注意：
-/// - 仅在详情和目录都成功后提交新投影，失败时保留旧书架数据。
+/// - 详情和目录都成功后再更新详情；目录追加不修订或删除既有章节。
 /// - 旧封面缓存只按当前书籍键失效，不能清空全局封面缓存。
 library;
 
@@ -37,12 +37,10 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher {
 
   Future<void> _refresh(String bookId) async {
     final item = await _library.getLibraryItem(LibraryItemId(bookId));
-    final source = item?.source;
     if (item == null) throw StateError('The bookshelf item no longer exists.');
-    // The persisted source identity is the durable refresh key. Early shelf
-    // records may predate sourceUrl persistence, but they are still refreshable
-    // when pluginId and remoteContentId are present.
-    if (source == null) throw StateError('The bookshelf item has no source identity.');
+    final source = item.source;
+    // The persisted source identity is the durable refresh key. A source URL
+    // remains optional because pluginId and remoteContentId are sufficient.
 
     final results = await Future.wait<Object>(<Future<Object>>[
       _gateway.getDetail(pluginId: source.pluginId, id: source.remoteContentId),
@@ -55,7 +53,7 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher {
     if (summary.contentKind != kind) throw StateError('The refreshed content kind does not match the shelf item.');
 
     await _syncCatalog(item, chapters);
-    await _library.bookshelf.addFromSource(
+    await _library.addLibraryItem(
       BookshelfAddRequest(
         title: summary.title.isEmpty ? item.title : summary.title,
         author: summary.author ?? item.author,
@@ -93,9 +91,8 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher {
       if (summary.coverUrl case final Uri refreshedCover) refreshedCover,
     };
     await Future.wait<void>(<Future<void>>[
-      _library.bookshelf.removeCover(item.id),
       for (final coverUrl in coverUrls)
-        _library.covers.remove(
+        _library.removeCover(
           CoverKey(
             pluginId: source.pluginId,
             pluginVersion: source.pluginVersion,
