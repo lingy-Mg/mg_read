@@ -149,6 +149,10 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     final installed = await _runtime.invoke(const InstalledPluginsInvocation());
     final installedIds = installed.map((plugin) => plugin.id).toSet();
     final installedById = <String, InstalledPlugin>{for (final plugin in installed) plugin.id: plugin};
+    final developmentIds = <String>{
+      for (final plugin in installed)
+        if (plugin.status == 'development') plugin.id,
+    };
     final transferable = manifest.plugins
         .where((plugin) => plugin.transferable && !plugin.deferred)
         .map(_toRuntimeArtifact)
@@ -169,7 +173,13 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     final availableAfterTransfer = <String>{...installedIds};
     for (final plugin in manifest.plugins) {
       final plan = planById[plugin.id];
-      final state = plan == null ? _planUnavailableArchive(plugin, installedById[plugin.id]) : _toFeaturePlan(plan.action);
+      final state = developmentIds.contains(plugin.id)
+          ? plan?.action == PluginTransferPlanAction.same
+                ? LanSyncPluginPlanState.sameVersion
+                : LanSyncPluginPlanState.developmentConflict
+          : plan == null
+          ? _planUnavailableArchive(plugin, installedById[plugin.id])
+          : _toFeaturePlan(plan.action);
       featurePlans[plugin.id] = state;
       if (state == LanSyncPluginPlanState.missing || state == LanSyncPluginPlanState.upgrade) {
         availableAfterTransfer.add(plugin.id);
@@ -210,7 +220,15 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     _preparedCount = plugins.length;
     _batchFailureCode = null;
     if (plugins.isEmpty) return;
+    final installed = await _runtime.invoke(const InstalledPluginsInvocation());
+    final developmentIds = <String>{
+      for (final plugin in installed)
+        if (plugin.status == 'development') plugin.id,
+    };
     for (final plugin in plugins) {
+      if (developmentIds.contains(plugin.id)) {
+        throw StateError('lan_sync_plugin_development_priority');
+      }
       if (!plugin.transferable || plugin.deferred || _importControllers.containsKey(plugin.id)) {
         throw StateError('lan_sync_plugin_selection_invalid');
       }

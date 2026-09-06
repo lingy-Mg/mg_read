@@ -576,7 +576,7 @@ LanSyncBookConflict? _conflictFor(ImportExportImportPlan plan, String identity) 
 bool _canImportPlugin(ImportExportImportPlan plan, String id) => plan.preview.recommendedPluginIds.contains(id);
 
 String _pluginPlanLabel(LanSyncPluginPlanState? state) => switch (state) {
-  LanSyncPluginPlanState.developmentConflict => '本机正在开发，已跳过冲突',
+  LanSyncPluginPlanState.developmentConflict => '本机正在开发，优先保留并跳过同步',
   LanSyncPluginPlanState.missing => '本机缺失，可导入',
   LanSyncPluginPlanState.upgrade => '可升级',
   LanSyncPluginPlanState.sameVersion => '版本相同，保留本机',

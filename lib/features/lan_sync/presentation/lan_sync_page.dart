@@ -593,7 +593,7 @@ class _PluginSelectionTile extends StatelessWidget {
 
 String _pluginSelectionDescription(LanSyncPluginDescriptor plugin, LanSyncPluginPlanState? plan) {
   final planText = switch (plan) {
-    LanSyncPluginPlanState.developmentConflict => '两端都有开发构建，需要手动处理',
+    LanSyncPluginPlanState.developmentConflict => '本机有开发构建，优先保留并跳过同步',
     LanSyncPluginPlanState.missing => '缺少，将安装',
     LanSyncPluginPlanState.upgrade => '可升级',
     LanSyncPluginPlanState.sameVersion => '版本相同，跳过',

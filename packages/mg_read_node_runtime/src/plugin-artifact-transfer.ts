@@ -206,10 +206,13 @@ export class PluginArtifactTransferManager {
       const current = receiver.get(artifact.id) ?? null;
       const liveDevelopment = receiverDevelopment.get(artifact.id);
       if (liveDevelopment !== undefined) {
-        const sameBuild = artifact.developmentFingerprint === liveDevelopment.fingerprint;
-        const action = artifact.provenance === "development" && !sameBuild
-          ? "developmentConflict"
-          : sameBuild ? "same" : "receiverNewer";
+        // A live development project is the receiver's source of truth for
+        // this ID. Only the exact same development build can be treated as
+        // already present; installed packages and other development builds
+        // must never replace it, even when their SemVer is higher.
+        const sameBuild = artifact.provenance !== "installed" &&
+          artifact.developmentFingerprint === liveDevelopment.fingerprint;
+        const action = sameBuild ? "same" : "developmentConflict";
         return Object.freeze({ action, id: artifact.id, receiverVersion: current, version: artifact.version });
       }
       if (artifact.provenance !== "installed") {

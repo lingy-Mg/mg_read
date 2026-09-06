@@ -38,6 +38,36 @@ test("plugin transfer v2 lists retained artifacts and plans SemVer", async (t) =
     { bytes: archive.length, developmentFingerprint: null, developmentRevision: null, format: "singleFile", id: "org.new.source", provenance: "installed", sha256, version: "1.0.0" },
   ], installed);
   assert.deepEqual(plan.map((item) => item.action), ["upgrade", "missing"]);
+  const localDevelopmentPlan = manager.plan(
+    [{
+      bytes: archive.length,
+      developmentFingerprint: null,
+      developmentRevision: null,
+      format: "archive",
+      id: "org.example.source",
+      provenance: "installed",
+      sha256,
+      version: "9.0.0",
+    }],
+    installed,
+    [{ fingerprint: "a".repeat(64), id: "org.example.source", syncRevision: 1 }],
+  );
+  assert.equal(localDevelopmentPlan[0].action, "developmentConflict");
+  const developmentReplicaPlan = manager.plan(
+    [{
+      bytes: archive.length,
+      developmentFingerprint: "b".repeat(64),
+      developmentRevision: 2,
+      format: "archive",
+      id: "org.example.source",
+      provenance: "developmentReplica",
+      sha256,
+      version: `1.0.1-devsync.2.${"b".repeat(64)}`,
+    }],
+    installed,
+    [{ fingerprint: "a".repeat(64), id: "org.example.source", syncRevision: 1 }],
+  );
+  assert.equal(developmentReplicaPlan[0].action, "developmentConflict");
   assert.ok(MAX_PLUGIN_TRANSFER_BYTES >= archive.length);
   assert.equal(MAX_PLUGIN_TRANSFER_BATCH, 32);
   assert.throws(
