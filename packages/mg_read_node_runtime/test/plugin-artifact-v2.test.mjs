@@ -142,7 +142,8 @@ test("single-file artifact is canonical and installs into the shared cold-activa
   assert.doesNotMatch(JSON.stringify({ events, message: failure?.message }), /mgread-secret-canary|novel-content-canary/u);
   assert.deepEqual(await readFile(retained), await readFile(artifact));
 
-  await manager.scheduleUninstall(packageJson.mgread.id);
+  await manager.uninstall(packageJson.mgread.id);
+  assert.deepEqual(await manager.listInstalled(), []);
   const restartedManager = new PluginManager(dataRoot);
   t.after(() => restartedManager.close());
   await restartedManager.initialize();

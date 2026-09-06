@@ -90,8 +90,8 @@ void main() {
     expect(find.text('删除数据源？'), findsOneWidget);
     await tester.tap(find.byKey(const Key('data-source-detail-remove-confirm')));
     await tester.pumpAndSettle();
-    expect(gateway.scheduledUninstallPluginIds, <String>['org.example.installed']);
-    expect(find.textContaining('已安排删除'), findsOneWidget);
+    expect(gateway.uninstalledPluginIds, <String>['org.example.installed']);
+    expect(find.text('数据源已即时删除。'), findsOneWidget);
     if (Platform.isWindows || Platform.isMacOS) {
       await tester.drag(find.byKey(const Key('data-source-detail-content')), const Offset(0, -400));
       await tester.pumpAndSettle();
@@ -253,7 +253,7 @@ final class _DirectoryGateway implements PluginRuntimeGateway {
   final PluginRuntimeConnection connection;
   final List<String> openedPluginIds = <String>[];
   final List<String> packagedPluginIds = <String>[];
-  final List<String> scheduledUninstallPluginIds = <String>[];
+  final List<String> uninstalledPluginIds = <String>[];
 
   @override
   Stream<RuntimeInitializationProgress> get initialization => const Stream<RuntimeInitializationProgress>.empty();
@@ -296,9 +296,12 @@ final class _DirectoryGateway implements PluginRuntimeGateway {
   Future<void> setEnabled({required String pluginId, required bool enabled}) async {}
 
   @override
-  Future<void> scheduleUninstall({required String pluginId}) async {
-    scheduledUninstallPluginIds.add(pluginId);
+  Future<void> uninstall({required String pluginId}) async {
+    uninstalledPluginIds.add(pluginId);
   }
+
+  @override
+  Future<void> uninstallAll() async {}
 
   @override
   Future<void> controlSourceWebView({

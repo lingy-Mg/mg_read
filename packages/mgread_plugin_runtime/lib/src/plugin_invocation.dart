@@ -387,10 +387,10 @@ final class SetPluginEnabledInvocation
   InstalledPlugin _decodeResult(Object? value) => _decodeInstalledPlugin(value);
 }
 
-/// Schedules one installed source for removal at the next Runtime cold start.
+/// Removes one installed source from the running Runtime after active calls finish.
 @immutable
-final class SchedulePluginUninstallInvocation extends PluginInvocation<void> {
-  const SchedulePluginUninstallInvocation({required this.pluginId});
+final class UninstallPluginInvocation extends PluginInvocation<void> {
+  const UninstallPluginInvocation({required this.pluginId});
 
   final String pluginId;
 
@@ -405,10 +405,34 @@ final class SchedulePluginUninstallInvocation extends PluginInvocation<void> {
   @override
   void _decodeResult(Object? value) {
     final result = _jsonObject(value, 'Plugin uninstall result');
-    if (result['scheduled'] != true) {
+    if (result['removed'] != true || result['pluginId'] != pluginId) {
       throw const PluginRuntimeException(
         'invalid_response',
         'The Runtime returned an invalid plugin uninstall result.',
+      );
+    }
+  }
+}
+
+/// Removes every installed source from the running Runtime.
+@immutable
+final class UninstallAllPluginsInvocation extends PluginInvocation<void> {
+  const UninstallAllPluginsInvocation();
+
+  @override
+  String get _wireMethod => 'plugins.uninstallAll.v1';
+
+  @override
+  Map<String, Object?> get _wireParams => const <String, Object?>{};
+
+  @override
+  void _decodeResult(Object? value) {
+    final result = _jsonObject(value, 'All-source uninstall result');
+    final removedCount = result['removedCount'];
+    if (removedCount is! int || removedCount < 0) {
+      throw const PluginRuntimeException(
+        'invalid_response',
+        'The Runtime returned an invalid all-source uninstall result.',
       );
     }
   }

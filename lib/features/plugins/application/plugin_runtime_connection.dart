@@ -43,7 +43,9 @@ abstract interface class PluginRuntimeGateway {
 
   Future<void> setEnabled({required String pluginId, required bool enabled});
 
-  Future<void> scheduleUninstall({required String pluginId});
+  Future<void> uninstall({required String pluginId});
+
+  Future<void> uninstallAll();
 
   Future<PluginCodeDirectoryKind> openCodeDirectory({required String pluginId});
 
@@ -160,9 +162,20 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway, PluginRu
   }
 
   @override
-  Future<void> scheduleUninstall({required String pluginId}) async {
+  Future<void> uninstall({required String pluginId}) async {
     try {
-      await _runtime.invoke(SchedulePluginUninstallInvocation(pluginId: pluginId));
+      await _runtime.invoke(UninstallPluginInvocation(pluginId: pluginId));
+    } on PluginRuntimeException catch (error) {
+      throw normalizePluginRuntimeError(error);
+    } on Object catch (error) {
+      throw AppError.fromUnknown(error);
+    }
+  }
+
+  @override
+  Future<void> uninstallAll() async {
+    try {
+      await _runtime.invoke(const UninstallAllPluginsInvocation());
     } on PluginRuntimeException catch (error) {
       throw normalizePluginRuntimeError(error);
     } on Object catch (error) {

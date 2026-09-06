@@ -93,7 +93,10 @@ final class TestReadyPluginRuntimeGateway implements PluginRuntimeGateway {
   Future<void> setEnabled({required String pluginId, required bool enabled}) async {}
 
   @override
-  Future<void> scheduleUninstall({required String pluginId}) async {}
+  Future<void> uninstall({required String pluginId}) async {}
+
+  @override
+  Future<void> uninstallAll() async {}
 
   @override
   Future<void> controlSourceWebView({

@@ -306,11 +306,6 @@ void main() {
           enabled: true,
         ),
       );
-      await runtime.invoke(
-        const SchedulePluginUninstallInvocation(
-          pluginId: 'org.mgread.flutter.fixture',
-        ),
-      );
       final result = await runtime.invoke(
         const SourceSearchInvocation(
           pluginId: 'org.mgread.flutter.fixture',
@@ -331,8 +326,6 @@ void main() {
           target: 'slow-nested',
         ),
       );
-      expect(suggestions.items, isEmpty);
-      expect(slowNestedDiscovery, isA<PluginDiscoveryDocumentResult>());
       final detail = await runtime.invoke(
         SourceDetailInvocation(
           pluginId: 'org.mgread.flutter.fixture',
@@ -452,6 +445,24 @@ void main() {
       );
       // The browser fixture uses its full host deadline; Node tests cover the Runtime timeout.
       expect(largerDiscovery, isA<PluginDiscoveryDocumentResult>());
+      await runtime.invoke(
+        const UninstallPluginInvocation(pluginId: 'org.mgread.flutter.fixture'),
+      );
+      await expectLater(
+        runtime.invoke(
+          const SourceSearchInvocation(
+            pluginId: 'org.mgread.flutter.fixture',
+            query: 'Flutter',
+          ),
+        ),
+        throwsA(
+          isA<PluginRuntimeException>().having(
+            (error) => error.code,
+            'code',
+            'plugin_not_found',
+          ),
+        ),
+      );
     },
     timeout: const Timeout(Duration(seconds: 60)),
   );

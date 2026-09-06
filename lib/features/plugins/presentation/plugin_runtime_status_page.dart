@@ -160,10 +160,39 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
     }
   }
 
+  Future<void> _clearAllSources() async {
+    final installedSourceCount = widget.sources.where((source) => !source.isDevelopment).length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('清理全部本地数据源？'),
+        content: Text('将立即删除 $installedSourceCount 个已安装数据源及其 Runtime 私有数据、缓存和安装包。已保存到书架的内容不会受到影响；开发数据源项目也不会被删除。'),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
+          FilledButton(
+            key: const Key('data-source-clear-all-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('全部清理'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await ref.read(pluginRuntimeSourceActionProvider.notifier).uninstallAll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已即时清理 $installedSourceCount 个本地数据源。')));
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('清理本地数据源失败，请稍后重试。')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final Set<String> pendingSourceIds = ref.watch(pluginRuntimeSourceActionProvider);
+    final bool isClearingAll = pendingSourceIds.contains('__all_installed_sources__');
     final PluginSourceImportState importState = ref.watch(pluginRuntimeSourceImportProvider);
     final int enabledCount = widget.sources.where((DataSourceManagementRowData source) => source.enabled).length;
     final String normalizedQuery = _query.trim().toLowerCase();
@@ -192,8 +221,11 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
         _DataSourceOverviewCard(
           enabledCount: enabledCount,
           sourceCount: widget.sources.length,
+          installedSourceCount: widget.sources.where((source) => !source.isDevelopment).length,
           importState: importState,
           onAddPressed: importState.isImporting ? null : _importDataSource,
+          isClearingAll: isClearingAll,
+          onClearAllPressed: isClearingAll || widget.sources.every((source) => source.isDevelopment) ? null : _clearAllSources,
         ),
         const SizedBox(height: AppSpacing.section),
         _DataSourceSearchField(
@@ -240,7 +272,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
                   for (int index = 0; index < visibleSources.length; index++) ...<Widget>[
                     DataSourceManagementRow(
                       source: visibleSources[index],
-                      isPending: pendingSourceIds.contains(visibleSources[index].id),
+                      isPending: isClearingAll || pendingSourceIds.contains(visibleSources[index].id),
                       onPressed: () => widget.onSourcePressed(visibleSources[index].id),
                       onChanged: (bool enabled) => _setSourceEnabled(visibleSources[index], enabled),
                     ),
@@ -334,14 +366,20 @@ class _DataSourceOverviewCard extends StatelessWidget {
   const _DataSourceOverviewCard({
     required this.enabledCount,
     required this.sourceCount,
+    required this.installedSourceCount,
     required this.importState,
     required this.onAddPressed,
+    required this.isClearingAll,
+    required this.onClearAllPressed,
   });
 
   final int enabledCount;
   final int sourceCount;
+  final int installedSourceCount;
   final PluginSourceImportState importState;
   final VoidCallback? onAddPressed;
+  final bool isClearingAll;
+  final VoidCallback? onClearAllPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -400,6 +438,10 @@ class _DataSourceOverviewCard extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.comfortable),
             _AddDataSourceButton(isImporting: importState.isImporting, onPressed: onAddPressed),
+            if (installedSourceCount > 0) ...<Widget>[
+              const SizedBox(height: AppSpacing.regular),
+              _ClearAllDataSourcesButton(isClearing: isClearingAll, onPressed: onClearAllPressed),
+            ],
             if (importState.isImporting) ...<Widget>[
               const SizedBox(height: AppSpacing.regular),
               _DataSourceImportProgress(state: importState),
@@ -409,6 +451,34 @@ class _DataSourceOverviewCard extends StatelessWidget {
               ],
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ClearAllDataSourcesButton extends StatelessWidget {
+  const _ClearAllDataSourcesButton({required this.isClearing, this.onPressed});
+
+  final bool isClearing;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppThemeTokens.of(context);
+    return SizedBox(
+      height: AppSpacing.minimumTouchTarget,
+      child: OutlinedButton.icon(
+        key: const Key('data-source-clear-all'),
+        onPressed: onPressed,
+        icon: isClearing
+            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.delete_sweep_outlined),
+        label: Text(isClearing ? '正在清理本地数据源…' : '清理全部本地数据源'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: tokens.notification,
+          side: BorderSide(color: tokens.notification.withValues(alpha: 0.5)),
+          shape: const RoundedRectangleBorder(borderRadius: AppRadii.detailControl),
         ),
       ),
     );

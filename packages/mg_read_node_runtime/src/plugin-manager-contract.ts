@@ -166,6 +166,17 @@ export interface PluginCacheClearResult extends JsonObject {
   readonly items: readonly PluginCacheClearItem[];
 }
 
+/** Stable result for removing one installed source during this Runtime session. */
+export interface PluginUninstallResult extends JsonObject {
+  readonly pluginId: string;
+  readonly removed: true;
+}
+
+/** Stable result for removing all installed sources during this Runtime session. */
+export interface PluginUninstallAllResult extends JsonObject {
+  readonly removedCount: number;
+}
+
 export type PluginContentFunction = (
   request: JsonObject,
 ) => Promise<unknown> | unknown;

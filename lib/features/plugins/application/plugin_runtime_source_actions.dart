@@ -4,7 +4,7 @@
 /// 注意：删除仅安排下一次 Runtime 冷启动执行，不热卸载当前 Node VM 中的模块。
 part of 'plugin_runtime_connection.dart';
 
-/// Serializes source enable/disable and cold-start removal requests.
+/// Serializes source enable/disable and immediate removal requests.
 final pluginRuntimeSourceActionProvider = NotifierProvider<PluginRuntimeSourceActionController, Set<String>>(
   PluginRuntimeSourceActionController.new,
 );
@@ -20,10 +20,16 @@ final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
     onSuccess: () => ref.read(pluginRuntimeCatalogChangeProvider.notifier).publish(pluginIds: <String>{pluginId}),
   );
 
-  Future<void> scheduleUninstall({required String pluginId}) => _run(
+  Future<void> uninstall({required String pluginId}) => _run(
     pluginId: pluginId,
     capability: 'runtime.plugins.uninstall.v1',
-    operation: () => ref.read(pluginRuntimeGatewayProvider).scheduleUninstall(pluginId: pluginId),
+    operation: () => ref.read(pluginRuntimeGatewayProvider).uninstall(pluginId: pluginId),
+  );
+
+  Future<void> uninstallAll() => _run(
+    pluginId: _allSourcesOperationKey,
+    capability: 'runtime.plugins.uninstallAll.v1',
+    operation: () => ref.read(pluginRuntimeGatewayProvider).uninstallAll(),
   );
 
   Future<void> _run({
@@ -32,7 +38,11 @@ final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
     required Future<void> Function() operation,
     void Function()? onSuccess,
   }) async {
-    if (state.contains(pluginId)) throw AppError.fromCode(AppErrorCode.conflict);
+    if (state.contains(pluginId) ||
+        (pluginId == _allSourcesOperationKey && state.isNotEmpty) ||
+        (pluginId != _allSourcesOperationKey && state.contains(_allSourcesOperationKey))) {
+      throw AppError.fromCode(AppErrorCode.conflict);
+    }
     state = Set<String>.unmodifiable(<String>{...state, pluginId});
     final diagnostics = ref.read(diagnosticsManagerProvider);
     final span = diagnostics.startSpan(
@@ -47,8 +57,7 @@ final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
       if (onSuccess != null) {
         onSuccess();
       } else {
-        // A scheduled uninstall changes management metadata immediately, but
-        // does not change the live source catalog until the next cold start.
+        // Removal changes the Runtime-owned source catalog immediately.
         ref.invalidate(pluginRuntimeConnectionProvider);
         ref.invalidate(pluginRuntimeStatusProvider);
       }
@@ -74,3 +83,5 @@ final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
     }
   }
 }
+
+const _allSourcesOperationKey = '__all_installed_sources__';

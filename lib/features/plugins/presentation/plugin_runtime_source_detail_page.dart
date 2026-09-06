@@ -185,7 +185,7 @@ class _DetailContent extends ConsumerWidget {
           Text('仅桌面端可打开数据源插件代码文件夹。', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
         if (!isDevelopment) ...<Widget>[
           const SizedBox(height: AppSpacing.comfortable),
-          _RemoveSourceButton(isRemoving: removing, onPressed: removing ? null : () => _scheduleUninstall(context, ref, source)),
+          _RemoveSourceButton(isRemoving: removing, onPressed: removing ? null : () => _uninstall(context, ref, source)),
         ],
       ],
     );
@@ -222,12 +222,12 @@ class _DetailContent extends ConsumerWidget {
     }
   }
 
-  Future<void> _scheduleUninstall(BuildContext context, WidgetRef ref, PluginRuntimePlugin source) async {
+  Future<void> _uninstall(BuildContext context, WidgetRef ref, PluginRuntimePlugin source) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
         title: const Text('删除数据源？'),
-        content: Text('将删除“${source.displayName}”及其 Runtime 私有数据。为保证当前运行环境稳定，完全退出并重新打开应用后才会生效。'),
+        content: Text('将立即删除“${source.displayName}”及其 Runtime 私有数据。已保存到书架的内容不会受到影响。'),
         actions: <Widget>[
           TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
           FilledButton(
@@ -240,12 +240,12 @@ class _DetailContent extends ConsumerWidget {
     );
     if (confirmed != true || !context.mounted) return;
     try {
-      await ref.read(pluginRuntimeSourceActionProvider.notifier).scheduleUninstall(pluginId: source.id);
+      await ref.read(pluginRuntimeSourceActionProvider.notifier).uninstall(pluginId: source.id);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源已安排删除，完全退出并重新打开应用后生效。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源已即时删除。')));
     } on Object {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源删除安排失败，请稍后重试。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源删除失败，请稍后重试。')));
     }
   }
 }
@@ -281,7 +281,7 @@ class _RemoveSourceButton extends StatelessWidget {
         icon: isRemoving
             ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
             : const Icon(Icons.delete_outline),
-        label: Text(isRemoving ? '正在安排删除' : '删除数据源'),
+        label: Text(isRemoving ? '正在删除' : '删除数据源'),
         style: OutlinedButton.styleFrom(foregroundColor: tokens.notification),
       ),
     );

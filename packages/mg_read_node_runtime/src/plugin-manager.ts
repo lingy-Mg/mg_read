@@ -88,6 +88,8 @@ import {
   type PluginCodeDirectory,
   type PluginInstallationUsage,
   type PluginIconResource,
+  type PluginUninstallAllResult,
+  type PluginUninstallResult,
   type PluginStartupRecoverySummary,
   type DevelopmentPlugin,
   type InstalledPluginSnapshot,
@@ -126,6 +128,8 @@ export {
   type PluginManagerEvent,
   type PluginManagerEventCode,
   type PluginManagerEventSink,
+  type PluginUninstallAllResult,
+  type PluginUninstallResult,
   type PluginRuntimeHttpClient,
   type PluginRuntimeTraceContext,
   type PluginStartupRecoverySummary,
@@ -471,8 +475,12 @@ export class PluginManager {
     return this.#pluginIcons.project(updated, this.#development.projects(), this.#resourceOrigin);
   }
 
-  /** Schedules removal of one installed source for the next Runtime cold start. */
-  async scheduleUninstall(pluginId: string): Promise<void> {
+  /** Removes one installed source after current source calls have released their lease. */
+  async uninstall(
+    pluginId: string,
+    signal?: AbortSignal,
+    deadlineUnixMs?: string,
+  ): Promise<PluginUninstallResult> {
     await this.initialize();
     if (!isPluginId(pluginId)) throw new PluginManagerError("invalid_request");
     if (this.#development.has(pluginId)) {
@@ -481,12 +489,47 @@ export class PluginManager {
     if (!this.#installedSnapshots.some((item) => item.id === pluginId)) {
       throw new PluginManagerError("plugin_not_found");
     }
-    await new PluginInstaller(this.#dataRoot).scheduleUninstall(pluginId);
-    this.#events({
-      code: "plugin_uninstall_scheduled",
-      outcome: "success",
-      pluginId,
-    });
+    await this.#uninstallInstalled(pluginId, signal, deadlineUnixMs);
+    return Object.freeze({ pluginId, removed: true } satisfies PluginUninstallResult);
+  }
+
+  /** Removes every installed source, preserving workspace development projects. */
+  async uninstallAll(
+    signal?: AbortSignal,
+    deadlineUnixMs?: string,
+  ): Promise<PluginUninstallAllResult> {
+    await this.initialize();
+    const pluginIds = this.#installedSnapshots.map((item) => item.id);
+    for (const pluginId of pluginIds) {
+      await this.#uninstallInstalled(pluginId, signal, deadlineUnixMs);
+    }
+    return Object.freeze({ removedCount: pluginIds.length } satisfies PluginUninstallAllResult);
+  }
+
+  async #uninstallInstalled(
+    pluginId: string,
+    signal?: AbortSignal,
+    deadlineUnixMs?: string,
+  ): Promise<void> {
+    const cancellation = signal ?? new AbortController().signal;
+    const deadline = deadlineUnixMs ?? String(Date.now() + this.#cacheClearTimeoutMs);
+    const release = await this.#pluginOperations.acquireCacheClear(pluginId, cancellation, deadline);
+    try {
+      await removePluginStorage(this.#dataRoot, pluginId);
+      await new PluginInstaller(this.#dataRoot).collectUnusedDependencies();
+      this.#installedLoaded.delete(pluginId);
+      this.#installedLoadPromises.delete(pluginId);
+      this.#installedSnapshots = Object.freeze(
+        this.#installedSnapshots.filter((item) => item.id !== pluginId),
+      );
+      this.#events({
+        code: "plugin_uninstall_completed",
+        outcome: "success",
+        pluginId,
+      });
+    } finally {
+      release();
+    }
   }
 
   async discover(

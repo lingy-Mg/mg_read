@@ -72,7 +72,7 @@ export type {
   DesktopRuntimeProgressSink,
 } from "./desktop-runtime-options.js";
 import { installPluginArtifactInbox, seedBundledPluginArtifacts } from "./plugin-artifact-inbox.js";
-import { dispatchPluginEnabled, dispatchPluginUninstall } from "./plugin-uninstall-dispatch.js";
+import { dispatchPluginEnabled, dispatchPluginUninstall, dispatchPluginUninstallAll } from "./plugin-uninstall-dispatch.js";
 import {
   dispatchPluginDevelopmentPackage,
   dispatchPluginTransferRequest,
@@ -109,6 +109,7 @@ const RUNTIME_CONTROL_METHOD = Object.freeze({
   pluginsDevelopmentPackage: "plugins.development.package.v1",
   pluginsSetEnabled: "plugins.setEnabled.v1",
   pluginsUninstall: "plugins.uninstall.v1",
+  pluginsUninstallAll: "plugins.uninstallAll.v1",
   pluginWebViewDebug: "plugins.webview.debug.v1",
   pluginsTransferList: "plugins.transfer.list.v2",
   pluginsTransferPlan: "plugins.transfer.plan.v2",
@@ -139,6 +140,7 @@ const RUNTIME_CONTROL_CAPABILITIES = Object.freeze([
   RUNTIME_CONTROL_METHOD.pluginsDevelopmentPackage,
   RUNTIME_CONTROL_METHOD.pluginsSetEnabled,
   RUNTIME_CONTROL_METHOD.pluginsUninstall,
+  RUNTIME_CONTROL_METHOD.pluginsUninstallAll,
   RUNTIME_CONTROL_METHOD.pluginWebViewDebug,
   RUNTIME_CONTROL_METHOD.pluginsTransferList,
   RUNTIME_CONTROL_METHOD.pluginsTransferPlan,
@@ -933,6 +935,8 @@ export class DesktopRuntime {
         return dispatchPluginEnabled(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.pluginsUninstall:
         return dispatchPluginUninstall(request, this.#pluginManager, this.#requestError.bind(this));
+      case RUNTIME_CONTROL_METHOD.pluginsUninstallAll:
+        return dispatchPluginUninstallAll(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.pluginWebViewDebug:
         return this.#dispatchPluginWebViewDebug(request, cancellation);
       case RUNTIME_CONTROL_METHOD.pluginsTransferList:

@@ -155,7 +155,7 @@ void main() {
     expect(change.pluginIds, isNull);
   });
 
-  test('source removal is scheduled through the Runtime application port', () async {
+  test('source removal is immediate through the Runtime application port', () async {
     final diagnostics = DiagnosticsTestkit();
     addTearDown(diagnostics.dispose);
     final gateway = _MutablePluginRuntimeGateway();
@@ -168,9 +168,9 @@ void main() {
     );
     addTearDown(container.dispose);
 
-    await container.read(pluginRuntimeSourceActionProvider.notifier).scheduleUninstall(pluginId: 'org.example.mutable');
+    await container.read(pluginRuntimeSourceActionProvider.notifier).uninstall(pluginId: 'org.example.mutable');
 
-    expect(gateway.scheduledUninstallPluginIds, <String>['org.example.mutable']);
+    expect(gateway.uninstalledPluginIds, <String>['org.example.mutable']);
     expect(gateway.inspectCalls, 1);
     expect(container.read(pluginRuntimeCatalogChangeProvider).revision, 0);
     expect(
@@ -386,7 +386,10 @@ final class _FakePluginRuntimeGateway implements PluginRuntimeGateway {
   Future<void> setEnabled({required String pluginId, required bool enabled}) async {}
 
   @override
-  Future<void> scheduleUninstall({required String pluginId}) async {}
+  Future<void> uninstall({required String pluginId}) async {}
+
+  @override
+  Future<void> uninstallAll() async {}
 
   @override
   Future<void> controlSourceWebView({
@@ -451,7 +454,12 @@ final class _FailingPluginRuntimeGateway implements PluginRuntimeGateway {
   }
 
   @override
-  Future<void> scheduleUninstall({required String pluginId}) {
+  Future<void> uninstall({required String pluginId}) {
+    throw AppError.fromCode(AppErrorCode.runtimeUnavailable);
+  }
+
+  @override
+  Future<void> uninstallAll() {
     throw AppError.fromCode(AppErrorCode.runtimeUnavailable);
   }
 
@@ -484,7 +492,7 @@ final class _MutablePluginRuntimeGateway implements PluginRuntimeGateway {
   int inspectCalls = 0;
   int importLocalPluginCalls = 0;
   final List<String> packagedPluginIds = <String>[];
-  final List<String> scheduledUninstallPluginIds = <String>[];
+  final List<String> uninstalledPluginIds = <String>[];
 
   @override
   Stream<RuntimeInitializationProgress> get initialization => const Stream<RuntimeInitializationProgress>.empty();
@@ -550,9 +558,12 @@ final class _MutablePluginRuntimeGateway implements PluginRuntimeGateway {
   }
 
   @override
-  Future<void> scheduleUninstall({required String pluginId}) async {
-    scheduledUninstallPluginIds.add(pluginId);
+  Future<void> uninstall({required String pluginId}) async {
+    uninstalledPluginIds.add(pluginId);
   }
+
+  @override
+  Future<void> uninstallAll() async {}
 
   @override
   Future<void> controlSourceWebView({

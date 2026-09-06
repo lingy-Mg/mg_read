@@ -1,8 +1,8 @@
 /**
  * Runtime Core 的数据源状态控制处理器。
  *
- * 职责：验证 path-free 启停/删除请求，并把已安装数据源插件安排到下一次 Runtime 冷启动移除。
- * 注意：不热卸载 Node ESM。
+ * 职责：验证 path-free 启停/删除请求，并协调 Runtime 内已安装数据源的即时移除。
+ * 注意：不热卸载 Node ESM；删除后从当前快照和调度入口移除，已导入模块不可再被来源调用。
  */
 import { PluginManager, PluginManagerError } from "./plugin-manager.js";
 import type {
@@ -48,7 +48,7 @@ export async function dispatchPluginEnabled(
   }
 }
 
-/** Schedules one installed source for removal, preserving the current VM until exit. */
+/** Removes one installed source after current source calls finish. */
 export async function dispatchPluginUninstall(
   request: RuntimeRequest,
   manager: PluginManager | undefined,
@@ -60,8 +60,7 @@ export async function dispatchPluginUninstall(
   }
   try {
     if (manager === undefined) throw new PluginManagerError("plugin_load_failed");
-    await manager.scheduleUninstall(pluginId);
-    return { result: { scheduled: true } };
+    return { result: await manager.uninstall(pluginId) };
   } catch (error) {
     const code = error instanceof PluginManagerError ? error.code : "internal";
     return {
@@ -69,6 +68,30 @@ export async function dispatchPluginUninstall(
         request,
         code as RuntimeErrorCode,
         "The source uninstall request could not be completed.",
+      ),
+    };
+  }
+}
+
+/** Removes every installed source while preserving workspace development sources. */
+export async function dispatchPluginUninstallAll(
+  request: RuntimeRequest,
+  manager: PluginManager | undefined,
+  requestError: RequestError,
+): Promise<PluginUninstallDispatchResult> {
+  if (Object.keys(request.params).length !== 0) {
+    return { error: requestError(request, "invalid_request", "The all-source uninstall request is invalid.") };
+  }
+  try {
+    if (manager === undefined) throw new PluginManagerError("plugin_load_failed");
+    return { result: await manager.uninstallAll() };
+  } catch (error) {
+    const code = error instanceof PluginManagerError ? error.code : "internal";
+    return {
+      error: requestError(
+        request,
+        code as RuntimeErrorCode,
+        "The all-source uninstall request could not be completed.",
       ),
     };
   }
