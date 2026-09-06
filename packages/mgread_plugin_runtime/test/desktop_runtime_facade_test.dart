@@ -326,6 +326,8 @@ void main() {
           target: 'slow-nested',
         ),
       );
+      expect(suggestions.items, isEmpty);
+      expect(slowNestedDiscovery, isA<PluginDiscoveryDocumentResult>());
       final detail = await runtime.invoke(
         SourceDetailInvocation(
           pluginId: 'org.mgread.flutter.fixture',
@@ -463,6 +465,7 @@ void main() {
           ),
         ),
       );
+      await runtime.invoke(const UninstallAllPluginsInvocation());
     },
     timeout: const Timeout(Duration(seconds: 60)),
   );

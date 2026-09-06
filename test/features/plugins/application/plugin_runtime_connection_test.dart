@@ -179,6 +179,29 @@ void main() {
     );
   });
 
+  test('all local source removal uses one Runtime action and refreshes the projection', () async {
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    final gateway = _MutablePluginRuntimeGateway();
+    final container = ProviderContainer(
+      overrides: [
+        diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+        pluginRuntimeGatewayProvider.overrideWithValue(gateway),
+        configuredFlutterNetworkProxyManagerProvider.overrideWithValue(_testProxyManager()),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(pluginRuntimeSourceActionProvider.notifier).uninstallAll();
+
+    expect(gateway.uninstallAllCalls, 1);
+    expect(container.read(pluginRuntimeCatalogChangeProvider).revision, 0);
+    expect(
+      diagnostics.sink.events.where((event) => event.eventName.startsWith('runtime.facade.call.')).map((event) => event.eventName),
+      contains('runtime.facade.call.complete'),
+    );
+  });
+
   test('development package action returns only a file name and records one terminal', () async {
     final diagnostics = DiagnosticsTestkit();
     addTearDown(diagnostics.dispose);
@@ -493,6 +516,7 @@ final class _MutablePluginRuntimeGateway implements PluginRuntimeGateway {
   int importLocalPluginCalls = 0;
   final List<String> packagedPluginIds = <String>[];
   final List<String> uninstalledPluginIds = <String>[];
+  int uninstallAllCalls = 0;
 
   @override
   Stream<RuntimeInitializationProgress> get initialization => const Stream<RuntimeInitializationProgress>.empty();
@@ -563,7 +587,9 @@ final class _MutablePluginRuntimeGateway implements PluginRuntimeGateway {
   }
 
   @override
-  Future<void> uninstallAll() async {}
+  Future<void> uninstallAll() async {
+    uninstallAllCalls += 1;
+  }
 
   @override
   Future<void> controlSourceWebView({

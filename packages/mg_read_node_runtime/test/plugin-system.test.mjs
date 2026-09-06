@@ -471,6 +471,42 @@ test("registry dependencies are verified, shared once, copied on hardlink failur
   assert.ok(copied.copiedFiles >= 4);
 });
 
+test("running Runtime removes all installed sources immediately", async (t) => {
+  const root = await temporaryDirectory(t, "mgread-uninstall-all-");
+  const dataRoot = join(root, "runtime-data");
+  const secondProject = join(root, "second-project");
+  await cp(fixtureRoot, secondProject, { recursive: true });
+  const packageJson = JSON.parse(await readFile(join(secondProject, "package.json"), "utf8"));
+  const lockfile = JSON.parse(await readFile(join(secondProject, "package-lock.json"), "utf8"));
+  packageJson.name = "@mgread-plugin/fixture-second";
+  packageJson.mgread.id = "org.mgread.runtime.fixture.second";
+  lockfile.name = packageJson.name;
+  lockfile.packages[""].name = packageJson.name;
+  lockfile.packages[""].version = packageJson.version;
+  await Promise.all([
+    writeFile(join(secondProject, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`),
+    writeFile(join(secondProject, "package-lock.json"), `${JSON.stringify(lockfile, null, 2)}\n`),
+  ]);
+
+  const installer = new PluginInstaller(dataRoot);
+  await installer.installProject(fixtureRoot);
+  await installer.installProject(secondProject);
+  const manager = new PluginManager(dataRoot);
+  t.after(() => manager.close());
+  await manager.initialize();
+  assert.equal((await manager.listInstalled()).length, 2);
+
+  assert.deepEqual(await manager.uninstallAll(), { removedCount: 2 });
+  assert.deepEqual(await manager.listInstalled(), []);
+  assert.equal(await fileExists(join(dataRoot, "plugins", "org.mgread.runtime.fixture")), false);
+  assert.equal(await fileExists(join(dataRoot, "plugins", "org.mgread.runtime.fixture.second")), false);
+
+  const restarted = new PluginManager(dataRoot);
+  t.after(() => restarted.close());
+  await restarted.initialize();
+  assert.deepEqual(await restarted.listInstalled(), []);
+});
+
 test("integrity failure produces one install terminal and leaves no version", async (t) => {
   const dataRoot = await temporaryDirectory(t, "mgread-integrity-failure-");
   const tarball = makeNpmTarball({
