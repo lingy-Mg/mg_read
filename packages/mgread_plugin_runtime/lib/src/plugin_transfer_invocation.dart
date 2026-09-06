@@ -172,6 +172,13 @@ final class PluginTransferOfferListInvocation
   @override
   String get _wireMethod => 'plugins.transfer.offers.v1';
 
+  // Offer listing may initialize and load all development plugins before
+  // returning. Keep this metadata-only call bounded, but allow cold Runtime
+  // startup and development-plugin loading more time than the 5-second
+  // control timeout.
+  @override
+  Duration get _timeout => const Duration(seconds: 30);
+
   @override
   Map<String, Object?> get _wireParams => const <String, Object?>{};
 
