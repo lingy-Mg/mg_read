@@ -222,17 +222,11 @@ final class PluginRuntime {
     PluginTransferOffer offer,
   ) => _supervisor.materializePluginArtifact(offer);
 
-  /// Accepts a bounded batch and performs one Runtime cold activation.
+  /// Accepts a byte-bounded batch and performs one Runtime cold activation.
   Future<List<PluginTransferImportResult>> importPluginArtifacts(
     List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
     artifacts,
   ) {
-    if (artifacts.length > maxPluginTransferBatch) {
-      throw const PluginRuntimeException(
-        'plugin_transfer_batch_too_large',
-        'The plugin transfer batch is too large.',
-      );
-    }
     return _supervisor.importPluginArtifacts(artifacts);
   }
 

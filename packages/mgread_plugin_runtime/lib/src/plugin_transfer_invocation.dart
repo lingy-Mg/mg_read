@@ -1,7 +1,6 @@
 part of mgread_plugin_runtime;
 
 const int maxPluginTransferBytes = 32 * 1024 * 1024;
-const int maxPluginTransferBatch = 32;
 const int maxPluginTransferBatchBytes = 512 * 1024 * 1024;
 
 enum PluginArtifactFormat { singleFile, archive }
@@ -152,7 +151,7 @@ final class PluginTransferListInvocation
 
   @override
   List<PluginTransferArtifact> _decodeResult(Object? value) {
-    if (value is! List<Object?> || value.length > 1024) {
+    if (value is! List<Object?>) {
       throw const PluginRuntimeException(
         'invalid_response',
         'The Runtime returned an invalid plugin transfer list.',
@@ -184,7 +183,7 @@ final class PluginTransferOfferListInvocation
 
   @override
   List<PluginTransferOffer> _decodeResult(Object? value) {
-    if (value is! List<Object?> || value.length > maxPluginTransferBatch) {
+    if (value is! List<Object?>) {
       throw const PluginRuntimeException(
         'invalid_response',
         'The Runtime returned an invalid plugin transfer offer list.',
@@ -199,8 +198,7 @@ final class PluginTransferOfferListInvocation
 @immutable
 final class PluginTransferPlanInvocation
     extends PluginInvocation<List<PluginTransferPlanItem>> {
-  PluginTransferPlanInvocation({required this.artifacts})
-    : assert(artifacts.length <= maxPluginTransferBatch);
+  PluginTransferPlanInvocation({required this.artifacts});
 
   final List<PluginTransferArtifact> artifacts;
 
@@ -220,8 +218,7 @@ final class PluginTransferPlanInvocation
 @immutable
 final class PluginTransferOfferPlanInvocation
     extends PluginInvocation<List<PluginTransferPlanItem>> {
-  PluginTransferOfferPlanInvocation({required this.offers})
-    : assert(offers.length <= maxPluginTransferBatch);
+  PluginTransferOfferPlanInvocation({required this.offers});
 
   final List<PluginTransferOffer> offers;
 
@@ -334,7 +331,7 @@ PluginTransferOffer _decodePluginTransferOffer(Object? value) {
 }
 
 List<PluginTransferPlanItem> _decodePluginTransferPlan(Object? value) {
-  if (value is! List<Object?> || value.length > maxPluginTransferBatch) {
+  if (value is! List<Object?>) {
     throw const PluginRuntimeException(
       'invalid_response',
       'The Runtime returned an invalid plugin transfer plan.',

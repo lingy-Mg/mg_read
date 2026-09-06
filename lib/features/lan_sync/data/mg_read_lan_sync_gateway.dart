@@ -67,9 +67,6 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
               ? artifactsById[plugin.id]?.version ?? offersById[plugin.id]?.version ?? plugin.activeVersion!
               : plugin.activeVersion!,
     };
-    if (requestedVersions.length > lanSyncMaxPluginCount) {
-      throw StateError('lan_sync_plugin_count_exceeded');
-    }
     final plugins = <LanSyncPluginDescriptor>[];
     for (final entry in requestedVersions.entries) {
       final artifact = _findArtifact(artifacts, entry.key, entry.value);

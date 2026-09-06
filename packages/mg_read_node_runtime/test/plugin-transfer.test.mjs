@@ -7,7 +7,6 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 
 import {
-  MAX_PLUGIN_TRANSFER_BATCH,
   MAX_PLUGIN_TRANSFER_BYTES,
   PluginTransferManager,
 } from "../dist/plugin-transfer.js";
@@ -69,7 +68,17 @@ test("plugin transfer v2 lists retained artifacts and plans SemVer", async (t) =
   );
   assert.equal(developmentReplicaPlan[0].action, "developmentConflict");
   assert.ok(MAX_PLUGIN_TRANSFER_BYTES >= archive.length);
-  assert.equal(MAX_PLUGIN_TRANSFER_BATCH, 32);
+  const largePlan = Array.from({ length: 33 }, (_, index) => ({
+    bytes: archive.length,
+    developmentFingerprint: null,
+    developmentRevision: null,
+    format: "archive",
+    id: `org.example.extra-${index}`,
+    provenance: "installed",
+    sha256,
+    version: "1.0.0",
+  }));
+  assert.equal(manager.plan(largePlan, installed).length, 33);
   assert.throws(
     () => manager.plan([{ bytes: archive.length, id: "org.old.source", sha256, version: "1.0.0" }], installed),
     (error) => error?.code === "invalid_request",

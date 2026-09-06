@@ -39,10 +39,8 @@ final class _AppliedSummary {
         books > lanSyncMaxShelfItemCount ||
         conflicts is! int ||
         conflicts < 0 ||
-        conflicts > lanSyncMaxPluginCount ||
         plugins is! int ||
-        plugins < 0 ||
-        plugins > lanSyncMaxPluginCount) {
+        plugins < 0) {
       throw const LanSyncTransportException('lan_sync_result_invalid');
     }
     return _AppliedSummary(books: books, developmentConflicts: conflicts, plugins: plugins);
@@ -97,8 +95,7 @@ Future<_Selection> _readSelection(PairedSecureConnection connection, LanSyncMani
   if (frame['type'] != 'selection' || rawPlugins is! List || rawShelf is! List) {
     throw const LanSyncTransportException('lan_sync_selection_invalid');
   }
-  if (rawPlugins.length > lanSyncMaxPluginCount ||
-      rawShelf.length > lanSyncMaxShelfItemCount ||
+  if (rawShelf.length > lanSyncMaxShelfItemCount ||
       rawPlugins.any((value) => value is! String) ||
       rawShelf.any((value) => value is! String)) {
     throw const LanSyncTransportException('lan_sync_selection_invalid');
@@ -192,10 +189,7 @@ Future<_AppliedSummary> _receivePayload(
   };
   final payloadFrame = await _readPairedSessionControl(connection, timeout: lanSyncTransferIdleTimeout, maxBytes: lanSyncMaxManifestBytes);
   final rawPlugins = payloadFrame['plugins'];
-  if (payloadFrame['type'] != 'payloadManifest' ||
-      rawPlugins is! List ||
-      rawPlugins.length != offeredById.length ||
-      rawPlugins.length > lanSyncMaxPluginCount) {
+  if (payloadFrame['type'] != 'payloadManifest' || rawPlugins is! List || rawPlugins.length != offeredById.length) {
     throw const LanSyncTransportException('lan_sync_plugin_descriptor_invalid');
   }
   final selectedById = <String, LanSyncPluginDescriptor>{};

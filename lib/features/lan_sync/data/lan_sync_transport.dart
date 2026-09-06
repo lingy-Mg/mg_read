@@ -245,7 +245,7 @@ final class LanSyncSenderService {
       if (rawShelfSelection != null && rawShelfSelection is! List) {
         throw const LanSyncTransportException('lan_sync_selection_invalid');
       }
-      if (rawSelection.length > lanSyncMaxPluginCount || rawSelection.any((value) => value is! String)) {
+      if (rawSelection.any((value) => value is! String)) {
         throw const LanSyncTransportException('lan_sync_selection_invalid');
       }
       final selectedShelfItemIds = rawShelfSelection == null
@@ -435,7 +435,7 @@ final class LanSyncReceiverConnection {
     void Function()? onPluginBytesReceived,
   }) async {
     final manifest = _manifest;
-    if (manifest == null || pluginIds.length > lanSyncMaxPluginCount) {
+    if (manifest == null) {
       throw const LanSyncTransportException('lan_sync_selection_invalid');
     }
     final selectedShelfItemIds = shelfItemIds == null

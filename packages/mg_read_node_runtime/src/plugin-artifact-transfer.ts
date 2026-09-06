@@ -18,7 +18,6 @@ import {
 import { developmentProjectFingerprint } from "./plugin-manager-files.js";
 import type { JsonObject } from "./protocol.js";
 
-export const MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH = 32;
 export const MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH_BYTES = 512 * 1024 * 1024;
 
 export interface PluginTransferArtifact extends JsonObject {
@@ -398,7 +397,6 @@ async function hasDevelopmentBuildEntry(
 }
 
 export function validateArtifactBatch(artifacts: readonly PluginTransferArtifact[]): void {
-  if (artifacts.length > MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH) throw new PluginArtifactTransferError("plugin_transfer_batch_too_large");
   let bytes = 0;
   for (const artifact of artifacts) {
     if (!isPluginTransferArtifact(artifact)) throw new PluginArtifactTransferError("invalid_request");
@@ -408,9 +406,6 @@ export function validateArtifactBatch(artifacts: readonly PluginTransferArtifact
 }
 
 export function validateOfferBatch(offers: readonly PluginTransferOffer[]): void {
-  if (offers.length > MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH) {
-    throw new PluginArtifactTransferError("plugin_transfer_batch_too_large");
-  }
   for (const offer of offers) {
     if (!isPluginTransferOffer(offer)) throw new PluginArtifactTransferError("invalid_request");
   }

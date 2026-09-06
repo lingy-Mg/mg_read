@@ -9,7 +9,6 @@ import {
   PluginArtifactTransferError as PluginTransferError,
   type PluginTransferArtifact,
   type PluginTransferOffer,
-  MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH as MAX_PLUGIN_TRANSFER_BATCH,
 } from "./plugin-artifact-transfer.js";
 import type {
   JsonValue,
@@ -72,7 +71,7 @@ export async function dispatchPluginTransferPlan(
   requestError: RequestError,
 ): Promise<PluginTransferDispatchResult> {
   const raw = request.params.artifacts;
-  if (!Array.isArray(raw) || raw.length > MAX_PLUGIN_TRANSFER_BATCH || Object.keys(request.params).length !== 1) {
+  if (!Array.isArray(raw) || Object.keys(request.params).length !== 1) {
     return { error: requestError(request, "invalid_request", "The plugin transfer plan request is invalid.") };
   }
   try {
@@ -87,7 +86,7 @@ export async function dispatchPluginTransferOfferPlan(
   requestError: RequestError,
 ): Promise<PluginTransferDispatchResult> {
   const raw = request.params.offers;
-  if (!Array.isArray(raw) || raw.length > MAX_PLUGIN_TRANSFER_BATCH || Object.keys(request.params).length !== 1) {
+  if (!Array.isArray(raw) || Object.keys(request.params).length !== 1) {
     return { error: requestError(request, "invalid_request", "The plugin transfer offer plan request is invalid.") };
   }
   try {

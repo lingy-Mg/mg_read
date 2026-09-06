@@ -401,7 +401,7 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
     List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
     artifacts,
   ) async {
-    if (artifacts.isEmpty || artifacts.length > maxPluginTransferBatch) {
+    if (artifacts.isEmpty) {
       throw const PluginRuntimeException(
         'plugin_transfer_batch_too_large',
         'The plugin transfer batch is invalid.',

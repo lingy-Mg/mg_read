@@ -23,7 +23,6 @@ const int lanSyncMaxBinaryChunkBytes = 256 * 1024;
 // in this smaller bounded unit so no platform needs to re-chunk a payload.
 const int lanSyncPluginRelayChunkBytes = 64 * 1024;
 const int lanSyncMaxPluginBytes = 32 * 1024 * 1024;
-const int lanSyncMaxPluginCount = 32;
 const int lanSyncMaxShelfItemCount = bookshelfMaxItemCount;
 const int lanSyncMaxBatchBytes = 512 * 1024 * 1024;
 const Duration lanSyncSessionLifetime = Duration(minutes: 10);
@@ -377,7 +376,7 @@ final class LanSyncManifest {
     }
     final rawPlugins = _requiredList(json['plugins']);
     final rawItems = _requiredList(json['shelfItems']);
-    if (rawPlugins.length > lanSyncMaxPluginCount || rawItems.length > lanSyncMaxShelfItemCount) {
+    if (rawItems.length > lanSyncMaxShelfItemCount) {
       throw const FormatException('manifest_limit_exceeded');
     }
     final plugins = <LanSyncPluginDescriptor>[for (final raw in rawPlugins) LanSyncPluginDescriptor.fromJson(_requiredMap(raw))];
