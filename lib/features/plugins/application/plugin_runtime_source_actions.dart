@@ -58,6 +58,7 @@ final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
         onSuccess();
       } else {
         // Removal changes the Runtime-owned source catalog immediately.
+        ref.read(pluginRuntimeCatalogChangeProvider.notifier).publish();
         ref.invalidate(pluginRuntimeConnectionProvider);
         ref.invalidate(pluginRuntimeStatusProvider);
       }

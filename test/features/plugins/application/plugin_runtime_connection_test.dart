@@ -172,7 +172,9 @@ void main() {
 
     expect(gateway.uninstalledPluginIds, <String>['org.example.mutable']);
     expect(gateway.inspectCalls, 1);
-    expect(container.read(pluginRuntimeCatalogChangeProvider).revision, 0);
+    final change = container.read(pluginRuntimeCatalogChangeProvider);
+    expect(change.revision, 1);
+    expect(change.pluginIds, isNull);
     expect(
       diagnostics.sink.events.where((event) => event.eventName.startsWith('runtime.facade.call.')).map((event) => event.eventName),
       contains('runtime.facade.call.complete'),
@@ -195,7 +197,9 @@ void main() {
     await container.read(pluginRuntimeSourceActionProvider.notifier).uninstallAll();
 
     expect(gateway.uninstallAllCalls, 1);
-    expect(container.read(pluginRuntimeCatalogChangeProvider).revision, 0);
+    final change = container.read(pluginRuntimeCatalogChangeProvider);
+    expect(change.revision, 1);
+    expect(change.pluginIds, isNull);
     expect(
       diagnostics.sink.events.where((event) => event.eventName.startsWith('runtime.facade.call.')).map((event) => event.eventName),
       contains('runtime.facade.call.complete'),
