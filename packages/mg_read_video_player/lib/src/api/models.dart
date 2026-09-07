@@ -301,6 +301,18 @@ enum VideoPlayerFailureKind {
   persistence,
 }
 
+/// Safe category for an error emitted by a native playback backend.
+///
+/// The raw engine text may include signed resource URLs or request headers and
+/// must not be presented or recorded by the host.
+enum VideoPlaybackBackendErrorKind {
+  /// The backend failed for a reason that has no more specific safe category.
+  unknown,
+
+  /// The explicitly configured HTTP proxy could not be reached.
+  proxyUnavailable,
+}
+
 /// Recoverable public failure information.
 @immutable
 final class VideoPlayerFailure {
@@ -354,6 +366,7 @@ final class VideoPlaybackBackendState {
     this.volume = 100,
     this.firstFrameReady = false,
     this.errorMessage,
+    this.errorKind,
   });
 
   /// Whether media is currently playing.
@@ -380,6 +393,9 @@ final class VideoPlaybackBackendState {
   /// Latest stable backend error message.
   final String? errorMessage;
 
+  /// Safe category of [errorMessage], when the backend can identify one.
+  final VideoPlaybackBackendErrorKind? errorKind;
+
   /// Returns a new backend state with selected fields replaced.
   VideoPlaybackBackendState copyWith({
     bool? playing,
@@ -390,6 +406,7 @@ final class VideoPlaybackBackendState {
     double? volume,
     bool? firstFrameReady,
     String? errorMessage,
+    VideoPlaybackBackendErrorKind? errorKind,
     bool clearError = false,
   }) => VideoPlaybackBackendState(
     playing: playing ?? this.playing,
@@ -400,6 +417,7 @@ final class VideoPlaybackBackendState {
     volume: volume ?? this.volume,
     firstFrameReady: firstFrameReady ?? this.firstFrameReady,
     errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
+    errorKind: clearError ? null : errorKind ?? this.errorKind,
   );
 }
 

@@ -390,15 +390,23 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     }
     if (next.playing != previous.playing) _scheduleControlsHide();
     final error = next.errorMessage?.trim();
-    if (error != null && error.isNotEmpty && error != _reportedBackendError) {
-      _reportedBackendError = error;
+    final errorId = next.errorKind?.name ?? error;
+    if (error != null && error.isNotEmpty && errorId != _reportedBackendError) {
+      _reportedBackendError = errorId;
       _setFailure(
-        const VideoPlayerFailure(
-          VideoPlayerFailureKind.playback,
-          '播放引擎发生错误',
-          code: 'backend_error',
-          location: '视频播放引擎',
-        ),
+        next.errorKind == VideoPlaybackBackendErrorKind.proxyUnavailable
+            ? const VideoPlayerFailure(
+                VideoPlayerFailureKind.playback,
+                '视频代理无法连接，请启动代理服务，或关闭视频代理后重试。',
+                code: 'video_proxy_unreachable',
+                location: '连接视频代理',
+              )
+            : const VideoPlayerFailure(
+                VideoPlayerFailureKind.playback,
+                '播放引擎发生错误',
+                code: 'backend_error',
+                location: '视频播放引擎',
+              ),
       );
       return;
     }

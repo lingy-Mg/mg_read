@@ -38,6 +38,26 @@ void main() {
     expect(find.byKey(const Key('video-player-loading')), findsNothing);
   });
 
+  testWidgets('identifies an unavailable configured video proxy', (
+    WidgetTester tester,
+  ) async {
+    final backend = _OrderedBackend();
+    final controller = VideoPlayerController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_app(backend: backend, controller: controller));
+    await tester.pumpAndSettle();
+
+    backend.emitError(
+      'proxy unavailable',
+      kind: VideoPlaybackBackendErrorKind.proxyUnavailable,
+    );
+    await tester.pump();
+
+    expect(controller.snapshot.status, VideoPlayerStatus.failure);
+    expect(controller.snapshot.failure?.code, 'video_proxy_unreachable');
+    expect(find.text('视频代理无法连接，请启动代理服务，或关闭视频代理后重试。'), findsOneWidget);
+  });
+
   testWidgets('queues background pause behind a blocked autoplay open', (
     WidgetTester tester,
   ) async {
@@ -510,8 +530,13 @@ final class _OrderedBackend implements VideoPlaybackBackend {
   void emitFirstFrame() =>
       state.value = state.value.copyWith(firstFrameReady: true);
 
-  void emitError(String message) =>
-      state.value = state.value.copyWith(errorMessage: message);
+  void emitError(
+    String message, {
+    VideoPlaybackBackendErrorKind? kind,
+  }) => state.value = state.value.copyWith(
+    errorMessage: message,
+    errorKind: kind,
+  );
 
   @override
   Future<void> dispose() async {

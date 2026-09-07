@@ -135,7 +135,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     final previous = _session;
     _session = session;
     if (prepared == null) _surfaceGeneration++;
-    _emit(_value.copyWith(firstFrameReady: false));
+    _emit(_value.copyWith(firstFrameReady: false, clearError: true));
     unawaited(_markFirstFrame(session, generation, episode));
 
     // VideoController initializes after a frame. This frame also detaches the
@@ -168,7 +168,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     } on Object catch (error, stackTrace) {
       if (!_isCurrent(session, generation)) return;
       _debugPlaybackFailure('open-exception', episode, error);
-      _emit(_value.copyWith(errorMessage: error.toString(), buffering: false));
+      _emit(_value.copyWith(buffering: false));
       Error.throwWithStackTrace(error, stackTrace);
     }
   }
@@ -223,11 +223,21 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
       ),
       session.player.stream.error.listen((String value) {
         if (value.trim().isEmpty) return;
-        _debugPlaybackFailure('stream-error', episode, value);
+        final failure = _classifyStreamFailure(value);
+        _debugPlaybackFailure(
+          'stream-error',
+          episode,
+          value,
+          kind: failure.kind,
+        );
         _updateFrom(
           session,
           generation,
-          (state) => state.copyWith(errorMessage: value, buffering: false),
+          (state) => state.copyWith(
+            errorMessage: failure.message,
+            errorKind: failure.kind,
+            buffering: false,
+          ),
         );
       }),
     ]);
@@ -245,7 +255,13 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     } on Object catch (error) {
       if (!_isCurrent(session, generation)) return;
       _debugPlaybackFailure('first-frame-exception', episode, error);
-      _emit(_value.copyWith(errorMessage: error.toString(), buffering: false));
+      _emit(
+        _value.copyWith(
+          errorMessage: 'The video engine could not render a frame.',
+          errorKind: VideoPlaybackBackendErrorKind.unknown,
+          buffering: false,
+        ),
+      );
     }
   }
 
@@ -257,12 +273,34 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     );
   }
 
-  void _debugPlaybackFailure(String event, VideoEpisode episode, Object error) {
+  _BackendStreamFailure _classifyStreamFailure(String error) {
+    final proxy = proxyUri;
+    final endpoint = proxy == null ? null : 'tcp://${proxy.host}:${proxy.port}';
+    if (endpoint != null &&
+        error.toLowerCase().contains('connection to ${endpoint.toLowerCase()} failed')) {
+      return const _BackendStreamFailure(
+        VideoPlaybackBackendErrorKind.proxyUnavailable,
+        'The configured video proxy could not be reached.',
+      );
+    }
+    return const _BackendStreamFailure(
+      VideoPlaybackBackendErrorKind.unknown,
+      'The video playback engine could not open the media.',
+    );
+  }
+
+  void _debugPlaybackFailure(
+    String event,
+    VideoEpisode episode,
+    Object error, {
+    VideoPlaybackBackendErrorKind? kind,
+  }) {
     if (!kDebugMode) return;
     debugPrint(
       'MgRead video backend [$event] '
       '${_debugResourceSummary(episode)} '
-      'errorType=${error.runtimeType} error=$error',
+      'errorType=${error.runtimeType}'
+      '${kind == null ? '' : ' failure=${kind.name}'}',
     );
   }
 
@@ -374,6 +412,13 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
   }
 
   static Future<void> _noPlatformFullscreen() async {}
+}
+
+final class _BackendStreamFailure {
+  const _BackendStreamFailure(this.kind, this.message);
+
+  final VideoPlaybackBackendErrorKind kind;
+  final String message;
 }
 
 final class _MediaKitEpisodeSession {

@@ -25,6 +25,7 @@ export 'src/api/models.dart'
         VideoEpisode,
         VideoEpisodeGroup,
         VideoFitMode,
+        VideoPlaybackBackendErrorKind,
         VideoPlaybackBackendState,
         VideoPlaybackProgress,
         VideoPlayerFailure,
