@@ -82,10 +82,12 @@ final class DeferredLanSyncGateway implements LanSyncGateway, LanSyncPairedGatew
   }
 
   @override
-  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest) async => (await _delegate()).previewImport(manifest);
+  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest, {bool force = false}) async =>
+      (await _delegate()).previewImport(manifest, force: force);
 
   @override
-  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins) async => (await _delegate()).preparePluginImports(plugins);
+  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins, {Set<String> forceUpgradePluginIds = const <String>{}}) async =>
+      (await _delegate()).preparePluginImports(plugins, forceUpgradePluginIds: forceUpgradePluginIds);
 
   @override
   Future<void> importPluginArchive(LanSyncPluginDescriptor plugin, Stream<List<int>> bytes) async =>
@@ -107,10 +109,12 @@ final class DeferredLanSyncGateway implements LanSyncGateway, LanSyncPairedGatew
     required Map<String, LanSyncConflictChoice> conflictChoices,
     required Set<String> availablePluginIds,
     required LanSyncPluginImportResult pluginResult,
+    bool force = false,
   }) async => (await _delegate()).applyImport(
     manifest: manifest,
     conflictChoices: conflictChoices,
     availablePluginIds: availablePluginIds,
     pluginResult: pluginResult,
+    force: force,
   );
 }

@@ -198,9 +198,13 @@ final class PluginTransferOfferListInvocation
 @immutable
 final class PluginTransferPlanInvocation
     extends PluginInvocation<List<PluginTransferPlanItem>> {
-  PluginTransferPlanInvocation({required this.artifacts});
+  PluginTransferPlanInvocation({
+    required this.artifacts,
+    this.forceUpgradePluginIds = const <String>{},
+  });
 
   final List<PluginTransferArtifact> artifacts;
+  final Set<String> forceUpgradePluginIds;
 
   @override
   String get _wireMethod => 'plugins.transfer.plan.v2';
@@ -208,6 +212,8 @@ final class PluginTransferPlanInvocation
   @override
   Map<String, Object?> get _wireParams => <String, Object?>{
     'artifacts': artifacts.map((artifact) => artifact.toJson()).toList(),
+    if (forceUpgradePluginIds.isNotEmpty)
+      'forceUpgradeIds': forceUpgradePluginIds.toList(growable: false),
   };
 
   @override
@@ -218,9 +224,13 @@ final class PluginTransferPlanInvocation
 @immutable
 final class PluginTransferOfferPlanInvocation
     extends PluginInvocation<List<PluginTransferPlanItem>> {
-  PluginTransferOfferPlanInvocation({required this.offers});
+  PluginTransferOfferPlanInvocation({
+    required this.offers,
+    this.forceUpgradePluginIds = const <String>{},
+  });
 
   final List<PluginTransferOffer> offers;
+  final Set<String> forceUpgradePluginIds;
 
   @override
   String get _wireMethod => 'plugins.transfer.offers.plan.v1';
@@ -228,6 +238,8 @@ final class PluginTransferOfferPlanInvocation
   @override
   Map<String, Object?> get _wireParams => <String, Object?>{
     'offers': offers.map((offer) => offer.toJson()).toList(),
+    if (forceUpgradePluginIds.isNotEmpty)
+      'forceUpgradeIds': forceUpgradePluginIds.toList(growable: false),
   };
 
   @override

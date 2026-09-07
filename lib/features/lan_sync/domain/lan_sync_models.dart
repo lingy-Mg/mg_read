@@ -1,7 +1,7 @@
 /// 局域网同步领域模型与有界协议常量。
 ///
 /// 职责：
-/// - 定义 v2 会话、manifest、插件 artifact 和导入预览类型。
+/// - 定义 HTTP v3 会话、manifest、插件 artifact 和导入预览类型。
 /// - 校验跨设备 JSON 的字段、枚举和大小上限。
 ///
 /// 注意：
@@ -14,20 +14,13 @@ import 'package:flutter/foundation.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
 
-const int lanSyncProtocolVersion = 2;
-const int lanSyncMaxControlFrameBytes = 64 * 1024;
+const int lanSyncProtocolVersion = 3;
 const int lanSyncMaxManifestBytes = 1024 * 1024;
-const int lanSyncMaxBinaryChunkBytes = 256 * 1024;
-// Keep every relay write compatible with the Android Runtime inbox bridge.
-// The wire protocol may accept larger frames, but plugins are always relayed
-// in this smaller bounded unit so no platform needs to re-chunk a payload.
-const int lanSyncPluginRelayChunkBytes = 64 * 1024;
 const int lanSyncMaxPluginBytes = 32 * 1024 * 1024;
 const int lanSyncMaxShelfItemCount = bookshelfMaxItemCount;
 const int lanSyncMaxBatchBytes = 512 * 1024 * 1024;
 const Duration lanSyncSessionLifetime = Duration(minutes: 10);
 const Duration lanSyncHandshakeTimeout = Duration(seconds: 30);
-const Duration lanSyncTransferIdleTimeout = Duration(seconds: 90);
 const int lanSyncDiscoveryPort = 47231;
 
 enum LanSyncRole { sender, receiver }
@@ -81,8 +74,10 @@ final class LanSyncImportPreview {
     required this.pluginPlans,
     Set<String> selectedPluginIds = const <String>{},
     Set<String> selectedShelfItemIds = const <String>{},
+    Set<String> forceUpgradePluginIds = const <String>{},
   }) : selectedPluginIds = Set<String>.unmodifiable(selectedPluginIds),
-       selectedShelfItemIds = Set<String>.unmodifiable(selectedShelfItemIds);
+       selectedShelfItemIds = Set<String>.unmodifiable(selectedShelfItemIds),
+       forceUpgradePluginIds = Set<String>.unmodifiable(forceUpgradePluginIds);
 
   final int newItemCount;
   final List<LanSyncBookConflict> conflicts;
@@ -91,6 +86,9 @@ final class LanSyncImportPreview {
   final Set<String> selectedPluginIds;
   final Set<String> selectedShelfItemIds;
 
+  /// Plugin IDs selected for an explicit sender-to-receiver replacement.
+  final Set<String> forceUpgradePluginIds;
+
   Set<String> get recommendedPluginIds => <String>{
     for (final entry in pluginPlans.entries)
       if (entry.value == LanSyncPluginPlanState.missing || entry.value == LanSyncPluginPlanState.upgrade) entry.key,
@@ -98,14 +96,16 @@ final class LanSyncImportPreview {
 
   bool get hasSelection => selectedPluginIds.isNotEmpty || selectedShelfItemIds.isNotEmpty;
 
-  LanSyncImportPreview withSelection({Set<String>? pluginIds, Set<String>? shelfItemIds}) => LanSyncImportPreview(
-    newItemCount: newItemCount,
-    conflicts: conflicts,
-    blockedItemCount: blockedItemCount,
-    pluginPlans: pluginPlans,
-    selectedPluginIds: pluginIds ?? selectedPluginIds,
-    selectedShelfItemIds: shelfItemIds ?? selectedShelfItemIds,
-  );
+  LanSyncImportPreview withSelection({Set<String>? pluginIds, Set<String>? shelfItemIds, Set<String>? forceUpgradeIds}) =>
+      LanSyncImportPreview(
+        newItemCount: newItemCount,
+        conflicts: conflicts,
+        blockedItemCount: blockedItemCount,
+        pluginPlans: pluginPlans,
+        selectedPluginIds: pluginIds ?? selectedPluginIds,
+        selectedShelfItemIds: shelfItemIds ?? selectedShelfItemIds,
+        forceUpgradePluginIds: forceUpgradeIds ?? forceUpgradePluginIds,
+      );
 
   LanSyncImportPreview withConflictChoice(String identity, LanSyncConflictChoice choice) => LanSyncImportPreview(
     newItemCount: newItemCount,
@@ -116,6 +116,7 @@ final class LanSyncImportPreview {
     pluginPlans: pluginPlans,
     selectedPluginIds: selectedPluginIds,
     selectedShelfItemIds: selectedShelfItemIds,
+    forceUpgradePluginIds: forceUpgradePluginIds,
   );
 }
 

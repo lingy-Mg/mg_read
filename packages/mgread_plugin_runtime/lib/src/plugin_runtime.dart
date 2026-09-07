@@ -32,8 +32,9 @@ abstract interface class _RuntimeSupervisor {
 
   Future<List<PluginTransferImportResult>> importPluginArtifacts(
     List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
-    artifacts,
-  );
+    artifacts, {
+    Set<String> forceUpgradePluginIds = const <String>{},
+  });
 
   Future<void> setDevelopmentDirectory(String path);
 
@@ -232,9 +233,13 @@ final class PluginRuntime {
   /// Accepts a byte-bounded batch and performs one Runtime cold activation.
   Future<List<PluginTransferImportResult>> importPluginArtifacts(
     List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
-    artifacts,
-  ) {
-    return _supervisor.importPluginArtifacts(artifacts);
+    artifacts, {
+    Set<String> forceUpgradePluginIds = const <String>{},
+  }) {
+    return _supervisor.importPluginArtifacts(
+      artifacts,
+      forceUpgradePluginIds: forceUpgradePluginIds,
+    );
   }
 
   /// Selects a desktop development-source directory.

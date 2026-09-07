@@ -1,39 +1,32 @@
-/// 已配对设备的动态发现、认证连接与双向同步协议。
+/// 已配对设备的 HTTP 发现、请求认证和双向同步。
 ///
-/// 职责：
-/// - 广播稳定设备 ID 和本次前台端口，IP 始终取自收到的数据包。
-/// - 使用逐设备共享密钥建立认证加密会话，并按双方策略同步插件和书架。
-/// - 支持任意端主动双向同步、拉取或推送；Android 请求 Windows/macOS 时使用签名唤醒和反向连接。
-///
-/// 注意：
-/// - 广播不包含密钥、书名、插件名或持久地址。
-/// - 删除不传播；书架冲突沿用 smartMerge，开发书源冲突由 Runtime 计划明确跳过。
+/// JSON 业务接口负责编排；插件通过独立 HTTP PUT/GET 传输，GET 支持标准
+/// Range/ETag/If-Range。逐设备配对密钥只用于 HMAC 请求与 UDP 唤醒认证。
 library;
 
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/application/paired_device_repository.dart';
+import 'package:mg_read/features/lan_sync/data/lan_sync_http_artifact.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
-import 'package:mg_read/features/lan_sync/data/paired_secure_connection.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 
-part 'paired_sync_payload.dart';
-part 'paired_sync_session_failure.dart';
 part 'paired_sync_wake.dart';
+part 'paired_sync_http_session.dart';
 
-const int pairedSyncProtocolVersion = 2;
+const int pairedSyncProtocolVersion = 3;
 const int pairedSyncDiscoveryPort = 47232;
 const Duration pairedSyncPeerLifetime = Duration(seconds: 8);
+const Duration _sessionLifetime = Duration(minutes: 10);
 
 final class PairedSyncEndpoint {
   const PairedSyncEndpoint({
@@ -43,7 +36,6 @@ final class PairedSyncEndpoint {
     required this.label,
     required this.port,
   });
-
   final String address;
   final String deviceId;
   final DateTime expiresAtUtc;
@@ -60,7 +52,6 @@ final class PairedSyncRunSummary {
     required this.developmentConflicts,
     this.skippedShelfItems = 0,
   });
-
   const PairedSyncRunSummary.empty()
     : receivedBooks = 0,
       receivedPlugins = 0,
@@ -68,7 +59,6 @@ final class PairedSyncRunSummary {
       sentPlugins = 0,
       developmentConflicts = 0,
       skippedShelfItems = 0;
-
   final int receivedBooks;
   final int receivedPlugins;
   final int sentBooks;
@@ -77,13 +67,18 @@ final class PairedSyncRunSummary {
   final int skippedShelfItems;
 }
 
-/// The connection failed after at least one side confirmed durable changes.
 final class PairedSyncPartialException implements Exception {
   const PairedSyncPartialException(this.cause, {required this.stage, required this.causeStackTrace});
-
   final Object cause;
   final String stage;
   final StackTrace causeStackTrace;
+}
+
+final class PairedSyncPeerFailureException implements Exception {
+  const PairedSyncPeerFailureException({required this.code, required this.stage, required this.errorText});
+  final String code;
+  final String stage;
+  final String errorText;
 }
 
 typedef PairedSyncStageObserver = void Function(String stage);
@@ -106,19 +101,20 @@ final class PairedSyncHost {
 
   final LocalDeviceIdentity identity;
   final int discoveryPort;
-  final ServerSocket _server;
+  final HttpServer _server;
   final RawDatagramSocket _socket;
   final PairedDeviceRepository _devices;
   final DeviceIdentityStore _identityStore;
-  final Future<void> Function(PairedSyncServerSession session) _onIncoming;
-  final Future<void> Function(PairedSyncWakeRequest request)? _onWakeRequest;
-  final Future<void> Function(PairedSyncWakeFailure failure)? _onWakeFailure;
+  final Future<void> Function(PairedSyncServerSession) _onIncoming;
+  final Future<void> Function(PairedSyncWakeRequest)? _onWakeRequest;
+  final Future<void> Function(PairedSyncWakeFailure)? _onWakeFailure;
   final Duration _announcementInterval;
   final Duration _advertisedPeerLifetime;
   final Future<bool> Function()? _canAnnounce;
   final StreamController<PairedSyncEndpoint> _endpoints = StreamController<PairedSyncEndpoint>.broadcast();
-  final Set<Socket> _connections = <Socket>{};
+  final Map<String, _HttpExchange> _sessions = <String, _HttpExchange>{};
   final Map<String, DateTime> _acceptedWakeRequests = <String, DateTime>{};
+  final Map<String, int> _requestNonces = <String, int>{};
   Timer? _announcer;
   bool _announcementInFlight = false;
   bool _closed = false;
@@ -130,24 +126,18 @@ final class PairedSyncHost {
     required LocalDeviceIdentity identity,
     required PairedDeviceRepository devices,
     required DeviceIdentityStore identityStore,
-    required Future<void> Function(PairedSyncServerSession session) onIncoming,
-    Future<void> Function(PairedSyncWakeRequest request)? onWakeRequest,
-    Future<void> Function(PairedSyncWakeFailure failure)? onWakeFailure,
+    required Future<void> Function(PairedSyncServerSession) onIncoming,
+    Future<void> Function(PairedSyncWakeRequest)? onWakeRequest,
+    Future<void> Function(PairedSyncWakeFailure)? onWakeFailure,
     Duration announcementInterval = const Duration(seconds: 2),
     Duration advertisedPeerLifetime = pairedSyncPeerLifetime,
     Future<bool> Function()? canAnnounce,
     int discoveryPort = pairedSyncDiscoveryPort,
   }) async {
-    final server = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
+    final server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
     RawDatagramSocket? socket;
     try {
-      socket = await RawDatagramSocket.bind(
-        InternetAddress.anyIPv4,
-        discoveryPort,
-        reuseAddress: true,
-        // macOS 需要 SO_REUSEPORT 才允许同机实例共同监听发现端口。
-        reusePort: Platform.isMacOS,
-      );
+      socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, discoveryPort, reuseAddress: true, reusePort: Platform.isMacOS);
       socket.broadcastEnabled = true;
       final host = PairedSyncHost._(
         identity: identity,
@@ -167,14 +157,14 @@ final class PairedSyncHost {
       return host;
     } on Object {
       socket?.close();
-      await server.close();
+      await server.close(force: true);
       rethrow;
     }
   }
 
   void _start() {
-    _server.listen(_accept, onError: (_) => unawaited(close()), cancelOnError: false);
-    _socket.listen(_onDatagram, onError: (_) {}, cancelOnError: false);
+    _server.listen(_handleHttp, onError: (_) => unawaited(close()));
+    _socket.listen(_onDatagram, onError: (_) {});
     unawaited(_announce());
     _announcer = Timer.periodic(_announcementInterval, (_) => unawaited(_announce()));
   }
@@ -183,22 +173,21 @@ final class PairedSyncHost {
     if (_closed || _announcementInFlight) return;
     _announcementInFlight = true;
     try {
-      final canAnnounce = _canAnnounce;
-      if (canAnnounce != null && !await canAnnounce()) return;
-      if (_closed) return;
+      if (_canAnnounce != null && !await _canAnnounce()) return;
       final bytes = utf8.encode(
         jsonEncode(<String, Object?>{
           'kind': 'mgread-paired-sync',
           'protocolVersion': pairedSyncProtocolVersion,
+          'transport': 'http',
           'deviceId': identity.deviceId,
           'label': identity.label,
-          'port': _server.port,
+          'port': port,
           'ttlSeconds': _advertisedPeerLifetime.inSeconds,
         }),
       );
       _socket.send(bytes, InternetAddress('255.255.255.255'), discoveryPort);
     } on Object {
-      // 下一次周期广播会重试；已知 endpoint 仍可继续当前会话。
+      // A later announcement retries.
     } finally {
       _announcementInFlight = false;
     }
@@ -221,88 +210,162 @@ final class PairedSyncHost {
           unawaited(_handleWakeFailure(raw, packet.address));
           continue;
         }
-        if (raw['kind'] != 'mgread-paired-sync' || raw['protocolVersion'] != pairedSyncProtocolVersion) {
-          continue;
-        }
         final deviceId = raw['deviceId'];
         final label = raw['label'];
-        final port = raw['port'];
-        final ttlSeconds = raw['ttlSeconds'] ?? pairedSyncPeerLifetime.inSeconds;
-        if (deviceId is! String ||
+        final advertisedPort = raw['port'];
+        final ttl = raw['ttlSeconds'];
+        if (raw['kind'] != 'mgread-paired-sync' ||
+            raw['protocolVersion'] != pairedSyncProtocolVersion ||
+            raw['transport'] != 'http' ||
+            deviceId is! String ||
             deviceId == identity.deviceId ||
             !isValidPairedDeviceId(deviceId) ||
             label is! String ||
-            label.trim().isEmpty ||
-            label.length > 128 ||
-            port is! int ||
-            port < 1 ||
-            port > 65535 ||
-            ttlSeconds is! int ||
-            ttlSeconds < 6 ||
-            ttlSeconds > 120) {
+            _validDeviceLabel(label) == null ||
+            advertisedPort is! int ||
+            advertisedPort < 1 ||
+            advertisedPort > 65535 ||
+            ttl is! int ||
+            ttl < 6 ||
+            ttl > 120) {
           continue;
         }
         _endpoints.add(
           PairedSyncEndpoint(
             address: packet.address.address,
             deviceId: deviceId,
-            expiresAtUtc: DateTime.now().toUtc().add(Duration(seconds: ttlSeconds)),
+            expiresAtUtc: DateTime.now().toUtc().add(Duration(seconds: ttl)),
             label: label,
-            port: port,
+            port: advertisedPort,
           ),
         );
       } on Object {
-        // 未认证广播不可信，格式错误直接忽略。
+        // Discovery data is untrusted.
       }
     }
   }
 
-  Future<void> _accept(Socket socket) async {
-    if (_closed || _connections.length >= 4 || !_eligiblePeer(socket.remoteAddress)) {
-      socket.destroy();
-      return;
-    }
-    _connections.add(socket);
-    LanSyncFramedConnection? raw;
-    PairedSecureConnection? secure;
+  Future<void> _handleHttp(HttpRequest request) async {
     try {
-      raw = LanSyncFramedConnection(socket);
-      final hello = await raw.readControl().timeout(lanSyncHandshakeTimeout);
-      final peerDeviceId = hello['deviceId'];
-      final clientNonce = hello['clientNonce'];
-      if (hello['type'] != 'pairedHello' ||
-          hello['protocolVersion'] != pairedSyncProtocolVersion ||
-          hello['targetDeviceId'] != identity.deviceId ||
-          peerDeviceId is! String ||
-          !isValidPairedDeviceId(peerDeviceId) ||
-          !_validNonce(clientNonce)) {
-        throw const LanSyncTransportException('lan_sync_handshake_invalid');
+      if (!_eligiblePeer(request.connectionInfo?.remoteAddress)) {
+        return await _respond(request.response, HttpStatus.forbidden, <String, Object?>{'error': 'not_private'});
       }
-      final peer = await _devices.read(peerDeviceId);
-      final secret = await _identityStore.readPeerSecret(peerDeviceId);
-      if (peer == null || secret == null) {
-        throw const LanSyncTransportException('lan_sync_peer_not_paired');
+      final deviceId = request.headers.value(LanSyncHttpAuthentication.deviceHeader);
+      final peer = deviceId == null ? null : await _devices.read(deviceId);
+      final secret = deviceId == null ? null : await _identityStore.readPeerSecret(deviceId);
+      if (peer == null ||
+          secret == null ||
+          !LanSyncHttpAuthentication.verify(request, sharedSecret: secret, acceptedNonces: _requestNonces)) {
+        return await _respond(request.response, HttpStatus.unauthorized, <String, Object?>{'error': 'unauthorized'});
       }
-      final serverNonce = _randomToken(16);
-      await raw.sendControl(<String, Object?>{
-        'type': 'pairedChallenge',
-        'protocolVersion': pairedSyncProtocolVersion,
-        'serverNonce': serverNonce,
-      });
-      secure = await PairedSecureConnection.server(
-        raw: raw,
-        sharedSecret: secret,
-        clientNonce: clientNonce! as String,
-        serverNonce: serverNonce,
-      );
-      await secure.sendControl(<String, Object?>{'type': 'pairedReady', 'deviceId': identity.deviceId, 'label': identity.label});
-      final session = PairedSyncServerSession._(connection: secure, peer: peer);
-      secure = null;
-      await _onIncoming(session);
-    } on Object {
-      await (secure?.close() ?? raw?.close() ?? Future<void>.value());
-    } finally {
-      _connections.remove(socket);
+      if (request.method == 'GET' && request.uri.path == '/v3/identity') {
+        return await _respond(request.response, HttpStatus.ok, <String, Object?>{
+          'protocolVersion': pairedSyncProtocolVersion,
+          'deviceId': identity.deviceId,
+          'label': identity.label,
+        });
+      }
+      final segments = request.uri.pathSegments;
+      if (request.method == 'POST' && request.uri.path == '/v3/sessions') {
+        if (_closed) {
+          return await _respond(request.response, HttpStatus.serviceUnavailable, <String, Object?>{'error': 'host_stopping'});
+        }
+        if (_sessions.length >= 4) {
+          return await _respond(request.response, HttpStatus.serviceUnavailable, <String, Object?>{'error': 'busy'});
+        }
+        final body = await _readAuthenticatedJson(request);
+        final remoteLabel = _validDeviceLabel(body['deviceLabel']);
+        final exchange = _HttpExchange(
+          id: _randomToken(18),
+          peer: remoteLabel == null ? peer : peer.copyWith(label: remoteLabel),
+          remoteManifestRaw: body['manifest'],
+          remotePolicy: _WirePolicy.fromJson(body),
+          requestId: body['requestId'] as String?,
+        );
+        _sessions[exchange.id] = exchange;
+        unawaited(
+          Future<void>.delayed(_sessionLifetime).then((_) async {
+            if (_sessions[exchange.id] == exchange) {
+              exchange.expire();
+              await _retireExchange(exchange);
+            }
+          }),
+        );
+        unawaited(
+          _onIncoming(
+            PairedSyncServerSession._(exchange),
+          ).catchError((Object error, StackTrace stack) => exchange.fail(error, stack)).whenComplete(() => _retireExchange(exchange)),
+        );
+        final value = await exchange.negotiation.future;
+        return await _respond(request.response, HttpStatus.ok, value);
+      }
+      if (segments.length < 3 || segments[0] != 'v3' || segments[1] != 'sessions') {
+        return await _respond(request.response, HttpStatus.notFound, <String, Object?>{'error': 'not_found'});
+      }
+      final exchange = _sessions[segments[2]];
+      if (exchange == null || exchange.peer.deviceId != peer.deviceId) {
+        return await _respond(request.response, HttpStatus.notFound, <String, Object?>{'error': 'session_missing'});
+      }
+      if (request.method == 'PUT' && segments.length == 5 && segments[3] == 'artifacts') {
+        await exchange.acceptUpload(segments[4], request);
+        return await _respond(request.response, HttpStatus.noContent, null);
+      }
+      if (request.method == 'POST' && segments.length == 4 && segments[3] == 'prepare-uploads') {
+        final body = await _readAuthenticatedJson(request);
+        exchange.acceptUploadDescriptors(body['plugins']);
+        exchange.uploadPrepared.completeIfPending();
+        await exchange.uploadReady.future;
+        return await _respond(request.response, HttpStatus.noContent, null);
+      }
+      if (request.method == 'POST' && segments.length == 6 && segments[3] == 'artifacts' && segments[5] == 'prepare') {
+        final artifact = await exchange.artifact(segments[4]);
+        return await _respond(request.response, HttpStatus.ok, <String, Object?>{'plugin': artifact.descriptor.toJson()});
+      }
+      if (request.method == 'POST' && segments.length == 4 && segments[3] == 'commit') {
+        exchange.uploadsDone.completeIfPending();
+        return await _respond(request.response, HttpStatus.ok, (await exchange.serverApplied.future).toJson());
+      }
+      if (request.method == 'GET' && segments.length == 5 && segments[3] == 'artifacts') {
+        final artifact = await exchange.artifact(segments[4]);
+        return await artifact.serve(request);
+      }
+      if (request.method == 'POST' && segments.length == 4 && segments[3] == 'finish') {
+        final body = await _readAuthenticatedJson(request);
+        exchange.clientApplied.completeIfPending(_AppliedSummary.fromJson(body));
+        await _respond(request.response, HttpStatus.noContent, null);
+        await _retireExchange(exchange);
+        return;
+      }
+      if (request.method == 'POST' && segments.length == 4 && segments[3] == 'fail') {
+        final body = await _readAuthenticatedJson(request);
+        exchange.fail(
+          PairedSyncPeerFailureException(
+            code: body['code'] as String,
+            stage: body['stage'] as String,
+            errorText: body['errorText'] as String,
+          ),
+          StackTrace.current,
+        );
+        await _respond(request.response, HttpStatus.noContent, null);
+        await _retireExchange(exchange);
+        return;
+      }
+      return await _respond(request.response, HttpStatus.notFound, <String, Object?>{'error': 'not_found'});
+    } on Object catch (error, stack) {
+      try {
+        final failure = error is PairedSyncPeerFailureException ? error : null;
+        await _respond(request.response, _httpStatus(error), <String, Object?>{
+          'error': _errorCode(error),
+          'detail': _boundedError(error),
+          if (failure != null) 'code': failure.code,
+          if (failure != null) 'stage': failure.stage,
+          if (failure != null) 'errorText': failure.errorText,
+        });
+      } on Object {
+        // The peer may have closed while the failure response was written.
+      }
+      final id = request.uri.pathSegments.length > 2 ? request.uri.pathSegments[2] : null;
+      if (id != null) _sessions[id]?.fail(error, stack);
     }
   }
 
@@ -311,21 +374,30 @@ final class PairedSyncHost {
     _closed = true;
     _announcer?.cancel();
     _socket.close();
-    for (final socket in _connections.toList(growable: false)) {
-      socket.destroy();
-    }
-    _connections.clear();
-    await _server.close();
     await _endpoints.close();
+    if (_sessions.isEmpty) {
+      await _server.close(force: true);
+    }
+  }
+
+  Future<void> _retireExchange(_HttpExchange exchange) async {
+    if (!identical(_sessions[exchange.id], exchange)) return;
+    _sessions.remove(exchange.id);
+    await exchange.close();
+    if (_closed && _sessions.isEmpty) {
+      unawaited(_server.close(force: false));
+    }
   }
 }
 
 final class PairedSyncClientSession {
-  PairedSyncClientSession._({required this.peer, required this._connection, required this._localLabel});
-
+  PairedSyncClientSession._(this.peer, this._endpoint, this._identity, this._secret);
   final PairedDevice peer;
-  final PairedSecureConnection _connection;
-  final String _localLabel;
+  final PairedSyncEndpoint _endpoint;
+  final LocalDeviceIdentity _identity;
+  final List<int> _secret;
+  final HttpClient _client = HttpClient();
+  Uri get _base => Uri.parse('http://${_endpoint.address}:${_endpoint.port}');
 
   static Future<PairedSyncClientSession> connectAny({
     required Iterable<PairedSyncEndpoint> endpoints,
@@ -333,86 +405,29 @@ final class PairedSyncClientSession {
     required PairedDevice peer,
     required List<int> sharedSecret,
   }) async {
-    final candidates = endpoints.where((item) => item.deviceId == peer.deviceId).toList(growable: false);
-    if (candidates.isEmpty) throw const LanSyncTransportException('lan_sync_peer_offline');
-    final result = Completer<PairedSyncClientSession>();
-    final timeout = Timer(const Duration(seconds: 8), () {
-      if (!result.isCompleted) {
-        result.completeError(const LanSyncTransportException('lan_sync_connect_failed'));
-      }
-    });
-    var remaining = candidates.length;
-    for (final endpoint in candidates) {
-      unawaited(() async {
-        try {
-          final session = await _connect(endpoint, identity, peer, sharedSecret);
-          if (result.isCompleted) {
-            await session.close();
-          } else {
-            result.complete(session);
-          }
-        } on Object catch (error, stackTrace) {
-          remaining--;
-          if (remaining == 0 && !result.isCompleted) result.completeError(error, stackTrace);
+    Object? last;
+    for (final endpoint in endpoints.where((item) => item.deviceId == peer.deviceId)) {
+      try {
+        final client = HttpClient();
+        final value = await _jsonRequest(
+          client,
+          Uri.parse('http://${endpoint.address}:${endpoint.port}/v3/identity'),
+          'GET',
+          null,
+          identity.deviceId,
+          sharedSecret,
+        );
+        client.close(force: true);
+        final label = _validDeviceLabel(value['label']);
+        if (value['protocolVersion'] != pairedSyncProtocolVersion || value['deviceId'] != peer.deviceId || label == null) {
+          throw const LanSyncTransportException('lan_sync_protocol_incompatible');
         }
-      }());
-    }
-    try {
-      return await result.future;
-    } finally {
-      timeout.cancel();
-    }
-  }
-
-  static Future<PairedSyncClientSession> _connect(
-    PairedSyncEndpoint endpoint,
-    LocalDeviceIdentity identity,
-    PairedDevice peer,
-    List<int> sharedSecret,
-  ) async {
-    if (!isLanSyncPrivateIpv4(endpoint.address)) {
-      throw const LanSyncTransportException('lan_sync_address_not_private');
-    }
-    LanSyncFramedConnection? raw;
-    PairedSecureConnection? secure;
-    try {
-      final socket = await Socket.connect(endpoint.address, endpoint.port, timeout: const Duration(seconds: 5));
-      raw = LanSyncFramedConnection(socket);
-      final clientNonce = _randomToken(16);
-      await raw.sendControl(<String, Object?>{
-        'type': 'pairedHello',
-        'protocolVersion': pairedSyncProtocolVersion,
-        'deviceId': identity.deviceId,
-        'targetDeviceId': peer.deviceId,
-        'clientNonce': clientNonce,
-      });
-      final challenge = await raw.readControl().timeout(lanSyncHandshakeTimeout);
-      final serverNonce = challenge['serverNonce'];
-      if (challenge['type'] != 'pairedChallenge' ||
-          challenge['protocolVersion'] != pairedSyncProtocolVersion ||
-          !_validNonce(serverNonce)) {
-        throw const LanSyncTransportException('lan_sync_handshake_invalid');
+        return PairedSyncClientSession._(peer.copyWith(label: label), endpoint, identity, sharedSecret);
+      } on Object catch (error) {
+        last = error;
       }
-      secure = await PairedSecureConnection.client(
-        raw: raw,
-        sharedSecret: sharedSecret,
-        clientNonce: clientNonce,
-        serverNonce: serverNonce! as String,
-      );
-      final ready = await secure.readControl().timeout(lanSyncHandshakeTimeout);
-      final peerLabel = _validDeviceLabel(ready['label']);
-      if (ready['type'] != 'pairedReady' || ready['deviceId'] != peer.deviceId || peerLabel == null) {
-        throw const LanSyncTransportException('lan_sync_handshake_invalid');
-      }
-      return PairedSyncClientSession._(
-        peer: peer.copyWith(label: peerLabel),
-        connection: secure,
-        localLabel: identity.label,
-      );
-    } on Object {
-      await (secure?.close() ?? raw?.close() ?? Future<void>.value());
-      rethrow;
     }
+    throw last ?? const LanSyncTransportException('lan_sync_peer_offline');
   }
 
   Future<PairedSyncRunSummary> run({
@@ -422,61 +437,59 @@ final class PairedSyncClientSession {
     PairedSyncStageObserver? onStage,
   }) async {
     var committed = false;
-    var stage = 'request';
+    String? activeSessionId;
+    String stage = 'request';
     void enter(String value) {
       stage = value;
       onStage?.call(value);
     }
 
     try {
-      enter('request');
-      if (requestId != null && !_validNonce(requestId)) {
-        throw const LanSyncTransportException('lan_sync_wake_invalid');
-      }
-      final localPolicy = _WirePolicy.fromDevice(peer, operation: operation);
-      await _connection.sendControl(<String, Object?>{
-        'type': 'syncRequest',
-        'deviceLabel': _localLabel,
-        'requestId': ?requestId,
-        ...localPolicy.toJson(),
-      });
-      final ready = await _readPairedSessionControl(_connection, timeout: lanSyncHandshakeTimeout);
-      if (ready['type'] == 'syncBusy') throw const LanSyncTransportException('lan_sync_peer_busy');
-      if (ready['type'] != 'syncReady') throw const LanSyncTransportException('lan_sync_handshake_invalid');
-      final remotePolicy = _WirePolicy.fromJson(ready);
-
+      final policy = _WirePolicy.fromDevice(peer, operation);
       enter('local_manifest');
-      final localManifest = await _createPairedManifest(
-        gateway,
-        includePlugins: localPolicy.canSend && localPolicy.syncPlugins && remotePolicy.canReceive && remotePolicy.syncPlugins,
-        includeShelf: localPolicy.canSend && localPolicy.syncBookshelf && remotePolicy.canReceive && remotePolicy.syncBookshelf,
-        deferPluginArtifacts: true,
-      );
+      final localManifest = await _createManifest(gateway, policy);
       enter('manifest_exchange');
-      await _sendManifest(_connection, localManifest);
-      final remoteManifest = await _readManifest(_connection);
+      final negotiation = await _jsonRequest(
+        _client,
+        _base.resolve('/v3/sessions'),
+        'POST',
+        <String, Object?>{'requestId': requestId, 'deviceLabel': _identity.label, ...policy.toJson(), 'manifest': localManifest.toJson()},
+        _identity.deviceId,
+        _secret,
+      );
+      final sessionId = negotiation['sessionId'];
+      if (sessionId is! String || !_validNonce(sessionId)) throw const LanSyncTransportException('lan_sync_handshake_invalid');
+      activeSessionId = sessionId;
+      final remoteManifest = _manifest(negotiation['manifest']);
+      _WirePolicy.fromJson(negotiation);
+      final sendSelection = _Selection.fromJson(negotiation['selection'], localManifest);
       enter('import_plan');
       final receivePlan = await _planImport(gateway, remoteManifest);
-      enter('selection_exchange');
-      await _sendSelection(_connection, receivePlan.selection);
-      final sendSelection = await _readSelection(_connection, localManifest);
-
-      enter('receive_payload');
-      final received = await _receivePayload(_connection, gateway, remoteManifest, receivePlan);
-      committed = received.books > 0 || received.plugins > 0;
-      await _connection.sendControl(<String, Object?>{'type': 'receiveApplied', ...received.toJson()});
-      final reverseReady = await _readPairedSessionControl(_connection, timeout: lanSyncTransferIdleTimeout);
-      if (reverseReady['type'] != 'reverseReady') throw const LanSyncTransportException('lan_sync_frame_unexpected');
       enter('send_payload');
-      await _sendPayload(_connection, gateway, localManifest, sendSelection);
+      await _upload(gateway, localManifest, sendSelection, sessionId);
       final remoteApplied = _AppliedSummary.fromJson(
-        await _readPairedSessionControl(_connection, timeout: lanSyncTransferIdleTimeout),
-        expectedType: 'receiveApplied',
+        await _jsonRequest(
+          _client,
+          _base.resolve('/v3/sessions/$sessionId/commit'),
+          'POST',
+          const <String, Object?>{},
+          _identity.deviceId,
+          _secret,
+        ),
       );
+      enter('receive_payload');
+      final received = await _downloadAndApply(gateway, remoteManifest, receivePlan, sessionId);
+      committed = received.books > 0 || received.plugins > 0;
       enter('complete');
-      await _connection.sendControl(<String, Object?>{'type': 'sessionComplete'});
-      final complete = await _readPairedSessionControl(_connection, timeout: lanSyncHandshakeTimeout);
-      if (complete['type'] != 'sessionComplete') throw const LanSyncTransportException('lan_sync_frame_unexpected');
+      await _jsonRequest(
+        _client,
+        _base.resolve('/v3/sessions/$sessionId/finish'),
+        'POST',
+        received.toJson(),
+        _identity.deviceId,
+        _secret,
+        allowEmpty: true,
+      );
       return PairedSyncRunSummary(
         receivedBooks: received.books,
         receivedPlugins: received.plugins,
@@ -485,159 +498,188 @@ final class PairedSyncClientSession {
         developmentConflicts: receivePlan.developmentConflicts + remoteApplied.developmentConflicts,
         skippedShelfItems: localManifest.skippedShelfItems + remoteManifest.skippedShelfItems,
       );
-    } on Object catch (error, stackTrace) {
-      await _sendPairedSessionFailure(_connection, error, stage: stage);
-      if (error is PairedSyncPartialException) rethrow;
-      if (committed) throw PairedSyncPartialException(error, stage: stage, causeStackTrace: stackTrace);
-      Error.throwWithStackTrace(error, stackTrace);
+    } on Object catch (error, stack) {
+      if (activeSessionId != null) {
+        try {
+          await _jsonRequest(
+            _client,
+            _base.resolve('/v3/sessions/$activeSessionId/fail'),
+            'POST',
+            <String, Object?>{'code': _sessionFailureCode(stage, error), 'stage': stage, 'errorText': _boundedError(error)},
+            _identity.deviceId,
+            _secret,
+            allowEmpty: true,
+          );
+        } on Object {
+          // Keep the originating failure when the peer is already gone.
+        }
+      }
+      if (committed) throw PairedSyncPartialException(error, stage: stage, causeStackTrace: stack);
+      rethrow;
     } finally {
       await close();
     }
   }
 
-  Future<void> close() => _connection.close();
+  Future<void> _upload(LanSyncGateway gateway, LanSyncManifest manifest, _Selection selection, String sessionId) async {
+    final prepared = <LanSyncHttpArtifact>[];
+    for (final offer in manifest.plugins.where((item) => selection.pluginIds.contains(item.id))) {
+      final item = await _materialize(gateway, offer);
+      if (!_sameLogical(item.descriptor, offer)) throw const LanSyncTransportException('lan_sync_plugin_descriptor_invalid');
+      prepared.add(await LanSyncHttpArtifact.materialize(item.descriptor, item.bytes));
+    }
+    if (prepared.isNotEmpty) {
+      await _jsonRequest(
+        _client,
+        _base.resolve('/v3/sessions/$sessionId/prepare-uploads'),
+        'POST',
+        <String, Object?>{'plugins': prepared.map((item) => item.descriptor.toJson()).toList()},
+        _identity.deviceId,
+        _secret,
+        allowEmpty: true,
+      );
+    }
+    for (final artifact in prepared) {
+      try {
+        await _uploadArtifact(artifact, sessionId);
+      } finally {
+        await artifact.close();
+      }
+    }
+  }
+
+  Future<void> _uploadArtifact(LanSyncHttpArtifact artifact, String sessionId) async {
+    final plugin = artifact.descriptor;
+    final uri = _base.resolve('/v3/sessions/$sessionId/artifacts/${Uri.encodeComponent(plugin.id)}');
+    Object? lastError;
+    StackTrace? lastStackTrace;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final request = await _client.putUrl(uri);
+        LanSyncHttpAuthentication.sign(request, deviceId: _identity.deviceId, sharedSecret: _secret, contentSha256: plugin.sha256);
+        request.contentLength = plugin.bytes;
+        request.headers.contentType = ContentType.binary;
+        await request.addStream(artifact.openRead());
+        final response = await request.close();
+        await response.drain<void>();
+        if (response.statusCode == HttpStatus.noContent) return;
+        if (response.statusCode < HttpStatus.internalServerError) {
+          throw LanSyncTransportException('lan_sync_http_failed', reason: 'status_${response.statusCode}');
+        }
+        lastError = LanSyncTransportException('lan_sync_http_failed', reason: 'status_${response.statusCode}');
+        lastStackTrace = StackTrace.current;
+      } on LanSyncTransportException {
+        rethrow;
+      } on Object catch (error, stackTrace) {
+        lastError = error;
+        lastStackTrace = stackTrace;
+      }
+    }
+    Error.throwWithStackTrace(lastError!, lastStackTrace!);
+  }
+
+  Future<_AppliedSummary> _downloadAndApply(LanSyncGateway gateway, LanSyncManifest manifest, _ImportPlan plan, String sessionId) async {
+    final plugins = <LanSyncPluginDescriptor>[];
+    for (final offered in manifest.plugins.where((item) => plan.selection.pluginIds.contains(item.id))) {
+      final prepared = await _jsonRequest(
+        _client,
+        _base.resolve('/v3/sessions/$sessionId/artifacts/${Uri.encodeComponent(offered.id)}/prepare'),
+        'POST',
+        const <String, Object?>{},
+        _identity.deviceId,
+        _secret,
+      );
+      final raw = prepared['plugin'];
+      if (raw is! Map) throw const LanSyncTransportException('lan_sync_plugin_descriptor_invalid');
+      final plugin = LanSyncPluginDescriptor.fromJson(raw.map<String, Object?>((key, value) => MapEntry(key as String, value)));
+      if (!_sameLogical(plugin, offered)) throw const LanSyncTransportException('lan_sync_plugin_version_changed');
+      plugins.add(plugin);
+    }
+    if (plugins.isNotEmpty) await gateway.preparePluginImports(plugins, forceUpgradePluginIds: plan.selection.pluginIds);
+    try {
+      for (final plugin in plugins) {
+        final uri = _base.resolve('/v3/sessions/$sessionId/artifacts/${Uri.encodeComponent(plugin.id)}');
+        final stream = await const LanSyncHttpArtifactClient().download(
+          uri,
+          plugin,
+          client: _client,
+          authenticate: (request, hash) =>
+              LanSyncHttpAuthentication.sign(request, deviceId: _identity.deviceId, sharedSecret: _secret, contentSha256: hash),
+        );
+        await gateway.importPluginArchive(plugin, stream);
+      }
+      return await _finishApply(gateway, manifest, plan);
+    } on Object {
+      try {
+        await gateway.cancelPluginImports();
+      } on Object {
+        // Preserve the transfer/import failure that triggered cleanup.
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> close() async => _client.close(force: true);
 }
 
 final class PairedSyncServerSession {
-  PairedSyncServerSession._({required this._peer, required this._connection});
-
-  PairedDevice _peer;
-  final PairedSecureConnection _connection;
-  String? _requestId;
-
-  PairedDevice get peer => _peer;
-  String? get requestId => _requestId;
-
-  Future<void> rejectBusy() async {
-    try {
-      await _connection.sendControl(<String, Object?>{'type': 'syncBusy'});
-    } finally {
-      await close();
-    }
-  }
-
+  PairedSyncServerSession._(this._exchange);
+  final _HttpExchange _exchange;
+  PairedDevice get peer => _exchange.peer;
+  String? get requestId => _exchange.requestId;
+  Future<void> rejectBusy() async => _exchange.rejectBusy();
   Future<PairedSyncRunSummary> run({required LanSyncGateway gateway, PairedSyncStageObserver? onStage}) async {
-    var committed = false;
-    var stage = 'request';
-    void enter(String value) {
-      stage = value;
-      onStage?.call(value);
-    }
-
     try {
-      enter('request');
-      final request = await _readPairedSessionControl(_connection, timeout: lanSyncHandshakeTimeout);
-      if (request['type'] != 'syncRequest') throw const LanSyncTransportException('lan_sync_handshake_invalid');
-      final requestId = request['requestId'];
-      if (requestId != null && (requestId is! String || !_validNonce(requestId))) {
-        throw const LanSyncTransportException('lan_sync_wake_invalid');
+      final remotePolicy = _exchange.remotePolicy;
+      final localPolicy = _WirePolicy(
+        canReceive: peer.canReceive && remotePolicy.canSend,
+        canSend: peer.canSend && remotePolicy.canReceive,
+        syncBookshelf: peer.syncBookshelf,
+        syncPlugins: peer.syncPlugins,
+      );
+      _exchange.stage = 'local_manifest';
+      onStage?.call(_exchange.stage);
+      final localManifest = await _createManifest(gateway, localPolicy);
+      _exchange.stage = 'manifest_exchange';
+      onStage?.call(_exchange.stage);
+      final remoteManifest = _exchange.remoteManifest;
+      _exchange.stage = 'import_plan';
+      onStage?.call(_exchange.stage);
+      final plan = await _planImport(gateway, remoteManifest);
+      _exchange.configure(gateway, localManifest, plan);
+      _exchange.negotiation.complete(<String, Object?>{
+        'sessionId': _exchange.id,
+        ...localPolicy.toJson(),
+        'manifest': localManifest.toJson(),
+        'selection': plan.selection.toJson(),
+      });
+      if (plan.selection.pluginIds.isNotEmpty) {
+        await _exchange.uploadPrepared.future;
+        await gateway.preparePluginImports(_exchange.uploadDescriptors.values.toList(), forceUpgradePluginIds: plan.selection.pluginIds);
+        _exchange.uploadReady.completeIfPending();
       }
-      _requestId = requestId as String?;
-      final peerLabel = _validDeviceLabel(request['deviceLabel']);
-      if (peerLabel != null) _peer = _peer.copyWith(label: peerLabel);
-      final remotePolicy = _WirePolicy.fromJson(request);
-      final localPolicy = _WirePolicy.fromDevice(peer, operation: PairedSyncOperation.bidirectional);
-      await _connection.sendControl(<String, Object?>{'type': 'syncReady', ...localPolicy.toJson()});
-
-      enter('manifest_exchange');
-      final remoteManifest = await _readManifest(_connection);
-      enter('local_manifest');
-      final localManifest = await _createPairedManifest(
-        gateway,
-        includePlugins: localPolicy.canSend && localPolicy.syncPlugins && remotePolicy.canReceive && remotePolicy.syncPlugins,
-        includeShelf: localPolicy.canSend && localPolicy.syncBookshelf && remotePolicy.canReceive && remotePolicy.syncBookshelf,
-        deferPluginArtifacts: true,
-      );
-      await _sendManifest(_connection, localManifest);
-      enter('selection_exchange');
-      final sendSelection = await _readSelection(_connection, localManifest);
-      enter('import_plan');
-      final receivePlan = await _planImport(gateway, remoteManifest);
-      await _sendSelection(_connection, receivePlan.selection);
-
-      enter('send_payload');
-      await _sendPayload(_connection, gateway, localManifest, sendSelection);
-      final remoteApplied = _AppliedSummary.fromJson(
-        await _readPairedSessionControl(_connection, timeout: lanSyncTransferIdleTimeout),
-        expectedType: 'receiveApplied',
-      );
-      committed = remoteApplied.books > 0 || remoteApplied.plugins > 0;
-      await _connection.sendControl(<String, Object?>{'type': 'reverseReady'});
-      enter('receive_payload');
-      final received = await _receivePayload(_connection, gateway, remoteManifest, receivePlan);
-      committed = committed || received.books > 0 || received.plugins > 0;
-      await _connection.sendControl(<String, Object?>{'type': 'receiveApplied', ...received.toJson()});
-      enter('complete');
-      final complete = await _readPairedSessionControl(_connection, timeout: lanSyncHandshakeTimeout);
-      if (complete['type'] != 'sessionComplete') throw const LanSyncTransportException('lan_sync_frame_unexpected');
-      await _connection.sendControl(<String, Object?>{'type': 'sessionComplete'});
+      _exchange.stage = 'receive_payload';
+      onStage?.call(_exchange.stage);
+      await _exchange.uploadsDone.future;
+      final received = await _finishApply(gateway, remoteManifest, plan, receivedIds: _exchange.receivedIds);
+      _exchange.serverApplied.completeIfPending(received);
+      _exchange.stage = 'send_payload';
+      onStage?.call(_exchange.stage);
+      final remoteApplied = await _exchange.clientApplied.future;
+      onStage?.call('complete');
       return PairedSyncRunSummary(
         receivedBooks: received.books,
         receivedPlugins: received.plugins,
         sentBooks: remoteApplied.books,
         sentPlugins: remoteApplied.plugins,
-        developmentConflicts: receivePlan.developmentConflicts + remoteApplied.developmentConflicts,
+        developmentConflicts: plan.developmentConflicts + remoteApplied.developmentConflicts,
         skippedShelfItems: localManifest.skippedShelfItems + remoteManifest.skippedShelfItems,
       );
-    } on Object catch (error, stackTrace) {
-      await _sendPairedSessionFailure(_connection, error, stage: stage);
-      if (error is PairedSyncPartialException) rethrow;
-      if (committed) throw PairedSyncPartialException(error, stage: stage, causeStackTrace: stackTrace);
-      Error.throwWithStackTrace(error, stackTrace);
-    } finally {
-      await close();
+    } on Object catch (error, stack) {
+      _exchange.fail(error, stack);
+      rethrow;
     }
   }
 
-  Future<void> close() => _connection.close();
-}
-
-final class _WirePolicy {
-  const _WirePolicy({required this.canReceive, required this.canSend, required this.syncBookshelf, required this.syncPlugins});
-
-  final bool canReceive;
-  final bool canSend;
-  final bool syncBookshelf;
-  final bool syncPlugins;
-
-  factory _WirePolicy.fromDevice(PairedDevice device, {required PairedSyncOperation operation}) => _WirePolicy(
-    canReceive: device.canReceive && operation.receives,
-    canSend: device.canSend && operation.sends,
-    syncBookshelf: device.syncBookshelf,
-    syncPlugins: device.syncPlugins,
-  );
-
-  factory _WirePolicy.fromJson(Map<String, Object?> json) {
-    final values = <Object?>[json['canReceive'], json['canSend'], json['syncBookshelf'], json['syncPlugins']];
-    if (values.any((value) => value is! bool)) throw const LanSyncTransportException('lan_sync_policy_invalid');
-    return _WirePolicy(
-      canReceive: json['canReceive']! as bool,
-      canSend: json['canSend']! as bool,
-      syncBookshelf: json['syncBookshelf']! as bool,
-      syncPlugins: json['syncPlugins']! as bool,
-    );
-  }
-
-  Map<String, Object?> toJson() => <String, Object?>{
-    'canReceive': canReceive,
-    'canSend': canSend,
-    'syncBookshelf': syncBookshelf,
-    'syncPlugins': syncPlugins,
-  };
-}
-
-String? _validDeviceLabel(Object? value) {
-  if (value is! String) return null;
-  final normalized = value.trim();
-  return normalized.isEmpty || normalized.length > 128 ? null : normalized;
-}
-
-bool _eligiblePeer(InternetAddress address) => address.type == InternetAddressType.IPv4 && isLanSyncPrivateIpv4(address.address);
-
-bool _validNonce(Object? value) =>
-    value is String && value.length >= 20 && value.length <= 64 && RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(value);
-
-String _randomToken(int length) {
-  final random = Random.secure();
-  return base64Url.encode(List<int>.generate(length, (_) => random.nextInt(256), growable: false)).replaceAll('=', '');
+  Future<void> close() => _exchange.close();
 }

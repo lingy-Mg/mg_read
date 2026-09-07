@@ -74,13 +74,13 @@ final class _EmptyGateway implements LanSyncGateway {
   Future<void> cancelPluginImports() async {}
 
   @override
-  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins) async {}
+  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins, {Set<String> forceUpgradePluginIds = const <String>{}}) async {}
 
   @override
   Future<Stream<List<int>>> openPluginArchive(LanSyncPluginDescriptor plugin) async => const Stream<List<int>>.empty();
 
   @override
-  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest) => throw UnimplementedError();
+  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest, {bool force = false}) => throw UnimplementedError();
 
   @override
   Future<void> importPluginArchive(LanSyncPluginDescriptor plugin, Stream<List<int>> bytes) => throw UnimplementedError();
@@ -94,5 +94,6 @@ final class _EmptyGateway implements LanSyncGateway {
     required Map<String, LanSyncConflictChoice> conflictChoices,
     required Set<String> availablePluginIds,
     required LanSyncPluginImportResult pluginResult,
+    bool force = false,
   }) => throw UnimplementedError();
 }

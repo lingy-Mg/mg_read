@@ -202,15 +202,13 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
           manifest: state.manifest!,
           preview: state.preview!,
           onSelectAll: (selected) => ref.read(lanSyncControllerProvider.notifier).chooseAllContent(selected),
+          onSelectAllShelfItems: (selected) => ref.read(lanSyncControllerProvider.notifier).chooseAllShelfItems(selected),
+          onSelectAllPlugins: (selected) => ref.read(lanSyncControllerProvider.notifier).chooseAllPlugins(selected),
           onPluginChanged: (pluginId, selected) => ref.read(lanSyncControllerProvider.notifier).choosePlugin(pluginId, selected),
           onShelfItemChanged: (identity, selected) => ref.read(lanSyncControllerProvider.notifier).chooseShelfItem(identity, selected),
         ),
         const SizedBox(height: AppSpacing.regular),
-        for (final conflict in state.preview!.conflicts)
-          _ConflictCard(
-            conflict: conflict,
-            onChanged: (choice) => ref.read(lanSyncControllerProvider.notifier).chooseConflict(conflict.identity, choice),
-          ),
+        for (final conflict in state.preview!.conflicts) _ConflictCard(conflict: conflict),
         FilledButton.icon(
           key: const Key('lan-sync-begin-import'),
           onPressed: state.preview!.hasSelection ? () => ref.read(lanSyncControllerProvider.notifier).beginImport() : null,
@@ -472,6 +470,8 @@ class _SyncContentSelection extends StatelessWidget {
     required this.manifest,
     required this.preview,
     required this.onSelectAll,
+    required this.onSelectAllShelfItems,
+    required this.onSelectAllPlugins,
     required this.onPluginChanged,
     required this.onShelfItemChanged,
   });
@@ -479,16 +479,23 @@ class _SyncContentSelection extends StatelessWidget {
   final LanSyncManifest manifest;
   final LanSyncImportPreview preview;
   final ValueChanged<bool> onSelectAll;
+  final ValueChanged<bool> onSelectAllShelfItems;
+  final ValueChanged<bool> onSelectAllPlugins;
   final void Function(String pluginId, bool selected) onPluginChanged;
   final void Function(String identity, bool selected) onShelfItemChanged;
 
   @override
   Widget build(BuildContext context) {
-    final selectablePluginCount = preview.recommendedPluginIds.length;
+    final selectablePluginCount = manifest.plugins.where((plugin) => _isSelectablePlugin(plugin, preview)).length;
     final selectedCount = preview.selectedPluginIds.length + preview.selectedShelfItemIds.length;
     final totalCount = selectablePluginCount + manifest.shelfItems.length;
     final allSelected = totalCount > 0 && selectedCount == totalCount;
     final noneSelected = selectedCount == 0;
+    final selectableShelfIds = <String>{for (final item in manifest.shelfItems) item.identity};
+    final selectablePluginIds = <String>{
+      for (final plugin in manifest.plugins)
+        if (_isSelectablePlugin(plugin, preview)) plugin.id,
+    };
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.compact),
@@ -513,7 +520,14 @@ class _SyncContentSelection extends StatelessWidget {
             ),
             if (manifest.shelfItems.isNotEmpty) ...<Widget>[
               const Divider(height: 1),
-              _SelectionSectionTitle(label: '书架内容'),
+              _SelectionSectionTitle(
+                key: const Key('lan-sync-select-all-shelf'),
+                label: '书架内容',
+                selectedCount: preview.selectedShelfItemIds.length,
+                totalCount: selectableShelfIds.length,
+                value: _selectionValue(preview.selectedShelfItemIds, selectableShelfIds),
+                onChanged: onSelectAllShelfItems,
+              ),
               for (var index = 0; index < manifest.shelfItems.length; index++)
                 _ShelfSelectionTile(
                   key: Key('lan-sync-shelf-item-$index'),
@@ -524,14 +538,21 @@ class _SyncContentSelection extends StatelessWidget {
             ],
             if (manifest.plugins.isNotEmpty) ...<Widget>[
               const Divider(height: 1),
-              _SelectionSectionTitle(label: '数据源插件'),
+              _SelectionSectionTitle(
+                key: const Key('lan-sync-select-all-plugins'),
+                label: '数据源插件',
+                selectedCount: preview.selectedPluginIds.length,
+                totalCount: selectablePluginIds.length,
+                value: _selectionValue(preview.selectedPluginIds, selectablePluginIds),
+                onChanged: onSelectAllPlugins,
+              ),
               for (final plugin in manifest.plugins)
                 _PluginSelectionTile(
                   key: Key('lan-sync-plugin-${plugin.id}'),
                   plugin: plugin,
                   plan: preview.pluginPlans[plugin.id],
                   selected: preview.selectedPluginIds.contains(plugin.id),
-                  onChanged: preview.recommendedPluginIds.contains(plugin.id) ? (selected) => onPluginChanged(plugin.id, selected) : null,
+                  onChanged: _isSelectablePlugin(plugin, preview) ? (selected) => onPluginChanged(plugin.id, selected) : null,
                 ),
             ],
           ],
@@ -542,13 +563,29 @@ class _SyncContentSelection extends StatelessWidget {
 }
 
 class _SelectionSectionTitle extends StatelessWidget {
-  const _SelectionSectionTitle({required this.label});
+  const _SelectionSectionTitle({
+    required this.label,
+    required this.selectedCount,
+    required this.totalCount,
+    required this.value,
+    required this.onChanged,
+    super.key,
+  });
   final String label;
+  final int selectedCount;
+  final int totalCount;
+  final bool? value;
+  final ValueChanged<bool> onChanged;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(AppSpacing.regular, AppSpacing.compact, AppSpacing.regular, AppSpacing.unit),
-    child: Text(label, style: Theme.of(context).textTheme.labelLarge),
+  Widget build(BuildContext context) => CheckboxListTile(
+    value: value,
+    tristate: true,
+    onChanged: (next) => onChanged(next != true),
+    title: Text('$label（$selectedCount/$totalCount）', style: Theme.of(context).textTheme.labelLarge),
+    controlAffinity: ListTileControlAffinity.leading,
+    contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.regular),
+    dense: true,
   );
 }
 
@@ -593,11 +630,11 @@ class _PluginSelectionTile extends StatelessWidget {
 
 String _pluginSelectionDescription(LanSyncPluginDescriptor plugin, LanSyncPluginPlanState? plan) {
   final planText = switch (plan) {
-    LanSyncPluginPlanState.developmentConflict => '本机有开发构建，优先保留并跳过同步',
+    LanSyncPluginPlanState.developmentConflict => '本机有开发构建，将强制覆盖',
     LanSyncPluginPlanState.missing => '缺少，将安装',
-    LanSyncPluginPlanState.upgrade => '可升级',
-    LanSyncPluginPlanState.sameVersion => '版本相同，跳过',
-    LanSyncPluginPlanState.receiverNewer => '本机版本较新，跳过',
+    LanSyncPluginPlanState.upgrade => '将覆盖本机版本',
+    LanSyncPluginPlanState.sameVersion => '版本相同，可强制覆盖',
+    LanSyncPluginPlanState.receiverNewer => '本机版本较新，仍将覆盖',
     LanSyncPluginPlanState.unavailable || null => '没有可传输文件',
   };
   final build = plugin.provenance == LanSyncPluginProvenance.development
@@ -608,10 +645,23 @@ String _pluginSelectionDescription(LanSyncPluginDescriptor plugin, LanSyncPlugin
   return '$planText · $build';
 }
 
+bool _isSelectablePlugin(LanSyncPluginDescriptor plugin, LanSyncImportPreview preview) {
+  if (!plugin.transferable) return false;
+  final plan = preview.pluginPlans[plugin.id];
+  return plan == LanSyncPluginPlanState.missing ||
+      plan == LanSyncPluginPlanState.upgrade ||
+      (plan == LanSyncPluginPlanState.sameVersion && plugin.provenance == LanSyncPluginProvenance.installed);
+}
+
+bool? _selectionValue(Set<String> selected, Set<String> selectable) {
+  if (selectable.isEmpty || selected.isEmpty) return false;
+  if (selectable.every(selected.contains)) return true;
+  return null;
+}
+
 class _ConflictCard extends StatelessWidget {
-  const _ConflictCard({required this.conflict, required this.onChanged});
+  const _ConflictCard({required this.conflict});
   final LanSyncBookConflict conflict;
-  final ValueChanged<LanSyncConflictChoice> onChanged;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -624,21 +674,9 @@ class _ConflictCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.unit),
           Text('本机：${conflict.localTitle}'),
           const SizedBox(height: AppSpacing.compact),
-          DropdownButtonFormField<LanSyncConflictChoice>(
-            key: Key('lan-sync-conflict-${conflict.identity.hashCode}'),
-            initialValue: conflict.choice,
-            decoration: const InputDecoration(labelText: '处理方式', border: OutlineInputBorder()),
-            items: const <DropdownMenuItem<LanSyncConflictChoice>>[
-              DropdownMenuItem(value: LanSyncConflictChoice.smartMerge, child: Text('智能合并')),
-              DropdownMenuItem(value: LanSyncConflictChoice.useSender, child: Text('使用发送端')),
-              DropdownMenuItem(value: LanSyncConflictChoice.keepLocal, child: Text('保留本机')),
-            ],
-            onChanged: (value) {
-              if (value != null) onChanged(value);
-            },
-          ),
+          const Text('强制覆盖：使用发送端的书架信息和阅读进度。'),
           const SizedBox(height: AppSpacing.unit),
-          const Text('智能合并会采用发送端展示信息，并保留更新时间较新的阅读进度。'),
+          const Text('本机对应条目会被发送端内容替换。'),
         ],
       ),
     ),

@@ -1,12 +1,7 @@
-/// 首次设备配对的前台认证传输。
+/// 首次设备配对的 HTTP 前台认证流程。
 ///
-/// 职责：
-/// - 通过配对二维码中的预共享密钥建立首次 AES-GCM 会话。
-/// - 在双方显示相同确认码后，由展示二维码的一端执行唯一一次授权。
-///
-/// 注意：
-/// - 本层不持久化配对关系；调用方必须先将 metadata 和逐设备共享密钥分别保存，再提交批准。
-/// - 失败、拒绝和过期时必须关闭 socket，不能留下未提交的配对关系。
+/// 二维码预共享密钥只用于 HMAC 请求认证；身份、审批状态和提交确认均通过
+/// 有界 JSON HTTP API 交换，不再建立自定义 TCP/加密帧连接。
 library;
 
 import 'dart:async';
@@ -15,10 +10,10 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:cryptography/cryptography.dart';
+import 'package:crypto/crypto.dart';
 
+import 'package:mg_read/features/lan_sync/data/lan_sync_http_artifact.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
-import 'package:mg_read/features/lan_sync/data/paired_secure_connection.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_pairing_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
@@ -29,337 +24,311 @@ final class LanPairingRequest {
     required this.pairingCode,
     required this.peer,
     required this.sharedSecret,
-    required this._connection,
-    required this._localIdentity,
+    required this.requestId,
+    required this.localIdentity,
   });
-
   final String pairingCode;
   final PairedDevice peer;
   final List<int> sharedSecret;
-  final PairedSecureConnection _connection;
-  final LocalDeviceIdentity _localIdentity;
-  final Completer<void> _completion = Completer<void>();
-  bool _completed = false;
-  bool _responding = false;
-
-  Future<void> get done => _completion.future;
-  bool get isActive => !_completed && !_responding;
+  final String requestId;
+  final LocalDeviceIdentity localIdentity;
+  final Completer<Map<String, Object?>> decision = Completer<Map<String, Object?>>();
+  final Completer<void> committed = Completer<void>();
+  final Completer<void> completion = Completer<void>();
+  bool responding = false;
+  Future<void> get done => completion.future;
+  bool get isActive => !completion.isCompleted && !responding;
 
   Future<void> approve() async {
-    if (!isActive) {
-      throw const LanSyncTransportException('lan_sync_pairing_expired');
-    }
-    _responding = true;
+    if (!isActive) throw const LanSyncTransportException('lan_sync_pairing_expired');
+    responding = true;
+    decision.complete(<String, Object?>{
+      'status': 'approved',
+      'deviceId': localIdentity.deviceId,
+      'label': localIdentity.label,
+      'platform': _localPlatform.name,
+    });
     try {
-      await _connection.sendControl(<String, Object?>{
-        'type': 'paired',
-        'deviceId': _localIdentity.deviceId,
-        'label': _localIdentity.label,
-        'platform': _localPlatform.name,
-      });
-      final committed = await _connection.readControl().timeout(lanSyncHandshakeTimeout);
-      if (committed['type'] != 'pairCommitted' || committed['deviceId'] != peer.deviceId) {
-        throw const LanSyncTransportException('lan_sync_handshake_invalid');
-      }
-      await _connection.sendControl(<String, Object?>{'type': 'pairComplete'});
+      await committed.future.timeout(lanSyncHandshakeTimeout);
     } finally {
-      _completed = true;
-      await _connection.close();
-      if (!_completion.isCompleted) _completion.complete();
+      if (!completion.isCompleted) completion.complete();
     }
   }
 
   Future<void> reject() async {
-    if (_completed || _responding) return;
-    _responding = true;
-    _completed = true;
-    try {
-      await _connection.sendControl(<String, Object?>{'type': 'pairRejected'});
-    } finally {
-      await _connection.close();
-      if (!_completion.isCompleted) _completion.complete();
-    }
+    if (completion.isCompleted) return;
+    responding = true;
+    if (!decision.isCompleted) decision.complete(<String, Object?>{'status': 'rejected'});
+    completion.complete();
   }
 }
 
 final class LanPairingServer {
-  LanPairingServer._({
-    required this.offer,
-    required this._server,
-    required this._identity,
-    required this._requestLifetime,
-    required this._sessionLifetime,
-  });
-
+  LanPairingServer._(this.offer, this._server, this._identity);
   final LanPairingOffer offer;
-  final ServerSocket _server;
+  final HttpServer _server;
   final LocalDeviceIdentity _identity;
-  final Duration _requestLifetime;
-  final Duration _sessionLifetime;
-  final StreamController<LanPairingRequest> _requests = StreamController<LanPairingRequest>.broadcast();
-  final Set<Socket> _sockets = <Socket>{};
-  final Set<LanPairingRequest> _pendingRequests = <LanPairingRequest>{};
-  final Completer<void> _completion = Completer<void>();
-  Timer? _expiry;
-  bool _closed = false;
-
-  Stream<LanPairingRequest> get requests => _requests.stream;
-  Future<void> get done => _completion.future;
+  final requestsController = StreamController<LanPairingRequest>.broadcast();
+  final pending = <String, LanPairingRequest>{};
+  final nonces = <String, int>{};
+  final completion = Completer<void>();
+  Timer? expiry;
+  bool closed = false;
+  Stream<LanPairingRequest> get requests => requestsController.stream;
+  Future<void> get done => completion.future;
 
   static Future<LanPairingServer> start(
     LocalDeviceIdentity identity, {
     Duration requestLifetime = const Duration(minutes: 2),
     Duration sessionLifetime = lanSyncSessionLifetime,
   }) async {
-    final server = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
+    final server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
     final addresses = await eligibleLanSyncAddresses();
     if (addresses.isEmpty) {
-      await server.close();
+      await server.close(force: true);
       throw const LanSyncTransportException('lan_sync_address_not_private');
     }
-    final pairing = LanPairingServer._(
-      offer: LanPairingOffer(
-        addresses: addresses,
-        deviceId: identity.deviceId,
-        label: identity.label,
-        port: server.port,
-        secret: _randomBytes(32),
-        sessionId: _randomToken(18),
-      ),
-      server: server,
-      identity: identity,
-      requestLifetime: requestLifetime,
-      sessionLifetime: sessionLifetime,
+    final offer = LanPairingOffer(
+      addresses: addresses,
+      deviceId: identity.deviceId,
+      label: identity.label,
+      port: server.port,
+      secret: _randomBytes(32),
+      sessionId: _randomToken(18),
     );
-    pairing._start();
-    return pairing;
+    final result = LanPairingServer._(offer, server, identity);
+    server.listen((request) => result._handle(request, requestLifetime), onError: (_) => unawaited(result.close()));
+    result.expiry = Timer(sessionLifetime, () => unawaited(result.close()));
+    return result;
   }
 
-  void _start() {
-    _server.listen(_accept, onError: (_) => unawaited(close()), cancelOnError: false);
-    _expiry = Timer(_sessionLifetime, () => unawaited(close()));
-  }
-
-  Future<void> _accept(Socket socket) async {
-    if (_closed || _sockets.length >= 4 || !isLanSyncPrivateIpv4(socket.remoteAddress.address)) {
-      socket.destroy();
-      return;
-    }
-    _sockets.add(socket);
-    final raw = LanSyncFramedConnection(socket);
-    PairedSecureConnection? secure;
+  Future<void> _handle(HttpRequest request, Duration requestLifetime) async {
     try {
-      final hello = await raw.readControl().timeout(lanSyncHandshakeTimeout);
-      final clientNonce = hello['clientNonce'];
-      if (hello['type'] != 'pairHello' ||
-          hello['protocolVersion'] != 1 ||
-          hello['sessionId'] != offer.sessionId ||
-          !_isNonce(clientNonce)) {
-        throw const LanSyncTransportException('lan_sync_handshake_invalid');
+      if (!isLanSyncPrivateIpv4(request.connectionInfo?.remoteAddress.address ?? '') ||
+          !LanSyncHttpAuthentication.verify(request, sharedSecret: offer.secret, acceptedNonces: nonces)) {
+        return await _json(request.response, HttpStatus.unauthorized, <String, Object?>{'error': 'unauthorized'});
       }
-      final serverNonce = _randomToken(16);
-      await raw.sendControl(<String, Object?>{'type': 'pairChallenge', 'protocolVersion': 1, 'serverNonce': serverNonce});
-      secure = await PairedSecureConnection.server(
-        raw: raw,
-        sharedSecret: offer.secret,
-        clientNonce: clientNonce! as String,
-        serverNonce: serverNonce,
-      );
-      final identity = await secure.readControl().timeout(lanSyncHandshakeTimeout);
-      final deviceId = identity['deviceId'];
-      final label = identity['label'];
-      final platform = _platform(identity['platform']);
-      if (identity['type'] != 'pairIdentity' ||
-          deviceId is! String ||
-          !isValidPairedDeviceId(deviceId) ||
-          deviceId == _identity.deviceId ||
-          label is! String ||
-          label.trim().isEmpty ||
-          label.length > 128 ||
-          platform == null) {
-        throw const LanSyncTransportException('lan_sync_handshake_invalid');
+      final segments = request.uri.pathSegments;
+      if (request.method == 'POST' && request.uri.path == '/v3/pair') {
+        final rawBytes = await _readBytes(request);
+        if (LanSyncHttpAuthentication.bodyHash(rawBytes) != request.headers.value(LanSyncHttpAuthentication.contentHashHeader)) {
+          return await _json(request.response, HttpStatus.badRequest, <String, Object?>{'error': 'content_hash'});
+        }
+        final body = _decodeJson(rawBytes);
+        final deviceId = body['deviceId'];
+        final label = body['label'];
+        final platform = _platform(body['platform']);
+        final clientNonce = body['clientNonce'];
+        if (body['sessionId'] != offer.sessionId ||
+            deviceId is! String ||
+            !isValidPairedDeviceId(deviceId) ||
+            deviceId == _identity.deviceId ||
+            label is! String ||
+            label.trim().isEmpty ||
+            label.length > 128 ||
+            platform == null ||
+            !_validNonce(clientNonce)) {
+          return await _json(request.response, HttpStatus.badRequest, <String, Object?>{'error': 'invalid_request'});
+        }
+        final requestId = _randomToken(18);
+        final serverNonce = _randomToken(16);
+        final code = _pairingCode(offer.secret, '${offer.sessionId}|$clientNonce|$serverNonce|${_identity.deviceId}|$deviceId');
+        final item = LanPairingRequest._(
+          pairingCode: code,
+          peer: PairedDevice(
+            autoSync: true,
+            createdAtUtc: DateTime.now().toUtc(),
+            deviceId: deviceId,
+            label: label,
+            mode: PairedSyncMode.bidirectional,
+            platform: platform,
+            syncBookshelf: true,
+            syncPlugins: true,
+          ),
+          sharedSecret: offer.secret,
+          requestId: requestId,
+          localIdentity: _identity,
+        );
+        pending[requestId] = item;
+        requestsController.add(item);
+        unawaited(Future<void>.delayed(requestLifetime).then((_) => item.reject()));
+        unawaited(item.done.whenComplete(() => pending.remove(requestId)));
+        return await _json(request.response, HttpStatus.created, <String, Object?>{
+          'requestId': requestId,
+          'serverNonce': serverNonce,
+          'pairingCode': code,
+        });
       }
-      final code = await _pairingCode(offer.secret, '${offer.sessionId}|$clientNonce|$serverNonce|${_identity.deviceId}|$deviceId');
-      final request = LanPairingRequest._(
-        pairingCode: code,
-        peer: PairedDevice(
-          autoSync: true,
-          createdAtUtc: DateTime.now().toUtc(),
-          deviceId: deviceId,
-          label: label,
-          mode: PairedSyncMode.bidirectional,
-          platform: platform,
-          syncBookshelf: true,
-          syncPlugins: true,
-        ),
-        sharedSecret: offer.secret,
-        connection: secure,
-        localIdentity: _identity,
-      );
-      _pendingRequests.add(request);
-      _requests.add(request);
-      try {
-        await request.done.timeout(_requestLifetime);
-      } on TimeoutException {
-        await request.reject();
-      } finally {
-        _pendingRequests.remove(request);
+      if (request.method == 'GET' && segments.length == 4 && segments[0] == 'v3' && segments[1] == 'pair' && segments[3] == 'status') {
+        final item = pending[segments[2]];
+        if (item == null) {
+          return await _json(request.response, HttpStatus.notFound, <String, Object?>{'status': 'expired'});
+        }
+        final value = await item.decision.future.timeout(requestLifetime, onTimeout: () => <String, Object?>{'status': 'expired'});
+        return await _json(request.response, HttpStatus.ok, value);
       }
+      if (request.method == 'POST' && segments.length == 4 && segments[0] == 'v3' && segments[1] == 'pair' && segments[3] == 'commit') {
+        final item = pending[segments[2]];
+        if (item == null || !item.decision.isCompleted) {
+          return await _json(request.response, HttpStatus.conflict, <String, Object?>{'error': 'not_approved'});
+        }
+        if (!item.committed.isCompleted) item.committed.complete();
+        return await _json(request.response, HttpStatus.ok, <String, Object?>{'status': 'complete'});
+      }
+      return await _json(request.response, HttpStatus.notFound, <String, Object?>{'error': 'not_found'});
     } on Object {
-      await (secure?.close() ?? raw.close());
-    } finally {
-      _sockets.remove(socket);
+      try {
+        request.response.statusCode = HttpStatus.badRequest;
+        await request.response.close();
+      } on Object {
+        // The peer may have closed after the response was committed.
+      }
     }
   }
 
   Future<void> close() async {
-    if (_closed) return;
-    _closed = true;
-    _expiry?.cancel();
-    for (final request in _pendingRequests.toList(growable: false)) {
-      try {
-        await request.reject();
-      } on Object {
-        // Continue closing the remaining sockets and request stream.
-      }
+    if (closed) return;
+    closed = true;
+    expiry?.cancel();
+    for (final item in pending.values.toList()) {
+      await item.reject();
     }
-    _pendingRequests.clear();
-    for (final socket in _sockets.toList(growable: false)) {
-      socket.destroy();
-    }
-    _sockets.clear();
-    await _server.close();
-    await _requests.close();
-    if (!_completion.isCompleted) _completion.complete();
+    pending.clear();
+    await _server.close(force: true);
+    await requestsController.close();
+    if (!completion.isCompleted) completion.complete();
   }
 }
 
 final class LanPairingClientConnection {
-  LanPairingClientConnection._({
-    required this.pairingCode,
-    required this.peer,
-    required this.sharedSecret,
-    required this._connection,
-    required this._localDeviceId,
-  });
-
+  LanPairingClientConnection._(this.pairingCode, this.peer, this.sharedSecret, this._baseUri, this._requestId, this._localDeviceId);
   final String pairingCode;
   final PairedDevice peer;
   final List<int> sharedSecret;
-  final PairedSecureConnection _connection;
+  final Uri _baseUri;
+  final String _requestId;
   final String _localDeviceId;
+  final HttpClient _client = HttpClient();
 
   static Future<LanPairingClientConnection> connect(LanPairingOffer offer, LocalDeviceIdentity identity) async {
-    final result = Completer<LanPairingClientConnection>();
-    final timeout = Timer(const Duration(seconds: 8), () {
-      if (!result.isCompleted) {
-        result.completeError(const LanSyncTransportException('lan_sync_connect_failed'));
-      }
-    });
-    var remaining = offer.addresses.length;
+    Object? lastError;
     for (final address in offer.addresses) {
-      unawaited(() async {
-        try {
-          final connection = await _connectAddress(offer, identity, address);
-          if (!result.isCompleted) {
-            result.complete(connection);
-          } else {
-            await connection.close();
-          }
-        } on Object catch (error, stackTrace) {
-          remaining--;
-          if (remaining == 0 && !result.isCompleted) result.completeError(error, stackTrace);
+      final client = HttpClient();
+      try {
+        final base = Uri.parse('http://$address:${offer.port}');
+        final clientNonce = _randomToken(16);
+        final body = <String, Object?>{
+          'sessionId': offer.sessionId,
+          'deviceId': identity.deviceId,
+          'label': identity.label,
+          'platform': _localPlatform.name,
+          'clientNonce': clientNonce,
+        };
+        final result = await _requestJson(client, base.resolve('/v3/pair'), 'POST', body, identity.deviceId, offer.secret);
+        final serverNonce = result['serverNonce'];
+        final code = result['pairingCode'];
+        final requestId = result['requestId'];
+        final expected = _pairingCode(offer.secret, '${offer.sessionId}|$clientNonce|$serverNonce|${offer.deviceId}|${identity.deviceId}');
+        if (!_validNonce(serverNonce) || !_validNonce(requestId) || code != expected) {
+          throw const LanSyncTransportException('lan_sync_pairing_invalid');
         }
-      }());
-    }
-    try {
-      return await result.future;
-    } finally {
-      timeout.cancel();
-    }
-  }
-
-  static Future<LanPairingClientConnection> _connectAddress(LanPairingOffer offer, LocalDeviceIdentity identity, String address) async {
-    LanSyncFramedConnection? raw;
-    PairedSecureConnection? secure;
-    try {
-      final socket = await Socket.connect(address, offer.port, timeout: const Duration(seconds: 5));
-      raw = LanSyncFramedConnection(socket);
-      final clientNonce = _randomToken(16);
-      await raw.sendControl(<String, Object?>{
-        'type': 'pairHello',
-        'protocolVersion': 1,
-        'sessionId': offer.sessionId,
-        'clientNonce': clientNonce,
-      });
-      final challenge = await raw.readControl().timeout(lanSyncHandshakeTimeout);
-      final serverNonce = challenge['serverNonce'];
-      if (challenge['type'] != 'pairChallenge' || challenge['protocolVersion'] != 1 || !_isNonce(serverNonce)) {
-        throw const LanSyncTransportException('lan_sync_handshake_invalid');
+        client.close(force: true);
+        return LanPairingClientConnection._(
+          code! as String,
+          PairedDevice(
+            autoSync: true,
+            createdAtUtc: DateTime.now().toUtc(),
+            deviceId: offer.deviceId,
+            label: offer.label,
+            mode: PairedSyncMode.bidirectional,
+            platform: PairedDevicePlatform.unknown,
+            syncBookshelf: true,
+            syncPlugins: true,
+          ),
+          offer.secret,
+          base,
+          requestId! as String,
+          identity.deviceId,
+        );
+      } on Object catch (error) {
+        client.close(force: true);
+        lastError = error;
       }
-      secure = await PairedSecureConnection.client(
-        raw: raw,
-        sharedSecret: offer.secret,
-        clientNonce: clientNonce,
-        serverNonce: serverNonce! as String,
-      );
-      await secure.sendControl(<String, Object?>{
-        'type': 'pairIdentity',
-        'deviceId': identity.deviceId,
-        'label': identity.label,
-        'platform': _localPlatform.name,
-      });
-      final code = await _pairingCode(offer.secret, '${offer.sessionId}|$clientNonce|$serverNonce|${offer.deviceId}|${identity.deviceId}');
-      return LanPairingClientConnection._(
-        pairingCode: code,
-        peer: PairedDevice(
-          autoSync: true,
-          createdAtUtc: DateTime.now().toUtc(),
-          deviceId: offer.deviceId,
-          label: offer.label,
-          mode: PairedSyncMode.bidirectional,
-          platform: PairedDevicePlatform.unknown,
-          syncBookshelf: true,
-          syncPlugins: true,
-        ),
-        sharedSecret: offer.secret,
-        connection: secure,
-        localDeviceId: identity.deviceId,
-      );
-    } on Object {
-      await (secure?.close() ?? raw?.close() ?? Future<void>.value());
-      rethrow;
     }
+    throw lastError ?? const LanSyncTransportException('lan_sync_connect_failed');
   }
 
   Future<PairedDevice> waitForApproval() async {
-    final result = await _connection.readControl().timeout(const Duration(minutes: 2));
-    if (result['type'] == 'pairRejected') {
-      throw const LanSyncTransportException('lan_sync_pairing_rejected');
-    }
+    final result = await _requestJson(_client, _baseUri.resolve('/v3/pair/$_requestId/status'), 'GET', null, _localDeviceId, sharedSecret);
+    if (result['status'] == 'rejected') throw const LanSyncTransportException('lan_sync_pairing_rejected');
     final platform = _platform(result['platform']);
     final label = result['label'];
-    if (result['type'] != 'paired' ||
-        result['deviceId'] != peer.deviceId ||
-        platform == null ||
-        label is! String ||
-        label.trim().isEmpty ||
-        label.length > 128) {
+    if (result['status'] != 'approved' || result['deviceId'] != peer.deviceId || platform == null || label is! String) {
       throw const LanSyncTransportException('lan_sync_handshake_invalid');
     }
     return peer.copyWith(label: label, platform: platform);
   }
 
   Future<void> confirmCommitted() async {
-    await _connection.sendControl(<String, Object?>{'type': 'pairCommitted', 'deviceId': _localDeviceId});
-    final complete = await _connection.readControl().timeout(lanSyncHandshakeTimeout);
-    if (complete['type'] != 'pairComplete') {
-      throw const LanSyncTransportException('lan_sync_handshake_invalid');
-    }
-    await _connection.close();
+    final result = await _requestJson(
+      _client,
+      _baseUri.resolve('/v3/pair/$_requestId/commit'),
+      'POST',
+      const <String, Object?>{},
+      _localDeviceId,
+      sharedSecret,
+    );
+    if (result['status'] != 'complete') throw const LanSyncTransportException('lan_sync_handshake_invalid');
+    await close();
   }
 
-  Future<void> close() => _connection.close();
+  Future<void> close() async => _client.close(force: true);
+}
+
+Future<Map<String, Object?>> _requestJson(
+  HttpClient client,
+  Uri uri,
+  String method,
+  Map<String, Object?>? value,
+  String deviceId,
+  List<int> secret,
+) async {
+  final body = value == null ? const <int>[] : utf8.encode(jsonEncode(value));
+  final request = await client.openUrl(method, uri);
+  LanSyncHttpAuthentication.sign(
+    request,
+    deviceId: deviceId,
+    sharedSecret: secret,
+    contentSha256: LanSyncHttpAuthentication.bodyHash(body),
+  );
+  request.headers.contentType = ContentType.json;
+  request.contentLength = body.length;
+  request.add(body);
+  final response = await request.close().timeout(const Duration(minutes: 2));
+  final decoded = jsonDecode(await utf8.decodeStream(response));
+  if (response.statusCode < 200 || response.statusCode >= 300 || decoded is! Map) {
+    throw LanSyncTransportException('lan_sync_http_failed', reason: 'status_${response.statusCode}');
+  }
+  return decoded.map<String, Object?>((key, value) => MapEntry(key as String, value));
+}
+
+Future<List<int>> _readBytes(HttpRequest request) => request.fold<List<int>>(<int>[], (all, chunk) {
+  if (all.length + chunk.length > 64 * 1024) throw const LanSyncTransportException('lan_sync_control_too_large');
+  return all..addAll(chunk);
+});
+Map<String, Object?> _decodeJson(List<int> bytes) {
+  final value = jsonDecode(utf8.decode(bytes));
+  if (value is! Map) throw const FormatException();
+  return value.map<String, Object?>((key, value) => MapEntry(key as String, value));
+}
+
+Future<void> _json(HttpResponse response, int status, Map<String, Object?> value) async {
+  final bytes = utf8.encode(jsonEncode(value));
+  response.statusCode = status;
+  response.headers.contentType = ContentType.json;
+  response.contentLength = bytes.length;
+  response.add(bytes);
+  await response.close();
 }
 
 PairedDevicePlatform get _localPlatform => Platform.isWindows
@@ -369,7 +338,6 @@ PairedDevicePlatform get _localPlatform => Platform.isWindows
     : Platform.isAndroid
     ? PairedDevicePlatform.android
     : PairedDevicePlatform.unknown;
-
 PairedDevicePlatform? _platform(Object? value) => switch (value) {
   'android' => PairedDevicePlatform.android,
   'windows' => PairedDevicePlatform.windows,
@@ -377,18 +345,16 @@ PairedDevicePlatform? _platform(Object? value) => switch (value) {
   'unknown' => PairedDevicePlatform.unknown,
   _ => null,
 };
-
-bool _isNonce(Object? value) => value is String && value.length >= 20 && value.length <= 64 && RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(value);
-
+bool _validNonce(Object? value) =>
+    value is String && value.length >= 20 && value.length <= 64 && RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(value);
 String _randomToken(int bytes) => base64Url.encode(_randomBytes(bytes)).replaceAll('=', '');
-
 List<int> _randomBytes(int length) {
   final random = Random.secure();
-  return List<int>.generate(length, (_) => random.nextInt(256), growable: false);
+  return List<int>.generate(length, (_) => random.nextInt(256));
 }
 
-Future<String> _pairingCode(List<int> secret, String transcript) async {
-  final mac = await Hmac.sha256().calculateMac(utf8.encode(transcript), secretKey: SecretKey(secret));
-  final value = ByteData.sublistView(Uint8List.fromList(mac.bytes)).getUint32(0, Endian.big) % 1000000;
+String _pairingCode(List<int> secret, String transcript) {
+  final bytes = Hmac(sha256, secret).convert(utf8.encode(transcript)).bytes;
+  final value = ByteData.sublistView(Uint8List.fromList(bytes)).getUint32(0, Endian.big) % 1000000;
   return value.toString().padLeft(6, '0');
 }

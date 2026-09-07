@@ -9,7 +9,7 @@ import 'package:mg_read/features/lan_sync/presentation/paired_device_widgets.dar
 void main() {
   const deviceId = 'desktop_device_123456';
 
-  testWidgets('online device exposes bidirectional, pull, and push operations', (tester) async {
+  testWidgets('online device exposes only one-way pull and push operations', (tester) async {
     final operations = <PairedSyncOperation>[];
     await tester.pumpWidget(
       MaterialApp(
@@ -31,11 +31,10 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const Key('device-sync-bidirectional-$deviceId')));
     await tester.tap(find.byKey(const Key('device-sync-pull-$deviceId')));
     await tester.tap(find.byKey(const Key('device-sync-push-$deviceId')));
 
-    expect(operations, const <PairedSyncOperation>[PairedSyncOperation.bidirectional, PairedSyncOperation.pull, PairedSyncOperation.push]);
+    expect(operations, const <PairedSyncOperation>[PairedSyncOperation.pull, PairedSyncOperation.push]);
     expect(tester.takeException(), isNull);
   });
 
@@ -64,7 +63,6 @@ void main() {
 
     expect(tester.widget<OutlinedButton>(find.byKey(const Key('device-sync-pull-$deviceId'))).onPressed, isNotNull);
     expect(tester.widget<OutlinedButton>(find.byKey(const Key('device-sync-push-$deviceId'))).onPressed, isNull);
-    expect(tester.widget<FilledButton>(find.byKey(const Key('device-sync-bidirectional-$deviceId'))).onPressed, isNull);
   });
 
   testWidgets('busy device shows the current sync stage instead of a generic status', (tester) async {

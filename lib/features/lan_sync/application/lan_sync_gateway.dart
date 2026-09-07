@@ -9,9 +9,9 @@ abstract interface class LanSyncGateway {
 
   Future<Stream<List<int>>> openPluginArchive(LanSyncPluginDescriptor plugin);
 
-  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest);
+  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest, {bool force = false});
 
-  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins);
+  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins, {Set<String> forceUpgradePluginIds = const <String>{}});
 
   Future<void> importPluginArchive(LanSyncPluginDescriptor plugin, Stream<List<int>> bytes);
 
@@ -24,6 +24,7 @@ abstract interface class LanSyncGateway {
     required Map<String, LanSyncConflictChoice> conflictChoices,
     required Set<String> availablePluginIds,
     required LanSyncPluginImportResult pluginResult,
+    bool force = false,
   });
 }
 
@@ -90,6 +91,7 @@ final class _UnavailableLanSyncGateway implements LanSyncGateway {
     required Map<String, LanSyncConflictChoice> conflictChoices,
     required Set<String> availablePluginIds,
     required LanSyncPluginImportResult pluginResult,
+    bool force = false,
   }) async => _unavailable();
 
   @override
@@ -105,11 +107,12 @@ final class _UnavailableLanSyncGateway implements LanSyncGateway {
   Future<void> importPluginArchive(LanSyncPluginDescriptor plugin, Stream<List<int>> bytes) async => _unavailable();
 
   @override
-  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins) async => _unavailable();
+  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins, {Set<String> forceUpgradePluginIds = const <String>{}}) async =>
+      _unavailable();
 
   @override
   Future<Stream<List<int>>> openPluginArchive(LanSyncPluginDescriptor plugin) async => _unavailable();
 
   @override
-  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest) async => _unavailable();
+  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest, {bool force = false}) async => _unavailable();
 }

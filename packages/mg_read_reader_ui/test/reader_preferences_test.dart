@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 import 'package:novel_reader_ui/src/platform/reader_platform.dart';
-import 'package:novel_reader_ui/src/platform/screen_awake_coordinator.dart';
 
 void main() {
   test(

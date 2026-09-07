@@ -7,6 +7,8 @@
 /// 注意：
 /// - 会话代际用于丢弃过期异步结果。
 /// - 网络和流资源释放必须是尽力操作，不能把清理异常泄漏到应用边界。
+/// - 扫码预览至清理完成持有共享网关会话，避免自动同步覆盖或取消当前导入。
+/// - 亮屏按实际异步操作持有至清理完成；等待发现、配对确认和内容选择时不占用。
 ///
 library;
 
@@ -18,6 +20,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
+import 'package:mg_read/features/lan_sync/application/lan_sync_session.dart';
+import 'package:mg_read/features/lan_sync/application/lan_sync_screen_awake.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_network_environment.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
@@ -77,6 +81,9 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
   final Stopwatch _sessionStopwatch = Stopwatch();
   bool _senderTransferRecorded = false;
   int _generation = 0;
+  LanSyncSession? _session;
+  Future<void>? _cleanupFuture;
+  LanSyncScreenAwake? _senderAwake;
 
   @override
   LanSyncViewState build() {
@@ -87,20 +94,26 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     return const LanSyncViewState();
   }
 
-  Future<void> startSending() async {
+  Future<void> startSending() => LanSyncScreenAwake.run(_startSending);
+
+  Future<void> _startSending() async {
     if (state.busy) return;
     final generation = ++_generation;
     await _disposeResources(completeSpan: true);
     if (!_isCurrent(generation)) return;
+    if (!_acquireSession()) return;
     state = const LanSyncViewState(role: LanSyncRole.sender, phase: LanSyncPhase.preparing, message: '正在准备插件与书架清单');
     _startSpan(LanSyncRole.sender);
     if (!await _ensureLocalNetwork(generation)) return;
     _recordStage('manifest_prepare_started');
     try {
-      final gateway = ref.read(lanSyncGatewayProvider);
-      final manifest = await gateway.createManifest();
+      final session = _session!;
+      final manifest = await session.run((gateway) => gateway.createManifest());
       if (!_isCurrent(generation)) return;
-      final sender = await LanSyncSenderService.start(manifest: manifest, openPlugin: gateway.openPluginArchive);
+      final sender = await LanSyncSenderService.start(
+        manifest: manifest,
+        openPlugin: (plugin) => session.run((gateway) => gateway.openPluginArchive(plugin)),
+      );
       if (!_isCurrent(generation)) {
         await sender.close();
         return;
@@ -129,11 +142,14 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     }
   }
 
-  Future<void> startReceiving() async {
+  Future<void> startReceiving() => LanSyncScreenAwake.run(_startReceiving);
+
+  Future<void> _startReceiving() async {
     if (state.busy) return;
     final generation = ++_generation;
     await _disposeResources(completeSpan: true);
     if (!_isCurrent(generation)) return;
+    if (!_acquireSession()) return;
     state = const LanSyncViewState(role: LanSyncRole.receiver, phase: LanSyncPhase.discovering, message: '正在查找同一局域网内的发送设备');
     _startSpan(LanSyncRole.receiver);
     if (!await _ensureLocalNetwork(generation)) return;
@@ -187,8 +203,10 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     ]);
   }
 
-  Future<void> _connectPeers(List<LanSyncPeer> peers) async {
-    if (state.role != LanSyncRole.receiver) return;
+  Future<void> _connectPeers(List<LanSyncPeer> peers) => LanSyncScreenAwake.run(() => _connectPeersAwake(peers));
+
+  Future<void> _connectPeersAwake(List<LanSyncPeer> peers) async {
+    if (state.role != LanSyncRole.receiver || state.phase != LanSyncPhase.discovering) return;
     final generation = ++_generation;
     try {
       await _discoverySubscription?.cancel();
@@ -234,13 +252,23 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
   Future<void> connectManual(String value) async {
     final offer = LanSyncConnectionOffer.tryParseManual(value);
     if (offer == null) {
-      _fail('lan_sync_manual_address_invalid', keepRole: true);
+      if (state.phase == LanSyncPhase.discovering) {
+        state = LanSyncViewState(
+          role: state.role,
+          phase: state.phase,
+          message: lanSyncFailureMessage('lan_sync_manual_address_invalid'),
+          errorCode: 'lan_sync_manual_address_invalid',
+          peers: state.peers,
+        );
+      }
       return;
     }
     await connectOffer(offer);
   }
 
-  Future<void> confirmReceiverPairing() async {
+  Future<void> confirmReceiverPairing() => LanSyncScreenAwake.run(_confirmReceiverPairing);
+
+  Future<void> _confirmReceiverPairing() async {
     final receiver = _receiver;
     if (receiver == null || state.phase != LanSyncPhase.pairing) return;
     final generation = ++_generation;
@@ -255,12 +283,12 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     try {
       final manifest = await receiver.confirmAndReadManifest();
       if (!_isCurrent(generation)) return;
-      final preview = await ref.read(lanSyncGatewayProvider).previewImport(manifest);
+      final preview = await _session!.run((gateway) => gateway.previewImport(manifest, force: true));
       if (!_isCurrent(generation)) return;
       state = LanSyncViewState(
         role: LanSyncRole.receiver,
         phase: LanSyncPhase.previewing,
-        message: '确认插件与书架冲突后开始导入',
+        message: '将强制覆盖本机同名插件、书架和阅读进度',
         manifest: manifest,
         preview: preview,
         totalBytes: preview.recommendedPluginIds.fold<int>(
@@ -293,14 +321,18 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
   void choosePlugin(String pluginId, bool selected) {
     final manifest = state.manifest;
     final preview = state.preview;
-    if (manifest == null || preview == null || !preview.recommendedPluginIds.contains(pluginId)) return;
+    if (manifest == null || preview == null || !_canSelectPlugin(manifest, preview, pluginId)) return;
     final selectedIds = <String>{...preview.selectedPluginIds};
     if (selected) {
       selectedIds.add(pluginId);
     } else {
       selectedIds.remove(pluginId);
     }
-    final next = preview.withSelection(pluginIds: selectedIds);
+    final forceIds = <String>{
+      ...preview.forceUpgradePluginIds,
+      if (selected && preview.pluginPlans[pluginId] == LanSyncPluginPlanState.sameVersion) pluginId,
+    }..removeWhere((id) => !selectedIds.contains(id));
+    final next = preview.withSelection(pluginIds: selectedIds, forceUpgradeIds: forceIds);
     state = _withPreviewSelection(next, manifest);
   }
 
@@ -318,13 +350,63 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     state = _withPreviewSelection(next, manifest);
   }
 
-  void chooseAllContent(bool selected) {
+  void chooseAllShelfItems(bool selected) {
     final manifest = state.manifest;
     final preview = state.preview;
     if (manifest == null || preview == null) return;
     final next = preview.withSelection(
-      pluginIds: selected ? preview.recommendedPluginIds : const <String>{},
       shelfItemIds: selected ? <String>{for (final item in manifest.shelfItems) item.identity} : const <String>{},
+    );
+    state = _withPreviewSelection(next, manifest);
+  }
+
+  void chooseAllPlugins(bool selected) {
+    final manifest = state.manifest;
+    final preview = state.preview;
+    if (manifest == null || preview == null) return;
+    final selectable = <String>{
+      for (final plugin in manifest.plugins)
+        if (plugin.transferable &&
+            (preview.pluginPlans[plugin.id] == LanSyncPluginPlanState.missing ||
+                preview.pluginPlans[plugin.id] == LanSyncPluginPlanState.upgrade ||
+                (preview.pluginPlans[plugin.id] == LanSyncPluginPlanState.sameVersion &&
+                    plugin.provenance == LanSyncPluginProvenance.installed)))
+          plugin.id,
+    };
+    final forceIds = <String>{
+      if (selected)
+        for (final id in selectable)
+          if (preview.pluginPlans[id] == LanSyncPluginPlanState.sameVersion) id,
+    };
+    final next = preview.withSelection(
+      pluginIds: selected ? selectable : const <String>{},
+      forceUpgradeIds: selected ? forceIds : const <String>{},
+    );
+    state = _withPreviewSelection(next, manifest);
+  }
+
+  void chooseAllContent(bool selected) {
+    final manifest = state.manifest;
+    final preview = state.preview;
+    if (manifest == null || preview == null) return;
+    final pluginIds = <String>{
+      for (final plugin in manifest.plugins)
+        if (plugin.transferable &&
+            (preview.pluginPlans[plugin.id] == LanSyncPluginPlanState.missing ||
+                preview.pluginPlans[plugin.id] == LanSyncPluginPlanState.upgrade ||
+                (preview.pluginPlans[plugin.id] == LanSyncPluginPlanState.sameVersion &&
+                    plugin.provenance == LanSyncPluginProvenance.installed)))
+          plugin.id,
+    };
+    final next = preview.withSelection(
+      pluginIds: selected ? pluginIds : const <String>{},
+      shelfItemIds: selected ? <String>{for (final item in manifest.shelfItems) item.identity} : const <String>{},
+      forceUpgradeIds: selected
+          ? <String>{
+              for (final id in pluginIds)
+                if (preview.pluginPlans[id] == LanSyncPluginPlanState.sameVersion) id,
+            }
+          : const <String>{},
     );
     state = _withPreviewSelection(next, manifest);
   }
@@ -343,11 +425,14 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     result: state.result,
   );
 
-  Future<void> beginImport() async {
+  Future<void> beginImport() => LanSyncScreenAwake.run(_beginImport);
+
+  Future<void> _beginImport() async {
     final receiver = _receiver;
     final manifest = state.manifest;
     final preview = state.preview;
-    if (receiver == null || manifest == null || preview == null) return;
+    if (receiver == null || manifest == null || preview == null || state.phase != LanSyncPhase.previewing || _session == null) return;
+    final session = _session!;
     final generation = ++_generation;
     final selectedPluginIds = preview.selectedPluginIds;
     final selectedShelfItemIds = preview.selectedShelfItemIds;
@@ -363,16 +448,18 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     );
     _recordStage('plugin_import_prepare_started');
     try {
-      final gateway = ref.read(lanSyncGatewayProvider);
-      await gateway.preparePluginImports(<LanSyncPluginDescriptor>[
-        for (final plugin in manifest.plugins)
-          if (selectedPluginIds.contains(plugin.id)) plugin,
-      ]);
+      await session.run(
+        (gateway) => gateway.preparePluginImports(<LanSyncPluginDescriptor>[
+          for (final plugin in manifest.plugins)
+            if (selectedPluginIds.contains(plugin.id)) plugin,
+        ], forceUpgradePluginIds: preview.forceUpgradePluginIds),
+      );
+      if (!_isCurrent(generation)) return;
       _recordStage('plugin_transport_started');
       await receiver.receivePlugins(
         pluginIds: selectedPluginIds,
         shelfItemIds: selectedShelfItemIds,
-        importPlugin: gateway.importPluginArchive,
+        importPlugin: (plugin, bytes) => session.run((gateway) => gateway.importPluginArchive(plugin, bytes)),
         onProgress: (completed, total) {
           if (!_isCurrent(generation)) return;
           state = LanSyncViewState(
@@ -411,7 +498,7 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
       );
       _recordStage('plugin_transport_completed');
       _recordStage('plugin_finalize_started');
-      final pluginResult = await gateway.finishPluginImports();
+      final pluginResult = await session.run((gateway) => gateway.finishPluginImports());
       if (!_isCurrent(generation)) return;
       state = LanSyncViewState(
         role: LanSyncRole.receiver,
@@ -424,24 +511,28 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
       );
       _recordStage('plugin_finalize_completed');
       _recordStage('library_apply_started');
-      final result = await gateway.applyImport(
-        manifest: selectedManifest,
-        conflictChoices: <String, LanSyncConflictChoice>{for (final conflict in preview.conflicts) conflict.identity: conflict.choice},
-        availablePluginIds: pluginResult.availablePluginIds,
-        pluginResult: pluginResult,
+      final result = await session.run(
+        (gateway) => gateway.applyImport(
+          manifest: selectedManifest,
+          conflictChoices: <String, LanSyncConflictChoice>{for (final conflict in preview.conflicts) conflict.identity: conflict.choice},
+          availablePluginIds: pluginResult.availablePluginIds,
+          pluginResult: pluginResult,
+          force: true,
+        ),
       );
       if (!_isCurrent(generation)) return;
       state = LanSyncViewState(
         role: LanSyncRole.receiver,
         phase: LanSyncPhase.completed,
-        message: '局域网同步完成',
+        message: pluginResult.failed > 0 ? '同步部分完成，部分插件安装失败，请查看结果后重试' : '局域网同步完成',
+        errorCode: pluginResult.failed > 0 ? pluginResult.failureCode ?? 'lan_sync_plugin_import_failed' : null,
         manifest: manifest,
         result: result,
         transferredBytes: state.transferredBytes,
         totalBytes: state.totalBytes,
       );
       _recordStage('library_apply_completed');
-      _completeSpan('success', errorCode: pluginResult.failureCode);
+      _completeSpan(pluginResult.failed > 0 ? 'error' : 'success', errorCode: pluginResult.failureCode);
       await _disposeResources();
     } on Object catch (error, stackTrace) {
       if (_isCurrent(generation)) {
@@ -455,6 +546,13 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
       return;
     }
     switch (event) {
+      case LanSyncSenderActivity(:final active):
+        if (active) {
+          _senderAwake ??= LanSyncScreenAwake();
+        } else {
+          unawaited(_senderAwake?.close());
+          _senderAwake = null;
+        }
       case LanSyncSenderReady():
         break;
       case LanSyncSenderPairing(:final code):
@@ -493,6 +591,7 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
         );
         _recordStage('plugin_transport_completed');
         _completeSpan('success');
+        unawaited(_disposeResources());
       case LanSyncSenderFailed(:final code, :final error, :final stackTrace):
         _fail(code, errorLocation: 'sender_transport', error: error, stackTrace: stackTrace);
     }
@@ -502,7 +601,6 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     _generation++;
     _recordStage('cancel_requested');
     _completeSpan('cancelled');
-    await _cancelPluginImportsSafely();
     await _disposeResources();
     state = const LanSyncViewState(phase: LanSyncPhase.cancelled, message: '同步已取消');
   }
@@ -524,7 +622,6 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
       stackTrace: stackTrace,
     );
     final role = keepRole ? state.role : null;
-    unawaited(_cancelPluginImportsSafely());
     unawaited(_disposeResources());
     state = LanSyncViewState(role: role, phase: LanSyncPhase.failed, message: lanSyncFailureMessage(code), errorCode: code);
   }
@@ -626,16 +723,31 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     _fail(_failureCodeFor(stage, error), errorLocation: stage, error: error, stackTrace: stackTrace);
   }
 
-  Future<void> _cancelPluginImportsSafely() async {
-    try {
-      await ref.read(lanSyncGatewayProvider).cancelPluginImports();
-    } on Object {
-      // Cleanup must not turn a cancelled or failed sync into a root-isolate error.
-    }
+  bool _acquireSession() {
+    _session = ref.read(lanSyncSessionCoordinatorProvider).tryAcquire(ref.read(lanSyncGatewayProvider));
+    if (_session != null) return true;
+    state = LanSyncViewState(
+      phase: LanSyncPhase.failed,
+      errorCode: 'lan_sync_peer_busy',
+      message: lanSyncFailureMessage('lan_sync_peer_busy'),
+    );
+    return false;
   }
 
-  Future<void> _disposeResources({bool completeSpan = false}) async {
+  Future<void> _disposeResources({bool completeSpan = false}) {
     if (completeSpan) _completeSpan('cancelled');
+    return _cleanupFuture ??= _disposeResourcesOnce().whenComplete(() => _cleanupFuture = null);
+  }
+
+  Future<void> _disposeResourcesOnce() async {
+    await LanSyncScreenAwake.run(_disposeResourcesAwake);
+  }
+
+  Future<void> _disposeResourcesAwake() async {
+    final senderAwake = _senderAwake;
+    _senderAwake = null;
+    final session = _session;
+    _session = null;
     final senderSubscription = _senderSubscription;
     _senderSubscription = null;
     try {
@@ -675,13 +787,31 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     } on Object {
       // 释放阶段不能覆盖同步会话本身的结果。
     }
+    await session?.close();
+    await senderAwake?.close();
   }
 
   bool _isCurrent(int generation) => generation == _generation;
 }
 
+bool _canSelectPlugin(LanSyncManifest manifest, LanSyncImportPreview preview, String pluginId) {
+  LanSyncPluginDescriptor? plugin;
+  for (final item in manifest.plugins) {
+    if (item.id == pluginId) {
+      plugin = item;
+      break;
+    }
+  }
+  if (plugin == null || !plugin.transferable) return false;
+  final plan = preview.pluginPlans[pluginId];
+  return plan == LanSyncPluginPlanState.missing ||
+      plan == LanSyncPluginPlanState.upgrade ||
+      (plan == LanSyncPluginPlanState.sameVersion && plugin.provenance == LanSyncPluginProvenance.installed);
+}
+
 /// Converts LAN failure codes into user-facing copy.
 String lanSyncFailureMessage(String code) => switch (code) {
+  'lan_sync_peer_busy' => '另一项局域网同步正在进行，请完成或取消后重试',
   'lan_sync_wifi_required' => '手机未连接 Wi-Fi，已停止局域网同步和广播',
   'lan_sync_local_network_unavailable' => '未检测到可用局域网，请检查 Wi-Fi 或网线连接',
   'lan_sync_manual_address_invalid' => '连接地址格式不正确',

@@ -106,7 +106,7 @@ test("single-file artifact is canonical and installs into the shared cold-activa
   await copyFile(artifact, join(inboxRoot, "synced.mgplugin.js"));
   const syncProgress = [];
   await installPluginArtifactInbox(dataRoot, inboxRoot, (progress) => syncProgress.push(progress.detail));
-  assert.ok(syncProgress.includes("单文件数据源插件版本已存在，无需安装 npm 依赖"));
+  assert.ok(syncProgress.includes("单文件数据源插件安装完成，无需安装 npm 依赖"));
   await assert.rejects(access(join(inboxRoot, "synced.mgplugin.js")));
 
   const manager = new PluginManager(dataRoot);
@@ -182,7 +182,7 @@ test("artifact transfer v2 lists both retained formats and rejects v1-shaped ite
   assert.equal(isPluginTransferArtifact({ bytes: 1, id: "org.example.old", sha256: "0".repeat(64), version: "1.0.0" }), false);
 });
 
-test("development planning updates replicas but never overwrites a different live project", async (t) => {
+test("development planning updates replicas and forced sync overwrites conflicts", async (t) => {
   const root = await temporaryDirectory(t, "mgread-development-plan-");
   const manager = new PluginArtifactTransferManager(root);
   t.after(() => manager.dispose());
@@ -203,7 +203,15 @@ test("development planning updates replicas but never overwrites a different liv
     { id: incoming.id, activeVersion: `0.1.1-devsync.10.${"c".repeat(64)}`, pendingVersion: null },
   ])[0].action, "receiverNewer");
   assert.equal(manager.plan([incoming], [{ id: incoming.id, activeVersion: incoming.version, pendingVersion: null }])[0].action, "same");
+  assert.equal(manager.plan([{ ...incoming, developmentFingerprint: null, developmentRevision: null, provenance: "installed" }], [{ id: incoming.id, activeVersion: incoming.version, pendingVersion: null }], [], new Set([incoming.id]))[0].action, "upgrade");
   assert.equal(manager.plan([incoming], [{ id: incoming.id, activeVersion: "0.1.0", pendingVersion: null }], [
     { id: incoming.id, fingerprint: "c".repeat(64), syncRevision: 12 },
   ])[0].action, "developmentConflict");
+  assert.equal(manager.plan([incoming], [{ id: incoming.id, activeVersion: incoming.version, pendingVersion: null }], [], new Set([incoming.id]))[0].action, "upgrade");
+  assert.equal(manager.plan([incoming], [{ id: incoming.id, activeVersion: "0.1.0", pendingVersion: null }], [
+    { id: incoming.id, fingerprint: "c".repeat(64), syncRevision: 12 },
+  ], new Set([incoming.id]))[0].action, "upgrade");
+  assert.equal(manager.plan([{ ...incoming, developmentFingerprint: null, developmentRevision: null, provenance: "installed" }], [{ id: incoming.id, activeVersion: "0.1.0", pendingVersion: null }], [
+    { id: incoming.id, fingerprint: "c".repeat(64), syncRevision: 12 },
+  ], new Set([incoming.id]))[0].action, "upgrade");
 });

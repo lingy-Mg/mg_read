@@ -134,7 +134,7 @@ final class _FakeGateway implements LanSyncGateway {
   }
 
   @override
-  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest) async => LanSyncImportPreview(
+  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest, {bool force = false}) async => LanSyncImportPreview(
     newItemCount: manifest.shelfItems.length,
     conflicts: const <LanSyncBookConflict>[],
     blockedItemCount: 0,
@@ -144,7 +144,7 @@ final class _FakeGateway implements LanSyncGateway {
   );
 
   @override
-  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins) async {}
+  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins, {Set<String> forceUpgradePluginIds = const <String>{}}) async {}
 
   @override
   Future<void> importPluginArchive(LanSyncPluginDescriptor plugin, Stream<List<int>> bytes) async {
@@ -168,6 +168,7 @@ final class _FakeGateway implements LanSyncGateway {
     required Map<String, LanSyncConflictChoice> conflictChoices,
     required Set<String> availablePluginIds,
     required LanSyncPluginImportResult pluginResult,
+    bool force = false,
   }) async {
     appliedManifest = manifest;
     return LanSyncApplyResult(

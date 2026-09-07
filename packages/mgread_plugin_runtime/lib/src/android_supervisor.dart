@@ -430,8 +430,9 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
   @override
   Future<List<PluginTransferImportResult>> importPluginArtifacts(
     List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
-    artifacts,
-  ) async {
+    artifacts, {
+    Set<String> forceUpgradePluginIds = const <String>{},
+  }) async {
     if (artifacts.isEmpty) {
       throw const PluginRuntimeException(
         'plugin_transfer_batch_too_large',
@@ -444,6 +445,7 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
       final plan = await invoke(
         PluginTransferPlanInvocation(
           artifacts: [for (final item in artifacts) item.artifact],
+          forceUpgradePluginIds: forceUpgradePluginIds,
         ),
       );
       if (plan.any(

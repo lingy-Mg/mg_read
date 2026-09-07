@@ -8,6 +8,7 @@
 /// - 不读取 Runtime 数据根，也不转换 single-file 与 archive 格式。
 /// - 批量导入流在完成、失败或取消时必须关闭。
 /// - 取消和资源清理失败不得泄漏到应用级未处理异常边界。
+/// - Runtime 可能在订阅流前拒绝批次，关闭流不能等待订阅者确认。
 ///
 library;
 
@@ -139,17 +140,13 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
   }
 
   @override
-  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest) async {
+  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest, {bool force = false}) async {
     _installed = 0;
     _skipped = 0;
     _failed = 0;
     final installed = await _runtime.invoke(const InstalledPluginsInvocation());
     final installedIds = installed.map((plugin) => plugin.id).toSet();
     final installedById = <String, InstalledPlugin>{for (final plugin in installed) plugin.id: plugin};
-    final developmentIds = <String>{
-      for (final plugin in installed)
-        if (plugin.status == 'development') plugin.id,
-    };
     final transferable = manifest.plugins
         .where((plugin) => plugin.transferable && !plugin.deferred)
         .map(_toRuntimeArtifact)
@@ -158,25 +155,22 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
         .where((plugin) => plugin.transferable && plugin.deferred)
         .map(_toRuntimeOffer)
         .toList(growable: false);
+    final forceUpgradePluginIds = force
+        ? manifest.plugins.where((plugin) => plugin.transferable).map((plugin) => plugin.id).toSet()
+        : const <String>{};
     final artifactPlans = transferable.isEmpty
         ? const <PluginTransferPlanItem>[]
-        : await _runtime.invoke(PluginTransferPlanInvocation(artifacts: transferable));
+        : await _runtime.invoke(PluginTransferPlanInvocation(artifacts: transferable, forceUpgradePluginIds: forceUpgradePluginIds));
     final offerPlans = deferred.isEmpty
         ? const <PluginTransferPlanItem>[]
-        : await _runtime.invoke(PluginTransferOfferPlanInvocation(offers: deferred));
+        : await _runtime.invoke(PluginTransferOfferPlanInvocation(offers: deferred, forceUpgradePluginIds: forceUpgradePluginIds));
     final plans = <PluginTransferPlanItem>[...artifactPlans, ...offerPlans];
     final planById = <String, PluginTransferPlanItem>{for (final plan in plans) plan.pluginId: plan};
     final featurePlans = <String, LanSyncPluginPlanState>{};
     final availableAfterTransfer = <String>{...installedIds};
     for (final plugin in manifest.plugins) {
       final plan = planById[plugin.id];
-      final state = developmentIds.contains(plugin.id)
-          ? plan?.action == PluginTransferPlanAction.same
-                ? LanSyncPluginPlanState.sameVersion
-                : LanSyncPluginPlanState.developmentConflict
-          : plan == null
-          ? _planUnavailableArchive(plugin, installedById[plugin.id])
-          : _toFeaturePlan(plan.action);
+      final state = plan == null ? _planUnavailableArchive(plugin, installedById[plugin.id]) : _toFeaturePlan(plan.action);
       featurePlans[plugin.id] = state;
       if (state == LanSyncPluginPlanState.missing || state == LanSyncPluginPlanState.upgrade) {
         availableAfterTransfer.add(plugin.id);
@@ -208,22 +202,20 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
           if (entry.value == LanSyncPluginPlanState.missing || entry.value == LanSyncPluginPlanState.upgrade) entry.key,
       },
       selectedShelfItemIds: <String>{for (final item in manifest.shelfItems) item.identity},
+      forceUpgradePluginIds: forceUpgradePluginIds,
     );
   }
 
   @override
-  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins) async {
+  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins, {Set<String> forceUpgradePluginIds = const <String>{}}) async {
     await cancelPluginImports();
     _preparedCount = plugins.length;
     _batchFailureCode = null;
     if (plugins.isEmpty) return;
     final installed = await _runtime.invoke(const InstalledPluginsInvocation());
-    final developmentIds = <String>{
-      for (final plugin in installed)
-        if (plugin.status == 'development') plugin.id,
-    };
     for (final plugin in plugins) {
-      if (developmentIds.contains(plugin.id)) {
+      if (installed.any((candidate) => candidate.id == plugin.id && candidate.status == 'development') &&
+          !forceUpgradePluginIds.contains(plugin.id)) {
         throw StateError('lan_sync_plugin_development_priority');
       }
       if (!plugin.transferable || plugin.deferred || _importControllers.containsKey(plugin.id)) {
@@ -233,7 +225,7 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     }
     final batch = _runtime.importPluginArtifacts(<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>[
       for (final plugin in plugins) (artifact: _toRuntimeArtifact(plugin), bytes: _importControllers[plugin.id]!.stream),
-    ]);
+    ], forceUpgradePluginIds: forceUpgradePluginIds);
     _batchImport = batch;
     // The Runtime validates the batch before the peer starts sending bytes. A
     // failure can therefore arrive before finishPluginImports awaits it. Keep a
@@ -244,12 +236,17 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
 
   @override
   Future<void> importPluginArchive(LanSyncPluginDescriptor plugin, Stream<List<int>> bytes) async {
-    final controller = _importControllers.remove(plugin.id);
+    final controller = _importControllers[plugin.id];
     if (controller == null) {
       throw StateError('lan_sync_plugin_not_prepared');
     }
-    await controller.addStream(bytes);
-    await controller.close();
+    try {
+      if (_batchFailureCode != null) throw LanSyncGatewayException(_batchFailureCode!);
+      await controller.addStream(bytes);
+    } finally {
+      _importControllers.remove(plugin.id);
+      unawaited(controller.close());
+    }
   }
 
   @override
@@ -288,7 +285,7 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     for (final controller in controllers) {
       if (!controller.isClosed) {
         try {
-          await controller.close();
+          unawaited(controller.close());
         } on Object {
           // 取消阶段继续清理其他插件流。
         }
@@ -321,6 +318,7 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     required Map<String, LanSyncConflictChoice> conflictChoices,
     required Set<String> availablePluginIds,
     required LanSyncPluginImportResult pluginResult,
+    bool force = false,
   }) async {
     var snapshot = _pendingSnapshot;
     var preview = _pendingPreview;
@@ -333,9 +331,11 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     final choices = <LibrarySyncIdentity, LibrarySyncConflictChoice>{};
     var keptLocal = 0;
     for (final conflict in preview.conflicts) {
-      final choice = conflictChoices[_identityText(conflict.identity)] ?? LanSyncConflictChoice.smartMerge;
+      final choice = force
+          ? LanSyncConflictChoice.useSender
+          : conflictChoices[_identityText(conflict.identity)] ?? LanSyncConflictChoice.smartMerge;
       choices[conflict.identity] = _toLibraryChoice(choice);
-      if (choice == LanSyncConflictChoice.keepLocal) keptLocal++;
+      if (!force && choice == LanSyncConflictChoice.keepLocal) keptLocal++;
     }
     final LibrarySyncApplyResult result;
     try {

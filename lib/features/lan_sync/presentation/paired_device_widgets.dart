@@ -67,7 +67,7 @@ class PairedDevicesSection extends StatelessWidget {
               ],
             ),
             Text(
-              state.started ? '两端打开后自动同步；手机仅在 Wi-Fi 下低频发现，电脑优先发起。也可手动双向同步、拉取或推送。' : '正在准备自动发现服务…',
+              state.started ? '两端打开后自动单向推送；手机仅在 Wi-Fi 下低频发现，电脑优先发起。也可手动拉取或推送。' : '正在准备自动发现服务…',
               style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
             ),
             if (supportsScanner && !state.pairingBusy) ...<Widget>[
@@ -242,12 +242,6 @@ class _PairedDeviceTile extends StatelessWidget {
             spacing: AppSpacing.compact,
             runSpacing: AppSpacing.unit,
             children: <Widget>[
-              FilledButton.tonal(
-                key: Key('device-sync-bidirectional-${device.deviceId}'),
-                style: compactButtonStyle,
-                onPressed: actionsEnabled && device.canReceive && device.canSend ? () => onSync(PairedSyncOperation.bidirectional) : null,
-                child: const Text('同步'),
-              ),
               OutlinedButton(
                 key: Key('device-sync-pull-${device.deviceId}'),
                 style: compactButtonStyle,
@@ -286,6 +280,7 @@ class _PairingPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final offer = state.pairingOffer;
+    final colorScheme = Theme.of(context).colorScheme;
     return DecoratedBox(
       decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerLow, borderRadius: AppRadii.detailControl),
       child: Padding(
@@ -300,7 +295,7 @@ class _PairingPanel extends StatelessWidget {
               Text('扫描以配对', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: AppSpacing.regular),
               ColoredBox(
-                color: Colors.white,
+                color: colorScheme.surface,
                 child: Padding(
                   padding: const EdgeInsets.all(AppSpacing.compact),
                   child: QrImageView(
@@ -308,6 +303,9 @@ class _PairingPanel extends StatelessWidget {
                     data: LanPairingQrPayload.encode(offer),
                     version: QrVersions.auto,
                     size: 220,
+                    backgroundColor: colorScheme.surface,
+                    eyeStyle: QrEyeStyle(color: colorScheme.onSurface),
+                    dataModuleStyle: QrDataModuleStyle(color: colorScheme.onSurface),
                   ),
                 ),
               ),
@@ -407,7 +405,7 @@ class DeviceSettingsSheet extends ConsumerWidget {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('书架与阅读进度'),
-              subtitle: const Text('智能合并更新，不同步删除'),
+              subtitle: const Text('单向同步，发送端覆盖本机数据'),
               value: device.syncBookshelf,
               onChanged: (value) => controller.updateDeviceSettings(device.deviceId, syncBookshelf: value),
             ),

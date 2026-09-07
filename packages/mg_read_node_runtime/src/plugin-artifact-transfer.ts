@@ -180,24 +180,27 @@ export class PluginArtifactTransferManager {
     incoming: readonly PluginTransferArtifact[],
     installed: readonly { readonly id: string; readonly activeVersion: string | null; readonly pendingVersion: string | null }[],
     development: readonly { readonly fingerprint: string; readonly id: string; readonly syncRevision: number }[] = [],
+    forceUpgradeIds: ReadonlySet<string> = new Set(),
   ): readonly PluginTransferPlanItem[] {
     validateArtifactBatch(incoming);
-    return this.#planVersions(incoming, installed, development);
+    return this.#planVersions(incoming, installed, development, forceUpgradeIds);
   }
 
   planOffers(
     incoming: readonly PluginTransferOffer[],
     installed: readonly { readonly id: string; readonly activeVersion: string | null; readonly pendingVersion: string | null }[],
     development: readonly { readonly fingerprint: string; readonly id: string; readonly syncRevision: number }[] = [],
+    forceUpgradeIds: ReadonlySet<string> = new Set(),
   ): readonly PluginTransferPlanItem[] {
     validateOfferBatch(incoming);
-    return this.#planVersions(incoming, installed, development);
+    return this.#planVersions(incoming, installed, development, forceUpgradeIds);
   }
 
   #planVersions(
-    incoming: readonly PluginTransferOffer[],
+    incoming: readonly (PluginTransferArtifact | PluginTransferOffer)[],
     installed: readonly { readonly id: string; readonly activeVersion: string | null; readonly pendingVersion: string | null }[],
     development: readonly { readonly fingerprint: string; readonly id: string; readonly syncRevision: number }[],
+    forceUpgradeIds: ReadonlySet<string>,
   ): readonly PluginTransferPlanItem[] {
     const receiver = new Map(installed.map((item) => [item.id, item.activeVersion ?? item.pendingVersion]));
     const receiverDevelopment = new Map(development.map((item) => [item.id, item]));
@@ -205,14 +208,15 @@ export class PluginArtifactTransferManager {
       const current = receiver.get(artifact.id) ?? null;
       const liveDevelopment = receiverDevelopment.get(artifact.id);
       if (liveDevelopment !== undefined) {
-        // A live development project is the receiver's source of truth for
-        // this ID. Only the exact same development build can be treated as
-        // already present; installed packages and other development builds
-        // must never replace it, even when their SemVer is higher.
+        // Normal imports preserve a live development project. A forced sync
+        // deliberately replaces the active version with the sender's build.
         const sameBuild = artifact.provenance !== "installed" &&
           artifact.developmentFingerprint === liveDevelopment.fingerprint;
-        const action = sameBuild ? "same" : "developmentConflict";
+        const action = forceUpgradeIds.has(artifact.id) ? "upgrade" : sameBuild ? "same" : "developmentConflict";
         return Object.freeze({ action, id: artifact.id, receiverVersion: current, version: artifact.version });
+      }
+      if (current !== null && forceUpgradeIds.has(artifact.id)) {
+        return Object.freeze({ action: "upgrade", id: artifact.id, receiverVersion: current, version: artifact.version });
       }
       if (artifact.provenance !== "installed") {
         const currentDevelopment = current === null ? undefined : parseDevelopmentVersion(current);

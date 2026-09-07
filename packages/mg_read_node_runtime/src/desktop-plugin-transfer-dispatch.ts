@@ -71,12 +71,19 @@ export async function dispatchPluginTransferPlan(
   requestError: RequestError,
 ): Promise<PluginTransferDispatchResult> {
   const raw = request.params.artifacts;
-  if (!Array.isArray(raw) || Object.keys(request.params).length !== 1) {
+  const rawForce = request.params.forceUpgradeIds;
+  if (!Array.isArray(raw) ||
+      (rawForce !== undefined && (!Array.isArray(rawForce) || rawForce.some((value) => typeof value !== "string"))) ||
+      Object.keys(request.params).some((key) => key !== "artifacts" && key !== "forceUpgradeIds")) {
     return { error: requestError(request, "invalid_request", "The plugin transfer plan request is invalid.") };
   }
   try {
     if (manager === undefined) throw new PluginTransferError("plugin_not_found");
-    return { result: await manager.planPluginTransfer(raw as PluginTransferArtifact[]) };
+    const forceUpgradeIds = new Set((rawForce ?? []) as string[]);
+    if (forceUpgradeIds.size !== (rawForce ?? []).length) {
+      return { error: requestError(request, "invalid_request", "The plugin transfer plan request is invalid.") };
+    }
+    return { result: await manager.planPluginTransfer(raw as PluginTransferArtifact[], forceUpgradeIds) };
   } catch (error) { return failure(request, error, requestError); }
 }
 
@@ -86,12 +93,19 @@ export async function dispatchPluginTransferOfferPlan(
   requestError: RequestError,
 ): Promise<PluginTransferDispatchResult> {
   const raw = request.params.offers;
-  if (!Array.isArray(raw) || Object.keys(request.params).length !== 1) {
+  const rawForce = request.params.forceUpgradeIds;
+  if (!Array.isArray(raw) ||
+      (rawForce !== undefined && (!Array.isArray(rawForce) || rawForce.some((value) => typeof value !== "string"))) ||
+      Object.keys(request.params).some((key) => key !== "offers" && key !== "forceUpgradeIds")) {
     return { error: requestError(request, "invalid_request", "The plugin transfer offer plan request is invalid.") };
   }
   try {
     if (manager === undefined) throw new PluginTransferError("plugin_not_found");
-    return { result: await manager.planPluginTransferOffers(raw as PluginTransferOffer[]) };
+    const forceUpgradeIds = new Set((rawForce ?? []) as string[]);
+    if (forceUpgradeIds.size !== (rawForce ?? []).length) {
+      return { error: requestError(request, "invalid_request", "The plugin transfer offer plan request is invalid.") };
+    }
+    return { result: await manager.planPluginTransferOffers(raw as PluginTransferOffer[], forceUpgradeIds) };
   } catch (error) { return failure(request, error, requestError); }
 }
 

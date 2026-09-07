@@ -84,5 +84,5 @@ final class _PendingWakeRequest {
 
   final String deviceId;
   final PairedSyncDiagnosticSession diagnostics;
-  final Completer<PairedSyncRunSummary> completion = Completer<PairedSyncRunSummary>();
+  final PairedSyncCompletion<PairedSyncRunSummary> completion = PairedSyncCompletion<PairedSyncRunSummary>();
 }

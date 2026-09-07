@@ -49,6 +49,7 @@ final class _FinishingGateway implements LanSyncGateway {
     required Map<String, LanSyncConflictChoice> conflictChoices,
     required Set<String> availablePluginIds,
     required LanSyncPluginImportResult pluginResult,
+    bool force = false,
   }) async => _unused();
 
   @override
@@ -68,8 +69,9 @@ final class _FinishingGateway implements LanSyncGateway {
   Future<Stream<List<int>>> openPluginArchive(LanSyncPluginDescriptor plugin) async => _unused();
 
   @override
-  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins) async => _unused();
+  Future<void> preparePluginImports(List<LanSyncPluginDescriptor> plugins, {Set<String> forceUpgradePluginIds = const <String>{}}) async =>
+      _unused();
 
   @override
-  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest) async => _unused();
+  Future<LanSyncImportPreview> previewImport(LanSyncManifest manifest, {bool force = false}) async => _unused();
 }

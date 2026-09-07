@@ -133,8 +133,9 @@ final class _DesktopPluginArtifactIo {
 
   Future<List<PluginTransferImportResult>> importArtifacts(
     List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
-    artifacts,
-  ) async {
+    artifacts, {
+    Set<String> forceUpgradePluginIds = const <String>{},
+  }) async {
     _assertOpen();
     _validateBatch(artifacts);
     final inbox = _inbox();
@@ -143,6 +144,8 @@ final class _DesktopPluginArtifactIo {
       method: 'plugins.transfer.plan.v2',
       params: <String, Object?>{
         'artifacts': artifacts.map((item) => item.artifact.toJson()).toList(),
+        if (forceUpgradePluginIds.isNotEmpty)
+          'forceUpgradeIds': forceUpgradePluginIds.toList(growable: false),
       },
       timeout: const Duration(minutes: 2),
     );

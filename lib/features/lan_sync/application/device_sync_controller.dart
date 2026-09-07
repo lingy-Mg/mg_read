@@ -20,6 +20,9 @@ import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
+import 'package:mg_read/features/lan_sync/application/lan_sync_session.dart';
+import 'package:mg_read/features/lan_sync/application/lan_sync_screen_awake.dart';
+import 'package:mg_read/features/lan_sync/application/paired_sync_completion.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_network_environment.dart';
 import 'package:mg_read/features/lan_sync/application/paired_device_repository.dart';
 import 'package:mg_read/features/lan_sync/application/paired_sync_failure.dart';
@@ -107,6 +110,8 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
       final saved = await devices.list();
       _identity = identity;
       if (!_foregroundDesired || _disposed) return;
+      state = state.copyWith(devices: saved);
+      if (saved.isNotEmpty) _startNetworkMonitor();
       if (saved.isNotEmpty) {
         _networkAvailable = await _readNetworkAvailability();
         if (_networkAvailable) await _ensureHost();
@@ -125,7 +130,6 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
                   : '等待可用局域网连接后自动同步'
             : null,
       );
-      if (saved.isNotEmpty) _startNetworkMonitor();
     } on Object catch (error, stackTrace) {
       _startFuture = null;
       if (!_disposed) {
@@ -302,7 +306,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
     await reloadDevices();
   }
 
-  Future<void> syncNow(String deviceId, {PairedSyncOperation operation = PairedSyncOperation.bidirectional}) async {
+  Future<void> syncNow(String deviceId, {PairedSyncOperation operation = PairedSyncOperation.push}) async {
     await start();
     final device = _device(deviceId);
     if (device == null) return;
@@ -360,7 +364,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
       final endpoint = _endpoints[device.deviceId];
       if (!device.autoSync || endpoint == null || endpoint.expiresAtUtc.isBefore(now)) continue;
       if (!pushChanges && !_shouldAutomaticallyInitiate(device)) continue;
-      await _runOperation(device, endpoint, operation: PairedSyncOperation.bidirectional, automatic: true);
+      await _runOperation(device, endpoint, operation: PairedSyncOperation.push, automatic: true);
     }
   }
 
@@ -389,7 +393,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
         !_shouldAutomaticallyInitiate(device)) {
       return;
     }
-    unawaited(_runOperation(device, endpoint, operation: PairedSyncOperation.bidirectional, automatic: true));
+    unawaited(_runOperation(device, endpoint, operation: PairedSyncOperation.push, automatic: true));
   }
 
   Future<void> _persistDiscoveredLabel(PairedDevice device) async {
@@ -409,7 +413,8 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
   Future<void> _recordResult(PairedDevice device, PairedSyncResultState result) async {
     await _serializeRepositoryMutation(() async {
       final repository = ref.read(pairedDeviceRepositoryProvider);
-      final latest = await repository.read(device.deviceId) ?? device;
+      final latest = await repository.read(device.deviceId);
+      if (latest == null) return;
       final now = DateTime.now().toUtc();
       await repository.upsert(latest.copyWith(label: device.label, lastSeenAtUtc: now, lastSyncAtUtc: now, lastSyncResult: result));
     });
@@ -477,7 +482,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
           !_shouldAutomaticallyInitiate(device)) {
         return;
       }
-      unawaited(_runOperation(device, endpoint, operation: PairedSyncOperation.bidirectional, automatic: true));
+      unawaited(_runOperation(device, endpoint, operation: PairedSyncOperation.push, automatic: true));
     });
   }
 

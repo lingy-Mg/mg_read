@@ -270,32 +270,18 @@ export class PluginManager {
   }
 
   /** Compares sender SemVer against this Runtime's installed versions. */
-  async planPluginTransfer(incoming: readonly PluginTransferArtifact[]): Promise<readonly PluginTransferPlanItem[]> {
+  async planPluginTransfer(incoming: readonly PluginTransferArtifact[], forceUpgradeIds: ReadonlySet<string> = new Set()): Promise<readonly PluginTransferPlanItem[]> {
     await this.initialize();
     await this.#development.ensureAllLoaded();
-    return this.#pluginTransfer.plan(
-      incoming,
-      this.#combinedSnapshots(),
-      [...this.#development.loadedValues()].map((plugin) => ({
-        fingerprint: plugin.fingerprint,
-        id: plugin.loaded.descriptor.id,
-        syncRevision: plugin.syncRevision,
-      })),
-    );
+    const development = [...this.#development.loadedValues()].map((plugin) => ({ fingerprint: plugin.fingerprint, id: plugin.loaded.descriptor.id, syncRevision: plugin.syncRevision }));
+    return this.#pluginTransfer.plan(incoming, this.#combinedSnapshots(), development, forceUpgradeIds);
   }
 
-  async planPluginTransferOffers(incoming: readonly PluginTransferOffer[]): Promise<readonly PluginTransferPlanItem[]> {
+  async planPluginTransferOffers(incoming: readonly PluginTransferOffer[], forceUpgradeIds: ReadonlySet<string> = new Set()): Promise<readonly PluginTransferPlanItem[]> {
     await this.initialize();
     await this.#development.ensureAllLoaded();
-    return this.#pluginTransfer.planOffers(
-      incoming,
-      this.#combinedSnapshots(),
-      [...this.#development.loadedValues()].map((plugin) => ({
-        fingerprint: plugin.fingerprint,
-        id: plugin.loaded.descriptor.id,
-        syncRevision: plugin.syncRevision,
-      })),
-    );
+    const development = [...this.#development.loadedValues()].map((plugin) => ({ fingerprint: plugin.fingerprint, id: plugin.loaded.descriptor.id, syncRevision: plugin.syncRevision }));
+    return this.#pluginTransfer.planOffers(incoming, this.#combinedSnapshots(), development, forceUpgradeIds);
   }
 
   /** Creates a one-shot Runtime-private resource for bounded artifact streaming. */

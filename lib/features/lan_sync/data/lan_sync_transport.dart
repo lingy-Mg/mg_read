@@ -1,24 +1,17 @@
-/// 局域网同步 v2 前台传输实现。
+/// 临时扫码同步的 HTTP 传输实现。
 ///
-/// 职责：
-/// - 提供发现、配对、有界控制帧和原样二进制 artifact 流。
-/// - 在握手阶段明确拒绝不兼容协议版本。
-///
-/// 注意：连接、计时器和流必须在完成、失败或取消时释放。
-/// - Android 的 Dart Socket 不支持 reusePort，发现套接字不得启用该选项。
-///
+/// UDP 仅广播端点；配对确认、manifest、选择和完成状态使用 JSON HTTP API，
+/// 插件制品通过独立 GET 及标准 Range/ETag/If-Range 传输。
 library;
 
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 
+import 'package:mg_read/features/lan_sync/data/lan_sync_http_artifact.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
-
-part 'lan_sync_manifest_codec.dart';
 
 typedef LanSyncPluginStreamOpener = Future<Stream<List<int>>> Function(LanSyncPluginDescriptor plugin);
 
@@ -39,8 +32,12 @@ final class LanSyncSenderPairing extends LanSyncSenderEvent {
 
 final class LanSyncSenderProgress extends LanSyncSenderEvent {
   const LanSyncSenderProgress(this.completedBytes, this.totalBytes);
-  final int completedBytes;
-  final int totalBytes;
+  final int completedBytes, totalBytes;
+}
+
+final class LanSyncSenderActivity extends LanSyncSenderEvent {
+  const LanSyncSenderActivity(this.active);
+  final bool active;
 }
 
 final class LanSyncSenderDone extends LanSyncSenderEvent {
@@ -58,69 +55,54 @@ final class LanSyncTransportException implements Exception {
   const LanSyncTransportException(this.code, {this.reason});
   final String code;
   final String? reason;
-
   @override
   String toString() => reason == null ? 'LanSyncTransportException($code)' : 'LanSyncTransportException($code, reason: $reason)';
 }
 
 final class LanSyncDiscoveryService {
   LanSyncDiscoveryService._(this._socket, this._controller);
-
   final RawDatagramSocket _socket;
   final StreamController<LanSyncPeer> _controller;
-  final Map<String, DateTime> _seen = <String, DateTime>{};
-
+  final Map<String, DateTime> _seen = {};
   Stream<LanSyncPeer> get peers => _controller.stream;
-
   static Future<LanSyncDiscoveryService> start() async {
     final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, lanSyncDiscoveryPort, reuseAddress: true);
     final controller = StreamController<LanSyncPeer>.broadcast();
-    final service = LanSyncDiscoveryService._(socket, controller);
-    socket.listen(service._onEvent, onError: (_) {});
-    return service;
+    final result = LanSyncDiscoveryService._(socket, controller);
+    socket.listen(result._onEvent, onError: (_) {});
+    return result;
   }
 
   void _onEvent(RawSocketEvent event) {
     if (event != RawSocketEvent.read) return;
-    Datagram? datagram;
-    while ((datagram = _socket.receive()) != null) {
+    Datagram? d;
+    while ((d = _socket.receive()) != null) {
       try {
-        final bytes = datagram!.data;
-        if (bytes.length > 1024) continue;
-        final decoded = jsonDecode(utf8.decode(bytes));
-        if (decoded is! Map || decoded['kind'] != 'mgread-lan-sync') continue;
-        final version = decoded['protocolVersion'];
-        final sessionId = decoded['sessionId'];
-        final label = decoded['label'];
-        final port = decoded['port'];
-        final expiresAtRaw = decoded['expiresAtUtc'];
-        if (version != lanSyncProtocolVersion ||
-            sessionId is! String ||
-            sessionId.isEmpty ||
-            sessionId.length > 128 ||
+        final raw = jsonDecode(utf8.decode(d!.data));
+        if (raw is! Map ||
+            raw['kind'] != 'mgread-lan-sync' ||
+            raw['protocolVersion'] != lanSyncProtocolVersion ||
+            raw['transport'] != 'http') {
+          continue;
+        }
+        final session = raw['sessionId'],
+            label = raw['label'],
+            port = raw['port'],
+            expires = DateTime.tryParse(raw['expiresAtUtc']?.toString() ?? '')?.toUtc();
+        if (session is! String ||
             label is! String ||
-            label.isEmpty ||
-            label.length > 128 ||
             port is! int ||
             port < 1 ||
             port > 65535 ||
-            expiresAtRaw is! String) {
+            expires == null ||
+            !expires.isAfter(DateTime.now().toUtc())) {
           continue;
         }
-        final expiresAt = DateTime.tryParse(expiresAtRaw)?.toUtc();
-        if (expiresAt == null || !expiresAt.isAfter(DateTime.now().toUtc())) {
-          continue;
-        }
-        final key = '$sessionId|${datagram.address.address}|$port';
-        final last = _seen[key];
+        final key = '$session|${d.address.address}|$port';
         final now = DateTime.now().toUtc();
-        if (last != null && now.difference(last) < const Duration(seconds: 1)) {
-          continue;
-        }
+        if (_seen[key] case final last? when now.difference(last) < const Duration(seconds: 1)) continue;
         _seen[key] = now;
-        _controller.add(
-          LanSyncPeer(sessionId: sessionId, label: label, address: datagram.address.address, port: port, expiresAtUtc: expiresAt),
-        );
+        _controller.add(LanSyncPeer(sessionId: session, label: label, address: d.address.address, port: port, expiresAtUtc: expires));
       } on Object {
         // Discovery packets are untrusted and malformed packets are ignored.
       }
@@ -139,290 +121,216 @@ final class LanSyncSenderService {
     required this.manifest,
     required this.openPlugin,
     required this._server,
-    required this._announcementSocket,
+    required RawDatagramSocket socket,
     required this._addresses,
-  });
-
+  }) : _announcementSocket = socket;
   final String sessionId;
   final LanSyncManifest manifest;
   final LanSyncPluginStreamOpener openPlugin;
-  final ServerSocket _server;
+  final HttpServer _server;
   final RawDatagramSocket _announcementSocket;
   final List<String> _addresses;
   final StreamController<LanSyncSenderEvent> _events = StreamController<LanSyncSenderEvent>.broadcast();
-  Timer? _announcementTimer;
-  Timer? _expiryTimer;
-  Socket? _activeSocket;
-  bool _closed = false;
-
+  final Map<String, LanSyncHttpArtifact> _artifacts = {};
+  Timer? _announcementTimer, _expiryTimer;
+  String? _pairingCode;
+  bool _closed = false, _active = false;
+  int _sent = 0, _total = 0;
   Stream<LanSyncSenderEvent> get events => _events.stream;
   int get port => _server.port;
   List<String> get addresses => List.unmodifiable(_addresses);
-
   static Future<LanSyncSenderService> start({required LanSyncManifest manifest, required LanSyncPluginStreamOpener openPlugin}) async {
-    final sessionId = _randomToken(18);
-    final server = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
-    final announcementSocket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-    announcementSocket.broadcastEnabled = true;
-    final addresses = await eligibleLanSyncAddresses();
-    final service = LanSyncSenderService._(
-      sessionId: sessionId,
+    final server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
+    final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+    socket.broadcastEnabled = true;
+    final result = LanSyncSenderService._(
+      sessionId: _randomToken(18),
       manifest: manifest,
       openPlugin: openPlugin,
       server: server,
-      announcementSocket: announcementSocket,
-      addresses: addresses,
+      socket: socket,
+      addresses: await eligibleLanSyncAddresses(),
     );
-    service._start();
-    return service;
+    result._start();
+    return result;
   }
 
   void _start() {
-    _events.add(LanSyncSenderReady(_addresses, _server.port));
+    _events.add(LanSyncSenderReady(_addresses, port));
+    _server.listen(_handle, onError: (Object e, StackTrace s) => _fail('lan_sync_listen_failed', e, s));
     _announce();
     _announcementTimer = Timer.periodic(const Duration(seconds: 1), (_) => _announce());
-    _expiryTimer = Timer(lanSyncSessionLifetime, () {
-      _fail('lan_sync_session_expired');
-    });
-    _server.listen(_accept, onError: (_) => _fail('lan_sync_listen_failed'), cancelOnError: false);
+    _expiryTimer = Timer(lanSyncSessionLifetime, () => _fail('lan_sync_session_expired'));
   }
 
   void _announce() {
     if (_closed) return;
-    final message = utf8.encode(
-      jsonEncode(<String, Object?>{
+    final bytes = utf8.encode(
+      jsonEncode({
         'kind': 'mgread-lan-sync',
         'protocolVersion': lanSyncProtocolVersion,
+        'transport': 'http',
         'sessionId': sessionId,
         'label': Platform.isWindows
             ? 'Windows 设备'
             : Platform.isMacOS
             ? 'Mac 设备'
             : 'Android 设备',
-        'port': _server.port,
+        'port': port,
         'expiresAtUtc': DateTime.now().toUtc().add(lanSyncSessionLifetime).toIso8601String(),
       }),
     );
     try {
-      _announcementSocket.send(message, InternetAddress('255.255.255.255'), lanSyncDiscoveryPort);
+      _announcementSocket.send(bytes, InternetAddress('255.255.255.255'), lanSyncDiscoveryPort);
     } on Object {
-      // Manual address entry remains available if broadcast is unavailable.
+      // Best-effort broadcast can be unavailable on a network adapter.
     }
   }
 
-  Future<void> _accept(Socket socket) async {
-    if (_closed || _activeSocket != null || !_isEligiblePeer(socket.remoteAddress)) {
-      socket.destroy();
-      return;
-    }
-    _activeSocket = socket;
-    final connection = LanSyncFramedConnection(socket);
+  Future<void> _handle(HttpRequest request) async {
+    var authenticated = false;
     try {
-      final hello = await connection.readControl().timeout(lanSyncHandshakeTimeout);
-      if (hello['type'] == 'hello' && hello['protocolVersion'] != lanSyncProtocolVersion) {
-        await connection.sendControl(<String, Object?>{'type': 'incompatible', 'protocolVersion': lanSyncProtocolVersion});
-        throw const LanSyncTransportException('lan_sync_protocol_incompatible');
+      if (!_eligiblePeer(request.connectionInfo?.remoteAddress)) {
+        return await _respond(request.response, HttpStatus.forbidden, {'error': 'not_private'});
       }
-      if (hello['type'] != 'hello' || hello['sessionId'] != sessionId || !_isNonce(hello['clientNonce'])) {
-        throw const LanSyncTransportException('lan_sync_handshake_invalid');
-      }
-      final serverNonce = _randomToken(16);
-      final code = _pairingCode('$sessionId|${hello['clientNonce']}|$serverNonce');
-      await connection.sendControl(<String, Object?>{'type': 'pair', 'serverNonce': serverNonce, 'code': code});
-      _events.add(LanSyncSenderPairing(code));
-      final remoteConfirm = await connection.readControl().timeout(lanSyncHandshakeTimeout);
-      if (remoteConfirm['type'] != 'confirm' || remoteConfirm['code'] != code) {
-        throw const LanSyncTransportException('lan_sync_pairing_rejected');
-      }
-      await connection.sendControl(<String, Object?>{'type': 'confirmed', 'code': code});
-      await connection.sendControl(<String, Object?>{'type': 'manifest', 'value': manifest.toJson()}, maxBytes: lanSyncMaxManifestBytes);
-      final selection = await connection.readControl();
-      if (selection['type'] != 'selection' || selection['pluginIds'] is! List) {
-        throw const LanSyncTransportException('lan_sync_selection_invalid');
-      }
-      final rawSelection = selection['pluginIds']! as List<Object?>;
-      final rawShelfSelection = selection['shelfItemIds'];
-      if (rawShelfSelection != null && rawShelfSelection is! List) {
-        throw const LanSyncTransportException('lan_sync_selection_invalid');
-      }
-      if (rawSelection.any((value) => value is! String)) {
-        throw const LanSyncTransportException('lan_sync_selection_invalid');
-      }
-      final selectedShelfItemIds = rawShelfSelection == null
-          ? <String>{for (final item in manifest.shelfItems) item.identity}
-          : <String>{
-              for (final value in rawShelfSelection as List<Object?>)
-                if (value is String) value,
-            };
-      if (rawShelfSelection is List &&
-          (rawShelfSelection.length > lanSyncMaxShelfItemCount ||
-              rawShelfSelection.any((value) => value is! String) ||
-              selectedShelfItemIds.length != rawShelfSelection.length)) {
-        throw const LanSyncTransportException('lan_sync_selection_invalid');
-      }
-      final selectedIds = <String>{for (final value in rawSelection) value! as String};
-      if (selectedIds.length != rawSelection.length) {
-        throw const LanSyncTransportException('lan_sync_selection_invalid');
-      }
-      final availableShelfItemIds = <String>{for (final item in manifest.shelfItems) item.identity};
-      if (!availableShelfItemIds.containsAll(selectedShelfItemIds)) {
-        throw const LanSyncTransportException('lan_sync_selection_invalid');
-      }
-      final selected = manifest.plugins.where((item) => item.transferable && selectedIds.contains(item.id)).toList(growable: false);
-      if (selected.length != selectedIds.length) {
-        throw const LanSyncTransportException('lan_sync_selection_invalid');
-      }
-      var completedBytes = 0;
-      final totalBytes = selected.fold<int>(0, (sum, item) => sum + item.bytes);
-      for (final plugin in selected) {
-        await connection.sendControl(<String, Object?>{'type': 'pluginBegin', 'plugin': plugin.toJson()});
-        var pluginBytes = 0;
-        await for (final rawChunk in await openPlugin(plugin)) {
-          if (rawChunk.isEmpty) continue;
-          for (var offset = 0; offset < rawChunk.length;) {
-            final end = min(rawChunk.length, offset + lanSyncPluginRelayChunkBytes);
-            final chunk = Uint8List.fromList(rawChunk.sublist(offset, end));
-            await connection.sendBinary(chunk);
-            pluginBytes += chunk.length;
-            completedBytes += chunk.length;
-            _events.add(LanSyncSenderProgress(completedBytes, totalBytes));
-            offset = end;
-          }
+      if (request.method == 'POST' && request.uri.path == '/v3/pair') {
+        final body = await _jsonBody(request);
+        if (body['sessionId'] != sessionId || !_validNonce(body['clientNonce'])) {
+          throw const LanSyncTransportException('lan_sync_handshake_invalid');
         }
-        if (pluginBytes != plugin.bytes) {
-          throw const LanSyncTransportException('lan_sync_plugin_size_mismatch');
+        final serverNonce = _randomToken(16);
+        final code = _derivePairingCode('$sessionId|${body['clientNonce']}|$serverNonce');
+        _pairingCode = code;
+        _events.add(LanSyncSenderPairing(code));
+        return await _respond(request.response, HttpStatus.ok, {'serverNonce': serverNonce, 'pairingCode': code});
+      }
+      if (request.headers.value('x-mgread-session') != _pairingCode) {
+        return await _respond(request.response, HttpStatus.unauthorized, {'error': 'pairing_required'});
+      }
+      authenticated = true;
+      if (request.method == 'POST' && request.uri.path == '/v3/manifest') {
+        return await _respond(request.response, HttpStatus.ok, {'manifest': manifest.toJson()});
+      }
+      if (request.method == 'POST' && request.uri.path == '/v3/selection') {
+        final body = await _jsonBody(request);
+        final raw = body['pluginIds'];
+        final shelf = body['shelfItemIds'];
+        if (raw is! List || shelf is! List || raw.any((e) => e is! String) || shelf.any((e) => e is! String)) {
+          throw const LanSyncTransportException('lan_sync_selection_invalid');
         }
-        await connection.sendControl(<String, Object?>{'type': 'pluginEnd', 'pluginId': plugin.id, 'bytes': pluginBytes});
+        final ids = raw.cast<String>().toSet();
+        final selected = manifest.plugins.where((p) => ids.contains(p.id)).toList();
+        if (selected.length != ids.length) throw const LanSyncTransportException('lan_sync_selection_invalid');
+        _setActive(true);
+        _total = selected.fold(0, (n, p) => n + p.bytes);
+        for (final plugin in selected) {
+          final artifact = await LanSyncHttpArtifact.materialize(plugin, await openPlugin(plugin));
+          _artifacts[plugin.id] = artifact;
+        }
+        return await _respond(request.response, HttpStatus.ok, {'plugins': selected.map((p) => p.toJson()).toList()});
       }
-      await connection.sendControl(<String, Object?>{'type': 'transferComplete', 'pluginCount': selected.length, 'bytes': completedBytes});
-      _events.add(const LanSyncSenderDone());
-      await close();
-    } on TimeoutException catch (error, stackTrace) {
-      await connection.close();
-      _activeSocket = null;
-      if (!_closed) {
-        _events.add(LanSyncSenderFailed('lan_sync_timeout', error: error, stackTrace: stackTrace));
+      final parts = request.uri.pathSegments;
+      if (request.method == 'GET' && parts.length == 3 && parts[0] == 'v3' && parts[1] == 'artifacts') {
+        final artifact = _artifacts[Uri.decodeComponent(parts[2])];
+        if (artifact == null) throw const LanSyncTransportException('lan_sync_plugin_unexpected');
+        await artifact.serve(request);
+        _sent += artifact.descriptor.bytes;
+        _events.add(LanSyncSenderProgress(_sent, _total));
+        return;
       }
-    } on LanSyncTransportException catch (error, stackTrace) {
-      await connection.close();
-      _activeSocket = null;
-      if (!_closed) _events.add(LanSyncSenderFailed(error.code, error: error, stackTrace: stackTrace));
-    } on Object catch (error, stackTrace) {
-      await connection.close();
-      _activeSocket = null;
-      if (!_closed) {
-        _events.add(LanSyncSenderFailed('lan_sync_transport_failed', error: error, stackTrace: stackTrace));
+      if (request.method == 'POST' && request.uri.path == '/v3/complete') {
+        _events.add(const LanSyncSenderDone());
+        await _respond(request.response, HttpStatus.noContent, null);
+        await close();
+        return;
+      }
+      return await _respond(request.response, HttpStatus.notFound, {'error': 'not_found'});
+    } on Object catch (e, s) {
+      if (authenticated) {
+        _fail(e is LanSyncTransportException ? e.code : 'lan_sync_http_failed', e, s);
+      }
+      try {
+        await _respond(request.response, HttpStatus.badRequest, {'error': e.toString()});
+      } on Object {
+        // The peer may disconnect before an error response is written.
       }
     }
   }
 
-  void _fail(String code) {
+  void _setActive(bool value) {
+    if (_active == value) return;
+    _active = value;
+    _events.add(LanSyncSenderActivity(value));
+  }
+
+  void _fail(String code, [Object? error, StackTrace? stack]) {
     if (_closed) return;
-    _events.add(LanSyncSenderFailed(code));
+    _events.add(LanSyncSenderFailed(code, error: error, stackTrace: stack));
     unawaited(close());
   }
 
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    _setActive(false);
     _announcementTimer?.cancel();
     _expiryTimer?.cancel();
     _announcementSocket.close();
-    _activeSocket?.destroy();
-    await _server.close();
+    for (final artifact in _artifacts.values) {
+      await artifact.close();
+    }
+    _artifacts.clear();
+    await _server.close(force: true);
     await _events.close();
   }
 }
 
 final class LanSyncReceiverConnection {
-  LanSyncReceiverConnection._(this._connection, this.pairingCode, this.peer);
-
-  final LanSyncFramedConnection _connection;
+  LanSyncReceiverConnection._(this.pairingCode, this.peer, this._client, this._base);
   final String pairingCode;
   final LanSyncPeer peer;
-  bool _closed = false;
+  final HttpClient _client;
+  final Uri _base;
   LanSyncManifest? _manifest;
-
+  bool _closed = false;
   static Future<LanSyncReceiverConnection> connect(LanSyncPeer peer, {Duration timeout = lanSyncHandshakeTimeout}) async {
-    if (!isLanSyncPrivateIpv4(peer.address)) {
-      throw const LanSyncTransportException('lan_sync_address_not_private');
-    }
-    LanSyncFramedConnection? connection;
+    if (!isLanSyncPrivateIpv4(peer.address)) throw const LanSyncTransportException('lan_sync_address_not_private');
+    final client = HttpClient();
     try {
-      final socket = await Socket.connect(peer.address, peer.port, timeout: timeout);
-      connection = LanSyncFramedConnection(socket);
-      final clientNonce = _randomToken(16);
-      await connection.sendControl(<String, Object?>{
-        'type': 'hello',
-        'protocolVersion': lanSyncProtocolVersion,
+      final base = Uri.parse('http://${peer.address}:${peer.port}');
+      final nonce = _randomToken(16);
+      final result = await _request(client, base.resolve('/v3/pair'), {
         'sessionId': peer.sessionId,
-        'clientNonce': clientNonce,
-      });
-      final pair = await connection.readControl().timeout(timeout);
-      if (pair['type'] == 'incompatible') {
-        throw const LanSyncTransportException('lan_sync_protocol_incompatible');
-      }
-      if (pair['type'] != 'pair' || !_isNonce(pair['serverNonce']) || pair['code'] is! String) {
-        throw const LanSyncTransportException('lan_sync_handshake_invalid');
-      }
-      final expected = _pairingCode('${peer.sessionId}|$clientNonce|${pair['serverNonce']}');
-      if (pair['code'] != expected) {
-        throw const LanSyncTransportException('lan_sync_pairing_invalid');
-      }
-      return LanSyncReceiverConnection._(connection, expected, peer);
+        'clientNonce': nonce,
+      }, null).timeout(timeout);
+      final serverNonce = result['serverNonce'];
+      final code = result['pairingCode'];
+      final expected = _derivePairingCode('${peer.sessionId}|$nonce|$serverNonce');
+      if (!_validNonce(serverNonce) || code != expected) throw const LanSyncTransportException('lan_sync_pairing_invalid');
+      return LanSyncReceiverConnection._(expected, peer, client, base);
     } on Object {
-      await connection?.close();
+      client.close(force: true);
       rethrow;
     }
   }
 
   static Future<LanSyncReceiverConnection> connectAny(Iterable<LanSyncPeer> peers) async {
-    final candidates = <LanSyncPeer>[];
-    final endpoints = <String>{};
-    for (final peer in peers) {
-      if (endpoints.add('${peer.address}:${peer.port}')) candidates.add(peer);
+    Object? last;
+    for (final peer in peers.take(lanSyncMaxCandidateAddresses)) {
+      try {
+        return await connect(peer, timeout: const Duration(seconds: 5));
+      } on Object catch (e) {
+        last = e;
+      }
     }
-    if (candidates.isEmpty || candidates.length > lanSyncMaxCandidateAddresses) {
-      throw const LanSyncTransportException('lan_sync_connect_failed');
-    }
-
-    final result = Completer<LanSyncReceiverConnection>();
-    var remaining = candidates.length;
-    LanSyncTransportException? incompatibleProtocol;
-    for (final peer in candidates) {
-      unawaited(() async {
-        try {
-          final connection = await connect(peer, timeout: const Duration(seconds: 5));
-          if (!result.isCompleted) {
-            result.complete(connection);
-          } else {
-            await connection.close();
-          }
-        } on Object catch (error) {
-          if (error is LanSyncTransportException && error.code == 'lan_sync_protocol_incompatible') {
-            incompatibleProtocol = error;
-          }
-          remaining--;
-          if (remaining == 0 && !result.isCompleted) {
-            result.completeError(incompatibleProtocol ?? const LanSyncTransportException('lan_sync_connect_failed'));
-          }
-        }
-      }());
-    }
-    return result.future.timeout(
-      const Duration(seconds: 6),
-      onTimeout: () => throw const LanSyncTransportException('lan_sync_connect_failed'),
-    );
+    throw last ?? const LanSyncTransportException('lan_sync_connect_failed');
   }
 
   Future<LanSyncManifest> confirmAndReadManifest() async {
-    await _connection.sendControl(<String, Object?>{'type': 'confirm', 'code': pairingCode});
-    final confirmed = await _connection.readControl().timeout(lanSyncHandshakeTimeout);
-    if (confirmed['type'] != 'confirmed' || confirmed['code'] != pairingCode) {
-      throw const LanSyncTransportException('lan_sync_pairing_rejected');
-    }
-    final frame = await _connection.readControl(maxBytes: lanSyncMaxManifestBytes);
-    final manifest = _decodeLanSyncManifestFrame(frame);
+    final result = await _request(_client, _base.resolve('/v3/manifest'), const {}, pairingCode);
+    final raw = result['manifest'];
+    if (raw is! Map) throw const LanSyncTransportException('lan_sync_manifest_invalid');
+    final manifest = LanSyncManifest.fromJson(raw.map<String, Object?>((k, v) => MapEntry(k as String, v)));
     _manifest = manifest;
     return manifest;
   }
@@ -430,321 +338,155 @@ final class LanSyncReceiverConnection {
   Future<void> receivePlugins({
     required Set<String> pluginIds,
     Set<String>? shelfItemIds,
-    required Future<void> Function(LanSyncPluginDescriptor plugin, Stream<List<int>> bytes) importPlugin,
-    void Function(int completedBytes, int totalBytes)? onProgress,
+    required Future<void> Function(LanSyncPluginDescriptor, Stream<List<int>>) importPlugin,
+    void Function(int, int)? onProgress,
     void Function()? onPluginBytesReceived,
   }) async {
     final manifest = _manifest;
-    if (manifest == null) {
-      throw const LanSyncTransportException('lan_sync_selection_invalid');
-    }
-    final selectedShelfItemIds = shelfItemIds == null
-        ? <String>{for (final item in manifest.shelfItems) item.identity}
-        : Set<String>.of(shelfItemIds);
-    final availableShelfItemIds = <String>{for (final item in manifest.shelfItems) item.identity};
-    if (selectedShelfItemIds.length > lanSyncMaxShelfItemCount || !availableShelfItemIds.containsAll(selectedShelfItemIds)) {
-      throw const LanSyncTransportException('lan_sync_selection_invalid');
-    }
-    final selectedById = <String, LanSyncPluginDescriptor>{
-      for (final plugin in manifest.plugins)
-        if (pluginIds.contains(plugin.id)) plugin.id: plugin,
-    };
-    if (selectedById.length != pluginIds.length || selectedById.values.any((plugin) => !plugin.transferable)) {
-      throw const LanSyncTransportException('lan_sync_selection_invalid');
-    }
-    await _connection.sendControl(<String, Object?>{
-      'type': 'selection',
-      'pluginIds': pluginIds.toList(growable: false),
-      'shelfItemIds': selectedShelfItemIds.toList(growable: false),
-    });
-    var completedBytes = 0;
-    final totalBytes = selectedById.values.fold<int>(0, (sum, plugin) => sum + plugin.bytes);
-    final receivedIds = <String>{};
-    while (true) {
-      final frame = await _connection.readFrame().timeout(lanSyncTransferIdleTimeout);
-      if (frame case LanSyncControlFrame(:final value)) {
-        switch (value['type']) {
-          case 'transferComplete':
-            if (receivedIds.length != pluginIds.length ||
-                !receivedIds.containsAll(pluginIds) ||
-                value['pluginCount'] != pluginIds.length ||
-                value['bytes'] != completedBytes ||
-                completedBytes != totalBytes) {
-              throw const LanSyncTransportException('lan_sync_transfer_incomplete');
-            }
-            return;
-          case 'pluginBegin':
-            final raw = value['plugin'];
-            if (raw is! Map) {
-              throw const LanSyncTransportException('lan_sync_plugin_descriptor_invalid');
-            }
-            final plugin = LanSyncPluginDescriptor.fromJson(
-              raw.map<String, Object?>((key, value) {
-                if (key is! String) {
-                  throw const LanSyncTransportException('lan_sync_plugin_descriptor_invalid');
-                }
-                return MapEntry(key, value);
-              }),
-            );
-            if (!pluginIds.contains(plugin.id)) {
-              throw const LanSyncTransportException('lan_sync_plugin_unexpected');
-            }
-            final expected = selectedById[plugin.id]!;
-            if (!receivedIds.add(plugin.id) ||
-                plugin.version != expected.version ||
-                plugin.artifactFormat != expected.artifactFormat ||
-                plugin.bytes != expected.bytes ||
-                plugin.sha256 != expected.sha256 ||
-                !plugin.transferable) {
-              throw const LanSyncTransportException('lan_sync_plugin_descriptor_invalid');
-            }
-            final controller = StreamController<List<int>>();
-            final importFuture = importPlugin(plugin, controller.stream);
-            var pluginBytes = 0;
-            while (pluginBytes < plugin.bytes) {
-              final chunkFrame = await _connection.readFrame().timeout(lanSyncTransferIdleTimeout);
-              if (chunkFrame is! LanSyncBinaryFrame) {
-                await controller.close();
-                throw const LanSyncTransportException('lan_sync_plugin_frame_invalid');
-              }
-              pluginBytes += chunkFrame.bytes.length;
-              completedBytes += chunkFrame.bytes.length;
-              if (pluginBytes > plugin.bytes) {
-                await controller.close();
-                throw const LanSyncTransportException('lan_sync_plugin_size_mismatch');
-              }
-              controller.add(chunkFrame.bytes);
-              onProgress?.call(completedBytes, totalBytes);
-            }
-            onPluginBytesReceived?.call();
-            // Do not wait for the local Runtime before draining pluginEnd. A
-            // sender may be blocked flushing that frame while the receiver is
-            // flushing the artifact to disk, which otherwise creates a TCP
-            // back-pressure deadlock exactly at 100% network progress.
-            final streamClosed = controller.close();
-            final end = await _connection.readControl().timeout(lanSyncTransferIdleTimeout);
-            if (end['type'] != 'pluginEnd' || end['pluginId'] != plugin.id || end['bytes'] != pluginBytes) {
-              throw const LanSyncTransportException('lan_sync_plugin_size_mismatch');
-            }
-            await streamClosed.timeout(lanSyncTransferIdleTimeout);
-            await importFuture.timeout(lanSyncTransferIdleTimeout);
-          default:
-            throw const LanSyncTransportException('lan_sync_frame_unexpected');
-        }
-      } else {
-        throw const LanSyncTransportException('lan_sync_frame_unexpected');
-      }
-    }
-  }
-
-  Future<void> close() async {
-    if (_closed) return;
-    _closed = true;
-    await _connection.close();
-  }
-}
-
-sealed class LanSyncFrame {
-  const LanSyncFrame();
-}
-
-final class LanSyncControlFrame extends LanSyncFrame {
-  const LanSyncControlFrame(this.value);
-  final Map<String, Object?> value;
-}
-
-final class LanSyncBinaryFrame extends LanSyncFrame {
-  const LanSyncBinaryFrame(this.bytes);
-  final Uint8List bytes;
-}
-
-final class LanSyncFramedConnection {
-  LanSyncFramedConnection(this._socket) : _iterator = StreamIterator(_socket);
-
-  final Socket _socket;
-  final StreamIterator<Uint8List> _iterator;
-  Uint8List _buffer = Uint8List(0);
-  int _offset = 0;
-  bool _closed = false;
-
-  Future<void> sendControl(Map<String, Object?> value, {int maxBytes = lanSyncMaxControlFrameBytes}) async {
-    final bytes = utf8.encode(jsonEncode(value));
-    if (bytes.length > maxBytes) {
-      throw const LanSyncTransportException('lan_sync_control_too_large');
-    }
-    await _sendFrame(0, bytes);
-  }
-
-  Future<void> sendBinary(Uint8List bytes, {int maxBytes = lanSyncMaxBinaryChunkBytes}) async {
-    if (bytes.isEmpty || bytes.length > maxBytes) {
-      throw const LanSyncTransportException('lan_sync_binary_too_large');
-    }
-    await _sendFrame(1, bytes);
-  }
-
-  Future<void> _sendFrame(int kind, List<int> bytes) async {
-    if (_closed) {
-      throw const LanSyncTransportException('lan_sync_connection_closed');
-    }
-    final length = bytes.length + 1;
-    final header = ByteData(4)..setUint32(0, length, Endian.big);
-    _socket.add(header.buffer.asUint8List());
-    _socket.add(<int>[kind]);
-    _socket.add(bytes);
-    await _socket.flush();
-  }
-
-  Future<Map<String, Object?>> readControl({int maxBytes = lanSyncMaxControlFrameBytes}) async {
-    final frame = await readFrame(controlMaxBytes: maxBytes);
-    if (frame is! LanSyncControlFrame) {
-      throw const LanSyncTransportException('lan_sync_control_expected');
-    }
-    return frame.value;
-  }
-
-  Future<LanSyncFrame> readFrame({
-    int binaryMaxBytes = lanSyncMaxBinaryChunkBytes,
-    int controlMaxBytes = lanSyncMaxControlFrameBytes,
-  }) async {
-    final header = await _readExactly(4);
-    final length = ByteData.sublistView(header).getUint32(0, Endian.big);
-    final maxFrameBytes = max(controlMaxBytes, binaryMaxBytes) + 1;
-    if (length < 2 || length > maxFrameBytes) {
-      throw const LanSyncTransportException('lan_sync_frame_too_large');
-    }
-    final payload = await _readExactly(length);
-    final kind = payload[0];
-    final body = Uint8List.sublistView(payload, 1);
-    if (kind == 1) {
-      if (body.isEmpty || body.length > binaryMaxBytes) {
-        throw const LanSyncTransportException('lan_sync_binary_too_large');
-      }
-      return LanSyncBinaryFrame(Uint8List.fromList(body));
-    }
-    if (kind != 0 || body.length > controlMaxBytes) {
-      throw const LanSyncTransportException('lan_sync_control_invalid');
-    }
-    try {
-      final decoded = jsonDecode(utf8.decode(body));
-      if (decoded is! Map) throw const FormatException();
-      return LanSyncControlFrame(
-        decoded.map<String, Object?>((key, value) {
-          if (key is! String) throw const FormatException();
-          return MapEntry(key, value);
-        }),
+    if (manifest == null) throw const LanSyncTransportException('lan_sync_selection_invalid');
+    final shelf = shelfItemIds ?? manifest.shelfItems.map((e) => e.identity).toSet();
+    final result = await _request(_client, _base.resolve('/v3/selection'), {
+      'pluginIds': pluginIds.toList(),
+      'shelfItemIds': shelf.toList(),
+    }, pairingCode);
+    final raw = result['plugins'];
+    if (raw is! List) throw const LanSyncTransportException('lan_sync_selection_invalid');
+    final plugins = raw
+        .map((e) => LanSyncPluginDescriptor.fromJson((e as Map).map<String, Object?>((k, v) => MapEntry(k as String, v))))
+        .toList();
+    var done = 0;
+    final total = plugins.fold(0, (n, p) => n + p.bytes);
+    for (final plugin in plugins) {
+      final stream = await const LanSyncHttpArtifactClient().download(
+        _base.resolve('/v3/artifacts/${Uri.encodeComponent(plugin.id)}'),
+        plugin,
+        client: _client,
+        authenticate: (request, _) => request.headers.set('x-mgread-session', pairingCode),
       );
-    } on Object {
-      throw const LanSyncTransportException('lan_sync_control_invalid');
+      await importPlugin(plugin, stream);
+      done += plugin.bytes;
+      onProgress?.call(done, total);
+      onPluginBytesReceived?.call();
     }
-  }
-
-  Future<Uint8List> _readExactly(int length) async {
-    final result = Uint8List(length);
-    var written = 0;
-    while (written < length) {
-      if (_offset >= _buffer.length) {
-        final hasNext = await _iterator.moveNext();
-        if (!hasNext) {
-          throw const LanSyncTransportException('lan_sync_disconnected');
-        }
-        _buffer = _iterator.current;
-        _offset = 0;
-      }
-      final available = _buffer.length - _offset;
-      final take = min(length - written, available);
-      result.setRange(written, written + take, _buffer, _offset);
-      _offset += take;
-      written += take;
-    }
-    return result;
+    await _request(_client, _base.resolve('/v3/complete'), const {}, pairingCode, allowEmpty: true);
   }
 
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
-    await _iterator.cancel();
-    _socket.destroy();
+    _client.close(force: true);
   }
+}
+
+Future<Map<String, Object?>> _request(
+  HttpClient client,
+  Uri uri,
+  Map<String, Object?> body,
+  String? code, {
+  bool allowEmpty = false,
+}) async {
+  final bytes = utf8.encode(jsonEncode(body));
+  final request = await client.postUrl(uri);
+  if (code != null) request.headers.set('x-mgread-session', code);
+  request.headers.contentType = ContentType.json;
+  request.contentLength = bytes.length;
+  request.add(bytes);
+  final response = await request.close();
+  final text = await utf8.decodeStream(response);
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw LanSyncTransportException('lan_sync_http_failed', reason: 'status_${response.statusCode}');
+  }
+  if (text.isEmpty && allowEmpty) return {};
+  final raw = jsonDecode(text);
+  if (raw is! Map) throw const LanSyncTransportException('lan_sync_control_invalid');
+  return raw.map<String, Object?>((k, v) => MapEntry(k as String, v));
+}
+
+Future<Map<String, Object?>> _jsonBody(HttpRequest request) async {
+  final bytes = await request.fold<List<int>>([], (a, b) {
+    if (a.length + b.length > lanSyncMaxManifestBytes) throw const LanSyncTransportException('lan_sync_control_too_large');
+    return a..addAll(b);
+  });
+  final raw = jsonDecode(utf8.decode(bytes));
+  if (raw is! Map) throw const LanSyncTransportException('lan_sync_control_invalid');
+  return raw.map<String, Object?>((k, v) => MapEntry(k as String, v));
+}
+
+Future<void> _respond(HttpResponse response, int status, Map<String, Object?>? value) async {
+  response.statusCode = status;
+  if (value == null) {
+    response.contentLength = 0;
+  } else {
+    final bytes = utf8.encode(jsonEncode(value));
+    response.headers.contentType = ContentType.json;
+    response.contentLength = bytes.length;
+    response.add(bytes);
+  }
+  await response.close();
 }
 
 Future<List<String>> eligibleLanSyncAddresses() async {
   final candidates = <LanSyncNetworkAddress>[];
-  for (final interface in await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false)) {
-    for (final address in interface.addresses) {
-      candidates.add(LanSyncNetworkAddress(interfaceName: interface.name, address: address.address));
+  for (final i in await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false)) {
+    for (final a in i.addresses) {
+      candidates.add(LanSyncNetworkAddress(interfaceName: i.name, address: a.address));
     }
   }
   return selectLanSyncCandidateAddresses(candidates);
 }
 
-bool _isEligiblePeer(InternetAddress address) => address.type == InternetAddressType.IPv4 && isLanSyncPrivateIpv4(address.address);
+bool _eligiblePeer(InternetAddress? a) => a != null && a.type == InternetAddressType.IPv4 && isLanSyncPrivateIpv4(a.address);
 
 final class LanSyncNetworkAddress {
   const LanSyncNetworkAddress({required this.interfaceName, required this.address});
-
-  final String interfaceName;
-  final String address;
+  final String interfaceName, address;
 }
 
 List<String> selectLanSyncCandidateAddresses(Iterable<LanSyncNetworkAddress> candidates) {
   final result = <String>{};
-  for (final candidate in candidates) {
-    if (_isUsableLanInterface(candidate.interfaceName) && isLanSyncPrivateIpv4(candidate.address)) {
-      result.add(candidate.address);
-    }
+  for (final c in candidates) {
+    if (_usable(c.interfaceName) && isLanSyncPrivateIpv4(c.address)) result.add(c.address);
   }
-  final sorted = result.toList(growable: false)
-    ..sort((left, right) {
-      final rank = _addressRank(left).compareTo(_addressRank(right));
-      return rank != 0 ? rank : left.compareTo(right);
+  final sorted = result.toList()
+    ..sort((a, b) {
+      final rank = _rank(a).compareTo(_rank(b));
+      return rank != 0 ? rank : a.compareTo(b);
     });
   return List.unmodifiable(sorted.take(lanSyncMaxCandidateAddresses));
 }
 
-bool _isUsableLanInterface(String name) {
-  final normalized = name.toLowerCase();
-  const excludedFragments = <String>[
-    'vethernet',
+bool _usable(String name) {
+  final n = name.toLowerCase();
+  return ![
+    'loopback',
     'virtual',
-    'hyper-v',
-    'wsl',
-    'docker',
     'vmware',
-    'virtualbox',
-    'vbox',
+    'hyper-v',
+    'vethernet',
+    'docker',
+    'wsl',
+    'bluetooth',
+    'tunnel',
     'tailscale',
     'zerotier',
-    'wireguard',
-    'wintun',
-    'vpn',
-    'loopback',
-    'tunnel',
-    'teredo',
-    'isatap',
-    '虚拟',
-    '隧道',
-  ];
-  return !excludedFragments.any(normalized.contains);
+  ].any(n.contains);
 }
 
-int _addressRank(String address) => switch (address.split('.').first) {
-  '192' => 0,
-  '10' => 1,
-  _ => 2,
-};
-
-String _randomToken(int bytes) {
-  final random = Random.secure();
-  return base64Url.encode(List<int>.generate(bytes, (_) => random.nextInt(256))).replaceAll('=', '');
+int _rank(String address) => address.startsWith('192.168.')
+    ? 0
+    : address.startsWith('10.')
+    ? 1
+    : 2;
+bool _validNonce(Object? v) => v is String && v.length >= 20 && v.length <= 64 && RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(v);
+String _randomToken(int n) {
+  final r = Random.secure();
+  return base64Url.encode(List<int>.generate(n, (_) => r.nextInt(256))).replaceAll('=', '');
 }
 
-bool _isNonce(Object? value) => value is String && value.length >= 20 && value.length <= 64 && RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(value);
-
-String _pairingCode(String input) {
-  var hash = 0x811c9dc5;
-  for (final byte in utf8.encode(input)) {
-    hash ^= byte;
-    hash = (hash * 0x01000193) & 0xffffffff;
+String _derivePairingCode(String seed) {
+  var hash = 0;
+  for (final unit in utf8.encode(seed)) {
+    hash = (hash * 31 + unit) & 0x7fffffff;
   }
   return (hash % 1000000).toString().padLeft(6, '0');
 }

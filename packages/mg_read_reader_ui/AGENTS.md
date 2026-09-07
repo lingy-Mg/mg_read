@@ -15,6 +15,8 @@ Android 验收规则。
 - package 只负责小说/漫画阅读会话、排版、工具栏、语义位置、生命周期和已实现原生能力；不负责网络、
   鉴权、Cookie、数据库、下载、账号、支付、DRM、宿主路由或评论写入。
 - 唯一公共入口是 `package:novel_reader_ui/novel_reader_ui.dart`；未导出的 `lib/src/` 符号均为私有。
+- 宿主临时亮屏通过公共 `ScreenAwakeCoordinator` 使用独立 holder 并成对释放；不修改阅读偏好，
+  同步等宿主业务生命周期仍由主应用持有。
 - 文本位置使用 `chapterId + paragraphId + characterOffset`，漫画位置使用
   `chapterId + imageId + imageFraction`。页码和像素偏移不得持久化。
 - capability 未提供时隐藏对应 UI；Observer 只请求宿主动作。所有异步资源必须支持取消并成对释放。

@@ -73,7 +73,7 @@ export async function installPluginArtifactInbox(
       throw new Error("Runtime plugin import artifact is over budget.");
     }
     try {
-      await installer.installArtifact(path);
+      await installer.installArtifact(path, { replaceExistingVersion: true });
       await rm(path, { force: true });
     } catch (error) {
       await rm(path, { force: true }).catch(() => {});

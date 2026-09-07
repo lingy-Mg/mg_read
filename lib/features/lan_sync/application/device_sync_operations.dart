@@ -2,6 +2,7 @@
 ///
 /// 负责发起、反向连接、入站处理、传输终态和页面刷新；设备发现、配对和持久化仍由
 /// [DeviceSyncController] 持有。所有失败都先完成业务终态，再投影到 UI 与诊断。
+/// 反向请求、出站和入站各持有独立亮屏需求，覆盖准备到结果保存及清理；发现、配对与重试间隔不持有。
 part of 'device_sync_controller.dart';
 
 abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
@@ -60,22 +61,14 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
       _showFailure(device, failure, automatic: automatic);
       return;
     }
-    final secret = await ref.read(deviceIdentityStoreProvider).readPeerSecret(device.deviceId);
-    if (secret == null) {
-      final failure = PairedSyncFailure.fromException(
-        stage: 'identity',
-        error: StateError('paired_secret_missing'),
-        stackTrace: StackTrace.current,
-      );
-      diagnostics.fail(failure);
-      _showFailure(device, failure, automatic: automatic);
-      return;
-    }
     final requestId = createPairedSyncWakeRequestId();
     final pending = _PendingWakeRequest(deviceId: device.deviceId, diagnostics: diagnostics);
     _pendingWakeRequests[requestId] = pending;
     state = state.copyWith(busyDeviceId: device.deviceId);
+    final awake = LanSyncScreenAwake();
     try {
+      final secret = await ref.read(deviceIdentityStoreProvider).readPeerSecret(device.deviceId);
+      if (secret == null) throw StateError('paired_secret_missing');
       diagnostics.stage('wake_send');
       _setSyncProgress(device, operation, 'wake_send');
       await sendPairedSyncWakeRequest(
@@ -88,9 +81,11 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
       );
       diagnostics.stage('wake_wait');
       _setSyncProgress(device, operation, 'wake_wait');
-      final summary = await pending.completion.future.timeout(const Duration(seconds: 12));
-      state = state.copyWith(lastMessage: _summaryMessage(device.label, summary), lastErrorCode: null);
-      diagnostics.complete(summary);
+      final summary = await pending.completion.wait(const Duration(seconds: 12));
+      if (state.lastErrorCode != 'device_sync_library_refresh_failed') {
+        state = state.copyWith(lastMessage: _summaryMessage(device.label, summary), lastErrorCode: null);
+        diagnostics.complete(summary);
+      }
     } on Object catch (error, stackTrace) {
       if (_pendingWakeRequests.containsKey(requestId)) {
         final failure = error is PairedSyncRemoteFailureException
@@ -109,6 +104,7 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
         }
       }
     } finally {
+      await awake.close();
       _pendingWakeRequests.remove(requestId);
       if (_activeDeviceId == null && state.busyDeviceId == device.deviceId) {
         state = state.copyWith(busyDeviceId: null, busyMessage: null);
@@ -184,7 +180,23 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
     bool automatic = false,
     String? requestId,
   }) async {
-    if (_activeDeviceId != null) return null;
+    final ownership = _activeDeviceId == null && state.busyDeviceId == null
+        ? ref.read(lanSyncSessionCoordinatorProvider).tryAcquire(ref.read(lanSyncGatewayProvider))
+        : null;
+    if (ownership == null) {
+      final failure = PairedSyncFailure.fromException(
+        stage: 'request',
+        error: StateError('lan_sync_peer_busy'),
+        stackTrace: StackTrace.current,
+        code: 'lan_sync_peer_busy',
+      );
+      if (automatic) {
+        _scheduleRetry(device.deviceId);
+      } else {
+        _showFailure(device, failure, automatic: false);
+      }
+      return failure;
+    }
     _activeDeviceId = device.deviceId;
     var authenticatedDevice = device;
     final diagnostics = _startPairedDiagnostics(
@@ -195,6 +207,7 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
     );
     PairedSyncFailure? terminalFailure;
     state = state.copyWith(busyDeviceId: device.deviceId);
+    final awake = LanSyncScreenAwake();
     try {
       diagnostics.stage('identity');
       _setSyncProgress(device, operation, 'identity');
@@ -211,7 +224,7 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
       );
       authenticatedDevice = session.peer;
       final summary = await session.run(
-        gateway: ref.read(lanSyncGatewayProvider),
+        gateway: ownership.gateway,
         operation: operation,
         requestId: requestId,
         onStage: (stage) {
@@ -246,6 +259,8 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
         _scheduleRetry(device.deviceId);
       }
     } finally {
+      await ownership.close();
+      await awake.close();
       _activeDeviceId = null;
       state = state.copyWith(busyDeviceId: null, busyMessage: null);
     }
@@ -261,15 +276,23 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
       await session.rejectBusy();
       return;
     }
+    final ownership = ref.read(lanSyncSessionCoordinatorProvider).tryAcquire(ref.read(lanSyncGatewayProvider));
+    if (ownership == null) {
+      pending?.completion.completeError(StateError('lan_sync_peer_busy'), StackTrace.current);
+      await session.rejectBusy();
+      return;
+    }
+    pending?.completion.connected();
     final diagnostics =
         pending?.diagnostics ??
         _startPairedDiagnostics(device, operation: PairedSyncOperation.bidirectional, automatic: false, role: 'paired_inbound');
     _activeDeviceId = device.deviceId;
     state = state.copyWith(busyDeviceId: device.deviceId);
+    final awake = LanSyncScreenAwake();
     try {
       _setSyncProgress(device, PairedSyncOperation.bidirectional, 'request');
       final summary = await session.run(
-        gateway: ref.read(lanSyncGatewayProvider),
+        gateway: ownership.gateway,
         onStage: (stage) {
           diagnostics.stage(stage);
           _setSyncProgress(device, PairedSyncOperation.bidirectional, stage);
@@ -290,17 +313,25 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
         );
         diagnostics.fail(refreshFailure, partial: true);
       }
-      if (!_completeWakeRequest(session.requestId, summary) && refreshFailure == null) diagnostics.complete(summary);
+      if (pending != null) {
+        pending.completion.complete(summary);
+      } else if (!_completeWakeRequest(session.requestId, summary) && refreshFailure == null) {
+        diagnostics.complete(summary);
+      }
     } on Object catch (error, stackTrace) {
       await session.close();
       final partial = error is PairedSyncPartialException;
       final failure = PairedSyncFailure.fromException(stage: diagnostics.stageName, error: error, stackTrace: stackTrace);
       await _recordResultSafely(device, partial ? PairedSyncResultState.partial : PairedSyncResultState.failed);
-      if (!_failWakeRequest(session.requestId, error, stackTrace)) {
+      if (pending != null && !pending.completion.isCompleted) {
+        pending.completion.completeError(error, stackTrace);
+      } else if (!_failWakeRequest(session.requestId, error, stackTrace)) {
         diagnostics.fail(failure, partial: partial);
         _showFailure(device, failure, automatic: true);
       }
     } finally {
+      await ownership.close();
+      await awake.close();
       _activeDeviceId = null;
       state = state.copyWith(busyDeviceId: null, busyMessage: null);
     }

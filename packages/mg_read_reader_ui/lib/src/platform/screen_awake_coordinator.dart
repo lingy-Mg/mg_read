@@ -3,12 +3,14 @@ import 'dart:async';
 import '../api/models.dart';
 import 'reader_platform.dart';
 
-/// Coordinates reader-owned system UI across concurrently mounted readers.
+/// Coordinates temporary system UI requests from readers and host operations.
 ///
 /// A holder may request either screen-awake, immersive mode, or both. The
 /// platform receives only aggregate transitions. A release is issued without
 /// waiting for a slow acquire; if an older call completes late, the newest
 /// aggregate intent is applied again.
+/// Host operations use a unique holder and release it when their work ends;
+/// requests do not persist preferences or override other holders.
 class ScreenAwakeCoordinator {
   ScreenAwakeCoordinator._();
 

@@ -1,6 +1,6 @@
 /// 已配对设备的签名 UDP 控制协议。
 ///
-/// 只负责请求对端创建认证 TCP 会话，或回报稳定失败阶段和有界技术原因；信任关系、
+/// 只负责请求对端发起认证 HTTP 会话，或回报稳定失败阶段和有界技术原因；信任关系、
 /// 重放窗口和 Socket 生命周期由 [PairedSyncHost] 持有。
 part of 'paired_sync_transport.dart';
 

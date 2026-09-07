@@ -322,8 +322,12 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   @override
   Future<List<PluginTransferImportResult>> importPluginArtifacts(
     List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
+    artifacts, {
+    Set<String> forceUpgradePluginIds = const <String>{},
+  }) => _pluginArtifactIo.importArtifacts(
     artifacts,
-  ) => _pluginArtifactIo.importArtifacts(artifacts);
+    forceUpgradePluginIds: forceUpgradePluginIds,
+  );
 
   @override
   Future<void> importLocalPlugin(String sourcePath) =>

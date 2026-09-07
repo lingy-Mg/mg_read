@@ -136,22 +136,23 @@ export class PluginInstaller {
     }
   }
 
-  async installArtifact(artifactFile: string): Promise<PluginInstallResult> {
-    if (artifactFile.endsWith(".mgplugin.js")) return this.#installArtifact(artifactFile, "singleFile");
-    if (artifactFile.endsWith(".mgplugin")) return this.#installArtifact(artifactFile, "archive");
+  async installArtifact(artifactFile: string, options: { readonly replaceExistingVersion?: boolean } = {}): Promise<PluginInstallResult> {
+    const replaceExistingVersion = options.replaceExistingVersion ?? false;
+    if (artifactFile.endsWith(".mgplugin.js")) return this.#installArtifact(artifactFile, "singleFile", replaceExistingVersion);
+    if (artifactFile.endsWith(".mgplugin")) return this.#installArtifact(artifactFile, "archive", replaceExistingVersion);
     throw new PluginPackageError("plugin_package_invalid");
   }
 
   /** Installs a `.mgplugin` as an immutable version and writes `pending`. */
   async installArchive(archiveFile: string): Promise<PluginInstallResult> {
-    return this.#installArtifact(archiveFile, "archive");
+    return this.#installArtifact(archiveFile, "archive", false);
   }
 
   async installSingleFile(artifactFile: string): Promise<PluginInstallResult> {
-    return this.#installArtifact(artifactFile, "singleFile");
+    return this.#installArtifact(artifactFile, "singleFile", false);
   }
 
-  async #installArtifact(artifactFile: string, format: PluginArtifactFormat): Promise<PluginInstallResult> {
+  async #installArtifact(artifactFile: string, format: PluginArtifactFormat, replaceExistingVersion: boolean): Promise<PluginInstallResult> {
     const startedAt = performance.now();
     this.#events({ code: "plugin_install_started", outcome: "started" });
     const stagingRoot = resolve(
@@ -193,6 +194,7 @@ export class PluginInstaller {
         project.descriptor,
         project.dependencies,
         requiresNpmDependencies,
+        replaceExistingVersion,
       );
       this.#events({
         code: "plugin_install_completed",
@@ -319,12 +321,19 @@ export class PluginInstaller {
     descriptor: PluginPackageDescriptor,
     dependencies: readonly LockedPluginDependency[],
     requiresNpmDependencies: boolean,
+    replaceExistingVersion: boolean,
   ): Promise<PluginInstallResult> {
     const pluginRoot = resolve(this.#dataRoot, "plugins", descriptor.id);
     const versionsRoot = resolve(pluginRoot, "versions");
     const finalVersionRoot = resolve(versionsRoot, descriptor.version);
+    let existingVersion = false;
     try {
       await stat(finalVersionRoot);
+      existingVersion = true;
+    } catch (error) {
+      if (!isNodeError(error, "ENOENT")) throw error;
+    }
+    if (existingVersion && !replaceExistingVersion) {
       this.#reportProgress({
         completedBytes: 1,
         detail: requiresNpmDependencies
@@ -342,8 +351,6 @@ export class PluginInstaller {
         reusedVersion: true,
         skippedOptionalDependencies: 0,
       });
-    } catch (error) {
-      if (!isNodeError(error, "ENOENT")) throw error;
     }
 
     let copiedFiles = 0;
@@ -408,7 +415,24 @@ export class PluginInstaller {
     }
 
     await mkdir(versionsRoot, { recursive: true });
-    await rename(stagingRoot, finalVersionRoot);
+    let previousVersionRoot: string | undefined;
+    let previousVersionMoved = false;
+    let newVersionMoved = false;
+    try {
+      if (existingVersion) {
+        previousVersionRoot = resolve(versionsRoot, `.${descriptor.version}.replaced-${randomUUID()}`);
+        await rename(finalVersionRoot, previousVersionRoot);
+        previousVersionMoved = true;
+      }
+      await rename(stagingRoot, finalVersionRoot);
+      newVersionMoved = true;
+    } catch (error) {
+      if (previousVersionMoved && !newVersionMoved && previousVersionRoot !== undefined) {
+        await rename(previousVersionRoot, finalVersionRoot).catch(() => {});
+      }
+      throw error;
+    }
+    if (previousVersionRoot !== undefined) await rm(previousVersionRoot, { force: true, recursive: true }).catch(() => {});
     // Android's app sandbox can reject renaming a directory whose root was
     // chmod-ed read-only while it still lives under the staging tree. Commit
     // the atomic directory move first, then enforce immutability at its final
