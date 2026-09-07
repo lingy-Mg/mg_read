@@ -394,19 +394,28 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     if (error != null && error.isNotEmpty && errorId != _reportedBackendError) {
       _reportedBackendError = errorId;
       _setFailure(
-        next.errorKind == VideoPlaybackBackendErrorKind.proxyUnavailable
-            ? const VideoPlayerFailure(
-                VideoPlayerFailureKind.playback,
-                '视频代理无法连接，请启动代理服务；若已关闭视频代理，请退出播放器后重新打开。',
-                code: 'video_proxy_unreachable',
-                location: '连接视频代理',
-              )
-            : const VideoPlayerFailure(
-                VideoPlayerFailureKind.playback,
-                '播放引擎发生错误',
-                code: 'backend_error',
-                location: '视频播放引擎',
-              ),
+        switch (next.errorKind) {
+          VideoPlaybackBackendErrorKind.proxyUnavailable =>
+            const VideoPlayerFailure(
+              VideoPlayerFailureKind.playback,
+              '视频代理无法连接，请启动代理服务；若已关闭视频代理，请退出播放器后重新打开。',
+              code: 'video_proxy_unreachable',
+              location: '连接视频代理',
+            ),
+          VideoPlaybackBackendErrorKind.runtimeResourceUnavailable =>
+            const VideoPlayerFailure(
+              VideoPlayerFailureKind.playback,
+              '播放资源服务未能打开视频。请检查“来源 HTTP 代理”或更换视频线路；关闭代理后需退出播放器再重新打开。',
+              code: 'runtime_resource_unavailable',
+              location: '请求播放资源服务',
+            ),
+          _ => const VideoPlayerFailure(
+            VideoPlayerFailureKind.playback,
+            '播放引擎发生错误',
+            code: 'backend_error',
+            location: '视频播放引擎',
+          ),
+        },
       );
       return;
     }

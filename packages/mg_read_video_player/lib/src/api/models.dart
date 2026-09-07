@@ -311,6 +311,9 @@ enum VideoPlaybackBackendErrorKind {
 
   /// The explicitly configured HTTP proxy could not be reached.
   proxyUnavailable,
+
+  /// The Runtime loopback resource could not retrieve the upstream media.
+  runtimeResourceUnavailable,
 }
 
 /// Recoverable public failure information.

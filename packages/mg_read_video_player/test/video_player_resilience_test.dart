@@ -61,6 +61,29 @@ void main() {
     );
   });
 
+  testWidgets('identifies a failed Runtime media resource', (
+    WidgetTester tester,
+  ) async {
+    final backend = _OrderedBackend();
+    final controller = VideoPlayerController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_app(backend: backend, controller: controller));
+    await tester.pumpAndSettle();
+
+    backend.emitError(
+      'resource unavailable',
+      kind: VideoPlaybackBackendErrorKind.runtimeResourceUnavailable,
+    );
+    await tester.pump();
+
+    expect(controller.snapshot.status, VideoPlayerStatus.failure);
+    expect(controller.snapshot.failure?.code, 'runtime_resource_unavailable');
+    expect(
+      find.text('播放资源服务未能打开视频。请检查“来源 HTTP 代理”或更换视频线路；关闭代理后需退出播放器再重新打开。'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('queues background pause behind a blocked autoplay open', (
     WidgetTester tester,
   ) async {

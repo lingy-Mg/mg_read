@@ -223,7 +223,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
       ),
       session.player.stream.error.listen((String value) {
         if (value.trim().isEmpty) return;
-        final failure = _classifyStreamFailure(value);
+        final failure = _classifyStreamFailure(value, episode);
         _debugPlaybackFailure(
           'stream-error',
           episode,
@@ -273,7 +273,10 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     );
   }
 
-  _BackendStreamFailure _classifyStreamFailure(String error) {
+  _BackendStreamFailure _classifyStreamFailure(
+    String error,
+    VideoEpisode episode,
+  ) {
     final proxy = proxyUri;
     final endpoint = proxy == null ? null : 'tcp://${proxy.host}:${proxy.port}';
     if (endpoint != null &&
@@ -281,6 +284,16 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
       return const _BackendStreamFailure(
         VideoPlaybackBackendErrorKind.proxyUnavailable,
         'The configured video proxy could not be reached.',
+      );
+    }
+    final uri = Uri.tryParse(episode.uri ?? '');
+    if (uri != null &&
+        (uri.host.toLowerCase() == 'localhost' ||
+            uri.host == '127.0.0.1' ||
+            uri.host == '::1')) {
+      return const _BackendStreamFailure(
+        VideoPlaybackBackendErrorKind.runtimeResourceUnavailable,
+        'The Runtime media resource could not be retrieved.',
       );
     }
     return const _BackendStreamFailure(
