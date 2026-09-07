@@ -33,7 +33,8 @@ export async function openSourceProxyResource(
       if (value !== undefined && value.length <= 512) forwarded[name] = value;
     }
   }
-  const response = await entry.fetch(rawUrl, { headers: forwarded, method: "GET", redirect: "follow", signal });
+  const proxyMode = entry.request.proxyMode === "direct" ? "direct" : undefined;
+  const response = await entry.fetch(rawUrl, { headers: forwarded, method: "GET", redirect: "follow", signal }, undefined, proxyMode);
   return Object.freeze({ proxy: entry.proxy, request: entry.request, response, responseUrl: response.url });
 }
 

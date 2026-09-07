@@ -63,15 +63,18 @@ test("plugin HTTP client switches future requests between system and explicit pr
   assert.equal(await (await client.fetch(target, {})).text(), "origin-2");
   assert.equal(proxyTunnels, 1);
 
+  assert.equal(await (await client.fetch(target, {}, undefined, "direct")).text(), "origin-3");
+  assert.equal(proxyTunnels, 1);
+
   client.configure(undefined);
-  assert.equal(await (await client.fetch(target, {})).text(), "origin-3");
+  assert.equal(await (await client.fetch(target, {})).text(), "origin-4");
   assert.equal(proxyTunnels, 1);
 
   client.configure(`socks5://127.0.0.1:${socksAddress.port}/`);
-  assert.equal(await (await client.fetch(target, { headers: { "User-Agent": "source-specific" } })).text(), "origin-4");
+  assert.equal(await (await client.fetch(target, { headers: { "User-Agent": "source-specific" } })).text(), "origin-5");
   assert.equal(socksTunnels, 1);
   assert.equal(defaultPluginUserAgent, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36");
-  assert.deepEqual(userAgents, [defaultPluginUserAgent, defaultPluginUserAgent, defaultPluginUserAgent, "source-specific"]);
+  assert.deepEqual(userAgents, [defaultPluginUserAgent, defaultPluginUserAgent, defaultPluginUserAgent, defaultPluginUserAgent, "source-specific"]);
 });
 
 test("plugin HTTP client follows the environment proxy when no explicit override exists", async (t) => {
@@ -112,6 +115,9 @@ test("plugin HTTP client follows the environment proxy when no explicit override
   const response = await client.fetch(`http://127.0.0.1:${originAddress.port}/content`, {});
 
   assert.equal(await response.text(), "system");
+  assert.equal(proxyTunnels, 1);
+  const direct = await client.fetch(`http://127.0.0.1:${originAddress.port}/content`, {}, undefined, "direct");
+  assert.equal(await direct.text(), "system");
   assert.equal(proxyTunnels, 1);
 });
 
@@ -177,16 +183,25 @@ test("Runtime configuration routes the installed plugin ctx.http.fetch boundary 
   assert.equal(originRequests, 1);
   assert.equal(proxyTunnels, 1);
 
+  const sourceDirect = await runtime.invokeEmbedded(
+    "source.search.v1",
+    { pluginId: "org.example.http-proxy", query: `direct:${target}`, cursor: null, pageSize: 20 },
+    deadline(),
+  );
+  assert.equal(sourceDirect.ok, true);
+  assert.equal(originRequests, 2);
+  assert.equal(proxyTunnels, 1);
+
   await runtime.invokeEmbedded("runtime.pluginHttpProxy.configure.v1", { proxyUrl: null }, deadline());
-  const direct = await runtime.invokeEmbedded(
+  const defaultRoute = await runtime.invokeEmbedded(
     "source.search.v1",
     { pluginId: "org.example.http-proxy", query: target, cursor: null, pageSize: 20 },
     deadline(),
   );
-  assert.equal(direct.ok, true);
-  assert.equal(originRequests, 2);
+  assert.equal(defaultRoute.ok, true);
+  assert.equal(originRequests, 3);
   assert.equal(proxyTunnels, 1);
-  assert.deepEqual(userAgents, [defaultPluginUserAgent, defaultPluginUserAgent]);
+  assert.deepEqual(userAgents, [defaultPluginUserAgent, defaultPluginUserAgent, defaultPluginUserAgent]);
 });
 
 function listen(server) {
@@ -279,7 +294,11 @@ async function createHttpPlugin(root) {
 export function activate(next) { context = next; }
 export function discover() { return { kind: "document", document: { components: [] } }; }
 export async function search(request) {
-  const response = await context.http.fetch(request.query);
+  const direct = request.query.startsWith("direct:");
+  const response = await context.http.fetch(
+    direct ? request.query.slice("direct:".length) : request.query,
+    direct ? { proxyMode: "direct" } : undefined,
+  );
   await response.text();
   return { items: [], nextCursor: null, totalCount: 0 };
 }

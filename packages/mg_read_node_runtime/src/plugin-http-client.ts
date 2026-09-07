@@ -15,13 +15,18 @@
  * - existing requests retain the dispatcher sampled when they started.
  */
 import {
+  Agent,
   EnvHttpProxyAgent,
   ProxyAgent,
   Socks5ProxyAgent,
   type Dispatcher,
 } from "undici";
 
-import type { PluginRuntimeHttpClient, PluginRuntimeTraceContext } from "./plugin-manager-contract.js";
+import type {
+  PluginRuntimeHttpClient,
+  PluginRuntimeHttpProxyMode,
+  PluginRuntimeTraceContext,
+} from "./plugin-manager-contract.js";
 
 /** Chrome Stable 152.0.7977.64 reduced desktop UA, verified on 2026-08-31. */
 export const defaultPluginUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
@@ -44,12 +49,14 @@ export interface PluginHttpEnvironmentProxyOptions {
 }
 
 export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
+  readonly #directAgent: Dispatcher;
   readonly #systemProxyAgent: Dispatcher;
   #proxyAgent: Dispatcher | undefined;
   #proxyUrl: string | undefined;
   readonly #retiring = new Set<Promise<void>>();
 
   constructor(environmentProxy: PluginHttpEnvironmentProxyOptions = {}) {
+    this.#directAgent = new Agent(http2TlsOptions);
     this.#systemProxyAgent = new EnvHttpProxyAgent({
       allowH2: true,
       requestTls: http2TlsOptions,
@@ -78,9 +85,12 @@ export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
     input: string | URL,
     init: RequestInit,
     _trace?: PluginRuntimeTraceContext,
+    proxyMode?: PluginRuntimeHttpProxyMode,
   ): Promise<Response> {
     const requestInit = withDefaultUserAgent(init);
-    const dispatcher = this.#proxyAgent ?? this.#systemProxyAgent;
+    const dispatcher = proxyMode === "direct"
+      ? this.#directAgent
+      : this.#proxyAgent ?? this.#systemProxyAgent;
     const proxiedInit = { ...requestInit, dispatcher } as RequestInit & { readonly dispatcher: Dispatcher };
     return fetch(input, proxiedInit);
   }
@@ -90,6 +100,7 @@ export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
     this.#proxyAgent = undefined;
     this.#proxyUrl = undefined;
     if (current !== undefined) this.#retire(current);
+    this.#retire(this.#directAgent);
     this.#retire(this.#systemProxyAgent);
     await Promise.allSettled([...this.#retiring]);
   }

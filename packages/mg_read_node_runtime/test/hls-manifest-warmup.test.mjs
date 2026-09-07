@@ -142,6 +142,36 @@ test("resource diagnostics report bounded phases without URLs or headers", async
   assert.doesNotMatch(messages, /media\.example|signature|Authorization|Bearer|source\.example/u);
 });
 
+test("source-resource proxy preserves a source direct route for HLS warmup", async () => {
+  const modes = [];
+  const fetch = async (input, _init, _trace, proxyMode) => {
+    const url = String(input);
+    modes.push(proxyMode);
+    return responseAt(
+      url,
+      url.endsWith("root.m3u8") ? "#EXTM3U\nchild.m3u8\n" : "#EXTM3U\n#EXTINF:4,\nsegment.ts\n",
+    );
+  };
+  const coordinator = new SourceResourceCoordinator({ fetch }, () => {}, () => false);
+  const request = {
+    kind: "hls",
+    headers: {},
+    proxyMode: "direct",
+    url: "https://media.example/root.m3u8",
+  };
+  coordinator.created("org.example.video", request, () => "http://127.0.0.1/resource");
+  const resource = await coordinator.open(
+    encodeSourceResourceToken("org.example.video", request),
+    {},
+    new AbortController().signal,
+    () => "http://127.0.0.1/resource",
+  );
+
+  assert.equal(await resource.response.text(), "#EXTM3U\nchild.m3u8\n");
+  await waitFor(() => modes.length === 2);
+  assert.deepEqual(modes, ["direct", "direct"]);
+});
+
 function sourceEntry(url, fetch) {
   return {
     fetch,

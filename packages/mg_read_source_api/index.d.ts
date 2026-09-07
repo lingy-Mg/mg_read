@@ -96,6 +96,24 @@ export interface PluginPublicError {
   readonly message: string;
 }
 
+/**
+ * A bounded routing preference for one source-owned HTTP request.
+ *
+ * `direct` bypasses both the operating-system proxy and the Runtime's
+ * configured source HTTP proxy. It never accepts a source-supplied proxy URL.
+ */
+export interface PluginHttpRequestInit extends RequestInit {
+  readonly proxyMode?: "direct";
+}
+
+/**
+ * A Runtime resource-proxy descriptor. `proxyMode` applies when Runtime
+ * retrieves the upstream media bytes, including HLS playlists and segments.
+ */
+export type PluginResourceProxyRequest = PluginJsonObject & {
+  readonly proxyMode?: "direct";
+};
+
 export interface MgReadPluginContext {
   readonly app: {
     readonly nodeVersion: string;
@@ -109,13 +127,14 @@ export interface MgReadPluginContext {
     raise(code: PluginPublicErrorCode): never;
   };
   readonly http: {
-    fetch(input: string | URL, init?: RequestInit): Promise<Response>;
+    fetch(input: string | URL, init?: PluginHttpRequestInit): Promise<Response>;
   };
   readonly browser: {
     readonly sessionV1: PluginBrowserSessionV1;
   };
   readonly webview: PluginWebViewApi;
   readonly resource: {
+    proxy(request: PluginResourceProxyRequest): string;
     proxy(request: PluginJsonObject): string;
   };
   readonly log: {

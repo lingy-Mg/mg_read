@@ -25,9 +25,9 @@ test('fixture flow covers discovery, search, detail, neutral groups and both pla
       },
     },
     http: {
-      async fetch(input) {
+      async fetch(input, init = {}) {
         const url = new URL(input);
-        requests.push(url);
+        requests.push({ init, url });
         if (url.hostname === 'player.mcue.cc') return new Response(mcuePlayer);
         if (url.pathname === '/v/101.html') return new Response(detail);
         if (url.pathname === '/p/101-3-1.html') return new Response(directPlayer);
@@ -65,28 +65,31 @@ test('fixture flow covers discovery, search, detail, neutral groups and both pla
   assert.deepEqual(catalog.groups.map((group) => group.episodes.map((episode) => episode.order)), [[0, 1], [0, 1]]);
   assert.deepEqual(catalog.items.map((episode) => episode.order), [0, 1, 2, 3]);
   assert.equal(catalog.items.length, 4);
-  const detailRequestsBeforePlayback = requests.filter((url) => url.pathname === '/v/101.html').length;
+  const detailRequestsBeforePlayback = requests.filter(({ url }) => url.pathname === '/v/101.html').length;
 
   const directRequestsBeforePlayback = requests.length;
   const direct = await plugin.getContent({ id: info.id, chapterId: 'video:101:3:1' });
   assert.deepEqual(
-    requests.slice(directRequestsBeforePlayback).map((url) => url.pathname),
+    requests.slice(directRequestsBeforePlayback).map(({ url }) => url.pathname),
     ['/p/101-3-1.html'],
   );
   assert.equal(direct.media.resourceType, 'video');
   assert.equal(direct.media.resourcePolicy, 'sessionOnly');
   assert.equal(resources[0].url, 'https://media.invalid/fixture-direct.mp4');
+  assert.equal(resources[0].proxyMode, 'direct');
   const mcueRequestsBeforePlayback = requests.length;
   const decrypted = await plugin.getContent({ id: info.id, chapterId: 'video:101:5:1' });
   assert.equal(requests.length - mcueRequestsBeforePlayback, 2);
-  assert.equal(requests[mcueRequestsBeforePlayback].pathname, '/p/101-5-1.html');
-  assert.equal(requests[mcueRequestsBeforePlayback + 1].hostname, 'player.mcue.cc');
+  assert.equal(requests[mcueRequestsBeforePlayback].url.pathname, '/p/101-5-1.html');
+  assert.equal(requests[mcueRequestsBeforePlayback + 1].url.hostname, 'player.mcue.cc');
   assert.equal(decrypted.media.resourceType, 'hls');
   assert.equal(resources[1].url, upstream);
+  assert.equal(resources[1].proxyMode, 'direct');
   assert.equal(new URL(resources[1].headers.Referer).origin, 'https://player.mcue.cc');
-  assert.ok(requests.some((url) => url.hostname === 'player.mcue.cc'));
+  assert.ok(requests.some(({ url }) => url.hostname === 'player.mcue.cc'));
+  assert.ok(requests.every(({ init }) => init.proxyMode === 'direct'));
   assert.equal(
-    requests.filter((url) => url.pathname === '/v/101.html').length,
+    requests.filter(({ url }) => url.pathname === '/v/101.html').length,
     detailRequestsBeforePlayback,
   );
 });

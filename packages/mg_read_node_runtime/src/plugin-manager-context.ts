@@ -10,6 +10,7 @@ import {
   requestPluginBrowserSession,
   type PluginBrowserSessionProvider,
 } from "./plugin-browser-session.js";
+import type { PluginHttpRequestInit } from "@mgread/source-api";
 import type { PluginPackageDescriptor } from "./plugin-package.js";
 import { pluginApiVersion } from "./plugin-package.js";
 import { runtimeVersion } from "./runtime-version.js";
@@ -89,20 +90,22 @@ export async function createPluginContext(options: {
         throw new PluginManagerError(error.code, error.detail);
       },
     }),
-    http: Object.freeze({ fetch: (input: string | URL, init: RequestInit = {}) => {
+    http: Object.freeze({ fetch: (input: string | URL, init: PluginHttpRequestInit = {}) => {
       const scope = invocationScope();
       const signals: AbortSignal[] = [];
       if (scope !== undefined) {
         signals.push(scope.signal, AbortSignal.timeout(Math.max(1, Number(scope.deadlineUnixMs) - Date.now())));
       }
-      if (init.signal != null) signals.push(init.signal);
+      const { proxyMode: requestedProxyMode, ...requestInit } = init;
+      const proxyMode = requestedProxyMode === "direct" ? requestedProxyMode : undefined;
+      if (requestInit.signal != null) signals.push(requestInit.signal);
       if (debugLogEnabled()) emitLog("debug", `HTTP 请求：地址=${String(input)}，初始化参数=${JSON.stringify(init)}`, "plugin.http");
       const startedAt = performance.now();
       return http.fetch(input, {
-        ...init,
-        redirect: init.redirect ?? "follow",
+        ...requestInit,
+        redirect: requestInit.redirect ?? "follow",
         ...(signals.length === 0 ? {} : { signal: signals.length === 1 ? signals[0] : AbortSignal.any(signals) }),
-      }, scope?.trace).then((response) => {
+      }, scope?.trace, proxyMode).then((response) => {
         if (debugLogEnabled()) {
           emitLog("debug", `HTTP 响应：状态=${response.status}，耗时毫秒=${Math.round(performance.now() - startedAt)}，响应头=${JSON.stringify(Object.fromEntries(response.headers))}`, "plugin.http");
           void response.clone().text().then((body) => emitLog("debug", `HTTP 响应预览：正文=${body.slice(0, 2000)}`, "plugin.http"), () => emitLog("warn", "HTTP 响应预览失败", "plugin.http"));

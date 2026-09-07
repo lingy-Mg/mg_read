@@ -2,8 +2,9 @@
  * Yinghua Dongman video source.
  *
  * Owns the public site routes, stable video/line/episode identities, source-priority
- * line ordering, HTML parsing and MCUE player decryption. Media bytes always remain
- * in Runtime's resource proxy.
+ * line ordering, HTML parsing and MCUE player decryption. This upstream rejects
+ * proxies, so both source requests and Runtime-proxied media explicitly use direct
+ * Runtime routing; media bytes still remain in Runtime's resource proxy.
  */
 import { createDecipheriv, createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -14,6 +15,7 @@ const defaultRequestAttempts = 3;
 const mcueRequestAttempts = 2;
 const mcueRequestTimeoutMs = 6_000;
 const retryDelayMs = 150;
+const directProxyMode = 'direct';
 const pageHeaders = Object.freeze({
     Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,application/json,text/plain,*/*;q=0.8',
     'Accept-Language': 'zh-CN,zh;q=0.9',
@@ -109,7 +111,12 @@ export async function getContent(request) {
         text: null,
         pages: [],
         media: {
-            url: requireContext().resource.proxy({ kind: resourceType, url: resolved.url, headers: mediaHeaders }),
+            url: requireContext().resource.proxy({
+                kind: resourceType,
+                url: resolved.url,
+                headers: mediaHeaders,
+                proxyMode: directProxyMode,
+            }),
             resourceType,
             resourcePolicy: 'sessionOnly',
             expiresAt: null,
@@ -151,6 +158,7 @@ async function fetchText(url, options = {}) {
         try {
             const response = await requireContext().http.fetch(url, {
                 headers: pageHeaders,
+                proxyMode: directProxyMode,
                 ...(timeoutSignal === undefined ? {} : { signal: timeoutSignal }),
             });
             if (response.ok) {

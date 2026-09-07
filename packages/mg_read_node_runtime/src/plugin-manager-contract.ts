@@ -222,10 +222,14 @@ export interface PluginRuntimeTraceContext {
   readonly traceId: string;
 }
 
+/** A source-owned, Runtime-enforced upstream routing preference. */
+export type PluginRuntimeHttpProxyMode = "direct";
+
 export interface PluginRuntimeHttpClient {
   fetch(
     input: string | URL,
     init: RequestInit,
     trace?: PluginRuntimeTraceContext,
+    proxyMode?: PluginRuntimeHttpProxyMode,
   ): Promise<Response>;
 }
