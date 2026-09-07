@@ -119,13 +119,17 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
     builder: (context, snapshot) {
       if (snapshot.hasData) {
         final data = snapshot.requireData;
+        // The persisted/Runtime seed may not contain host-local bytes. Keep the
+        // cover already visible on the shelf as the detail screen's handoff
+        // fallback so the later refresh cannot discard it.
+        final coveredInitialDetail = preserveSourceContentCover(detail: data.initialDetail, fallbackSummary: previewDetail.summary);
         return _SourceDetailScreen(
           gateway: gateway,
           pluginId: data.pluginId,
           pluginVersion: data.pluginVersion,
           id: data.id,
-          initialContent: data.initialDetail.summary,
-          initialDetail: data.initialDetail,
+          initialContent: coveredInitialDetail.summary,
+          initialDetail: coveredInitialDetail,
           initialCatalog: data.initialCatalog,
           initialSourceName: data.initialDetail.sourceName,
           relatedContents: const <PluginContentSummary>[],

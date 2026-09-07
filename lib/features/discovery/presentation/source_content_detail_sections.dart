@@ -665,8 +665,11 @@ Future<void> _openTextChapter(
     if (callback == null) {
       throw StateError('An audio-player host has not been registered.');
     }
+    // Audio and video entry covers live on detail.summary. Both branches must
+    // attach the resolved bytes before popping the detail route.
+    final playbackDetail = _withResolvedEntryCover(detail, context);
     Navigator.of(context).pop();
-    await callback(detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter);
+    await callback(detail: playbackDetail, firstCatalogPage: firstCatalogPage, chapter: chapter);
     return;
   }
   if (detail.summary.contentKind == PluginContentKind.video) {
@@ -713,37 +716,7 @@ List<int>? _resolvedEntryCoverBytes(BuildContext context, PluginContentSummary c
 }
 
 PluginContentDetail _withResolvedEntryCover(PluginContentDetail detail, BuildContext context) {
-  final summary = detail.summary;
-  final bytes = _resolvedEntryCoverBytes(context, summary);
-  if (bytes == null || bytes.isEmpty || identical(bytes, summary.coverBytes)) return detail;
-  return PluginContentDetail(
-    pluginId: detail.pluginId,
-    sourceName: detail.sourceName,
-    aliases: detail.aliases,
-    catalogUrl: detail.catalogUrl,
-    summary: PluginContentSummary(
-      id: summary.id,
-      title: summary.title,
-      contentKind: summary.contentKind,
-      coverOrientation: summary.coverOrientation,
-      author: summary.author,
-      url: summary.url,
-      coverUrl: summary.coverUrl,
-      coverBytes: bytes,
-      description: summary.description,
-      language: summary.language,
-      status: summary.status,
-      access: summary.access,
-      wordCount: summary.wordCount,
-      chapterCount: summary.chapterCount,
-      publishedAt: summary.publishedAt,
-      updatedAt: summary.updatedAt,
-      latestChapter: summary.latestChapter,
-      categories: summary.categories,
-      tags: summary.tags,
-      attributes: summary.attributes,
-    ),
-  );
+  return preserveSourceContentCover(detail: detail, resolvedCoverBytes: _resolvedEntryCoverBytes(context, detail.summary));
 }
 
 Future<void> _showChapterContent(

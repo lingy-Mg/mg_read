@@ -30,6 +30,8 @@ import 'package:mg_read/features/reader/data/content_library_text_reader_state_s
 ///
 /// Shelf launches use the app-owned fixed catalog upper bound and only ask the
 /// source gateway for the selected chapter when its local body is unavailable.
+/// Both normal and prewarmed requests must retain the app-owned cached cover;
+/// [ReaderEntryTransition] deliberately performs no network cover request.
 final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, LocalShelfReaderPrewarmer {
   const ContentLibrarySourceTextReader(this._library, this._gateway, [this._prefetcher, this._settings, this._chapterCacheTasks]);
 
@@ -72,7 +74,7 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
             waitForWarm: () async => session!.initialChapter,
             prefetchedChapter: prefetchedChapter,
           );
-    return request;
+    return _attachCachedCover(item, request);
   }
 
   @override
@@ -91,7 +93,28 @@ final class ContentLibrarySourceTextReader implements LibraryReaderLauncher, Loc
       initialContent: content,
       preparationKind: ReaderLaunchPreparationKind.memory,
     );
-    return request;
+    return _attachCachedCover(item, request);
+  }
+
+  Future<NovelReaderLaunchRequest> _attachCachedCover(LibraryItem item, NovelReaderLaunchRequest request) async {
+    final bytes = await _readCachedCover(item);
+    return bytes == null ? request : request.withEntryCoverBytes(bytes);
+  }
+
+  Future<List<int>?> _readCachedCover(LibraryItem item) async {
+    try {
+      final url = item.coverUrl;
+      if (url == null) return null;
+      final source = item.source;
+      final bytes = await _library.readCover(
+        CoverKey(pluginId: source.pluginId, pluginVersion: source.pluginVersion, remoteContentId: source.remoteContentId, coverUrl: url),
+      );
+      return bytes == null || bytes.isEmpty ? null : bytes;
+    } on Object {
+      // Cache damage or a miss must not turn a usable shelf reading session
+      // into a launch failure; only the entry transition loses its artwork.
+      return null;
+    }
   }
 
   Future<NovelReaderLaunchRequest> _launchLocalSession(

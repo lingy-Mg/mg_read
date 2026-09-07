@@ -13,6 +13,7 @@ library;
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
+import 'package:mg_read/features/discovery/application/source_content_cover_handoff.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
@@ -117,37 +118,9 @@ PluginContentDetail libraryDetailPreview(LibraryItemSummary? item, LibraryBookLi
 }
 
 PluginContentDetail _withEntryCover(PluginContentDetail detail, LibraryBookListItemViewData book) {
-  final summary = detail.summary;
-  final bytes = _entryCoverBytes(book, summary.coverBytes);
-  if (bytes == null || bytes.isEmpty || identical(bytes, summary.coverBytes)) return detail;
-  return PluginContentDetail(
-    pluginId: detail.pluginId,
-    sourceName: detail.sourceName,
-    aliases: detail.aliases,
-    catalogUrl: detail.catalogUrl,
-    summary: PluginContentSummary(
-      id: summary.id,
-      title: summary.title,
-      contentKind: summary.contentKind,
-      coverOrientation: summary.coverOrientation,
-      author: summary.author,
-      url: summary.url,
-      coverUrl: summary.coverUrl,
-      coverBytes: bytes,
-      description: summary.description,
-      language: summary.language,
-      status: summary.status,
-      access: summary.access,
-      wordCount: summary.wordCount,
-      chapterCount: summary.chapterCount,
-      publishedAt: summary.publishedAt,
-      updatedAt: summary.updatedAt,
-      latestChapter: summary.latestChapter,
-      categories: summary.categories,
-      tags: summary.tags,
-      attributes: summary.attributes,
-    ),
-  );
+  // Shelf audio/video launches bypass the detail route when possible, so they
+  // must apply the same cover-handoff rule at this projection boundary.
+  return preserveSourceContentCover(detail: detail, resolvedCoverBytes: _entryCoverBytes(book, detail.summary.coverBytes));
 }
 
 List<int>? _entryCoverBytes(LibraryBookListItemViewData book, List<int>? fallback) =>

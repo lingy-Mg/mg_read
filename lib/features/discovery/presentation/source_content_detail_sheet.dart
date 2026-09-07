@@ -24,6 +24,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/errors/app_error.dart';
+import 'package:mg_read/features/discovery/application/source_content_cover_handoff.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
@@ -152,12 +153,19 @@ Future<void> showSourceContentDetailSheet(
 
 Future<bool> _launchSystemBrowser(Uri url) => launchUrl(url, mode: LaunchMode.externalApplication);
 
-Future<_SourceDetailBundle> _loadDetail(SourceContentGateway gateway, String pluginId, String id) async {
+Future<_SourceDetailBundle> _loadDetail(
+  SourceContentGateway gateway,
+  String pluginId,
+  String id, {
+  PluginContentSummary? coverFallback,
+}) async {
   final results = await Future.wait<Object>(<Future<Object>>[
     _loadDetailPart('source.getDetail.v1', gateway.getDetail(pluginId: pluginId, id: id)),
     _loadDetailPart('source.getChapters.v1', gateway.getChapters(pluginId: pluginId, id: id)),
   ]);
-  final detail = results[0] as PluginContentDetail;
+  // Runtime details never contain host-local bytes. Preserve the entry cover
+  // before the refreshed detail replaces a search, discovery or shelf preview.
+  final detail = preserveSourceContentCover(detail: results[0] as PluginContentDetail, fallbackSummary: coverFallback);
   final chapters = results[1] as PluginChaptersResult;
   return _SourceDetailBundle(detail: detail, chapters: chapters);
 }
@@ -307,25 +315,45 @@ class _SourceDetailScreen extends StatefulWidget {
 class _SourceDetailScreenState extends State<_SourceDetailScreen> {
   late Future<_SourceDetailBundle> _detailFuture;
 
+  PluginContentDetail? get _coveredInitialDetail {
+    final detail = widget.initialDetail;
+    if (detail == null) return null;
+    // Some callers own both a persisted detail and a newer visible summary.
+    // Merge those two entry projections before choosing the refresh fallback.
+    return preserveSourceContentCover(detail: detail, fallbackSummary: widget.initialContent);
+  }
+
+  PluginContentSummary? get _entryCoverFallback => _coveredInitialDetail?.summary ?? widget.initialContent;
+
   @override
   void initState() {
     super.initState();
     // Start the request after the route is mounted so FutureBuilder attaches
     // its error handler before a synchronous source failure can surface as an
     // uncaught framework error.
-    _detailFuture = _loadDetail(widget.gateway, widget.pluginId, widget.id);
+    _detailFuture = _loadDetail(
+      widget.gateway,
+      widget.pluginId,
+      widget.id,
+      coverFallback: _entryCoverFallback,
+    );
   }
 
   void _retryDetail() {
     setState(() {
-      _detailFuture = _loadDetail(widget.gateway, widget.pluginId, widget.id);
+      _detailFuture = _loadDetail(
+        widget.gateway,
+        widget.pluginId,
+        widget.id,
+        coverFallback: _entryCoverFallback,
+      );
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final previewDetail =
-        widget.initialDetail ??
+        _coveredInitialDetail ??
         (widget.initialContent == null
             ? null
             : _previewDetail(pluginId: widget.pluginId, content: widget.initialContent!, sourceName: widget.initialSourceName));
