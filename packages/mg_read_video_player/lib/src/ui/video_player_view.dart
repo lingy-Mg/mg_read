@@ -397,7 +397,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
         next.errorKind == VideoPlaybackBackendErrorKind.proxyUnavailable
             ? const VideoPlayerFailure(
                 VideoPlayerFailureKind.playback,
-                '视频代理无法连接，请启动代理服务，或关闭视频代理后重试。',
+                '视频代理无法连接，请启动代理服务；若已关闭视频代理，请退出播放器后重新打开。',
                 code: 'video_proxy_unreachable',
                 location: '连接视频代理',
               )

@@ -55,7 +55,10 @@ void main() {
 
     expect(controller.snapshot.status, VideoPlayerStatus.failure);
     expect(controller.snapshot.failure?.code, 'video_proxy_unreachable');
-    expect(find.text('视频代理无法连接，请启动代理服务，或关闭视频代理后重试。'), findsOneWidget);
+    expect(
+      find.text('视频代理无法连接，请启动代理服务；若已关闭视频代理，请退出播放器后重新打开。'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('queues background pause behind a blocked autoplay open', (
