@@ -25,6 +25,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import android.os.HandlerThread
@@ -78,31 +79,43 @@ internal class AndroidRuntimeHost(
     private var runtimeRoot: File? = null
     private var dataRoot: File? = null
     private val artifactTransfer = AndroidPluginArtifactTransfer(context)
+    private val invocationCancellations = ConcurrentHashMap<String, AtomicBoolean>()
 
     fun attachActivity(activity: Activity?) {
         browserSessionHost.attachActivity(activity)
     }
 
     fun invoke(
+        requestId: String,
         method: String,
         params: Map<String, Any?>,
         deadlineUnixMs: Long,
         callback: (AndroidRuntimeError?, String?) -> Unit,
     ) {
+        val cancellation = AtomicBoolean(false)
+        if (invocationCancellations.putIfAbsent(requestId, cancellation) != null) {
+            callback(AndroidRuntimeError("invalid_request", "Android Runtime request id is already active."), null)
+            return
+        }
         if (disposed.get()) {
+            invocationCancellations.remove(requestId, cancellation)
             callback(AndroidRuntimeError("runtime_unavailable", "Android Runtime is closed."), null)
             return
         }
         handler.post {
             var phase = "starting"
             try {
+                if (cancellation.get()) {
+                    callback(AndroidRuntimeError("cancelled", "Android Runtime invocation was cancelled."), null)
+                    return@post
+                }
                 Log.i(TAG, "android_runtime_invoke_start")
                 ensureStarted()
                 phase = "invoking"
                 val paramsJson = JSONObject(params).toString()
-                val script = "globalThis.__mgreadInvokeJson(${JSONObject.quote(method)}," +
+                val script = "globalThis.__mgreadInvokeJson(${JSONObject.quote(requestId)},${JSONObject.quote(method)}," +
                     "${JSONObject.quote(paramsJson)},$deadlineUnixMs)"
-                val result = awaitString(script)
+                val result = awaitString(script, requestId, cancellation)
                 if (result.isBlank() || result == "undefined" || result == "null") {
                     callback(
                         AndroidRuntimeError(
@@ -130,8 +143,14 @@ internal class AndroidRuntimeHost(
                     ),
                     null,
                 )
+            } finally {
+                invocationCancellations.remove(requestId, cancellation)
             }
         }
+    }
+
+    fun cancelInvocation(requestId: String) {
+        invocationCancellations[requestId]?.set(true)
     }
 
     fun importLocalPlugin(
@@ -397,6 +416,7 @@ internal class AndroidRuntimeHost(
 
     fun dispose() {
         if (!disposed.compareAndSet(false, true)) return
+        invocationCancellations.values.forEach { it.set(true) }
         Log.i(TAG, "android_runtime_dispose_start")
         val latch = CountDownLatch(1)
         handler.post {
@@ -559,12 +579,23 @@ internal class AndroidRuntimeHost(
                 globalThis.__mgreadCore = core;
                 return JSON.stringify({ ok: true });
               };
-              globalThis.__mgreadInvokeJson = async (method, paramsJson, deadline) => {
+              const embeddedInvocations = new Map();
+              globalThis.__mgreadInvokeJson = async (requestId, method, paramsJson, deadline) => {
+                const cancellation = new AbortController();
+                embeddedInvocations.set(requestId, cancellation);
                 try {
-                  return JSON.stringify(await globalThis.__mgreadCore.invokeEmbedded(method, JSON.parse(paramsJson), deadline));
+                  return JSON.stringify(await globalThis.__mgreadCore.invokeEmbedded(method, JSON.parse(paramsJson), deadline, cancellation.signal));
                 } catch (_) {
                   return JSON.stringify({ ok: false, error: { code: 'internal', message: 'Android Runtime invocation failed.' } });
+                } finally {
+                  embeddedInvocations.delete(requestId);
                 }
+              };
+              globalThis.__mgreadCancelJson = (requestId) => {
+                const cancellation = embeddedInvocations.get(requestId);
+                if (!cancellation) return false;
+                cancellation.abort();
+                return true;
               };
               globalThis.__mgreadStopJson = async () => {
                 const core = globalThis.__mgreadCore;
@@ -585,12 +616,23 @@ internal class AndroidRuntimeHost(
         onProgress(AndroidRuntimeProgress(1, "ready", 1))
     }
 
-    private fun awaitString(script: String): String {
+    private fun awaitString(
+        script: String,
+        cancellationRequestId: String? = null,
+        cancellation: AtomicBoolean? = null,
+    ): String {
         val runtime = nodeRuntime ?: throw IllegalStateException("Node Runtime is not started.")
         val value = runtime.getExecutor(script).execute<V8Value>()
         if (value !is V8ValuePromise) return value.toString()
         value.use { promise ->
+            var cancellationDelivered = false
             while (promise.isPending) {
+                if (!cancellationDelivered && cancellation?.get() == true && cancellationRequestId != null) {
+                    runtime.getExecutor(
+                        "globalThis.__mgreadCancelJson(${JSONObject.quote(cancellationRequestId)})",
+                    ).execute<V8Value>().use { }
+                    cancellationDelivered = true
+                }
                 // A Runtime HTTP listener is intentionally persistent. Never
                 // drain until no tasks remain: advance one non-blocking turn
                 // and leave the HandlerThread free for its next command.

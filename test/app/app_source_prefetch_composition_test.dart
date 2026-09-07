@@ -26,7 +26,7 @@ import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import '../core/settings/settings_testkit.dart';
 
 void main() {
-  test('save prefetch and immediate reader launch reuse one catalog and first-content task', () async {
+  test('save reuses the loaded catalog and immediate reader launch joins the first-content task', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-app-prefetch-composition-');
     final library = await ContentLibrary.open(dataRoot: root);
     final diagnostics = DiagnosticsManager(
@@ -62,23 +62,21 @@ void main() {
     });
 
     final saver = container.read(discoveryBookshelfSaverProvider);
-    await saver.save(source: _source, detail: _detail);
-    await gateway.catalogRequested.future;
+    await saver.save(source: _source, detail: _detail, catalog: _catalog);
+    await gateway.contentRequested.future;
     final item = (await library.listLibrary(const LibraryQuery())).items.single;
 
     final launch = container.read(libraryReaderLauncherProvider).launch(item.id.value);
     await Future<void>.delayed(const Duration(milliseconds: 100));
     final catalogCallsWhileFirstRequestWasBlocked = gateway.catalogCalls;
 
-    gateway.releaseCatalog();
-    await gateway.contentRequested.future;
     gateway.releaseContent();
     final request = await launch;
     await Future<void>.delayed(Duration.zero);
 
     expect(request, isA<NovelReaderLaunchRequest>());
-    expect(catalogCallsWhileFirstRequestWasBlocked, 1);
-    expect(gateway.catalogCalls, 1);
+    expect(catalogCallsWhileFirstRequestWasBlocked, 0);
+    expect(gateway.catalogCalls, 0);
     expect(gateway.contentCalls, 1);
   });
 }
@@ -115,6 +113,24 @@ final PluginContentDetail _detail = PluginContentDetail(
     tags: const <String>[],
     attributes: const <PluginContentAttribute>[],
   ),
+);
+
+final PluginChaptersResult _catalog = PluginChaptersResult(
+  pluginId: _source.id,
+  sourceName: _source.displayName,
+  items: <PluginChapterSummary>[
+    PluginChapterSummary(
+      id: 'chapter-1',
+      title: '第一章',
+      order: 0,
+      url: null,
+      volumeTitle: null,
+      wordCount: 4,
+      updatedAt: null,
+      isLocked: false,
+      attributes: const <PluginContentAttribute>[],
+    ),
+  ],
 );
 
 final class _GatedSourceContentGateway implements SourceContentGateway {

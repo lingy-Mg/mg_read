@@ -126,7 +126,9 @@ final class _WireConnection {
     required Map<String, Object?> params,
     String? idempotencyKey,
     Duration timeout = _controlTimeout,
+    PluginInvocationCancellation? cancellation,
   }) async {
+    cancellation?._throwIfCancelled();
     if (_closed) {
       throw const PluginRuntimeException(
         'transport_disconnected',
@@ -173,7 +175,11 @@ final class _WireConnection {
     _inFlightControlBytes += encodedBytes;
     try {
       _socket.add(encoded);
-      return await completer.future.timeout(
+      return await _awaitPluginInvocation(
+        completer.future,
+        cancellation,
+        onCancel: () => _sendCancellation(id, traceId),
+      ).timeout(
         timeout,
         onTimeout: () {
           _sendCancellation(id, traceId);

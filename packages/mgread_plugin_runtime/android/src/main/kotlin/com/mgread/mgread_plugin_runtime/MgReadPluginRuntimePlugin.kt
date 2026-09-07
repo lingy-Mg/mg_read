@@ -101,14 +101,15 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
         }
         when (call.method) {
             "invoke" -> {
+                val requestId = call.argument<String>("requestId")
                 val method = call.argument<String>("method")
                 val params = call.argument<Map<String, Any?>>("params") ?: emptyMap()
                 val deadline = call.argument<Long>("deadlineUnixMs") ?: 0L
-                if (method.isNullOrBlank() || deadline <= 0L) {
+                if (requestId.isNullOrBlank() || method.isNullOrBlank() || deadline <= 0L) {
                     result.error("invalid_request", "Android Runtime request is invalid.", null)
                     return
                 }
-                host.invoke(method, params, deadline) { error, value ->
+                host.invoke(requestId, method, params, deadline) { error, value ->
                     mainHandler.post {
                         if (error == null) {
                             result.success(value)
@@ -117,6 +118,15 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                         }
                     }
                 }
+            }
+            "cancelInvocation" -> {
+                val requestId = call.argument<String>("requestId")
+                if (requestId.isNullOrBlank()) {
+                    result.error("invalid_request", "Android Runtime cancellation is invalid.", null)
+                    return
+                }
+                host.cancelInvocation(requestId)
+                result.success(null)
             }
             "importLocalPlugin" -> {
                 val sourcePath = call.argument<String>("sourcePath")

@@ -56,6 +56,24 @@ void main() {
     expect(content.groups.single.episodes.single.uri, isNull);
   });
 
+  test('refreshes an empty shelf placeholder instead of treating it as the video catalog', () async {
+    final gateway = _VideoGateway(failEpisodeResource: false);
+    final detail = await gateway.getDetail(pluginId: _pluginId, id: 'video-1');
+    gateway.detailCalls = 0;
+    final source = SourceVideoDataSource(
+      gateway: gateway,
+      pluginId: _pluginId,
+      initialDetail: detail,
+      initialCatalog: PluginChaptersResult(pluginId: _pluginId, sourceName: '书架预览', items: const <PluginChapterSummary>[]),
+    );
+
+    final content = await source.load('video-1');
+
+    expect(content.groups.single.episodes, isNotEmpty);
+    expect(gateway.detailCalls, 0);
+    expect(gateway.catalogCalls, 1);
+  });
+
   test('resolves only the explicitly selected episode', () async {
     final gateway = _VideoGateway(failEpisodeResource: false);
     final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId);

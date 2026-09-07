@@ -146,11 +146,44 @@ void main() {
     expect(state.canNavigateBack, isFalse);
     expect(_collection(state.result!).id, 'home-books');
     expect(diagnostics.sink.events.map((event) => event.eventName), contains('discovery.navigation.cancelled'));
+    expect(gateway.cancellations.last.isCancelled, isTrue);
 
     gateway.categoryGate!.complete();
     await pending;
     state = container.read(discoveryPageControllerProvider);
     expect(_collection(state.result!).id, 'home-books');
+  });
+
+  test('reopens a recent category immediately and refreshes it in the background', () async {
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    final gateway = _TreeGateway();
+    final container = ProviderContainer(
+      overrides: [
+        sourceContentGatewayProvider.overrideWithValue(gateway),
+        discoverySourceSelectionStoreProvider.overrideWithValue(_MemoryDiscoverySourceSelectionStore(null)),
+        diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+      ],
+    );
+    addTearDown(container.dispose);
+    final listener = container.listen<DiscoveryPageState>(discoveryPageControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(listener.close);
+
+    await _waitUntil(() => container.read(discoveryPageControllerProvider).status == DiscoveryPageStatus.loaded);
+    final controller = container.read(discoveryPageControllerProvider.notifier);
+    await controller.openCategory('category:fantasy');
+    controller.goBack();
+    gateway.categoryGate = Completer<void>();
+
+    final refreshing = controller.openCategory('category:fantasy');
+    await Future<void>.delayed(Duration.zero);
+
+    final cached = container.read(discoveryPageControllerProvider);
+    expect(cached.status, DiscoveryPageStatus.loaded);
+    expect(_collection(cached.result!).id, 'fantasy-books');
+    expect(gateway.documentRequestCount, 3);
+    gateway.categoryGate!.complete();
+    await refreshing;
   });
 
   test('supports two nested pages and returns one level at a time', () async {
@@ -371,7 +404,7 @@ Future<void> _waitUntil(bool Function() predicate) async {
 PluginDiscoveryContentCollectionComponent _collection(PluginDiscoveryDocumentResult result) =>
     result.document.components.single as PluginDiscoveryContentCollectionComponent;
 
-final class _TreeGateway implements SourceContentGateway {
+final class _TreeGateway implements SourceContentGateway, CancellableSourceContentGateway {
   static const _pluginId = 'org.mgread.tree-test';
   static const alternatePluginId = 'org.mgread.alternate-tree-test';
   int documentRequestCount = 0;
@@ -380,6 +413,13 @@ final class _TreeGateway implements SourceContentGateway {
   bool failFirstBrokenCategory = false;
   AppError? brokenCategoryError;
   bool includePrimary = true;
+  final List<PluginInvocationCancellation> cancellations = <PluginInvocationCancellation>[];
+
+  @override
+  Future<T> runCancellable<T>(PluginInvocationCancellation cancellation, Future<T> Function() request) {
+    cancellations.add(cancellation);
+    return request();
+  }
 
   @override
   Future<List<PluginSourceDescriptor>> listSources() async => <PluginSourceDescriptor>[

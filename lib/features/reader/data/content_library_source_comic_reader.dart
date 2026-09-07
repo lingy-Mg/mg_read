@@ -8,6 +8,8 @@
 /// LRU so visiting chapters cannot grow session memory without bound. Unless
 /// a caller-owned fetcher is injected, this adapter lazily owns one bounded
 /// HttpClient and closes it when the reader route disposes the data source.
+/// Durable or still-valid refreshable manifests open locally; session-only or
+/// expired manifests refresh through Runtime before their resources are used.
 library;
 
 import 'dart:async';
@@ -107,13 +109,16 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
   @override
   Future<ComicChapterContent> loadChapterContent(String bookId, String chapterId) async {
     _checkBook(bookId);
+    final persisted = await _persistedManifest(chapterId);
+    if (persisted?.isReusableWithoutRuntime ?? false) {
+      return _readerContent(persisted!);
+    }
     try {
-      return _readerContent(await _runtimeManifest(chapterId));
+      return _readerContent(await _runtimeManifest(chapterId, forceRefresh: persisted != null));
     } on Object catch (error, stackTrace) {
       // A previously committed manifest remains a usable offline snapshot.
       // Preserve the live error when no such snapshot exists.
       _ensureActive();
-      final persisted = await _persistedManifest(chapterId);
       if (persisted == null) Error.throwWithStackTrace(error, stackTrace);
       return _readerContent(persisted);
     }
@@ -433,6 +438,8 @@ final class _ChapterManifest {
 
   bool needsRefresh(MangaPage page) =>
       page.resource.persistencePolicy == PersistencePolicy.refreshable && !page.resource.expiresAtUtc!.isAfter(DateTime.now().toUtc());
+
+  bool get isReusableWithoutRuntime => pages.every((page) => downloadUri(page) != null && !needsRefresh(page));
 }
 
 /// Comic reader state adapter backed by Content Library and app settings.

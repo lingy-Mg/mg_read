@@ -225,7 +225,7 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
         shelfState: currentMembership.contains(pluginId: pluginId, title: content.title)
             ? SourceDetailShelfState.alreadyAdded
             : SourceDetailShelfState.canAdd,
-        onAddToShelf: (detail) => saver.save(source: selectedSource, detail: detail),
+        onAddToShelf: (detail, catalog) => saver.save(source: selectedSource, detail: detail, catalog: catalog),
         onRemoveFromShelf: remover == null ? null : () => remover.remove(pluginId: pluginId, title: content.title),
         onRecommendationRequested: openContent,
       );

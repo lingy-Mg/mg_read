@@ -2,12 +2,14 @@
 ///
 /// 职责：
 /// - 加载并展示书籍详情、目录和相关推荐，将操作委托给宿主回调。
+/// - 详情与目录并行加载、分别呈现，并在路由退出或重试时主动取消旧请求。
 /// - 将相关推荐点击委托给宿主重新解析目标作品的书架状态与详情路由。
 /// - 已在书架的发现内容提供统一确认后的移出入口，并即时切换本地按钮状态。
 ///
 /// 注意：
 /// - 不要在 build() 中执行 Runtime、网络或磁盘 IO。
 /// - 异步加载必须由页面状态持有请求世代，并保留稳定 Key 与书架乐观更新语义。
+/// - 入架回调同时交付已加载目录，后台预取不得重复请求同一份详情和目录。
 /// - 封面作用域必须携带真实插件版本，确保发现页与书架详情命中同一持久化缓存键。
 /// - 详情只复用发现页顶部栏，不显示顶级数据源选择。
 /// - 横向推荐列表允许触摸、手写笔、触控板和鼠标直接拖动。
@@ -71,7 +73,7 @@ typedef SourceVideoEpisodeRequested =
 
 typedef SourceExternalUrlLauncher = Future<bool> Function(Uri url);
 
-typedef SourceShelfSaveRequested = Future<void> Function(PluginContentDetail detail);
+typedef SourceShelfSaveRequested = Future<void> Function(PluginContentDetail detail, PluginChaptersResult catalog);
 typedef SourceShelfRemoveRequested = Future<void> Function();
 
 /// Actions available for a book that is already owned by the local shelf.
@@ -158,14 +160,24 @@ Future<_SourceDetailBundle> _loadDetail(
   String pluginId,
   String id, {
   PluginContentSummary? coverFallback,
+  ValueChanged<PluginContentDetail>? onDetailLoaded,
+  ValueChanged<PluginChaptersResult>? onChaptersLoaded,
 }) async {
   final results = await Future.wait<Object>(<Future<Object>>[
-    _loadDetailPart('source.getDetail.v1', gateway.getDetail(pluginId: pluginId, id: id)),
-    _loadDetailPart('source.getChapters.v1', gateway.getChapters(pluginId: pluginId, id: id)),
+    _loadDetailPart('source.getDetail.v1', gateway.getDetail(pluginId: pluginId, id: id)).then((detail) {
+      // Runtime details cannot carry host-local cover bytes. Merge the entry
+      // summary before publishing this partial result or the visible cover and
+      // the later reader/player transition will both regress to a placeholder.
+      final coveredDetail = preserveSourceContentCover(detail: detail, fallbackSummary: coverFallback);
+      onDetailLoaded?.call(coveredDetail);
+      return coveredDetail;
+    }),
+    _loadDetailPart('source.getChapters.v1', gateway.getChapters(pluginId: pluginId, id: id)).then((chapters) {
+      onChaptersLoaded?.call(chapters);
+      return chapters;
+    }),
   ]);
-  // Runtime details never contain host-local bytes. Preserve the entry cover
-  // before the refreshed detail replaces a search, discovery or shelf preview.
-  final detail = preserveSourceContentCover(detail: results[0] as PluginContentDetail, fallbackSummary: coverFallback);
+  final detail = results[0] as PluginContentDetail;
   final chapters = results[1] as PluginChaptersResult;
   return _SourceDetailBundle(detail: detail, chapters: chapters);
 }
@@ -314,6 +326,10 @@ class _SourceDetailScreen extends StatefulWidget {
 
 class _SourceDetailScreenState extends State<_SourceDetailScreen> {
   late Future<_SourceDetailBundle> _detailFuture;
+  PluginContentDetail? _loadedDetail;
+  PluginChaptersResult? _loadedChapters;
+  PluginInvocationCancellation? _cancellation;
+  int _loadGeneration = 0;
 
   PluginContentDetail? get _coveredInitialDetail {
     final detail = widget.initialDetail;
@@ -331,28 +347,51 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
     // Start the request after the route is mounted so FutureBuilder attaches
     // its error handler before a synchronous source failure can surface as an
     // uncaught framework error.
-    _detailFuture = _loadDetail(
-      widget.gateway,
-      widget.pluginId,
-      widget.id,
-      coverFallback: _entryCoverFallback,
-    );
+    _detailFuture = _startDetailLoad();
   }
 
   void _retryDetail() {
     setState(() {
-      _detailFuture = _loadDetail(
+      _detailFuture = _startDetailLoad();
+    });
+  }
+
+  Future<_SourceDetailBundle> _startDetailLoad() {
+    final generation = ++_loadGeneration;
+    _cancellation?.cancel();
+    final cancellation = PluginInvocationCancellation();
+    _cancellation = cancellation;
+    return runCancellableSourceRequest(
+      widget.gateway,
+      cancellation,
+      () => _loadDetail(
         widget.gateway,
         widget.pluginId,
         widget.id,
         coverFallback: _entryCoverFallback,
-      );
-    });
+        onDetailLoaded: (detail) {
+          if (!mounted || generation != _loadGeneration) return;
+          setState(() => _loadedDetail = detail);
+        },
+        onChaptersLoaded: (chapters) {
+          if (!mounted || generation != _loadGeneration) return;
+          setState(() => _loadedChapters = chapters);
+        },
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    ++_loadGeneration;
+    _cancellation?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final previewDetail =
+        _loadedDetail ??
         _coveredInitialDetail ??
         (widget.initialContent == null
             ? null
@@ -361,7 +400,8 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
         ? null
         : _SourceDetailBundle(
             detail: previewDetail,
-            chapters: widget.initialCatalog ?? _emptyChapters(pluginId: widget.pluginId, sourceName: widget.initialSourceName),
+            chapters:
+                _loadedChapters ?? widget.initialCatalog ?? _emptyChapters(pluginId: widget.pluginId, sourceName: widget.initialSourceName),
           );
     return BookCoverSourceScope(
       pluginId: widget.pluginId,
@@ -396,7 +436,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                   initialData: previewBundle,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState != ConnectionState.done) {
-                      final loadingBundle = snapshot.data ?? previewBundle;
+                      final loadingBundle = previewBundle;
                       if (loadingBundle != null) {
                         return AnimatedSwitcher(
                           duration: const Duration(milliseconds: 260),
@@ -589,7 +629,7 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
     }
     setState(() => _isSavingToShelf = true);
     try {
-      await save(detail);
+      await save(detail, widget.bundle.chapters);
       if (!mounted) return;
       setState(() {
         _isSavingToShelf = false;

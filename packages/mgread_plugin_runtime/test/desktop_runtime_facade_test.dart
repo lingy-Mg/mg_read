@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -468,6 +469,52 @@ void main() {
       await runtime.invoke(const UninstallAllPluginsInvocation());
     },
     timeout: const Timeout(Duration(seconds: 60)),
+  );
+
+  test(
+    'caller cancellation ends a desktop source invocation without closing Runtime',
+    () async {
+      final runtimeDataRoot = await _stageInstalledStandardPlugin();
+      addTearDown(() => runtimeDataRoot.delete(recursive: true));
+      final runtime = PluginRuntime.desktopForTesting(
+        runtimeRepositoryRoot: nodeRuntimeRepositoryRoot,
+        runtimeDataRoot: runtimeDataRoot,
+      );
+      addTearDown(runtime.debugDispose);
+      await runtime.invoke(const InstalledPluginsInvocation());
+
+      final cancellation = PluginInvocationCancellation();
+      final stopwatch = Stopwatch()..start();
+      unawaited(
+        Future<void>.delayed(
+          const Duration(milliseconds: 100),
+          cancellation.cancel,
+        ),
+      );
+
+      await expectLater(
+        runtime.invoke(
+          const SourceDiscoverInvocation(
+            pluginId: 'org.mgread.flutter.fixture',
+            target: 'slow-nested',
+          ),
+          cancellation: cancellation,
+        ),
+        throwsA(
+          isA<PluginRuntimeException>().having(
+            (error) => error.code,
+            'code',
+            'cancelled',
+          ),
+        ),
+      );
+      expect(stopwatch.elapsed, lessThan(const Duration(seconds: 2)));
+      expect(
+        (await runtime.invoke(const RuntimePingInvocation())).isHealthy,
+        isTrue,
+      );
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
   );
 
   test(

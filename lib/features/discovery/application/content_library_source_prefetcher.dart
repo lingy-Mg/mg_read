@@ -11,7 +11,8 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 ///
 /// Catalog commit and the first chapter request overlap. A validated first
 /// body is exposed to a waiting reader immediately while its immutable object
-/// write continues in the background.
+/// write continues in the background. Detail-page seeds bypass duplicate
+/// detail/catalog Runtime calls while preserving the same persistence path.
 final class ContentLibrarySourcePrefetcher {
   ContentLibrarySourcePrefetcher(this._library, this._gateway, {this._diagnostics});
 
@@ -23,7 +24,7 @@ final class ContentLibrarySourcePrefetcher {
   final Map<String, ContentLibraryPrefetchedNovelChapter> _prepared = <String, ContentLibraryPrefetchedNovelChapter>{};
 
   /// Starts one deduplicated warm-up without blocking the add-to-shelf UI.
-  void start(LibraryItem item) {
+  void start(LibraryItem item, {PluginContentDetail? initialDetail, PluginChaptersResult? initialCatalog}) {
     final source = item.source;
     if (item.kind != ContentKind.novel) return;
     final key = item.id.value;
@@ -34,7 +35,7 @@ final class ContentLibrarySourcePrefetcher {
     // the otherwise-unobserved completer future.
     unawaited(readable.future.catchError((Object error, StackTrace stack) {}));
     _readable[key] = readable;
-    final task = _run(item, source, readable);
+    final task = _run(item, source, readable, initialDetail: initialDetail, initialCatalog: initialCatalog);
     _active[key] = task;
     unawaited(
       task.then<void>(
@@ -61,7 +62,13 @@ final class ContentLibrarySourcePrefetcher {
   /// Waits for an already-started warm-up, mainly for host lifecycle tests.
   Future<void> waitFor(String libraryItemId) => _active[libraryItemId] ?? Future<void>.value();
 
-  Future<void> _run(LibraryItem item, LibraryItemSource source, Completer<void> readable) async {
+  Future<void> _run(
+    LibraryItem item,
+    LibraryItemSource source,
+    Completer<void> readable, {
+    PluginContentDetail? initialDetail,
+    PluginChaptersResult? initialCatalog,
+  }) async {
     final diagnostics = _diagnostics;
     final span = diagnostics?.startSpan(
       AppDiagnosticEvents.readerPrefetch,
@@ -73,8 +80,12 @@ final class ContentLibrarySourcePrefetcher {
     var catalogCount = 0;
     var cachedChapterCount = 0;
     try {
-      final detailFuture = _loadDetail(source);
-      final catalogResult = await _gateway.getChapters(pluginId: source.pluginId, id: source.remoteContentId);
+      final seededDetail = initialDetail?.pluginId == source.pluginId && initialDetail?.summary.id == source.remoteContentId
+          ? initialDetail
+          : null;
+      final seededCatalog = initialCatalog?.pluginId == source.pluginId ? initialCatalog : null;
+      final detailFuture = seededDetail == null ? _loadDetail(source) : Future<PluginContentDetail?>.value(seededDetail);
+      final catalogResult = seededCatalog ?? await _gateway.getChapters(pluginId: source.pluginId, id: source.remoteContentId);
       if (catalogResult.items.isEmpty) {
         if (!readable.isCompleted) {
           readable.completeError(StateError('Source catalog is empty.'));

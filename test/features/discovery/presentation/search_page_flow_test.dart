@@ -8,6 +8,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver.dart';
 import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
+import 'package:mg_read/features/discovery/application/discovery_source_selection_store.dart';
 import 'package:mg_read/features/discovery/application/search_history_store.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
@@ -127,6 +128,7 @@ void main() {
         overrides: [
           sourceContentGatewayProvider.overrideWithValue(gateway),
           searchHistoryStoreProvider.overrideWithValue(_MemorySearchHistoryStore(const <String>[])),
+          discoverySourceSelectionStoreProvider.overrideWithValue(_MemoryDiscoverySourceSelectionStore()),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -207,6 +209,33 @@ void main() {
     expect(find.text('真实搜索结果'), findsWidgets);
   });
 
+  testWidgets('leaving search cancels the active source request', (tester) async {
+    final completion = Completer<PluginSearchResult>();
+    final gateway = _SearchGateway(searchCompletion: completion);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sourceContentGatewayProvider.overrideWithValue(gateway),
+          searchHistoryStoreProvider.overrideWithValue(_MemorySearchHistoryStore(const <String>['诡秘之主'])),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: SearchPage(onDestinationRequested: (_) {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('诡秘之主').first);
+    await tester.pump();
+    final cancellation = gateway.cancellations.last;
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    expect(cancellation.isCancelled, isTrue);
+    completion.complete(_searchResult('source.test'));
+  });
+
   testWidgets('uses the reader callback and selected source from search detail', (tester) async {
     final gateway = _SearchGateway();
     final saver = _RecordingBookshelfSaver();
@@ -272,12 +301,40 @@ final class _MemorySearchHistoryStore implements SearchHistoryStore {
   }
 }
 
+final class _MemoryDiscoverySourceSelectionStore implements DiscoverySourceSelectionStore {
+  String? selectedSourceId;
+  final Set<String> pinnedSourceIds = <String>{};
+
+  @override
+  Future<String?> load() async => selectedSourceId;
+
+  @override
+  Future<List<String>> loadPinned() async => pinnedSourceIds.toList(growable: false);
+
+  @override
+  Future<void> save(String sourceId) async => selectedSourceId = sourceId;
+
+  @override
+  Future<void> setPinned(String sourceId, {required bool pinned}) async {
+    if (pinned) {
+      pinnedSourceIds.add(sourceId);
+    } else {
+      pinnedSourceIds.remove(sourceId);
+    }
+  }
+}
+
 final class _RecordingBookshelfSaver implements DiscoveryBookshelfSaver {
   PluginSourceDescriptor? source;
   PluginContentDetail? detail;
 
   @override
-  Future<void> save({required PluginSourceDescriptor source, PluginContentSummary? content, PluginContentDetail? detail}) async {
+  Future<void> save({
+    required PluginSourceDescriptor source,
+    PluginContentSummary? content,
+    PluginContentDetail? detail,
+    PluginChaptersResult? catalog,
+  }) async {
     this.source = source;
     this.detail = detail;
   }
@@ -292,7 +349,7 @@ final class _MemoryMembershipLoader implements BookshelfMembershipLoader {
   Future<Iterable<BookshelfMembershipEntry>> load() async => entries;
 }
 
-final class _SearchGateway implements SourceContentGateway {
+final class _SearchGateway implements SourceContentGateway, CancellableSourceContentGateway {
   _SearchGateway({
     List<PluginSourceDescriptor>? sources,
     List<PluginSearchSuggestion>? hotSearches,
@@ -307,6 +364,13 @@ final class _SearchGateway implements SourceContentGateway {
   final List<String> queries = <String>[];
   final List<String> pluginIds = <String>[];
   final Completer<PluginSearchResult>? searchCompletion;
+  final List<PluginInvocationCancellation> cancellations = <PluginInvocationCancellation>[];
+
+  @override
+  Future<T> runCancellable<T>(PluginInvocationCancellation cancellation, Future<T> Function() request) {
+    cancellations.add(cancellation);
+    return request();
+  }
 
   @override
   Future<List<PluginSourceDescriptor>> listSources() async => sources;

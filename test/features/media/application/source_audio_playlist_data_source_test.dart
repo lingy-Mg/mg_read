@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -93,6 +95,23 @@ void main() {
     expect(track.id, 'chapter:free-3');
     expect(gateway.contentCalls, <String>['chapter:free-3']);
   });
+
+  test('shares one detail and catalog request across concurrent player reads', () async {
+    final catalogGate = Completer<void>();
+    final gateway = _AudioGateway(catalogGate: catalogGate);
+    final source = SourceAudioPlaylistDataSource(gateway: gateway, pluginId: _pluginId);
+
+    final playlist = source.loadPlaylist('audio:book-1');
+    final selected = source.loadTrackById('audio:book-1', trackId: 'chapter:free-3');
+    await Future<void>.delayed(Duration.zero);
+
+    expect(gateway.detailCalls, 1);
+    expect(gateway.catalogCalls, 1);
+    catalogGate.complete();
+    await Future.wait<Object>(<Future<Object>>[playlist, selected]);
+    expect(gateway.detailCalls, 1);
+    expect(gateway.catalogCalls, 1);
+  });
 }
 
 const _pluginId = 'org.example.audio';
@@ -148,10 +167,13 @@ PluginChapterSummary _chapter(String id, int order, {bool isLocked = false}) => 
 );
 
 final class _AudioGateway implements SourceContentGateway {
-  _AudioGateway({this.failingChapterId});
+  _AudioGateway({this.failingChapterId, this.catalogGate});
 
   final String? failingChapterId;
+  final Completer<void>? catalogGate;
   final List<String> contentCalls = <String>[];
+  int detailCalls = 0;
+  int catalogCalls = 0;
 
   @override
   Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async {
@@ -178,10 +200,17 @@ final class _AudioGateway implements SourceContentGateway {
   }
 
   @override
-  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async => _detail();
+  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async {
+    detailCalls += 1;
+    return _detail();
+  }
 
   @override
-  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async => _catalog();
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async {
+    catalogCalls += 1;
+    await catalogGate?.future;
+    return _catalog();
+  }
 
   @override
   Future<List<PluginSourceDescriptor>> listSources() => throw UnimplementedError();

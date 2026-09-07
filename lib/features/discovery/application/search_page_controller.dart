@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/search_page_state.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
@@ -14,6 +15,8 @@ class SearchPageController extends Notifier<SearchPageState> {
   int _latestGeneration = 0;
   int _latestSuggestionGeneration = 0;
   bool _disposed = false;
+  PluginInvocationCancellation? _searchCancellation;
+  PluginInvocationCancellation? _suggestionCancellation;
 
   @override
   SearchPageState build() {
@@ -21,7 +24,11 @@ class SearchPageController extends Notifier<SearchPageState> {
     ref.listen(pluginRuntimeCatalogChangeProvider, (_, next) {
       unawaited(_applyCatalogChange(next));
     });
-    ref.onDispose(() => _disposed = true);
+    ref.onDispose(() {
+      _disposed = true;
+      _cancelSearch();
+      _cancelSuggestions();
+    });
     final generation = ++_latestGeneration;
     scheduleMicrotask(() => unawaited(_loadSources(generation)));
     return SearchPageState.loadingSources();
@@ -30,7 +37,11 @@ class SearchPageController extends Notifier<SearchPageState> {
   Future<void> _applyCatalogChange(PluginRuntimeCatalogChange change) async {
     final selected = state.selectedSourceId;
     final affectsSelected = selected != null && change.affects(selected);
-    if (affectsSelected) ++_latestGeneration;
+    if (affectsSelected) {
+      ++_latestGeneration;
+      _cancelSearch();
+      _cancelSuggestions();
+    }
     try {
       // Let providers that watch the same revision dispose their stale future
       // before reading the refreshed catalog. Riverpod does not define sibling
@@ -56,6 +67,7 @@ class SearchPageController extends Notifier<SearchPageState> {
   }
 
   Future<void> retrySources() {
+    _cancelSearch();
     ref.invalidate(availablePluginSourcesProvider);
     final generation = ++_latestGeneration;
     return _loadSources(generation);
@@ -63,6 +75,9 @@ class SearchPageController extends Notifier<SearchPageState> {
 
   Future<void> selectSource(String pluginId) async {
     if (!state.sources.any((source) => source.id == pluginId)) return;
+    ++_latestGeneration;
+    _cancelSearch();
+    _cancelSuggestions();
     final query = state.query;
     state = SearchPageState.ready(sources: state.sources, selectedSourceId: pluginId, query: query);
     unawaited(_loadSuggestions(pluginId, ++_latestSuggestionGeneration));
@@ -71,6 +86,7 @@ class SearchPageController extends Notifier<SearchPageState> {
 
   Future<void> clear() async {
     _latestGeneration += 1;
+    _cancelSearch();
     state = SearchPageState.ready(sources: state.sources, selectedSourceId: state.selectedSourceId, hotSearches: state.hotSearches);
   }
 
@@ -84,6 +100,7 @@ class SearchPageController extends Notifier<SearchPageState> {
     if (pluginId == null) return;
 
     final generation = ++_latestGeneration;
+    final cancellation = _replaceSearchCancellation();
     final retainedResult = state.result;
     state = SearchPageState.searching(
       sources: state.sources,
@@ -93,7 +110,7 @@ class SearchPageController extends Notifier<SearchPageState> {
       hotSearches: state.hotSearches,
     );
     try {
-      final result = await _gateway.search(pluginId: pluginId, query: query);
+      final result = await runCancellableSourceRequest(_gateway, cancellation, () => _gateway.search(pluginId: pluginId, query: query));
       if (!_isCurrent(generation)) return;
       state = SearchPageState.loaded(
         sources: state.sources,
@@ -112,6 +129,8 @@ class SearchPageController extends Notifier<SearchPageState> {
         retainedResult: retainedResult,
         hotSearches: state.hotSearches,
       );
+    } finally {
+      if (identical(_searchCancellation, cancellation)) _searchCancellation = null;
     }
   }
 
@@ -148,8 +167,9 @@ class SearchPageController extends Notifier<SearchPageState> {
   }
 
   Future<void> _loadSuggestions(String pluginId, int generation) async {
+    final cancellation = _replaceSuggestionCancellation();
     try {
-      final suggestions = await _gateway.searchSuggestions(pluginId: pluginId);
+      final suggestions = await runCancellableSourceRequest(_gateway, cancellation, () => _gateway.searchSuggestions(pluginId: pluginId));
       if (!_isCurrentSuggestion(generation) || state.selectedSourceId != pluginId) {
         return;
       }
@@ -157,7 +177,29 @@ class SearchPageController extends Notifier<SearchPageState> {
     } on Object {
       // Suggestions are optional source metadata. Their failure must not erase
       // a selectable source or turn the page into a false search failure.
+    } finally {
+      if (identical(_suggestionCancellation, cancellation)) _suggestionCancellation = null;
     }
+  }
+
+  PluginInvocationCancellation _replaceSearchCancellation() {
+    _cancelSearch();
+    return _searchCancellation = PluginInvocationCancellation();
+  }
+
+  PluginInvocationCancellation _replaceSuggestionCancellation() {
+    _cancelSuggestions();
+    return _suggestionCancellation = PluginInvocationCancellation();
+  }
+
+  void _cancelSearch() {
+    _searchCancellation?.cancel();
+    _searchCancellation = null;
+  }
+
+  void _cancelSuggestions() {
+    _suggestionCancellation?.cancel();
+    _suggestionCancellation = null;
   }
 
   bool _isCurrentSuggestion(int generation) => !_disposed && generation == _latestSuggestionGeneration;

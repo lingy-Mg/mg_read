@@ -193,7 +193,10 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       List<RuntimeDiagnostic>.unmodifiable(_diagnostics);
 
   /// Starts the Runtime on demand and projects a typed capability result.
-  Future<T> invoke<T>(PluginInvocation<T> invocation) async {
+  Future<T> invoke<T>(
+    PluginInvocation<T> invocation, {
+    PluginInvocationCancellation? cancellation,
+  }) async {
     if (_disposed) {
       throw const PluginRuntimeException(
         'runtime_unavailable',
@@ -214,11 +217,15 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
     }
 
     try {
-      final connection = await _ensureStarted();
+      final connection = await _awaitPluginInvocation(
+        _ensureStarted(),
+        cancellation,
+      );
       final result = await connection.request(
         method: invocation._wireMethod,
         params: invocation._wireParams,
         timeout: invocation._timeout,
+        cancellation: cancellation,
       );
       return invocation._decodeResult(result);
     } on PluginRuntimeException catch (error) {

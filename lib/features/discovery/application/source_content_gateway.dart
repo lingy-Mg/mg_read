@@ -10,6 +10,8 @@
 ///
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -68,14 +70,45 @@ abstract interface class SourceContentGateway {
   Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId});
 }
 
+/// Optional execution boundary for callers that own a request generation.
+///
+/// Test gateways can keep implementing only [SourceContentGateway]. The
+/// production adapter binds the cancellation to every Runtime call started by
+/// [request], including parallel detail and catalog requests.
+abstract interface class CancellableSourceContentGateway {
+  Future<T> runCancellable<T>(PluginInvocationCancellation cancellation, Future<T> Function() request);
+}
+
+Future<T> runCancellableSourceRequest<T>(
+  SourceContentGateway gateway,
+  PluginInvocationCancellation cancellation,
+  Future<T> Function() request,
+) {
+  if (gateway is CancellableSourceContentGateway) {
+    return (gateway as CancellableSourceContentGateway).runCancellable(cancellation, request);
+  }
+  return request();
+}
+
+final Object _sourceInvocationCancellationZoneKey = Object();
+
 /// Production adapter. Runtime owns execution and transport; this adapter owns
 /// only application error normalization and the main-app Facade span.
-final class MgReadSourceContentGateway implements SourceContentGateway {
+final class MgReadSourceContentGateway implements SourceContentGateway, CancellableSourceContentGateway {
   const MgReadSourceContentGateway(this._runtime, this._diagnostics, this._loadRuntimeConnection);
 
   final PluginRuntime _runtime;
   final DiagnosticsManager _diagnostics;
   final Future<PluginRuntimeConnection> Function() _loadRuntimeConnection;
+
+  @override
+  Future<T> runCancellable<T>(PluginInvocationCancellation cancellation, Future<T> Function() request) {
+    cancellation._throwIfCancelledForSourceRequest();
+    return runZoned(request, zoneValues: <Object, Object>{_sourceInvocationCancellationZoneKey: cancellation});
+  }
+
+  PluginInvocationCancellation? get _activeCancellation =>
+      Zone.current[_sourceInvocationCancellationZoneKey] as PluginInvocationCancellation?;
 
   @override
   Future<List<PluginSourceDescriptor>> listSources() {
@@ -108,7 +141,10 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
     return _invoke(
       capability: 'source.search.v1',
       pluginId: pluginId,
-      action: () => _runtime.invoke(SourceSearchInvocation(pluginId: pluginId, query: query, cursor: cursor, pageSize: pageSize)),
+      action: () => _runtime.invoke(
+        SourceSearchInvocation(pluginId: pluginId, query: query, cursor: cursor, pageSize: pageSize),
+        cancellation: _activeCancellation,
+      ),
       resultCount: (result) => result.items.length,
     );
   }
@@ -118,7 +154,10 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
     return _invoke(
       capability: 'source.searchSuggestions.v1',
       pluginId: pluginId,
-      action: () => _runtime.invoke(SourceSearchSuggestionsInvocation(pluginId: pluginId, cursor: cursor, pageSize: pageSize)),
+      action: () => _runtime.invoke(
+        SourceSearchSuggestionsInvocation(pluginId: pluginId, cursor: cursor, pageSize: pageSize),
+        cancellation: _activeCancellation,
+      ),
       resultCount: (result) => result.items.length,
     );
   }
@@ -136,6 +175,7 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
       pluginId: pluginId,
       action: () => _runtime.invoke(
         SourceDiscoverInvocation(pluginId: pluginId, target: target, cursor: cursor, collectionId: collectionId, pageSize: pageSize),
+        cancellation: _activeCancellation,
       ),
       resultCount: (result) => switch (result) {
         PluginDiscoveryDocumentResult(:final document) => _discoveryDocumentItemCount(document),
@@ -149,7 +189,10 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
     return _invoke(
       capability: 'source.getDetail.v1',
       pluginId: pluginId,
-      action: () => _runtime.invoke(SourceDetailInvocation(pluginId: pluginId, id: id)),
+      action: () => _runtime.invoke(
+        SourceDetailInvocation(pluginId: pluginId, id: id),
+        cancellation: _activeCancellation,
+      ),
       resultCount: (_) => 1,
     );
   }
@@ -159,7 +202,10 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
     return _invoke(
       capability: 'source.getChapters.v1',
       pluginId: pluginId,
-      action: () => _runtime.invoke(SourceChaptersInvocation(pluginId: pluginId, id: id)),
+      action: () => _runtime.invoke(
+        SourceChaptersInvocation(pluginId: pluginId, id: id),
+        cancellation: _activeCancellation,
+      ),
       resultCount: (result) => result.items.length,
     );
   }
@@ -169,7 +215,10 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
     return _invoke(
       capability: 'source.getContent.v1',
       pluginId: pluginId,
-      action: () => _runtime.invoke(SourceContentInvocation(pluginId: pluginId, id: id, chapterId: chapterId)),
+      action: () => _runtime.invoke(
+        SourceContentInvocation(pluginId: pluginId, id: id, chapterId: chapterId),
+        cancellation: _activeCancellation,
+      ),
       resultCount: (result) => switch (result.contentKind) {
         PluginContentKind.novel => 1,
         PluginContentKind.manga => result.pages.length,
@@ -261,6 +310,14 @@ final class MgReadSourceContentGateway implements SourceContentGateway {
       outcome: outcome,
       traceContext: span.traceContext,
     );
+  }
+}
+
+extension on PluginInvocationCancellation {
+  void _throwIfCancelledForSourceRequest() {
+    if (isCancelled) {
+      throw const PluginRuntimeException('cancelled', 'The source request was cancelled.');
+    }
   }
 }
 

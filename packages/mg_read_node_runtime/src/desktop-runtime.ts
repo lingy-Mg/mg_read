@@ -287,23 +287,19 @@ export class DesktopRuntime {
     method: string,
     params: JsonObject,
     deadlineUnixMs = Date.now() + 5_000,
+    cancellation: AbortSignal = new AbortController().signal,
   ): Promise<EmbeddedRuntimeResult> {
     const request: RuntimeRequest = {
       bootId: this.#bootId,
       deadlineUnixMs: String(deadlineUnixMs),
       id: "android-embedded",
-      idempotencyKey: method === RUNTIME_CONTROL_METHOD.shutdown
-        ? "android-embedded-shutdown"
-        : null,
+      idempotencyKey: method === RUNTIME_CONTROL_METHOD.shutdown ? "android-embedded-shutdown" : null,
       method,
       params,
       traceId: "trace:android-embedded",
       v: protocolVersion,
     };
-    const dispatched = await this.#dispatch(
-      request,
-      new AbortController().signal,
-    );
+    const dispatched = await this.#dispatch(request, cancellation);
     return "error" in dispatched
       ? { error: dispatched.error, ok: false }
       : { ok: true, result: dispatched.result };

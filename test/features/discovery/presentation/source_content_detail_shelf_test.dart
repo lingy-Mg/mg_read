@@ -16,10 +16,16 @@ import 'fixtures/alice_book_house_detail_fixture.dart';
 void main() {
   testWidgets('detail forwards one typed shelf save while the request is active', (tester) async {
     var saveCount = 0;
+    PluginChaptersResult? savedCatalog;
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
-        home: _DetailHost(onAddToShelf: (_) async => saveCount++),
+        home: _DetailHost(
+          onAddToShelf: (_, catalog) async {
+            saveCount++;
+            savedCatalog = catalog;
+          },
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -29,6 +35,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(saveCount, 1);
+    expect(
+      savedCatalog?.items.map((chapter) => chapter.id),
+      AliceBookHouseDetailFixture.firstCatalogPage.items.map((chapter) => chapter.id),
+    );
     expect(find.text('已加入书架。'), findsOneWidget);
   });
 
@@ -36,7 +46,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
-        home: _DetailHost(onAddToShelf: (_) => Future<void>.error(StateError('save failed'))),
+        home: _DetailHost(onAddToShelf: (_, _) => Future<void>.error(StateError('save failed'))),
       ),
     );
     await tester.pumpAndSettle();
@@ -52,7 +62,7 @@ void main() {
       MaterialApp(
         theme: AppTheme.light(),
         home: _DetailHost(
-          onAddToShelf: (_) =>
+          onAddToShelf: (_, _) =>
               Future<void>.error(const BookshelfCapacityExceededException(currentCount: bookshelfMaxItemCount, requestedNewItems: 1)),
         ),
       ),
@@ -248,6 +258,26 @@ void main() {
     expect(find.text('视频'), findsNothing);
   });
 
+  testWidgets('detail renders the resolved metadata while its catalog is still loading', (tester) async {
+    final catalogGate = Completer<void>();
+    final detail = _orientationDetail(PluginCoverOrientation.portrait);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: _ProgressiveDetailHost(gateway: _OrientationGateway(detail, catalogGate: catalogGate)),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey<String>('source-detail-preview')), findsOneWidget);
+    expect(find.text('通用封面内容'), findsWidgets);
+
+    catalogGate.complete();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('source-detail-loaded')), findsOneWidget);
+  });
+
   testWidgets('deferred shelf detail is visible before the local seed completes', (tester) async {
     final seed = Completer<SourceContentDetailSeed>();
     BookCoverMemoryCache.write(
@@ -310,6 +340,38 @@ class _OrientationDetailHost extends StatefulWidget {
   State<_OrientationDetailHost> createState() => _OrientationDetailHostState();
 }
 
+class _ProgressiveDetailHost extends StatefulWidget {
+  const _ProgressiveDetailHost({required this.gateway});
+
+  final SourceContentGateway gateway;
+
+  @override
+  State<_ProgressiveDetailHost> createState() => _ProgressiveDetailHostState();
+}
+
+class _ProgressiveDetailHostState extends State<_ProgressiveDetailHost> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final detail = _orientationDetail(PluginCoverOrientation.portrait);
+      unawaited(
+        showSourceContentDetailSheet(
+          context,
+          gateway: widget.gateway,
+          pluginId: detail.pluginId,
+          id: detail.summary.id,
+          onExternalUrlRequested: (_) async => true,
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const Scaffold();
+}
+
 class _OrientationDetailHostState extends State<_OrientationDetailHost> {
   @override
   void initState() {
@@ -337,15 +399,19 @@ class _OrientationDetailHostState extends State<_OrientationDetailHost> {
 }
 
 final class _OrientationGateway implements SourceContentGateway {
-  const _OrientationGateway(this.detail);
+  const _OrientationGateway(this.detail, {this.catalogGate});
 
   final PluginContentDetail detail;
+  final Completer<void>? catalogGate;
 
   @override
   Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async => detail;
 
   @override
-  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async => _orientationCatalog;
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async {
+    await catalogGate?.future;
+    return _orientationCatalog;
+  }
 
   @override
   Future<List<PluginSourceDescriptor>> listSources() => throw UnimplementedError();

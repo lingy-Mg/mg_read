@@ -116,7 +116,7 @@ final class SourceVideoDataSource implements VideoEpisodeDataSource {
     final cached = _cachedCatalog;
     if (cached != null) return cached;
     try {
-      final catalog = initialDetail?.summary.id == contentId && initialCatalog != null
+      final catalog = initialDetail?.summary.id == contentId && initialCatalog != null && _containsPlayableCatalogEntry(initialCatalog!)
           ? initialCatalog!
           : await gateway.getChapters(pluginId: pluginId, id: contentId);
       return _cachedCatalog = catalog;
@@ -133,6 +133,9 @@ final class SourceVideoDataSource implements VideoEpisodeDataSource {
     _cachedDetail = null;
     _cachedCatalog = null;
   }
+
+  bool _containsPlayableCatalogEntry(PluginChaptersResult catalog) =>
+      catalog.items.isNotEmpty || catalog.groups.any((group) => group.episodes.isNotEmpty);
 
   List<PluginMediaGroup> _playableGroups(PluginChaptersResult catalog) {
     final groups = catalog.groups.isEmpty

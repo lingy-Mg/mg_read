@@ -118,7 +118,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         shelfState: currentMembership.contains(pluginId: pluginId, title: content.title)
             ? SourceDetailShelfState.alreadyAdded
             : SourceDetailShelfState.canAdd,
-        onAddToShelf: (detail) => ref.read(discoveryBookshelfSaverProvider).save(source: source, detail: detail),
+        onAddToShelf: (detail, catalog) => ref.read(discoveryBookshelfSaverProvider).save(source: source, detail: detail, catalog: catalog),
         onRemoveFromShelf: remover == null ? null : () => remover.remove(pluginId: pluginId, title: content.title),
         onRecommendationRequested: openContent,
       );

@@ -637,6 +637,16 @@ test("embedded import inbox installs an archive before cold activation", async (
   });
 
   await runtime.start();
+  const cancellation = new AbortController();
+  cancellation.abort();
+  const cancelled = await runtime.invokeEmbedded(
+    "runtime.ping",
+    {},
+    Date.now() + 5_000,
+    cancellation.signal,
+  );
+  assert.equal(cancelled.ok, false);
+  assert.equal(cancelled.error.code, "cancelled");
   const listed = await runtime.invokeEmbedded("plugins.list.v1", {});
   assert.equal(listed.ok, true);
   assert.equal(listed.result.length, 1);

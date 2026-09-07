@@ -37,6 +37,7 @@ part 'src/plugin_content_invocation.dart';
 part 'src/plugin_content_decoder.dart';
 part 'src/runtime_initialization.dart';
 part 'src/plugin_invocation.dart';
+part 'src/plugin_invocation_cancellation.dart';
 part 'src/plugin_transfer_invocation.dart';
 part 'src/plugin_runtime.dart';
 part 'src/runtime_error.dart';

@@ -22,7 +22,12 @@ import 'package:mg_read/features/discovery/application/content_library_source_pr
 abstract interface class DiscoveryBookshelfSaver {
   /// Saves a full detail from the detail page, or a bounded summary from a
   /// non-detail host. New UI entrypoints should always provide [detail].
-  Future<void> save({required PluginSourceDescriptor source, PluginContentSummary? content, PluginContentDetail? detail});
+  Future<void> save({
+    required PluginSourceDescriptor source,
+    PluginContentSummary? content,
+    PluginContentDetail? detail,
+    PluginChaptersResult? catalog,
+  });
 }
 
 /// One source-detail shelf request as observed by app composition.
@@ -56,7 +61,12 @@ final class ContentLibraryDiscoveryBookshelfSaver implements DiscoveryBookshelfS
   final BookshelfMembershipController? membership;
 
   @override
-  Future<void> save({required PluginSourceDescriptor source, PluginContentSummary? content, PluginContentDetail? detail}) async {
+  Future<void> save({
+    required PluginSourceDescriptor source,
+    PluginContentSummary? content,
+    PluginContentDetail? detail,
+    PluginChaptersResult? catalog,
+  }) async {
     final resolvedDetail = detail ?? _detailFromSummary(source, content);
     final summary = resolvedDetail.summary;
     final mutation = DiscoveryBookshelfMutation(
@@ -104,7 +114,7 @@ final class ContentLibraryDiscoveryBookshelfSaver implements DiscoveryBookshelfS
     try {
       final item = await _library.addLibraryItem(mutation.request);
       onMutationCommitted?.call(mutation, item);
-      prefetcher?.start(item);
+      prefetcher?.start(item, initialDetail: resolvedDetail, initialCatalog: catalog);
     } on Object {
       onMutationFailed?.call(mutation);
       rethrow;
@@ -137,6 +147,10 @@ final class _UnavailableDiscoveryBookshelfSaver implements DiscoveryBookshelfSav
   const _UnavailableDiscoveryBookshelfSaver();
 
   @override
-  Future<void> save({required PluginSourceDescriptor source, PluginContentSummary? content, PluginContentDetail? detail}) =>
-      Future<void>.error(StateError('Local bookshelf is unavailable.'));
+  Future<void> save({
+    required PluginSourceDescriptor source,
+    PluginContentSummary? content,
+    PluginContentDetail? detail,
+    PluginChaptersResult? catalog,
+  }) => Future<void>.error(StateError('Local bookshelf is unavailable.'));
 }

@@ -105,7 +105,7 @@ void main() {
     expect((await rebuilt.loadChapterContent(fixture.manga.id.value, 'chapter-1')).images.single.id, 'image-1');
     await expectLater(rebuilt.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1'), throwsA(isA<ReaderFailure>()));
     expect(offline.chapterCalls, 0);
-    expect(offline.contentCalls, 1, reason: 'the adapter probes the source, then falls back to the committed offline manifest');
+    expect(offline.contentCalls, 0, reason: 'a valid durable manifest should open without probing the offline source');
   });
 
   test('keeps only three recently used runtime manifests', () async {
@@ -118,7 +118,7 @@ void main() {
         _ChapterFixture('chapter-3', '第三章', 2),
         _ChapterFixture('chapter-4', '第四章', 3),
       ],
-      pages: <PluginMangaPage>[_page()],
+      pages: <PluginMangaPage>[_page(policy: PluginMangaPageResourcePolicy.sessionOnly)],
     );
     final adapter = ContentLibraryComicReaderDataSource(library: fixture.library, gateway: gateway, item: fixture.manga);
 
@@ -218,6 +218,12 @@ void main() {
     expect(pages.last.resource.url, Uri.parse('https://fixture/image.png'));
     expect(pages.last.resource.expiresAtUtc, expiresAt);
     expect(pages.map((page) => page.contentVersion), everyElement(1700000000000));
+
+    final reopened = ContentLibraryComicReaderDataSource(library: fixture.library, gateway: gateway, item: fixture.manga);
+    addTearDown(reopened.dispose);
+    final cached = await reopened.loadChapterContent(fixture.manga.id.value, 'chapter-1');
+    expect(cached.images, hasLength(2));
+    expect(gateway.contentCalls, 1, reason: 'valid durable and refreshable URLs should not require a Runtime manifest refresh');
   });
 
   test('single-flights concurrent requests for the same image', () async {

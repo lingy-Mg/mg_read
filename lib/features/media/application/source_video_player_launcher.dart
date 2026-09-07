@@ -3,6 +3,7 @@
 /// This host keeps source groups neutral, creates video playback sessions, and
 /// owns their route-scoped platform fullscreen lifetime. It retains no media
 /// URL, request header, cookie or Runtime state.
+/// Shelf launches discard their placeholder catalog before player setup.
 /// Playback failures also dismiss the entry cover so retry remains reachable.
 library;
 
@@ -130,7 +131,9 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
             gateway: widget.container.read(sourceContentGatewayProvider),
             pluginId: widget.detail.pluginId,
             initialDetail: widget.detail,
-            initialCatalog: widget.initialCatalog,
+            // Shelf entry data may contain only the stable launch placeholder.
+            // Force the player to resolve the real source catalog in that case.
+            initialCatalog: widget.libraryItemId == null ? widget.initialCatalog : null,
             playbackGate: widget.playbackGate,
           ),
           stateStore: TransientSourceVideoPlaybackStateStore(

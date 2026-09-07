@@ -67,7 +67,9 @@ plugins/sources/                    真实数据源及其他能力参考实现
 - 视频和音频代理只控制 MediaKit 播放器到 Runtime 回环资源 URL 的本地一跳，并且只接受 HTTP 代理。
   Windows 可显式启用“强制代理本地 Runtime”：宿主临时从进程 `no_proxy` 删除 loopback 规则，同时更新 Win32
   环境和 Windows CRT，关闭后恢复原值；该开关不改变 Runtime 到外部媒体源的请求路由。
-- Runtime 控制信息由 Runtime 内部管理；控制帧有界，大资源走 HTTP 数据面。
+- Runtime 控制信息由 Runtime 内部管理；控制帧有界，大资源走 HTTP 数据面。页面请求世代失效时，Facade
+  必须把调用方取消传到 desktop wire 或 Android embedded `AbortSignal`，使排队、来源 HTTP 与 WebView 等待
+  尽快释放；只丢弃 Flutter 旧结果不算取消。
 - macOS arm64 从 App bundle 启动固定 Node/npm，用父进程看门狗绑定子进程生命周期；已安装数据源的导入、启停、发现、搜索、详情、目录、内容、传输、缓存以及工作区开发目录构建属于 desktop 共同能力。
 - `ctx.webview` 每个数据源只有一个宿主页；普通操作串行，
   显隐/关闭走控制旁路；超时与取消必须清理结果但保留可复用页面。

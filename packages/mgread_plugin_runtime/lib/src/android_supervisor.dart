@@ -104,6 +104,7 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
       );
   bool _disposed = false;
   bool _started = false;
+  int _invocationSequence = 0;
 
   @override
   Stream<RuntimeDiagnostic> get diagnostics => _diagnosticsController.stream;
@@ -124,7 +125,10 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
   int get debugProcessStartCount => 0;
 
   @override
-  Future<T> invoke<T>(PluginInvocation<T> invocation) async {
+  Future<T> invoke<T>(
+    PluginInvocation<T> invocation, {
+    PluginInvocationCancellation? cancellation,
+  }) async {
     if (_disposed) {
       throw const PluginRuntimeException(
         'runtime_unavailable',
@@ -140,6 +144,8 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
         ? invocation._timeout
         : _androidStartupTimeout;
     final deadline = DateTime.now().add(timeout).millisecondsSinceEpoch;
+    final requestId =
+        'dart-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-${++_invocationSequence}';
     _recordDiagnostic(
       const RuntimeDiagnostic(
         code: 'runtime_facade_invoke_started',
@@ -148,13 +154,28 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
       ),
     );
     try {
-      final encoded = await _androidRuntimeChannel
+      final nativeInvocation = _androidRuntimeChannel
           .invokeMethod<String>('invoke', <String, Object?>{
+            'requestId': requestId,
             'method': invocation._wireMethod,
             'params': invocation._wireParams,
             'deadlineUnixMs': deadline,
-          })
-          .timeout(timeout);
+          });
+      final encoded =
+          await _awaitPluginInvocation(
+            nativeInvocation,
+            cancellation,
+            onCancel: () => _cancelInvocation(requestId),
+          ).timeout(
+            timeout,
+            onTimeout: () {
+              _cancelInvocation(requestId);
+              throw TimeoutException(
+                'The Android Runtime capability call timed out.',
+                timeout,
+              );
+            },
+          );
       if (encoded == null) {
         throw const PluginRuntimeException(
           'runtime_no_response',
@@ -237,6 +258,16 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
         'The Android Runtime capability call failed.',
       );
     }
+  }
+
+  void _cancelInvocation(String requestId) {
+    unawaited(
+      _androidRuntimeChannel
+          .invokeMethod<void>('cancelInvocation', <String, Object?>{
+            'requestId': requestId,
+          })
+          .catchError((Object _) {}),
+    );
   }
 
   @override

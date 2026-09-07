@@ -3,6 +3,7 @@
 /// Responsibilities:
 /// - Expose the complete safe chapter catalog while resolving URLs on demand.
 /// - Preserve proxy URLs, request headers and refresh policy as opaque data.
+/// - Single-flight detail and catalog reads for the active collection.
 ///
 /// Notes:
 /// - This is audio-only; it never creates a video group or shares player state.
@@ -30,17 +31,20 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
   final String? initialTrackId;
   final PluginContentDetail? initialDetail;
   final PluginChaptersResult? initialCatalog;
+  String? _cachedCollectionId;
+  Future<PluginContentDetail>? _detailFuture;
+  Future<PluginChaptersResult>? _catalogFuture;
 
   @override
   Future<AudioPlaylist> loadPlaylist(String collectionId) async {
-    final detail = initialDetail ?? await gateway.getDetail(pluginId: pluginId, id: collectionId);
+    final detail = await _loadDetail(collectionId);
     if (detail.summary.contentKind != PluginContentKind.audio) {
       throw const AudioPlayerLoadException(code: 'audio_source_kind_invalid', location: '音频详情', message: '当前内容不是可播放音频，请返回详情页后重试。');
     }
     if (detail.summary.id != collectionId) {
       throw const AudioPlayerLoadException(code: 'audio_detail_outdated', location: '音频详情', message: '当前详情已更新，请返回详情页后重新打开。');
     }
-    final catalog = initialCatalog ?? await gateway.getChapters(pluginId: pluginId, id: collectionId);
+    final catalog = await _loadCatalog(collectionId);
     final available = _availableChapters(catalog.items);
     final candidates = _selectCandidates(available);
     if (available.isEmpty || candidates.isEmpty) {
@@ -91,8 +95,8 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
 
   @override
   Future<AudioTrack> loadTrackById(String collectionId, {required String trackId}) async {
-    final detail = initialDetail ?? await gateway.getDetail(pluginId: pluginId, id: collectionId);
-    final catalog = initialCatalog ?? await gateway.getChapters(pluginId: pluginId, id: collectionId);
+    final detail = await _loadDetail(collectionId);
+    final catalog = await _loadCatalog(collectionId);
     PluginChapterSummary? chapter;
     for (final item in _availableChapters(catalog.items)) {
       if (item.id == trackId) {
@@ -109,11 +113,11 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
   @override
   Future<List<AudioTrack>> loadFollowingTracks(String collectionId, {required String afterTrackId, required int limit}) async {
     if (limit <= 0) return const <AudioTrack>[];
-    final detail = initialDetail ?? await gateway.getDetail(pluginId: pluginId, id: collectionId);
+    final detail = await _loadDetail(collectionId);
     if (detail.summary.id != collectionId || detail.summary.contentKind != PluginContentKind.audio) {
       return const <AudioTrack>[];
     }
-    final catalog = initialCatalog ?? await gateway.getChapters(pluginId: pluginId, id: collectionId);
+    final catalog = await _loadCatalog(collectionId);
     final available = _availableChapters(catalog.items);
     final currentIndex = available.indexWhere((chapter) => chapter.id == afterTrackId);
     if (currentIndex < 0) return const <AudioTrack>[];
@@ -128,6 +132,45 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
       }
     }
     return tracks;
+  }
+
+  Future<PluginContentDetail> _loadDetail(String collectionId) async {
+    _bindCache(collectionId);
+    final cached = _detailFuture;
+    if (cached != null) return cached;
+    final request = initialDetail?.summary.id == collectionId
+        ? Future<PluginContentDetail>.value(initialDetail)
+        : gateway.getDetail(pluginId: pluginId, id: collectionId);
+    _detailFuture = request;
+    try {
+      return await request;
+    } on Object {
+      if (identical(_detailFuture, request)) _detailFuture = null;
+      rethrow;
+    }
+  }
+
+  Future<PluginChaptersResult> _loadCatalog(String collectionId) async {
+    _bindCache(collectionId);
+    final cached = _catalogFuture;
+    if (cached != null) return cached;
+    final request = initialDetail?.summary.id == collectionId && initialCatalog != null
+        ? Future<PluginChaptersResult>.value(initialCatalog)
+        : gateway.getChapters(pluginId: pluginId, id: collectionId);
+    _catalogFuture = request;
+    try {
+      return await request;
+    } on Object {
+      if (identical(_catalogFuture, request)) _catalogFuture = null;
+      rethrow;
+    }
+  }
+
+  void _bindCache(String collectionId) {
+    if (_cachedCollectionId == collectionId) return;
+    _cachedCollectionId = collectionId;
+    _detailFuture = null;
+    _catalogFuture = null;
   }
 
   Future<AudioTrack> _loadTrack({

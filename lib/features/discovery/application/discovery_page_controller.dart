@@ -11,6 +11,7 @@
 library;
 
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -36,10 +37,13 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   late DiscoverySourceSelectionStore _sourceSelectionStore;
   late DiagnosticsManager _diagnostics;
   final List<_DiscoveryNavigationEntry> _stack = <_DiscoveryNavigationEntry>[];
+  final LinkedHashMap<_DiscoveryDocumentCacheKey, PluginDiscoveryDocumentResult> _documentCache =
+      LinkedHashMap<_DiscoveryDocumentCacheKey, PluginDiscoveryDocumentResult>();
   int _latestGeneration = 0;
   int? _pendingCategoryGeneration;
   bool _disposed = false;
   _ActiveDiscoveryLoad? _activeLoad;
+  PluginInvocationCancellation? _requestCancellation;
 
   @override
   DiscoveryPageState build() {
@@ -51,6 +55,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     });
     ref.onDispose(() {
       _disposed = true;
+      _cancelActiveRequest();
       _endActiveLoad(DiagnosticOutcome.cancelled);
     });
     final generation = ++_latestGeneration;
@@ -63,6 +68,8 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     final affectsSelected = selected != null && change.affects(selected);
     final generation = affectsSelected ? ++_latestGeneration : null;
     if (affectsSelected) {
+      _invalidateSourceCache(selected);
+      _cancelActiveRequest();
       _endActiveLoad(DiagnosticOutcome.cancelled);
     }
     try {
@@ -143,6 +150,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       // The pending category has not been committed to the stack yet. Return
       // to the retained parent snapshot and discard its eventual result.
       ++_latestGeneration;
+      _cancelActiveRequest();
       _endActiveLoad(DiagnosticOutcome.cancelled);
       _pendingCategoryGeneration = null;
       _publish(_stack.last.document);
@@ -159,6 +167,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     // A pending category request must not repopulate a page after the user
     // has already returned to its parent document.
     ++_latestGeneration;
+    _cancelActiveRequest();
     _endActiveLoad(DiagnosticOutcome.cancelled);
     _stack.removeLast();
     _publish(_stack.last.document);
@@ -170,14 +179,14 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     final entry = _stack.lastOrNull;
     if (continuation == null || pluginId == null || entry == null) return;
     final generation = ++_latestGeneration;
+    final cancellation = _replaceRequestCancellation();
     _endActiveLoad(DiagnosticOutcome.cancelled);
     _publish(entry.document, loadingCollectionId: collection.id);
     try {
-      final result = await _gateway.discover(
-        pluginId: pluginId,
-        target: continuation.target,
-        cursor: continuation.cursor,
-        collectionId: collection.id,
+      final result = await runCancellableSourceRequest(
+        _gateway,
+        cancellation,
+        () => _gateway.discover(pluginId: pluginId, target: continuation.target, cursor: continuation.cursor, collectionId: collection.id),
       );
       if (!_isCurrent(generation) || result is! PluginDiscoveryAppendResult) {
         return;
@@ -187,12 +196,15 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       }
       final updated = _appendCollection(entry.document, result);
       _stack[_stack.length - 1] = entry.copyWith(document: updated);
+      _cacheDocument(pluginId, entry.target, updated);
       _publish(updated);
     } on Object catch (_) {
       if (!_isCurrent(generation)) {
         return;
       }
       _publish(entry.document);
+    } finally {
+      _clearRequestCancellation(cancellation);
     }
   }
 
@@ -252,9 +264,12 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     bool resetStack = false,
   }) async {
     final requestGeneration = generation ?? ++_latestGeneration;
+    final cancellation = _replaceRequestCancellation();
     _endActiveLoad(DiagnosticOutcome.cancelled);
     final availableSources = sources ?? state.sources;
     final parent = _stack.lastOrNull;
+    final cachedDocument = _readCachedDocument(pluginId, target);
+    final hasCachedDocument = cachedDocument != null;
     final navigationDepth = resetStack || _stack.isEmpty
         ? 0
         : push
@@ -286,38 +301,37 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       navigationDepth: navigationDepth,
     );
     _activeLoad = load;
-    _pendingCategoryGeneration = push ? requestGeneration : null;
-    state = DiscoveryPageState.loadingContent(
-      sources: availableSources,
-      selectedSourceId: pluginId,
-      canNavigateBack: _stack.length > 1 || push,
-      navigationDepth: navigationDepth,
-      target: target,
-      previousResult: push ? parent?.document : null,
-      retainedParents: _stack.map((entry) => entry.document),
-    );
+    _pendingCategoryGeneration = push && !hasCachedDocument ? requestGeneration : null;
+    if (cachedDocument != null) {
+      _commitDocument(target: target, document: cachedDocument, push: push, replaceCurrent: replaceCurrent, resetStack: resetStack);
+      _publish(cachedDocument, sources: availableSources, selectedSourceId: pluginId);
+    } else {
+      state = DiscoveryPageState.loadingContent(
+        sources: availableSources,
+        selectedSourceId: pluginId,
+        canNavigateBack: _stack.length > 1 || push,
+        navigationDepth: navigationDepth,
+        target: target,
+        previousResult: push ? parent?.document : null,
+        retainedParents: _stack.map((entry) => entry.document),
+      );
+    }
     try {
-      final result = await _gateway.discover(pluginId: pluginId, target: target);
+      final result = await runCancellableSourceRequest(_gateway, cancellation, () => _gateway.discover(pluginId: pluginId, target: target));
       if (!_isCurrent(requestGeneration) || result is! PluginDiscoveryDocumentResult) {
         _clearPendingCategory(requestGeneration);
         _endLoad(load, DiagnosticOutcome.cancelled);
         return;
       }
       _clearPendingCategory(requestGeneration);
-      final entry = _DiscoveryNavigationEntry(target: target, document: result);
-      if (resetStack || _stack.isEmpty) {
-        _stack
-          ..clear()
-          ..add(entry);
-      } else if (push) {
-        _stack.add(entry);
-      } else if (replaceCurrent) {
-        _stack[_stack.length - 1] = entry;
-      } else {
-        _stack
-          ..clear()
-          ..add(entry);
-      }
+      _commitDocument(
+        target: target,
+        document: result,
+        push: push && !hasCachedDocument,
+        replaceCurrent: replaceCurrent || hasCachedDocument,
+        resetStack: resetStack && !hasCachedDocument,
+      );
+      _cacheDocument(pluginId, target, result);
       _publish(result, sources: availableSources, selectedSourceId: pluginId);
       _endLoad(load, DiagnosticOutcome.success, itemCount: _documentItemCount(result.document));
     } on Object catch (error, stackTrace) {
@@ -328,7 +342,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       _clearPendingCategory(requestGeneration);
       final appError = AppError.fromUnknown(error);
       final current = _stack.lastOrNull;
-      if (!push && current != null && state.selectedSourceId == pluginId) {
+      if ((hasCachedDocument || !push) && current != null && state.selectedSourceId == pluginId) {
         _publish(current.document);
         _endLoad(load, _outcomeFor(appError), error: appError, stackTrace: stackTrace);
         return;
@@ -344,7 +358,66 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
         retainedParents: _stack.map((entry) => entry.document),
       );
       _endLoad(load, _outcomeFor(appError), error: appError, stackTrace: stackTrace);
+    } finally {
+      _clearRequestCancellation(cancellation);
     }
+  }
+
+  void _commitDocument({
+    required String? target,
+    required PluginDiscoveryDocumentResult document,
+    required bool push,
+    required bool replaceCurrent,
+    required bool resetStack,
+  }) {
+    final entry = _DiscoveryNavigationEntry(target: target, document: document);
+    if (resetStack || _stack.isEmpty) {
+      _stack
+        ..clear()
+        ..add(entry);
+    } else if (push) {
+      _stack.add(entry);
+    } else if (replaceCurrent) {
+      _stack[_stack.length - 1] = entry;
+    } else {
+      _stack
+        ..clear()
+        ..add(entry);
+    }
+  }
+
+  PluginDiscoveryDocumentResult? _readCachedDocument(String pluginId, String? target) {
+    final key = _DiscoveryDocumentCacheKey(pluginId, target);
+    final cached = _documentCache.remove(key);
+    if (cached != null) _documentCache[key] = cached;
+    return cached;
+  }
+
+  void _cacheDocument(String pluginId, String? target, PluginDiscoveryDocumentResult document) {
+    final key = _DiscoveryDocumentCacheKey(pluginId, target);
+    _documentCache.remove(key);
+    _documentCache[key] = document;
+    while (_documentCache.length > 8) {
+      _documentCache.remove(_documentCache.keys.first);
+    }
+  }
+
+  void _invalidateSourceCache(String pluginId) {
+    _documentCache.removeWhere((key, _) => key.pluginId == pluginId);
+  }
+
+  PluginInvocationCancellation _replaceRequestCancellation() {
+    _cancelActiveRequest();
+    return _requestCancellation = PluginInvocationCancellation();
+  }
+
+  void _cancelActiveRequest() {
+    _requestCancellation?.cancel();
+    _requestCancellation = null;
+  }
+
+  void _clearRequestCancellation(PluginInvocationCancellation cancellation) {
+    if (identical(_requestCancellation, cancellation)) _requestCancellation = null;
   }
 
   void _publish(
@@ -446,6 +519,19 @@ final class _DiscoveryNavigationEntry {
 
   _DiscoveryNavigationEntry copyWith({required PluginDiscoveryDocumentResult document}) =>
       _DiscoveryNavigationEntry(target: target, document: document);
+}
+
+final class _DiscoveryDocumentCacheKey {
+  const _DiscoveryDocumentCacheKey(this.pluginId, this.target);
+
+  final String pluginId;
+  final String? target;
+
+  @override
+  bool operator ==(Object other) => other is _DiscoveryDocumentCacheKey && other.pluginId == pluginId && other.target == target;
+
+  @override
+  int get hashCode => Object.hash(pluginId, target);
 }
 
 extension on List<_DiscoveryNavigationEntry> {

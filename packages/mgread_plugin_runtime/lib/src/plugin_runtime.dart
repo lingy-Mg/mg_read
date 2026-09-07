@@ -8,7 +8,10 @@ part of mgread_plugin_runtime;
 /// process-scoped: it keeps the same owned Runtime for the Flutter process
 /// lifetime and does not silently relaunch it after a terminal failure.
 abstract interface class _RuntimeSupervisor {
-  Future<T> invoke<T>(PluginInvocation<T> invocation);
+  Future<T> invoke<T>(
+    PluginInvocation<T> invocation, {
+    PluginInvocationCancellation? cancellation,
+  });
 
   Future<void> importLocalPlugin(String sourcePath);
 
@@ -148,7 +151,10 @@ final class PluginRuntime {
   /// WebSocket hello happen internally before this operation is dispatched.
   /// The returned [Future] completes with [PluginRuntimeException] containing
   /// a stable Runtime error code and diagnostics.
-  Future<T> invoke<T>(PluginInvocation<T> invocation) {
+  Future<T> invoke<T>(
+    PluginInvocation<T> invocation, {
+    PluginInvocationCancellation? cancellation,
+  }) {
     if (invocation is OpenRuntimePrivateDirectoryInvocation &&
         !Platform.isWindows &&
         !Platform.isMacOS) {
@@ -157,7 +163,8 @@ final class PluginRuntime {
         'Opening the Runtime private directory is available on desktop only.',
       );
     }
-    return _supervisor.invoke(invocation);
+    cancellation?._throwIfCancelled();
+    return _supervisor.invoke(invocation, cancellation: cancellation);
   }
 
   /// Enables or disables the unauthenticated Runtime inspector.
