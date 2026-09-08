@@ -4,6 +4,7 @@
 /// - 以稳定封面载体遮蔽正文首帧前的异步准备与排版。
 /// - 消费阅读器公开的文本首帧或漫画首图及失败通知，完成可打断的视觉交接。
 /// - 将系统返回统一交给宿主 Observer，避免退出动画阻塞进度保存。
+/// - 首帧交接前临时持有沉浸式系统栏，交接后仍由阅读偏好接管。
 ///
 /// 注意：
 /// - 不持有书籍正文、Repository、Runtime DTO 或可持久化状态。
@@ -13,15 +14,41 @@
 library;
 
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/reader/presentation/reader_host_page.dart';
 import 'package:mg_read/shared/presentation/widgets/default_book_cover_artwork.dart';
+
+const SystemUiOverlayStyle _readerEntrySystemUiStyle = SystemUiOverlayStyle(
+  statusBarColor: Colors.transparent,
+  statusBarIconBrightness: Brightness.light,
+  statusBarBrightness: Brightness.dark,
+  systemNavigationBarColor: Colors.transparent,
+  systemNavigationBarDividerColor: Colors.transparent,
+  systemNavigationBarIconBrightness: Brightness.light,
+  systemStatusBarContrastEnforced: false,
+  systemNavigationBarContrastEnforced: false,
+);
+
+final class _ReaderEntryImmersiveLease {
+  final Object _holder = Object();
+  bool _released = false;
+
+  void acquire() {
+    unawaited(ScreenAwakeCoordinator.instance.acquire(_holder, keepScreenOn: false, immersiveMode: true).onError((_, _) {}));
+  }
+
+  void release() {
+    if (_released) return;
+    _released = true;
+    unawaited(ScreenAwakeCoordinator.instance.release(_holder).onError((_, _) {}));
+  }
+}
 
 /// Hosts a resolved reader behind a deterministic cover-to-reader handoff.
 ///
@@ -75,12 +102,14 @@ class ReaderEntryPreparationSurface extends StatefulWidget {
 
 class _ReaderEntryPreparationSurfaceState extends State<ReaderEntryPreparationSurface> with TickerProviderStateMixin {
   late final AnimationController _entryController;
+  final _ReaderEntryImmersiveLease _immersiveLease = _ReaderEntryImmersiveLease();
 
   bool get _reduceMotion => MediaQuery.of(context).disableAnimations;
 
   @override
   void initState() {
     super.initState();
+    _immersiveLease.acquire();
     _entryController = AnimationController(vsync: this, duration: _ReaderEntryTransitionState._entryDuration)
       ..addListener(() {
         if (mounted) setState(() {});
@@ -96,6 +125,7 @@ class _ReaderEntryPreparationSurfaceState extends State<ReaderEntryPreparationSu
 
   @override
   void dispose() {
+    _immersiveLease.release();
     _entryController.dispose();
     super.dispose();
   }
@@ -103,24 +133,27 @@ class _ReaderEntryPreparationSurfaceState extends State<ReaderEntryPreparationSu
   @override
   Widget build(BuildContext context) {
     final double progress = Curves.easeOutCubic.transform(_entryController.value);
-    return PopScope<void>(
-      canPop: false,
-      onPopInvokedWithResult: (bool didPop, void result) {
-        if (!didPop) widget.onExit();
-      },
-      child: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          _ReaderEntryBackdrop(progress: progress),
-          _ReaderEntryCover(
-            progress: progress,
-            disappearance: 0,
-            coverImage: null,
-            failed: widget.failed ? const ReaderFailure(ReaderFailureKind.data, 'route_failure') : null,
-            onRetry: widget.onRetry,
-            onExit: widget.onExit,
-          ),
-        ],
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: _readerEntrySystemUiStyle,
+      child: PopScope<void>(
+        canPop: false,
+        onPopInvokedWithResult: (bool didPop, void result) {
+          if (!didPop) widget.onExit();
+        },
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            _ReaderEntryBackdrop(progress: progress),
+            _ReaderEntryCover(
+              progress: progress,
+              disappearance: 0,
+              coverImage: null,
+              failed: widget.failed ? const ReaderFailure(ReaderFailureKind.data, 'route_failure') : null,
+              onRetry: widget.onRetry,
+              onExit: widget.onExit,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -135,6 +168,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
   late final AnimationController _handoffController;
   late final ReaderLaunchRequest _boundRequest;
   late final MemoryImage? _entryCoverImage;
+  final _ReaderEntryImmersiveLease _immersiveLease = _ReaderEntryImmersiveLease();
   ReaderFailure? _failure;
   bool _firstContentPresented = false;
   bool _handoffComplete = false;
@@ -145,11 +179,13 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
   @override
   void initState() {
     super.initState();
+    _immersiveLease.acquire();
     _entryController = AnimationController(vsync: this, duration: _entryDuration, value: 1)..addListener(_rebuildForAnimation);
     _handoffController = AnimationController(vsync: this, duration: _handoffDuration)
       ..addListener(_rebuildForAnimation)
       ..addStatusListener((AnimationStatus status) {
         if (status == AnimationStatus.completed && mounted) {
+          _immersiveLease.release();
           setState(() => _handoffComplete = true);
         }
       });
@@ -177,6 +213,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
       _entryController.value = 1;
       if (_firstContentPresented) {
         _handoffController.value = 1;
+        _immersiveLease.release();
         _handoffComplete = true;
       }
     }
@@ -196,6 +233,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
     if (_reduceMotion) {
       _entryController.value = 1;
       _handoffController.value = 1;
+      _immersiveLease.release();
       setState(() => _handoffComplete = true);
       return;
     }
@@ -212,6 +250,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
     if (_reduceMotion) {
       _entryController.value = 1;
       _handoffController.value = 1;
+      _immersiveLease.release();
       setState(() => _handoffComplete = true);
     } else {
       unawaited(_finishHandoff());
@@ -296,6 +335,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
     if (request case ComicReaderLaunchRequest(dataSource: final DisposableReaderDataSource dataSource)) {
       unawaited(dataSource.dispose().onError((Object _, StackTrace _) {}));
     }
+    _immersiveLease.release();
     _entryController.dispose();
     _handoffController.dispose();
     super.dispose();
@@ -328,13 +368,16 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
               ),
             ),
             if (!_handoffComplete)
-              _ReaderEntryCover(
-                progress: entryCurve.value,
-                disappearance: handoff,
-                coverImage: _entryCoverImage,
-                failed: _failure,
-                onRetry: _failure == null ? null : _retry,
-                onExit: _requestExit,
+              AnnotatedRegion<SystemUiOverlayStyle>(
+                value: _readerEntrySystemUiStyle,
+                child: _ReaderEntryCover(
+                  progress: entryCurve.value,
+                  disappearance: handoff,
+                  coverImage: _entryCoverImage,
+                  failed: _failure,
+                  onRetry: _failure == null ? null : _retry,
+                  onExit: _requestExit,
+                ),
               ),
           ],
         ),

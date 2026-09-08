@@ -10,10 +10,10 @@
 library;
 
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
@@ -28,6 +28,59 @@ import 'package:mg_read/features/reader/presentation/reader_host_page.dart';
 import '../../../core/diagnostics/diagnostics_testkit.dart';
 
 void main() {
+  testWidgets('route preparation uses immersive transparent system bars', (WidgetTester tester) async {
+    final systemUi = _recordReaderSystemUi();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ReaderEntryPreparationSurface(failed: false, onRetry: null, onExit: () {}),
+      ),
+    );
+    await tester.pump();
+
+    expect(systemUi.first['keepScreenOn'], isFalse);
+    expect(systemUi.first['immersiveMode'], isTrue);
+    final region = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(find.byType(AnnotatedRegion<SystemUiOverlayStyle>));
+    expect(region.value.statusBarColor, Colors.transparent);
+    expect(region.value.systemNavigationBarColor, Colors.transparent);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    expect(systemUi.last['immersiveMode'], isFalse);
+  });
+
+  testWidgets('text loading holds immersion until the first content handoff', (WidgetTester tester) async {
+    final systemUi = _recordReaderSystemUi();
+    final dataSource = _ControlledDataSource();
+    await tester.pumpWidget(_readerApp(_request(dataSource: dataSource)));
+    await tester.pump();
+
+    expect(systemUi.first['keepScreenOn'], isFalse);
+    expect(systemUi.first['immersiveMode'], isTrue);
+    expect(systemUi.last['immersiveMode'], isTrue);
+    expect(find.byType(AnnotatedRegion<SystemUiOverlayStyle>), findsWidgets);
+
+    dataSource.complete();
+    await _pumpReader(tester);
+    expect(systemUi.last['immersiveMode'], isFalse);
+  });
+
+  testWidgets('comic loading holds immersion until the first image handoff', (WidgetTester tester) async {
+    final systemUi = _recordReaderSystemUi();
+    final dataSource = _ControlledComicDataSource();
+    await tester.pumpWidget(_readerApp(_comicRequest(dataSource: dataSource)));
+    await tester.pump();
+
+    expect(systemUi.first['keepScreenOn'], isFalse);
+    expect(systemUi.first['immersiveMode'], isTrue);
+    expect(systemUi.last['immersiveMode'], isTrue);
+    expect(find.byType(AnnotatedRegion<SystemUiOverlayStyle>), findsWidgets);
+
+    dataSource.completeImage();
+    await tester.pumpAndSettle();
+    expect(systemUi.last['immersiveMode'], isFalse);
+  });
+
   testWidgets('hands off the first text frame once without a blank reader', (WidgetTester tester) async {
     final _RecordingObserver observer = _RecordingObserver();
     await tester.pumpWidget(_readerApp(_request(dataSource: const _ImmediateDataSource(), observer: observer)));
@@ -245,6 +298,23 @@ void main() {
     expect(find.byKey(const Key('open-comic-reader')), findsOneWidget);
     expect(observer.exitRequests, 1);
   });
+}
+
+List<Map<Object?, Object?>> _recordReaderSystemUi() {
+  final calls = <Map<Object?, Object?>>[];
+  const channel = MethodChannel('novel_reader_ui/system');
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+    switch (call.method) {
+      case 'getCapabilities':
+        return <String, bool>{'keepScreenOn': true, 'immersiveMode': true};
+      case 'setReaderSystemUi':
+        calls.add(Map<Object?, Object?>.from(call.arguments as Map));
+        return null;
+    }
+    return null;
+  });
+  addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
+  return calls;
 }
 
 Widget _readerApp(ReaderLaunchRequest request, {bool reduceMotion = false}) => MaterialApp(
