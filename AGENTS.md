@@ -35,5 +35,8 @@
   明确的回归或发布。代码修改同时执行源码规模检查；纯文档运行 `tools/check_documentation.ps1`。
 - Runtime 和数据源的 Windows Node 命令使用仓库固定 Node，不回退全局 Node。
 - Android 真实流程仅在用户明确授权后使用已连接且 ready 的 `emulator-5556`，或回退
-  `127.0.0.1:7555`；不得启动、控制或重置设备，也不得用桌面输入、坐标或 `adb input` 取证。
+  `127.0.0.1:7555`。测试需要而 MuMu 模拟器尚未启动时，允许自动启动 MuMu；若回退地址尚未连接，使用
+  `C:\Program Files\Netease\MuMu Player 12\nx\_main\adb.exe` 主动执行一次 `kill-server`、
+  `connect 127.0.0.1:7555` 和 `devices` 后再测试。不得重置设备，也不得用桌面输入、坐标或 `adb input`
+  取证。
 - 交付时分开报告静态检查、自动化测试、真实运行、平台/真机、发布和未执行项，不能互相替代。
