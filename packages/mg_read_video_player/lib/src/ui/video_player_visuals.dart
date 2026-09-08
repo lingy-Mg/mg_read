@@ -21,8 +21,8 @@ const Color videoPlayerBackground = Color(0xFF050607);
 const Color videoPlayerForeground = Color(0xFFF7F7F8);
 const Color videoPlayerSecondary = Color(0xFFBEC1C7);
 const Color videoPlayerAccent = Color(0xFFFFA43A);
-const Color videoPlayerGlass = Color(0xBE17191C);
-const Color videoPlayerGlassBorder = Color(0x33FFFFFF);
+const Color videoPlayerGlass = Color(0x96030609);
+const Color videoPlayerGlassBorder = Color(0x24FFFFFF);
 const Color videoPlayerSelectedSurface = Color(0x38FFA43A);
 
 /// Applies the fixed video color system without inheriting host brightness.
@@ -65,30 +65,42 @@ final class VideoPlayerGlassPanel extends StatelessWidget {
     required this.child,
     this.borderRadius = const BorderRadius.all(Radius.circular(20)),
     this.padding,
+    this.showBorder = true,
+    this.showShadow = true,
+    this.blurSigma = 18,
     super.key,
   });
 
   final Widget child;
   final BorderRadius borderRadius;
   final EdgeInsetsGeometry? padding;
+  final bool showBorder;
+  final bool showShadow;
+  final double blurSigma;
 
   @override
   Widget build(BuildContext context) => ClipRRect(
     borderRadius: borderRadius,
     child: BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+      filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: videoPlayerGlass,
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[Color(0xA30A0D12), videoPlayerGlass],
+          ),
           borderRadius: borderRadius,
-          border: Border.all(color: videoPlayerGlassBorder),
-          boxShadow: const <BoxShadow>[
-            BoxShadow(
-              color: Color(0x52000000),
-              blurRadius: 24,
-              offset: Offset(0, 10),
-            ),
-          ],
+          border: showBorder ? Border.all(color: videoPlayerGlassBorder) : null,
+          boxShadow: showShadow
+              ? const <BoxShadow>[
+                  BoxShadow(
+                    color: Color(0x52000000),
+                    blurRadius: 24,
+                    offset: Offset(0, 10),
+                  ),
+                ]
+              : null,
         ),
         child: padding == null
             ? child

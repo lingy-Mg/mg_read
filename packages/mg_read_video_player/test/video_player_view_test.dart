@@ -136,7 +136,7 @@ void main() {
     await tester.pump();
     expect(controller.snapshot.controlsVisible, isFalse);
     await tester.tap(find.byKey(const Key('video-player-surface')));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(controller.snapshot.controlsVisible, isTrue);
 
     expect(backend.state.value.playing, isTrue);

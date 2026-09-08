@@ -21,6 +21,7 @@ import 'package:flutter/services.dart';
 import '../api/contracts.dart';
 import '../api/models.dart';
 import 'video_player_chrome.dart';
+import 'video_player_gestures.dart';
 import 'video_player_status_layer.dart';
 import 'video_player_visuals.dart';
 
@@ -39,9 +40,12 @@ final class VideoPlayerStage extends StatelessWidget {
     required this.onSeek,
     required this.onSkip,
     required this.onRate,
+    required this.onVolume,
     required this.onFit,
     required this.onEpisodes,
     required this.onFullscreen,
+    required this.onReadBrightness,
+    required this.onBrightness,
     super.key,
   });
 
@@ -58,9 +62,12 @@ final class VideoPlayerStage extends StatelessWidget {
   final Future<void> Function(Duration) onSeek;
   final Future<void> Function(Duration) onSkip;
   final Future<void> Function(double) onRate;
+  final Future<void> Function(double) onVolume;
   final Future<void> Function() onFit;
   final Future<void> Function() onEpisodes;
   final Future<void> Function(bool) onFullscreen;
+  final Future<double?> Function() onReadBrightness;
+  final Future<void> Function(double) onBrightness;
 
   @override
   Widget build(BuildContext context) {
@@ -83,14 +90,27 @@ final class VideoPlayerStage extends StatelessWidget {
               body: Stack(
                 fit: StackFit.expand,
                 children: <Widget>[
-                  GestureDetector(
+                  Stack(
                     key: const Key('video-player-surface'),
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => unawaited(onToggleControls()),
-                    child: backend.buildSurface(
-                      key: const Key('video-player-engine-surface'),
-                      fit: videoBoxFit(snapshot.fitMode),
-                    ),
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      backend.buildSurface(
+                        key: const Key('video-player-engine-surface'),
+                        fit: videoBoxFit(snapshot.fitMode),
+                      ),
+                      if (snapshot.status == VideoPlayerStatus.ready)
+                        VideoPlayerGestureLayer(
+                          snapshot: snapshot,
+                          onToggleControls: () => unawaited(onToggleControls()),
+                          onPlayOrPause: () => unawaited(onPlayOrPause()),
+                          onSeek: (value) => unawaited(onSeek(value)),
+                          onRate: (value) => unawaited(onRate(value)),
+                          onVolume: (value) => unawaited(onVolume(value)),
+                          onReadBrightness: onReadBrightness,
+                          onBrightness: (value) =>
+                              unawaited(onBrightness(value)),
+                        ),
+                    ],
                   ),
                   if (!snapshot.firstFrameReady ||
                       snapshot.status != VideoPlayerStatus.ready)

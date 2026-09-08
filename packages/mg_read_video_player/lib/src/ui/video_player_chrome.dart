@@ -76,31 +76,35 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
           fit: StackFit.expand,
           children: <Widget>[
             const IgnorePointer(child: _ChromeGradient()),
-            SafeArea(
-              minimum: const EdgeInsets.all(8),
-              child: Column(
-                children: <Widget>[
-                  VideoPlayerGlassPanel(
-                    borderRadius: BorderRadius.circular(18),
-                    child: _TopBar(
-                      title: snapshot.title,
-                      fullscreen: snapshot.fullscreenRequested,
-                      onExit: widget.onExit,
-                      onFullscreen: widget.onFullscreen,
+            Column(
+              children: <Widget>[
+                VideoPlayerGlassPanel(
+                  key: const Key('video-player-top-band'),
+                  borderRadius: BorderRadius.zero,
+                  padding: EdgeInsets.only(
+                    top: MediaQuery.paddingOf(context).top,
+                  ),
+                  showBorder: false,
+                  showShadow: false,
+                  blurSigma: 22,
+                  child: _TopBar(
+                    title: snapshot.title,
+                    fullscreen: snapshot.fullscreenRequested,
+                    onExit: widget.onExit,
+                    onFullscreen: widget.onFullscreen,
+                  ),
+                ),
+                Expanded(
+                  child: Center(
+                    child: _TransportControls(
+                      playing: snapshot.playing,
+                      onPlayOrPause: widget.onPlayOrPause,
+                      onSkip: widget.onSkip,
                     ),
                   ),
-                  Expanded(
-                    child: Center(
-                      child: _TransportControls(
-                        playing: snapshot.playing,
-                        onPlayOrPause: widget.onPlayOrPause,
-                        onSkip: widget.onSkip,
-                      ),
-                    ),
-                  ),
-                  _buildBottomControls(context),
-                ],
-              ),
+                ),
+                _buildBottomControls(context),
+              ],
             ),
           ],
         ),
@@ -120,14 +124,14 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
         .toDouble();
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        final bool compact = constraints.maxWidth < 520;
+        final bool compact = constraints.maxWidth < 680;
         final bool iconsOnly =
-            constraints.maxWidth < 380 ||
+            constraints.maxWidth < 480 ||
             MediaQuery.textScalerOf(context).scale(14) > 20;
         final slider = Row(
           children: <Widget>[
             SizedBox(
-              width: 48,
+              width: 44,
               child: FittedBox(
                 alignment: Alignment.centerRight,
                 fit: BoxFit.scaleDown,
@@ -141,7 +145,13 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                   inactiveTrackColor: Colors.white24,
                   thumbColor: videoPlayerAccent,
                   overlayColor: videoPlayerAccent.withValues(alpha: .16),
-                  trackHeight: 3,
+                  trackHeight: 2.5,
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 6,
+                  ),
+                  overlayShape: const RoundSliderOverlayShape(
+                    overlayRadius: 12,
+                  ),
                 ),
                 child: Slider(
                   key: const Key('video-player-slider'),
@@ -159,7 +169,7 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
               ),
             ),
             SizedBox(
-              width: 48,
+              width: 44,
               child: FittedBox(
                 alignment: Alignment.centerLeft,
                 fit: BoxFit.scaleDown,
@@ -178,8 +188,10 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                     onPressed: widget.onEpisodes,
                     style: IconButton.styleFrom(
                       foregroundColor: videoPlayerForeground,
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    icon: const Icon(Icons.video_library_rounded),
+                    icon: const Icon(Icons.video_library_rounded, size: 20),
                   ),
                   PopupMenuButton<double>(
                     key: const Key('video-player-rate'),
@@ -187,6 +199,7 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                     initialValue: snapshot.rate,
                     onSelected: widget.onRate,
                     itemBuilder: _rateItems,
+                    iconSize: 20,
                     icon: const Icon(
                       Icons.speed_rounded,
                       color: videoPlayerForeground,
@@ -198,8 +211,10 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                     onPressed: widget.onFit,
                     style: IconButton.styleFrom(
                       foregroundColor: videoPlayerForeground,
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    icon: const Icon(Icons.aspect_ratio_rounded),
+                    icon: const Icon(Icons.aspect_ratio_rounded, size: 20),
                   ),
                 ],
               )
@@ -208,16 +223,18 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                     ? WrapAlignment.spaceBetween
                     : WrapAlignment.end,
                 crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 4,
-                runSpacing: 2,
+                spacing: 2,
+                runSpacing: 0,
                 children: <Widget>[
                   TextButton.icon(
                     key: const Key('video-player-episodes'),
                     onPressed: widget.onEpisodes,
                     style: TextButton.styleFrom(
                       foregroundColor: videoPlayerForeground,
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    icon: const Icon(Icons.video_library_rounded, size: 19),
+                    icon: const Icon(Icons.video_library_rounded, size: 18),
                     label: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 180),
                       child: Text(
@@ -243,15 +260,26 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                     onPressed: widget.onFit,
                     style: TextButton.styleFrom(
                       foregroundColor: videoPlayerForeground,
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    icon: const Icon(Icons.aspect_ratio_rounded, size: 19),
+                    icon: const Icon(Icons.aspect_ratio_rounded, size: 18),
                     label: Text(_fitLabel(snapshot.fitMode)),
                   ),
                 ],
               );
         return VideoPlayerGlassPanel(
-          borderRadius: BorderRadius.circular(18),
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+          key: const Key('video-player-bottom-band'),
+          borderRadius: BorderRadius.zero,
+          padding: EdgeInsets.fromLTRB(
+            8,
+            3,
+            8,
+            4 + MediaQuery.paddingOf(context).bottom,
+          ),
+          showBorder: false,
+          showShadow: false,
+          blurSigma: 22,
           child: compact
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -310,10 +338,12 @@ final class _TopBar extends StatelessWidget {
         key: const Key('video-player-back'),
         tooltip: '返回',
         onPressed: onExit,
-        style: IconButton.styleFrom(foregroundColor: videoPlayerForeground),
-        icon: const Icon(Icons.arrow_back_rounded),
+        style: IconButton.styleFrom(
+          foregroundColor: videoPlayerForeground,
+          visualDensity: VisualDensity.compact,
+        ),
+        icon: const Icon(Icons.arrow_back_rounded, size: 23),
       ),
-      const SizedBox(width: 4),
       Expanded(
         child: Text(
           title,
@@ -323,6 +353,7 @@ final class _TopBar extends StatelessWidget {
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
             color: videoPlayerForeground,
             fontWeight: FontWeight.w600,
+            fontSize: 16,
           ),
         ),
       ),
@@ -330,9 +361,13 @@ final class _TopBar extends StatelessWidget {
         key: const Key('video-player-fullscreen'),
         tooltip: fullscreen ? '退出全屏' : '进入全屏',
         onPressed: () => onFullscreen(!fullscreen),
-        style: IconButton.styleFrom(foregroundColor: videoPlayerForeground),
+        style: IconButton.styleFrom(
+          foregroundColor: videoPlayerForeground,
+          visualDensity: VisualDensity.compact,
+        ),
         icon: Icon(
           fullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
+          size: 23,
         ),
       ),
     ],
@@ -352,7 +387,10 @@ final class _TransportControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => VideoPlayerGlassPanel(
-    borderRadius: BorderRadius.circular(999),
+    key: const Key('video-player-transport'),
+    borderRadius: BorderRadius.circular(14),
+    padding: const EdgeInsets.all(2),
+    showShadow: false,
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
@@ -360,17 +398,24 @@ final class _TransportControls extends StatelessWidget {
           key: const Key('video-player-rewind'),
           tooltip: '后退 10 秒',
           onPressed: () => onSkip(const Duration(seconds: -10)),
-          style: IconButton.styleFrom(foregroundColor: videoPlayerForeground),
-          icon: const Icon(Icons.replay_10_rounded),
+          style: IconButton.styleFrom(
+            foregroundColor: videoPlayerForeground,
+            visualDensity: VisualDensity.compact,
+          ),
+          icon: const Icon(Icons.replay_10_rounded, size: 22),
         ),
-        IconButton.filled(
+        IconButton(
           key: const Key('video-player-play-toggle'),
           tooltip: playing ? '暂停' : '播放',
           onPressed: onPlayOrPause,
-          iconSize: 32,
+          iconSize: 28,
           style: IconButton.styleFrom(
             backgroundColor: videoPlayerAccent,
             foregroundColor: const Color(0xFF111214),
+            fixedSize: const Size.square(46),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
           icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
         ),
@@ -378,8 +423,11 @@ final class _TransportControls extends StatelessWidget {
           key: const Key('video-player-forward'),
           tooltip: '前进 10 秒',
           onPressed: () => onSkip(const Duration(seconds: 10)),
-          style: IconButton.styleFrom(foregroundColor: videoPlayerForeground),
-          icon: const Icon(Icons.forward_10_rounded),
+          style: IconButton.styleFrom(
+            foregroundColor: videoPlayerForeground,
+            visualDensity: VisualDensity.compact,
+          ),
+          icon: const Icon(Icons.forward_10_rounded, size: 22),
         ),
       ],
     ),
@@ -394,12 +442,12 @@ final class _CompactAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Icon(icon, size: 19, color: videoPlayerForeground),
-        const SizedBox(width: 6),
+        Icon(icon, size: 18, color: videoPlayerForeground),
+        const SizedBox(width: 5),
         Text(label, style: const TextStyle(color: videoPlayerForeground)),
       ],
     ),

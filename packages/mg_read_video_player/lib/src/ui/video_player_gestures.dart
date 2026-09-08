@@ -1,0 +1,385 @@
+/// Direct-manipulation gestures and compact feedback for the video surface.
+///
+/// Responsibilities:
+/// - Map horizontal distance to bounded seek previews and commits.
+/// - Adjust left-side brightness, right-side volume, double-tap playback and
+///   hold-to-2x without owning playback or host platform state.
+///
+/// Notes:
+/// - Brightness is route-scoped by the host and reset when the route closes.
+/// - Long press always restores the rate that was active when the hold began.
+library;
+
+// Cross-file UI helpers are intentionally package-private despite Dart naming.
+// ignore_for_file: public_member_api_docs
+
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../api/models.dart';
+import 'video_player_visuals.dart';
+
+final class VideoPlayerGestureLayer extends StatefulWidget {
+  const VideoPlayerGestureLayer({
+    required this.snapshot,
+    required this.onToggleControls,
+    required this.onPlayOrPause,
+    required this.onSeek,
+    required this.onRate,
+    required this.onVolume,
+    required this.onReadBrightness,
+    required this.onBrightness,
+    super.key,
+  });
+
+  final VideoPlayerSnapshot snapshot;
+  final VoidCallback onToggleControls;
+  final VoidCallback onPlayOrPause;
+  final ValueChanged<Duration> onSeek;
+  final ValueChanged<double> onRate;
+  final ValueChanged<double> onVolume;
+  final Future<double?> Function() onReadBrightness;
+  final ValueChanged<double> onBrightness;
+
+  @override
+  State<VideoPlayerGestureLayer> createState() =>
+      _VideoPlayerGestureLayerState();
+}
+
+final class _VideoPlayerGestureLayerState
+    extends State<VideoPlayerGestureLayer> {
+  Timer? _hudTimer;
+  _GestureHud? _hud;
+  Duration _seekBase = Duration.zero;
+  Duration? _seekPreview;
+  double _horizontalDistance = 0;
+  bool _brightnessGesture = false;
+  bool _verticalGestureActive = false;
+  double _verticalDistance = 0;
+  double _volumeBase = 100;
+  double? _brightnessBase;
+  int _brightnessReadGeneration = 0;
+  bool _longPressActive = false;
+  double _rateBeforeLongPress = 1;
+
+  @override
+  void didUpdateWidget(covariant VideoPlayerGestureLayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.snapshot.activeEpisodeId != widget.snapshot.activeEpisodeId) {
+      _seekPreview = null;
+      _horizontalDistance = 0;
+    }
+  }
+
+  void _showHud(_GestureHud hud, {bool persistent = false}) {
+    _hudTimer?.cancel();
+    setState(() => _hud = hud);
+    if (!persistent) {
+      _hudTimer = Timer(const Duration(milliseconds: 650), () {
+        if (mounted) setState(() => _hud = null);
+      });
+    }
+  }
+
+  void _startSeek(DragStartDetails details) {
+    _hudTimer?.cancel();
+    _horizontalDistance = 0;
+    _seekBase = widget.snapshot.position;
+    _seekPreview = _seekBase;
+    _showSeekHud();
+  }
+
+  void _updateSeek(DragUpdateDetails details) {
+    _horizontalDistance += details.primaryDelta ?? 0;
+    final width = context.size?.width ?? 1;
+    final duration = widget.snapshot.duration;
+    final spanSeconds = (duration.inSeconds * .12).clamp(60, 600).toDouble();
+    final deltaSeconds = (_horizontalDistance / width * spanSeconds).round();
+    final target = _clampDuration(
+      _seekBase + Duration(seconds: deltaSeconds),
+      duration,
+    );
+    setState(() => _seekPreview = target);
+    _showSeekHud();
+  }
+
+  void _showSeekHud() {
+    final preview = _seekPreview ?? _seekBase;
+    final delta = preview - _seekBase;
+    final sign = delta.isNegative ? '−' : '+';
+    final seconds = delta.inSeconds.abs();
+    _showHud(
+      _GestureHud(
+        icon: delta.isNegative
+            ? Icons.fast_rewind_rounded
+            : Icons.fast_forward_rounded,
+        title: '$sign$seconds 秒',
+        detail:
+            '${_formatDuration(preview)} / ${_formatDuration(widget.snapshot.duration)}',
+        progress: _progress(preview, widget.snapshot.duration),
+      ),
+      persistent: true,
+    );
+  }
+
+  void _finishSeek(DragEndDetails details) {
+    final target = _seekPreview;
+    if (target != null) widget.onSeek(target);
+    _seekPreview = null;
+    _finishHudSoon();
+  }
+
+  void _cancelSeek() {
+    _seekPreview = null;
+    _finishHudSoon();
+  }
+
+  void _startVertical(DragStartDetails details) {
+    _hudTimer?.cancel();
+    _verticalGestureActive = true;
+    _verticalDistance = 0;
+    _brightnessGesture =
+        details.localPosition.dx < (context.size?.width ?? 0) / 2;
+    if (_brightnessGesture) {
+      final generation = ++_brightnessReadGeneration;
+      _brightnessBase = null;
+      unawaited(
+        widget.onReadBrightness().then((value) {
+          if (!mounted || generation != _brightnessReadGeneration) return;
+          setState(() => _brightnessBase = (value ?? .5).clamp(0.05, 1));
+          _applyVertical();
+          if (!_verticalGestureActive) _finishHudSoon();
+        }),
+      );
+      _showHud(
+        const _GestureHud(
+          icon: Icons.brightness_6_rounded,
+          title: '亮度',
+          detail: '读取中',
+        ),
+        persistent: true,
+      );
+      return;
+    }
+    _volumeBase = widget.snapshot.volume;
+    _applyVertical();
+  }
+
+  void _updateVertical(DragUpdateDetails details) {
+    _verticalDistance += details.primaryDelta ?? 0;
+    _applyVertical();
+  }
+
+  void _applyVertical() {
+    final height = context.size?.height ?? 1;
+    final normalizedDelta = -_verticalDistance / height;
+    if (_brightnessGesture) {
+      final base = _brightnessBase;
+      if (base == null) return;
+      final value = (base + normalizedDelta).clamp(0.05, 1).toDouble();
+      widget.onBrightness(value);
+      _showHud(
+        _GestureHud(
+          icon: Icons.brightness_6_rounded,
+          title: '亮度',
+          detail: '${(value * 100).round()}%',
+          progress: value,
+        ),
+        persistent: true,
+      );
+      return;
+    }
+    final value = (_volumeBase + normalizedDelta * 100)
+        .clamp(0, 100)
+        .toDouble();
+    widget.onVolume(value);
+    _showHud(
+      _GestureHud(
+        icon: value == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+        title: '音量',
+        detail: '${value.round()}%',
+        progress: value / 100,
+      ),
+      persistent: true,
+    );
+  }
+
+  void _finishVertical(DragEndDetails details) {
+    _verticalGestureActive = false;
+    _finishHudSoon();
+  }
+
+  void _cancelVertical() {
+    _verticalGestureActive = false;
+    _brightnessReadGeneration++;
+    _finishHudSoon();
+  }
+
+  void _togglePlayback() {
+    widget.onPlayOrPause();
+    final willPlay = !widget.snapshot.playing;
+    _showHud(
+      _GestureHud(
+        icon: willPlay ? Icons.play_arrow_rounded : Icons.pause_rounded,
+        title: willPlay ? '播放' : '暂停',
+      ),
+    );
+  }
+
+  void _startLongPress(LongPressStartDetails details) {
+    if (!widget.snapshot.playing || _longPressActive) return;
+    _longPressActive = true;
+    _rateBeforeLongPress = widget.snapshot.rate;
+    widget.onRate(2);
+    _showHud(
+      const _GestureHud(
+        icon: Icons.fast_forward_rounded,
+        title: '2.0× 快进播放',
+        detail: '松开恢复原速度',
+      ),
+      persistent: true,
+    );
+  }
+
+  void _finishLongPress() {
+    if (!_longPressActive) return;
+    _longPressActive = false;
+    widget.onRate(_rateBeforeLongPress);
+    _finishHudSoon();
+  }
+
+  void _finishHudSoon() => _showHud(_hud ?? const _GestureHud(title: ''));
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: <Widget>[
+      Semantics(
+        label: '视频手势区域',
+        hint: '双击播放暂停，长按二倍速，横滑快进快退，左侧调亮度，右侧调音量',
+        child: GestureDetector(
+          key: const Key('video-player-gesture-layer'),
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onToggleControls,
+          onDoubleTap: _togglePlayback,
+          onHorizontalDragStart: _startSeek,
+          onHorizontalDragUpdate: _updateSeek,
+          onHorizontalDragEnd: _finishSeek,
+          onHorizontalDragCancel: _cancelSeek,
+          onVerticalDragStart: _startVertical,
+          onVerticalDragUpdate: _updateVertical,
+          onVerticalDragEnd: _finishVertical,
+          onVerticalDragCancel: _cancelVertical,
+          onLongPressStart: _startLongPress,
+          onLongPressEnd: (_) => _finishLongPress(),
+          onLongPressCancel: _finishLongPress,
+        ),
+      ),
+      if (_hud case final hud?)
+        IgnorePointer(
+          child: Center(child: _GestureHudView(hud: hud)),
+        ),
+    ],
+  );
+
+  @override
+  void dispose() {
+    _hudTimer?.cancel();
+    super.dispose();
+  }
+}
+
+final class _GestureHud {
+  const _GestureHud({
+    this.icon,
+    required this.title,
+    this.detail,
+    this.progress,
+  });
+
+  final IconData? icon;
+  final String title;
+  final String? detail;
+  final double? progress;
+}
+
+final class _GestureHudView extends StatelessWidget {
+  const _GestureHudView({required this.hud});
+
+  final _GestureHud hud;
+
+  @override
+  Widget build(BuildContext context) => VideoPlayerGlassPanel(
+    key: const Key('video-player-gesture-hud'),
+    borderRadius: BorderRadius.circular(8),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    showShadow: false,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 112, maxWidth: 220),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (hud.icon case final icon?) ...<Widget>[
+                Icon(icon, size: 20, color: videoPlayerForeground),
+                const SizedBox(width: 7),
+              ],
+              Flexible(
+                child: Text(
+                  hud.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: videoPlayerForeground,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (hud.detail case final detail?) ...<Widget>[
+            const SizedBox(height: 4),
+            Text(
+              detail,
+              style: const TextStyle(color: videoPlayerSecondary, fontSize: 12),
+            ),
+          ],
+          if (hud.progress case final progress?) ...<Widget>[
+            const SizedBox(height: 7),
+            LinearProgressIndicator(
+              minHeight: 2,
+              value: progress.clamp(0, 1),
+              backgroundColor: const Color(0x32FFFFFF),
+              color: videoPlayerAccent,
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
+}
+
+Duration _clampDuration(Duration value, Duration duration) {
+  if (value < Duration.zero) return Duration.zero;
+  if (duration > Duration.zero && value > duration) return duration;
+  return value;
+}
+
+double _progress(Duration position, Duration duration) {
+  if (duration.inMilliseconds <= 0) return 0;
+  return position.inMilliseconds / duration.inMilliseconds;
+}
+
+String _formatDuration(Duration duration) {
+  final total = duration.inSeconds.clamp(0, 359999);
+  final hours = total ~/ 3600;
+  final minutes = total.remainder(3600) ~/ 60;
+  final seconds = total.remainder(60);
+  if (hours > 0) {
+    return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+  return '$minutes:${seconds.toString().padLeft(2, '0')}';
+}

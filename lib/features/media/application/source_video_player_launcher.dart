@@ -1,8 +1,8 @@
 /// Video-source route launcher for the independently maintained player.
 ///
 /// This host keeps source groups neutral, creates video playback sessions, and
-/// owns their route-scoped platform fullscreen lifetime. It retains no media
-/// URL, request header, cookie or Runtime state.
+/// owns route-scoped orientation, system UI, screen-awake and brightness
+/// lifetimes. It retains no media URL, request header, cookie or Runtime state.
 /// Shelf launches discard their placeholder catalog before player setup.
 /// Playback failures also dismiss the entry cover so retry remains reachable.
 library;
@@ -21,6 +21,7 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/media/application/source_audio_playback_coordinator.dart';
 import 'package:mg_read/features/media/application/source_video_data_source.dart';
 import 'package:mg_read/features/media/application/source_video_fullscreen_controller.dart';
+import 'package:mg_read/features/media/application/source_video_playback_platform_controller.dart';
 import 'package:mg_read/features/media/application/transient_source_video_playback_state_store.dart';
 import 'package:mg_read/features/media/presentation/media_entry_cover.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
@@ -97,6 +98,7 @@ final class _SourceVideoPlayerDestination extends StatefulWidget {
 
 final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerDestination> {
   late final SourceVideoFullscreenController _fullscreenController;
+  late final SourceVideoPlaybackPlatformController _playbackPlatformController;
   _VideoPlayerSetup? _setup;
   Object? _setupFailure;
   bool _firstFramePresented = false;
@@ -106,6 +108,8 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
   void initState() {
     super.initState();
     _fullscreenController = SourceVideoFullscreenController();
+    _playbackPlatformController = SourceVideoPlaybackPlatformController();
+    unawaited(_fullscreenController.activate());
     _recordStartupEvent(
       widget.diagnostics,
       widget.startupSession.mark(VideoStartupPhase.routePresented, state: VideoStartupState.completed),
@@ -191,7 +195,7 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
         dataSource: setup.dataSource,
         stateStore: setup.stateStore,
         observer: _VideoEntryObserver(
-          delegate: _DismissVideoPlayerObserver(widget.navigator, _fullscreenController),
+          delegate: _DismissVideoPlayerObserver(widget.navigator, _fullscreenController, _playbackPlatformController),
           onPresented: _presentPlayer,
           diagnostics: widget.diagnostics,
         ),
@@ -205,6 +209,7 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
   void dispose() {
     _generation++;
     unawaited(_fullscreenController.restoreAndClose());
+    unawaited(_playbackPlatformController.restoreAndClose());
     super.dispose();
   }
 }
@@ -246,6 +251,15 @@ final class _VideoEntryObserver extends VideoPlayerObserver {
   FutureOr<void> onFullscreenRequested(bool fullscreen) => delegate.onFullscreenRequested(fullscreen);
 
   @override
+  FutureOr<void> onPlaybackActiveChanged(bool active) => delegate.onPlaybackActiveChanged(active);
+
+  @override
+  FutureOr<double?> onBrightnessReadRequested() => delegate.onBrightnessReadRequested();
+
+  @override
+  FutureOr<void> onBrightnessRequested(double brightness) => delegate.onBrightnessRequested(brightness);
+
+  @override
   FutureOr<void> onExitRequested(VideoPlaybackProgress? progress) => delegate.onExitRequested(progress);
 }
 
@@ -269,17 +283,35 @@ void _recordStartupEvent(DiagnosticsManager diagnostics, VideoStartupEvent event
 }
 
 final class _DismissVideoPlayerObserver extends VideoPlayerObserver {
-  const _DismissVideoPlayerObserver(this._navigator, this._fullscreenController);
+  const _DismissVideoPlayerObserver(this._navigator, this._fullscreenController, this._playbackPlatformController);
 
   final NavigatorState _navigator;
   final SourceVideoFullscreenController _fullscreenController;
+  final SourceVideoPlaybackPlatformController _playbackPlatformController;
 
   @override
   Future<void> onFullscreenRequested(bool fullscreen) => _fullscreenController.setFullscreen(fullscreen);
 
   @override
+  Future<void> onPlaybackActiveChanged(bool active) => _playbackPlatformController.setPlaybackActive(active);
+
+  @override
+  Future<double?> onBrightnessReadRequested() => _playbackPlatformController.readBrightness();
+
+  @override
+  Future<void> onBrightnessRequested(double brightness) => _playbackPlatformController.setBrightness(brightness);
+
+  @override
   Future<void> onExitRequested(VideoPlaybackProgress? progress) async {
-    await _fullscreenController.restoreAndClose();
-    if (_navigator.mounted && _navigator.canPop()) _navigator.pop();
+    try {
+      await Future.wait<void>(<Future<void>>[
+        _fullscreenController.restoreAndClose(),
+        _playbackPlatformController.restoreAndClose(),
+      ], eagerError: false);
+    } on Object {
+      // Platform cleanup failures must not trap the user in the player route.
+    } finally {
+      if (_navigator.mounted && _navigator.canPop()) _navigator.pop();
+    }
   }
 }

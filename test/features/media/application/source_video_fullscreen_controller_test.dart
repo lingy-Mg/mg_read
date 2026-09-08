@@ -10,7 +10,7 @@ import 'package:mg_read/features/media/application/source_video_fullscreen_contr
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('system platform enables both orientations and immersive UI', () async {
+  test('system platform uses portrait, landscape, then restores app UI', () async {
     final calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
       calls.add(call);
@@ -21,90 +21,98 @@ void main() {
     );
     const platform = SystemSourceVideoFullscreenPlatform();
 
-    await platform.enter();
-    await platform.exit();
+    await platform.enterPortrait();
+    await platform.enterLandscape();
+    await platform.restore();
 
     expect(calls.map((call) => call.method), <String>[
       'SystemChrome.setPreferredOrientations',
       'SystemChrome.setEnabledSystemUIMode',
       'SystemChrome.setPreferredOrientations',
       'SystemChrome.setEnabledSystemUIMode',
+      'SystemChrome.setPreferredOrientations',
+      'SystemChrome.setEnabledSystemUIMode',
     ]);
-    expect(calls[0].arguments, <String>[
-      'DeviceOrientation.portraitUp',
-      'DeviceOrientation.landscapeLeft',
-      'DeviceOrientation.portraitDown',
-      'DeviceOrientation.landscapeRight',
-    ]);
+    expect(calls[0].arguments, <String>['DeviceOrientation.portraitUp']);
     expect(calls[1].arguments, 'SystemUiMode.immersiveSticky');
-    expect(calls[2].arguments, isEmpty);
-    expect(calls[3].arguments, 'SystemUiMode.edgeToEdge');
+    expect(calls[2].arguments, <String>['DeviceOrientation.landscapeLeft', 'DeviceOrientation.landscapeRight']);
+    expect(calls[3].arguments, 'SystemUiMode.immersiveSticky');
+    expect(calls[4].arguments, isEmpty);
+    expect(calls[5].arguments, 'SystemUiMode.edgeToEdge');
   });
 
-  test('enters and exits fullscreen in request order', () async {
+  test('activates portrait and enters and exits fullscreen in request order', () async {
     final platform = _FakeFullscreenPlatform();
     final controller = SourceVideoFullscreenController.withPlatform(platform);
 
+    await controller.activate();
     await controller.setFullscreen(true);
     await controller.setFullscreen(false);
+    await controller.restoreAndClose();
 
-    expect(platform.calls, <String>['enter', 'exit']);
+    expect(platform.calls, <String>['portrait', 'landscape', 'portrait', 'restore']);
   });
 
   test('restore closes fullscreen and ignores later requests', () async {
     final platform = _FakeFullscreenPlatform();
     final controller = SourceVideoFullscreenController.withPlatform(platform);
 
+    await controller.activate();
     await controller.setFullscreen(true);
     await controller.restoreAndClose();
     await controller.setFullscreen(true);
 
-    expect(platform.calls, <String>['enter', 'exit']);
+    expect(platform.calls, <String>['portrait', 'landscape', 'restore']);
   });
 
   test('restore waits for an active enter before exiting', () async {
-    final enterGate = Completer<void>();
-    final platform = _FakeFullscreenPlatform(enterGate: enterGate);
+    final landscapeGate = Completer<void>();
+    final platform = _FakeFullscreenPlatform(landscapeGate: landscapeGate);
     final controller = SourceVideoFullscreenController.withPlatform(platform);
 
     final entering = controller.setFullscreen(true);
     await Future<void>.delayed(Duration.zero);
     final restoring = controller.restoreAndClose();
-    expect(platform.calls, <String>['enter']);
+    expect(platform.calls, <String>['landscape']);
 
-    enterGate.complete();
+    landscapeGate.complete();
     await Future.wait(<Future<void>>[entering, restoring]);
 
-    expect(platform.calls, <String>['enter', 'exit']);
+    expect(platform.calls, <String>['landscape', 'restore']);
   });
 
   test('restore repairs a partially failed enter', () async {
-    final platform = _FakeFullscreenPlatform(failEnter: true);
+    final platform = _FakeFullscreenPlatform(failLandscape: true);
     final controller = SourceVideoFullscreenController.withPlatform(platform);
 
     await expectLater(controller.setFullscreen(true), throwsStateError);
     await controller.restoreAndClose();
 
-    expect(platform.calls, <String>['enter', 'exit']);
+    expect(platform.calls, <String>['landscape', 'restore']);
   });
 }
 
 final class _FakeFullscreenPlatform implements SourceVideoFullscreenPlatform {
-  _FakeFullscreenPlatform({this.enterGate, this.failEnter = false});
+  _FakeFullscreenPlatform({this.landscapeGate, this.failLandscape = false});
 
-  final Completer<void>? enterGate;
-  final bool failEnter;
+  final Completer<void>? landscapeGate;
+  final bool failLandscape;
   final List<String> calls = <String>[];
 
   @override
-  Future<void> enter() async {
-    calls.add('enter');
-    await enterGate?.future;
-    if (failEnter) throw StateError('enter failed');
+  Future<void> enterLandscape() async {
+    calls.add('landscape');
+    await landscapeGate?.future;
+    if (failLandscape) throw StateError('landscape failed');
   }
 
   @override
-  Future<void> exit() async {
-    calls.add('exit');
+  Future<void> enterPortrait() async {
+    calls.add('portrait');
+  }
+
+  @override
+  Future<void> restore() async {
+    calls.add('restore');
   }
 }

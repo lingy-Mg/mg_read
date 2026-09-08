@@ -62,6 +62,15 @@ class VideoPlayerObserver {
   /// Requests a host-owned fullscreen transition.
   FutureOr<void> onFullscreenRequested(bool fullscreen) {}
 
+  /// Reports whether playback currently requires the screen to stay awake.
+  FutureOr<void> onPlaybackActiveChanged(bool active) {}
+
+  /// Reads the route-scoped application brightness for gesture adjustment.
+  FutureOr<double?> onBrightnessReadRequested() => null;
+
+  /// Requests a route-scoped application brightness from 0.0 to 1.0.
+  FutureOr<void> onBrightnessRequested(double brightness) {}
+
   /// Requests that the host leave this player route.
   FutureOr<void> onExitRequested(VideoPlaybackProgress? progress) {}
 }

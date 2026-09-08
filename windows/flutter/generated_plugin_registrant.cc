@@ -11,6 +11,7 @@
 #include <media_kit_video/media_kit_video_plugin_c_api.h>
 #include <mgread_plugin_runtime/mgread_plugin_runtime_plugin_c_api.h>
 #include <novel_reader_ui/novel_reader_ui_plugin_c_api.h>
+#include <screen_brightness_windows/screen_brightness_windows_plugin_c_api.h>
 #include <share_plus/share_plus_windows_plugin_c_api.h>
 #include <url_launcher_windows/url_launcher_windows.h>
 
@@ -25,6 +26,8 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("MgreadPluginRuntimePluginCApi"));
   NovelReaderUiPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("NovelReaderUiPluginCApi"));
+  ScreenBrightnessWindowsPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("ScreenBrightnessWindowsPluginCApi"));
   SharePlusWindowsPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("SharePlusWindowsPluginCApi"));
   UrlLauncherWindowsRegisterWithRegistrar(

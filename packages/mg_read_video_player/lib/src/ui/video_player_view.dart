@@ -20,6 +20,7 @@ import 'video_backend_command_queue.dart';
 import 'video_episode_resolution.dart';
 import 'video_episode_selection.dart';
 import 'video_episode_sheet.dart';
+import 'video_player_host_bridge.dart';
 import 'video_player_shutdown.dart';
 import 'video_player_keyboard.dart';
 import 'video_player_stage.dart';
@@ -88,6 +89,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   late bool _ownsController;
   late AppLifecycleListener _lifecycleListener;
   late VideoStartupSession _startupSession;
+  late VideoPlayerHostBridge _hostBridge;
   final FocusNode _focusNode = FocusNode(debugLabel: 'mg-read-video-player');
 
   VideoContent? _content;
@@ -121,6 +123,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     _controller = widget.controller ?? VideoPlayerController();
     _controller.attach(this, this);
     _startupSession = widget.startupSession ?? VideoStartupSession.create();
+    _hostBridge = VideoPlayerHostBridge(widget.observer);
     _createBackend();
     _lifecycleListener = AppLifecycleListener(onStateChange: _handleLifecycle);
     unawaited(_loadSession());
@@ -129,6 +132,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   @override
   void didUpdateWidget(covariant VideoPlayerView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _hostBridge.observer = widget.observer;
     if (oldWidget.controller != widget.controller) {
       _controller.detach(this);
       if (_ownsController) _controller.dispose();
@@ -393,32 +397,33 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     final errorId = next.errorKind?.name ?? error;
     if (error != null && error.isNotEmpty && errorId != _reportedBackendError) {
       _reportedBackendError = errorId;
-      _setFailure(
-        switch (next.errorKind) {
-          VideoPlaybackBackendErrorKind.proxyUnavailable =>
-            const VideoPlayerFailure(
-              VideoPlayerFailureKind.playback,
-              '视频代理无法连接，请启动代理服务；若已关闭视频代理，请退出播放器后重新打开。',
-              code: 'video_proxy_unreachable',
-              location: '连接视频代理',
-            ),
-          VideoPlaybackBackendErrorKind.runtimeResourceUnavailable =>
-            const VideoPlayerFailure(
-              VideoPlayerFailureKind.playback,
-              '播放资源服务未能打开视频。请检查“来源 HTTP 代理”或更换视频线路；关闭代理后需退出播放器再重新打开。',
-              code: 'runtime_resource_unavailable',
-              location: '请求播放资源服务',
-            ),
-          _ => const VideoPlayerFailure(
+      _setFailure(switch (next.errorKind) {
+        VideoPlaybackBackendErrorKind.proxyUnavailable =>
+          const VideoPlayerFailure(
             VideoPlayerFailureKind.playback,
-            '播放引擎发生错误',
-            code: 'backend_error',
-            location: '视频播放引擎',
+            '视频代理无法连接，请启动代理服务；若已关闭视频代理，请退出播放器后重新打开。',
+            code: 'video_proxy_unreachable',
+            location: '连接视频代理',
           ),
-        },
-      );
+        VideoPlaybackBackendErrorKind.runtimeResourceUnavailable =>
+          const VideoPlayerFailure(
+            VideoPlayerFailureKind.playback,
+            '播放资源服务未能打开视频。请检查“来源 HTTP 代理”或更换视频线路；关闭代理后需退出播放器再重新打开。',
+            code: 'runtime_resource_unavailable',
+            location: '请求播放资源服务',
+          ),
+        _ => const VideoPlayerFailure(
+          VideoPlayerFailureKind.playback,
+          '播放引擎发生错误',
+          code: 'backend_error',
+          location: '视频播放引擎',
+        ),
+      });
       return;
     }
+    _hostBridge.reportPlaybackActive(
+      next.playing && _status != VideoPlayerStatus.failure,
+    );
     final groupId = _group?.id;
     final episodeId = _episode?.id;
     final selectionId = groupId == null || episodeId == null
@@ -756,6 +761,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
 
   void _setFailure(VideoPlayerFailure failure) {
     if (_disposed) return;
+    _hostBridge.reportPlaybackActive(false);
     _update(() {
       _failure = failure;
       _status = VideoPlayerStatus.failure;
@@ -835,13 +841,17 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     onSeek: seek,
     onSkip: skip,
     onRate: setRate,
+    onVolume: setVolume,
     onFit: cycleFitMode,
     onEpisodes: _showEpisodes,
     onFullscreen: requestFullscreen,
+    onReadBrightness: _hostBridge.readBrightness,
+    onBrightness: _hostBridge.setBrightness,
   );
 
   @override
   void dispose() {
+    _hostBridge.dispose();
     _disposed = true;
     _loadGeneration++;
     _episodeGeneration++;
