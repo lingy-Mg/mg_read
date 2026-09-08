@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/lan_sync/application/device_sync_controller.dart';
+import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 import 'package:mg_read/features/lan_sync/presentation/paired_device_widgets.dart';
 
@@ -63,6 +64,76 @@ void main() {
 
     expect(tester.widget<OutlinedButton>(find.byKey(const Key('device-sync-pull-$deviceId'))).onPressed, isNotNull);
     expect(tester.widget<OutlinedButton>(find.byKey(const Key('device-sync-push-$deviceId'))).onPressed, isNull);
+  });
+
+  testWidgets('newer paired App version offers normal upgrade', (tester) async {
+    final forceValues = <bool>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: PairedDevicesSection(
+            state: DeviceSyncState(
+              started: true,
+              devices: <PairedDevice>[_device(deviceId)],
+              onlineDeviceIds: const <String>{deviceId},
+              localAppVersion: const AppVersionInfo(platform: AppUpdatePlatform.windows, version: '1.0.0', buildNumber: 1),
+              appOffersByDeviceId: const <String, AppPackageOffer>{
+                deviceId: AppPackageOffer(
+                  version: AppVersionInfo(platform: AppUpdatePlatform.windows, version: '1.1.0', buildNumber: 2),
+                  available: true,
+                ),
+              },
+            ),
+            supportsScanner: false,
+            onBeginPairing: () {},
+            onApprovePairing: () {},
+            onRejectPairing: () {},
+            onCancelPairing: () {},
+            onSync: (_, _) {},
+            onAppUpdate: (_, force) => forceValues.add(force),
+            onManage: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('有新版本'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('device-sync-app-upgrade-$deviceId')));
+    expect(forceValues, <bool>[false]);
+  });
+
+  testWidgets('same paired App version requires explicit force install', (tester) async {
+    final forceValues = <bool>[];
+    const version = AppVersionInfo(platform: AppUpdatePlatform.windows, version: '1.0.0', buildNumber: 1);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: PairedDevicesSection(
+            state: DeviceSyncState(
+              started: true,
+              devices: <PairedDevice>[_device(deviceId)],
+              onlineDeviceIds: const <String>{deviceId},
+              localAppVersion: version,
+              appOffersByDeviceId: const <String, AppPackageOffer>{deviceId: AppPackageOffer(version: version, available: true)},
+            ),
+            supportsScanner: false,
+            onBeginPairing: () {},
+            onApprovePairing: () {},
+            onRejectPairing: () {},
+            onCancelPairing: () {},
+            onSync: (_, _) {},
+            onAppUpdate: (_, force) => forceValues.add(force),
+            onManage: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('有新版本'), findsNothing);
+    await tester.tap(find.byKey(const Key('device-sync-app-force-$deviceId')));
+    expect(forceValues, <bool>[true]);
   });
 
   testWidgets('busy device shows the current sync stage instead of a generic status', (tester) async {

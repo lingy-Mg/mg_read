@@ -1,8 +1,8 @@
 /// 已配对设备的 HTTP 发现、请求认证和双向同步。
 ///
-/// HTTP v4 业务接口把书架元信息、阅读进度和单插件制品建模为独立任务；插件任务
-/// 最多三个并发，GET 支持标准 Range/ETag/If-Range。逐设备配对密钥只用于 HMAC
-/// 请求与 UDP 唤醒认证。
+/// HTTP v4 业务接口把书架元信息、阅读进度、单插件制品与用户主动触发的 App 包
+/// 建模为独立任务；插件任务最多三个并发，GET 支持标准 Range/ETag/If-Range。
+/// 逐设备配对密钥只用于 HMAC 请求与 UDP 唤醒认证。
 library;
 
 import 'dart:async';
@@ -12,78 +12,28 @@ import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
 
+import 'package:mg_read/features/lan_sync/application/app_update_service.dart';
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/application/paired_device_repository.dart';
+import 'package:mg_read/features/lan_sync/data/app_transfer_transport.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_http_artifact.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_http_client.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
+import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 
 part 'paired_sync_wake.dart';
 part 'paired_sync_http_session.dart';
+part 'paired_sync_models.dart';
+part 'paired_app_update.dart';
 
 const int pairedSyncProtocolVersion = 4;
 const int pairedSyncDiscoveryPort = 47232;
 const Duration pairedSyncPeerLifetime = Duration(seconds: 8);
 const Duration _sessionLifetime = Duration(minutes: 10);
-
-final class PairedSyncEndpoint {
-  const PairedSyncEndpoint({
-    required this.address,
-    required this.deviceId,
-    required this.expiresAtUtc,
-    required this.label,
-    required this.port,
-  });
-  final String address;
-  final String deviceId;
-  final DateTime expiresAtUtc;
-  final String label;
-  final int port;
-}
-
-final class PairedSyncRunSummary {
-  const PairedSyncRunSummary({
-    required this.receivedBooks,
-    required this.receivedPlugins,
-    required this.sentBooks,
-    required this.sentPlugins,
-    required this.developmentConflicts,
-    this.skippedShelfItems = 0,
-  });
-  const PairedSyncRunSummary.empty()
-    : receivedBooks = 0,
-      receivedPlugins = 0,
-      sentBooks = 0,
-      sentPlugins = 0,
-      developmentConflicts = 0,
-      skippedShelfItems = 0;
-  final int receivedBooks;
-  final int receivedPlugins;
-  final int sentBooks;
-  final int sentPlugins;
-  final int developmentConflicts;
-  final int skippedShelfItems;
-}
-
-final class PairedSyncPartialException implements Exception {
-  const PairedSyncPartialException(this.cause, {required this.stage, required this.causeStackTrace});
-  final Object cause;
-  final String stage;
-  final StackTrace causeStackTrace;
-}
-
-final class PairedSyncPeerFailureException implements Exception {
-  const PairedSyncPeerFailureException({required this.code, required this.stage, required this.errorText});
-  final String code;
-  final String stage;
-  final String errorText;
-}
-
-typedef PairedSyncStageObserver = void Function(String stage);
 
 final class PairedSyncHost {
   PairedSyncHost._({
@@ -99,6 +49,7 @@ final class PairedSyncHost {
     required this._announcementInterval,
     required this._advertisedPeerLifetime,
     required this._canAnnounce,
+    required this._appUpdates,
   });
 
   final LocalDeviceIdentity identity;
@@ -113,8 +64,10 @@ final class PairedSyncHost {
   final Duration _announcementInterval;
   final Duration _advertisedPeerLifetime;
   final Future<bool> Function()? _canAnnounce;
+  final AppUpdateService? _appUpdates;
   final StreamController<PairedSyncEndpoint> _endpoints = StreamController<PairedSyncEndpoint>.broadcast();
   final Map<String, _HttpExchange> _sessions = <String, _HttpExchange>{};
+  final Map<String, _HostedAppPackage> _appPackages = <String, _HostedAppPackage>{};
   final Map<String, DateTime> _acceptedWakeRequests = <String, DateTime>{};
   final Map<String, int> _requestNonces = <String, int>{};
   Timer? _announcer;
@@ -135,6 +88,7 @@ final class PairedSyncHost {
     Duration advertisedPeerLifetime = pairedSyncPeerLifetime,
     Future<bool> Function()? canAnnounce,
     int discoveryPort = pairedSyncDiscoveryPort,
+    AppUpdateService? appUpdates,
   }) async {
     final server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
     RawDatagramSocket? socket;
@@ -154,6 +108,7 @@ final class PairedSyncHost {
         announcementInterval: announcementInterval,
         advertisedPeerLifetime: advertisedPeerLifetime,
         canAnnounce: canAnnounce,
+        appUpdates: appUpdates,
       );
       host._start();
       return host;
@@ -176,6 +131,12 @@ final class PairedSyncHost {
     _announcementInFlight = true;
     try {
       if (_canAnnounce != null && !await _canAnnounce()) return;
+      List<AppPackageOffer> appOffers;
+      try {
+        appOffers = await _appUpdates?.availablePackages() ?? const <AppPackageOffer>[];
+      } on Object {
+        appOffers = const <AppPackageOffer>[];
+      }
       final bytes = utf8.encode(
         jsonEncode(<String, Object?>{
           'kind': 'mgread-paired-sync',
@@ -185,6 +146,7 @@ final class PairedSyncHost {
           'label': identity.label,
           'port': port,
           'ttlSeconds': _advertisedPeerLifetime.inSeconds,
+          'appOffers': <Object?>[for (final offer in appOffers) offer.toJson()],
         }),
       );
       _socket.send(bytes, InternetAddress('255.255.255.255'), discoveryPort);
@@ -216,6 +178,7 @@ final class PairedSyncHost {
         final label = raw['label'];
         final advertisedPort = raw['port'];
         final ttl = raw['ttlSeconds'];
+        final rawAppOffers = raw['appOffers'] ?? const <Object?>[];
         if (raw['kind'] != 'mgread-paired-sync' ||
             raw['protocolVersion'] != pairedSyncProtocolVersion ||
             raw['transport'] != 'http' ||
@@ -229,9 +192,15 @@ final class PairedSyncHost {
             advertisedPort > 65535 ||
             ttl is! int ||
             ttl < 6 ||
-            ttl > 120) {
+            ttl > 120 ||
+            rawAppOffers is! List ||
+            rawAppOffers.length > 3) {
           continue;
         }
+        final appOffers = <AppPackageOffer>[
+          for (final value in rawAppOffers)
+            AppPackageOffer.fromJson((value as Map).map<String, Object?>((key, value) => MapEntry(key as String, value))),
+        ];
         _endpoints.add(
           PairedSyncEndpoint(
             address: packet.address.address,
@@ -239,6 +208,7 @@ final class PairedSyncHost {
             expiresAtUtc: DateTime.now().toUtc().add(Duration(seconds: ttl)),
             label: label,
             port: advertisedPort,
+            appOffers: List<AppPackageOffer>.unmodifiable(appOffers),
           ),
         );
       } on Object {
@@ -268,6 +238,7 @@ final class PairedSyncHost {
         });
       }
       final segments = request.uri.pathSegments;
+      if (await _handleAppPackageRequest(request, peer, segments)) return;
       if (request.method == 'POST' && request.uri.path == '/v4/sessions') {
         if (_closed) {
           return await _respond(request.response, HttpStatus.serviceUnavailable, <String, Object?>{'error': 'host_stopping'});
@@ -385,6 +356,11 @@ final class PairedSyncHost {
     _announcer?.cancel();
     _socket.close();
     await _endpoints.close();
+    final appPackages = _appPackages.entries.toList(growable: false);
+    _appPackages.clear();
+    for (final entry in appPackages) {
+      await entry.value.package.close();
+    }
     if (_sessions.isEmpty) {
       await _server.close(force: true);
     }
@@ -397,6 +373,12 @@ final class PairedSyncHost {
     if (_closed && _sessions.isEmpty) {
       unawaited(_server.close(force: false));
     }
+  }
+
+  Future<void> _retireAppPackage(String token, _HostedAppPackage hosted) async {
+    if (!identical(_appPackages[token], hosted)) return;
+    _appPackages.remove(token);
+    await hosted.package.close();
   }
 }
 

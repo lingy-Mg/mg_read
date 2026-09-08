@@ -7,6 +7,8 @@ final class DeviceSyncState {
   const DeviceSyncState({
     this.devices = const <PairedDevice>[],
     this.onlineDeviceIds = const <String>{},
+    this.appOffersByDeviceId = const <String, AppPackageOffer>{},
+    this.localAppVersion,
     this.busyDeviceId,
     this.busyMessage,
     this.lastMessage,
@@ -21,6 +23,8 @@ final class DeviceSyncState {
 
   final List<PairedDevice> devices;
   final Set<String> onlineDeviceIds;
+  final Map<String, AppPackageOffer> appOffersByDeviceId;
+  final AppVersionInfo? localAppVersion;
   final String? busyDeviceId;
   final String? busyMessage;
   final String? lastMessage;
@@ -44,6 +48,8 @@ final class DeviceSyncState {
   DeviceSyncState copyWith({
     List<PairedDevice>? devices,
     Set<String>? onlineDeviceIds,
+    Map<String, AppPackageOffer>? appOffersByDeviceId,
+    AppVersionInfo? localAppVersion,
     Object? busyDeviceId = _unchanged,
     Object? busyMessage = _unchanged,
     Object? lastMessage = _unchanged,
@@ -59,6 +65,8 @@ final class DeviceSyncState {
     return DeviceSyncState(
       devices: devices ?? this.devices,
       onlineDeviceIds: onlineDeviceIds ?? this.onlineDeviceIds,
+      appOffersByDeviceId: appOffersByDeviceId ?? this.appOffersByDeviceId,
+      localAppVersion: localAppVersion ?? this.localAppVersion,
       busyDeviceId: identical(busyDeviceId, _unchanged) ? this.busyDeviceId : busyDeviceId as String?,
       busyMessage: identical(busyMessage, _unchanged) ? this.busyMessage : busyMessage as String?,
       lastMessage: identical(lastMessage, _unchanged) ? this.lastMessage : lastMessage as String?,

@@ -17,30 +17,36 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_pairing_payload.dart';
+import 'package:mg_read/features/lan_sync/domain/app_transfer_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 
 enum LanSyncQrScannerPurpose {
   sync,
-  pairing;
+  pairing,
+  appTransfer;
 
   bool accepts(String payload) => switch (this) {
     LanSyncQrScannerPurpose.sync => LanSyncQrPayload.decode(payload) != null,
     LanSyncQrScannerPurpose.pairing => LanPairingQrPayload.decode(payload) != null,
+    LanSyncQrScannerPurpose.appTransfer => AppTransferQrPayload.decode(payload) != null,
   };
 
   String get title => switch (this) {
     LanSyncQrScannerPurpose.sync => '扫描同步二维码',
     LanSyncQrScannerPurpose.pairing => '扫码配对设备',
+    LanSyncQrScannerPurpose.appTransfer => '扫描 App 二维码',
   };
 
   String get scanHint => switch (this) {
     LanSyncQrScannerPurpose.sync => '将发送端二维码放入取景框',
     LanSyncQrScannerPurpose.pairing => '将另一台设备的配对二维码放入取景框',
+    LanSyncQrScannerPurpose.appTransfer => '将发送 App 的二维码放入取景框',
   };
 
   String get invalidMessage => switch (this) {
     LanSyncQrScannerPurpose.sync => '这不是 MgRead 局域网同步二维码',
     LanSyncQrScannerPurpose.pairing => '这不是 MgRead 设备配对二维码',
+    LanSyncQrScannerPurpose.appTransfer => '这不是 MgRead App 传输二维码',
   };
 }
 
@@ -166,7 +172,11 @@ class _LanSyncQrScannerPageState extends State<LanSyncQrScannerPage> with Widget
         ),
       ),
       body: Semantics(
-        label: widget.purpose == LanSyncQrScannerPurpose.pairing ? '设备配对二维码扫描器' : '局域网同步二维码扫描器',
+        label: switch (widget.purpose) {
+          LanSyncQrScannerPurpose.pairing => '设备配对二维码扫描器',
+          LanSyncQrScannerPurpose.appTransfer => 'App 传输二维码扫描器',
+          LanSyncQrScannerPurpose.sync => '局域网同步二维码扫描器',
+        },
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[

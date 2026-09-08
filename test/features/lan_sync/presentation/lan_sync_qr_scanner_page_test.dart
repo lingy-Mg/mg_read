@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import 'package:mg_read/features/lan_sync/domain/app_transfer_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_pairing_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/presentation/lan_sync_qr_scanner_page.dart';
@@ -13,11 +14,16 @@ void main() {
   test('scanner purpose accepts only the expected MgRead QR payload', () {
     final syncPayload = _syncPayload();
     final pairingPayload = _pairingPayload();
+    final appPayload = _appPayload();
 
     expect(LanSyncQrScannerPurpose.sync.accepts(syncPayload), isTrue);
     expect(LanSyncQrScannerPurpose.sync.accepts(pairingPayload), isFalse);
+    expect(LanSyncQrScannerPurpose.sync.accepts(appPayload), isFalse);
     expect(LanSyncQrScannerPurpose.pairing.accepts(pairingPayload), isTrue);
     expect(LanSyncQrScannerPurpose.pairing.accepts(syncPayload), isFalse);
+    expect(LanSyncQrScannerPurpose.appTransfer.accepts(appPayload), isTrue);
+    expect(LanSyncQrScannerPurpose.appTransfer.accepts(syncPayload), isFalse);
+    expect(LanSyncQrScannerPurpose.appTransfer.accepts(pairingPayload), isFalse);
   });
 
   testWidgets('scanner startup does not escape the page boundary', (tester) async {
@@ -78,4 +84,8 @@ String _pairingPayload() => LanPairingQrPayload.encode(
     secret: List<int>.generate(32, (index) => index),
     sessionId: 'pairing_session_123456',
   ),
+);
+
+String _appPayload() => AppTransferQrPayload.encode(
+  AppTransferConnectionOffer(sessionId: 'app_session_123456', port: 49153, addresses: const <String>['192.168.1.20']),
 );

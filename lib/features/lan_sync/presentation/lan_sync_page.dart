@@ -6,7 +6,8 @@
 ///
 /// 注意：
 /// - 页面不显示主导航栏；它始终是“我的”下的子级页面。
-/// - 临时传输由 LanSyncController 管理；已配对设备、自动发现和手动同步/拉取/推送由 DeviceSyncController 管理。
+/// - 临时数据和 App 传输分别由 LanSyncController、AppTransferController 管理；已配对设备由
+///   DeviceSyncController 管理。
 ///
 library;
 
@@ -18,9 +19,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/lan_sync/application/app_transfer_controller.dart';
 import 'package:mg_read/features/lan_sync/application/device_sync_controller.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_controller.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
+import 'package:mg_read/features/lan_sync/domain/app_transfer_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
@@ -29,6 +32,10 @@ import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.da
 import 'lan_sync_qr_scanner_page.dart';
 import 'lan_sync_overview_widgets.dart';
 import 'paired_device_widgets.dart';
+import 'app_transfer_widgets.dart';
+
+part 'lan_sync_app_transfer_actions.dart';
+part 'lan_sync_status_widgets.dart';
 
 class LanSyncPage extends ConsumerStatefulWidget {
   const LanSyncPage({required this.onBackRequested, required this.onDestinationRequested, super.key});
@@ -42,6 +49,7 @@ class LanSyncPage extends ConsumerStatefulWidget {
 
 class _LanSyncPageState extends ConsumerState<LanSyncPage> {
   final TextEditingController _manualAddressController = TextEditingController();
+  final TextEditingController _appManualAddressController = TextEditingController();
 
   @override
   void initState() {
@@ -54,18 +62,21 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
   @override
   void dispose() {
     _manualAddressController.dispose();
+    _appManualAddressController.dispose();
     super.dispose();
   }
 
   Future<void> _back() async {
     await ref.read(deviceSyncControllerProvider.notifier).cancelPairing();
     await ref.read(lanSyncControllerProvider.notifier).cancel();
+    await ref.read(appTransferControllerProvider.notifier).cancel();
     if (mounted) widget.onBackRequested();
   }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(lanSyncControllerProvider);
+    final appState = ref.watch(appTransferControllerProvider);
     final deviceState = ref.watch(deviceSyncControllerProvider);
     final tokens = AppThemeTokens.of(context);
     return PopScope(
@@ -110,14 +121,34 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
                           onCancelPairing: () => ref.read(deviceSyncControllerProvider.notifier).cancelPairing(),
                           onSync: (deviceId, operation) =>
                               ref.read(deviceSyncControllerProvider.notifier).syncNow(deviceId, operation: operation),
+                          onAppUpdate: (deviceId, force) => unawaited(_confirmPairedAppUpdate(deviceId, force)),
                           onManage: _manageDevice,
                         ),
                         const SizedBox(height: AppSpacing.section),
-                        if (state.phase == LanSyncPhase.idle || state.phase == LanSyncPhase.cancelled)
+                        if (appState.phase != AppTransferPhase.idle)
+                          AppTransferPanel(
+                            state: appState,
+                            manualController: _appManualAddressController,
+                            onConnectManual: () =>
+                                ref.read(appTransferControllerProvider.notifier).connectManual(_appManualAddressController.text),
+                            onConnectPeer: (peer) => ref.read(appTransferControllerProvider.notifier).connectPeer(peer),
+                            onInstall: (force) => ref.read(appTransferControllerProvider.notifier).install(force: force),
+                            onCancel: () => ref.read(appTransferControllerProvider.notifier).cancel(),
+                            onReset: () => ref.read(appTransferControllerProvider.notifier).reset(),
+                          )
+                        else if (state.phase == LanSyncPhase.idle || state.phase == LanSyncPhase.cancelled)
                           Column(
                             key: const Key('lan-sync-temporary-transfer'),
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: <Widget>[
+                              const LanSyncSectionHeader(title: '传输 App', description: '另一台设备先看到双方版本，再决定升级；相同或较低版本仍可显式强制安装。'),
+                              const SizedBox(height: AppSpacing.regular),
+                              AppTransferRoleChooser(
+                                onSend: () => ref.read(appTransferControllerProvider.notifier).startSending(),
+                                onReceive: () => ref.read(appTransferControllerProvider.notifier).startReceiving(),
+                                onScan: _supportsQrScanner ? () => unawaited(_scanAndReceiveApp()) : null,
+                              ),
+                              const SizedBox(height: AppSpacing.section),
                               const LanSyncSectionHeader(title: '传输数据', description: '用于尚未配对的设备；仅本次有效，需要发送端保持页面并核对确认码。'),
                               const SizedBox(height: AppSpacing.regular),
                               LanSyncRoleChooser(
@@ -302,54 +333,6 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
   }
 
   Future<void> _cancel() => ref.read(lanSyncControllerProvider.notifier).cancel();
-}
-
-class _StatusCard extends StatelessWidget {
-  const _StatusCard({required this.state});
-  final LanSyncViewState state;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    liveRegion: true,
-    child: Card(
-      child: ListTile(
-        leading: state.busy
-            ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))
-            : Icon(
-                state.phase == LanSyncPhase.completed
-                    ? Icons.check_circle_rounded
-                    : state.phase == LanSyncPhase.failed
-                    ? Icons.error_outline_rounded
-                    : Icons.sync_rounded,
-              ),
-        title: Text(state.message),
-        subtitle: _StatusDetail(state: state),
-      ),
-    ),
-  );
-}
-
-class _StatusDetail extends StatelessWidget {
-  const _StatusDetail({required this.state});
-
-  final LanSyncViewState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final transferred = state.transferredBytes > 0 ? '${_formatBytes(state.transferredBytes)} 已接收' : null;
-    final detail = switch (state.message) {
-      '正在传输插件' => '正在从发送端接收插件文件。',
-      '正在校验并保存插件' => '文件已到齐，正在校验完整性并写入受控入箱。',
-      '正在完成插件安装' => '正在让数据源 Runtime 冷启动并确认插件可用。',
-      '正在写入书架和阅读进度' => '插件已处理，正在单事务写入选中的书架和进度。',
-      _ => null,
-    };
-    if (transferred == null && detail == null) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[if (transferred != null) Text(transferred), if (detail != null) Text(detail)],
-    );
-  }
 }
 
 class LanSyncConnectionQrCard extends StatelessWidget {

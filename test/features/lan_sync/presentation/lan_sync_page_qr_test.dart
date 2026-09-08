@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -6,7 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/lan_sync/application/app_transfer_controller.dart';
+import 'package:mg_read/features/lan_sync/application/app_update_service.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
+import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
@@ -16,7 +20,12 @@ void main() {
   testWidgets('Android entry offers scanning and connection card renders QR', (WidgetTester tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
-    final container = ProviderContainer(overrides: [lanSyncGatewayProvider.overrideWithValue(const _EmptyGateway())]);
+    final container = ProviderContainer(
+      overrides: [
+        lanSyncGatewayProvider.overrideWithValue(const _EmptyGateway()),
+        appUpdateServiceProvider.overrideWithValue(const _TestAppUpdateService()),
+      ],
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(
@@ -44,6 +53,19 @@ void main() {
     expect(pairingScanner.purpose, LanSyncQrScannerPurpose.pairing);
     await tester.tap(find.byKey(const Key('lan-sync-scanner-close')));
     await tester.pumpAndSettle();
+
+    final appScanButton = find.byKey(const Key('app-transfer-scan'));
+    await tester.scrollUntilVisible(appScanButton, 240, scrollable: scrollable);
+    await tester.tap(appScanButton);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    final appScanner = tester.widget<LanSyncQrScannerPage>(find.byType(LanSyncQrScannerPage));
+    expect(appScanner.purpose, LanSyncQrScannerPurpose.appTransfer);
+    await tester.tap(find.byKey(const Key('lan-sync-scanner-close')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    await container.read(appTransferControllerProvider.notifier).cancel();
     debugDefaultTargetPlatformOverride = null;
 
     await tester.pumpWidget(
@@ -98,4 +120,24 @@ final class _EmptyGateway implements LanSyncGateway {
     required LanSyncPluginImportResult pluginResult,
     bool force = false,
   }) => throw UnimplementedError();
+}
+
+final class _TestAppUpdateService implements AppUpdateService {
+  const _TestAppUpdateService();
+
+  @override
+  Future<AppVersionInfo> currentVersion() async =>
+      const AppVersionInfo(platform: AppUpdatePlatform.android, version: '1.0.0', buildNumber: 1);
+
+  @override
+  Future<List<AppPackageOffer>> availablePackages() async => const <AppPackageOffer>[];
+
+  @override
+  Future<void> ensureInstallPermission() async {}
+
+  @override
+  Future<void> launchInstaller(File package, AppPackageDescriptor descriptor) => throw UnimplementedError();
+
+  @override
+  Future<PreparedAppPackage> preparePackage(AppUpdatePlatform platform) => throw UnimplementedError();
 }

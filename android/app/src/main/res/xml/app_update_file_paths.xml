@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  LAN-downloaded APKs are created below the app cache directory. FileProvider
+  grants this URI to the system Package Installer for the current install only.
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path
+        name="app_update_cache"
+        path="." />
+</paths>

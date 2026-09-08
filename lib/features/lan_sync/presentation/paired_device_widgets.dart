@@ -10,6 +10,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/lan_sync/application/device_sync_controller.dart';
+import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_pairing_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 
@@ -24,6 +25,7 @@ class PairedDevicesSection extends StatelessWidget {
     required this.onSync,
     required this.onManage,
     this.onScanPairing,
+    this.onAppUpdate,
     super.key,
   });
 
@@ -35,6 +37,7 @@ class PairedDevicesSection extends StatelessWidget {
   final VoidCallback onRejectPairing;
   final VoidCallback onCancelPairing;
   final void Function(String deviceId, PairedSyncOperation operation) onSync;
+  final void Function(String deviceId, bool force)? onAppUpdate;
   final ValueChanged<PairedDevice> onManage;
 
   @override
@@ -136,8 +139,11 @@ class PairedDevicesSection extends StatelessWidget {
                     online: state.onlineDeviceIds.contains(device.deviceId),
                     busy: state.busyDeviceId == device.deviceId,
                     busyMessage: state.busyDeviceId == device.deviceId ? state.busyMessage : null,
+                    appOffer: state.appOffersByDeviceId[device.deviceId],
+                    localAppVersion: state.localAppVersion,
                     canStartSync: state.busyDeviceId == null,
                     onSync: (operation) => onSync(device.deviceId, operation),
+                    onAppUpdate: onAppUpdate == null ? null : (force) => onAppUpdate!(device.deviceId, force),
                     onManage: () => onManage(device),
                   ),
                 ),
@@ -211,18 +217,24 @@ class _PairedDeviceTile extends StatelessWidget {
     required this.online,
     required this.busy,
     required this.busyMessage,
+    required this.appOffer,
+    required this.localAppVersion,
     required this.canStartSync,
     required this.onSync,
     required this.onManage,
+    required this.onAppUpdate,
   });
 
   final PairedDevice device;
   final bool online;
   final bool busy;
   final String? busyMessage;
+  final AppPackageOffer? appOffer;
+  final AppVersionInfo? localAppVersion;
   final bool canStartSync;
   final ValueChanged<PairedSyncOperation> onSync;
   final VoidCallback onManage;
+  final ValueChanged<bool>? onAppUpdate;
 
   @override
   Widget build(BuildContext context) {
@@ -265,6 +277,15 @@ class _PairedDeviceTile extends StatelessWidget {
                   ),
                   if (device.lastSyncAtUtc != null)
                     Text(_lastSyncText(device), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                  if (online && appOffer != null)
+                    Text(
+                      '对方 App ${appOffer!.version.displayVersion}${_appUpgradeAvailable ? ' · 有新版本' : ''}',
+                      key: Key('device-sync-app-version-${device.deviceId}'),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: _appUpgradeAvailable ? tokens.dataSourceAccent : tokens.mutedText,
+                        fontWeight: _appUpgradeAvailable ? FontWeight.w700 : null,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -290,6 +311,22 @@ class _PairedDeviceTile extends StatelessWidget {
           icon: const Icon(Icons.file_upload_outlined, size: 18),
           label: const Text('推送'),
         ),
+        if (online && appOffer?.available == true && onAppUpdate != null)
+          _appUpgradeAvailable
+              ? FilledButton.tonalIcon(
+                  key: Key('device-sync-app-upgrade-${device.deviceId}'),
+                  style: compactButtonStyle,
+                  onPressed: actionsEnabled ? () => onAppUpdate!(false) : null,
+                  icon: const Icon(Icons.system_update_alt_rounded, size: 18),
+                  label: const Text('升级 App'),
+                )
+              : OutlinedButton.icon(
+                  key: Key('device-sync-app-force-${device.deviceId}'),
+                  style: compactButtonStyle,
+                  onPressed: actionsEnabled ? () => onAppUpdate!(true) : null,
+                  icon: const Icon(Icons.replay_rounded, size: 18),
+                  label: const Text('强制安装'),
+                ),
       ],
     );
     return LayoutBuilder(
@@ -314,6 +351,9 @@ class _PairedDeviceTile extends StatelessWidget {
       },
     );
   }
+
+  bool get _appUpgradeAvailable =>
+      appOffer?.available == true && localAppVersion != null && isRemoteAppUpgrade(appOffer!.version, localAppVersion!);
 }
 
 class _PairingPanel extends StatelessWidget {

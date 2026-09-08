@@ -5,6 +5,7 @@
 /// - 串行化所有入站/出站同步，避免 Runtime 批量导入状态互相覆盖。
 /// - 桌面端/Android 由桌面端自动发起；同平台用稳定设备 ID 选主，避免双向重复同步。
 /// - 开发书源变化由桌面立即推动，Android 合并延迟后再推送，手动操作始终即时执行。
+/// - 在线设备只公布可用 App 版本；App 拉取和安装必须由用户显式触发。
 ///
 /// 注意：
 /// - Provider 非 autoDispose；离开设置页只取消未完成的首次配对，不停止前台同步宿主。
@@ -18,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/lan_sync/application/app_update_service.dart';
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_session.dart';
@@ -30,6 +32,7 @@ import 'package:mg_read/features/lan_sync/data/lan_pairing_transport.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/data/paired_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_pairing_payload.dart';
+import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/application/library_page_state.dart';
@@ -109,9 +112,15 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
       final identityStore = ref.read(deviceIdentityStoreProvider);
       final identity = await identityStore.loadOrCreateIdentity();
       final saved = await devices.list();
+      AppVersionInfo? localAppVersion;
+      try {
+        localAppVersion = await ref.read(appUpdateServiceProvider).currentVersion();
+      } on Object {
+        // App 版本探测失败不能阻断既有的数据同步宿主。
+      }
       _identity = identity;
       if (!_foregroundDesired || _disposed) return;
-      state = state.copyWith(devices: saved);
+      state = state.copyWith(devices: saved, localAppVersion: localAppVersion);
       if (saved.isNotEmpty) _startNetworkMonitor();
       if (saved.isNotEmpty) {
         _networkAvailable = await _readNetworkAvailability();
@@ -255,6 +264,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
       announcementInterval: _announcementInterval,
       advertisedPeerLifetime: _advertisedPeerLifetime,
       canAnnounce: _canAnnounce,
+      appUpdates: ref.read(appUpdateServiceProvider),
     );
     if (_disposed || !_foregroundDesired) {
       await host.close();
@@ -348,6 +358,57 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
     await _runOperation(device, endpoint, operation: operation);
   }
 
+  Future<void> installAppFrom(String deviceId, {required bool force}) async {
+    await start();
+    final device = _device(deviceId);
+    final endpoint = _endpoints[deviceId];
+    if (device == null || endpoint == null || endpoint.expiresAtUtc.isBefore(DateTime.now().toUtc())) {
+      state = state.copyWith(lastErrorCode: 'lan_sync_peer_offline', lastMessage: '设备当前不在线，无法获取 App');
+      return;
+    }
+    if (_activeDeviceId != null || state.busyDeviceId != null) return;
+    _activeDeviceId = deviceId;
+    state = state.copyWith(
+      busyDeviceId: deviceId,
+      busyMessage: '正在准备 App 安装包',
+      lastErrorCode: null,
+      lastMessage: '正在从 ${device.label} 获取 App',
+    );
+    final awake = LanSyncScreenAwake();
+    try {
+      final secret = await ref.read(deviceIdentityStoreProvider).readPeerSecret(deviceId);
+      final identity = _identity ?? await ref.read(deviceIdentityStoreProvider).loadOrCreateIdentity();
+      if (secret == null) throw StateError('paired_secret_missing');
+      final appUpdates = ref.read(appUpdateServiceProvider);
+      await appUpdates.ensureInstallPermission();
+      await pullPairedAppUpdate(
+        endpoint: endpoint,
+        identity: identity,
+        peer: device,
+        sharedSecret: secret,
+        service: appUpdates,
+        force: force,
+        onProgress: (bytes, total) {
+          if (_disposed) return;
+          final percent = total <= 0 ? 0 : (bytes * 100 ~/ total).clamp(0, 100);
+          state = state.copyWith(busyMessage: percent >= 100 ? '安装包已校验，正在打开系统安装程序' : '正在下载 App · $percent%');
+        },
+      );
+      if (!_disposed) {
+        state = state.copyWith(lastMessage: '已打开系统安装程序，请按提示完成升级', lastErrorCode: null);
+      }
+    } on Object catch (error) {
+      final code = _appUpdateFailureCode(error);
+      if (!_disposed) {
+        state = state.copyWith(lastErrorCode: code, lastMessage: _appUpdateFailureMessage(device.label, code));
+      }
+    } finally {
+      await awake.close();
+      _activeDeviceId = null;
+      if (!_disposed) state = state.copyWith(busyDeviceId: null, busyMessage: null);
+    }
+  }
+
   Future<void> syncAvailablePeers({bool pushChanges = false}) async {
     await start();
     if (pushChanges && Platform.isAndroid) {
@@ -385,7 +446,11 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
     final previous = _endpoints[endpoint.deviceId];
     final wasOnline = previous != null && previous.expiresAtUtc.isAfter(DateTime.now().toUtc());
     _endpoints[endpoint.deviceId] = endpoint;
-    state = state.copyWith(onlineDeviceIds: _onlineIds());
+    final localPlatform = state.localAppVersion?.platform;
+    final appOffer = endpoint.appOffers.where((item) => item.version.platform == localPlatform).firstOrNull;
+    final appOffers = <String, AppPackageOffer>{...state.appOffersByDeviceId};
+    if (appOffer != null) appOffers[endpoint.deviceId] = appOffer;
+    state = state.copyWith(onlineDeviceIds: _onlineIds(), appOffersByDeviceId: appOffers);
     if (!device.autoSync ||
         !_networkAvailable ||
         wasOnline ||
@@ -621,3 +686,16 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
     await stop();
   }
 }
+
+String _appUpdateFailureCode(Object error) {
+  final match = RegExp(r'(app_update_[a-z_]+|lan_sync_[a-z_]+)').firstMatch(error.toString());
+  return match?.group(1) ?? 'app_update_failed';
+}
+
+String _appUpdateFailureMessage(String label, String code) => switch (code) {
+  'app_update_not_newer' => '$label 的 App 版本不高于本机；如确实需要，请选择强制安装',
+  'app_update_platform_mismatch' => '$label 没有适用于当前设备平台的 App 安装包',
+  'app_update_install_permission_required' => '请在系统设置中允许安装未知来源应用，返回后再次升级',
+  'lan_sync_peer_offline' => '$label 已离线，无法获取 App',
+  _ => '从 $label 获取 App 失败（$code）',
+};
