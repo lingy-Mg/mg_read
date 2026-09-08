@@ -411,6 +411,13 @@ class _AudioPlayingIndicator extends StatefulWidget {
 class _AudioPlayingIndicatorState extends State<_AudioPlayingIndicator>
     with SingleTickerProviderStateMixin {
   static const _barCount = 5;
+  static const _barLevels = <List<double>>[
+    <double>[.18, .76, .42, .94, .31, .63, .24],
+    <double>[.58, .22, .84, .37, .69, .16, .91, .46, .28],
+    <double>[.33, .88, .19, .56, .97, .41],
+    <double>[.81, .35, .62, .14, .73, .27, .92, .48],
+    <double>[.26, .67, .39, .86, .18, .52, .95, .32, .71, .21],
+  ];
   late final AnimationController _animation;
   bool _disableAnimations = false;
 
@@ -419,7 +426,7 @@ class _AudioPlayingIndicatorState extends State<_AudioPlayingIndicator>
     super.initState();
     _animation = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 820),
+      duration: const Duration(milliseconds: 1160),
       value: 0.08,
     );
   }
@@ -466,8 +473,7 @@ class _AudioPlayingIndicatorState extends State<_AudioPlayingIndicator>
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: List<Widget>.generate(_barCount, (index) {
-                final phase = (_animation.value * math.pi * 2) + index * 1.14;
-                final height = 5.0 + ((math.sin(phase) + 1) * 6.5);
+                final height = 5 + _irregularBarAmount(index) * 13;
                 return SizedBox(
                   key: Key('audio-queue-playing-bar-$index'),
                   width: 2.4,
@@ -485,6 +491,15 @@ class _AudioPlayingIndicatorState extends State<_AudioPlayingIndicator>
         ),
       ),
     );
+  }
+
+  double _irregularBarAmount(int index) {
+    final levels = _barLevels[index];
+    final position = _animation.value * levels.length;
+    final current = position.floor() % levels.length;
+    final next = (current + 1) % levels.length;
+    final eased = Curves.easeInOutCubic.transform(position - position.floor());
+    return levels[current] + (levels[next] - levels[current]) * eased;
   }
 }
 

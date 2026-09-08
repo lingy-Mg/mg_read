@@ -152,6 +152,13 @@ void main() {
       find.byKey(const Key('audio-queue-playing-indicator')),
       findsOneWidget,
     );
+    final barHeights = List<double>.generate(
+      5,
+      (index) => tester
+          .getSize(find.byKey(Key('audio-queue-playing-bar-$index')))
+          .height,
+    );
+    expect(barHeights.toSet().length, greaterThanOrEqualTo(4));
     final movingHeight = tester.getSize(bar).height;
     await tester.pump(const Duration(milliseconds: 120));
     expect(tester.getSize(bar).height, isNot(closeTo(movingHeight, 0.01)));
