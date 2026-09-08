@@ -231,6 +231,7 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
       final proxyUri = configuredProxyUri?.scheme == 'http' ? configuredProxyUri : null;
       final observer = await AndroidAudioBackgroundService.instance.attach(
         controller: _controller,
+        onSystemStop: () => _coordinator.stop(sessionId: widget.sessionId),
         observer: _SourceAudioSessionObserver(
           onPresented: _presentPlayer,
           exitRequested: _handleExitRequested,
