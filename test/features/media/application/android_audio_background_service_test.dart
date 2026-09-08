@@ -147,6 +147,33 @@ void main() {
     await handler.detach(controller);
   });
 
+  test('completed audio retains focus while the next resource is resolving', () async {
+    final focusStates = <bool>[];
+    final controller = _RecordingAudioController(
+      AudioPlayerSnapshot(
+        status: AudioPlayerStatus.ready,
+        queue: <AudioTrack>[AudioTrack(id: 'current', title: '当前章节', resource: Uri.parse('https://example.test/current.mp3'))],
+        queueEntries: const <AudioQueueEntry>[
+          AudioQueueEntry(id: 'current', title: '当前章节'),
+          AudioQueueEntry(id: 'next', title: '下一章节'),
+        ],
+        playbackDesired: true,
+        resourceLoading: true,
+        completed: true,
+      ),
+    );
+    addTearDown(controller.dispose);
+    final handler = MgReadAudioHandler();
+
+    await handler.attach(controller, synchronizeFocus: (active) async => focusStates.add(active), onSystemStop: () async {});
+    await Future<void>.delayed(Duration.zero);
+
+    expect(focusStates.last, isTrue);
+    expect(handler.playbackState.value.playing, isTrue);
+    expect(handler.playbackState.value.processingState, AudioProcessingState.buffering);
+    await handler.detach(controller);
+  });
+
   test('error play retries while loading and queue boundaries are rejected', () async {
     final feedback = <AudioSystemCommandFeedback>[];
     final controller = _RecordingAudioController(

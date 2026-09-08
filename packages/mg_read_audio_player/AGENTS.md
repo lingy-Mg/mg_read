@@ -12,5 +12,7 @@
   选择；`media_kit_libs_audio` 与 `media_kit_libs_video` 不得同时安装。
 - 异步结果提交前检查会话世代和关闭状态；Stream、Timer、Controller 与后端必须成对释放。高频位置
   变化只节流持久化，暂停、切歌、生命周期、退出和关闭必须刷新。
+- `resourceLoading` 由资源请求边界拥有；普通播放器进度、完成和缓冲事件不得清除它。目标章节就绪后必须按最新
+  播放意图显式播放，暂停或更新的选择必须使旧续播失效。
 - 每个源码文件保持低于 700 个非空行。修改后在本目录执行格式化、`flutter analyze` 和
   `flutter test`。
