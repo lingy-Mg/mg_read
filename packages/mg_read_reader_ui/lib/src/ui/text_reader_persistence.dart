@@ -211,6 +211,7 @@ extension _TextReaderPersistence on _TextReaderViewState {
     _foreground = foreground;
     if (!foreground) {
       _chapterPreloadGeneration++;
+      _cancelSlowChapterPreload();
       _cancelAdjacentPreparation();
       _stopAutoReading();
       _commitPreferencePreview();

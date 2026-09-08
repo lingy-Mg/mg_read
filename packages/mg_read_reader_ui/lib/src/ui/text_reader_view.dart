@@ -4,6 +4,7 @@
 /// - 组合正文排版、章节分页、阅读工具栏与设置入口。
 /// - 将章节缓存参数交给宿主能力，并保持网络、持久化和全局任务状态在宿主侧。
 /// - 按宿主给定的有界数量顺序预加载后续小说章节，只为相邻一章执行空闲排版。
+/// - 阅读前台空闲时低频补载更远章节，主动加载和快速预加载始终优先且共享请求去重。
 /// - 横向滑动/无动画翻页复用固定背景；覆盖与仿真翻页才让背景随页片参与动画。
 /// - 依赖 PageView 的自动页面重绘边界，并只为固定背景和自定义动画页片增加必要隔离。
 /// - 将已预排的下一章第一页作为连续页片，动画停止后再提交跨章状态。
@@ -24,6 +25,7 @@ library;
 
 import 'dart:async';
 import 'dart:collection';
+import 'dart:math';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
@@ -128,6 +130,9 @@ class _TextReaderViewState extends State<TextReaderView>
   static const int _verticalRestoreMeasureBatchSize = 128;
   static const int _progressiveParagraphBatchSize = 8;
   static const Duration _adjacentQuietDelay = Duration(milliseconds: 350);
+  static const int _slowPreloadMultiplier = 10;
+  static const int _slowPreloadMinimumDelaySeconds = 10;
+  static const int _slowPreloadDelayRangeSeconds = 21;
   static const double _pageFooterBottomInset = 10;
   // TextPainter measures fractional line heights, while RenderParagraph rounds
   // their painted extent to device pixels. Keep a small reserve so a page that
@@ -158,6 +163,8 @@ class _TextReaderViewState extends State<TextReaderView>
       LinkedHashMap<String, TextChapterContent>();
   final Map<String, Future<TextChapterContent>> _chapterLoads =
       <String, Future<TextChapterContent>>{};
+  final Set<int> _slowPreloadAttemptedIndexes = <int>{};
+  final Random _slowPreloadRandom = Random();
   final Map<String, GlobalKey> _paragraphKeys = <String, GlobalKey>{};
   final Map<ReaderCommentTarget, ReaderCommentSummary> _commentSummaries =
       <ReaderCommentTarget, ReaderCommentSummary>{};
@@ -194,6 +201,7 @@ class _TextReaderViewState extends State<TextReaderView>
   Timer? _clockTimer;
   Timer? _wheelResetTimer;
   Timer? _adjacentQuietTimer;
+  Timer? _slowChapterPreloadTimer;
   Future<void>? _catalogCompletion;
 
   ReaderBookInfo? _book;
@@ -276,6 +284,8 @@ class _TextReaderViewState extends State<TextReaderView>
   int _paginationGeneration = 0;
   int _contentEpoch = 0;
   int _chapterPreloadGeneration = 0;
+  int _slowChapterPreloadGeneration = 0;
+  int _fastChapterPreloadOperations = 0;
   bool _currentPaginationComplete = false;
   int _adjacentPreparationGeneration = 0;
   int _adjacentLayoutGeneration = 0;
@@ -508,6 +518,7 @@ class _TextReaderViewState extends State<TextReaderView>
       unawaited(_refreshCommentSummaries());
     }
     if (oldWidget.chapterPreloadCount != widget.chapterPreloadCount) {
+      _restartSlowChapterPreload(clearAttempts: true);
       _retainCurrentChapterOnly();
       _cancelAdjacentPreparation();
       final ReaderChapterInfo? chapter = _currentChapterInfo;
@@ -531,6 +542,7 @@ class _TextReaderViewState extends State<TextReaderView>
   @override
   void dispose() {
     _disposed = true;
+    _cancelSlowChapterPreload(clearAttempts: true);
     _completeChapterTransition(ReaderChapterPerformanceOutcome.cancelled);
     _cancelAdjacentPreparation();
     WidgetsBinding.instance.removeObserver(this);
@@ -585,6 +597,7 @@ class _TextReaderViewState extends State<TextReaderView>
   @override
   void didHaveMemoryPressure() {
     _chapterPreloadGeneration++;
+    _restartSlowChapterPreload();
     _cancelAdjacentPreparation();
     _retainCurrentChapterOnly();
     _layoutCache.clear();
@@ -597,6 +610,7 @@ class _TextReaderViewState extends State<TextReaderView>
         state == AppLifecycleState.detached) {
       _layoutCache.clear();
       _cancelAdjacentPreparation();
+      _cancelSlowChapterPreload();
     }
   }
 

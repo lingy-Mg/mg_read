@@ -1,5 +1,6 @@
 ## Unreleased
 
+* Text readers now extend the configured fast chapter preload window with a foreground-only slow preload window capped at ten times the setting. It loads at most one distant chapter every random 10-30 seconds, yields to active/fast requests, shares in-flight deduplication, and does not retain distant bodies in reader memory.
 * Added a host-configurable 0-5 chapter text preload window. Following chapter bodies load sequentially with generation checks and bounded memory retention, while only the immediately adjacent chapter is pre-paginated.
 * Added an optional host-owned chapter-cache task capability and a wide reader overflow dialog with a whole-book-bounded chapter slider plus inline concurrency and delay controls; already-persisted chapters skip request delays, and the reader still performs no network or persistent-cache I/O.
 * Horizontal text pages now move their selected background treatment together with the page content for slide, cover, and simulated page-curl transitions.

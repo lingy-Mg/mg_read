@@ -4,10 +4,12 @@ part of 'text_reader_view.dart';
 ///
 /// 职责：
 /// - 复用同一章节请求并维护当前章与宿主指定数量的后续章节正文缓存。
+/// - 前台阅读空闲时按 10-30 秒随机间隔补载一章，最多覆盖快速预加载窗口的十倍。
 /// - 在正文完成后通知横向布局预排调度。
 ///
 /// 注意：
 /// - 预取是 best effort；失败不得影响前台正文或语义进度。
+/// - 慢加载不保留远端正文，只触发宿主持久化；快速和主动路径占用时必须让出。
 /// - 正文完成或失败均回到相邻准备协调器，由下一真实阅读事件决定是否继续。
 /// - 网络、文件和持久化仍由宿主数据源拥有。
 ///
@@ -68,6 +70,7 @@ extension _TextReaderChapterPrefetch on _TextReaderViewState {
   Future<void> _prefetchNext(int currentIndex) async {
     final int count = widget.chapterPreloadCount;
     final int preloadGeneration = ++_chapterPreloadGeneration;
+    _scheduleSlowChapterPreload();
     if (_chapterIndex != currentIndex || count == 0) return;
     // Content and layout are reconciled by the same state machine. In
     // particular, a failed request returns to pending and waits for a later
@@ -102,55 +105,184 @@ extension _TextReaderChapterPrefetch on _TextReaderViewState {
     final int session = _sessionGeneration;
     final TextReaderDataSource dataSource = widget.dataSource;
     final String bookId = widget.bookId;
-    for (var offset = startOffset; offset <= count; offset++) {
-      if (!_foreground ||
-          preloadGeneration != _chapterPreloadGeneration ||
-          !_isSessionCurrent(session) ||
-          _chapterIndex != currentIndex ||
-          !identical(dataSource, widget.dataSource) ||
-          bookId != widget.bookId) {
-        return;
+    _fastChapterPreloadOperations++;
+    try {
+      for (var offset = startOffset; offset <= count; offset++) {
+        if (!_foreground ||
+            preloadGeneration != _chapterPreloadGeneration ||
+            !_isSessionCurrent(session) ||
+            _chapterIndex != currentIndex ||
+            !identical(dataSource, widget.dataSource) ||
+            bookId != widget.bookId) {
+          return;
+        }
+        final int targetIndex = currentIndex + offset;
+        if (_catalogTotal > 0 && targetIndex >= _catalogTotal) return;
+        try {
+          final ReaderChapterInfo chapter = await _chapterInfoAtIndex(
+            targetIndex,
+          );
+          if (!_foreground ||
+              preloadGeneration != _chapterPreloadGeneration ||
+              !_isSessionCurrent(session) ||
+              _chapterIndex != currentIndex) {
+            return;
+          }
+          final TextChapterContent? cached = _takeCached(chapter.id);
+          if (cached != null) continue;
+          final TextChapterContent content = await _loadChapterContent(
+            dataSource,
+            bookId,
+            chapter.id,
+          );
+          if (!_foreground ||
+              preloadGeneration != _chapterPreloadGeneration ||
+              !_isSessionCurrent(session) ||
+              _chapterIndex != currentIndex ||
+              content.chapterId != chapter.id) {
+            return;
+          }
+          _validateChapter(content, expectedChapterId: chapter.id);
+          _cacheChapter(content);
+          // The host may persist the body while the reader's chapter-state
+          // snapshot still says "not downloaded". Refresh only this chapter so
+          // the catalog reflects the completed prefetch without re-querying the
+          // whole book.
+          unawaited(
+            _refreshLoadedChapterStates(chapterId: chapter.id, force: true),
+          );
+        } catch (_) {
+          // Preloading is best effort. Stop this window after the first failure
+          // so an unavailable chapter cannot trigger a burst of later requests.
+          return;
+        }
       }
-      final int targetIndex = currentIndex + offset;
+    } finally {
+      _fastChapterPreloadOperations--;
+    }
+  }
+
+  void _scheduleSlowChapterPreload() {
+    if (_disposed ||
+        !_foreground ||
+        _content == null ||
+        _chapterIndex < 0 ||
+        widget.chapterPreloadCount == 0) {
+      return;
+    }
+    if (_slowChapterPreloadTimer?.isActive == true) return;
+    final int generation = _slowChapterPreloadGeneration;
+    final Duration delay = Duration(
+      seconds:
+          _TextReaderViewState._slowPreloadMinimumDelaySeconds +
+          _slowPreloadRandom.nextInt(
+            _TextReaderViewState._slowPreloadDelayRangeSeconds,
+          ),
+    );
+    _slowChapterPreloadTimer = Timer(delay, () {
+      _slowChapterPreloadTimer = null;
+      unawaited(_runSlowChapterPreload(generation));
+    });
+  }
+
+  void _cancelSlowChapterPreload({bool clearAttempts = false}) {
+    _slowChapterPreloadGeneration++;
+    _slowChapterPreloadTimer?.cancel();
+    _slowChapterPreloadTimer = null;
+    if (clearAttempts) _slowPreloadAttemptedIndexes.clear();
+  }
+
+  void _restartSlowChapterPreload({bool clearAttempts = false}) {
+    _cancelSlowChapterPreload(clearAttempts: clearAttempts);
+    _scheduleSlowChapterPreload();
+  }
+
+  bool _canRunSlowChapterPreload(int generation) =>
+      !_disposed &&
+      _foreground &&
+      _content != null &&
+      _chapterIndex >= 0 &&
+      widget.chapterPreloadCount > 0 &&
+      generation == _slowChapterPreloadGeneration;
+
+  Future<void> _runSlowChapterPreload(int generation) async {
+    if (!_canRunSlowChapterPreload(generation)) return;
+    if (_changingChapter ||
+        _catalogLoading ||
+        _fastChapterPreloadOperations > 0 ||
+        _chapterLoads.isNotEmpty) {
+      _scheduleSlowChapterPreload();
+      return;
+    }
+
+    final int currentIndex = _chapterIndex;
+    final int fastCount = widget.chapterPreloadCount;
+    final int lastIndex =
+        currentIndex + fastCount * _TextReaderViewState._slowPreloadMultiplier;
+    _slowPreloadAttemptedIndexes.removeWhere(
+      (int index) => index <= currentIndex || index > lastIndex,
+    );
+    final int session = _sessionGeneration;
+    final TextReaderDataSource dataSource = widget.dataSource;
+    final String bookId = widget.bookId;
+
+    for (
+      var targetIndex = currentIndex + fastCount + 1;
+      targetIndex <= lastIndex;
+      targetIndex++
+    ) {
       if (_catalogTotal > 0 && targetIndex >= _catalogTotal) return;
+      if (!_slowPreloadAttemptedIndexes.add(targetIndex)) continue;
       try {
         final ReaderChapterInfo chapter = await _chapterInfoAtIndex(
           targetIndex,
         );
-        if (!_foreground ||
-            preloadGeneration != _chapterPreloadGeneration ||
-            !_isSessionCurrent(session) ||
-            _chapterIndex != currentIndex) {
+        if (!_canRunSlowChapterPreload(generation) ||
+            session != _sessionGeneration ||
+            !identical(dataSource, widget.dataSource) ||
+            bookId != widget.bookId) {
           return;
         }
-        final TextChapterContent? cached = _takeCached(chapter.id);
-        if (cached != null) continue;
+        if (_chapterCache.containsKey(chapter.id)) continue;
+        if (_changingChapter ||
+            _catalogLoading ||
+            _fastChapterPreloadOperations > 0 ||
+            _chapterLoads.isNotEmpty) {
+          _slowPreloadAttemptedIndexes.remove(targetIndex);
+          _scheduleSlowChapterPreload();
+          return;
+        }
+        final String loadKey = '$bookId\u0000${chapter.id}';
+        if (_chapterLoads.containsKey(loadKey)) {
+          _slowPreloadAttemptedIndexes.remove(targetIndex);
+          _scheduleSlowChapterPreload();
+          return;
+        }
         final TextChapterContent content = await _loadChapterContent(
           dataSource,
           bookId,
           chapter.id,
         );
-        if (!_foreground ||
-            preloadGeneration != _chapterPreloadGeneration ||
-            !_isSessionCurrent(session) ||
-            _chapterIndex != currentIndex ||
-            content.chapterId != chapter.id) {
+        if (session != _sessionGeneration ||
+            !identical(dataSource, widget.dataSource) ||
+            bookId != widget.bookId) {
           return;
         }
         _validateChapter(content, expectedChapterId: chapter.id);
-        _cacheChapter(content);
-        // The host may persist the body while the reader's chapter-state
-        // snapshot still says "not downloaded". Refresh only this chapter so
-        // the catalog reflects the completed prefetch without re-querying the
-        // whole book.
+        // Do not retain distant bodies in the reader cache. The host's normal
+        // load path owns persistent offline storage, while the in-memory window
+        // remains reserved for current and fast-prefetched chapters.
         unawaited(
           _refreshLoadedChapterStates(chapterId: chapter.id, force: true),
         );
       } catch (_) {
-        // Preloading is best effort. Stop this window after the first failure
-        // so an unavailable chapter cannot trigger a burst of later requests.
-        return;
+        // One attempt per chapter and session prevents a broken remote chapter
+        // from becoming an automatic retry loop against the source website.
       }
+      if (_canRunSlowChapterPreload(generation)) {
+        _scheduleSlowChapterPreload();
+      }
+      return;
     }
   }
 }
