@@ -200,12 +200,16 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
     final controller = playback.controller;
     final request = playback.request!;
     if (controller == null) {
+      final failure = playback.setupFailure;
       return MediaEntryCoverSurface(
         kind: MediaEntryKind.audio,
         title: request.detail.summary.title,
         coverBytes: request.detail.summary.coverBytes,
-        failureMessage: playback.setupFailure == null ? null : '播放器准备失败，请重试。',
-        onRetry: playback.setupFailure == null ? null : () => unawaited(_service.retryPreparation()),
+        failureMessage: failure?.message,
+        failureLocation: failure?.location,
+        failureCode: failure?.code,
+        failureDetail: failure?.debugDetail,
+        onRetry: failure == null ? null : () => unawaited(_service.retryPreparation()),
         onExit: () => unawaited(_service.stop(sessionId: playback.sessionId)),
       );
     }
@@ -474,6 +478,7 @@ final class _SourceAudioMiniPlayerState extends State<_SourceAudioMiniPlayer> {
   Widget build(BuildContext context) {
     final snapshot = widget.controller.snapshot;
     final track = snapshot.currentTrack;
+    final failure = snapshot.failure;
     final tokens = AppThemeTokens.of(context);
     return Material(
       key: const Key('source-audio-mini-player'),
@@ -490,7 +495,16 @@ final class _SourceAudioMiniPlayerState extends State<_SourceAudioMiniPlayer> {
             children: <Widget>[
               DecoratedBox(
                 decoration: BoxDecoration(color: tokens.accentSoft, borderRadius: AppRadii.discoveryTile),
-                child: const SizedBox.square(dimension: 44, child: Icon(Icons.graphic_eq_rounded)),
+                child: SizedBox.square(
+                  dimension: 44,
+                  child: Tooltip(
+                    message: failure == null
+                        ? '音频正在后台播放'
+                        : '${failure.message}\n发生位置：${failure.location}\n诊断编号：${failure.code}'
+                              '${failure.debugDetail == null ? '' : '\n技术原因：${failure.debugDetail}'}',
+                    child: Icon(failure == null ? Icons.graphic_eq_rounded : Icons.error_outline_rounded),
+                  ),
+                ),
               ),
               const SizedBox(width: AppSpacing.regular),
               Expanded(
@@ -505,10 +519,10 @@ final class _SourceAudioMiniPlayerState extends State<_SourceAudioMiniPlayer> {
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
                     ),
                     Text(
-                      track?.collectionTitle ?? '点按返回播放器',
+                      failure == null ? track?.collectionTitle ?? '点按返回播放器' : '${failure.message} · ${failure.location} · ${failure.code}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: failure == null ? tokens.mutedText : tokens.warning),
                     ),
                   ],
                 ),

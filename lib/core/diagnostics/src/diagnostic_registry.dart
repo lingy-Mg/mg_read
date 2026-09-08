@@ -346,10 +346,13 @@ abstract final class AppDiagnosticEvents {
     fields: <String, DiagnosticFieldDefinition>{
       'sessionId': _requiredInstantInt64,
       'stage': _requiredInstantString,
+      'currentTrackId': _string,
+      'targetTrackId': _string,
       'playbackDesired': _boolean,
       'playing': _boolean,
       'buffering': _boolean,
       'resourceLoading': _boolean,
+      'completed': _boolean,
     },
   );
 

@@ -125,132 +125,143 @@ final class AudioErrorView extends StatelessWidget {
                   ),
                 ),
                 Expanded(
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 420),
-                      child: Container(
-                        padding: const EdgeInsets.fromLTRB(24, 30, 24, 24),
-                        decoration: BoxDecoration(
-                          color: AudioPlayerColors.surface,
-                          borderRadius: BorderRadius.circular(
-                            AudioPlayerMetrics.cardRadius,
-                          ),
-                          boxShadow: const <BoxShadow>[
-                            BoxShadow(
-                              color: AudioPlayerColors.shadow,
-                              blurRadius: 30,
-                              offset: Offset(0, 14),
+                  child: SingleChildScrollView(
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 420),
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(24, 30, 24, 24),
+                          decoration: BoxDecoration(
+                            color: AudioPlayerColors.surface,
+                            borderRadius: BorderRadius.circular(
+                              AudioPlayerMetrics.cardRadius,
                             ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Container(
-                              width: 72,
-                              height: 72,
-                              decoration: const BoxDecoration(
-                                color: AudioPlayerColors.warningSoft,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.headset_off_rounded,
-                                size: 34,
-                                color: AudioPlayerColors.warning,
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            Text(
-                              title,
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                color: AudioPlayerColors.ink,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 9),
-                            Text(
-                              message,
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: AudioPlayerColors.muted,
-                                height: 1.55,
-                              ),
-                            ),
-                            if (location != null || diagnosticCode != null || technicalDetail != null) ...[
-                              const SizedBox(height: 18),
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(13),
-                                decoration: BoxDecoration(
-                                  color: AudioPlayerColors.control,
-                                  borderRadius: BorderRadius.circular(15),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: <Widget>[
-                                    if (location != null)
-                                      Text(
-                                        '发生位置：$location',
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: AudioPlayerColors.muted,
-                                            ),
-                                      ),
-                                    if (location != null &&
-                                        diagnosticCode != null)
-                                      const SizedBox(height: 5),
-                                    if (diagnosticCode != null)
-                                      Text(
-                                        '诊断编号：$diagnosticCode',
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: AudioPlayerColors.muted,
-                                          ),
-                                      ),
-                                    if (technicalDetail != null) ...<Widget>[
-                                      if (location != null || diagnosticCode != null) const SizedBox(height: 5),
-                                      Text(
-                                        '技术原因：',
-                                        style: theme.textTheme.bodySmall?.copyWith(
-                                          color: AudioPlayerColors.muted,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 3),
-                                      SelectableText(
-                                        technicalDetail!,
-                                        style: theme.textTheme.bodySmall?.copyWith(color: AudioPlayerColors.muted),
-                                      ),
-                                    ],
-                                  ],
-                                ),
+                            boxShadow: const <BoxShadow>[
+                              BoxShadow(
+                                color: AudioPlayerColors.shadow,
+                                blurRadius: 30,
+                                offset: Offset(0, 14),
                               ),
                             ],
-                            const SizedBox(height: 22),
-                            SizedBox(
-                              width: double.infinity,
-                              child: FilledButton.icon(
-                                key: const Key('audio-retry'),
-                                onPressed: onRetry,
-                                style: FilledButton.styleFrom(
-                                  minimumSize: const Size.fromHeight(50),
-                                  backgroundColor: AudioPlayerColors.accent,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(17),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Container(
+                                width: 72,
+                                height: 72,
+                                decoration: const BoxDecoration(
+                                  color: AudioPlayerColors.warningSoft,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.headset_off_rounded,
+                                  size: 34,
+                                  color: AudioPlayerColors.warning,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              Text(
+                                title,
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  color: AudioPlayerColors.ink,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 9),
+                              Text(
+                                message,
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: AudioPlayerColors.muted,
+                                  height: 1.55,
+                                ),
+                              ),
+                              if (location != null ||
+                                  diagnosticCode != null ||
+                                  technicalDetail != null) ...[
+                                const SizedBox(height: 18),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(13),
+                                  decoration: BoxDecoration(
+                                    color: AudioPlayerColors.control,
+                                    borderRadius: BorderRadius.circular(15),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      if (location != null)
+                                        Text(
+                                          '发生位置：$location',
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: AudioPlayerColors.muted,
+                                              ),
+                                        ),
+                                      if (location != null &&
+                                          diagnosticCode != null)
+                                        const SizedBox(height: 5),
+                                      if (diagnosticCode != null)
+                                        Text(
+                                          '诊断编号：$diagnosticCode',
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: AudioPlayerColors.muted,
+                                              ),
+                                        ),
+                                      if (technicalDetail != null) ...<Widget>[
+                                        if (location != null ||
+                                            diagnosticCode != null)
+                                          const SizedBox(height: 5),
+                                        Text(
+                                          '技术原因：',
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: AudioPlayerColors.muted,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        SelectableText(
+                                          technicalDetail!,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: AudioPlayerColors.muted,
+                                              ),
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                 ),
-                                icon: const Icon(Icons.refresh_rounded),
-                                label: const Text('重新加载'),
+                              ],
+                              const SizedBox(height: 22),
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.icon(
+                                  key: const Key('audio-retry'),
+                                  onPressed: onRetry,
+                                  style: FilledButton.styleFrom(
+                                    minimumSize: const Size.fromHeight(50),
+                                    backgroundColor: AudioPlayerColors.accent,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(17),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.refresh_rounded),
+                                  label: const Text('重新加载'),
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextButton(
-                              onPressed: onBack,
-                              child: const Text('返回上一页'),
-                            ),
-                          ],
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: onBack,
+                                child: const Text('返回上一页'),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

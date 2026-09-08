@@ -137,6 +137,30 @@ final class AudioPlayerFailure {
   final String? debugDetail;
 }
 
+/// Bounded state captured at a meaningful playback-operation boundary.
+@immutable
+final class AudioPlayerOperationEvent {
+  const AudioPlayerOperationEvent({
+    required this.stage,
+    required this.playbackDesired,
+    required this.playing,
+    required this.buffering,
+    required this.resourceLoading,
+    required this.completed,
+    this.currentTrackId,
+    this.targetTrackId,
+  });
+
+  final String stage;
+  final String? currentTrackId;
+  final String? targetTrackId;
+  final bool playbackDesired;
+  final bool playing;
+  final bool buffering;
+  final bool resourceLoading;
+  final bool completed;
+}
+
 /// A host-supplied failure that is safe to show in the audio player.
 ///
 /// The host must use a stable code, a user-understandable location and an
@@ -155,7 +179,8 @@ final class AudioPlayerLoadException implements Exception {
   final String? debugDetail;
 
   @override
-  String toString() => '$code at $location: $message${debugDetail == null ? '' : ' ($debugDetail)'}';
+  String toString() =>
+      '$code at $location: $message${debugDetail == null ? '' : ' ($debugDetail)'}';
 }
 
 /// High-level readiness of [AudioPlayerView].

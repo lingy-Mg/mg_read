@@ -608,13 +608,17 @@ final class AudioInlineFailure extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   '发生位置：${failure.location}  ·  诊断编号：${failure.code}',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AudioPlayerColors.warning),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AudioPlayerColors.warning,
+                  ),
                 ),
                 if (failure.debugDetail case final detail?) ...<Widget>[
                   const SizedBox(height: 3),
                   SelectableText(
                     '技术原因：$detail',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AudioPlayerColors.warning),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AudioPlayerColors.warning,
+                    ),
                   ),
                 ],
               ],

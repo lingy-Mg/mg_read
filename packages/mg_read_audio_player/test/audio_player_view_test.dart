@@ -83,6 +83,8 @@ void main() {
       find.text('诊断编号：audio_selected_resource_unavailable'),
       findsOneWidget,
     );
+    expect(find.text('技术原因：'), findsOneWidget);
+    expect(find.text('Runtime request failed at getContent'), findsOneWidget);
   });
 
   testWidgets('controls transport and saves before switching tracks', (
@@ -669,6 +671,7 @@ final class _FailingAudioDataSource implements AudioPlayerDataSource {
         code: 'audio_selected_resource_unavailable',
         location: '所选章节的播放地址',
         message: '数据源未返回播放地址。',
+        debugDetail: 'Runtime request failed at getContent',
       );
 }
 

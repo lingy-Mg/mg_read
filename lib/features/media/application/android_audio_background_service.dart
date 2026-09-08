@@ -167,6 +167,9 @@ final class _AndroidAudioObserver extends AudioPlayerObserver {
   FutureOr<void> onFailure(AudioPlayerFailure failure) => delegate?.onFailure(failure);
 
   @override
+  FutureOr<void> onOperation(AudioPlayerOperationEvent event) => delegate?.onOperation(event);
+
+  @override
   FutureOr<void> onExitRequested(AudioPlaybackProgress? progress) => delegate?.onExitRequested(progress);
 }
 
@@ -248,11 +251,14 @@ final class MgReadAudioHandler extends BaseAudioHandler {
     }
     final operation = _systemCommandTail.then<void>((_) async {
       if (!identical(_controller, controller) || !canRun(controller.snapshot)) {
+        await _notifyPlatformEvent('systemCommand:$commandKey:rejected');
         await _sendCommandFeedback(rejectedFeedback);
         return;
       }
+      await _notifyPlatformEvent('systemCommand:$commandKey:started');
       await _sendCommandFeedback(AudioSystemCommandFeedback.accepted);
       if (!identical(_controller, controller) || !canRun(controller.snapshot)) {
+        await _notifyPlatformEvent('systemCommand:$commandKey:invalidated');
         await _sendCommandFeedback(rejectedFeedback);
         return;
       }
@@ -260,9 +266,11 @@ final class MgReadAudioHandler extends BaseAudioHandler {
       try {
         await action(controller);
       } on Object {
+        await _notifyPlatformEvent('systemCommand:$commandKey:failed');
         await _sendCommandFeedback(AudioSystemCommandFeedback.failed);
         return;
       }
+      await _notifyPlatformEvent('systemCommand:$commandKey:returned');
       final failureAfter = controller.snapshot.failure;
       if (!_sameFailure(failureBefore, failureAfter) && failureAfter != null) {
         await _sendCommandFeedback(AudioSystemCommandFeedback.failed);

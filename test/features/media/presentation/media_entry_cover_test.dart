@@ -112,6 +112,9 @@ void main() {
           title: '测试视频',
           coverBytes: null,
           failureMessage: '初始化失败',
+          failureLocation: '后台播放服务初始化',
+          failureCode: 'audio_service_setup_failed',
+          failureDetail: 'AudioService init rejected',
           onRetry: () => retries++,
           onExit: () {},
         ),
@@ -119,6 +122,9 @@ void main() {
     );
 
     expect(find.text('视频暂时无法打开'), findsOneWidget);
+    expect(find.text('初始化失败'), findsOneWidget);
+    expect(find.text('发生位置：后台播放服务初始化  ·  诊断编号：audio_service_setup_failed'), findsOneWidget);
+    expect(find.text('技术原因：AudioService init rejected'), findsOneWidget);
     await tester.tap(find.byKey(const Key('media-entry-retry')));
     expect(retries, 1);
   });

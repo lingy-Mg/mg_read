@@ -153,6 +153,9 @@ final class MediaEntryCoverSurface extends StatelessWidget {
     required this.coverBytes,
     required this.onExit,
     this.failureMessage,
+    this.failureLocation,
+    this.failureCode,
+    this.failureDetail,
     this.onRetry,
     super.key,
   });
@@ -162,6 +165,9 @@ final class MediaEntryCoverSurface extends StatelessWidget {
   final List<int>? coverBytes;
   final VoidCallback onExit;
   final String? failureMessage;
+  final String? failureLocation;
+  final String? failureCode;
+  final String? failureDetail;
   final VoidCallback? onRetry;
 
   @override
@@ -258,7 +264,9 @@ final class MediaEntryCoverSurface extends StatelessWidget {
                         child: Semantics(
                           key: const Key('media-entry-status'),
                           liveRegion: true,
-                          label: hasFailure ? '${kind.failureLabel}：$failureMessage' : kind.loadingLabel,
+                          label: hasFailure
+                              ? '${kind.failureLabel}：$failureMessage；位置：${failureLocation ?? '未知'}；编号：${failureCode ?? '未知'}'
+                              : kind.loadingLabel,
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[
@@ -274,6 +282,36 @@ final class MediaEntryCoverSurface extends StatelessWidget {
                                 hasFailure ? kind.failureLabel : kind.loadingLabel,
                                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w600),
                               ),
+                              if (hasFailure) ...<Widget>[
+                                const SizedBox(height: 6),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 520),
+                                  child: Text(
+                                    failureMessage!,
+                                    textAlign: TextAlign.center,
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white),
+                                  ),
+                                ),
+                                if (failureLocation != null || failureCode != null) ...<Widget>[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '发生位置：${failureLocation ?? '未知'}  ·  诊断编号：${failureCode ?? '未知'}',
+                                    textAlign: TextAlign.center,
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
+                                  ),
+                                ],
+                                if (failureDetail case final detail?) ...<Widget>[
+                                  const SizedBox(height: 4),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 520),
+                                    child: SelectableText(
+                                      '技术原因：$detail',
+                                      textAlign: TextAlign.center,
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
+                                    ),
+                                  ),
+                                ],
+                              ],
                               if (hasFailure && onRetry != null) ...<Widget>[
                                 const SizedBox(height: 12),
                                 FilledButton.tonal(key: const Key('media-entry-retry'), onPressed: onRetry, child: const Text('重试')),

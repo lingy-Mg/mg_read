@@ -71,7 +71,7 @@ final class SourceAudioPlaybackState {
     required SourceAudioPresentation presentation,
     required bool keepScreenOn,
     AudioPlayerController? controller,
-    Object? setupFailure,
+    AudioPlayerFailure? setupFailure,
     bool playerPresented = false,
     bool exitDecisionRequested = false,
   }) : this._(
@@ -89,7 +89,7 @@ final class SourceAudioPlaybackState {
   final int? sessionId;
   final SourceAudioPlaybackRequest? request;
   final AudioPlayerController? controller;
-  final Object? setupFailure;
+  final AudioPlayerFailure? setupFailure;
   final bool playerPresented;
   final bool exitDecisionRequested;
   final bool keepScreenOn;
@@ -100,7 +100,7 @@ final class SourceAudioPlaybackState {
     SourceAudioPresentation? presentation,
     AudioPlayerController? controller,
     bool clearController = false,
-    Object? setupFailure,
+    AudioPlayerFailure? setupFailure,
     bool clearSetupFailure = false,
     bool? playerPresented,
     bool? exitDecisionRequested,
@@ -264,7 +264,16 @@ final class SourceAudioPlaybackService extends Notifier<SourceAudioPlaybackState
         await AndroidAudioBackgroundService.instance.detach(localController);
         localController.dispose();
       }
-      state = state.copyWith(clearController: true, setupFailure: error, playerPresented: false);
+      state = state.copyWith(
+        clearController: true,
+        setupFailure: AudioPlayerFailure(
+          code: 'audio_service_setup_failed',
+          location: '后台播放服务初始化',
+          message: '后台播放服务准备失败，请重试。',
+          debugDetail: _boundedServiceFailureDetail(error),
+        ),
+        playerPresented: false,
+      );
     }
   }
 
@@ -387,6 +396,12 @@ final class SourceAudioPlaybackService extends Notifier<SourceAudioPlaybackState
   }
 }
 
+String _boundedServiceFailureDetail(Object error) {
+  final text = error.toString().trim();
+  final detail = text.isEmpty ? error.runtimeType.toString() : text;
+  return detail.length <= 512 ? detail : detail.substring(0, 512);
+}
+
 /// Observer owned by the service; it never captures page or route state.
 final class _SourceAudioPlaybackServiceObserver extends AudioPlayerObserver {
   const _SourceAudioPlaybackServiceObserver({required this.service, required this.sessionId, required this.diagnostics});
@@ -430,23 +445,59 @@ final class _SourceAudioPlaybackServiceObserver extends AudioPlayerObserver {
   }
 
   @override
+  FutureOr<void> onOperation(AudioPlayerOperationEvent event) {
+    _emitState(
+      stage: event.stage,
+      currentTrackId: event.currentTrackId,
+      targetTrackId: event.targetTrackId,
+      playbackDesired: event.playbackDesired,
+      playing: event.playing,
+      buffering: event.buffering,
+      resourceLoading: event.resourceLoading,
+      completed: event.completed,
+    );
+  }
+
+  @override
   FutureOr<void> onExitRequested(AudioPlaybackProgress? progress) => service._handleExitRequested(sessionId);
 
   void recordStage(String stage) {
-    if (diagnostics.isClosed) return;
     final snapshot = service.controller?.snapshot;
+    _emitState(
+      stage: stage,
+      currentTrackId: snapshot?.currentTrack?.id,
+      playbackDesired: snapshot?.playbackDesired,
+      playing: snapshot?.playing,
+      buffering: snapshot?.buffering,
+      resourceLoading: snapshot?.resourceLoading,
+      completed: snapshot?.completed,
+    );
+  }
+
+  void _emitState({
+    required String stage,
+    String? currentTrackId,
+    String? targetTrackId,
+    bool? playbackDesired,
+    bool? playing,
+    bool? buffering,
+    bool? resourceLoading,
+    bool? completed,
+  }) {
+    if (diagnostics.isClosed) return;
     try {
       diagnostics.emit(
         AppDiagnosticEvents.audioPlaybackState,
         attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
           'sessionId': DiagnosticValue.int64(sessionId),
           'stage': DiagnosticValue.string(stage),
-          if (snapshot != null) ...<String, DiagnosticValue>{
-            'playbackDesired': DiagnosticValue.boolean(snapshot.playbackDesired),
-            'playing': DiagnosticValue.boolean(snapshot.playing),
-            'buffering': DiagnosticValue.boolean(snapshot.buffering),
-            'resourceLoading': DiagnosticValue.boolean(snapshot.resourceLoading),
-          },
+          if (currentTrackId != null) 'currentTrackId': DiagnosticValue.string(currentTrackId),
+          if (targetTrackId != null) 'targetTrackId': DiagnosticValue.string(targetTrackId),
+          if (playbackDesired != null) 'playbackDesired': DiagnosticValue.boolean(playbackDesired),
+          if (playing != null) 'playing': DiagnosticValue.boolean(playing),
+          if (buffering != null) 'buffering': DiagnosticValue.boolean(buffering),
+          if (resourceLoading != null) 'resourceLoading': DiagnosticValue.boolean(resourceLoading),
+          if (completed != null) 'completed': DiagnosticValue.boolean(completed),
         }),
       );
     } on Object {

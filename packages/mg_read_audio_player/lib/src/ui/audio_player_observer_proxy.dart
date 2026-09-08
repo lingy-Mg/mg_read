@@ -53,6 +53,11 @@ final class AudioPlayerObserverProxy extends AudioPlayerObserver {
   }
 
   @override
+  Future<void> onOperation(AudioPlayerOperationEvent event) async {
+    await delegate?.onOperation(event);
+  }
+
+  @override
   Future<void> onExitRequested(AudioPlaybackProgress? progress) async {
     if (!await authorizeExit()) return;
     await delegate?.onExitRequested(progress);

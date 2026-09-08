@@ -60,8 +60,37 @@ void main() {
       source.loadPlaylist('audio:book-1'),
       throwsA(
         isA<AudioPlayerLoadException>()
-            .having((error) => error.code, 'code', 'audio_selected_resource_unavailable')
-            .having((error) => error.location, 'location', '所选章节的播放地址'),
+            .having((error) => error.code, 'code', 'audio_resource_request_failed')
+            .having((error) => error.location, 'location', '章节播放地址解析')
+            .having((error) => error.debugDetail, 'debugDetail', contains('fixture unavailable')),
+      ),
+    );
+  });
+
+  test('retains detail request failure diagnostics', () async {
+    final source = SourceAudioPlaylistDataSource(gateway: _AudioGateway(failDetail: true), pluginId: _pluginId);
+
+    await expectLater(
+      source.loadPlaylist('audio:book-1'),
+      throwsA(
+        isA<AudioPlayerLoadException>()
+            .having((error) => error.code, 'code', 'audio_detail_load_failed')
+            .having((error) => error.location, 'location', '音频详情请求')
+            .having((error) => error.debugDetail, 'debugDetail', contains('detail fixture failed')),
+      ),
+    );
+  });
+
+  test('retains catalog request failure diagnostics', () async {
+    final source = SourceAudioPlaylistDataSource(gateway: _AudioGateway(failCatalog: true), pluginId: _pluginId);
+
+    await expectLater(
+      source.loadPlaylist('audio:book-1'),
+      throwsA(
+        isA<AudioPlayerLoadException>()
+            .having((error) => error.code, 'code', 'audio_catalog_load_failed')
+            .having((error) => error.location, 'location', '音频目录请求')
+            .having((error) => error.debugDetail, 'debugDetail', contains('catalog fixture failed')),
       ),
     );
   });
@@ -92,7 +121,11 @@ void main() {
 
     await expectLater(
       source.loadFollowingTracks('audio:book-1', afterTrackId: 'chapter:free-1', limit: 2),
-      throwsA(isA<AudioPlayerLoadException>().having((error) => error.code, 'code', 'audio_continuation_unavailable')),
+      throwsA(
+        isA<AudioPlayerLoadException>()
+            .having((error) => error.code, 'code', 'audio_resource_request_failed')
+            .having((error) => error.debugDetail, 'debugDetail', contains('fixture unavailable')),
+      ),
     );
     expect(gateway.contentCalls, <String>['chapter:free-2']);
   });
@@ -107,7 +140,11 @@ void main() {
 
     await expectLater(
       source.loadFollowingTracks('audio:book-1', afterTrackId: 'chapter:free-2', limit: 1),
-      throwsA(isA<AudioPlayerLoadException>().having((error) => error.code, 'code', 'audio_continuation_unavailable')),
+      throwsA(
+        isA<AudioPlayerLoadException>()
+            .having((error) => error.code, 'code', 'audio_resource_request_failed')
+            .having((error) => error.debugDetail, 'debugDetail', contains('fixture unavailable')),
+      ),
     );
     expect(await source.loadFollowingTracks('audio:book-1', afterTrackId: 'chapter:free-3', limit: 1), isEmpty);
   });
@@ -238,6 +275,8 @@ final class _AudioGateway implements SourceContentGateway, CancellableSourceCont
     this.failingChapterId,
     this.catalogGate,
     this.contentGate,
+    this.failDetail = false,
+    this.failCatalog = false,
     this.resourcePolicy = PluginMediaResourcePolicy.sessionOnly,
     this.expiresAt,
   });
@@ -245,6 +284,8 @@ final class _AudioGateway implements SourceContentGateway, CancellableSourceCont
   final String? failingChapterId;
   final Completer<void>? catalogGate;
   final Completer<void>? contentGate;
+  final bool failDetail;
+  final bool failCatalog;
   final PluginMediaResourcePolicy resourcePolicy;
   final DateTime? expiresAt;
   PluginInvocationCancellation? lastCancellation;
@@ -286,12 +327,14 @@ final class _AudioGateway implements SourceContentGateway, CancellableSourceCont
   @override
   Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async {
     detailCalls += 1;
+    if (failDetail) throw StateError('detail fixture failed');
     return _detail();
   }
 
   @override
   Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async {
     catalogCalls += 1;
+    if (failCatalog) throw StateError('catalog fixture failed');
     await catalogGate?.future;
     return _catalog();
   }

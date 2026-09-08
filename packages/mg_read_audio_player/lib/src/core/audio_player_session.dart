@@ -144,7 +144,7 @@ final class AudioPlayerSession extends ChangeNotifier {
     try {
       final results = await Future.wait<Object?>(<Future<Object?>>[
         dataSource.loadPlaylist(collectionId),
-        stateStore.loadProgress(collectionId),
+        _loadSavedProgress(),
       ]);
       if (!_isCurrent(generation)) return;
       var playlist = results[0]! as AudioPlaylist;
@@ -247,6 +247,19 @@ final class AudioPlayerSession extends ChangeNotifier {
     );
   }
 
+  Future<AudioPlaybackProgress?> _loadSavedProgress() async {
+    try {
+      return await stateStore.loadProgress(collectionId);
+    } on Object catch (error) {
+      throw AudioPlayerLoadException(
+        code: 'audio_progress_load_failed',
+        location: '播放进度读取',
+        message: '无法读取上次播放进度。',
+        debugDetail: _boundedDebugDetail(error),
+      );
+    }
+  }
+
   AudioPlayerFailure _failureFrom(
     Object error, {
     required String code,
@@ -340,7 +353,10 @@ final class AudioPlayerSession extends ChangeNotifier {
     unawaited(_notify(() => observer?.onFailure(failure)));
   }
 
-  void _applyReadySnapshot(AudioPlaybackBackendSnapshot value) {
+  void _applyReadySnapshot(
+    AudioPlaybackBackendSnapshot value, {
+    bool? resourceLoading,
+  }) {
     final playlist = _playlist;
     if (playlist == null) return;
     final index = value.currentIndex.clamp(0, playlist.tracks.length - 1);
@@ -356,7 +372,10 @@ final class AudioPlayerSession extends ChangeNotifier {
         playbackDesired: _playbackDesired,
         playing: value.playing,
         buffering: value.buffering,
-        resourceLoading: false,
+        // Backend position/completion events can arrive while Runtime is
+        // resolving the next resource. They must not end that independent
+        // operation or let the Android media session release audio focus.
+        resourceLoading: resourceLoading ?? _snapshot.resourceLoading,
         completed: value.completed,
         position: _clampPosition(value.position, value.duration),
         duration: value.duration,
@@ -375,20 +394,43 @@ final class AudioPlayerSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _recordOperation(String stage, {String? targetTrackId}) {
+    final snapshot = _snapshot;
+    unawaited(
+      _notify(
+        () => observer?.onOperation(
+          AudioPlayerOperationEvent(
+            stage: stage,
+            currentTrackId: snapshot.currentTrack?.id,
+            targetTrackId: targetTrackId,
+            playbackDesired: snapshot.playbackDesired,
+            playing: snapshot.playing,
+            buffering: snapshot.buffering,
+            resourceLoading: snapshot.resourceLoading,
+            completed: snapshot.completed,
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> retry() {
     _recordPlaybackIntent(true);
     _cancelRecoveryTimers(resetAttempts: true);
     return initialize();
   }
 
-  Future<void> play() {
+  Future<void> play() async {
     _recordPlaybackIntent(true);
     _cancelRecoveryTimers(resetAttempts: true);
-    return _runTransport(backend.play);
+    _recordOperation('playRequested');
+    await _runTransport(backend.play);
+    _recordOperation('playReturned');
   }
 
   Future<void> pause() async {
     _recordPlaybackIntent(false);
+    _recordOperation('pauseRequested');
     _cancelContinuationLoad(retry: false);
     _cancelRecoveryTimers(resetAttempts: true);
     if (_snapshot.resourceLoading) {
@@ -442,28 +484,47 @@ final class AudioPlayerSession extends ChangeNotifier {
     _cancelRecoveryTimers(resetAttempts: true);
     final intentRevision = _playbackIntentRevision;
     _emit(_snapshot.copyWith(clearFailure: true));
+    _recordOperation('trackSelectionStarted', targetTrackId: trackId);
     final loadedIndex = playlist.tracks.indexWhere(
       (track) => track.id == trackId,
     );
+    final generation = ++_generation;
     if (loadedIndex >= 0 && !_trackNeedsRefresh(playlist.tracks[loadedIndex])) {
       _cancelContinuationLoad(retry: false);
       await flushProgress();
+      var failureCode = 'audio_track_jump_failed';
+      var failureLocation = '已加载章节切换';
+      var failureMessage = '无法切换到目标章节，请重试。';
       try {
+        _recordOperation('trackJumpStarted', targetTrackId: trackId);
         await backend.jump(loadedIndex);
+        if (!_isCurrent(generation)) return;
+        _recordOperation('trackJumpReturned', targetTrackId: trackId);
+        failureCode = 'audio_selected_autoplay_failed';
+        failureLocation = '下一章节自动播放';
+        failureMessage = '章节已经切换，但自动播放失败，请重试。';
         if (_playbackDesired && intentRevision == _playbackIntentRevision) {
+          _recordOperation('trackPlayStarted', targetTrackId: trackId);
           await backend.play();
+          _recordOperation('trackPlayReturned', targetTrackId: trackId);
         }
+        if (!_isCurrent(generation)) return;
         if (!_playbackDesired || intentRevision != _playbackIntentRevision) {
           await backend.pause();
         }
       } on Object catch (error) {
+        if (!_isCurrent(generation) ||
+            intentRevision != _playbackIntentRevision) {
+          return;
+        }
         final failure = _failureFrom(
           error,
-          code: 'audio_selected_autoplay_failed',
-          location: '下一章节自动播放',
-          message: '章节已经切换，但自动播放失败，请重试。',
+          code: failureCode,
+          location: failureLocation,
+          message: failureMessage,
         );
         _emit(_snapshot.copyWith(failure: failure));
+        _recordOperation('trackSelectionFailed', targetTrackId: trackId);
         await _notify(() => observer?.onFailure(failure));
       }
       return;
@@ -471,14 +532,26 @@ final class AudioPlayerSession extends ChangeNotifier {
     final source = dataSource;
     if (source is! AudioPlaylistQueueDataSource) return;
     _cancelContinuationLoad(retry: true);
-    final generation = ++_generation;
     var targetInstalled = false;
+    var failureCode = 'audio_selected_resource_unavailable';
+    var failureLocation = '所选章节的播放地址';
+    var failureMessage = '当前章节暂时无法播放，请稍后重试。';
     await flushProgress();
     _emit(_snapshot.copyWith(resourceLoading: true, clearFailure: true));
     try {
+      _recordOperation('resourceLoadStarted', targetTrackId: trackId);
       final track = await source.loadTrackById(collectionId, trackId: trackId);
-      if (!_isCurrent(generation) || !_playbackDesired || intentRevision != _playbackIntentRevision) return;
+      if (!_isCurrent(generation) ||
+          !_playbackDesired ||
+          intentRevision != _playbackIntentRevision) {
+        return;
+      }
+      _recordOperation('resourceLoadReturned', targetTrackId: trackId);
+      failureCode = 'audio_backend_open_failed';
+      failureLocation = '播放器打开目标章节';
+      failureMessage = '目标章节地址已解析，但播放器无法打开该资源。';
       _backendSnapshotsEnabled = false;
+      _recordOperation('backendOpenStarted', targetTrackId: trackId);
       final opening = _backendInitializationTail.then<void>((_) async {
         if (!_isCurrent(generation)) return;
         await backend.open(<AudioTrack>[track], initialIndex: 0, play: false);
@@ -489,6 +562,7 @@ final class AudioPlayerSession extends ChangeNotifier {
       );
       await opening;
       if (!_isCurrent(generation)) return;
+      _recordOperation('backendOpenReturned', targetTrackId: trackId);
       _playlist = AudioPlaylist(
         collectionId: playlist.collectionId,
         title: playlist.title,
@@ -497,23 +571,32 @@ final class AudioPlayerSession extends ChangeNotifier {
         queueEntries: playlist.queueEntries,
       );
       targetInstalled = true;
+      failureCode = 'audio_selected_autoplay_failed';
+      failureLocation = '下一章节自动播放';
+      failureMessage = '章节已经切换，但自动播放失败，请重试。';
       _backendSnapshotsEnabled = true;
       _applyReadySnapshot(backend.snapshot);
       if (_playbackDesired && intentRevision == _playbackIntentRevision) {
+        _recordOperation('trackPlayStarted', targetTrackId: trackId);
         await backend.play();
+        _recordOperation('trackPlayReturned', targetTrackId: trackId);
       }
       if (!_isCurrent(generation)) return;
       if (!_playbackDesired || intentRevision != _playbackIntentRevision) {
         await backend.pause();
         return;
       }
-      _applyReadySnapshot(backend.snapshot);
+      _applyReadySnapshot(backend.snapshot, resourceLoading: false);
       _handleBackendError(backend.snapshot.errorMessage);
       _prefetchIfNeeded(0, snapshot: _snapshot);
       await _notify(() => observer?.onTrackChanged(track));
     } on Object catch (error) {
-      if (!_isCurrent(generation) || !_playbackDesired || intentRevision != _playbackIntentRevision) return;
       _backendSnapshotsEnabled = true;
+      if (!_isCurrent(generation) ||
+          !_playbackDesired ||
+          intentRevision != _playbackIntentRevision) {
+        return;
+      }
       if (!targetInstalled) _playlist = playlist;
       if (!targetInstalled &&
           backend.snapshot.currentIndex >= 0 &&
@@ -524,11 +607,12 @@ final class AudioPlayerSession extends ChangeNotifier {
       _continuationRecoveryPending = true;
       final failure = _failureFrom(
         error,
-        code: 'audio_selected_resource_unavailable',
-        location: targetInstalled ? '下一章节自动播放' : '所选章节的播放地址',
-        message: targetInstalled ? '章节已经切换，但自动播放失败，请重试。' : '当前章节暂时无法播放，请稍后重试。',
+        code: failureCode,
+        location: failureLocation,
+        message: failureMessage,
       );
       _emit(_snapshot.copyWith(resourceLoading: false, failure: failure));
+      _recordOperation('trackSelectionFailed', targetTrackId: trackId);
       await _notify(() => observer?.onFailure(failure));
       _scheduleRecoveryRetry();
     }

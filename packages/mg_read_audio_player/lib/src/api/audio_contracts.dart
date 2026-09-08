@@ -71,6 +71,7 @@ class AudioPlayerObserver {
     AudioPlaybackProgress? progress,
   ) {}
   FutureOr<void> onFailure(AudioPlayerFailure failure) {}
+  FutureOr<void> onOperation(AudioPlayerOperationEvent event) {}
   FutureOr<void> onExitRequested(AudioPlaybackProgress? progress) {}
 }
 

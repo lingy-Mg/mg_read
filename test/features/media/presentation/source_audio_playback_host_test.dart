@@ -144,10 +144,15 @@ void main() {
     await tester.pump();
     expect(underlyingActionCalls, 1);
 
+    backend.emitError('lock-screen next decoder failed');
+    await tester.pump();
+    expect(find.text('播放遇到错误，请稍后重试。 · 播放器读取音频资源 · audio_backend_error'), findsOneWidget);
+
     await tester.tap(find.byKey(const Key('source-audio-mini-player')));
     await _pumpUntil(tester, () => find.byKey(const Key('audio-back')).evaluate().isNotEmpty);
     expect(backend.openCalls, 1);
     expect(systemUiModes.last, 'SystemUiMode.immersiveSticky');
+    expect(find.text('技术原因：lock-screen next decoder failed'), findsOneWidget);
 
     final Future<bool> backHandled = backButtonDispatcher.invokeCallback(Future<bool>.value(false));
     await tester.pump();
@@ -245,6 +250,10 @@ final class _FakeAudioBackend implements AudioPlaybackBackend {
   void _emit(AudioPlaybackBackendSnapshot value) {
     _snapshot = value;
     _states.add(value);
+  }
+
+  void emitError(String message) {
+    _emit(_snapshot.copyWith(errorMessage: message));
   }
 
   @override

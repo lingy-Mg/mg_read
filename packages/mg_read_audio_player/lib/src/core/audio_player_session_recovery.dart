@@ -67,6 +67,7 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
     if (_playbackDesired && !_snapshot.resourceLoading) {
       _emit(_snapshot.copyWith(resourceLoading: true));
     }
+    _recordOperation('continuationResourceStarted');
     late final Future<void> request;
     request =
         _loadFollowingTracks(
@@ -94,6 +95,10 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
         limit: prefetchBatchSize,
       );
       if (!_isContinuationCurrent(generation, requestRevision)) return;
+      _recordOperation(
+        'continuationResourceReturned',
+        targetTrackId: loaded.isEmpty ? null : loaded.first.id,
+      );
       _continuationRecoveryPending = false;
       if (loaded.isEmpty) {
         _emit(_snapshot.copyWith(resourceLoading: false));
@@ -139,12 +144,30 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
           _playbackDesired &&
           intentRevision == _playbackIntentRevision) {
         if (backend.snapshot.currentIndex == previousTailIndex) {
+          _recordOperation(
+            'trackAdvanceStarted',
+            targetTrackId: additions.first.id,
+          );
           await backend.next();
+          _recordOperation(
+            'trackAdvanceReturned',
+            targetTrackId: additions.first.id,
+          );
         }
         if (_playbackDesired && intentRevision == _playbackIntentRevision) {
+          _recordOperation(
+            'trackPlayStarted',
+            targetTrackId: additions.first.id,
+          );
           await backend.play();
+          _recordOperation(
+            'trackPlayReturned',
+            targetTrackId: additions.first.id,
+          );
         }
       }
+      if (!_isContinuationCurrent(generation, requestRevision)) return;
+      _applyReadySnapshot(backend.snapshot, resourceLoading: false);
       _cancelRecoveryTimers(resetAttempts: true);
     } on Object catch (error) {
       if (!_isContinuationCurrent(generation, requestRevision)) return;
@@ -157,6 +180,7 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
         message: '下一章节暂时无法继续，播放器会在网络恢复后重试。',
       );
       _emit(_snapshot.copyWith(resourceLoading: false, failure: failure));
+      _recordOperation('continuationFailed');
       unawaited(_notify(() => observer?.onFailure(failure)));
       if (_playbackDesired) _scheduleRecoveryRetry();
     }
@@ -253,6 +277,7 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
     if (!_snapshot.resourceLoading) {
       _emit(_snapshot.copyWith(resourceLoading: true));
     }
+    _recordOperation('currentResourceReloadStarted', targetTrackId: track.id);
     try {
       final refreshed = await source.loadTrackById(
         collectionId,
@@ -263,9 +288,15 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
           intentRevision != _playbackIntentRevision) {
         return;
       }
+      _recordOperation(
+        'currentResourceReloadReturned',
+        targetTrackId: track.id,
+      );
       _backendSnapshotsEnabled = false;
+      _recordOperation('backendOpenStarted', targetTrackId: track.id);
       await backend.open(<AudioTrack>[refreshed], initialIndex: 0, play: false);
       if (!_isCurrent(generation)) return;
+      _recordOperation('backendOpenReturned', targetTrackId: track.id);
       if (position > Duration.zero) await backend.seek(position);
       if (!_isCurrent(generation)) return;
       _playlist = AudioPlaylist(
@@ -281,9 +312,11 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
         await backend.pause();
         return;
       }
+      _recordOperation('trackPlayStarted', targetTrackId: track.id);
       await backend.play();
+      _recordOperation('trackPlayReturned', targetTrackId: track.id);
       if (!_isCurrent(generation)) return;
-      _applyReadySnapshot(backend.snapshot);
+      _applyReadySnapshot(backend.snapshot, resourceLoading: false);
       _handleBackendError(backend.snapshot.errorMessage);
       _prefetchIfNeeded(0, snapshot: _snapshot);
     } on Object catch (error) {
@@ -298,6 +331,7 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
         message: '当前章节暂时无法恢复，播放器会稍后重试。',
       );
       _emit(_snapshot.copyWith(resourceLoading: false, failure: failure));
+      _recordOperation('currentRecoveryFailed', targetTrackId: track.id);
       unawaited(_notify(() => observer?.onFailure(failure)));
       _scheduleRecoveryRetry();
     }

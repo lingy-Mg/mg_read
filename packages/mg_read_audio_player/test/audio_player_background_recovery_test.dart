@@ -97,6 +97,8 @@ void main() {
           position: const Duration(seconds: 100),
         ),
       );
+      expect(harness.controller.snapshot.resourceLoading, isTrue);
+      expect(harness.controller.snapshot.playbackDesired, isTrue);
 
       pending.complete(<AudioTrack>[_track('b')]);
       await settle();
@@ -104,7 +106,100 @@ void main() {
 
       expect(harness.controller.snapshot.currentTrack?.id, 'b');
       expect(harness.controller.snapshot.playing, isTrue);
+      expect(harness.controller.snapshot.resourceLoading, isFalse);
       expect(harness.backend.nextCalls, 1);
+      expect(
+        harness.observer.operations.map((event) => event.stage),
+        containsAllInOrder(<String>[
+          'continuationResourceStarted',
+          'continuationResourceReturned',
+          'trackAdvanceStarted',
+          'trackAdvanceReturned',
+          'trackPlayStarted',
+          'trackPlayReturned',
+        ]),
+      );
+    },
+  );
+
+  test(
+    'manual next resumes an already loaded chapter after completion',
+    () async {
+      final harness = _Harness(
+        initialTracks: <AudioTrack>[_track('a'), _track('b')],
+      );
+      addTearDown(harness.close);
+      await harness.session.initialize();
+      harness.backend.emit(
+        harness.backend.snapshot.copyWith(
+          playing: false,
+          completed: true,
+          position: const Duration(seconds: 100),
+        ),
+      );
+
+      await harness.controller.next();
+
+      expect(harness.controller.snapshot.currentTrack?.id, 'b');
+      expect(harness.controller.snapshot.playing, isTrue);
+      expect(harness.backend.playCalls, 1);
+    },
+  );
+
+  test(
+    'manual next explicitly plays after a background resource open',
+    () async {
+      final harness = _Harness();
+      addTearDown(harness.close);
+      await harness.session.initialize();
+
+      await harness.controller.next();
+
+      expect(harness.backend.openedTrackIds.last, <String>['b']);
+      expect(harness.controller.snapshot.currentTrack?.id, 'b');
+      expect(harness.controller.snapshot.playing, isTrue);
+      expect(harness.backend.playCalls, 1);
+    },
+  );
+
+  test(
+    'pause while next chapter resolves prevents a late automatic play',
+    () async {
+      final harness = _Harness();
+      final gate = Completer<void>();
+      harness.source.selectedGate = gate;
+      addTearDown(harness.close);
+      await harness.session.initialize();
+
+      final switching = harness.controller.next();
+      await settle();
+      await harness.controller.pause();
+      gate.complete();
+      await switching;
+
+      expect(harness.controller.snapshot.currentTrack?.id, 'a');
+      expect(harness.controller.snapshot.playbackDesired, isFalse);
+      expect(harness.controller.snapshot.playing, isFalse);
+      expect(harness.backend.playCalls, 0);
+    },
+  );
+
+  test(
+    'a failed next autoplay keeps the target and exposes the backend reason',
+    () async {
+      final harness = _Harness();
+      addTearDown(harness.close);
+      await harness.session.initialize();
+      harness.backend.failNextPlay = true;
+
+      await harness.controller.next();
+
+      final failure = harness.controller.snapshot.failure;
+      expect(harness.controller.snapshot.currentTrack?.id, 'b');
+      expect(harness.controller.snapshot.playing, isFalse);
+      expect(failure?.code, 'audio_selected_autoplay_failed');
+      expect(failure?.location, '下一章节自动播放');
+      expect(failure?.debugDetail, contains('play failed'));
     },
   );
 
@@ -242,7 +337,7 @@ void main() {
     await harness.controller.selectQueueEntry('b');
     expect(
       harness.controller.snapshot.failure?.code,
-      'audio_selected_resource_unavailable',
+      'audio_backend_open_failed',
     );
 
     harness.backend.emit(
@@ -312,6 +407,10 @@ final class _Harness {
 
   Future<void> close() async {
     source.pendingFollowing?.complete(const <AudioTrack>[]);
+    final selectedGate = source.selectedGate;
+    if (selectedGate != null && !selectedGate.isCompleted) {
+      selectedGate.complete();
+    }
     await session.close();
     controller.dispose();
   }
@@ -319,10 +418,17 @@ final class _Harness {
 
 final class _Observer extends AudioPlayerObserver {
   final List<AudioPlayerFailure> failures = <AudioPlayerFailure>[];
+  final List<AudioPlayerOperationEvent> operations =
+      <AudioPlayerOperationEvent>[];
 
   @override
   void onFailure(AudioPlayerFailure failure) {
     failures.add(failure);
+  }
+
+  @override
+  void onOperation(AudioPlayerOperationEvent event) {
+    operations.add(event);
   }
 }
 
@@ -330,6 +436,7 @@ final class _Source implements AudioPlaylistQueueDataSource {
   late List<AudioTrack> initialTracks;
   bool failFollowing = false;
   Completer<List<AudioTrack>>? pendingFollowing;
+  Completer<void>? selectedGate;
   int followingCalls = 0;
   final List<String> selectedTrackIds = <String>[];
 
@@ -351,6 +458,7 @@ final class _Source implements AudioPlaylistQueueDataSource {
     required String trackId,
   }) async {
     selectedTrackIds.add(trackId);
+    await selectedGate?.future;
     return _track(trackId);
   }
 
@@ -398,6 +506,7 @@ final class _Backend implements AudioPlaybackBackend {
   int playCalls = 0;
   int nextCalls = 0;
   bool failNextOpen = false;
+  bool failNextPlay = false;
 
   @override
   AudioPlaybackBackendSnapshot get snapshot => _snapshot;
@@ -441,6 +550,10 @@ final class _Backend implements AudioPlaybackBackend {
   @override
   Future<void> play() async {
     playCalls++;
+    if (failNextPlay) {
+      failNextPlay = false;
+      throw StateError('play failed');
+    }
     emit(_snapshot.copyWith(playing: true, completed: false));
   }
 
