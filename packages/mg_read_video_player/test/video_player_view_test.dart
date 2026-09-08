@@ -185,7 +185,8 @@ void main() {
 
     backend.emitPosition(const Duration(seconds: 51));
     await tester.tap(find.byKey(const Key('video-player-episodes')));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(
       find.byKey(const Key('video-player-episode-season-1-episode-2')),
     );
@@ -212,7 +213,8 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('video-player-episodes')));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
 
       final selected = tester.widget<ListTile>(
         find.byKey(const Key('video-player-episode-season-1-episode-1')),
@@ -224,6 +226,41 @@ void main() {
         tester.widget<BottomSheet>(find.byType(BottomSheet)).backgroundColor,
         Colors.transparent,
       );
+    },
+  );
+
+  testWidgets(
+    'episode sheet uses irregular playback bars and follows pause state',
+    (WidgetTester tester) async {
+      final backend = _FakeVideoBackend();
+      await tester.pumpWidget(_playerApp(contentId: 'show', backend: backend));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('video-player-episodes')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(
+        find.byKey(const Key('video-player-episode-playing-indicator')),
+        findsOneWidget,
+      );
+      final bar = find.byKey(const Key('video-player-episode-playing-bar-0'));
+      final barHeights = List<double>.generate(
+        5,
+        (index) => tester
+            .getSize(find.byKey(Key('video-player-episode-playing-bar-$index')))
+            .height,
+      );
+      expect(barHeights.toSet().length, greaterThanOrEqualTo(4));
+      final movingHeight = tester.getSize(bar).height;
+      await tester.pump(const Duration(milliseconds: 120));
+      expect(tester.getSize(bar).height, isNot(closeTo(movingHeight, .01)));
+
+      await backend.pause();
+      await tester.pump();
+      final pausedHeight = tester.getSize(bar).height;
+      await tester.pump(const Duration(milliseconds: 160));
+      expect(tester.getSize(bar).height, closeTo(pausedHeight, .01));
     },
   );
 
@@ -408,7 +445,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('video-player-episodes')));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.byKey(const Key('video-player-group-season-2')));
     await tester.pump();
     await tester.tap(

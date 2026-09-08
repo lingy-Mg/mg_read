@@ -745,6 +745,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       groups: content.groups,
       activeGroupId: _group?.id,
       activeEpisodeId: _episode?.id,
+      playbackState: _backend.state,
     );
     if (!mounted || selected == null) return;
     await selectEpisode(selected.groupId, selected.episodeId);
