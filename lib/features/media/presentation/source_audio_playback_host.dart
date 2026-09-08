@@ -327,7 +327,7 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
         ),
         if (_exitDecision != null) _buildExitPrompt(context),
       ],
-    );
+    ).withSourceMediaImmersion(active: !minimized);
   }
 
   Widget _buildExpandedPlayer(BuildContext context) {

@@ -9,6 +9,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -27,6 +28,11 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.text('正在准备音频'), findsOneWidget);
     expect(tester.getSemantics(find.byKey(const Key('media-entry-status'))).label, contains('正在准备音频'));
+    final region = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(find.byType(AnnotatedRegion<SystemUiOverlayStyle>));
+    expect(region.value.statusBarColor, Colors.transparent);
+    expect(region.value.systemNavigationBarColor, Colors.transparent);
+    expect(region.value.statusBarIconBrightness, Brightness.light);
+    expect(region.value.systemNavigationBarIconBrightness, Brightness.light);
   });
 
   testWidgets('keeps the player mounted and removes the cover after presentation', (tester) async {

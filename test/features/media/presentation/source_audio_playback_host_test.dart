@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -25,6 +26,16 @@ void main() {
     final request = _request();
     final backend = _FakeAudioBackend();
     final backButtonDispatcher = RootBackButtonDispatcher();
+    final systemUiModes = <Object?>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'SystemChrome.setEnabledSystemUIMode') {
+        systemUiModes.add(call.arguments);
+      }
+      return null;
+    });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
     Future<bool> routerFallback() async => false;
     backButtonDispatcher.addCallback(routerFallback);
     var underlyingActionCalls = 0;
@@ -77,6 +88,7 @@ void main() {
           find.byKey(const Key('audio-back')).evaluate().isNotEmpty &&
           find.byKey(const Key('media-entry-cover-transition')).evaluate().isEmpty,
     );
+    expect(systemUiModes.last, 'SystemUiMode.immersiveSticky');
 
     await tester.tap(find.byKey(const Key('audio-queue')));
     await _pumpUntil(tester, () => find.byKey(const Key('audio-queue-list')).evaluate().isNotEmpty);
@@ -102,6 +114,7 @@ void main() {
     await tester.tap(find.byKey(const Key('audio-background-remember-choice')));
     await tester.tap(find.byKey(const Key('audio-background-continue')));
     await _pumpUntil(tester, () => find.byKey(const Key('source-audio-mini-player')).evaluate().isNotEmpty);
+    expect(systemUiModes.last, 'SystemUiMode.edgeToEdge');
 
     expect(settings.get(AppSettingKeys.audioExitBehavior), 'continue');
     expect(find.text('详情页'), findsOneWidget);
@@ -124,6 +137,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('source-audio-mini-player')));
     await _pumpUntil(tester, () => find.byKey(const Key('audio-back')).evaluate().isNotEmpty);
+    expect(systemUiModes.last, 'SystemUiMode.immersiveSticky');
 
     final Future<bool> backHandled = backButtonDispatcher.invokeCallback(Future<bool>.value(false));
     await tester.pump();
@@ -134,6 +148,8 @@ void main() {
     await tester.tap(find.byKey(const Key('source-audio-mini-stop')));
     await _pumpUntil(tester, () => find.byKey(const Key('source-audio-mini-player')).evaluate().isEmpty);
     await playback;
+    await tester.pump();
+    expect(systemUiModes.last, 'SystemUiMode.edgeToEdge');
     expect(find.byKey(const Key('source-audio-mini-player')), findsNothing);
     expect(backend.pauseCalls, greaterThanOrEqualTo(1));
     await settings.flush();
