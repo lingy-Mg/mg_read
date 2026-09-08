@@ -28,6 +28,7 @@ import 'package:mg_read/features/library/application/library_book_refresher.dart
 import 'package:mg_read/features/library/application/library_book_refresh_operation.dart';
 import 'package:mg_read/features/library/application/library_book_removal_operation.dart';
 import 'package:mg_read/features/library/application/library_book_visibility_changer.dart';
+import 'package:mg_read/features/library/application/library_entry_destination.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/library/application/library_page_state.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
@@ -331,6 +332,21 @@ class LibraryPage extends ConsumerWidget {
       }
     }
 
+    void openShelfEntry(LibraryBookListItemViewData book) {
+      final item = state.overview!.items.cast<LibraryItemSummary?>().firstWhere(
+        (candidate) => candidate?.id == book.id,
+        orElse: () => null,
+      );
+      switch (libraryEntryDestination(item?.contentKind ?? ContentKind.novel)) {
+        case LibraryEntryDestination.reader:
+          prepareAndOpen(book.id);
+        case LibraryEntryDestination.audioPlayer:
+          unawaited(openShelfAudio(book));
+        case LibraryEntryDestination.videoPlayer:
+          unawaited(openShelfVideo(book));
+      }
+    }
+
     resolvedCallbacks = callbacks.copyWith(
       onNavigationSelected: destinationRequested == null
           ? callbacks.onNavigationSelected
@@ -349,19 +365,7 @@ class LibraryPage extends ConsumerWidget {
                 ? callbacks.onOpenBook
                 : (book) {
                     callbacks.onOpenBook?.call(book);
-                    final item = state.overview!.items.cast<LibraryItemSummary?>().firstWhere(
-                      (candidate) => candidate?.id == book.id,
-                      orElse: () => null,
-                    );
-                    if (item?.contentKind == ContentKind.audio || item?.contentKind == ContentKind.video) {
-                      if (item?.contentKind == ContentKind.audio) {
-                        unawaited(openShelfAudio(book));
-                      } else {
-                        unawaited(openShelfVideo(book));
-                      }
-                      return;
-                    }
-                    prepareAndOpen(book.id);
+                    openShelfEntry(book);
                   }
           : (book) {
               callbacks.onOpenBook?.call(book);
@@ -379,23 +383,15 @@ class LibraryPage extends ConsumerWidget {
           : () {
               callbacks.onContinueReading?.call();
               final bookId = data.continueReading!.bookId;
-              final item = state.overview!.items.cast<LibraryItemSummary?>().firstWhere(
-                (candidate) => candidate?.id == bookId,
-                orElse: () => null,
-              );
               final book = data.books.cast<LibraryBookListItemViewData?>().firstWhere(
                 (candidate) => candidate?.id == bookId,
                 orElse: () => null,
               );
-              if (item?.contentKind == ContentKind.audio && book != null) {
-                unawaited(openShelfAudio(book));
-                return;
+              if (book != null) {
+                openShelfEntry(book);
+              } else {
+                prepareAndOpen(bookId);
               }
-              if (item?.contentKind == ContentKind.video && book != null) {
-                unawaited(openShelfVideo(book));
-                return;
-              }
-              prepareAndOpen(bookId);
             },
       onDeleteBook: removalOperation == null
           ? null

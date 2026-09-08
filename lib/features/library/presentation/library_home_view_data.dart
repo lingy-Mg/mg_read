@@ -12,6 +12,7 @@ library;
 
 import 'package:flutter/foundation.dart';
 
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/library/domain/library_overview.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
@@ -41,12 +42,23 @@ final class LibraryHomeViewData {
           ? null
           : LibraryContinueReadingViewData(
               bookId: current.id,
+              contentKind: current.contentKind,
               title: current.title,
               author: current.author,
               description: current.description,
-              chapter: '第${(current.readingChapterIndex ?? 0) + 1}章',
+              chapter: switch (current.contentKind) {
+                ContentKind.novel => '第${(current.readingChapterIndex ?? 0) + 1}章',
+                ContentKind.manga => '第${(current.readingChapterIndex ?? 0) + 1}话',
+                ContentKind.audio => '上次收听',
+                ContentKind.video => '上次观看',
+              },
               progress: current.readingProgress ?? 0,
-              lastReadLabel: '上次阅读',
+              hasDeterminateProgress: current.readingProgress != null,
+              lastReadLabel: switch (current.contentKind) {
+                ContentKind.novel || ContentKind.manga => '上次阅读',
+                ContentKind.audio => '上次收听',
+                ContentKind.video => '上次观看',
+              },
               coverVariant: LibraryCoverVariant.values[currentIndex % LibraryCoverVariant.values.length],
               coverUrl: current.coverUrl,
               coverBytes: current.coverBytes,
@@ -153,6 +165,8 @@ final class LibraryContinueReadingViewData {
     required this.progress,
     required this.lastReadLabel,
     required this.coverVariant,
+    this.contentKind = ContentKind.novel,
+    this.hasDeterminateProgress = true,
     this.author,
     this.description,
     this.coverUrl,
@@ -167,11 +181,13 @@ final class LibraryContinueReadingViewData {
        assert(lastReadLabel != '');
 
   final String bookId;
+  final ContentKind contentKind;
   final String title;
   final String? author;
   final String? description;
   final String chapter;
   final double progress;
+  final bool hasDeterminateProgress;
   final String lastReadLabel;
   final LibraryCoverVariant coverVariant;
   final Uri? coverUrl;
@@ -181,6 +197,26 @@ final class LibraryContinueReadingViewData {
 
   /// Whether the current reading cover should be visually hidden for privacy.
   final bool isCoverBlurred;
+
+  /// Type-aware action shown by the shared continuation surface.
+  String get actionLabel => switch (contentKind) {
+    ContentKind.novel || ContentKind.manga => '继续阅读',
+    ContentKind.audio => '继续收听',
+    ContentKind.video => '继续观看',
+  };
+
+  /// Type-aware status announced while the destination is being prepared.
+  String get preparingLabel => switch (contentKind) {
+    ContentKind.novel || ContentKind.manga => '正在准备阅读内容',
+    ContentKind.audio => '正在准备音频',
+    ContentKind.video => '正在准备视频',
+  };
+
+  /// Type-aware progress noun for accessibility semantics.
+  String get progressLabel => switch (contentKind) {
+    ContentKind.novel || ContentKind.manga => '阅读进度',
+    ContentKind.audio || ContentKind.video => '播放进度',
+  };
 }
 
 /// The currently active non-persistent update-list filter.

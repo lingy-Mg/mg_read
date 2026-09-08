@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/library/domain/library_overview.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
@@ -26,15 +27,37 @@ void main() {
     expect(data.continueReading?.description, '测试简介');
   });
 
-  test('projects media playback as current without inventing a full-book fraction', () {
-    final data = LibraryHomeViewData.fromLocalOverview(
-      LibraryOverview(
-        items: <LibraryItemSummary>[LibraryItemSummary(id: 'current-video', title: '测试视频', lastReadAtUtc: DateTime.utc(2026, 8, 30))],
-      ),
-    );
+  test('projects type-aware continuation semantics across all content kinds', () {
+    final expectations = <ContentKind, ({String action, String chapter, String progress})>{
+      ContentKind.novel: (action: '继续阅读', chapter: '第3章', progress: '阅读进度'),
+      ContentKind.manga: (action: '继续阅读', chapter: '第3话', progress: '阅读进度'),
+      ContentKind.audio: (action: '继续收听', chapter: '上次收听', progress: '播放进度'),
+      ContentKind.video: (action: '继续观看', chapter: '上次观看', progress: '播放进度'),
+    };
 
-    expect(data.continueReading?.title, '测试视频');
-    expect(data.continueReading?.progress, 0);
+    for (final entry in expectations.entries) {
+      final data = LibraryHomeViewData.fromLocalOverview(
+        LibraryOverview(
+          items: <LibraryItemSummary>[
+            LibraryItemSummary(
+              id: 'current-${entry.key.code}',
+              title: '测试条目',
+              contentKind: entry.key,
+              readingProgress: entry.key == ContentKind.novel || entry.key == ContentKind.manga ? 0.4 : null,
+              readingChapterIndex: 2,
+              lastReadAtUtc: DateTime.utc(2026, 8, 30),
+            ),
+          ],
+        ),
+      );
+      final current = data.continueReading!;
+
+      expect(current.contentKind, entry.key);
+      expect(current.actionLabel, entry.value.action);
+      expect(current.chapter, entry.value.chapter);
+      expect(current.progressLabel, entry.value.progress);
+      expect(current.hasDeterminateProgress, entry.key == ContentKind.novel || entry.key == ContentKind.manga);
+    }
   });
 
   test('projects the persisted cover blur state onto the current book and shelf rows', () {

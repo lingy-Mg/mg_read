@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
@@ -86,5 +87,34 @@ void main() {
     expect(descriptionText.maxLines, 3);
     expect(descriptionText.overflow, TextOverflow.ellipsis);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('uses playback language and omits invented progress for audio and video', (WidgetTester tester) async {
+    for (final kind in <ContentKind>[ContentKind.audio, ContentKind.video]) {
+      final actionLabel = kind == ContentKind.audio ? '继续收听' : '继续观看';
+      final data = LibraryContinueReadingViewData(
+        bookId: 'media-${kind.code}',
+        contentKind: kind,
+        title: '媒体条目',
+        chapter: '上次播放',
+        progress: 0,
+        hasDeterminateProgress: false,
+        lastReadLabel: '刚刚',
+        coverVariant: LibraryCoverVariant.dusk,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: LibraryContinueReadingCard(data: data, showBackdrop: false, onContinueReading: () {}),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(actionLabel), findsOneWidget);
+      expect(find.byKey(const Key('continue-reading-cta-progress')), findsNothing);
+      expect(tester.getSemantics(find.byKey(const Key('continue-reading-cta'))).label, contains(actionLabel));
+    }
   });
 }

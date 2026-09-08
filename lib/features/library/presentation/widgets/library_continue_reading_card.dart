@@ -1,8 +1,8 @@
-/// 继续阅读卡片。
+/// 继续阅读/播放卡片。
 ///
 /// 职责：
-/// - 展示当前阅读条目及其独立加载的封面。
-/// - 通过显式回调通知页面继续阅读。
+/// - 展示当前阅读或播放条目及其独立加载的封面。
+/// - 通过显式回调通知页面继续阅读、收听或观看。
 ///
 /// 注意：
 /// - 封面状态不得阻塞卡片正文或继续阅读操作。
@@ -40,7 +40,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Semantics(
       container: true,
-      label: isPreparing ? '继续阅读，${data.title}，正在准备阅读内容' : '继续阅读，${data.title}',
+      label: isPreparing ? '${data.actionLabel}，${data.title}，${data.preparingLabel}' : '${data.actionLabel}，${data.title}',
       liveRegion: isPreparing,
       child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
@@ -220,7 +220,13 @@ class _ContinueReadingDetails extends StatelessWidget {
           const SizedBox(height: AppSpacing.compact),
           Align(
             alignment: Alignment.center,
-            child: _ContinueReadingAction(onPressed: onContinueReading, isPreparing: isPreparing, progress: data.progress),
+            child: _ContinueReadingAction(
+              onPressed: onContinueReading,
+              isPreparing: isPreparing,
+              progress: data.hasDeterminateProgress ? data.progress : null,
+              actionLabel: data.actionLabel,
+              progressLabel: data.progressLabel,
+            ),
           ),
         ],
       );
@@ -232,7 +238,7 @@ class _ContinueReadingDetails extends StatelessWidget {
       children: <Widget>[
         if (showEyebrow) ...<Widget>[
           Text(
-            '继续阅读',
+            data.actionLabel,
             style: theme.textTheme.bodySmall?.copyWith(color: tokens.accent, fontWeight: FontWeight.w600, letterSpacing: 0.3),
           ),
           const SizedBox(height: AppSpacing.compact),
@@ -247,7 +253,13 @@ class _ContinueReadingDetails extends StatelessWidget {
         if (showEyebrow) const Spacer() else const SizedBox(height: AppSpacing.comfortable),
         Align(
           alignment: Alignment.center,
-          child: _ContinueReadingAction(onPressed: onContinueReading, isPreparing: isPreparing, progress: data.progress),
+          child: _ContinueReadingAction(
+            onPressed: onContinueReading,
+            isPreparing: isPreparing,
+            progress: data.hasDeterminateProgress ? data.progress : null,
+            actionLabel: data.actionLabel,
+            progressLabel: data.progressLabel,
+          ),
         ),
       ],
     );
@@ -260,21 +272,30 @@ String? _nonBlank(String? value) {
 }
 
 class _ContinueReadingAction extends StatelessWidget {
-  const _ContinueReadingAction({required this.onPressed, required this.isPreparing, required this.progress});
+  const _ContinueReadingAction({
+    required this.onPressed,
+    required this.isPreparing,
+    required this.progress,
+    required this.actionLabel,
+    required this.progressLabel,
+  });
 
   final VoidCallback onPressed;
   final bool isPreparing;
-  final double progress;
+  final double? progress;
+  final String actionLabel;
+  final String progressLabel;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    final int percentage = (progress * 100).round();
+    final double? progress = this.progress;
+    final int? percentage = progress == null ? null : (progress * 100).round();
     return Semantics(
       button: true,
-      label: '阅读进度 $percentage%',
-      value: '$percentage%',
+      label: percentage == null ? actionLabel : '$progressLabel $percentage%',
+      value: percentage == null ? null : '$percentage%',
       onTap: isPreparing ? null : onPressed,
       child: ExcludeSemantics(
         child: SizedBox(
@@ -291,15 +312,16 @@ class _ContinueReadingAction extends StatelessWidget {
                 fit: StackFit.expand,
                 children: <Widget>[
                   ColoredBox(color: tokens.accent.withValues(alpha: 0.38)),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: FractionallySizedBox(
-                      key: const Key('continue-reading-cta-progress'),
-                      widthFactor: progress,
-                      heightFactor: 1,
-                      child: ColoredBox(color: tokens.accent),
+                  if (progress != null)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        key: const Key('continue-reading-cta-progress'),
+                        widthFactor: progress,
+                        heightFactor: 1,
+                        child: ColoredBox(color: tokens.accent),
+                      ),
                     ),
-                  ),
                   Material(
                     color: Colors.transparent,
                     child: InkWell(
@@ -312,7 +334,7 @@ class _ContinueReadingAction extends StatelessWidget {
                                 child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary),
                               )
                             : Text(
-                                '继续阅读',
+                                actionLabel,
                                 style: theme.textTheme.labelLarge?.copyWith(
                                   color: theme.colorScheme.onPrimary,
                                   fontSize: 16,
