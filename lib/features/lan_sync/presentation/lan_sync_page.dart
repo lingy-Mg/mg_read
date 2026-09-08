@@ -67,64 +67,74 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
   Widget build(BuildContext context) {
     final state = ref.watch(lanSyncControllerProvider);
     final deviceState = ref.watch(deviceSyncControllerProvider);
+    final tokens = AppThemeTokens.of(context);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) unawaited(_back());
       },
       child: Scaffold(
-        body: SafeArea(
-          bottom: false,
-          child: AppSecondaryPageContent(
-            child: Column(
-              children: <Widget>[
-                AppSecondaryPageTopBar(title: '局域网同步', onBack: () => unawaited(_back()), backButtonKey: const Key('lan-sync-back')),
-                Expanded(
-                  child: ListView(
-                    key: const Key('lan-sync-content'),
-                    padding: const EdgeInsets.fromLTRB(
-                      AppDetailMetrics.horizontalPadding,
-                      AppSpacing.compact,
-                      AppDetailMetrics.horizontalPadding,
-                      AppSpacing.page,
-                    ),
-                    children: <Widget>[
-                      const LanSyncOverviewCard(),
-                      const SizedBox(height: AppSpacing.regular),
-                      PairedDevicesSection(
-                        state: deviceState,
-                        supportsScanner: _supportsQrScanner,
-                        onBeginPairing: () => ref.read(deviceSyncControllerProvider.notifier).beginPairing(),
-                        onScanPairing: _supportsQrScanner ? () => unawaited(_scanAndPair()) : null,
-                        onApprovePairing: () => ref.read(deviceSyncControllerProvider.notifier).approvePairing(),
-                        onRejectPairing: () => ref.read(deviceSyncControllerProvider.notifier).rejectPairing(),
-                        onCancelPairing: () => ref.read(deviceSyncControllerProvider.notifier).cancelPairing(),
-                        onSync: (deviceId, operation) =>
-                            ref.read(deviceSyncControllerProvider.notifier).syncNow(deviceId, operation: operation),
-                        onManage: _manageDevice,
+        body: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: <Color>[tokens.pageBackground, const Color(0xFFFFFCF9), tokens.pageBackground],
+            ),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: AppSecondaryPageContent(
+              child: Column(
+                children: <Widget>[
+                  AppSecondaryPageTopBar(title: '局域网同步', onBack: () => unawaited(_back()), backButtonKey: const Key('lan-sync-back')),
+                  Expanded(
+                    child: ListView(
+                      key: const Key('lan-sync-content'),
+                      padding: const EdgeInsets.fromLTRB(
+                        AppDetailMetrics.horizontalPadding,
+                        AppSpacing.compact,
+                        AppDetailMetrics.horizontalPadding,
+                        AppSpacing.page,
                       ),
-                      const SizedBox(height: AppSpacing.regular),
-                      if (state.phase == LanSyncPhase.idle || state.phase == LanSyncPhase.cancelled)
-                        Column(
-                          key: const Key('lan-sync-temporary-transfer'),
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: <Widget>[
-                            Text('临时传输', style: Theme.of(context).textTheme.titleMedium),
-                            const SizedBox(height: AppSpacing.unit),
-                            Text('用于尚未配对的设备；仅本次有效，需要发送端保持页面并核对确认码。', style: Theme.of(context).textTheme.bodySmall),
-                            const SizedBox(height: AppSpacing.regular),
-                            LanSyncRoleChooser(
-                              onSend: () => ref.read(lanSyncControllerProvider.notifier).startSending(),
-                              onReceive: () => ref.read(lanSyncControllerProvider.notifier).startReceiving(),
-                              onScan: _supportsQrScanner ? () => unawaited(_scanAndReceive()) : null,
-                            ),
-                          ],
-                        )
-                      else ...<Widget>[_StatusCard(state: state), const SizedBox(height: AppSpacing.regular), ..._phaseContent(state)],
-                    ],
+                      children: <Widget>[
+                        const LanSyncOverviewCard(),
+                        const SizedBox(height: AppSpacing.section),
+                        PairedDevicesSection(
+                          state: deviceState,
+                          supportsScanner: _supportsQrScanner,
+                          onBeginPairing: () => ref.read(deviceSyncControllerProvider.notifier).beginPairing(),
+                          onScanPairing: _supportsQrScanner ? () => unawaited(_scanAndPair()) : null,
+                          onApprovePairing: () => ref.read(deviceSyncControllerProvider.notifier).approvePairing(),
+                          onRejectPairing: () => ref.read(deviceSyncControllerProvider.notifier).rejectPairing(),
+                          onCancelPairing: () => ref.read(deviceSyncControllerProvider.notifier).cancelPairing(),
+                          onSync: (deviceId, operation) =>
+                              ref.read(deviceSyncControllerProvider.notifier).syncNow(deviceId, operation: operation),
+                          onManage: _manageDevice,
+                        ),
+                        const SizedBox(height: AppSpacing.section),
+                        if (state.phase == LanSyncPhase.idle || state.phase == LanSyncPhase.cancelled)
+                          Column(
+                            key: const Key('lan-sync-temporary-transfer'),
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: <Widget>[
+                              const LanSyncSectionHeader(title: '传输数据', description: '用于尚未配对的设备；仅本次有效，需要发送端保持页面并核对确认码。'),
+                              const SizedBox(height: AppSpacing.regular),
+                              LanSyncRoleChooser(
+                                onSend: () => ref.read(lanSyncControllerProvider.notifier).startSending(),
+                                onReceive: () => ref.read(lanSyncControllerProvider.notifier).startReceiving(),
+                                onScan: _supportsQrScanner ? () => unawaited(_scanAndReceive()) : null,
+                              ),
+                              const SizedBox(height: AppSpacing.section),
+                              const LanSyncTipsCard(),
+                            ],
+                          )
+                        else ...<Widget>[_StatusCard(state: state), const SizedBox(height: AppSpacing.regular), ..._phaseContent(state)],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

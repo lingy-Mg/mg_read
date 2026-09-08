@@ -31,6 +31,8 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const Key('lan-sync-overview')), findsOneWidget);
+    final scrollable = find.descendant(of: find.byKey(const Key('lan-sync-content')), matching: find.byType(Scrollable)).first;
+    await tester.scrollUntilVisible(find.byKey(const Key('lan-sync-receive-qr')), 240, scrollable: scrollable);
     expect(find.byKey(const Key('lan-sync-receive-qr')), findsOneWidget);
     final pairingScanButton = find.byKey(const Key('device-sync-scan-pairing'));
     expect(pairingScanButton, findsOneWidget);

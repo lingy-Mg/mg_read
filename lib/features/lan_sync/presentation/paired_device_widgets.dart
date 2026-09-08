@@ -44,18 +44,36 @@ class PairedDevicesSection extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: tokens.surface,
-        borderRadius: AppRadii.detailCard,
+        borderRadius: const BorderRadius.all(Radius.circular(20)),
         border: Border.all(color: tokens.divider),
+        boxShadow: <BoxShadow>[BoxShadow(color: tokens.shadow.withValues(alpha: 0.06), blurRadius: 24, offset: const Offset(0, 8))],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.regular),
+        padding: const EdgeInsets.all(AppSpacing.comfortable),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
+                Container(
+                  width: 5,
+                  height: 32,
+                  margin: const EdgeInsets.only(top: 2, right: AppSpacing.regular),
+                  decoration: BoxDecoration(color: tokens.dataSourceAccent, borderRadius: AppRadii.pill),
+                ),
                 Expanded(
-                  child: Text('我的设备', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text('我的设备', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: AppSpacing.unit),
+                      Text(
+                        state.started ? '已在当前网络中发现以下配对设备' : '正在准备自动发现服务…',
+                        style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+                      ),
+                    ],
+                  ),
                 ),
                 if (!state.pairingBusy)
                   TextButton.icon(
@@ -66,12 +84,8 @@ class PairedDevicesSection extends StatelessWidget {
                   ),
               ],
             ),
-            Text(
-              state.started ? '两端打开后自动单向推送；手机仅在 Wi-Fi 下低频发现，电脑优先发起。也可手动拉取或推送。' : '正在准备自动发现服务…',
-              style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
-            ),
             if (supportsScanner && !state.pairingBusy) ...<Widget>[
-              const SizedBox(height: AppSpacing.compact),
+              const SizedBox(height: AppSpacing.regular),
               OutlinedButton.icon(
                 key: const Key('device-sync-scan-pairing'),
                 onPressed: onScanPairing,
@@ -91,20 +105,42 @@ class PairedDevicesSection extends StatelessWidget {
             ],
             if (state.devices.isEmpty && state.pairingPhase == DevicePairingPhase.idle) ...<Widget>[
               const SizedBox(height: AppSpacing.regular),
-              const Card(
-                child: ListTile(leading: Icon(Icons.info_outline), title: Text('还没有已配对设备。首次配对后，即使路由器重新分配 IP 也会自动发现。')),
+              DecoratedBox(
+                decoration: BoxDecoration(color: tokens.mutedSurface, borderRadius: AppRadii.detailControl),
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.comfortable),
+                  child: Text(
+                    '还没有已配对设备。完成一次配对后，即使 IP 变化也能自动重新发现。',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
+                  ),
+                ),
               ),
             ],
             for (final device in state.devices) ...<Widget>[
-              const Divider(height: AppSpacing.comfortable),
-              _PairedDeviceTile(
-                device: device,
-                online: state.onlineDeviceIds.contains(device.deviceId),
-                busy: state.busyDeviceId == device.deviceId,
-                busyMessage: state.busyDeviceId == device.deviceId ? state.busyMessage : null,
-                canStartSync: state.busyDeviceId == null,
-                onSync: (operation) => onSync(device.deviceId, operation),
-                onManage: () => onManage(device),
+              const SizedBox(height: AppSpacing.regular),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: state.onlineDeviceIds.contains(device.deviceId) ? const Color(0xFFFFFAF5) : tokens.mutedSurface,
+                  borderRadius: const BorderRadius.all(Radius.circular(16)),
+                  border: Border.all(
+                    color: state.onlineDeviceIds.contains(device.deviceId)
+                        ? tokens.dataSourceAccent.withValues(alpha: 0.38)
+                        : tokens.divider,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.comfortable, vertical: AppSpacing.regular),
+                  child: _PairedDeviceTile(
+                    device: device,
+                    online: state.onlineDeviceIds.contains(device.deviceId),
+                    busy: state.busyDeviceId == device.deviceId,
+                    busyMessage: state.busyDeviceId == device.deviceId ? state.busyMessage : null,
+                    canStartSync: state.busyDeviceId == null,
+                    onSync: (operation) => onSync(device.deviceId, operation),
+                    onManage: () => onManage(device),
+                  ),
+                ),
               ),
             ],
             if (state.lastMessage case final message?) ...<Widget>[
@@ -193,71 +229,89 @@ class _PairedDeviceTile extends StatelessWidget {
     final tokens = AppThemeTokens.of(context);
     final actionsEnabled = online && canStartSync;
     const compactButtonStyle = ButtonStyle(visualDensity: VisualDensity.compact);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final Widget identity = Row(
       children: <Widget>[
-        Row(
-          children: <Widget>[
-            Badge(
-              backgroundColor: online ? Colors.green : tokens.mutedText,
-              smallSize: 9,
-              child: Icon(switch (device.platform) {
-                PairedDevicePlatform.android => Icons.phone_android_rounded,
-                PairedDevicePlatform.windows || PairedDevicePlatform.macos => Icons.computer_rounded,
-                PairedDevicePlatform.unknown => Icons.devices_other_rounded,
-              }),
-            ),
-            const SizedBox(width: AppSpacing.regular),
-            Expanded(
-              child: InkWell(
-                key: Key('device-sync-manage-${device.deviceId}'),
-                onTap: onManage,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.compact),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(device.label, maxLines: 1, overflow: TextOverflow.ellipsis),
-                      Text(
-                        busy
-                            ? busyMessage ?? '正在处理同步内容'
-                            : online
-                            ? '在线 · ${device.autoSync ? '自动同步已开启' : '仅手动'}'
-                            : '离线 · 打开另一台设备后可同步',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText),
-                      ),
-                      if (device.lastSyncAtUtc != null)
-                        Text(_lastSyncText(device), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
+        DecoratedBox(
+          decoration: BoxDecoration(color: online ? tokens.accentSoft : tokens.surface, borderRadius: AppRadii.detailControl),
+          child: SizedBox.square(
+            dimension: 52,
+            child: Icon(switch (device.platform) {
+              PairedDevicePlatform.android => Icons.phone_android_rounded,
+              PairedDevicePlatform.windows || PairedDevicePlatform.macos => Icons.computer_rounded,
+              PairedDevicePlatform.unknown => Icons.devices_other_rounded,
+            }, color: online ? tokens.dataSourceAccent : tokens.mutedText),
+          ),
         ),
-        const SizedBox(height: AppSpacing.compact),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Wrap(
-            spacing: AppSpacing.compact,
-            runSpacing: AppSpacing.unit,
-            children: <Widget>[
-              OutlinedButton(
-                key: Key('device-sync-pull-${device.deviceId}'),
-                style: compactButtonStyle,
-                onPressed: actionsEnabled && device.canReceive ? () => onSync(PairedSyncOperation.pull) : null,
-                child: const Text('拉取'),
+        const SizedBox(width: AppSpacing.regular),
+        Expanded(
+          child: InkWell(
+            key: Key('device-sync-manage-${device.deviceId}'),
+            borderRadius: AppRadii.detailControl,
+            onTap: onManage,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.compact),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(device.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: AppSpacing.unit),
+                  Text(
+                    busy
+                        ? busyMessage ?? '正在处理同步内容'
+                        : online
+                        ? '在线 · ${device.autoSync ? '自动同步已开启' : '仅手动'}'
+                        : '离线 · 打开另一台设备后可同步',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: online ? tokens.success : tokens.mutedText),
+                  ),
+                  if (device.lastSyncAtUtc != null)
+                    Text(_lastSyncText(device), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                ],
               ),
-              OutlinedButton(
-                key: Key('device-sync-push-${device.deviceId}'),
-                style: compactButtonStyle,
-                onPressed: actionsEnabled && device.canSend ? () => onSync(PairedSyncOperation.push) : null,
-                child: const Text('推送'),
-              ),
-            ],
+            ),
           ),
         ),
       ],
+    );
+    final Widget actions = Wrap(
+      spacing: AppSpacing.compact,
+      runSpacing: AppSpacing.unit,
+      children: <Widget>[
+        OutlinedButton.icon(
+          key: Key('device-sync-pull-${device.deviceId}'),
+          style: compactButtonStyle,
+          onPressed: actionsEnabled && device.canReceive ? () => onSync(PairedSyncOperation.pull) : null,
+          icon: const Icon(Icons.file_download_outlined, size: 18),
+          label: const Text('拉取'),
+        ),
+        OutlinedButton.icon(
+          key: Key('device-sync-push-${device.deviceId}'),
+          style: compactButtonStyle,
+          onPressed: actionsEnabled && device.canSend ? () => onSync(PairedSyncOperation.push) : null,
+          icon: const Icon(Icons.file_upload_outlined, size: 18),
+          label: const Text('推送'),
+        ),
+      ],
+    );
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        if (constraints.maxWidth >= 680) {
+          return Row(
+            children: <Widget>[
+              Expanded(child: identity),
+              const SizedBox(width: AppSpacing.comfortable),
+              actions,
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            identity,
+            const SizedBox(height: AppSpacing.compact),
+            Align(alignment: Alignment.centerRight, child: actions),
+          ],
+        );
+      },
     );
   }
 }
