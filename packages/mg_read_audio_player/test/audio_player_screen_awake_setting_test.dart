@@ -44,6 +44,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.widget<Switch>(toggle).value, isTrue);
+    expect(find.textContaining('无操作时允许系统自动调暗'), findsOneWidget);
     expect(find.textContaining('手动锁屏后仍会继续后台播放'), findsOneWidget);
 
     await tester.tap(toggle);

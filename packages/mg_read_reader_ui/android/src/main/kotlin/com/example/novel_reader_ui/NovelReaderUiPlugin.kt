@@ -1,7 +1,9 @@
 package com.example.novel_reader_ui
 
 import android.app.Activity
+import android.content.Context
 import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import android.view.View
 import android.view.WindowInsets
@@ -13,7 +15,14 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
-/** Native system support for the novel reader. */
+/**
+ * Native display policy shared by readers and foreground host operations.
+ *
+ * Bright requests use the activity window flag. Android audio may instead use
+ * the legacy dim wake-lock level because the modern window flag explicitly
+ * keeps the display bright. Every owned flag and wake lock is released on
+ * activity or engine detach.
+ */
 class NovelReaderUiPlugin :
     FlutterPlugin,
     ActivityAware,
@@ -21,12 +30,14 @@ class NovelReaderUiPlugin :
     private lateinit var channel: MethodChannel
     private var activity: Activity? = null
     private var keepScreenOn = false
+    private var allowScreenDimming = false
     private var immersiveMode = false
     private var originalStatusBarsVisible: Boolean? = null
     private var originalNavigationBarsVisible: Boolean? = null
     private var originalSystemUiVisibility: Int? = null
     private var keepScreenOnActivity: Activity? = null
     private var keepScreenOnAddedByPlugin = false
+    private var screenDimWakeLock: PowerManager.WakeLock? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, "novel_reader_ui/system")
@@ -40,6 +51,7 @@ class NovelReaderUiPlugin :
                 val args = call.arguments as? Map<*, *> ?: run { result.error("invalid_argument", "A settings map is required.", null); return }
                 val enabled = args["keepScreenOn"] as? Boolean ?: run { result.error("invalid_argument", "A keepScreenOn boolean is required.", null); return }
                 val immersive = args["immersiveMode"] as? Boolean ?: run { result.error("invalid_argument", "An immersiveMode boolean is required.", null); return }
+                val allowDimming = args["allowScreenDimming"] as? Boolean ?: false
                 val currentActivity = activity
                 if ((enabled || immersive) && currentActivity == null) {
                     result.error("activity_unavailable", "No Android Activity is attached.", null)
@@ -48,6 +60,7 @@ class NovelReaderUiPlugin :
                 updateReaderSystemUi(
                     target = currentActivity,
                     enabled = enabled,
+                    allowDimming = allowDimming,
                     immersive = immersive,
                     result = result,
                     commitRequestedState = true,
@@ -60,33 +73,47 @@ class NovelReaderUiPlugin :
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activity = binding.activity
         if (keepScreenOn || immersiveMode) {
-            updateReaderSystemUi(activity, keepScreenOn, immersiveMode)
+            updateReaderSystemUi(activity, keepScreenOn, allowScreenDimming, immersiveMode)
         }
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
-        updateReaderSystemUi(activity, false, false)
+        updateReaderSystemUi(
+            target = activity,
+            enabled = false,
+            immersive = false,
+        )
         activity = null
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
         activity = binding.activity
         if (keepScreenOn || immersiveMode) {
-            updateReaderSystemUi(activity, keepScreenOn, immersiveMode)
+            updateReaderSystemUi(activity, keepScreenOn, allowScreenDimming, immersiveMode)
         }
     }
 
     override fun onDetachedFromActivity() {
-        updateReaderSystemUi(activity, false, false)
+        updateReaderSystemUi(
+            target = activity,
+            enabled = false,
+            immersive = false,
+        )
         activity = null
         keepScreenOn = false
+        allowScreenDimming = false
         immersiveMode = false
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        updateReaderSystemUi(activity, false, false)
+        updateReaderSystemUi(
+            target = activity,
+            enabled = false,
+            immersive = false,
+        )
         activity = null
         keepScreenOn = false
+        allowScreenDimming = false
         immersiveMode = false
         channel.setMethodCallHandler(null)
     }
@@ -94,6 +121,7 @@ class NovelReaderUiPlugin :
     private fun updateReaderSystemUi(
         target: Activity?,
         enabled: Boolean,
+        allowDimming: Boolean = false,
         immersive: Boolean,
         result: MethodChannel.Result? = null,
         commitRequestedState: Boolean = false,
@@ -102,8 +130,10 @@ class NovelReaderUiPlugin :
             if (enabled || immersive) {
                 result?.error("activity_unavailable", "No Android Activity is attached.", null)
             } else {
+                releaseScreenDimWakeLock()
                 if (commitRequestedState) {
                     keepScreenOn = false
+                    allowScreenDimming = false
                     immersiveMode = false
                 }
                 result?.success(null)
@@ -111,21 +141,27 @@ class NovelReaderUiPlugin :
             return
         }
         val previousKeepScreenOn = keepScreenOn
+        val previousAllowScreenDimming = allowScreenDimming
         val previousImmersiveMode = immersiveMode
         try {
             target.runOnUiThread {
                 try {
-                    applyKeepScreenOn(target, enabled)
+                    applyKeepScreenOn(target, enabled, allowDimming)
                     applyImmersiveMode(target, immersive)
                     if (commitRequestedState) {
                         keepScreenOn = enabled
+                        allowScreenDimming = enabled && allowDimming
                         immersiveMode = immersive
                     }
                     result?.success(null)
                 } catch (error: Exception) {
                     if (commitRequestedState) {
                         try {
-                            applyKeepScreenOn(target, previousKeepScreenOn)
+                            applyKeepScreenOn(
+                                target,
+                                previousKeepScreenOn,
+                                previousAllowScreenDimming,
+                            )
                             applyImmersiveMode(target, previousImmersiveMode)
                         } catch (rollbackError: Exception) {
                             Log.e(TAG, "Failed to restore reader window state", rollbackError)
@@ -139,9 +175,20 @@ class NovelReaderUiPlugin :
         }
     }
 
-    private fun applyKeepScreenOn(target: Activity, enabled: Boolean) {
+    private fun applyKeepScreenOn(
+        target: Activity,
+        enabled: Boolean,
+        allowDimming: Boolean,
+    ) {
+        if (enabled && allowDimming) {
+            releaseOwnedKeepScreenOnFlag()
+            acquireScreenDimWakeLock(target)
+            return
+        }
+        releaseScreenDimWakeLock()
         if (enabled) {
             if (keepScreenOnActivity !== target) {
+                releaseOwnedKeepScreenOnFlag()
                 keepScreenOnActivity = target
                 keepScreenOnAddedByPlugin = false
             }
@@ -154,13 +201,43 @@ class NovelReaderUiPlugin :
             }
             return
         }
-        if (keepScreenOnActivity === target && keepScreenOnAddedByPlugin) {
-            target.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        releaseOwnedKeepScreenOnFlag()
+    }
+
+    private fun releaseOwnedKeepScreenOnFlag() {
+        val ownedActivity = keepScreenOnActivity
+        if (ownedActivity != null && keepScreenOnAddedByPlugin) {
+            ownedActivity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
-        if (keepScreenOnActivity === target) {
-            keepScreenOnActivity = null
-            keepScreenOnAddedByPlugin = false
+        keepScreenOnActivity = null
+        keepScreenOnAddedByPlugin = false
+    }
+
+    @Suppress("DEPRECATION")
+    private fun acquireScreenDimWakeLock(target: Activity) {
+        val wakeLock = screenDimWakeLock ?: run {
+            val powerManager =
+                target.getSystemService(Context.POWER_SERVICE) as PowerManager
+            powerManager.newWakeLock(
+                PowerManager.SCREEN_DIM_WAKE_LOCK,
+                "${target.packageName}:$TAG:screenDim",
+            ).also {
+                it.setReferenceCounted(false)
+                screenDimWakeLock = it
+            }
         }
+        if (!wakeLock.isHeld) {
+            wakeLock.acquire()
+        }
+    }
+
+    private fun releaseScreenDimWakeLock() {
+        screenDimWakeLock?.let { wakeLock ->
+            if (wakeLock.isHeld) {
+                wakeLock.release()
+            }
+        }
+        screenDimWakeLock = null
     }
 
     private fun applyImmersiveMode(target: Activity, enabled: Boolean) {

@@ -1,7 +1,8 @@
 /// Active-audio lifecycle policy shared by the player host and system events.
 ///
 /// Responsibilities:
-/// - Keep the display awake only while enabled, visible and actually playing.
+/// - Keep the display awake while allowing Android to dim it after inactivity.
+/// - Hold that request only while enabled, visible and actually playing.
 /// - Reflect the persisted audio preference without owning player UI.
 /// - Release only this audio session's screen-awake lease on pause or lock.
 ///
@@ -27,7 +28,7 @@ final class _CoordinatedSourceAudioScreenAwakePort implements SourceAudioScreenA
   const _CoordinatedSourceAudioScreenAwakePort();
 
   @override
-  Future<void> acquire(Object holder) => ScreenAwakeCoordinator.instance.acquire(holder);
+  Future<void> acquire(Object holder) => ScreenAwakeCoordinator.instance.acquire(holder, allowScreenDimming: true);
 
   @override
   Future<void> release(Object holder) => ScreenAwakeCoordinator.instance.release(holder);

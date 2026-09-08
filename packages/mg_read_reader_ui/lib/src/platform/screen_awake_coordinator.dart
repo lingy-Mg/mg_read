@@ -5,10 +5,11 @@ import 'reader_platform.dart';
 
 /// Coordinates temporary system UI requests from readers and host operations.
 ///
-/// A holder may request either screen-awake, immersive mode, or both. The
-/// platform receives only aggregate transitions. A release is issued without
-/// waiting for a slow acquire; if an older call completes late, the newest
-/// aggregate intent is applied again.
+/// A holder may request either screen-awake, immersive mode, or both. A dimming
+/// request keeps the display powered without overriding a concurrent holder
+/// that requires full brightness. The platform receives only aggregate
+/// transitions. A release is issued without waiting for a slow acquire; if an
+/// older call completes late, the newest aggregate intent is applied again.
 /// Host operations use a unique holder and release it when their work ends;
 /// requests do not persist preferences or override other holders.
 class ScreenAwakeCoordinator {
@@ -26,10 +27,12 @@ class ScreenAwakeCoordinator {
   Future<void> acquire(
     Object holder, {
     bool keepScreenOn = true,
+    bool allowScreenDimming = false,
     bool immersiveMode = false,
   }) {
     _holders[holder] = _SystemUiRequest(
       keepScreenOn: keepScreenOn,
+      allowScreenDimming: allowScreenDimming,
       immersiveMode: immersiveMode,
     );
     return _applyIfChanged();
@@ -49,6 +52,7 @@ class ScreenAwakeCoordinator {
       try {
         await ReaderPlatform.instance.setReaderSystemUi(
           keepScreenOn: target.keepScreenOn,
+          allowScreenDimming: target.allowScreenDimming,
           immersiveMode: target.immersiveMode,
         );
       } catch (error) {
@@ -77,26 +81,37 @@ class ScreenAwakeCoordinator {
     return transition;
   }
 
-  _SystemUiRequest _aggregate() => _SystemUiRequest(
-    keepScreenOn: _holders.values.any((v) => v.keepScreenOn),
-    immersiveMode: _holders.values.any((v) => v.immersiveMode),
-  );
+  _SystemUiRequest _aggregate() {
+    final bool keepScreenOn = _holders.values.any((v) => v.keepScreenOn);
+    final bool requiresBrightness = _holders.values.any(
+      (v) => v.keepScreenOn && !v.allowScreenDimming,
+    );
+    return _SystemUiRequest(
+      keepScreenOn: keepScreenOn,
+      allowScreenDimming: keepScreenOn && !requiresBrightness,
+      immersiveMode: _holders.values.any((v) => v.immersiveMode),
+    );
+  }
 }
 
 class _SystemUiRequest {
   const _SystemUiRequest({
     this.keepScreenOn = false,
+    this.allowScreenDimming = false,
     this.immersiveMode = false,
   });
   final bool keepScreenOn;
+  final bool allowScreenDimming;
   final bool immersiveMode;
 
   @override
   bool operator ==(Object other) =>
       other is _SystemUiRequest &&
       keepScreenOn == other.keepScreenOn &&
+      allowScreenDimming == other.allowScreenDimming &&
       immersiveMode == other.immersiveMode;
 
   @override
-  int get hashCode => Object.hash(keepScreenOn, immersiveMode);
+  int get hashCode =>
+      Object.hash(keepScreenOn, allowScreenDimming, immersiveMode);
 }

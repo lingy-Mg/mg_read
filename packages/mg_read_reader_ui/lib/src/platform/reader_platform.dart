@@ -22,6 +22,7 @@ abstract class ReaderPlatform extends PlatformInterface {
   Future<void> setReaderSystemUi({
     required bool keepScreenOn,
     required bool immersiveMode,
+    bool allowScreenDimming = false,
   }) {
     throw UnimplementedError('setReaderSystemUi() has not been implemented.');
   }
@@ -71,10 +72,12 @@ class MethodChannelReaderPlatform extends ReaderPlatform {
   Future<void> setReaderSystemUi({
     required bool keepScreenOn,
     required bool immersiveMode,
+    bool allowScreenDimming = false,
   }) {
     return _channel.invokeMethod<void>('setReaderSystemUi', <String, bool>{
       'keepScreenOn': keepScreenOn,
       'immersiveMode': immersiveMode,
+      'allowScreenDimming': allowScreenDimming,
     });
   }
 

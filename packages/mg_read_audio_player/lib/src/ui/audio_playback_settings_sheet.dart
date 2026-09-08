@@ -129,7 +129,7 @@ final class _AudioPlaybackSettingsSheetState
                       _SettingsCard(
                         key: const Key('audio-keep-screen-on'),
                         icon: Icons.light_mode_rounded,
-                        title: '播放时保持屏幕常亮',
+                        title: '播放时防止自动锁屏',
                         value: _keepScreenOn ? '已开启' : '已关闭',
                         child: _KeepScreenOnControl(
                           enabled: _keepScreenOn,

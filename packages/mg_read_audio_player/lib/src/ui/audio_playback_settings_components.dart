@@ -58,7 +58,7 @@ final class _SettingsHeader extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                '屏幕常亮会保存，其余仅作用于当前会话',
+                '防止自动锁屏会保存，其余仅作用于当前会话',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: AudioPlayerColors.muted),
@@ -286,7 +286,7 @@ final class _KeepScreenOnControl extends StatelessWidget {
     children: <Widget>[
       Expanded(
         child: Text(
-          '防止播放中自动息屏；手动锁屏后仍会继续后台播放。',
+          '保持屏幕开启，无操作时允许系统自动调暗；手动锁屏后仍会继续后台播放。',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: AudioPlayerColors.muted,
             height: 1.35,

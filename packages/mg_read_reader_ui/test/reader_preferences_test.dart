@@ -229,6 +229,7 @@ final class _RecordingReaderPlatform extends ReaderPlatform {
   Future<void> setReaderSystemUi({
     required bool keepScreenOn,
     required bool immersiveMode,
+    bool allowScreenDimming = false,
   }) async {
     requests.add('${keepScreenOn ? 1 : 0}/${immersiveMode ? 1 : 0}');
   }
