@@ -23,10 +23,11 @@ final class VideoPlayerChrome extends StatefulWidget {
   const VideoPlayerChrome({
     required this.snapshot,
     required this.reduceMotion,
+    required this.seekPreviewPosition,
     required this.onExit,
-    required this.onPlayOrPause,
-    required this.onSeek,
-    required this.onSkip,
+    required this.onSeekPreviewChanged,
+    required this.onSeekPreviewEnded,
+    required this.onSeekPreviewCanceled,
     required this.onRate,
     required this.onFit,
     required this.onEpisodes,
@@ -41,10 +42,11 @@ final class VideoPlayerChrome extends StatefulWidget {
 
   final VideoPlayerSnapshot snapshot;
   final bool reduceMotion;
+  final Duration? seekPreviewPosition;
   final VoidCallback onExit;
-  final VoidCallback onPlayOrPause;
-  final ValueChanged<Duration> onSeek;
-  final ValueChanged<Duration> onSkip;
+  final ValueChanged<Duration> onSeekPreviewChanged;
+  final ValueChanged<Duration> onSeekPreviewEnded;
+  final VoidCallback onSeekPreviewCanceled;
   final ValueChanged<double> onRate;
   final VoidCallback onFit;
   final VoidCallback onEpisodes;
@@ -60,16 +62,6 @@ final class VideoPlayerChrome extends StatefulWidget {
 }
 
 final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
-  Duration? _scrubPosition;
-
-  @override
-  void didUpdateWidget(covariant VideoPlayerChrome oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.snapshot.activeEpisodeId != widget.snapshot.activeEpisodeId) {
-      _scrubPosition = null;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final snapshot = widget.snapshot;
@@ -78,7 +70,10 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
       child: Listener(
         onPointerDown: (_) => widget.onInteractionStart(),
         onPointerUp: (_) => widget.onInteractionEnd(),
-        onPointerCancel: (_) => widget.onInteractionEnd(),
+        onPointerCancel: (_) {
+          widget.onSeekPreviewCanceled();
+          widget.onInteractionEnd();
+        },
         child: AnimatedOpacity(
           key: const Key('video-player-controls'),
           opacity: snapshot.controlsVisible ? 1 : 0,
@@ -109,15 +104,7 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                       onFullscreen: widget.onFullscreen,
                     ),
                   ),
-                  Expanded(
-                    child: Center(
-                      child: _TransportControls(
-                        playing: snapshot.playing,
-                        onPlayOrPause: widget.onPlayOrPause,
-                        onSkip: widget.onSkip,
-                      ),
-                    ),
-                  ),
+                  const Expanded(child: SizedBox.shrink()),
                   _buildBottomControls(context),
                 ],
               ),
@@ -131,7 +118,8 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
   Widget _buildBottomControls(BuildContext context) {
     final snapshot = widget.snapshot;
     final Duration duration = snapshot.duration;
-    final Duration shownPosition = _scrubPosition ?? snapshot.position;
+    final Duration shownPosition =
+        widget.seekPreviewPosition ?? snapshot.position;
     final double max = duration.inMilliseconds <= 0
         ? 1
         : duration.inMilliseconds.toDouble();
@@ -178,13 +166,12 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                   max: max,
                   secondaryTrackValue: buffered < value ? value : buffered,
                   onChangeStart: (_) => widget.onInteractionStart(),
-                  onChanged: (double next) => setState(
-                    () => _scrubPosition = Duration(milliseconds: next.round()),
+                  onChanged: (double next) => widget.onSeekPreviewChanged(
+                    Duration(milliseconds: next.round()),
                   ),
                   onChangeEnd: (double next) {
                     final position = Duration(milliseconds: next.round());
-                    setState(() => _scrubPosition = null);
-                    widget.onSeek(position);
+                    widget.onSeekPreviewEnded(position);
                     widget.onInteractionEnd();
                   },
                 ),
@@ -489,66 +476,6 @@ final class _TopBar extends StatelessWidget {
         ),
       ),
     ],
-  );
-}
-
-final class _TransportControls extends StatelessWidget {
-  const _TransportControls({
-    required this.playing,
-    required this.onPlayOrPause,
-    required this.onSkip,
-  });
-
-  final bool playing;
-  final VoidCallback onPlayOrPause;
-  final ValueChanged<Duration> onSkip;
-
-  @override
-  Widget build(BuildContext context) => VideoPlayerGlassPanel(
-    key: const Key('video-player-transport'),
-    borderRadius: BorderRadius.circular(14),
-    padding: const EdgeInsets.all(2),
-    showShadow: false,
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        IconButton(
-          key: const Key('video-player-rewind'),
-          tooltip: '后退 10 秒',
-          onPressed: () => onSkip(const Duration(seconds: -10)),
-          style: IconButton.styleFrom(
-            foregroundColor: videoPlayerForeground,
-            visualDensity: VisualDensity.compact,
-          ),
-          icon: const Icon(Icons.replay_10_rounded, size: 22),
-        ),
-        IconButton(
-          key: const Key('video-player-play-toggle'),
-          tooltip: playing ? '暂停' : '播放',
-          onPressed: onPlayOrPause,
-          iconSize: 28,
-          style: IconButton.styleFrom(
-            backgroundColor: videoPlayerAccent,
-            foregroundColor: const Color(0xFF111214),
-            fixedSize: const Size.square(46),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-          icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
-        ),
-        IconButton(
-          key: const Key('video-player-forward'),
-          tooltip: '前进 10 秒',
-          onPressed: () => onSkip(const Duration(seconds: 10)),
-          style: IconButton.styleFrom(
-            foregroundColor: videoPlayerForeground,
-            visualDensity: VisualDensity.compact,
-          ),
-          icon: const Icon(Icons.forward_10_rounded, size: 22),
-        ),
-      ],
-    ),
   );
 }
 

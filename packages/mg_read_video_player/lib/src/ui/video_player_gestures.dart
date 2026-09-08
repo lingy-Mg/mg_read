@@ -26,7 +26,9 @@ final class VideoPlayerGestureLayer extends StatefulWidget {
     required this.snapshot,
     required this.onToggleControls,
     required this.onPlayOrPause,
-    required this.onSeek,
+    required this.onSeekPreviewChanged,
+    required this.onSeekPreviewEnded,
+    required this.onSeekPreviewCanceled,
     required this.onRate,
     required this.onVolume,
     required this.onReadBrightness,
@@ -40,7 +42,9 @@ final class VideoPlayerGestureLayer extends StatefulWidget {
   final VideoPlayerSnapshot snapshot;
   final VoidCallback onToggleControls;
   final VoidCallback onPlayOrPause;
-  final ValueChanged<Duration> onSeek;
+  final ValueChanged<Duration> onSeekPreviewChanged;
+  final ValueChanged<Duration> onSeekPreviewEnded;
+  final VoidCallback onSeekPreviewCanceled;
   final ValueChanged<double> onRate;
   final ValueChanged<double> onVolume;
   final Future<double?> Function() onReadBrightness;
@@ -121,34 +125,19 @@ final class _VideoPlayerGestureLayerState
 
   void _showSeekHud() {
     final preview = _seekPreview ?? _seekBase;
-    final delta = preview - _seekBase;
-    final sign = delta.isNegative ? '−' : '+';
-    final seconds = delta.inSeconds.abs();
-    _showHud(
-      _GestureHud(
-        icon: delta.isNegative
-            ? Icons.fast_rewind_rounded
-            : Icons.fast_forward_rounded,
-        title: '$sign$seconds 秒',
-        detail:
-            '${_formatDuration(preview)} / ${_formatDuration(widget.snapshot.duration)}',
-        progress: _progress(preview, widget.snapshot.duration),
-      ),
-      persistent: true,
-    );
+    widget.onSeekPreviewChanged(preview);
   }
 
   void _finishSeek(DragEndDetails details) {
     final target = _seekPreview;
-    if (target != null) widget.onSeek(target);
+    if (target != null) widget.onSeekPreviewEnded(target);
     _seekPreview = null;
-    _finishHudSoon();
     widget.onInteractionEnd();
   }
 
   void _cancelSeek() {
     _seekPreview = null;
-    _finishHudSoon();
+    widget.onSeekPreviewCanceled();
     widget.onInteractionEnd();
   }
 
@@ -240,13 +229,6 @@ final class _VideoPlayerGestureLayerState
     widget.onInteractionStart();
     widget.onPlayOrPause();
     unawaited(HapticFeedback.selectionClick());
-    final willPlay = !widget.snapshot.playing;
-    _showHud(
-      _GestureHud(
-        icon: willPlay ? Icons.play_arrow_rounded : Icons.pause_rounded,
-        title: willPlay ? '播放' : '暂停',
-      ),
-    );
     widget.onInteractionEnd();
   }
 
@@ -406,20 +388,4 @@ Duration _clampDuration(Duration value, Duration duration) {
   if (value < Duration.zero) return Duration.zero;
   if (duration > Duration.zero && value > duration) return duration;
   return value;
-}
-
-double _progress(Duration position, Duration duration) {
-  if (duration.inMilliseconds <= 0) return 0;
-  return position.inMilliseconds / duration.inMilliseconds;
-}
-
-String _formatDuration(Duration duration) {
-  final total = duration.inSeconds.clamp(0, 359999);
-  final hours = total ~/ 3600;
-  final minutes = total.remainder(3600) ~/ 60;
-  final seconds = total.remainder(60);
-  if (hours > 0) {
-    return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
-  return '$minutes:${seconds.toString().padLeft(2, '0')}';
 }

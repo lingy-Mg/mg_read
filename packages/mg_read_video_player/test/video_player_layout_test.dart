@@ -23,10 +23,30 @@ void main() {
     expect(tester.getBottomRight(bottom), Offset(logicalWidth, logicalHeight));
     expect(_clip(tester, top).borderRadius, BorderRadius.zero);
     expect(_clip(tester, bottom).borderRadius, BorderRadius.zero);
-    expect(
-      tester.getSize(find.byKey(const Key('video-player-transport'))).height,
-      lessThan(64),
-    );
+    expect(find.byKey(const Key('video-player-transport')), findsNothing);
+    expect(find.byKey(const Key('video-player-paused-play')), findsNothing);
+  });
+
+  testWidgets('paused playback shows only a translucent white play button', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await tester.pumpWidget(_playerApp(backend: backend));
+    await tester.pumpAndSettle();
+
+    await backend.pause();
+    await tester.pump();
+
+    final pausedPlay = find.byKey(const Key('video-player-paused-play'));
+    expect(pausedPlay, findsOneWidget);
+    expect(find.byKey(const Key('video-player-transport')), findsNothing);
+    expect(find.byKey(const Key('video-player-rewind')), findsNothing);
+    expect(find.byKey(const Key('video-player-forward')), findsNothing);
+
+    await tester.tap(pausedPlay);
+    await tester.pump();
+    expect(backend.state.value.playing, isTrue);
+    expect(pausedPlay, findsNothing);
   });
 
   testWidgets('landscape selector uses flat compact two-column rows', (
@@ -109,6 +129,68 @@ void main() {
     await tester.dragFrom(const Offset(700, 280), const Offset(0, 180));
     await tester.pumpAndSettle();
     expect(backend.volumes.last, lessThan(100));
+  });
+
+  testWidgets('drag seek updates the bottom slider and central target live', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await tester.pumpWidget(_playerApp(backend: backend));
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(const Offset(180, 260));
+    await gesture.moveBy(const Offset(30, 0));
+    await gesture.moveBy(const Offset(230, 0));
+    await tester.pump();
+
+    expect(find.text('拖动进度'), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(find.byKey(const Key('video-player-seek-preview-time')))
+          .data,
+      matches(RegExp(r'^\d+:\d{2} / 24:00$')),
+    );
+    final previewSlider = tester.widget<Slider>(
+      find.byKey(const Key('video-player-slider')),
+    );
+    expect(previewSlider.value, greaterThan(0));
+    expect(backend.seeks, isEmpty);
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(backend.seeks, hasLength(1));
+    expect(find.text('拖动进度'), findsNothing);
+    final committedSlider = tester.widget<Slider>(
+      find.byKey(const Key('video-player-slider')),
+    );
+    expect(committedSlider.value, backend.seeks.single.inMilliseconds);
+  });
+
+  testWidgets('bottom progress drag shares the live central seek preview', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await tester.pumpWidget(_playerApp(backend: backend));
+    await tester.pumpAndSettle();
+
+    final sliderFinder = find.byKey(const Key('video-player-slider'));
+    final gesture = await tester.startGesture(tester.getCenter(sliderFinder));
+    await gesture.moveBy(const Offset(120, 0));
+    await tester.pump();
+
+    expect(find.text('拖动进度'), findsOneWidget);
+    expect(
+      tester.widget<Slider>(sliderFinder).value,
+      greaterThan(backend.state.value.position.inMilliseconds),
+    );
+    expect(backend.seeks, isEmpty);
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(backend.seeks, hasLength(1));
+    expect(find.text('拖动进度'), findsNothing);
   });
 
   testWidgets('long press uses 2x only while held', (tester) async {

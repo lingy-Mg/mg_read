@@ -725,7 +725,6 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     onExit: requestExit,
     onPlayOrPause: playOrPause,
     onSeek: seek,
-    onSkip: skip,
     onRate: setRate,
     onVolume: setVolume,
     onReplay: replay,

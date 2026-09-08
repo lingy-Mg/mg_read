@@ -135,7 +135,7 @@ void main() {
     await controller.toggleControls();
     await tester.pump();
     expect(controller.snapshot.controlsVisible, isFalse);
-    await tester.tap(find.byKey(const Key('video-player-surface')));
+    await tester.tap(find.byKey(const Key('video-player-gesture-layer')));
     await tester.pump(const Duration(milliseconds: 400));
     expect(controller.snapshot.controlsVisible, isTrue);
 
@@ -172,16 +172,12 @@ void main() {
 
     backend.emitPosition(const Duration(seconds: 24));
     await tester.pump();
-    await tester.tap(find.byKey(const Key('video-player-forward')));
-    await tester.pump();
-    expect(backend.seekCalls.last, const Duration(seconds: 34));
-
     await tester.drag(
       find.byKey(const Key('video-player-slider')),
       const Offset(90, 0),
     );
     await tester.pump();
-    expect(backend.seekCalls.last, greaterThan(const Duration(seconds: 34)));
+    expect(backend.seekCalls.last, greaterThan(const Duration(seconds: 24)));
 
     backend.emitPosition(const Duration(seconds: 51));
     await tester.tap(find.byKey(const Key('video-player-episodes')));

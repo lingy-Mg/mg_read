@@ -133,6 +133,21 @@
       "problemMatcher": []
     },
     {
+      "label": "发布：打包 APK 和 Windows EXE（Release）",
+      "dependsOn": [
+        "发布：打包 APK（Release）",
+        "发布：打包 Windows EXE（Release）"
+      ],
+      "dependsOrder": "sequence",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "构建：Windows（Release）",
       "dependsOn": [
         "准备：Windows Runtime 资源"

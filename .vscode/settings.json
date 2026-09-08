@@ -20,6 +20,11 @@
       "label": "发布 Windows EXE",
       "task": "发布：打包 Windows EXE（Release）",
       "tooltip": "构建 Windows x64 Release 应用并复制到根目录 build"
+    },
+    {
+      "label": "发布 APK 和 EXE",
+      "task": "发布：打包 APK 和 Windows EXE（Release）",
+      "tooltip": "依次构建 Android arm64 APK 和 Windows x64 Release 应用，并复制到根目录 build"
     }
   ],
   "cmake.ignoreCMakeListsMissing": true,

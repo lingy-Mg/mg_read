@@ -34,6 +34,5 @@
   `tools/run_flutter_checks.ps1 -Mode Fast`，任务收尾用一次 `-Mode Final` 和直接测试。`-Mode Full` 仅限
   明确的回归或发布。代码修改同时执行源码规模检查；纯文档运行 `tools/check_documentation.ps1`。
 - Runtime 和数据源的 Windows Node 命令使用仓库固定 Node，不回退全局 Node。
-- Android 真机或模拟器测试仅在用户明确授权后进行；只有任务确实需要 Android 平台验证时才读取
+- Android 只有任务确实需要 Android 平台验证时才读取
   [`.agents/references/android-testing.md`](.agents/references/android-testing.md)，普通开发任务不得加载该手册。
-- 交付时分开报告静态检查、自动化测试、真实运行、平台/真机、发布和未执行项，不能互相替代。
