@@ -150,11 +150,11 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
       if (!_isContinuationCurrent(generation, requestRevision)) return;
       _continuationRecoveryPending = true;
       _lastPrefetchTriggerTrackId = null;
-      final failure = AudioPlayerFailure(
+      final failure = _failureFrom(
+        error,
         code: 'audio_continuation_failed',
         location: '下一章节恢复',
         message: '下一章节暂时无法继续，播放器会在网络恢复后重试。',
-        debugDetail: _boundedDebugDetail(error),
       );
       _emit(_snapshot.copyWith(resourceLoading: false, failure: failure));
       unawaited(_notify(() => observer?.onFailure(failure)));
@@ -291,11 +291,11 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
       _backendSnapshotsEnabled = true;
       _playlist = playlist;
       _continuationRecoveryPending = true;
-      final failure = AudioPlayerFailure(
+      final failure = _failureFrom(
+        error,
         code: 'audio_recovery_failed',
         location: '当前章节恢复',
         message: '当前章节暂时无法恢复，播放器会稍后重试。',
-        debugDetail: _boundedDebugDetail(error),
       );
       _emit(_snapshot.copyWith(resourceLoading: false, failure: failure));
       unawaited(_notify(() => observer?.onFailure(failure)));

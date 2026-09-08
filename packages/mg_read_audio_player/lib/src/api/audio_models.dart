@@ -146,11 +146,16 @@ final class AudioPlayerLoadException implements Exception {
     required this.code,
     required this.location,
     required this.message,
+    this.debugDetail,
   });
 
   final String code;
   final String location;
   final String message;
+  final String? debugDetail;
+
+  @override
+  String toString() => '$code at $location: $message${debugDetail == null ? '' : ' ($debugDetail)'}';
 }
 
 /// High-level readiness of [AudioPlayerView].

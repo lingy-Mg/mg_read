@@ -71,11 +71,12 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
       );
     } on AudioPlayerLoadException {
       rethrow;
-    } on Object {
-      throw const AudioPlayerLoadException(
+    } on Object catch (error) {
+      throw AudioPlayerLoadException(
         code: 'audio_selected_resource_unavailable',
         location: '所选章节的播放地址',
         message: '数据源未能返回可播放地址。请检查网络或稍后重试。',
+        debugDetail: _sourceFailureDetail(error),
       );
     }
     return AudioPlaylist(
@@ -151,11 +152,12 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
           // A structurally missing resource is the only safe reason to skip a
           // chapter. Network/Runtime failures must stop this bounded batch so
           // a later retry cannot silently jump over unheard content.
-        } on Object {
-          throw const AudioPlayerLoadException(
+        } on Object catch (error) {
+          throw AudioPlayerLoadException(
             code: 'audio_continuation_unavailable',
             location: '下一章节的播放地址',
             message: '下一章节暂时无法加载，请检查网络后重试。',
+            debugDetail: _sourceFailureDetail(error),
           );
         }
       }
@@ -194,9 +196,15 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
     _detailFuture = request;
     try {
       return await request;
-    } on Object {
+    } on Object catch (error) {
       if (identical(_detailFuture, request)) _detailFuture = null;
-      rethrow;
+      if (error is AudioPlayerLoadException) rethrow;
+      throw AudioPlayerLoadException(
+        code: 'audio_detail_load_failed',
+        location: '音频详情请求',
+        message: '数据源音频详情加载失败。',
+        debugDetail: _sourceFailureDetail(error),
+      );
     }
   }
 
@@ -210,9 +218,15 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
     _catalogFuture = request;
     try {
       return await request;
-    } on Object {
+    } on Object catch (error) {
       if (identical(_catalogFuture, request)) _catalogFuture = null;
-      rethrow;
+      if (error is AudioPlayerLoadException) rethrow;
+      throw AudioPlayerLoadException(
+        code: 'audio_catalog_load_failed',
+        location: '音频目录请求',
+        message: '数据源音频目录加载失败。',
+        debugDetail: _sourceFailureDetail(error),
+      );
     }
   }
 
@@ -229,11 +243,22 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
     required PluginChapterSummary chapter,
     required PluginInvocationCancellation cancellation,
   }) async {
-    final content = await runCancellableSourceRequest(
-      gateway,
-      cancellation,
-      () => gateway.getContent(pluginId: pluginId, id: collectionId, chapterId: chapter.id),
-    );
+    late final PluginChapterContent content;
+    try {
+      content = await runCancellableSourceRequest(
+        gateway,
+        cancellation,
+        () => gateway.getContent(pluginId: pluginId, id: collectionId, chapterId: chapter.id),
+      );
+    } on Object catch (error) {
+      if (error is AudioPlayerLoadException) rethrow;
+      throw AudioPlayerLoadException(
+        code: 'audio_resource_request_failed',
+        location: '章节播放地址解析',
+        message: '数据源解析“${chapter.title}”的播放地址失败。',
+        debugDetail: _sourceFailureDetail(error),
+      );
+    }
     final media = content.media;
     if (content.contentKind != PluginContentKind.audio || media == null) {
       throw const AudioPlayerLoadException(code: 'audio_resource_missing', location: '播放地址', message: '数据源没有返回该章节的可播放地址。');
@@ -252,4 +277,10 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
       httpHeaders: media.headers,
     );
   }
+}
+
+String _sourceFailureDetail(Object error) {
+  final text = error.toString().trim();
+  final detail = text.isEmpty ? error.runtimeType.toString() : text;
+  return detail.length <= 512 ? detail : detail.substring(0, 512);
 }

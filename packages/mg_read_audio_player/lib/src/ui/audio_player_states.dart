@@ -79,6 +79,7 @@ final class AudioErrorView extends StatelessWidget {
     this.title = '暂时无法播放',
     this.location,
     this.diagnosticCode,
+    this.technicalDetail,
     required this.onBack,
     required this.onRetry,
     super.key,
@@ -88,6 +89,7 @@ final class AudioErrorView extends StatelessWidget {
   final String message;
   final String? location;
   final String? diagnosticCode;
+  final String? technicalDetail;
   final VoidCallback onBack;
   final VoidCallback onRetry;
 
@@ -175,7 +177,7 @@ final class AudioErrorView extends StatelessWidget {
                                 height: 1.55,
                               ),
                             ),
-                            if (location != null || diagnosticCode != null) ...[
+                            if (location != null || diagnosticCode != null || technicalDetail != null) ...[
                               const SizedBox(height: 18),
                               Container(
                                 width: double.infinity,
@@ -204,8 +206,23 @@ final class AudioErrorView extends StatelessWidget {
                                         style: theme.textTheme.bodySmall
                                             ?.copyWith(
                                               color: AudioPlayerColors.muted,
-                                            ),
+                                          ),
                                       ),
+                                    if (technicalDetail != null) ...<Widget>[
+                                      if (location != null || diagnosticCode != null) const SizedBox(height: 5),
+                                      Text(
+                                        '技术原因：',
+                                        style: theme.textTheme.bodySmall?.copyWith(
+                                          color: AudioPlayerColors.muted,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      SelectableText(
+                                        technicalDetail!,
+                                        style: theme.textTheme.bodySmall?.copyWith(color: AudioPlayerColors.muted),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),

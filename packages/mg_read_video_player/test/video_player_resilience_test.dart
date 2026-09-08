@@ -55,10 +55,7 @@ void main() {
 
     expect(controller.snapshot.status, VideoPlayerStatus.failure);
     expect(controller.snapshot.failure?.code, 'video_proxy_unreachable');
-    expect(
-      find.text('视频代理无法连接，请启动代理服务；若已关闭视频代理，请退出播放器后重新打开。'),
-      findsOneWidget,
-    );
+    expect(find.text('视频代理无法连接，请启动代理服务；若已关闭视频代理，请退出播放器后重新打开。'), findsOneWidget);
   });
 
   testWidgets('identifies a failed Runtime media resource', (
@@ -557,13 +554,11 @@ final class _OrderedBackend implements VideoPlaybackBackend {
   void emitFirstFrame() =>
       state.value = state.value.copyWith(firstFrameReady: true);
 
-  void emitError(
-    String message, {
-    VideoPlaybackBackendErrorKind? kind,
-  }) => state.value = state.value.copyWith(
-    errorMessage: message,
-    errorKind: kind,
-  );
+  void emitError(String message, {VideoPlaybackBackendErrorKind? kind}) =>
+      state.value = state.value.copyWith(
+        errorMessage: message,
+        errorKind: kind,
+      );
 
   @override
   Future<void> dispose() async {

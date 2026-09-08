@@ -205,6 +205,7 @@ class _AudioViewState extends State<AudioPlayerView>
                 message: snapshot.failure?.message ?? '音频加载失败。',
                 location: snapshot.failure?.location,
                 diagnosticCode: snapshot.failure?.code,
+                technicalDetail: snapshot.failure?.debugDetail,
                 onBack: _requestExit,
                 onRetry: _controller.retry,
               ),

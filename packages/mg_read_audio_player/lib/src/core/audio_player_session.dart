@@ -239,17 +239,32 @@ final class AudioPlayerSession extends ChangeNotifier {
   }
 
   AudioPlayerFailure _initializationFailure(Object error) {
+    return _failureFrom(
+      error,
+      code: 'audio_initialization_failed',
+      location: '播放器初始化',
+      message: '播放准备失败。请重试；若仍失败，请在运行日志中查看音频资源事件。',
+    );
+  }
+
+  AudioPlayerFailure _failureFrom(
+    Object error, {
+    required String code,
+    required String location,
+    required String message,
+  }) {
     if (error is AudioPlayerLoadException) {
       return AudioPlayerFailure(
         code: error.code,
         message: error.message,
         location: error.location,
+        debugDetail: error.debugDetail,
       );
     }
     return AudioPlayerFailure(
-      code: 'audio_initialization_failed',
-      location: '播放器初始化',
-      message: '播放准备失败。请重试；若仍失败，请在运行日志中查看音频资源事件。',
+      code: code,
+      location: location,
+      message: message,
       debugDetail: _boundedDebugDetail(error),
     );
   }
@@ -423,27 +438,50 @@ final class AudioPlayerSession extends ChangeNotifier {
         trackId == _snapshot.currentTrack?.id) {
       return;
     }
+    _recordPlaybackIntent(true);
+    _cancelRecoveryTimers(resetAttempts: true);
+    final intentRevision = _playbackIntentRevision;
+    _emit(_snapshot.copyWith(clearFailure: true));
     final loadedIndex = playlist.tracks.indexWhere(
       (track) => track.id == trackId,
     );
     if (loadedIndex >= 0 && !_trackNeedsRefresh(playlist.tracks[loadedIndex])) {
-      await jump(loadedIndex);
+      _cancelContinuationLoad(retry: false);
+      await flushProgress();
+      try {
+        await backend.jump(loadedIndex);
+        if (_playbackDesired && intentRevision == _playbackIntentRevision) {
+          await backend.play();
+        }
+        if (!_playbackDesired || intentRevision != _playbackIntentRevision) {
+          await backend.pause();
+        }
+      } on Object catch (error) {
+        final failure = _failureFrom(
+          error,
+          code: 'audio_selected_autoplay_failed',
+          location: '下一章节自动播放',
+          message: '章节已经切换，但自动播放失败，请重试。',
+        );
+        _emit(_snapshot.copyWith(failure: failure));
+        await _notify(() => observer?.onFailure(failure));
+      }
       return;
     }
     final source = dataSource;
     if (source is! AudioPlaylistQueueDataSource) return;
-    _recordPlaybackIntent(true);
     _cancelContinuationLoad(retry: true);
     final generation = ++_generation;
+    var targetInstalled = false;
     await flushProgress();
     _emit(_snapshot.copyWith(resourceLoading: true, clearFailure: true));
     try {
       final track = await source.loadTrackById(collectionId, trackId: trackId);
-      if (!_isCurrent(generation)) return;
+      if (!_isCurrent(generation) || !_playbackDesired || intentRevision != _playbackIntentRevision) return;
       _backendSnapshotsEnabled = false;
       final opening = _backendInitializationTail.then<void>((_) async {
         if (!_isCurrent(generation)) return;
-        await backend.open(<AudioTrack>[track], initialIndex: 0, play: true);
+        await backend.open(<AudioTrack>[track], initialIndex: 0, play: false);
       });
       _backendInitializationTail = opening.then<void>(
         (_) {},
@@ -458,25 +496,37 @@ final class AudioPlayerSession extends ChangeNotifier {
         tracks: <AudioTrack>[track],
         queueEntries: playlist.queueEntries,
       );
+      targetInstalled = true;
       _backendSnapshotsEnabled = true;
       _applyReadySnapshot(backend.snapshot);
+      if (_playbackDesired && intentRevision == _playbackIntentRevision) {
+        await backend.play();
+      }
+      if (!_isCurrent(generation)) return;
+      if (!_playbackDesired || intentRevision != _playbackIntentRevision) {
+        await backend.pause();
+        return;
+      }
+      _applyReadySnapshot(backend.snapshot);
+      _handleBackendError(backend.snapshot.errorMessage);
       _prefetchIfNeeded(0, snapshot: _snapshot);
       await _notify(() => observer?.onTrackChanged(track));
     } on Object catch (error) {
-      if (!_isCurrent(generation)) return;
+      if (!_isCurrent(generation) || !_playbackDesired || intentRevision != _playbackIntentRevision) return;
       _backendSnapshotsEnabled = true;
-      _playlist = playlist;
-      if (backend.snapshot.currentIndex >= 0 &&
+      if (!targetInstalled) _playlist = playlist;
+      if (!targetInstalled &&
+          backend.snapshot.currentIndex >= 0 &&
           backend.snapshot.currentIndex < playlist.tracks.length) {
         _applyReadySnapshot(backend.snapshot);
       }
       _lastPrefetchTriggerTrackId = null;
       _continuationRecoveryPending = true;
-      final failure = AudioPlayerFailure(
+      final failure = _failureFrom(
+        error,
         code: 'audio_selected_resource_unavailable',
-        location: '所选章节的播放地址',
-        message: '当前章节暂时无法播放，请稍后重试。',
-        debugDetail: _boundedDebugDetail(error),
+        location: targetInstalled ? '下一章节自动播放' : '所选章节的播放地址',
+        message: targetInstalled ? '章节已经切换，但自动播放失败，请重试。' : '当前章节暂时无法播放，请稍后重试。',
       );
       _emit(_snapshot.copyWith(resourceLoading: false, failure: failure));
       await _notify(() => observer?.onFailure(failure));
@@ -524,11 +574,11 @@ final class AudioPlayerSession extends ChangeNotifier {
     try {
       await action();
     } on Object catch (error) {
-      final failure = AudioPlayerFailure(
+      final failure = _failureFrom(
+        error,
         code: 'audio_transport_failed',
         location: '播放控制',
         message: '播放操作失败，请重试。',
-        debugDetail: _boundedDebugDetail(error),
       );
       _emit(_snapshot.copyWith(failure: failure));
       await _notify(() => observer?.onFailure(failure));
@@ -586,12 +636,14 @@ final class AudioPlayerSession extends ChangeNotifier {
     _saveTail = _saveTail.then((_) async {
       try {
         await stateStore.saveProgress(progress);
-      } catch (_) {
-        const failure = AudioPlayerFailure(
+      } on Object catch (error) {
+        final failure = AudioPlayerFailure(
           code: 'audio_progress_save_failed',
           location: '播放进度保存',
           message: '播放进度暂未保存。',
+          debugDetail: _boundedDebugDetail(error),
         );
+        _emit(_snapshot.copyWith(failure: failure));
         await _notify(() => observer?.onFailure(failure));
       }
     });

@@ -595,13 +595,29 @@ final class AudioInlineFailure extends StatelessWidget {
           ),
           const SizedBox(width: 9),
           Expanded(
-            child: Text(
-              failure.message,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: AudioPlayerColors.warning),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  failure.message,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AudioPlayerColors.warning,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '发生位置：${failure.location}  ·  诊断编号：${failure.code}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AudioPlayerColors.warning),
+                ),
+                if (failure.debugDetail case final detail?) ...<Widget>[
+                  const SizedBox(height: 3),
+                  SelectableText(
+                    '技术原因：$detail',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AudioPlayerColors.warning),
+                  ),
+                ],
+              ],
             ),
           ),
           TextButton(onPressed: onRetry, child: const Text('重试')),
