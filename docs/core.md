@@ -118,6 +118,9 @@ plugins/sources/                    真实数据源及其他能力参考实现
   主应用数据库或下载权威。
 - 音频后台会话由主应用根层持有：返回时按持久化偏好询问、继续或停止，继续后以应用内播放条恢复，Android
   同时使用系统媒体通知；打开视频前必须先暂停并移除现有后台音频。不得为此申请系统悬浮窗权限。
+- 音频 package 以 `AudioPlayerEngine` 持有播放会话，以 `AudioPlayerView.controlled` 连接宿主 Controller；
+  主应用的 `SourceAudioPlaybackService` 独立于页面持有 Engine、Runtime 数据源、进度 Store 与 Android Handler。
+  页面销毁、最小化和重建不得创建、关闭或替换播放器。
 - 文本锚点为 `chapterId + paragraphId + characterOffset`，漫画为
   `chapterId + imageId + imageFraction`；视频分组使用中性的 `groupId + episodeId`。
 - 视频目录只保留安全的分组与选集元数据；签名或会话型播放资源由 `VideoEpisodeDataSource` 仅为当前选中集

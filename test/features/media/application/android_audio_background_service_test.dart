@@ -32,6 +32,7 @@ void main() {
           AudioQueueEntry(id: 'chapter-locked', title: '付费章', isLocked: true),
           AudioQueueEntry(id: 'chapter-3', title: '第三章'),
         ],
+        playbackDesired: true,
         playing: true,
         position: const Duration(seconds: 12),
         duration: const Duration(minutes: 3),
@@ -72,6 +73,7 @@ void main() {
       AudioSystemCommandFeedback.accepted,
       AudioSystemCommandFeedback.accepted,
       AudioSystemCommandFeedback.accepted,
+      AudioSystemCommandFeedback.boundary,
     ]);
 
     await handler.stop();
@@ -105,14 +107,44 @@ void main() {
     final controller = _RecordingAudioController(AudioPlayerSnapshot.initial());
     addTearDown(controller.dispose);
     final handler = MgReadAudioHandler();
+    final platformEvents = <String>[];
 
     await handler.recoverActiveController();
-    await handler.attach(controller, synchronizeFocus: (_) async {}, onSystemStop: () async {});
-    await handler.recoverActiveController();
+    await handler.attach(controller, synchronizeFocus: (_) async {}, onSystemStop: () async {}, onPlatformEvent: platformEvents.add);
+    await handler.recoverActiveController(reason: 'screenTurnedOn');
+    await handler.pauseActiveController(reason: 'becomingNoisy');
     await handler.detach(controller);
-    await handler.recoverActiveController();
+    await handler.recoverActiveController(reason: 'networkAvailable');
 
     expect(controller.recoverCalls, 1);
+    expect(controller.pauseCalls, 1);
+    expect(platformEvents, <String>['screenTurnedOn', 'becomingNoisy']);
+  });
+
+  test('buffering with active play intent retains audio focus', () async {
+    final focusStates = <bool>[];
+    final controller = _RecordingAudioController(
+      AudioPlayerSnapshot(
+        status: AudioPlayerStatus.ready,
+        queue: <AudioTrack>[AudioTrack(id: 'only', title: '唯一章节', resource: Uri.parse('https://example.test/only.mp3'))],
+        playbackDesired: true,
+        buffering: true,
+      ),
+    );
+    addTearDown(controller.dispose);
+    final handler = MgReadAudioHandler();
+    await handler.attach(controller, synchronizeFocus: (active) async => focusStates.add(active), onSystemStop: () async {});
+    await Future<void>.delayed(Duration.zero);
+
+    expect(focusStates.last, isTrue);
+    expect(handler.playbackState.value.playing, isTrue);
+
+    controller.publish(controller.snapshot.copyWith(playbackDesired: false, buffering: true));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(focusStates.last, isFalse);
+    expect(handler.playbackState.value.playing, isFalse);
+    await handler.detach(controller);
   });
 
   test('error play retries while loading and queue boundaries are rejected', () async {
@@ -133,7 +165,7 @@ void main() {
     );
 
     await handler.play();
-    controller.currentSnapshot = AudioPlayerSnapshot.initial();
+    controller.currentSnapshot = AudioPlayerSnapshot.initial().copyWith(playbackDesired: true);
     await handler.play();
     controller.currentSnapshot = AudioPlayerSnapshot(status: AudioPlayerStatus.ready, queue: controller.currentSnapshot.queue);
     await handler.skipToNext();
@@ -141,8 +173,8 @@ void main() {
     expect(controller.retryCalls, 1);
     expect(feedback, <AudioSystemCommandFeedback>[
       AudioSystemCommandFeedback.accepted,
-      AudioSystemCommandFeedback.unavailable,
-      AudioSystemCommandFeedback.unavailable,
+      AudioSystemCommandFeedback.failed,
+      AudioSystemCommandFeedback.boundary,
     ]);
   });
 
@@ -175,10 +207,7 @@ void main() {
     await first;
 
     expect(controller.nextCalls, 1);
-    expect(
-      feedback,
-      containsAll(<AudioSystemCommandFeedback>[AudioSystemCommandFeedback.accepted, AudioSystemCommandFeedback.unavailable]),
-    );
+    expect(feedback, containsAll(<AudioSystemCommandFeedback>[AudioSystemCommandFeedback.accepted, AudioSystemCommandFeedback.failed]));
   });
 }
 
@@ -193,6 +222,11 @@ final class _RecordingAudioController extends AudioPlayerController {
   int retryCalls = 0;
   Completer<void>? nextGate;
   final List<String> selectedTrackIds = <String>[];
+
+  void publish(AudioPlayerSnapshot snapshot) {
+    currentSnapshot = snapshot;
+    notifyListeners();
+  }
 
   @override
   AudioPlayerSnapshot get snapshot => currentSnapshot;

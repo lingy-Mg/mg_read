@@ -4,6 +4,8 @@
 
 - 公共入口只从 `lib/mg_read_audio_player.dart` 导出不可变 `Audio*` 模型、宿主契约、控制器和
   `AudioPlayerView`；`lib/src/` 其余实现保持私有。
+- 宿主后台播放使用公开 `AudioPlayerEngine` 持有会话，并以 `AudioPlayerView.controlled` 临时连接同一
+  Controller；受控 View 只能监听和发指令，销毁时不得关闭 Engine、后端或数据源。
 - UI 不访问宿主数据库、Service Locator 或路由；内容、进度、后台音频服务、通知、音频焦点策略及
   下载均由宿主通过公开契约提供。
 - 默认后端固定使用 `media_kit: 1.2.6`，本 package 不依赖任何 `media_kit_libs_*`。原生库由最终宿主

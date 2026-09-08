@@ -29,6 +29,7 @@ void main() {
       await harness.controller.recover();
 
       expect(harness.controller.snapshot.playing, isFalse);
+      expect(harness.controller.snapshot.playbackDesired, isFalse);
       expect(harness.backend.playCalls, 0);
     },
   );
@@ -132,7 +133,9 @@ void main() {
 
     final recovery = harness.controller.recover();
     await settle();
+    expect(harness.controller.snapshot.resourceLoading, isTrue);
     await harness.controller.pause();
+    expect(harness.controller.snapshot.resourceLoading, isFalse);
     pending.complete(<AudioTrack>[_track('b')]);
     await recovery;
 

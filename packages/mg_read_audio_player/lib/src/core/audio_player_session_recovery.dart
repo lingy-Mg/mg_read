@@ -4,6 +4,9 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
   void _recordPlaybackIntent(bool desired) {
     _playbackDesired = desired;
     _playbackIntentRevision++;
+    if (!_closed && _snapshot.playbackDesired != desired) {
+      _emit(_snapshot.copyWith(playbackDesired: desired));
+    }
   }
 
   bool _trackNeedsRefresh(AudioTrack track) {
@@ -61,6 +64,9 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
     required String afterTrackId,
   }) {
     final requestRevision = ++_continuationRequestRevision;
+    if (_playbackDesired && !_snapshot.resourceLoading) {
+      _emit(_snapshot.copyWith(resourceLoading: true));
+    }
     late final Future<void> request;
     request =
         _loadFollowingTracks(
@@ -90,12 +96,16 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
       if (!_isContinuationCurrent(generation, requestRevision)) return;
       _continuationRecoveryPending = false;
       if (loaded.isEmpty) {
+        _emit(_snapshot.copyWith(resourceLoading: false));
         if (backend.snapshot.completed) _recordPlaybackIntent(false);
         _cancelRecoveryTimers(resetAttempts: true);
         return;
       }
       final playlist = _playlist;
-      if (playlist == null || playlist.tracks.last.id != afterTrackId) return;
+      if (playlist == null || playlist.tracks.last.id != afterTrackId) {
+        _emit(_snapshot.copyWith(resourceLoading: false));
+        return;
+      }
       final knownIds = playlist.tracks.map((track) => track.id).toSet();
       final additions = loaded
           .where(
@@ -107,6 +117,9 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
           .toList(growable: false);
       if (additions.isEmpty ||
           !_isContinuationCurrent(generation, requestRevision)) {
+        if (_isContinuationCurrent(generation, requestRevision)) {
+          _emit(_snapshot.copyWith(resourceLoading: false));
+        }
         return;
       }
       final intentRevision = _playbackIntentRevision;
@@ -143,7 +156,7 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
         message: '下一章节暂时无法继续，播放器会在网络恢复后重试。',
         debugDetail: _boundedDebugDetail(error),
       );
-      _emit(_snapshot.copyWith(failure: failure));
+      _emit(_snapshot.copyWith(resourceLoading: false, failure: failure));
       unawaited(_notify(() => observer?.onFailure(failure)));
       if (_playbackDesired) _scheduleRecoveryRetry();
     }
@@ -237,6 +250,9 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
     if (playlist == null || track == null) return;
     final position = _snapshot.position;
     final generation = ++_generation;
+    if (!_snapshot.resourceLoading) {
+      _emit(_snapshot.copyWith(resourceLoading: true));
+    }
     try {
       final refreshed = await source.loadTrackById(
         collectionId,
@@ -281,7 +297,7 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
         message: '当前章节暂时无法恢复，播放器会稍后重试。',
         debugDetail: _boundedDebugDetail(error),
       );
-      _emit(_snapshot.copyWith(failure: failure));
+      _emit(_snapshot.copyWith(resourceLoading: false, failure: failure));
       unawaited(_notify(() => observer?.onFailure(failure)));
       _scheduleRecoveryRetry();
     }

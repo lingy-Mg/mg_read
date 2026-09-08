@@ -18,7 +18,7 @@ import 'package:mg_read/app/app_startup.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
-import 'package:mg_read/features/media/application/source_audio_playback_coordinator.dart';
+import 'package:mg_read/features/media/application/source_audio_playback_service.dart';
 import 'package:mg_read/features/media/application/source_video_data_source.dart';
 import 'package:mg_read/features/media/application/source_video_audio_session_controller.dart';
 import 'package:mg_read/features/media/application/source_video_fullscreen_controller.dart';
@@ -45,7 +45,7 @@ Future<void> openTransientSourceVideoPlayer(
   final diagnostics = container.read(diagnosticsManagerProvider);
   final startupSession = VideoStartupSession(diagnostics.idGenerator.nextId('video_startup'));
   _recordStartupEvent(diagnostics, startupSession.mark(VideoStartupPhase.click, state: VideoStartupState.started));
-  final audioStop = container.read(sourceAudioPlaybackCoordinatorProvider.notifier).stop();
+  final audioStop = container.read(sourceAudioPlaybackServiceProvider.notifier).stop();
   if (!navigator.mounted) {
     await audioStop;
     return;

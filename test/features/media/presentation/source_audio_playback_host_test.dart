@@ -13,7 +13,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
-import 'package:mg_read/features/media/application/source_audio_playback_coordinator.dart';
+import 'package:mg_read/features/media/application/source_audio_playback_service.dart';
 import 'package:mg_read/features/media/presentation/source_audio_playback_host.dart';
 
 import '../../../core/settings/settings_testkit.dart';
@@ -81,12 +81,18 @@ void main() {
       ),
     );
 
-    final playback = rootRef.read(sourceAudioPlaybackCoordinatorProvider.notifier).open(request);
+    final service = rootRef.read(sourceAudioPlaybackServiceProvider.notifier);
+    final playback = service.open(request);
     await _pumpUntil(
       tester,
       () =>
           find.byKey(const Key('audio-back')).evaluate().isNotEmpty &&
           find.byKey(const Key('media-entry-cover-transition')).evaluate().isEmpty,
+      describeFailure: () {
+        final state = rootRef.read(sourceAudioPlaybackServiceProvider);
+        return 'presentation=${state.presentation} controller=${state.controller != null} '
+            'setupFailure=${state.setupFailure} presented=${state.playerPresented}';
+      },
     );
     expect(systemUiModes.last, 'SystemUiMode.immersiveSticky');
 
@@ -114,6 +120,9 @@ void main() {
     await tester.tap(find.byKey(const Key('audio-background-remember-choice')));
     await tester.tap(find.byKey(const Key('audio-background-continue')));
     await _pumpUntil(tester, () => find.byKey(const Key('source-audio-mini-player')).evaluate().isNotEmpty);
+    expect(find.byKey(const Key('source-audio-player')), findsNothing);
+    expect(backend.disposeCalls, 0);
+    expect(service.controller, isNotNull);
     expect(systemUiModes.last, 'SystemUiMode.edgeToEdge');
 
     expect(settings.get(AppSettingKeys.audioExitBehavior), 'continue');
@@ -137,6 +146,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('source-audio-mini-player')));
     await _pumpUntil(tester, () => find.byKey(const Key('audio-back')).evaluate().isNotEmpty);
+    expect(backend.openCalls, 1);
     expect(systemUiModes.last, 'SystemUiMode.immersiveSticky');
 
     final Future<bool> backHandled = backButtonDispatcher.invokeCallback(Future<bool>.value(false));
@@ -147,6 +157,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('source-audio-mini-stop')));
     await _pumpUntil(tester, () => find.byKey(const Key('source-audio-mini-player')).evaluate().isEmpty);
+    await service.stop().timeout(const Duration(seconds: 2));
     await playback;
     await tester.pump();
     expect(systemUiModes.last, 'SystemUiMode.edgeToEdge');
@@ -155,14 +166,14 @@ void main() {
     await settings.flush();
     await tester.pump(const Duration(milliseconds: 350));
     backButtonDispatcher.removeCallback(routerFallback);
-  });
+  }, timeout: const Timeout(Duration(seconds: 15)));
 }
 
-Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
+Future<void> _pumpUntil(WidgetTester tester, bool Function() condition, {String Function()? describeFailure}) async {
   for (var index = 0; index < 80 && !condition(); index++) {
     await tester.pump(const Duration(milliseconds: 25));
   }
-  expect(condition(), isTrue);
+  expect(condition(), isTrue, reason: describeFailure?.call());
 }
 
 final class _AudioGateway implements SourceContentGateway {
@@ -222,6 +233,8 @@ final class _FakeAudioBackend implements AudioPlaybackBackend {
   final StreamController<AudioPlaybackBackendSnapshot> _states = StreamController<AudioPlaybackBackendSnapshot>.broadcast(sync: true);
   AudioPlaybackBackendSnapshot _snapshot = const AudioPlaybackBackendSnapshot(duration: Duration(minutes: 2));
   int pauseCalls = 0;
+  int openCalls = 0;
+  int disposeCalls = 0;
 
   @override
   AudioPlaybackBackendSnapshot get snapshot => _snapshot;
@@ -236,6 +249,7 @@ final class _FakeAudioBackend implements AudioPlaybackBackend {
 
   @override
   Future<void> open(List<AudioTrack> tracks, {required int initialIndex, bool play = false}) async {
+    openCalls++;
     _emit(AudioPlaybackBackendSnapshot(currentIndex: initialIndex, duration: const Duration(minutes: 2), playing: play));
   }
 
@@ -270,7 +284,9 @@ final class _FakeAudioBackend implements AudioPlaybackBackend {
   Future<void> jump(int index) async => _emit(_snapshot.copyWith(currentIndex: index, position: Duration.zero));
 
   @override
-  Future<void> dispose() => _states.close();
+  Future<void> dispose() async {
+    disposeCalls++;
+  }
 }
 
 SourceAudioPlaybackRequest _request() {

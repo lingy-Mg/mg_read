@@ -1,8 +1,8 @@
 /// App-root host for source audio that survives page navigation.
 ///
 /// Responsibilities:
-/// - Mount one audio player for the full lifetime of global playback.
-/// - Collapse the full player into an in-app mini player without disposing it.
+/// - Mount and discard controlled player views without owning playback.
+/// - Collapse the full player into an in-app mini player over one controller.
 /// - Ask whether to continue on exit and optionally persist that answer.
 ///
 /// Notes:
@@ -19,23 +19,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 
-import 'package:mg_read/app/app_startup.dart';
 import 'package:mg_read/app/app_theme.dart';
-import 'package:mg_read/core/content_library/content_library.dart';
-import 'package:mg_read/core/diagnostics/diagnostics.dart';
-import 'package:mg_read/core/settings/settings.dart';
-import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
-import 'package:mg_read/features/media/application/android_audio_background_service.dart';
-import 'package:mg_read/features/media/application/source_audio_playback_coordinator.dart';
-import 'package:mg_read/features/media/application/source_audio_playback_lifecycle.dart';
-import 'package:mg_read/features/media/application/source_audio_playlist_data_source.dart';
-import 'package:mg_read/features/media/application/transient_source_audio_playback_state_store.dart';
+import 'package:mg_read/features/media/application/source_audio_playback_service.dart';
 import 'package:mg_read/features/media/presentation/media_entry_cover.dart';
-import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
-import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
-
-part 'source_audio_playback_host_observer.dart';
 
 /// Owns a transparent local Navigator for playback above the app router.
 ///
@@ -58,11 +45,11 @@ final class _SourceAudioPlaybackNavigatorState extends ConsumerState<SourceAudio
 
   @override
   Widget build(BuildContext context) {
-    final playback = ref.watch(sourceAudioPlaybackCoordinatorProvider);
+    final playback = ref.watch(sourceAudioPlaybackServiceProvider);
     if (!playback.isActive) return const SizedBox.shrink();
-    final coordinator = ref.read(sourceAudioPlaybackCoordinatorProvider.notifier);
+    final service = ref.read(sourceAudioPlaybackServiceProvider.notifier);
     final minimized = playback.presentation == SourceAudioPresentation.minimized;
-    final controller = coordinator.attachedController;
+    final controller = playback.controller;
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
@@ -87,8 +74,8 @@ final class _SourceAudioPlaybackNavigatorState extends ConsumerState<SourceAudio
             controller: controller,
             initialPosition: _miniPlayerPosition,
             onPositionChanged: (position) => _miniPlayerPosition = position,
-            onExpand: coordinator.expand,
-            onStop: () => unawaited(coordinator.stop(sessionId: playback.sessionId)),
+            onExpand: service.expand,
+            onStop: () => unawaited(service.stop(sessionId: playback.sessionId)),
           ),
       ],
     );
@@ -104,13 +91,11 @@ final class SourceAudioPlaybackHost extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(sourceAudioPlaybackCoordinatorProvider);
+    final state = ref.watch(sourceAudioPlaybackServiceProvider);
     if (!state.isActive) return const SizedBox.shrink();
     return _ActiveSourceAudioPlaybackHost(
       key: ValueKey<int>(state.sessionId!),
-      sessionId: state.sessionId!,
-      request: state.request!,
-      presentation: state.presentation,
+      playback: state,
       backButtonDispatcher: backButtonDispatcher,
       playbackNavigatorKey: playbackNavigatorKey,
     );
@@ -119,17 +104,13 @@ final class SourceAudioPlaybackHost extends ConsumerWidget {
 
 final class _ActiveSourceAudioPlaybackHost extends ConsumerStatefulWidget {
   const _ActiveSourceAudioPlaybackHost({
-    required this.sessionId,
-    required this.request,
-    required this.presentation,
+    required this.playback,
     required this.backButtonDispatcher,
     required this.playbackNavigatorKey,
     super.key,
   });
 
-  final int sessionId;
-  final SourceAudioPlaybackRequest request;
-  final SourceAudioPresentation presentation;
+  final SourceAudioPlaybackState playback;
   final BackButtonDispatcher backButtonDispatcher;
   final GlobalKey<NavigatorState> playbackNavigatorKey;
 
@@ -138,14 +119,8 @@ final class _ActiveSourceAudioPlaybackHost extends ConsumerStatefulWidget {
 }
 
 final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSourceAudioPlaybackHost> {
-  late final AudioPlayerController _controller;
-  SourceAudioPlaybackLifecycle? _playbackLifecycle;
-  _AudioPlayerSetup? _setup;
-  Object? _setupFailure;
-  bool _playerPresented = false, _rememberExitChoice = false;
-  Completer<_AudioExitDecision?>? _exitDecision;
-  int _generation = 0;
-  late final SourceAudioPlaybackCoordinator _coordinator;
+  bool _rememberExitChoice = false;
+  late final SourceAudioPlaybackService _service;
   late ChildBackButtonDispatcher _backButtonDispatcher;
 
   @override
@@ -153,22 +128,11 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
     _attachBackButtonDispatcher(widget.backButtonDispatcher);
-    _coordinator = ref.read(sourceAudioPlaybackCoordinatorProvider.notifier);
-    _controller = AudioPlayerController();
-    if (!_coordinator.attachController(widget.sessionId, _controller)) {
-      _controller.dispose();
-      return;
-    }
-    _playbackLifecycle = SourceAudioPlaybackLifecycle(
-      controller: _controller,
-      settings: ref.read(appSettingsProvider),
-      onPreferenceChanged: () => setState(() {}),
-    );
-    unawaited(_prepare());
+    _service = ref.read(sourceAudioPlaybackServiceProvider.notifier);
   }
 
   Future<bool> _handlePlatformBack() async {
-    if (widget.presentation != SourceAudioPresentation.expanded) return false;
+    if (widget.playback.presentation != SourceAudioPresentation.expanded) return false;
     final navigator = widget.playbackNavigatorKey.currentState;
     if (navigator != null && navigator.canPop()) {
       return navigator.maybePop();
@@ -178,7 +142,7 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
   }
 
   void _syncBackButtonPriority() {
-    if (widget.presentation == SourceAudioPresentation.expanded) {
+    if (widget.playback.presentation == SourceAudioPresentation.expanded) {
       _backButtonDispatcher.takePriority();
     } else {
       widget.backButtonDispatcher.forget(_backButtonDispatcher);
@@ -196,13 +160,13 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
     if (!identical(oldWidget.backButtonDispatcher, widget.backButtonDispatcher)) {
       _backButtonDispatcher.removeCallback(_handlePlatformBack);
       _attachBackButtonDispatcher(widget.backButtonDispatcher);
-    } else if (oldWidget.presentation != widget.presentation) {
+    } else if (oldWidget.playback.presentation != widget.playback.presentation) {
       _syncBackButtonPriority();
     }
   }
 
   bool _handleKeyEvent(KeyEvent event) {
-    if (widget.presentation != SourceAudioPresentation.expanded ||
+    if (widget.playback.presentation != SourceAudioPresentation.expanded ||
         event is! KeyDownEvent ||
         event.logicalKey != LogicalKeyboardKey.escape) {
       return false;
@@ -212,172 +176,51 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
   }
 
   Future<void> _requestBack() async {
-    if (_setup == null || !_controller.isAttached) {
-      await _stopFromPreparation();
+    final controller = widget.playback.controller;
+    if (controller == null || !controller.isAttached) {
+      await _service.stop(sessionId: widget.playback.sessionId);
     } else {
-      await _controller.requestExit();
+      await controller.requestExit();
     }
   }
-
-  Future<void> _prepare() async {
-    final generation = ++_generation;
-    if (mounted) {
-      setState(() {
-        _setup = null;
-        _setupFailure = null;
-        _playerPresented = false;
-      });
-    }
-    try {
-      final request = widget.request;
-      final library = request.libraryItemId == null ? null : await ref.read(appStartupControllerProvider).contentLibrary;
-      final itemId = request.libraryItemId == null ? null : LibraryItemId(request.libraryItemId!);
-      final storedProgress = library == null || itemId == null ? null : await library.loadProgress(itemId);
-      final savedProgress = storedProgress is LibraryAudioPlaybackProgress ? storedProgress : null;
-      final configuredProxyUri = await Future<Uri?>.value(
-        ref.read(configuredFlutterNetworkProxyManagerProvider).proxyUriFor(NetworkProxyTraffic.audio),
-      );
-      final proxyUri = configuredProxyUri?.scheme == 'http' ? configuredProxyUri : null;
-      final observer = await AndroidAudioBackgroundService.instance.attach(
-        controller: _controller,
-        onSystemStop: () => _coordinator.stop(sessionId: widget.sessionId),
-        observer: _SourceAudioSessionObserver(
-          onPresented: _presentPlayer,
-          exitRequested: _handleExitRequested,
-          sessionEnded: () => _coordinator.sessionEnded(widget.sessionId),
-          diagnostics: ref.read(appStartupControllerProvider).diagnostics,
-        ),
-      );
-      if (!mounted || generation != _generation) {
-        await AndroidAudioBackgroundService.instance.detach(_controller);
-        return;
-      }
-      setState(() {
-        _setup = _AudioPlayerSetup(
-          library: library,
-          itemId: itemId,
-          initialTrackId: savedProgress?.chapterId ?? request.chapter.id,
-          proxyUri: proxyUri,
-          observer: observer,
-        );
-      });
-    } on Object catch (error) {
-      if (!mounted || generation != _generation) return;
-      setState(() => _setupFailure = error);
-    }
-  }
-
-  void _presentPlayer() {
-    if (mounted && !_playerPresented) {
-      setState(() => _playerPresented = true);
-    }
-  }
-
-  Future<void> _handleExitRequested() async {
-    if (!mounted) return;
-    final settings = ref.read(appSettingsProvider);
-    final behavior = settings.supports(AppSettingKeys.audioExitBehavior) ? settings.get(AppSettingKeys.audioExitBehavior) : 'ask';
-    final decision = switch (behavior) {
-      'continue' => _AudioExitDecision.continuePlaying,
-      'stop' => _AudioExitDecision.stop,
-      _ => await _askForExitDecision(),
-    };
-    if (decision == null || !mounted) return;
-    if (_rememberExitChoice && settings.supports(AppSettingKeys.audioExitBehavior)) {
-      final value = decision == _AudioExitDecision.continuePlaying ? 'continue' : 'stop';
-      try {
-        await settings.set(AppSettingKeys.audioExitBehavior, value);
-      } on Object {
-        // The immediate exit choice remains valid when persistence is degraded.
-      }
-    }
-    _rememberExitChoice = false;
-    if (decision == _AudioExitDecision.continuePlaying) {
-      _coordinator.minimize(widget.sessionId);
-    } else {
-      await _coordinator.stop(sessionId: widget.sessionId);
-    }
-  }
-
-  Future<_AudioExitDecision?> _askForExitDecision() {
-    final existing = _exitDecision;
-    if (existing != null) return existing.future;
-    final decision = Completer<_AudioExitDecision?>();
-    setState(() {
-      _rememberExitChoice = false;
-      _exitDecision = decision;
-    });
-    return decision.future;
-  }
-
-  void _completeExitDecision(_AudioExitDecision decision) {
-    final completion = _exitDecision;
-    if (completion == null || completion.isCompleted) return;
-    setState(() => _exitDecision = null);
-    completion.complete(decision);
-  }
-
-  Future<void> _stopFromPreparation() => _coordinator.stop(sessionId: widget.sessionId);
 
   @override
   Widget build(BuildContext context) {
-    final minimized = widget.presentation == SourceAudioPresentation.minimized;
+    if (widget.playback.presentation == SourceAudioPresentation.minimized) {
+      return const SizedBox.shrink();
+    }
     return Stack(
       fit: StackFit.expand,
-      children: <Widget>[
-        ExcludeFocus(
-          excluding: minimized,
-          child: Offstage(offstage: minimized, child: _buildExpandedPlayer(context)),
-        ),
-        if (_exitDecision != null) _buildExitPrompt(context),
-      ],
-    ).withSourceMediaImmersion(active: !minimized);
+      children: <Widget>[_buildExpandedPlayer(context), if (widget.playback.exitDecisionRequested) _buildExitPrompt(context)],
+    ).withSourceMediaImmersion(active: true);
   }
 
   Widget _buildExpandedPlayer(BuildContext context) {
-    final setup = _setup;
-    final request = widget.request;
-    if (setup == null) {
+    final playback = widget.playback;
+    final controller = playback.controller;
+    final request = playback.request!;
+    if (controller == null) {
       return MediaEntryCoverSurface(
         kind: MediaEntryKind.audio,
         title: request.detail.summary.title,
         coverBytes: request.detail.summary.coverBytes,
-        failureMessage: _setupFailure == null ? null : '播放器准备失败，请重试。',
-        onRetry: _setupFailure == null ? null : () => unawaited(_prepare()),
-        onExit: () => unawaited(_stopFromPreparation()),
+        failureMessage: playback.setupFailure == null ? null : '播放器准备失败，请重试。',
+        onRetry: playback.setupFailure == null ? null : () => unawaited(_service.retryPreparation()),
+        onExit: () => unawaited(_service.stop(sessionId: playback.sessionId)),
       );
     }
     return MediaEntryCoverTransition(
       kind: MediaEntryKind.audio,
       title: request.detail.summary.title,
       coverBytes: request.detail.summary.coverBytes,
-      presented: _playerPresented,
-      onExit: () => unawaited(_handleExitRequested()),
-      child: AudioPlayerView(
+      presented: playback.playerPresented,
+      onExit: () => unawaited(controller.requestExit()),
+      child: AudioPlayerView.controlled(
         key: const Key('source-audio-player'),
-        collectionId: request.detail.summary.id,
-        dataSource: SourceAudioPlaylistDataSource(
-          gateway: ref.read(sourceContentGatewayProvider),
-          pluginId: request.detail.pluginId,
-          initialTrackId: setup.initialTrackId,
-          initialDetail: request.detail,
-          initialCatalog: request.libraryItemId == null ? request.firstCatalogPage : null,
-        ),
-        stateStore: TransientSourceAudioPlaybackStateStore(
-          collectionId: request.detail.summary.id,
-          initialTrackId: setup.initialTrackId,
-          library: setup.library,
-          libraryItemId: setup.itemId,
-        ),
-        controller: _controller,
-        backend: ref.read(sourceAudioPlaybackBackendFactoryProvider)?.call(),
-        proxyUri: setup.proxyUri,
-        observer: setup.observer,
+        controller: controller,
         artworkBuilder: (context, track) => _sourceAudioArtwork(context, track, request),
-        prefetchBatchSize: 1,
-        prefetchLeadTime: const Duration(seconds: 30),
-        keepScreenOn: _playbackLifecycle!.keepScreenOn,
-        onKeepScreenOnChanged: _playbackLifecycle!.setKeepScreenOn,
+        keepScreenOn: playback.keepScreenOn,
+        onKeepScreenOnChanged: _service.setKeepScreenOn,
       ),
     );
   }
@@ -411,12 +254,12 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
               actions: <Widget>[
                 TextButton(
                   key: const Key('audio-background-stop'),
-                  onPressed: () => _completeExitDecision(_AudioExitDecision.stop),
+                  onPressed: () => unawaited(_resolveExit(false)),
                   child: const Text('停止播放'),
                 ),
                 FilledButton(
                   key: const Key('audio-background-continue'),
-                  onPressed: () => _completeExitDecision(_AudioExitDecision.continuePlaying),
+                  onPressed: () => unawaited(_resolveExit(true)),
                   child: const Text('继续播放'),
                 ),
               ],
@@ -427,18 +270,18 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
     );
   }
 
+  Future<void> _resolveExit(bool continuePlaying) async {
+    final sessionId = widget.playback.sessionId;
+    if (sessionId == null) return;
+    final remember = _rememberExitChoice;
+    if (mounted) setState(() => _rememberExitChoice = false);
+    await _service.resolveExitDecision(sessionId: sessionId, continuePlaying: continuePlaying, remember: remember);
+  }
+
   @override
   void dispose() {
-    _generation++;
-    _playbackLifecycle?.dispose();
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _backButtonDispatcher.removeCallback(_handlePlatformBack);
-    final exitDecision = _exitDecision;
-    if (exitDecision != null && !exitDecision.isCompleted) {
-      exitDecision.complete(null);
-    }
-    _coordinator.detachController(widget.sessionId, _controller);
-    _controller.dispose();
     super.dispose();
   }
 }
@@ -696,22 +539,6 @@ final class _SourceAudioMiniPlayerState extends State<_SourceAudioMiniPlayer> {
   }
 }
 
-final class _AudioPlayerSetup {
-  const _AudioPlayerSetup({
-    required this.library,
-    required this.itemId,
-    required this.initialTrackId,
-    required this.proxyUri,
-    required this.observer,
-  });
-
-  final ContentLibrary? library;
-  final LibraryItemId? itemId;
-  final String initialTrackId;
-  final Uri? proxyUri;
-  final AudioPlayerObserver? observer;
-}
-
 Widget _sourceAudioArtwork(BuildContext context, AudioTrack track, SourceAudioPlaybackRequest request) {
   final artwork = track.artwork;
   if (artwork == null || (artwork.scheme != 'http' && artwork.scheme != 'https')) {
@@ -742,5 +569,3 @@ final class _SourceAudioArtworkFallback extends StatelessWidget {
   @override
   Widget build(BuildContext context) => const Center(child: Icon(Icons.headphones_rounded, size: 86, color: Color(0xFFFFF7EB)));
 }
-
-enum _AudioExitDecision { continuePlaying, stop }

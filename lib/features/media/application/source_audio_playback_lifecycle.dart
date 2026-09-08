@@ -8,7 +8,7 @@
 ///
 /// Notes:
 /// - Manual screen-off remains authoritative; background playback is untouched.
-/// - The coordinator composes this lease with readers and other host operations.
+/// - The playback service composes this lease with other screen-awake holders.
 library;
 
 import 'dart:async';

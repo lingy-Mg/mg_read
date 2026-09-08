@@ -1,7 +1,7 @@
 /// Immersive, cover-led spoken-audio player surface owned by this package.
 ///
 /// Responsibilities:
-/// - Bind the public player view to one independently owned audio session.
+/// - Bind either a self-managed engine or a host-owned controller to the UI.
 /// - Project session state into responsive, accessible portrait components.
 /// - Bridge lifecycle and route-exit intent without taking host ownership.
 ///
@@ -19,9 +19,8 @@ import 'package:flutter/services.dart';
 import '../api/audio_artwork.dart';
 import '../api/audio_contracts.dart';
 import '../api/audio_controller.dart';
+import '../api/audio_player_engine.dart';
 import '../api/audio_models.dart';
-import '../backend/media_kit_audio_backend.dart';
-import '../core/audio_player_session.dart';
 import 'audio_playback_settings_sheet.dart';
 import 'audio_player_artwork_stage.dart';
 import 'audio_player_components.dart';
@@ -50,11 +49,34 @@ class AudioPlayerView extends StatefulWidget {
     this.keepScreenOn = true,
     this.onKeepScreenOnChanged,
     super.key,
-  });
+  }) : controlled = false;
 
-  final String collectionId;
-  final AudioPlayerDataSource dataSource;
-  final AudioPlaybackStateStore stateStore;
+  /// A presentation-only view for a host-owned playback engine.
+  ///
+  /// This constructor creates no backend, resolves no resource, and never
+  /// closes [controller]. Rebuilding or disposing it cannot affect playback.
+  const AudioPlayerView.controlled({
+    required this.controller,
+    this.artworkBuilder,
+    this.keepScreenOn = true,
+    this.onKeepScreenOnChanged,
+    super.key,
+  }) : collectionId = null,
+       dataSource = null,
+       stateStore = null,
+       observer = null,
+       backend = null,
+       proxyUri = null,
+       saveInterval = const Duration(milliseconds: 800),
+       autoplay = true,
+       prefetchThreshold = 1,
+       prefetchBatchSize = 3,
+       prefetchLeadTime = null,
+       controlled = true;
+
+  final String? collectionId;
+  final AudioPlayerDataSource? dataSource;
+  final AudioPlaybackStateStore? stateStore;
   final AudioPlayerObserver? observer;
   final AudioPlayerController? controller;
 
@@ -78,6 +100,7 @@ class AudioPlayerView extends StatefulWidget {
   final Duration? prefetchLeadTime;
   final bool keepScreenOn;
   final Future<void> Function(bool enabled)? onKeepScreenOnChanged;
+  final bool controlled;
 
   @override
   State<AudioPlayerView> createState() => _AudioViewState();
@@ -87,7 +110,7 @@ class _AudioViewState extends State<AudioPlayerView>
     with WidgetsBindingObserver {
   late final AudioPlayerController _controller;
   late final bool _ownsController;
-  late final AudioPlayerSession _session;
+  AudioPlayerEngine? _engine;
   final FocusNode _focusNode = FocusNode(debugLabel: 'AudioPlayerView');
   double? _dragPositionMilliseconds;
   Future<void>? _exitRequest;
@@ -98,27 +121,29 @@ class _AudioViewState extends State<AudioPlayerView>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _ownsController = widget.controller == null;
+    _ownsController = !widget.controlled && widget.controller == null;
     _controller = widget.controller ?? AudioPlayerController();
-    _session = AudioPlayerSession(
-      collectionId: widget.collectionId,
-      dataSource: widget.dataSource,
-      stateStore: widget.stateStore,
-      backend:
-          widget.backend ??
-          AudioMediaKitPlaybackBackend(proxyUri: widget.proxyUri),
-      controller: _controller,
-      observer: AudioPlayerObserverProxy(
-        delegate: widget.observer,
-        authorizeExit: _authorizeExit,
-      ),
-      saveInterval: widget.saveInterval,
-      autoplay: widget.autoplay,
-      prefetchThreshold: widget.prefetchThreshold,
-      prefetchBatchSize: widget.prefetchBatchSize,
-      prefetchLeadTime: widget.prefetchLeadTime,
-    )..addListener(_onSessionChanged);
-    unawaited(_session.initialize());
+    _controller.addListener(_onSessionChanged);
+    if (!widget.controlled) {
+      _engine = AudioPlayerEngine(
+        collectionId: widget.collectionId!,
+        dataSource: widget.dataSource!,
+        stateStore: widget.stateStore!,
+        backend: widget.backend,
+        proxyUri: widget.proxyUri,
+        controller: _controller,
+        observer: AudioPlayerObserverProxy(
+          delegate: widget.observer,
+          authorizeExit: _authorizeExit,
+        ),
+        saveInterval: widget.saveInterval,
+        autoplay: widget.autoplay,
+        prefetchThreshold: widget.prefetchThreshold,
+        prefetchBatchSize: widget.prefetchBatchSize,
+        prefetchLeadTime: widget.prefetchLeadTime,
+      );
+      unawaited(_engine!.initialize());
+    }
   }
 
   void _onSessionChanged() {
@@ -138,22 +163,24 @@ class _AudioViewState extends State<AudioPlayerView>
     if (_motionVisible != motionVisible && mounted) {
       setState(() => _motionVisible = motionVisible);
     }
-    unawaited(_session.handleLifecycle(normalized));
+    final engine = _engine;
+    if (engine != null) unawaited(engine.handleLifecycle(normalized));
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _focusNode.dispose();
-    _session.removeListener(_onSessionChanged);
-    unawaited(_session.close());
+    _controller.removeListener(_onSessionChanged);
+    final engine = _engine;
+    if (engine != null) unawaited(engine.close());
     if (_ownsController) _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final snapshot = _session.snapshot;
+    final snapshot = _controller.snapshot;
     return PopScope<void>(
       canPop: _exitAuthorized,
       onPopInvokedWithResult: (didPop, result) {
@@ -402,7 +429,10 @@ class _AudioViewState extends State<AudioPlayerView>
   Future<void> _beginExitRequest() async {
     try {
       await _controller.requestExit();
-      if (widget.observer == null && mounted && _exitAuthorized) {
+      if (!widget.controlled &&
+          widget.observer == null &&
+          mounted &&
+          _exitAuthorized) {
         await Navigator.of(context).maybePop();
       }
     } finally {

@@ -9,7 +9,6 @@ import android.media.ToneGenerator
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -29,7 +28,6 @@ class AudioBackgroundPlatformBridge :
     private var receiverRegistered = false
     private var networkCallbackRegistered = false
     private var toneGenerator: ToneGenerator? = null
-    private var wifiLock: WifiManager.WifiLock? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var usableNetwork: Network? = null
 
@@ -90,46 +88,7 @@ class AudioBackgroundPlatformBridge :
             "playCommandTone" -> result.success(
                 playCommandTone(call.argument<String>("kind")),
             )
-            "setPlaybackActive" -> result.success(
-                setPlaybackActive(call.argument<Boolean>("active") == true),
-            )
             else -> result.notImplemented()
-        }
-    }
-
-    private fun setPlaybackActive(active: Boolean): Boolean {
-        return try {
-            if (active) {
-                val lock = wifiLock ?: run {
-                    val wifi = applicationContext.getSystemService(
-                        Context.WIFI_SERVICE,
-                    ) as WifiManager
-                    @Suppress("DEPRECATION")
-                    wifi.createWifiLock(
-                        WifiManager.WIFI_MODE_FULL_HIGH_PERF,
-                        WIFI_LOCK_TAG,
-                    ).also {
-                        it.setReferenceCounted(false)
-                        wifiLock = it
-                    }
-                }
-                if (!lock.isHeld) lock.acquire()
-            } else {
-                releaseWifiLock()
-            }
-            true
-        } catch (_: RuntimeException) {
-            releaseWifiLock()
-            false
-        }
-    }
-
-    private fun releaseWifiLock() {
-        try {
-            wifiLock?.takeIf { it.isHeld }?.release()
-        } catch (_: RuntimeException) {
-            // A detached engine must not retain the radio lock even if Android
-            // already reclaimed it.
         }
     }
 
@@ -139,10 +98,10 @@ class AudioBackgroundPlatformBridge :
                 AudioManager.STREAM_MUSIC,
                 COMMAND_TONE_VOLUME,
             ).also { toneGenerator = it }
-            val tone = if (kind == "unavailable") {
-                ToneGenerator.TONE_PROP_NACK
-            } else {
-                ToneGenerator.TONE_PROP_ACK
+            val tone = when (kind) {
+                "boundary" -> ToneGenerator.TONE_PROP_NACK
+                "failed" -> ToneGenerator.TONE_SUP_ERROR
+                else -> ToneGenerator.TONE_PROP_ACK
             }
             generator.startTone(tone, COMMAND_TONE_DURATION_MS)
         } catch (_: RuntimeException) {
@@ -171,8 +130,6 @@ class AudioBackgroundPlatformBridge :
             usableNetwork = null
         }
         mainHandler.removeCallbacksAndMessages(null)
-        releaseWifiLock()
-        wifiLock = null
         toneGenerator?.release()
         toneGenerator = null
     }
@@ -181,6 +138,5 @@ class AudioBackgroundPlatformBridge :
         const val CHANNEL = "mgread/audio_background"
         const val COMMAND_TONE_VOLUME = 65
         const val COMMAND_TONE_DURATION_MS = 110
-        const val WIFI_LOCK_TAG = "mgread:audio-playback"
     }
 }

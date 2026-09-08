@@ -338,6 +338,21 @@ abstract final class AppDiagnosticEvents {
     },
   );
 
+  static final DiagnosticEventDefinition audioPlaybackState = DiagnosticEventDefinition.instant(
+    name: 'audio.playback.state',
+    component: 'feature.media.audio',
+    summary: 'Audio service, lifecycle, connectivity and focus transitions.',
+    severity: DiagnosticSeverity.debug,
+    fields: <String, DiagnosticFieldDefinition>{
+      'sessionId': _requiredInstantInt64,
+      'stage': _requiredInstantString,
+      'playbackDesired': _boolean,
+      'playing': _boolean,
+      'buffering': _boolean,
+      'resourceLoading': _boolean,
+    },
+  );
+
   static final DiagnosticEventDefinition unhandledError = DiagnosticEventDefinition.instant(
     name: 'app.error.unhandled',
     component: 'app.error',
@@ -707,6 +722,7 @@ abstract final class AppDiagnosticEvents {
     routeChanged,
     videoPlaybackStartup,
     audioPlaybackFailure,
+    audioPlaybackState,
     unhandledError,
     settingsInitialize,
     settingsMutation,

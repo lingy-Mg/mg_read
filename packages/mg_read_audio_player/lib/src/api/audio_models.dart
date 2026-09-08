@@ -216,8 +216,10 @@ final class AudioPlayerSnapshot {
     this.collectionTitle,
     this.creator,
     this.currentIndex = 0,
+    this.playbackDesired = false,
     this.playing = false,
     this.buffering = false,
+    this.resourceLoading = false,
     this.completed = false,
     this.position = Duration.zero,
     this.duration = Duration.zero,
@@ -255,8 +257,10 @@ final class AudioPlayerSnapshot {
   final List<AudioTrack> queue;
   final List<AudioQueueEntry> queueEntries;
   final int currentIndex;
+  final bool playbackDesired;
   final bool playing;
   final bool buffering;
+  final bool resourceLoading;
   final bool completed;
   final Duration position;
   final Duration duration;
@@ -298,8 +302,10 @@ final class AudioPlayerSnapshot {
     List<AudioTrack>? queue,
     List<AudioQueueEntry>? queueEntries,
     int? currentIndex,
+    bool? playbackDesired,
     bool? playing,
     bool? buffering,
+    bool? resourceLoading,
     bool? completed,
     Duration? position,
     Duration? duration,
@@ -317,8 +323,10 @@ final class AudioPlayerSnapshot {
     queue: queue ?? this.queue,
     queueEntries: queueEntries ?? this.queueEntries,
     currentIndex: currentIndex ?? this.currentIndex,
+    playbackDesired: playbackDesired ?? this.playbackDesired,
     playing: playing ?? this.playing,
     buffering: buffering ?? this.buffering,
+    resourceLoading: resourceLoading ?? this.resourceLoading,
     completed: completed ?? this.completed,
     position: position ?? this.position,
     duration: duration ?? this.duration,

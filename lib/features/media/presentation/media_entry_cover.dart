@@ -102,7 +102,13 @@ final class MediaEntryCoverTransition extends StatefulWidget {
 }
 
 final class _MediaEntryCoverTransitionState extends State<MediaEntryCoverTransition> {
-  bool _coverMounted = true;
+  late bool _coverMounted;
+
+  @override
+  void initState() {
+    super.initState();
+    _coverMounted = !widget.presented;
+  }
 
   @override
   void didUpdateWidget(covariant MediaEntryCoverTransition oldWidget) {

@@ -50,7 +50,9 @@ final class AudioPlayerSession extends ChangeNotifier {
        assert(recoveryBackoff.isNotEmpty),
        _clock = clock ?? DateTime.now,
        _playbackDesired = autoplay,
-       _snapshot = AudioPlayerSnapshot.initial() {
+       _snapshot = AudioPlayerSnapshot.initial().copyWith(
+         playbackDesired: autoplay,
+       ) {
     controller.bind(
       owner: this,
       play: play,
@@ -136,6 +138,7 @@ final class AudioPlayerSession extends ChangeNotifier {
         collectionId: collectionId,
         collectionTitle: _snapshot.collectionTitle,
         creator: _snapshot.creator,
+        playbackDesired: _playbackDesired,
       ),
     );
     try {
@@ -181,6 +184,7 @@ final class AudioPlayerSession extends ChangeNotifier {
           queue: playlist.tracks,
           queueEntries: playlist.queueEntries,
           currentIndex: restoredIndex,
+          playbackDesired: _playbackDesired,
         ),
       );
       final backendInitialization = _backendInitializationTail.then<void>((
@@ -334,8 +338,10 @@ final class AudioPlayerSession extends ChangeNotifier {
         queue: playlist.tracks,
         queueEntries: playlist.queueEntries,
         currentIndex: index,
+        playbackDesired: _playbackDesired,
         playing: value.playing,
         buffering: value.buffering,
+        resourceLoading: false,
         completed: value.completed,
         position: _clampPosition(value.position, value.duration),
         duration: value.duration,
@@ -370,6 +376,9 @@ final class AudioPlayerSession extends ChangeNotifier {
     _recordPlaybackIntent(false);
     _cancelContinuationLoad(retry: false);
     _cancelRecoveryTimers(resetAttempts: true);
+    if (_snapshot.resourceLoading) {
+      _emit(_snapshot.copyWith(resourceLoading: false));
+    }
     await _runTransport(backend.pause);
     await flushProgress();
   }
@@ -427,6 +436,7 @@ final class AudioPlayerSession extends ChangeNotifier {
     _cancelContinuationLoad(retry: true);
     final generation = ++_generation;
     await flushProgress();
+    _emit(_snapshot.copyWith(resourceLoading: true, clearFailure: true));
     try {
       final track = await source.loadTrackById(collectionId, trackId: trackId);
       if (!_isCurrent(generation)) return;
@@ -468,7 +478,7 @@ final class AudioPlayerSession extends ChangeNotifier {
         message: '当前章节暂时无法播放，请稍后重试。',
         debugDetail: _boundedDebugDetail(error),
       );
-      _emit(_snapshot.copyWith(failure: failure));
+      _emit(_snapshot.copyWith(resourceLoading: false, failure: failure));
       await _notify(() => observer?.onFailure(failure));
       _scheduleRecoveryRetry();
     }
@@ -628,10 +638,16 @@ final class AudioPlayerSession extends ChangeNotifier {
     final progress = _progressFor(_snapshot);
     if (progress != null) _enqueueSave(progress);
     controller.unbind(this);
-    final backendShutdown = Future.wait<void>(<Future<void>>[
-      _backendSubscription.cancel(),
-      backend.dispose(),
-    ]).then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    final backendShutdown = () async {
+      // Cancel delivery synchronously, but do not let a custom stream's
+      // asynchronous onCancel hook retain the backend forever.
+      _backendSubscription.cancel().ignore();
+      try {
+        await backend.dispose();
+      } on Object {
+        // Shutdown remains best-effort after playback intent is invalidated.
+      }
+    }();
     await _saveTail;
     await _notify(() => observer?.onSessionEnded(collectionId, progress));
     await backendShutdown;
